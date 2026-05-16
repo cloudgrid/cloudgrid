@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#030712"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="50%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#0891b2"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- Grid pattern -->
+  <defs>
+    <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
+      <circle cx="30" cy="30" r="1" fill="#94a3b8" opacity="0.15"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+
+  <!-- Glow -->
+  <circle cx="900" cy="200" r="300" fill="#7c3aed" opacity="0.08"/>
+  <circle cx="300" cy="500" r="250" fill="#2563eb" opacity="0.06"/>
+
+  <!-- Logo icon -->
+  <g transform="translate(540, 180)">
+    <rect x="0" y="0" width="120" height="120" rx="24" fill="url(#accent)"/>
+    <path d="M60 20L20 40l40 20 40-20-40-20z" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+    <path d="M20 60l40 20 40-20" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.6"/>
+    <path d="M20 80l40 20 40-20" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.3"/>
+  </g>
+
+  <!-- Text -->
+  <text x="600" y="380" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="64" font-weight="800" fill="#f8fafc" letter-spacing="-0.02em">CloudGrid</text>
+  <text x="600" y="440" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="28" font-weight="400" fill="#94a3b8">AI-native OpenTelemetry observability platform</text>
+  <text x="600" y="500" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="18" font-weight="500" fill="#64748b">Open Source &middot; Self-Hosted &middot; Enterprise Ready</text>
+</svg>
