@@ -1,0 +1,75 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Section from "../../components/Section.astro";
+import PageHeader from "../../components/PageHeader.astro";
+
+const cards = [
+  {
+    title: "Getting started",
+    desc: "Run CloudGrid in one command and send your first OTLP trace.",
+    href: "/handbook/getting-started",
+  },
+  {
+    title: "Architecture",
+    desc: "Services, message bridge, ports, and what crosses what.",
+    href: "/handbook/architecture",
+  },
+  {
+    title: "Deployment",
+    desc: "Local mode, deployed mode, Kubernetes, scaling guidance.",
+    href: "/handbook/deployment",
+  },
+  {
+    title: "Configuration",
+    desc: "Env, deployment modes, auth modes, SSO providers, retention.",
+    href: "/handbook/configuration",
+  },
+  {
+    title: "Adapter authoring",
+    desc: "How to implement a storage / bridge / auth / harness adapter.",
+    href: "/handbook/adapters",
+  },
+];
+---
+
+<Layout title="Handbook — CloudGrid">
+  <Section size="lg">
+    <PageHeader
+      eyebrow="Handbook"
+      accent="brand"
+      title="The operator's view."
+      description="The Handbook is the practical, opinionated guide for running CloudGrid and extending it. The specs in /specs are the authoritative contract — the handbook is the human-readable shape of it."
+    />
+  </Section>
+
+  <Section tone="recessed">
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {cards.map((c) => (
+        <a
+          href={c.href}
+          class="group block rounded-xl border border-border-default bg-surface p-6 hover:border-border-strong transition-colors"
+        >
+          <div class="text-base font-semibold text-text">{c.title}</div>
+          <p class="mt-2 text-sm text-text-secondary leading-relaxed">{c.desc}</p>
+          <div class="mt-4 inline-flex items-center gap-1 text-sm font-medium text-text-secondary group-hover:text-text">
+            Read
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </div>
+        </a>
+      ))}
+    </div>
+  </Section>
+
+  <Section>
+    <div class="max-w-3xl mb-6 reveal">
+      <h2 class="text-2xl font-semibold text-text">Where the truth lives</h2>
+      <p class="mt-3 text-text-secondary">
+        The Handbook is hand-authored prose. When you need the exact contract — GraphQL schema,
+        NATS subjects, persistence shapes — the source of truth is the
+        <a class="text-[color:var(--color-brand)] underline underline-offset-2" href="https://github.com/cloudgriddev/cloudgrid/tree/main/specs" target="_blank" rel="noopener noreferrer">specs directory</a>.
+      </p>
+    </div>
+  </Section>
+</Layout>
