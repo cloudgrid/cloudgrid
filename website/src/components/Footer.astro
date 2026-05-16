@@ -1,0 +1,106 @@
+---
+import Logo from "./Logo.astro";
+
+const columns = [
+  {
+    title: "Features",
+    links: [
+      { label: "Traces", href: "/features/traces" },
+      { label: "Logs", href: "/features/logs" },
+      { label: "Metrics", href: "/features/metrics" },
+      { label: "Dashboards", href: "/features/dashboards" },
+      { label: "AI Evaluation", href: "/features/ai-evaluation" },
+      { label: "Adapters", href: "/features/adapters" },
+    ],
+  },
+  {
+    title: "Enterprise",
+    links: [
+      { label: "Overview", href: "/enterprise" },
+      { label: "Compare vs others", href: "/enterprise/compare" },
+    ],
+  },
+  {
+    title: "Handbook",
+    links: [
+      { label: "Getting started", href: "/handbook/getting-started" },
+      { label: "Architecture", href: "/handbook/architecture" },
+      { label: "Deployment", href: "/handbook/deployment" },
+      { label: "Configuration", href: "/handbook/configuration" },
+      { label: "Adapter authoring", href: "/handbook/adapters" },
+    ],
+  },
+  {
+    title: "Project",
+    links: [
+      { label: "GitHub", href: "https://github.com/cloudgriddev/cloudgrid", external: true },
+      { label: "Issues", href: "https://github.com/cloudgriddev/cloudgrid/issues", external: true },
+      {
+        label: "Discussions",
+        href: "https://github.com/cloudgriddev/cloudgrid/discussions",
+        external: true,
+      },
+      {
+        label: "Specs",
+        href: "https://github.com/cloudgriddev/cloudgrid/tree/main/specs",
+        external: true,
+      },
+    ],
+  },
+];
+---
+
+<footer class="border-t border-border-subtle bg-recessed">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-10 lg:gap-12">
+      <div class="col-span-2 md:col-span-1">
+        <a href="/" class="inline-flex items-center gap-2 mb-3">
+          <Logo class="w-6 h-6" />
+          <span class="text-base font-semibold text-text">CloudGrid</span>
+        </a>
+        <p class="text-sm text-text-muted leading-relaxed max-w-xs">
+          Open-source, OpenTelemetry-native observability. Own your data, swap any adapter, evaluate
+          your AI agents next to the spans they came from.
+        </p>
+      </div>
+
+      {
+        columns.map((col) => (
+          <div>
+            <h3 class="text-xs font-semibold text-text uppercase tracking-wider mb-3">
+              {col.title}
+            </h3>
+            <ul class="space-y-2">
+              {col.links.map((link) => (
+                <li>
+                  <a
+                    href={link.href}
+                    target={(link as any).external ? "_blank" : undefined}
+                    rel={(link as any).external ? "noopener noreferrer" : undefined}
+                    class="text-sm text-text-secondary hover:text-text transition-colors"
+                  >
+                    {link.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      }
+    </div>
+
+    <div class="mt-12 pt-6 border-t border-border-subtle flex flex-col sm:flex-row items-center justify-between gap-4">
+      <p class="text-xs text-text-muted">
+        © {new Date().getFullYear()} CloudGrid contributors. MIT licensed.
+      </p>
+      <p class="text-xs text-text-muted">
+        Built in the open. <a
+          href="https://github.com/cloudgriddev/cloudgrid"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-text-secondary hover:text-text underline underline-offset-2">cloudgriddev/cloudgrid</a
+        >
+      </p>
+    </div>
+  </div>
+</footer>
