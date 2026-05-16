@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-003",
+  "title": "LogEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "body", "timestamp", "attributes"],
+  "properties": {
+    "id": { "type": "string", "description": "Stable generated log event ID." },
+    "traceId": { "type": "string", "description": "Correlated trace ID when provided." },
+    "spanId": { "type": "string", "description": "Correlated span ID when provided." },
+    "serviceName": { "type": "string", "description": "Resource service.name value." },
+    "severityText": { "type": "string", "description": "OpenTelemetry severity text." },
+    "severityNumber": { "type": "integer", "description": "OpenTelemetry severity number." },
+    "body": { "description": "Normalized OTLP log body value." },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Log timestamp in UTC."
+    },
+    "observedTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Observed timestamp in UTC."
+    },
+    "attributes": {
+      "type": "object",
+      "description": "Log attributes.",
+      "additionalProperties": true
+    },
+    "correlation": {
+      "type": "string",
+      "enum": ["trace", "span", "contextual", "none"],
+      "description": "Derived response-only correlation classification."
+    }
+  }
+}

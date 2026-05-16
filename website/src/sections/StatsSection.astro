@@ -1,0 +1,25 @@
+---
+const stats = [
+  { value: "3", label: "Telemetry signals", suffix: "" },
+  { value: "3", label: "SSO providers", suffix: "+" },
+  { value: "<3s", label: "Trace visibility", suffix: "" },
+  { value: "1", label: "Command to start", suffix: "" },
+];
+---
+
+<section class="relative py-20 border-y border-border-subtle bg-bg-secondary/30">
+  <div class="absolute inset-0 dot-pattern opacity-30"></div>
+
+  <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12">
+      {stats.map((stat, i) => (
+        <div class="reveal text-center" style={`transition-delay: ${i * 100}ms`}>
+          <div class="text-4xl sm:text-5xl font-bold gradient-text-purple mb-2">
+            {stat.value}{stat.suffix}
+          </div>
+          <div class="text-sm text-text-secondary font-medium">{stat.label}</div>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

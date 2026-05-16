@@ -1,0 +1,276 @@
+schema_version: 1
+generated_by: spec-architect
+status: draft
+updated: 2026-05-08
+
+errors:
+  ERR-001:
+    code: VALIDATION_FAILED
+    category: validation
+    http_status: 400
+    retryable: false
+    user_visible: true
+    message_template: "Request validation failed: {reason}"
+    terminal_action: reject
+    retry_preconditions: []
+    description: Input shape, timestamp, query parameter, or OTLP record validation failed.
+  ERR-002:
+    code: UNSUPPORTED_MEDIA_TYPE
+    category: validation
+    http_status: 415
+    retryable: false
+    user_visible: true
+    message_template: "Unsupported media type: {content_type}"
+    terminal_action: reject
+    retry_preconditions: []
+    description: OTLP ingest request used a content type the server does not support.
+  ERR-003:
+    code: INVALID_CURSOR
+    category: validation
+    http_status: 400
+    retryable: false
+    user_visible: true
+    message_template: "Invalid pagination cursor"
+    terminal_action: reject
+    retry_preconditions: []
+    description: Cursor cannot be decoded or does not match expected sort fields.
+  ERR-004:
+    code: TRACE_NOT_FOUND
+    category: not_found
+    http_status: 404
+    retryable: false
+    user_visible: true
+    message_template: "Trace {trace_id} was not found"
+    terminal_action: reject
+    retry_preconditions: []
+    description: Requested trace ID does not exist.
+  ERR-005:
+    code: METHOD_NOT_ALLOWED
+    category: validation
+    http_status: 405
+    retryable: false
+    user_visible: true
+    message_template: "Method {method} is not allowed for {path}"
+    terminal_action: reject
+    retry_preconditions: []
+    description: Request uses an unsupported HTTP method.
+  ERR-006:
+    code: STORAGE_UNAVAILABLE
+    category: provider
+    http_status: 503
+    retryable: true
+    user_visible: true
+    message_template: "Storage is unavailable"
+    terminal_action: retry
+    retry_preconditions: ["SurrealDB readiness check succeeds"]
+    description: SurrealDB cannot be reached or rejects connection.
+  ERR-007:
+    code: PARTIAL_WRITE
+    category: provider
+    http_status: 503
+    retryable: true
+    user_visible: false
+    message_template: "Telemetry persistence partially failed for request {request_id}"
+    terminal_action: manual-intervention
+    retry_preconditions: ["Operator verifies whether trace/span/log records already exist"]
+    description: Non-transactional write failed after some records may have been persisted.
+  ERR-008:
+    code: OTLP_DECODE_FAILED
+    category: validation
+    http_status: 400
+    retryable: false
+    user_visible: true
+    message_template: "OTLP payload could not be decoded: {reason}"
+    terminal_action: reject
+    retry_preconditions: []
+    description: JSON or protobuf OTLP payload decoding failed.
+  ERR-009:
+    code: CONFIG_INVALID
+    category: configuration
+    http_status: null
+    retryable: false
+    user_visible: false
+    message_template: "Runtime configuration is invalid: {reason}"
+    terminal_action: reject
+    retry_preconditions: []
+    description: Backend startup configuration failed schema validation.
+  ERR-010:
+    code: RUNTIME_COMPOSITION_FAILED
+    category: configuration
+    http_status: null
+    retryable: false
+    user_visible: false
+    message_template: "Runtime composition failed: {reason}"
+    terminal_action: reject
+    retry_preconditions: []
+    description: RuntimeBuilder cannot build because a required module or adapter is missing.
+  ERR-011:
+    code: STATIC_ASSET_NOT_FOUND
+    category: not_found
+    http_status: 404
+    retryable: false
+    user_visible: true
+    message_template: "Static asset was not found"
+    terminal_action: reject
+    retry_preconditions: []
+    description: Requested frontend asset does not exist.
+  ERR-012:
+    code: REQUEST_TIMEOUT
+    category: timeout
+    http_status: 504
+    retryable: true
+    user_visible: true
+    message_template: "Request timed out after {timeout_ms}ms"
+    terminal_action: retry
+    retry_preconditions: ["Request is idempotent", "Backend health is ok"]
+    description: Request exceeded the configured server-side timeout.
+  ERR-013:
+    code: MESSAGE_BRIDGE_UNAVAILABLE
+    category: provider
+    http_status: 503
+    retryable: true
+    user_visible: true
+    message_template: "Message bridge is unavailable"
+    terminal_action: retry
+    retry_preconditions: ["NATS readiness check succeeds"]
+    description: NATS cannot be reached, JetStream is unavailable, or publish/request setup fails before a message is sent.
+  ERR-014:
+    code: MESSAGE_BRIDGE_TIMEOUT
+    category: timeout
+    http_status: 504
+    retryable: true
+    user_visible: true
+    message_template: "Message bridge request timed out after {timeout_ms}ms"
+    terminal_action: retry
+    retry_preconditions: ["Request is idempotent", "NATS readiness check succeeds"]
+    description: BFF request/reply query did not receive a response before the configured timeout.
+  ERR-015:
+    code: UNAUTHENTICATED
+    category: authentication
+    http_status: 401
+    retryable: false
+    user_visible: true
+    message_template: "Authentication is required"
+    terminal_action: reject
+    retry_preconditions: []
+    description: A future authenticated public boundary could not identify a principal for an ingestion or read request.
+  ERR-016:
+    code: FORBIDDEN
+    category: authorization
+    http_status: 403
+    retryable: false
+    user_visible: true
+    message_template: "The principal is not allowed to access this telemetry"
+    terminal_action: reject
+    retry_preconditions: []
+    description: A future authorization policy denied telemetry ingestion, telemetry reads, or a live trace subscription.
+  ERR-017:
+    code: SUBSCRIPTION_LIMIT_EXCEEDED
+    category: rate_limit
+    http_status: 429
+    retryable: true
+    user_visible: true
+    message_template: "Too many live telemetry subscriptions are open"
+    terminal_action: retry
+    retry_preconditions: ["Close an existing live subscription or wait before retrying"]
+    description: The BFF or storage-read service rejected a live subscription because per-principal, per-project, or process-level live limits were exceeded.
+  ERR-018:
+    code: ALERT_RULE_INVALID
+    category: validation
+    http_status: 400
+    retryable: false
+    user_visible: true
+    message_template: "Alert rule configuration is invalid: {reason}"
+    terminal_action: reject
+    retry_preconditions: []
+    description: Alert rule config, query, condition, timing, severity, or kind-specific validation failed.
+  ERR-019:
+    code: ALERT_QUERY_UNSUPPORTED
+    category: validation
+    http_status: 400
+    retryable: false
+    user_visible: true
+    message_template: "Alert query is not supported: {reason}"
+    terminal_action: reject
+    retry_preconditions: []
+    description: Alert rule query cannot be executed through the storage-read contracts for the selected signal.
+  ERR-020:
+    code: ALERT_NOTIFICATION_FAILED
+    category: provider
+    http_status: 503
+    retryable: true
+    user_visible: true
+    message_template: "Alert notification delivery failed"
+    terminal_action: retry
+    retry_preconditions: ["Notification adapter health check succeeds"]
+    description: Notification adapter delivery failed before or during alert event notification dispatch.
+  ERR-021:
+    code: ALERT_EVALUATOR_TIMEOUT
+    category: timeout
+    http_status: 504
+    retryable: true
+    user_visible: true
+    message_template: "Alert evaluation timed out after {timeout_ms}ms"
+    terminal_action: retry
+    retry_preconditions: ["Evaluator capacity is available", "Storage-read health is ok"]
+    description: Alert evaluator exceeded its configured execution deadline while evaluating a rule or dispatching notification work.
+  ERR-AIE-001:
+    code: EVAL_DATASET_NOT_FOUND
+    category: not_found
+    http_status: 404
+    retryable: false
+    user_visible: true
+    message_template: "Evaluation dataset {dataset_id} was not found"
+    terminal_action: reject
+    retry_preconditions: []
+    description: Dataset, dataset version, or dataset item required for an AI evaluation workflow does not exist.
+  ERR-AIE-002:
+    code: EVAL_SCORER_NOT_FOUND
+    category: not_found
+    http_status: 404
+    retryable: false
+    user_visible: true
+    message_template: "Evaluation scorer {scorer_id} was not found"
+    terminal_action: reject
+    retry_preconditions: []
+    description: Scorer or scorer version required for an AI evaluation workflow does not exist.
+  ERR-AIE-003:
+    code: EVAL_HARNESS_UNREACHABLE
+    category: provider
+    http_status: 503
+    retryable: true
+    user_visible: true
+    message_template: "Harness adapter is unavailable"
+    terminal_action: retry
+    retry_preconditions: ["Harness adapter health check succeeds"]
+    description: AI-eval runner cannot reach the configured harness adapter or the adapter returns a transient provider failure.
+  ERR-AIE-004:
+    code: EVAL_RUN_LIMIT_EXCEEDED
+    category: rate_limit
+    http_status: 429
+    retryable: true
+    user_visible: true
+    message_template: "Evaluation run limit exceeded"
+    terminal_action: retry
+    retry_preconditions: ["Evaluation budget or concurrency limit is available"]
+    description: Cost, concurrency, item count, or sampling limits prevented an evaluation or optimization call.
+  ERR-AIE-005:
+    code: EVAL_PROJECTION_AMBIGUOUS
+    category: validation
+    http_status: 400
+    retryable: false
+    user_visible: false
+    message_template: "AI projection is ambiguous for span {span_id}"
+    terminal_action: warn
+    retry_preconditions: []
+    description: OTel GenAI and OpenInference fields disagreed or produced more than one possible projection. The source span remains persisted with raw attributes.
+  ERR-AIE-006:
+    code: EVAL_CONTENT_NOT_CAPTURED
+    category: validation
+    http_status: 400
+    retryable: false
+    user_visible: true
+    message_template: "The selected span does not contain captured content"
+    terminal_action: require-user-input
+    retry_preconditions: []
+    description: A dataset promotion or transcript request requires content that was not emitted because content capture was disabled.

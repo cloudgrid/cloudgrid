@@ -1,0 +1,89 @@
+---
+/**
+ * Mock AI-eval scoreboard. Shows an experiment with two prompt versions across
+ * a dataset, deterministic + judge scorers.
+ */
+const rows = [
+  { case: "case_01", v1: 0.62, v2: 0.71, latency1: 312, latency2: 280, judge1: "ok", judge2: "good" },
+  { case: "case_02", v1: 0.41, v2: 0.84, latency1: 410, latency2: 305, judge1: "bad", judge2: "ok" },
+  { case: "case_03", v1: 0.79, v2: 0.76, latency1: 220, latency2: 260, judge1: "good", judge2: "good" },
+  { case: "case_04", v1: 0.55, v2: 0.78, latency1: 380, latency2: 240, judge1: "ok", judge2: "good" },
+  { case: "case_05", v1: 0.34, v2: 0.69, latency1: 510, latency2: 290, judge1: "bad", judge2: "ok" },
+];
+
+const colorFor = (j: string) =>
+  j === "good" ? "var(--color-emerald)" : j === "ok" ? "var(--color-amber)" : "var(--color-rose)";
+
+function bar(v: number, color: string) {
+  return `
+    <div class="h-1.5 rounded-full bg-recessed overflow-hidden">
+      <div class="h-full rounded-full" style="width:${Math.round(v * 100)}%; background:${color}; opacity:.8"></div>
+    </div>`;
+}
+---
+
+<div class="p-4 bg-recessed">
+  <div class="flex items-center justify-between mb-3">
+    <div>
+      <div class="text-xs font-semibold text-text">Experiment · faq_router_optim_v3</div>
+      <div class="text-[10px] text-text-muted font-mono">prompt.v1 ↔ prompt.v2 · dataset:faqs_2026q1 · n=124</div>
+    </div>
+    <span class="inline-flex items-center gap-1 text-[10px] font-semibold text-[color:var(--color-emerald)]">
+      <span class="w-1.5 h-1.5 rounded-full bg-[color:var(--color-emerald)]"></span>
+      complete
+    </span>
+  </div>
+
+  <!-- summary tiles -->
+  <div class="grid grid-cols-4 gap-2 mb-4">
+    {[
+      { l: "Accuracy", v1: "0.54", v2: "0.76", delta: "+22%" },
+      { l: "Judge ‘good’", v1: "31%", v2: "58%", delta: "+27pp" },
+      { l: "p95 latency", v1: "412 ms", v2: "298 ms", delta: "−28%" },
+      { l: "tokens / call", v1: "1,820", v2: "1,310", delta: "−28%" },
+    ].map((s) => (
+      <div class="rounded-lg border border-border-subtle bg-surface p-3">
+        <div class="text-[10px] text-text-muted">{s.l}</div>
+        <div class="mt-1 flex items-baseline gap-2">
+          <span class="text-base font-semibold text-text font-mono">{s.v2}</span>
+          <span class="text-[10px] font-mono text-text-muted">v1 {s.v1}</span>
+        </div>
+        <div class="text-[10px] mt-0.5 font-mono" style="color:var(--color-emerald)">{s.delta}</div>
+      </div>
+    ))}
+  </div>
+
+  <!-- per-case table -->
+  <div class="rounded-lg border border-border-subtle bg-surface overflow-hidden">
+    <div class="grid grid-cols-[100px_1fr_1fr_70px_70px_70px_70px] gap-2 px-3 py-2 text-[10px] uppercase tracking-wider text-text-muted bg-recessed border-b border-border-subtle font-medium">
+      <div>case</div>
+      <div>accuracy · v1</div>
+      <div>accuracy · v2</div>
+      <div class="text-right">v1 ms</div>
+      <div class="text-right">v2 ms</div>
+      <div class="text-center">judge v1</div>
+      <div class="text-center">judge v2</div>
+    </div>
+    {rows.map((r) => (
+      <div class="grid grid-cols-[100px_1fr_1fr_70px_70px_70px_70px] gap-2 px-3 py-2 items-center text-xs border-b border-border-subtle last:border-b-0">
+        <span class="font-mono text-text-secondary">{r.case}</span>
+        <div set:html={bar(r.v1, "var(--color-amber)")} />
+        <div set:html={bar(r.v2, "var(--color-violet)")} />
+        <span class="font-mono text-text-secondary text-right">{r.latency1}</span>
+        <span class="font-mono text-text-secondary text-right">{r.latency2}</span>
+        <span
+          class="text-[10px] font-mono font-semibold text-center px-1.5 py-0.5 rounded mx-auto inline-block"
+          style={`color:${colorFor(r.judge1)}; background: color-mix(in srgb, ${colorFor(r.judge1)} 14%, transparent);`}
+        >
+          {r.judge1}
+        </span>
+        <span
+          class="text-[10px] font-mono font-semibold text-center px-1.5 py-0.5 rounded mx-auto inline-block"
+          style={`color:${colorFor(r.judge2)}; background: color-mix(in srgb, ${colorFor(r.judge2)} 14%, transparent);`}
+        >
+          {r.judge2}
+        </span>
+      </div>
+    ))}
+  </div>
+</div>

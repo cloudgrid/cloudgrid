@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-012",
+  "title": "TraceDetailQuery",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "selectedSpanId": {
+      "type": "string",
+      "description": "Optional span ID the UI wants preselected."
+    },
+    "spanQuery": {
+      "type": "string",
+      "description": "Case-insensitive search across span name, service name, kind, event names, link IDs, exception text, and string attributes."
+    },
+    "spanService": { "type": "string", "description": "Exact span service name filter." },
+    "spanName": { "type": "string", "description": "Case-insensitive span name contains filter." },
+    "spanStatus": {
+      "type": "string",
+      "enum": ["ok", "error", "unset"],
+      "description": "Span status filter."
+    },
+    "minSpanDurationMs": { "type": "number", "minimum": 0 },
+    "maxSpanDurationMs": { "type": "number", "minimum": 0 },
+    "showMatchesOnly": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, the response may mark non-matching spans as collapsed in UI view models but must still include ancestors needed to preserve hierarchy."
+    },
+    "relatedLogLimit": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 200,
+      "default": 50
+    },
+    "logSearch": {
+      "type": "string",
+      "description": "Optional search string applied to correlated logs returned with the trace detail."
+    },
+    "attributes": {
+      "type": "array",
+      "items": { "$ref": "attribute-filter.schema.json" }
+    }
+  }
+}

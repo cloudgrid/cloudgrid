@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-001",
+  "title": "AgentRun",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "traceId", "rootSpanId", "agent", "startedAt", "status"],
+  "properties": {
+    "id": { "type": "string" },
+    "traceId": { "type": "string" },
+    "rootSpanId": { "type": "string" },
+    "agent": { "$ref": "#/$defs/AgentIdentity" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "endedAt": { "type": "string", "format": "date-time" },
+    "durationMs": { "type": "number", "minimum": 0 },
+    "status": { "type": "string", "enum": ["ok", "error", "unset", "cancelled"] },
+    "inputDigest": { "type": "string" },
+    "outputDigest": { "type": "string" },
+    "tokenTotals": { "$ref": "#/$defs/TokenTotals" },
+    "costEstimate": { "$ref": "#/$defs/Money" },
+    "experimentRunId": { "type": "string" },
+    "normalizationWarnings": { "type": "array", "items": { "type": "string" }, "default": [] }
+  },
+  "$defs": {
+    "AgentIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "TokenTotals": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "input": { "type": "integer", "minimum": 0 },
+        "output": { "type": "integer", "minimum": 0 },
+        "total": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "Money": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["amount", "currency"],
+      "properties": {
+        "amount": { "type": "number", "minimum": 0 },
+        "currency": { "type": "string", "const": "USD" }
+      }
+    }
+  }
+}

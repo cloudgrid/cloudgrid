@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-012",
+  "title": "PromptVersion",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "text", "hash", "createdAt"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "text": { "type": "string" },
+    "variableSchema": { "type": "object", "additionalProperties": true },
+    "metadata": { "type": "object", "additionalProperties": true },
+    "hash": { "type": "string" },
+    "tag": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "notes": { "type": "string" }
+  }
+}

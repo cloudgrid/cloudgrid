@@ -1,0 +1,85 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Section from "../../components/Section.astro";
+import PageHeader from "../../components/PageHeader.astro";
+import AdapterDiagram from "../../components/visuals/AdapterDiagram.astro";
+import CheckList from "../../components/CheckList.astro";
+import RelatedFeatures from "../../components/RelatedFeatures.astro";
+---
+
+<Layout title="Adapter-driven extensibility — CloudGrid">
+  <Section size="lg">
+    <PageHeader
+      eyebrow="Adapters"
+      accent="rose"
+      title="Every infrastructure dependency sits behind a port."
+      description="Storage, message bridge, auth providers, evaluation harness — each is an explicit, typed port with a documented v1 implementation. CloudGrid ships sensible defaults; the patterns are real enough to swap without forking."
+    />
+  </Section>
+
+  <Section tone="recessed">
+    <div class="reveal">
+      <AdapterDiagram />
+    </div>
+  </Section>
+
+  <Section>
+    <div class="grid lg:grid-cols-2 gap-12">
+      <div class="reveal">
+        <h2 class="text-xl font-semibold text-text mb-4">The four port surfaces</h2>
+        <CheckList
+          items={[
+            "Storage port: storage-read and storage-write. v1 adapter is SurrealDB; SurrealQL only lives inside the adapter package.",
+            "Message-bridge port: request/reply, durable streams, ephemeral live subjects. v1 adapter is NATS JetStream.",
+            "Auth provider port: OIDC/OAuth providers feeding BFF-managed sessions. v1 adapters: GitHub, Google, Microsoft Entra ID.",
+            "Harness adapter: HTTP contract for /v1/run, /v1/score, /v1/optimize. v1 implementation: puristajs/harness.",
+          ]}
+        />
+      </div>
+      <div class="reveal">
+        <h2 class="text-xl font-semibold text-text mb-4">Why this is more than marketing</h2>
+        <CheckList
+          items={[
+            "Storage adapter code lives in internal/adapters/<database>/ in storage-read and storage-write. The boundary is enforced by structure.",
+            "Storage-read and storage-write are the only services that touch the database — adapters cannot leak out.",
+            "Harness adapter is a stable HTTP contract; alternative orchestrators can implement it.",
+            "Auth provider switching requires no schema migrations — sessions stay BFF-owned.",
+          ]}
+        />
+      </div>
+    </div>
+  </Section>
+
+  <Section tone="recessed">
+    <div class="rounded-xl border border-border-default bg-surface p-6 sm:p-8 reveal">
+      <div class="grid lg:grid-cols-[1fr_auto] gap-4 items-center">
+        <div>
+          <div class="text-base sm:text-lg font-semibold text-text">
+            Want to implement your own adapter?
+          </div>
+          <p class="mt-2 text-sm text-text-secondary leading-relaxed max-w-3xl">
+            The Adapter author handbook walks through each port shape, the v1 implementation as a
+            reference, idempotency rules, and how to wire the new adapter into the runtime.
+          </p>
+        </div>
+        <a
+          href="/handbook/adapters"
+          class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-md bg-inverse text-text-on-inverse text-sm font-semibold hover:opacity-90"
+        >
+          Adapter author guide
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+        </a>
+      </div>
+    </div>
+  </Section>
+
+  <Section>
+    <RelatedFeatures
+      items={[
+        { label: "Architecture", href: "/handbook/architecture", desc: "Where ports sit inside services." },
+        { label: "AI Evaluation", href: "/features/ai-evaluation", desc: "Harness is one of the four ports." },
+        { label: "Enterprise", href: "/enterprise", desc: "Adapter swap-out is an enterprise lever." },
+      ]}
+    />
+  </Section>
+</Layout>

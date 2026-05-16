@@ -1,0 +1,37 @@
+name: cloudgrid
+
+services:
+  nats:
+    image: nats:${CLOUDGRID_NATS_IMAGE_TAG:-2.14.0}
+    command:
+      - "-js"
+      - "-sd"
+      - "/data/jetstream"
+      - "-m"
+      - "8222"
+    ports:
+      - "${CLOUDGRID_NATS_PORT:-4222}:4222"
+      - "${CLOUDGRID_NATS_MONITOR_PORT:-8222}:8222"
+    volumes:
+      - nats-data:/data/jetstream
+    restart: unless-stopped
+
+  surrealdb:
+    image: surrealdb/surrealdb:${CLOUDGRID_SURREALDB_IMAGE_TAG:-v3.0.5}
+    user: "0:0"
+    command:
+      - "start"
+      - "--user"
+      - "${CLOUDGRID_SURREALDB_USERNAME:-root}"
+      - "--pass"
+      - "${CLOUDGRID_SURREALDB_PASSWORD:-root}"
+      - "rocksdb:/data/cloudgrid.db"
+    ports:
+      - "${CLOUDGRID_SURREALDB_PORT:-8000}:8000"
+    volumes:
+      - surrealdb-data:/data
+    restart: unless-stopped
+
+volumes:
+  nats-data:
+  surrealdb-data:

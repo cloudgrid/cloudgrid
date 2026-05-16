@@ -1,0 +1,100 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Section from "../../components/Section.astro";
+import PageHeader from "../../components/PageHeader.astro";
+import MockFrame from "../../components/visuals/MockFrame.astro";
+import AiEvalBoard from "../../components/visuals/AiEvalBoard.astro";
+import CheckList from "../../components/CheckList.astro";
+import RelatedFeatures from "../../components/RelatedFeatures.astro";
+---
+
+<Layout title="AI agent evaluation — CloudGrid">
+  <Section size="lg">
+    <PageHeader
+      eyebrow="AI Evaluation"
+      accent="violet"
+      title="Evaluate your agents next to the spans they came from."
+      description="CloudGrid projects OpenTelemetry GenAI and OpenInference spans into first-class entities — AgentRuns, LlmCalls, ToolCalls, RetrievalEvents — and lets you curate datasets, define scorers, run experiments, and optimize prompts. Without leaving the system that observes the rest of your stack."
+    />
+  </Section>
+
+  <Section tone="recessed">
+    <div class="reveal">
+      <MockFrame title="cloudgrid · /ai-eval/experiments/faq_router_optim_v3">
+        <AiEvalBoard />
+      </MockFrame>
+    </div>
+  </Section>
+
+  <Section>
+    <div class="grid lg:grid-cols-2 gap-12">
+      <div class="reveal">
+        <h2 class="text-xl font-semibold text-text mb-4">What you can do today</h2>
+        <CheckList
+          items={[
+            "Project OTel GenAI (gen_ai.*) and OpenInference (openinference.*) spans into typed entities.",
+            "Promote any agent run, tool call, or model call into a Dataset item.",
+            "Define deterministic scorers (contains, regex, JSON Schema, attribute equality) and judge scorers.",
+            "Run experiments through the harness adapter; compare prompt versions on a scoreboard.",
+            "Optimize prompts through harness workflows — candidates become PromptVersion records.",
+            "Annotate spans into datasets through an annotation queue.",
+          ]}
+        />
+      </div>
+      <div class="reveal">
+        <h2 class="text-xl font-semibold text-text mb-4">Honest about scope</h2>
+        <CheckList
+          muted
+          items={[
+            "Prompt and completion content stays on span events — never copied into a separate AI database.",
+            "Harness owns model-provider HTTP calls. CloudGrid never holds provider credentials.",
+            "CloudGrid does not proxy or gateway model providers, and is not a model router.",
+            "Token and cost totals come from harness run summaries or OTel metrics — never inferred from span text.",
+            "Python frameworks (DSPy, TextGrad, MIPROv2) are not embedded; they run inside harness when used.",
+          ]}
+        />
+      </div>
+    </div>
+  </Section>
+
+  <Section>
+    <div class="max-w-3xl mb-8 reveal">
+      <h2 class="text-2xl font-semibold tracking-tight text-text">
+        Why this belongs next to your traces, not in a separate tool.
+      </h2>
+      <p class="mt-3 text-text-secondary leading-relaxed">
+        AI-eval-only tools (Langfuse, Arize, Braintrust) treat agent traces as their universe. But
+        agent runs touch tools, databases, retrieval, and downstream services that the rest of your
+        engineering team already observes. CloudGrid evaluates agents where the rest of the system
+        is already visible — same project, same SSO, same isolation, same dashboards.
+      </p>
+    </div>
+    <div class="grid sm:grid-cols-3 gap-4">
+      <div class="rounded-xl border border-border-default bg-surface p-5 reveal">
+        <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Datasets</div>
+        <div class="mt-1 text-base font-semibold text-text">Promotable, versioned, project-scoped</div>
+        <p class="mt-2 text-sm text-text-secondary">Curate test cases from real spans. The source span is always linkable.</p>
+      </div>
+      <div class="rounded-xl border border-border-default bg-surface p-5 reveal">
+        <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Scorers</div>
+        <div class="mt-1 text-base font-semibold text-text">Deterministic + LLM-judge</div>
+        <p class="mt-2 text-sm text-text-secondary">JSON-Pointer-based deterministic scorers and judge scorers via harness.</p>
+      </div>
+      <div class="rounded-xl border border-border-default bg-surface p-5 reveal">
+        <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Experiments</div>
+        <div class="mt-1 text-base font-semibold text-text">Reproducible & comparable</div>
+        <p class="mt-2 text-sm text-text-secondary">Every run produces an ExperimentRun with per-item results and a summary.</p>
+      </div>
+    </div>
+  </Section>
+
+  <Section tone="recessed">
+    <RelatedFeatures
+      items={[
+        { label: "Traces", href: "/features/traces", desc: "Where AgentRuns come from." },
+        { label: "Adapters", href: "/features/adapters", desc: "The harness adapter is one port among four." },
+        { label: "Compare vs", href: "/enterprise/compare", desc: "CloudGrid vs Langfuse, Arize, Braintrust." },
+      ]}
+    />
+  </Section>
+</Layout>

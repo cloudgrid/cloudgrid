@@ -1,0 +1,30 @@
+---
+interface Item {
+  label: string;
+  href: string;
+  desc: string;
+}
+interface Props {
+  items: Item[];
+}
+const { items } = Astro.props;
+---
+
+<div class="grid sm:grid-cols-3 gap-3">
+  {items.map((it) => (
+    <a
+      href={it.href}
+      class="group block rounded-xl border border-border-default bg-surface p-5 hover:border-border-strong transition-colors"
+    >
+      <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Related</div>
+      <div class="mt-1 text-base font-semibold text-text">{it.label}</div>
+      <p class="mt-1.5 text-sm text-text-secondary leading-relaxed">{it.desc}</p>
+      <div class="mt-3 inline-flex items-center gap-1 text-sm font-medium text-text-secondary group-hover:text-text">
+        Visit
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 12h14M12 5l7 7-7 7" />
+        </svg>
+      </div>
+    </a>
+  ))}
+</div>

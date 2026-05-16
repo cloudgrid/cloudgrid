@@ -1,0 +1,2138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CloudGrid Traces And Metrics UX Concept</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --background: #f7f8fa;
+        --surface: #ffffff;
+        --surface-subtle: #f3f5f7;
+        --surface-muted: #eef1f4;
+        --border: #d8dee6;
+        --border-strong: #b8c2ce;
+        --text: #16202a;
+        --muted: #647384;
+        --muted-2: #8390a0;
+        --primary: #18181b;
+        --primary-soft: #f4f4f5;
+        --success: #23845f;
+        --success-soft: #e8f5ef;
+        --warning: #a35f00;
+        --warning-soft: #fff3dd;
+        --danger: #b4232f;
+        --danger-soft: #fde8eb;
+        --chart-1: #246b86;
+        --chart-2: #8a6f1d;
+        --chart-3: #1f7a57;
+        --chart-4: #bd6b13;
+        --chart-5: #b4232f;
+        --radius: 8px;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--background);
+        color: var(--text);
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      .concept-shell {
+        display: grid;
+        grid-template-rows: 56px 1fr;
+        height: 100vh;
+        overflow: hidden;
+      }
+
+      .topbar {
+        display: grid;
+        grid-template-columns: minmax(180px, 1fr) minmax(360px, 560px) minmax(180px, 1fr);
+        align-items: center;
+        gap: 16px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface);
+        padding: 0 16px;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 700;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 32px;
+        height: 32px;
+        place-items: center;
+        border-radius: 7px;
+        background: var(--text);
+        color: white;
+        font-size: 13px;
+      }
+
+      .switchers,
+      .actions,
+      .toolbar,
+      .chips,
+      .row-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .switchers {
+        justify-content: center;
+      }
+
+      .actions {
+        justify-content: flex-end;
+      }
+
+      .select,
+      .search,
+      .button,
+      .icon-button {
+        height: 34px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        background: var(--surface);
+        color: var(--text);
+      }
+
+      .select,
+      .search {
+        min-width: 0;
+        padding: 0 10px;
+      }
+
+      .select {
+        min-width: 160px;
+      }
+
+      .search {
+        width: 260px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        padding: 0 12px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .button.primary {
+        border-color: var(--primary);
+        background: var(--primary);
+        color: white;
+      }
+
+      .button.danger {
+        border-color: var(--danger);
+        background: var(--danger);
+        color: white;
+      }
+
+      .icon-button {
+        display: grid;
+        width: 34px;
+        place-items: center;
+        padding: 0;
+      }
+
+      .button svg,
+      .icon-button svg {
+        width: 16px;
+        height: 16px;
+        stroke: currentColor;
+        stroke-width: 2;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .main {
+        display: grid;
+        grid-template-columns: 240px minmax(0, 1fr);
+        min-height: 0;
+      }
+
+      .project-sidebar {
+        display: flex;
+        min-height: 0;
+        flex-direction: column;
+        border-right: 1px solid var(--border);
+        background: var(--surface);
+      }
+
+      .project-summary {
+        border-bottom: 1px solid var(--border);
+        padding: 14px;
+      }
+
+      .label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .project-title {
+        margin-top: 4px;
+        font-weight: 700;
+      }
+
+      .nav {
+        display: grid;
+        gap: 4px;
+        overflow: auto;
+        padding: 10px;
+      }
+
+      .nav-spacer {
+        flex: 1;
+      }
+
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        height: 36px;
+        border: 0;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        padding: 0 10px;
+        font-size: 14px;
+        font-weight: 600;
+        text-align: left;
+      }
+
+      .nav-item.active {
+        background: var(--surface-muted);
+        color: var(--text);
+      }
+
+      .content {
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+        padding: 16px;
+      }
+
+      .screen {
+        display: none;
+        min-height: 0;
+      }
+
+      .screen.active {
+        display: grid;
+        height: calc(100vh - 56px - 32px);
+        min-height: 0;
+      }
+
+      .screen:not(.active) {
+        display: none;
+      }
+
+      .route {
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr);
+        min-height: 0;
+        gap: 12px;
+      }
+
+      .route-header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 22px;
+        line-height: 1.2;
+      }
+
+      h2 {
+        font-size: 15px;
+      }
+
+      h3 {
+        font-size: 13px;
+      }
+
+      .description {
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .route-nav {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+
+      .breadcrumb {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .breadcrumb button,
+      .breadcrumb span {
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        padding: 0;
+      }
+
+      .breadcrumb button {
+        cursor: pointer;
+      }
+
+      .filter-bar,
+      .panel-header,
+      .inspector-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .panel-header > div:first-child,
+      .inspector-header > div:first-child {
+        min-width: 0;
+      }
+
+      .waterfall-header .panel-header {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        align-items: start;
+      }
+
+      .waterfall-header .toolbar {
+        flex-shrink: 0;
+        justify-content: flex-start;
+        margin-top: 10px;
+      }
+
+      .filter-stack {
+        display: grid;
+        gap: 8px;
+      }
+
+      .mode-toggle {
+        display: inline-flex;
+        align-items: center;
+        height: 34px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        background: var(--surface);
+        padding: 2px;
+      }
+
+      .mode-toggle .button {
+        height: 28px;
+        border: 0;
+        padding: 0 10px;
+      }
+
+      .mode-toggle .button.active {
+        background: var(--surface-muted);
+        color: var(--text);
+      }
+
+      .stream-state {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .stream-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--success);
+      }
+
+      .chip,
+      .badge,
+      .metric-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 24px;
+        border-radius: 999px;
+        padding: 0 8px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .chip {
+        border: 1px solid var(--border);
+        background: var(--surface);
+      }
+
+      .chip-remove {
+        display: grid;
+        width: 16px;
+        height: 16px;
+        place-items: center;
+        border: 0;
+        border-radius: 999px;
+        background: var(--surface-muted);
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 11px;
+        line-height: 1;
+      }
+
+      .badge {
+        background: var(--surface-muted);
+        color: var(--muted);
+      }
+
+      .badge.success {
+        background: var(--surface-muted);
+        color: var(--muted);
+      }
+
+      .badge.warning {
+        background: var(--warning-soft);
+        color: var(--warning);
+      }
+
+      .badge.danger {
+        background: var(--danger-soft);
+        color: var(--danger);
+      }
+
+      .workspace {
+        min-height: 0;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        overflow: hidden;
+      }
+
+      .trace-search-grid {
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr);
+        min-height: 0;
+      }
+
+      .facet-rail,
+      .view-rail {
+        overflow: auto;
+        border-right: 1px solid var(--border);
+        background: var(--surface);
+      }
+
+      .facet-group,
+      .rail-group {
+        border-bottom: 1px solid var(--border);
+        padding: 12px;
+      }
+
+      .facet-row,
+      .view-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        min-height: 30px;
+        border-radius: 6px;
+        padding: 0 7px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .facet-row.active,
+      .view-row.active {
+        background: var(--primary-soft);
+        color: var(--text);
+        font-weight: 700;
+      }
+
+      .table-wrap {
+        min-width: 0;
+        min-height: 0;
+        overflow: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--border);
+        padding: 9px 10px;
+        text-align: left;
+        vertical-align: middle;
+        white-space: nowrap;
+      }
+
+      th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: var(--surface-subtle);
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+      }
+
+      tr.selected td {
+        background: var(--surface-subtle);
+      }
+
+      tr[data-open-detail] {
+        cursor: pointer;
+      }
+
+      .mono {
+        font-family:
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          Monaco,
+          Consolas,
+          "Liberation Mono",
+          monospace;
+      }
+
+      .service {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+      }
+
+      .dot,
+      .square {
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        border-radius: 2px;
+        background: var(--chart-1);
+      }
+
+      .duration-cell {
+        display: grid;
+        min-width: 96px;
+        gap: 4px;
+      }
+
+      .bar-track {
+        height: 6px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: var(--surface-muted);
+      }
+
+      .bar-fill {
+        height: 100%;
+        border-radius: inherit;
+        background: var(--text);
+      }
+
+      .trace-detail {
+        grid-template-rows: minmax(0, 1fr);
+        min-height: 0;
+      }
+
+      .trace-split {
+        display: grid;
+        grid-template-columns: minmax(640px, 1fr) 8px 420px;
+        min-height: 0;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        overflow: hidden;
+      }
+
+      .waterfall {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) 8px 230px;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .waterfall-header {
+        border-bottom: 1px solid var(--border);
+        padding: 10px;
+      }
+
+      .view-switch {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        height: 34px;
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        background: var(--surface);
+        padding: 2px;
+      }
+
+      .view-switch .button {
+        height: 28px;
+        border: 0;
+        padding: 0 10px;
+      }
+
+      .view-switch .button.primary {
+        background: var(--surface-muted);
+        color: var(--text);
+      }
+
+      .timeline-head,
+      .span-row {
+        display: grid;
+        grid-template-columns: 28px 140px minmax(180px, 1.1fr) 86px 78px minmax(240px, 1fr);
+        align-items: center;
+        gap: 8px;
+      }
+
+      .timeline-head {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        min-height: 34px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface-subtle);
+        color: var(--muted);
+        padding: 0 10px;
+        font-size: 11px;
+        text-transform: uppercase;
+      }
+
+      .waterfall-body {
+        min-height: 0;
+        overflow: auto;
+      }
+
+      .span-row {
+        min-height: 34px;
+        border-bottom: 1px solid var(--border);
+        padding: 0 10px;
+        font-size: 13px;
+      }
+
+      .span-row.selected {
+        background: var(--surface-subtle);
+        outline: 2px solid var(--border-strong);
+        outline-offset: -2px;
+      }
+
+      .span-row.muted {
+        color: var(--muted-2);
+      }
+
+      .status-text {
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .status-text.error {
+        color: var(--danger);
+      }
+
+      .timeline {
+        position: relative;
+        height: 16px;
+      }
+
+      .timeline::before {
+        position: absolute;
+        inset: 7px 0 auto;
+        height: 1px;
+        background: var(--border);
+        content: "";
+      }
+
+      .span-bar {
+        position: absolute;
+        top: 3px;
+        height: 10px;
+        border-radius: 3px;
+        background: var(--chart-1);
+      }
+
+      .span-bar.error {
+        background: var(--chart-5);
+      }
+
+      .span-bar.critical {
+        background: var(--chart-2);
+      }
+
+      .marker {
+        position: absolute;
+        top: 1px;
+        width: 4px;
+        height: 14px;
+        border-radius: 2px;
+        background: var(--warning);
+      }
+
+      .trace-flow {
+        display: none;
+        min-width: 0;
+        min-height: 0;
+        overflow: auto;
+        background: var(--surface);
+      }
+
+      .trace-flow.active {
+        display: block;
+      }
+
+      .flow-toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 10px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.96);
+        padding: 8px 10px;
+      }
+
+      .flow-toolbar > div:first-child {
+        min-width: 0;
+      }
+
+      .flow-toolbar .toolbar {
+        order: -1;
+        flex-shrink: 0;
+        margin-top: 0;
+      }
+
+      .flow-canvas {
+        position: relative;
+        min-width: 960px;
+        min-height: 520px;
+        cursor: grab;
+        overflow: hidden;
+        background:
+          linear-gradient(var(--surface-muted) 1px, transparent 1px) 0 0 / 28px 28px,
+          linear-gradient(90deg, var(--surface-muted) 1px, transparent 1px) 0 0 / 28px 28px;
+      }
+
+      .flow-canvas:active {
+        cursor: grabbing;
+      }
+
+      .flow-edges {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+
+      .flow-edges path {
+        stroke: var(--border-strong);
+        stroke-width: 2;
+        fill: none;
+      }
+
+      .flow-edges path.error {
+        stroke: var(--danger);
+      }
+
+      .flow-zoom-layer {
+        position: absolute;
+        inset: 0;
+        transform-origin: 160px 120px;
+        transform: translate(var(--flow-x, 0px), var(--flow-y, 0px)) scale(var(--flow-scale, 1));
+        transition: transform 160ms ease;
+      }
+
+      .waterfall-table {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        min-height: 0;
+      }
+
+      .waterfall-table.hidden {
+        display: none;
+      }
+
+      .flow-node {
+        position: absolute;
+        width: 190px;
+        min-height: 66px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        padding: 9px 10px;
+      }
+
+      .flow-node.selected {
+        border-color: var(--border-strong);
+        outline: 2px solid var(--border-strong);
+      }
+
+      .flow-node.error {
+        border-color: rgba(180, 35, 47, 0.45);
+      }
+
+      .flow-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .flow-meta {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .node-markers {
+        display: flex;
+        gap: 5px;
+        margin-top: 7px;
+      }
+
+      .node-marker {
+        display: inline-flex;
+        align-items: center;
+        height: 18px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 0 6px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .resize-handle {
+        width: 8px;
+        cursor: col-resize;
+        border-right: 1px solid var(--border);
+        border-left: 1px solid var(--border);
+        background:
+          linear-gradient(var(--border-strong), var(--border-strong)) center / 1px 36px no-repeat,
+          var(--surface-subtle);
+      }
+
+      .horizontal-resize-handle {
+        height: 8px;
+        cursor: row-resize;
+        border-top: 0;
+        border-bottom: 0;
+        background:
+          linear-gradient(90deg, var(--border-strong), var(--border-strong)) center / 42px 1px no-repeat,
+          var(--surface-subtle);
+      }
+
+      .logs-panel {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        min-height: 0;
+        background: var(--surface);
+      }
+
+      .logs-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid var(--border);
+        padding: 10px;
+      }
+
+      .logs-list {
+        min-height: 0;
+        overflow: auto;
+      }
+
+      .log-row {
+        display: grid;
+        grid-template-columns: 86px 70px 130px minmax(0, 1fr);
+        gap: 10px;
+        border-bottom: 1px solid var(--border);
+        padding: 9px 10px;
+        font-size: 13px;
+      }
+
+      .inspector {
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr);
+        min-height: 0;
+        background: var(--surface);
+      }
+
+      .inspector-header {
+        border-bottom: 1px solid var(--border);
+        padding: 12px;
+      }
+
+      .tabs {
+        display: flex;
+        gap: 4px;
+        overflow: auto;
+        border-bottom: 1px solid var(--border);
+        padding: 7px 8px;
+      }
+
+      .tab {
+        height: 30px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        padding: 0 9px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .tab.active {
+        background: var(--surface-muted);
+        color: var(--text);
+      }
+
+      .inspector-body {
+        overflow: auto;
+        padding: 12px;
+      }
+
+      .inspector-panel {
+        display: none;
+      }
+
+      .inspector-panel.active {
+        display: grid;
+        gap: 12px;
+      }
+
+      .attribute-toolbar {
+        display: block;
+      }
+
+      .attribute-section,
+      .link-card {
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        background: var(--surface);
+        overflow: hidden;
+      }
+
+      .attribute-section-header,
+      .link-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface);
+        padding: 9px 10px;
+      }
+
+      .attribute-section-header h3,
+      .link-card-header h3 {
+        font-size: 13px;
+      }
+
+      .attribute-table,
+      .link-table {
+        display: grid;
+      }
+
+      .attribute-row,
+      .link-row {
+        display: grid;
+        align-items: center;
+        gap: 8px;
+        border-bottom: 1px solid var(--border);
+        padding: 8px 10px;
+        font-size: 12px;
+      }
+
+      .attribute-row {
+        display: flex;
+        min-height: 34px;
+        padding: 6px 10px;
+      }
+
+      .attribute-row:last-child,
+      .link-row:last-child {
+        border-bottom: 0;
+      }
+
+      .attribute-value {
+        min-width: 0;
+        flex: 1;
+        color: var(--muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .attribute-row > strong {
+        min-width: 0;
+        max-width: 46%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .attribute-row > .label {
+        display: none;
+      }
+
+      .row-icon-actions {
+        display: inline-flex;
+        flex-shrink: 0;
+        justify-content: flex-end;
+        gap: 4px;
+      }
+
+      .mini-icon {
+        display: grid;
+        width: 24px;
+        height: 24px;
+        place-items: center;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--muted);
+      }
+
+      .mini-icon svg {
+        width: 13px;
+        height: 13px;
+        stroke: currentColor;
+        stroke-width: 2;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .attribute-note {
+        padding: 9px 10px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .link-row {
+        grid-template-columns: 74px minmax(0, 1fr) auto;
+      }
+
+      .link-target {
+        min-width: 0;
+      }
+
+      .link-target strong {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .link-target span {
+        display: block;
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .inline-warning {
+        border: 1px solid var(--warning);
+        border-radius: 7px;
+        background: var(--surface);
+        color: var(--warning);
+        padding: 9px 10px;
+        font-size: 12px;
+      }
+
+      .fact-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .fact,
+      .metric-card {
+        border: 1px solid var(--border);
+        border-radius: 7px;
+        background: var(--surface);
+        padding: 10px;
+      }
+
+      .fact-value {
+        margin-top: 5px;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .metrics-grid {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr) 420px;
+        min-height: 0;
+      }
+
+      .metric-workspace {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        min-width: 0;
+        min-height: 0;
+      }
+
+      .metrics-board {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(280px, 1fr));
+        grid-auto-rows: minmax(238px, 1fr);
+        gap: 12px;
+        min-height: 0;
+        overflow: auto;
+        padding: 12px;
+      }
+
+      .metric-card {
+        display: grid;
+        grid-template-rows: auto minmax(120px, 1fr) auto;
+        min-height: 238px;
+      }
+
+      .metric-badge {
+        background: var(--surface-muted);
+        color: var(--muted);
+      }
+
+      .chart {
+        position: relative;
+        min-height: 132px;
+        margin: 10px 0;
+        overflow: hidden;
+        border-radius: 6px;
+        background:
+          linear-gradient(to top, transparent 24%, rgba(216, 222, 230, 0.65) 25%, transparent 26%),
+          linear-gradient(to top, transparent 49%, rgba(216, 222, 230, 0.65) 50%, transparent 51%),
+          linear-gradient(to top, transparent 74%, rgba(216, 222, 230, 0.65) 75%, transparent 76%);
+      }
+
+      .line {
+        position: absolute;
+        right: 10px;
+        left: 10px;
+        height: 2px;
+        border-radius: 999px;
+        background: var(--chart-1);
+        transform-origin: left center;
+      }
+
+      .line.a {
+        top: 66%;
+        transform: rotate(-8deg);
+      }
+
+      .line.b {
+        top: 42%;
+        background: var(--chart-2);
+        transform: rotate(5deg);
+      }
+
+      .area {
+        position: absolute;
+        right: 12px;
+        bottom: 8px;
+        left: 12px;
+        height: 72px;
+        border-radius: 8px 8px 0 0;
+        background: linear-gradient(to top, rgba(36, 107, 134, 0.35), rgba(36, 107, 134, 0.02));
+        border-top: 3px solid var(--chart-1);
+      }
+
+      .bars {
+        position: absolute;
+        right: 12px;
+        bottom: 10px;
+        left: 12px;
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        align-items: end;
+        gap: 8px;
+        height: 100px;
+      }
+
+      .bars span {
+        display: block;
+        border-radius: 4px 4px 0 0;
+        background: var(--chart-3);
+      }
+
+      .stat-number {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        min-height: 120px;
+      }
+
+      .stat-number strong {
+        font-size: 44px;
+      }
+
+      .legend {
+        display: flex;
+        gap: 8px;
+        overflow: auto;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .legend span {
+        white-space: nowrap;
+      }
+
+      .note-panel {
+        border-top: 1px solid var(--border);
+        padding: 12px;
+      }
+
+      .empty-outline {
+        display: grid;
+        min-height: 120px;
+        place-items: center;
+        border: 1px dashed var(--border-strong);
+        border-radius: 7px;
+        color: var(--muted);
+        text-align: center;
+      }
+
+      @media (max-width: 1100px) {
+        .topbar {
+          grid-template-columns: 1fr auto;
+        }
+
+        .switchers {
+          display: none;
+        }
+
+        .main {
+          grid-template-columns: 64px minmax(0, 1fr);
+        }
+
+        .project-summary .project-title,
+        .project-summary .label,
+        .nav-item span {
+          display: none;
+        }
+
+        .trace-search-grid,
+        .metrics-grid,
+        .trace-split {
+          grid-template-columns: 1fr;
+        }
+
+        .facet-rail,
+        .view-rail,
+        .trace-split .inspector,
+        .metrics-grid > .inspector,
+        .resize-handle,
+        .horizontal-resize-handle {
+          display: none;
+        }
+
+        .metrics-board {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .content {
+          padding: 8px;
+        }
+
+        .route-header,
+        .filter-bar,
+        .panel-header {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .screen.active {
+          height: calc(100vh - 56px - 16px);
+        }
+
+        .search,
+        .select,
+        .button {
+          width: 100%;
+        }
+
+        .toolbar,
+        .chips {
+          flex-wrap: wrap;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="concept-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">CG</span>
+          <span>CloudGrid</span>
+        </div>
+        <div class="switchers">
+          <select class="select" aria-label="Company">
+            <option>Personal</option>
+            <option>Egg AI</option>
+          </select>
+          <select class="select" aria-label="Project">
+            <option>checkout-platform</option>
+          </select>
+        </div>
+        <div class="actions">
+          <button class="button" type="button">Command K</button>
+          <button class="icon-button" type="button" aria-label="Theme">T</button>
+          <button class="icon-button" type="button" aria-label="User">U</button>
+        </div>
+      </header>
+      <div class="main">
+        <aside class="project-sidebar">
+          <div class="project-summary">
+            <div class="label">Selected project</div>
+            <div class="project-title">checkout-platform</div>
+            <div class="label">Personal</div>
+          </div>
+          <nav class="nav" aria-label="Project navigation">
+            <div class="nav-item"><strong>O</strong><span>Overview</span></div>
+            <button class="nav-item active" data-nav="traces" data-screen-button="trace-search" type="button">
+              <strong>T</strong><span>Traces</span>
+            </button>
+            <div class="nav-item"><strong>G</strong><span>Logs</span></div>
+            <button class="nav-item" data-nav="metrics" data-screen-button="metrics" type="button">
+              <strong>M</strong><span>Metrics</span>
+            </button>
+            <div class="nav-item"><strong>A</strong><span>AI Eval</span></div>
+          </nav>
+          <div class="nav-spacer"></div>
+          <nav class="nav" aria-label="Project settings">
+            <div class="nav-item"><strong>S</strong><span>Project settings</span></div>
+          </nav>
+        </aside>
+        <main class="content">
+          <section class="screen route active" data-screen="trace-search">
+            <div class="route-header">
+              <div>
+                <h1>Traces</h1>
+                <p class="description">Search historical traces or switch on live receiving in the same workspace.</p>
+              </div>
+              <div class="toolbar">
+                <div class="mode-toggle" aria-label="Trace mode">
+                  <button class="button active" type="button">History</button>
+                  <button class="button" type="button">Live</button>
+                </div>
+                <span class="stream-state"><span class="stream-dot"></span>Live paused</span>
+                <button class="icon-button" type="button" aria-label="Refresh traces">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M21 12a9 9 0 0 1-15.6 6.1" />
+                    <path d="M3 12A9 9 0 0 1 18.6 5.9" />
+                    <path d="M18 2v4h4" />
+                    <path d="M6 22v-4H2" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="filter-stack">
+              <div class="filter-bar">
+                <div class="toolbar">
+                  <select class="select"><option>Last 30 minutes</option></select>
+                  <select class="select"><option>checkout-api</option></select>
+                  <select class="select"><option>Error traces</option></select>
+                  <input class="search" value="payment timeout" aria-label="Trace search query" />
+                </div>
+                <button class="button" type="button">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 6h16" />
+                    <path d="M7 12h10" />
+                    <path d="M10 18h4" />
+                  </svg>
+                  More filters
+                </button>
+              </div>
+              <div class="chips">
+                <span class="chip">service=checkout-api <button class="chip-remove" type="button" aria-label="Remove service filter">x</button></span>
+                <span class="chip">status=error <button class="chip-remove" type="button" aria-label="Remove status filter">x</button></span>
+                <span class="chip">duration&gt;500ms <button class="chip-remove" type="button" aria-label="Remove duration filter">x</button></span>
+              </div>
+            </div>
+            <div class="workspace trace-search-grid">
+              <aside class="facet-rail" aria-label="Trace facets">
+                <div class="facet-group">
+                  <h2>Services</h2>
+                  <div class="facet-row active"><span>checkout-api</span><strong>238</strong></div>
+                  <div class="facet-row"><span>payment-gateway</span><strong>91</strong></div>
+                  <div class="facet-row"><span>inventory</span><strong>42</strong></div>
+                </div>
+                <div class="facet-group">
+                  <h2>Operations</h2>
+                  <div class="facet-row active"><span>POST /checkout</span><strong>64</strong></div>
+                  <div class="facet-row"><span>Reserve inventory</span><strong>28</strong></div>
+                  <div class="facet-row"><span>Charge card</span><strong>19</strong></div>
+                </div>
+                <div class="facet-group">
+                  <h2>Attribute keys</h2>
+                  <div class="facet-row"><span>http.route</span><strong>143</strong></div>
+                  <div class="facet-row"><span>gen_ai.operation.name</span><strong>52</strong></div>
+                </div>
+              </aside>
+              <div class="table-wrap">
+                <table aria-label="Trace results">
+                  <thead>
+                    <tr>
+                      <th>Service</th>
+                      <th>Operation</th>
+                      <th>Trace ID</th>
+                      <th>Started</th>
+                      <th>Duration</th>
+                      <th>Status</th>
+                      <th>Spans</th>
+                      <th>Errors</th>
+                      <th>Logs</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="selected" data-open-detail="true">
+                      <td><span class="service"><span class="square"></span>checkout-api</span></td>
+                      <td>POST /checkout</td>
+                      <td class="mono">trc_92ad6f</td>
+                      <td>11:42:08</td>
+                      <td>
+                        <span class="duration-cell">
+                          <span>1.82s</span>
+                          <span class="bar-track"><span class="bar-fill" style="width: 82%"></span></span>
+                        </span>
+                      </td>
+                      <td><span class="badge danger">error</span></td>
+                      <td>86</td>
+                      <td>4</td>
+                      <td>17</td>
+                    </tr>
+                    <tr>
+                      <td><span class="service"><span class="square" style="background: var(--chart-2)"></span>payment</span></td>
+                      <td>Authorize payment</td>
+                      <td class="mono">trc_a81c10</td>
+                      <td>11:41:52</td>
+                      <td>
+                        <span class="duration-cell">
+                          <span>980ms</span>
+                          <span class="bar-track"><span class="bar-fill" style="width: 44%"></span></span>
+                        </span>
+                      </td>
+                      <td><span class="badge warning">slow</span></td>
+                      <td>31</td>
+                      <td>0</td>
+                      <td>6</td>
+                    </tr>
+                    <tr>
+                      <td><span class="service"><span class="square" style="background: var(--chart-3)"></span>inventory</span></td>
+                      <td>Reserve inventory</td>
+                      <td class="mono">trc_d7b451</td>
+                      <td>11:40:19</td>
+                      <td>
+                        <span class="duration-cell">
+                          <span>420ms</span>
+                          <span class="bar-track"><span class="bar-fill" style="width: 22%"></span></span>
+                        </span>
+                      </td>
+                      <td><span class="badge success">ok</span></td>
+                      <td>18</td>
+                      <td>0</td>
+                      <td>4</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section class="screen trace-detail" data-screen="trace-detail">
+            <div class="trace-split">
+              <section class="waterfall" aria-label="Trace waterfall">
+                <div class="waterfall-header">
+                  <div class="route-nav">
+                    <button class="icon-button" type="button" data-screen-button="trace-search" aria-label="Back to trace search">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="m12 19-7-7 7-7" />
+                        <path d="M19 12H5" />
+                      </svg>
+                    </button>
+                    <nav class="breadcrumb" aria-label="Breadcrumb">
+                      <button type="button" data-screen-button="trace-search">Traces</button>
+                      <span>/</span>
+                      <span class="mono">trc_92ad6f</span>
+                    </nav>
+                  </div>
+                  <div class="panel-header">
+                    <div>
+                      <h1>Trace waterfall</h1>
+                      <p class="description">
+                        Separate trace detail page for <span class="mono">trc_92ad6f</span>.
+                        Return to trace search through the breadcrumb row with filters preserved.
+                      </p>
+                      <div class="chips" style="margin-top: 8px">
+                        <span class="chip">POST /checkout</span>
+                        <span class="chip">1.82s</span>
+                        <span class="chip">11:42:08</span>
+                        <span class="badge danger">error</span>
+                      </div>
+                    </div>
+                    <div class="toolbar">
+                      <div class="view-switch" aria-label="Trace view">
+                        <button class="button primary" type="button" data-trace-view="table">Table</button>
+                        <button class="button" type="button" data-trace-view="flow">Flow</button>
+                      </div>
+                      <button class="icon-button" type="button" aria-label="Open trace view fullscreen">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                          <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+                          <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+                          <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                        </svg>
+                      </button>
+                      <button class="icon-button" type="button" aria-label="Span filters">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M4 6h16" />
+                          <path d="M7 12h10" />
+                          <path d="M10 18h4" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="trace-flow" data-trace-flow data-zoom="100" aria-label="Trace flow map">
+                  <div class="flow-toolbar">
+                    <div>
+                      <h2>Flow graph</h2>
+                      <p class="description">Drag the canvas, zoom the graph, and select any node to sync table, logs, and details.</p>
+                    </div>
+                    <div class="toolbar">
+                      <button class="icon-button" type="button" data-flow-zoom="out" aria-label="Zoom out">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /></svg>
+                      </button>
+                      <button class="icon-button" type="button" data-flow-zoom="reset" aria-label="Reset zoom">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6" /><path d="M20 20h-6v-6" /><path d="M14 4h6v6" /><path d="M10 20H4v-6" /></svg>
+                      </button>
+                      <button class="icon-button" type="button" data-flow-zoom="in" aria-label="Zoom in">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="flow-canvas" data-flow-canvas tabindex="0" aria-label="Moveable trace graph canvas">
+                    <div class="flow-zoom-layer">
+                      <svg class="flow-edges" viewBox="0 0 960 520" aria-hidden="true">
+                        <path class="error" d="M250 116 C310 116 315 188 378 188" />
+                        <path d="M250 116 C330 116 360 82 438 82" />
+                        <path d="M250 116 C350 128 430 286 548 286" />
+                        <path class="error" d="M568 188 C624 188 650 246 706 246" />
+                        <path d="M568 188 C626 188 662 132 730 132" />
+                        <path d="M738 246 C782 246 804 312 850 312" />
+                      </svg>
+                      <button class="flow-node error" type="button" style="left: 60px; top: 82px">
+                        <div class="flow-title"><span>checkout-api</span><span class="status-text error">error</span></div>
+                        <div class="flow-meta">POST /checkout · root · 1.82s</div>
+                      </button>
+                      <button class="flow-node" type="button" style="left: 438px; top: 48px">
+                        <div class="flow-title"><span>auth</span><span class="status-text">ok</span></div>
+                        <div class="flow-meta">Validate session · 44ms</div>
+                      </button>
+                      <button class="flow-node selected error" type="button" style="left: 378px; top: 154px">
+                        <div class="flow-title"><span>inventory</span><span class="status-text error">error</span></div>
+                        <div class="flow-meta">Reserve inventory · exception · 820ms</div>
+                        <div class="node-markers"><span class="node-marker">2 links</span><span class="node-marker">3 logs</span></div>
+                      </button>
+                      <button class="flow-node" type="button" style="left: 730px; top: 98px">
+                        <div class="flow-title"><span>database</span><span class="status-text">ok</span></div>
+                        <div class="flow-meta">SELECT stock · event markers · 180ms</div>
+                      </button>
+                      <button class="flow-node error" type="button" style="left: 706px; top: 212px">
+                        <div class="flow-title"><span>fulfillment</span><span class="status-text error">error</span></div>
+                        <div class="flow-meta">Emit reservation event · linked span</div>
+                        <div class="node-markers"><span class="node-marker">linked trace</span></div>
+                      </button>
+                      <button class="flow-node" type="button" style="left: 548px; top: 252px">
+                        <div class="flow-title"><span>payment</span><span class="status-text">ok</span></div>
+                        <div class="flow-meta">Authorize payment · 260ms</div>
+                      </button>
+                      <button class="flow-node" type="button" style="left: 850px; top: 278px">
+                        <div class="flow-title"><span>events</span><span class="status-text">ok</span></div>
+                        <div class="flow-meta">checkout.failed · 12ms</div>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="waterfall-table" data-waterfall-table>
+                  <div class="timeline-head">
+                    <span></span>
+                    <span>Service</span>
+                    <span>Span</span>
+                    <span>Status</span>
+                    <span>Duration</span>
+                    <span>0% | 25% | 50% | 75% | 100%</span>
+                  </div>
+                  <div class="waterfall-body" role="tree" aria-label="Trace span tree">
+                    <div class="span-row" role="treeitem" aria-expanded="true">
+                      <span>-</span><span>checkout-api</span><strong>POST /checkout</strong><span class="status-text error">error</span><span>1.82s</span>
+                      <span class="timeline"><span class="span-bar error" style="left: 0%; width: 100%"></span><span class="marker" style="left: 83%"></span></span>
+                    </div>
+                    <div class="span-row" role="treeitem" aria-expanded="true">
+                      <span>-</span><span>checkout-api</span><span>&nbsp;&nbsp;Validate cart</span><span class="status-text">ok</span><span>92ms</span>
+                      <span class="timeline"><span class="span-bar" style="left: 4%; width: 6%"></span></span>
+                    </div>
+                    <div class="span-row selected" role="treeitem" aria-selected="true" aria-expanded="true">
+                      <span>-</span><span>inventory</span><span>&nbsp;&nbsp;Reserve inventory</span><span class="status-text error">error</span><span>820ms</span>
+                      <span class="timeline"><span class="span-bar error critical" style="left: 28%; width: 45%"></span><span class="marker" style="left: 64%"></span></span>
+                    </div>
+                    <div class="span-row muted" role="treeitem">
+                      <span></span><span>inventory</span><span>&nbsp;&nbsp;&nbsp;&nbsp;SELECT stock</span><span class="status-text">ok</span><span>180ms</span>
+                      <span class="timeline"><span class="span-bar" style="left: 31%; width: 10%"></span></span>
+                    </div>
+                    <div class="span-row" role="treeitem">
+                      <span></span><span>payment</span><span>&nbsp;&nbsp;Authorize payment</span><span class="status-text">ok</span><span>260ms</span>
+                      <span class="timeline"><span class="span-bar" style="left: 74%; width: 14%"></span></span>
+                    </div>
+                    <div class="span-row" role="treeitem">
+                      <span></span><span>checkout-api</span><span>&nbsp;&nbsp;Write response</span><span class="status-text">ok</span><span>42ms</span>
+                      <span class="timeline"><span class="span-bar" style="left: 95%; width: 3%"></span></span>
+                    </div>
+                  </div>
+                </div>
+                <div class="horizontal-resize-handle" aria-hidden="true"></div>
+                <section class="logs-panel" aria-label="Trace logs">
+                  <div class="logs-header">
+                    <div>
+                      <h2>Logs</h2>
+                      <p class="description">
+                        Scope:
+                        <span class="chip">Selected span</span>
+                        <span class="chip">Whole trace</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div class="logs-list">
+                    <div class="log-row"><span class="mono">+640ms</span><span class="status-text error">error</span><span>inventory</span><span>InventoryError: reservation failed</span></div>
+                    <div class="log-row"><span class="mono">+651ms</span><span class="status-text">info</span><span>inventory</span><span>stock lookup returned zero available units</span></div>
+                    <div class="log-row"><span class="mono">+811ms</span><span class="status-text">info</span><span>checkout-api</span><span>checkout response assembled with recoverable error metadata</span></div>
+                  </div>
+                </section>
+              </section>
+              <div class="resize-handle" aria-hidden="true"></div>
+              <aside class="inspector" aria-label="Span inspector">
+                <div class="inspector-header">
+                  <div>
+                    <h2>Reserve inventory</h2>
+                    <p class="description mono">span-worker-001</p>
+                  </div>
+                  <span class="badge danger">error</span>
+                </div>
+                <div class="tabs">
+                  <button class="tab active" type="button" data-inspector-tab="attributes">Attributes</button>
+                  <button class="tab" type="button" data-inspector-tab="events">Events</button>
+                  <button class="tab" type="button" data-inspector-tab="exceptions">Exceptions</button>
+                  <button class="tab" type="button" data-inspector-tab="links">Links</button>
+                </div>
+                <div class="inspector-body">
+                  <div class="inspector-panel active" data-inspector-panel="attributes">
+                    <div class="fact-grid">
+                      <div class="fact"><div class="label">Service</div><div class="fact-value">inventory</div></div>
+                      <div class="fact"><div class="label">Duration</div><div class="fact-value">820ms</div></div>
+                      <div class="fact"><div class="label">Status</div><div class="fact-value">error</div></div>
+                      <div class="fact"><div class="label">Critical path</div><div class="fact-value">yes</div></div>
+                      <div class="fact"><div class="label">Parent</div><div class="fact-value mono">span-root</div></div>
+                      <div class="fact"><div class="label">Children</div><div class="fact-value">3</div></div>
+                    </div>
+                    <div class="attribute-toolbar">
+                      <input class="search" placeholder="Search attributes" aria-label="Search span attributes" />
+                    </div>
+                    <section class="attribute-section">
+                      <div class="attribute-section-header">
+                        <h3>Semantic attributes</h3>
+                        <span class="badge">pinned</span>
+                      </div>
+                      <div class="attribute-table">
+                        <div class="attribute-row">
+                          <strong class="mono">db.system</strong>
+                          <span class="attribute-value mono">postgresql</span>
+                          <span class="row-icon-actions">
+                            <button class="mini-icon" type="button" aria-label="Copy attribute"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                          </span>
+                        </div>
+                        <div class="attribute-row">
+                          <strong class="mono">messaging.destination.name</strong>
+                          <span class="attribute-value mono">inventory.reserve</span>
+                          <span class="row-icon-actions">
+                            <button class="mini-icon" type="button" aria-label="Copy attribute"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                          </span>
+                        </div>
+                        <div class="attribute-row">
+                          <strong class="mono">gen_ai.request.model</strong>
+                          <span class="attribute-value mono">gpt-5.4</span>
+                          <span class="row-icon-actions">
+                            <button class="mini-icon" type="button" aria-label="Copy attribute"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                          </span>
+                        </div>
+                      </div>
+                    </section>
+                    <section class="attribute-section">
+                      <div class="attribute-section-header">
+                        <h3>Raw attributes</h3>
+                        <span class="badge">42 keys</span>
+                      </div>
+                      <div class="attribute-table">
+                        <div class="attribute-row">
+                          <strong class="mono">cart.items[0].sku</strong>
+                          <span class="attribute-value mono">sku_91ac</span>
+                          <span class="row-icon-actions"><button class="mini-icon" type="button" aria-label="Copy attribute"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button></span>
+                        </div>
+                        <div class="attribute-row">
+                          <strong class="mono">inventory.response</strong>
+                          <span class="attribute-value mono">{"available":0,"warehouse":"eu-1"}</span>
+                          <span class="row-icon-actions"><button class="mini-icon" type="button" aria-label="Expand JSON"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></svg></button><button class="mini-icon" type="button" aria-label="Copy attribute"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button></span>
+                        </div>
+                      </div>
+                      <div class="attribute-note">Unknown or custom keys stay available here. The UI groups known OpenTelemetry namespaces without hiding raw data.</div>
+                    </section>
+                  </div>
+                  <div class="inspector-panel" data-inspector-panel="events">
+                    <div class="empty-outline">Events are listed chronologically by span offset with expandable attributes.</div>
+                  </div>
+                  <div class="inspector-panel" data-inspector-panel="exceptions">
+                    <div class="note-panel">
+                      <h2>Exception preview</h2>
+                      <p class="description">InventoryError: reservation failed</p>
+                    </div>
+                  </div>
+                  <div class="inspector-panel" data-inspector-panel="links">
+                    <div class="inline-warning">Links can point to spans in this trace, another stored trace, or a trace CloudGrid does not have. Only stored project-local targets open directly.</div>
+                    <section class="link-card">
+                      <div class="link-card-header">
+                        <h3>Linked spans and traces</h3>
+                        <span class="badge">3 links</span>
+                      </div>
+                      <div class="link-table">
+                        <div class="link-row">
+                          <span class="badge">local</span>
+                          <span class="link-target"><strong class="mono">trc_92ad6f / span-payment-002</strong><span>same trace · follows inventory reservation</span></span>
+                          <button class="icon-button" type="button" aria-label="Select linked span"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg></button>
+                        </div>
+                        <div class="link-row">
+                          <span class="badge success">trace ref</span>
+                          <span class="link-target"><strong class="mono">trc_f29c01 / span-worker-017</strong><span>same project · async fulfillment worker</span></span>
+                          <button class="icon-button" type="button" aria-label="Open linked trace"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 17 17 7" /><path d="M7 7h10v10" /></svg></button>
+                        </div>
+                        <div class="link-row">
+                          <span class="badge warning">unavailable</span>
+                          <span class="link-target"><strong class="mono">trc_vendor_019 / span_unknown</strong><span>not stored in this project · copy reference only</span></span>
+                          <button class="icon-button" type="button" aria-label="Copy linked reference"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button>
+                        </div>
+                      </div>
+                    </section>
+                    <section class="attribute-section">
+                      <div class="attribute-section-header">
+                        <h3>Selected link attributes</h3>
+                        <span class="badge">raw</span>
+                      </div>
+                      <div class="attribute-table">
+                        <div class="attribute-row"><strong class="mono">messaging.operation</strong><span class="attribute-value mono">publish</span><span class="label">string</span><span class="row-icon-actions"><button class="mini-icon" type="button" aria-label="Copy attribute"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button></span></div>
+                        <div class="attribute-row"><strong class="mono">link.reason</strong><span class="attribute-value mono">async continuation</span><span class="label">string</span><span class="row-icon-actions"><button class="mini-icon" type="button" aria-label="Copy attribute"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg></button></span></div>
+                      </div>
+                    </section>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </section>
+
+          <section class="screen route" data-screen="metrics">
+            <div class="route-header">
+              <div>
+                <h1>Metrics</h1>
+                <p class="description">Built-in and saved project metric views with explicit editing.</p>
+              </div>
+              <div class="toolbar">
+                <select class="select"><option>Last 1 hour</option></select>
+                <button class="icon-button" type="button" aria-label="Refresh metrics">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M21 12a9 9 0 0 1-15.6 6.1" />
+                    <path d="M3 12A9 9 0 0 1 18.6 5.9" />
+                    <path d="M18 2v4h4" />
+                    <path d="M6 22v-4H2" />
+                  </svg>
+                </button>
+                <button class="button primary" type="button">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />
+                    <path d="M17 21v-8H7v8" />
+                    <path d="M7 3v5h8" />
+                  </svg>
+                  Save view
+                </button>
+              </div>
+            </div>
+            <div class="workspace metrics-grid">
+              <aside class="view-rail" aria-label="Metric views">
+                <div class="rail-group">
+                  <input class="search" value="gen ai" aria-label="Search metric views" />
+                </div>
+                <div class="rail-group">
+                  <h2>Built-in views</h2>
+                  <div class="view-row active"><span>GenAI token usage</span><span class="metric-badge">Built-in</span></div>
+                  <div class="view-row"><span>Model latency</span><span class="metric-badge">Built-in</span></div>
+                  <div class="view-row"><span>Harness runs</span><span class="metric-badge">Built-in</span></div>
+                  <div class="view-row"><span>Tool latency</span><span class="metric-badge">Built-in</span></div>
+                </div>
+                <div class="rail-group">
+                  <h2>Project views</h2>
+                  <div class="view-row"><span>Checkout health</span><span class="badge">Project</span></div>
+                  <div class="view-row"><span>Agent regression watch</span><span class="badge">Project</span></div>
+                </div>
+                <div class="rail-group">
+                  <button class="button primary" type="button">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 5v14" />
+                      <path d="M5 12h14" />
+                    </svg>
+                    Create view
+                  </button>
+                </div>
+              </aside>
+              <section class="metric-workspace">
+                <div class="waterfall-header">
+                  <div class="panel-header">
+                    <div>
+                      <h2>GenAI token usage</h2>
+                      <p class="description">Project view draft. Panels query storage-read through GraphQL metric series.</p>
+                    </div>
+                    <span class="badge warning">Unsaved draft</span>
+                  </div>
+                </div>
+                <div class="metrics-board">
+                  <article class="metric-card">
+                    <div class="panel-header">
+                      <div>
+                        <h2>Total tokens by model</h2>
+                        <p class="description mono">gen_ai.client.token.usage | sum</p>
+                      </div>
+                      <button class="icon-button" type="button" aria-label="Edit panel">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div class="chart"><div class="area"></div></div>
+                    <div class="legend"><span>model=gpt-5.4</span><span>model=gpt-5.3-codex</span><span>type=input</span></div>
+                  </article>
+                  <article class="metric-card">
+                    <div class="panel-header">
+                      <div>
+                        <h2>Model latency p95</h2>
+                        <p class="description mono">gen_ai.client.operation.duration | p95</p>
+                      </div>
+                      <button class="icon-button" type="button" aria-label="Edit panel">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div class="chart"><div class="line a"></div><div class="line b"></div></div>
+                    <div class="legend"><span>provider=openai</span><span>operation=response</span></div>
+                  </article>
+                  <article class="metric-card">
+                    <div class="panel-header">
+                      <div>
+                        <h2>Tool calls per minute</h2>
+                        <p class="description mono">harness.tool.duration | rate</p>
+                      </div>
+                      <button class="icon-button" type="button" aria-label="Edit panel">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div class="chart">
+                      <div class="bars">
+                        <span style="height: 28%"></span><span style="height: 62%"></span><span style="height: 44%"></span><span style="height: 78%"></span><span style="height: 55%"></span><span style="height: 91%"></span><span style="height: 48%"></span><span style="height: 70%"></span>
+                      </div>
+                    </div>
+                    <div class="legend"><span>tool=search</span><span>tool=browser</span><span>tool=eval</span></div>
+                  </article>
+                  <article class="metric-card">
+                    <div class="panel-header">
+                      <div>
+                        <h2>Latest error rate</h2>
+                        <p class="description mono">harness.run.errors | rate</p>
+                      </div>
+                      <button class="icon-button" type="button" aria-label="Edit panel">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div class="stat-number"><strong>2.4</strong><span class="label">errors/min</span></div>
+                    <div class="legend"><span>last point 11:43:00</span><span>1 exemplar trace</span></div>
+                  </article>
+                </div>
+              </section>
+              <aside class="inspector" aria-label="Metric inspector">
+                <div class="inspector-header">
+                  <div>
+                    <h2>Panel details</h2>
+                    <p class="description">Same chart, query summary, series table, exemplars.</p>
+                  </div>
+                  <button class="icon-button" type="button" aria-label="Close inspector">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M18 6 6 18" />
+                      <path d="m6 6 12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <div class="tabs">
+                  <button class="tab active" type="button">Details</button>
+                  <button class="tab" type="button">Data</button>
+                  <button class="tab" type="button">Display</button>
+                  <button class="tab" type="button">Thresholds</button>
+                </div>
+                <div class="inspector-body">
+                  <div class="fact-grid">
+                    <div class="fact"><div class="label">Metric</div><div class="fact-value mono">gen_ai.client.token.usage</div></div>
+                    <div class="fact"><div class="label">Aggregation</div><div class="fact-value">sum</div></div>
+                    <div class="fact"><div class="label">Group by</div><div class="fact-value">provider, model</div></div>
+                    <div class="fact"><div class="label">Series</div><div class="fact-value">12 of 20 visible</div></div>
+                  </div>
+                  <div class="note-panel">
+                    <h2>Exemplar pivot</h2>
+                    <p class="description mono">trc_92ad6f -> span-worker-001</p>
+                    <button class="button" type="button" data-screen-button="trace-detail">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M5 12h14" />
+                        <path d="m12 5 7 7-7 7" />
+                      </svg>
+                      Open trace
+                    </button>
+                  </div>
+                  <div class="empty-outline">Editor groups are Data, Display, and Thresholds only.</div>
+                </div>
+              </aside>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+    <script>
+      const buttons = Array.from(document.querySelectorAll("[data-screen-button]"));
+      const screens = Array.from(document.querySelectorAll("[data-screen]"));
+      const navTraces = document.querySelector('[data-nav="traces"]');
+      const navMetrics = document.querySelector('[data-nav="metrics"]');
+      const detailRows = Array.from(document.querySelectorAll("[data-open-detail]"));
+      const traceViewButtons = Array.from(document.querySelectorAll("[data-trace-view]"));
+      const waterfallTable = document.querySelector("[data-waterfall-table]");
+      const traceFlow = document.querySelector("[data-trace-flow]");
+      const waterfall = document.querySelector(".waterfall");
+      const horizontalResizeHandle = document.querySelector(".horizontal-resize-handle");
+      const resizeHandle = document.querySelector(".resize-handle");
+      const traceSplit = document.querySelector(".trace-split");
+      const flowCanvas = document.querySelector("[data-flow-canvas]");
+      const flowZoomLayer = document.querySelector(".flow-zoom-layer");
+      const flowZoomButtons = Array.from(document.querySelectorAll("[data-flow-zoom]"));
+      const inspectorTabs = Array.from(document.querySelectorAll("[data-inspector-tab]"));
+      const inspectorPanels = Array.from(document.querySelectorAll("[data-inspector-panel]"));
+
+      function activate(id) {
+        buttons.forEach((button) => {
+          button.classList.toggle("active", button.dataset.screenButton === id);
+        });
+        screens.forEach((screen) => {
+          screen.classList.toggle("active", screen.dataset.screen === id);
+        });
+        if (navTraces && navMetrics) {
+          navTraces.classList.toggle("active", id !== "metrics");
+          navMetrics.classList.toggle("active", id === "metrics");
+        }
+      }
+
+      buttons.forEach((button) => {
+        button.addEventListener("click", () => activate(button.dataset.screenButton));
+      });
+
+      detailRows.forEach((row) => {
+        row.addEventListener("click", () => activate("trace-detail"));
+      });
+
+      traceViewButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          const view = button.dataset.traceView;
+          if (waterfallTable && traceFlow) {
+            waterfallTable.classList.toggle("hidden", view === "flow");
+            traceFlow.classList.toggle("active", view === "flow");
+          }
+          traceViewButtons.forEach((item) => {
+            item.classList.toggle("primary", item.dataset.traceView === view);
+          });
+        });
+      });
+
+      let flowScale = 1;
+      let flowX = 0;
+      let flowY = 0;
+
+      function updateFlowTransform() {
+        if (!flowZoomLayer) return;
+        flowZoomLayer.style.setProperty("--flow-scale", String(flowScale));
+        flowZoomLayer.style.setProperty("--flow-x", `${flowX}px`);
+        flowZoomLayer.style.setProperty("--flow-y", `${flowY}px`);
+      }
+
+      flowZoomButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          const action = button.dataset.flowZoom;
+          if (action === "in") flowScale = Math.min(1.6, flowScale + 0.15);
+          if (action === "out") flowScale = Math.max(0.65, flowScale - 0.15);
+          if (action === "reset") {
+            flowScale = 1;
+            flowX = 0;
+            flowY = 0;
+          }
+          updateFlowTransform();
+        });
+      });
+
+      if (flowCanvas) {
+        let draggingFlow = false;
+        let startX = 0;
+        let startY = 0;
+        let originX = 0;
+        let originY = 0;
+        flowCanvas.addEventListener("pointerdown", (event) => {
+          if (event.target.closest(".flow-node")) return;
+          draggingFlow = true;
+          startX = event.clientX;
+          startY = event.clientY;
+          originX = flowX;
+          originY = flowY;
+          flowCanvas.setPointerCapture(event.pointerId);
+        });
+        flowCanvas.addEventListener("pointermove", (event) => {
+          if (!draggingFlow) return;
+          flowX = originX + event.clientX - startX;
+          flowY = originY + event.clientY - startY;
+          updateFlowTransform();
+        });
+        flowCanvas.addEventListener("pointerup", () => {
+          draggingFlow = false;
+        });
+      }
+
+      if (horizontalResizeHandle && waterfall) {
+        let resizingLogs = false;
+        horizontalResizeHandle.addEventListener("pointerdown", (event) => {
+          resizingLogs = true;
+          horizontalResizeHandle.setPointerCapture(event.pointerId);
+        });
+        horizontalResizeHandle.addEventListener("pointermove", (event) => {
+          if (!resizingLogs) return;
+          const box = waterfall.getBoundingClientRect();
+          const logsHeight = Math.max(160, Math.min(360, box.bottom - event.clientY));
+          waterfall.style.gridTemplateRows = `auto minmax(0, 1fr) 8px ${logsHeight}px`;
+        });
+        horizontalResizeHandle.addEventListener("pointerup", () => {
+          resizingLogs = false;
+        });
+      }
+
+      if (resizeHandle && traceSplit) {
+        let resizingInspector = false;
+        resizeHandle.addEventListener("pointerdown", (event) => {
+          resizingInspector = true;
+          resizeHandle.setPointerCapture(event.pointerId);
+        });
+        resizeHandle.addEventListener("pointermove", (event) => {
+          if (!resizingInspector) return;
+          const box = traceSplit.getBoundingClientRect();
+          const inspectorWidth = Math.max(360, Math.min(640, box.right - event.clientX));
+          traceSplit.style.gridTemplateColumns = `minmax(520px, 1fr) 8px ${inspectorWidth}px`;
+        });
+        resizeHandle.addEventListener("pointerup", () => {
+          resizingInspector = false;
+        });
+      }
+
+      inspectorTabs.forEach((button) => {
+        button.addEventListener("click", () => {
+          const tab = button.dataset.inspectorTab;
+          inspectorTabs.forEach((item) => { item.classList.toggle("active", item.dataset.inspectorTab === tab); });
+          inspectorPanels.forEach((panel) => { panel.classList.toggle("active", panel.dataset.inspectorPanel === tab); });
+        });
+      });
+
+      const query = new URLSearchParams(window.location.search);
+      const initialInspectorTab = query.get("inspector");
+      if (initialInspectorTab) {
+        const button = inspectorTabs.find((item) => item.dataset.inspectorTab === initialInspectorTab);
+        if (button) button.click();
+      }
+
+      const initialScreen = query.get("screen");
+      if (initialScreen && screens.some((screen) => screen.dataset.screen === initialScreen)) {
+        activate(initialScreen);
+      }
+    </script>
+  </body>
+</html>

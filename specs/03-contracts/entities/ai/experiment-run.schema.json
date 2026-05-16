@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-010",
+  "title": "ExperimentRun",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "experimentId", "solverRef", "status", "startedAt", "summary"],
+  "properties": {
+    "id": { "type": "string" },
+    "experimentId": { "type": "string" },
+    "solverRef": { "type": "object", "additionalProperties": true },
+    "manifestDigest": { "type": "string" },
+    "manifest": { "$ref": "./experiment-manifest.schema.json" },
+    "baselineRunId": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["queued", "running", "cancelled", "failed", "finished"]
+    },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "endedAt": { "type": "string", "format": "date-time" },
+    "summary": { "type": "object", "additionalProperties": true }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-006",
+  "title": "DatasetItem",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "datasetId", "version", "input", "metadata"],
+  "properties": {
+    "id": { "type": "string" },
+    "datasetId": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "input": true,
+    "expected": true,
+    "metadata": { "type": "object", "additionalProperties": true },
+    "sourceTraceId": { "type": "string" },
+    "sourceSpanId": { "type": "string" },
+    "split": {
+      "type": "string",
+      "enum": ["dev", "optimization", "validation", "regression", "holdout"],
+      "default": "dev"
+    },
+    "reviewStatus": {
+      "type": "string",
+      "enum": ["unreviewed", "reviewed", "rejected"],
+      "default": "unreviewed"
+    },
+    "synthetic": { "type": "boolean", "default": false },
+    "duplicateOfItemId": { "type": "string" },
+    "leakageWarnings": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "annotations": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true },
+      "default": []
+    }
+  }
+}

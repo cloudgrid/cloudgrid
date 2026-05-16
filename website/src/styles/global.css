@@ -1,0 +1,234 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+ * Tailwind v4 — custom dark variant.
+ * We toggle the theme by setting `class="dark"` on <html> (the inline script
+ * in Layout.astro applies it before paint). Anything else applies the light
+ * theme via :root.
+ * --------------------------------------------------------------------------- */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------------------
+ * Theme tokens
+ * --------------------------------------------------------------------------- */
+:root {
+  --color-page: #ffffff;
+  --color-recessed: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-surface-hover: #f0f2f5;
+  --color-elevated: #ffffff;
+
+  --color-text: #0b1220;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748b;
+  --color-text-on-inverse: #ffffff;
+
+  --color-border-subtle: rgba(15, 23, 42, 0.08);
+  --color-border-default: rgba(15, 23, 42, 0.12);
+  --color-border-strong: rgba(15, 23, 42, 0.18);
+
+  --color-inverse: #0b1220;
+  --color-inverse-hover: #1f2937;
+
+  --color-grid-line: rgba(15, 23, 42, 0.06);
+  --color-dot: rgba(15, 23, 42, 0.12);
+  --color-code-bg: #0f1320;
+  --color-code-text: #e2e8f0;
+}
+
+.dark {
+  --color-page: #0a0d14;
+  --color-recessed: #0f1320;
+  --color-surface: #121826;
+  --color-surface-hover: #1a2030;
+  --color-elevated: #161d2c;
+
+  --color-text: #f8fafc;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+  --color-text-on-inverse: #0b1220;
+
+  --color-border-subtle: rgba(148, 163, 184, 0.12);
+  --color-border-default: rgba(148, 163, 184, 0.16);
+  --color-border-strong: rgba(148, 163, 184, 0.22);
+
+  --color-inverse: #ffffff;
+  --color-inverse-hover: #f1f5f9;
+
+  --color-grid-line: rgba(148, 163, 184, 0.06);
+  --color-dot: rgba(148, 163, 184, 0.12);
+  --color-code-bg: #060810;
+  --color-code-text: #e2e8f0;
+}
+
+/* ---------------------------------------------------------------------------
+ * Tailwind theme — every color below resolves through CSS variables so the
+ * same utility (e.g. `bg-page`) returns the right value in either theme.
+ * --------------------------------------------------------------------------- */
+@theme inline {
+  --color-page: var(--color-page);
+  --color-recessed: var(--color-recessed);
+  --color-surface: var(--color-surface);
+  --color-surface-hover: var(--color-surface-hover);
+  --color-elevated: var(--color-elevated);
+
+  --color-text: var(--color-text);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-muted: var(--color-text-muted);
+  --color-text-on-inverse: var(--color-text-on-inverse);
+
+  --color-border-subtle: var(--color-border-subtle);
+  --color-border-default: var(--color-border-default);
+  --color-border-strong: var(--color-border-strong);
+
+  --color-inverse: var(--color-inverse);
+  --color-inverse-hover: var(--color-inverse-hover);
+
+  /* Accent palette — theme-stable */
+  --color-brand: #4f46e5;
+  --color-brand-soft: rgba(79, 70, 229, 0.12);
+  --color-cyan: #0891b2;
+  --color-cyan-soft: rgba(8, 145, 178, 0.12);
+  --color-emerald: #10b981;
+  --color-emerald-soft: rgba(16, 185, 129, 0.12);
+  --color-amber: #d97706;
+  --color-amber-soft: rgba(217, 119, 6, 0.14);
+  --color-violet: #7c3aed;
+  --color-violet-soft: rgba(124, 58, 237, 0.14);
+  --color-rose: #e11d48;
+  --color-rose-soft: rgba(225, 29, 72, 0.12);
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* ---------------------------------------------------------------------------
+ * Base
+ * --------------------------------------------------------------------------- */
+html {
+  scroll-behavior: smooth;
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-page);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgba(79, 70, 229, 0.22);
+  color: var(--color-text);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-default);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-strong);
+}
+
+/* ---------------------------------------------------------------------------
+ * Subtle utilities
+ * --------------------------------------------------------------------------- */
+.grid-bg {
+  background-image:
+    linear-gradient(var(--color-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-grid-line) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+.dot-pattern {
+  background-image: radial-gradient(var(--color-dot) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+.code-block {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.65;
+  color: var(--color-code-text);
+}
+
+.code-surface {
+  background: var(--color-code-bg);
+  color: var(--color-code-text);
+}
+
+/* Single global reveal — fade + small translate. Used on scroll-into-view. */
+.reveal {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 0.5s ease-out,
+    transform 0.5s ease-out;
+  will-change: opacity, transform;
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Prose helper for hand-authored handbook copy */
+.prose-handbook {
+  max-width: 70ch;
+  color: var(--color-text-secondary);
+  line-height: 1.7;
+}
+.prose-handbook h2 {
+  color: var(--color-text);
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-top: 2.5rem;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.01em;
+}
+.prose-handbook h3 {
+  color: var(--color-text);
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+.prose-handbook p {
+  margin-bottom: 1rem;
+}
+.prose-handbook ul {
+  margin-bottom: 1rem;
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+.prose-handbook li {
+  margin-bottom: 0.25rem;
+}
+.prose-handbook code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 0.1em 0.35em;
+  background: var(--color-recessed);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  color: var(--color-text);
+}
+.prose-handbook a {
+  color: var(--color-brand);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.prose-handbook a:hover {
+  opacity: 0.8;
+}

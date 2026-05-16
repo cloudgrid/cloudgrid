@@ -1,0 +1,91 @@
+import { connect, JSONCodec, type NatsConnection } from "nats";
+import type { BridgeMessage, EphemeralPubSub, RequestReplyClient } from "../../bridge";
+
+interface NATSConnectionOptions {
+  servers: string;
+  name: string;
+}
+
+export async function connectNATS(options: NATSConnectionOptions): Promise<NatsConnection> {
+  return connect(options);
+}
+
+export class NATSRequestReplyClient implements RequestReplyClient {
+  #connection: NatsConnection;
+  #codec = JSONCodec<unknown>();
+
+  constructor(connection: NatsConnection) {
+    this.#connection = connection;
+  }
+
+  async request(
+    subject: string,
+    payload: Uint8Array,
+    options: { timeoutMs: number },
+  ): Promise<Uint8Array> {
+    const requestPayload = this.#codec.decode(payload);
+    const message = await this.#connection.request(subject, this.#codec.encode(requestPayload), {
+      timeout: options.timeoutMs,
+    });
+    const responsePayload = this.#codec.decode(message.data);
+    return this.#codec.encode(responsePayload);
+  }
+}
+
+export class NATSEphemeralPubSub implements EphemeralPubSub {
+  #connection: NatsConnection;
+  #codec = JSONCodec<unknown>();
+
+  constructor(connection: NatsConnection) {
+    this.#connection = connection;
+  }
+
+  async subscribe(
+    subject: string,
+    onMessage: (message: BridgeMessage) => void | Promise<void>,
+  ): Promise<AsyncDisposable> {
+    const subscription = this.#connection.subscribe(subject);
+    let active = true;
+    void (async () => {
+      try {
+        for await (const message of subscription) {
+          await onMessage({
+            subject: message.subject || subject,
+            data: this.#codec.encode(this.#codec.decode(message.data)),
+          });
+        }
+      } catch {
+        if (active) {
+          subscription.unsubscribe();
+        }
+      }
+    })();
+    return {
+      async [Symbol.asyncDispose]() {
+        active = false;
+        subscription.unsubscribe();
+      },
+    };
+  }
+
+  async publish(subject: string, payload: Uint8Array): Promise<void> {
+    const message = this.#codec.decode(payload);
+    this.#connection.publish(subject, this.#codec.encode(message));
+  }
+}
+
+export class NATSBridgeLifecycle {
+  #connection: NatsConnection;
+
+  constructor(connection: NatsConnection) {
+    this.#connection = connection;
+  }
+
+  async health(): Promise<"ok" | "unavailable"> {
+    return this.#connection.isClosed() ? "unavailable" : "ok";
+  }
+
+  async close(): Promise<void> {
+    await this.#connection.drain();
+  }
+}

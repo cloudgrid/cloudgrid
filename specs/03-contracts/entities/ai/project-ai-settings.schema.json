@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-014",
+  "title": "ProjectAiSettings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "projectId",
+    "enabled",
+    "providerProfiles",
+    "modelAliases",
+    "onlinePolicies",
+    "budget",
+    "sampling",
+    "datasetDefaults",
+    "version",
+    "updatedAt",
+    "updatedByUserId"
+  ],
+  "properties": {
+    "projectId": { "type": "string" },
+    "enabled": { "type": "boolean" },
+    "defaultProviderProfileId": { "type": "string" },
+    "defaultJudgeProfileId": { "type": "string" },
+    "defaultOptimizerProfileId": { "type": "string" },
+    "defaultEmbeddingProfileId": { "type": "string" },
+    "providerProfiles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/providerProfile" },
+      "default": []
+    },
+    "modelAliases": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/modelAlias" },
+      "default": []
+    },
+    "onlinePolicies": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/onlinePolicy" },
+      "default": []
+    },
+    "budget": { "$ref": "#/$defs/budget" },
+    "sampling": { "$ref": "#/$defs/sampling" },
+    "datasetDefaults": { "$ref": "#/$defs/datasetDefaults" },
+    "effective": { "$ref": "#/$defs/effective" },
+    "version": { "type": "integer", "minimum": 1 },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "updatedByUserId": { "type": "string" }
+  },
+  "$defs": {
+    "providerProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "projectId", "label", "providerKind", "models", "timeoutMs"],
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "providerKind": {
+          "type": "string",
+          "enum": [
+            "openai",
+            "anthropic",
+            "azure_openai",
+            "google_vertex",
+            "bedrock",
+            "openai_compatible",
+            "local_harness",
+            "custom_harness"
+          ]
+        },
+        "baseUrl": { "type": "string" },
+        "credentialRef": { "type": "string" },
+        "models": { "type": "object", "additionalProperties": true },
+        "timeoutMs": { "type": "integer", "minimum": 1000, "maximum": 300000 },
+        "maxConcurrency": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "disabledAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "modelAlias": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "providerProfileId", "model", "purpose", "parameters"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,62}$" },
+        "providerProfileId": { "type": "string" },
+        "model": { "type": "string", "minLength": 1 },
+        "purpose": {
+          "type": "string",
+          "enum": ["judge", "optimizer", "embedding", "replay", "default"]
+        },
+        "parameters": { "type": "object", "additionalProperties": true, "default": {} }
+      }
+    },
+    "onlinePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "enabled", "name", "target", "scorerIds", "sampleRate", "annotationRules"],
+      "properties": {
+        "id": { "type": "string" },
+        "enabled": { "type": "boolean" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 96 },
+        "target": { "type": "object", "additionalProperties": true },
+        "scorerIds": { "type": "array", "items": { "type": "string" } },
+        "sampleRate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "maxDailyRuns": { "type": "integer", "minimum": 1 },
+        "annotationRules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/annotationRule" },
+          "default": []
+        },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedByUserId": { "type": "string" }
+      }
+    },
+    "annotationRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason"],
+      "properties": {
+        "reason": { "type": "string", "minLength": 1 },
+        "threshold": { "type": "number" },
+        "assignTo": { "type": "string" },
+        "datasetId": { "type": "string" }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dailyUsd", "deterministicOnly"],
+      "properties": {
+        "dailyUsd": { "type": "number", "minimum": 0 },
+        "perRunUsd": { "type": "number", "minimum": 0 },
+        "deterministicOnly": { "type": "boolean", "default": false },
+        "spentTodayUsd": { "type": "number", "minimum": 0, "default": 0 }
+      }
+    },
+    "sampling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "defaultOnlineSampleRate",
+        "maxOnlineSampleRate",
+        "maxConcurrentExperimentItems",
+        "maxConcurrentOptimizationCandidates"
+      ],
+      "properties": {
+        "defaultOnlineSampleRate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "maxOnlineSampleRate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "maxConcurrentExperimentItems": { "type": "integer", "minimum": 1 },
+        "maxConcurrentOptimizationCandidates": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "datasetDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["splitAllocation", "smallDatasetReviewedThreshold", "requireReviewForRegression"],
+      "properties": {
+        "splitAllocation": { "type": "object", "additionalProperties": true },
+        "smallDatasetReviewedThreshold": { "type": "integer", "minimum": 1, "default": 30 },
+        "requireReviewForRegression": { "type": "boolean", "default": true }
+      }
+    },
+    "effective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "warnings",
+        "deterministicOnly",
+        "missingProviderProfiles",
+        "disabledProviderProfiles",
+        "budgetExhausted"
+      ],
+      "properties": {
+        "warnings": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "deterministicOnly": { "type": "boolean" },
+        "missingProviderProfiles": { "type": "array", "items": { "type": "string" } },
+        "disabledProviderProfiles": { "type": "array", "items": { "type": "string" } },
+        "budgetExhausted": { "type": "boolean" }
+      }
+    }
+  }
+}

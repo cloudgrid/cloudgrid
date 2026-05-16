@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-004",
+  "title": "SpanEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "timestamp", "attributes"],
+  "properties": {
+    "name": { "type": "string", "description": "OpenTelemetry span event name." },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Event timestamp in UTC."
+    },
+    "attributes": {
+      "type": "object",
+      "description": "Event attributes.",
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,129 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Section from "../../components/Section.astro";
+import PageHeader from "../../components/PageHeader.astro";
+import Button from "../../components/Button.astro";
+import CheckList from "../../components/CheckList.astro";
+
+const pillars = [
+  {
+    title: "Data ownership, by default",
+    body: "Self-hosted. No outbound telemetry. MIT-licensed. No 'enterprise edition' that flips on hidden features in the same binary.",
+    points: [
+      "Runs in your VPC, your Kubernetes, your laptop — your call.",
+      "OTLP receivers do not call home.",
+      "License is MIT; no commercial features are gated behind a paid SKU.",
+    ],
+  },
+  {
+    title: "Deployment modes",
+    body: "Single binary for local development. Compose for a small team. Independent scale for production. One config flag flips local-mode auth into SSO mode.",
+    points: [
+      "CLOUDGRID_DEPLOYMENT_MODE=local | deployed.",
+      "CLOUDGRID_AUTH_MODE=local | sso.",
+      "Independently scale otlp-collector, BFF, storage-read.",
+    ],
+  },
+  {
+    title: "SSO and sessions",
+    body: "Deployed mode supports GitHub, Google, and Microsoft Entra ID. Sessions are BFF-managed HttpOnly cookies — no provider tokens reach the browser.",
+    points: [
+      "Three first-class providers in the v1 auth adapter.",
+      "No provider tokens in localStorage or JavaScript.",
+      "Provider switching requires no schema migrations.",
+    ],
+  },
+  {
+    title: "Project isolation",
+    body: "Project is the strict telemetry boundary. Users only see their company's projects. Isolation is enforced at API, message, and persistence layers — not just in the UI.",
+    points: [
+      "OTLP ingest carries a project routing token.",
+      "Storage-read enforces project authorization before query execution.",
+      "Live subscriptions respect the same authorization as queries.",
+    ],
+  },
+  {
+    title: "Security posture",
+    body: "No public service touches the database. Adapter packages keep DB drivers off the public attack surface. Specs are reviewable artifacts.",
+    points: [
+      "Public BFF cannot import SurrealDB clients or storage adapters.",
+      "Every message bridge subject is documented in the AsyncAPI spec.",
+      "Structured JSON logs with trace and span correlation, one per line.",
+    ],
+  },
+  {
+    title: "License and governance",
+    body: "MIT-licensed. Public specs that are the source of truth. Contribution path is the same path the maintainers use.",
+    points: [
+      "MIT — commercial use is fine without negotiation.",
+      "/specs is the authoritative roadmap.",
+      "No CLA gate, no rebranded 'community edition'.",
+    ],
+  },
+];
+---
+
+<Layout title="Enterprise — CloudGrid">
+  <Section size="lg">
+    <PageHeader
+      eyebrow="Enterprise"
+      accent="brand"
+      title="Built for the questions procurement actually asks."
+      description="CloudGrid is the OpenTelemetry-native platform you can deploy inside your own perimeter, point your SDKs at, and audit end-to-end. The same binary that runs on a laptop runs in production."
+    />
+    <div class="mt-7 flex flex-wrap gap-3">
+      <Button href="/enterprise/compare" variant="primary" size="md">
+        See how CloudGrid compares
+      </Button>
+      <Button href="/handbook/deployment" variant="secondary" size="md">
+        Deployment guide
+      </Button>
+    </div>
+  </Section>
+
+  <Section tone="recessed">
+    <div class="grid md:grid-cols-2 gap-5">
+      {pillars.map((p) => (
+        <div class="reveal rounded-xl border border-border-default bg-surface p-6">
+          <h3 class="text-base font-semibold text-text">{p.title}</h3>
+          <p class="mt-2 text-sm text-text-secondary leading-relaxed">{p.body}</p>
+          <div class="mt-4">
+            <CheckList items={p.points} />
+          </div>
+        </div>
+      ))}
+    </div>
+  </Section>
+
+  <Section>
+    <div class="grid lg:grid-cols-12 gap-10 items-start">
+      <div class="lg:col-span-5 reveal">
+        <h2 class="text-2xl font-semibold text-text">A short procurement-grade brief</h2>
+        <p class="mt-3 text-text-secondary">
+          Print this section. Hand it to the security reviewer.
+        </p>
+      </div>
+      <div class="lg:col-span-7 reveal">
+        <dl class="divide-y divide-border-subtle border border-border-default rounded-xl bg-surface">
+          {[
+            { k: "License", v: "MIT. Commercial use permitted without negotiation." },
+            { k: "Source", v: "github.com/cloudgriddev/cloudgrid — full source, public specs." },
+            { k: "Data egress", v: "None by default. CloudGrid does not call home." },
+            { k: "Storage", v: "SurrealDB (v1). Storage adapter port is swappable." },
+            { k: "Transport", v: "NATS JetStream (v1). Message-bridge adapter port is swappable." },
+            { k: "Auth providers", v: "GitHub, Google, Microsoft Entra ID. Provider port is swappable." },
+            { k: "Sessions", v: "BFF-managed HttpOnly cookies. No provider tokens in the browser." },
+            { k: "Isolation primitive", v: "Project — enforced at API, message, persistence layers." },
+            { k: "Telemetry", v: "OTLP HTTP for traces, logs, metrics. OTLP gRPC on the spec path." },
+            { k: "AI workloads", v: "First-class projections of OTel GenAI / OpenInference spans." },
+          ].map((row) => (
+            <div class="grid grid-cols-[140px_1fr] gap-4 px-5 py-3">
+              <dt class="text-xs uppercase tracking-wider font-semibold text-text-muted">{row.k}</dt>
+              <dd class="text-sm text-text">{row.v}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </div>
+  </Section>
+</Layout>

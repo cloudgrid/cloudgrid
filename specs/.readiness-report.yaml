@@ -1,0 +1,147 @@
+status: approved
+updated: 2026-05-16
+scope: expanded_ai_evaluation_wave
+human_approval:
+  status: approved
+  approved_by: user
+  approval_basis: User requested making the evaluation part implementation-ready for autonomous agents without drift, unspecification, or agent-owned product decisions.
+blocking_decisions: []
+open_decisions: []
+inferred_defaults:
+  - CloudGrid AI Eval is an observability-native evaluation flywheel, not a generic eval SDK clone.
+  - Project AI settings live in the project admin settings shell and are owned by control-plane.
+  - Provider profiles store metadata and opaque credential references only; raw model-provider API keys remain outside CloudGrid v1.
+  - Harness remains the execution, model-provider, replay, and optimizer boundary.
+  - Model fine tuning is out of scope.
+  - Dataset splits are dev, optimization, validation, regression, and holdout.
+  - Holdout items are never optimizer input.
+  - Small-dataset mode starts below 30 reviewed items and marks confidence low.
+  - Scorers include deterministic, schema/JSON, semantic, RAG, LLM judge, tool correctness, trajectory/task completion, and human review families.
+  - Experiments and optimizations require immutable manifests with dataset version, split selector, scorer versions, prompt/skill/tool refs, provider profile refs, budget caps, and manifest digest.
+  - Production online evaluation is policy-driven and disabled until configured.
+  - Storage-read owns dataset health, policy matching, production quality summaries, manifest resolution, scoreboards, and live fanout.
+  - Frontend renders GraphQL view models and owns only presentation state.
+gate_simulation:
+  status: pass
+  planner_result: implementation_ready_for_autonomous_agents
+  blockers_for_implementation: []
+  global_agent_rules:
+    - Agents must start at specs/spec.md and then read only their scoped AI-eval source specs plus required architecture references.
+    - Agents must keep to one ownership boundary and write only files in their assigned ticket scope.
+    - Agents must not add new public fields, GraphQL operations, NATS subjects, storage tables, scorer kinds, optimizer kinds, route semantics, retry behavior, content-capture behavior, provider credential behavior, or service boundaries outside the approved specs.
+    - If a required behavior is absent, agents must stop and update the relevant spec plus GraphQL, AsyncAPI, JSON Schema, generated TypeScript, generated Go, and contract tests before service or frontend implementation.
+    - BFF agents must validate GraphQL inputs, call message bridge subjects, validate replies, and map errors only; they must not derive telemetry, scoreboards, policy matches, transcripts, or production-quality aggregates.
+    - Frontend agents must render GraphQL view models only and keep presentation state only.
+    - Go storage-read agents own AI-eval query semantics, live matching, manifest resolution, health summaries, and production quality aggregation.
+    - Go storage-write agents are the only agents allowed to mutate SurrealDB AI-eval records.
+    - Runner agents must call storage-read/control-plane through message subjects, write through storage-write subjects, and call only the harness adapter for replay, scoring, or optimization.
+  simulated_tickets:
+    - id: AIE-1
+      name: Contracts and generated types
+      owner_boundary: contracts
+      read_scope: [specs/03-contracts, specs/04-backend/contract-generation.md, specs/04-backend/ai-eval-message-contracts.md]
+      write_scope: [apps/packages/ui-contracts, apps/packages/definition, core/go-contracts, tooling contract tests]
+      contract_traceability: [public-schema.graphql, message-bridge.asyncapi.yaml, errors.yaml, entities/ai/*.schema.json]
+      acceptance: Generated TypeScript and Go contracts expose all approved AI-eval GraphQL, AsyncAPI, error, and JSON Schema shapes with no hand-written drift.
+      verification: ["bun run contracts:check", "bun run --cwd apps/packages/ui-contracts typecheck", "bun run --cwd apps/packages/definition typecheck", "go test ./core/go-contracts/..."]
+      open_decisions: []
+    - id: AIE-2
+      name: Collector AI projection extraction
+      owner_boundary: collector
+      read_scope: [specs/04-backend/ai-eval-protocol-interop.md, specs/02-capabilities/ai-eval/ingest-ai-projections.md, specs/03-contracts/messages/message-bridge.asyncapi.yaml]
+      write_scope: [core/otlp-collector]
+      contract_traceability: [telemetry.ingest.ai_projections, ai.persisted.projections, agent-run.schema.json, llm-call.schema.json, tool-call.schema.json, retrieval-event.schema.json]
+      acceptance: Collector publishes AI projection commands from OTel GenAI and OpenInference spans without writing SurrealDB or copying raw content into projection entities.
+      verification: ["go test -tags surrealdb ./core/otlp-collector/..."]
+      open_decisions: []
+    - id: AIE-3
+      name: Storage-write AI persistence
+      owner_boundary: storage-write
+      read_scope: [specs/03-contracts/entities/ai, specs/04-backend/ai-eval-message-contracts.md, specs/02-flows/ai-eval/dataset-curation-and-splits.md]
+      write_scope: [core/storage-write]
+      contract_traceability: [eval.dataset.create, eval.dataset.items.append, eval.dataset.item.promote, eval.scorer.create, eval.experiment.create, eval.results.persist, eval.prompt_version.promote, annotation.item.update]
+      acceptance: Storage-write is the only SurrealDB mutator for AI-eval records and enforces version, manifest, idempotency, and content-capture invariants.
+      verification: ["go test -tags surrealdb ./core/storage-write/..."]
+      open_decisions: []
+    - id: AIE-4
+      name: Storage-read AI query and live semantics
+      owner_boundary: storage-read
+      read_scope: [specs/04-backend/ai-eval-query-semantics.md, specs/02-flows/ai-eval/live-experiment-subscription.md, specs/03-contracts/graphql/public-schema.graphql]
+      write_scope: [core/storage-read]
+      contract_traceability: [eval.agent_runs.search, eval.dataset.search, eval.scorer.search, eval.experiment.search, eval.results.search, eval.dataset.health, eval.quality.overview, eval.manifest.resolve, eval.live.start, eval.live.stop, eval.live.events.*.*]
+      acceptance: Storage-read owns all AI-eval read derivations, manifest resolution, policy matching, live fanout, dataset health, and production quality summaries.
+      verification: ["go test -tags surrealdb ./core/storage-read/..."]
+      open_decisions: []
+    - id: AIE-5
+      name: Harness adapter package
+      owner_boundary: harness-adapter
+      read_scope: [specs/04-backend/ai-eval-runner.md, specs/07-adr/0007-harness-as-execution-surface.md, specs/07-adr/0009-scorer-library-autoevals.md]
+      write_scope: [apps/packages/cloudgrid-harness-adapter]
+      contract_traceability: [/v1/run, /v1/score, /v1/optimize, /v1/agents, /healthz]
+      acceptance: Bun ESM adapter exposes approved endpoints, emits OTLP spans, keeps provider credentials in harness configuration, and never calls CloudGrid GraphQL or NATS.
+      verification: ["bun run --cwd apps/packages/cloudgrid-harness-adapter typecheck", "bun test apps/packages/cloudgrid-harness-adapter"]
+      open_decisions: []
+    - id: AIE-6
+      name: AI-eval runner
+      owner_boundary: ai-eval-runner
+      read_scope: [specs/04-backend/ai-eval-runner.md, specs/06-nfr/ai-eval-cost-bounds.md, specs/02-flows/ai-eval/offline-experiment-run.md, specs/02-flows/ai-eval/online-evaluation.md]
+      write_scope: [core/ai-eval-runner]
+      contract_traceability: [eval.experiment.start, eval.experiment.cancel, eval.optimization.start, eval.results.persist, eval.experiment.progress, eval.manifest.resolve, control.ai_settings.get]
+      acceptance: Runner enforces manifest, split, budget, sampling, concurrency, retry, cancellation, and idempotency rules before harness calls and never reads or writes SurrealDB directly.
+      verification: ["go test -tags surrealdb ./core/ai-eval-runner/..."]
+      open_decisions: []
+    - id: AIE-7
+      name: BFF GraphQL resolvers
+      owner_boundary: bff
+      read_scope: [specs/03-contracts/graphql/public-schema.graphql, specs/04-backend/ai-eval-message-contracts.md, specs/03-contracts/errors.yaml]
+      write_scope: [apps/backend, apps/packages/runtime]
+      contract_traceability: [Query.agentRuns, Query.datasets, Query.scorers, Query.experiments, Query.evalResults, Query.annotationQueue, Query.projectAiSettings, Query.aiQualityOverview, Mutation.*AI-eval*, Subscription.liveExperimentRun]
+      acceptance: Resolvers validate inputs, call only approved message subjects, validate replies, and map errors without deriving telemetry or score summaries.
+      verification: ["bun test --coverage apps/backend/src", "bun run contracts:check"]
+      open_decisions: []
+    - id: AIE-8
+      name: Frontend AI-eval views
+      owner_boundary: frontend
+      read_scope: [specs/05-frontend/ai-eval-views.md, specs/05-frontend/ai-eval-ux-concept.md, specs/05-frontend/product-ux-concept.md, DESIGN.md]
+      write_scope: [apps/frontend, apps/packages/ui-contracts, DESIGN.md]
+      contract_traceability: [GraphQL AI-eval view models and feature flag CLOUDGRID_AI_EVAL_ENABLED]
+      acceptance: Feature-gated views render GraphQL view models for overview, runs, datasets, scorers, experiments, optimizations, production quality, annotations, and settings links without frontend-owned telemetry truth.
+      verification: ["bun run --cwd apps/frontend typecheck", "bun run --cwd apps/frontend build", "bun run --cwd apps/frontend smoke"]
+      open_decisions: []
+    - id: AIE-9
+      name: CLI regression gate
+      owner_boundary: tooling
+      read_scope: [specs/99-reviews/ai-eval-implementation-scope.md, specs/02-capabilities/ai-eval/evaluate-offline.md, specs/03-contracts/graphql/public-schema.graphql]
+      write_scope: [tooling, package scripts]
+      contract_traceability: [Mutation.startExperimentRun, Subscription.liveExperimentRun, ExperimentRun.summary, EvalResult]
+      acceptance: Bun CLI starts an experiment through GraphQL, subscribes to progress, exits non-zero on configured regression thresholds, and emits JUnit XML.
+      verification: ["bun test tooling", "bun run contracts:check"]
+      open_decisions: []
+deterministic_checks:
+  - command: node /Users/sebastianwessel/.agents/skills/spec-architect/scripts/check_specs.mjs specs
+    status: pass_with_warning_no_specs_03_flows_directory
+  - command: bun run contracts:check
+    status: pass
+  - command: bun run --cwd apps/packages/ui-contracts typecheck
+    status: pass
+  - command: bun run --cwd apps/packages/definition typecheck
+    status: pass
+  - command: go test ./core/go-contracts/...
+    status: pass
+  - command: rg planning-blocking-marker-scan <ai-eval-spec-files>
+    status: pass_no_matches
+  - command: ruby -e 'require "yaml"; YAML.load_file("specs/.readiness-report.yaml"); YAML.load_file("specs/_registry.yaml")'
+    status: pass
+confidence: high
+risks:
+  - Current implementation contains an earlier AI-eval scaffold and must not be treated as complete for the expanded product concept.
+  - The implementation wave is broad and must be split by ownership boundary to avoid cross-agent drift.
+  - Provider credential handling must remain outside CloudGrid v1 unless a separate secret-management spec is approved.
+  - Organization invitations are outside this AI-eval readiness scope and are not approved by this report.
+statistics:
+  ai_eval_capabilities: 8
+  ai_eval_flows: 4
+  ai_eval_backend_specs: 5
+  ai_eval_frontend_specs: 2
+  ai_eval_nfrs: 2
+  simulated_implementation_tickets: 9

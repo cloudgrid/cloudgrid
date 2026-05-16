@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-MET-002",
+  "title": "MetricPoint",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "tenantId", "projectId", "metricName", "kind", "timestamp", "attributes"],
+  "properties": {
+    "id": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "projectId": { "type": "string" },
+    "metricName": { "type": "string" },
+    "serviceName": { "type": "string" },
+    "scopeName": { "type": "string" },
+    "kind": {
+      "type": "string",
+      "enum": ["gauge", "sum", "histogram", "exponential_histogram", "summary"]
+    },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "startTimestamp": { "type": "string", "format": "date-time" },
+    "value": { "type": "number" },
+    "count": { "type": "number" },
+    "sum": { "type": "number" },
+    "min": { "type": "number" },
+    "max": { "type": "number" },
+    "bucketCounts": { "type": "array", "items": { "type": "number" } },
+    "explicitBounds": { "type": "array", "items": { "type": "number" } },
+    "quantileValues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["quantile", "value"],
+        "properties": {
+          "quantile": { "type": "number" },
+          "value": { "type": "number" }
+        }
+      }
+    },
+    "attributes": { "type": "object", "additionalProperties": true },
+    "exemplars": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["timestamp", "value", "attributes"],
+        "properties": {
+          "timestamp": { "type": "string", "format": "date-time" },
+          "value": { "type": "number" },
+          "traceId": { "type": "string" },
+          "spanId": { "type": "string" },
+          "attributes": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "droppedAttributeCount": { "type": "integer", "minimum": 0 }
+  }
+}

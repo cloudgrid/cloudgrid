@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-004",
+  "title": "RetrievalEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "traceId", "spanId", "documentCount", "latencyMs"],
+  "properties": {
+    "id": { "type": "string" },
+    "traceId": { "type": "string" },
+    "spanId": { "type": "string" },
+    "agentRunId": { "type": "string" },
+    "documentCount": { "type": "integer", "minimum": 0 },
+    "topK": { "type": "integer", "minimum": 0 },
+    "embeddingModel": { "type": "string" },
+    "latencyMs": { "type": "number", "minimum": 0 },
+    "documentDigests": { "type": "array", "items": { "type": "string" }, "default": [] }
+  }
+}

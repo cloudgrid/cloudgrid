@@ -1,0 +1,103 @@
+---
+const features = [
+  {
+    icon: "trace",
+    title: "Trace Exploration",
+    description:
+      "Deep dive into distributed traces with waterfall timelines, span attributes, events, and cross-service correlation. Every trace ID is preserved natively from OpenTelemetry.",
+    color: "accent-purple",
+    gradient: "from-accent-purple/20 to-accent-purple/5",
+    borderColor: "border-accent-purple/20",
+  },
+  {
+    icon: "log",
+    title: "Log Analytics",
+    description:
+      "Search-first log exploration with full-text search, severity filtering, and automatic trace/span correlation. Pivot from any log entry directly into its trace context.",
+    color: "accent-blue",
+    gradient: "from-accent-blue/20 to-accent-blue/5",
+    borderColor: "border-accent-blue/20",
+  },
+  {
+    icon: "metric",
+    title: "Metrics Explorer",
+    description:
+      "Query metric series with aggregation, grouping by descriptor attributes, and exemplar trace pivots. Inspect descriptors and build understanding of system behavior over time.",
+    color: "accent-green",
+    gradient: "from-accent-green/20 to-accent-green/5",
+    borderColor: "border-accent-green/20",
+  },
+  {
+    icon: "live",
+    title: "Live Trace Receiving",
+    description:
+      "Watch traces arrive in real-time through GraphQL subscriptions. Filter live streams by service, status, or duration without losing the WebSocket connection.",
+    color: "accent-amber",
+    gradient: "from-accent-amber/20 to-accent-amber/5",
+    borderColor: "border-accent-amber/20",
+  },
+  {
+    icon: "dashboard",
+    title: "Dashboards",
+    description:
+      "Compose saved dashboards from typed widgets — metric time series, log tables, trace tables, and live trace feeds. Pin favorites to your project sidebar for instant access.",
+    color: "accent-cyan",
+    gradient: "from-accent-cyan/20 to-accent-cyan/5",
+    borderColor: "border-accent-cyan/20",
+  },
+  {
+    icon: "ai",
+    title: "AI-Ready Telemetry",
+    description:
+      "Preserves GenAI-related OpenTelemetry attributes out of the box. Built for teams running LLM workloads, agent frameworks, and autonomous systems that need complete observability.",
+    color: "accent-purple",
+    gradient: "from-accent-purple/20 to-accent-purple/5",
+    borderColor: "border-accent-purple/20",
+  },
+];
+
+const iconPaths: Record<string, string> = {
+  trace: "M2 12h4l3-9 6 18 3-9h4",
+  log: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8",
+  metric: "M3 3v18h18 M18.7 8l-5.1 5.2-2.8-2.7L7 14.3",
+  live: "M22 12h-4l-3 9L9 3l-3 9H2",
+  dashboard: "M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z",
+  ai: "M12 2a2 2 0 0 1 2 2c0 .74-.4 1.387-1 1.732V7h1a7 7 0 0 1 7 7v4a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-4a7 7 0 0 1 7-7h1V5.732A2.001 2.001 0 0 1 12 2z M9 21h6",
+};
+---
+
+<section id="features" class="relative py-24 sm:py-32">
+  <div class="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-border-default to-transparent"></div>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="text-center max-w-3xl mx-auto mb-16 reveal">
+      <h2 class="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-6">
+        Everything you need to <span class="gradient-text">observe everything</span>
+      </h2>
+      <p class="text-lg text-text-secondary leading-relaxed">
+        CloudGrid covers the full OpenTelemetry signal spectrum with a unified interface
+        designed for investigation, not just monitoring.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {features.map((feature, i) => (
+        <div
+          class={`reveal group relative rounded-2xl border ${feature.borderColor} bg-gradient-to-b ${feature.gradient} p-6 sm:p-8 hover:border-opacity-40 transition-all duration-300`}
+          style={`transition-delay: ${i * 75}ms`}
+        >
+          <div class="absolute inset-0 rounded-2xl bg-bg-card/80 -z-10"></div>
+
+          <div class={`w-12 h-12 rounded-xl bg-${feature.color}/10 border border-${feature.color}/20 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform duration-300`}>
+            <svg class={`w-6 h-6 text-${feature.color}-light`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d={iconPaths[feature.icon]} />
+            </svg>
+          </div>
+
+          <h3 class="text-lg font-semibold text-text-primary mb-3">{feature.title}</h3>
+          <p class="text-sm text-text-secondary leading-relaxed">{feature.description}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

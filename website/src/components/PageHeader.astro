@@ -1,0 +1,33 @@
+---
+interface Props {
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  /** Accent color for the eyebrow chip — uses a token name from the palette. */
+  accent?: "brand" | "cyan" | "emerald" | "amber" | "violet" | "rose";
+}
+const { eyebrow, title, description, accent = "brand" } = Astro.props;
+
+const accentMap: Record<string, string> = {
+  brand: "bg-brand-soft text-[var(--color-brand)]",
+  cyan: "bg-cyan-soft text-[var(--color-cyan)]",
+  emerald: "bg-emerald-soft text-[var(--color-emerald)]",
+  amber: "bg-amber-soft text-[var(--color-amber)]",
+  violet: "bg-violet-soft text-[var(--color-violet)]",
+  rose: "bg-rose-soft text-[var(--color-rose)]",
+};
+---
+
+<header class="max-w-3xl">
+  {
+    eyebrow && (
+      <div class={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide uppercase ${accentMap[accent]}`}>
+        {eyebrow}
+      </div>
+    )
+  }
+  <h1 class="mt-4 text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-text leading-[1.1]">
+    {title}
+  </h1>
+  {description && <p class="mt-5 text-lg text-text-secondary leading-relaxed">{description}</p>}
+</header>

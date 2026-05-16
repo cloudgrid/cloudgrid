@@ -1,0 +1,1438 @@
+package internal
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/cloudgrid-dev/cloudgrid/core/control-plane/internal/adapters/memory"
+	"github.com/cloudgrid-dev/cloudgrid/core/control-plane/internal/ports"
+	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
+)
+
+func TestViewerBootstrapCreatesLocalCompanyAndFirstUserAdmin(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+
+	viewer, err := service.GetViewer(context.Background(), localEnvelope("req-1", "local-user", nil))
+	if err != nil {
+		t.Fatalf("GetViewer returned error: %v", err)
+	}
+
+	if viewer.User.ID != "local-user" {
+		t.Fatalf("viewer user = %q, want local-user", viewer.User.ID)
+	}
+	if len(viewer.Organizations) != 1 {
+		t.Fatalf("organizations length = %d, want 1", len(viewer.Organizations))
+	}
+	org := viewer.Organizations[0]
+	if org.ID != LocalCompanyID || org.Slug != LocalCompanyID {
+		t.Fatalf("organization = %#v, want local company", org)
+	}
+	if org.Name != "Personal" {
+		t.Fatalf("organization name = %q, want Personal", org.Name)
+	}
+	if org.Role != contracts.CompanyRoleAdmin {
+		t.Fatalf("role = %q, want admin", org.Role)
+	}
+	if len(org.Projects) != 1 || org.Projects[0].ID != LocalProjectID {
+		t.Fatalf("projects = %#v, want local default project", org.Projects)
+	}
+	if viewer.SelectedProject != nil {
+		t.Fatalf("selected project = %#v, want nil", viewer.SelectedProject)
+	}
+}
+
+func TestViewerBootstrapStoresSSOProfileAndConfiguredCompany(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	companyID := "company-1"
+	tenantID := "tenant-1"
+	authMode := "sso"
+	principalID := "github:42"
+	displayName := "Ada Lovelace"
+	email := "ada@example.test"
+	envelope := contracts.BridgeEnvelope{
+		RequestID: "req-sso",
+		IssuedAt:  fixedNow(),
+		AuthContext: &contracts.AuthContext{
+			Mode:           "authenticated",
+			AuthMode:       &authMode,
+			PrincipalID:    &principalID,
+			PrincipalName:  &displayName,
+			PrincipalEmail: &email,
+			TenantID:       &tenantID,
+			CompanyID:      &companyID,
+		},
+	}
+
+	viewer, err := service.GetViewer(context.Background(), envelope)
+	if err != nil {
+		t.Fatalf("GetViewer returned error: %v", err)
+	}
+
+	if viewer.User.ID != principalID {
+		t.Fatalf("viewer user = %q, want principal", viewer.User.ID)
+	}
+	if viewer.User.DisplayName == nil || *viewer.User.DisplayName != displayName {
+		t.Fatalf("displayName = %#v, want %q", viewer.User.DisplayName, displayName)
+	}
+	if viewer.User.Email == nil || *viewer.User.Email != email {
+		t.Fatalf("email = %#v, want %q", viewer.User.Email, email)
+	}
+	if len(viewer.Organizations) != 1 || viewer.Organizations[0].ID != companyID {
+		t.Fatalf("organizations = %#v, want configured company", viewer.Organizations)
+	}
+	if viewer.Organizations[0].Role != contracts.CompanyRoleAdmin {
+		t.Fatalf("role = %q, want first SSO user admin", viewer.Organizations[0].Role)
+	}
+}
+
+func TestIngestCredentialCreateListAndRevokeNeverReturnSecretAfterCreate(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	projectID := LocalProjectID
+	selected := localEnvelope("req-credential", "admin-1", &projectID)
+
+	created, err := service.CreateIngestCredential(ctx, IngestCredentialCreateRequest{
+		BridgeEnvelope: selected,
+		ProjectID:      LocalProjectID,
+		Title:          "Checkout service",
+	})
+	if err != nil {
+		t.Fatalf("CreateIngestCredential returned error: %v", err)
+	}
+	if created.Secret == "" || !strings.HasPrefix(created.Secret, "cgk_") {
+		t.Fatalf("created secret = %q, want generated cgk_ secret", created.Secret)
+	}
+	if created.Credential.Title != "Checkout service" {
+		t.Fatalf("credential title = %q", created.Credential.Title)
+	}
+	if created.Credential.ProjectID != LocalProjectID {
+		t.Fatalf("credential project = %q, want local project", created.Credential.ProjectID)
+	}
+	if created.Credential.SecretPreview == "" || strings.Contains(created.Credential.SecretPreview, created.Secret) {
+		t.Fatalf("secret preview = %q must be non-empty and not the full secret", created.Credential.SecretPreview)
+	}
+
+	listed, err := service.ListIngestCredentials(ctx, IngestCredentialListRequest{BridgeEnvelope: selected, ProjectID: LocalProjectID})
+	if err != nil {
+		t.Fatalf("ListIngestCredentials returned error: %v", err)
+	}
+	if len(listed.Items) != 1 {
+		t.Fatalf("listed items length = %d, want 1", len(listed.Items))
+	}
+	if listed.Items[0].SecretPreview != created.Credential.SecretPreview {
+		t.Fatalf("listed preview = %q, want created preview", listed.Items[0].SecretPreview)
+	}
+
+	revoked, err := service.RevokeIngestCredential(ctx, IngestCredentialRevokeRequest{
+		BridgeEnvelope: selected,
+		CredentialID:   created.Credential.ID,
+	})
+	if err != nil {
+		t.Fatalf("RevokeIngestCredential returned error: %v", err)
+	}
+	if revoked.RevokedAt == nil {
+		t.Fatalf("revoked credential RevokedAt = nil, want timestamp")
+	}
+}
+
+func TestAdminInvariantDeniesFinalAdminRemovalAndDowngrade(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+
+	if _, err := service.RemoveMember(ctx, contracts.MemberRemoveRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: LocalCompanyID,
+		UserID:         "admin-1",
+	}); !isForbidden(err) {
+		t.Fatalf("RemoveMember error = %v, want forbidden final-admin error", err)
+	}
+
+	if _, err := service.UpdateMember(ctx, contracts.MemberUpdateRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: LocalCompanyID,
+		UserID:         "admin-1",
+		Role:           contracts.CompanyRoleUser,
+	}); !isForbidden(err) {
+		t.Fatalf("UpdateMember error = %v, want forbidden final-admin error", err)
+	}
+}
+
+func TestNonAdminCannotRemoveOrDowngradeUsers(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	seedOrganizationMember(t, service, LocalCompanyID, "user-1", contracts.CompanyRoleUser, "")
+	user := localEnvelope("req-user", "user-1", nil)
+
+	if _, err := service.RemoveMember(ctx, contracts.MemberRemoveRequest{
+		BridgeEnvelope: user,
+		OrganizationID: LocalCompanyID,
+		UserID:         "admin-1",
+	}); !isForbidden(err) {
+		t.Fatalf("RemoveMember by user error = %v, want forbidden", err)
+	}
+
+	if _, err := service.UpdateMember(ctx, contracts.MemberUpdateRequest{
+		BridgeEnvelope: user,
+		OrganizationID: LocalCompanyID,
+		UserID:         "admin-1",
+		Role:           contracts.CompanyRoleUser,
+	}); !isForbidden(err) {
+		t.Fatalf("UpdateMember by user error = %v, want forbidden", err)
+	}
+}
+
+func TestAdminCanCreateAndListOrganizationInvitation(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+
+	invitation, err := service.CreateInvitation(ctx, contracts.InvitationCreateRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: LocalCompanyID,
+		Email:          "  Ada@Example.TEST  ",
+	})
+	if err != nil {
+		t.Fatalf("CreateInvitation returned error: %v", err)
+	}
+	if invitation.OrganizationID != LocalCompanyID {
+		t.Fatalf("organizationId = %q, want %q", invitation.OrganizationID, LocalCompanyID)
+	}
+	if invitation.Email != "ada@example.test" {
+		t.Fatalf("email = %q, want normalized email", invitation.Email)
+	}
+	if invitation.Role != contracts.CompanyRoleUser {
+		t.Fatalf("role = %q, want user", invitation.Role)
+	}
+	if invitation.Status != contracts.OrganizationInvitationStatusPending {
+		t.Fatalf("status = %q, want pending", invitation.Status)
+	}
+	if invitation.InvitedByUserID != "admin-1" {
+		t.Fatalf("invitedByUserId = %q, want admin-1", invitation.InvitedByUserID)
+	}
+
+	items, err := service.ListInvitations(ctx, contracts.InvitationListRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: LocalCompanyID,
+	})
+	if err != nil {
+		t.Fatalf("ListInvitations returned error: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != invitation.ID {
+		t.Fatalf("listed invitations = %#v, want created invitation", items)
+	}
+}
+
+func TestNonAdminCannotCreateOrRevokeOrganizationInvitations(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	seedOrganizationMember(t, service, LocalCompanyID, "user-1", contracts.CompanyRoleUser, "")
+	invitation, err := service.CreateInvitation(ctx, contracts.InvitationCreateRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: LocalCompanyID,
+		Email:          "ada@example.test",
+	})
+	if err != nil {
+		t.Fatalf("CreateInvitation returned error: %v", err)
+	}
+	user := localEnvelope("req-user", "user-1", nil)
+
+	if _, err := service.CreateInvitation(ctx, contracts.InvitationCreateRequest{
+		BridgeEnvelope: user,
+		OrganizationID: LocalCompanyID,
+		Email:          "grace@example.test",
+	}); !isForbidden(err) {
+		t.Fatalf("CreateInvitation by user error = %v, want forbidden", err)
+	}
+	if _, err := service.RevokeInvitation(ctx, contracts.InvitationRevokeRequest{
+		BridgeEnvelope: user,
+		InvitationID:   invitation.ID,
+	}); !isForbidden(err) {
+		t.Fatalf("RevokeInvitation by user error = %v, want forbidden", err)
+	}
+}
+
+func TestCreateInvitationRejectsDuplicateNormalizedEmailAndExistingMember(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	if _, err := service.CreateInvitation(ctx, contracts.InvitationCreateRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: LocalCompanyID,
+		Email:          "Ada@Example.TEST",
+	}); err != nil {
+		t.Fatalf("CreateInvitation returned error: %v", err)
+	}
+
+	if _, err := service.CreateInvitation(ctx, contracts.InvitationCreateRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: LocalCompanyID,
+		Email:          " ada@example.test ",
+	}); !isValidation(err) {
+		t.Fatalf("duplicate CreateInvitation error = %v, want validation", err)
+	}
+
+	seedOrganizationMember(t, service, LocalCompanyID, "member-1", contracts.CompanyRoleUser, "member@example.test")
+
+	if _, err := service.CreateInvitation(ctx, contracts.InvitationCreateRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: LocalCompanyID,
+		Email:          " MEMBER@example.test ",
+	}); !isValidation(err) {
+		t.Fatalf("existing member CreateInvitation error = %v, want validation", err)
+	}
+}
+
+func TestSSOAcceptsPendingVerifiedMatchingInvitationAsUser(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	companyID := "company-1"
+	admin := ssoEnvelope("req-admin", companyID, "sso-admin", "Admin", "admin@example.test", true)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	if _, err := service.CreateInvitation(ctx, contracts.InvitationCreateRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: companyID,
+		Email:          "Ada@Example.TEST",
+	}); err != nil {
+		t.Fatalf("CreateInvitation returned error: %v", err)
+	}
+
+	viewer, err := service.GetViewer(ctx, ssoEnvelope("req-invitee", companyID, "sso-ada", "Ada", " ada@example.test ", true))
+	if err != nil {
+		t.Fatalf("GetViewer invitee returned error: %v", err)
+	}
+	if len(viewer.Organizations) != 1 {
+		t.Fatalf("organizations length = %d, want 1", len(viewer.Organizations))
+	}
+	if viewer.Organizations[0].Role != contracts.CompanyRoleUser {
+		t.Fatalf("accepted role = %q, want user", viewer.Organizations[0].Role)
+	}
+	items, err := service.ListInvitations(ctx, contracts.InvitationListRequest{BridgeEnvelope: admin, OrganizationID: companyID})
+	if err != nil {
+		t.Fatalf("ListInvitations returned error: %v", err)
+	}
+	if len(items) != 1 || items[0].Status != contracts.OrganizationInvitationStatusAccepted || items[0].AcceptedByUserID == nil || *items[0].AcceptedByUserID != "sso-ada" {
+		t.Fatalf("accepted invitation = %#v, want accepted by sso-ada", items)
+	}
+}
+
+func TestSSOWithoutAcceptableInvitationGetsNoMembership(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	companyID := "company-1"
+	admin := ssoEnvelope("req-admin", companyID, "sso-admin", "Admin", "admin@example.test", true)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name     string
+		email    string
+		verified bool
+	}{
+		{name: "no matching invite", email: "nobody@example.test", verified: true},
+		{name: "unverified email", email: "pending@example.test", verified: false},
+		{name: "missing email", email: "", verified: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.name == "unverified email" {
+				if _, err := service.CreateInvitation(ctx, contracts.InvitationCreateRequest{
+					BridgeEnvelope: admin,
+					OrganizationID: companyID,
+					Email:          tc.email,
+				}); err != nil {
+					t.Fatalf("CreateInvitation returned error: %v", err)
+				}
+			}
+			viewer, err := service.GetViewer(ctx, ssoEnvelope("req-"+tc.name, companyID, "sso-"+normalizeID(tc.name), "User", tc.email, tc.verified))
+			if err != nil {
+				t.Fatalf("GetViewer returned error: %v", err)
+			}
+			if len(viewer.Organizations) != 0 {
+				t.Fatalf("organizations = %#v, want none", viewer.Organizations)
+			}
+		})
+	}
+}
+
+func TestRevokedAndExpiredInvitationsCannotBeAccepted(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	companyID := "company-1"
+	admin := ssoEnvelope("req-admin", companyID, "sso-admin", "Admin", "admin@example.test", true)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	revoked, err := service.CreateInvitation(ctx, contracts.InvitationCreateRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: companyID,
+		Email:          "revoked@example.test",
+	})
+	if err != nil {
+		t.Fatalf("CreateInvitation revoked returned error: %v", err)
+	}
+	if _, err := service.RevokeInvitation(ctx, contracts.InvitationRevokeRequest{
+		BridgeEnvelope: admin,
+		InvitationID:   revoked.ID,
+	}); err != nil {
+		t.Fatalf("RevokeInvitation returned error: %v", err)
+	}
+	expired, err := service.CreateInvitation(ctx, contracts.InvitationCreateRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: companyID,
+		Email:          "expired@example.test",
+	})
+	if err != nil {
+		t.Fatalf("CreateInvitation expired returned error: %v", err)
+	}
+	expired.ExpiresAt = ptr(fixedNow().Add(-time.Hour))
+	if err := service.store.PutInvitation(ctx, portsInvitationRecordFromContract(expired)); err != nil {
+		t.Fatalf("expire invitation: %v", err)
+	}
+
+	for _, email := range []string{"revoked@example.test", "expired@example.test"} {
+		viewer, err := service.GetViewer(ctx, ssoEnvelope("req-"+email, companyID, "sso-"+email, "User", email, true))
+		if err != nil {
+			t.Fatalf("GetViewer %s returned error: %v", email, err)
+		}
+		if len(viewer.Organizations) != 0 {
+			t.Fatalf("organizations for %s = %#v, want none", email, viewer.Organizations)
+		}
+	}
+}
+
+func TestAcceptedInvitationCannotBeRevoked(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	companyID := "company-1"
+	admin := ssoEnvelope("req-admin", companyID, "sso-admin", "Admin", "admin@example.test", true)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	invitation, err := service.CreateInvitation(ctx, contracts.InvitationCreateRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: companyID,
+		Email:          "ada@example.test",
+	})
+	if err != nil {
+		t.Fatalf("CreateInvitation returned error: %v", err)
+	}
+	if _, err := service.GetViewer(ctx, ssoEnvelope("req-ada", companyID, "sso-ada", "Ada", "ada@example.test", true)); err != nil {
+		t.Fatalf("GetViewer invitee returned error: %v", err)
+	}
+
+	if _, err := service.RevokeInvitation(ctx, contracts.InvitationRevokeRequest{
+		BridgeEnvelope: admin,
+		InvitationID:   invitation.ID,
+	}); !isForbidden(err) {
+		t.Fatalf("RevokeInvitation accepted error = %v, want forbidden", err)
+	}
+}
+
+func TestListMembersReturnsActiveMembersOnly(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+
+	items, err := service.ListMembers(ctx, contracts.MemberListRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: LocalCompanyID,
+	})
+	if err != nil {
+		t.Fatalf("ListMembers returned error: %v", err)
+	}
+	if len(items) != 1 || items[0].User.ID != "admin-1" {
+		t.Fatalf("members = %#v, want only active admin", items)
+	}
+}
+
+func TestUpdateMemberRejectsUnknownUser(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+
+	if _, err := service.UpdateMember(ctx, contracts.MemberUpdateRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: LocalCompanyID,
+		UserID:         "unknown-user",
+		Role:           contracts.CompanyRoleUser,
+	}); !isValidation(err) {
+		t.Fatalf("UpdateMember unknown user error = %v, want validation", err)
+	}
+}
+
+func TestProjectCreationStatusSnapshotAndStatusChange(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+
+	project, err := service.CreateProject(ctx, contracts.ProjectCreateRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: LocalCompanyID,
+		Name:           "Backend",
+		Slug:           "backend",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+	if project.Status != contracts.ProjectStatusActive {
+		t.Fatalf("created status = %q, want active", project.Status)
+	}
+
+	snapshot, err := service.GetProjectStatusSnapshot(ctx, contracts.ProjectStatusSnapshotRequest{
+		BridgeEnvelope: admin,
+		CompanyID:      LocalCompanyID,
+		ProjectID:      project.ID,
+	})
+	if err != nil {
+		t.Fatalf("GetProjectStatusSnapshot returned error: %v", err)
+	}
+	if snapshot.CompanyID != LocalCompanyID || snapshot.ProjectID != project.ID || snapshot.Status != contracts.ProjectStatusActive {
+		t.Fatalf("snapshot = %#v, want active project snapshot", snapshot)
+	}
+
+	readOnly := contracts.ProjectStatusReadOnly
+	updated, err := service.UpdateProject(ctx, contracts.ProjectUpdateRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      project.ID,
+		Status:         &readOnly,
+	})
+	if err != nil {
+		t.Fatalf("UpdateProject returned error: %v", err)
+	}
+	if updated.Status != readOnly {
+		t.Fatalf("updated status = %q, want read_only", updated.Status)
+	}
+	changes := service.StatusChanges()
+	if len(changes) != 1 {
+		t.Fatalf("status changes length = %d, want 1", len(changes))
+	}
+	if changes[0].CompanyID != LocalCompanyID || changes[0].ProjectID != project.ID || changes[0].Status != readOnly {
+		t.Fatalf("status change = %#v, want read_only notification", changes[0])
+	}
+}
+
+func TestSelectProjectValidatesCompanyMembership(t *testing.T) {
+	store := memory.NewStore()
+	service := NewService(store, fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	project, err := service.CreateProject(ctx, contracts.ProjectCreateRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: LocalCompanyID,
+		Name:           "Default",
+		Slug:           "default",
+	})
+	if err != nil {
+		t.Fatalf("create local project: %v", err)
+	}
+
+	viewer, err := service.SelectProject(ctx, contracts.ProjectSelectRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      project.ID,
+	})
+	if err != nil {
+		t.Fatalf("SelectProject returned error: %v", err)
+	}
+	if viewer.SelectedProject == nil || viewer.SelectedProject.ID != project.ID {
+		t.Fatalf("selected project = %#v, want %s", viewer.SelectedProject, project.ID)
+	}
+
+	foreignOrg := memory.OrganizationRecord{ID: "foreign", Name: "Foreign", Slug: "foreign"}
+	if err := store.PutOrganization(ctx, foreignOrg); err != nil {
+		t.Fatalf("seed foreign organization: %v", err)
+	}
+	foreignProject := memory.ProjectRecord{ID: "project-foreign", OrganizationID: "foreign", Name: "Foreign", Slug: "foreign", Status: contracts.ProjectStatusActive, ChangedAt: fixedNow()}
+	if err := store.PutProject(ctx, foreignProject); err != nil {
+		t.Fatalf("seed foreign project: %v", err)
+	}
+
+	if _, err := service.SelectProject(ctx, contracts.ProjectSelectRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      foreignProject.ID,
+	}); !isForbidden(err) {
+		t.Fatalf("SelectProject foreign error = %v, want forbidden", err)
+	}
+}
+
+func TestProjectMembersIncludeCompanyAdminFallbackAndDirectMembers(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	seedOrganizationMember(t, service, LocalCompanyID, "user-1", contracts.CompanyRoleUser, "")
+
+	member, err := service.UpdateProjectMember(ctx, contracts.ProjectMemberUpdateRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      LocalProjectID,
+		UserID:         "user-1",
+		Role:           contracts.ProjectRoleViewer,
+	})
+	if err != nil {
+		t.Fatalf("UpdateProjectMember returned error: %v", err)
+	}
+	if member.Source != contracts.ProjectMemberSourceDirect || member.EffectiveRole != contracts.ProjectRoleViewer {
+		t.Fatalf("member = %#v, want direct viewer", member)
+	}
+
+	items, err := service.ListProjectMembers(ctx, contracts.ProjectMemberListRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      LocalProjectID,
+	})
+	if err != nil {
+		t.Fatalf("ListProjectMembers returned error: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("project members length = %d, want company admin fallback plus direct member: %#v", len(items), items)
+	}
+	if items[0].UserID != "admin-1" || items[0].Source != contracts.ProjectMemberSourceCompanyAdmin || items[0].EffectiveRole != contracts.ProjectRoleAdmin {
+		t.Fatalf("first member = %#v, want company admin fallback", items[0])
+	}
+	if items[1].UserID != "user-1" || items[1].Source != contracts.ProjectMemberSourceDirect {
+		t.Fatalf("second member = %#v, want direct user", items[1])
+	}
+}
+
+func TestProjectMemberMutationsEnforceLocalPersonalAndFinalAdminInvariants(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "local-user", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap local admin: %v", err)
+	}
+
+	if _, err := service.UpdateProjectMember(ctx, contracts.ProjectMemberUpdateRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      LocalProjectID,
+		UserID:         "local-user",
+		Role:           contracts.ProjectRoleViewer,
+	}); !isForbidden(err) {
+		t.Fatalf("demote local personal error = %v, want forbidden", err)
+	}
+	if _, err := service.RemoveProjectMember(ctx, contracts.ProjectMemberRemoveRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      LocalProjectID,
+		UserID:         "local-user",
+	}); !isForbidden(err) {
+		t.Fatalf("remove local personal error = %v, want forbidden", err)
+	}
+
+	seedOrganizationMember(t, service, LocalCompanyID, "admin-2", contracts.CompanyRoleAdmin, "")
+	if _, err := service.UpdateMember(ctx, contracts.MemberUpdateRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: LocalCompanyID,
+		UserID:         "admin-2",
+		Role:           contracts.CompanyRoleUser,
+	}); err != nil {
+		t.Fatalf("downgrade second company admin to user: %v", err)
+	}
+	if _, err := service.UpdateProjectMember(ctx, contracts.ProjectMemberUpdateRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      LocalProjectID,
+		UserID:         "admin-2",
+		Role:           contracts.ProjectRoleAdmin,
+	}); err != nil {
+		t.Fatalf("add direct project admin: %v", err)
+	}
+	if removed, err := service.RemoveProjectMember(ctx, contracts.ProjectMemberRemoveRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      LocalProjectID,
+		UserID:         "admin-2",
+	}); err != nil || !removed {
+		t.Fatalf("remove direct admin with company-admin fallback = %v, %v; want true nil", removed, err)
+	}
+}
+
+func TestRetentionPolicyDefaultsAndFullReplacementValidation(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+
+	policy, err := service.GetRetentionPolicy(ctx, contracts.RetentionGetRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      LocalProjectID,
+	})
+	if err != nil {
+		t.Fatalf("GetRetentionPolicy returned error: %v", err)
+	}
+	if policy.Version != 1 || len(policy.Rules) != 8 {
+		t.Fatalf("default policy = %#v, want version 1 with all data classes", policy)
+	}
+	if rule := retentionRule(policy, contracts.RetentionDataClassTraces); rule.RetentionDays == nil || *rule.RetentionDays != 30 || rule.Mode != contracts.RetentionModeDelete {
+		t.Fatalf("TRACES default = %#v, want delete 30", rule)
+	}
+	if rule := retentionRule(policy, contracts.RetentionDataClassDatasets); rule.RetentionDays != nil || rule.Mode != contracts.RetentionModeRetain {
+		t.Fatalf("DATASETS default = %#v, want retain without retentionDays", rule)
+	}
+
+	rules := defaultRetentionInputs()
+	rules[0].RetentionDays = ptr(14)
+	updated, err := service.UpdateRetentionPolicy(ctx, contracts.RetentionUpdateRequest{
+		BridgeEnvelope:  admin,
+		ProjectID:       LocalProjectID,
+		ExpectedVersion: policy.Version,
+		Rules:           rules,
+	})
+	if err != nil {
+		t.Fatalf("UpdateRetentionPolicy returned error: %v", err)
+	}
+	if updated.Version != 2 || *retentionRule(updated, contracts.RetentionDataClassTraces).RetentionDays != 14 {
+		t.Fatalf("updated policy = %#v, want version 2 traces 14 days", updated)
+	}
+	if _, err := service.UpdateRetentionPolicy(ctx, contracts.RetentionUpdateRequest{
+		BridgeEnvelope:  admin,
+		ProjectID:       LocalProjectID,
+		ExpectedVersion: policy.Version,
+		Rules:           rules,
+	}); !isForbidden(err) {
+		t.Fatalf("stale update error = %v, want ERR-016", err)
+	}
+	if _, err := service.UpdateRetentionPolicy(ctx, contracts.RetentionUpdateRequest{
+		BridgeEnvelope:  admin,
+		ProjectID:       LocalProjectID,
+		ExpectedVersion: updated.Version,
+		Rules:           rules[:7],
+	}); !isForbidden(err) {
+		t.Fatalf("incomplete update error = %v, want ERR-016", err)
+	}
+}
+
+func TestAlertRulesSilencesAndHistoryCRUD(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+
+	rule, err := service.CreateAlertRule(ctx, contracts.AlertRuleCreateRequest{
+		BridgeEnvelope: admin,
+		Input: contracts.AlertRuleCreateInput{
+			ProjectID:               LocalProjectID,
+			Name:                    "High latency",
+			Enabled:                 true,
+			Kind:                    contracts.AlertRuleKindTraceLatency,
+			Severity:                contracts.AlertSeverityWarning,
+			Query:                   map[string]any{"service": "api"},
+			Condition:               map[string]any{"operator": "GT", "threshold": float64(500)},
+			EvaluationWindowSeconds: 300,
+			PendingForSeconds:       60,
+			CooldownSeconds:         120,
+			NotificationAdapterIDs:  []string{"in_app"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateAlertRule returned error: %v", err)
+	}
+	if rule.Version != 1 || rule.ProjectID != LocalProjectID || rule.UpdatedByUserID != "admin-1" {
+		t.Fatalf("created rule = %#v, want project rule version 1", rule)
+	}
+
+	enabled := false
+	updated, err := service.UpdateAlertRule(ctx, contracts.AlertRuleUpdateRequest{
+		BridgeEnvelope: admin,
+		Input: contracts.AlertRuleUpdateInput{
+			ID:              rule.ID,
+			Enabled:         &enabled,
+			ExpectedVersion: rule.Version,
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateAlertRule returned error: %v", err)
+	}
+	if updated.Enabled || updated.Version != 2 {
+		t.Fatalf("updated rule = %#v, want disabled version 2", updated)
+	}
+
+	silence, err := service.CreateAlertSilence(ctx, contracts.AlertSilenceCreateRequest{
+		BridgeEnvelope: admin,
+		Input: contracts.AlertSilenceCreateInput{
+			ProjectID: LocalProjectID,
+			RuleID:    rule.ID,
+			Reason:    "maintenance",
+			StartsAt:  fixedNow().Add(-time.Minute),
+			EndsAt:    fixedNow().Add(time.Hour),
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateAlertSilence returned error: %v", err)
+	}
+	if !silence.Active || silence.CreatedByUserID != "admin-1" {
+		t.Fatalf("silence = %#v, want active created by admin", silence)
+	}
+
+	event, err := service.RecordAlertHistory(ctx, contracts.AlertHistoryRecordRequest{
+		BridgeEnvelope: admin,
+		Event: contracts.AlertEvent{
+			ID:               "alert-event-1",
+			ProjectID:        LocalProjectID,
+			RuleID:           rule.ID,
+			InstanceID:       "instance-1",
+			State:            contracts.AlertStateFiring,
+			Severity:         contracts.AlertSeverityWarning,
+			Summary:          "High latency firing",
+			DeduplicationKey: "latency:api",
+			StartedAt:        fixedNow(),
+			CreatedAt:        fixedNow(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("RecordAlertHistory returned error: %v", err)
+	}
+	if event.ID != "alert-event-1" {
+		t.Fatalf("recorded event = %#v", event)
+	}
+
+	history, err := service.ListAlertHistory(ctx, contracts.AlertHistoryListRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      LocalProjectID,
+		RuleID:         &rule.ID,
+	})
+	if err != nil {
+		t.Fatalf("ListAlertHistory returned error: %v", err)
+	}
+	if len(history.Items) != 1 || history.Items[0].ID != event.ID {
+		t.Fatalf("history = %#v, want recorded event", history)
+	}
+
+	if deleted, err := service.DeleteAlertSilence(ctx, contracts.AlertSilenceDeleteRequest{BridgeEnvelope: admin, ID: silence.ID}); err != nil || !deleted {
+		t.Fatalf("DeleteAlertSilence = %v, %v; want true nil", deleted, err)
+	}
+	if deleted, err := service.DeleteAlertRule(ctx, contracts.AlertRuleDeleteRequest{BridgeEnvelope: admin, ID: rule.ID}); err != nil || !deleted {
+		t.Fatalf("DeleteAlertRule = %v, %v; want true nil", deleted, err)
+	}
+}
+
+func TestAlertRulesFilterAndSortDeterministically(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+
+	create := func(name string, enabled bool, kind contracts.AlertRuleKind, severity contracts.AlertSeverity, condition map[string]any) contracts.AlertRule {
+		rule, err := service.CreateAlertRule(ctx, contracts.AlertRuleCreateRequest{
+			BridgeEnvelope: admin,
+			Input: contracts.AlertRuleCreateInput{
+				ProjectID:               LocalProjectID,
+				Name:                    name,
+				Enabled:                 enabled,
+				Kind:                    kind,
+				Severity:                severity,
+				Query:                   map[string]any{"service": "api"},
+				Condition:               condition,
+				EvaluationWindowSeconds: 60,
+				PendingForSeconds:       0,
+				CooldownSeconds:         60,
+				NotificationAdapterIDs:  []string{"in_app"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("CreateAlertRule(%s) returned error: %v", name, err)
+		}
+		return rule
+	}
+
+	create("Metric CPU", true, contracts.AlertRuleKindMetricThreshold, contracts.AlertSeverityCritical, map[string]any{"operator": "GT", "threshold": float64(90)})
+	traceRule := create("Trace Errors", true, contracts.AlertRuleKindTraceError, contracts.AlertSeverityError, map[string]any{"minCount": float64(1)})
+	create("Log Warnings", false, contracts.AlertRuleKindLogMatch, contracts.AlertSeverityWarning, map[string]any{"minCount": float64(1)})
+	_, err := service.RecordAlertHistory(ctx, contracts.AlertHistoryRecordRequest{
+		BridgeEnvelope: admin,
+		Event: contracts.AlertEvent{
+			ID:               "event-trace-firing",
+			ProjectID:        LocalProjectID,
+			RuleID:           traceRule.ID,
+			InstanceID:       "instance-trace",
+			State:            contracts.AlertStateFiring,
+			Severity:         contracts.AlertSeverityError,
+			Summary:          "Trace errors firing",
+			DeduplicationKey: "trace-errors",
+			StartedAt:        fixedNow(),
+			CreatedAt:        fixedNow(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("RecordAlertHistory returned error: %v", err)
+	}
+
+	search := "trace"
+	signal := contracts.AlertSignalTrace
+	enabled := true
+	status := contracts.AlertStateFiring
+	sortMode := contracts.AlertRuleSortSeverityDesc
+	rules, err := service.ListAlertRules(ctx, contracts.AlertRuleListRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      LocalProjectID,
+		Input: &contracts.AlertRuleSearchInput{
+			Search:  &search,
+			Signal:  &signal,
+			Enabled: &enabled,
+			Status:  &status,
+			Sort:    &sortMode,
+		},
+	})
+	if err != nil {
+		t.Fatalf("ListAlertRules returned error: %v", err)
+	}
+	if len(rules) != 1 || rules[0].ID != traceRule.ID {
+		t.Fatalf("filtered rules = %#v, want only trace firing rule", rules)
+	}
+
+	sortMode = contracts.AlertRuleSortNameDesc
+	rules, err = service.ListAlertRules(ctx, contracts.AlertRuleListRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      LocalProjectID,
+		Input:          &contracts.AlertRuleSearchInput{Sort: &sortMode},
+	})
+	if err != nil {
+		t.Fatalf("ListAlertRules sort returned error: %v", err)
+	}
+	got := []string{rules[0].Name, rules[1].Name, rules[2].Name}
+	want := []string{"Trace Errors", "Metric CPU", "Log Warnings"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("sorted rule names = %#v, want %#v", got, want)
+	}
+}
+
+func TestDashboardsListIncludesBuiltinsProjectPersonalAndPins(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	projectID := LocalProjectID
+	admin.AuthContext.ProjectID = &projectID
+
+	projectDashboard, err := service.SaveDashboard(ctx, DashboardSaveRequest{
+		BridgeEnvelope: admin,
+		Input: DashboardSaveInput{
+			Name:       "Latency Overview",
+			Visibility: ptr(DashboardVisibilityProject),
+			Widgets:    []DashboardWidgetInput{validDashboardMetricWidget()},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SaveDashboard project returned error: %v", err)
+	}
+	personalDashboard, err := service.SaveDashboard(ctx, DashboardSaveRequest{
+		BridgeEnvelope: admin,
+		Input: DashboardSaveInput{
+			Name:       "Personal Latency",
+			Visibility: ptr(DashboardVisibilityPersonal),
+			Widgets:    []DashboardWidgetInput{validDashboardMetricWidget()},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SaveDashboard personal returned error: %v", err)
+	}
+	if _, err := service.SetDashboardPin(ctx, DashboardPinSetRequest{
+		BridgeEnvelope: admin,
+		DashboardID:    projectDashboard.ID,
+		Pinned:         true,
+	}); err != nil {
+		t.Fatalf("SetDashboardPin returned error: %v", err)
+	}
+
+	result, err := service.ListDashboards(ctx, DashboardListRequest{
+		BridgeEnvelope: admin,
+		Input:          &DashboardListInput{IncludeBuiltins: ptr(true)},
+	})
+	if err != nil {
+		t.Fatalf("ListDashboards returned error: %v", err)
+	}
+	if len(result.Items) < 2 {
+		t.Fatalf("dashboards length = %d, want builtins plus saved dashboards", len(result.Items))
+	}
+	if result.Items[0].Visibility != DashboardVisibilityBuiltin {
+		t.Fatalf("first dashboard visibility = %q, want builtin", result.Items[0].Visibility)
+	}
+	var foundProject bool
+	var foundPersonal bool
+	var foundPinnedProject bool
+	var foundUnpinnedPersonal bool
+	for _, item := range result.Items {
+		if item.ID == projectDashboard.ID && item.ProjectID == LocalProjectID && item.Visibility == DashboardVisibilityProject {
+			foundProject = true
+			foundPinnedProject = item.Pinned
+		}
+		if item.ID == personalDashboard.ID && item.OwnerUserID != nil && *item.OwnerUserID == "admin-1" && item.Visibility == DashboardVisibilityPersonal {
+			foundPersonal = true
+			foundUnpinnedPersonal = !item.Pinned
+		}
+		if item.Visibility == DashboardVisibilityBuiltin && item.Pinned {
+			t.Fatalf("builtin dashboard %q was not pinned but returned pinned=true", item.ID)
+		}
+	}
+	if !foundProject || !foundPersonal {
+		t.Fatalf("saved dashboards not found in list: project=%v personal=%v items=%#v", foundProject, foundPersonal, result.Items)
+	}
+	if !foundPinnedProject || !foundUnpinnedPersonal {
+		t.Fatalf("dashboard pinned fields are not aligned with pins: project=%v personal=%v items=%#v", foundPinnedProject, foundUnpinnedPersonal, result.Items)
+	}
+	if len(result.PinnedDashboardIDs) != 1 || result.PinnedDashboardIDs[0] != projectDashboard.ID {
+		t.Fatalf("pinnedDashboardIds = %#v, want project dashboard pin", result.PinnedDashboardIDs)
+	}
+	encoded, err := json.Marshal(DashboardListResponse{
+		RequestID: "req-dashboard-list",
+		OK:        true,
+		Data:      &result,
+	})
+	if err != nil {
+		t.Fatalf("marshal dashboard list response: %v", err)
+	}
+	responseJSON := string(encoded)
+	for _, required := range []string{`"pinned":true`, `"pinned":false`, `"filters":[]`, `"thresholds":[]`} {
+		if !strings.Contains(responseJSON, required) {
+			t.Fatalf("dashboard list response JSON missing %s: %s", required, responseJSON)
+		}
+	}
+	emptyEncoded, err := json.Marshal(DashboardListResponse{
+		RequestID: "req-empty-dashboard-list",
+		OK:        true,
+		Data:      &DashboardListData{Items: []Dashboard{}, PinnedDashboardIDs: []string{}},
+	})
+	if err != nil {
+		t.Fatalf("marshal empty dashboard list response: %v", err)
+	}
+	if !strings.Contains(string(emptyEncoded), `"pinnedDashboardIds":[]`) {
+		t.Fatalf("empty dashboard list response JSON must include pinnedDashboardIds: %s", string(emptyEncoded))
+	}
+}
+
+func TestDashboardSaveEnforcesVisibilityRoleSecretsAndVersionConflicts(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	seedOrganizationMember(t, service, LocalCompanyID, "user-1", contracts.CompanyRoleUser, "")
+	projectID := LocalProjectID
+	admin.AuthContext.ProjectID = &projectID
+	user := localEnvelope("req-user", "user-1", &projectID)
+	if _, err := service.UpdateProjectMember(ctx, contracts.ProjectMemberUpdateRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      projectID,
+		UserID:         "user-1",
+		Role:           contracts.ProjectRoleViewer,
+	}); err != nil {
+		t.Fatalf("add project viewer: %v", err)
+	}
+
+	if _, err := service.SaveDashboard(ctx, DashboardSaveRequest{
+		BridgeEnvelope: user,
+		Input: DashboardSaveInput{
+			Name:       "Team View",
+			Visibility: ptr(DashboardVisibilityProject),
+			Widgets:    []DashboardWidgetInput{validDashboardMetricWidget()},
+		},
+	}); !isForbidden(err) {
+		t.Fatalf("SaveDashboard project by user error = %v, want forbidden", err)
+	}
+
+	if _, err := service.SaveDashboard(ctx, DashboardSaveRequest{
+		BridgeEnvelope: user,
+		Input: DashboardSaveInput{
+			Name:       "User View",
+			Visibility: ptr(DashboardVisibilityPersonal),
+			Widgets:    []DashboardWidgetInput{validDashboardMetricWidget()},
+		},
+	}); err != nil {
+		t.Fatalf("SaveDashboard personal by user returned error: %v", err)
+	}
+
+	secretWidget := validDashboardMetricWidget()
+	secretWidget.Metric.Filters = []contracts.AttributeFilter{{Key: "authorization", Operator: contracts.AttributeFilterOperatorEQ, Value: "Bearer token"}}
+	if _, err := service.SaveDashboard(ctx, DashboardSaveRequest{
+		BridgeEnvelope: admin,
+		Input: DashboardSaveInput{
+			Name:       "Secret View",
+			Visibility: ptr(DashboardVisibilityProject),
+			Widgets:    []DashboardWidgetInput{secretWidget},
+		},
+	}); !isValidation(err) {
+		t.Fatalf("SaveDashboard with secret filter error = %v, want validation", err)
+	}
+
+	saved, err := service.SaveDashboard(ctx, DashboardSaveRequest{
+		BridgeEnvelope: admin,
+		Input: DashboardSaveInput{
+			Name:       "Latency Overview",
+			Visibility: ptr(DashboardVisibilityProject),
+			Widgets:    []DashboardWidgetInput{validDashboardMetricWidget()},
+		},
+	})
+	if err != nil {
+		t.Fatalf("save initial dashboard: %v", err)
+	}
+	staleVersion := saved.Version
+	if _, err := service.SaveDashboard(ctx, DashboardSaveRequest{
+		BridgeEnvelope: admin,
+		Input: DashboardSaveInput{
+			ID:         &saved.ID,
+			Version:    &staleVersion,
+			Name:       "Latency Overview",
+			Visibility: ptr(DashboardVisibilityProject),
+			Widgets:    []DashboardWidgetInput{validDashboardMetricWidget()},
+		},
+	}); err != nil {
+		t.Fatalf("save current version: %v", err)
+	}
+	if _, err := service.SaveDashboard(ctx, DashboardSaveRequest{
+		BridgeEnvelope: admin,
+		Input: DashboardSaveInput{
+			ID:         &saved.ID,
+			Version:    &staleVersion,
+			Name:       "Latency Overview",
+			Visibility: ptr(DashboardVisibilityProject),
+			Widgets:    []DashboardWidgetInput{validDashboardMetricWidget()},
+		},
+	}); !isValidation(err) {
+		t.Fatalf("SaveDashboard stale version error = %v, want validation", err)
+	}
+}
+
+func TestDashboardDeleteForbidsBuiltinsRequiresOwnerOrAdminAndRemovesPins(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	projectID := LocalProjectID
+	admin.AuthContext.ProjectID = &projectID
+
+	if _, err := service.DeleteDashboard(ctx, DashboardDeleteRequest{
+		BridgeEnvelope: admin,
+		DashboardID:    "builtin-service-latency",
+	}); !isForbidden(err) {
+		t.Fatalf("DeleteDashboard builtin error = %v, want forbidden", err)
+	}
+
+	saved, err := service.SaveDashboard(ctx, DashboardSaveRequest{
+		BridgeEnvelope: admin,
+		Input: DashboardSaveInput{
+			Name:       "Latency Overview",
+			Visibility: ptr(DashboardVisibilityProject),
+			Widgets:    []DashboardWidgetInput{validDashboardMetricWidget()},
+		},
+	})
+	if err != nil {
+		t.Fatalf("save dashboard: %v", err)
+	}
+	if _, err := service.SetDashboardPin(ctx, DashboardPinSetRequest{
+		BridgeEnvelope: admin,
+		DashboardID:    saved.ID,
+		Pinned:         true,
+	}); err != nil {
+		t.Fatalf("pin dashboard: %v", err)
+	}
+	removed, err := service.DeleteDashboard(ctx, DashboardDeleteRequest{
+		BridgeEnvelope: admin,
+		DashboardID:    saved.ID,
+	})
+	if err != nil {
+		t.Fatalf("DeleteDashboard returned error: %v", err)
+	}
+	if !removed {
+		t.Fatalf("DeleteDashboard removed = false, want true")
+	}
+	result, err := service.ListDashboards(ctx, DashboardListRequest{BridgeEnvelope: admin})
+	if err != nil {
+		t.Fatalf("ListDashboards after delete returned error: %v", err)
+	}
+	if len(result.PinnedDashboardIDs) != 0 {
+		t.Fatalf("pinnedDashboardIds after delete = %#v, want none", result.PinnedDashboardIDs)
+	}
+}
+
+func TestDashboardPinsSetAndReorderOnlyVisibleDashboards(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	seedOrganizationMember(t, service, LocalCompanyID, "user-1", contracts.CompanyRoleUser, "")
+	projectID := LocalProjectID
+	admin.AuthContext.ProjectID = &projectID
+	user := localEnvelope("req-user", "user-1", &projectID)
+	if _, err := service.UpdateProjectMember(ctx, contracts.ProjectMemberUpdateRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      projectID,
+		UserID:         "user-1",
+		Role:           contracts.ProjectRoleViewer,
+	}); err != nil {
+		t.Fatalf("add project viewer: %v", err)
+	}
+
+	projectDashboard, err := service.SaveDashboard(ctx, DashboardSaveRequest{
+		BridgeEnvelope: admin,
+		Input: DashboardSaveInput{
+			Name:       "Team View",
+			Visibility: ptr(DashboardVisibilityProject),
+			Widgets:    []DashboardWidgetInput{validDashboardMetricWidget()},
+		},
+	})
+	if err != nil {
+		t.Fatalf("save project dashboard: %v", err)
+	}
+	personalDashboard, err := service.SaveDashboard(ctx, DashboardSaveRequest{
+		BridgeEnvelope: admin,
+		Input: DashboardSaveInput{
+			Name:       "Admin Personal",
+			Visibility: ptr(DashboardVisibilityPersonal),
+			Widgets:    []DashboardWidgetInput{validDashboardMetricWidget()},
+		},
+	})
+	if err != nil {
+		t.Fatalf("save personal dashboard: %v", err)
+	}
+
+	if _, err := service.SetDashboardPin(ctx, DashboardPinSetRequest{
+		BridgeEnvelope: user,
+		DashboardID:    personalDashboard.ID,
+		Pinned:         true,
+	}); !isForbidden(err) {
+		t.Fatalf("SetDashboardPin invisible personal error = %v, want forbidden", err)
+	}
+
+	first, err := service.SetDashboardPin(ctx, DashboardPinSetRequest{
+		BridgeEnvelope: user,
+		DashboardID:    "builtin-service-latency",
+		Pinned:         true,
+	})
+	if err != nil {
+		t.Fatalf("pin builtin: %v", err)
+	}
+	second, err := service.SetDashboardPin(ctx, DashboardPinSetRequest{
+		BridgeEnvelope: user,
+		DashboardID:    projectDashboard.ID,
+		Pinned:         true,
+	})
+	if err != nil {
+		t.Fatalf("pin project dashboard: %v", err)
+	}
+	if len(first.PinnedDashboardIDs) != 1 || len(second.PinnedDashboardIDs) != 2 {
+		t.Fatalf("pin results = %#v then %#v, want growing ordered pins", first.PinnedDashboardIDs, second.PinnedDashboardIDs)
+	}
+
+	reordered, err := service.ReorderDashboardPins(ctx, DashboardPinReorderRequest{
+		BridgeEnvelope: user,
+		DashboardIDs:   []string{projectDashboard.ID, "builtin-service-latency"},
+	})
+	if err != nil {
+		t.Fatalf("ReorderDashboardPins returned error: %v", err)
+	}
+	if got := reordered.PinnedDashboardIDs; len(got) != 2 || got[0] != projectDashboard.ID || got[1] != "builtin-service-latency" {
+		t.Fatalf("reordered pins = %#v, want project then builtin", got)
+	}
+}
+
+func TestBridgeErrorMappingUsesContractShapes(t *testing.T) {
+	forbidden := BridgeErrorFromError(forbiddenError("not allowed"))
+	if forbidden.ID != "ERR-016" || forbidden.Code != "FORBIDDEN" || forbidden.Retryable {
+		t.Fatalf("forbidden bridge error = %#v", forbidden)
+	}
+
+	validation := BridgeErrorFromError(validationError("bad request"))
+	if validation.ID != "ERR-001" || validation.Code != "VALIDATION_FAILED" || validation.Retryable {
+		t.Fatalf("validation bridge error = %#v", validation)
+	}
+
+	storage := BridgeErrorFromError(errors.New("database unavailable"))
+	if storage.ID != "ERR-006" || storage.Code != "STORAGE_UNAVAILABLE" || !storage.Retryable {
+		t.Fatalf("storage bridge error = %#v", storage)
+	}
+}
+
+func validDashboardMetricWidget() DashboardWidgetInput {
+	return DashboardWidgetInput{
+		ID:    "w-latency",
+		Title: "Latency",
+		Kind:  DashboardWidgetKindMetricTimeseries,
+		Layout: DashboardWidgetLayoutInput{
+			X: 0,
+			Y: 0,
+			W: 6,
+			H: 4,
+		},
+		Metric: &DashboardMetricWidgetInput{
+			MetricName:    "http.server.duration",
+			Aggregation:   contracts.MetricAggregationP95,
+			TimeWindow:    ptr("PT1H"),
+			Visualization: contracts.MetricChartTypeLine,
+		},
+	}
+}
+
+func defaultRetentionInputs() []contracts.RetentionRuleInput {
+	days30 := 30
+	days90 := 90
+	days365 := 365
+	return []contracts.RetentionRuleInput{
+		{DataClass: contracts.RetentionDataClassTraces, Mode: contracts.RetentionModeDelete, RetentionDays: &days30},
+		{DataClass: contracts.RetentionDataClassLogs, Mode: contracts.RetentionModeDelete, RetentionDays: &days30},
+		{DataClass: contracts.RetentionDataClassMetrics, Mode: contracts.RetentionModeDelete, RetentionDays: &days30},
+		{DataClass: contracts.RetentionDataClassAIEvals, Mode: contracts.RetentionModeDelete, RetentionDays: &days90},
+		{DataClass: contracts.RetentionDataClassDatasets, Mode: contracts.RetentionModeRetain},
+		{DataClass: contracts.RetentionDataClassScorers, Mode: contracts.RetentionModeRetain},
+		{DataClass: contracts.RetentionDataClassDashboardHistory, Mode: contracts.RetentionModeRetain},
+		{DataClass: contracts.RetentionDataClassIngestCredentialAudit, Mode: contracts.RetentionModeDelete, RetentionDays: &days365},
+	}
+}
+
+func retentionRule(policy contracts.RetentionPolicy, dataClass contracts.RetentionDataClass) contracts.RetentionRule {
+	for _, rule := range policy.Rules {
+		if rule.DataClass == dataClass {
+			return rule
+		}
+	}
+	return contracts.RetentionRule{}
+}
+
+func localEnvelope(requestID string, principal string, projectID *string) contracts.BridgeEnvelope {
+	companyID := LocalCompanyID
+	tenantID := LocalCompanyID
+	authMode := "local"
+	return contracts.BridgeEnvelope{
+		RequestID: requestID,
+		IssuedAt:  fixedNow(),
+		AuthContext: &contracts.AuthContext{
+			Mode:        "anonymous",
+			AuthMode:    &authMode,
+			PrincipalID: &principal,
+			TenantID:    &tenantID,
+			CompanyID:   &companyID,
+			ProjectID:   projectID,
+		},
+	}
+}
+
+func ssoEnvelope(requestID string, companyID string, principal string, displayName string, email string, verified bool) contracts.BridgeEnvelope {
+	tenantID := companyID
+	authMode := "sso"
+	var emailPtr *string
+	if strings.TrimSpace(email) != "" {
+		trimmed := strings.TrimSpace(email)
+		emailPtr = &trimmed
+	}
+	return contracts.BridgeEnvelope{
+		RequestID: requestID,
+		IssuedAt:  fixedNow(),
+		AuthContext: &contracts.AuthContext{
+			Mode:                   "authenticated",
+			AuthMode:               &authMode,
+			PrincipalID:            &principal,
+			PrincipalName:          &displayName,
+			PrincipalEmail:         emailPtr,
+			PrincipalEmailVerified: &verified,
+			TenantID:               &tenantID,
+			CompanyID:              &companyID,
+		},
+	}
+}
+
+func seedOrganizationMember(t *testing.T, service *Service, organizationID string, userID string, role contracts.CompanyRole, email string) {
+	t.Helper()
+	ctx := context.Background()
+	now := fixedNow()
+	user := ports.UserRecord{ID: userID, CreatedAt: now, UpdatedAt: now}
+	if strings.TrimSpace(email) != "" {
+		normalized, err := normalizeEmail(email)
+		if err != nil {
+			t.Fatalf("normalize seed email: %v", err)
+		}
+		user.Email = &normalized
+	}
+	if err := service.store.PutUser(ctx, user); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if err := service.store.PutMembership(ctx, ports.MembershipRecord{
+		UserID:         userID,
+		OrganizationID: organizationID,
+		Role:           role,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("seed membership: %v", err)
+	}
+}
+
+func portsInvitationRecordFromContract(invitation contracts.OrganizationInvitation) ports.InvitationRecord {
+	return ports.InvitationRecord{
+		ID:               invitation.ID,
+		OrganizationID:   invitation.OrganizationID,
+		Email:            invitation.Email,
+		Role:             invitation.Role,
+		Status:           invitation.Status,
+		InvitedByUserID:  invitation.InvitedByUserID,
+		AcceptedByUserID: invitation.AcceptedByUserID,
+		CreatedAt:        invitation.CreatedAt,
+		UpdatedAt:        invitation.UpdatedAt,
+		AcceptedAt:       invitation.AcceptedAt,
+		RevokedAt:        invitation.RevokedAt,
+		ExpiresAt:        invitation.ExpiresAt,
+	}
+}
+
+func fixedNow() time.Time {
+	return time.Date(2026, 5, 11, 8, 0, 0, 0, time.UTC)
+}
+
+func isForbidden(err error) bool {
+	var coded codedBridgeError
+	return errors.As(err, &coded) && coded.bridge.ID == "ERR-016"
+}
+
+func isValidation(err error) bool {
+	var coded codedBridgeError
+	return errors.As(err, &coded) && coded.bridge.ID == "ERR-001"
+}

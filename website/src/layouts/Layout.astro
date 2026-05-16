@@ -1,0 +1,103 @@
+---
+import "../styles/global.css";
+import Navigation from "../components/Navigation.astro";
+import Footer from "../components/Footer.astro";
+
+interface Props {
+  title: string;
+  description?: string;
+  ogImage?: string;
+  /** Hide the global footer (e.g. for special landing pages). */
+  hideFooter?: boolean;
+}
+
+const {
+  title,
+  description = "CloudGrid — own your observability. Open-source, OpenTelemetry-native traces, logs, metrics, dashboards, and AI agent evaluation in one self-hosted system.",
+  ogImage = "/og-image.svg",
+  hideFooter = false,
+} = Astro.props;
+
+const canonicalUrl = new URL(Astro.url.pathname, "https://cloudgrid.dev").toString();
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalUrl} />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content={canonicalUrl} />
+    <meta property="twitter:title" content={title} />
+    <meta property="twitter:description" content={description} />
+    <meta property="twitter:image" content={ogImage} />
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <!--
+      Theme bootstrap. Runs before paint to avoid a flash. Reads the saved
+      preference from localStorage; otherwise follows OS preference.
+    -->
+    <script is:inline>
+      (function () {
+        try {
+          var saved = localStorage.getItem("cg-theme");
+          var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var theme = saved || (prefersDark ? "dark" : "light");
+          if (theme === "dark") {
+            document.documentElement.classList.add("dark");
+          } else {
+            document.documentElement.classList.remove("dark");
+          }
+        } catch (_e) {
+          /* localStorage may be blocked — fall back to OS default. */
+        }
+      })();
+    </script>
+
+    <!-- Reveal-on-scroll observer -->
+    <script is:inline>
+      document.addEventListener("DOMContentLoaded", function () {
+        var observer = new IntersectionObserver(
+          function (entries) {
+            entries.forEach(function (entry) {
+              if (entry.isIntersecting) entry.target.classList.add("visible");
+            });
+          },
+          { threshold: 0.08, rootMargin: "0px 0px -40px 0px" }
+        );
+        document.querySelectorAll(".reveal").forEach(function (el) {
+          observer.observe(el);
+        });
+      });
+    </script>
+  </head>
+  <body class="min-h-screen bg-page text-text antialiased">
+    <Navigation />
+    <main>
+      <slot />
+    </main>
+    {!hideFooter && <Footer />}
+  </body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-MET-001",
+  "title": "MetricDescriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "tenantId", "projectId", "name", "kind", "unit", "firstSeenAt", "lastSeenAt"],
+  "properties": {
+    "id": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "projectId": { "type": "string" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "unit": { "type": "string" },
+    "kind": {
+      "type": "string",
+      "enum": ["gauge", "sum", "histogram", "exponential_histogram", "summary"]
+    },
+    "aggregationTemporality": { "type": "string", "enum": ["unspecified", "delta", "cumulative"] },
+    "monotonic": { "type": "boolean" },
+    "attributeKeys": { "type": "array", "items": { "type": "string" } },
+    "firstSeenAt": { "type": "string", "format": "date-time" },
+    "lastSeenAt": { "type": "string", "format": "date-time" }
+  }
+}

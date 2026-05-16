@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-003",
+  "title": "ToolCall",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "traceId", "spanId", "toolName", "latencyMs", "status", "synthetic"],
+  "properties": {
+    "id": { "type": "string" },
+    "traceId": { "type": "string" },
+    "spanId": { "type": "string" },
+    "agentRunId": { "type": "string" },
+    "toolName": { "type": "string" },
+    "toolCallId": { "type": "string" },
+    "parametersDigest": { "type": "string" },
+    "resultDigest": { "type": "string" },
+    "latencyMs": { "type": "number", "minimum": 0 },
+    "status": { "type": "string", "enum": ["ok", "error", "unset"] },
+    "synthetic": { "type": "boolean" }
+  }
+}

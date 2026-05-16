@@ -1,0 +1,114 @@
+VIS-001:
+  default: from-user
+  facts:
+    success_signals: inferred-draft
+ARC-001:
+  default: inferred-draft
+STK-001:
+  default: from-user
+  facts:
+    runtime.versions: inferred-draft
+    delivery.ci: inferred-draft
+    auth.identity_provider: inferred-draft
+CNV-001:
+  default: inferred-draft
+DSY-001:
+  default: from-user
+  facts:
+    tokens: inferred-draft
+DOM-001:
+  default: inferred-draft
+DOM-002:
+  default: inferred-draft
+DOM-003:
+  default: inferred-draft
+DOM-004:
+  default: inferred-draft
+DOM-005:
+  default: inferred-draft
+CAP-ING-001:
+  default: inferred-draft
+  facts:
+    title: from-user
+    implements.api: from-user
+CAP-ING-002:
+  default: inferred-draft
+  facts:
+    title: from-user
+    implements.api: from-user
+CAP-OBS-001:
+  default: inferred-draft
+CAP-OBS-002:
+  default: inferred-draft
+CAP-OBS-003:
+  default: inferred-draft
+CAP-OBS-004:
+  default: inferred-draft
+CAP-OBS-005:
+  default: research-informed
+CAP-OBS-006:
+  default: user-directed
+FLW-OBS-002:
+  default: user-directed
+CAP-FE-006:
+  default: research-informed
+TEC-FE-003:
+  default: research-informed
+REV-TRACE-UX-001:
+  default: research
+TEC-FE-004:
+  default: implementation-breakdown
+TEC-FE-005:
+  default: research-informed
+TEC-BE-006:
+  default: user-directed
+TEC-BE-007:
+  default: user-directed
+TEC-BE-008:
+  default: user-directed
+NFR-007:
+  default: user-directed
+ENT-010:
+  default: research-informed
+ENT-011:
+  default: inferred-draft
+ENT-012:
+  default: research-informed
+ENT-013:
+  default: user-directed
+TEC-BE-009:
+  default: inferred-standard
+TEC-BE-010:
+  default: inferred-standard
+TEC-BE-011:
+  default: user-directed
+TEC-BE-012:
+  default: research-informed
+REV-006:
+  default: research-informed
+  facts:
+    product_direction: from-user
+    market_patterns: research-informed
+DOM-006:
+  default: from-user
+  facts:
+    ai_eval_flywheel: research-informed
+    model_fine_tuning_out_of_scope: from-user
+    per_project_ai_settings: from-user
+TEC-BE-024:
+  default: from-user
+  facts:
+    raw_provider_secrets_out_of_cloudgrid_v1: inferred-from-boundaries
+TEC-FE-008:
+  default: from-user
+  facts:
+    layout_rules: design-contract
+    flows: research-informed
+CAP-AIE-006:
+  default: from-user
+CAP-AIE-007:
+  default: from-user
+CAP-AIE-008:
+  default: from-user
+FLW-AIE-004:
+  default: from-user

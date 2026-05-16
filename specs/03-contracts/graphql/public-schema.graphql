@@ -1,0 +1,1834 @@
+"""
+Public GraphQL contract exposed only by the TypeScript BFF.
+Resolvers must call NATS request/reply subjects and must not import SurrealDB clients or Go storage adapters.
+Aggregate, facet, correlation, trace-structure, and span-enrichment fields are authoritative backend-derived view models.
+"""
+
+scalar DateTime
+scalar JSON
+
+type Query {
+  viewer: Viewer
+  organizations: [Organization!]!
+  organization(id: ID!): Organization
+  organizationMembers(organizationId: ID!): [OrganizationMember!]!
+  organizationInvitations(organizationId: ID!): [OrganizationInvitation!]!
+  projects(input: ProjectListInput = {}): [Project!]!
+  project(id: ID!): Project
+  projectMembers(projectId: ID!): [ProjectMember!]!
+  traces(input: TraceSearchInput = {}): TraceSearchResult!
+  trace(id: ID!, input: TraceDetailInput = {}): TraceDetail
+  logs(input: LogSearchInput = {}): LogSearchResult!
+  telemetryFacets(input: TelemetryFacetInput = {}): TelemetryFacetResult!
+  ingestCredentials(projectId: ID!): IngestCredentialListResult!
+  metricNames(input: MetricNameSearchInput = {}): MetricNameSearchResult!
+  metricSeries(input: MetricSeriesInput!): MetricSeriesResult!
+  dashboards(input: DashboardListInput = {}): DashboardListResult!
+  retentionPolicy(projectId: ID!): RetentionPolicy!
+  alertRules(projectId: ID!, input: AlertRuleSearchInput): [AlertRule!]!
+  alertHistory(projectId: ID!, ruleId: ID, first: Int = 50, after: String): AlertEventConnection!
+  alertSilences(projectId: ID!, ruleId: ID): [AlertSilence!]!
+  agentRuns(input: AgentRunSearchInput = {}): AgentRunSearchResult!
+  agentRun(id: ID!): AgentRun
+  datasets(input: DatasetSearchInput = {}): DatasetSearchResult!
+  dataset(id: ID!): Dataset
+  scorers(input: ScorerSearchInput = {}): ScorerSearchResult!
+  experiments(input: ExperimentSearchInput = {}): ExperimentSearchResult!
+  experimentRun(id: ID!): ExperimentRun
+  evalResults(input: EvalResultSearchInput = {}): EvalResultSearchResult!
+  annotationQueue(input: AnnotationQueueSearchInput = {}): AnnotationQueueResult!
+  projectAiSettings(projectId: ID!): ProjectAiSettings!
+  aiQualityOverview(input: AiQualityOverviewInput!): AiQualityOverview!
+}
+
+type Mutation {
+  selectProject(projectId: ID!): Viewer!
+  createProject(input: CreateProjectInput!): Project!
+  updateProject(id: ID!, input: UpdateProjectInput!): Project!
+  inviteOrganizationMember(input: InviteOrganizationMemberInput!): OrganizationInvitation!
+  revokeOrganizationInvitation(id: ID!): OrganizationInvitation!
+  updateOrganizationMember(input: UpdateOrganizationMemberInput!): OrganizationMember!
+  removeOrganizationMember(input: RemoveOrganizationMemberInput!): Boolean!
+  updateProjectMember(projectId: ID!, userId: ID!, role: ProjectRole!): ProjectMember!
+  removeProjectMember(projectId: ID!, userId: ID!): Boolean!
+  createIngestCredential(input: CreateIngestCredentialInput!): CreatedIngestCredential!
+  revokeIngestCredential(id: ID!): IngestCredential!
+  saveDashboard(input: SaveDashboardInput!): Dashboard!
+  deleteDashboard(id: ID!): Boolean!
+  setDashboardPinned(input: SetDashboardPinnedInput!): DashboardPreferences!
+  reorderDashboardPins(input: ReorderDashboardPinsInput!): DashboardPreferences!
+  updateRetentionPolicy(input: UpdateRetentionPolicyInput!): RetentionPolicy!
+  createAlertRule(input: CreateAlertRuleInput!): AlertRule!
+  updateAlertRule(input: UpdateAlertRuleInput!): AlertRule!
+  deleteAlertRule(id: ID!): Boolean!
+  createAlertSilence(input: CreateAlertSilenceInput!): AlertSilence!
+  deleteAlertSilence(id: ID!): Boolean!
+  createDataset(input: CreateDatasetInput!): Dataset!
+  appendDatasetItems(input: AppendDatasetItemsInput!): Dataset!
+  promoteSpanToDatasetItem(input: PromoteSpanToDatasetItemInput!): DatasetItem!
+  createScorer(input: CreateScorerInput!): Scorer!
+  createExperiment(input: CreateExperimentInput!): Experiment!
+  startExperimentRun(input: StartExperimentRunInput!): ExperimentRun!
+  cancelExperimentRun(id: ID!): ExperimentRun!
+  startOptimizationRun(input: StartOptimizationRunInput!): ExperimentRun!
+  promotePromptVersion(input: PromotePromptVersionInput!): PromptVersion!
+  resolveAnnotation(input: ResolveAnnotationInput!): AnnotationQueueItem!
+  updateProjectAiSettings(input: UpdateProjectAiSettingsInput!): ProjectAiSettings!
+}
+
+type Subscription {
+  liveTraces(input: LiveTraceInput = {}): LiveTraceEvent!
+  liveExperimentRun(input: LiveExperimentRunInput!): ExperimentRunEvent!
+}
+
+input ProjectListInput {
+  organizationId: ID
+  status: ProjectStatus
+}
+
+input CreateProjectInput {
+  organizationId: ID!
+  name: String!
+  slug: String!
+}
+
+input UpdateProjectInput {
+  name: String
+  status: ProjectStatus
+}
+
+input UpdateOrganizationMemberInput {
+  organizationId: ID!
+  userId: ID!
+  role: CompanyRole!
+}
+
+input InviteOrganizationMemberInput {
+  organizationId: ID!
+  email: String!
+}
+
+input RemoveOrganizationMemberInput {
+  organizationId: ID!
+  userId: ID!
+}
+
+input UpdateRetentionPolicyInput {
+  projectId: ID!
+  expectedVersion: Int!
+  rules: [RetentionRuleInput!]!
+}
+
+input RetentionRuleInput {
+  dataClass: RetentionDataClass!
+  mode: RetentionMode!
+  retentionDays: Int
+  softDeleteDays: Int
+}
+
+input CreateAlertRuleInput {
+  projectId: ID!
+  name: String!
+  enabled: Boolean!
+  kind: AlertRuleKind!
+  severity: AlertSeverity!
+  query: JSON!
+  condition: JSON!
+  evaluationWindowSeconds: Int!
+  pendingForSeconds: Int!
+  cooldownSeconds: Int!
+  notificationAdapterIds: [ID!]!
+}
+
+input UpdateAlertRuleInput {
+  id: ID!
+  name: String
+  enabled: Boolean
+  kind: AlertRuleKind
+  severity: AlertSeverity
+  query: JSON
+  condition: JSON
+  evaluationWindowSeconds: Int
+  pendingForSeconds: Int
+  cooldownSeconds: Int
+  notificationAdapterIds: [ID!]
+  expectedVersion: Int!
+}
+
+input AlertRuleSearchInput {
+  search: String
+  status: AlertState
+  severity: AlertSeverity
+  signal: AlertSignal
+  enabled: Boolean
+  sort: AlertRuleSort = updatedAt_desc
+}
+
+input CreateAlertSilenceInput {
+  projectId: ID!
+  ruleId: ID!
+  reason: String!
+  startsAt: DateTime!
+  endsAt: DateTime!
+}
+
+input CreateIngestCredentialInput {
+  projectId: ID!
+  title: String!
+}
+
+input TraceSearchInput {
+  service: String
+  query: String
+  operationName: String
+  spanName: String
+  from: DateTime
+  to: DateTime
+  status: TraceStatus
+  minDurationMs: Float
+  maxDurationMs: Float
+  attributes: [AttributeFilterInput!]
+  sort: TraceSort = startedAt_desc
+  limit: Int = 50
+  cursor: String
+}
+
+input LiveTraceInput {
+  service: String
+  query: String
+  operationName: String
+  spanName: String
+  from: DateTime
+  status: TraceStatus
+  minDurationMs: Float
+  maxDurationMs: Float
+  attributes: [AttributeFilterInput!]
+  limit: Int = 100
+}
+
+input TraceDetailInput {
+  selectedSpanId: ID
+  spanQuery: String
+  spanService: String
+  spanName: String
+  spanStatus: TraceStatus
+  minSpanDurationMs: Float
+  maxSpanDurationMs: Float
+  attributes: [AttributeFilterInput!]
+  showMatchesOnly: Boolean = false
+  relatedLogLimit: Int = 50
+  logSearch: String
+}
+
+input LogSearchInput {
+  service: String
+  traceId: ID
+  spanId: ID
+  severity: String
+  from: DateTime
+  to: DateTime
+  search: String
+  attributes: [AttributeFilterInput!]
+  sort: LogSort = timestamp_desc
+  limit: Int = 50
+  cursor: String
+}
+
+input AttributeFilterInput {
+  key: String!
+  operator: AttributeFilterOperator!
+  value: JSON
+}
+
+input TelemetryFacetInput {
+  from: DateTime
+  to: DateTime
+  service: String
+  search: String
+  limit: Int = 50
+}
+
+input MetricNameSearchInput {
+  query: String
+  service: String
+  from: DateTime
+  to: DateTime
+  limit: Int = 50
+}
+
+input MetricSeriesInput {
+  metricName: String!
+  from: DateTime!
+  to: DateTime!
+  interval: String
+  aggregation: MetricAggregation!
+  groupBy: [String!] = []
+  filters: [AttributeFilterInput!] = []
+  limit: Int = 1000
+}
+
+input DashboardListInput {
+  includeBuiltins: Boolean = true
+  query: String
+  tag: String
+  visibility: DashboardVisibility
+  pinnedOnly: Boolean = false
+}
+
+input SaveDashboardInput {
+  id: ID
+  version: Int
+  name: String!
+  description: String
+  tags: [String!] = []
+  visibility: DashboardSaveVisibility = personal
+  defaultTimeWindow: String = "PT1H"
+  widgets: [DashboardWidgetInput!]!
+}
+
+input DashboardWidgetInput {
+  id: ID!
+  title: String!
+  description: String
+  kind: DashboardWidgetKind!
+  layout: DashboardWidgetLayoutInput!
+  metric: DashboardMetricWidgetInput
+  logs: DashboardLogWidgetInput
+  traces: DashboardTraceWidgetInput
+  liveTraces: DashboardLiveTraceWidgetInput
+}
+
+input DashboardWidgetLayoutInput {
+  x: Int!
+  y: Int!
+  w: Int!
+  h: Int!
+  minW: Int = 3
+  minH: Int = 2
+}
+
+input DashboardMetricWidgetInput {
+  metricName: String!
+  aggregation: MetricAggregation!
+  groupBy: [String!] = []
+  filters: [AttributeFilterInput!] = []
+  timeWindow: String = "PT1H"
+  interval: String
+  visualization: MetricChartType!
+  legend: Boolean = true
+  maxSeries: Int = 20
+  thresholds: [DashboardThresholdInput!] = []
+}
+
+input DashboardLogWidgetInput {
+  service: String
+  traceId: ID
+  spanId: ID
+  severity: String
+  search: String
+  attributes: [AttributeFilterInput!] = []
+  sort: LogSort = timestamp_desc
+  limit: Int = 50
+  columns: [DashboardLogColumn!] = [timestamp, severity, service, trace_span, body]
+}
+
+input DashboardTraceWidgetInput {
+  service: String
+  query: String
+  operationName: String
+  spanName: String
+  status: TraceStatus
+  minDurationMs: Float
+  maxDurationMs: Float
+  attributes: [AttributeFilterInput!] = []
+  sort: TraceSort = startedAt_desc
+  limit: Int = 50
+  columns: [DashboardTraceColumn!] = [started_at, status, service, operation, duration]
+}
+
+input DashboardLiveTraceWidgetInput {
+  service: String
+  query: String
+  operationName: String
+  spanName: String
+  status: TraceStatus
+  minDurationMs: Float
+  maxDurationMs: Float
+  attributes: [AttributeFilterInput!] = []
+  limit: Int = 100
+}
+
+input DashboardThresholdInput {
+  value: Float!
+  severity: DashboardThresholdSeverity!
+  label: String
+}
+
+input SetDashboardPinnedInput {
+  dashboardId: ID!
+  pinned: Boolean!
+}
+
+input ReorderDashboardPinsInput {
+  dashboardIds: [ID!]!
+}
+
+input AgentRunSearchInput {
+  agentId: String
+  agentName: String
+  status: AgentRunStatus
+  from: DateTime
+  to: DateTime
+  experimentRunId: ID
+  query: String
+  limit: Int = 50
+  cursor: String
+}
+
+input DatasetSearchInput {
+  query: String
+  tag: String
+  split: DatasetSplit
+  reviewStatus: DatasetReviewStatus
+  limit: Int = 50
+  cursor: String
+}
+
+input DatasetItemSearchInput {
+  query: String
+  sourceTraceId: ID
+  split: DatasetSplit
+  reviewStatus: DatasetReviewStatus
+  synthetic: Boolean
+  limit: Int = 50
+  cursor: String
+}
+
+input ScorerSearchInput {
+  kind: ScorerKind
+  query: String
+  limit: Int = 50
+  cursor: String
+}
+
+input ExperimentSearchInput {
+  datasetId: ID
+  status: ExperimentRunStatus
+  split: DatasetSplit
+  baselineRunId: ID
+  query: String
+  limit: Int = 50
+  cursor: String
+}
+
+input EvalResultSearchInput {
+  scorerId: ID
+  experimentRunId: ID
+  targetKind: EvalTargetKind
+  targetId: ID
+  passed: Boolean
+  limit: Int = 50
+  cursor: String
+}
+
+input AnnotationQueueSearchInput {
+  status: AnnotationStatus
+  reason: String
+  assignedTo: String
+  scorerId: ID
+  targetKind: EvalTargetKind
+  limit: Int = 50
+  cursor: String
+}
+
+input CreateDatasetInput {
+  name: String!
+  description: String
+  tags: [String!] = []
+}
+
+input AppendDatasetItemsInput {
+  datasetId: ID!
+  items: [DatasetItemInput!]!
+}
+
+input DatasetItemInput {
+  input: JSON!
+  expected: JSON
+  metadata: JSON = {}
+  sourceTraceId: ID
+  sourceSpanId: ID
+  split: DatasetSplit = dev
+  reviewStatus: DatasetReviewStatus = unreviewed
+}
+
+input PromoteSpanToDatasetItemInput {
+  datasetId: ID!
+  traceId: ID!
+  spanId: ID
+  input: JSON
+  expected: JSON
+  metadata: JSON = {}
+  split: DatasetSplit = dev
+  reviewStatus: DatasetReviewStatus = unreviewed
+}
+
+input CreateScorerInput {
+  name: String!
+  kind: ScorerKind!
+  definition: JSON!
+  judgeModelRef: String
+}
+
+input CreateExperimentInput {
+  name: String!
+  datasetId: ID!
+  datasetVersion: Int!
+  splitSelector: DatasetSplitSelectorInput = { splits: [validation] }
+  scorerIds: [ID!]!
+  solverRef: JSON!
+  baselineRef: JSON
+  promptVersionRefs: [ID!] = []
+  skillSnapshotRefs: [ID!] = []
+  toolSnapshotRefs: [ID!] = []
+  providerProfileRefs: [ID!] = []
+  tags: [String!] = []
+}
+
+input StartExperimentRunInput {
+  experimentId: ID!
+  solverRef: JSON
+  splitSelector: DatasetSplitSelectorInput
+}
+
+input StartOptimizationRunInput {
+  experimentId: ID!
+  optimizerKind: OptimizerKind!
+  basePromptVersionId: ID!
+  splitSelector: DatasetSplitSelectorInput = { splits: [optimization, validation] }
+  config: JSON = {}
+}
+
+input PromotePromptVersionInput {
+  promptVersionId: ID!
+  tag: String!
+}
+
+input ResolveAnnotationInput {
+  annotationQueueItemId: ID!
+  datasetItemId: ID
+  status: AnnotationStatus!
+}
+
+input LiveExperimentRunInput {
+  experimentRunId: ID!
+}
+
+input DatasetSplitSelectorInput {
+  splits: [DatasetSplit!]!
+  reviewedOnly: Boolean = true
+  includeSynthetic: Boolean = false
+}
+
+input AiQualityOverviewInput {
+  projectId: ID!
+  from: DateTime
+  to: DateTime
+  agentName: String
+  environment: String
+  service: String
+  route: String
+  toolName: String
+  model: String
+  policyId: ID
+  scorerId: ID
+  limit: Int = 50
+}
+
+input UpdateProjectAiSettingsInput {
+  projectId: ID!
+  enabled: Boolean!
+  defaultProviderProfileId: ID
+  defaultJudgeProfileId: ID
+  defaultOptimizerProfileId: ID
+  defaultEmbeddingProfileId: ID
+  providerProfiles: [ProviderProfileInput!] = []
+  modelAliases: [ModelAliasInput!] = []
+  onlinePolicies: [OnlineEvaluationPolicyInput!] = []
+  budget: AiEvalBudgetInput!
+  sampling: AiEvalSamplingInput!
+  datasetDefaults: DatasetDefaultsInput!
+  expectedVersion: Int!
+}
+
+input ProviderProfileInput {
+  id: ID
+  label: String!
+  providerKind: ProviderKind!
+  baseUrl: String
+  credentialRef: String
+  models: JSON!
+  timeoutMs: Int = 30000
+  maxConcurrency: Int
+  disabled: Boolean = false
+}
+
+input ModelAliasInput {
+  id: ID
+  name: String!
+  providerProfileId: ID!
+  model: String!
+  purpose: ModelPurpose!
+  parameters: JSON = {}
+}
+
+input OnlineEvaluationPolicyInput {
+  id: ID
+  enabled: Boolean!
+  name: String!
+  target: JSON!
+  scorerIds: [ID!]!
+  sampleRate: Float!
+  maxDailyRuns: Int
+  annotationRules: [AnnotationRuleInput!] = []
+}
+
+input AnnotationRuleInput {
+  reason: String!
+  threshold: Float
+  assignTo: String
+  datasetId: ID
+}
+
+input AiEvalBudgetInput {
+  dailyUsd: Float!
+  perRunUsd: Float
+  deterministicOnly: Boolean = false
+}
+
+input AiEvalSamplingInput {
+  defaultOnlineSampleRate: Float!
+  maxOnlineSampleRate: Float!
+  maxConcurrentExperimentItems: Int!
+  maxConcurrentOptimizationCandidates: Int!
+}
+
+input DatasetDefaultsInput {
+  splitAllocation: JSON!
+  smallDatasetReviewedThreshold: Int = 30
+  requireReviewForRegression: Boolean = true
+}
+
+enum AttributeFilterOperator {
+  eq
+  neq
+  contains
+  exists
+  gt
+  gte
+  lt
+  lte
+  in
+  not_in
+}
+
+enum TraceSort {
+  startedAt_desc
+  startedAt_asc
+  duration_desc
+  duration_asc
+  errorFirst
+}
+
+enum LogSort {
+  timestamp_desc
+  timestamp_asc
+  severity_desc
+}
+
+enum TraceStatus {
+  ok
+  error
+  unset
+}
+
+enum LogCorrelation {
+  trace
+  span
+  contextual
+  none
+}
+
+enum MetricKind {
+  gauge
+  sum
+  histogram
+  exponential_histogram
+  summary
+}
+
+enum MetricAggregation {
+  avg
+  sum
+  min
+  max
+  count
+  rate
+  p50
+  p90
+  p95
+  p99
+}
+
+enum MetricChartType {
+  line
+  area
+  bar
+  pie
+  stat
+  table
+}
+
+enum DashboardVisibility {
+  builtin
+  project
+  personal
+}
+
+enum DashboardSaveVisibility {
+  project
+  personal
+}
+
+enum DashboardWidgetKind {
+  metric_timeseries
+  metric_stat
+  metric_table
+  log_table
+  trace_table
+  live_trace_table
+}
+
+enum DashboardThresholdSeverity {
+  info
+  warning
+  error
+}
+
+enum DashboardLogColumn {
+  timestamp
+  observed_timestamp
+  severity
+  service
+  trace_span
+  body
+  attributes
+}
+
+enum DashboardTraceColumn {
+  started_at
+  status
+  service
+  operation
+  duration
+  span_count
+  log_count
+}
+
+enum LiveTraceEventType {
+  snapshot
+  added
+  updated
+  heartbeat
+}
+
+enum CompanyRole {
+  admin
+  user
+}
+
+enum OrganizationInvitationStatus {
+  pending
+  accepted
+  revoked
+  expired
+}
+
+enum ProjectRole {
+  viewer
+  editor
+  admin
+}
+
+enum ProjectMemberSource {
+  direct
+  company_admin
+  local_personal
+}
+
+enum ProjectStatus {
+  active
+  read_only
+  disabled
+}
+
+enum RetentionDataClass {
+  TRACES
+  LOGS
+  METRICS
+  AI_EVALS
+  DATASETS
+  SCORERS
+  DASHBOARD_HISTORY
+  INGEST_CREDENTIAL_AUDIT
+}
+
+enum RetentionMode {
+  retain
+  delete
+  soft_delete_then_delete
+}
+
+enum AlertRuleKind {
+  METRIC_THRESHOLD
+  METRIC_ABSENCE
+  LOG_MATCH
+  LOG_COUNT
+  TRACE_MATCH
+  TRACE_COUNT
+  TRACE_LATENCY
+  TRACE_ERROR
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+enum AlertState {
+  OK
+  PENDING
+  FIRING
+  RESOLVED
+  SILENCED
+  ERROR
+}
+
+enum AlertSignal {
+  METRIC
+  LOG
+  TRACE
+}
+
+enum AlertRuleSort {
+  updatedAt_desc
+  updatedAt_asc
+  createdAt_desc
+  createdAt_asc
+  name_asc
+  name_desc
+  severity_asc
+  severity_desc
+  kind_asc
+  kind_desc
+  enabled_asc
+  enabled_desc
+}
+
+enum AgentRunStatus {
+  ok
+  error
+  unset
+  cancelled
+}
+
+enum ScorerKind {
+  deterministic
+  schema_json
+  semantic
+  rag
+  llm_judge
+  tool_correctness
+  trajectory
+  human
+}
+
+enum EvalTargetKind {
+  agentRun
+  span
+  datasetItemRun
+}
+
+enum ExperimentRunStatus {
+  queued
+  running
+  cancelled
+  failed
+  finished
+}
+
+enum AnnotationStatus {
+  open
+  in_review
+  resolved
+  dismissed
+}
+
+enum OptimizerKind {
+  bootstrap_fewshot
+  critic_mutate_judge_pick
+  mipro_v2
+  reflective_text_gradient
+}
+
+enum DatasetSplit {
+  dev
+  optimization
+  validation
+  regression
+  holdout
+}
+
+enum DatasetReviewStatus {
+  unreviewed
+  reviewed
+  rejected
+}
+
+enum DatasetHealthStatus {
+  ready
+  needs_review
+  low_confidence
+  leakage_warning
+  invalid
+}
+
+enum ProviderKind {
+  openai
+  anthropic
+  azure_openai
+  google_vertex
+  bedrock
+  openai_compatible
+  local_harness
+  custom_harness
+}
+
+enum ModelPurpose {
+  judge
+  optimizer
+  embedding
+  replay
+  default
+}
+
+enum ExperimentRunEventType {
+  started
+  item_completed
+  progress
+  heartbeat
+  cancelled
+  failed
+  finished
+}
+
+type Viewer {
+  user: User!
+  organizations: [Organization!]!
+  selectedProject: Project
+}
+
+type User {
+  id: ID!
+  displayName: String
+  email: String
+}
+
+type Organization {
+  id: ID!
+  name: String!
+  slug: String!
+  role: CompanyRole!
+  projects: [Project!]!
+}
+
+type Project {
+  id: ID!
+  organizationId: ID!
+  name: String!
+  slug: String!
+  status: ProjectStatus!
+  telemetry: ProjectTelemetryOverview!
+}
+
+type ProjectTelemetryOverview {
+  lastIngestAt: DateTime
+  traceCount: Int!
+  logCount: Int!
+  metricCount: Int!
+  serviceCount: Int!
+}
+
+type IngestCredentialListResult {
+  items: [IngestCredential!]!
+}
+
+type IngestCredential {
+  id: ID!
+  projectId: ID!
+  title: String!
+  scopes: [String!]!
+  secretPreview: String!
+  createdAt: DateTime!
+  lastUsedAt: DateTime
+  revokedAt: DateTime
+  createdByUserId: ID!
+}
+
+type CreatedIngestCredential {
+  credential: IngestCredential!
+  secret: String!
+}
+
+type OrganizationMember {
+  user: User!
+  role: CompanyRole!
+}
+
+type OrganizationInvitation {
+  id: ID!
+  organizationId: ID!
+  email: String!
+  role: CompanyRole!
+  status: OrganizationInvitationStatus!
+  invitedByUserId: ID!
+  acceptedByUserId: ID
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  acceptedAt: DateTime
+  revokedAt: DateTime
+  expiresAt: DateTime
+}
+
+type ProjectMember {
+  projectId: ID!
+  userId: ID!
+  email: String
+  displayName: String
+  role: ProjectRole!
+  effectiveRole: ProjectRole!
+  source: ProjectMemberSource!
+  createdAt: DateTime!
+  createdByUserId: ID!
+  updatedAt: DateTime!
+  updatedByUserId: ID!
+}
+
+type RetentionPolicy {
+  projectId: ID!
+  rules: [RetentionRule!]!
+  updatedAt: DateTime!
+  updatedByUserId: ID!
+  version: Int!
+}
+
+type RetentionRule {
+  dataClass: RetentionDataClass!
+  mode: RetentionMode!
+  retentionDays: Int
+  softDeleteDays: Int
+  updatedAt: DateTime!
+  updatedByUserId: ID!
+  version: Int!
+}
+
+type AlertRule {
+  id: ID!
+  projectId: ID!
+  name: String!
+  enabled: Boolean!
+  kind: AlertRuleKind!
+  severity: AlertSeverity!
+  query: JSON!
+  condition: JSON!
+  evaluationWindowSeconds: Int!
+  pendingForSeconds: Int!
+  cooldownSeconds: Int!
+  notificationAdapterIds: [ID!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  updatedByUserId: ID!
+  version: Int!
+}
+
+type AlertEvent {
+  id: ID!
+  projectId: ID!
+  ruleId: ID!
+  instanceId: ID!
+  state: AlertState!
+  severity: AlertSeverity!
+  summary: String!
+  deduplicationKey: String!
+  startedAt: DateTime!
+  endedAt: DateTime
+  createdAt: DateTime!
+  evidenceTraceId: ID
+  evidenceSpanId: ID
+  evidenceLogId: ID
+  evidenceMetricName: String
+}
+
+type AlertSilence {
+  id: ID!
+  projectId: ID!
+  ruleId: ID!
+  reason: String!
+  startsAt: DateTime!
+  endsAt: DateTime!
+  createdAt: DateTime!
+  createdByUserId: ID!
+  active: Boolean!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
+}
+
+type AlertEventConnection {
+  items: [AlertEvent!]!
+  pageInfo: PageInfo!
+}
+
+type Trace {
+  id: ID!
+  serviceName: String
+  startedAt: DateTime!
+  endedAt: DateTime
+  durationMs: Float
+  rootSpanId: ID
+  status: TraceStatus
+  attributes: JSON!
+}
+
+type TraceSummary {
+  id: ID!
+  serviceName: String
+  operationName: String
+  startedAt: DateTime!
+  endedAt: DateTime
+  durationMs: Float
+  rootSpanId: ID
+  status: TraceStatus
+  attributes: JSON!
+  spanCount: Int!
+  errorSpanCount: Int!
+  logCount: Int!
+  serviceCount: Int!
+}
+
+type Span {
+  id: ID!
+  traceId: ID!
+  parentSpanId: ID
+  name: String!
+  kind: String
+  serviceName: String
+  startedAt: DateTime!
+  endedAt: DateTime!
+  durationMs: Float!
+  status: TraceStatus
+  attributes: JSON!
+  depth: Int!
+  childCount: Int!
+  hasError: Boolean!
+  isCriticalPath: Boolean!
+  isOrphan: Boolean!
+  isServiceEntry: Boolean!
+  exceptionCount: Int!
+  events: [SpanEvent!]!
+  links: [SpanLink!]!
+  exceptions: [SpanException!]!
+}
+
+type SpanEvent {
+  name: String!
+  timestamp: DateTime!
+  attributes: JSON!
+}
+
+type SpanLink {
+  traceId: ID!
+  spanId: ID!
+  traceState: String
+  attributes: JSON!
+  direction: SpanLinkDirection!
+}
+
+enum SpanLinkDirection {
+  forward
+  backward
+  unknown
+}
+
+type SpanException {
+  timestamp: DateTime!
+  type: String
+  message: String
+  stacktrace: String
+  escaped: Boolean
+  attributes: JSON!
+  frames: [StackTraceFrame!]!
+}
+
+type StackTraceFrame {
+  raw: String!
+  functionName: String
+  fileName: String
+  lineNumber: Int
+  columnNumber: Int
+  language: String
+}
+
+type LogEvent {
+  id: ID!
+  traceId: ID
+  spanId: ID
+  serviceName: String
+  severityText: String
+  severityNumber: Int
+  body: JSON!
+  timestamp: DateTime!
+  observedTimestamp: DateTime
+  attributes: JSON!
+  correlation: LogCorrelation!
+}
+
+type LiveTraceEvent {
+  type: LiveTraceEventType!
+  seq: Int!
+  receivedAt: DateTime!
+  trace: TraceSummary
+}
+
+type TraceSearchResult {
+  items: [TraceSummary!]!
+  nextCursor: String
+}
+
+type TraceDetail {
+  trace: Trace!
+  structure: TraceStructure!
+  spans: [Span!]!
+  selectedSpan: Span
+  spanMatches: [SpanMatch!]!
+  logs: [LogEvent!]!
+  relatedLogs: [LogEvent!]!
+  warnings: [TraceWarning!]!
+}
+
+type LogSearchResult {
+  items: [LogEvent!]!
+  nextCursor: String
+}
+
+type TraceStructure {
+  rootSpanIds: [ID!]!
+  orphanSpanIds: [ID!]!
+  criticalPathSpanIds: [ID!]!
+  maxDepth: Int!
+  serviceBreakdown: [ServiceTraceBreakdown!]!
+}
+
+type ServiceTraceBreakdown {
+  serviceName: String!
+  spanCount: Int!
+  errorSpanCount: Int!
+  durationMs: Float!
+  percentOfTraceDuration: Float!
+}
+
+type SpanMatch {
+  spanId: ID!
+  reason: SpanMatchReason!
+  fields: [String!]!
+}
+
+enum SpanMatchReason {
+  selected
+  search
+  filter
+  error
+  criticalPath
+}
+
+type TraceWarning {
+  code: TraceWarningCode!
+  message: String!
+  spanId: ID
+}
+
+enum TraceWarningCode {
+  missingRoot
+  missingParent
+  clockSkew
+  partialTrace
+  largeTracePreview
+}
+
+type TelemetryFacetResult {
+  services: [FacetValue!]!
+  operations: [FacetValue!]!
+  spanNames: [FacetValue!]!
+  severities: [FacetValue!]!
+  attributeKeys: [FacetValue!]!
+}
+
+type FacetValue {
+  value: String!
+  count: Int!
+}
+
+type MetricDescriptor {
+  id: ID!
+  name: String!
+  description: String
+  unit: String!
+  kind: MetricKind!
+  aggregationTemporality: String
+  monotonic: Boolean
+  attributeKeys: [String!]!
+  firstSeenAt: DateTime!
+  lastSeenAt: DateTime!
+}
+
+type MetricNameSearchResult {
+  items: [MetricDescriptor!]!
+}
+
+type MetricSeriesResult {
+  metric: MetricDescriptor!
+  aggregation: MetricAggregation!
+  interval: String!
+  groupBy: [String!]!
+  series: [MetricSeries!]!
+  warnings: [MetricQueryWarning!]!
+}
+
+type MetricSeries {
+  labels: JSON!
+  points: [MetricPoint!]!
+}
+
+type MetricPoint {
+  timestamp: DateTime!
+  value: Float!
+  count: Float
+  exemplars: [MetricExemplar!]!
+}
+
+type MetricExemplar {
+  timestamp: DateTime!
+  value: Float!
+  traceId: ID
+  spanId: ID
+  attributes: JSON!
+}
+
+type MetricQueryWarning {
+  code: String!
+  message: String!
+  field: String
+}
+
+type DashboardListResult {
+  items: [Dashboard!]!
+  pinnedDashboardIds: [ID!]!
+}
+
+type Dashboard {
+  id: ID!
+  projectId: ID!
+  slug: String!
+  name: String!
+  description: String
+  tags: [String!]!
+  version: Int!
+  visibility: DashboardVisibility!
+  defaultTimeWindow: String!
+  pinned: Boolean!
+  widgets: [DashboardWidget!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  createdBy: ID
+  updatedBy: ID
+}
+
+type DashboardWidget {
+  id: ID!
+  title: String!
+  description: String
+  kind: DashboardWidgetKind!
+  layout: DashboardWidgetLayout!
+  metric: DashboardMetricWidget
+  logs: DashboardLogWidget
+  traces: DashboardTraceWidget
+  liveTraces: DashboardLiveTraceWidget
+}
+
+type DashboardWidgetLayout {
+  x: Int!
+  y: Int!
+  w: Int!
+  h: Int!
+  minW: Int!
+  minH: Int!
+}
+
+type DashboardMetricWidget {
+  metricName: String!
+  aggregation: MetricAggregation!
+  groupBy: [String!]!
+  filters: [AttributeFilter!]!
+  timeWindow: String!
+  interval: String
+  visualization: MetricChartType!
+  legend: Boolean!
+  maxSeries: Int!
+  thresholds: [DashboardThreshold!]!
+}
+
+type DashboardLogWidget {
+  service: String
+  traceId: ID
+  spanId: ID
+  severity: String
+  search: String
+  attributes: [AttributeFilter!]!
+  sort: LogSort!
+  limit: Int!
+  columns: [DashboardLogColumn!]!
+}
+
+type DashboardTraceWidget {
+  service: String
+  query: String
+  operationName: String
+  spanName: String
+  status: TraceStatus
+  minDurationMs: Float
+  maxDurationMs: Float
+  attributes: [AttributeFilter!]!
+  sort: TraceSort!
+  limit: Int!
+  columns: [DashboardTraceColumn!]!
+}
+
+type DashboardLiveTraceWidget {
+  service: String
+  query: String
+  operationName: String
+  spanName: String
+  status: TraceStatus
+  minDurationMs: Float
+  maxDurationMs: Float
+  attributes: [AttributeFilter!]!
+  limit: Int!
+}
+
+type DashboardThreshold {
+  value: Float!
+  severity: DashboardThresholdSeverity!
+  label: String
+}
+
+type DashboardPreferences {
+  projectId: ID!
+  pinnedDashboardIds: [ID!]!
+  updatedAt: DateTime!
+}
+
+type AttributeFilter {
+  key: String!
+  operator: AttributeFilterOperator!
+  value: JSON
+}
+
+type AgentIdentity {
+  id: String
+  name: String!
+  version: String
+}
+
+type TokenTotals {
+  input: Int
+  output: Int
+  total: Int
+}
+
+type Money {
+  amount: Float!
+  currency: String!
+}
+
+type AgentRun {
+  id: ID!
+  traceId: ID!
+  rootSpanId: ID!
+  agent: AgentIdentity!
+  status: AgentRunStatus!
+  startedAt: DateTime!
+  endedAt: DateTime
+  durationMs: Float
+  tokenTotals: TokenTotals
+  costEstimate: Money
+  transcript: [AgentRunTranscriptMessage!]!
+  llmCalls: [LlmCall!]!
+  toolCalls: [ToolCall!]!
+  retrievalEvents: [RetrievalEvent!]!
+  evalResults: [EvalResult!]!
+}
+
+type AgentRunTranscriptMessage {
+  role: String!
+  content: JSON
+  contentDigest: String
+  spanId: ID!
+  timestamp: DateTime
+}
+
+type LlmCall {
+  id: ID!
+  traceId: ID!
+  spanId: ID!
+  provider: String
+  requestModel: String
+  responseModel: String
+  latencyMs: Float!
+  tokenTotals: TokenTotals
+  tokenDetails: JSON!
+}
+
+type ToolCall {
+  id: ID!
+  traceId: ID!
+  spanId: ID!
+  toolName: String!
+  toolCallId: String
+  parametersDigest: String
+  resultDigest: String
+  latencyMs: Float!
+  status: TraceStatus!
+  synthetic: Boolean!
+}
+
+type RetrievalEvent {
+  id: ID!
+  traceId: ID!
+  spanId: ID!
+  documentCount: Int!
+  topK: Int
+  embeddingModel: String
+  latencyMs: Float!
+  documentDigests: [String!]!
+}
+
+type Dataset {
+  id: ID!
+  name: String!
+  description: String
+  version: Int!
+  createdAt: DateTime!
+  itemCount: Int!
+  reviewedItemCount: Int!
+  splitCounts: JSON!
+  health: DatasetHealth!
+  tags: [String!]!
+  items(input: DatasetItemSearchInput = {}): DatasetItemSearchResult!
+}
+
+type DatasetItem {
+  id: ID!
+  datasetId: ID!
+  version: Int!
+  input: JSON!
+  expected: JSON
+  metadata: JSON!
+  sourceTraceId: ID
+  sourceSpanId: ID
+  split: DatasetSplit!
+  reviewStatus: DatasetReviewStatus!
+  synthetic: Boolean!
+  duplicateOfItemId: ID
+  leakageWarnings: [String!]!
+}
+
+type DatasetHealth {
+  status: DatasetHealthStatus!
+  reviewedItemCount: Int!
+  totalItemCount: Int!
+  splitCounts: JSON!
+  duplicateCandidateCount: Int!
+  leakageWarningCount: Int!
+  missingExpectedCount: Int!
+  schemaIssueCount: Int!
+  smallDataset: Boolean!
+  warnings: [String!]!
+}
+
+type Scorer {
+  id: ID!
+  name: String!
+  kind: ScorerKind!
+  definition: JSON!
+  judgeModelRef: String
+  version: Int!
+  calibration: JSON
+}
+
+type EvalResult {
+  id: ID!
+  scorerId: ID!
+  scorerVersion: Int!
+  targetKind: EvalTargetKind!
+  targetId: ID!
+  experimentRunId: ID
+  score: Float!
+  passed: Boolean!
+  evidence: JSON
+  judgeRunRef: String
+  producedAt: DateTime!
+}
+
+type Experiment {
+  id: ID!
+  name: String!
+  datasetId: ID!
+  datasetVersion: Int!
+  splitSelector: DatasetSplitSelector!
+  scorerIds: [ID!]!
+  baselineRef: JSON
+  promptVersionRefs: [ID!]!
+  skillSnapshotRefs: [ID!]!
+  toolSnapshotRefs: [ID!]!
+  providerProfileRefs: [ID!]!
+  createdAt: DateTime!
+  tags: [String!]!
+  runs: ExperimentRunSearchResult!
+}
+
+type ExperimentRun {
+  id: ID!
+  experimentId: ID!
+  solverRef: JSON!
+  manifest: ExperimentManifest
+  baselineRunId: ID
+  status: ExperimentRunStatus!
+  startedAt: DateTime!
+  endedAt: DateTime
+  summary: JSON!
+  itemRuns(input: DatasetItemSearchInput = {}): DatasetItemRunSearchResult!
+}
+
+type DatasetItemRun {
+  id: ID!
+  experimentRunId: ID!
+  datasetItemId: ID!
+  harnessRunId: String
+  output: JSON!
+  latencyMs: Float!
+  tokenTotals: TokenTotals
+  evalResults: [EvalResult!]!
+}
+
+type DatasetSplitSelector {
+  splits: [DatasetSplit!]!
+  reviewedOnly: Boolean!
+  includeSynthetic: Boolean!
+}
+
+type ExperimentManifest {
+  schema: String!
+  version: Int!
+  digest: String!
+  experimentRunId: ID!
+  experimentId: ID!
+  datasetId: ID!
+  datasetVersion: Int!
+  splitSelector: DatasetSplitSelector!
+  datasetItemIds: [ID!]!
+  scorerRefs: [VersionedRef!]!
+  baselineRef: JSON
+  solverRef: JSON!
+  promptVersionRefs: [ID!]!
+  skillSnapshotRefs: [ID!]!
+  toolSnapshotRefs: [ID!]!
+  providerProfileRefs: [ID!]!
+  budget: JSON!
+  concurrency: JSON!
+  createdAt: DateTime!
+}
+
+type VersionedRef {
+  id: ID!
+  version: Int!
+}
+
+type PromptVersion {
+  id: ID!
+  name: String!
+  text: String!
+  variableSchema: JSON
+  metadata: JSON
+  hash: String!
+  tag: String
+  createdAt: DateTime!
+  notes: String
+}
+
+type AnnotationQueueItem {
+  id: ID!
+  targetTraceId: ID!
+  targetSpanId: ID
+  reason: String!
+  assignedTo: String
+  status: AnnotationStatus!
+  createdAt: DateTime!
+  resolvedDatasetItemId: ID
+  scorerId: ID
+  score: Float
+  evidence: JSON
+}
+
+type ProjectAiSettings {
+  projectId: ID!
+  enabled: Boolean!
+  defaultProviderProfileId: ID
+  defaultJudgeProfileId: ID
+  defaultOptimizerProfileId: ID
+  defaultEmbeddingProfileId: ID
+  providerProfiles: [ProviderProfile!]!
+  modelAliases: [ModelAlias!]!
+  onlinePolicies: [OnlineEvaluationPolicy!]!
+  budget: AiEvalBudget!
+  sampling: AiEvalSampling!
+  datasetDefaults: DatasetDefaults!
+  effective: ProjectAiSettingsEffective!
+  version: Int!
+  updatedAt: DateTime!
+  updatedByUserId: ID!
+}
+
+type ProviderProfile {
+  id: ID!
+  projectId: ID!
+  label: String!
+  providerKind: ProviderKind!
+  baseUrl: String
+  credentialRef: String
+  models: JSON!
+  timeoutMs: Int!
+  maxConcurrency: Int
+  disabledAt: DateTime
+}
+
+type ModelAlias {
+  id: ID!
+  name: String!
+  providerProfileId: ID!
+  model: String!
+  purpose: ModelPurpose!
+  parameters: JSON!
+}
+
+type OnlineEvaluationPolicy {
+  id: ID!
+  enabled: Boolean!
+  name: String!
+  target: JSON!
+  scorerIds: [ID!]!
+  sampleRate: Float!
+  maxDailyRuns: Int
+  annotationRules: [AnnotationRule!]!
+  updatedAt: DateTime!
+  updatedByUserId: ID!
+}
+
+type AnnotationRule {
+  reason: String!
+  threshold: Float
+  assignTo: String
+  datasetId: ID
+}
+
+type AiEvalBudget {
+  dailyUsd: Float!
+  perRunUsd: Float
+  deterministicOnly: Boolean!
+  spentTodayUsd: Float!
+}
+
+type AiEvalSampling {
+  defaultOnlineSampleRate: Float!
+  maxOnlineSampleRate: Float!
+  maxConcurrentExperimentItems: Int!
+  maxConcurrentOptimizationCandidates: Int!
+}
+
+type DatasetDefaults {
+  splitAllocation: JSON!
+  smallDatasetReviewedThreshold: Int!
+  requireReviewForRegression: Boolean!
+}
+
+type ProjectAiSettingsEffective {
+  warnings: [String!]!
+  deterministicOnly: Boolean!
+  missingProviderProfiles: [String!]!
+  disabledProviderProfiles: [ID!]!
+  budgetExhausted: Boolean!
+}
+
+type AiQualityOverview {
+  projectId: ID!
+  from: DateTime
+  to: DateTime
+  summary: JSON!
+  segments: [AiQualitySegment!]!
+  warnings: [String!]!
+}
+
+type AiQualitySegment {
+  key: String!
+  label: String!
+  dimensions: JSON!
+  runCount: Int!
+  scoredRunCount: Int!
+  passRate: Float
+  meanScore: Float
+  p50LatencyMs: Float
+  p95LatencyMs: Float
+  costUsd: Float
+  regressionCount: Int!
+}
+
+type ExperimentRunEvent {
+  type: ExperimentRunEventType!
+  seq: Int!
+  receivedAt: DateTime!
+  run: ExperimentRun
+  itemRun: DatasetItemRun
+}
+
+type AgentRunSearchResult { items: [AgentRun!]!, nextCursor: String }
+type DatasetSearchResult { items: [Dataset!]!, nextCursor: String }
+type DatasetItemSearchResult { items: [DatasetItem!]!, nextCursor: String }
+type ScorerSearchResult { items: [Scorer!]!, nextCursor: String }
+type ExperimentSearchResult { items: [Experiment!]!, nextCursor: String }
+type ExperimentRunSearchResult { items: [ExperimentRun!]!, nextCursor: String }
+type DatasetItemRunSearchResult { items: [DatasetItemRun!]!, nextCursor: String }
+type EvalResultSearchResult { items: [EvalResult!]!, nextCursor: String }
+type AnnotationQueueResult { items: [AnnotationQueueItem!]!, nextCursor: String }

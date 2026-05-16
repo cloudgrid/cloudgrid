@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-013",
+  "title": "AnnotationQueueItem",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "targetTraceId", "reason", "status", "createdAt"],
+  "properties": {
+    "id": { "type": "string" },
+    "targetTraceId": { "type": "string" },
+    "targetSpanId": { "type": "string" },
+    "reason": { "type": "string" },
+    "assignedTo": { "type": "string" },
+    "status": { "type": "string", "enum": ["open", "in_review", "resolved", "dismissed"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "resolvedDatasetItemId": { "type": "string" },
+    "scorerId": { "type": "string" },
+    "score": { "type": "number" },
+    "evidence": { "type": "object", "additionalProperties": true }
+  }
+}

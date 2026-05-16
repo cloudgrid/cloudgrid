@@ -1,0 +1,106 @@
+---
+const enterpriseFeatures = [
+  {
+    title: "Self-Hosted by Design",
+    description:
+      "Run CloudGrid locally for development or deploy it to your own infrastructure. No external SaaS dependencies, no data leaving your network unless you want it to.",
+    icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4",
+  },
+  {
+    title: "SSO Integration",
+    description:
+      "Deployed mode supports GitHub, Google, and Azure Entra ID. BFF-managed sessions with HttpOnly cookies. No provider tokens stored in the browser.",
+    icon: "M12 15v2m-6 4h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2zm10-10V7a4 4 0 0 0-8 0v4h8z",
+  },
+  {
+    title: "Project Isolation",
+    description:
+      "Every project is a strict telemetry boundary. Users see only their company's projects. Future multi-tenant work preserves isolation at API, message, and persistence layers.",
+    icon: "M3 21h18M5 21V7l8-4 8 4v14M8 21v-6h8v6",
+  },
+  {
+    title: "Real-Time Subscriptions",
+    description:
+      "GraphQL subscriptions for live trace receiving. Storage-read owns filter matching and authorization so real-time data respects the same access controls as queries.",
+    icon: "M13 10V3L4 14h7v7l9-11h-7z",
+  },
+  {
+    title: "Structured Logging",
+    description:
+      "All services emit structured JSON logs with trace and span correlation. Kubernetes-ready with one JSON object per line to stdout/stderr.",
+    icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z",
+  },
+  {
+    title: "Open Source & Auditable",
+    description:
+      "Full source code available. No hidden runtime switches, no proprietary extensions. What you see in the repository is what runs in production.",
+    icon: "M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0 0 22 12.017C22 6.484 17.522 2 12 2z",
+  },
+];
+---
+
+<section class="relative py-24 sm:py-32">
+  <div class="absolute inset-0 bg-gradient-to-b from-bg-primary via-bg-secondary/50 to-bg-primary"></div>
+
+  <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="grid lg:grid-cols-2 gap-16 items-center">
+      <!-- Left: Content -->
+      <div class="reveal">
+        <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-border-default mb-6">
+          <span class="w-2 h-2 rounded-full bg-accent-blue"></span>
+          <span class="text-sm font-medium text-text-secondary">Enterprise Ready</span>
+        </div>
+
+        <h2 class="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-6">
+          Built for <span class="gradient-text">production teams</span>
+        </h2>
+
+        <p class="text-lg text-text-secondary leading-relaxed mb-8">
+          CloudGrid is designed with the same security and operational rigor you expect
+          from infrastructure software. Clean service boundaries, explicit contracts,
+          and observable internals.
+        </p>
+
+        <div class="flex flex-col sm:flex-row gap-4">
+          <a
+            href="/docs"
+            class="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-white text-bg-primary font-semibold text-sm hover:bg-gray-100 transition-colors"
+          >
+            Read the Docs
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </a>
+          <a
+            href="https://github.com/cloudgriddev/cloudgrid"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-white/5 border border-border-default text-text-primary font-semibold text-sm hover:bg-white/10 transition-colors"
+          >
+            Explore the Code
+          </a>
+        </div>
+      </div>
+
+      <!-- Right: Feature list -->
+      <div class="space-y-4">
+        {enterpriseFeatures.map((feature, i) => (
+          <div
+            class="reveal group flex gap-4 p-4 rounded-xl border border-border-subtle hover:border-border-default hover:bg-bg-card/50 transition-all"
+            style={`transition-delay: ${i * 75}ms`}
+          >
+            <div class="flex-shrink-0 w-10 h-10 rounded-lg bg-white/5 border border-border-subtle flex items-center justify-center group-hover:border-accent-blue/30 group-hover:bg-accent-blue/5 transition-colors">
+              <svg class="w-5 h-5 text-text-secondary group-hover:text-accent-blue-light transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d={feature.icon} />
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-sm font-semibold text-text-primary mb-1">{feature.title}</h3>
+              <p class="text-sm text-text-secondary leading-relaxed">{feature.description}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+</section>

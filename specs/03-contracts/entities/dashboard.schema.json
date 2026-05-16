@@ -1,0 +1,301 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-DASH-001",
+  "title": "Dashboard",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "projectId",
+    "slug",
+    "name",
+    "version",
+    "visibility",
+    "defaultTimeWindow",
+    "widgets",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "projectId": { "type": "string" },
+    "organizationId": { "type": "string" },
+    "slug": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 96 },
+    "description": { "type": "string", "maxLength": 512 },
+    "tags": { "type": "array", "maxItems": 12, "items": { "type": "string", "maxLength": 32 } },
+    "version": { "type": "integer", "minimum": 1 },
+    "visibility": { "type": "string", "enum": ["builtin", "project", "personal"] },
+    "defaultTimeWindow": { "type": "string", "default": "PT1H" },
+    "ownerUserId": { "type": "string" },
+    "widgets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 24,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "kind", "layout"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{3,64}$" },
+          "title": { "type": "string", "minLength": 1, "maxLength": 96 },
+          "description": { "type": "string", "maxLength": 256 },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "metric_timeseries",
+              "metric_stat",
+              "metric_table",
+              "log_table",
+              "trace_table",
+              "live_trace_table"
+            ]
+          },
+          "layout": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["x", "y", "w", "h", "minW", "minH"],
+            "properties": {
+              "x": { "type": "integer", "minimum": 0, "maximum": 11 },
+              "y": { "type": "integer", "minimum": 0 },
+              "w": { "type": "integer", "minimum": 1, "maximum": 12 },
+              "h": { "type": "integer", "minimum": 1, "maximum": 12 },
+              "minW": { "type": "integer", "minimum": 1, "maximum": 12 },
+              "minH": { "type": "integer", "minimum": 1, "maximum": 12 }
+            }
+          },
+          "metric": { "$ref": "#/$defs/metricWidget" },
+          "logs": { "$ref": "#/$defs/logWidget" },
+          "traces": { "$ref": "#/$defs/traceWidget" },
+          "liveTraces": { "$ref": "#/$defs/liveTraceWidget" }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "kind": { "const": "metric_timeseries" } } },
+            "then": {
+              "required": ["metric"],
+              "not": {
+                "anyOf": [
+                  { "required": ["logs"] },
+                  { "required": ["traces"] },
+                  { "required": ["liveTraces"] }
+                ]
+              }
+            }
+          },
+          {
+            "if": { "properties": { "kind": { "const": "metric_stat" } } },
+            "then": {
+              "required": ["metric"],
+              "not": {
+                "anyOf": [
+                  { "required": ["logs"] },
+                  { "required": ["traces"] },
+                  { "required": ["liveTraces"] }
+                ]
+              }
+            }
+          },
+          {
+            "if": { "properties": { "kind": { "const": "metric_table" } } },
+            "then": {
+              "required": ["metric"],
+              "not": {
+                "anyOf": [
+                  { "required": ["logs"] },
+                  { "required": ["traces"] },
+                  { "required": ["liveTraces"] }
+                ]
+              }
+            }
+          },
+          {
+            "if": { "properties": { "kind": { "const": "log_table" } } },
+            "then": {
+              "required": ["logs"],
+              "not": {
+                "anyOf": [
+                  { "required": ["metric"] },
+                  { "required": ["traces"] },
+                  { "required": ["liveTraces"] }
+                ]
+              }
+            }
+          },
+          {
+            "if": { "properties": { "kind": { "const": "trace_table" } } },
+            "then": {
+              "required": ["traces"],
+              "not": {
+                "anyOf": [
+                  { "required": ["metric"] },
+                  { "required": ["logs"] },
+                  { "required": ["liveTraces"] }
+                ]
+              }
+            }
+          },
+          {
+            "if": { "properties": { "kind": { "const": "live_trace_table" } } },
+            "then": {
+              "required": ["liveTraces"],
+              "not": {
+                "anyOf": [
+                  { "required": ["metric"] },
+                  { "required": ["logs"] },
+                  { "required": ["traces"] }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "createdBy": { "type": "string" },
+    "updatedBy": { "type": "string" }
+  },
+  "$defs": {
+    "metricWidget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metricName", "aggregation", "visualization"],
+      "properties": {
+        "metricName": { "type": "string", "minLength": 1 },
+        "aggregation": {
+          "type": "string",
+          "enum": ["avg", "sum", "min", "max", "count", "rate", "p50", "p90", "p95", "p99"]
+        },
+        "groupBy": { "type": "array", "maxItems": 6, "items": { "type": "string" } },
+        "filters": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "./attribute-filter.schema.json" }
+        },
+        "timeWindow": { "type": "string", "default": "PT1H" },
+        "interval": { "type": "string" },
+        "visualization": {
+          "type": "string",
+          "enum": ["line", "area", "bar", "pie", "stat", "table"]
+        },
+        "legend": { "type": "boolean", "default": true },
+        "maxSeries": { "type": "integer", "minimum": 1, "maximum": 50, "default": 20 },
+        "thresholds": { "type": "array", "maxItems": 8, "items": { "$ref": "#/$defs/threshold" } }
+      }
+    },
+    "logWidget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "service": { "type": "string" },
+        "traceId": { "type": "string" },
+        "spanId": { "type": "string" },
+        "severity": { "type": "string" },
+        "search": { "type": "string" },
+        "attributes": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "./attribute-filter.schema.json" }
+        },
+        "sort": {
+          "type": "string",
+          "enum": ["timestamp_desc", "timestamp_asc", "severity_desc"],
+          "default": "timestamp_desc"
+        },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "timestamp",
+              "observed_timestamp",
+              "severity",
+              "service",
+              "trace_span",
+              "body",
+              "attributes"
+            ]
+          },
+          "default": ["timestamp", "severity", "service", "trace_span", "body"]
+        }
+      }
+    },
+    "traceWidget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "service": { "type": "string" },
+        "query": { "type": "string" },
+        "operationName": { "type": "string" },
+        "spanName": { "type": "string" },
+        "status": { "type": "string", "enum": ["ok", "error", "unset"] },
+        "minDurationMs": { "type": "number" },
+        "maxDurationMs": { "type": "number" },
+        "attributes": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "./attribute-filter.schema.json" }
+        },
+        "sort": {
+          "type": "string",
+          "enum": [
+            "startedAt_desc",
+            "startedAt_asc",
+            "duration_desc",
+            "duration_asc",
+            "errorFirst"
+          ],
+          "default": "startedAt_desc"
+        },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "started_at",
+              "status",
+              "service",
+              "operation",
+              "duration",
+              "span_count",
+              "log_count"
+            ]
+          },
+          "default": ["started_at", "status", "service", "operation", "duration"]
+        }
+      }
+    },
+    "liveTraceWidget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "service": { "type": "string" },
+        "query": { "type": "string" },
+        "operationName": { "type": "string" },
+        "spanName": { "type": "string" },
+        "status": { "type": "string", "enum": ["ok", "error", "unset"] },
+        "minDurationMs": { "type": "number" },
+        "maxDurationMs": { "type": "number" },
+        "attributes": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "./attribute-filter.schema.json" }
+        },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 100 }
+      }
+    },
+    "threshold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "severity"],
+      "properties": {
+        "value": { "type": "number" },
+        "severity": { "type": "string", "enum": ["info", "warning", "error"] },
+        "label": { "type": "string", "maxLength": 64 }
+      }
+    }
+  }
+}

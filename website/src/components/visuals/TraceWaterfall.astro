@@ -1,0 +1,112 @@
+---
+/**
+ * Flat trace-waterfall mockup. Uses CSS variables so it adapts to both themes.
+ * Heights/positions are tuned for a 720x360 viewBox.
+ */
+
+const spans = [
+  { name: "POST /v1/agent/run", service: "edge-gw", x: 60, w: 600, depth: 0, kind: "server" },
+  { name: "agent.run", service: "agent-svc", x: 90, w: 540, depth: 1, kind: "internal" },
+  { name: "llm.chat-completions", service: "llm-router", x: 130, w: 220, depth: 2, kind: "client", color: "violet" },
+  { name: "tool.web_search", service: "tool-router", x: 360, w: 90, depth: 2, kind: "client", color: "cyan" },
+  { name: "llm.chat-completions", service: "llm-router", x: 460, w: 170, depth: 2, kind: "client", color: "violet" },
+  { name: "vector.lookup", service: "retrieval", x: 165, w: 60, depth: 3, kind: "client", color: "emerald" },
+  { name: "openai.chat", service: "external", x: 200, w: 130, depth: 3, kind: "external", color: "amber" },
+  { name: "openai.chat", service: "external", x: 480, w: 130, depth: 3, kind: "external", color: "amber" },
+];
+
+const colorFor = (c?: string) => {
+  switch (c) {
+    case "violet": return "var(--color-violet)";
+    case "cyan": return "var(--color-cyan)";
+    case "emerald": return "var(--color-emerald)";
+    case "amber": return "var(--color-amber)";
+    default: return "var(--color-brand)";
+  }
+};
+---
+
+<svg viewBox="0 0 720 360" xmlns="http://www.w3.org/2000/svg" class="block w-full h-auto" role="img" aria-label="Trace waterfall mockup">
+  <!-- timeline grid -->
+  <g>
+    {[0, 1, 2, 3, 4, 5].map((i) => (
+      <line
+        x1={60 + i * 120}
+        y1="36"
+        x2={60 + i * 120}
+        y2="340"
+        stroke="var(--color-border-subtle)"
+        stroke-width="1"
+      />
+    ))}
+    {["0 ms", "120", "240", "360", "480", "600 ms"].map((t, i) => (
+      <text
+        x={60 + i * 120}
+        y="26"
+        font-size="9"
+        font-family="JetBrains Mono, monospace"
+        fill="var(--color-text-muted)"
+        text-anchor="start"
+      >
+        {t}
+      </text>
+    ))}
+  </g>
+
+  <!-- spans -->
+  {spans.map((s, i) => {
+    const y = 50 + i * 36;
+    const c = colorFor(s.color);
+    return (
+      <g>
+        <text x="14" y={y + 14} font-size="10" fill="var(--color-text-secondary)" font-family="Inter, sans-serif">
+          {s.service}
+        </text>
+        <rect
+          x={s.x}
+          y={y + 4}
+          width={s.w}
+          height="14"
+          rx="3"
+          fill={c}
+          fill-opacity="0.22"
+          stroke={c}
+          stroke-width="1"
+        />
+        <text
+          x={s.x + 6}
+          y={y + 14}
+          font-size="9.5"
+          fill="var(--color-text)"
+          font-family="JetBrains Mono, monospace"
+        >
+          {s.name}
+        </text>
+      </g>
+    );
+  })}
+
+  <!-- legend -->
+  <g transform="translate(60, 332)">
+    <g>
+      <rect width="10" height="10" rx="2" fill="var(--color-brand)" fill-opacity="0.22" stroke="var(--color-brand)" />
+      <text x="16" y="9" font-size="10" fill="var(--color-text-muted)">server</text>
+    </g>
+    <g transform="translate(70, 0)">
+      <rect width="10" height="10" rx="2" fill="var(--color-violet)" fill-opacity="0.22" stroke="var(--color-violet)" />
+      <text x="16" y="9" font-size="10" fill="var(--color-text-muted)">llm</text>
+    </g>
+    <g transform="translate(130, 0)">
+      <rect width="10" height="10" rx="2" fill="var(--color-cyan)" fill-opacity="0.22" stroke="var(--color-cyan)" />
+      <text x="16" y="9" font-size="10" fill="var(--color-text-muted)">tool</text>
+    </g>
+    <g transform="translate(195, 0)">
+      <rect width="10" height="10" rx="2" fill="var(--color-emerald)" fill-opacity="0.22" stroke="var(--color-emerald)" />
+      <text x="16" y="9" font-size="10" fill="var(--color-text-muted)">retrieval</text>
+    </g>
+    <g transform="translate(275, 0)">
+      <rect width="10" height="10" rx="2" fill="var(--color-amber)" fill-opacity="0.22" stroke="var(--color-amber)" />
+      <text x="16" y="9" font-size="10" fill="var(--color-text-muted)">external</text>
+    </g>
+  </g>
+</svg>

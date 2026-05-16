@@ -1,0 +1,11 @@
+go 1.23
+
+use (
+	./core/ai-eval-runner
+	./core/go-contracts
+	./core/go-runtime
+	./core/otlp-collector
+	./core/control-plane
+	./core/storage-read
+	./core/storage-write
+)

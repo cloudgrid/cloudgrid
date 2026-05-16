@@ -1,0 +1,32 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          { "key": "service.name", "value": { "stringValue": "checkout-api" } },
+          { "key": "deployment.environment", "value": { "stringValue": "local" } }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": { "name": "cloudgrid-fixture" },
+          "logRecords": [
+            {
+              "timeUnixNano": "1790000000060000000",
+              "observedTimeUnixNano": "1790000000061000000",
+              "severityNumber": 17,
+              "severityText": "ERROR",
+              "traceId": "S/kvNXezTaajzpKdDg5HNg==",
+              "spanId": "t61rcWkgMzE=",
+              "body": { "stringValue": "model request failed once and retried" },
+              "attributes": [
+                { "key": "retry.count", "value": { "intValue": "1" } },
+                { "key": "gen_ai.response.model", "value": { "stringValue": "gpt-5.2" } }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

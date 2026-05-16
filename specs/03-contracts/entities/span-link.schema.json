@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-011",
+  "title": "SpanLink",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["traceId", "spanId", "attributes"],
+  "properties": {
+    "traceId": {
+      "type": "string",
+      "description": "Linked OpenTelemetry trace ID as lowercase hex."
+    },
+    "spanId": {
+      "type": "string",
+      "description": "Linked OpenTelemetry span ID as lowercase hex."
+    },
+    "traceState": {
+      "type": "string",
+      "description": "OpenTelemetry trace state for the link when provided."
+    },
+    "attributes": {
+      "type": "object",
+      "description": "OpenTelemetry link attributes.",
+      "additionalProperties": true
+    }
+  }
+}
