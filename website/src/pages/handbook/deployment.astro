@@ -1,0 +1,94 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Section from "../../components/Section.astro";
+import PageHeader from "../../components/PageHeader.astro";
+---
+
+<Layout title="Deployment — CloudGrid Handbook">
+  <Section size="lg">
+    <PageHeader
+      eyebrow="Handbook · Deployment"
+      accent="cyan"
+      title="From a laptop to a fleet, in three steps."
+      description="CloudGrid has two deployment shapes: local single-binary (for development and small-team use) and deployed mode (for production)."
+    />
+  </Section>
+
+  <Section tone="recessed">
+    <div class="grid md:grid-cols-3 gap-5">
+      <div class="rounded-xl border border-border-default bg-surface p-6 reveal">
+        <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Step 1</div>
+        <div class="mt-1 text-base font-semibold text-text">Local</div>
+        <p class="mt-2 text-sm text-text-secondary">
+          Single docker compose, all services in one image. Best for development, single-user
+          local observability, and demos.
+        </p>
+      </div>
+      <div class="rounded-xl border border-border-default bg-surface p-6 reveal">
+        <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Step 2</div>
+        <div class="mt-1 text-base font-semibold text-text">Deployed (Compose)</div>
+        <p class="mt-2 text-sm text-text-secondary">
+          Independent service containers, dedicated SurrealDB and NATS, SSO turned on. Best for
+          small teams and self-hosted production.
+        </p>
+      </div>
+      <div class="rounded-xl border border-border-default bg-surface p-6 reveal">
+        <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Step 3</div>
+        <div class="mt-1 text-base font-semibold text-text">Deployed (Kubernetes)</div>
+        <p class="mt-2 text-sm text-text-secondary">
+          One deployment per service. Independent horizontal scale on otlp-collector, BFF, and
+          storage-read. Recommended for production at any meaningful scale.
+        </p>
+      </div>
+    </div>
+  </Section>
+
+  <Section>
+    <div class="prose-handbook">
+      <h2>Deployment modes</h2>
+      <p>
+        Mode is set by environment variables. Local mode runs everything in one binary, against an
+        in-process or sibling SurrealDB and NATS. Deployed mode expects each service to run as its
+        own process with its own scaling unit.
+      </p>
+      <ul>
+        <li><code>CLOUDGRID_DEPLOYMENT_MODE=local</code> — single binary, local-only auth, Personal project auto-created.</li>
+        <li><code>CLOUDGRID_DEPLOYMENT_MODE=deployed</code> — services run independently, project boundaries enforced.</li>
+      </ul>
+
+      <h2>Auth modes</h2>
+      <p>
+        Auth is orthogonal to deployment. Local mode supports a stub auth identity for development;
+        SSO mode wires GitHub, Google, or Microsoft Entra ID through the BFF.
+      </p>
+      <ul>
+        <li><code>CLOUDGRID_AUTH_MODE=local</code> — pre-seeded user, project-membership enforced but no provider sign-in.</li>
+        <li><code>CLOUDGRID_AUTH_MODE=sso</code> — OAuth/OIDC, BFF-managed HttpOnly cookies.</li>
+      </ul>
+
+      <h2>Scaling guidance</h2>
+      <ul>
+        <li><strong>otlp-collector</strong> — scale horizontally; stateless, only publishes to the bridge.</li>
+        <li><strong>BFF</strong> — scale horizontally; stateless GraphQL, live subscription state owned by storage-read.</li>
+        <li><strong>storage-read</strong> — scale horizontally; replicas share the live subscription consumer pool.</li>
+        <li><strong>storage-write</strong> — scale vertically first. JetStream consumer groups can scale horizontally with care.</li>
+        <li><strong>NATS JetStream</strong> — cluster according to your durability and throughput targets.</li>
+        <li><strong>SurrealDB</strong> — cluster for HA; provision IOPS-aware storage.</li>
+      </ul>
+
+      <h2>Observing CloudGrid itself</h2>
+      <p>
+        Every service emits structured JSON logs with trace and span correlation. CloudGrid is
+        happy to receive its own OTLP traces — pointing the BFF and Go services at their own OTLP
+        endpoint is a reasonable smoke-test for the whole pipeline.
+      </p>
+
+      <h2>Backups</h2>
+      <p>
+        Telemetry persistence and control-plane state both live in SurrealDB. Back up SurrealDB
+        through its standard tooling. Retention policies are configured per project — see the
+        <a href="/handbook/configuration">Configuration page</a>.
+      </p>
+    </div>
+  </Section>
+</Layout>
