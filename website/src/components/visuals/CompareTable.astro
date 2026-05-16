@@ -1,0 +1,75 @@
+---
+/**
+ * Head-to-head comparison table.
+ *
+ * Pass `rows` (each row is one decision criterion) and `vendors` (column order).
+ * Cell `value` may be: "yes" | "no" | "partial" | "na" | string (free text shown as-is).
+ */
+import type { Vendor, CompareRow } from "../../data/compare-types";
+
+interface Props {
+  vendors: Vendor[];
+  rows: CompareRow[];
+  /** Optionally limit the rows shown — useful for home-page teasers. */
+  limit?: number;
+}
+const { vendors, rows, limit } = Astro.props;
+const displayRows = typeof limit === "number" ? rows.slice(0, limit) : rows;
+
+function iconFor(value: string) {
+  switch (value) {
+    case "yes":
+      return { sym: "✓", color: "var(--color-emerald)" };
+    case "no":
+      return { sym: "✗", color: "var(--color-rose)" };
+    case "partial":
+      return { sym: "◐", color: "var(--color-amber)" };
+    case "na":
+      return { sym: "—", color: "var(--color-text-muted)" };
+    default:
+      return { sym: value, color: "var(--color-text-secondary)" };
+  }
+}
+---
+
+<div class="rounded-xl border border-border-default bg-surface overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-recessed">
+        <tr>
+          <th class="text-left text-xs uppercase tracking-wider font-semibold text-text-muted px-4 py-3 min-w-[220px]">
+            Criterion
+          </th>
+          {vendors.map((v) => (
+            <th class="px-3 py-3 min-w-[110px] text-center">
+              <div class="text-xs font-semibold text-text">{v.label}</div>
+              {v.category && <div class="text-[10px] text-text-muted mt-0.5 font-mono">{v.category}</div>}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {displayRows.map((r) => (
+          <tr class="border-t border-border-subtle hover:bg-surface-hover transition-colors">
+            <td class="px-4 py-3 align-top">
+              <div class="text-sm font-medium text-text">{r.criterion}</div>
+              {r.detail && <div class="text-xs text-text-muted mt-0.5">{r.detail}</div>}
+            </td>
+            {vendors.map((v) => {
+              const cell = r.cells[v.key];
+              const ic = iconFor(cell?.value ?? "na");
+              return (
+                <td class="px-3 py-3 text-center align-top">
+                  <span class="inline-block text-base font-semibold" style={`color:${ic.color}`}>{ic.sym}</span>
+                  {cell?.note && (
+                    <div class="text-[10px] text-text-muted mt-1 leading-snug">{cell.note}</div>
+                  )}
+                </td>
+              );
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</div>
