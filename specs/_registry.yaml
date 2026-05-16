@@ -1,0 +1,925 @@
+schema_version: 1
+generated_by: spec-architect
+last_updated: 2026-05-11T00:00:00Z
+
+counters:
+  DOM: 5
+  CAP-ING: 3
+  CAP-OBS: 6
+  CAP-STO: 2
+  CAP-RUN: 3
+  CAP-FE: 6
+  CAP-AIE: 8
+  FLW-ING: 2
+  FLW-OBS: 2
+  FLW-AIE: 4
+  ENT: 21
+  ADR: 5
+  NFR: 8
+  OPR-OTLP: 2
+  OPR-API: 1
+  GQL: 5
+  MSG: 10
+  ERR: 17
+  REV: 6
+  GLS: 1
+  ARC: 1
+  TEC-BE: 25
+  TEC-FE: 8
+  FTR: 0
+
+ids:
+  IDX-001:
+    slug: spec-index
+    file: specs/spec.md
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  VIS-001:
+    slug: vision
+    file: specs/00-vision.md
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ARC-001:
+    slug: architecture-overview
+    file: specs/00-architecture-overview.md
+    status: draft
+    depends_on: [VIS-001, STK-001]
+    deprecated_by: null
+  STK-001:
+    slug: technology-stack
+    file: specs/00-stack.md
+    status: draft
+    depends_on: [VIS-001]
+    deprecated_by: null
+  CNV-001:
+    slug: engineering-conventions
+    file: specs/00-conventions.md
+    status: draft
+    depends_on: [STK-001]
+    deprecated_by: null
+  DSY-001:
+    slug: design-system
+    file: specs/00-design-system.md
+    status: draft
+    depends_on: [STK-001]
+    deprecated_by: null
+  GLS-001:
+    slug: glossary
+    file: specs/glossary.md
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  DOM-001:
+    slug: ingestion
+    file: specs/01-domains/ingestion.md
+    status: draft
+    depends_on: [VIS-001]
+    deprecated_by: null
+  DOM-002:
+    slug: observability-data
+    file: specs/01-domains/observability-data.md
+    status: draft
+    depends_on: [VIS-001]
+    deprecated_by: null
+  DOM-003:
+    slug: storage
+    file: specs/01-domains/storage.md
+    status: draft
+    depends_on: [STK-001]
+    deprecated_by: null
+  DOM-004:
+    slug: runtime
+    file: specs/01-domains/runtime.md
+    status: draft
+    depends_on: [STK-001]
+    deprecated_by: null
+  DOM-005:
+    slug: frontend
+    file: specs/01-domains/frontend.md
+    status: draft
+    depends_on: [DSY-001]
+    deprecated_by: null
+  CAP-ING-001:
+    slug: ingest-otlp-traces
+    file: specs/02-capabilities/ingestion/ingest-otlp-traces.md
+    status: draft
+    depends_on: [CAP-STO-001]
+    deprecated_by: null
+  CAP-ING-002:
+    slug: ingest-otlp-logs
+    file: specs/02-capabilities/ingestion/ingest-otlp-logs.md
+    status: draft
+    depends_on: [CAP-STO-001]
+    deprecated_by: null
+  CAP-ING-003:
+    slug: normalize-otlp-telemetry
+    file: specs/02-capabilities/ingestion/normalize-otlp-telemetry.md
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  CAP-OBS-001:
+    slug: search-traces
+    file: specs/02-capabilities/observability/search-traces.md
+    status: draft
+    depends_on: [CAP-STO-002]
+    deprecated_by: null
+  CAP-OBS-002:
+    slug: get-trace-detail
+    file: specs/02-capabilities/observability/get-trace-detail.md
+    status: draft
+    depends_on: [CAP-STO-002]
+    deprecated_by: null
+  CAP-OBS-003:
+    slug: search-logs
+    file: specs/02-capabilities/observability/search-logs.md
+    status: draft
+    depends_on: [CAP-STO-002]
+    deprecated_by: null
+  CAP-OBS-004:
+    slug: correlate-logs
+    file: specs/02-capabilities/observability/correlate-logs.md
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  CAP-OBS-005:
+    slug: get-telemetry-facets
+    file: specs/02-capabilities/observability/get-telemetry-facets.md
+    status: draft
+    depends_on: [CAP-STO-002]
+    deprecated_by: null
+  CAP-OBS-006:
+    slug: subscribe-live-traces
+    file: specs/02-capabilities/observability/subscribe-live-traces.md
+    status: draft
+    depends_on: [CAP-STO-002]
+    deprecated_by: null
+  CAP-STO-001:
+    slug: persist-telemetry
+    file: specs/02-capabilities/storage/persist-telemetry.md
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  CAP-STO-002:
+    slug: query-telemetry
+    file: specs/02-capabilities/storage/query-telemetry.md
+    status: draft
+    depends_on: [CAP-STO-001]
+    deprecated_by: null
+  CAP-RUN-001:
+    slug: load-runtime-configuration
+    file: specs/02-capabilities/runtime/load-runtime-configuration.md
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  CAP-RUN-002:
+    slug: compose-runtime
+    file: specs/02-capabilities/runtime/compose-runtime.md
+    status: draft
+    depends_on: [CAP-RUN-001]
+    deprecated_by: null
+  CAP-RUN-003:
+    slug: serve-application
+    file: specs/02-capabilities/runtime/serve-application.md
+    status: draft
+    depends_on: [CAP-RUN-002]
+    deprecated_by: null
+  CAP-FE-001:
+    slug: render-trace-list
+    file: specs/02-capabilities/frontend/render-trace-list.md
+    status: draft
+    depends_on: [CAP-OBS-001]
+    deprecated_by: null
+  CAP-FE-002:
+    slug: render-trace-detail
+    file: specs/02-capabilities/frontend/render-trace-detail.md
+    status: draft
+    depends_on: [CAP-OBS-002]
+    deprecated_by: null
+  CAP-FE-003:
+    slug: render-log-search
+    file: specs/02-capabilities/frontend/render-log-search.md
+    status: draft
+    depends_on: [CAP-OBS-003]
+    deprecated_by: null
+  CAP-FE-004:
+    slug: render-filters
+    file: specs/02-capabilities/frontend/render-filters.md
+    status: draft
+    depends_on: [CAP-OBS-001, CAP-OBS-003]
+    deprecated_by: null
+  CAP-FE-005:
+    slug: render-span-waterfall
+    file: specs/02-capabilities/frontend/render-span-waterfall.md
+    status: draft
+    depends_on: [CAP-OBS-002]
+    deprecated_by: null
+  CAP-FE-006:
+    slug: render-trace-investigation
+    file: specs/02-capabilities/frontend/render-trace-investigation.md
+    status: draft
+    depends_on: [CAP-OBS-002, CAP-OBS-003, CAP-OBS-004]
+    deprecated_by: null
+  FLW-ING-001:
+    slug: persist-trace-ingest
+    file: specs/02-flows/ingestion/persist-trace-ingest.md
+    status: draft
+    depends_on: [MSG-telemetry-ingest-traces, CAP-STO-001]
+    deprecated_by: null
+  FLW-ING-002:
+    slug: persist-log-ingest
+    file: specs/02-flows/ingestion/persist-log-ingest.md
+    status: draft
+    depends_on: [MSG-telemetry-ingest-logs, CAP-STO-001]
+    deprecated_by: null
+  FLW-OBS-001:
+    slug: read-query-request-reply
+    file: specs/02-flows/observability/read-query-request-reply.md
+    status: draft
+    depends_on: [MSG-telemetry-traces-search, MSG-telemetry-traces-get, MSG-telemetry-logs-search]
+    deprecated_by: null
+  FLW-OBS-002:
+    slug: live-trace-subscription
+    file: specs/02-flows/observability/live-trace-subscription.md
+    status: draft
+    depends_on: [GQL-Subscription-liveTraces, MSG-telemetry-traces-live-start, MSG-telemetry-traces-live-stop, MSG-telemetry-traces-live-events, MSG-telemetry-persisted-traces]
+    deprecated_by: null
+  ENT-001:
+    slug: trace
+    file: specs/03-contracts/entities/trace.schema.json
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ENT-002:
+    slug: span
+    file: specs/03-contracts/entities/span.schema.json
+    status: draft
+    depends_on: [ENT-004, ENT-011]
+    deprecated_by: null
+  ENT-003:
+    slug: log-event
+    file: specs/03-contracts/entities/log-event.schema.json
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ENT-004:
+    slug: span-event
+    file: specs/03-contracts/entities/span-event.schema.json
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ENT-005:
+    slug: service
+    file: specs/03-contracts/entities/service.schema.json
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ENT-006:
+    slug: trace-search-query
+    file: specs/03-contracts/entities/trace-search-query.schema.json
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ENT-007:
+    slug: log-search-query
+    file: specs/03-contracts/entities/log-search-query.schema.json
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ENT-008:
+    slug: runtime-config
+    file: specs/03-contracts/entities/runtime-config.schema.json
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ENT-009:
+    slug: ingest-command
+    file: specs/03-contracts/entities/ingest-command.schema.json
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ENT-010:
+    slug: attribute-filter
+    file: specs/03-contracts/entities/attribute-filter.schema.json
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ENT-011:
+    slug: span-link
+    file: specs/03-contracts/entities/span-link.schema.json
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ENT-012:
+    slug: trace-detail-query
+    file: specs/03-contracts/entities/trace-detail-query.schema.json
+    status: draft
+    depends_on: [ENT-010]
+    deprecated_by: null
+  ENT-013:
+    slug: live-trace-query
+    file: specs/03-contracts/entities/live-trace-query.schema.json
+    status: draft
+    depends_on: [ENT-010]
+    deprecated_by: null
+  TEC-BE-001:
+    slug: backend-architecture
+    file: specs/04-backend/backend-architecture.md
+    status: draft
+    depends_on: [STK-001]
+    deprecated_by: null
+  TEC-BE-002:
+    slug: bridge-ports
+    file: specs/04-backend/bridge-ports.md
+    status: draft
+    depends_on: [ENT-001, ENT-002, ENT-003, ENT-006, ENT-007, ENT-010, ENT-012]
+    deprecated_by: null
+  TEC-BE-003:
+    slug: surrealdb-persistence
+    file: specs/04-backend/surrealdb-persistence.md
+    status: draft
+    depends_on: [ENT-001, ENT-002, ENT-003, ENT-005, ENT-011]
+    deprecated_by: null
+  TEC-BE-004:
+    slug: otlp-mapping
+    file: specs/04-backend/otlp-mapping.md
+    status: draft
+    depends_on: [ENT-001, ENT-002, ENT-003]
+    deprecated_by: null
+  TEC-BE-005:
+    slug: runtime-configuration
+    file: specs/04-backend/runtime-configuration.md
+    status: draft
+    depends_on: [ENT-008]
+    deprecated_by: null
+  TEC-BE-006:
+    slug: telemetry-signal-roadmap
+    file: specs/04-backend/telemetry-signal-roadmap.md
+    status: draft
+    depends_on: [CAP-ING-001, CAP-ING-002]
+    deprecated_by: null
+  TEC-BE-007:
+    slug: log-ingestion-boundary
+    file: specs/04-backend/log-ingestion-boundary.md
+    status: draft
+    depends_on: [CAP-ING-002, MSG-telemetry-ingest-logs]
+    deprecated_by: null
+  TEC-BE-008:
+    slug: telemetry-query-semantics
+    file: specs/04-backend/telemetry-query-semantics.md
+    status: draft
+    depends_on: [CAP-STO-002, GQL-Query-traces, GQL-Query-trace, GQL-Query-logs, GQL-Query-telemetryFacets, GQL-Subscription-liveTraces, TEC-BE-003]
+    deprecated_by: null
+  TEC-BE-009:
+    slug: authentication-authorization
+    file: specs/04-backend/authentication-authorization.md
+    status: draft
+    depends_on: [STK-001, NFR-004, NFR-007, ERR-015, ERR-016]
+    deprecated_by: null
+  TEC-BE-010:
+    slug: contract-generation
+    file: specs/04-backend/contract-generation.md
+    status: draft
+    depends_on: [STK-001, CNV-001]
+    deprecated_by: null
+  TEC-BE-011:
+    slug: control-plane
+    file: specs/04-backend/control-plane.md
+    status: draft
+    depends_on: [TEC-BE-009, NFR-007]
+    deprecated_by: null
+  TEC-BE-012:
+    slug: surrealdb-tenancy-and-modeling
+    file: specs/04-backend/surrealdb-tenancy-and-modeling.md
+    status: draft
+    depends_on: [TEC-BE-003, TEC-BE-011, NFR-007]
+    deprecated_by: null
+  TEC-BE-020:
+    slug: data-retention-policy
+    file: specs/04-backend/data-retention-policy.md
+    status: draft
+    depends_on: [NFR-006, TEC-BE-004, TEC-BE-011, TEC-BE-009]
+    deprecated_by: null
+  TEC-BE-021:
+    slug: alerting
+    file: specs/04-backend/alerting.md
+    status: draft
+    depends_on: [TEC-BE-004, TEC-BE-008, TEC-BE-017, TEC-BE-009]
+    deprecated_by: null
+  TEC-BE-022:
+    slug: otlp-grpc-compatibility
+    file: specs/04-backend/otlp-grpc-compatibility.md
+    status: draft
+    depends_on: [TEC-BE-006, TEC-BE-007, TEC-BE-017, TEC-BE-009]
+    deprecated_by: null
+  TEC-BE-023:
+    slug: project-membership
+    file: specs/04-backend/project-membership.md
+    status: draft
+    depends_on: [TEC-BE-009, TEC-BE-011]
+    deprecated_by: null
+  TEC-FE-001:
+    slug: frontend-application
+    file: specs/05-frontend/frontend-application.md
+    status: draft
+    depends_on: [DSY-001]
+    deprecated_by: null
+  TEC-FE-002:
+    slug: frontend-views
+    file: specs/05-frontend/views.md
+    status: draft
+    depends_on: [TEC-FE-001]
+    deprecated_by: null
+  TEC-FE-003:
+    slug: trace-investigation-ux
+    file: specs/05-frontend/trace-investigation-ux.md
+    status: draft
+    depends_on: [TEC-FE-001, TEC-FE-002, CAP-FE-006]
+    deprecated_by: null
+  TEC-FE-004:
+    slug: frontend-execution-spec
+    file: specs/05-frontend/frontend-execution-spec.md
+    status: draft
+    depends_on: [TEC-FE-001, TEC-FE-002, TEC-FE-003, DSY-001]
+    deprecated_by: null
+  TEC-FE-005:
+    slug: ui-enhancements-and-visualization-foundation
+    file: specs/05-frontend/ui-enhancements-and-visualizations.md
+    status: draft
+    depends_on: [TEC-FE-001, TEC-FE-002, TEC-FE-003, TEC-FE-004, DSY-001, CAP-OBS-005]
+    deprecated_by: null
+  NFR-001:
+    slug: performance-mvp-latency
+    file: specs/06-nfr/performance-mvp-latency.md
+    status: draft
+    depends_on: [CAP-ING-001, CAP-ING-002, CAP-OBS-001, CAP-OBS-002, CAP-OBS-003]
+    deprecated_by: null
+  NFR-002:
+    slug: reliability-ingest-failure
+    file: specs/06-nfr/reliability-ingest-failure.md
+    status: draft
+    depends_on: [CAP-ING-001, CAP-ING-002, CAP-STO-001]
+    deprecated_by: null
+  NFR-003:
+    slug: observability-structured-logs
+    file: specs/06-nfr/observability-structured-logs.md
+    status: draft
+    depends_on: [CAP-RUN-003]
+    deprecated_by: null
+  NFR-004:
+    slug: security-local-mvp
+    file: specs/06-nfr/security-local-mvp.md
+    status: draft
+    depends_on: [CAP-RUN-001, CAP-RUN-003]
+    deprecated_by: null
+  NFR-005:
+    slug: accessibility-ui
+    file: specs/06-nfr/accessibility-ui.md
+    status: draft
+    depends_on: [CAP-FE-001, CAP-FE-002, CAP-FE-003, CAP-FE-004, CAP-FE-005, CAP-FE-006]
+    deprecated_by: null
+  NFR-006:
+    slug: data-retention-local
+    file: specs/06-nfr/data-retention-local.md
+    status: draft
+    depends_on: [CAP-STO-001, CAP-STO-002]
+    deprecated_by: null
+  NFR-007:
+    slug: tenant-project-isolation
+    file: specs/06-nfr/tenant-project-isolation.md
+    status: draft
+    depends_on: [CAP-ING-001, CAP-ING-002, CAP-STO-001, CAP-STO-002]
+    deprecated_by: null
+  NFR-008:
+    slug: performance-and-scaling
+    file: specs/06-nfr/performance-and-scaling.md
+    status: draft
+    depends_on: [NFR-001, NFR-002, NFR-003, NFR-007, TEC-BE-001, TEC-BE-012]
+    deprecated_by: null
+  ADR-0001:
+    slug: service-language-and-runtime
+    file: specs/07-adr/0001-service-language-and-runtime.md
+    status: accepted
+    depends_on: [STK-001]
+    deprecated_by: null
+  ADR-0002:
+    slug: nats-message-bridge
+    file: specs/07-adr/0002-nats-message-bridge.md
+    status: accepted
+    depends_on: [CAP-ING-001, CAP-ING-002]
+    deprecated_by: null
+  ADR-0003:
+    slug: preserve-genai-attributes
+    file: specs/07-adr/0003-preserve-genai-attributes.md
+    status: accepted
+    depends_on: [CAP-ING-003]
+    deprecated_by: null
+  ADR-0004:
+    slug: no-auth-for-local-mvp
+    file: specs/07-adr/0004-no-auth-for-local-mvp.md
+    status: accepted
+    depends_on: [STK-001]
+    deprecated_by: null
+  ADR-0005:
+    slug: surrealdb-record-model
+    file: specs/07-adr/0005-surrealdb-record-model.md
+    status: accepted
+    depends_on: [TEC-BE-003]
+    deprecated_by: null
+  OPR-OTLP-post-v1-traces:
+    slug: post-v1-traces
+    file: specs/03-contracts/api/http-api.openapi.yaml
+    status: draft
+    depends_on: [CAP-ING-001]
+    deprecated_by: null
+  OPR-OTLP-post-v1-logs:
+    slug: post-v1-logs
+    file: specs/03-contracts/api/http-api.openapi.yaml
+    status: draft
+    depends_on: [CAP-ING-002]
+    deprecated_by: null
+  OPR-API-get-api-health:
+    slug: get-api-health
+    file: specs/03-contracts/api/http-api.openapi.yaml
+    status: draft
+    depends_on: [CAP-RUN-003]
+    deprecated_by: null
+  OPR-API-get-livez:
+    slug: get-livez
+    file: specs/03-contracts/api/http-api.openapi.yaml
+    status: draft
+    depends_on: [CAP-RUN-003]
+    deprecated_by: null
+  OPR-API-get-readyz:
+    slug: get-readyz
+    file: specs/03-contracts/api/http-api.openapi.yaml
+    status: draft
+    depends_on: [CAP-RUN-003]
+    deprecated_by: null
+  GQL-Query-traces:
+    slug: query-traces
+    file: specs/03-contracts/graphql/public-schema.graphql
+    status: draft
+    depends_on: [CAP-OBS-001]
+    deprecated_by: null
+  GQL-Query-trace:
+    slug: query-trace
+    file: specs/03-contracts/graphql/public-schema.graphql
+    status: draft
+    depends_on: [CAP-OBS-002]
+    deprecated_by: null
+  GQL-Query-logs:
+    slug: query-logs
+    file: specs/03-contracts/graphql/public-schema.graphql
+    status: draft
+    depends_on: [CAP-OBS-003]
+    deprecated_by: null
+  GQL-Query-telemetryFacets:
+    slug: query-telemetry-facets
+    file: specs/03-contracts/graphql/public-schema.graphql
+    status: draft
+    depends_on: [CAP-OBS-005]
+    deprecated_by: null
+  GQL-Subscription-liveTraces:
+    slug: subscription-live-traces
+    file: specs/03-contracts/graphql/public-schema.graphql
+    status: draft
+    depends_on: [CAP-OBS-006]
+    deprecated_by: null
+  MSG-telemetry-traces-search:
+    slug: telemetry-traces-search
+    file: specs/03-contracts/messages/message-bridge.asyncapi.yaml
+    status: draft
+    depends_on: [CAP-OBS-001, CAP-STO-002]
+    deprecated_by: null
+  MSG-telemetry-traces-get:
+    slug: telemetry-traces-get
+    file: specs/03-contracts/messages/message-bridge.asyncapi.yaml
+    status: draft
+    depends_on: [CAP-OBS-002, CAP-STO-002]
+    deprecated_by: null
+  MSG-telemetry-logs-search:
+    slug: telemetry-logs-search
+    file: specs/03-contracts/messages/message-bridge.asyncapi.yaml
+    status: draft
+    depends_on: [CAP-OBS-003, CAP-STO-002]
+    deprecated_by: null
+  MSG-telemetry-facets:
+    slug: telemetry-facets
+    file: specs/03-contracts/messages/message-bridge.asyncapi.yaml
+    status: draft
+    depends_on: [CAP-OBS-005, CAP-STO-002]
+    deprecated_by: null
+  MSG-telemetry-traces-live-start:
+    slug: telemetry-traces-live-start
+    file: specs/03-contracts/messages/message-bridge.asyncapi.yaml
+    status: draft
+    depends_on: [CAP-OBS-006, CAP-STO-002]
+    deprecated_by: null
+  MSG-telemetry-traces-live-stop:
+    slug: telemetry-traces-live-stop
+    file: specs/03-contracts/messages/message-bridge.asyncapi.yaml
+    status: draft
+    depends_on: [CAP-OBS-006, CAP-STO-002]
+    deprecated_by: null
+  MSG-telemetry-traces-live-events:
+    slug: telemetry-traces-live-events
+    file: specs/03-contracts/messages/message-bridge.asyncapi.yaml
+    status: draft
+    depends_on: [CAP-OBS-006, CAP-STO-002]
+    deprecated_by: null
+  MSG-telemetry-persisted-traces:
+    slug: telemetry-persisted-traces
+    file: specs/03-contracts/messages/message-bridge.asyncapi.yaml
+    status: draft
+    depends_on: [CAP-OBS-006, CAP-STO-001, CAP-STO-002]
+    deprecated_by: null
+  MSG-telemetry-ingest-traces:
+    slug: telemetry-ingest-traces
+    file: specs/03-contracts/messages/message-bridge.asyncapi.yaml
+    status: draft
+    depends_on: [CAP-ING-001, CAP-STO-001]
+    deprecated_by: null
+  MSG-telemetry-ingest-logs:
+    slug: telemetry-ingest-logs
+    file: specs/03-contracts/messages/message-bridge.asyncapi.yaml
+    status: draft
+    depends_on: [CAP-ING-002, CAP-STO-001]
+    deprecated_by: null
+  ERR-001:
+    slug: validation-failed
+    file: specs/03-contracts/errors.yaml
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ERR-002:
+    slug: unsupported-media-type
+    file: specs/03-contracts/errors.yaml
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ERR-003:
+    slug: invalid-cursor
+    file: specs/03-contracts/errors.yaml
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ERR-004:
+    slug: trace-not-found
+    file: specs/03-contracts/errors.yaml
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ERR-005:
+    slug: method-not-allowed
+    file: specs/03-contracts/errors.yaml
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ERR-006:
+    slug: storage-unavailable
+    file: specs/03-contracts/errors.yaml
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ERR-007:
+    slug: partial-write
+    file: specs/03-contracts/errors.yaml
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ERR-008:
+    slug: otlp-decode-failed
+    file: specs/03-contracts/errors.yaml
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ERR-009:
+    slug: config-invalid
+    file: specs/03-contracts/errors.yaml
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ERR-010:
+    slug: runtime-composition-failed
+    file: specs/03-contracts/errors.yaml
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ERR-011:
+    slug: static-asset-not-found
+    file: specs/03-contracts/errors.yaml
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ERR-012:
+    slug: request-timeout
+    file: specs/03-contracts/errors.yaml
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ERR-013:
+    slug: message-bridge-unavailable
+    file: specs/03-contracts/errors.yaml
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ERR-014:
+    slug: message-bridge-timeout
+    file: specs/03-contracts/errors.yaml
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ERR-015:
+    slug: unauthenticated
+    file: specs/03-contracts/errors.yaml
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ERR-016:
+    slug: forbidden
+    file: specs/03-contracts/errors.yaml
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  ERR-017:
+    slug: subscription-limit-exceeded
+    file: specs/03-contracts/errors.yaml
+    status: draft
+    depends_on: []
+    deprecated_by: null
+  REV-001:
+    slug: autonomous-refinement
+    file: specs/99-reviews/autonomous-refinement.md
+    status: draft
+    depends_on: [IDX-001]
+    deprecated_by: null
+  REV-002:
+    slug: resolved-decisions
+    file: specs/99-reviews/resolved-decisions.md
+    status: draft
+    depends_on: [REV-001]
+    deprecated_by: null
+  REV-003:
+    slug: consistency-pass
+    file: specs/99-reviews/consistency-pass.md
+    status: draft
+    depends_on: [REV-001]
+    deprecated_by: null
+  REV-TRACE-UX-001:
+    slug: trace-ux-competitive-research
+    file: specs/99-reviews/trace-ux-competitive-research.md
+    status: draft
+    depends_on: [TEC-FE-003]
+    deprecated_by: null
+  DOM-006:
+    slug: ai-eval
+    file: specs/01-domains/ai-eval.md
+    status: approved
+    depends_on: [VIS-001, CNV-001, TEC-BE-001, TEC-BE-008, ADR-0003, REV-006]
+    deprecated_by: null
+  CAP-AIE-001:
+    slug: ingest-ai-projections
+    file: specs/02-capabilities/ai-eval/ingest-ai-projections.md
+    status: approved
+    depends_on: [CAP-ING-003, CAP-STO-001, ADR-0003]
+    deprecated_by: null
+  CAP-AIE-002:
+    slug: evaluate-online
+    file: specs/02-capabilities/ai-eval/evaluate-online.md
+    status: approved
+    depends_on: [CAP-AIE-001, CAP-AIE-006, CAP-AIE-008]
+    deprecated_by: null
+  CAP-AIE-003:
+    slug: evaluate-offline
+    file: specs/02-capabilities/ai-eval/evaluate-offline.md
+    status: approved
+    depends_on: [CAP-AIE-001, CAP-AIE-005, CAP-AIE-006, CAP-AIE-007]
+    deprecated_by: null
+  CAP-AIE-004:
+    slug: optimize-prompts
+    file: specs/02-capabilities/ai-eval/optimize-prompts.md
+    status: approved
+    depends_on: [CAP-AIE-003, ADR-0006, ADR-0007]
+    deprecated_by: null
+  CAP-AIE-005:
+    slug: annotate-traces
+    file: specs/02-capabilities/ai-eval/annotate-traces.md
+    status: approved
+    depends_on: [CAP-AIE-001, CAP-AIE-007]
+    deprecated_by: null
+  CAP-AIE-006:
+    slug: manage-project-ai-settings
+    file: specs/02-capabilities/ai-eval/manage-project-ai-settings.md
+    status: approved
+    depends_on: [DOM-006, TEC-BE-024]
+    deprecated_by: null
+  CAP-AIE-007:
+    slug: curate-datasets
+    file: specs/02-capabilities/ai-eval/curate-datasets.md
+    status: approved
+    depends_on: [CAP-AIE-005, FLW-AIE-004]
+    deprecated_by: null
+  CAP-AIE-008:
+    slug: track-production-quality
+    file: specs/02-capabilities/ai-eval/track-production-quality.md
+    status: approved
+    depends_on: [CAP-AIE-002, CAP-AIE-006]
+    deprecated_by: null
+  FLW-AIE-001:
+    slug: offline-experiment-run
+    file: specs/02-flows/ai-eval/offline-experiment-run.md
+    status: approved
+    depends_on: [CAP-AIE-003]
+    deprecated_by: null
+  FLW-AIE-002:
+    slug: online-evaluation
+    file: specs/02-flows/ai-eval/online-evaluation.md
+    status: approved
+    depends_on: [CAP-AIE-002]
+    deprecated_by: null
+  FLW-AIE-003:
+    slug: live-experiment-subscription
+    file: specs/02-flows/ai-eval/live-experiment-subscription.md
+    status: approved
+    depends_on: [CAP-AIE-003]
+    deprecated_by: null
+  FLW-AIE-004:
+    slug: dataset-curation-and-splits
+    file: specs/02-flows/ai-eval/dataset-curation-and-splits.md
+    status: approved
+    depends_on: [CAP-AIE-007]
+    deprecated_by: null
+  TEC-BE-024:
+    slug: ai-eval-project-settings
+    file: specs/04-backend/ai-eval-project-settings.md
+    status: approved
+    depends_on: [DOM-006, TEC-BE-011, TEC-BE-023, NFR-010]
+    deprecated_by: null
+  TEC-BE-013:
+    slug: ai-eval-protocol-interop
+    file: specs/04-backend/ai-eval-protocol-interop.md
+    status: approved
+    depends_on: [DOM-006, ADR-0003, ADR-0007]
+    deprecated_by: null
+  TEC-BE-014:
+    slug: ai-eval-runner
+    file: specs/04-backend/ai-eval-runner.md
+    status: approved
+    depends_on: [DOM-006, TEC-BE-001, ADR-0007, TEC-BE-024]
+    deprecated_by: null
+  TEC-BE-015:
+    slug: ai-eval-query-semantics
+    file: specs/04-backend/ai-eval-query-semantics.md
+    status: approved
+    depends_on: [DOM-006, TEC-BE-008]
+    deprecated_by: null
+  TEC-BE-016:
+    slug: ai-eval-message-contracts
+    file: specs/04-backend/ai-eval-message-contracts.md
+    status: approved
+    depends_on: [DOM-006, TEC-BE-024]
+    deprecated_by: null
+  NFR-010:
+    slug: ai-eval-content-capture
+    file: specs/06-nfr/ai-eval-content-capture.md
+    status: approved
+    depends_on: [DOM-006, ADR-0008]
+    deprecated_by: null
+  NFR-011:
+    slug: ai-eval-cost-bounds
+    file: specs/06-nfr/ai-eval-cost-bounds.md
+    status: approved
+    depends_on: [DOM-006, TEC-BE-014]
+    deprecated_by: null
+  TEC-BE-025:
+    slug: organization-invitations
+    file: specs/04-backend/organization-invitations.md
+    status: draft
+    depends_on: [TEC-BE-009, TEC-BE-011, GQL-005, MSG-010]
+    deprecated_by: null
+  TEC-FE-007:
+    slug: ai-eval-views
+    file: specs/05-frontend/ai-eval-views.md
+    status: approved
+    depends_on: [DOM-006, TEC-BE-015, TEC-FE-008]
+    deprecated_by: null
+  TEC-FE-008:
+    slug: ai-eval-ux-concept
+    file: specs/05-frontend/ai-eval-ux-concept.md
+    status: approved
+    depends_on: [TEC-FE-007, TEC-BE-024, TEC-BE-015, DSY-001]
+    deprecated_by: null
+  REV-005:
+    slug: ai-eval-implementation-scope
+    file: specs/99-reviews/ai-eval-implementation-scope.md
+    status: approved
+    depends_on: [DOM-006, TEC-BE-013, TEC-BE-014, TEC-BE-015]
+    deprecated_by: null
+  REV-006:
+    slug: ai-eval-product-concept
+    file: specs/99-reviews/ai-eval-product-concept.md
+    status: approved
+    depends_on: [DOM-006, REV-005]
+    deprecated_by: null
