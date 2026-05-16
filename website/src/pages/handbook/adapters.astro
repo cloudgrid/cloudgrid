@@ -1,0 +1,93 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Section from "../../components/Section.astro";
+import PageHeader from "../../components/PageHeader.astro";
+import AdapterDiagram from "../../components/visuals/AdapterDiagram.astro";
+---
+
+<Layout title="Adapter authoring — CloudGrid Handbook">
+  <Section size="lg">
+    <PageHeader
+      eyebrow="Handbook · Adapters"
+      accent="rose"
+      title="Author your own adapter."
+      description="Each of CloudGrid's four port surfaces is a typed contract with a documented v1 implementation as a reference. The goal of this page is to give you the mental model — the contracts themselves live in /specs."
+    />
+  </Section>
+
+  <Section tone="recessed">
+    <div class="reveal">
+      <AdapterDiagram />
+    </div>
+  </Section>
+
+  <Section>
+    <div class="prose-handbook">
+      <h2>Port: storage</h2>
+      <p>
+        Two services own the storage port: <code>core/storage-write</code> (mutations) and
+        <code>core/storage-read</code> (queries and live fanout). Adapter implementations live in
+        <code>internal/adapters/&lt;database&gt;/</code> within each service. The v1 adapter is
+        SurrealDB.
+      </p>
+      <p>
+        A new storage adapter must:
+      </p>
+      <ul>
+        <li>Implement the storage-writer port — persisting canonical telemetry idempotently for the same command ID, trace ID, span ID, and generated log event key.</li>
+        <li>Implement the storage-reader port — supporting filter pushdown, counts, grouping, sorting, cursors, and bounded facet queries inside the database, not in Go post-processing.</li>
+        <li>Implement readiness checks and schema initialization for its backend.</li>
+        <li>Honor authorization preparation — projections must respect project boundaries.</li>
+      </ul>
+
+      <h2>Port: message bridge</h2>
+      <p>
+        The bridge has three duties: durable ingest streams, request/reply queries, and
+        registration of ephemeral live subjects. The v1 adapter is NATS JetStream. A new bridge
+        adapter implements the bridge-ports contract — the cross-service shape is unchanged.
+      </p>
+
+      <h2>Port: auth provider</h2>
+      <p>
+        Auth providers feed BFF-managed sessions. The provider port is OIDC/OAuth-shaped: it
+        accepts a code, returns identity claims, and signals refresh semantics. v1 adapters cover
+        GitHub, Google, and Microsoft Entra ID.
+      </p>
+      <p>
+        A new auth adapter must:
+      </p>
+      <ul>
+        <li>Return the canonical identity claims the control plane expects.</li>
+        <li>Stay inside the BFF process — provider tokens never leave the server.</li>
+        <li>Avoid storing additional state in the browser.</li>
+      </ul>
+
+      <h2>Adapter: evaluation harness</h2>
+      <p>
+        Unlike the other three ports, the harness adapter is an HTTP contract — not an in-process
+        port. The v1 implementation is <code>puristajs/harness</code>. The contract:
+      </p>
+      <ul>
+        <li><code>POST /v1/run</code> — execute an agent run, return a summary (no spans in the response body).</li>
+        <li><code>POST /v1/score</code> — execute deterministic and judge scorers, return scores.</li>
+        <li><code>POST /v1/optimize</code> — execute prompt optimization, return candidate prompt versions.</li>
+        <li>W3C trace context (<code>traceparent</code> / <code>tracestate</code>) is preserved on every call.</li>
+        <li>Idempotency is required for retries.</li>
+      </ul>
+
+      <h2>Where the contracts live</h2>
+      <ul>
+        <li><a href="https://github.com/cloudgriddev/cloudgrid/blob/main/specs/04-backend/backend-architecture.md" target="_blank" rel="noopener noreferrer">specs/04-backend/backend-architecture.md</a> — services and ports.</li>
+        <li><a href="https://github.com/cloudgriddev/cloudgrid/tree/main/specs/03-contracts" target="_blank" rel="noopener noreferrer">specs/03-contracts</a> — GraphQL + AsyncAPI source files.</li>
+        <li><a href="https://github.com/cloudgriddev/cloudgrid/blob/main/specs/04-backend/ai-eval-runner.md" target="_blank" rel="noopener noreferrer">specs/04-backend/ai-eval-runner.md</a> — harness adapter contract.</li>
+      </ul>
+
+      <h2>Contribution path</h2>
+      <p>
+        Open an issue first if you're planning a new adapter — alignment on the port shape avoids
+        rework. The contributor path is the same as the maintainer path; no CLA, no rebranded
+        community edition.
+      </p>
+    </div>
+  </Section>
+</Layout>
