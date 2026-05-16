@@ -1,0 +1,73 @@
+---
+interface Props {
+  href: string;
+  title: string;
+  description: string;
+  icon?: "trace" | "log" | "metric" | "dashboard" | "ai" | "adapter";
+  accent?: "brand" | "cyan" | "emerald" | "amber" | "violet" | "rose";
+}
+
+const { href, title, description, icon = "trace", accent = "brand" } = Astro.props;
+
+const accentBorder: Record<string, string> = {
+  brand: "group-hover:border-[color:var(--color-brand)]/35",
+  cyan: "group-hover:border-[color:var(--color-cyan)]/35",
+  emerald: "group-hover:border-[color:var(--color-emerald)]/35",
+  amber: "group-hover:border-[color:var(--color-amber)]/35",
+  violet: "group-hover:border-[color:var(--color-violet)]/35",
+  rose: "group-hover:border-[color:var(--color-rose)]/35",
+};
+
+const accentBg: Record<string, string> = {
+  brand: "bg-brand-soft text-[var(--color-brand)]",
+  cyan: "bg-cyan-soft text-[var(--color-cyan)]",
+  emerald: "bg-emerald-soft text-[var(--color-emerald)]",
+  amber: "bg-amber-soft text-[var(--color-amber)]",
+  violet: "bg-violet-soft text-[var(--color-violet)]",
+  rose: "bg-rose-soft text-[var(--color-rose)]",
+};
+
+const iconPaths: Record<string, string> = {
+  trace: "M3 12h3l2-7 4 14 2-7h7",
+  log: "M4 5h16M4 10h16M4 15h10M4 20h13",
+  metric: "M3 19V5M3 19h18M7 15l4-5 3 3 5-7",
+  dashboard: "M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z",
+  ai: "M9 2h6v3h-6zM6 8h12v9H6zM10 17v3M14 17v3M3 11h3M18 11h3",
+  adapter: "M9 4v6h6V4M9 20v-6h6v6M3 12h6M15 12h6",
+};
+---
+
+<a
+  href={href}
+  class={`group block rounded-xl border border-border-default bg-surface p-6 transition-colors ${accentBorder[accent]}`}
+>
+  <div class={`w-10 h-10 rounded-lg inline-flex items-center justify-center ${accentBg[accent]} mb-4`}>
+    <svg
+      class="w-5 h-5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d={iconPaths[icon]}></path>
+    </svg>
+  </div>
+  <h3 class="text-base font-semibold text-text">{title}</h3>
+  <p class="mt-2 text-sm text-text-secondary leading-relaxed">{description}</p>
+  <div class="mt-4 inline-flex items-center gap-1 text-sm font-medium text-text-secondary group-hover:text-text">
+    Read more
+    <svg
+      class="w-3.5 h-3.5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M5 12h14M12 5l7 7-7 7"></path>
+    </svg>
+  </div>
+</a>
