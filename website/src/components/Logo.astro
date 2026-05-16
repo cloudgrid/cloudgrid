@@ -1,0 +1,32 @@
+---
+interface Props {
+  class?: string;
+}
+const { class: className = "w-8 h-8" } = Astro.props;
+---
+
+<!--
+  Flat, scalable mark: a small grid of dots with a single bold node — symbolising
+  one coherent signal grid with a focal point. Uses currentColor so it adapts to
+  light/dark themes when placed inside a colored text container.
+-->
+<svg
+  class={className}
+  viewBox="0 0 32 32"
+  fill="none"
+  xmlns="http://www.w3.org/2000/svg"
+  aria-hidden="true"
+>
+  <rect x="1" y="1" width="30" height="30" rx="7" fill="var(--color-brand)" />
+  <g fill="#ffffff" fill-opacity="0.55">
+    <circle cx="9" cy="9" r="1.6" />
+    <circle cx="16" cy="9" r="1.6" />
+    <circle cx="23" cy="9" r="1.6" />
+    <circle cx="9" cy="16" r="1.6" />
+    <circle cx="23" cy="16" r="1.6" />
+    <circle cx="9" cy="23" r="1.6" />
+    <circle cx="16" cy="23" r="1.6" />
+    <circle cx="23" cy="23" r="1.6" />
+  </g>
+  <circle cx="16" cy="16" r="3.4" fill="#ffffff" />
+</svg>
