@@ -1,0 +1,762 @@
+import type {
+  AiQualityOverview,
+  AiQualityOverviewInput,
+  CreateProjectInput,
+  CreateIngestCredentialInput,
+  AlertEventConnection,
+  AlertRule,
+  AlertRuleSearchInput,
+  AlertSilence,
+  CreateAlertRuleInput,
+  CreateAlertSilenceInput,
+  InviteOrganizationMemberInput,
+  LiveTraceEvent,
+  LiveTraceInput,
+  LogSearchInput,
+  Organization,
+  OrganizationInvitation,
+  OrganizationMember,
+  Project,
+  ProjectAiSettings,
+  ProjectListInput,
+  ProjectMember,
+  ProjectRole,
+  RetentionPolicy,
+  RetentionRuleInput,
+  RemoveOrganizationMemberInput,
+  TelemetryFacetInput,
+  TraceDetail,
+  TraceDetailInput,
+  TraceSearchInput,
+  UpdateAlertRuleInput,
+  UpdateOrganizationMemberInput,
+  UpdateProjectAiSettingsInput,
+  UpdateProjectInput,
+  UpdateRetentionPolicyInput,
+  Viewer,
+  ExperimentRun,
+  ExperimentRunEvent,
+} from "@cloudgrid/ui-contracts";
+import type { NormalizedAuthContext } from "./auth";
+import type { CloudGridBridge } from "./bridge";
+
+export function ssoAuthConfig() {
+  return {
+    mode: "sso" as const,
+    provider: "google" as const,
+    companyId: "company-1",
+    providers: {
+      github: {
+        provider: "github" as const,
+        clientId: "github-client-id",
+        clientSecret: "github-client-secret",
+        redirectUri: "https://cloudgrid.example/auth/callback",
+      },
+      google: {
+        provider: "google" as const,
+        issuer: "https://issuer.test",
+        audience: "cloudgrid",
+        clientId: "client-id",
+        redirectUri: "https://cloudgrid.example/auth/callback",
+      },
+      azure: {
+        provider: "azure" as const,
+        issuer: "https://login.microsoftonline.com/tenant/v2.0",
+        audience: "cloudgrid",
+        clientId: "azure-client-id",
+        redirectUri: "https://cloudgrid.example/auth/callback",
+      },
+    },
+    sessionSecret: "test-session-secret",
+    sessionTtlSeconds: 900,
+  };
+}
+
+export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridge {
+  return {
+    async viewer(_authContext: NormalizedAuthContext) {
+      return viewer();
+    },
+    async organizations(_authContext: NormalizedAuthContext) {
+      return [organization()];
+    },
+    async organization(_id: string, _authContext: NormalizedAuthContext) {
+      return organization();
+    },
+    async organizationMembers(_organizationId: string, _authContext: NormalizedAuthContext) {
+      return [member()];
+    },
+    async organizationInvitations(_organizationId: string, _authContext: NormalizedAuthContext) {
+      return [invitation()];
+    },
+    async projects(_input: ProjectListInput, _authContext: NormalizedAuthContext) {
+      return [project()];
+    },
+    async project(_id: string, _authContext: NormalizedAuthContext) {
+      return project();
+    },
+    async createProject(_input: CreateProjectInput, _authContext: NormalizedAuthContext) {
+      return project();
+    },
+    async updateProject(
+      _id: string,
+      _input: UpdateProjectInput,
+      _authContext: NormalizedAuthContext,
+    ) {
+      return project();
+    },
+    async selectProject(_id: string, _authContext: NormalizedAuthContext) {
+      return viewer();
+    },
+    async inviteOrganizationMember(
+      input: InviteOrganizationMemberInput,
+      _authContext: NormalizedAuthContext,
+    ) {
+      return invitation({ organizationId: input.organizationId, email: input.email });
+    },
+    async revokeOrganizationInvitation(_id: string, _authContext: NormalizedAuthContext) {
+      return invitation({ status: "revoked", revokedAt: "2026-05-16T10:00:00.000Z" });
+    },
+    async updateOrganizationMember(
+      _input: UpdateOrganizationMemberInput,
+      _authContext: NormalizedAuthContext,
+    ) {
+      return { user: { id: "user-1" }, role: "admin" };
+    },
+    async removeOrganizationMember(
+      _input: RemoveOrganizationMemberInput,
+      _authContext: NormalizedAuthContext,
+    ) {
+      return true;
+    },
+    async projectMembers(_projectId: string, _authContext?: NormalizedAuthContext) {
+      return [projectMember()];
+    },
+    async updateProjectMember(
+      projectId: string,
+      userId: string,
+      role: ProjectRole,
+      _authContext?: NormalizedAuthContext,
+    ) {
+      return projectMember({ projectId, userId, role, effectiveRole: role });
+    },
+    async removeProjectMember(
+      _projectId: string,
+      _userId: string,
+      _authContext?: NormalizedAuthContext,
+    ) {
+      return true;
+    },
+    async retentionPolicy(projectId: string, _authContext?: NormalizedAuthContext) {
+      return retentionPolicy(projectId);
+    },
+    async updateRetentionPolicy(
+      input: UpdateRetentionPolicyInput,
+      _authContext?: NormalizedAuthContext,
+    ) {
+      return retentionPolicy(input.projectId, input.expectedVersion + 1);
+    },
+    async alertRules(
+      projectId: string,
+      _input?: AlertRuleSearchInput,
+      _authContext?: NormalizedAuthContext,
+    ) {
+      return [alertRule(projectId)];
+    },
+    async createAlertRule(input: CreateAlertRuleInput, _authContext?: NormalizedAuthContext) {
+      return alertRule(input.projectId);
+    },
+    async updateAlertRule(input: UpdateAlertRuleInput, _authContext?: NormalizedAuthContext) {
+      return alertRule("project-1", input.id, input.expectedVersion + 1);
+    },
+    async deleteAlertRule(_id: string, _authContext?: NormalizedAuthContext) {
+      return true;
+    },
+    async alertSilences(
+      projectId: string,
+      ruleId?: string | null,
+      _authContext?: NormalizedAuthContext,
+    ) {
+      return [alertSilence(projectId, ruleId ?? "rule-1")];
+    },
+    async createAlertSilence(input: CreateAlertSilenceInput, _authContext?: NormalizedAuthContext) {
+      return alertSilence(input.projectId, input.ruleId);
+    },
+    async deleteAlertSilence(_id: string, _authContext?: NormalizedAuthContext) {
+      return true;
+    },
+    async alertHistory(
+      projectId: string,
+      ruleId?: string | null,
+      _first?: number | null,
+      _after?: string | null,
+      _authContext?: NormalizedAuthContext,
+    ) {
+      return alertHistory(projectId, ruleId ?? "rule-1");
+    },
+    async ingestCredentials(_projectId: string, _authContext?: NormalizedAuthContext) {
+      return { items: [] };
+    },
+    async createIngestCredential(
+      _input: CreateIngestCredentialInput,
+      _authContext?: NormalizedAuthContext,
+    ) {
+      return {
+        credential: {
+          id: "credential-1",
+          projectId: "project-1",
+          title: "Checkout service",
+          scopes: ["telemetry:ingest:traces", "telemetry:ingest:logs", "telemetry:ingest:metrics"],
+          secretPreview: "cgk_...1234",
+          createdAt: "2026-05-14T00:00:00.000Z",
+          lastUsedAt: null,
+          revokedAt: null,
+          createdByUserId: "user-1",
+        },
+        secret: "cgk_created_secret_1234567890",
+      };
+    },
+    async revokeIngestCredential(_id: string, _authContext?: NormalizedAuthContext) {
+      return {
+        id: "credential-1",
+        projectId: "project-1",
+        title: "Checkout service",
+        scopes: ["telemetry:ingest:traces", "telemetry:ingest:logs", "telemetry:ingest:metrics"],
+        secretPreview: "cgk_...1234",
+        createdAt: "2026-05-14T00:00:00.000Z",
+        lastUsedAt: null,
+        revokedAt: "2026-05-14T01:00:00.000Z",
+        createdByUserId: "user-1",
+      };
+    },
+    async searchTraces(_input: TraceSearchInput, _authContext?: NormalizedAuthContext) {
+      return { items: [], nextCursor: null };
+    },
+    async getTraceDetail(
+      _traceId: string,
+      _input: TraceDetailInput,
+      _authContext?: NormalizedAuthContext,
+    ) {
+      return traceDetail();
+    },
+    async searchLogs(_input: LogSearchInput, _authContext?: NormalizedAuthContext) {
+      return { items: [], nextCursor: null };
+    },
+    async telemetryFacets(_input: TelemetryFacetInput, _authContext?: NormalizedAuthContext) {
+      return {
+        services: [],
+        operations: [],
+        spanNames: [],
+        severities: [],
+        attributeKeys: [],
+      };
+    },
+    async metricNames() {
+      return { items: [] };
+    },
+    async metricSeries() {
+      return {
+        metric: {
+          id: "metric:empty",
+          tenantId: "tenant-1",
+          projectId: "project-1",
+          name: "empty",
+          description: null,
+          unit: "1",
+          kind: "gauge" as const,
+          aggregationTemporality: null,
+          monotonic: null,
+          attributeKeys: [],
+          firstSeenAt: "2026-05-14T00:00:00.000Z",
+          lastSeenAt: "2026-05-14T00:00:00.000Z",
+        },
+        aggregation: "avg" as const,
+        interval: null,
+        groupBy: [],
+        series: [],
+        warnings: [],
+      };
+    },
+    async dashboards() {
+      return { items: [], pinnedDashboardIds: [] };
+    },
+    async saveDashboard() {
+      return {
+        id: "dashboard-1",
+        projectId: "project-1",
+        slug: "dashboard-1",
+        name: "Dashboard",
+        description: null,
+        tags: [],
+        version: 1,
+        visibility: "personal" as const,
+        defaultTimeWindow: "PT1H",
+        pinned: false,
+        widgets: [],
+        createdAt: "2026-05-14T00:00:00.000Z",
+        updatedAt: "2026-05-14T00:00:00.000Z",
+        createdBy: "user-1",
+        updatedBy: "user-1",
+      };
+    },
+    async deleteDashboard() {
+      return true;
+    },
+    async setDashboardPinned() {
+      return {
+        projectId: "project-1",
+        pinnedDashboardIds: [],
+        updatedAt: "2026-05-14T00:00:00.000Z",
+      };
+    },
+    async reorderDashboardPins() {
+      return {
+        projectId: "project-1",
+        pinnedDashboardIds: [],
+        updatedAt: "2026-05-14T00:00:00.000Z",
+      };
+    },
+    subscribeLiveTraces(_input: LiveTraceInput, _authContext?: NormalizedAuthContext) {
+      return liveEvents([]);
+    },
+    async agentRuns() {
+      return { items: [], nextCursor: null };
+    },
+    async agentRun() {
+      return null;
+    },
+    async datasets() {
+      return { items: [], nextCursor: null };
+    },
+    async dataset() {
+      return null;
+    },
+    async datasetItems() {
+      return { items: [], nextCursor: null };
+    },
+    async scorers() {
+      return { items: [], nextCursor: null };
+    },
+    async experiments() {
+      return { items: [], nextCursor: null };
+    },
+    async experimentRun() {
+      return null;
+    },
+    async experimentRuns() {
+      return { items: [], nextCursor: null };
+    },
+    async datasetItemRuns() {
+      return { items: [], nextCursor: null };
+    },
+    async evalResults() {
+      return { items: [], nextCursor: null };
+    },
+    async annotationQueue() {
+      return { items: [], nextCursor: null };
+    },
+    async projectAiSettings(projectId: string) {
+      return projectAiSettings(projectId);
+    },
+    async aiQualityOverview(input: AiQualityOverviewInput) {
+      return aiQualityOverview(input.projectId);
+    },
+    async createDataset() {
+      return {
+        id: "dataset-1",
+        name: "Regression",
+        version: 1,
+        createdAt: "2026-05-12T10:00:00.000Z",
+        itemCount: 0,
+        reviewedItemCount: 0,
+        splitCounts: {},
+        health: datasetHealth(),
+        tags: [],
+      };
+    },
+    async appendDatasetItems() {
+      return {
+        id: "dataset-1",
+        name: "Regression",
+        version: 1,
+        createdAt: "2026-05-12T10:00:00.000Z",
+        itemCount: 0,
+        reviewedItemCount: 0,
+        splitCounts: {},
+        health: datasetHealth(),
+        tags: [],
+      };
+    },
+    async promoteSpanToDatasetItem() {
+      return {
+        id: "dataset-item-1",
+        datasetId: "dataset-1",
+        version: 1,
+        input: {},
+        metadata: {},
+        split: "dev" as const,
+        reviewStatus: "unreviewed" as const,
+        synthetic: false,
+        leakageWarnings: [],
+      };
+    },
+    async createScorer() {
+      return {
+        id: "scorer-1",
+        name: "Exact",
+        kind: "deterministic" as const,
+        definition: {},
+        version: 1,
+      };
+    },
+    async createExperiment() {
+      return {
+        id: "experiment-1",
+        name: "Regression",
+        datasetId: "dataset-1",
+        datasetVersion: 1,
+        splitSelector: { splits: ["dev"], reviewedOnly: false, includeSynthetic: true },
+        scorerIds: ["scorer-1"],
+        promptVersionRefs: [],
+        skillSnapshotRefs: [],
+        toolSnapshotRefs: [],
+        providerProfileRefs: [],
+        createdAt: "2026-05-12T10:00:00.000Z",
+        tags: [],
+      };
+    },
+    async startExperimentRun() {
+      return experimentRun();
+    },
+    async cancelExperimentRun() {
+      return experimentRun();
+    },
+    async startOptimizationRun() {
+      return experimentRun();
+    },
+    async promotePromptVersion() {
+      return {
+        id: "prompt-version-1",
+        name: "base",
+        text: "hello",
+        hash: "hash",
+        createdAt: "2026-05-12T10:00:00.000Z",
+      };
+    },
+    async resolveAnnotation() {
+      return {
+        id: "annotation-1",
+        targetTraceId: "trace-1",
+        reason: "failed",
+        status: "resolved" as const,
+        createdAt: "2026-05-12T10:00:00.000Z",
+      };
+    },
+    async updateProjectAiSettings(input: UpdateProjectAiSettingsInput) {
+      return projectAiSettings(input.projectId, input.expectedVersion + 1);
+    },
+    subscribeLiveExperimentRun() {
+      return liveExperimentEvents([]);
+    },
+    async health() {
+      return "ok" as const;
+    },
+    async close() {},
+    ...overrides,
+  };
+}
+
+export function viewer(): Viewer {
+  return {
+    user: { id: "user-local", displayName: "Local User", email: "local@cloudgrid.dev" },
+    organizations: [organization()],
+    selectedProject: project(),
+  };
+}
+
+export function organization(): Organization {
+  return {
+    id: "org-1",
+    name: "Local",
+    slug: "local",
+    role: "admin",
+    projects: [project()],
+  };
+}
+
+export function project(): Project {
+  return {
+    id: "project-1",
+    organizationId: "org-1",
+    name: "Default",
+    slug: "default",
+    status: "active",
+    telemetry: { traceCount: 0, logCount: 0, metricCount: 0, serviceCount: 0 },
+  };
+}
+
+export function member(): OrganizationMember {
+  return { user: { id: "user-1" }, role: "admin" };
+}
+
+export function invitation(
+  overrides: Partial<OrganizationInvitation> = {},
+): OrganizationInvitation {
+  return {
+    id: "invite-1",
+    organizationId: "org-1",
+    email: "ada@example.test",
+    role: "user",
+    status: "pending",
+    invitedByUserId: "admin-1",
+    acceptedByUserId: null,
+    createdAt: "2026-05-16T09:00:00.000Z",
+    updatedAt: "2026-05-16T09:00:00.000Z",
+    acceptedAt: null,
+    revokedAt: null,
+    expiresAt: "2026-05-23T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function projectMember(overrides: Partial<ProjectMember> = {}): ProjectMember {
+  return {
+    projectId: "project-1",
+    userId: "user-1",
+    email: "member@example.com",
+    displayName: "Member",
+    role: "viewer",
+    effectiveRole: "viewer",
+    source: "direct",
+    createdAt: "2026-05-14T00:00:00.000Z",
+    createdByUserId: "user-local",
+    updatedAt: "2026-05-14T00:00:00.000Z",
+    updatedByUserId: "user-local",
+    ...overrides,
+  };
+}
+
+function datasetHealth() {
+  return {
+    status: "needs_review" as const,
+    reviewedItemCount: 0,
+    totalItemCount: 0,
+    splitCounts: {},
+    duplicateCandidateCount: 0,
+    leakageWarningCount: 0,
+    missingExpectedCount: 0,
+    schemaIssueCount: 0,
+    smallDataset: true,
+    warnings: [],
+  };
+}
+
+function projectAiSettings(projectId = "project-1", version = 1): ProjectAiSettings {
+  return {
+    projectId,
+    enabled: true,
+    defaultProviderProfileId: "provider-1",
+    defaultJudgeProfileId: "provider-1",
+    defaultOptimizerProfileId: null,
+    defaultEmbeddingProfileId: null,
+    providerProfiles: [
+      {
+        id: "provider-1",
+        projectId,
+        label: "Harness",
+        providerKind: "local_harness",
+        models: {},
+        timeoutMs: 30000,
+      },
+    ],
+    modelAliases: [],
+    onlinePolicies: [],
+    budget: {
+      dailyUsd: 10,
+      deterministicOnly: false,
+      spentTodayUsd: 0,
+    },
+    sampling: {
+      defaultOnlineSampleRate: 0.1,
+      maxOnlineSampleRate: 1,
+      maxConcurrentExperimentItems: 4,
+      maxConcurrentOptimizationCandidates: 2,
+    },
+    datasetDefaults: {
+      splitAllocation: {},
+      smallDatasetReviewedThreshold: 30,
+      requireReviewForRegression: true,
+    },
+    effective: {
+      warnings: [],
+      deterministicOnly: false,
+      missingProviderProfiles: [],
+      disabledProviderProfiles: [],
+      budgetExhausted: false,
+    },
+    version,
+    updatedAt: "2026-05-12T10:00:00.000Z",
+    updatedByUserId: "user-1",
+  };
+}
+
+function aiQualityOverview(projectId = "project-1"): AiQualityOverview {
+  return {
+    projectId,
+    summary: {},
+    segments: [
+      {
+        key: "agent:support",
+        label: "support",
+        dimensions: { agentName: "support" },
+        runCount: 1,
+        scoredRunCount: 1,
+        passRate: 1,
+        meanScore: 1,
+        regressionCount: 0,
+      },
+    ],
+    warnings: [],
+  };
+}
+
+function retentionPolicy(projectId = "project-1", version = 1): RetentionPolicy {
+  const inputs: RetentionRuleInput[] = [
+    { dataClass: "TRACES", mode: "delete", retentionDays: 30 },
+    { dataClass: "LOGS", mode: "delete", retentionDays: 30 },
+    { dataClass: "METRICS", mode: "delete", retentionDays: 30 },
+    { dataClass: "AI_EVALS", mode: "delete", retentionDays: 90 },
+    { dataClass: "DATASETS", mode: "retain" },
+    { dataClass: "SCORERS", mode: "retain" },
+    { dataClass: "DASHBOARD_HISTORY", mode: "retain" },
+    { dataClass: "INGEST_CREDENTIAL_AUDIT", mode: "delete", retentionDays: 365 },
+  ];
+  const rules: RetentionPolicy["rules"] = inputs.map((rule) => ({
+    ...rule,
+    retentionDays: rule.retentionDays ?? null,
+    softDeleteDays: null,
+    updatedAt: "2026-05-14T00:00:00.000Z",
+    updatedByUserId: "user-local",
+    version,
+  }));
+  return {
+    projectId,
+    rules,
+    updatedAt: "2026-05-14T00:00:00.000Z",
+    updatedByUserId: "user-local",
+    version,
+  };
+}
+
+function alertRule(projectId = "project-1", id = "rule-1", version = 1): AlertRule {
+  return {
+    id,
+    projectId,
+    name: "Errors",
+    enabled: true,
+    kind: "TRACE_ERROR",
+    severity: "ERROR",
+    query: { service: "api" },
+    condition: { minCount: 1 },
+    evaluationWindowSeconds: 60,
+    pendingForSeconds: 0,
+    cooldownSeconds: 60,
+    notificationAdapterIds: ["in_app"],
+    createdAt: "2026-05-14T00:00:00.000Z",
+    updatedAt: "2026-05-14T00:00:00.000Z",
+    updatedByUserId: "user-local",
+    version,
+  };
+}
+
+function alertSilence(projectId = "project-1", ruleId = "rule-1"): AlertSilence {
+  return {
+    id: "silence-1",
+    projectId,
+    ruleId,
+    reason: "maintenance",
+    startsAt: "2026-05-14T08:00:00.000Z",
+    endsAt: "2026-05-14T09:00:00.000Z",
+    createdAt: "2026-05-14T08:00:00.000Z",
+    createdByUserId: "user-local",
+    active: true,
+  };
+}
+
+function alertHistory(projectId = "project-1", ruleId = "rule-1"): AlertEventConnection {
+  return {
+    items: [
+      {
+        id: "event-1",
+        projectId,
+        ruleId,
+        instanceId: "instance-1",
+        state: "FIRING",
+        severity: "ERROR",
+        summary: "Errors firing",
+        deduplicationKey: "errors:api",
+        startedAt: "2026-05-14T08:00:00.000Z",
+        endedAt: null,
+        createdAt: "2026-05-14T08:00:00.000Z",
+        evidenceTraceId: null,
+        evidenceSpanId: null,
+        evidenceLogId: null,
+        evidenceMetricName: null,
+      },
+    ],
+    pageInfo: { hasNextPage: false, endCursor: null },
+  };
+}
+
+export async function* liveEvents(events: LiveTraceEvent[]): AsyncIterableIterator<LiveTraceEvent> {
+  for (const event of events) {
+    yield event;
+  }
+}
+
+export async function* liveExperimentEvents(
+  events: ExperimentRunEvent[],
+): AsyncIterableIterator<ExperimentRunEvent> {
+  for (const event of events) {
+    yield event;
+  }
+}
+
+function experimentRun(): ExperimentRun {
+  return {
+    id: "experiment-run-1",
+    experimentId: "experiment-1",
+    solverRef: {},
+    status: "running",
+    startedAt: "2026-05-12T10:00:00.000Z",
+    summary: {},
+  };
+}
+
+function traceDetail(): TraceDetail {
+  return {
+    trace: {
+      id: "trace-1",
+      serviceName: "api",
+      startedAt: "2026-05-08T10:00:00.000Z",
+      endedAt: "2026-05-08T10:00:01.000Z",
+      durationMs: 1000,
+      rootSpanId: "span-1",
+      status: "error",
+      attributes: {},
+    },
+    structure: {
+      rootSpanIds: ["span-1"],
+      orphanSpanIds: [],
+      criticalPathSpanIds: ["span-1"],
+      maxDepth: 0,
+      serviceBreakdown: [],
+    },
+    spans: [],
+    selectedSpan: null,
+    spanMatches: [],
+    logs: [],
+    relatedLogs: [],
+    warnings: [],
+  };
+}
