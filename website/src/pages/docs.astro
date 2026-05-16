@@ -1,0 +1,20 @@
+---
+// Legacy `/docs` URL — keep working by redirecting to the new Handbook.
+import Layout from "../layouts/Layout.astro";
+import Section from "../components/Section.astro";
+
+const target = "/handbook";
+---
+
+<Layout title="Redirecting to the Handbook — CloudGrid">
+  <meta http-equiv="refresh" content={`0; url=${target}`} />
+  <Section size="lg">
+    <div class="text-center max-w-xl mx-auto">
+      <h1 class="text-2xl font-semibold text-text">Redirecting to the Handbook…</h1>
+      <p class="mt-3 text-text-secondary">The documentation lives at <code class="px-1 py-0.5 rounded bg-recessed border border-border-subtle font-mono text-xs">/handbook</code> now.</p>
+      <a href={target} class="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-[color:var(--color-brand)] underline underline-offset-4">
+        Take me there
+      </a>
+    </div>
+  </Section>
+</Layout>
