@@ -1,0 +1,18 @@
+source: codex-final-mvp-closure
+status: implementation_ready
+updated: 2026-05-11
+notes:
+  - Current CloudGrid specs and contracts are sufficient for MVP closure implementation.
+  - Formal implementation-planner gate file specs/.readiness-report.yaml exists and records the current verification state.
+  - Auth, control-plane, frontend login/company/project management, and SurrealDB tenant/project database separation have been implemented in the current codebase.
+  - Production-scale performance work now has explicit implementation constraints in specs/06-nfr/performance-and-scaling.md.
+  - Metrics, project-level retention, alerting, gRPC OTLP, project membership, production manifests, and log-ingest extraction are specified or deferred implementation waves, not open product-decision gaps.
+blocking_gaps: []
+explicit_deferrals:
+  - metrics ingest implementation
+  - grpc otlp ingest implementation on standard port 4317
+  - production-scale backpressure and benchmark implementation
+  - project-level retention policy and storage-maintenance worker implementation
+  - project-scoped alerting implementation
+  - project membership implementation
+  - production deployment manifests
