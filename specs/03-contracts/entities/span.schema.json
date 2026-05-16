@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-002",
+  "title": "Span",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "traceId", "name", "startedAt", "endedAt", "durationMs", "attributes"],
+  "properties": {
+    "id": { "type": "string", "description": "OpenTelemetry span ID as lowercase hex." },
+    "traceId": { "type": "string", "description": "Owning OpenTelemetry trace ID." },
+    "parentSpanId": { "type": "string", "description": "Parent span ID when present." },
+    "name": { "type": "string", "description": "Span name." },
+    "kind": { "type": "string", "description": "OpenTelemetry span kind." },
+    "serviceName": { "type": "string", "description": "Resource service.name value." },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Span start time in UTC."
+    },
+    "endedAt": { "type": "string", "format": "date-time", "description": "Span end time in UTC." },
+    "durationMs": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Span duration in milliseconds."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["ok", "error", "unset"],
+      "description": "Mapped OpenTelemetry status."
+    },
+    "attributes": {
+      "type": "object",
+      "description": "Span attributes including GenAI semantic attributes.",
+      "additionalProperties": true
+    },
+    "events": {
+      "type": "array",
+      "description": "Embedded span events.",
+      "items": { "$ref": "span-event.schema.json" }
+    },
+    "links": {
+      "type": "array",
+      "description": "OpenTelemetry span links for causal relationships outside the parent-child tree.",
+      "items": { "$ref": "span-link.schema.json" }
+    }
+  }
+}
