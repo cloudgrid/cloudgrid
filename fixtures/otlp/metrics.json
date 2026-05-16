@@ -1,0 +1,58 @@
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [{ "key": "service.name", "value": { "stringValue": "checkout-api" } }]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "getting-started" },
+          "metrics": [
+            {
+              "name": "gen_ai.client.token.usage",
+              "description": "Token usage emitted by a model client",
+              "unit": "{token}",
+              "histogram": {
+                "aggregationTemporality": 2,
+                "dataPoints": [
+                  {
+                    "attributes": [
+                      { "key": "gen_ai.provider.name", "value": { "stringValue": "openai" } },
+                      { "key": "gen_ai.request.model", "value": { "stringValue": "gpt-4.1-mini" } },
+                      { "key": "gen_ai.token.type", "value": { "stringValue": "input" } }
+                    ],
+                    "startTimeUnixNano": "1715688000000000000",
+                    "timeUnixNano": "1715688060000000000",
+                    "count": "1",
+                    "sum": 42,
+                    "bucketCounts": ["0", "1", "0"],
+                    "explicitBounds": [10, 100]
+                  }
+                ]
+              }
+            },
+            {
+              "name": "harness.run.duration",
+              "description": "Harness run duration",
+              "unit": "s",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "attributes": [
+                      {
+                        "key": "harness.workflow.id",
+                        "value": { "stringValue": "checkout-review" }
+                      }
+                    ],
+                    "timeUnixNano": "1715688060000000000",
+                    "asDouble": 1.24
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
