@@ -1,0 +1,22 @@
+---
+interface Props {
+  title?: string;
+  /** Optional class added to the outer container */
+  class?: string;
+}
+const { title = "cloudgrid · /traces", class: className = "" } = Astro.props;
+---
+
+<div class={`rounded-xl border border-border-default bg-surface shadow-sm overflow-hidden ${className}`}>
+  <div class="flex items-center gap-2 px-4 py-2.5 border-b border-border-subtle bg-recessed">
+    <div class="flex items-center gap-1.5">
+      <span class="w-2.5 h-2.5 rounded-full bg-[color:var(--color-rose)] opacity-70"></span>
+      <span class="w-2.5 h-2.5 rounded-full bg-[color:var(--color-amber)] opacity-70"></span>
+      <span class="w-2.5 h-2.5 rounded-full bg-[color:var(--color-emerald)] opacity-70"></span>
+    </div>
+    <span class="ml-2 text-xs font-mono text-text-muted truncate">{title}</span>
+  </div>
+  <div class="relative">
+    <slot />
+  </div>
+</div>
