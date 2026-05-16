@@ -1,0 +1,69 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Section from "../../components/Section.astro";
+import PageHeader from "../../components/PageHeader.astro";
+import MockFrame from "../../components/visuals/MockFrame.astro";
+import LogTable from "../../components/visuals/LogTable.astro";
+import CheckList from "../../components/CheckList.astro";
+import RelatedFeatures from "../../components/RelatedFeatures.astro";
+---
+
+<Layout title="Logs — CloudGrid">
+  <Section size="lg">
+    <PageHeader
+      eyebrow="Logs"
+      accent="cyan"
+      title="Search-first logs that already know which trace they belong to."
+      description="CloudGrid receives OTLP log records and renders them as a fast, searchable table where every entry preserves its severity, service, attributes, and W3C trace context — so you can pivot from any log line straight into the originating waterfall."
+    />
+  </Section>
+
+  <Section tone="recessed">
+    <div class="reveal">
+      <MockFrame title="cloudgrid · /logs · service:agent-svc">
+        <div class="bg-surface">
+          <LogTable />
+        </div>
+      </MockFrame>
+    </div>
+  </Section>
+
+  <Section>
+    <div class="grid lg:grid-cols-2 gap-12">
+      <div class="reveal">
+        <h2 class="text-xl font-semibold text-text mb-4">What you can do today</h2>
+        <CheckList
+          items={[
+            "OTLP HTTP ingest on /v1/logs with JSON and protobuf encodings.",
+            "Severity-aware table — INFO / WARN / ERROR / DEBUG with theme-stable colour chips.",
+            "Full-text search over message bodies, plus structured filters on attributes.",
+            "Trace-id and span-id are first-class columns — every row links to its trace.",
+            "Project-scoped queries: a user only sees logs for projects they belong to.",
+          ]}
+        />
+      </div>
+      <div class="reveal">
+        <h2 class="text-xl font-semibold text-text mb-4">Honest about scope</h2>
+        <CheckList
+          muted
+          items={[
+            "Log-volume-based alerting is a planned capability, not shipped yet.",
+            "Redaction policies are owned by your collector pipeline; CloudGrid stores what is sent.",
+            "Aggregation pipelines (think Loki LogQL) are out of scope — use metrics for time-series questions.",
+            "Long-term archival to object storage is delivered through alternative storage adapters.",
+          ]}
+        />
+      </div>
+    </div>
+  </Section>
+
+  <Section tone="recessed">
+    <RelatedFeatures
+      items={[
+        { label: "Traces", href: "/features/traces", desc: "Pivot from a log row into its waterfall." },
+        { label: "Dashboards", href: "/features/dashboards", desc: "Pin filtered log queries as widgets." },
+        { label: "Configuration", href: "/handbook/configuration", desc: "How project routing and bearer tokens work." },
+      ]}
+    />
+  </Section>
+</Layout>
