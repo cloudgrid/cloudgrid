@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-008",
+  "title": "RuntimeConfig",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["serviceName", "nats"],
+  "properties": {
+    "deploymentMode": {
+      "type": "string",
+      "enum": ["local", "deployed"],
+      "default": "local",
+      "description": "local runs one no-login company with multiple projects; deployed enables SSO and multiple companies."
+    },
+    "serviceName": {
+      "type": "string",
+      "enum": ["bff", "otlp-collector", "storage-read", "storage-write"],
+      "description": "Runtime service this config belongs to."
+    },
+    "http": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host", "port"],
+      "properties": {
+        "host": {
+          "type": "string",
+          "description": "HTTP bind host for services with HTTP endpoints."
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "HTTP bind port for services with HTTP endpoints."
+        }
+      }
+    },
+    "otlp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["httpAddr", "grpcAddr", "grpcMaxMessageBytes", "grpcCompression"],
+      "properties": {
+        "httpAddr": {
+          "type": "string",
+          "default": "0.0.0.0:4318",
+          "description": "CLOUDGRID_OTLP_HTTP_ADDR. OTLP/HTTP bind address."
+        },
+        "grpcAddr": {
+          "type": "string",
+          "default": "0.0.0.0:4317",
+          "description": "CLOUDGRID_OTLP_GRPC_ADDR. OTLP/gRPC bind address."
+        },
+        "grpcMaxMessageBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "CLOUDGRID_OTLP_GRPC_MAX_MESSAGE_BYTES. Maximum OTLP/gRPC message size in bytes; default equals the HTTP body limit."
+        },
+        "grpcCompression": {
+          "type": "string",
+          "enum": ["none", "gzip"],
+          "default": "gzip",
+          "description": "CLOUDGRID_OTLP_GRPC_COMPRESSION. Allowed OTLP/gRPC compression mode."
+        }
+      }
+    },
+    "nats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url"],
+      "properties": {
+        "url": { "type": "string", "description": "NATS connection URL." },
+        "requestTimeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 2000,
+          "description": "Request/reply timeout for BFF and read service clients."
+        },
+        "publishAckTimeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1000,
+          "description": "JetStream publish acknowledgement timeout."
+        }
+      }
+    },
+    "surrealdb": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "namespace", "database"],
+      "properties": {
+        "url": { "type": "string", "description": "SurrealDB RPC URL for storage services only." },
+        "namespace": { "type": "string", "description": "SurrealDB namespace." },
+        "database": { "type": "string", "description": "SurrealDB database." },
+        "username": { "type": "string", "description": "Optional username." },
+        "password": { "type": "string", "description": "Optional password." }
+      }
+    },
+    "frontend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["serveStatic", "staticDir"],
+      "properties": {
+        "serveStatic": {
+          "type": "boolean",
+          "description": "Whether BFF serves built frontend files."
+        },
+        "staticDir": { "type": "string", "description": "Path to Vite build output." }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["local", "sso"],
+          "default": "local",
+          "description": "Authentication mode. local is no-login trusted mode; sso uses external SSO providers."
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["github", "google", "azure"],
+          "description": "Configured SSO provider when mode is sso."
+        },
+        "issuer": {
+          "type": "string",
+          "description": "Expected OIDC issuer when mode is oidc."
+        },
+        "audience": {
+          "type": "string",
+          "description": "Expected JWT audience when mode is oidc."
+        },
+        "jwksUrl": {
+          "type": "string",
+          "description": "Explicit JWKS URL when OIDC discovery is not used."
+        },
+        "clientId": {
+          "type": "string",
+          "description": "OIDC client ID for BFF-managed browser login."
+        },
+        "clientSecret": {
+          "type": "string",
+          "description": "Optional OIDC client secret for providers requiring a confidential client."
+        },
+        "redirectUri": {
+          "type": "string",
+          "description": "OIDC redirect URI handled by the BFF."
+        },
+        "sessionSecret": {
+          "type": "string",
+          "description": "BFF session cookie integrity/encryption secret."
+        },
+        "sessionTtlSeconds": {
+          "type": "integer",
+          "minimum": 300,
+          "default": 28800,
+          "description": "BFF browser session lifetime in seconds."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "serviceName": { "const": "bff" } } },
+      "then": { "required": ["http", "frontend"] }
+    },
+    {
+      "if": { "properties": { "serviceName": { "const": "otlp-collector" } } },
+      "then": { "required": ["http", "otlp"] }
+    },
+    {
+      "if": { "properties": { "serviceName": { "enum": ["storage-read", "storage-write"] } } },
+      "then": { "required": ["surrealdb"] }
+    },
+    {
+      "if": {
+        "properties": {
+          "deploymentMode": { "const": "deployed" },
+          "auth": {
+            "properties": {
+              "mode": { "const": "sso" }
+            },
+            "required": ["mode"]
+          }
+        },
+        "required": ["auth"]
+      },
+      "then": {
+        "properties": {
+          "auth": {
+            "required": [
+              "provider",
+              "issuer",
+              "audience",
+              "clientId",
+              "redirectUri",
+              "sessionSecret"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "deploymentMode": { "const": "local" } } },
+      "then": {
+        "properties": {
+          "auth": {
+            "properties": {
+              "mode": { "const": "local" }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
