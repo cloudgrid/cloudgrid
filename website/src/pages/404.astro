@@ -1,0 +1,22 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Section from "../components/Section.astro";
+import Button from "../components/Button.astro";
+---
+
+<Layout title="Page not found — CloudGrid">
+  <Section size="lg">
+    <div class="text-center max-w-xl mx-auto py-16">
+      <div class="text-7xl font-semibold tracking-tight text-[color:var(--color-brand)]">404</div>
+      <h1 class="mt-3 text-2xl font-semibold text-text">This page is out of bounds.</h1>
+      <p class="mt-3 text-text-secondary">
+        Either the URL has moved or it never existed. The nav above will get you anywhere worth
+        going.
+      </p>
+      <div class="mt-7 flex flex-wrap gap-3 justify-center">
+        <Button href="/" variant="primary">Go home</Button>
+        <Button href="/handbook" variant="secondary">Read the handbook</Button>
+      </div>
+    </div>
+  </Section>
+</Layout>
