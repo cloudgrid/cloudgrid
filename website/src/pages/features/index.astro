@@ -1,0 +1,111 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Section from "../../components/Section.astro";
+import PageHeader from "../../components/PageHeader.astro";
+import FeatureCard from "../../components/FeatureCard.astro";
+
+const features = [
+  {
+    icon: "trace" as const,
+    title: "Distributed tracing",
+    description:
+      "Waterfall timelines, span attributes, span events, status filtering, and live trace receiving over GraphQL subscriptions.",
+    href: "/features/traces",
+    accent: "brand" as const,
+  },
+  {
+    icon: "log" as const,
+    title: "Log analytics",
+    description:
+      "Search-first log exploration with severity, attribute filters, and one-click pivots into the originating trace.",
+    href: "/features/logs",
+    accent: "cyan" as const,
+  },
+  {
+    icon: "metric" as const,
+    title: "Metrics exploration",
+    description:
+      "Counters, gauges, histograms, summaries — grouped by descriptor attributes with exemplar pivots back into traces.",
+    href: "/features/metrics",
+    accent: "emerald" as const,
+  },
+  {
+    icon: "dashboard" as const,
+    title: "Dashboards",
+    description:
+      "Compose saved dashboards from typed widgets — metric, log, trace, live feed — pinned to your project sidebar.",
+    href: "/features/dashboards",
+    accent: "amber" as const,
+  },
+  {
+    icon: "ai" as const,
+    title: "AI agent evaluation",
+    description:
+      "AgentRuns, datasets, scorers, experiments, prompt optimization. First-class entities projected from the spans you already emit.",
+    href: "/features/ai-evaluation",
+    accent: "violet" as const,
+  },
+  {
+    icon: "adapter" as const,
+    title: "Adapter-driven core",
+    description:
+      "Storage, message bridge, auth providers, and the evaluation harness all sit behind explicit, swappable ports.",
+    href: "/features/adapters",
+    accent: "rose" as const,
+  },
+];
+
+const truths = [
+  {
+    title: "Every read and write crosses the message bridge.",
+    body: "No public service talks to the database directly. The blast radius of a UI query is bounded by a request/reply contract.",
+  },
+  {
+    title: "Project is the isolation primitive.",
+    body: "Every trace, log, metric, dashboard, agent run, and dataset belongs to a project. Isolation enforced at API, message, and persistence layers.",
+  },
+  {
+    title: "Adapters are not a slogan.",
+    body: "Storage, transport, auth, harness — each is a typed port with a v1 implementation. The pattern is real today; alternatives are a contributor surface.",
+  },
+];
+---
+
+<Layout title="Features — CloudGrid">
+  <Section size="lg">
+    <PageHeader
+      eyebrow="Features"
+      title="Everything you need to observe modern systems."
+      description="CloudGrid covers the full OpenTelemetry signal spectrum and extends it with first-class AI agent evaluation — in one self-hosted product."
+    />
+  </Section>
+
+  <Section tone="recessed">
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {features.map((f) => (
+        <div class="reveal">
+          <FeatureCard {...f} />
+        </div>
+      ))}
+    </div>
+  </Section>
+
+  <Section>
+    <div class="max-w-3xl mb-8 reveal">
+      <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-text">
+        The three truths that hold across every feature.
+      </h2>
+      <p class="mt-3 text-text-secondary">
+        Capabilities change. These don't.
+      </p>
+    </div>
+    <div class="grid md:grid-cols-3 gap-5">
+      {truths.map((t) => (
+        <div class="reveal rounded-xl border border-border-default bg-surface p-6">
+          <div class="text-base font-semibold text-text">{t.title}</div>
+          <p class="mt-2 text-sm text-text-secondary leading-relaxed">{t.body}</p>
+        </div>
+      ))}
+    </div>
+  </Section>
+</Layout>
