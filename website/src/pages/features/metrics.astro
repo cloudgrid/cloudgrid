@@ -1,0 +1,69 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Section from "../../components/Section.astro";
+import PageHeader from "../../components/PageHeader.astro";
+import MockFrame from "../../components/visuals/MockFrame.astro";
+import MetricChart from "../../components/visuals/MetricChart.astro";
+import CheckList from "../../components/CheckList.astro";
+import RelatedFeatures from "../../components/RelatedFeatures.astro";
+---
+
+<Layout title="Metrics — CloudGrid">
+  <Section size="lg">
+    <PageHeader
+      eyebrow="Metrics"
+      accent="emerald"
+      title="Metric exploration that respects descriptors, attributes, and exemplars."
+      description="CloudGrid ingests OTLP metrics as a first-class project-scoped signal — counters, gauges, histograms, summaries, exemplars. Pivot from any exemplar straight into the trace that produced it."
+    />
+  </Section>
+
+  <Section tone="recessed">
+    <div class="reveal">
+      <MockFrame title="cloudgrid · /metrics · http.server.duration">
+        <div class="p-4 bg-surface">
+          <MetricChart />
+        </div>
+      </MockFrame>
+    </div>
+  </Section>
+
+  <Section>
+    <div class="grid lg:grid-cols-2 gap-12">
+      <div class="reveal">
+        <h2 class="text-xl font-semibold text-text mb-4">What you can do today</h2>
+        <CheckList
+          items={[
+            "OTLP HTTP ingest on /v1/metrics with JSON and protobuf encodings.",
+            "Browse metric descriptors with units, types, and attribute key inventories.",
+            "Time-series exploration with group-by descriptor attributes and aggregation.",
+            "Exemplar pivots back into the originating trace.",
+            "AI harness metrics — token totals, model-call counts — ingested as standard OTLP.",
+          ]}
+        />
+      </div>
+      <div class="reveal">
+        <h2 class="text-xl font-semibold text-text mb-4">Honest about scope</h2>
+        <CheckList
+          muted
+          items={[
+            "Long-term metric retention runs on the v1 SurrealDB adapter — alternative backends are the natural next adapter.",
+            "Custom PromQL/MetricsQL surface is not provided; CloudGrid uses GraphQL view models with explicit aggregations.",
+            "Recording-rule and downsampling pipelines are owned by your collector layer for now.",
+            "Alerting on metric thresholds is foundation-level today; full alert routing is on the spec path.",
+          ]}
+        />
+      </div>
+    </div>
+  </Section>
+
+  <Section tone="recessed">
+    <RelatedFeatures
+      items={[
+        { label: "Dashboards", href: "/features/dashboards", desc: "Save metric explorations as typed widgets." },
+        { label: "Traces", href: "/features/traces", desc: "Exemplars are linkable trace IDs." },
+        { label: "Adapters", href: "/features/adapters", desc: "Swap the storage backend behind metrics." },
+      ]}
+    />
+  </Section>
+</Layout>
