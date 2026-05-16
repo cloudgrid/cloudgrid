@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-005",
+  "title": "Service",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "lastSeenAt"],
+  "properties": {
+    "name": { "type": "string", "description": "OpenTelemetry service.name." },
+    "firstSeenAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "First observed telemetry time."
+    },
+    "lastSeenAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Most recent observed telemetry time."
+    },
+    "attributes": {
+      "type": "object",
+      "description": "Latest known service resource attributes.",
+      "additionalProperties": true
+    }
+  }
+}
