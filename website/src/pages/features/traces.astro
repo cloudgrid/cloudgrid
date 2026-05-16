@@ -1,0 +1,78 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Section from "../../components/Section.astro";
+import PageHeader from "../../components/PageHeader.astro";
+import MockFrame from "../../components/visuals/MockFrame.astro";
+import TraceWaterfall from "../../components/visuals/TraceWaterfall.astro";
+import CheckList from "../../components/CheckList.astro";
+import RelatedFeatures from "../../components/RelatedFeatures.astro";
+---
+
+<Layout title="Distributed tracing — CloudGrid">
+  <Section size="lg">
+    <PageHeader
+      eyebrow="Traces"
+      accent="brand"
+      title="Every span, every attribute, every event — preserved."
+      description="CloudGrid receives OTLP traces and renders them as waterfall timelines you can dig into. Span attributes, span events, and W3C trace context are kept end-to-end. Pivots from logs, metrics, and AI evaluations all land here."
+    />
+  </Section>
+
+  <Section tone="recessed">
+    <div class="reveal">
+      <MockFrame title="cloudgrid · /traces · 1a7b…c901">
+        <div class="p-4 bg-surface">
+          <TraceWaterfall />
+        </div>
+      </MockFrame>
+    </div>
+  </Section>
+
+  <Section>
+    <div class="grid lg:grid-cols-2 gap-12">
+      <div class="reveal">
+        <h2 class="text-xl font-semibold text-text mb-4">What you can do today</h2>
+        <CheckList
+          items={[
+            "OTLP HTTP ingest on /v1/traces with JSON and protobuf encodings.",
+            "Project-scoped trace list with service, operation, status, and duration filters.",
+            "Full waterfall view with span attributes, span events, and trace-context links.",
+            "Live trace receiving over GraphQL subscriptions — filter by service, status, or duration.",
+            "Trace-id pivots from any log, metric exemplar, or AI agent run.",
+          ]}
+        />
+      </div>
+      <div class="reveal">
+        <h2 class="text-xl font-semibold text-text mb-4">Honest about scope</h2>
+        <CheckList
+          muted
+          items={[
+            "OTLP HTTP today; OTLP gRPC is on the spec path, not shipped yet.",
+            "No proprietary trace processor — what your OTel SDK sent is what is stored.",
+            "Sampling decisions are owned by your SDK / collector pipeline, not CloudGrid.",
+            "Long-term cold storage is delivered through alternative storage adapters.",
+          ]}
+        />
+      </div>
+    </div>
+  </Section>
+
+  <Section tone="recessed">
+    <div class="max-w-3xl mb-6 reveal">
+      <h2 class="text-xl font-semibold text-text">Architecture, briefly.</h2>
+      <p class="mt-2 text-text-secondary">
+        Trace persistence is a one-direction flow: collector → bridge → storage-write. Reads are a
+        request/reply over the bridge; live trace receiving uses storage-read's ephemeral live
+        subjects scoped to the calling BFF session. The TypeScript BFF never imports a SurrealDB
+        client.
+      </p>
+    </div>
+    <RelatedFeatures
+      items={[
+        { label: "Logs", href: "/features/logs", desc: "Every log row already knows its trace id." },
+        { label: "AI Evaluation", href: "/features/ai-evaluation", desc: "AgentRuns project from these spans." },
+        { label: "Architecture", href: "/handbook/architecture", desc: "Read the message-bridge contract." },
+      ]}
+    />
+  </Section>
+</Layout>
