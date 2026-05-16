@@ -1,0 +1,4380 @@
+asyncapi: 3.0.0
+info:
+  title: Cloudgrid Message Bridge
+  version: 0.1.0
+  description: Private NATS and JetStream contract. All telemetry reads and writes cross this bridge.
+servers:
+  nats:
+    host: localhost:4222
+    protocol: nats
+channels:
+  telemetry.traces.search:
+    address: telemetry.traces.search
+    messages:
+      TraceSearchRequest:
+        $ref: "#/components/messages/TraceSearchRequest"
+      TraceSearchResponse:
+        $ref: "#/components/messages/TraceSearchResponse"
+  telemetry.traces.get:
+    address: telemetry.traces.get
+    messages:
+      TraceDetailRequest:
+        $ref: "#/components/messages/TraceDetailRequest"
+      TraceDetailResponse:
+        $ref: "#/components/messages/TraceDetailResponse"
+  telemetry.logs.search:
+    address: telemetry.logs.search
+    messages:
+      LogSearchRequest:
+        $ref: "#/components/messages/LogSearchRequest"
+      LogSearchResponse:
+        $ref: "#/components/messages/LogSearchResponse"
+  telemetry.metrics.names:
+    address: telemetry.metrics.names
+    messages:
+      MetricNameSearchRequest:
+        $ref: "#/components/messages/MetricNameSearchRequest"
+      MetricNameSearchResponse:
+        $ref: "#/components/messages/MetricNameSearchResponse"
+  telemetry.metrics.query:
+    address: telemetry.metrics.query
+    messages:
+      MetricSeriesRequest:
+        $ref: "#/components/messages/MetricSeriesRequest"
+      MetricSeriesResponse:
+        $ref: "#/components/messages/MetricSeriesResponse"
+  telemetry.facets:
+    address: telemetry.facets
+    messages:
+      TelemetryFacetRequest:
+        $ref: "#/components/messages/TelemetryFacetRequest"
+      TelemetryFacetResponse:
+        $ref: "#/components/messages/TelemetryFacetResponse"
+  telemetry.projects.overview:
+    address: telemetry.projects.overview
+    messages:
+      ProjectTelemetryOverviewRequest:
+        $ref: "#/components/messages/ProjectTelemetryOverviewRequest"
+      ProjectTelemetryOverviewResponse:
+        $ref: "#/components/messages/ProjectTelemetryOverviewResponse"
+  telemetry.traces.live.start:
+    address: telemetry.traces.live.start
+    messages:
+      LiveTraceStartRequest:
+        $ref: "#/components/messages/LiveTraceStartRequest"
+      LiveTraceStartResponse:
+        $ref: "#/components/messages/LiveTraceStartResponse"
+  telemetry.traces.live.stop:
+    address: telemetry.traces.live.stop
+    messages:
+      LiveTraceStopRequest:
+        $ref: "#/components/messages/LiveTraceStopRequest"
+      LiveTraceStopResponse:
+        $ref: "#/components/messages/LiveTraceStopResponse"
+  telemetry.traces.live.events:
+    address: telemetry.traces.live.events.*.*
+    messages:
+      LiveTraceEvent:
+        $ref: "#/components/messages/LiveTraceEvent"
+  telemetry.persisted.traces:
+    address: telemetry.persisted.traces
+    messages:
+      TracePersistedNotification:
+        $ref: "#/components/messages/TracePersistedNotification"
+  telemetry.ingest.traces:
+    address: telemetry.ingest.traces
+    messages:
+      PersistTelemetryCommand:
+        $ref: "#/components/messages/PersistTelemetryCommand"
+  telemetry.ingest.logs:
+    address: telemetry.ingest.logs
+    messages:
+      PersistTelemetryCommand:
+        $ref: "#/components/messages/PersistTelemetryCommand"
+  telemetry.ingest.metrics:
+    address: telemetry.ingest.metrics
+    messages:
+      PersistMetricsCommand:
+        $ref: "#/components/messages/PersistMetricsCommand"
+  telemetry.ingest.ai_projections:
+    address: telemetry.ingest.ai_projections
+    messages:
+      PersistAiProjectionCommand:
+        $ref: "#/components/messages/PersistAiProjectionCommand"
+  ai.persisted.projections:
+    address: ai.persisted.projections
+    messages:
+      AiProjectionPersistedNotification:
+        $ref: "#/components/messages/AiProjectionPersistedNotification"
+  eval.dataset.create:
+    address: eval.dataset.create
+    messages:
+      EvalMutationRequest:
+        $ref: "#/components/messages/EvalMutationRequest"
+      EvalMutationResponse:
+        $ref: "#/components/messages/EvalMutationResponse"
+  eval.dataset.search:
+    address: eval.dataset.search
+    messages:
+      EvalQueryRequest:
+        $ref: "#/components/messages/EvalQueryRequest"
+      EvalQueryResponse:
+        $ref: "#/components/messages/EvalQueryResponse"
+  eval.dataset.items.append:
+    address: eval.dataset.items.append
+    messages:
+      EvalMutationRequest:
+        $ref: "#/components/messages/EvalMutationRequest"
+      EvalMutationResponse:
+        $ref: "#/components/messages/EvalMutationResponse"
+  eval.dataset.item.promote:
+    address: eval.dataset.item.promote
+    messages:
+      EvalMutationRequest:
+        $ref: "#/components/messages/EvalMutationRequest"
+      EvalMutationResponse:
+        $ref: "#/components/messages/EvalMutationResponse"
+  eval.dataset.health:
+    address: eval.dataset.health
+    messages:
+      EvalQueryRequest:
+        $ref: "#/components/messages/EvalQueryRequest"
+      EvalQueryResponse:
+        $ref: "#/components/messages/EvalQueryResponse"
+  eval.agent_runs.search:
+    address: eval.agent_runs.search
+    messages:
+      EvalQueryRequest:
+        $ref: "#/components/messages/EvalQueryRequest"
+      EvalQueryResponse:
+        $ref: "#/components/messages/EvalQueryResponse"
+  eval.scorer.create:
+    address: eval.scorer.create
+    messages:
+      EvalMutationRequest:
+        $ref: "#/components/messages/EvalMutationRequest"
+      EvalMutationResponse:
+        $ref: "#/components/messages/EvalMutationResponse"
+  eval.scorer.search:
+    address: eval.scorer.search
+    messages:
+      EvalQueryRequest:
+        $ref: "#/components/messages/EvalQueryRequest"
+      EvalQueryResponse:
+        $ref: "#/components/messages/EvalQueryResponse"
+  eval.experiment.create:
+    address: eval.experiment.create
+    messages:
+      EvalMutationRequest:
+        $ref: "#/components/messages/EvalMutationRequest"
+      EvalMutationResponse:
+        $ref: "#/components/messages/EvalMutationResponse"
+  eval.experiment.start:
+    address: eval.experiment.start
+    messages:
+      ExperimentStartRequest:
+        $ref: "#/components/messages/ExperimentStartRequest"
+      ExperimentStartResponse:
+        $ref: "#/components/messages/ExperimentStartResponse"
+  eval.experiment.cancel:
+    address: eval.experiment.cancel
+    messages:
+      ExperimentCancelRequest:
+        $ref: "#/components/messages/ExperimentCancelRequest"
+      ExperimentStartResponse:
+        $ref: "#/components/messages/ExperimentStartResponse"
+  eval.optimization.start:
+    address: eval.optimization.start
+    messages:
+      OptimizationStartRequest:
+        $ref: "#/components/messages/OptimizationStartRequest"
+      ExperimentStartResponse:
+        $ref: "#/components/messages/ExperimentStartResponse"
+  eval.experiment.search:
+    address: eval.experiment.search
+    messages:
+      EvalQueryRequest:
+        $ref: "#/components/messages/EvalQueryRequest"
+      EvalQueryResponse:
+        $ref: "#/components/messages/EvalQueryResponse"
+  eval.results.search:
+    address: eval.results.search
+    messages:
+      EvalQueryRequest:
+        $ref: "#/components/messages/EvalQueryRequest"
+      EvalQueryResponse:
+        $ref: "#/components/messages/EvalQueryResponse"
+  eval.results.persist:
+    address: eval.results.persist
+    messages:
+      EvalMutationRequest:
+        $ref: "#/components/messages/EvalMutationRequest"
+      EvalMutationResponse:
+        $ref: "#/components/messages/EvalMutationResponse"
+  eval.live.start:
+    address: eval.live.start
+    messages:
+      EvalLiveStartRequest:
+        $ref: "#/components/messages/EvalLiveStartRequest"
+      EvalLiveStartResponse:
+        $ref: "#/components/messages/EvalLiveStartResponse"
+  eval.live.stop:
+    address: eval.live.stop
+    messages:
+      EvalLiveStopRequest:
+        $ref: "#/components/messages/EvalLiveStopRequest"
+      EvalLiveStopResponse:
+        $ref: "#/components/messages/EvalLiveStopResponse"
+  eval.live.events:
+    address: eval.live.events.*.*
+    messages:
+      ExperimentRunEvent:
+        $ref: "#/components/messages/ExperimentRunEvent"
+  eval.experiment.progress:
+    address: eval.experiment.progress
+    messages:
+      ExperimentProgressNotification:
+        $ref: "#/components/messages/ExperimentProgressNotification"
+  eval.manifest.resolve:
+    address: eval.manifest.resolve
+    messages:
+      ExperimentManifestResolveRequest:
+        $ref: "#/components/messages/ExperimentManifestResolveRequest"
+      ExperimentManifestResolveResponse:
+        $ref: "#/components/messages/ExperimentManifestResolveResponse"
+  eval.quality.overview:
+    address: eval.quality.overview
+    messages:
+      EvalQueryRequest:
+        $ref: "#/components/messages/EvalQueryRequest"
+      EvalQueryResponse:
+        $ref: "#/components/messages/EvalQueryResponse"
+  eval.prompt_version.promote:
+    address: eval.prompt_version.promote
+    messages:
+      EvalMutationRequest:
+        $ref: "#/components/messages/EvalMutationRequest"
+      EvalMutationResponse:
+        $ref: "#/components/messages/EvalMutationResponse"
+  annotation.queue.search:
+    address: annotation.queue.search
+    messages:
+      EvalQueryRequest:
+        $ref: "#/components/messages/EvalQueryRequest"
+      EvalQueryResponse:
+        $ref: "#/components/messages/EvalQueryResponse"
+  annotation.item.update:
+    address: annotation.item.update
+    messages:
+      EvalMutationRequest:
+        $ref: "#/components/messages/EvalMutationRequest"
+      EvalMutationResponse:
+        $ref: "#/components/messages/EvalMutationResponse"
+  control.viewer.get:
+    address: control.viewer.get
+    messages:
+      ViewerGetRequest:
+        $ref: "#/components/messages/ViewerGetRequest"
+      ViewerGetResponse:
+        $ref: "#/components/messages/ViewerGetResponse"
+  control.organizations.list:
+    address: control.organizations.list
+    messages:
+      OrganizationListRequest:
+        $ref: "#/components/messages/OrganizationListRequest"
+      OrganizationListResponse:
+        $ref: "#/components/messages/OrganizationListResponse"
+  control.organizations.get:
+    address: control.organizations.get
+    messages:
+      OrganizationGetRequest:
+        $ref: "#/components/messages/OrganizationGetRequest"
+      OrganizationGetResponse:
+        $ref: "#/components/messages/OrganizationGetResponse"
+  control.members.list:
+    address: control.members.list
+    messages:
+      MemberListRequest:
+        $ref: "#/components/messages/MemberListRequest"
+      MemberListResponse:
+        $ref: "#/components/messages/MemberListResponse"
+  control.projects.list:
+    address: control.projects.list
+    messages:
+      ProjectListRequest:
+        $ref: "#/components/messages/ProjectListRequest"
+      ProjectListResponse:
+        $ref: "#/components/messages/ProjectListResponse"
+  control.projects.get:
+    address: control.projects.get
+    messages:
+      ProjectGetRequest:
+        $ref: "#/components/messages/ProjectGetRequest"
+      ProjectGetResponse:
+        $ref: "#/components/messages/ProjectGetResponse"
+  control.projects.create:
+    address: control.projects.create
+    messages:
+      ProjectCreateRequest:
+        $ref: "#/components/messages/ProjectCreateRequest"
+      ProjectMutationResponse:
+        $ref: "#/components/messages/ProjectMutationResponse"
+  control.projects.update:
+    address: control.projects.update
+    messages:
+      ProjectUpdateRequest:
+        $ref: "#/components/messages/ProjectUpdateRequest"
+      ProjectMutationResponse:
+        $ref: "#/components/messages/ProjectMutationResponse"
+  control.projects.select:
+    address: control.projects.select
+    messages:
+      ProjectSelectRequest:
+        $ref: "#/components/messages/ProjectSelectRequest"
+      ProjectSelectResponse:
+        $ref: "#/components/messages/ProjectSelectResponse"
+  control.members.update:
+    address: control.members.update
+    messages:
+      MemberUpdateRequest:
+        $ref: "#/components/messages/MemberUpdateRequest"
+      MemberUpdateResponse:
+        $ref: "#/components/messages/MemberUpdateResponse"
+  control.members.remove:
+    address: control.members.remove
+    messages:
+      MemberRemoveRequest:
+        $ref: "#/components/messages/MemberRemoveRequest"
+      MemberRemoveResponse:
+        $ref: "#/components/messages/MemberRemoveResponse"
+  control.invitations.list:
+    address: control.invitations.list
+    messages:
+      InvitationListRequest:
+        $ref: "#/components/messages/InvitationListRequest"
+      InvitationListResponse:
+        $ref: "#/components/messages/InvitationListResponse"
+  control.invitations.create:
+    address: control.invitations.create
+    messages:
+      InvitationCreateRequest:
+        $ref: "#/components/messages/InvitationCreateRequest"
+      InvitationMutationResponse:
+        $ref: "#/components/messages/InvitationMutationResponse"
+  control.invitations.revoke:
+    address: control.invitations.revoke
+    messages:
+      InvitationRevokeRequest:
+        $ref: "#/components/messages/InvitationRevokeRequest"
+      InvitationMutationResponse:
+        $ref: "#/components/messages/InvitationMutationResponse"
+  control.ingest_credentials.list:
+    address: control.ingest_credentials.list
+    messages:
+      IngestCredentialListRequest:
+        $ref: "#/components/messages/IngestCredentialListRequest"
+      IngestCredentialListResponse:
+        $ref: "#/components/messages/IngestCredentialListResponse"
+  control.ingest_credentials.create:
+    address: control.ingest_credentials.create
+    messages:
+      IngestCredentialCreateRequest:
+        $ref: "#/components/messages/IngestCredentialCreateRequest"
+      IngestCredentialCreateResponse:
+        $ref: "#/components/messages/IngestCredentialCreateResponse"
+  control.ingest_credentials.revoke:
+    address: control.ingest_credentials.revoke
+    messages:
+      IngestCredentialRevokeRequest:
+        $ref: "#/components/messages/IngestCredentialRevokeRequest"
+      IngestCredentialRevokeResponse:
+        $ref: "#/components/messages/IngestCredentialRevokeResponse"
+  control.ai_settings.get:
+    address: control.ai_settings.get
+    messages:
+      ProjectAiSettingsGetRequest:
+        $ref: "#/components/messages/ProjectAiSettingsGetRequest"
+      ProjectAiSettingsGetResponse:
+        $ref: "#/components/messages/ProjectAiSettingsGetResponse"
+  control.ai_settings.update:
+    address: control.ai_settings.update
+    messages:
+      ProjectAiSettingsUpdateRequest:
+        $ref: "#/components/messages/ProjectAiSettingsUpdateRequest"
+      ProjectAiSettingsUpdateResponse:
+        $ref: "#/components/messages/ProjectAiSettingsUpdateResponse"
+  control.project_status.snapshot:
+    address: control.project_status.snapshot
+    messages:
+      ProjectStatusSnapshotRequest:
+        $ref: "#/components/messages/ProjectStatusSnapshotRequest"
+      ProjectStatusSnapshotResponse:
+        $ref: "#/components/messages/ProjectStatusSnapshotResponse"
+  control.project_status.changed:
+    address: control.project_status.changed
+    messages:
+      ProjectStatusChangedNotification:
+        $ref: "#/components/messages/ProjectStatusChangedNotification"
+  control.dashboards.list:
+    address: control.dashboards.list
+    messages:
+      DashboardListRequest:
+        $ref: "#/components/messages/DashboardListRequest"
+      DashboardListResponse:
+        $ref: "#/components/messages/DashboardListResponse"
+  control.dashboards.save:
+    address: control.dashboards.save
+    messages:
+      DashboardSaveRequest:
+        $ref: "#/components/messages/DashboardSaveRequest"
+      DashboardSaveResponse:
+        $ref: "#/components/messages/DashboardSaveResponse"
+  control.dashboards.delete:
+    address: control.dashboards.delete
+    messages:
+      DashboardDeleteRequest:
+        $ref: "#/components/messages/DashboardDeleteRequest"
+      DashboardDeleteResponse:
+        $ref: "#/components/messages/DashboardDeleteResponse"
+  control.dashboard_pins.set:
+    address: control.dashboard_pins.set
+    messages:
+      DashboardPinSetRequest:
+        $ref: "#/components/messages/DashboardPinSetRequest"
+      DashboardPreferencesResponse:
+        $ref: "#/components/messages/DashboardPreferencesResponse"
+  control.dashboard_pins.reorder:
+    address: control.dashboard_pins.reorder
+    messages:
+      DashboardPinReorderRequest:
+        $ref: "#/components/messages/DashboardPinReorderRequest"
+      DashboardPreferencesResponse:
+        $ref: "#/components/messages/DashboardPreferencesResponse"
+  control.project_members.list:
+    address: control.project_members.list
+    messages:
+      ProjectMemberListRequest:
+        $ref: "#/components/messages/ProjectMemberListRequest"
+      ProjectMemberListResponse:
+        $ref: "#/components/messages/ProjectMemberListResponse"
+  control.project_members.update:
+    address: control.project_members.update
+    messages:
+      ProjectMemberUpdateRequest:
+        $ref: "#/components/messages/ProjectMemberUpdateRequest"
+      ProjectMemberMutationResponse:
+        $ref: "#/components/messages/ProjectMemberMutationResponse"
+  control.project_members.remove:
+    address: control.project_members.remove
+    messages:
+      ProjectMemberRemoveRequest:
+        $ref: "#/components/messages/ProjectMemberRemoveRequest"
+      ProjectMemberRemoveResponse:
+        $ref: "#/components/messages/ProjectMemberRemoveResponse"
+  control.retention.get:
+    address: control.retention.get
+    messages:
+      RetentionGetRequest:
+        $ref: "#/components/messages/RetentionGetRequest"
+      RetentionGetResponse:
+        $ref: "#/components/messages/RetentionGetResponse"
+  control.retention.update:
+    address: control.retention.update
+    messages:
+      RetentionUpdateRequest:
+        $ref: "#/components/messages/RetentionUpdateRequest"
+      RetentionUpdateResponse:
+        $ref: "#/components/messages/RetentionUpdateResponse"
+  storage_maintenance.retention.execute_batch:
+    address: storage_maintenance.retention.execute_batch
+    messages:
+      RetentionExecuteBatchRequest:
+        $ref: "#/components/messages/RetentionExecuteBatchRequest"
+      RetentionExecuteBatchResponse:
+        $ref: "#/components/messages/RetentionExecuteBatchResponse"
+  control.alert_rules.list:
+    address: control.alert_rules.list
+    messages:
+      AlertRuleListRequest:
+        $ref: "#/components/messages/AlertRuleListRequest"
+      AlertRuleListResponse:
+        $ref: "#/components/messages/AlertRuleListResponse"
+  control.alert_rules.create:
+    address: control.alert_rules.create
+    messages:
+      AlertRuleCreateRequest:
+        $ref: "#/components/messages/AlertRuleCreateRequest"
+      AlertRuleMutationResponse:
+        $ref: "#/components/messages/AlertRuleMutationResponse"
+  control.alert_rules.update:
+    address: control.alert_rules.update
+    messages:
+      AlertRuleUpdateRequest:
+        $ref: "#/components/messages/AlertRuleUpdateRequest"
+      AlertRuleMutationResponse:
+        $ref: "#/components/messages/AlertRuleMutationResponse"
+  control.alert_rules.delete:
+    address: control.alert_rules.delete
+    messages:
+      AlertRuleDeleteRequest:
+        $ref: "#/components/messages/AlertRuleDeleteRequest"
+      AlertDeleteResponse:
+        $ref: "#/components/messages/AlertDeleteResponse"
+  control.alert_silences.list:
+    address: control.alert_silences.list
+    messages:
+      AlertSilenceListRequest:
+        $ref: "#/components/messages/AlertSilenceListRequest"
+      AlertSilenceListResponse:
+        $ref: "#/components/messages/AlertSilenceListResponse"
+  control.alert_silences.create:
+    address: control.alert_silences.create
+    messages:
+      AlertSilenceCreateRequest:
+        $ref: "#/components/messages/AlertSilenceCreateRequest"
+      AlertSilenceCreateResponse:
+        $ref: "#/components/messages/AlertSilenceCreateResponse"
+  control.alert_silences.delete:
+    address: control.alert_silences.delete
+    messages:
+      AlertSilenceDeleteRequest:
+        $ref: "#/components/messages/AlertSilenceDeleteRequest"
+      AlertDeleteResponse:
+        $ref: "#/components/messages/AlertDeleteResponse"
+  control.alert_history.list:
+    address: control.alert_history.list
+    messages:
+      AlertHistoryListRequest:
+        $ref: "#/components/messages/AlertHistoryListRequest"
+      AlertHistoryListResponse:
+        $ref: "#/components/messages/AlertHistoryListResponse"
+  control.alert_history.record:
+    address: control.alert_history.record
+    messages:
+      AlertHistoryRecordRequest:
+        $ref: "#/components/messages/AlertHistoryRecordRequest"
+      AlertHistoryRecordResponse:
+        $ref: "#/components/messages/AlertHistoryRecordResponse"
+  alert_evaluator.tick:
+    address: alert_evaluator.tick
+    messages:
+      AlertEvaluatorTickRequest:
+        $ref: "#/components/messages/AlertEvaluatorTickRequest"
+      AlertEvaluatorTickResponse:
+        $ref: "#/components/messages/AlertEvaluatorTickResponse"
+  alert_evaluator.rules.evaluate:
+    address: alert_evaluator.rules.evaluate
+    messages:
+      AlertRuleEvaluateRequest:
+        $ref: "#/components/messages/AlertRuleEvaluateRequest"
+      AlertRuleEvaluateResponse:
+        $ref: "#/components/messages/AlertRuleEvaluateResponse"
+  alert_evaluator.notifications.dispatch:
+    address: alert_evaluator.notifications.dispatch
+    messages:
+      AlertNotificationDispatchRequest:
+        $ref: "#/components/messages/AlertNotificationDispatchRequest"
+      AlertNotificationDispatchResponse:
+        $ref: "#/components/messages/AlertNotificationDispatchResponse"
+operations:
+  requestTraceSearch:
+    action: send
+    channel:
+      $ref: "#/channels/telemetry.traces.search"
+    messages:
+      - $ref: "#/channels/telemetry.traces.search/messages/TraceSearchRequest"
+  replyTraceSearch:
+    action: receive
+    channel:
+      $ref: "#/channels/telemetry.traces.search"
+    messages:
+      - $ref: "#/channels/telemetry.traces.search/messages/TraceSearchResponse"
+  requestTraceDetail:
+    action: send
+    channel:
+      $ref: "#/channels/telemetry.traces.get"
+    messages:
+      - $ref: "#/channels/telemetry.traces.get/messages/TraceDetailRequest"
+  replyTraceDetail:
+    action: receive
+    channel:
+      $ref: "#/channels/telemetry.traces.get"
+    messages:
+      - $ref: "#/channels/telemetry.traces.get/messages/TraceDetailResponse"
+  requestLogSearch:
+    action: send
+    channel:
+      $ref: "#/channels/telemetry.logs.search"
+    messages:
+      - $ref: "#/channels/telemetry.logs.search/messages/LogSearchRequest"
+  replyLogSearch:
+    action: receive
+    channel:
+      $ref: "#/channels/telemetry.logs.search"
+    messages:
+      - $ref: "#/channels/telemetry.logs.search/messages/LogSearchResponse"
+  requestTelemetryFacets:
+    action: send
+    channel:
+      $ref: "#/channels/telemetry.facets"
+    messages:
+      - $ref: "#/channels/telemetry.facets/messages/TelemetryFacetRequest"
+  replyTelemetryFacets:
+    action: receive
+    channel:
+      $ref: "#/channels/telemetry.facets"
+    messages:
+      - $ref: "#/channels/telemetry.facets/messages/TelemetryFacetResponse"
+  requestLiveTraceStart:
+    action: send
+    channel:
+      $ref: "#/channels/telemetry.traces.live.start"
+    messages:
+      - $ref: "#/channels/telemetry.traces.live.start/messages/LiveTraceStartRequest"
+  replyLiveTraceStart:
+    action: receive
+    channel:
+      $ref: "#/channels/telemetry.traces.live.start"
+    messages:
+      - $ref: "#/channels/telemetry.traces.live.start/messages/LiveTraceStartResponse"
+  requestLiveTraceStop:
+    action: send
+    channel:
+      $ref: "#/channels/telemetry.traces.live.stop"
+    messages:
+      - $ref: "#/channels/telemetry.traces.live.stop/messages/LiveTraceStopRequest"
+  replyLiveTraceStop:
+    action: receive
+    channel:
+      $ref: "#/channels/telemetry.traces.live.stop"
+    messages:
+      - $ref: "#/channels/telemetry.traces.live.stop/messages/LiveTraceStopResponse"
+  publishLiveTraceEvent:
+    action: send
+    channel:
+      $ref: "#/channels/telemetry.traces.live.events"
+    messages:
+      - $ref: "#/channels/telemetry.traces.live.events/messages/LiveTraceEvent"
+  receiveLiveTraceEvent:
+    action: receive
+    channel:
+      $ref: "#/channels/telemetry.traces.live.events"
+    messages:
+      - $ref: "#/channels/telemetry.traces.live.events/messages/LiveTraceEvent"
+  publishTracePersistedNotification:
+    action: send
+    channel:
+      $ref: "#/channels/telemetry.persisted.traces"
+    messages:
+      - $ref: "#/channels/telemetry.persisted.traces/messages/TracePersistedNotification"
+  receiveTracePersistedNotification:
+    action: receive
+    channel:
+      $ref: "#/channels/telemetry.persisted.traces"
+    messages:
+      - $ref: "#/channels/telemetry.persisted.traces/messages/TracePersistedNotification"
+  publishTraceIngest:
+    action: send
+    channel:
+      $ref: "#/channels/telemetry.ingest.traces"
+    messages:
+      - $ref: "#/channels/telemetry.ingest.traces/messages/PersistTelemetryCommand"
+  publishLogIngest:
+    action: send
+    channel:
+      $ref: "#/channels/telemetry.ingest.logs"
+    messages:
+      - $ref: "#/channels/telemetry.ingest.logs/messages/PersistTelemetryCommand"
+  publishMetricIngest:
+    action: send
+    channel:
+      $ref: "#/channels/telemetry.ingest.metrics"
+    messages:
+      - $ref: "#/channels/telemetry.ingest.metrics/messages/PersistMetricsCommand"
+  requestMetricNames:
+    action: send
+    channel:
+      $ref: "#/channels/telemetry.metrics.names"
+    messages:
+      - $ref: "#/channels/telemetry.metrics.names/messages/MetricNameSearchRequest"
+  replyMetricNames:
+    action: receive
+    channel:
+      $ref: "#/channels/telemetry.metrics.names"
+    messages:
+      - $ref: "#/channels/telemetry.metrics.names/messages/MetricNameSearchResponse"
+  requestMetricSeries:
+    action: send
+    channel:
+      $ref: "#/channels/telemetry.metrics.query"
+    messages:
+      - $ref: "#/channels/telemetry.metrics.query/messages/MetricSeriesRequest"
+  replyMetricSeries:
+    action: receive
+    channel:
+      $ref: "#/channels/telemetry.metrics.query"
+    messages:
+      - $ref: "#/channels/telemetry.metrics.query/messages/MetricSeriesResponse"
+  requestIngestCredentials:
+    action: send
+    channel:
+      $ref: "#/channels/control.ingest_credentials.list"
+    messages:
+      - $ref: "#/channels/control.ingest_credentials.list/messages/IngestCredentialListRequest"
+  replyIngestCredentials:
+    action: receive
+    channel:
+      $ref: "#/channels/control.ingest_credentials.list"
+    messages:
+      - $ref: "#/channels/control.ingest_credentials.list/messages/IngestCredentialListResponse"
+  requestIngestCredentialCreate:
+    action: send
+    channel:
+      $ref: "#/channels/control.ingest_credentials.create"
+    messages:
+      - $ref: "#/channels/control.ingest_credentials.create/messages/IngestCredentialCreateRequest"
+  replyIngestCredentialCreate:
+    action: receive
+    channel:
+      $ref: "#/channels/control.ingest_credentials.create"
+    messages:
+      - $ref: "#/channels/control.ingest_credentials.create/messages/IngestCredentialCreateResponse"
+  requestIngestCredentialRevoke:
+    action: send
+    channel:
+      $ref: "#/channels/control.ingest_credentials.revoke"
+    messages:
+      - $ref: "#/channels/control.ingest_credentials.revoke/messages/IngestCredentialRevokeRequest"
+  replyIngestCredentialRevoke:
+    action: receive
+    channel:
+      $ref: "#/channels/control.ingest_credentials.revoke"
+    messages:
+      - $ref: "#/channels/control.ingest_credentials.revoke/messages/IngestCredentialRevokeResponse"
+  requestDashboards:
+    action: send
+    channel:
+      $ref: "#/channels/control.dashboards.list"
+    messages:
+      - $ref: "#/channels/control.dashboards.list/messages/DashboardListRequest"
+  replyDashboards:
+    action: receive
+    channel:
+      $ref: "#/channels/control.dashboards.list"
+    messages:
+      - $ref: "#/channels/control.dashboards.list/messages/DashboardListResponse"
+  requestDashboardSave:
+    action: send
+    channel:
+      $ref: "#/channels/control.dashboards.save"
+    messages:
+      - $ref: "#/channels/control.dashboards.save/messages/DashboardSaveRequest"
+  replyDashboardSave:
+    action: receive
+    channel:
+      $ref: "#/channels/control.dashboards.save"
+    messages:
+      - $ref: "#/channels/control.dashboards.save/messages/DashboardSaveResponse"
+  requestDashboardDelete:
+    action: send
+    channel:
+      $ref: "#/channels/control.dashboards.delete"
+    messages:
+      - $ref: "#/channels/control.dashboards.delete/messages/DashboardDeleteRequest"
+  replyDashboardDelete:
+    action: receive
+    channel:
+      $ref: "#/channels/control.dashboards.delete"
+    messages:
+      - $ref: "#/channels/control.dashboards.delete/messages/DashboardDeleteResponse"
+  requestDashboardPinSet:
+    action: send
+    channel:
+      $ref: "#/channels/control.dashboard_pins.set"
+    messages:
+      - $ref: "#/channels/control.dashboard_pins.set/messages/DashboardPinSetRequest"
+  replyDashboardPinSet:
+    action: receive
+    channel:
+      $ref: "#/channels/control.dashboard_pins.set"
+    messages:
+      - $ref: "#/channels/control.dashboard_pins.set/messages/DashboardPreferencesResponse"
+  requestDashboardPinReorder:
+    action: send
+    channel:
+      $ref: "#/channels/control.dashboard_pins.reorder"
+    messages:
+      - $ref: "#/channels/control.dashboard_pins.reorder/messages/DashboardPinReorderRequest"
+  replyDashboardPinReorder:
+    action: receive
+    channel:
+      $ref: "#/channels/control.dashboard_pins.reorder"
+    messages:
+      - $ref: "#/channels/control.dashboard_pins.reorder/messages/DashboardPreferencesResponse"
+  requestOrganizationMembers:
+    action: send
+    channel:
+      $ref: "#/channels/control.members.list"
+    messages:
+      - $ref: "#/channels/control.members.list/messages/MemberListRequest"
+  replyOrganizationMembers:
+    action: receive
+    channel:
+      $ref: "#/channels/control.members.list"
+    messages:
+      - $ref: "#/channels/control.members.list/messages/MemberListResponse"
+  requestOrganizationInvitations:
+    action: send
+    channel:
+      $ref: "#/channels/control.invitations.list"
+    messages:
+      - $ref: "#/channels/control.invitations.list/messages/InvitationListRequest"
+  replyOrganizationInvitations:
+    action: receive
+    channel:
+      $ref: "#/channels/control.invitations.list"
+    messages:
+      - $ref: "#/channels/control.invitations.list/messages/InvitationListResponse"
+  requestInvitationCreate:
+    action: send
+    channel:
+      $ref: "#/channels/control.invitations.create"
+    messages:
+      - $ref: "#/channels/control.invitations.create/messages/InvitationCreateRequest"
+  replyInvitationCreate:
+    action: receive
+    channel:
+      $ref: "#/channels/control.invitations.create"
+    messages:
+      - $ref: "#/channels/control.invitations.create/messages/InvitationMutationResponse"
+  requestInvitationRevoke:
+    action: send
+    channel:
+      $ref: "#/channels/control.invitations.revoke"
+    messages:
+      - $ref: "#/channels/control.invitations.revoke/messages/InvitationRevokeRequest"
+  replyInvitationRevoke:
+    action: receive
+    channel:
+      $ref: "#/channels/control.invitations.revoke"
+    messages:
+      - $ref: "#/channels/control.invitations.revoke/messages/InvitationMutationResponse"
+  requestProjectMembers:
+    action: send
+    channel:
+      $ref: "#/channels/control.project_members.list"
+    messages:
+      - $ref: "#/channels/control.project_members.list/messages/ProjectMemberListRequest"
+  replyProjectMembers:
+    action: receive
+    channel:
+      $ref: "#/channels/control.project_members.list"
+    messages:
+      - $ref: "#/channels/control.project_members.list/messages/ProjectMemberListResponse"
+  requestProjectMemberUpdate:
+    action: send
+    channel:
+      $ref: "#/channels/control.project_members.update"
+    messages:
+      - $ref: "#/channels/control.project_members.update/messages/ProjectMemberUpdateRequest"
+  replyProjectMemberUpdate:
+    action: receive
+    channel:
+      $ref: "#/channels/control.project_members.update"
+    messages:
+      - $ref: "#/channels/control.project_members.update/messages/ProjectMemberMutationResponse"
+  requestProjectMemberRemove:
+    action: send
+    channel:
+      $ref: "#/channels/control.project_members.remove"
+    messages:
+      - $ref: "#/channels/control.project_members.remove/messages/ProjectMemberRemoveRequest"
+  replyProjectMemberRemove:
+    action: receive
+    channel:
+      $ref: "#/channels/control.project_members.remove"
+    messages:
+      - $ref: "#/channels/control.project_members.remove/messages/ProjectMemberRemoveResponse"
+  requestRetentionGet:
+    action: send
+    channel:
+      $ref: "#/channels/control.retention.get"
+    messages:
+      - $ref: "#/channels/control.retention.get/messages/RetentionGetRequest"
+  replyRetentionGet:
+    action: receive
+    channel:
+      $ref: "#/channels/control.retention.get"
+    messages:
+      - $ref: "#/channels/control.retention.get/messages/RetentionGetResponse"
+  requestRetentionUpdate:
+    action: send
+    channel:
+      $ref: "#/channels/control.retention.update"
+    messages:
+      - $ref: "#/channels/control.retention.update/messages/RetentionUpdateRequest"
+  replyRetentionUpdate:
+    action: receive
+    channel:
+      $ref: "#/channels/control.retention.update"
+    messages:
+      - $ref: "#/channels/control.retention.update/messages/RetentionUpdateResponse"
+  requestRetentionExecuteBatch:
+    action: send
+    channel:
+      $ref: "#/channels/storage_maintenance.retention.execute_batch"
+    messages:
+      - $ref: "#/channels/storage_maintenance.retention.execute_batch/messages/RetentionExecuteBatchRequest"
+  replyRetentionExecuteBatch:
+    action: receive
+    channel:
+      $ref: "#/channels/storage_maintenance.retention.execute_batch"
+    messages:
+      - $ref: "#/channels/storage_maintenance.retention.execute_batch/messages/RetentionExecuteBatchResponse"
+  requestAlertRules:
+    action: send
+    channel:
+      $ref: "#/channels/control.alert_rules.list"
+    messages:
+      - $ref: "#/channels/control.alert_rules.list/messages/AlertRuleListRequest"
+  replyAlertRules:
+    action: receive
+    channel:
+      $ref: "#/channels/control.alert_rules.list"
+    messages:
+      - $ref: "#/channels/control.alert_rules.list/messages/AlertRuleListResponse"
+  requestAlertRuleCreate:
+    action: send
+    channel:
+      $ref: "#/channels/control.alert_rules.create"
+    messages:
+      - $ref: "#/channels/control.alert_rules.create/messages/AlertRuleCreateRequest"
+  requestAlertRuleUpdate:
+    action: send
+    channel:
+      $ref: "#/channels/control.alert_rules.update"
+    messages:
+      - $ref: "#/channels/control.alert_rules.update/messages/AlertRuleUpdateRequest"
+  replyAlertRuleMutation:
+    action: receive
+    channel:
+      $ref: "#/channels/control.alert_rules.create"
+    messages:
+      - $ref: "#/channels/control.alert_rules.create/messages/AlertRuleMutationResponse"
+  requestAlertRuleDelete:
+    action: send
+    channel:
+      $ref: "#/channels/control.alert_rules.delete"
+    messages:
+      - $ref: "#/channels/control.alert_rules.delete/messages/AlertRuleDeleteRequest"
+  replyAlertRuleDelete:
+    action: receive
+    channel:
+      $ref: "#/channels/control.alert_rules.delete"
+    messages:
+      - $ref: "#/channels/control.alert_rules.delete/messages/AlertDeleteResponse"
+  requestAlertSilences:
+    action: send
+    channel:
+      $ref: "#/channels/control.alert_silences.list"
+    messages:
+      - $ref: "#/channels/control.alert_silences.list/messages/AlertSilenceListRequest"
+  replyAlertSilences:
+    action: receive
+    channel:
+      $ref: "#/channels/control.alert_silences.list"
+    messages:
+      - $ref: "#/channels/control.alert_silences.list/messages/AlertSilenceListResponse"
+  requestAlertSilenceCreate:
+    action: send
+    channel:
+      $ref: "#/channels/control.alert_silences.create"
+    messages:
+      - $ref: "#/channels/control.alert_silences.create/messages/AlertSilenceCreateRequest"
+  replyAlertSilenceCreate:
+    action: receive
+    channel:
+      $ref: "#/channels/control.alert_silences.create"
+    messages:
+      - $ref: "#/channels/control.alert_silences.create/messages/AlertSilenceCreateResponse"
+  requestAlertSilenceDelete:
+    action: send
+    channel:
+      $ref: "#/channels/control.alert_silences.delete"
+    messages:
+      - $ref: "#/channels/control.alert_silences.delete/messages/AlertSilenceDeleteRequest"
+  replyAlertSilenceDelete:
+    action: receive
+    channel:
+      $ref: "#/channels/control.alert_silences.delete"
+    messages:
+      - $ref: "#/channels/control.alert_silences.delete/messages/AlertDeleteResponse"
+  requestAlertHistory:
+    action: send
+    channel:
+      $ref: "#/channels/control.alert_history.list"
+    messages:
+      - $ref: "#/channels/control.alert_history.list/messages/AlertHistoryListRequest"
+  replyAlertHistory:
+    action: receive
+    channel:
+      $ref: "#/channels/control.alert_history.list"
+    messages:
+      - $ref: "#/channels/control.alert_history.list/messages/AlertHistoryListResponse"
+  recordAlertHistory:
+    action: send
+    channel:
+      $ref: "#/channels/control.alert_history.record"
+    messages:
+      - $ref: "#/channels/control.alert_history.record/messages/AlertHistoryRecordRequest"
+  requestAlertEvaluatorTick:
+    action: send
+    channel:
+      $ref: "#/channels/alert_evaluator.tick"
+    messages:
+      - $ref: "#/channels/alert_evaluator.tick/messages/AlertEvaluatorTickRequest"
+  requestAlertRuleEvaluate:
+    action: send
+    channel:
+      $ref: "#/channels/alert_evaluator.rules.evaluate"
+    messages:
+      - $ref: "#/channels/alert_evaluator.rules.evaluate/messages/AlertRuleEvaluateRequest"
+  requestAlertNotificationDispatch:
+    action: send
+    channel:
+      $ref: "#/channels/alert_evaluator.notifications.dispatch"
+    messages:
+      - $ref: "#/channels/alert_evaluator.notifications.dispatch/messages/AlertNotificationDispatchRequest"
+components:
+  messages:
+    TraceSearchRequest:
+      name: TraceSearchRequest
+      payload:
+        $ref: "#/components/schemas/TraceSearchRequest"
+    TraceSearchResponse:
+      name: TraceSearchResponse
+      payload:
+        $ref: "#/components/schemas/TraceSearchResponse"
+    TraceDetailRequest:
+      name: TraceDetailRequest
+      payload:
+        $ref: "#/components/schemas/TraceDetailRequest"
+    TraceDetailResponse:
+      name: TraceDetailResponse
+      payload:
+        $ref: "#/components/schemas/TraceDetailResponse"
+    LogSearchRequest:
+      name: LogSearchRequest
+      payload:
+        $ref: "#/components/schemas/LogSearchRequest"
+    LogSearchResponse:
+      name: LogSearchResponse
+      payload:
+        $ref: "#/components/schemas/LogSearchResponse"
+    MetricNameSearchRequest:
+      name: MetricNameSearchRequest
+      payload:
+        $ref: "#/components/schemas/MetricNameSearchRequest"
+    MetricNameSearchResponse:
+      name: MetricNameSearchResponse
+      payload:
+        $ref: "#/components/schemas/MetricNameSearchResponse"
+    MetricSeriesRequest:
+      name: MetricSeriesRequest
+      payload:
+        $ref: "#/components/schemas/MetricSeriesRequest"
+    MetricSeriesResponse:
+      name: MetricSeriesResponse
+      payload:
+        $ref: "#/components/schemas/MetricSeriesResponse"
+    TelemetryFacetRequest:
+      name: TelemetryFacetRequest
+      payload:
+        $ref: "#/components/schemas/TelemetryFacetRequest"
+    TelemetryFacetResponse:
+      name: TelemetryFacetResponse
+      payload:
+        $ref: "#/components/schemas/TelemetryFacetResponse"
+    ProjectTelemetryOverviewRequest:
+      name: ProjectTelemetryOverviewRequest
+      payload:
+        $ref: "#/components/schemas/ProjectTelemetryOverviewRequest"
+    ProjectTelemetryOverviewResponse:
+      name: ProjectTelemetryOverviewResponse
+      payload:
+        $ref: "#/components/schemas/ProjectTelemetryOverviewResponse"
+    LiveTraceStartRequest:
+      name: LiveTraceStartRequest
+      payload:
+        $ref: "#/components/schemas/LiveTraceStartRequest"
+    LiveTraceStartResponse:
+      name: LiveTraceStartResponse
+      payload:
+        $ref: "#/components/schemas/LiveTraceStartResponse"
+    LiveTraceStopRequest:
+      name: LiveTraceStopRequest
+      payload:
+        $ref: "#/components/schemas/LiveTraceStopRequest"
+    LiveTraceStopResponse:
+      name: LiveTraceStopResponse
+      payload:
+        $ref: "#/components/schemas/LiveTraceStopResponse"
+    LiveTraceEvent:
+      name: LiveTraceEvent
+      payload:
+        $ref: "#/components/schemas/LiveTraceEvent"
+    TracePersistedNotification:
+      name: TracePersistedNotification
+      payload:
+        $ref: "#/components/schemas/TracePersistedNotification"
+    PersistTelemetryCommand:
+      name: PersistTelemetryCommand
+      payload:
+        $ref: "#/components/schemas/PersistTelemetryCommand"
+    PersistMetricsCommand:
+      name: PersistMetricsCommand
+      payload:
+        $ref: "#/components/schemas/PersistMetricsCommand"
+    PersistAiProjectionCommand:
+      name: PersistAiProjectionCommand
+      payload:
+        $ref: "#/components/schemas/PersistAiProjectionCommand"
+    AiProjectionPersistedNotification:
+      name: AiProjectionPersistedNotification
+      payload:
+        $ref: "#/components/schemas/AiProjectionPersistedNotification"
+    EvalQueryRequest:
+      name: EvalQueryRequest
+      payload:
+        $ref: "#/components/schemas/EvalQueryRequest"
+    EvalQueryResponse:
+      name: EvalQueryResponse
+      payload:
+        $ref: "#/components/schemas/EvalQueryResponse"
+    EvalMutationRequest:
+      name: EvalMutationRequest
+      payload:
+        $ref: "#/components/schemas/EvalMutationRequest"
+    EvalMutationResponse:
+      name: EvalMutationResponse
+      payload:
+        $ref: "#/components/schemas/EvalMutationResponse"
+    ExperimentStartRequest:
+      name: ExperimentStartRequest
+      payload:
+        $ref: "#/components/schemas/ExperimentStartRequest"
+    ExperimentCancelRequest:
+      name: ExperimentCancelRequest
+      payload:
+        $ref: "#/components/schemas/ExperimentCancelRequest"
+    OptimizationStartRequest:
+      name: OptimizationStartRequest
+      payload:
+        $ref: "#/components/schemas/OptimizationStartRequest"
+    ExperimentStartResponse:
+      name: ExperimentStartResponse
+      payload:
+        $ref: "#/components/schemas/EvalMutationResponse"
+    EvalLiveStartRequest:
+      name: EvalLiveStartRequest
+      payload:
+        $ref: "#/components/schemas/EvalLiveStartRequest"
+    EvalLiveStartResponse:
+      name: EvalLiveStartResponse
+      payload:
+        $ref: "#/components/schemas/EvalMutationResponse"
+    EvalLiveStopRequest:
+      name: EvalLiveStopRequest
+      payload:
+        $ref: "#/components/schemas/EvalLiveStopRequest"
+    EvalLiveStopResponse:
+      name: EvalLiveStopResponse
+      payload:
+        $ref: "#/components/schemas/EvalMutationResponse"
+    ExperimentRunEvent:
+      name: ExperimentRunEvent
+      payload:
+        $ref: "#/components/schemas/ExperimentRunEvent"
+    ExperimentProgressNotification:
+      name: ExperimentProgressNotification
+      payload:
+        $ref: "#/components/schemas/ExperimentProgressNotification"
+    ExperimentManifestResolveRequest:
+      name: ExperimentManifestResolveRequest
+      payload:
+        $ref: "#/components/schemas/ExperimentManifestResolveRequest"
+    ExperimentManifestResolveResponse:
+      name: ExperimentManifestResolveResponse
+      payload:
+        $ref: "#/components/schemas/ExperimentManifestResolveResponse"
+    ViewerGetRequest:
+      name: ViewerGetRequest
+      payload:
+        $ref: "#/components/schemas/ViewerGetRequest"
+    ViewerGetResponse:
+      name: ViewerGetResponse
+      payload:
+        $ref: "#/components/schemas/ViewerGetResponse"
+    OrganizationListRequest:
+      name: OrganizationListRequest
+      payload:
+        $ref: "#/components/schemas/OrganizationListRequest"
+    OrganizationListResponse:
+      name: OrganizationListResponse
+      payload:
+        $ref: "#/components/schemas/OrganizationListResponse"
+    OrganizationGetRequest:
+      name: OrganizationGetRequest
+      payload:
+        $ref: "#/components/schemas/OrganizationGetRequest"
+    OrganizationGetResponse:
+      name: OrganizationGetResponse
+      payload:
+        $ref: "#/components/schemas/OrganizationGetResponse"
+    MemberListRequest:
+      name: MemberListRequest
+      payload:
+        $ref: "#/components/schemas/MemberListRequest"
+    MemberListResponse:
+      name: MemberListResponse
+      payload:
+        $ref: "#/components/schemas/MemberListResponse"
+    ProjectListRequest:
+      name: ProjectListRequest
+      payload:
+        $ref: "#/components/schemas/ProjectListRequest"
+    ProjectListResponse:
+      name: ProjectListResponse
+      payload:
+        $ref: "#/components/schemas/ProjectListResponse"
+    ProjectGetRequest:
+      name: ProjectGetRequest
+      payload:
+        $ref: "#/components/schemas/ProjectGetRequest"
+    ProjectGetResponse:
+      name: ProjectGetResponse
+      payload:
+        $ref: "#/components/schemas/ProjectGetResponse"
+    ProjectCreateRequest:
+      name: ProjectCreateRequest
+      payload:
+        $ref: "#/components/schemas/ProjectCreateRequest"
+    ProjectUpdateRequest:
+      name: ProjectUpdateRequest
+      payload:
+        $ref: "#/components/schemas/ProjectUpdateRequest"
+    ProjectMutationResponse:
+      name: ProjectMutationResponse
+      payload:
+        $ref: "#/components/schemas/ProjectMutationResponse"
+    ProjectSelectRequest:
+      name: ProjectSelectRequest
+      payload:
+        $ref: "#/components/schemas/ProjectSelectRequest"
+    ProjectSelectResponse:
+      name: ProjectSelectResponse
+      payload:
+        $ref: "#/components/schemas/ProjectSelectResponse"
+    MemberUpdateRequest:
+      name: MemberUpdateRequest
+      payload:
+        $ref: "#/components/schemas/MemberUpdateRequest"
+    MemberUpdateResponse:
+      name: MemberUpdateResponse
+      payload:
+        $ref: "#/components/schemas/MemberUpdateResponse"
+    MemberRemoveRequest:
+      name: MemberRemoveRequest
+      payload:
+        $ref: "#/components/schemas/MemberRemoveRequest"
+    MemberRemoveResponse:
+      name: MemberRemoveResponse
+      payload:
+        $ref: "#/components/schemas/MemberRemoveResponse"
+    InvitationListRequest:
+      name: InvitationListRequest
+      payload:
+        $ref: "#/components/schemas/InvitationListRequest"
+    InvitationListResponse:
+      name: InvitationListResponse
+      payload:
+        $ref: "#/components/schemas/InvitationListResponse"
+    InvitationCreateRequest:
+      name: InvitationCreateRequest
+      payload:
+        $ref: "#/components/schemas/InvitationCreateRequest"
+    InvitationRevokeRequest:
+      name: InvitationRevokeRequest
+      payload:
+        $ref: "#/components/schemas/InvitationRevokeRequest"
+    InvitationMutationResponse:
+      name: InvitationMutationResponse
+      payload:
+        $ref: "#/components/schemas/InvitationMutationResponse"
+    IngestCredentialListRequest:
+      name: IngestCredentialListRequest
+      payload:
+        $ref: "#/components/schemas/IngestCredentialListRequest"
+    IngestCredentialListResponse:
+      name: IngestCredentialListResponse
+      payload:
+        $ref: "#/components/schemas/IngestCredentialListResponse"
+    IngestCredentialCreateRequest:
+      name: IngestCredentialCreateRequest
+      payload:
+        $ref: "#/components/schemas/IngestCredentialCreateRequest"
+    IngestCredentialCreateResponse:
+      name: IngestCredentialCreateResponse
+      payload:
+        $ref: "#/components/schemas/IngestCredentialCreateResponse"
+    IngestCredentialRevokeRequest:
+      name: IngestCredentialRevokeRequest
+      payload:
+        $ref: "#/components/schemas/IngestCredentialRevokeRequest"
+    IngestCredentialRevokeResponse:
+      name: IngestCredentialRevokeResponse
+      payload:
+        $ref: "#/components/schemas/IngestCredentialRevokeResponse"
+    ProjectAiSettingsGetRequest:
+      name: ProjectAiSettingsGetRequest
+      payload:
+        $ref: "#/components/schemas/ProjectAiSettingsGetRequest"
+    ProjectAiSettingsGetResponse:
+      name: ProjectAiSettingsGetResponse
+      payload:
+        $ref: "#/components/schemas/ProjectAiSettingsGetResponse"
+    ProjectAiSettingsUpdateRequest:
+      name: ProjectAiSettingsUpdateRequest
+      payload:
+        $ref: "#/components/schemas/ProjectAiSettingsUpdateRequest"
+    ProjectAiSettingsUpdateResponse:
+      name: ProjectAiSettingsUpdateResponse
+      payload:
+        $ref: "#/components/schemas/ProjectAiSettingsUpdateResponse"
+    ProjectStatusSnapshotRequest:
+      name: ProjectStatusSnapshotRequest
+      payload:
+        $ref: "#/components/schemas/ProjectStatusSnapshotRequest"
+    ProjectStatusSnapshotResponse:
+      name: ProjectStatusSnapshotResponse
+      payload:
+        $ref: "#/components/schemas/ProjectStatusSnapshotResponse"
+    ProjectStatusChangedNotification:
+      name: ProjectStatusChangedNotification
+      payload:
+        $ref: "#/components/schemas/ProjectStatusChangedNotification"
+    DashboardListRequest:
+      name: DashboardListRequest
+      payload:
+        $ref: "#/components/schemas/DashboardListRequest"
+    DashboardListResponse:
+      name: DashboardListResponse
+      payload:
+        $ref: "#/components/schemas/DashboardListResponse"
+    DashboardSaveRequest:
+      name: DashboardSaveRequest
+      payload:
+        $ref: "#/components/schemas/DashboardSaveRequest"
+    DashboardDeleteRequest:
+      name: DashboardDeleteRequest
+      payload:
+        $ref: "#/components/schemas/DashboardDeleteRequest"
+    DashboardSaveResponse:
+      name: DashboardSaveResponse
+      payload:
+        $ref: "#/components/schemas/DashboardSaveResponse"
+    DashboardDeleteResponse:
+      name: DashboardDeleteResponse
+      payload:
+        $ref: "#/components/schemas/DashboardDeleteResponse"
+    DashboardPinSetRequest:
+      name: DashboardPinSetRequest
+      payload:
+        $ref: "#/components/schemas/DashboardPinSetRequest"
+    DashboardPinReorderRequest:
+      name: DashboardPinReorderRequest
+      payload:
+        $ref: "#/components/schemas/DashboardPinReorderRequest"
+    DashboardPreferencesResponse:
+      name: DashboardPreferencesResponse
+      payload:
+        $ref: "#/components/schemas/DashboardPreferencesResponse"
+    ProjectMemberListRequest:
+      name: ProjectMemberListRequest
+      payload:
+        $ref: "#/components/schemas/ProjectMemberListRequest"
+    ProjectMemberListResponse:
+      name: ProjectMemberListResponse
+      payload:
+        $ref: "#/components/schemas/ProjectMemberListResponse"
+    ProjectMemberUpdateRequest:
+      name: ProjectMemberUpdateRequest
+      payload:
+        $ref: "#/components/schemas/ProjectMemberUpdateRequest"
+    ProjectMemberMutationResponse:
+      name: ProjectMemberMutationResponse
+      payload:
+        $ref: "#/components/schemas/ProjectMemberMutationResponse"
+    ProjectMemberRemoveRequest:
+      name: ProjectMemberRemoveRequest
+      payload:
+        $ref: "#/components/schemas/ProjectMemberRemoveRequest"
+    ProjectMemberRemoveResponse:
+      name: ProjectMemberRemoveResponse
+      payload:
+        $ref: "#/components/schemas/ProjectMemberRemoveResponse"
+    RetentionGetRequest:
+      name: RetentionGetRequest
+      payload:
+        $ref: "#/components/schemas/RetentionGetRequest"
+    RetentionGetResponse:
+      name: RetentionGetResponse
+      payload:
+        $ref: "#/components/schemas/RetentionGetResponse"
+    RetentionUpdateRequest:
+      name: RetentionUpdateRequest
+      payload:
+        $ref: "#/components/schemas/RetentionUpdateRequest"
+    RetentionUpdateResponse:
+      name: RetentionUpdateResponse
+      payload:
+        $ref: "#/components/schemas/RetentionUpdateResponse"
+    RetentionExecuteBatchRequest:
+      name: RetentionExecuteBatchRequest
+      payload:
+        $ref: "#/components/schemas/RetentionExecuteBatchRequest"
+    RetentionExecuteBatchResponse:
+      name: RetentionExecuteBatchResponse
+      payload:
+        $ref: "#/components/schemas/RetentionExecuteBatchResponse"
+    AlertRuleListRequest:
+      name: AlertRuleListRequest
+      payload:
+        $ref: "#/components/schemas/AlertRuleListRequest"
+    AlertRuleListResponse:
+      name: AlertRuleListResponse
+      payload:
+        $ref: "#/components/schemas/AlertRuleListResponse"
+    AlertRuleCreateRequest:
+      name: AlertRuleCreateRequest
+      payload:
+        $ref: "#/components/schemas/AlertRuleCreateRequest"
+    AlertRuleUpdateRequest:
+      name: AlertRuleUpdateRequest
+      payload:
+        $ref: "#/components/schemas/AlertRuleUpdateRequest"
+    AlertRuleMutationResponse:
+      name: AlertRuleMutationResponse
+      payload:
+        $ref: "#/components/schemas/AlertRuleMutationResponse"
+    AlertRuleDeleteRequest:
+      name: AlertRuleDeleteRequest
+      payload:
+        $ref: "#/components/schemas/AlertRuleDeleteRequest"
+    AlertDeleteResponse:
+      name: AlertDeleteResponse
+      payload:
+        $ref: "#/components/schemas/AlertDeleteResponse"
+    AlertSilenceListRequest:
+      name: AlertSilenceListRequest
+      payload:
+        $ref: "#/components/schemas/AlertSilenceListRequest"
+    AlertSilenceListResponse:
+      name: AlertSilenceListResponse
+      payload:
+        $ref: "#/components/schemas/AlertSilenceListResponse"
+    AlertSilenceCreateRequest:
+      name: AlertSilenceCreateRequest
+      payload:
+        $ref: "#/components/schemas/AlertSilenceCreateRequest"
+    AlertSilenceCreateResponse:
+      name: AlertSilenceCreateResponse
+      payload:
+        $ref: "#/components/schemas/AlertSilenceCreateResponse"
+    AlertSilenceDeleteRequest:
+      name: AlertSilenceDeleteRequest
+      payload:
+        $ref: "#/components/schemas/AlertSilenceDeleteRequest"
+    AlertHistoryListRequest:
+      name: AlertHistoryListRequest
+      payload:
+        $ref: "#/components/schemas/AlertHistoryListRequest"
+    AlertHistoryListResponse:
+      name: AlertHistoryListResponse
+      payload:
+        $ref: "#/components/schemas/AlertHistoryListResponse"
+    AlertHistoryRecordRequest:
+      name: AlertHistoryRecordRequest
+      payload:
+        $ref: "#/components/schemas/AlertHistoryRecordRequest"
+    AlertHistoryRecordResponse:
+      name: AlertHistoryRecordResponse
+      payload:
+        $ref: "#/components/schemas/AlertHistoryRecordResponse"
+    AlertEvaluatorTickRequest:
+      name: AlertEvaluatorTickRequest
+      payload:
+        $ref: "#/components/schemas/AlertEvaluatorTickRequest"
+    AlertEvaluatorTickResponse:
+      name: AlertEvaluatorTickResponse
+      payload:
+        $ref: "#/components/schemas/AlertEvaluatorGenericResponse"
+    AlertRuleEvaluateRequest:
+      name: AlertRuleEvaluateRequest
+      payload:
+        $ref: "#/components/schemas/AlertRuleEvaluateRequest"
+    AlertRuleEvaluateResponse:
+      name: AlertRuleEvaluateResponse
+      payload:
+        $ref: "#/components/schemas/AlertEvaluatorGenericResponse"
+    AlertNotificationDispatchRequest:
+      name: AlertNotificationDispatchRequest
+      payload:
+        $ref: "#/components/schemas/AlertNotificationDispatchRequest"
+    AlertNotificationDispatchResponse:
+      name: AlertNotificationDispatchResponse
+      payload:
+        $ref: "#/components/schemas/AlertEvaluatorGenericResponse"
+  schemas:
+    BridgeEnvelope:
+      type: object
+      additionalProperties: false
+      required: [requestId, issuedAt]
+      properties:
+        requestId:
+          type: string
+        issuedAt:
+          type: string
+          format: date-time
+        traceContext:
+          type: object
+          additionalProperties: true
+        authContext:
+          $ref: "#/components/schemas/AuthContext"
+    AuthContext:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          enum: [anonymous, authenticated, service]
+        authMode:
+          type: string
+          enum: [local, sso]
+          description: Runtime auth mode that produced this normalized context.
+        principalId:
+          type: string
+          description: Validated JWT subject or service principal. Never copied from user input.
+        principalDisplayName:
+          type: string
+          description: Provider-normalized browser user display name resolved by the trusted public auth boundary.
+        principalEmail:
+          type: string
+          description: Provider-normalized browser user email resolved by the trusted public auth boundary.
+        principalEmailVerified:
+          type: boolean
+          description: True only when the trusted auth boundary verified that the provider asserted the principal email as verified.
+        tenantId:
+          type: string
+          description: Trusted tenant ID resolved by control-plane or local mode.
+        companyId:
+          type: string
+          description: Trusted company ID resolved by control-plane or local mode.
+        projectId:
+          type: string
+          description: Trusted project ID resolved by control-plane or local mode.
+        scopes:
+          type: array
+          items:
+            type: string
+            enum: ["telemetry:read", "telemetry:live", "telemetry:ingest:traces", "telemetry:ingest:logs", "telemetry:ingest:metrics"]
+        ingestAllowed:
+          type: boolean
+          description: Ingestion authorization decision set by the public ingestion boundary.
+        readAllowed:
+          type: boolean
+          description: Read authorization decision set by the BFF before calling storage-read.
+        checkedAt:
+          type: string
+          format: date-time
+          description: UTC time when the public boundary normalized this context.
+    BridgeError:
+      type: object
+      additionalProperties: false
+      required: [id, code, message, retryable]
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        message:
+          type: string
+        retryable:
+          type: boolean
+        details:
+          type: object
+          additionalProperties: true
+    AiProjectionKind:
+      type: string
+      enum: [agent_run, llm_call, tool_call, retrieval_event]
+    PersistAiProjectionCommand:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [commandId, traceId, spanId, kind, projection]
+          properties:
+            commandId:
+              type: string
+            traceId:
+              type: string
+            spanId:
+              type: string
+            kind:
+              $ref: "#/components/schemas/AiProjectionKind"
+            projection:
+              type: object
+              additionalProperties: true
+              description: Canonical AI projection fields with source span pointers and no copied prompt/completion content.
+            sourceFlavor:
+              type: string
+              enum: [gen_ai, openinference, both, neither]
+            normalizationWarnings:
+              type: array
+              items:
+                type: string
+    AiProjectionPersistedNotification:
+      type: object
+      additionalProperties: false
+      required: [requestId, traceId, projectionIds, kinds, persistedAt]
+      properties:
+        requestId:
+          type: string
+        tenantId:
+          type: string
+        projectId:
+          type: string
+        traceId:
+          type: string
+        projectionIds:
+          type: array
+          items:
+            type: string
+        spanIds:
+          type: array
+          items:
+            type: string
+        kinds:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiProjectionKind"
+        persistedAt:
+          type: string
+          format: date-time
+    EvalQueryRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          properties:
+            input:
+              type: object
+              additionalProperties: true
+    EvalQueryResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: true
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    EvalMutationRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [input]
+          properties:
+            input:
+              type: object
+              additionalProperties: true
+    EvalMutationResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: true
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    ExperimentStartRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [experimentId]
+          properties:
+            experimentId:
+              type: string
+            solverRef:
+              type: object
+              additionalProperties: true
+    ExperimentCancelRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [experimentRunId]
+          properties:
+            experimentRunId:
+              type: string
+    OptimizationStartRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [experimentId, optimizerKind, basePromptVersionId]
+          properties:
+            experimentId:
+              type: string
+            optimizerKind:
+              type: string
+              enum: [bootstrap-fewshot, critic-mutate-judge-pick, mipro-v2, reflective-text-gradient]
+            basePromptVersionId:
+              type: string
+            splitSelector:
+              $ref: "#/components/schemas/DatasetSplitSelector"
+            config:
+              type: object
+              additionalProperties: true
+    EvalLiveStartRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [subscriptionId, experimentRunId, sinkSubject]
+          properties:
+            subscriptionId:
+              type: string
+            experimentRunId:
+              type: string
+            sinkSubject:
+              type: string
+    EvalLiveStopRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [subscriptionId]
+          properties:
+            subscriptionId:
+              type: string
+    ExperimentRunEvent:
+      type: object
+      additionalProperties: false
+      required: [type, seq, receivedAt]
+      properties:
+        type:
+          type: string
+          enum: [started, item_completed, progress, heartbeat, cancelled, failed, finished]
+        seq:
+          type: integer
+          minimum: 1
+        receivedAt:
+          type: string
+          format: date-time
+        experimentRunId:
+          type: string
+        run:
+          type: object
+          additionalProperties: true
+        itemRun:
+          type: object
+          additionalProperties: true
+    ExperimentProgressNotification:
+      type: object
+      additionalProperties: false
+      required: [requestId, experimentRunId, type, occurredAt]
+      properties:
+        requestId:
+          type: string
+        experimentRunId:
+          type: string
+        type:
+          type: string
+          enum: [started, item_completed, progress, cancelled, failed, finished]
+        datasetItemRunId:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+    ExperimentManifestResolveRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [experimentRunId, experimentId]
+          properties:
+            experimentRunId:
+              type: string
+            experimentId:
+              type: string
+            splitSelector:
+              $ref: "#/components/schemas/DatasetSplitSelector"
+            optimizerKind:
+              type: string
+    ExperimentManifestResolveResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [manifest]
+          properties:
+            manifest:
+              $ref: "../entities/ai/experiment-manifest.schema.json"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    DatasetSplit:
+      type: string
+      enum: [dev, optimization, validation, regression, holdout]
+    DatasetReviewStatus:
+      type: string
+      enum: [unreviewed, reviewed, rejected]
+    DatasetSplitSelector:
+      type: object
+      additionalProperties: false
+      required: [splits, reviewedOnly, includeSynthetic]
+      properties:
+        splits:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetSplit"
+        reviewedOnly:
+          type: boolean
+          default: true
+        includeSynthetic:
+          type: boolean
+          default: false
+    CompanyRole:
+      type: string
+      enum: [admin, user]
+    OrganizationInvitationStatus:
+      type: string
+      enum: [pending, accepted, revoked, expired]
+    ProjectStatus:
+      type: string
+      enum: [active, read_only, disabled]
+    User:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        email:
+          type: string
+    ProjectTelemetryOverview:
+      type: object
+      additionalProperties: false
+      required: [traceCount, logCount, metricCount, serviceCount]
+      properties:
+        lastIngestAt:
+          type: string
+          format: date-time
+        traceCount:
+          type: integer
+          minimum: 0
+        logCount:
+          type: integer
+          minimum: 0
+        metricCount:
+          type: integer
+          minimum: 0
+        serviceCount:
+          type: integer
+          minimum: 0
+    ProjectTelemetryOverviewTarget:
+      type: object
+      additionalProperties: false
+      required: [companyId, projectId]
+      properties:
+        tenantId:
+          type: string
+        companyId:
+          type: string
+        projectId:
+          type: string
+    ProjectTelemetryOverviewItem:
+      type: object
+      additionalProperties: false
+      required: [tenantId, companyId, projectId, telemetry]
+      properties:
+        tenantId:
+          type: string
+        companyId:
+          type: string
+        projectId:
+          type: string
+        telemetry:
+          $ref: "#/components/schemas/ProjectTelemetryOverview"
+    ProjectTelemetryOverviewData:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectTelemetryOverviewItem"
+    Project:
+      type: object
+      additionalProperties: false
+      required: [id, organizationId, name, slug, status, telemetry]
+      properties:
+        id:
+          type: string
+        organizationId:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        status:
+          $ref: "#/components/schemas/ProjectStatus"
+        telemetry:
+          $ref: "#/components/schemas/ProjectTelemetryOverview"
+    Organization:
+      type: object
+      additionalProperties: false
+      required: [id, name, slug, role, projects]
+      properties:
+        id:
+          type: string
+        version:
+          type: integer
+          minimum: 1
+        name:
+          type: string
+        slug:
+          type: string
+        role:
+          $ref: "#/components/schemas/CompanyRole"
+        projects:
+          type: array
+          items:
+            $ref: "#/components/schemas/Project"
+    Viewer:
+      type: object
+      additionalProperties: false
+      required: [user, organizations]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        organizations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Organization"
+        selectedProject:
+          $ref: "#/components/schemas/Project"
+    OrganizationMember:
+      type: object
+      additionalProperties: false
+      required: [user, role]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        role:
+          $ref: "#/components/schemas/CompanyRole"
+    OrganizationInvitation:
+      type: object
+      additionalProperties: false
+      required: [id, organizationId, email, role, status, invitedByUserId, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        organizationId:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/CompanyRole"
+        status:
+          $ref: "#/components/schemas/OrganizationInvitationStatus"
+        invitedByUserId:
+          type: string
+        acceptedByUserId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        acceptedAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+    ViewerGetRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+    ViewerGetResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          properties:
+            viewer:
+              $ref: "#/components/schemas/Viewer"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    OrganizationListRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+    OrganizationListResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [items, pinnedDashboardIds]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Organization"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    OrganizationGetRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [organizationId]
+          properties:
+            organizationId:
+              type: string
+    OrganizationGetResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          properties:
+            organization:
+              $ref: "#/components/schemas/Organization"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    MemberListRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [organizationId]
+          properties:
+            organizationId:
+              type: string
+    MemberListResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/OrganizationMember"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    ProjectListRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          properties:
+            organizationId:
+              type: string
+            status:
+              $ref: "#/components/schemas/ProjectStatus"
+    ProjectListResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Project"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    ProjectGetRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId]
+          properties:
+            projectId:
+              type: string
+    ProjectGetResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          properties:
+            project:
+              $ref: "#/components/schemas/Project"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    ProjectCreateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [organizationId, name, slug]
+          properties:
+            organizationId:
+              type: string
+            name:
+              type: string
+            slug:
+              type: string
+    ProjectUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId]
+          properties:
+            projectId:
+              type: string
+            name:
+              type: string
+            status:
+              $ref: "#/components/schemas/ProjectStatus"
+    ProjectMutationResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          properties:
+            project:
+              $ref: "#/components/schemas/Project"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    ProjectSelectRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId]
+          properties:
+            projectId:
+              type: string
+    ProjectSelectResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          properties:
+            viewer:
+              $ref: "#/components/schemas/Viewer"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    MemberUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [organizationId, userId, role]
+          properties:
+            organizationId:
+              type: string
+            userId:
+              type: string
+            role:
+              $ref: "#/components/schemas/CompanyRole"
+    MemberUpdateResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          properties:
+            member:
+              $ref: "#/components/schemas/OrganizationMember"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    MemberRemoveRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [organizationId, userId]
+          properties:
+            organizationId:
+              type: string
+            userId:
+              type: string
+    MemberRemoveResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [removed]
+          properties:
+            removed:
+              type: boolean
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    InvitationListRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [organizationId]
+          properties:
+            organizationId:
+              type: string
+    InvitationListResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/OrganizationInvitation"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    InvitationCreateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [organizationId, email]
+          properties:
+            organizationId:
+              type: string
+            email:
+              type: string
+              format: email
+    InvitationRevokeRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [invitationId]
+          properties:
+            invitationId:
+              type: string
+    InvitationMutationResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [invitation]
+          properties:
+            invitation:
+              $ref: "#/components/schemas/OrganizationInvitation"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    ProjectRole:
+      type: string
+      enum: [viewer, editor, admin]
+    ProjectMemberSource:
+      type: string
+      enum: [direct, company_admin, local_personal]
+    ProjectMember:
+      type: object
+      additionalProperties: false
+      required: [projectId, userId, role, effectiveRole, source, createdAt, createdByUserId, updatedAt, updatedByUserId]
+      properties:
+        projectId: { type: string }
+        userId: { type: string }
+        email: { type: string }
+        displayName: { type: string }
+        role:
+          $ref: "#/components/schemas/ProjectRole"
+        effectiveRole:
+          $ref: "#/components/schemas/ProjectRole"
+        source:
+          $ref: "#/components/schemas/ProjectMemberSource"
+        createdAt: { type: string, format: date-time }
+        createdByUserId: { type: string }
+        updatedAt: { type: string, format: date-time }
+        updatedByUserId: { type: string }
+    ProjectMemberListRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId]
+          properties:
+            projectId: { type: string }
+    ProjectMemberListResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId: { type: string }
+        ok: { type: boolean }
+        data:
+          type: object
+          additionalProperties: false
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProjectMember"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    ProjectMemberUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, userId, role]
+          properties:
+            projectId: { type: string }
+            userId: { type: string }
+            role:
+              $ref: "#/components/schemas/ProjectRole"
+    ProjectMemberMutationResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId: { type: string }
+        ok: { type: boolean }
+        data:
+          type: object
+          additionalProperties: false
+          required: [member]
+          properties:
+            member:
+              $ref: "#/components/schemas/ProjectMember"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    ProjectMemberRemoveRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, userId]
+          properties:
+            projectId: { type: string }
+            userId: { type: string }
+    ProjectMemberRemoveResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId: { type: string }
+        ok: { type: boolean }
+        data:
+          type: object
+          additionalProperties: false
+          required: [removed]
+          properties:
+            removed: { type: boolean }
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    RetentionDataClass:
+      type: string
+      enum: [TRACES, LOGS, METRICS, AI_EVALS, DATASETS, SCORERS, DASHBOARD_HISTORY, INGEST_CREDENTIAL_AUDIT]
+    RetentionMode:
+      type: string
+      enum: [retain, delete, soft_delete_then_delete]
+    RetentionRule:
+      type: object
+      additionalProperties: false
+      required: [dataClass, mode, updatedAt, updatedByUserId, version]
+      properties:
+        dataClass:
+          $ref: "#/components/schemas/RetentionDataClass"
+        mode:
+          $ref: "#/components/schemas/RetentionMode"
+        retentionDays: { type: integer, minimum: 1, maximum: 365 }
+        softDeleteDays: { type: integer, minimum: 1, maximum: 90 }
+        updatedAt: { type: string, format: date-time }
+        updatedByUserId: { type: string }
+        version: { type: integer, minimum: 1 }
+    RetentionPolicy:
+      type: object
+      additionalProperties: false
+      required: [projectId, rules, updatedAt, updatedByUserId, version]
+      properties:
+        projectId: { type: string }
+        rules:
+          type: array
+          minItems: 8
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/RetentionRule"
+        updatedAt: { type: string, format: date-time }
+        updatedByUserId: { type: string }
+        version: { type: integer, minimum: 1 }
+    RetentionRuleInput:
+      type: object
+      additionalProperties: false
+      required: [dataClass, mode]
+      properties:
+        dataClass:
+          $ref: "#/components/schemas/RetentionDataClass"
+        mode:
+          $ref: "#/components/schemas/RetentionMode"
+        retentionDays: { type: integer, minimum: 1, maximum: 365 }
+        softDeleteDays: { type: integer, minimum: 1, maximum: 90 }
+    RetentionGetRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId]
+          properties:
+            projectId: { type: string }
+    RetentionGetResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId: { type: string }
+        ok: { type: boolean }
+        data:
+          type: object
+          additionalProperties: false
+          required: [policy]
+          properties:
+            policy:
+              $ref: "#/components/schemas/RetentionPolicy"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    RetentionUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, expectedVersion, rules]
+          properties:
+            projectId: { type: string }
+            expectedVersion: { type: integer, minimum: 1 }
+            rules:
+              type: array
+              minItems: 8
+              maxItems: 8
+              items:
+                $ref: "#/components/schemas/RetentionRuleInput"
+    RetentionUpdateResponse:
+      $ref: "#/components/schemas/RetentionGetResponse"
+    RetentionExecuteBatchRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, dataClass, requestedAt]
+          properties:
+            projectId: { type: string }
+            dataClass:
+              $ref: "#/components/schemas/RetentionDataClass"
+            requestedAt: { type: string, format: date-time }
+            dryRun: { type: boolean }
+            limit: { type: integer, minimum: 1 }
+    RetentionExecuteBatchResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId: { type: string }
+        ok: { type: boolean }
+        data:
+          type: object
+          additionalProperties: false
+          required: [projectId, dataClass, policyVersion, dryRun, matchedCount, hardDeletedCount, softDeletedCount, finalDeletedCount, startedAt, completedAt]
+          properties:
+            projectId: { type: string }
+            dataClass:
+              $ref: "#/components/schemas/RetentionDataClass"
+            policyVersion: { type: integer, minimum: 1 }
+            dryRun: { type: boolean }
+            matchedCount: { type: integer, minimum: 0 }
+            hardDeletedCount: { type: integer, minimum: 0 }
+            softDeletedCount: { type: integer, minimum: 0 }
+            finalDeletedCount: { type: integer, minimum: 0 }
+            startedAt: { type: string, format: date-time }
+            completedAt: { type: string, format: date-time }
+            error:
+              $ref: "#/components/schemas/BridgeError"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AlertRuleKind:
+      type: string
+      enum: [METRIC_THRESHOLD, METRIC_ABSENCE, LOG_MATCH, LOG_COUNT, TRACE_MATCH, TRACE_COUNT, TRACE_LATENCY, TRACE_ERROR]
+    AlertSeverity:
+      type: string
+      enum: [INFO, WARNING, ERROR, CRITICAL]
+    AlertState:
+      type: string
+      enum: [OK, PENDING, FIRING, RESOLVED, SILENCED, ERROR]
+    AlertRule:
+      type: object
+      additionalProperties: false
+      required: [id, projectId, name, enabled, kind, severity, query, condition, evaluationWindowSeconds, pendingForSeconds, cooldownSeconds, notificationAdapterIds, createdAt, updatedAt, updatedByUserId, version]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        name: { type: string }
+        enabled: { type: boolean }
+        kind:
+          $ref: "#/components/schemas/AlertRuleKind"
+        severity:
+          $ref: "#/components/schemas/AlertSeverity"
+        query:
+          type: object
+          additionalProperties: true
+        condition:
+          type: object
+          additionalProperties: true
+        evaluationWindowSeconds: { type: integer, minimum: 1 }
+        pendingForSeconds: { type: integer, minimum: 0 }
+        cooldownSeconds: { type: integer, minimum: 0 }
+        notificationAdapterIds:
+          type: array
+          items: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        updatedByUserId: { type: string }
+        version: { type: integer, minimum: 1 }
+    AlertSignal:
+      type: string
+      enum: [METRIC, LOG, TRACE]
+    AlertRuleSort:
+      type: string
+      enum:
+        - updatedAt_desc
+        - updatedAt_asc
+        - createdAt_desc
+        - createdAt_asc
+        - name_asc
+        - name_desc
+        - severity_asc
+        - severity_desc
+        - kind_asc
+        - kind_desc
+        - enabled_asc
+        - enabled_desc
+    AlertRuleSearchInput:
+      type: object
+      additionalProperties: false
+      properties:
+        search: { type: string }
+        status:
+          $ref: "#/components/schemas/AlertState"
+        severity:
+          $ref: "#/components/schemas/AlertSeverity"
+        signal:
+          $ref: "#/components/schemas/AlertSignal"
+        enabled: { type: boolean }
+        sort:
+          $ref: "#/components/schemas/AlertRuleSort"
+    AlertEvent:
+      type: object
+      additionalProperties: false
+      required: [id, projectId, ruleId, instanceId, state, severity, summary, deduplicationKey, startedAt, createdAt]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        ruleId: { type: string }
+        instanceId: { type: string }
+        state:
+          $ref: "#/components/schemas/AlertState"
+        severity:
+          $ref: "#/components/schemas/AlertSeverity"
+        summary: { type: string }
+        deduplicationKey: { type: string }
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        evidenceTraceId: { type: string }
+        evidenceSpanId: { type: string }
+        evidenceLogId: { type: string }
+        evidenceMetricName: { type: string }
+    AlertSilence:
+      type: object
+      additionalProperties: false
+      required: [id, projectId, ruleId, reason, startsAt, endsAt, createdAt, createdByUserId, active]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        ruleId: { type: string }
+        reason: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        createdByUserId: { type: string }
+        active: { type: boolean }
+    AlertPageInfo:
+      type: object
+      additionalProperties: false
+      required: [hasNextPage]
+      properties:
+        hasNextPage: { type: boolean }
+        endCursor: { type: string }
+    AlertEventConnection:
+      type: object
+      additionalProperties: false
+      required: [items, pageInfo]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertEvent"
+        pageInfo:
+          $ref: "#/components/schemas/AlertPageInfo"
+    AlertRuleCreateInput:
+      type: object
+      additionalProperties: false
+      required: [projectId, name, enabled, kind, severity, query, condition, evaluationWindowSeconds, pendingForSeconds, cooldownSeconds, notificationAdapterIds]
+      properties:
+        projectId: { type: string }
+        name: { type: string }
+        enabled: { type: boolean }
+        kind:
+          $ref: "#/components/schemas/AlertRuleKind"
+        severity:
+          $ref: "#/components/schemas/AlertSeverity"
+        query:
+          type: object
+          additionalProperties: true
+        condition:
+          type: object
+          additionalProperties: true
+        evaluationWindowSeconds: { type: integer, minimum: 1 }
+        pendingForSeconds: { type: integer, minimum: 0 }
+        cooldownSeconds: { type: integer, minimum: 0 }
+        notificationAdapterIds:
+          type: array
+          items: { type: string }
+    AlertRuleUpdateInput:
+      type: object
+      additionalProperties: false
+      required: [id, expectedVersion]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        enabled: { type: boolean }
+        kind:
+          $ref: "#/components/schemas/AlertRuleKind"
+        severity:
+          $ref: "#/components/schemas/AlertSeverity"
+        query:
+          type: object
+          additionalProperties: true
+        condition:
+          type: object
+          additionalProperties: true
+        evaluationWindowSeconds: { type: integer, minimum: 1 }
+        pendingForSeconds: { type: integer, minimum: 0 }
+        cooldownSeconds: { type: integer, minimum: 0 }
+        notificationAdapterIds:
+          type: array
+          items: { type: string }
+        expectedVersion: { type: integer, minimum: 1 }
+    AlertSilenceCreateInput:
+      type: object
+      additionalProperties: false
+      required: [projectId, ruleId, reason, startsAt, endsAt]
+      properties:
+        projectId: { type: string }
+        ruleId: { type: string }
+        reason: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+    AlertRuleListRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId]
+          properties:
+            projectId: { type: string }
+            input:
+              $ref: "#/components/schemas/AlertRuleSearchInput"
+    AlertRuleListResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId: { type: string }
+        ok: { type: boolean }
+        data:
+          type: object
+          additionalProperties: false
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/AlertRule"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AlertRuleCreateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [input]
+          properties:
+            input:
+              $ref: "#/components/schemas/AlertRuleCreateInput"
+    AlertRuleUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [input]
+          properties:
+            input:
+              $ref: "#/components/schemas/AlertRuleUpdateInput"
+    AlertRuleMutationResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId: { type: string }
+        ok: { type: boolean }
+        data:
+          type: object
+          additionalProperties: false
+          required: [rule]
+          properties:
+            rule:
+              $ref: "#/components/schemas/AlertRule"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AlertRuleDeleteRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [id]
+          properties:
+            id: { type: string }
+    AlertDeleteResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId: { type: string }
+        ok: { type: boolean }
+        data:
+          type: object
+          additionalProperties: false
+          required: [deleted]
+          properties:
+            deleted: { type: boolean }
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AlertSilenceListRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId]
+          properties:
+            projectId: { type: string }
+            ruleId: { type: string }
+    AlertSilenceListResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId: { type: string }
+        ok: { type: boolean }
+        data:
+          type: object
+          additionalProperties: false
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/AlertSilence"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AlertSilenceCreateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [input]
+          properties:
+            input:
+              $ref: "#/components/schemas/AlertSilenceCreateInput"
+    AlertSilenceCreateResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId: { type: string }
+        ok: { type: boolean }
+        data:
+          type: object
+          additionalProperties: false
+          required: [silence]
+          properties:
+            silence:
+              $ref: "#/components/schemas/AlertSilence"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AlertSilenceDeleteRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [id]
+          properties:
+            id: { type: string }
+    AlertHistoryListRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId]
+          properties:
+            projectId: { type: string }
+            ruleId: { type: string }
+            first: { type: integer, minimum: 1, maximum: 200, default: 50 }
+            after: { type: string }
+    AlertHistoryListResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId: { type: string }
+        ok: { type: boolean }
+        data:
+          type: object
+          additionalProperties: false
+          required: [connection]
+          properties:
+            connection:
+              $ref: "#/components/schemas/AlertEventConnection"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AlertHistoryRecordRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [event]
+          properties:
+            event:
+              $ref: "#/components/schemas/AlertEvent"
+    AlertHistoryRecordResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId: { type: string }
+        ok: { type: boolean }
+        data:
+          type: object
+          additionalProperties: false
+          required: [event]
+          properties:
+            event:
+              $ref: "#/components/schemas/AlertEvent"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AlertEvaluatorTickRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [requestedAt]
+          properties:
+            requestedAt: { type: string, format: date-time }
+    AlertRuleEvaluateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [ruleId, projectId]
+          properties:
+            ruleId: { type: string }
+            projectId: { type: string }
+            now: { type: string, format: date-time }
+    AlertNotificationDispatchRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [event]
+          properties:
+            event:
+              $ref: "#/components/schemas/AlertEvent"
+    AlertEvaluatorGenericResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId: { type: string }
+        ok: { type: boolean }
+        data:
+          type: object
+          additionalProperties: true
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    IngestCredential:
+      type: object
+      additionalProperties: false
+      required: [id, projectId, title, scopes, secretPreview, createdAt, createdByUserId]
+      properties:
+        id:
+          type: string
+        projectId:
+          type: string
+        title:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        secretPreview:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+        createdByUserId:
+          type: string
+    IngestCredentialListRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId]
+          properties:
+            projectId:
+              type: string
+    IngestCredentialListResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/IngestCredential"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    IngestCredentialCreateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, title]
+          properties:
+            projectId:
+              type: string
+            title:
+              type: string
+    IngestCredentialCreateResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [credential, secret]
+          properties:
+            credential:
+              $ref: "#/components/schemas/IngestCredential"
+            secret:
+              type: string
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    IngestCredentialRevokeRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [credentialId]
+          properties:
+            credentialId:
+              type: string
+    IngestCredentialRevokeResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [credential]
+          properties:
+            credential:
+              $ref: "#/components/schemas/IngestCredential"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    ProjectAiSettingsGetRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId]
+          properties:
+            projectId:
+              type: string
+    ProjectAiSettingsGetResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [settings]
+          properties:
+            settings:
+              $ref: "../entities/ai/project-ai-settings.schema.json"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    ProjectAiSettingsUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [input]
+          properties:
+            input:
+              $ref: "../entities/ai/project-ai-settings.schema.json"
+            expectedVersion:
+              type: integer
+              minimum: 1
+    ProjectAiSettingsUpdateResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [settings]
+          properties:
+            settings:
+              $ref: "../entities/ai/project-ai-settings.schema.json"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    ProjectStatusSnapshotRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [companyId, projectId]
+          properties:
+            companyId:
+              type: string
+            projectId:
+              type: string
+    ProjectStatusSnapshotResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/ProjectStatusSnapshotData"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    ProjectStatusSnapshotData:
+      type: object
+      additionalProperties: false
+      required: [companyId, projectId, status, changedAt]
+      properties:
+        companyId:
+          type: string
+        projectId:
+          type: string
+        status:
+          $ref: "#/components/schemas/ProjectStatus"
+        changedAt:
+          type: string
+          format: date-time
+    ProjectStatusChangedNotification:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - $ref: "#/components/schemas/ProjectStatusSnapshotData"
+    DashboardListRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          properties:
+            input:
+              type: object
+              additionalProperties: false
+              properties:
+                includeBuiltins:
+                  type: boolean
+                  default: true
+                query:
+                  type: string
+                tag:
+                  type: string
+                visibility:
+                  type: string
+                  enum: [builtin, project, personal]
+                pinnedOnly:
+                  type: boolean
+                  default: false
+    DashboardListResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "../entities/dashboard.schema.json"
+            pinnedDashboardIds:
+              type: array
+              items:
+                type: string
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    DashboardSaveRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [input]
+          properties:
+            input:
+              $ref: "#/components/schemas/DashboardSaveInput"
+    DashboardDeleteRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [dashboardId]
+          properties:
+            dashboardId:
+              type: string
+    DashboardSaveResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [dashboard]
+          properties:
+            dashboard:
+              $ref: "../entities/dashboard.schema.json"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    DashboardDeleteResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [deleted]
+          properties:
+            deleted:
+              type: boolean
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    DashboardSaveInput:
+      type: object
+      additionalProperties: false
+      required: [name, widgets]
+      properties:
+        id:
+          type: string
+        version:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        visibility:
+          type: string
+          enum: [project, personal]
+        defaultTimeWindow:
+          type: string
+        widgets:
+          type: array
+          minItems: 1
+          maxItems: 24
+          items:
+            $ref: "#/components/schemas/DashboardWidgetInput"
+    DashboardWidgetInput:
+      type: object
+      additionalProperties: false
+      required: [id, title, kind, layout]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        kind:
+          type: string
+          enum: [metric_timeseries, metric_stat, metric_table, log_table, trace_table, live_trace_table]
+        layout:
+          type: object
+          additionalProperties: false
+          required: [x, y, w, h]
+          properties:
+            x: { type: integer, minimum: 0, maximum: 11 }
+            y: { type: integer, minimum: 0 }
+            w: { type: integer, minimum: 1, maximum: 12 }
+            h: { type: integer, minimum: 1, maximum: 12 }
+            minW: { type: integer, minimum: 1, maximum: 12, default: 3 }
+            minH: { type: integer, minimum: 1, maximum: 12, default: 2 }
+        metric:
+          $ref: "#/components/schemas/DashboardMetricWidgetInput"
+        logs:
+          $ref: "#/components/schemas/DashboardLogWidgetInput"
+        traces:
+          $ref: "#/components/schemas/DashboardTraceWidgetInput"
+        liveTraces:
+          $ref: "#/components/schemas/DashboardLiveTraceWidgetInput"
+    DashboardMetricWidgetInput:
+      type: object
+      additionalProperties: false
+      required: [metricName, aggregation, visualization]
+      properties:
+        metricName: { type: string }
+        aggregation:
+          type: string
+          enum: [avg, sum, min, max, count, rate, p50, p90, p95, p99]
+        groupBy:
+          type: array
+          items: { type: string }
+        filters:
+          type: array
+          items:
+            $ref: "../entities/attribute-filter.schema.json"
+        timeWindow: { type: string }
+        interval: { type: string }
+        visualization:
+          type: string
+          enum: [line, area, bar, pie, stat, table]
+        legend: { type: boolean, default: true }
+        maxSeries: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        thresholds:
+          type: array
+          items:
+            $ref: "#/components/schemas/DashboardThresholdInput"
+    DashboardLogWidgetInput:
+      type: object
+      additionalProperties: false
+      properties:
+        service: { type: string }
+        traceId: { type: string }
+        spanId: { type: string }
+        severity: { type: string }
+        search: { type: string }
+        attributes:
+          type: array
+          items:
+            $ref: "../entities/attribute-filter.schema.json"
+        sort:
+          type: string
+          enum: [timestamp_desc, timestamp_asc, severity_desc]
+        limit: { type: integer, minimum: 1, maximum: 200 }
+        columns:
+          type: array
+          items:
+            type: string
+            enum: [timestamp, observed_timestamp, severity, service, trace_span, body, attributes]
+    DashboardTraceWidgetInput:
+      type: object
+      additionalProperties: false
+      properties:
+        service: { type: string }
+        query: { type: string }
+        operationName: { type: string }
+        spanName: { type: string }
+        status:
+          type: string
+          enum: [ok, error, unset]
+        minDurationMs: { type: number }
+        maxDurationMs: { type: number }
+        attributes:
+          type: array
+          items:
+            $ref: "../entities/attribute-filter.schema.json"
+        sort:
+          type: string
+          enum: [startedAt_desc, startedAt_asc, duration_desc, duration_asc, errorFirst]
+        limit: { type: integer, minimum: 1, maximum: 200 }
+        columns:
+          type: array
+          items:
+            type: string
+            enum: [started_at, status, service, operation, duration, span_count, log_count]
+    DashboardLiveTraceWidgetInput:
+      type: object
+      additionalProperties: false
+      properties:
+        service: { type: string }
+        query: { type: string }
+        operationName: { type: string }
+        spanName: { type: string }
+        status:
+          type: string
+          enum: [ok, error, unset]
+        minDurationMs: { type: number }
+        maxDurationMs: { type: number }
+        attributes:
+          type: array
+          items:
+            $ref: "../entities/attribute-filter.schema.json"
+        limit: { type: integer, minimum: 1, maximum: 200 }
+    DashboardThresholdInput:
+      type: object
+      additionalProperties: false
+      required: [value, severity]
+      properties:
+        value: { type: number }
+        severity:
+          type: string
+          enum: [info, warning, error]
+        label: { type: string }
+    DashboardPinSetRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [dashboardId, pinned]
+          properties:
+            dashboardId: { type: string }
+            pinned: { type: boolean }
+    DashboardPinReorderRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [dashboardIds]
+          properties:
+            dashboardIds:
+              type: array
+              maxItems: 5
+              items:
+                type: string
+    DashboardPreferencesResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId: { type: string }
+        ok: { type: boolean }
+        data:
+          type: object
+          additionalProperties: false
+          required: [projectId, pinnedDashboardIds, updatedAt]
+          properties:
+            projectId: { type: string }
+            pinnedDashboardIds:
+              type: array
+              items: { type: string }
+            updatedAt: { type: string, format: date-time }
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    TraceSearchRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          required: [query]
+          properties:
+            query:
+              $ref: "../entities/trace-search-query.schema.json"
+    TraceSearchResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/TraceSearchData"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    TraceDetailRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          required: [traceId]
+          properties:
+            traceId:
+              type: string
+            query:
+              $ref: "../entities/trace-detail-query.schema.json"
+    TraceDetailResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/TraceDetailData"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    LogSearchRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          required: [query]
+          properties:
+            query:
+              $ref: "../entities/log-search-query.schema.json"
+    LogSearchResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/LogSearchData"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    MetricNameSearchRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          properties:
+            input:
+              type: object
+              additionalProperties: false
+              properties:
+                query:
+                  type: string
+                service:
+                  type: string
+                from:
+                  type: string
+                  format: date-time
+                to:
+                  type: string
+                  format: date-time
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 200
+                  default: 50
+    MetricNameSearchResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "../entities/metric-descriptor.schema.json"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    MetricSeriesRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [input]
+          properties:
+            input:
+              type: object
+              additionalProperties: false
+              required: [metricName, from, to, aggregation]
+              properties:
+                metricName:
+                  type: string
+                from:
+                  type: string
+                  format: date-time
+                to:
+                  type: string
+                  format: date-time
+                interval:
+                  type: string
+                aggregation:
+                  type: string
+                  enum: [avg, sum, min, max, count, rate, p50, p90, p95, p99]
+                groupBy:
+                  type: array
+                  maxItems: 5
+                  items:
+                    type: string
+                filters:
+                  type: array
+                  items:
+                    $ref: "../entities/attribute-filter.schema.json"
+                limit:
+                  type: integer
+                  minimum: 1
+                  maximum: 5000
+                  default: 1000
+    MetricSeriesResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/MetricSeriesData"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    TelemetryFacetRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          required: [query]
+          properties:
+            query:
+              $ref: "#/components/schemas/TelemetryFacetQuery"
+    TelemetryFacetResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/TelemetryFacetData"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    ProjectTelemetryOverviewRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          required: [projects]
+          properties:
+            projects:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProjectTelemetryOverviewTarget"
+    ProjectTelemetryOverviewResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/ProjectTelemetryOverviewData"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    LiveTraceStartRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [subscriptionId, sinkSubject, query]
+          properties:
+            subscriptionId:
+              type: string
+            sinkSubject:
+              type: string
+              description: BFF-owned ephemeral NATS inbox subject for live events. It must not be a JetStream subject.
+            query:
+              $ref: "../entities/live-trace-query.schema.json"
+    LiveTraceStartResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/LiveTraceStartData"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    LiveTraceStartData:
+      type: object
+      additionalProperties: false
+      required: [subscriptionId, heartbeatIntervalMs]
+      properties:
+        subscriptionId:
+          type: string
+        heartbeatIntervalMs:
+          type: integer
+          minimum: 1000
+    LiveTraceStopRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [subscriptionId]
+          properties:
+            subscriptionId:
+              type: string
+    LiveTraceStopResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/LiveTraceStopData"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    LiveTraceStopData:
+      type: object
+      additionalProperties: false
+      required: [subscriptionId]
+      properties:
+        subscriptionId:
+          type: string
+    PersistTelemetryCommand:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [commandId, source, traces, spans, logs]
+          properties:
+            commandId:
+              type: string
+            source:
+              type: string
+              enum: [otlp-traces, otlp-logs]
+            traces:
+              type: array
+              items:
+                $ref: "../entities/trace.schema.json"
+            spans:
+              type: array
+              items:
+                $ref: "../entities/span.schema.json"
+            logs:
+              type: array
+              items:
+                $ref: "../entities/log-event.schema.json"
+    PersistMetricsCommand:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [commandId, source, descriptors, points]
+          properties:
+            commandId:
+              type: string
+            source:
+              type: string
+              enum: [otlp-metrics]
+            descriptors:
+              type: array
+              items:
+                $ref: "../entities/metric-descriptor.schema.json"
+            points:
+              type: array
+              items:
+                $ref: "../entities/metric-point.schema.json"
+    TracePersistedNotification:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [commandId, traceIds, persistedAt]
+          properties:
+            commandId:
+              type: string
+            traceIds:
+              type: array
+              minItems: 1
+              items:
+                type: string
+            persistedAt:
+              type: string
+              format: date-time
+            serviceNames:
+              type: array
+              items:
+                type: string
+    LiveTraceEvent:
+      type: object
+      additionalProperties: false
+      required: [subscriptionId, type, seq, receivedAt]
+      properties:
+        subscriptionId:
+          type: string
+        type:
+          type: string
+          enum: [snapshot, added, updated, heartbeat]
+        seq:
+          type: integer
+          minimum: 0
+        receivedAt:
+          type: string
+          format: date-time
+        trace:
+          $ref: "#/components/schemas/TraceSummary"
+    TraceSearchData:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TraceSummary"
+        nextCursor:
+          type: string
+    MetricSeriesData:
+      type: object
+      additionalProperties: false
+      required: [metric, aggregation, interval, groupBy, series, warnings]
+      properties:
+        metric:
+          $ref: "../entities/metric-descriptor.schema.json"
+        aggregation:
+          type: string
+          enum: [avg, sum, min, max, count, rate, p50, p90, p95, p99]
+        interval:
+          type: string
+        groupBy:
+          type: array
+          items:
+            type: string
+        series:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [labels, points]
+            properties:
+              labels:
+                type: object
+                additionalProperties: true
+              points:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [timestamp, value, exemplars]
+                  properties:
+                    timestamp:
+                      type: string
+                      format: date-time
+                    value:
+                      type: number
+                    count:
+                      type: number
+                    exemplars:
+                      type: array
+                      items:
+                        type: object
+                        additionalProperties: false
+                        required: [timestamp, value, attributes]
+                        properties:
+                          timestamp:
+                            type: string
+                            format: date-time
+                          value:
+                            type: number
+                          traceId:
+                            type: string
+                          spanId:
+                            type: string
+                          attributes:
+                            type: object
+                            additionalProperties: true
+        warnings:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [code, message]
+            properties:
+              code:
+                type: string
+              message:
+                type: string
+              field:
+                type: string
+    TraceDetailData:
+      type: object
+      additionalProperties: false
+      required: [trace, structure, spans, logs, relatedLogs, warnings]
+      properties:
+        trace:
+          $ref: "../entities/trace.schema.json"
+        structure:
+          $ref: "#/components/schemas/TraceStructure"
+        spans:
+          type: array
+          items:
+            $ref: "#/components/schemas/TraceDetailSpan"
+        selectedSpan:
+          $ref: "#/components/schemas/TraceDetailSpan"
+        spanMatches:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpanMatch"
+        logs:
+          type: array
+          items:
+            $ref: "../entities/log-event.schema.json"
+        relatedLogs:
+          type: array
+          items:
+            $ref: "../entities/log-event.schema.json"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/TraceWarning"
+    LogSearchData:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "../entities/log-event.schema.json"
+        nextCursor:
+          type: string
+    TelemetryFacetQuery:
+      type: object
+      additionalProperties: false
+      properties:
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        service:
+          type: string
+        search:
+          type: string
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
+    TelemetryFacetData:
+      type: object
+      additionalProperties: false
+      required: [services, operations, spanNames, severities, attributeKeys]
+      properties:
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/FacetValue"
+        operations:
+          type: array
+          items:
+            $ref: "#/components/schemas/FacetValue"
+        spanNames:
+          type: array
+          items:
+            $ref: "#/components/schemas/FacetValue"
+        severities:
+          type: array
+          items:
+            $ref: "#/components/schemas/FacetValue"
+        attributeKeys:
+          type: array
+          items:
+            $ref: "#/components/schemas/FacetValue"
+    FacetValue:
+      type: object
+      additionalProperties: false
+      required: [value, count]
+      properties:
+        value:
+          type: string
+        count:
+          type: integer
+          minimum: 0
+    TraceSummary:
+      allOf:
+        - $ref: "../entities/trace.schema.json"
+        - type: object
+          additionalProperties: false
+          required: [spanCount, errorSpanCount, logCount, serviceCount]
+          properties:
+            operationName:
+              type: string
+            spanCount:
+              type: integer
+              minimum: 0
+            errorSpanCount:
+              type: integer
+              minimum: 0
+            logCount:
+              type: integer
+              minimum: 0
+            serviceCount:
+              type: integer
+              minimum: 0
+    TraceDetailSpan:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - traceId
+        - name
+        - startedAt
+        - endedAt
+        - durationMs
+        - attributes
+        - depth
+        - childCount
+        - hasError
+        - isCriticalPath
+        - isOrphan
+        - isServiceEntry
+        - exceptionCount
+        - events
+        - links
+        - exceptions
+      properties:
+        id:
+          type: string
+        traceId:
+          type: string
+        parentSpanId:
+          type: string
+        name:
+          type: string
+        kind:
+          type: string
+        serviceName:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        durationMs:
+          type: number
+          minimum: 0
+        status:
+          type: string
+          enum: [ok, error, unset]
+        attributes:
+          type: object
+          additionalProperties: true
+        depth:
+          type: integer
+          minimum: 0
+        childCount:
+          type: integer
+          minimum: 0
+        hasError:
+          type: boolean
+        isCriticalPath:
+          type: boolean
+        isOrphan:
+          type: boolean
+        isServiceEntry:
+          type: boolean
+        exceptionCount:
+          type: integer
+          minimum: 0
+        events:
+          type: array
+          items:
+            $ref: "../entities/span-event.schema.json"
+        links:
+          type: array
+          items:
+            $ref: "#/components/schemas/TraceDetailSpanLink"
+        exceptions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpanException"
+    TraceDetailSpanLink:
+      allOf:
+        - $ref: "../entities/span-link.schema.json"
+        - type: object
+          additionalProperties: false
+          required: [direction]
+          properties:
+            direction:
+              type: string
+              enum: [forward, backward, unknown]
+    SpanException:
+      type: object
+      additionalProperties: false
+      required: [timestamp, attributes, frames]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        type:
+          type: string
+        message:
+          type: string
+        stacktrace:
+          type: string
+        escaped:
+          type: boolean
+        attributes:
+          type: object
+          additionalProperties: true
+        frames:
+          type: array
+          items:
+            $ref: "#/components/schemas/StackTraceFrame"
+    StackTraceFrame:
+      type: object
+      additionalProperties: false
+      required: [raw]
+      properties:
+        raw:
+          type: string
+        functionName:
+          type: string
+        fileName:
+          type: string
+        lineNumber:
+          type: integer
+        columnNumber:
+          type: integer
+        language:
+          type: string
+    TraceStructure:
+      type: object
+      additionalProperties: false
+      required: [rootSpanIds, orphanSpanIds, criticalPathSpanIds, maxDepth, serviceBreakdown]
+      properties:
+        rootSpanIds:
+          type: array
+          items:
+            type: string
+        orphanSpanIds:
+          type: array
+          items:
+            type: string
+        criticalPathSpanIds:
+          type: array
+          items:
+            type: string
+        maxDepth:
+          type: integer
+          minimum: 0
+        serviceBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceTraceBreakdown"
+    ServiceTraceBreakdown:
+      type: object
+      additionalProperties: false
+      required: [serviceName, spanCount, errorSpanCount, durationMs, percentOfTraceDuration]
+      properties:
+        serviceName:
+          type: string
+        spanCount:
+          type: integer
+          minimum: 0
+        errorSpanCount:
+          type: integer
+          minimum: 0
+        durationMs:
+          type: number
+          minimum: 0
+        percentOfTraceDuration:
+          type: number
+          minimum: 0
+    SpanMatch:
+      type: object
+      additionalProperties: false
+      required: [spanId, reason, fields]
+      properties:
+        spanId:
+          type: string
+        reason:
+          type: string
+          enum: [selected, search, filter, error, criticalPath]
+        fields:
+          type: array
+          items:
+            type: string
+    TraceWarning:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [missingRoot, missingParent, clockSkew, partialTrace, largeTracePreview]
+        message:
+          type: string
+        spanId:
+          type: string
+x-cloudgrid:
+  timeout_ms:
+    read_request_reply: 2000
+    write_publish_ack: 1000
+  write_stream:
+    name: TELEMETRY_INGEST
+    subjects:
+      - telemetry.ingest.traces
+      - telemetry.ingest.logs
+      - telemetry.ingest.metrics
+    retention: limits
+    storage: file
+    max_age: P7D
+  consumers:
+    storage_write:
+      durable: storage-write
+      ack_policy: explicit
+      ack_wait: PT30S
+      max_deliver: 5
+    storage_read_live:
+      durable: storage-read-live
+      subject: telemetry.persisted.traces
+      ack_policy: explicit
+      ack_wait: PT30S
+      max_deliver: 5
+      purpose: Fan out post-persist trace notifications to authorized live GraphQL subscriptions. The BFF must not create this consumer.
+  live_trace_delivery:
+    public_api: GraphQL Subscription.liveTraces
+    bff_start_subject: telemetry.traces.live.start
+    bff_stop_subject: telemetry.traces.live.stop
+    storage_read_event_subject_pattern: telemetry.traces.live.events.<bffInstanceId>.<subscriptionId>
+    bff_must_not_consume_streams: [TELEMETRY_INGEST, telemetry.persisted.traces]
+    storage_read_role: authorize_filter_match_and_emit_trace_events
+    storage_write_role: publish_trace_ids_after_successful_persist
+    heartbeat_interval_ms: 15000
+    default_buffer_limit: 100
+    max_buffer_limit: 500
+  error_mapping:
+    bridge_error_source: specs/03-contracts/errors.yaml
+    public_problem_details: RFC9457
+    public_problem_extensions: [id, code, retryable, details]
+    graphql_extension_path: extensions.problem
+  validation:
+    bff_runtime: zod
+    frontend_graphql_response: zod
+    go_runtime: typed_contracts
+    drift_check:
+      parse_graphql_sdl: true
+      validate_asyncapi_channels: true
+      validate_asyncapi_operations: true
+      validate_asyncapi_message_refs: true
+      validate_entity_schema_refs: true
+      validate_error_taxonomy_refs: true
+  telemetry_read_semantics:
+    owner: core/storage-read
+    bff_role: validate_map_request_reply_and_graphql_subscription_transport
+    frontend_role: render_graphql_view_models
+    database_pushdown:
+      required_for: [filters, cursor_predicates, sort_order, counts, grouping, bounded_facets]
+      spec: specs/04-backend/telemetry-query-semantics.md
+  contract_generation:
+    target_state: generated
+    source_package: apps/packages/definition
+    generated_outputs:
+      - specs/03-contracts/messages/message-bridge.asyncapi.yaml
+      - apps/packages/ui-contracts/src/index.ts
+      - core/go-contracts/contracts.go
+    rule: Until generation exists, update this AsyncAPI file directly and keep tooling/scripts/check-contracts.mjs as the drift gate. After generation exists, this file is generated output and must not be hand-edited.
