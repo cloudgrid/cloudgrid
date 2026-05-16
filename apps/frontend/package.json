@@ -1,0 +1,46 @@
+{
+  "name": "@cloudgrid/frontend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "lint": "biome lint .",
+    "smoke": "playwright test",
+    "test": "bun test --pass-with-no-tests",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@cloudgrid/ui-contracts": "workspace:*",
+    "@shikijs/langs": "4.0.2",
+    "@shikijs/themes": "4.0.2",
+    "@shikijs/types": "4.0.2",
+    "@tailwindcss/vite": "4.3.0",
+    "@tanstack/react-query": "5.100.9",
+    "@tanstack/react-virtual": "3.13.24",
+    "@vitejs/plugin-react": "6.0.1",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "cmdk": "1.1.1",
+    "lucide-react": "1.14.0",
+    "radix-ui": "1.4.3",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "react-resizable-panels": "4.11.0",
+    "react-router-dom": "7.15.0",
+    "recharts": "3.8.1",
+    "shadcn": "4.7.0",
+    "shiki": "4.0.2",
+    "sonner": "2.0.7",
+    "tailwind-merge": "3.5.0",
+    "tailwindcss": "4.3.0",
+    "vite": "8.0.11",
+    "zod": "4.1.13"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.11.3",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3"
+  }
+}
