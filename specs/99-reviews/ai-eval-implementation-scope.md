@@ -94,6 +94,28 @@ frontend renders GraphQL view models and owns presentation state only.
 
 Implement a Bun CLI script that starts an experiment run through GraphQL, subscribes to `liveExperimentRun`, exits non-zero on configured regression thresholds, and emits JUnit XML.
 
+### AIE-10 Dataset Import/Export
+
+Implement dataset import/export across the BFF transfer boundary, storage-write
+import preview/commit, storage-read export resolution/job reads, and frontend
+dataset import/export UI.
+
+Scope:
+
+- BFF upload/download endpoints in `specs/03-contracts/api/http-api.openapi.yaml`;
+- GraphQL operations `prepareDatasetImport`, `commitDatasetImport`,
+  `startDatasetExport`, `datasetImport`, and `datasetExport`;
+- message subjects `eval.dataset.import.prepare`,
+  `eval.dataset.import.commit`, `eval.dataset.export.start`, and
+  `eval.dataset.transfer.get`;
+- JSONL, JSON array, CSV, and ZIP import;
+- JSONL, JSON array, and CSV export;
+- mapping preview before commit.
+
+The frontend must not parse uploaded files into `DatasetItemInput`, infer
+mapping automatically, compute row validity, deduplicate rows, or call
+`appendDatasetItems` for uploaded files.
+
 ## Explicit Non-Scope
 
 - Public REST AI-eval endpoints in CloudGrid.
@@ -107,6 +129,11 @@ Implement a Bun CLI script that starts an experiment run through GraphQL, subscr
   content-bearing scoring.
 - Automatic annotation queue routing from online score results.
 - Alert rules over AI-eval online quality signals.
+- Excel/XLSX import.
+- Arbitrary import transform scripts, regex replacements, templates, SQL,
+  JavaScript, Python, or shell-based mapping logic.
+- Recreating the original uploaded file layout during export; exports are
+  canonical CloudGrid dataset item data.
 
 ## Readiness Result
 

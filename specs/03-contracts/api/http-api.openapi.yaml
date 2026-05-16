@@ -103,6 +103,82 @@ paths:
           description: Session cookie cleared.
         "500":
           $ref: "#/components/responses/Error"
+  /api/ai-eval/dataset-imports/uploads:
+    post:
+      operationId: OPR-AIE-post-dataset-import-upload
+      summary: Stage a dataset import file for later GraphQL-driven preview and commit.
+      description: >
+        BFF-owned binary transfer endpoint for dataset import staging only. It
+        does not create dataset items, infer mappings, compute dataset health,
+        or expose a public REST AI-eval workflow. Dataset semantics continue
+        through GraphQL and private message bridge subjects.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [projectId, file]
+              properties:
+                projectId:
+                  type: string
+                file:
+                  type: string
+                  format: binary
+                filename:
+                  type: string
+      responses:
+        "200":
+          description: File staged for import preview.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetImportUploadResponse"
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "413":
+          $ref: "#/components/responses/Error"
+        "415":
+          $ref: "#/components/responses/Error"
+  /api/ai-eval/dataset-exports/{exportId}/download:
+    get:
+      operationId: OPR-AIE-get-dataset-export-download
+      summary: Download a prepared dataset export artifact.
+      parameters:
+        - name: exportId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Export artifact bytes.
+          content:
+            application/jsonl:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                type: string
+                format: binary
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "410":
+          $ref: "#/components/responses/Error"
   /v1/traces:
     post:
       operationId: OPR-OTLP-post-v1-traces
@@ -259,6 +335,43 @@ components:
         details:
           type: object
           additionalProperties: true
+    DatasetImportUploadResponse:
+      type: object
+      additionalProperties: false
+      required: [uploadId, projectId, filename, sizeBytes, sha256, expiresAt]
+      properties:
+        uploadId:
+          type: string
+        projectId:
+          type: string
+        filename:
+          type: string
+        sizeBytes:
+          type: integer
+          minimum: 0
+        sha256:
+          type: string
+        detectedFormat:
+          type: string
+          enum: [jsonl, json_array, csv, zip]
+        containedFiles:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [path, sizeBytes, detectedFormat]
+            properties:
+              path:
+                type: string
+              sizeBytes:
+                type: integer
+                minimum: 0
+              detectedFormat:
+                type: string
+                enum: [jsonl, json_array, csv, unsupported]
+        expiresAt:
+          type: string
+          format: date-time
     LivenessResponse:
       type: object
       additionalProperties: false

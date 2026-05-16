@@ -20,6 +20,8 @@ inferred_defaults:
   - Experiments and optimizations require immutable manifests with dataset version, split selector, scorer versions, prompt/skill/tool refs, provider profile refs, budget caps, and manifest digest.
   - Production online evaluation is policy-driven and disabled until configured.
   - "Online scoring v1 is conservative and deterministic-only: no production projection is scored until a project admin enables an explicit policy, no harness score call is allowed, no production content is sent to judge models, no annotation item is created automatically, and no alert rule is triggered from AI-eval results."
+  - Dataset import/export supports JSONL, JSON array, CSV, and ZIP upload with
+    preview-before-commit mapping into canonical CloudGrid dataset item fields.
   - Storage-read owns dataset health, policy matching, production quality summaries, manifest resolution, scoreboards, and live fanout.
   - Frontend renders GraphQL view models and owns only presentation state.
 gate_simulation:
@@ -118,6 +120,15 @@ gate_simulation:
       acceptance: Bun CLI starts an experiment through GraphQL, subscribes to progress, exits non-zero on configured regression thresholds, and emits JUnit XML.
       verification: ["bun test tooling", "bun run contracts:check"]
       open_decisions: []
+    - id: AIE-10
+      name: Dataset import and export
+      owner_boundary: split bff/storage-write/storage-read/frontend
+      read_scope: [specs/02-capabilities/ai-eval/import-export-datasets.md, specs/02-flows/ai-eval/dataset-import-export.md, specs/04-backend/ai-eval-dataset-transfer.md, specs/05-frontend/ai-eval-views.md]
+      write_scope: [apps/backend, core/storage-write, core/storage-read, apps/frontend, apps/packages/ui-contracts]
+      contract_traceability: [prepareDatasetImport, commitDatasetImport, startDatasetExport, datasetImport, datasetExport, eval.dataset.import.prepare, eval.dataset.import.commit, eval.dataset.export.start, eval.dataset.transfer.get]
+      acceptance: Dataset import/export supports JSONL, JSON array, CSV, and ZIP through BFF byte transfer, GraphQL preview-before-commit, storage-write normalization/commit, storage-read export resolution/job reads, and frontend mapping/preview UI without frontend or BFF-owned dataset semantics.
+      verification: ["bun run contracts:check", "bun test apps/backend/src", "go test -tags surrealdb ./core/storage-write/... ./core/storage-read/...", "bun run --cwd apps/frontend typecheck"]
+      open_decisions: []
 deterministic_checks:
   - command: node /Users/sebastianwessel/.agents/skills/spec-architect/scripts/check_specs.mjs specs
     status: pass_with_warning_no_specs_03_flows_directory
@@ -141,11 +152,13 @@ risks:
   - Online LLM-judge, RAG, tool, trajectory, automatic annotation routing, and
     alert integration are intentionally future features; implementing them in
     the v1 online scoring wave would be scope drift.
+  - Excel/XLSX import and arbitrary import transform scripting are intentionally
+    out of scope for v1 dataset import.
   - Organization invitations are outside this AI-eval readiness scope and are not approved by this report.
 statistics:
-  ai_eval_capabilities: 8
-  ai_eval_flows: 4
-  ai_eval_backend_specs: 5
+  ai_eval_capabilities: 9
+  ai_eval_flows: 5
+  ai_eval_backend_specs: 6
   ai_eval_frontend_specs: 2
   ai_eval_nfrs: 2
-  simulated_implementation_tickets: 9
+  simulated_implementation_tickets: 10

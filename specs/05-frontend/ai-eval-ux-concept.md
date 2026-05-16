@@ -68,8 +68,8 @@ Checklist rows:
 
 1. `Telemetry detected`: links to Traces when no AI spans exist.
 2. `Provider profile`: links to Project Settings / AI Eval.
-3. `Dataset`: creates a dataset or imports JSONL/CSV when contract support
-   exists.
+3. `Dataset`: creates a dataset or imports JSONL, JSON array, CSV, or ZIP
+   files.
 4. `Scorer`: creates a scorer from templates.
 5. `Baseline experiment`: starts a baseline run when dataset and scorer exist.
 6. `Production policy`: optional online scoring policy setup.
@@ -143,6 +143,52 @@ Inspector:
 
 Dataset split colors must be stable and non-dominant. Split labels are text plus
 small swatches, not large badges.
+
+### Dataset Import
+
+The dataset import experience is a compact side sheet launched from the Datasets
+workspace.
+
+Flow:
+
+1. Upload file.
+2. Review detected files.
+3. Map fields.
+4. Preview rows.
+5. Commit.
+
+Upload step:
+
+- accepts `.jsonl`, `.json`, `.csv`, and `.zip`;
+- shows file name, size, detected format, and upload expiry;
+- shows ZIP contents in a dense table when applicable.
+
+Mapping step:
+
+- uses form controls, not raw JSON editing, for common mappings;
+- shows CSV columns or JSON path examples from previewable source fields;
+- maps into `input`, `expected`, `metadata`, source pointers, split, and review
+  status;
+- exposes constants/defaults as explicit controls;
+- does not offer arbitrary scripts, templates, regex replacements, or computed
+  transforms in v1.
+
+Preview step:
+
+- shows total rows, valid rows, error rows, warnings, and sampled preview rows;
+- shows source file path and row number for every issue;
+- disables commit when errors exist unless the user explicitly chooses partial
+  commit.
+
+Commit step:
+
+- shows resulting dataset version and links to dataset health.
+
+### Dataset Export
+
+Export is a small dialog from the selected dataset toolbar. It supports JSONL,
+JSON array, and CSV. The UI must describe exports as canonical CloudGrid
+dataset-item data, not a recreation of the original uploaded file layout.
 
 ## Scorers
 

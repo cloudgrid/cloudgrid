@@ -134,6 +134,34 @@ channels:
         $ref: "#/components/messages/EvalMutationRequest"
       EvalMutationResponse:
         $ref: "#/components/messages/EvalMutationResponse"
+  eval.dataset.import.prepare:
+    address: eval.dataset.import.prepare
+    messages:
+      EvalMutationRequest:
+        $ref: "#/components/messages/EvalMutationRequest"
+      EvalMutationResponse:
+        $ref: "#/components/messages/EvalMutationResponse"
+  eval.dataset.import.commit:
+    address: eval.dataset.import.commit
+    messages:
+      EvalMutationRequest:
+        $ref: "#/components/messages/EvalMutationRequest"
+      EvalMutationResponse:
+        $ref: "#/components/messages/EvalMutationResponse"
+  eval.dataset.export.start:
+    address: eval.dataset.export.start
+    messages:
+      EvalMutationRequest:
+        $ref: "#/components/messages/EvalMutationRequest"
+      EvalMutationResponse:
+        $ref: "#/components/messages/EvalMutationResponse"
+  eval.dataset.transfer.get:
+    address: eval.dataset.transfer.get
+    messages:
+      EvalQueryRequest:
+        $ref: "#/components/messages/EvalQueryRequest"
+      EvalQueryResponse:
+        $ref: "#/components/messages/EvalQueryResponse"
   eval.dataset.health:
     address: eval.dataset.health
     messages:

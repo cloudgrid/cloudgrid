@@ -12,9 +12,9 @@ traits:
   sync_async: sync
   visibility: user
   authentication: prepared
-depends_on: [CAP-AIE-005, FLW-AIE-004]
+depends_on: [CAP-AIE-005, CAP-AIE-009, FLW-AIE-004]
 implements:
-  api: [GQL-Mutation-appendDatasetItems, GQL-Mutation-promoteSpanToDatasetItem, GQL-Query-datasets]
+  api: [GQL-Mutation-appendDatasetItems, GQL-Mutation-promoteSpanToDatasetItem, GQL-Mutation-prepareDatasetImport, GQL-Mutation-commitDatasetImport, GQL-Mutation-startDatasetExport, GQL-Query-datasets]
 ---
 
 # Curate Dataset Versions And Splits
@@ -37,6 +37,11 @@ optimization, validation, regression, and holdout confidence.
   exist.
 - Synthetic items are allowed only when metadata marks them as synthetic.
   Synthetic-only datasets cannot become production-ready regression datasets.
+- Dataset import supports JSONL, JSON array, CSV, and ZIP uploads through the
+  preview-before-commit flow in `FLW-AIE-005`.
+- Dataset export supports canonical JSONL, JSON array, and CSV output. Export
+  output uses CloudGrid normalized dataset item fields, not the original upload
+  shape.
 
 ## Acceptance Criteria
 
@@ -50,3 +55,5 @@ optimization, validation, regression, and holdout confidence.
   low and the experiment scoreboard reports item counts visibly.
 - Given an imported or manually entered duplicate, storage-read returns a
   duplicate warning and keeps duplicate semantics in storage-read.
+- Given an uploaded dataset file, a user must preview mapping validation before
+  committing rows to a dataset version.

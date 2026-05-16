@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-022",
+  "title": "DatasetImportJob",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "datasetId",
+    "status",
+    "format",
+    "sourceFiles",
+    "mapping",
+    "defaults",
+    "previewRows",
+    "totalRows",
+    "validRows",
+    "errorRows",
+    "warnings",
+    "createdAt",
+    "expiresAt"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "datasetId": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["staged", "preview_ready", "committed", "failed", "expired"]
+    },
+    "format": {
+      "type": "string",
+      "enum": ["jsonl", "json_array", "csv", "zip"]
+    },
+    "sourceFiles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/sourceFile" }
+    },
+    "mapping": { "type": "object", "additionalProperties": true },
+    "defaults": { "type": "object", "additionalProperties": true },
+    "previewRows": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/previewRow" }
+    },
+    "totalRows": { "type": "integer", "minimum": 0 },
+    "validRows": { "type": "integer", "minimum": 0 },
+    "errorRows": { "type": "integer", "minimum": 0 },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "committedDatasetVersion": { "type": "integer", "minimum": 1 }
+  },
+  "$defs": {
+    "sourceFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "format", "sizeBytes", "sha256"],
+      "properties": {
+        "path": { "type": "string" },
+        "format": {
+          "type": "string",
+          "enum": ["jsonl", "json_array", "csv", "zip"]
+        },
+        "sizeBytes": { "type": "integer", "minimum": 0 },
+        "rowCount": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string" }
+      }
+    },
+    "previewRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rowNumber", "filePath", "errors", "warnings"],
+      "properties": {
+        "rowNumber": { "type": "integer", "minimum": 1 },
+        "filePath": { "type": "string" },
+        "item": { "$ref": "#/$defs/itemPreview" },
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/issue" }
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/issue" }
+        }
+      }
+    },
+    "itemPreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input", "metadata", "split", "reviewStatus", "synthetic"],
+      "properties": {
+        "input": { "type": "object", "additionalProperties": true },
+        "expected": true,
+        "metadata": { "type": "object", "additionalProperties": true },
+        "sourceTraceId": { "type": "string" },
+        "sourceSpanId": { "type": "string" },
+        "split": {
+          "type": "string",
+          "enum": ["dev", "optimization", "validation", "regression", "holdout"]
+        },
+        "reviewStatus": {
+          "type": "string",
+          "enum": ["unreviewed", "reviewed", "rejected"]
+        },
+        "synthetic": { "type": "boolean" }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "path": { "type": "string" }
+      }
+    }
+  }
+}

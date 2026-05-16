@@ -153,6 +153,16 @@ export type DatasetHealthStatus =
   | "leakage_warning"
   | "invalid";
 
+export type DatasetImportFormat = "jsonl" | "json_array" | "csv" | "zip";
+
+export type DatasetExportFormat = "jsonl" | "json_array" | "csv";
+
+export type DatasetImportCommitMode = "valid_rows_only" | "reject_if_any_error";
+
+export type DatasetImportStatus = "staged" | "preview_ready" | "committed" | "failed" | "expired";
+
+export type DatasetExportStatus = "queued" | "ready" | "failed" | "expired";
+
 export type ProviderKind =
   | "openai"
   | "anthropic"
@@ -500,6 +510,66 @@ export interface PromoteSpanToDatasetItemInput {
   metadata?: JSONValue;
   split?: DatasetSplit | null;
   reviewStatus?: DatasetReviewStatus | null;
+}
+
+export interface PrepareDatasetImportInput {
+  datasetId: string;
+  uploadId: string;
+  format: DatasetImportFormat;
+  fileSelector?: DatasetImportFileSelectorInput | null;
+  mapping: DatasetImportMappingInput;
+  defaults?: DatasetImportDefaultsInput | null;
+  previewLimit?: number | null;
+}
+
+export interface DatasetImportFileSelectorInput {
+  include?: string[] | null;
+  exclude?: string[] | null;
+}
+
+export interface DatasetImportMappingInput {
+  input: DatasetImportFieldMappingInput[];
+  expected?: DatasetImportFieldMappingInput[] | null;
+  metadata?: DatasetImportFieldMappingInput[] | null;
+  sourceTraceId?: DatasetImportScalarMappingInput | null;
+  sourceSpanId?: DatasetImportScalarMappingInput | null;
+  split?: DatasetImportScalarMappingInput | null;
+  reviewStatus?: DatasetImportScalarMappingInput | null;
+}
+
+export interface DatasetImportFieldMappingInput {
+  targetPath: string;
+  source: DatasetImportScalarMappingInput;
+}
+
+export interface DatasetImportScalarMappingInput {
+  column?: string | null;
+  jsonPath?: string | null;
+  constant?: JSONValue;
+  defaultValue?: JSONValue;
+}
+
+export interface DatasetImportDefaultsInput {
+  split?: DatasetSplit | null;
+  reviewStatus?: DatasetReviewStatus | null;
+  metadata?: JSONValue;
+  synthetic?: boolean | null;
+  allowPartialCommit?: boolean | null;
+}
+
+export interface CommitDatasetImportInput {
+  importId: string;
+  expectedDatasetVersion: number;
+  mode?: DatasetImportCommitMode | null;
+}
+
+export interface StartDatasetExportInput {
+  datasetId: string;
+  format: DatasetExportFormat;
+  split?: DatasetSplit | null;
+  reviewStatus?: DatasetReviewStatus | null;
+  includeMetadata?: boolean | null;
+  includeSourcePointers?: boolean | null;
 }
 
 export interface CreateScorerInput {
@@ -1010,6 +1080,71 @@ export interface DatasetItem {
   synthetic: boolean;
   duplicateOfItemId?: string | null;
   leakageWarnings: string[];
+}
+
+export interface DatasetImportJob {
+  id: string;
+  datasetId: string;
+  status: DatasetImportStatus;
+  format: DatasetImportFormat;
+  sourceFiles: DatasetImportSourceFile[];
+  mapping: JSONValue;
+  defaults: JSONValue;
+  previewRows: DatasetImportPreviewRow[];
+  totalRows: number;
+  validRows: number;
+  errorRows: number;
+  warnings: string[];
+  createdAt: string;
+  expiresAt: string;
+  committedDatasetVersion?: number | null;
+}
+
+export interface DatasetImportSourceFile {
+  path: string;
+  format: DatasetImportFormat;
+  sizeBytes: number;
+  rowCount?: number | null;
+  sha256: string;
+}
+
+export interface DatasetImportPreviewRow {
+  rowNumber: number;
+  filePath: string;
+  item?: DatasetItemPreview | null;
+  errors: DatasetImportRowIssue[];
+  warnings: DatasetImportRowIssue[];
+}
+
+export interface DatasetItemPreview {
+  input: JSONValue;
+  expected?: JSONValue;
+  metadata: JSONValue;
+  split: DatasetSplit;
+  reviewStatus: DatasetReviewStatus;
+  sourceTraceId?: string | null;
+  sourceSpanId?: string | null;
+  synthetic: boolean;
+}
+
+export interface DatasetImportRowIssue {
+  code: string;
+  message: string;
+  path?: string | null;
+}
+
+export interface DatasetExportJob {
+  id: string;
+  datasetId: string;
+  datasetVersion: number;
+  status: DatasetExportStatus;
+  format: DatasetExportFormat;
+  rowCount: number;
+  sizeBytes?: number | null;
+  sha256?: string | null;
+  downloadUrl?: string | null;
+  createdAt: string;
+  expiresAt: string;
 }
 
 export interface Scorer {

@@ -9,11 +9,11 @@ counters:
   CAP-STO: 2
   CAP-RUN: 3
   CAP-FE: 6
-  CAP-AIE: 8
+  CAP-AIE: 9
   FLW-ING: 2
   FLW-OBS: 2
-  FLW-AIE: 4
-  ENT: 21
+  FLW-AIE: 5
+  ENT: 23
   ADR: 5
   NFR: 8
   OPR-OTLP: 2
@@ -24,7 +24,7 @@ counters:
   REV: 6
   GLS: 1
   ARC: 1
-  TEC-BE: 25
+  TEC-BE: 26
   TEC-FE: 8
   FTR: 0
 
@@ -827,6 +827,12 @@ ids:
     status: approved
     depends_on: [CAP-AIE-002, CAP-AIE-006]
     deprecated_by: null
+  CAP-AIE-009:
+    slug: import-export-datasets
+    file: specs/02-capabilities/ai-eval/import-export-datasets.md
+    status: approved
+    depends_on: [CAP-AIE-007, FLW-AIE-005, TEC-BE-025]
+    deprecated_by: null
   FLW-AIE-001:
     slug: offline-experiment-run
     file: specs/02-flows/ai-eval/offline-experiment-run.md
@@ -850,6 +856,12 @@ ids:
     file: specs/02-flows/ai-eval/dataset-curation-and-splits.md
     status: approved
     depends_on: [CAP-AIE-007]
+    deprecated_by: null
+  FLW-AIE-005:
+    slug: dataset-import-export
+    file: specs/02-flows/ai-eval/dataset-import-export.md
+    status: approved
+    depends_on: [CAP-AIE-009]
     deprecated_by: null
   TEC-BE-024:
     slug: ai-eval-project-settings
@@ -880,6 +892,12 @@ ids:
     file: specs/04-backend/ai-eval-message-contracts.md
     status: approved
     depends_on: [DOM-006, TEC-BE-024]
+    deprecated_by: null
+  TEC-BE-025:
+    slug: ai-eval-dataset-transfer
+    file: specs/04-backend/ai-eval-dataset-transfer.md
+    status: approved
+    depends_on: [DOM-006, TEC-BE-001, TEC-BE-016, CAP-AIE-009]
     deprecated_by: null
   NFR-010:
     slug: ai-eval-content-capture

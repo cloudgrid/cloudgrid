@@ -54,7 +54,9 @@ unvalidated raw split expression.
    - resolving an annotation item;
    - manual entry;
    - importing a batch through `Mutation.appendDatasetItems` with explicit
-     item payloads.
+     item payloads;
+   - importing JSONL, JSON array, CSV, or ZIP uploads through
+     `FLW-AIE-005`.
 4. Storage-write creates a new dataset version or appends to a mutable draft
    version according to the dataset versioning contract.
 5. Storage-read computes dataset health: split counts, reviewed counts,
@@ -86,6 +88,8 @@ ready.
   optimization manifests that include `holdout`.
 - Duplicate item: storage-read reports duplicate candidates; duplicate is a
   warning, not an automatic rejection.
+- Import mapping error: import preview records row-level issues and commit
+  rejects invalid rows according to `FLW-AIE-005`.
 - Stale dataset version: mutation fails with `ERR-001`.
 - Unauthorized edit: mutation fails with `ERR-016`.
 

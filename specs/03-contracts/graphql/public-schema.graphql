@@ -32,6 +32,8 @@ type Query {
   agentRun(id: ID!): AgentRun
   datasets(input: DatasetSearchInput = {}): DatasetSearchResult!
   dataset(id: ID!): Dataset
+  datasetImport(id: ID!): DatasetImportJob
+  datasetExport(id: ID!): DatasetExportJob
   scorers(input: ScorerSearchInput = {}): ScorerSearchResult!
   experiments(input: ExperimentSearchInput = {}): ExperimentSearchResult!
   experimentRun(id: ID!): ExperimentRun
@@ -66,6 +68,9 @@ type Mutation {
   createDataset(input: CreateDatasetInput!): Dataset!
   appendDatasetItems(input: AppendDatasetItemsInput!): Dataset!
   promoteSpanToDatasetItem(input: PromoteSpanToDatasetItemInput!): DatasetItem!
+  prepareDatasetImport(input: PrepareDatasetImportInput!): DatasetImportJob!
+  commitDatasetImport(input: CommitDatasetImportInput!): DatasetImportJob!
+  startDatasetExport(input: StartDatasetExportInput!): DatasetExportJob!
   createScorer(input: CreateScorerInput!): Scorer!
   createExperiment(input: CreateExperimentInput!): Experiment!
   startExperimentRun(input: StartExperimentRunInput!): ExperimentRun!
@@ -471,6 +476,66 @@ input PromoteSpanToDatasetItemInput {
   metadata: JSON = {}
   split: DatasetSplit = dev
   reviewStatus: DatasetReviewStatus = unreviewed
+}
+
+input PrepareDatasetImportInput {
+  datasetId: ID!
+  uploadId: ID!
+  format: DatasetImportFormat!
+  fileSelector: DatasetImportFileSelectorInput
+  mapping: DatasetImportMappingInput!
+  defaults: DatasetImportDefaultsInput = {}
+  previewLimit: Int = 100
+}
+
+input DatasetImportFileSelectorInput {
+  include: [String!] = []
+  exclude: [String!] = []
+}
+
+input DatasetImportMappingInput {
+  input: [DatasetImportFieldMappingInput!]!
+  expected: [DatasetImportFieldMappingInput!] = []
+  metadata: [DatasetImportFieldMappingInput!] = []
+  sourceTraceId: DatasetImportScalarMappingInput
+  sourceSpanId: DatasetImportScalarMappingInput
+  split: DatasetImportScalarMappingInput
+  reviewStatus: DatasetImportScalarMappingInput
+}
+
+input DatasetImportFieldMappingInput {
+  targetPath: String!
+  source: DatasetImportScalarMappingInput!
+}
+
+input DatasetImportScalarMappingInput {
+  column: String
+  jsonPath: String
+  constant: JSON
+  defaultValue: JSON
+}
+
+input DatasetImportDefaultsInput {
+  split: DatasetSplit = dev
+  reviewStatus: DatasetReviewStatus = unreviewed
+  metadata: JSON = {}
+  synthetic: Boolean = false
+  allowPartialCommit: Boolean = false
+}
+
+input CommitDatasetImportInput {
+  importId: ID!
+  expectedDatasetVersion: Int!
+  mode: DatasetImportCommitMode = valid_rows_only
+}
+
+input StartDatasetExportInput {
+  datasetId: ID!
+  format: DatasetExportFormat!
+  split: DatasetSplit
+  reviewStatus: DatasetReviewStatus
+  includeMetadata: Boolean = true
+  includeSourcePointers: Boolean = true
 }
 
 input CreateScorerInput {
@@ -903,6 +968,39 @@ enum DatasetHealthStatus {
   low_confidence
   leakage_warning
   invalid
+}
+
+enum DatasetImportFormat {
+  jsonl
+  json_array
+  csv
+  zip
+}
+
+enum DatasetExportFormat {
+  jsonl
+  json_array
+  csv
+}
+
+enum DatasetImportCommitMode {
+  valid_rows_only
+  reject_if_any_error
+}
+
+enum DatasetImportStatus {
+  staged
+  preview_ready
+  committed
+  failed
+  expired
+}
+
+enum DatasetExportStatus {
+  queued
+  ready
+  failed
+  expired
 }
 
 enum ProviderKind {
@@ -1564,6 +1662,71 @@ type DatasetItem {
   synthetic: Boolean!
   duplicateOfItemId: ID
   leakageWarnings: [String!]!
+}
+
+type DatasetImportJob {
+  id: ID!
+  datasetId: ID!
+  status: DatasetImportStatus!
+  format: DatasetImportFormat!
+  sourceFiles: [DatasetImportSourceFile!]!
+  mapping: JSON!
+  defaults: JSON!
+  previewRows: [DatasetImportPreviewRow!]!
+  totalRows: Int!
+  validRows: Int!
+  errorRows: Int!
+  warnings: [String!]!
+  createdAt: DateTime!
+  expiresAt: DateTime!
+  committedDatasetVersion: Int
+}
+
+type DatasetImportSourceFile {
+  path: String!
+  format: DatasetImportFormat!
+  sizeBytes: Int!
+  rowCount: Int
+  sha256: String!
+}
+
+type DatasetImportPreviewRow {
+  rowNumber: Int!
+  filePath: String!
+  item: DatasetItemPreview
+  errors: [DatasetImportRowIssue!]!
+  warnings: [DatasetImportRowIssue!]!
+}
+
+type DatasetItemPreview {
+  input: JSON!
+  expected: JSON
+  metadata: JSON!
+  split: DatasetSplit!
+  reviewStatus: DatasetReviewStatus!
+  sourceTraceId: ID
+  sourceSpanId: ID
+  synthetic: Boolean!
+}
+
+type DatasetImportRowIssue {
+  code: String!
+  message: String!
+  path: String
+}
+
+type DatasetExportJob {
+  id: ID!
+  datasetId: ID!
+  datasetVersion: Int!
+  status: DatasetExportStatus!
+  format: DatasetExportFormat!
+  rowCount: Int!
+  sizeBytes: Int
+  sha256: String
+  downloadUrl: String
+  createdAt: DateTime!
+  expiresAt: DateTime!
 }
 
 type DatasetHealth {

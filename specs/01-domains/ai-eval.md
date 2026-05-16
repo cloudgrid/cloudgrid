@@ -44,6 +44,8 @@ workflows on top of preserved telemetry.
 - ENT-AIE-019: ExperimentManifest
 - ENT-AIE-020: SkillSnapshotRef
 - ENT-AIE-021: ToolSnapshotRef
+- ENT-AIE-022: DatasetImportJob
+- ENT-AIE-023: DatasetExportJob
 
 ## Capabilities
 
@@ -55,6 +57,7 @@ workflows on top of preserved telemetry.
 - CAP-AIE-006: Manage project AI settings.
 - CAP-AIE-007: Curate dataset versions and splits.
 - CAP-AIE-008: Track production agent quality.
+- CAP-AIE-009: Import and export datasets.
 
 ## Key Invariants
 
@@ -65,6 +68,9 @@ workflows on top of preserved telemetry.
 - Storage-write is the only service that mutates SurrealDB. Storage-read is the only service that fetches telemetry and AI evaluation read models from SurrealDB.
 - The `core/ai-eval-runner` service orchestrates runs through the harness adapter and persists results only by sending storage-write commands over NATS. It never reads or writes SurrealDB directly and never calls model providers directly.
 - Public reads and writes for the UI are GraphQL only. No public REST AI-eval API is exposed by CloudGrid.
+- Dataset file upload/download endpoints are BFF-owned byte-transfer surfaces
+  only. They do not define dataset semantics; import/export behavior is
+  controlled by GraphQL and private message bridge contracts.
 - Harness is the only execution surface for agent replay, LLM-judge scoring, and prompt optimization.
 - Harness run summaries are the adapter source for basic run outcomes. CloudGrid must not infer those outcomes by scraping spans when a run summary is available.
 - Project AI settings are control-plane configuration. They store provider
@@ -106,6 +112,8 @@ workflows on top of preserved telemetry.
 
 - Projection of AI-relevant spans into agent, model-call, tool-call, and retrieval view models.
 - Dataset, scorer, experiment, experiment-run, prompt-version, result, and annotation records.
+- Dataset import preview jobs, dataset export jobs, and temporary transfer
+  artifacts for JSONL, JSON array, CSV, and ZIP-based dataset exchange.
 - Project AI settings, provider profile metadata, model aliases, online scoring
   policies, dataset split governance, and experiment manifests.
 - Conservative online scoring of newly persisted AI projections, bounded by

@@ -20,6 +20,10 @@ depends_on: [DOM-006, TEC-BE-024]
 | `eval.dataset.create` | BFF | `core/storage-write` | Create a dataset. |
 | `eval.dataset.items.append` | BFF | `core/storage-write` | Append manually authored or imported dataset items. |
 | `eval.dataset.item.promote` | BFF | `core/storage-write` | Promote a source trace/span into a dataset item. |
+| `eval.dataset.import.prepare` | BFF | `core/storage-write` | Validate staged dataset upload and return import preview. |
+| `eval.dataset.import.commit` | BFF | `core/storage-write` | Commit a prepared import preview into a dataset version. |
+| `eval.dataset.export.start` | BFF | `core/storage-read`, `core/storage-write` | Resolve and prepare canonical dataset export artifact. |
+| `eval.dataset.transfer.get` | BFF | `core/storage-read` | Read dataset import/export job state. |
 | `eval.dataset.search` | BFF, runner | `core/storage-read` | Search datasets and dataset items. |
 | `eval.agent_runs.search` | BFF | `core/storage-read` | Search projected agent runs. |
 | `eval.scorer.create` | BFF | `core/storage-write` | Create a scorer definition. |
@@ -104,6 +108,23 @@ runner must not reimplement target matching. If a policy references a scorer
 outside the deterministic v1 online set, storage-read either omits it with a
 warning or returns a validation error. Runner must not call harness to make the
 policy executable.
+
+## Dataset Import/Export Contract
+
+Dataset import/export subjects use `EvalMutationRequest` or `EvalQueryRequest`
+envelopes, but their `input` payloads are locked to the GraphQL input types in
+`public-schema.graphql`:
+
+- `eval.dataset.import.prepare` uses `PrepareDatasetImportInput`.
+- `eval.dataset.import.commit` uses `CommitDatasetImportInput`.
+- `eval.dataset.export.start` uses `StartDatasetExportInput`.
+- `eval.dataset.transfer.get` uses `{ id, kind }`, where `kind` is `import` or
+  `export`.
+
+The BFF must not bypass these subjects by parsing rows into `DatasetItemInput`
+and calling `eval.dataset.items.append` for uploaded files. Uploaded files must
+go through preview-before-commit so mapping, row validation, partial commit,
+and import job records are owned by storage-write.
 
 ## Durable Experiment Manifest Contract
 
