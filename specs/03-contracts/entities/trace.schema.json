@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-001",
+  "title": "Trace",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "startedAt", "attributes"],
+  "properties": {
+    "id": { "type": "string", "description": "OpenTelemetry trace ID as lowercase hex." },
+    "serviceName": {
+      "type": "string",
+      "description": "Primary service.name resource attribute when known."
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Trace start time in UTC."
+    },
+    "endedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Trace end time in UTC when known."
+    },
+    "durationMs": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Trace duration in milliseconds."
+    },
+    "rootSpanId": { "type": "string", "description": "Root span ID when known." },
+    "status": {
+      "type": "string",
+      "enum": ["ok", "error", "unset"],
+      "description": "Aggregated trace status."
+    },
+    "attributes": {
+      "type": "object",
+      "description": "Merged selected resource and trace-level attributes.",
+      "additionalProperties": true
+    }
+  }
+}
