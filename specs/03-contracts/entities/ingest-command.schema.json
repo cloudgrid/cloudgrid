@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-009",
+  "title": "IngestCommand",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "commandId",
+    "source",
+    "requestId",
+    "subject",
+    "traceCount",
+    "spanCount",
+    "logCount",
+    "completedAt"
+  ],
+  "properties": {
+    "commandId": { "type": "string" },
+    "source": { "type": "string", "enum": ["otlp-traces", "otlp-logs"] },
+    "requestId": { "type": "string" },
+    "subject": { "type": "string" },
+    "traceCount": { "type": "integer", "minimum": 0 },
+    "spanCount": { "type": "integer", "minimum": 0 },
+    "logCount": { "type": "integer", "minimum": 0 },
+    "completedAt": { "type": "string", "format": "date-time" }
+  }
+}
