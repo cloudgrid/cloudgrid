@@ -1,0 +1,27 @@
+---
+interface Props {
+  /** Optional anchor id. */
+  id?: string;
+  /** `default` = plain page background. `recessed` = subtle alternate background. */
+  tone?: "default" | "recessed" | "grid";
+  /** Vertical padding scale. */
+  size?: "sm" | "md" | "lg";
+  class?: string;
+}
+const { id, tone = "default", size = "md", class: className = "" } = Astro.props;
+
+const padding = size === "sm" ? "py-12 sm:py-16" : size === "lg" ? "py-20 sm:py-28" : "py-16 sm:py-20";
+const bg =
+  tone === "recessed"
+    ? "bg-recessed"
+    : tone === "grid"
+      ? "bg-page relative overflow-hidden"
+      : "bg-page";
+---
+
+<section id={id} class={`relative ${bg} ${padding} ${className}`}>
+  {tone === "grid" && <div class="absolute inset-0 grid-bg opacity-60 pointer-events-none"></div>}
+  <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <slot />
+  </div>
+</section>
