@@ -1,0 +1,28 @@
+---
+interface Props {
+  items: string[];
+  /** Set true to use a muted dash instead of a green check (for honesty/limits). */
+  muted?: boolean;
+}
+const { items, muted = false } = Astro.props;
+---
+
+<ul class="space-y-2.5 text-sm text-text-secondary">
+  {items.map((it) => (
+    <li class="flex gap-3 items-start">
+      <span
+        class="flex-shrink-0 mt-0.5 inline-flex items-center justify-center w-4 h-4 rounded-full"
+        style={muted
+          ? "color: var(--color-text-muted); background: var(--color-recessed); border: 1px solid var(--color-border-subtle);"
+          : "color: var(--color-emerald); background: var(--color-emerald-soft);"}
+      >
+        <svg class="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          {muted
+            ? <line x1="6" y1="12" x2="18" y2="12" />
+            : <path d="M5 12l5 5L20 7" />}
+        </svg>
+      </span>
+      <span class="leading-relaxed text-text">{it}</span>
+    </li>
+  ))}
+</ul>
