@@ -1,0 +1,42 @@
+---
+const rows = [
+  { t: "12:04:18.421", sev: "INFO", svc: "agent-svc", msg: "started agent run agt_8f1e", trace: "1a7b…c901" },
+  { t: "12:04:18.532", sev: "INFO", svc: "llm-router", msg: "openai.chat completion · 832 tokens", trace: "1a7b…c901" },
+  { t: "12:04:18.711", sev: "WARN", svc: "tool-router", msg: "web_search rate-limit retry attempt=2", trace: "1a7b…c901" },
+  { t: "12:04:18.890", sev: "ERROR", svc: "retrieval", msg: "vector.lookup timeout after 250ms", trace: "1a7b…c901" },
+  { t: "12:04:19.018", sev: "INFO", svc: "agent-svc", msg: "agent run completed status=partial", trace: "1a7b…c901" },
+];
+
+const sevColor: Record<string, string> = {
+  INFO: "var(--color-brand)",
+  WARN: "var(--color-amber)",
+  ERROR: "var(--color-rose)",
+  DEBUG: "var(--color-text-muted)",
+};
+---
+
+<div class="w-full text-sm">
+  <div class="grid grid-cols-[110px_70px_120px_1fr_120px] gap-3 px-4 py-2.5 border-b border-border-subtle bg-recessed text-xs font-medium uppercase tracking-wider text-text-muted">
+    <div>Time</div>
+    <div>Sev</div>
+    <div>Service</div>
+    <div>Message</div>
+    <div class="text-right">Trace</div>
+  </div>
+  {rows.map((r) => (
+    <div class="grid grid-cols-[110px_70px_120px_1fr_120px] gap-3 px-4 py-2.5 border-b border-border-subtle last:border-b-0 items-center hover:bg-surface-hover transition-colors">
+      <div class="font-mono text-xs text-text-muted">{r.t}</div>
+      <div>
+        <span
+          class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold font-mono"
+          style={`color: ${sevColor[r.sev]}; background: color-mix(in srgb, ${sevColor[r.sev]} 14%, transparent);`}
+        >
+          {r.sev}
+        </span>
+      </div>
+      <div class="font-mono text-xs text-text-secondary truncate">{r.svc}</div>
+      <div class="text-text truncate">{r.msg}</div>
+      <div class="font-mono text-xs text-text-secondary text-right">{r.trace}</div>
+    </div>
+  ))}
+</div>
