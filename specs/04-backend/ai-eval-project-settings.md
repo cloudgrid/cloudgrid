@@ -103,17 +103,50 @@ Fields:
 - `id`.
 - `enabled`.
 - `name`.
-- `target`: project segment selector over agent name/id, environment, service,
-  route, tool name, retrieval source, trace attributes, or experiment run ID.
-- `scorerIds`: scorer versions to apply.
+- `target`: project segment selector over the exact fields defined below.
+- `scorerIds`: scorer versions to apply. For online scoring v1 every referenced
+  scorer must resolve to `Scorer.kind = deterministic`.
 - `sampleRate`: float from `0` to `1`, capped by project defaults.
 - `maxDailyRuns`: optional integer cap.
-- `annotationRules`: routing rules for failed, low-score, high-cost, or
-  high-latency results.
+- `annotationRules`: manual annotation defaults for UI batch actions. The
+  runner must ignore these during online scoring notification handling.
 - `createdAt`, `updatedAt`, `updatedByUserId`.
 
 Policies are declarative. The runner asks storage-read for matching policies
 and never owns policy semantics locally.
+
+#### OnlineEvaluationPolicy.target
+
+The target object is a strict conjunctive filter. Empty targets are invalid for
+enabled policies. Unknown keys are invalid.
+
+Allowed keys:
+
+- `agentId`: exact string match.
+- `agentName`: exact string match.
+- `environment`: exact string match.
+- `serviceName`: exact string match.
+- `route`: exact string match.
+- `routePrefix`: string prefix match.
+- `toolName`: exact string match.
+- `retrievalSource`: exact string match.
+- `model`: exact string match.
+- `promptVersionId`: exact string match.
+- `experimentRunId`: exact string match.
+- `attributes`: array of safe indexed attribute filters. Each filter has
+  `key`, `operator`, and optional `value`. Operators are `eq`, `neq`,
+  `contains`, `exists`, `gt`, `gte`, `lt`, `lte`, `in`, and `not_in`.
+
+Targets must not reference raw prompt text, completion text, tool parameters,
+retrieved document content, authorization headers, cookies, API keys, tokens,
+secrets, passwords, or other secret-looking fields.
+
+#### OnlineEvaluationPolicy.annotationRules
+
+Annotation rules in v1 are not routing rules. They are saved defaults used by
+the UI when a user explicitly creates annotation items from selected online
+score results. The runner and storage-read live notification path must not
+create `AnnotationQueueItem` records from these rules.
 
 ## Defaults
 
@@ -122,7 +155,10 @@ When AI Eval is enabled for a project:
 - online scoring remains disabled until at least one online policy is enabled;
 - default daily evaluation budget is `0 USD` until a project admin sets a
   positive budget or explicitly selects local deterministic-only mode;
-- LLM-judge sampling defaults to `0.1` and is capped by `NFR-010`;
+- online scoring v1 defaults to deterministic-only mode;
+- default online sample rate is `0`;
+- policy templates may be shown in the UI, but they must be saved disabled
+  until a project admin enables them;
 - default split allocation for imported or promoted reviewed items is
   `dev=20%`, `optimization=40%`, `validation=20%`, `regression=15%`,
   `holdout=5%`;
@@ -141,6 +177,8 @@ The approved public contract includes:
 - AsyncAPI request/reply subjects:
   - `control.ai_settings.get`;
   - `control.ai_settings.update`.
+- AsyncAPI policy-resolution subject:
+  - `eval.online.policy_matches.resolve`.
 - JSON Schema `specs/03-contracts/entities/ai/project-ai-settings.schema.json`.
 - Generated TypeScript UI contracts and Go contracts.
 
@@ -172,6 +210,11 @@ Updates fail with `ERR-001` when:
 - model alias names are duplicated;
 - sample rates are outside `0..1`;
 - daily budget is negative;
+- an enabled online policy has an empty target;
+- an online policy target uses an unknown key or a raw/secret-looking content
+  selector;
+- an enabled online policy references any scorer whose resolved kind is not
+  `deterministic`;
 - `baseUrl` is present for provider kinds that do not support it;
 - strings contain secret-looking keys such as `authorization`, `cookie`,
   `x-api-key`, `api_key`, `token`, `secret`, or `password`.
@@ -188,4 +231,6 @@ Required tests:
 - disabled default provider references are rejected;
 - effective settings include derived defaults;
 - local mode can enable deterministic-only evaluation without provider secrets;
+- enabled online policies reject non-deterministic scorers;
+- enabled online policies reject empty targets and secret-looking selectors;
 - BFF resolvers call only control-plane message subjects.

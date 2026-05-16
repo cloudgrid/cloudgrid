@@ -27,26 +27,48 @@ Let teams continuously score selected live agent runs and route failures into re
 ## Behavior
 
 - `core/ai-eval-runner` consumes `ai.persisted.projections`.
-- Runner loads configured online policies and scorer versions through
-  storage-read/control-plane request/reply subjects.
+- Online scoring is disabled by default. The runner performs no scoring unless
+  project AI Eval is enabled and storage-read returns at least one enabled
+  online policy for the persisted projection.
+- Runner resolves configured online policy matches and scorer versions through
+  `eval.online.policy_matches.resolve`.
 - Policy matching is owned by storage-read. Runner receives matched policy and
   scorer references; it does not reinterpret raw policy selectors locally.
 - Deterministic scorer execution runs in the runner for scorer definitions with `kind = deterministic`.
-- RAG and LLM-judge scoring is delegated to the harness adapter.
+- Online scoring v1 supports deterministic scorers only. If policy resolution
+  returns a non-deterministic scorer, the runner records a skipped result with
+  `ERR-AIE-002` and does not call harness.
+- The runner must not call harness `/v1/score` for online scoring in v1.
+  LLM-judge, semantic, RAG, tool-correctness, trajectory, and content-bearing
+  online scoring are future features and require a separate approved spec.
 - Runner persists `EvalResult` records through storage-write command subjects.
-- Runner persists `AnnotationQueueItem` records through storage-write command subjects when a configured annotation rule matches a failed or low-scoring result.
-- Online scoring is disabled by default until a scorer is explicitly configured for an agent, project, or experiment target.
-- Cost and concurrency limits from `specs/06-nfr/ai-eval-cost-bounds.md` apply before every harness call.
+- Runner must not create `AnnotationQueueItem` records automatically from online
+  scoring in v1. Annotation creation is a user-triggered action after reviewing
+  and filtering score results.
+- Sampling and concurrency limits from project AI settings apply before scoring.
+  Monetary cost limits still apply globally, but v1 deterministic online
+  scoring must not spend external provider budget.
 - Online policies may target agent, environment, route, service, tool, retrieval
-  source, model, prompt version, trace attributes, or experiment run ID.
+  source, model, prompt version, safe indexed trace attributes, or experiment
+  run ID.
 - Skipped online evaluations are bounded records with reason and policy ID when
-  cost, sampling, or concurrency limits prevent scoring.
+  sampling, concurrency, disabled policy, unsupported scorer kind, or invalid
+  policy configuration prevents scoring.
+- Online score results do not trigger alert rules in v1.
 
 ## Acceptance Criteria
 
 - Given an enabled deterministic online scorer and a persisted AgentRun projection, the runner persists an EvalResult without reading SurrealDB directly.
-- Given an LLM-judge scorer, the runner calls the harness adapter and stores only score, pass/fail, evidence summary, and judge run references.
-- Given online scoring limits are exhausted, the runner records a bounded skipped result with `ERR-AIE-004` and does not call harness.
-- Given a tool or trajectory scorer matches a run, the persisted result includes
-  structured evidence for tool choice, argument validation, ordering, retries,
-  and final outcome as requested by the scorer definition.
+- Given no enabled online policy matches the projection, the runner does not
+  persist an `EvalResult` and does not treat the notification as an error.
+- Given an enabled online policy references an LLM-judge, semantic, RAG,
+  tool-correctness, trajectory, or human scorer, storage-read rejects the policy
+  match or the runner records a skipped result with `ERR-AIE-002`; no harness
+  score call is made.
+- Given online scoring sampling or concurrency limits are exhausted, the runner
+  records a bounded skipped result with `ERR-AIE-004`.
+- Given an online result fails a deterministic scorer, no annotation queue item
+  is created automatically.
+- Given a user later filters failed online results and triggers annotation
+  creation, annotation records are persisted through `annotation.item.update`,
+  not by the online scoring notification path.

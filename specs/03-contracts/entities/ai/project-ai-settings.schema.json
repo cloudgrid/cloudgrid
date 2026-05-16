@@ -101,7 +101,7 @@
         "id": { "type": "string" },
         "enabled": { "type": "boolean" },
         "name": { "type": "string", "minLength": 1, "maxLength": 96 },
-        "target": { "type": "object", "additionalProperties": true },
+        "target": { "$ref": "#/$defs/onlinePolicyTarget" },
         "scorerIds": { "type": "array", "items": { "type": "string" } },
         "sampleRate": { "type": "number", "minimum": 0, "maximum": 1 },
         "maxDailyRuns": { "type": "integer", "minimum": 1 },
@@ -112,6 +112,62 @@
         },
         "updatedAt": { "type": "string", "format": "date-time" },
         "updatedByUserId": { "type": "string" }
+      }
+    },
+    "onlinePolicyTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "agentId": { "type": "string", "minLength": 1 },
+        "agentName": { "type": "string", "minLength": 1 },
+        "environment": { "type": "string", "minLength": 1 },
+        "serviceName": { "type": "string", "minLength": 1 },
+        "route": { "type": "string", "minLength": 1 },
+        "routePrefix": { "type": "string", "minLength": 1 },
+        "toolName": { "type": "string", "minLength": 1 },
+        "retrievalSource": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "promptVersionId": { "type": "string", "minLength": 1 },
+        "experimentRunId": { "type": "string", "minLength": 1 },
+        "attributes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/onlinePolicyAttributeFilter" },
+          "default": []
+        }
+      }
+    },
+    "onlinePolicyAttributeFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "operator"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_.:-]+$"
+        },
+        "operator": {
+          "type": "string",
+          "enum": ["eq", "neq", "contains", "exists", "gt", "gte", "lt", "lte", "in", "not_in"]
+        },
+        "value": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "number" },
+            { "type": "boolean" },
+            {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  { "type": "string" },
+                  { "type": "number" },
+                  { "type": "boolean" }
+                ]
+              }
+            }
+          ]
+        }
       }
     },
     "annotationRule": {

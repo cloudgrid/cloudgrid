@@ -33,6 +33,13 @@ CloudGrid services.
   aliases.
 - Project admins configure budget, sampling, concurrency, and dataset split
   defaults.
+- Project admins configure online policies, but v1 policies are disabled by
+  default, must target at least one explicit production segment, and may
+  reference deterministic scorers only.
+- Project admins may configure manual annotation defaults for online policies.
+  These defaults do not create annotation queue items automatically; they are
+  used only when a user explicitly triggers annotation item creation after
+  reviewing filtered online results.
 - Control-plane validates and persists settings with optimistic concurrency.
 - The BFF exposes only GraphQL request/reply mappings. It does not merge or
   derive effective settings locally.
@@ -46,6 +53,10 @@ CloudGrid services.
   enabled when the project budget permits deterministic execution.
 - Given an LLM judge scorer without a judge profile, experiment creation or run
   start fails with a validation error before harness execution.
+- Given an enabled online policy references a non-deterministic scorer, the
+  settings update fails with `ERR-001`.
+- Given an enabled online policy has an empty target, unsupported target key, or
+  secret-looking attribute selector, the settings update fails with `ERR-001`.
 - Given a raw API key-like field in settings input, control-plane rejects the
   update with `ERR-001`.
 - Given a viewer attempts to update settings, the mutation fails with `ERR-016`.

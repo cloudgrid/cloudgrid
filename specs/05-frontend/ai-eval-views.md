@@ -37,6 +37,38 @@ detail surfaces.
   tool/retrieval health, and budget status.
 - Annotation queue: review queue filtered by reason, status, assignee, target trace, and target span.
 
+## Online Policy UI V1
+
+Online policy management lives in Project Settings / AI Eval configuration, with
+read-only production quality monitoring in the AI Eval route.
+
+The settings UI must:
+
+- show that production online scoring is inactive by default;
+- create/edit/delete online policies only through
+  `Mutation.updateProjectAiSettings`;
+- require an explicit enabled toggle per policy;
+- require at least one target filter before a policy can be enabled;
+- expose only the approved target fields from
+  `specs/04-backend/ai-eval-project-settings.md`;
+- allow selecting deterministic scorers only for v1 online policies;
+- show non-deterministic scorer families as future/offline-only when useful,
+  but never submit them in enabled online policies;
+- show sample rate, max daily runs, and manual annotation defaults;
+- describe annotation defaults as user-triggered batch action defaults, not
+  automatic routing.
+
+The production quality UI must:
+
+- render quality summaries and segments from `Query.aiQualityOverview`;
+- render skipped-result reasons returned by GraphQL;
+- provide filters for policy, scorer, service, route, environment, model,
+  prompt version, and time range when backed by GraphQL fields;
+- let users select/filter failed online score results and trigger annotation
+  item creation through the approved annotation mutation path;
+- not create annotation queue items automatically;
+- not expose alert-rule controls for AI-eval online results in v1.
+
 ## Frontend Boundary
 
 Frontend code owns route state, selection, tabs, focus, expansion, sorting

@@ -52,7 +52,11 @@ Storage-write is the only SurrealDB mutator for AI-eval records.
 
 ### AIE-4 Storage-Read AI Query And Live Semantics
 
-Implement storage-read handlers for AI-eval query subjects, transcript derivation, scoreboard aggregation, annotation queue facets, and `eval.live.start` / `eval.live.stop`. Storage-read owns live experiment matching and publishes `eval.live.events.*.*` sink events.
+Implement storage-read handlers for AI-eval query subjects, transcript
+derivation, scoreboard aggregation, annotation queue facets,
+`eval.online.policy_matches.resolve`, and `eval.live.start` /
+`eval.live.stop`. Storage-read owns deterministic-only online policy matching,
+live experiment matching, and publishes `eval.live.events.*.*` sink events.
 
 ### AIE-5 Harness Adapter Package
 
@@ -68,7 +72,12 @@ The adapter is Bun ESM TypeScript, package name `@cloudgrid/harness-adapter`. It
 
 ### AIE-6 AI-Eval Runner
 
-Implement `core/ai-eval-runner` to orchestrate online scoring, offline experiment runs, cancellation, deterministic scoring, and optimization delegation. The runner reads only through storage-read NATS subjects and writes only through storage-write NATS subjects.
+Implement `core/ai-eval-runner` to orchestrate conservative deterministic-only
+online scoring, offline experiment runs, cancellation, deterministic scoring,
+and optimization delegation. The runner reads only through storage-read NATS
+subjects and writes only through storage-write NATS subjects. Online scoring v1
+must not call harness scoring, send production content to judge models, create
+annotation queue items automatically, or feed alerting.
 
 ### AIE-7 BFF GraphQL Resolvers
 
@@ -94,6 +103,10 @@ Implement a Bun CLI script that starts an experiment run through GraphQL, subscr
 - Runner direct SurrealDB access.
 - Harness adapter calls into CloudGrid GraphQL or NATS.
 - First-class projections for OpenInference `RERANKER`, `GUARDRAIL`, `EVALUATOR`, or `PROMPT` in v1.
+- Online LLM-judge, semantic, RAG, tool-correctness, trajectory, or
+  content-bearing scoring.
+- Automatic annotation queue routing from online score results.
+- Alert rules over AI-eval online quality signals.
 
 ## Readiness Result
 

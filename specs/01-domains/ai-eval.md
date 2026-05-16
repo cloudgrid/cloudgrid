@@ -82,6 +82,23 @@ workflows on top of preserved telemetry.
   retries, final output, latency, and cost when scorer definitions request it.
 - Prompt, skill, and tool candidate promotion is always explicit. CloudGrid
   never auto-promotes a candidate after an optimization run.
+- Online scoring v1 is conservative: no production AI projection is scored
+  unless project AI Eval is enabled and a project admin has explicitly created
+  and enabled an online policy.
+- Online scoring v1 executes deterministic scorers only. LLM-judge, semantic,
+  RAG, tool-correctness, trajectory, and human-review scorer families remain
+  valid for offline workflows or future online waves, but online policies must
+  reject them in v1.
+- Online scoring v1 never sends production prompt, completion, tool parameter,
+  or retrieved-document content to an external model provider or harness judge.
+  Future content-bearing online scoring requires a separate approved spec with
+  explicit admin setup, content-capture allowance, provider profile, and budget
+  controls.
+- Online scoring v1 never creates annotation queue items automatically. Users
+  must first review/filter online score results and then trigger annotation item
+  creation as an explicit manual or batch action.
+- Online score results do not feed alerting in v1. Alert integration requires a
+  future alerting contract that explicitly declares AI-eval signals.
 
 ## Boundaries
 
@@ -91,7 +108,9 @@ workflows on top of preserved telemetry.
 - Dataset, scorer, experiment, experiment-run, prompt-version, result, and annotation records.
 - Project AI settings, provider profile metadata, model aliases, online scoring
   policies, dataset split governance, and experiment manifests.
-- Online scoring of newly persisted AI projections, bounded by configured cost and concurrency limits.
+- Conservative online scoring of newly persisted AI projections, bounded by
+  configured sampling and concurrency limits, and limited to deterministic
+  scorers for v1.
 - Offline experiment runs against datasets through the harness adapter.
 - Prompt, skill, and tool optimization through TypeScript harness workflows.
 - GraphQL views for agent runs, datasets, scorers, experiments, results, and annotation queues.
@@ -107,6 +126,10 @@ workflows on top of preserved telemetry.
 - Metrics ingest. Token and cost summaries are span-derived or harness-summary-derived until the metrics signal is implemented.
 - Multi-tenant SaaS billing or production auth expansion beyond existing auth preparation.
 - Model fine tuning.
+- Automatic annotation routing from online scores.
+- Alert rules over AI-eval quality signals.
+- Online LLM-judge, semantic, RAG, tool-correctness, trajectory, or
+  content-bearing scoring.
 
 ## Usage Perspective
 

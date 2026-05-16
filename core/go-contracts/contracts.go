@@ -2012,6 +2012,85 @@ type ExperimentManifestResolveResponse struct {
 	Error     *BridgeError   `json:"error,omitempty"`
 }
 
+type OnlinePolicyMatchesResolveRequest struct {
+	BridgeEnvelope
+	ProjectID     string             `json:"projectId"`
+	TraceID       string             `json:"traceId"`
+	ProjectionIDs []string           `json:"projectionIds"`
+	SpanIDs       []string           `json:"spanIds,omitempty"`
+	Kinds         []AiProjectionKind `json:"kinds"`
+	PersistedAt   time.Time          `json:"persistedAt"`
+}
+
+type OnlinePolicyMatchesResolveResponse struct {
+	RequestID string                          `json:"requestId"`
+	OK        bool                            `json:"ok"`
+	Data      *OnlinePolicyMatchesResolveData `json:"data,omitempty"`
+	Error     *BridgeError                    `json:"error,omitempty"`
+}
+
+type OnlinePolicyMatchesResolveData struct {
+	Matches  []OnlinePolicyMatch `json:"matches"`
+	Warnings []string            `json:"warnings"`
+}
+
+type OnlinePolicyMatch struct {
+	PolicyID      string                          `json:"policyId"`
+	PolicyVersion int                             `json:"policyVersion"`
+	PolicyName    string                          `json:"policyName"`
+	Target        OnlinePolicyTarget              `json:"target"`
+	SampleRate    float64                         `json:"sampleRate"`
+	MaxDailyRuns  *int                            `json:"maxDailyRuns,omitempty"`
+	ScorerRefs    []OnlinePolicyScorerRef         `json:"scorerRefs"`
+	Projection    OnlinePolicyProjectionReadModel `json:"projection"`
+}
+
+type OnlinePolicyScorerRef struct {
+	ScorerID      string `json:"scorerId"`
+	ScorerVersion int    `json:"scorerVersion"`
+	Kind          string `json:"kind"`
+}
+
+type OnlinePolicyTarget struct {
+	AgentID         *string                       `json:"agentId,omitempty"`
+	AgentName       *string                       `json:"agentName,omitempty"`
+	Environment     *string                       `json:"environment,omitempty"`
+	ServiceName     *string                       `json:"serviceName,omitempty"`
+	Route           *string                       `json:"route,omitempty"`
+	RoutePrefix     *string                       `json:"routePrefix,omitempty"`
+	ToolName        *string                       `json:"toolName,omitempty"`
+	RetrievalSource *string                       `json:"retrievalSource,omitempty"`
+	Model           *string                       `json:"model,omitempty"`
+	PromptVersionID *string                       `json:"promptVersionId,omitempty"`
+	ExperimentRunID *string                       `json:"experimentRunId,omitempty"`
+	Attributes      []OnlinePolicyAttributeFilter `json:"attributes,omitempty"`
+}
+
+type OnlinePolicyAttributeFilter struct {
+	Key      string                  `json:"key"`
+	Operator AttributeFilterOperator `json:"operator"`
+	Value    any                     `json:"value,omitempty"`
+}
+
+type OnlinePolicyProjectionReadModel struct {
+	ProjectID       string           `json:"projectId"`
+	TraceID         string           `json:"traceId"`
+	SpanID          *string          `json:"spanId,omitempty"`
+	ProjectionID    string           `json:"projectionId"`
+	Kind            AiProjectionKind `json:"kind"`
+	AgentID         *string          `json:"agentId,omitempty"`
+	AgentName       *string          `json:"agentName,omitempty"`
+	Environment     *string          `json:"environment,omitempty"`
+	ServiceName     *string          `json:"serviceName,omitempty"`
+	Route           *string          `json:"route,omitempty"`
+	ToolName        *string          `json:"toolName,omitempty"`
+	RetrievalSource *string          `json:"retrievalSource,omitempty"`
+	Model           *string          `json:"model,omitempty"`
+	PromptVersionID *string          `json:"promptVersionId,omitempty"`
+	ExperimentRunID *string          `json:"experimentRunId,omitempty"`
+	SafeAttributes  map[string]any   `json:"safeAttributes"`
+}
+
 type ProjectAiSettingsGetRequest struct {
 	BridgeEnvelope
 	ProjectID string `json:"projectId"`

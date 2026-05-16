@@ -106,6 +106,7 @@ export const AI_EVAL_SUBJECTS = [
   "eval.experiment.search",
   "eval.results.search",
   "eval.results.persist",
+  "eval.online.policy_matches.resolve",
   "eval.live.start",
   "eval.live.stop",
   "eval.live.events.*.*",
