@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-002",
+  "title": "LlmCall",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "traceId", "spanId", "startedAt", "latencyMs"],
+  "properties": {
+    "id": { "type": "string" },
+    "traceId": { "type": "string" },
+    "spanId": { "type": "string" },
+    "agentRunId": { "type": "string" },
+    "subKind": {
+      "type": "string",
+      "enum": ["chat", "text_completion", "generate_content", "embedding"]
+    },
+    "provider": { "type": "string" },
+    "requestModel": { "type": "string" },
+    "responseModel": { "type": "string" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "latencyMs": { "type": "number", "minimum": 0 },
+    "tokenTotals": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "tokenDetails": { "type": "object", "additionalProperties": true },
+    "messageEventIds": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "normalizationWarnings": { "type": "array", "items": { "type": "string" }, "default": [] }
+  }
+}
