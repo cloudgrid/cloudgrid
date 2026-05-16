@@ -1,0 +1,94 @@
+---
+const highlights = [
+  {
+    title: "MIT Licensed",
+    description: "Use CloudGrid in commercial and personal projects without restrictions.",
+    icon: "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0 1 12 2.944a11.955 11.955 0 0 1-8.618 3.04A12.02 12.02 0 0 0 3 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z",
+  },
+  {
+    title: "Open Roadmap",
+    description:
+      "Specs are public and authoritative. See exactly what is planned and what is out of scope.",
+    icon: "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01",
+  },
+  {
+    title: "Contributor Friendly",
+    description: "Clear specs, defined boundaries, and focused modules make it easy to contribute.",
+    icon: "M17 20h5v-2a3 3 0 0 0-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 0 1 5.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 0 1 9.288 0M15 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm6 3a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM7 10a2 2 0 1 1-4 0 2 2 0 0 1 4 0z",
+  },
+];
+---
+
+<section class="relative py-24 sm:py-32 overflow-hidden">
+  <div class="absolute inset-0 dot-pattern opacity-20"></div>
+  <div class="absolute top-0 right-0 w-96 h-96 bg-accent-green/5 rounded-full blur-[120px] pointer-events-none"></div>
+  <div class="absolute bottom-0 left-0 w-96 h-96 bg-accent-purple/5 rounded-full blur-[120px] pointer-events-none"></div>
+
+  <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="text-center max-w-3xl mx-auto mb-16 reveal">
+      <h2 class="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-6">
+        Open source, <span class="gradient-text">open everything</span>
+      </h2>
+      <p class="text-lg text-text-secondary leading-relaxed">
+        CloudGrid is developed in the open. Our specs, contracts, and roadmap are all public.
+        No hidden enterprise features, no open-core bait and switch.
+      </p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto mb-16">
+      {highlights.map((item, i) => (
+        <div
+          class="reveal text-center p-6 rounded-2xl border border-border-subtle bg-bg-card/50 hover:border-border-default transition-colors"
+          style={`transition-delay: ${i * 100}ms`}
+        >
+          <div class="w-12 h-12 rounded-xl bg-white/5 border border-border-subtle flex items-center justify-center mx-auto mb-4">
+            <svg class="w-6 h-6 text-accent-green-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d={item.icon} />
+            </svg>
+          </div>
+          <h3 class="text-lg font-semibold text-text-primary mb-2">{item.title}</h3>
+          <p class="text-sm text-text-secondary leading-relaxed">{item.description}</p>
+        </div>
+      ))}
+    </div>
+
+    <!-- GitHub CTA -->
+    <div class="reveal text-center">
+      <div class="inline-flex flex-col sm:flex-row items-center gap-4 p-6 sm:p-8 rounded-2xl border border-border-default bg-bg-card/50">
+        <div class="flex items-center gap-3">
+          <svg class="w-10 h-10 text-text-primary" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+          </svg>
+          <div class="text-left">
+            <div class="text-lg font-semibold text-text-primary">cloudgriddev/cloudgrid</div>
+            <div class="text-sm text-text-muted">Open source on GitHub</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <a
+            href="https://github.com/cloudgriddev/cloudgrid"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-white text-bg-primary font-semibold text-sm hover:bg-gray-100 transition-colors"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+            </svg>
+            Star
+          </a>
+          <a
+            href="https://github.com/cloudgriddev/cloudgrid/fork"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-white/5 border border-border-default text-text-primary font-semibold text-sm hover:bg-white/10 transition-colors"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M6 9v3a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V9"/>
+            </svg>
+            Fork
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
