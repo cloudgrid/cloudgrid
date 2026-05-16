@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-006",
+  "title": "TraceSearchQuery",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "service": { "type": "string", "description": "Exact service name filter." },
+    "query": {
+      "type": "string",
+      "description": "Case-insensitive search across trace ID, primary service, root span, span names, and string attributes."
+    },
+    "operationName": {
+      "type": "string",
+      "description": "Case-insensitive root or span operation name contains filter."
+    },
+    "spanName": {
+      "type": "string",
+      "description": "Case-insensitive span name contains filter."
+    },
+    "from": { "type": "string", "format": "date-time", "description": "Inclusive start time." },
+    "to": { "type": "string", "format": "date-time", "description": "Inclusive end time." },
+    "status": {
+      "type": "string",
+      "enum": ["ok", "error", "unset"],
+      "description": "Trace status filter."
+    },
+    "minDurationMs": { "type": "number", "minimum": 0 },
+    "maxDurationMs": { "type": "number", "minimum": 0 },
+    "attributes": {
+      "type": "array",
+      "items": { "$ref": "attribute-filter.schema.json" }
+    },
+    "sort": {
+      "type": "string",
+      "enum": ["startedAt_desc", "startedAt_asc", "duration_desc", "duration_asc", "errorFirst"],
+      "default": "startedAt_desc"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 200,
+      "default": 50,
+      "description": "Page size."
+    },
+    "cursor": { "type": "string", "description": "Opaque pagination cursor." }
+  }
+}
