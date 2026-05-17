@@ -1,13 +1,13 @@
 module github.com/cloudgrid-dev/cloudgrid/core/otlp-collector
 
-go 1.23
+go 1.25.0
 
 require (
 	github.com/cloudgrid-dev/cloudgrid/core/go-contracts v0.0.0
 	github.com/cloudgrid-dev/cloudgrid/core/go-runtime v0.0.0
 	github.com/nats-io/nats.go v1.52.0
 	go.opentelemetry.io/proto/otlp v1.10.0
-	google.golang.org/grpc v1.79.2
+	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
 )
 
