@@ -192,6 +192,39 @@ func TestHandleEvalMutationRequestPersistsEvalResultsAndProgress(t *testing.T) {
 	}
 }
 
+func TestHandleEvalMutationRequestPersistsOnlineEvalResultWithoutExperimentRun(t *testing.T) {
+	store := &fakeAIWriteStore{}
+	publisher := &fakeAIEventPublisher{evalStore: store}
+	request := contracts.EvalMutationRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-online-result-1", IssuedAt: fixedClock()},
+		Input: map[string]any{
+			"results": []any{map[string]any{
+				"id":            "result-online-1",
+				"scorerId":      "scorer-1",
+				"scorerVersion": 1.0,
+				"targetKind":    "agentRun",
+				"targetId":      "agent-run-1",
+				"score":         1.0,
+				"passed":        true,
+				"producedAt":    fixedClock().Format(time.RFC3339),
+				"evidence":      map[string]any{"online": true, "policyId": "policy-1"},
+			}},
+		},
+	}
+
+	response := HandleEvalMutationRequest(context.Background(), EvalResultsPersistSubject, request, store, publisher, fixedClock)
+
+	if !response.OK || response.Error != nil {
+		t.Fatalf("response = %#v, want ok", response)
+	}
+	if response.Data["experimentRunId"] != nil {
+		t.Fatalf("experimentRunId = %#v, want omitted/empty for online result", response.Data["experimentRunId"])
+	}
+	if len(publisher.progressNotifications) != 0 {
+		t.Fatalf("progress notifications = %d, want none for online result", len(publisher.progressNotifications))
+	}
+}
+
 func TestHandleEvalMutationRequestPersistsAnnotationUpdate(t *testing.T) {
 	store := &fakeAIWriteStore{}
 	request := contracts.EvalMutationRequest{
@@ -213,6 +246,36 @@ func TestHandleEvalMutationRequestPersistsAnnotationUpdate(t *testing.T) {
 	}
 	if response.Data["id"] != "annotation-1" || response.Data["status"] != "resolved" {
 		t.Fatalf("response data = %#v", response.Data)
+	}
+}
+
+func TestHandleEvalMutationRequestCommitsDatasetImportByAppendingValidRows(t *testing.T) {
+	root := stageUploadForTest(t, "upload-import-commit", "items.jsonl", []byte("{\"prompt\":\"hi\",\"answer\":\"hello\"}\n"))
+	t.Setenv("CLOUDGRID_DATASET_TRANSFER_DIR", root)
+	store := &fakeAIWriteStore{}
+	prepare := datasetImportPrepareRequest("upload-import-commit", "jsonl")
+
+	prepareResponse := HandleEvalMutationRequest(context.Background(), EvalDatasetImportPrepareSubject, prepare, store, &fakeAIEventPublisher{}, fixedClock)
+	if !prepareResponse.OK || prepareResponse.Error != nil {
+		t.Fatalf("prepare response = %#v, want ok", prepareResponse)
+	}
+
+	commit := contracts.EvalMutationRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-import-commit", IssuedAt: fixedClock()},
+		Input: map[string]any{
+			"importId":               prepareResponse.Data["id"],
+			"expectedDatasetVersion": 1,
+			"mode":                   "valid_rows_only",
+		},
+	}
+
+	response := HandleEvalMutationRequest(context.Background(), EvalDatasetImportCommitSubject, commit, store, &fakeAIEventPublisher{}, fixedClock)
+
+	if !response.OK || response.Error != nil {
+		t.Fatalf("commit response = %#v, want ok", response)
+	}
+	if !containsString(store.evalMutationSubjects, EvalDatasetItemsAppendSubject) {
+		t.Fatalf("eval mutation subjects = %#v, want %q", store.evalMutationSubjects, EvalDatasetItemsAppendSubject)
 	}
 }
 
@@ -426,6 +489,7 @@ type fakeAIWriteStore struct {
 	persistProjectionSubject string
 	evalMutationCalls        int
 	evalMutationSubject      string
+	evalMutationSubjects     []string
 }
 
 func (store *fakeAIWriteStore) AIProjectionCommandExists(_ context.Context, command contracts.PersistAiProjectionCommand) (bool, error) {
@@ -448,10 +512,20 @@ func (store *fakeAIWriteStore) PersistAIProjection(_ context.Context, command co
 func (store *fakeAIWriteStore) PersistEvalMutation(_ context.Context, subject string, request contracts.EvalMutationRequest, now time.Time) (map[string]any, error) {
 	store.evalMutationCalls++
 	store.evalMutationSubject = subject
+	store.evalMutationSubjects = append(store.evalMutationSubjects, subject)
 	if store.evalMutationErr != nil {
 		return nil, store.evalMutationErr
 	}
 	return BuildEvalMutationRecord(subject, request, now)
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 type fakeAIEventPublisher struct {

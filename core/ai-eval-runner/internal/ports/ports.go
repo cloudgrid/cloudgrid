@@ -127,6 +127,57 @@ type EvalResult struct {
 	ProducedAt      string
 }
 
+type OnlinePolicyResolveRequest struct {
+	RequestID     string
+	ProjectID     string
+	TraceID       string
+	ProjectionIDs []string
+	SpanIDs       []string
+	Kinds         []string
+	PersistedAt   string
+}
+
+type OnlinePolicyMatches struct {
+	Matches  []OnlinePolicyMatch
+	Warnings []string
+}
+
+type OnlinePolicyMatch struct {
+	PolicyID      string
+	PolicyVersion int
+	PolicyName    string
+	Target        map[string]any
+	SampleRate    float64
+	MaxDailyRuns  int
+	ScorerRefs    []OnlinePolicyScorerRef
+	Projection    OnlinePolicyProjection
+}
+
+type OnlinePolicyScorerRef struct {
+	ScorerID      string
+	ScorerVersion int
+	Kind          string
+}
+
+type OnlinePolicyProjection struct {
+	ProjectID       string
+	TraceID         string
+	SpanID          string
+	ProjectionID    string
+	Kind            string
+	AgentID         string
+	AgentName       string
+	Environment     string
+	ServiceName     string
+	Route           string
+	ToolName        string
+	RetrievalSource string
+	Model           string
+	PromptVersionID string
+	ExperimentRunID string
+	SafeAttributes  map[string]any
+}
+
 type ExperimentProgress struct {
 	ExperimentRunID  string
 	Type             string
@@ -141,6 +192,7 @@ type PersistedProjectionNotification struct {
 	ProjectID     string
 	TraceID       string
 	ProjectionIDs []string
+	SpanIDs       []string
 	Kinds         []string
 	PersistedAt   string
 }
@@ -150,6 +202,7 @@ type StorageReader interface {
 	SearchDatasetItems(ctx context.Context, datasetID string, datasetVersion int) ([]DatasetItem, error)
 	SearchScorers(ctx context.Context, scorerIDs []string) ([]Scorer, error)
 	ResolveManifest(ctx context.Context, request ManifestResolveRequest) (ExperimentManifest, error)
+	ResolveOnlinePolicyMatches(ctx context.Context, request OnlinePolicyResolveRequest) (OnlinePolicyMatches, error)
 }
 
 type ControlPlane interface {

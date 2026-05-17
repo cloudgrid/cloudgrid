@@ -20,5 +20,6 @@ type TelemetryReadStore interface {
 type AiEvalReadStore interface {
 	QueryAiEval(ctx context.Context, subject string, input map[string]any) (map[string]any, error)
 	ResolveExperimentManifest(ctx context.Context, request contracts.ExperimentManifestResolveRequest) (map[string]any, error)
+	ResolveOnlinePolicyMatches(ctx context.Context, request contracts.OnlinePolicyMatchesResolveRequest) (contracts.OnlinePolicyMatchesResolveData, error)
 	GetExperimentRunEventData(ctx context.Context, notification contracts.ExperimentProgressNotification) (map[string]any, map[string]any, error)
 }

@@ -1,16 +1,17 @@
-import { GraphQLError } from "graphql";
 import {
-  parseWithZod,
-  problemFromBridgeError,
   type BridgeErrorLike,
   type CloudGridErrorId,
   type CloudGridLogger,
+  parseWithZod,
+  problemFromBridgeError,
   z,
 } from "@cloudgrid/runtime";
 import type {
   AgentRun,
   AgentRunSearchInput,
   AgentRunSearchResult,
+  AiQualityOverview,
+  AiQualityOverviewInput,
   AlertEventConnection,
   AlertRule,
   AlertRuleSearchInput,
@@ -18,16 +19,14 @@ import type {
   AnnotationQueueItem,
   AnnotationQueueResult,
   AnnotationQueueSearchInput,
+  AppendDatasetItemsInput,
+  CommitDatasetImportInput,
   CreateAlertRuleInput,
   CreateAlertSilenceInput,
-  AppendDatasetItemsInput,
-  AiQualityOverview,
-  AiQualityOverviewInput,
   CreateDatasetInput,
-  CreateExperimentInput,
   CreatedIngestCredential,
+  CreateExperimentInput,
   CreateIngestCredentialInput,
-  InviteOrganizationMemberInput,
   CreateProjectInput,
   CreateScorerInput,
   Dashboard,
@@ -35,6 +34,8 @@ import type {
   DashboardListResult,
   DashboardPreferences,
   Dataset,
+  DatasetExportJob,
+  DatasetImportJob,
   DatasetItem,
   DatasetItemRunSearchResult,
   DatasetItemSearchInput,
@@ -51,9 +52,10 @@ import type {
   ExperimentSearchResult,
   IngestCredential,
   IngestCredentialListResult,
+  InviteOrganizationMemberInput,
+  LiveExperimentRunInput,
   LiveTraceEvent,
   LiveTraceInput,
-  LiveExperimentRunInput,
   LogSearchInput,
   LogSearchResult,
   MetricNameSearchInput,
@@ -63,6 +65,7 @@ import type {
   Organization,
   OrganizationInvitation,
   OrganizationMember,
+  PrepareDatasetImportInput,
   Project,
   ProjectAiSettings,
   ProjectListInput,
@@ -72,14 +75,18 @@ import type {
   PromotePromptVersionInput,
   PromoteSpanToDatasetItemInput,
   PromptVersion,
-  ReorderDashboardPinsInput,
   RemoveOrganizationMemberInput,
+  ReorderDashboardPinsInput,
   ResolveAnnotationInput,
+  RetentionPolicy,
+  RichMetricSeriesInput,
+  RichMetricSeriesResult,
   SaveDashboardInput,
   Scorer,
   ScorerSearchInput,
   ScorerSearchResult,
   SetDashboardPinnedInput,
+  StartDatasetExportInput,
   StartExperimentRunInput,
   StartOptimizationRunInput,
   TelemetryFacetInput,
@@ -94,8 +101,8 @@ import type {
   UpdateProjectInput,
   UpdateRetentionPolicyInput,
   Viewer,
-  RetentionPolicy,
 } from "@cloudgrid/ui-contracts";
+import { GraphQLError } from "graphql";
 import type { NormalizedAuthContext } from "./auth";
 import {
   connectNATS,
@@ -142,6 +149,7 @@ const subjects = {
   projectTelemetryOverview: "telemetry.projects.overview",
   metricNames: "telemetry.metrics.names",
   metricSeries: "telemetry.metrics.query",
+  richMetricSeries: "telemetry.metrics.rich_query",
   dashboardsList: "control.dashboards.list",
   dashboardsSave: "control.dashboards.save",
   dashboardsDelete: "control.dashboards.delete",
@@ -154,6 +162,10 @@ const subjects = {
   datasetSearch: "eval.dataset.search",
   datasetItemsAppend: "eval.dataset.items.append",
   datasetItemPromote: "eval.dataset.item.promote",
+  datasetImportPrepare: "eval.dataset.import.prepare",
+  datasetImportCommit: "eval.dataset.import.commit",
+  datasetExportStart: "eval.dataset.export.start",
+  datasetTransferGet: "eval.dataset.transfer.get",
   scorerCreate: "eval.scorer.create",
   scorerSearch: "eval.scorer.search",
   experimentCreate: "eval.experiment.create",
@@ -225,6 +237,10 @@ export interface MetricQueryBridge {
     input: MetricSeriesInput,
     authContext?: NormalizedAuthContext,
   ): Promise<MetricSeriesResult>;
+  richMetricSeries(
+    input: RichMetricSeriesInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<RichMetricSeriesResult>;
 }
 
 export interface ControlPlaneBridge {
@@ -351,6 +367,8 @@ export interface AiEvalBridge {
     authContext?: NormalizedAuthContext,
   ): Promise<DatasetSearchResult>;
   dataset(id: string, authContext?: NormalizedAuthContext): Promise<Dataset | null>;
+  datasetImport(id: string, authContext?: NormalizedAuthContext): Promise<DatasetImportJob | null>;
+  datasetExport(id: string, authContext?: NormalizedAuthContext): Promise<DatasetExportJob | null>;
   datasetItems(
     datasetId: string,
     input: DatasetItemSearchInput,
@@ -382,7 +400,10 @@ export interface AiEvalBridge {
     input: AnnotationQueueSearchInput,
     authContext?: NormalizedAuthContext,
   ): Promise<AnnotationQueueResult>;
-  projectAiSettings(projectId: string, authContext?: NormalizedAuthContext): Promise<ProjectAiSettings>;
+  projectAiSettings(
+    projectId: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<ProjectAiSettings>;
   aiQualityOverview(
     input: AiQualityOverviewInput,
     authContext?: NormalizedAuthContext,
@@ -392,6 +413,18 @@ export interface AiEvalBridge {
     input: AppendDatasetItemsInput,
     authContext?: NormalizedAuthContext,
   ): Promise<Dataset>;
+  prepareDatasetImport(
+    input: PrepareDatasetImportInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<DatasetImportJob>;
+  commitDatasetImport(
+    input: CommitDatasetImportInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<DatasetImportJob>;
+  startDatasetExport(
+    input: StartDatasetExportInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<DatasetExportJob>;
   promoteSpanToDatasetItem(
     input: PromoteSpanToDatasetItemInput,
     authContext?: NormalizedAuthContext,
@@ -855,6 +888,28 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     );
   }
 
+  async datasetImport(
+    id: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<DatasetImportJob | null> {
+    return this.#requestParsed(
+      subjects.datasetTransferGet,
+      { ...envelope(authContext), input: { id, kind: "import" } },
+      typedDatasetImportJobSchema.nullable(),
+    );
+  }
+
+  async datasetExport(
+    id: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<DatasetExportJob | null> {
+    return this.#requestParsed(
+      subjects.datasetTransferGet,
+      { ...envelope(authContext), input: { id, kind: "export" } },
+      typedDatasetExportJobSchema.nullable(),
+    );
+  }
+
   async datasetItems(
     datasetId: string,
     input: DatasetItemSearchInput,
@@ -969,7 +1024,10 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<AiQualityOverview> {
     return this.#requestParsed(
       subjects.aiQualityOverview,
-      { ...envelope(authContext), input: compactInput(input as unknown as Record<string, unknown>) },
+      {
+        ...envelope(authContext),
+        input: compactInput(input as unknown as Record<string, unknown>),
+      },
       typedAiQualityOverviewSchema,
     );
   }
@@ -993,6 +1051,39 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
       subjects.datasetItemsAppend,
       { ...envelope(authContext), input },
       typedDatasetSchema,
+    );
+  }
+
+  async prepareDatasetImport(
+    input: PrepareDatasetImportInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<DatasetImportJob> {
+    return this.#requestParsed(
+      subjects.datasetImportPrepare,
+      { ...envelope(authContext), input },
+      typedDatasetImportJobSchema,
+    );
+  }
+
+  async commitDatasetImport(
+    input: CommitDatasetImportInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<DatasetImportJob> {
+    return this.#requestParsed(
+      subjects.datasetImportCommit,
+      { ...envelope(authContext), input },
+      typedDatasetImportJobSchema,
+    );
+  }
+
+  async startDatasetExport(
+    input: StartDatasetExportInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<DatasetExportJob> {
+    return this.#requestParsed(
+      subjects.datasetExportStart,
+      { ...envelope(authContext), input },
+      typedDatasetExportJobSchema,
     );
   }
 
@@ -1204,6 +1295,18 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
       input: compactInput(
         input as unknown as Record<string, unknown>,
       ) as unknown as MetricSeriesInput,
+    });
+  }
+
+  async richMetricSeries(
+    input: RichMetricSeriesInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<RichMetricSeriesResult> {
+    return this.#request<RichMetricSeriesResult>(subjects.richMetricSeries, {
+      ...envelope(authContext),
+      input: compactInput(
+        input as unknown as Record<string, unknown>,
+      ) as unknown as RichMetricSeriesInput,
     });
   }
 
@@ -1779,7 +1882,19 @@ const metricAggregationSchema = z.enum([
   "p95",
   "p99",
 ]);
-const metricChartTypeSchema = z.enum(["line", "area", "bar", "pie", "stat", "table"]);
+const metricChartTypeSchema = z.enum([
+  "line",
+  "area",
+  "bar",
+  "pie",
+  "donut",
+  "stat",
+  "radial",
+  "radar",
+  "heatmap",
+  "histogram",
+  "table",
+]);
 const logSortSchema = z.enum(["timestamp_desc", "timestamp_asc", "severity_desc"]);
 const traceSortSchema = z.enum([
   "startedAt_desc",
@@ -1810,6 +1925,7 @@ const dashboardWidgetKindSchema = z.enum([
   "metric_timeseries",
   "metric_stat",
   "metric_table",
+  "metric_rich",
   "log_table",
   "trace_table",
   "live_trace_table",
@@ -1985,6 +2101,78 @@ const datasetItemSchema = z.object({
   synthetic: z.boolean(),
   duplicateOfItemId: z.string().optional().nullable(),
   leakageWarnings: z.array(z.string()),
+});
+
+const datasetImportFormatSchema = z.enum(["jsonl", "json_array", "csv", "zip"]);
+const datasetExportFormatSchema = z.enum(["jsonl", "json_array", "csv"]);
+const datasetImportStatusSchema = z.enum([
+  "staged",
+  "preview_ready",
+  "committed",
+  "failed",
+  "expired",
+]);
+const datasetExportStatusSchema = z.enum(["queued", "ready", "failed", "expired"]);
+const datasetImportIssueSchema = z.object({
+  code: z.string().min(1),
+  message: z.string().min(1),
+  path: z.string().optional().nullable(),
+});
+const datasetItemPreviewSchema = z.object({
+  input: z.unknown(),
+  expected: z.unknown().optional().nullable(),
+  metadata: z.unknown(),
+  split: datasetSplitSchema,
+  reviewStatus: datasetReviewStatusSchema,
+  sourceTraceId: z.string().optional().nullable(),
+  sourceSpanId: z.string().optional().nullable(),
+  synthetic: z.boolean(),
+});
+const datasetImportJobSchema = z.object({
+  id: z.string().min(1),
+  datasetId: z.string().min(1),
+  status: datasetImportStatusSchema,
+  format: datasetImportFormatSchema,
+  sourceFiles: z.array(
+    z.object({
+      path: z.string().min(1),
+      format: datasetImportFormatSchema,
+      sizeBytes: z.number().int().min(0),
+      rowCount: z.number().int().optional().nullable(),
+      sha256: z.string().min(1),
+    }),
+  ),
+  mapping: z.unknown(),
+  defaults: z.unknown(),
+  previewRows: z.array(
+    z.object({
+      rowNumber: z.number().int().min(1),
+      filePath: z.string().min(1),
+      item: datasetItemPreviewSchema.optional().nullable(),
+      errors: z.array(datasetImportIssueSchema),
+      warnings: z.array(datasetImportIssueSchema),
+    }),
+  ),
+  totalRows: z.number().int().min(0),
+  validRows: z.number().int().min(0),
+  errorRows: z.number().int().min(0),
+  warnings: z.array(z.string()),
+  createdAt: dateTimeSchema,
+  expiresAt: dateTimeSchema,
+  committedDatasetVersion: z.number().int().optional().nullable(),
+});
+const datasetExportJobSchema = z.object({
+  id: z.string().min(1),
+  datasetId: z.string().min(1),
+  datasetVersion: z.number().int().min(1),
+  status: datasetExportStatusSchema,
+  format: datasetExportFormatSchema,
+  rowCount: z.number().int().min(0),
+  sizeBytes: z.number().int().min(0).optional().nullable(),
+  sha256: z.string().optional().nullable(),
+  downloadUrl: z.string().optional().nullable(),
+  createdAt: dateTimeSchema,
+  expiresAt: dateTimeSchema,
 });
 
 const datasetHealthSchema = z.object({
@@ -2232,6 +2420,68 @@ const dashboardMetricWidgetSchema = z.object({
   maxSeries: z.number().int().min(1).max(50),
   thresholds: z.array(dashboardThresholdSchema),
 });
+const dashboardMetricFormulaExpressionSchema: z.ZodTypeAny = z.lazy(() =>
+  z.object({
+    kind: z.enum(["ref", "number", "binary", "unary", "function"]),
+    refId: z.string().optional().nullable(),
+    value: z.number().optional().nullable(),
+    operator: z.enum(["add", "subtract", "multiply", "divide"]).optional().nullable(),
+    left: dashboardMetricFormulaExpressionSchema.optional().nullable(),
+    right: dashboardMetricFormulaExpressionSchema.optional().nullable(),
+    function: z
+      .enum([
+        "sum_series",
+        "avg_series",
+        "min_series",
+        "max_series",
+        "ratio",
+        "clamp_min",
+        "clamp_max",
+        "moving_average",
+      ])
+      .optional()
+      .nullable(),
+    arguments: z.array(dashboardMetricFormulaExpressionSchema),
+  }),
+);
+const dashboardMetricQuerySchema = z.object({
+  timeWindow: z.string().min(1),
+  interval: z.string().optional().nullable(),
+  queries: z.array(
+    z.object({
+      id: z.string().min(1),
+      label: z.string().min(1),
+      metricName: z.string().min(1),
+      aggregation: metricAggregationSchema,
+      groupBy: z.array(z.string()),
+      filters: z.array(attributeFilterSchema),
+      maxSeries: z.number().int().min(1).max(50),
+    }),
+  ),
+  formulas: z.array(
+    z.object({
+      id: z.string().min(1),
+      label: z.string().min(1),
+      expression: dashboardMetricFormulaExpressionSchema,
+      unit: z.string().optional().nullable(),
+    }),
+  ),
+  displaySeries: z.array(
+    z.object({
+      id: z.string().min(1),
+      label: z.string().min(1),
+      sourceId: z.string().min(1),
+      visible: z.boolean(),
+    }),
+  ),
+});
+const dashboardRichMetricWidgetSchema = z.object({
+  query: dashboardMetricQuerySchema,
+  visualization: metricChartTypeSchema,
+  legend: z.boolean(),
+  maxSeries: z.number().int().min(1).max(50),
+  thresholds: z.array(dashboardThresholdSchema),
+});
 const dashboardLogWidgetSchema = z.object({
   service: z.string().optional().nullable(),
   traceId: z.string().optional().nullable(),
@@ -2274,6 +2524,7 @@ const dashboardWidgetSchema = z.object({
   kind: dashboardWidgetKindSchema,
   layout: dashboardLayoutSchema,
   metric: dashboardMetricWidgetSchema.optional().nullable(),
+  richMetric: dashboardRichMetricWidgetSchema.optional().nullable(),
   logs: dashboardLogWidgetSchema.optional().nullable(),
   traces: dashboardTraceWidgetSchema.optional().nullable(),
   liveTraces: dashboardLiveTraceWidgetSchema.optional().nullable(),
@@ -2335,6 +2586,10 @@ const ingestCredentialRevokeResponseSchema = z.object({
 
 const typedAgentRunSchema = agentRunSchema as unknown as z.ZodType<AgentRun>;
 const typedDatasetSchema = datasetSchema as unknown as z.ZodType<Dataset>;
+const typedDatasetImportJobSchema =
+  datasetImportJobSchema as unknown as z.ZodType<DatasetImportJob>;
+const typedDatasetExportJobSchema =
+  datasetExportJobSchema as unknown as z.ZodType<DatasetExportJob>;
 const typedDatasetItemSchema = datasetItemSchema as unknown as z.ZodType<DatasetItem>;
 const typedScorerSchema = scorerSchema as unknown as z.ZodType<Scorer>;
 const typedExperimentSchema = experimentSchema as unknown as z.ZodType<Experiment>;

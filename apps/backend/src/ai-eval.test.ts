@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { createLogger } from "@cloudgrid/runtime";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type {
   AgentRun,
   AiQualityOverview,
   CreateDatasetInput,
   Dataset,
+  DatasetExportJob,
+  DatasetImportJob,
   DatasetItem,
   ExperimentRun,
   ExperimentRunEvent,
@@ -110,6 +114,16 @@ describe("AI-eval bridge", () => {
         if (subject === "control.ai_settings.get" || subject === "control.ai_settings.update") {
           return { settings: projectAiSettings() };
         }
+        if (subject === "eval.dataset.import.prepare" || subject === "eval.dataset.transfer.get") {
+          const transferInput = payload.input as { kind?: string } | undefined;
+          return transferInput?.kind === "export" ? datasetExportJob() : datasetImportJob();
+        }
+        if (subject === "eval.dataset.import.commit") {
+          return { ...datasetImportJob(), status: "committed", committedDatasetVersion: 2 };
+        }
+        if (subject === "eval.dataset.export.start") {
+          return datasetExportJob();
+        }
         return aiQualityOverview();
       }),
       2000,
@@ -119,11 +133,30 @@ describe("AI-eval bridge", () => {
     await bridge.projectAiSettings("project-1");
     await bridge.aiQualityOverview({ projectId: "project-1", agentName: "support", limit: 10 });
     await bridge.updateProjectAiSettings(projectAiSettingsInput());
+    await bridge.prepareDatasetImport(prepareDatasetImportInput());
+    await bridge.commitDatasetImport({
+      importId: "import-1",
+      expectedDatasetVersion: 1,
+      mode: "valid_rows_only",
+    });
+    await bridge.startDatasetExport({
+      datasetId: "dataset-1",
+      format: "jsonl",
+      split: "dev",
+      reviewStatus: "reviewed",
+    });
+    await bridge.datasetImport("import-1");
+    await bridge.datasetExport("export-1");
 
     expect(requests.map((request) => request.subject)).toEqual([
       "control.ai_settings.get",
       "eval.quality.overview",
       "control.ai_settings.update",
+      "eval.dataset.import.prepare",
+      "eval.dataset.import.commit",
+      "eval.dataset.export.start",
+      "eval.dataset.transfer.get",
+      "eval.dataset.transfer.get",
     ]);
     expect(requests[0]?.payload).toMatchObject({ projectId: "project-1" });
     expect(requests[1]?.payload).toMatchObject({
@@ -133,6 +166,15 @@ describe("AI-eval bridge", () => {
       expectedVersion: 1,
       input: { projectId: "project-1", expectedVersion: 1 },
     });
+    expect(requests[3]?.payload).toMatchObject({ input: prepareDatasetImportInput() });
+    expect(requests[4]?.payload).toMatchObject({
+      input: { importId: "import-1", expectedDatasetVersion: 1, mode: "valid_rows_only" },
+    });
+    expect(requests[5]?.payload).toMatchObject({
+      input: { datasetId: "dataset-1", format: "jsonl", split: "dev", reviewStatus: "reviewed" },
+    });
+    expect(requests[6]?.payload).toMatchObject({ input: { id: "import-1", kind: "import" } });
+    expect(requests[7]?.payload).toMatchObject({ input: { id: "export-1", kind: "export" } });
   });
 });
 
@@ -160,6 +202,26 @@ describe("AI-eval GraphQL resolvers", () => {
         async updateProjectAiSettings(input) {
           calls.push({ method: "updateProjectAiSettings", input });
           return projectAiSettings();
+        },
+        async prepareDatasetImport(input) {
+          calls.push({ method: "prepareDatasetImport", input });
+          return datasetImportJob();
+        },
+        async commitDatasetImport(input) {
+          calls.push({ method: "commitDatasetImport", input });
+          return { ...datasetImportJob(), status: "committed", committedDatasetVersion: 2 };
+        },
+        async startDatasetExport(input) {
+          calls.push({ method: "startDatasetExport", input });
+          return datasetExportJob();
+        },
+        async datasetImport(id) {
+          calls.push({ method: "datasetImport", input: id });
+          return datasetImportJob();
+        },
+        async datasetExport(id) {
+          calls.push({ method: "datasetExport", input: id });
+          return datasetExportJob();
         },
       }),
       { graphqlUI: false },
@@ -220,11 +282,44 @@ describe("AI-eval GraphQL resolvers", () => {
         variables: { input: projectAiSettingsInput() },
       }),
     });
+    const transferResponse = await app.request("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: `
+          mutation DatasetTransfer($prepare: PrepareDatasetImportInput!, $commit: CommitDatasetImportInput!, $export: StartDatasetExportInput!) {
+            prepareDatasetImport(input: $prepare) { id status validRows errorRows previewRows { rowNumber item { input split reviewStatus synthetic } } }
+            commitDatasetImport(input: $commit) { id status committedDatasetVersion }
+            startDatasetExport(input: $export) { id status format downloadUrl }
+          }
+        `,
+        variables: {
+          prepare: prepareDatasetImportInput(),
+          commit: { importId: "import-1", expectedDatasetVersion: 1, mode: "valid_rows_only" },
+          export: { datasetId: "dataset-1", format: "jsonl" },
+        },
+      }),
+    });
+    const transferQueryResponse = await app.request("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: `
+          query DatasetTransferJobs($importId: ID!, $exportId: ID!) {
+            datasetImport(id: $importId) { id status validRows }
+            datasetExport(id: $exportId) { id status rowCount }
+          }
+        `,
+        variables: { importId: "import-1", exportId: "export-1" },
+      }),
+    });
 
     const queryBody = await queryResponse.json();
     const mutationBody = await mutationResponse.json();
     const settingsBody = await settingsResponse.json();
     const updateSettingsBody = await updateSettingsResponse.json();
+    const transferBody = await transferResponse.json();
+    const transferQueryBody = await transferQueryResponse.json();
 
     expect(queryBody.errors).toBeUndefined();
     expect(queryBody.data.agentRuns.items[0]).toMatchObject({
@@ -250,6 +345,26 @@ describe("AI-eval GraphQL resolvers", () => {
       projectId: "project-1",
       enabled: true,
     });
+    expect(transferBody.errors).toBeUndefined();
+    expect(transferBody.data.prepareDatasetImport).toMatchObject({
+      id: "import-1",
+      status: "preview_ready",
+      validRows: 1,
+      errorRows: 0,
+    });
+    expect(transferBody.data.commitDatasetImport).toMatchObject({
+      id: "import-1",
+      status: "committed",
+      committedDatasetVersion: 2,
+    });
+    expect(transferBody.data.startDatasetExport).toMatchObject({
+      id: "export-1",
+      status: "ready",
+      downloadUrl: "/api/ai-eval/dataset-exports/export-1/download",
+    });
+    expect(transferQueryBody.errors).toBeUndefined();
+    expect(transferQueryBody.data.datasetImport).toMatchObject({ id: "import-1" });
+    expect(transferQueryBody.data.datasetExport).toMatchObject({ id: "export-1" });
     expect(calls).toEqual([
       { method: "agentRuns", input: { agentName: "support", limit: 5 } },
       { method: "createDataset", input: { name: "Regression", tags: ["nightly"] } },
@@ -259,6 +374,33 @@ describe("AI-eval GraphQL resolvers", () => {
         input: { projectId: "project-1", agentName: "support", limit: 10 },
       },
       { method: "updateProjectAiSettings", input: projectAiSettingsInput() },
+      {
+        method: "prepareDatasetImport",
+        input: {
+          ...prepareDatasetImportInput(),
+          mapping: { ...prepareDatasetImportInput().mapping, metadata: [] },
+          defaults: {
+            ...prepareDatasetImportInput().defaults,
+            metadata: {},
+            allowPartialCommit: false,
+          },
+        },
+      },
+      {
+        method: "commitDatasetImport",
+        input: { importId: "import-1", expectedDatasetVersion: 1, mode: "valid_rows_only" },
+      },
+      {
+        method: "startDatasetExport",
+        input: {
+          datasetId: "dataset-1",
+          format: "jsonl",
+          includeMetadata: true,
+          includeSourcePointers: true,
+        },
+      },
+      { method: "datasetImport", input: "import-1" },
+      { method: "datasetExport", input: "export-1" },
     ]);
   });
 
@@ -310,6 +452,110 @@ describe("AI-eval GraphQL resolvers", () => {
   });
 });
 
+describe("AI-eval dataset transfer HTTP endpoints", () => {
+  test("stages upload bytes and streams ready export artifacts without bridge dataset mutation", async () => {
+    const transferDir = join(import.meta.dir, "..", ".tmp-ai-eval-transfer-test");
+    rmSync(transferDir, { recursive: true, force: true });
+    mkdirSync(join(transferDir, "exports"), { recursive: true });
+
+    const artifact = "export-1.jsonl";
+    writeFileSync(
+      join(transferDir, "exports", "export-1.json"),
+      JSON.stringify({
+        exportId: "export-1",
+        projectId: "project-1",
+        filename: artifact,
+        format: "jsonl",
+        status: "ready",
+        sizeBytes: 12,
+        sha256: "sha",
+        createdAt: new Date("2026-05-16T10:00:00Z").toISOString(),
+        expiresAt: new Date("2026-05-17T10:00:00Z").toISOString(),
+      }),
+    );
+    writeFileSync(join(transferDir, "exports", artifact), '{"a":1}\n');
+
+    const calls: string[] = [];
+    const { app } = createAppWithBridge(
+      bridge({
+        async appendDatasetItems() {
+          calls.push("appendDatasetItems");
+          return dataset();
+        },
+      }),
+      { graphqlUI: false, datasetTransferDir: transferDir },
+    );
+
+    const form = new FormData();
+    form.set("projectId", "project-1");
+    form.set("file", new File(['{"prompt":"hi"}\n'], "items.jsonl", { type: "application/jsonl" }));
+
+    const uploadResponse = await app.request("/api/ai-eval/dataset-imports/uploads", {
+      method: "POST",
+      body: form,
+    });
+    const uploadBody = await uploadResponse.json();
+
+    expect(uploadResponse.status).toBe(200);
+    expect(uploadBody).toMatchObject({
+      projectId: "project-1",
+      filename: "items.jsonl",
+      sizeBytes: 16,
+      detectedFormat: "jsonl",
+    });
+    expect(uploadBody.uploadId).toBeString();
+    expect(uploadBody.sha256).toBeString();
+
+    const downloadResponse = await app.request("/api/ai-eval/dataset-exports/export-1/download");
+    expect(downloadResponse.status).toBe(200);
+    expect(downloadResponse.headers.get("content-type")).toContain("application/jsonl");
+    expect(await downloadResponse.text()).toBe('{"a":1}\n');
+    expect(calls).toEqual([]);
+
+    rmSync(transferDir, { recursive: true, force: true });
+  });
+
+  test("rejects unsafe ZIP uploads before staging bytes", async () => {
+    const transferDir = join(import.meta.dir, "..", ".tmp-ai-eval-transfer-zip-test");
+    rmSync(transferDir, { recursive: true, force: true });
+    const { app } = createAppWithBridge(bridge(), {
+      graphqlUI: false,
+      datasetTransferDir: transferDir,
+    });
+
+    const form = new FormData();
+    form.set("projectId", "project-1");
+    form.set(
+      "file",
+      new File([unsafeZipBytes("../escape.jsonl")], "items.zip", { type: "application/zip" }),
+    );
+
+    const response = await app.request("/api/ai-eval/dataset-imports/uploads", {
+      method: "POST",
+      body: form,
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      code: "VALIDATION_FAILED",
+    });
+    rmSync(transferDir, { recursive: true, force: true });
+  });
+});
+
+function unsafeZipBytes(name: string): ArrayBuffer {
+  const encoder = new TextEncoder();
+  const filename = encoder.encode(name);
+  const buffer = new ArrayBuffer(30 + filename.byteLength);
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(0, 0x04034b50, true);
+  view.setUint16(4, 20, true);
+  view.setUint16(26, filename.byteLength, true);
+  bytes.set(filename, 30);
+  return buffer;
+}
+
 function requestReply(
   handle: (subject: string, payload: Record<string, unknown>) => unknown,
 ): RequestReplyClient {
@@ -339,6 +585,12 @@ function bridge(
       return { items: [], nextCursor: null };
     },
     async dataset() {
+      return null;
+    },
+    async datasetImport() {
+      return null;
+    },
+    async datasetExport() {
       return null;
     },
     async datasetItems() {
@@ -376,6 +628,15 @@ function bridge(
     },
     async appendDatasetItems() {
       return dataset();
+    },
+    async prepareDatasetImport() {
+      return datasetImportJob();
+    },
+    async commitDatasetImport() {
+      return { ...datasetImportJob(), status: "committed", committedDatasetVersion: 2 };
+    },
+    async startDatasetExport() {
+      return datasetExportJob();
     },
     async promoteSpanToDatasetItem() {
       return datasetItem();
@@ -619,14 +880,14 @@ function projectAiSettingsInput(): UpdateProjectAiSettingsInput {
     defaultJudgeProfileId: "provider-1",
     providerProfiles: [
       {
-            id: "provider-1",
-            label: "Harness",
-            providerKind: "local_harness",
-            models: {},
-            timeoutMs: 30000,
-            disabled: false,
-          },
-        ],
+        id: "provider-1",
+        label: "Harness",
+        providerKind: "local_harness",
+        models: {},
+        timeoutMs: 30000,
+        disabled: false,
+      },
+    ],
     modelAliases: [],
     onlinePolicies: [],
     budget: {
@@ -665,6 +926,78 @@ function aiQualityOverview(): AiQualityOverview {
       },
     ],
     warnings: [],
+  };
+}
+
+function prepareDatasetImportInput() {
+  return {
+    datasetId: "dataset-1",
+    uploadId: "upload-1",
+    format: "jsonl" as const,
+    mapping: {
+      input: [{ targetPath: "prompt", source: { jsonPath: "$.prompt" } }],
+      expected: [{ targetPath: "answer", source: { jsonPath: "$.answer" } }],
+    },
+    defaults: { split: "dev" as const, reviewStatus: "unreviewed" as const, synthetic: false },
+    previewLimit: 10,
+  };
+}
+
+function datasetImportJob(): DatasetImportJob {
+  return {
+    id: "import-1",
+    datasetId: "dataset-1",
+    status: "preview_ready",
+    format: "jsonl",
+    sourceFiles: [
+      {
+        path: "items.jsonl",
+        format: "jsonl",
+        sizeBytes: 32,
+        rowCount: 1,
+        sha256: "sha",
+      },
+    ],
+    mapping: prepareDatasetImportInput().mapping,
+    defaults: prepareDatasetImportInput().defaults,
+    previewRows: [
+      {
+        rowNumber: 1,
+        filePath: "items.jsonl",
+        item: {
+          input: { prompt: "hi" },
+          expected: { answer: "hello" },
+          metadata: {},
+          split: "dev",
+          reviewStatus: "unreviewed",
+          synthetic: false,
+        },
+        errors: [],
+        warnings: [],
+      },
+    ],
+    totalRows: 1,
+    validRows: 1,
+    errorRows: 0,
+    warnings: [],
+    createdAt: "2026-05-16T10:00:00.000Z",
+    expiresAt: "2026-05-17T10:00:00.000Z",
+  };
+}
+
+function datasetExportJob(): DatasetExportJob {
+  return {
+    id: "export-1",
+    datasetId: "dataset-1",
+    datasetVersion: 1,
+    status: "ready",
+    format: "jsonl",
+    rowCount: 1,
+    sizeBytes: 64,
+    sha256: "sha",
+    downloadUrl: "/api/ai-eval/dataset-exports/export-1/download",
+    createdAt: "2026-05-16T10:00:00.000Z",
+    expiresAt: "2026-05-17T10:00:00.000Z",
   };
 }
 

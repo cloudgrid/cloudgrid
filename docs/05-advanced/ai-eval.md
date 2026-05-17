@@ -74,3 +74,39 @@ Later integration tests should be added only when their owning workstream wires 
 - storage-read and storage-write contract validation;
 - harness adapter HTTP error mapping, timeout handling, trace-context propagation, and retry/idempotency behavior;
 - experiment progress notification fanout through storage-read live subscriptions.
+
+## Dataset Import And Export
+
+Dataset import/export is available from **AI Eval / Datasets** after selecting a dataset.
+
+Import uses a staged workflow:
+
+1. Upload `.jsonl`, `.json`, `.csv`, or `.zip` through `POST /api/ai-eval/dataset-imports/uploads`.
+2. Select included files when a ZIP contains multiple supported files.
+3. Map source columns or JSON paths into `input`, `expected`, `metadata`, `sourceTraceId`, `sourceSpanId`, `split`, and `reviewStatus`.
+4. Preview with `Mutation.prepareDatasetImport`.
+5. Commit with `Mutation.commitDatasetImport` after reviewing row errors and warnings.
+
+The frontend does not parse uploaded rows into dataset items, infer mappings, deduplicate records, or compute dataset health. Those semantics belong to the GraphQL import operations and the storage services. Partial commit is explicit: enable partial commit before preview/commit to allow `valid_rows_only`; otherwise commits use `reject_if_any_error`.
+
+Export uses the selected dataset toolbar:
+
+1. Choose `jsonl`, `json_array`, or `csv`.
+2. Optionally filter by split and review status.
+3. Start export with `Mutation.startDatasetExport`.
+4. Download only from the returned same-origin `downloadUrl`.
+
+Export files are canonical CloudGrid dataset-item data with `input`, `expected`, `metadata`, source pointers, split, review status, and synthetic state. They are not a recreation of the original uploaded file layout.
+
+Operator boundary:
+
+- The BFF upload/download endpoints move bytes only.
+- Upload artifacts and export artifacts are temporary and project-scoped.
+- Import preview, normalization, validation, commit, and export preparation remain GraphQL-backed.
+- Backend services must not expose SurrealDB credentials or raw uploaded file contents in logs or responses.
+
+## Frontend Navigation And Project Settings
+
+After a project is selected, **AI Eval** appears in the project sidebar after **Dashboards** unless the frontend is explicitly started with `CLOUDGRID_AI_EVAL_ENABLED=false` or `VITE_CLOUDGRID_AI_EVAL_ENABLED=false`.
+
+Project-level configuration lives in **Settings / AI Eval** at `/projects/:projectId/settings/ai-eval`. That settings page uses `Query.projectAiSettings` and `Mutation.updateProjectAiSettings` for the project enablement toggle and shows the current provider profile, model alias, online policy, and daily budget state. The AI Eval workspace remains focused on runs, datasets, scorers, experiments, production quality, and annotations; settings are not duplicated as a primary AI Eval rail item.

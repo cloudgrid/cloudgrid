@@ -1,27 +1,24 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { GraphQLError, GraphQLScalarType, Kind } from "graphql";
-import { createSchema, createYoga } from "graphql-yoga";
-import { Hono } from "hono";
 import {
-  createLogger,
   type AuthRuntimeConfig,
   type CloudGridErrorId,
   type CloudGridLogger,
+  createLogger,
   type LogFields,
 } from "@cloudgrid/runtime";
 import type {
   AgentRunSearchInput,
   AiQualityOverviewInput,
   AlertRuleSearchInput,
-  CreateAlertRuleInput,
-  CreateAlertSilenceInput,
   AnnotationQueueSearchInput,
   AppendDatasetItemsInput,
+  CommitDatasetImportInput,
+  CreateAlertRuleInput,
+  CreateAlertSilenceInput,
   CreateDatasetInput,
   CreateExperimentInput,
   CreateIngestCredentialInput,
-  InviteOrganizationMemberInput,
   CreateProjectInput,
   CreateScorerInput,
   DashboardListInput,
@@ -32,20 +29,24 @@ import type {
   Experiment,
   ExperimentRun,
   ExperimentSearchInput,
-  LiveTraceInput,
+  InviteOrganizationMemberInput,
   LiveExperimentRunInput,
+  LiveTraceInput,
   LogSearchInput,
   MetricNameSearchInput,
   MetricSeriesInput,
+  PrepareDatasetImportInput,
+  ProjectListInput,
   PromotePromptVersionInput,
   PromoteSpanToDatasetItemInput,
-  ProjectListInput,
-  ReorderDashboardPinsInput,
   RemoveOrganizationMemberInput,
+  ReorderDashboardPinsInput,
   ResolveAnnotationInput,
+  RichMetricSeriesInput,
   SaveDashboardInput,
   ScorerSearchInput,
   SetDashboardPinnedInput,
+  StartDatasetExportInput,
   StartExperimentRunInput,
   StartOptimizationRunInput,
   TelemetryFacetInput,
@@ -57,62 +58,70 @@ import type {
   UpdateProjectInput,
   UpdateRetentionPolicyInput,
 } from "@cloudgrid/ui-contracts";
+import { GraphQLError, GraphQLScalarType, Kind } from "graphql";
+import { createSchema, createYoga } from "graphql-yoga";
+import { Hono } from "hono";
 import {
-  createNATSTelemetryQueryBridge,
-  elapsedMilliseconds,
-  type AiEvalBridge,
-  type ControlPlaneBridge,
-  type MetricQueryBridge,
-  type TelemetryQueryBridge,
-} from "./bridge";
-import {
+  type AuthProviderFixture,
   authGraphQLError,
   CloudGridAuthService,
   localAuthContext,
-  requireScopes,
-  type AuthProviderFixture,
   type NormalizedAuthContext,
+  requireScopes,
 } from "./auth";
+import {
+  type AiEvalBridge,
+  type ControlPlaneBridge,
+  createNATSTelemetryQueryBridge,
+  elapsedMilliseconds,
+  type MetricQueryBridge,
+  type TelemetryQueryBridge,
+} from "./bridge";
 import { loadConfig } from "./config";
+import { attachDatasetTransferRoutes } from "./dataset-transfer";
 import { healthResponse } from "./health";
 import { attachStaticRoutes } from "./static";
 import {
-  validateLogSearchInput,
-  validateLiveTraceInput,
-  validateAiQualityOverviewInput,
   validateAgentRunSearchInput,
+  validateAiQualityOverviewInput,
+  validateAlertRuleSearchInput,
   validateAnnotationQueueSearchInput,
   validateAppendDatasetItemsInput,
+  validateCommitDatasetImportInput,
   validateCreateAlertRuleInput,
   validateCreateAlertSilenceInput,
-  validateAlertRuleSearchInput,
   validateCreateDatasetInput,
   validateCreateExperimentInput,
+  validateCreateIngestCredentialInput,
+  validateCreateProjectInput,
   validateCreateScorerInput,
   validateDashboardListInput,
   validateDatasetItemSearchInput,
   validateDatasetSearchInput,
   validateEvalResultSearchInput,
   validateExperimentSearchInput,
-  validateCreateIngestCredentialInput,
-  validateInviteOrganizationMemberInput,
-  validateCreateProjectInput,
   validateId,
+  validateInviteOrganizationMemberInput,
+  validateLiveExperimentRunInput,
+  validateLiveTraceInput,
+  validateLogSearchInput,
   validateMetricNameSearchInput,
   validateMetricSeriesInput,
+  validatePrepareDatasetImportInput,
   validateProjectListInput,
   validateProjectRole,
   validatePromotePromptVersionInput,
   validatePromoteSpanToDatasetItemInput,
-  validateReorderDashboardPinsInput,
   validateRemoveOrganizationMemberInput,
+  validateReorderDashboardPinsInput,
   validateResolveAnnotationInput,
-  validateScorerSearchInput,
+  validateRichMetricSeriesInput,
   validateSaveDashboardInput,
+  validateScorerSearchInput,
   validateSetDashboardPinnedInput,
+  validateStartDatasetExportInput,
   validateStartExperimentRunInput,
   validateStartOptimizationRunInput,
-  validateLiveExperimentRunInput,
   validateTelemetryFacetInput,
   validateTraceDetailInput,
   validateTraceId,
@@ -145,6 +154,7 @@ interface CreateAppOptions {
   authFetch?: typeof fetch;
   frontendServeStatic?: boolean;
   frontendStaticDir?: string;
+  datasetTransferDir?: string;
 }
 
 const JSONScalar = new GraphQLScalarType({
@@ -193,6 +203,9 @@ export function createAppWithBridge(
   app.get("/auth/login", (context) => auth.login(context.req.raw));
   app.get("/auth/callback", (context) => auth.callback(context.req.raw));
   app.post("/auth/logout", (context) => auth.logout(context.req.raw));
+  attachDatasetTransferRoutes(app, {
+    datasetTransferDir: config.datasetTransferDir ?? ".cloudgrid/dataset-transfer",
+  });
 
   type YogaContext = CloudGridYogaContext;
 
@@ -328,6 +341,13 @@ export function createCloudGridSchema() {
               await authContext(context),
             ),
           ),
+        richMetricSeries: async (_parent, args: { input: RichMetricSeriesInput }, context) =>
+          logGraphQLOperation(context, "richMetricSeries", async () =>
+            requireMetricQueryBridge(context).richMetricSeries(
+              validateRichMetricSeriesInput(args.input),
+              await authContext(context),
+            ),
+          ),
         dashboards: async (_parent, args: { input?: DashboardListInput }, context) =>
           logGraphQLOperation(context, "dashboards", async () =>
             requireControlBridge(context).dashboards(
@@ -417,6 +437,20 @@ export function createCloudGridSchema() {
           logGraphQLOperation(context, "dataset", async () =>
             requireAiEvalBridge(context).dataset(
               validateId(args.id, "dataset id"),
+              await authContext(context),
+            ),
+          ),
+        datasetImport: async (_parent, args: { id: string }, context) =>
+          logGraphQLOperation(context, "datasetImport", async () =>
+            requireAiEvalBridge(context).datasetImport(
+              validateId(args.id, "dataset import id"),
+              await authContext(context),
+            ),
+          ),
+        datasetExport: async (_parent, args: { id: string }, context) =>
+          logGraphQLOperation(context, "datasetExport", async () =>
+            requireAiEvalBridge(context).datasetExport(
+              validateId(args.id, "dataset export id"),
               await authContext(context),
             ),
           ),
@@ -668,6 +702,31 @@ export function createCloudGridSchema() {
               await authContext(context),
             ),
           ),
+        prepareDatasetImport: async (
+          _parent,
+          args: { input: PrepareDatasetImportInput },
+          context,
+        ) =>
+          logGraphQLOperation(context, "prepareDatasetImport", async () =>
+            requireAiEvalBridge(context).prepareDatasetImport(
+              validatePrepareDatasetImportInput(args.input),
+              await authContext(context),
+            ),
+          ),
+        commitDatasetImport: async (_parent, args: { input: CommitDatasetImportInput }, context) =>
+          logGraphQLOperation(context, "commitDatasetImport", async () =>
+            requireAiEvalBridge(context).commitDatasetImport(
+              validateCommitDatasetImportInput(args.input),
+              await authContext(context),
+            ),
+          ),
+        startDatasetExport: async (_parent, args: { input: StartDatasetExportInput }, context) =>
+          logGraphQLOperation(context, "startDatasetExport", async () =>
+            requireAiEvalBridge(context).startDatasetExport(
+              validateStartDatasetExportInput(args.input),
+              await authContext(context),
+            ),
+          ),
         promoteSpanToDatasetItem: async (
           _parent,
           args: { input: PromoteSpanToDatasetItemInput },
@@ -856,6 +915,8 @@ function requireAiEvalBridge(context: CloudGridYogaContext): AiEvalBridge {
     !bridge.agentRun ||
     !bridge.datasets ||
     !bridge.dataset ||
+    !bridge.datasetImport ||
+    !bridge.datasetExport ||
     !bridge.datasetItems ||
     !bridge.scorers ||
     !bridge.experiments ||
@@ -868,6 +929,9 @@ function requireAiEvalBridge(context: CloudGridYogaContext): AiEvalBridge {
     !bridge.aiQualityOverview ||
     !bridge.createDataset ||
     !bridge.appendDatasetItems ||
+    !bridge.prepareDatasetImport ||
+    !bridge.commitDatasetImport ||
+    !bridge.startDatasetExport ||
     !bridge.promoteSpanToDatasetItem ||
     !bridge.createScorer ||
     !bridge.createExperiment ||

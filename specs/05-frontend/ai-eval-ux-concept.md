@@ -23,9 +23,10 @@ The UI follows `specs/05-frontend/product-ux-concept.md` and `DESIGN.md`.
 
 ## Navigation
 
-AI Eval is a project-scoped route shown in the left project/domain sidebar only
-when `CLOUDGRID_AI_EVAL_ENABLED=true` and the selected project has AI Eval
-enabled or setup is allowed.
+AI Eval is a project-scoped route shown in the left project/domain sidebar when
+the selected project has AI Eval enabled or setup is allowed. The frontend
+feature is enabled by default and may be explicitly disabled with
+`CLOUDGRID_AI_EVAL_ENABLED=false` or `VITE_CLOUDGRID_AI_EVAL_ENABLED=false`.
 
 The app-wide 56px topbar remains the only app-wide navigation surface.
 
@@ -365,7 +366,8 @@ action at most.
 
 Required frontend tests:
 
-- AI Eval nav appears only when enabled;
+- AI Eval nav appears when the frontend feature is enabled and disappears when
+  explicitly disabled;
 - first-use checklist routes to correct project settings and AI Eval sections;
 - no route-primary data surface is wrapped in cards;
 - dataset split controls do not mutate local-only truth;

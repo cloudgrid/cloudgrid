@@ -13,18 +13,19 @@ import (
 )
 
 const (
-	SubjectEvalAgentRunsSearch    = "eval.agent_runs.search"
-	SubjectEvalDatasetSearch      = "eval.dataset.search"
-	SubjectEvalDatasetHealth      = "eval.dataset.health"
-	SubjectEvalScorerSearch       = "eval.scorer.search"
-	SubjectEvalExperimentSearch   = "eval.experiment.search"
-	SubjectEvalResultsSearch      = "eval.results.search"
-	SubjectEvalManifestResolve    = "eval.manifest.resolve"
-	SubjectEvalQualityOverview    = "eval.quality.overview"
-	SubjectEvalLiveStart          = "eval.live.start"
-	SubjectEvalLiveStop           = "eval.live.stop"
-	SubjectEvalExperimentProgress = "eval.experiment.progress"
-	SubjectAnnotationQueueSearch  = "annotation.queue.search"
+	SubjectEvalAgentRunsSearch            = "eval.agent_runs.search"
+	SubjectEvalDatasetSearch              = "eval.dataset.search"
+	SubjectEvalDatasetHealth              = "eval.dataset.health"
+	SubjectEvalScorerSearch               = "eval.scorer.search"
+	SubjectEvalExperimentSearch           = "eval.experiment.search"
+	SubjectEvalResultsSearch              = "eval.results.search"
+	SubjectEvalManifestResolve            = "eval.manifest.resolve"
+	SubjectEvalOnlinePolicyMatchesResolve = "eval.online.policy_matches.resolve"
+	SubjectEvalQualityOverview            = "eval.quality.overview"
+	SubjectEvalLiveStart                  = "eval.live.start"
+	SubjectEvalLiveStop                   = "eval.live.stop"
+	SubjectEvalExperimentProgress         = "eval.experiment.progress"
+	SubjectAnnotationQueueSearch          = "annotation.queue.search"
 
 	defaultEvalLiveHeartbeatInterval = 15 * time.Second
 	defaultMaxEvalLiveSubscriptions  = 500
@@ -219,18 +220,50 @@ func validateEvalLiveStart(request contracts.EvalLiveStartRequest) error {
 func aiEvalReadSubjectHandlers(store AiEvalQueryStore, registry *EvalLiveRegistry, logger *slog.Logger) map[string]bridgeMessageHandler {
 	queryHandler := handleAiEvalQuery(store, logger)
 	return map[string]bridgeMessageHandler{
-		SubjectEvalAgentRunsSearch:    queryHandler,
-		SubjectEvalDatasetSearch:      queryHandler,
-		SubjectEvalDatasetHealth:      queryHandler,
-		SubjectEvalScorerSearch:       queryHandler,
-		SubjectEvalExperimentSearch:   queryHandler,
-		SubjectEvalResultsSearch:      queryHandler,
-		SubjectEvalQualityOverview:    queryHandler,
-		SubjectEvalManifestResolve:    handleExperimentManifestResolve(store, logger),
-		SubjectAnnotationQueueSearch:  queryHandler,
-		SubjectEvalLiveStart:          handleEvalLiveStart(registry, logger),
-		SubjectEvalLiveStop:           handleEvalLiveStop(registry, logger),
-		SubjectEvalExperimentProgress: handleExperimentProgressNotification(registry, logger),
+		SubjectEvalAgentRunsSearch:            queryHandler,
+		SubjectEvalDatasetSearch:              queryHandler,
+		SubjectEvalDatasetTransferGet:         queryHandler,
+		SubjectEvalDatasetHealth:              queryHandler,
+		SubjectEvalScorerSearch:               queryHandler,
+		SubjectEvalExperimentSearch:           queryHandler,
+		SubjectEvalResultsSearch:              queryHandler,
+		SubjectEvalQualityOverview:            queryHandler,
+		SubjectEvalDatasetExportStart:         handleAiEvalMutationQuery(store, logger),
+		SubjectEvalManifestResolve:            handleExperimentManifestResolve(store, logger),
+		SubjectEvalOnlinePolicyMatchesResolve: handleOnlinePolicyMatchesResolve(store, logger),
+		SubjectAnnotationQueueSearch:          queryHandler,
+		SubjectEvalLiveStart:                  handleEvalLiveStart(registry, logger),
+		SubjectEvalLiveStop:                   handleEvalLiveStop(registry, logger),
+		SubjectEvalExperimentProgress:         handleExperimentProgressNotification(registry, logger),
+	}
+}
+
+func handleAiEvalMutationQuery(store AiEvalQueryStore, logger *slog.Logger) bridgeMessageHandler {
+	return func(msg BridgeMessage) {
+		start := time.Now()
+		var request contracts.EvalMutationRequest
+		if err := json.Unmarshal(msg.Data(), &request); err != nil {
+			response := contracts.EvalMutationResponse{
+				RequestID: "",
+				OK:        false,
+				Error:     ptr(bridgeErrorFromError(validationError("invalid AI eval mutation request JSON"))),
+			}
+			respond(msg, response)
+			logHandlerCompletion(logger, msg.Subject(), response.RequestID, false, start, response.Error)
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		defer cancel()
+		data, err := store.QueryAiEval(ctx, msg.Subject(), request.Input)
+		if err != nil {
+			response := contracts.EvalMutationResponse{RequestID: request.RequestID, OK: false, Error: ptr(bridgeErrorFromError(err))}
+			respond(msg, response)
+			logHandlerCompletion(logger, msg.Subject(), response.RequestID, false, start, response.Error)
+			return
+		}
+		response := contracts.EvalMutationResponse{RequestID: request.RequestID, OK: true, Data: data}
+		respond(msg, response)
+		logHandlerCompletion(logger, msg.Subject(), request.RequestID, true, start, nil)
 	}
 }
 
@@ -293,6 +326,39 @@ func handleExperimentManifestResolve(store AiEvalQueryStore, logger *slog.Logger
 		}
 		respond(msg, response)
 		logHandlerCompletion(logger, SubjectEvalManifestResolve, request.RequestID, true, start, nil)
+	}
+}
+
+func handleOnlinePolicyMatchesResolve(store AiEvalQueryStore, logger *slog.Logger) bridgeMessageHandler {
+	return func(msg BridgeMessage) {
+		start := time.Now()
+		var request contracts.OnlinePolicyMatchesResolveRequest
+		if err := json.Unmarshal(msg.Data(), &request); err != nil {
+			response := contracts.OnlinePolicyMatchesResolveResponse{
+				RequestID: "",
+				OK:        false,
+				Error:     ptr(bridgeErrorFromError(validationError("invalid online policy resolve request JSON"))),
+			}
+			respond(msg, response)
+			logHandlerCompletion(logger, SubjectEvalOnlinePolicyMatchesResolve, response.RequestID, false, start, response.Error)
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		defer cancel()
+		data, err := store.ResolveOnlinePolicyMatches(ctx, request)
+		if err != nil {
+			response := contracts.OnlinePolicyMatchesResolveResponse{RequestID: request.RequestID, OK: false, Error: ptr(bridgeErrorFromError(err))}
+			respond(msg, response)
+			logHandlerCompletion(logger, SubjectEvalOnlinePolicyMatchesResolve, response.RequestID, false, start, response.Error)
+			return
+		}
+		response := contracts.OnlinePolicyMatchesResolveResponse{
+			RequestID: request.RequestID,
+			OK:        true,
+			Data:      &data,
+		}
+		respond(msg, response)
+		logHandlerCompletion(logger, SubjectEvalOnlinePolicyMatchesResolve, request.RequestID, true, start, nil)
 	}
 }
 

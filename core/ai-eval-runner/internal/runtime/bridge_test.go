@@ -139,12 +139,49 @@ func TestNATSAdaptersUseApprovedBoundarySubjects(t *testing.T) {
 		responses: map[string]any{
 			SubjectResultsPersist:       contracts.EvalMutationResponse{RequestID: "req", OK: true, Data: map[string]any{}},
 			SubjectControlAISettingsGet: contracts.ProjectAiSettingsGetResponse{RequestID: "req", OK: true, Data: map[string]any{"settings": map[string]any{"projectId": "project-1", "budget": map[string]any{"dailyUsd": 10}}}},
+			SubjectOnlinePolicyResolve: contracts.OnlinePolicyMatchesResolveResponse{RequestID: "req-online", OK: true, Data: &contracts.OnlinePolicyMatchesResolveData{
+				Matches: []contracts.OnlinePolicyMatch{{
+					PolicyID:      "policy-1",
+					PolicyVersion: 1,
+					PolicyName:    "production",
+					SampleRate:    1,
+					ScorerRefs: []contracts.OnlinePolicyScorerRef{{
+						ScorerID:      "scorer-1",
+						ScorerVersion: 2,
+						Kind:          "deterministic",
+					}},
+					Projection: contracts.OnlinePolicyProjectionReadModel{
+						ProjectID:      "project-1",
+						TraceID:        "trace-1",
+						ProjectionID:   "agent-run-1",
+						Kind:           contracts.AiProjectionKindAgentRun,
+						SafeAttributes: map[string]any{"answer": "ok"},
+					},
+				}},
+				Warnings: []string{},
+			}},
 		},
 	}
+	reader := NATSStorageReader{Requester: requester}
 	writer := NATSStorageWriter{Requester: requester}
 	control := NATSControlPlane{Requester: requester}
 	publisher := NATSProgressPublisher{Publisher: requester}
 
+	matches, err := reader.ResolveOnlinePolicyMatches(context.Background(), ports.OnlinePolicyResolveRequest{
+		RequestID:     "req-online",
+		ProjectID:     "project-1",
+		TraceID:       "trace-1",
+		ProjectionIDs: []string{"agent-run-1"},
+		SpanIDs:       []string{"span-1"},
+		Kinds:         []string{"agent_run"},
+		PersistedAt:   "2026-05-16T09:00:00Z",
+	})
+	if err != nil {
+		t.Fatalf("ResolveOnlinePolicyMatches() error = %v", err)
+	}
+	if len(matches.Matches) != 1 || matches.Matches[0].PolicyID != "policy-1" || matches.Matches[0].Projection.ProjectionID != "agent-run-1" {
+		t.Fatalf("online matches = %#v", matches)
+	}
 	if err := writer.PersistEvalResult(context.Background(), "eval-key", ports.EvalResult{ID: "result-1", ExperimentRunID: "run-1", TargetKind: "datasetItemRun", TargetID: "item-run-1", ScorerID: "scorer-1", ScorerVersion: 1}); err != nil {
 		t.Fatalf("PersistEvalResult() error = %v", err)
 	}
@@ -155,7 +192,7 @@ func TestNATSAdaptersUseApprovedBoundarySubjects(t *testing.T) {
 		t.Fatalf("PublishExperimentProgress() error = %v", err)
 	}
 
-	if !reflect.DeepEqual(requester.requestSubjects, []string{SubjectResultsPersist, SubjectControlAISettingsGet}) {
+	if !reflect.DeepEqual(requester.requestSubjects, []string{SubjectOnlinePolicyResolve, SubjectResultsPersist, SubjectControlAISettingsGet}) {
 		t.Fatalf("request subjects = %#v", requester.requestSubjects)
 	}
 	if !reflect.DeepEqual(requester.publishSubjects, []string{SubjectExperimentProgress}) {
@@ -224,11 +261,13 @@ func (message *runtimeMessage) Respond(response []byte) error {
 }
 
 type runtimeReader struct {
-	experiments        []ports.Experiment
-	items              []ports.DatasetItem
-	scorers            []ports.Scorer
-	manifest           ports.ExperimentManifest
-	experimentSearches []string
+	experiments           []ports.Experiment
+	items                 []ports.DatasetItem
+	scorers               []ports.Scorer
+	manifest              ports.ExperimentManifest
+	onlineMatches         ports.OnlinePolicyMatches
+	experimentSearches    []string
+	onlineResolveRequests []ports.OnlinePolicyResolveRequest
 }
 
 func (reader *runtimeReader) SearchExperiments(_ context.Context, experimentID string) ([]ports.Experiment, error) {
@@ -246,6 +285,11 @@ func (reader *runtimeReader) SearchScorers(_ context.Context, _ []string) ([]por
 
 func (reader *runtimeReader) ResolveManifest(_ context.Context, _ ports.ManifestResolveRequest) (ports.ExperimentManifest, error) {
 	return reader.manifest, nil
+}
+
+func (reader *runtimeReader) ResolveOnlinePolicyMatches(_ context.Context, request ports.OnlinePolicyResolveRequest) (ports.OnlinePolicyMatches, error) {
+	reader.onlineResolveRequests = append(reader.onlineResolveRequests, request)
+	return reader.onlineMatches, nil
 }
 
 type runtimeWriter struct {

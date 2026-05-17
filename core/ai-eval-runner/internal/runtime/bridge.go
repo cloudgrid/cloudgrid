@@ -28,6 +28,7 @@ const (
 	SubjectResultsPersist        = "eval.results.persist"
 	SubjectExperimentProgress    = "eval.experiment.progress"
 	SubjectManifestResolve       = "eval.manifest.resolve"
+	SubjectOnlinePolicyResolve   = "eval.online.policy_matches.resolve"
 	SubjectControlAISettingsGet  = "control.ai_settings.get"
 	validationErrorID            = "ERR-001"
 	validationErrorCode          = "VALIDATION_FAILED"
@@ -208,6 +209,7 @@ func (service *RunnerService) handlePersistedProjections() Handler {
 			ProjectID:     stringPtrValue(notification.ProjectID),
 			TraceID:       notification.TraceID,
 			ProjectionIDs: notification.ProjectionIDs,
+			SpanIDs:       notification.SpanIDs,
 			Kinds:         projectionKinds(notification.Kinds),
 			PersistedAt:   notification.PersistedAt.UTC().Format(time.RFC3339Nano),
 		}); err != nil {

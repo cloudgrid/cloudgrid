@@ -145,6 +145,70 @@ func TestBuildExperimentManifestResolveQueriesResolveImmutableInputs(t *testing.
 	}
 }
 
+func TestBuildOnlinePolicyMatchesResolveQueriesUseProjectionAndPolicyPushdown(t *testing.T) {
+	stmts, err := BuildOnlinePolicyMatchesResolveQueries(contracts.OnlinePolicyMatchesResolveRequest{
+		ProjectID:     "project-1",
+		TraceID:       "trace-1",
+		ProjectionIDs: []string{"agent-run-1"},
+		SpanIDs:       []string{"span-1"},
+		Kinds:         []contracts.AiProjectionKind{contracts.AiProjectionKindAgentRun},
+		PersistedAt:   time.Date(2026, 5, 16, 9, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("BuildOnlinePolicyMatchesResolveQueries returned error: %v", err)
+	}
+
+	for name, stmt := range stmts {
+		for _, want := range []string{"tenantId = $tenantId", "projectId = $projectId"} {
+			if !strings.Contains(stmt.SQL, want) {
+				t.Fatalf("%s SQL = %s, missing %q", name, stmt.SQL, want)
+			}
+		}
+	}
+	if !strings.Contains(stmts["settings"].SQL, "FROM project_ai_settings") || !strings.Contains(stmts["settings"].SQL, "enabled = true") {
+		t.Fatalf("settings SQL = %s, want enabled project AI settings lookup", stmts["settings"].SQL)
+	}
+	if !strings.Contains(stmts["projection"].SQL, "FROM ai_agent_run") || !strings.Contains(stmts["projection"].SQL, "id IN $projectionIds") || !strings.Contains(stmts["projection"].SQL, "traceId = $traceId") {
+		t.Fatalf("projection SQL = %s, want bounded persisted projection lookup", stmts["projection"].SQL)
+	}
+	if !strings.Contains(stmts["scorers"].SQL, "FROM ai_scorer") || !strings.Contains(stmts["scorers"].SQL, "kind = 'deterministic'") {
+		t.Fatalf("scorers SQL = %s, want deterministic scorer lookup", stmts["scorers"].SQL)
+	}
+}
+
+func TestOnlinePolicyTargetMatchingUsesProjectionReadModelOnly(t *testing.T) {
+	routePrefix := "/checkout"
+	environment := "prod"
+	target := contracts.OnlinePolicyTarget{
+		Environment: &environment,
+		RoutePrefix: &routePrefix,
+		Attributes: []contracts.OnlinePolicyAttributeFilter{{
+			Key:      "quality",
+			Operator: contracts.AttributeFilterOperator("eq"),
+			Value:    "candidate",
+		}},
+	}
+	route := "/checkout/submit"
+	projection := contracts.OnlinePolicyProjectionReadModel{
+		ProjectID:      "project-1",
+		TraceID:        "trace-1",
+		ProjectionID:   "agent-run-1",
+		Kind:           contracts.AiProjectionKindAgentRun,
+		Environment:    &environment,
+		Route:          &route,
+		SafeAttributes: map[string]any{"quality": "candidate"},
+	}
+
+	if !onlinePolicyTargetMatchesProjection(target, projection) {
+		t.Fatalf("target should match projection read model")
+	}
+
+	projection.SafeAttributes["quality"] = "baseline"
+	if onlinePolicyTargetMatchesProjection(target, projection) {
+		t.Fatalf("target should not match mismatched safe attribute")
+	}
+}
+
 func TestBuildAiEvalQueryRejectsMutationSubjects(t *testing.T) {
 	if _, err := BuildAiEvalQuery("eval.dataset.create", map[string]any{}); err == nil {
 		t.Fatal("BuildAiEvalQuery returned nil error for mutation subject")

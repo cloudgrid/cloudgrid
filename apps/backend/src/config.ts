@@ -17,6 +17,7 @@ export interface RuntimeConfig {
   graphqlUI: boolean;
   frontendServeStatic: boolean;
   frontendStaticDir: string;
+  datasetTransferDir: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
@@ -34,6 +35,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
       env.NODE_ENV === "production",
     ),
     frontendStaticDir: env.CLOUDGRID_FRONTEND_STATIC_DIR || "./apps/backend/public",
+    datasetTransferDir: env.CLOUDGRID_DATASET_TRANSFER_DIR || ".cloudgrid/dataset-transfer",
   };
 }
 

@@ -623,14 +623,30 @@ func evalMutationRecord(subject string, request contracts.EvalMutationRequest, o
 		}, nil
 	case "eval.results.persist":
 		experimentRunID := mapStringValue(request.Input, "experimentRunId")
+		itemRuns := mapArrayValue(request.Input, "itemRuns")
+		results := mapArrayValue(request.Input, "results")
+		if len(results) > 0 && len(itemRuns) == 0 {
+			result := firstObject(results)
+			id := mapStringValue(result, "id")
+			if id == "" {
+				return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: eval result id is required")
+			}
+			record := cloneMap(result)
+			if experimentRunID != "" {
+				record["experimentRunId"] = experimentRunID
+			} else if mapStringValue(record, "experimentRunId") == "" {
+				record["experimentRunId"] = nil
+			}
+			return "ai_eval_result", record, nil
+		}
 		if experimentRunID == "" {
 			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: experimentRunId is required")
 		}
 		return "ai_dataset_item_run", map[string]any{
 			"id":              stableRecordID("eval-results", request.RequestID, experimentRunID),
 			"experimentRunId": experimentRunID,
-			"itemRuns":        mapArrayValue(request.Input, "itemRuns"),
-			"results":         mapArrayValue(request.Input, "results"),
+			"itemRuns":        itemRuns,
+			"results":         results,
 			"persistedAt":     occurredAt.UTC(),
 		}, nil
 	case "eval.prompt_version.promote":

@@ -38,4 +38,39 @@ describe("AI Eval route UX migration", () => {
     expect(routeSource).toContain("aiQualityOverview(input: $input)");
     expect(routeSource).not.toContain("localStorage");
   });
+
+  test("wires dataset import through staged upload, preview, and commit only", () => {
+    expect(routeSource).toContain("DatasetImportSheet");
+    expect(routeSource).toContain('"/api/ai-eval/dataset-imports/uploads"');
+    expect(routeSource).toContain('formData.append("projectId"');
+    expect(routeSource).toContain('formData.append("file"');
+    expect(routeSource).toContain("prepareDatasetImport(input: $input)");
+    expect(routeSource).toContain("commitDatasetImport(input: $input)");
+    expect(routeSource).toContain("allowPartialCommit");
+    expect(routeSource).toContain("valid_rows_only");
+    expect(routeSource).toContain("reject_if_any_error");
+    expect(routeSource).not.toContain("appendDatasetItems(");
+  });
+
+  test("keeps dataset import mapping explicit and export same-origin", () => {
+    for (const mappingTarget of [
+      "input",
+      "expected",
+      "metadata",
+      "sourceTraceId",
+      "sourceSpanId",
+      "split",
+      "reviewStatus",
+    ]) {
+      expect(routeSource).toContain(mappingTarget);
+    }
+    for (const sourceKind of ["column", "jsonPath", "constant", "defaultValue"]) {
+      expect(routeSource).toContain(sourceKind);
+    }
+    expect(routeSource).toContain("DatasetExportDialog");
+    expect(routeSource).toContain("startDatasetExport(input: $input)");
+    expect(routeSource).toContain("datasetExport(id: $id)");
+    expect(routeSource).toContain("downloadSameOriginExport");
+    expect(routeSource).toContain("new URL(job.downloadUrl, window.location.origin)");
+  });
 });

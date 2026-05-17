@@ -12,11 +12,14 @@ import (
 	"time"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
+	storage "github.com/cloudgrid-dev/cloudgrid/core/storage-read/internal"
 )
 
 const (
 	subjectEvalAgentRunsSearch   = "eval.agent_runs.search"
 	subjectEvalDatasetSearch     = "eval.dataset.search"
+	subjectEvalDatasetExportStart = "eval.dataset.export.start"
+	subjectEvalDatasetTransferGet = "eval.dataset.transfer.get"
 	subjectEvalDatasetHealth     = "eval.dataset.health"
 	subjectEvalScorerSearch      = "eval.scorer.search"
 	subjectEvalExperimentSearch  = "eval.experiment.search"
@@ -29,6 +32,10 @@ const (
 
 func (store Store) QueryAiEval(ctx context.Context, subject string, input map[string]any) (map[string]any, error) {
 	switch subject {
+	case subjectEvalDatasetTransferGet:
+		return storage.GetDatasetTransfer(ctx, storage.TransferRootForAdapter(), input)
+	case subjectEvalDatasetExportStart:
+		return store.startDatasetExport(ctx, input)
 	case subjectEvalDatasetHealth:
 		return store.queryDatasetHealth(ctx, input)
 	case subjectEvalQualityOverview:
@@ -46,6 +53,25 @@ func (store Store) QueryAiEval(ctx context.Context, subject string, input map[st
 		"items":      items,
 		"nextCursor": nil,
 	}, nil
+}
+
+func (store Store) startDatasetExport(ctx context.Context, input map[string]any) (map[string]any, error) {
+	stmt, err := BuildDatasetExportItemsQuery(input)
+	if err != nil {
+		return nil, err
+	}
+	items, err := queryRows[map[string]any](ctx, store.DB, stmt)
+	if err != nil {
+		return nil, storageError()
+	}
+	request := contracts.EvalMutationRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{
+			RequestID: "storage-read-export",
+			IssuedAt:  time.Now().UTC(),
+		},
+		Input: input,
+	}
+	return storage.StartDatasetExport(ctx, storage.TransferRootForAdapter(), request, items, time.Now)
 }
 
 func (store Store) queryDatasetHealth(ctx context.Context, input map[string]any) (map[string]any, error) {
@@ -173,6 +199,138 @@ func (store Store) ResolveExperimentManifest(ctx context.Context, request contra
 	return manifest, nil
 }
 
+func (store Store) ResolveOnlinePolicyMatches(ctx context.Context, request contracts.OnlinePolicyMatchesResolveRequest) (contracts.OnlinePolicyMatchesResolveData, error) {
+	stmts, err := BuildOnlinePolicyMatchesResolveQueries(request)
+	if err != nil {
+		return contracts.OnlinePolicyMatchesResolveData{}, err
+	}
+	settingsRows, err := queryRows[map[string]any](ctx, store.DB, stmts["settings"])
+	if err != nil {
+		return contracts.OnlinePolicyMatchesResolveData{}, storageError()
+	}
+	if len(settingsRows) == 0 {
+		return contracts.OnlinePolicyMatchesResolveData{Matches: []contracts.OnlinePolicyMatch{}, Warnings: []string{}}, nil
+	}
+	projections, err := queryRows[map[string]any](ctx, store.DB, stmts["projection"])
+	if err != nil {
+		return contracts.OnlinePolicyMatchesResolveData{}, storageError()
+	}
+	if len(projections) == 0 {
+		return contracts.OnlinePolicyMatchesResolveData{Matches: []contracts.OnlinePolicyMatch{}, Warnings: []string{}}, nil
+	}
+	scorers, err := queryRows[map[string]any](ctx, store.DB, stmts["scorers"])
+	if err != nil {
+		return contracts.OnlinePolicyMatchesResolveData{}, storageError()
+	}
+	scorersByID := map[string]onlineScorerRow{}
+	for _, scorer := range scorers {
+		id := aiEvalStringValue(scorer, "id", "")
+		if id != "" {
+			scorersByID[id] = onlineScorerRow{kind: aiEvalStringValue(scorer, "kind", ""), version: int(numericValue(scorer["version"]))}
+		}
+	}
+	matches := []contracts.OnlinePolicyMatch{}
+	warnings := []string{}
+	for _, setting := range settingsRows {
+		for _, policy := range onlinePolicies(setting["onlinePolicies"]) {
+			if !boolValue(policy, "enabled") {
+				continue
+			}
+			target := onlinePolicyTargetFromMap(objectMap(policy["target"]))
+			if isEmptyOnlineTarget(target) {
+				warnings = append(warnings, "invalid empty target for policy "+aiEvalStringValue(policy, "id", ""))
+				continue
+			}
+			scorerRefs := []contracts.OnlinePolicyScorerRef{}
+			for _, scorerID := range stringSlice(policy["scorerIds"]) {
+				scorer := scorersByID[scorerID]
+				if scorer.kind != "deterministic" || scorer.version < 1 {
+					warnings = append(warnings, "unsupported scorer kind for policy "+aiEvalStringValue(policy, "id", ""))
+					continue
+				}
+				scorerRefs = append(scorerRefs, contracts.OnlinePolicyScorerRef{
+					ScorerID:      scorerID,
+					ScorerVersion: scorer.version,
+					Kind:          "deterministic",
+				})
+			}
+			if len(scorerRefs) == 0 {
+				continue
+			}
+			for _, projection := range projections {
+				projectionModel := onlineProjectionFromRow(projection, request)
+				if !onlinePolicyTargetMatchesProjection(target, projectionModel) {
+					continue
+				}
+				matches = append(matches, contracts.OnlinePolicyMatch{
+					PolicyID:      aiEvalStringValue(policy, "id", ""),
+					PolicyVersion: onlinePolicyVersion(policy),
+					PolicyName:    aiEvalStringValue(policy, "name", ""),
+					Target:        target,
+					SampleRate:    numericValue(policy["sampleRate"]),
+					ScorerRefs:    scorerRefs,
+					Projection:    projectionModel,
+				})
+			}
+		}
+	}
+	return contracts.OnlinePolicyMatchesResolveData{Matches: matches, Warnings: warnings}, nil
+}
+
+func BuildOnlinePolicyMatchesResolveQueries(request contracts.OnlinePolicyMatchesResolveRequest) (map[string]QueryStatement, error) {
+	if strings.TrimSpace(request.ProjectID) == "" {
+		return nil, validationError("projectId is required")
+	}
+	if strings.TrimSpace(request.TraceID) == "" {
+		return nil, validationError("traceId is required")
+	}
+	if len(request.ProjectionIDs) == 0 {
+		return nil, validationError("projectionIds is required")
+	}
+	target, err := ResolveTelemetryTarget(nil)
+	if err != nil {
+		return nil, err
+	}
+	target.ProjectID = request.ProjectID
+	params := map[string]any{
+		"projectId":     request.ProjectID,
+		"traceId":       request.TraceID,
+		"projectionIds": append([]string(nil), request.ProjectionIDs...),
+		"spanIds":       append([]string(nil), request.SpanIDs...),
+		"kinds":         request.Kinds,
+	}
+	addOwnershipParams(params, target)
+	return map[string]QueryStatement{
+		"settings": {
+			SQL: strings.Join([]string{
+				"SELECT *",
+				"FROM project_ai_settings",
+				whereClause(append(ownershipConditions(), "projectId = $projectId", "enabled = true")),
+				"LIMIT 1;",
+			}, " "),
+			Params: cloneParams(params),
+		},
+		"projection": {
+			SQL: strings.Join([]string{
+				"SELECT id, projectId, traceId, rootSpanId AS spanId, 'agent_run' AS kind, agent.id AS agentId, agent.name AS agentName, metadata.environment AS environment, metadata.service AS serviceName, metadata.route AS route, metadata.model AS model, metadata.promptVersionId AS promptVersionId, metadata.experimentRunId AS experimentRunId, metadata.safeAttributes AS safeAttributes",
+				"FROM ai_agent_run",
+				whereClause(append(ownershipConditions(), "projectId = $projectId", "traceId = $traceId", "id IN $projectionIds")),
+				"ORDER BY id ASC LIMIT 200;",
+			}, " "),
+			Params: cloneParams(params),
+		},
+		"scorers": {
+			SQL: strings.Join([]string{
+				"SELECT id, version, kind",
+				"FROM ai_scorer",
+				whereClause(append(ownershipConditions(), "projectId = $projectId", "kind = 'deterministic'")),
+				"ORDER BY id ASC LIMIT 1000;",
+			}, " "),
+			Params: cloneParams(params),
+		},
+	}, nil
+}
+
 func BuildAiEvalQuery(subject string, input map[string]any) (QueryStatement, error) {
 	table, err := aiEvalTableForSubject(subject, input)
 	if err != nil {
@@ -281,6 +439,31 @@ func BuildDatasetHealthQueries(input map[string]any) (map[string]QueryStatement,
 			}, " "),
 			Params: cloneParams(params),
 		},
+	}, nil
+}
+
+func BuildDatasetExportItemsQuery(input map[string]any) (QueryStatement, error) {
+	datasetID, ok := stringInput(input, "datasetId")
+	if !ok {
+		return QueryStatement{}, validationError("datasetId is required")
+	}
+	target, err := ResolveTelemetryTarget(nil)
+	if err != nil {
+		return QueryStatement{}, err
+	}
+	params := map[string]any{"datasetId": datasetID}
+	addOwnershipParams(params, target)
+	conditions := append(ownershipConditions(), "datasetId = $datasetId")
+	addStringFilter(&conditions, params, input, "split", "split")
+	addStringFilter(&conditions, params, input, "reviewStatus", "reviewStatus")
+	return QueryStatement{
+		SQL: strings.Join([]string{
+			"SELECT input, expected, metadata, sourceTraceId, sourceSpanId, split, reviewStatus, synthetic",
+			"FROM ai_dataset_item",
+			whereClause(conditions),
+			"ORDER BY id ASC LIMIT 50000;",
+		}, " "),
+		Params: params,
 	}, nil
 }
 
@@ -568,6 +751,199 @@ func datasetHealthWarnings(health map[string]any) []string {
 		warnings = append(warnings, "missing_expected")
 	}
 	return warnings
+}
+
+func boolValue(values map[string]any, key string) bool {
+	value, _ := values[key].(bool)
+	return value
+}
+
+func onlinePolicies(value any) []map[string]any {
+	return mapSlice(value)
+}
+
+type onlineScorerRow struct {
+	kind    string
+	version int
+}
+
+func onlinePolicyVersion(policy map[string]any) int {
+	version := int(numericValue(policy["version"]))
+	if version < 1 {
+		return 1
+	}
+	return version
+}
+
+func mapSlice(value any) []map[string]any {
+	items, _ := value.([]any)
+	result := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		if row, ok := item.(map[string]any); ok {
+			result = append(result, row)
+		}
+	}
+	return result
+}
+
+func onlineProjectionFromRow(row map[string]any, request contracts.OnlinePolicyMatchesResolveRequest) contracts.OnlinePolicyProjectionReadModel {
+	projectionID := aiEvalStringValue(row, "id", "")
+	if projectionID == "" {
+		projectionID = aiEvalStringValue(row, "projectionId", "")
+	}
+	kind := contracts.AiProjectionKind(aiEvalStringValue(row, "kind", string(contracts.AiProjectionKindAgentRun)))
+	return contracts.OnlinePolicyProjectionReadModel{
+		ProjectID:       aiEvalStringValue(row, "projectId", request.ProjectID),
+		TraceID:         aiEvalStringValue(row, "traceId", request.TraceID),
+		SpanID:          optionalStringFromMap(row, "spanId"),
+		ProjectionID:    projectionID,
+		Kind:            kind,
+		AgentID:         optionalStringFromMap(row, "agentId"),
+		AgentName:       optionalStringFromMap(row, "agentName"),
+		Environment:     optionalStringFromMap(row, "environment"),
+		ServiceName:     optionalStringFromMap(row, "serviceName"),
+		Route:           optionalStringFromMap(row, "route"),
+		ToolName:        optionalStringFromMap(row, "toolName"),
+		RetrievalSource: optionalStringFromMap(row, "retrievalSource"),
+		Model:           optionalStringFromMap(row, "model"),
+		PromptVersionID: optionalStringFromMap(row, "promptVersionId"),
+		ExperimentRunID: optionalStringFromMap(row, "experimentRunId"),
+		SafeAttributes:  objectMap(row["safeAttributes"]),
+	}
+}
+
+func onlinePolicyTargetFromMap(values map[string]any) contracts.OnlinePolicyTarget {
+	return contracts.OnlinePolicyTarget{
+		AgentID:         optionalStringFromMap(values, "agentId"),
+		AgentName:       optionalStringFromMap(values, "agentName"),
+		Environment:     optionalStringFromMap(values, "environment"),
+		ServiceName:     optionalStringFromMap(values, "serviceName"),
+		Route:           optionalStringFromMap(values, "route"),
+		RoutePrefix:     optionalStringFromMap(values, "routePrefix"),
+		ToolName:        optionalStringFromMap(values, "toolName"),
+		RetrievalSource: optionalStringFromMap(values, "retrievalSource"),
+		Model:           optionalStringFromMap(values, "model"),
+		PromptVersionID: optionalStringFromMap(values, "promptVersionId"),
+		ExperimentRunID: optionalStringFromMap(values, "experimentRunId"),
+		Attributes:      onlineAttributeFilters(values["attributes"]),
+	}
+}
+
+func isEmptyOnlineTarget(target contracts.OnlinePolicyTarget) bool {
+	return target.AgentID == nil &&
+		target.AgentName == nil &&
+		target.Environment == nil &&
+		target.ServiceName == nil &&
+		target.Route == nil &&
+		target.RoutePrefix == nil &&
+		target.ToolName == nil &&
+		target.RetrievalSource == nil &&
+		target.Model == nil &&
+		target.PromptVersionID == nil &&
+		target.ExperimentRunID == nil &&
+		len(target.Attributes) == 0
+}
+
+func onlinePolicyTargetMatchesProjection(target contracts.OnlinePolicyTarget, projection contracts.OnlinePolicyProjectionReadModel) bool {
+	if !optionalStringEquals(target.AgentID, projection.AgentID) ||
+		!optionalStringEquals(target.AgentName, projection.AgentName) ||
+		!optionalStringEquals(target.Environment, projection.Environment) ||
+		!optionalStringEquals(target.ServiceName, projection.ServiceName) ||
+		!optionalStringEquals(target.Route, projection.Route) ||
+		!optionalStringEquals(target.ToolName, projection.ToolName) ||
+		!optionalStringEquals(target.RetrievalSource, projection.RetrievalSource) ||
+		!optionalStringEquals(target.Model, projection.Model) ||
+		!optionalStringEquals(target.PromptVersionID, projection.PromptVersionID) ||
+		!optionalStringEquals(target.ExperimentRunID, projection.ExperimentRunID) {
+		return false
+	}
+	if target.RoutePrefix != nil {
+		if projection.Route == nil || !strings.HasPrefix(*projection.Route, *target.RoutePrefix) {
+			return false
+		}
+	}
+	for _, filter := range target.Attributes {
+		if !onlineAttributeFilterMatches(projection.SafeAttributes, filter) {
+			return false
+		}
+	}
+	return true
+}
+
+func optionalStringEquals(want *string, got *string) bool {
+	if want == nil {
+		return true
+	}
+	return got != nil && *got == *want
+}
+
+func onlineAttributeFilters(value any) []contracts.OnlinePolicyAttributeFilter {
+	rows := mapSlice(value)
+	filters := make([]contracts.OnlinePolicyAttributeFilter, 0, len(rows))
+	for _, row := range rows {
+		key := aiEvalStringValue(row, "key", "")
+		operator := aiEvalStringValue(row, "operator", "")
+		if key == "" || operator == "" {
+			continue
+		}
+		filters = append(filters, contracts.OnlinePolicyAttributeFilter{
+			Key:      key,
+			Operator: contracts.AttributeFilterOperator(operator),
+			Value:    row["value"],
+		})
+	}
+	return filters
+}
+
+func onlineAttributeFilterMatches(attributes map[string]any, filter contracts.OnlinePolicyAttributeFilter) bool {
+	value, exists := attributes[filter.Key]
+	switch string(filter.Operator) {
+	case "exists":
+		return exists
+	case "eq":
+		return exists && fmt.Sprint(value) == fmt.Sprint(filter.Value)
+	case "neq":
+		return !exists || fmt.Sprint(value) != fmt.Sprint(filter.Value)
+	case "contains":
+		return exists && strings.Contains(fmt.Sprint(value), fmt.Sprint(filter.Value))
+	case "in":
+		return valueInList(value, filter.Value)
+	case "not_in":
+		return !valueInList(value, filter.Value)
+	default:
+		return false
+	}
+}
+
+func valueInList(value any, list any) bool {
+	for _, candidate := range anySlice(list) {
+		if fmt.Sprint(candidate) == fmt.Sprint(value) {
+			return true
+		}
+	}
+	return false
+}
+
+func anySlice(value any) []any {
+	if values, ok := value.([]any); ok {
+		return values
+	}
+	return nil
+}
+
+func optionalStringFromMap(values map[string]any, key string) *string {
+	value, ok := stringInput(values, key)
+	if !ok {
+		return nil
+	}
+	return &value
+}
+
+func objectMap(value any) map[string]any {
+	if values, ok := value.(map[string]any); ok && values != nil {
+		return values
+	}
+	return map[string]any{}
 }
 
 func aiEvalStringValue(input map[string]any, key string, fallback string) string {

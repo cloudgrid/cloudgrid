@@ -91,6 +91,61 @@ func TestAiEvalQueryHandlerRejectsInvalidJSONAndStoreFailures(t *testing.T) {
 	}
 }
 
+func TestOnlinePolicyMatchesResolveHandlerRoutesTypedRequest(t *testing.T) {
+	store := &aiEvalStoreForTest{
+		onlineMatches: contracts.OnlinePolicyMatchesResolveData{
+			Matches: []contracts.OnlinePolicyMatch{{
+				PolicyID:      "policy-1",
+				PolicyVersion: 1,
+				PolicyName:    "production",
+				SampleRate:    1,
+				ScorerRefs: []contracts.OnlinePolicyScorerRef{{
+					ScorerID:      "scorer-1",
+					ScorerVersion: 1,
+					Kind:          "deterministic",
+				}},
+				Projection: contracts.OnlinePolicyProjectionReadModel{
+					ProjectID:      "project-1",
+					TraceID:        "trace-1",
+					ProjectionID:   "agent-run-1",
+					Kind:           contracts.AiProjectionKindAgentRun,
+					SafeAttributes: map[string]any{"answer": "helpful"},
+				},
+			}},
+			Warnings: []string{"ignored disabled policy"},
+		},
+	}
+	request := contracts.OnlinePolicyMatchesResolveRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-online-resolve"},
+		ProjectID:      "project-1",
+		TraceID:        "trace-1",
+		ProjectionIDs:  []string{"agent-run-1"},
+		SpanIDs:        []string{"span-1"},
+		Kinds:          []contracts.AiProjectionKind{contracts.AiProjectionKindAgentRun},
+		PersistedAt:    time.Date(2026, 5, 16, 9, 0, 0, 0, time.UTC),
+	}
+	message := bridgeMessageForTest(SubjectEvalOnlinePolicyMatchesResolve, mustMarshalNATSHandlerTest(t, request))
+
+	handleOnlinePolicyMatchesResolve(store, nil)(message)
+
+	if len(store.onlineResolveRequests) != 1 {
+		t.Fatalf("online resolve calls = %d, want one", len(store.onlineResolveRequests))
+	}
+	if store.onlineResolveRequests[0].ProjectID != "project-1" || store.onlineResolveRequests[0].ProjectionIDs[0] != "agent-run-1" {
+		t.Fatalf("online resolve request = %#v", store.onlineResolveRequests[0])
+	}
+	var response contracts.OnlinePolicyMatchesResolveResponse
+	if err := json.Unmarshal(message.response, &response); err != nil {
+		t.Fatalf("response is not online resolve JSON: %v", err)
+	}
+	if !response.OK || response.RequestID != "req-online-resolve" || response.Data == nil {
+		t.Fatalf("response = %#v, want ok data", response)
+	}
+	if len(response.Data.Matches) != 1 || response.Data.Matches[0].PolicyID != "policy-1" {
+		t.Fatalf("response matches = %#v", response.Data.Matches)
+	}
+}
+
 func TestAiEvalLiveStartProgressFanoutAndStop(t *testing.T) {
 	now := time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)
 	publisher := &evalLivePublisherForTest{}
@@ -158,12 +213,15 @@ func TestAiEvalStorageReadSubjectsExcludeMutationSubjects(t *testing.T) {
 	for _, subject := range []string{
 		SubjectEvalAgentRunsSearch,
 		SubjectEvalDatasetSearch,
+		SubjectEvalDatasetTransferGet,
 		SubjectEvalDatasetHealth,
 		SubjectEvalScorerSearch,
 		SubjectEvalExperimentSearch,
 		SubjectEvalResultsSearch,
 		SubjectEvalQualityOverview,
+		SubjectEvalDatasetExportStart,
 		SubjectEvalManifestResolve,
+		SubjectEvalOnlinePolicyMatchesResolve,
 		SubjectAnnotationQueueSearch,
 		SubjectEvalLiveStart,
 		SubjectEvalLiveStop,
@@ -195,9 +253,11 @@ type aiEvalQueryCallForTest struct {
 }
 
 type aiEvalStoreForTest struct {
-	responses map[string]map[string]any
-	calls     []aiEvalQueryCallForTest
-	err       error
+	responses             map[string]map[string]any
+	onlineMatches         contracts.OnlinePolicyMatchesResolveData
+	calls                 []aiEvalQueryCallForTest
+	onlineResolveRequests []contracts.OnlinePolicyMatchesResolveRequest
+	err                   error
 }
 
 func (store *aiEvalStoreForTest) QueryAiEval(ctx context.Context, subject string, input map[string]any) (map[string]any, error) {
@@ -237,6 +297,15 @@ func (store *aiEvalStoreForTest) ResolveExperimentManifest(ctx context.Context, 
 		"experimentRunId": request.ExperimentRunID,
 		"experimentId":    request.ExperimentID,
 	}, nil
+}
+
+func (store *aiEvalStoreForTest) ResolveOnlinePolicyMatches(ctx context.Context, request contracts.OnlinePolicyMatchesResolveRequest) (contracts.OnlinePolicyMatchesResolveData, error) {
+	_ = ctx
+	store.onlineResolveRequests = append(store.onlineResolveRequests, request)
+	if store.err != nil {
+		return contracts.OnlinePolicyMatchesResolveData{}, store.err
+	}
+	return store.onlineMatches, nil
 }
 
 type evalLivePublisherForTest struct {

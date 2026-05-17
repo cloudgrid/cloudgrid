@@ -18,6 +18,7 @@ describe("BFF runtime config", () => {
       graphqlUI: true,
       frontendServeStatic: false,
       frontendStaticDir: "./apps/backend/public",
+      datasetTransferDir: ".cloudgrid/dataset-transfer",
     });
   });
 
@@ -42,6 +43,7 @@ describe("BFF runtime config", () => {
       },
       frontendServeStatic: true,
       frontendStaticDir: "/srv/cloudgrid/public",
+      datasetTransferDir: ".cloudgrid/dataset-transfer",
     });
   });
 

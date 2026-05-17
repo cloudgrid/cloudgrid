@@ -25,6 +25,10 @@ func RegisterEvalMutationResponders(nc interface {
 	publisher := natsAIEventPublisher{js: js}
 	for _, subject := range []string{
 		EvalDatasetCreateSubject,
+		EvalDatasetItemsAppendSubject,
+		EvalDatasetItemPromoteSubject,
+		EvalDatasetImportPrepareSubject,
+		EvalDatasetImportCommitSubject,
 		EvalScorerCreateSubject,
 		EvalExperimentCreateSubject,
 		EvalResultsPersistSubject,

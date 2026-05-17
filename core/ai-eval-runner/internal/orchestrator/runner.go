@@ -226,9 +226,11 @@ func (r *Runner) CancelExperimentRun(ctx context.Context, request CancelExperime
 }
 
 func (r *Runner) HandlePersistedProjections(ctx context.Context, notification ports.PersistedProjectionNotification) error {
-	_ = ctx
 	if notification.RequestID == "" {
 		return errors.New("requestId is required")
+	}
+	if notification.ProjectID == "" {
+		return errors.New("projectId is required")
 	}
 	if notification.TraceID == "" {
 		return errors.New("traceId is required")
@@ -238,6 +240,29 @@ func (r *Runner) HandlePersistedProjections(ctx context.Context, notification po
 	}
 	if len(notification.Kinds) == 0 {
 		return errors.New("kinds is required")
+	}
+	if r.reader == nil {
+		return errors.New("storage reader is required")
+	}
+	if r.writer == nil {
+		return errors.New("storage writer is required")
+	}
+	matches, err := r.reader.ResolveOnlinePolicyMatches(ctx, ports.OnlinePolicyResolveRequest{
+		RequestID:     notification.RequestID,
+		ProjectID:     notification.ProjectID,
+		TraceID:       notification.TraceID,
+		ProjectionIDs: append([]string(nil), notification.ProjectionIDs...),
+		SpanIDs:       append([]string(nil), notification.SpanIDs...),
+		Kinds:         append([]string(nil), notification.Kinds...),
+		PersistedAt:   notification.PersistedAt,
+	})
+	if err != nil {
+		return err
+	}
+	for _, match := range matches.Matches {
+		if err := r.handleOnlinePolicyMatch(ctx, match); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -332,6 +357,137 @@ func (r *Runner) scoreDatasetItemRun(ctx context.Context, scorer ports.Scorer, i
 	result.Evidence = score.Evidence
 	result.JudgeRunRef = score.JudgeRunRef
 	return result, nil
+}
+
+func (r *Runner) handleOnlinePolicyMatch(ctx context.Context, match ports.OnlinePolicyMatch) error {
+	for _, scorerRef := range match.ScorerRefs {
+		if match.SampleRate <= 0 {
+			if err := r.persistOnlineSkippedResult(ctx, match, scorerRef, "ERR-AIE-004"); err != nil {
+				return err
+			}
+			continue
+		}
+		if scorerRef.Kind != ports.ScorerKindDeterministic {
+			if err := r.persistOnlineSkippedResult(ctx, match, scorerRef, "ERR-AIE-002"); err != nil {
+				return err
+			}
+			continue
+		}
+		scorers, err := r.reader.SearchScorers(ctx, []string{scorerRef.ScorerID})
+		if err != nil {
+			return err
+		}
+		scorer, ok := findScorerVersion(scorers, scorerRef)
+		if !ok || scorer.Kind != ports.ScorerKindDeterministic {
+			if err := r.persistOnlineSkippedResult(ctx, match, scorerRef, "ERR-AIE-002"); err != nil {
+				return err
+			}
+			continue
+		}
+		score, err := scoring.DefinitionScorer{}.Score(scorer.Definition, onlineProjectionScoringValue(match.Projection))
+		if err != nil {
+			if err := r.persistOnlineSkippedResult(ctx, match, scorerRef, "ERR-AIE-002"); err != nil {
+				return err
+			}
+			continue
+		}
+		result := ports.EvalResult{
+			ID:            r.idGenerator(),
+			ScorerID:      scorer.ID,
+			ScorerVersion: scorer.Version,
+			TargetKind:    onlineTargetKind(match.Projection.Kind),
+			TargetID:      match.Projection.ProjectionID,
+			Score:         score.Score,
+			Passed:        score.Passed,
+			ProducedAt:    r.now(),
+			Evidence: map[string]any{
+				"online":        true,
+				"policyId":      match.PolicyID,
+				"policyVersion": match.PolicyVersion,
+				"policyName":    match.PolicyName,
+			},
+		}
+		if err := r.persistOnlineEvalResult(ctx, result); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Runner) persistOnlineSkippedResult(ctx context.Context, match ports.OnlinePolicyMatch, scorerRef ports.OnlinePolicyScorerRef, reason string) error {
+	result := ports.EvalResult{
+		ID:            r.idGenerator(),
+		ScorerID:      scorerRef.ScorerID,
+		ScorerVersion: scorerRef.ScorerVersion,
+		TargetKind:    onlineTargetKind(match.Projection.Kind),
+		TargetID:      match.Projection.ProjectionID,
+		Score:         0,
+		Passed:        false,
+		ProducedAt:    r.now(),
+		Evidence: map[string]any{
+			"online":        true,
+			"status":        "skipped",
+			"reason":        reason,
+			"policyId":      match.PolicyID,
+			"policyVersion": match.PolicyVersion,
+			"policyName":    match.PolicyName,
+		},
+	}
+	return r.persistOnlineEvalResult(ctx, result)
+}
+
+func (r *Runner) persistOnlineEvalResult(ctx context.Context, result ports.EvalResult) error {
+	resultKey, err := idempotency.EvalResultKey(result.TargetKind, result.TargetID, result.ScorerID, result.ScorerVersion)
+	if err != nil {
+		return err
+	}
+	return r.writer.PersistEvalResult(ctx, resultKey, result)
+}
+
+func findScorerVersion(scorers []ports.Scorer, ref ports.OnlinePolicyScorerRef) (ports.Scorer, bool) {
+	for _, scorer := range scorers {
+		if scorer.ID == ref.ScorerID && scorer.Version == ref.ScorerVersion {
+			return scorer, true
+		}
+	}
+	return ports.Scorer{}, false
+}
+
+func onlineTargetKind(kind string) string {
+	switch kind {
+	case "span", "llm_call", "tool_call", "retrieval_event":
+		return ports.EvalTargetKindSpan
+	default:
+		return ports.EvalTargetKindAgentRun
+	}
+}
+
+func onlineProjectionScoringValue(projection ports.OnlinePolicyProjection) map[string]any {
+	value := map[string]any{
+		"projectId":      projection.ProjectID,
+		"traceId":        projection.TraceID,
+		"spanId":         projection.SpanID,
+		"projectionId":   projection.ProjectionID,
+		"kind":           projection.Kind,
+		"safeAttributes": projection.SafeAttributes,
+	}
+	putOnlineScoringString(value, "agentId", projection.AgentID)
+	putOnlineScoringString(value, "agentName", projection.AgentName)
+	putOnlineScoringString(value, "environment", projection.Environment)
+	putOnlineScoringString(value, "serviceName", projection.ServiceName)
+	putOnlineScoringString(value, "route", projection.Route)
+	putOnlineScoringString(value, "toolName", projection.ToolName)
+	putOnlineScoringString(value, "retrievalSource", projection.RetrievalSource)
+	putOnlineScoringString(value, "model", projection.Model)
+	putOnlineScoringString(value, "promptVersionId", projection.PromptVersionID)
+	putOnlineScoringString(value, "experimentRunId", projection.ExperimentRunID)
+	return value
+}
+
+func putOnlineScoringString(values map[string]any, key string, value string) {
+	if value != "" {
+		values[key] = value
+	}
 }
 
 func (r *Runner) loadExperiment(ctx context.Context, experimentID string) (ports.Experiment, error) {

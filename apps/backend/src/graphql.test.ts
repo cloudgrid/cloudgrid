@@ -4,6 +4,7 @@ import type {
   LiveTraceEvent,
   LiveTraceInput,
   LogSearchInput,
+  RichMetricSeriesInput,
   TelemetryFacetInput,
   TelemetryFacetResult,
   TraceDetail,
@@ -384,6 +385,202 @@ describe("BFF GraphQL telemetry resolvers", () => {
     });
   });
 
+  test("resolves rich metric series through storage-read bridge without local formula work", async () => {
+    let receivedInput: RichMetricSeriesInput | undefined;
+    const { app } = createAppWithBridge(
+      bridge({
+        richMetricSeries: async (input: RichMetricSeriesInput) => {
+          receivedInput = input;
+          return richMetricSeriesResult();
+        },
+      }),
+      { graphqlUI: false },
+    );
+
+    const input: RichMetricSeriesInput = {
+      from: "2026-05-14T08:00:00.000Z",
+      to: "2026-05-14T09:00:00.000Z",
+      query: {
+        timeWindow: "PT1H",
+        interval: "PT1M",
+        queries: [
+          {
+            id: "errors",
+            label: "Errors",
+            metricName: "http.server.requests",
+            aggregation: "sum",
+            filters: [{ key: "http.status_code", operator: "gte", value: 500 }],
+            maxSeries: 20,
+          },
+          {
+            id: "total",
+            label: "Total",
+            metricName: "http.server.requests",
+            aggregation: "sum",
+            maxSeries: 20,
+          },
+        ],
+        formulas: [
+          {
+            id: "error_rate",
+            label: "Error rate",
+            expression: {
+              kind: "function",
+              function: "ratio",
+              arguments: [
+                { kind: "ref", refId: "errors" },
+                { kind: "ref", refId: "total" },
+              ],
+            },
+            unit: "1",
+          },
+        ],
+        displaySeries: [
+          {
+            id: "display_error_rate",
+            label: "Error rate",
+            sourceId: "error_rate",
+            visible: true,
+          },
+        ],
+      },
+    };
+
+    const response = await app.request("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: `
+          query RichMetricSeries($input: RichMetricSeriesInput!) {
+            richMetricSeries(input: $input) {
+              interval
+              series { id label sourceId unit labels points { timestamp value count exemplars { traceId spanId } } }
+              displaySeries { id label sourceId visible }
+              warnings { code field message }
+            }
+          }
+        `,
+        variables: { input },
+      }),
+    });
+
+    const body = await response.json();
+
+    expect(body.errors).toBeUndefined();
+    expect(body.data.richMetricSeries.series[0]).toMatchObject({
+      id: "error_rate",
+      label: "Error rate",
+      sourceId: "error_rate",
+      unit: "1",
+    });
+    expect(receivedInput).toEqual({
+      from: "2026-05-14T08:00:00.000Z",
+      to: "2026-05-14T09:00:00.000Z",
+      query: {
+        timeWindow: "PT1H",
+        interval: "PT1M",
+        queries: [
+          {
+            id: "errors",
+            label: "Errors",
+            metricName: "http.server.requests",
+            aggregation: "sum",
+            groupBy: [],
+            filters: [{ key: "http.status_code", operator: "gte", value: 500 }],
+            maxSeries: 20,
+          },
+          {
+            id: "total",
+            label: "Total",
+            metricName: "http.server.requests",
+            aggregation: "sum",
+            groupBy: [],
+            filters: [],
+            maxSeries: 20,
+          },
+        ],
+        formulas: [
+          {
+            id: "error_rate",
+            label: "Error rate",
+            expression: {
+              kind: "function",
+              function: "ratio",
+              arguments: [
+                { kind: "ref", refId: "errors", arguments: [] },
+                { kind: "ref", refId: "total", arguments: [] },
+              ],
+            },
+            unit: "1",
+          },
+        ],
+        displaySeries: [
+          {
+            id: "display_error_rate",
+            label: "Error rate",
+            sourceId: "error_rate",
+            visible: true,
+          },
+        ],
+      },
+    });
+  });
+
+  test("maps invalid rich metric formula references to validation problem details", async () => {
+    const { app } = createAppWithBridge(bridge(), { graphqlUI: false });
+
+    const response = await app.request("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: `
+          query RichMetricSeries($input: RichMetricSeriesInput!) {
+            richMetricSeries(input: $input) { interval }
+          }
+        `,
+        variables: {
+          input: {
+            from: "2026-05-14T08:00:00.000Z",
+            to: "2026-05-14T09:00:00.000Z",
+            query: {
+              queries: [
+                {
+                  id: "total",
+                  label: "Total",
+                  metricName: "http.server.requests",
+                  aggregation: "sum",
+                },
+              ],
+              formulas: [
+                {
+                  id: "error_rate",
+                  label: "Error rate",
+                  expression: {
+                    kind: "function",
+                    function: "ratio",
+                    arguments: [
+                      { kind: "ref", refId: "missing" },
+                      { kind: "ref", refId: "total" },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        },
+      }),
+    });
+
+    const body = await response.json();
+
+    expect(body.errors[0].extensions.code).toBe("VALIDATION_FAILED");
+    expect(body.errors[0].extensions.problem).toMatchObject({
+      id: "ERR-001",
+      code: "VALIDATION_FAILED",
+      retryable: false,
+    });
+  });
+
   test("resolves dashboard list, mutations, and pins through control-plane bridge", async () => {
     const calls: string[] = [];
     const controlBridge = {
@@ -746,6 +943,9 @@ function bridge(
     async metricSeries() {
       return metricSeriesResult();
     },
+    async richMetricSeries() {
+      return richMetricSeriesResult();
+    },
     subscribeLiveTraces(_input: LiveTraceInput) {
       return liveEvents([]);
     },
@@ -840,6 +1040,46 @@ function metricSeriesResult() {
             ],
           },
         ],
+      },
+    ],
+    warnings: [],
+  };
+}
+
+function richMetricSeriesResult() {
+  return {
+    interval: "PT1M",
+    series: [
+      {
+        id: "error_rate",
+        label: "Error rate",
+        sourceId: "error_rate",
+        unit: "1",
+        labels: { service: "api" },
+        points: [
+          {
+            timestamp: "2026-05-14T08:01:00.000Z",
+            value: 0.05,
+            count: 1,
+            exemplars: [
+              {
+                timestamp: "2026-05-14T08:01:00.000Z",
+                value: 0.05,
+                traceId: "trace-1",
+                spanId: "span-1",
+                attributes: {},
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    displaySeries: [
+      {
+        id: "display_error_rate",
+        label: "Error rate",
+        sourceId: "error_rate",
+        visible: true,
       },
     ],
     warnings: [],

@@ -1,14 +1,18 @@
 import type {
   AiQualityOverview,
   AiQualityOverviewInput,
-  CreateProjectInput,
-  CreateIngestCredentialInput,
   AlertEventConnection,
   AlertRule,
   AlertRuleSearchInput,
   AlertSilence,
   CreateAlertRuleInput,
   CreateAlertSilenceInput,
+  CreateIngestCredentialInput,
+  CreateProjectInput,
+  DatasetExportJob,
+  DatasetImportJob,
+  ExperimentRun,
+  ExperimentRunEvent,
   InviteOrganizationMemberInput,
   LiveTraceEvent,
   LiveTraceInput,
@@ -21,9 +25,9 @@ import type {
   ProjectListInput,
   ProjectMember,
   ProjectRole,
+  RemoveOrganizationMemberInput,
   RetentionPolicy,
   RetentionRuleInput,
-  RemoveOrganizationMemberInput,
   TelemetryFacetInput,
   TraceDetail,
   TraceDetailInput,
@@ -34,8 +38,6 @@ import type {
   UpdateProjectInput,
   UpdateRetentionPolicyInput,
   Viewer,
-  ExperimentRun,
-  ExperimentRunEvent,
 } from "@cloudgrid/ui-contracts";
 import type { NormalizedAuthContext } from "./auth";
 import type { CloudGridBridge } from "./bridge";
@@ -277,6 +279,14 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
         warnings: [],
       };
     },
+    async richMetricSeries() {
+      return {
+        interval: "PT1M",
+        series: [],
+        displaySeries: [],
+        warnings: [],
+      };
+    },
     async dashboards() {
       return { items: [], pinnedDashboardIds: [] };
     },
@@ -330,6 +340,12 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
     },
     async dataset() {
       return null;
+    },
+    async datasetImport() {
+      return datasetImportJob();
+    },
+    async datasetExport() {
+      return datasetExportJob();
     },
     async datasetItems() {
       return { items: [], nextCursor: null };
@@ -386,6 +402,15 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
         health: datasetHealth(),
         tags: [],
       };
+    },
+    async prepareDatasetImport() {
+      return datasetImportJob();
+    },
+    async commitDatasetImport() {
+      return { ...datasetImportJob(), status: "committed" as const, committedDatasetVersion: 2 };
+    },
+    async startDatasetExport() {
+      return datasetExportJob();
     },
     async promoteSpanToDatasetItem() {
       return {
@@ -548,6 +573,41 @@ function datasetHealth() {
     schemaIssueCount: 0,
     smallDataset: true,
     warnings: [],
+  };
+}
+
+function datasetImportJob(): DatasetImportJob {
+  return {
+    id: "import-1",
+    datasetId: "dataset-1",
+    status: "preview_ready",
+    format: "jsonl",
+    sourceFiles: [],
+    mapping: {},
+    defaults: {},
+    previewRows: [],
+    totalRows: 0,
+    validRows: 0,
+    errorRows: 0,
+    warnings: [],
+    createdAt: "2026-05-12T10:00:00.000Z",
+    expiresAt: "2026-05-13T10:00:00.000Z",
+  };
+}
+
+function datasetExportJob(): DatasetExportJob {
+  return {
+    id: "export-1",
+    datasetId: "dataset-1",
+    datasetVersion: 1,
+    status: "ready",
+    format: "jsonl",
+    rowCount: 0,
+    sizeBytes: 0,
+    sha256: "sha",
+    downloadUrl: "/api/ai-eval/dataset-exports/export-1/download",
+    createdAt: "2026-05-12T10:00:00.000Z",
+    expiresAt: "2026-05-13T10:00:00.000Z",
   };
 }
 

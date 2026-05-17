@@ -17,6 +17,7 @@ const (
 	SubjectLogSearch                = "telemetry.logs.search"
 	SubjectMetricNames              = "telemetry.metrics.names"
 	SubjectMetricQuery              = "telemetry.metrics.query"
+	SubjectRichMetricQuery          = "telemetry.metrics.rich_query"
 	SubjectTelemetryFacets          = "telemetry.facets"
 	SubjectLiveTraceStart           = "telemetry.traces.live.start"
 	SubjectLiveTraceStop            = "telemetry.traces.live.stop"
@@ -250,6 +251,41 @@ func handleMetricSeriesQuery(store ports.TelemetryReadStore, logger *slog.Logger
 		response := contracts.MetricSeriesResponse{RequestID: request.RequestID, OK: true, Data: &data}
 		respond(msg, response)
 		logHandlerCompletion(logger, SubjectMetricQuery, response.RequestID, true, start, nil)
+	}
+}
+
+func handleRichMetricSeriesQuery(store ports.TelemetryReadStore, logger *slog.Logger) bridgeMessageHandler {
+	return func(msg BridgeMessage) {
+		start := time.Now()
+		var request contracts.RichMetricSeriesRequest
+		if err := json.Unmarshal(msg.Data(), &request); err != nil {
+			response := contracts.RichMetricSeriesResponse{
+				RequestID: "",
+				OK:        false,
+				Error:     ptr(bridgeErrorFromError(validationError("invalid rich metric series request JSON"))),
+			}
+			respond(msg, response)
+			logHandlerCompletion(logger, SubjectRichMetricQuery, response.RequestID, false, start, response.Error)
+			return
+		}
+		if err := validateTelemetryRead(request.AuthContext); err != nil {
+			response := contracts.RichMetricSeriesResponse{RequestID: request.RequestID, OK: false, Error: ptr(bridgeErrorFromError(err))}
+			respond(msg, response)
+			logHandlerCompletion(logger, SubjectRichMetricQuery, response.RequestID, false, start, response.Error)
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		defer cancel()
+		data, err := QueryRichMetricSeriesFromMetricSeries(ctx, store, request.Input, request.AuthContext)
+		if err != nil {
+			response := contracts.RichMetricSeriesResponse{RequestID: request.RequestID, OK: false, Error: ptr(bridgeErrorFromError(err))}
+			respond(msg, response)
+			logHandlerCompletion(logger, SubjectRichMetricQuery, response.RequestID, false, start, response.Error)
+			return
+		}
+		response := contracts.RichMetricSeriesResponse{RequestID: request.RequestID, OK: true, Data: &data}
+		respond(msg, response)
+		logHandlerCompletion(logger, SubjectRichMetricQuery, response.RequestID, true, start, nil)
 	}
 }
 
