@@ -77,11 +77,11 @@ import MockFrame from "../../components/visuals/MockFrame.astro";
         <li>Read the <a href="/handbook/configuration">Configuration page</a> for SSO and project setup.</li>
       </ul>
 
-      <h2>Where the contracts live</h2>
+      <h2>What CloudGrid accepts</h2>
       <p>
-        The OTLP ingest contract, message bridge subjects, and GraphQL schema are all defined in
-        <a href="https://github.com/cloudgriddev/cloudgrid/tree/main/specs" target="_blank" rel="noopener noreferrer">the specs directory</a>.
-        The Handbook describes them in prose; the specs are the law.
+        OTLP HTTP on <code>4318</code> and OTLP/gRPC on <code>4317</code> for traces, logs,
+        and metrics. JSON and protobuf encodings. No CloudGrid-specific SDK exists, and that
+        is intentional — your existing OpenTelemetry pipeline is the SDK.
       </p>
     </div>
   </Section>

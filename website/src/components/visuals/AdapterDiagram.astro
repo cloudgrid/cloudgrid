@@ -5,33 +5,41 @@ const adapters = [
     port: "storage-read · storage-write",
     v1: "SurrealDB",
     color: "var(--color-cyan)",
+    bullets: ["filter & facet pushdown", "idempotent persistence", "live trace fanout"],
   },
   {
     title: "Message bridge",
-    port: "bridge ports · request/reply · streams",
+    port: "request/reply · streams · live subjects",
     v1: "NATS JetStream",
     color: "var(--color-brand)",
+    bullets: ["durable ingest", "typed request/reply", "ephemeral session fanout"],
   },
   {
-    title: "Auth",
-    port: "auth provider port",
+    title: "Auth provider",
+    port: "OIDC/OAuth · session boundary",
     v1: "GitHub · Google · Entra ID",
     color: "var(--color-emerald)",
+    bullets: ["BFF-managed cookies", "no provider tokens in browser", "claim canonicalization"],
   },
   {
     title: "Eval harness",
-    port: "harness adapter (HTTP)",
-    v1: "puristajs/harness",
+    port: "/v1/run · /v1/score · /v1/optimize",
+    v1: "puristajs / harness",
     color: "var(--color-violet)",
+    bullets: ["W3C trace context preserved", "no provider creds in CloudGrid", "idempotent retries"],
   },
 ];
 ---
 
-<div class="grid sm:grid-cols-2 gap-4">
-  {adapters.map((a) => (
-    <div class="relative rounded-xl border border-border-default bg-surface p-5 overflow-hidden">
-      <div class="flex items-center justify-between mb-3">
-        <div class="text-xs font-semibold uppercase tracking-wider" style={`color:${a.color}`}>
+<div class="grid sm:grid-cols-2 gap-5">
+  {adapters.map((a, i) => (
+    <div
+      class="card spotlight is-interactive flex h-full flex-col p-6"
+      data-delay={(i + 1) as any}
+      style={`--accent: ${a.color};`}
+    >
+      <div class="flex items-center justify-between">
+        <div class="chip" style={`background: color-mix(in srgb, ${a.color} 14%, transparent); color: ${a.color};`}>
           {a.title}
         </div>
         <span class="text-[10px] font-mono px-2 py-0.5 rounded-full border border-border-default bg-recessed text-text-muted">
@@ -39,9 +47,8 @@ const adapters = [
         </span>
       </div>
 
-      <!-- Port slot visual -->
-      <div class="flex items-stretch gap-2 mb-3">
-        <div class="flex-1 rounded-md border border-dashed border-border-default px-3 py-2 text-xs text-text-secondary font-mono">
+      <div class="mt-5 flex items-stretch gap-3">
+        <div class="flex-1 rounded-lg border border-dashed border-border-default px-3 py-2.5 text-xs font-mono text-text-secondary">
           {a.port}
         </div>
         <div class="flex items-center text-text-muted">
@@ -50,15 +57,27 @@ const adapters = [
           </svg>
         </div>
         <div
-          class="flex-1 rounded-md px-3 py-2 text-xs font-mono"
-          style={`background: color-mix(in srgb, ${a.color} 12%, transparent); color:${a.color}; border:1px solid color-mix(in srgb, ${a.color} 35%, transparent);`}
+          class="flex-1 rounded-lg px-3 py-2.5 text-xs font-mono font-semibold"
+          style={`background: color-mix(in srgb, ${a.color} 14%, transparent); color: ${a.color}; border: 1px solid color-mix(in srgb, ${a.color} 40%, transparent);`}
         >
           {a.v1}
         </div>
       </div>
 
-      <div class="text-xs text-text-muted">
-        Implement the port; ship a new adapter. The v1 implementation is just one of many.
+      <ul class="mt-5 space-y-1.5 text-xs text-text-secondary">
+        {a.bullets.map((b) => (
+          <li class="flex gap-2 items-start">
+            <span
+              class="mt-1 inline-block w-1 h-1 rounded-full"
+              style={`background:${a.color}`}
+            ></span>
+            {b}
+          </li>
+        ))}
+      </ul>
+
+      <div class="mt-auto pt-5 text-xs text-text-muted">
+        Implement the port. Ship a new adapter. The v1 is one of many.
       </div>
     </div>
   ))}

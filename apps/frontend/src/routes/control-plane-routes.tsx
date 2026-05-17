@@ -5,17 +5,20 @@ import type {
   OrganizationInvitation,
   OrganizationMember,
   Project,
+  ProjectAiSettings,
   ProjectMember,
   ProjectRole,
   RetentionDataClass,
   RetentionMode,
   RetentionRule,
+  UpdateProjectAiSettingsInput,
 } from "@cloudgrid/ui-contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   ArrowLeft,
   ArrowRight,
+  Bot,
   Building2,
   CheckCircle2,
   ClipboardCopy,
@@ -37,10 +40,10 @@ import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "re
 import { Link, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import { CodeBlock } from "../components/code-block";
 import { CopyButton } from "../components/copy-button";
+import { SearchInput } from "../components/search-input";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { SearchInput } from "../components/search-input";
 import {
   Dialog,
   DialogClose,
@@ -1237,7 +1240,7 @@ function ProjectSettingsShell({
   children: ReactNode;
   project: Project;
 }) {
-  const sections = buildProjectSettingsSections(project.id);
+  const sections = buildProjectSettingsSections(project.id, { aiEvalEnabled });
 
   return (
     <section className="grid h-full min-h-0 gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
@@ -1297,11 +1300,155 @@ function ProjectSettingsContent({
     return <ProjectRetentionSettings client={client} project={project} />;
   }
 
+  if (activeSection === "ai-eval") {
+    return <ProjectAiEvalSettings client={client} project={project} />;
+  }
+
   if (activeSection === "members") {
     return <ProjectMembersSettings client={client} project={project} />;
   }
 
   return null;
+}
+
+function ProjectAiEvalSettings({
+  client,
+  project,
+}: {
+  client: ReturnType<typeof useAppSession>["client"];
+  project: Project;
+}) {
+  const queryClient = useQueryClient();
+  const [saved, setSaved] = useState(false);
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.projectAiSettings(project.id),
+    queryFn: () => client.getProjectAiSettings(project.id),
+  });
+  const updateMutation = useMutation({
+    mutationFn: client.updateProjectAiSettings,
+    async onSuccess(settings) {
+      setSaved(true);
+      queryClient.setQueryData(queryKeys.projectAiSettings(project.id), settings);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.projectAiSettings(project.id) });
+    },
+  });
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const settings = settingsQuery.data;
+    if (!settings) {
+      return;
+    }
+    const form = new FormData(event.currentTarget);
+    setSaved(false);
+    updateMutation.mutate(toProjectAiSettingsInput(settings, form.get("enabled") === "on"));
+  }
+
+  return (
+    <SettingsFormSurface>
+      {settingsQuery.isError ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-destructive">{t("projects.settings.aiEvalLoadError")}</p>
+          <Button
+            onClick={() => void settingsQuery.refetch()}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <RefreshCw data-icon="inline-start" />
+            {t("actions.retry")}
+          </Button>
+        </div>
+      ) : null}
+      <form className="grid max-w-4xl gap-5" onSubmit={submit}>
+        <div className="flex items-start gap-3 border-b pb-4">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background">
+            <Bot className="size-4" aria-hidden />
+          </span>
+          <div className="grid gap-3">
+            <Label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                className="size-4 accent-primary"
+                defaultChecked={settingsQuery.data?.enabled ?? false}
+                disabled={!settingsQuery.data || updateMutation.isPending}
+                name="enabled"
+                type="checkbox"
+              />
+              {t("projects.settings.aiEvalEnabled")}
+            </Label>
+            <p className="max-w-2xl text-sm text-muted-foreground">
+              {t("projects.settings.aiEvalEnabledDescription")}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <ReadOnlyField
+            label={t("projects.settings.aiEvalProviders")}
+            value={
+              settingsQuery.data
+                ? String(settingsQuery.data.providerProfiles.length)
+                : t("state.loading")
+            }
+          />
+          <ReadOnlyField
+            label={t("projects.settings.aiEvalModelAliases")}
+            value={
+              settingsQuery.data
+                ? String(settingsQuery.data.modelAliases.length)
+                : t("state.loading")
+            }
+          />
+          <ReadOnlyField
+            label={t("projects.settings.aiEvalOnlinePolicies")}
+            value={
+              settingsQuery.data
+                ? String(settingsQuery.data.onlinePolicies.length)
+                : t("state.loading")
+            }
+          />
+          <ReadOnlyField
+            label={t("projects.settings.aiEvalBudget")}
+            value={
+              settingsQuery.data
+                ? `${formatUsd(settingsQuery.data.budget.spentTodayUsd)} / ${formatUsd(
+                    settingsQuery.data.budget.dailyUsd,
+                  )}`
+                : t("state.loading")
+            }
+          />
+        </div>
+
+        {settingsQuery.data?.effective.warnings.length ? (
+          <Alert>
+            <AlertTitle>{t("projects.settings.aiEvalWarnings")}</AlertTitle>
+            <AlertDescription>{settingsQuery.data.effective.warnings.join(", ")}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button disabled={!settingsQuery.data || updateMutation.isPending} type="submit">
+            <Save data-icon="inline-start" />
+            {t("projects.settings.aiEvalSave")}
+          </Button>
+          <Button asChild type="button" variant="outline">
+            <Link to="/ai-eval">
+              <ArrowRight data-icon="inline-start" />
+              {t("projects.settings.aiEvalOpenWorkspace")}
+            </Link>
+          </Button>
+          {saved ? (
+            <span className="text-sm text-muted-foreground">
+              {t("projects.settings.aiEvalSaved")}
+            </span>
+          ) : null}
+          {updateMutation.isError ? (
+            <span className="text-sm text-destructive">{t("projects.settings.aiEvalError")}</span>
+          ) : null}
+        </div>
+      </form>
+    </SettingsFormSurface>
+  );
 }
 
 function ProjectRetentionSettings({
@@ -2249,6 +2396,66 @@ function numberField(value: FormDataEntryValue | null) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function toProjectAiSettingsInput(
+  settings: ProjectAiSettings,
+  enabled: boolean,
+): UpdateProjectAiSettingsInput {
+  return {
+    projectId: settings.projectId,
+    enabled,
+    defaultProviderProfileId: settings.defaultProviderProfileId ?? null,
+    defaultJudgeProfileId: settings.defaultJudgeProfileId ?? null,
+    defaultOptimizerProfileId: settings.defaultOptimizerProfileId ?? null,
+    defaultEmbeddingProfileId: settings.defaultEmbeddingProfileId ?? null,
+    providerProfiles: settings.providerProfiles.map((profile) => ({
+      id: profile.id,
+      label: profile.label,
+      providerKind: profile.providerKind,
+      baseUrl: profile.baseUrl ?? null,
+      credentialRef: profile.credentialRef ?? null,
+      models: profile.models,
+      timeoutMs: profile.timeoutMs,
+      maxConcurrency: profile.maxConcurrency ?? null,
+      disabled: Boolean(profile.disabledAt),
+    })),
+    modelAliases: settings.modelAliases.map((alias) => ({
+      id: alias.id,
+      name: alias.name,
+      providerProfileId: alias.providerProfileId,
+      model: alias.model,
+      purpose: alias.purpose,
+      parameters: alias.parameters,
+    })),
+    onlinePolicies: settings.onlinePolicies.map((policy) => ({
+      id: policy.id,
+      enabled: policy.enabled,
+      name: policy.name,
+      target: policy.target,
+      scorerIds: policy.scorerIds,
+      sampleRate: policy.sampleRate,
+      maxDailyRuns: policy.maxDailyRuns ?? null,
+      annotationRules: policy.annotationRules.map((rule) => ({
+        reason: rule.reason,
+        threshold: rule.threshold ?? null,
+        assignTo: rule.assignTo ?? null,
+        datasetId: rule.datasetId ?? null,
+      })),
+    })),
+    budget: {
+      dailyUsd: settings.budget.dailyUsd,
+      perRunUsd: settings.budget.perRunUsd ?? null,
+      deterministicOnly: settings.budget.deterministicOnly,
+    },
+    sampling: settings.sampling,
+    datasetDefaults: settings.datasetDefaults,
+    expectedVersion: settings.version,
+  };
+}
+
+function formatUsd(value: number) {
+  return `$${value.toFixed(2)}`;
+}
+
 function retentionDataClassLabel(dataClass: RetentionDataClass) {
   const labels: Record<RetentionDataClass, string> = {
     TRACES: "Traces",
@@ -2282,7 +2489,7 @@ function adminNavLabel(id: "organization" | "projects" | "members") {
   return t("companies.title");
 }
 
-function projectSettingsNavLabel(id: "general" | "ingest" | "retention" | "members") {
+function projectSettingsNavLabel(id: "general" | "ingest" | "retention" | "ai-eval" | "members") {
   if (id === "general") {
     return t("projects.settings.general");
   }
@@ -2292,13 +2499,16 @@ function projectSettingsNavLabel(id: "general" | "ingest" | "retention" | "membe
   if (id === "retention") {
     return t("projects.settings.retention");
   }
+  if (id === "ai-eval") {
+    return t("projects.settings.aiEval");
+  }
   if (id === "members") {
     return t("projects.settings.members");
   }
   return t("projects.settings.general");
 }
 
-function projectSettingsTitle(id: "general" | "ingest" | "retention" | "members") {
+function projectSettingsTitle(id: "general" | "ingest" | "retention" | "ai-eval" | "members") {
   if (id === "general") {
     return t("projects.settings.general");
   }
@@ -2308,18 +2518,26 @@ function projectSettingsTitle(id: "general" | "ingest" | "retention" | "members"
   if (id === "retention") {
     return t("projects.settings.retention");
   }
+  if (id === "ai-eval") {
+    return t("projects.settings.aiEval");
+  }
   if (id === "members") {
     return t("projects.settings.members");
   }
   return t("projects.settings.general");
 }
 
-function projectSettingsDescription(id: "general" | "ingest" | "retention" | "members") {
+function projectSettingsDescription(
+  id: "general" | "ingest" | "retention" | "ai-eval" | "members",
+) {
   if (id === "ingest") {
     return t("projects.settings.setupDescription");
   }
   if (id === "retention") {
     return t("projects.settings.retentionDescription");
+  }
+  if (id === "ai-eval") {
+    return t("projects.settings.aiEvalDescription");
   }
   if (id === "members") {
     return t("projects.settings.projectMembersDescription");
@@ -2336,6 +2554,9 @@ function projectSettingsSectionFromPath(pathname: string) {
   }
   if (pathname.endsWith("/retention")) {
     return "retention" as const;
+  }
+  if (pathname.endsWith("/ai-eval")) {
+    return "ai-eval" as const;
   }
   if (pathname.endsWith("/members")) {
     return "members" as const;

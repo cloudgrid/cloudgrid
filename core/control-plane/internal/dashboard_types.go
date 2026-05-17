@@ -20,6 +20,7 @@ const (
 	DashboardWidgetKindMetricTimeseries DashboardWidgetKind = "metric_timeseries"
 	DashboardWidgetKindMetricStat       DashboardWidgetKind = "metric_stat"
 	DashboardWidgetKindMetricTable      DashboardWidgetKind = "metric_table"
+	DashboardWidgetKindMetricRich       DashboardWidgetKind = "metric_rich"
 	DashboardWidgetKindLogTable         DashboardWidgetKind = "log_table"
 	DashboardWidgetKindTraceTable       DashboardWidgetKind = "trace_table"
 	DashboardWidgetKindLiveTraceTable   DashboardWidgetKind = "live_trace_table"
@@ -62,15 +63,16 @@ type DashboardWidgetLayoutInput struct {
 }
 
 type DashboardWidgetInput struct {
-	ID          string                         `json:"id"`
-	Title       string                         `json:"title"`
-	Description *string                        `json:"description,omitempty"`
-	Kind        DashboardWidgetKind            `json:"kind"`
-	Layout      DashboardWidgetLayoutInput     `json:"layout"`
-	Metric      *DashboardMetricWidgetInput    `json:"metric,omitempty"`
-	Logs        *DashboardLogWidgetInput       `json:"logs,omitempty"`
-	Traces      *DashboardTraceWidgetInput     `json:"traces,omitempty"`
-	LiveTraces  *DashboardLiveTraceWidgetInput `json:"liveTraces,omitempty"`
+	ID          string                          `json:"id"`
+	Title       string                          `json:"title"`
+	Description *string                         `json:"description,omitempty"`
+	Kind        DashboardWidgetKind             `json:"kind"`
+	Layout      DashboardWidgetLayoutInput      `json:"layout"`
+	Metric      *DashboardMetricWidgetInput     `json:"metric,omitempty"`
+	RichMetric  *DashboardRichMetricWidgetInput `json:"richMetric,omitempty"`
+	Logs        *DashboardLogWidgetInput        `json:"logs,omitempty"`
+	Traces      *DashboardTraceWidgetInput      `json:"traces,omitempty"`
+	LiveTraces  *DashboardLiveTraceWidgetInput  `json:"liveTraces,omitempty"`
 }
 
 type DashboardMetricWidgetInput struct {
@@ -85,6 +87,29 @@ type DashboardMetricWidgetInput struct {
 	MaxSeries     *int                        `json:"maxSeries,omitempty"`
 	Thresholds    []DashboardThresholdInput   `json:"thresholds"`
 }
+
+type DashboardRichMetricWidgetInput struct {
+	Query         DashboardMetricQueryInput `json:"query"`
+	Visualization contracts.MetricChartType `json:"visualization"`
+	Legend        *bool                     `json:"legend,omitempty"`
+	MaxSeries     *int                      `json:"maxSeries,omitempty"`
+	Thresholds    []DashboardThresholdInput `json:"thresholds"`
+}
+
+type DashboardMetricQueryInput = contracts.DashboardMetricQueryInput
+type DashboardMetricQueryRowInput = contracts.DashboardMetricQueryRowInput
+type DashboardMetricFormulaInput = contracts.DashboardMetricFormulaInput
+type DashboardMetricFormulaExpressionInput = contracts.DashboardMetricFormulaExpressionInput
+type DashboardMetricDisplaySeriesInput = contracts.DashboardMetricDisplaySeriesInput
+type DashboardMetricFormulaExpressionKind = contracts.DashboardMetricFormulaExpressionKind
+
+const (
+	DashboardMetricFormulaExpressionKindRef      DashboardMetricFormulaExpressionKind = contracts.DashboardMetricFormulaExpressionKindRef
+	DashboardMetricFormulaExpressionKindNumber   DashboardMetricFormulaExpressionKind = contracts.DashboardMetricFormulaExpressionKindNumber
+	DashboardMetricFormulaExpressionKindBinary   DashboardMetricFormulaExpressionKind = contracts.DashboardMetricFormulaExpressionKindBinary
+	DashboardMetricFormulaExpressionKindUnary    DashboardMetricFormulaExpressionKind = contracts.DashboardMetricFormulaExpressionKindUnary
+	DashboardMetricFormulaExpressionKindFunction DashboardMetricFormulaExpressionKind = contracts.DashboardMetricFormulaExpressionKindFunction
+)
 
 type DashboardLogWidgetInput struct {
 	Service    *string                     `json:"service,omitempty"`
@@ -140,15 +165,16 @@ type DashboardWidgetLayout struct {
 }
 
 type DashboardWidget struct {
-	ID          string                         `json:"id"`
-	Title       string                         `json:"title"`
-	Description *string                        `json:"description,omitempty"`
-	Kind        DashboardWidgetKind            `json:"kind"`
-	Layout      DashboardWidgetLayout          `json:"layout"`
-	Metric      *DashboardMetricWidgetInput    `json:"metric,omitempty"`
-	Logs        *DashboardLogWidgetInput       `json:"logs,omitempty"`
-	Traces      *DashboardTraceWidgetInput     `json:"traces,omitempty"`
-	LiveTraces  *DashboardLiveTraceWidgetInput `json:"liveTraces,omitempty"`
+	ID          string                          `json:"id"`
+	Title       string                          `json:"title"`
+	Description *string                         `json:"description,omitempty"`
+	Kind        DashboardWidgetKind             `json:"kind"`
+	Layout      DashboardWidgetLayout           `json:"layout"`
+	Metric      *DashboardMetricWidgetInput     `json:"metric,omitempty"`
+	RichMetric  *DashboardRichMetricWidgetInput `json:"richMetric,omitempty"`
+	Logs        *DashboardLogWidgetInput        `json:"logs,omitempty"`
+	Traces      *DashboardTraceWidgetInput      `json:"traces,omitempty"`
+	LiveTraces  *DashboardLiveTraceWidgetInput  `json:"liveTraces,omitempty"`
 }
 
 type Dashboard struct {

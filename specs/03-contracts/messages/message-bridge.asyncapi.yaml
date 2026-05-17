@@ -43,6 +43,13 @@ channels:
         $ref: "#/components/messages/MetricSeriesRequest"
       MetricSeriesResponse:
         $ref: "#/components/messages/MetricSeriesResponse"
+  telemetry.metrics.rich_query:
+    address: telemetry.metrics.rich_query
+    messages:
+      RichMetricSeriesRequest:
+        $ref: "#/components/messages/RichMetricSeriesRequest"
+      RichMetricSeriesResponse:
+        $ref: "#/components/messages/RichMetricSeriesResponse"
   telemetry.facets:
     address: telemetry.facets
     messages:
@@ -750,6 +757,18 @@ operations:
       $ref: "#/channels/telemetry.metrics.query"
     messages:
       - $ref: "#/channels/telemetry.metrics.query/messages/MetricSeriesResponse"
+  requestRichMetricSeries:
+    action: send
+    channel:
+      $ref: "#/channels/telemetry.metrics.rich_query"
+    messages:
+      - $ref: "#/channels/telemetry.metrics.rich_query/messages/RichMetricSeriesRequest"
+  replyRichMetricSeries:
+    action: receive
+    channel:
+      $ref: "#/channels/telemetry.metrics.rich_query"
+    messages:
+      - $ref: "#/channels/telemetry.metrics.rich_query/messages/RichMetricSeriesResponse"
   requestIngestCredentials:
     action: send
     channel:
@@ -1122,6 +1141,14 @@ components:
       name: MetricSeriesResponse
       payload:
         $ref: "#/components/schemas/MetricSeriesResponse"
+    RichMetricSeriesRequest:
+      name: RichMetricSeriesRequest
+      payload:
+        $ref: "#/components/schemas/RichMetricSeriesRequest"
+    RichMetricSeriesResponse:
+      name: RichMetricSeriesResponse
+      payload:
+        $ref: "#/components/schemas/RichMetricSeriesResponse"
     TelemetryFacetRequest:
       name: TelemetryFacetRequest
       payload:
@@ -3622,7 +3649,7 @@ components:
           type: string
         kind:
           type: string
-          enum: [metric_timeseries, metric_stat, metric_table, log_table, trace_table, live_trace_table]
+          enum: [metric_timeseries, metric_stat, metric_table, metric_rich, log_table, trace_table, live_trace_table]
         layout:
           type: object
           additionalProperties: false
@@ -3636,6 +3663,8 @@ components:
             minH: { type: integer, minimum: 1, maximum: 12, default: 2 }
         metric:
           $ref: "#/components/schemas/DashboardMetricWidgetInput"
+        richMetric:
+          $ref: "#/components/schemas/DashboardRichMetricWidgetInput"
         logs:
           $ref: "#/components/schemas/DashboardLogWidgetInput"
         traces:
@@ -3662,13 +3691,117 @@ components:
         interval: { type: string }
         visualization:
           type: string
-          enum: [line, area, bar, pie, stat, table]
+          enum: [line, area, bar, pie, donut, stat, radial, radar, heatmap, histogram, table]
         legend: { type: boolean, default: true }
         maxSeries: { type: integer, minimum: 1, maximum: 50, default: 20 }
         thresholds:
           type: array
           items:
             $ref: "#/components/schemas/DashboardThresholdInput"
+    DashboardRichMetricWidgetInput:
+      type: object
+      additionalProperties: false
+      required: [query, visualization]
+      properties:
+        query:
+          $ref: "#/components/schemas/DashboardMetricQueryInput"
+        visualization:
+          type: string
+          enum: [line, area, bar, pie, donut, stat, radial, radar, heatmap, histogram, table]
+        legend: { type: boolean, default: true }
+        maxSeries: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        thresholds:
+          type: array
+          items:
+            $ref: "#/components/schemas/DashboardThresholdInput"
+    DashboardMetricQueryInput:
+      type: object
+      additionalProperties: false
+      required: [queries]
+      properties:
+        timeWindow: { type: string }
+        interval: { type: string }
+        queries:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/DashboardMetricQueryRowInput"
+        formulas:
+          type: array
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/DashboardMetricFormulaInput"
+        displaySeries:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/DashboardMetricDisplaySeriesInput"
+    DashboardMetricQueryRowInput:
+      type: object
+      additionalProperties: false
+      required: [id, label, metricName, aggregation]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        metricName: { type: string }
+        aggregation:
+          type: string
+          enum: [avg, sum, min, max, count, rate, p50, p90, p95, p99]
+        groupBy:
+          type: array
+          maxItems: 6
+          items: { type: string }
+        filters:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "../entities/attribute-filter.schema.json"
+        maxSeries: { type: integer, minimum: 1, maximum: 50, default: 20 }
+    DashboardMetricFormulaInput:
+      type: object
+      additionalProperties: false
+      required: [id, label, expression]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        expression:
+          $ref: "#/components/schemas/DashboardMetricFormulaExpressionInput"
+        unit: { type: string }
+    DashboardMetricFormulaExpressionInput:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [ref, number, binary, unary, function]
+        refId: { type: string }
+        value: { type: number }
+        operator:
+          type: string
+          enum: [add, subtract, multiply, divide]
+        left:
+          $ref: "#/components/schemas/DashboardMetricFormulaExpressionInput"
+        right:
+          $ref: "#/components/schemas/DashboardMetricFormulaExpressionInput"
+        function:
+          type: string
+          enum: [sum_series, avg_series, min_series, max_series, ratio, clamp_min, clamp_max, moving_average]
+        arguments:
+          type: array
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/DashboardMetricFormulaExpressionInput"
+    DashboardMetricDisplaySeriesInput:
+      type: object
+      additionalProperties: false
+      required: [id, label, sourceId]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        sourceId: { type: string }
+        visible: { type: boolean, default: true }
     DashboardLogWidgetInput:
       type: object
       additionalProperties: false
@@ -3947,6 +4080,39 @@ components:
           $ref: "#/components/schemas/MetricSeriesData"
         error:
           $ref: "#/components/schemas/BridgeError"
+    RichMetricSeriesRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [input]
+          properties:
+            input:
+              type: object
+              additionalProperties: false
+              required: [from, to, query]
+              properties:
+                from:
+                  type: string
+                  format: date-time
+                to:
+                  type: string
+                  format: date-time
+                query:
+                  $ref: "#/components/schemas/DashboardMetricQueryInput"
+    RichMetricSeriesResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          $ref: "#/components/schemas/RichMetricSeriesData"
+        error:
+          $ref: "#/components/schemas/BridgeError"
     TelemetryFacetRequest:
       allOf:
         - $ref: "#/components/schemas/BridgeEnvelope"
@@ -4210,6 +4376,92 @@ components:
                           attributes:
                             type: object
                             additionalProperties: true
+        warnings:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [code, message]
+            properties:
+              code:
+                type: string
+              message:
+                type: string
+              field:
+                type: string
+    RichMetricSeriesData:
+      type: object
+      additionalProperties: false
+      required: [interval, series, displaySeries, warnings]
+      properties:
+        interval:
+          type: string
+        series:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, label, sourceId, labels, points]
+            properties:
+              id:
+                type: string
+              label:
+                type: string
+              sourceId:
+                type: string
+              unit:
+                type: string
+              labels:
+                type: object
+                additionalProperties: true
+              points:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [timestamp, value, exemplars]
+                  properties:
+                    timestamp:
+                      type: string
+                      format: date-time
+                    value:
+                      type: number
+                    count:
+                      type: number
+                    exemplars:
+                      type: array
+                      items:
+                        type: object
+                        additionalProperties: false
+                        required: [timestamp, value, attributes]
+                        properties:
+                          timestamp:
+                            type: string
+                            format: date-time
+                          value:
+                            type: number
+                          traceId:
+                            type: string
+                          spanId:
+                            type: string
+                          attributes:
+                            type: object
+                            additionalProperties: true
+        displaySeries:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, label, sourceId, visible]
+            properties:
+              id:
+                type: string
+              label:
+                type: string
+              sourceId:
+                type: string
+              visible:
+                type: boolean
         warnings:
           type: array
           items:

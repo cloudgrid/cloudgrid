@@ -4,7 +4,7 @@ title: Frontend views
 layer: frontend
 status: draft
 owner: unknown@example.com
-updated: 2026-05-08
+updated: 2026-05-16
 provenance: inferred-draft
 ---
 
@@ -71,31 +71,23 @@ Filters: free text search, service, trace ID, span ID, severity, time range, att
 
 ## Metrics
 
-Concrete metrics workspace layout, view rail behavior, chart type rendering, metric detail inspector, and editor drawer behavior are defined in `05-frontend/traces-and-metrics-ux-concept.md`.
+Concrete metrics workspace and dashboard behavior are defined in `05-frontend/logs-metrics-dashboards-ux-concept.md`. That route-specific concept supersedes the older saved-view wording in this file.
 
-The metrics view is a focused project workspace, not a generic query-language surface.
+The metrics view is a focused technical explorer, not a saved dashboard or generic query-language surface.
 
 Default layout:
 
-- left view rail: built-in and saved project views with search and create/duplicate action;
-- top controls: time range, refresh, and selected view actions;
-- main area: responsive panel grid with backend-returned charts and compact legends;
-- right inspector drawer: opens only while editing a view or panel.
+- metric list with search and descriptor filters;
+- metric query/result surface with controls that map to `MetricSeriesInput`;
+- metric inspector for descriptor, attributes, returned series, and exemplars.
 
-Built-in views:
+The UI loads metric names through `Query.metricNames` and charts through `Query.metricSeries`. It never renders charts from local raw metric arrays and does not load saved dashboard definitions in `/metrics`.
 
-- GenAI token usage: `gen_ai.client.token.usage` grouped by provider, model, and token type.
-- Model latency: `gen_ai.client.operation.duration` with p50/p95/p99.
-- Harness runs: `harness.run.duration` and `harness.run.errors`.
-- Tool latency: `harness.tool.duration` grouped by tool name.
-
-The UI loads metric names through `Query.metricNames`, loads charts through `Query.metricSeries`, and loads saved dashboard definitions through `Query.dashboards`. It never renders charts from local raw metric arrays.
-
-Panel editing exposes only controls that map directly to `MetricSeriesInput`: metric name, aggregation, group-by, filters, time window, interval, chart type, and thresholds. Invalid combinations are shown inline from GraphQL validation errors.
+Metric query controls expose only fields that map directly to `MetricSeriesInput`: metric name, aggregation, group-by, filters, time window, interval, and chart preview type. Invalid combinations are shown inline from GraphQL validation errors.
 
 Empty states distinguish "no metrics ingested yet", "this view has no data for the selected range", and "filters removed all series".
 
-Unsaved dashboard draft state is explicit. Switching route or project with unsaved edits prompts before discarding. Built-in dashboards can only be duplicated into personal or project dashboards before editing is saved.
+Dashboards own saved visualization composition through `/dashboards`. Unsaved dashboard draft state, drag-resize layout editing, built-in dashboard duplication, and rich metric query widgets are specified in `05-frontend/dashboard-widgets.md` and `05-frontend/logs-metrics-dashboards-ux-concept.md`.
 
 ## Live Traces
 

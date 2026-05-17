@@ -226,6 +226,7 @@ const en = {
   "projects.settings.general": "General",
   "projects.settings.apiKeys": "API Keys",
   "projects.settings.retention": "Retention",
+  "projects.settings.aiEval": "AI Eval",
   "projects.settings.members": "Members",
   "projects.settings.setup": "Setup",
   "projects.settings.saveUnavailable":
@@ -234,6 +235,21 @@ const en = {
     "Manage project-specific access. Company and local Personal admins are enforced by the backend.",
   "projects.settings.retentionDescription":
     "Configure project-scoped data retention by data class.",
+  "projects.settings.aiEvalDescription":
+    "Configure project-level AI evaluation enablement, online scoring policy state, and budget guardrails.",
+  "projects.settings.aiEvalEnabled": "Enable AI Eval for this project",
+  "projects.settings.aiEvalEnabledDescription":
+    "When enabled, project AI projections can appear in the AI Eval workspace and online scoring can run through configured policies.",
+  "projects.settings.aiEvalSave": "Save AI Eval settings",
+  "projects.settings.aiEvalSaved": "AI Eval settings saved.",
+  "projects.settings.aiEvalError": "AI Eval settings could not be saved.",
+  "projects.settings.aiEvalLoadError": "AI Eval settings could not be loaded.",
+  "projects.settings.aiEvalProviders": "Provider profiles",
+  "projects.settings.aiEvalModelAliases": "Model aliases",
+  "projects.settings.aiEvalOnlinePolicies": "Online policies",
+  "projects.settings.aiEvalBudget": "Daily budget",
+  "projects.settings.aiEvalWarnings": "Warnings",
+  "projects.settings.aiEvalOpenWorkspace": "Open AI Eval workspace",
   "projects.settings.retentionSave": "Save retention policy",
   "projects.settings.retentionSaved": "Retention policy saved.",
   "projects.settings.retentionError": "Retention policy could not be saved.",
@@ -363,8 +379,16 @@ const en = {
   "dashboards.empty.noSelection.title": "No dashboard selected",
   "dashboards.empty.noSelection.description":
     "Create a dashboard or select a built-in, personal, or project dashboard.",
+  "dashboards.empty.noDashboards.title": "No dashboards yet",
+  "dashboards.empty.noDashboards.description":
+    "Create a saved dashboard for repeated project investigation.",
+  "dashboards.empty.noWidgets.title": "No widgets yet",
+  "dashboards.empty.noWidgets.description":
+    "Add a metric, log, trace, or live trace widget to start composing this dashboard.",
   "dashboards.widget.edit": "Edit widget",
   "dashboards.widget.add": "Add widget",
+  "dashboards.widget.addMetric": "Add metric widget",
+  "dashboards.widget.expand": "Expand widget",
   "dashboards.widget.more": "More widget actions",
   "dashboards.widget.select":
     "Select a widget to inspect its data, display, and threshold settings.",
@@ -377,6 +401,9 @@ const en = {
   "dashboards.widget.noDataSource": "No data source configured.",
   "dashboards.metric.label": "Metric",
   "dashboards.metric.noSeries": "No metric series returned.",
+  "dashboards.metric.noMatches": "No metrics match this query.",
+  "dashboards.metric.search": "Search metric names",
+  "dashboards.metric.select": "Select metric",
   "dashboards.metric.series": "series",
   "dashboards.editor.data": "Data",
   "dashboards.editor.metricName": "Metric name",
@@ -393,6 +420,7 @@ const en = {
   "dashboards.editor.thresholds": "Thresholds",
   "dashboards.editor.thresholdsUnavailable":
     "Thresholds are unavailable for log, trace, and live trace widgets until alert contracts exist.",
+  "dashboards.editor.removeQuery": "Remove query",
   "dashboards.pinned": "Pinned dashboards",
   "alerts.title": "Alerts",
   "alerts.description": "Project-scoped alert rules, history, and silences.",

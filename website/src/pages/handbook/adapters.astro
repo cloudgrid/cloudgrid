@@ -11,7 +11,7 @@ import AdapterDiagram from "../../components/visuals/AdapterDiagram.astro";
       eyebrow="Handbook · Adapters"
       accent="rose"
       title="Author your own adapter."
-      description="Each of CloudGrid's four port surfaces is a typed contract with a documented v1 implementation as a reference. The goal of this page is to give you the mental model — the contracts themselves live in /specs."
+      description="Each of CloudGrid's four port surfaces is a typed contract with a documented v1 implementation as a reference. This page is the mental model — the contracts themselves live in the source tree."
     />
   </Section>
 
@@ -73,13 +73,6 @@ import AdapterDiagram from "../../components/visuals/AdapterDiagram.astro";
         <li><code>POST /v1/optimize</code> — execute prompt optimization, return candidate prompt versions.</li>
         <li>W3C trace context (<code>traceparent</code> / <code>tracestate</code>) is preserved on every call.</li>
         <li>Idempotency is required for retries.</li>
-      </ul>
-
-      <h2>Where the contracts live</h2>
-      <ul>
-        <li><a href="https://github.com/cloudgriddev/cloudgrid/blob/main/specs/04-backend/backend-architecture.md" target="_blank" rel="noopener noreferrer">specs/04-backend/backend-architecture.md</a> — services and ports.</li>
-        <li><a href="https://github.com/cloudgriddev/cloudgrid/tree/main/specs/03-contracts" target="_blank" rel="noopener noreferrer">specs/03-contracts</a> — GraphQL + AsyncAPI source files.</li>
-        <li><a href="https://github.com/cloudgriddev/cloudgrid/blob/main/specs/04-backend/ai-eval-runner.md" target="_blank" rel="noopener noreferrer">specs/04-backend/ai-eval-runner.md</a> — harness adapter contract.</li>
       </ul>
 
       <h2>Contribution path</h2>

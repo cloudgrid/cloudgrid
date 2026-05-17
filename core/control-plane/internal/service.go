@@ -2122,6 +2122,7 @@ func dashboardWidgetsFromInput(inputs []DashboardWidgetInput) []DashboardWidget 
 				MinH: minH,
 			},
 			Metric:     normalizeDashboardMetricWidget(input.Metric),
+			RichMetric: normalizeDashboardRichMetricWidget(input.RichMetric),
 			Logs:       normalizeDashboardLogWidget(input.Logs),
 			Traces:     normalizeDashboardTraceWidget(input.Traces),
 			LiveTraces: normalizeDashboardLiveTraceWidget(input.LiveTraces),
@@ -2153,6 +2154,60 @@ func normalizeDashboardMetricWidget(input *DashboardMetricWidgetInput) *Dashboar
 	}
 	widget.Thresholds = append([]DashboardThresholdInput{}, widget.Thresholds...)
 	return &widget
+}
+
+func normalizeDashboardRichMetricWidget(input *DashboardRichMetricWidgetInput) *DashboardRichMetricWidgetInput {
+	if input == nil {
+		return nil
+	}
+	widget := *input
+	widget.Query = normalizeDashboardMetricQuery(widget.Query)
+	if widget.Legend == nil {
+		widget.Legend = ptr(true)
+	}
+	if widget.MaxSeries == nil {
+		widget.MaxSeries = ptr(20)
+	}
+	widget.Thresholds = append([]DashboardThresholdInput{}, widget.Thresholds...)
+	return &widget
+}
+
+func normalizeDashboardMetricQuery(input DashboardMetricQueryInput) DashboardMetricQueryInput {
+	query := input
+	if query.TimeWindow == nil {
+		query.TimeWindow = ptr("PT1H")
+	} else if strings.TrimSpace(*query.TimeWindow) != "" {
+		timeWindow := strings.TrimSpace(*query.TimeWindow)
+		query.TimeWindow = &timeWindow
+	}
+	query.Interval = trimOptionalString(query.Interval)
+	query.Queries = append([]DashboardMetricQueryRowInput{}, query.Queries...)
+	for index := range query.Queries {
+		query.Queries[index].ID = strings.TrimSpace(query.Queries[index].ID)
+		query.Queries[index].Label = strings.TrimSpace(query.Queries[index].Label)
+		query.Queries[index].MetricName = strings.TrimSpace(query.Queries[index].MetricName)
+		query.Queries[index].GroupBy = normalizeStringList(query.Queries[index].GroupBy)
+		query.Queries[index].Filters = append([]contracts.AttributeFilter{}, query.Queries[index].Filters...)
+		if query.Queries[index].MaxSeries == nil {
+			query.Queries[index].MaxSeries = ptr(20)
+		}
+	}
+	query.Formulas = append([]DashboardMetricFormulaInput{}, query.Formulas...)
+	for index := range query.Formulas {
+		query.Formulas[index].ID = strings.TrimSpace(query.Formulas[index].ID)
+		query.Formulas[index].Label = strings.TrimSpace(query.Formulas[index].Label)
+		query.Formulas[index].Unit = trimOptionalString(query.Formulas[index].Unit)
+	}
+	query.DisplaySeries = append([]DashboardMetricDisplaySeriesInput{}, query.DisplaySeries...)
+	for index := range query.DisplaySeries {
+		query.DisplaySeries[index].ID = strings.TrimSpace(query.DisplaySeries[index].ID)
+		query.DisplaySeries[index].Label = strings.TrimSpace(query.DisplaySeries[index].Label)
+		query.DisplaySeries[index].SourceID = strings.TrimSpace(query.DisplaySeries[index].SourceID)
+		if query.DisplaySeries[index].Visible == nil {
+			query.DisplaySeries[index].Visible = ptr(true)
+		}
+	}
+	return query
 }
 
 func normalizeDashboardLogWidget(input *DashboardLogWidgetInput) *DashboardLogWidgetInput {
@@ -2250,10 +2305,10 @@ func validateDashboardInput(input DashboardSaveInput) error {
 		if widget.Layout.X < 0 || widget.Layout.X > 11 || widget.Layout.Y < 0 || widget.Layout.W < 1 || widget.Layout.W > 12 || widget.Layout.H < 1 || widget.Layout.H > 12 || widget.Layout.X+widget.Layout.W > 12 {
 			return validationError("dashboard widget layout is invalid")
 		}
-		if widget.Layout.MinW != nil && (*widget.Layout.MinW < 1 || *widget.Layout.MinW > 12) {
+		if widget.Layout.MinW != nil && (*widget.Layout.MinW < 1 || *widget.Layout.MinW > 12 || widget.Layout.W < *widget.Layout.MinW) {
 			return validationError("dashboard widget minW is invalid")
 		}
-		if widget.Layout.MinH != nil && (*widget.Layout.MinH < 1 || *widget.Layout.MinH > 12) {
+		if widget.Layout.MinH != nil && (*widget.Layout.MinH < 1 || *widget.Layout.MinH > 12 || widget.Layout.H < *widget.Layout.MinH) {
 			return validationError("dashboard widget minH is invalid")
 		}
 		if containsSecretKey("title", widget.Title) || containsSecretKey("description", optionalStringValue(widget.Description)) {
@@ -2263,12 +2318,31 @@ func validateDashboardInput(input DashboardSaveInput) error {
 			return err
 		}
 	}
+	if dashboardWidgetsOverlap(input.Widgets) {
+		return validationError("dashboard widget layouts must not overlap")
+	}
 	return nil
+}
+
+func dashboardWidgetsOverlap(widgets []DashboardWidgetInput) bool {
+	for leftIndex := range widgets {
+		for rightIndex := leftIndex + 1; rightIndex < len(widgets); rightIndex++ {
+			left := widgets[leftIndex].Layout
+			right := widgets[rightIndex].Layout
+			if left.X < right.X+right.W && left.X+left.W > right.X && left.Y < right.Y+right.H && left.Y+left.H > right.Y {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func validateDashboardWidgetKind(widget DashboardWidgetInput) error {
 	configCount := 0
 	if widget.Metric != nil {
+		configCount++
+	}
+	if widget.RichMetric != nil {
 		configCount++
 	}
 	if widget.Logs != nil {
@@ -2286,6 +2360,11 @@ func validateDashboardWidgetKind(widget DashboardWidgetInput) error {
 			return validationError("metric dashboard widgets require exactly one metric config")
 		}
 		return validateDashboardMetricWidget(*widget.Metric)
+	case DashboardWidgetKindMetricRich:
+		if configCount != 1 || widget.RichMetric == nil {
+			return validationError("rich metric dashboard widgets require exactly one richMetric config")
+		}
+		return validateDashboardRichMetricWidget(*widget.RichMetric)
 	case DashboardWidgetKindLogTable:
 		if configCount != 1 || widget.Logs == nil {
 			return validationError("log dashboard widgets require exactly one logs config")
@@ -2341,6 +2420,154 @@ func validateDashboardMetricWidget(metric DashboardMetricWidgetInput) error {
 	}
 	for _, threshold := range metric.Thresholds {
 		if err := validateDashboardThreshold(threshold); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateDashboardRichMetricWidget(metric DashboardRichMetricWidgetInput) error {
+	if err := validateMetricChartType(metric.Visualization); err != nil {
+		return err
+	}
+	if metric.MaxSeries != nil && (*metric.MaxSeries < 1 || *metric.MaxSeries > 50) {
+		return validationError("dashboard rich metric widget maxSeries is invalid")
+	}
+	if len(metric.Thresholds) > 8 {
+		return validationError("dashboard rich metric widget exceeds limits")
+	}
+	if err := validateDashboardMetricQuery(metric.Query); err != nil {
+		return err
+	}
+	for _, threshold := range metric.Thresholds {
+		if err := validateDashboardThreshold(threshold); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateDashboardMetricQuery(query DashboardMetricQueryInput) error {
+	if query.TimeWindow != nil && strings.TrimSpace(*query.TimeWindow) == "" {
+		return validationError("dashboard rich metric query timeWindow cannot be blank")
+	}
+	if len(query.Queries) == 0 || len(query.Queries) > 8 || len(query.Formulas) > 8 || len(query.DisplaySeries) > 20 {
+		return validationError("dashboard rich metric query exceeds limits")
+	}
+	availableIDs := map[string]struct{}{}
+	for _, row := range query.Queries {
+		if strings.TrimSpace(row.ID) == "" || strings.TrimSpace(row.Label) == "" || strings.TrimSpace(row.MetricName) == "" {
+			return validationError("dashboard rich metric query rows require id, label, and metricName")
+		}
+		if _, ok := availableIDs[row.ID]; ok {
+			return validationError("dashboard rich metric query ids must be unique")
+		}
+		availableIDs[row.ID] = struct{}{}
+		if err := validateMetricAggregation(row.Aggregation); err != nil {
+			return err
+		}
+		if row.MaxSeries != nil && (*row.MaxSeries < 1 || *row.MaxSeries > 50) {
+			return validationError("dashboard rich metric query maxSeries is invalid")
+		}
+		if len(row.GroupBy) > 6 || len(row.Filters) > 20 {
+			return validationError("dashboard rich metric query row exceeds limits")
+		}
+		if containsSecretKey("metricName", row.MetricName) {
+			return validationError("dashboard contains a secret-like key")
+		}
+		for _, groupBy := range row.GroupBy {
+			if strings.TrimSpace(groupBy) == "" {
+				return validationError("dashboard metric groupBy keys cannot be blank")
+			}
+			if containsSecretKey(groupBy, groupBy) {
+				return validationError("dashboard contains a secret-like key")
+			}
+		}
+		if err := validateAttributeFilters(row.Filters); err != nil {
+			return err
+		}
+	}
+	for _, formula := range query.Formulas {
+		if strings.TrimSpace(formula.ID) == "" || strings.TrimSpace(formula.Label) == "" {
+			return validationError("dashboard rich metric formulas require id and label")
+		}
+		if _, ok := availableIDs[formula.ID]; ok {
+			return validationError("dashboard rich metric query ids must be unique")
+		}
+		if err := validateDashboardMetricFormulaExpression(formula.Expression, availableIDs, 1); err != nil {
+			return err
+		}
+		availableIDs[formula.ID] = struct{}{}
+	}
+	for _, display := range query.DisplaySeries {
+		if strings.TrimSpace(display.ID) == "" || strings.TrimSpace(display.Label) == "" || strings.TrimSpace(display.SourceID) == "" {
+			return validationError("dashboard rich metric display series require id, label, and sourceId")
+		}
+		if _, ok := availableIDs[display.SourceID]; !ok {
+			return validationError("dashboard rich metric display series source is unknown")
+		}
+	}
+	return nil
+}
+
+func validateDashboardMetricFormulaExpression(expression DashboardMetricFormulaExpressionInput, availableIDs map[string]struct{}, depth int) error {
+	if depth > 8 {
+		return validationError("dashboard rich metric formula expression is too deep")
+	}
+	switch expression.Kind {
+	case contracts.DashboardMetricFormulaExpressionKindRef:
+		if expression.RefID == nil || strings.TrimSpace(*expression.RefID) == "" {
+			return validationError("dashboard rich metric formula refId is required")
+		}
+		if _, ok := availableIDs[strings.TrimSpace(*expression.RefID)]; !ok {
+			return validationError("dashboard rich metric formula reference is unknown")
+		}
+		return nil
+	case contracts.DashboardMetricFormulaExpressionKindNumber:
+		if expression.Value == nil {
+			return validationError("dashboard rich metric formula number value is required")
+		}
+		return nil
+	case contracts.DashboardMetricFormulaExpressionKindBinary:
+		if expression.Operator == nil || !validDashboardMetricFormulaBinaryOperator(*expression.Operator) || expression.Left == nil || expression.Right == nil {
+			return validationError("dashboard rich metric binary formula is invalid")
+		}
+		if err := validateDashboardMetricFormulaExpression(*expression.Left, availableIDs, depth+1); err != nil {
+			return err
+		}
+		return validateDashboardMetricFormulaExpression(*expression.Right, availableIDs, depth+1)
+	case contracts.DashboardMetricFormulaExpressionKindUnary:
+		return validationError("dashboard rich metric unary formulas are not supported")
+	case contracts.DashboardMetricFormulaExpressionKindFunction:
+		return validateDashboardMetricFormulaFunction(expression, availableIDs, depth)
+	default:
+		return validationError("dashboard rich metric formula expression kind is invalid")
+	}
+}
+
+func validDashboardMetricFormulaBinaryOperator(operator contracts.DashboardMetricFormulaBinaryOperator) bool {
+	switch operator {
+	case contracts.DashboardMetricFormulaBinaryOperatorAdd, contracts.DashboardMetricFormulaBinaryOperatorSubtract, contracts.DashboardMetricFormulaBinaryOperatorMultiply, contracts.DashboardMetricFormulaBinaryOperatorDivide:
+		return true
+	default:
+		return false
+	}
+}
+
+func validateDashboardMetricFormulaFunction(expression DashboardMetricFormulaExpressionInput, availableIDs map[string]struct{}, depth int) error {
+	if expression.Function == nil {
+		return validationError("dashboard rich metric formula function is required")
+	}
+	switch *expression.Function {
+	case contracts.DashboardMetricFormulaFunctionRatio:
+		if len(expression.Arguments) != 2 {
+			return validationError("dashboard rich metric ratio formula requires two arguments")
+		}
+	default:
+		return validationError("dashboard rich metric formula function is not supported")
+	}
+	for _, argument := range expression.Arguments {
+		if err := validateDashboardMetricFormulaExpression(argument, availableIDs, depth+1); err != nil {
 			return err
 		}
 	}

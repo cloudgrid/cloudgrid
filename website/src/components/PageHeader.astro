@@ -3,10 +3,11 @@ interface Props {
   eyebrow?: string;
   title: string;
   description?: string;
-  /** Accent color for the eyebrow chip — uses a token name from the palette. */
   accent?: "brand" | "cyan" | "emerald" | "amber" | "violet" | "rose";
+  /** Optional gradient highlight word, rendered through .text-accent-gradient */
+  highlight?: string;
 }
-const { eyebrow, title, description, accent = "brand" } = Astro.props;
+const { eyebrow, title, description, accent = "brand", highlight } = Astro.props;
 
 const accentMap: Record<string, string> = {
   brand: "bg-brand-soft text-[var(--color-brand)]",
@@ -16,18 +17,34 @@ const accentMap: Record<string, string> = {
   violet: "bg-violet-soft text-[var(--color-violet)]",
   rose: "bg-rose-soft text-[var(--color-rose)]",
 };
+
+let beforeHighlight = title;
+let highlightWord = "";
+let afterHighlight = "";
+if (highlight && title.includes(highlight)) {
+  const i = title.indexOf(highlight);
+  beforeHighlight = title.slice(0, i);
+  highlightWord = highlight;
+  afterHighlight = title.slice(i + highlight.length);
+}
 ---
 
 <header class="max-w-3xl">
   {
     eyebrow && (
-      <div class={`inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide uppercase ${accentMap[accent]}`}>
+      <div class={`reveal chip ${accentMap[accent]}`}>
         {eyebrow}
       </div>
     )
   }
-  <h1 class="mt-4 text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-text leading-[1.1]">
-    {title}
+  <h1 class="reveal mt-5 text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight text-text leading-[1.06] text-balance" data-delay="1">
+    {highlight ? (
+      <>
+        {beforeHighlight}<span class="text-accent-gradient">{highlightWord}</span>{afterHighlight}
+      </>
+    ) : title}
   </h1>
-  {description && <p class="mt-5 text-lg text-text-secondary leading-relaxed">{description}</p>}
+  {description && (
+    <p class="reveal mt-5 text-lg text-text-secondary leading-relaxed max-w-2xl text-balance" data-delay="2">{description}</p>
+  )}
 </header>

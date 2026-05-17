@@ -7,7 +7,6 @@ interface Props {
   title: string;
   description?: string;
   ogImage?: string;
-  /** Hide the global footer (e.g. for special landing pages). */
   hideFooter?: boolean;
 }
 
@@ -33,21 +32,18 @@ const canonicalUrl = new URL(Astro.url.pathname, "https://cloudgrid.dev").toStri
     <meta name="description" content={description} />
     <link rel="canonical" href={canonicalUrl} />
 
-    <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content={canonicalUrl} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={ogImage} />
 
-    <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image" />
     <meta property="twitter:url" content={canonicalUrl} />
     <meta property="twitter:title" content={title} />
     <meta property="twitter:description" content={description} />
     <meta property="twitter:image" content={ogImage} />
 
-    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -55,42 +51,16 @@ const canonicalUrl = new URL(Astro.url.pathname, "https://cloudgrid.dev").toStri
       rel="stylesheet"
     />
 
-    <!--
-      Theme bootstrap. Runs before paint to avoid a flash. Reads the saved
-      preference from localStorage; otherwise follows OS preference.
-    -->
+    <!-- Theme bootstrap before paint -->
     <script is:inline>
       (function () {
         try {
           var saved = localStorage.getItem("cg-theme");
           var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
           var theme = saved || (prefersDark ? "dark" : "light");
-          if (theme === "dark") {
-            document.documentElement.classList.add("dark");
-          } else {
-            document.documentElement.classList.remove("dark");
-          }
-        } catch (_e) {
-          /* localStorage may be blocked — fall back to OS default. */
-        }
+          if (theme === "dark") document.documentElement.classList.add("dark");
+        } catch (_e) {}
       })();
-    </script>
-
-    <!-- Reveal-on-scroll observer -->
-    <script is:inline>
-      document.addEventListener("DOMContentLoaded", function () {
-        var observer = new IntersectionObserver(
-          function (entries) {
-            entries.forEach(function (entry) {
-              if (entry.isIntersecting) entry.target.classList.add("visible");
-            });
-          },
-          { threshold: 0.08, rootMargin: "0px 0px -40px 0px" }
-        );
-        document.querySelectorAll(".reveal").forEach(function (el) {
-          observer.observe(el);
-        });
-      });
     </script>
   </head>
   <body class="min-h-screen bg-page text-text antialiased">
@@ -99,5 +69,141 @@ const canonicalUrl = new URL(Astro.url.pathname, "https://cloudgrid.dev").toStri
       <slot />
     </main>
     {!hideFooter && <Footer />}
+
+    <!--
+      Motion engine.
+      Runs after first paint. Wires:
+        - scroll-direction tracking (adds/removes `is-up` on body)
+        - reveal-on-scroll observer (re-triggers on re-entry)
+        - SVG path-draw on intersection
+        - count-up numbers on intersection
+        - spotlight pointer tracking
+      Respects prefers-reduced-motion.
+    -->
+    <script is:inline>
+      (function () {
+        var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        // 1. Scroll direction
+        var lastY = window.scrollY;
+        var ticking = false;
+        function onScroll() {
+          if (ticking) return;
+          ticking = true;
+          requestAnimationFrame(function () {
+            var y = window.scrollY;
+            var dy = y - lastY;
+            if (Math.abs(dy) > 4) {
+              if (dy < 0) document.body.classList.add("is-up");
+              else document.body.classList.remove("is-up");
+              lastY = y;
+            }
+            ticking = false;
+          });
+        }
+        window.addEventListener("scroll", onScroll, { passive: true });
+
+        // 2. Reveal observer — re-triggers on re-entry for forward + reverse scroll feel
+        function setupReveal() {
+          var els = document.querySelectorAll(".reveal, .reveal-x, .reveal-scale");
+          if (!("IntersectionObserver" in window) || reduced) {
+            els.forEach(function (el) { el.classList.add("visible"); });
+            return;
+          }
+          var io = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+              if (entry.isIntersecting) {
+                entry.target.classList.add("visible");
+              } else if (entry.boundingClientRect.top > window.innerHeight * 0.9) {
+                // Reset only when the element has scrolled well below the viewport — so on
+                // scroll-up it animates back in.
+                entry.target.classList.remove("visible");
+              }
+            });
+          }, { threshold: 0.08, rootMargin: "0px 0px -40px 0px" });
+          els.forEach(function (el) { io.observe(el); });
+        }
+
+        // 3. SVG path-draw
+        function setupPaths() {
+          var paths = document.querySelectorAll(".path-draw");
+          paths.forEach(function (p) {
+            try {
+              var len = p.getTotalLength ? p.getTotalLength() : 1000;
+              p.style.setProperty("--path-len", String(len));
+              p.style.strokeDasharray = String(len);
+              p.style.strokeDashoffset = String(len);
+            } catch (_e) {}
+          });
+          if (reduced) {
+            paths.forEach(function (p) { p.classList.add("drawn"); });
+            return;
+          }
+          var io = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+              if (entry.isIntersecting) {
+                entry.target.classList.add("drawn");
+              } else if (entry.boundingClientRect.top > window.innerHeight * 0.9) {
+                entry.target.classList.remove("drawn");
+              }
+            });
+          }, { threshold: 0.2 });
+          paths.forEach(function (p) { io.observe(p); });
+        }
+
+        // 4. Count-up
+        function setupCounters() {
+          var els = document.querySelectorAll(".count-up");
+          if (reduced) {
+            els.forEach(function (el) {
+              el.textContent = el.getAttribute("data-target") || el.textContent;
+            });
+            return;
+          }
+          var io = new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+              if (!entry.isIntersecting) return;
+              var el = entry.target;
+              var target = parseFloat(el.getAttribute("data-target") || "0");
+              var prefix = el.getAttribute("data-prefix") || "";
+              var suffix = el.getAttribute("data-suffix") || "";
+              var dur = parseInt(el.getAttribute("data-duration") || "1100", 10);
+              var start = performance.now();
+              function tick(now) {
+                var t = Math.min(1, (now - start) / dur);
+                var eased = 1 - Math.pow(1 - t, 3);
+                var v = target * eased;
+                var shown = Number.isInteger(target) ? Math.round(v) : v.toFixed(1);
+                el.textContent = prefix + shown + suffix;
+                if (t < 1) requestAnimationFrame(tick);
+              }
+              requestAnimationFrame(tick);
+              io.unobserve(el);
+            });
+          }, { threshold: 0.4 });
+          els.forEach(function (el) { io.observe(el); });
+        }
+
+        // 5. Spotlight pointer tracking
+        function setupSpotlight() {
+          if (reduced) return;
+          document.querySelectorAll(".spotlight").forEach(function (el) {
+            el.addEventListener("pointermove", function (e) {
+              var rect = el.getBoundingClientRect();
+              el.style.setProperty("--mx", ((e.clientX - rect.left) / rect.width) * 100 + "%");
+              el.style.setProperty("--my", ((e.clientY - rect.top) / rect.height) * 100 + "%");
+            });
+          });
+        }
+
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", function () {
+            setupReveal(); setupPaths(); setupCounters(); setupSpotlight();
+          });
+        } else {
+          setupReveal(); setupPaths(); setupCounters(); setupSpotlight();
+        }
+      })();
+    </script>
   </body>
 </html>

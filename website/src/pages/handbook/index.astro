@@ -38,7 +38,7 @@ const cards = [
       eyebrow="Handbook"
       accent="brand"
       title="The operator's view."
-      description="The Handbook is the practical, opinionated guide for running CloudGrid and extending it. The specs in /specs are the authoritative contract — the handbook is the human-readable shape of it."
+      description="The Handbook is the practical, opinionated guide for running CloudGrid and extending it. Read in order or jump straight to what you need."
     />
   </Section>
 
@@ -64,11 +64,12 @@ const cards = [
 
   <Section>
     <div class="max-w-3xl mb-6 reveal">
-      <h2 class="text-2xl font-semibold text-text">Where the truth lives</h2>
+      <h2 class="text-2xl font-semibold text-text">How to use the Handbook</h2>
       <p class="mt-3 text-text-secondary">
-        The Handbook is hand-authored prose. When you need the exact contract — GraphQL schema,
-        NATS subjects, persistence shapes — the source of truth is the
-        <a class="text-[color:var(--color-brand)] underline underline-offset-2" href="https://github.com/cloudgriddev/cloudgrid/tree/main/specs" target="_blank" rel="noopener noreferrer">specs directory</a>.
+        Start with <a class="text-[color:var(--color-brand)] underline underline-offset-2" href="/handbook/getting-started">Getting started</a>
+        to run CloudGrid locally, then read <a class="text-[color:var(--color-brand)] underline underline-offset-2" href="/handbook/architecture">Architecture</a>
+        to understand the message bridge and service boundaries. Once you're past the demo
+        stage, the Deployment, Configuration, and Adapters pages cover production concerns.
       </p>
     </div>
   </Section>

@@ -1,0 +1,291 @@
+---
+/**
+ * SystemCanvas — flagship n8n-style architecture visualization.
+ *
+ * Theme-aware: every node, line, label, and zone references the cv-* CSS
+ * variables defined in global.css. Accent colors for slots / branches stay
+ * theme-stable because they carry semantic meaning (true=emerald, false=rose,
+ * AI=violet, etc.).
+ */
+
+interface Props {
+  height?: string;
+  showLegend?: boolean;
+  class?: string;
+}
+const { height = "h-auto", showLegend = true, class: className = "" } = Astro.props;
+---
+
+<div class={`relative rounded-2xl overflow-hidden border border-border-default shadow-[var(--shadow-lift)] ${className}`}>
+  <div class="canvas-surface relative">
+    <svg
+      viewBox="0 0 1240 720"
+      xmlns="http://www.w3.org/2000/svg"
+      class={`block w-full ${height}`}
+      role="img"
+      aria-label="CloudGrid system architecture"
+    >
+      <defs>
+        <marker id="sc-arrow" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+          <path class="cv-arrow-fill" d="M0,0 L12,6 L0,12 Z" />
+        </marker>
+        <marker id="sc-arrow-true" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+          <path d="M0,0 L12,6 L0,12 Z" fill="#10b981" />
+        </marker>
+        <marker id="sc-arrow-false" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+          <path d="M0,0 L12,6 L0,12 Z" fill="#f43f5e" />
+        </marker>
+
+        <radialGradient id="sc-core-glow" cx="50%" cy="50%" r="60%">
+          <stop offset="0%" stop-color="#6366f1" stop-opacity="0.45" />
+          <stop offset="60%" stop-color="#6366f1" stop-opacity="0" />
+        </radialGradient>
+
+        <path id="pTriggerCollector" d="M 200 360 C 250 360, 250 360, 320 360" />
+        <path id="pCollectorBridge"  d="M 460 360 C 520 360, 520 360, 590 360" />
+        <path id="pBridgeSwitch"     d="M 800 360 C 850 360, 870 360, 920 360" />
+        <path id="pSwitchTrue"       d="M 1010 340 C 1060 320, 1080 280, 1100 220" />
+        <path id="pSwitchFalse"      d="M 1010 380 C 1060 400, 1080 440, 1100 500" />
+        <path id="pBridgeAi"         d="M 695 410 C 695 480, 695 520, 695 590" />
+      </defs>
+
+      <!-- Aurora glow behind the core -->
+      <circle cx="695" cy="360" r="240" fill="url(#sc-core-glow)" opacity="0.6" />
+
+      <!-- Lane labels -->
+      <g font-family="JetBrains Mono, monospace" font-size="10" class="cv-text-faint" letter-spacing="1.5">
+        <text x="40" y="80">TRIGGER</text>
+        <text x="340" y="80">INGEST</text>
+        <text x="610" y="80">CORE</text>
+        <text x="930" y="80">ROUTE</text>
+        <text x="1100" y="80">EXPERIENCE</text>
+      </g>
+
+      <!-- Trigger node -->
+      <g>
+        <path
+          class="cv-node"
+          d="M 60 320 L 180 320 A 18 18 0 0 1 198 338 L 198 382 A 18 18 0 0 1 180 400 L 60 400 A 40 40 0 0 1 60 320 Z"
+          stroke-width="1"
+        />
+        <g transform="translate(70, 348)">
+          <path d="M 7 0 L 0 12 L 5 12 L 3 22 L 12 8 L 7 8 Z" fill="#f43f5e" />
+        </g>
+        <text x="108" y="358" class="cv-text" font-family="Inter, sans-serif" font-size="13" font-weight="600">OTLP sender</text>
+        <text x="108" y="376" class="cv-text-faint" font-family="JetBrains Mono, monospace" font-size="10">your services · agents</text>
+      </g>
+      <text x="60" y="420" class="cv-text-faint" font-family="Inter, sans-serif" font-size="11">OTel SDK · HTTP/gRPC</text>
+
+      <!-- Ingest node -->
+      <g>
+        <rect class="cv-node" x="320" y="320" width="140" height="80" rx="14" stroke-width="1" />
+        <g transform="translate(338, 340)" stroke="#06b6d4" stroke-width="2" stroke-linecap="round" fill="none">
+          <line x1="0" y1="2" x2="20" y2="2" />
+          <line x1="0" y1="10" x2="20" y2="10" />
+          <line x1="0" y1="18" x2="20" y2="18" />
+        </g>
+        <text x="368" y="350" class="cv-text" font-family="Inter, sans-serif" font-size="13" font-weight="600">otlp-collector</text>
+        <text x="368" y="368" class="cv-text-faint" font-family="JetBrains Mono, monospace" font-size="10">Go · :4317/:4318</text>
+        <text x="368" y="382" class="cv-text-faint" font-family="JetBrains Mono, monospace" font-size="10">traces · logs · metrics</text>
+      </g>
+
+      <!-- Central core node -->
+      <g>
+        <rect class="cv-node-accent" x="590" y="290" width="210" height="120" rx="18" stroke-width="1.5" />
+        <rect x="586" y="286" width="218" height="128" rx="22" fill="none" stroke="#6366f1" stroke-opacity="0.18" stroke-width="3" />
+        <g transform="translate(610, 310)">
+          <rect width="32" height="32" rx="8" fill="#6366f1" fill-opacity="0.18" stroke="#6366f1" stroke-width="1.2" />
+          <circle cx="16" cy="16" r="4" fill="#6366f1" />
+          <circle cx="6" cy="6" r="1.6" fill="#6366f1" />
+          <circle cx="26" cy="6" r="1.6" fill="#6366f1" />
+          <circle cx="6" cy="26" r="1.6" fill="#6366f1" />
+          <circle cx="26" cy="26" r="1.6" fill="#6366f1" />
+        </g>
+        <text x="652" y="324" class="cv-text" font-family="Inter, sans-serif" font-size="15" font-weight="700">CloudGrid Core</text>
+        <text x="652" y="342" class="cv-text-faint" font-family="JetBrains Mono, monospace" font-size="10">storage · query · live · AI-eval</text>
+
+        <!-- Adapter slot diamonds -->
+        <g font-family="JetBrains Mono, monospace" font-size="9" class="cv-text-muted">
+          <g transform="translate(622, 408)">
+            <path d="M 0 4 L 4 0 L 8 4 L 4 8 Z" fill="#06b6d4" />
+            <text x="-14" y="22">Storage</text>
+          </g>
+          <g transform="translate(670, 408)">
+            <path d="M 0 4 L 4 0 L 8 4 L 4 8 Z" fill="#6366f1" />
+            <text x="-10" y="22">Bridge</text>
+          </g>
+          <g transform="translate(718, 408)">
+            <path d="M 0 4 L 4 0 L 8 4 L 4 8 Z" fill="#10b981" />
+            <text x="-6" y="22">Auth</text>
+          </g>
+          <g transform="translate(766, 408)">
+            <path d="M 0 4 L 4 0 L 8 4 L 4 8 Z" fill="#8b5cf6" />
+            <text x="-12" y="22">Harness</text>
+          </g>
+        </g>
+      </g>
+
+      <!-- Switch node -->
+      <g>
+        <rect class="cv-node" x="920" y="328" width="90" height="64" rx="12" />
+        <g transform="translate(940, 344)" stroke="#10b981" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M 6 0 L 6 26" />
+          <path d="M 6 4 L 22 4 L 26 8 L 22 12 L 6 12" fill="#10b981" fill-opacity="0.18" />
+          <path d="M 6 16 L -8 16 L -12 20 L -8 24 L 6 24" fill="#f43f5e" fill-opacity="0.18" stroke="#f43f5e" />
+        </g>
+        <text x="965" y="408" class="cv-text-muted" font-family="Inter, sans-serif" font-size="11" text-anchor="middle">Project authorized?</text>
+      </g>
+
+      <!-- True branch endpoint (UI) -->
+      <g>
+        <rect class="cv-node" x="1080" y="160" width="120" height="80" rx="14" />
+        <g transform="translate(1098, 178)" stroke="#10b981" fill="none" stroke-width="2" stroke-linecap="round">
+          <rect x="0" y="0" width="20" height="14" rx="2" />
+          <line x1="0" y1="4" x2="20" y2="4" />
+          <line x1="3" y1="9" x2="14" y2="9" />
+        </g>
+        <text x="1140" y="206" class="cv-text" font-family="Inter, sans-serif" font-size="12" font-weight="600" text-anchor="middle">GraphQL BFF</text>
+        <text x="1140" y="222" class="cv-text-faint" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle">React · live subs</text>
+      </g>
+      <text x="1042" y="266" fill="#10b981" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600">true</text>
+
+      <!-- False branch endpoint (reject) -->
+      <g>
+        <rect x="1080" y="480" width="120" height="60" rx="14" class="cv-node" stroke="rgba(244,63,94,0.45)" />
+        <g transform="translate(1098, 498)" stroke="#f43f5e" fill="none" stroke-width="2" stroke-linecap="round">
+          <circle cx="10" cy="10" r="8" />
+          <line x1="6" y1="10" x2="14" y2="10" />
+        </g>
+        <text x="1140" y="514" class="cv-text" font-family="Inter, sans-serif" font-size="12" font-weight="600" text-anchor="middle">Reject 401/403</text>
+        <text x="1140" y="528" class="cv-text-faint" font-family="JetBrains Mono, monospace" font-size="9" text-anchor="middle">audit-logged</text>
+      </g>
+      <text x="1040" y="436" fill="#f43f5e" font-family="JetBrains Mono, monospace" font-size="10" font-weight="600">false</text>
+
+      <!-- AI-eval output node -->
+      <g>
+        <rect x="600" y="590" width="190" height="74" rx="14" class="cv-node" stroke="rgba(139,92,246,0.45)" />
+        <g transform="translate(618, 612)" stroke="#8b5cf6" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M 8 0 a 8 8 0 1 0 0.001 0z" />
+          <path d="M 8 4 L 8 8 L 10 10" />
+        </g>
+        <text x="650" y="617" class="cv-text" font-family="Inter, sans-serif" font-size="12" font-weight="600">AI-eval runner</text>
+        <text x="650" y="633" class="cv-text-faint" font-family="JetBrains Mono, monospace" font-size="9.5">online + offline scoring</text>
+        <text x="650" y="647" class="cv-text-faint" font-family="JetBrains Mono, monospace" font-size="9.5">harness · prompt optim.</text>
+      </g>
+
+      <!-- Adapter vendor chips -->
+      <g>
+        <circle cx="380" cy="540" r="26" class="cv-port" />
+        <text x="380" y="544" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" font-weight="700" fill="#06b6d4">DB</text>
+        <text x="380" y="588" text-anchor="middle" class="cv-text-muted" font-family="Inter, sans-serif" font-size="11">SurrealDB</text>
+        <text x="380" y="602" text-anchor="middle" class="cv-text-faint" font-family="JetBrains Mono, monospace" font-size="9">storage adapter</text>
+        <path d="M 626 412 C 540 460, 460 500, 406 520" stroke="rgba(6,182,212,0.55)" stroke-width="1.2" stroke-dasharray="3 4" fill="none" />
+
+        <circle cx="510" cy="588" r="26" class="cv-port" />
+        <text x="510" y="592" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" font-weight="700" fill="#6366f1">NATS</text>
+        <text x="510" y="636" text-anchor="middle" class="cv-text-muted" font-family="Inter, sans-serif" font-size="11">NATS JetStream</text>
+        <text x="510" y="650" text-anchor="middle" class="cv-text-faint" font-family="JetBrains Mono, monospace" font-size="9">bridge adapter</text>
+        <path d="M 674 412 C 620 480, 580 540, 534 568" stroke="rgba(99,102,241,0.55)" stroke-width="1.2" stroke-dasharray="3 4" fill="none" />
+
+        <circle cx="870" cy="540" r="26" class="cv-port" />
+        <g transform="translate(854, 526)" fill="#10b981">
+          <rect x="0" y="0" width="8" height="8" rx="1.5" />
+          <rect x="12" y="0" width="8" height="8" rx="1.5" opacity="0.7" />
+          <rect x="24" y="0" width="8" height="8" rx="1.5" opacity="0.5" />
+        </g>
+        <text x="870" y="588" text-anchor="middle" class="cv-text-muted" font-family="Inter, sans-serif" font-size="11">GitHub · Google · Entra</text>
+        <text x="870" y="602" text-anchor="middle" class="cv-text-faint" font-family="JetBrains Mono, monospace" font-size="9">auth provider port</text>
+        <path d="M 722 412 C 776 460, 820 500, 850 520" stroke="rgba(16,185,129,0.55)" stroke-width="1.2" stroke-dasharray="3 4" fill="none" />
+
+        <circle cx="990" cy="588" r="26" class="cv-port" />
+        <text x="990" y="592" text-anchor="middle" font-family="Inter, sans-serif" font-size="10" font-weight="700" fill="#8b5cf6">harness</text>
+        <text x="990" y="636" text-anchor="middle" class="cv-text-muted" font-family="Inter, sans-serif" font-size="11">puristajs / harness</text>
+        <text x="990" y="650" text-anchor="middle" class="cv-text-faint" font-family="JetBrains Mono, monospace" font-size="9">eval adapter (HTTP)</text>
+        <path d="M 770 412 C 850 480, 920 540, 968 568" stroke="rgba(139,92,246,0.55)" stroke-width="1.2" stroke-dasharray="3 4" fill="none" />
+      </g>
+
+      <!-- Main connector lines -->
+      <g class="cv-line" stroke-width="1.5">
+        <use href="#pTriggerCollector" marker-end="url(#sc-arrow)" />
+        <use href="#pCollectorBridge"  marker-end="url(#sc-arrow)" />
+        <use href="#pBridgeSwitch"     marker-end="url(#sc-arrow)" />
+      </g>
+      <g fill="none" stroke="#10b981" stroke-width="1.5">
+        <use href="#pSwitchTrue" marker-end="url(#sc-arrow-true)" />
+      </g>
+      <g fill="none" stroke="#f43f5e" stroke-width="1.5">
+        <use href="#pSwitchFalse" marker-end="url(#sc-arrow-false)" />
+      </g>
+      <g fill="none" stroke="rgba(139,92,246,0.55)" stroke-width="1.5">
+        <use href="#pBridgeAi" marker-end="url(#sc-arrow)" />
+      </g>
+
+      <!-- Flow dots -->
+      <g>
+        <circle r="3.5" fill="#06b6d4">
+          <animateMotion dur="2.6s" repeatCount="indefinite" rotate="auto"><mpath href="#pTriggerCollector" /></animateMotion>
+        </circle>
+        <circle r="3.5" fill="#06b6d4">
+          <animateMotion dur="2.6s" begin="-1.3s" repeatCount="indefinite"><mpath href="#pTriggerCollector" /></animateMotion>
+        </circle>
+        <circle r="3.5" fill="#6366f1">
+          <animateMotion dur="2.4s" repeatCount="indefinite"><mpath href="#pCollectorBridge" /></animateMotion>
+        </circle>
+        <circle r="3.5" fill="#6366f1">
+          <animateMotion dur="2.4s" begin="-1.2s" repeatCount="indefinite"><mpath href="#pCollectorBridge" /></animateMotion>
+        </circle>
+        <circle r="3.5" class="cv-arrow-fill">
+          <animateMotion dur="2.2s" repeatCount="indefinite"><mpath href="#pBridgeSwitch" /></animateMotion>
+        </circle>
+        <circle r="3.5" fill="#10b981">
+          <animateMotion dur="2.4s" repeatCount="indefinite"><mpath href="#pSwitchTrue" /></animateMotion>
+        </circle>
+        <circle r="3" fill="#8b5cf6">
+          <animateMotion dur="3.4s" repeatCount="indefinite"><mpath href="#pBridgeAi" /></animateMotion>
+        </circle>
+      </g>
+
+      <!-- Decorative + plugs at right edge -->
+      <g fill="none" stroke-width="1">
+        <rect x="1218" y="190" width="16" height="20" rx="3" class="cv-line-soft" />
+        <line x1="1226" y1="195" x2="1226" y2="205" class="cv-line" />
+        <line x1="1221" y1="200" x2="1231" y2="200" class="cv-line" />
+
+        <rect x="1218" y="490" width="16" height="20" rx="3" class="cv-line-soft" />
+        <line x1="1226" y1="495" x2="1226" y2="505" class="cv-line" />
+        <line x1="1221" y1="500" x2="1231" y2="500" class="cv-line" />
+      </g>
+
+      <!-- Bridge callout -->
+      <g font-family="Inter, sans-serif" font-size="10">
+        <rect x="380" y="660" width="630" height="36" rx="10" class="cv-callout" />
+        <text x="695" y="683" text-anchor="middle" class="cv-callout-text" font-weight="600" letter-spacing="0.5">
+          every read and write crosses the bridge — no public service touches the database
+        </text>
+      </g>
+    </svg>
+  </div>
+
+  {showLegend && (
+    <div class="canvas-surface px-6 py-4 border-t border-border-default flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
+      <span class="inline-flex items-center gap-2 text-[color:var(--cv-text-muted)]">
+        <span class="inline-block w-3 h-[2px] rounded-full bg-[color:var(--color-cyan)]"></span> ingest
+      </span>
+      <span class="inline-flex items-center gap-2 text-[color:var(--cv-text-muted)]">
+        <span class="inline-block w-3 h-[2px] rounded-full bg-[color:var(--color-brand)]"></span> bridge subjects
+      </span>
+      <span class="inline-flex items-center gap-2 text-[color:var(--cv-text-muted)]">
+        <span class="inline-block w-3 h-[2px] rounded-full bg-[color:var(--color-emerald)]"></span> authorized
+      </span>
+      <span class="inline-flex items-center gap-2 text-[color:var(--cv-text-muted)]">
+        <span class="inline-block w-3 h-[2px] rounded-full bg-[color:var(--color-rose)]"></span> rejected
+      </span>
+      <span class="inline-flex items-center gap-2 text-[color:var(--cv-text-muted)]">
+        <span class="inline-block w-3 h-[2px] rounded-full bg-[color:var(--color-violet)]"></span> AI projections
+      </span>
+      <span class="inline-flex items-center gap-2 text-[color:var(--cv-text-muted)] ml-auto">
+        <span class="inline-block w-3 border-b border-dashed border-[color:var(--cv-text-muted)]"></span> adapter port
+      </span>
+    </div>
+  )}
+</div>

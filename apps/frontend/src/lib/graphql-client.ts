@@ -16,6 +16,11 @@ import type {
   CreateAlertRuleMutationData,
   CreateAlertSilenceInput,
   CreateAlertSilenceMutationData,
+  CreatedIngestCredential,
+  CreateIngestCredentialInput,
+  CreateIngestCredentialMutationData,
+  CreateProjectInput,
+  CreateProjectMutationData,
   Dataset,
   DatasetQueryData,
   DatasetSearchInput,
@@ -27,34 +32,23 @@ import type {
   ExperimentRunQueryData,
   ExperimentSearchInput,
   ExperimentsQueryData,
+  IngestCredential,
+  IngestCredentialListResult,
+  IngestCredentialsQueryData,
+  InviteOrganizationMemberInput,
+  InviteOrganizationMemberMutationData,
   LiveExperimentRunInput,
   LiveExperimentRunSubscriptionData,
-  LogSearchInput,
-  LogSearchQueryData,
-  LogSearchResult,
   LiveTraceEvent,
   LiveTraceInput,
   LiveTraceSubscriptionData,
+  LogSearchInput,
+  LogSearchQueryData,
+  LogSearchResult,
   MetricNameSearchInput,
   MetricNameSearchResult,
   MetricSeriesInput,
   MetricSeriesResult,
-  CreateIngestCredentialInput,
-  CreateIngestCredentialMutationData,
-  CreateProjectInput,
-  CreateProjectMutationData,
-  CreatedIngestCredential,
-  InviteOrganizationMemberInput,
-  InviteOrganizationMemberMutationData,
-  IngestCredential,
-  IngestCredentialsQueryData,
-  IngestCredentialListResult,
-  RevokeIngestCredentialMutationData,
-  TelemetryFacetInput,
-  TelemetryFacetQueryData,
-  TelemetryFacetResult,
-  ScorerSearchInput,
-  ScorersQueryData,
   Organization,
   OrganizationInvitation,
   OrganizationInvitationsQueryData,
@@ -63,32 +57,44 @@ import type {
   OrganizationQueryData,
   OrganizationsQueryData,
   Project,
+  ProjectAiSettings,
+  ProjectAiSettingsQueryData,
   ProjectListInput,
   ProjectMember,
   ProjectMembersQueryData,
   ProjectQueryData,
+  ProjectRole,
   ProjectsQueryData,
   RemoveOrganizationMemberInput,
   RemoveOrganizationMemberMutationData,
   RemoveProjectMemberMutationData,
-  RevokeOrganizationInvitationMutationData,
   RetentionPolicy,
   RetentionPolicyQueryData,
-  UpdateAlertRuleInput,
-  UpdateAlertRuleMutationData,
+  RevokeIngestCredentialMutationData,
+  RevokeOrganizationInvitationMutationData,
+  RichMetricSeriesInput,
+  RichMetricSeriesResult,
+  ScorerSearchInput,
+  ScorersQueryData,
   SelectProjectMutationData,
+  TelemetryFacetInput,
+  TelemetryFacetQueryData,
+  TelemetryFacetResult,
   TraceDetail,
   TraceDetailInput,
   TraceDetailQueryData,
   TraceSearchInput,
   TraceSearchQueryData,
   TraceSearchResult,
+  UpdateAlertRuleInput,
+  UpdateAlertRuleMutationData,
   UpdateOrganizationMemberInput,
   UpdateOrganizationMemberMutationData,
+  UpdateProjectAiSettingsInput,
+  UpdateProjectAiSettingsMutationData,
   UpdateProjectMemberMutationData,
   UpdateRetentionPolicyInput,
   UpdateRetentionPolicyMutationData,
-  ProjectRole,
   Viewer,
   ViewerQueryData,
 } from "@cloudgrid/ui-contracts";
@@ -110,6 +116,7 @@ export interface TelemetryGraphQLClient {
   getTelemetryFacets: (input: TelemetryFacetInput) => Promise<TelemetryFacetResult>;
   getMetricNames: (input: MetricNameSearchInput) => Promise<MetricNameSearchResult>;
   getMetricSeries: (input: MetricSeriesInput) => Promise<MetricSeriesResult>;
+  getRichMetricSeries: (input: RichMetricSeriesInput) => Promise<RichMetricSeriesResult>;
   subscribeLiveTraces: (
     input: LiveTraceInput,
     observer: LiveTraceObserver,
@@ -161,6 +168,8 @@ export interface ControlPlaneGraphQLClient {
   reorderDashboardPins: (input: ReorderDashboardPinsInput) => Promise<DashboardPreferences>;
   getRetentionPolicy: (projectId: string) => Promise<RetentionPolicy>;
   updateRetentionPolicy: (input: UpdateRetentionPolicyInput) => Promise<RetentionPolicy>;
+  getProjectAiSettings: (projectId: string) => Promise<ProjectAiSettings>;
+  updateProjectAiSettings: (input: UpdateProjectAiSettingsInput) => Promise<ProjectAiSettings>;
   getAlertRules: (projectId: string) => Promise<AlertRule[]>;
   getAlertHistory: (input: {
     projectId: string;
@@ -254,6 +263,14 @@ export const mockTelemetryClient: TelemetryGraphQLClient = {
       warnings: [],
     };
   },
+  async getRichMetricSeries(input) {
+    return {
+      interval: input.query.interval ?? "PT1M",
+      series: [],
+      displaySeries: [],
+      warnings: [],
+    };
+  },
   subscribeLiveTraces() {
     return { unsubscribe() {} };
   },
@@ -343,6 +360,15 @@ export function createTelemetryGraphQLClient(endpoint = "/graphql"): TelemetryGr
         { input },
       );
       return data.metricSeries;
+    },
+    async getRichMetricSeries(input) {
+      const data = await requestGraphQL<{ richMetricSeries: RichMetricSeriesResult }>(
+        endpoint,
+        "RichMetricSeries",
+        richMetricSeriesOperation,
+        { input },
+      );
+      return data.richMetricSeries;
     },
     subscribeLiveTraces(input, observer) {
       const subscriptionObserver: {
@@ -692,6 +718,24 @@ export function createControlPlaneGraphQLClient(endpoint = "/graphql"): ControlP
         { input },
       );
       return data.updateRetentionPolicy;
+    },
+    async getProjectAiSettings(projectId) {
+      const data = await requestGraphQL<ProjectAiSettingsQueryData>(
+        endpoint,
+        "ProjectAiSettings",
+        projectAiSettingsOperation,
+        { projectId },
+      );
+      return data.projectAiSettings;
+    },
+    async updateProjectAiSettings(input) {
+      const data = await requestGraphQL<UpdateProjectAiSettingsMutationData>(
+        endpoint,
+        "UpdateProjectAiSettings",
+        updateProjectAiSettingsOperation,
+        { input },
+      );
+      return data.updateProjectAiSettings;
     },
     async getAlertRules(projectId) {
       const data = await requestGraphQL<AlertRulesQueryData>(
@@ -1301,6 +1345,64 @@ const dashboardWidgetFields = `
       ${dashboardThresholdFields}
     }
   }
+  richMetric {
+    query {
+      timeWindow
+      interval
+      queries {
+        id
+        label
+        metricName
+        aggregation
+        groupBy
+        filters {
+          key
+          operator
+          value
+        }
+        maxSeries
+      }
+      formulas {
+        id
+        label
+        expression {
+          kind
+          refId
+          value
+          operator
+          left {
+            kind
+            refId
+            value
+          }
+          right {
+            kind
+            refId
+            value
+          }
+          function
+          arguments {
+            kind
+            refId
+            value
+          }
+        }
+        unit
+      }
+      displaySeries {
+        id
+        label
+        sourceId
+        visible
+      }
+    }
+    visualization
+    legend
+    maxSeries
+    thresholds {
+      ${dashboardThresholdFields}
+    }
+  }
   logs {
     service
     traceId
@@ -1413,6 +1515,44 @@ export const metricSeriesOperation = `
   }
 `;
 
+export const richMetricSeriesOperation = `
+  query RichMetricSeries($input: RichMetricSeriesInput!) {
+    richMetricSeries(input: $input) {
+      interval
+      series {
+        id
+        label
+        sourceId
+        unit
+        labels
+        points {
+          timestamp
+          value
+          count
+          exemplars {
+            timestamp
+            value
+            traceId
+            spanId
+            attributes
+          }
+        }
+      }
+      displaySeries {
+        id
+        label
+        sourceId
+        visible
+      }
+      warnings {
+        code
+        message
+        field
+      }
+    }
+  }
+`;
+
 export const dashboardsOperation = `
   query Dashboards($input: DashboardListInput) {
     dashboards(input: $input) {
@@ -1490,6 +1630,95 @@ export const updateRetentionPolicyOperation = `
   mutation UpdateRetentionPolicy($input: UpdateRetentionPolicyInput!) {
     updateRetentionPolicy(input: $input) {
       ${retentionPolicyFields}
+    }
+  }
+`;
+
+const projectAiSettingsFields = `
+  projectId
+  enabled
+  defaultProviderProfileId
+  defaultJudgeProfileId
+  defaultOptimizerProfileId
+  defaultEmbeddingProfileId
+  providerProfiles {
+    id
+    projectId
+    label
+    providerKind
+    baseUrl
+    credentialRef
+    models
+    timeoutMs
+    maxConcurrency
+    disabledAt
+  }
+  modelAliases {
+    id
+    name
+    providerProfileId
+    model
+    purpose
+    parameters
+  }
+  onlinePolicies {
+    id
+    enabled
+    name
+    target
+    scorerIds
+    sampleRate
+    maxDailyRuns
+    annotationRules {
+      reason
+      threshold
+      assignTo
+      datasetId
+    }
+    updatedAt
+    updatedByUserId
+  }
+  budget {
+    dailyUsd
+    perRunUsd
+    deterministicOnly
+    spentTodayUsd
+  }
+  sampling {
+    defaultOnlineSampleRate
+    maxOnlineSampleRate
+    maxConcurrentExperimentItems
+    maxConcurrentOptimizationCandidates
+  }
+  datasetDefaults {
+    splitAllocation
+    smallDatasetReviewedThreshold
+    requireReviewForRegression
+  }
+  effective {
+    warnings
+    deterministicOnly
+    missingProviderProfiles
+    disabledProviderProfiles
+    budgetExhausted
+  }
+  version
+  updatedAt
+  updatedByUserId
+`;
+
+export const projectAiSettingsOperation = `
+  query ProjectAiSettings($projectId: ID!) {
+    projectAiSettings(projectId: $projectId) {
+      ${projectAiSettingsFields}
+    }
+  }
+`;
+
+export const updateProjectAiSettingsOperation = `
+  mutation UpdateProjectAiSettings($input: UpdateProjectAiSettingsInput!) {
+    updateProjectAiSettings(input: $input) {
+      ${projectAiSettingsFields}
     }
   }
 `;

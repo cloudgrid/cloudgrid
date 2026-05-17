@@ -350,7 +350,28 @@ Rules:
 
 ### Dashboard Canvas
 
-The canvas is a stable widget grid.
+The canvas is a stable WYSIWYG widget grid. It is the primary working surface in builder mode and must not sit inside another page card.
+
+Builder header:
+
+- inline dashboard name field;
+- inline dashboard description field;
+- time range control;
+- refresh action;
+- view/edit mode toggle;
+- duplicate action;
+- save action;
+- delete action when the selected dashboard is mutable;
+- one primary `Add widget` action.
+
+Canvas layout:
+
+- desktop uses a 12-column grid with a 72px base row height and 12px gaps;
+- the canvas scrolls internally when widget rows exceed the viewport;
+- widgets keep stable dimensions during loading, empty, and error states;
+- selected widgets show a neutral focus outline and edit handles in edit mode;
+- the grid renders insertion and resize previews while the user drags or resizes;
+- no nested card shell wraps the entire dashboard grid.
 
 Supported widgets:
 
@@ -361,16 +382,32 @@ Supported widgets:
 - trace table widget backed by `DashboardTraceWidgetInput` and `Query.traces`;
 - live trace table widget backed by `DashboardLiveTraceWidgetInput` and `Subscription.liveTraces`.
 
+Additional full-editor widget target:
+
+- rich metric query widget backed by the required storage-read-owned rich metric query GraphQL contract. Production UI hides this widget until the GraphQL, AsyncAPI, TypeScript, and Go generated contracts exist.
+
 Widget rules:
 
 - every widget has one stable ID, one title, one `DashboardWidgetKind`, one layout object, and exactly one matching source config;
 - widget layout is a bounded 12-column grid with integer `x`, `y`, `w`, `h`, `minW`, and `minH`;
-- metric widgets may render line, area, bar, pie, stat, or table visualizations;
+- metric widgets may render line, area, bar, pie, donut, stat, radial, radar, heatmap, histogram, or table visualizations where the backend contract can return the required shape;
 - log and trace widgets are table-first and use compact columns only;
 - live widgets display a bounded rolling table and do not persist live events;
 - unsupported widget kinds are not shown in production UI.
 - the builder exposes one primary `Add widget` action; widget type choices live in the add-widget popover, not as a permanent button column.
 - dashboard name and description are edited in place in the dashboard canvas header. Editing an existing or built-in dashboard creates an explicit dirty draft.
+
+Drag and resize behavior:
+
+- drag starts from a widget drag handle, not from interactive chart/table content;
+- keyboard users can select a widget, move it by grid cell, resize it by grid cell, and commit or cancel the layout change;
+- pointer users see a live slot preview and invalid-drop feedback;
+- resize handles exist on the right, bottom, and lower-right edges;
+- widgets snap to the grid and cannot overlap after compaction;
+- collision handling pushes affected widgets downward in stable widget order;
+- layout changes remain local draft changes until explicit save;
+- undo and redo are available for layout changes inside the current draft;
+- mobile builder mode uses stacked widgets with explicit move up/down controls and sheet-based editing rather than freeform drag-resize.
 
 Widget actions:
 
@@ -386,9 +423,19 @@ The right drawer/sheet is used for widget details and editing. It is not a modal
 
 Metric widget editor groups:
 
-- Data: metric name, aggregation, group-by keys, filters, time window, interval;
-- Display: title, chart type, legend visibility, layout size;
+- Data: metric name, aggregation, group-by keys, filters, time window, interval, and rich metric query builder when contracts exist;
+- Display: title, chart type, stacking option where supported, legend visibility, y-axis mode, unit display, and layout size;
 - Thresholds: threshold values and severity labels.
+
+Rich metric query editor behavior:
+
+- The query builder lives inside the `Data` group to preserve the three-group editor rule.
+- The editor starts with one query row and can add named query rows.
+- Each row uses metric search, aggregation, group-by, filters, and max series controls mapped to typed contracts.
+- Formula rows are created through structured controls: choose left operand, operator/function, right operand or numeric constant. The UI must not expose freeform executable expressions.
+- Formula validation runs locally for shape feedback and is revalidated by GraphQL/storage-read on save or query execution.
+- The preview area renders backend-returned output only; it does not compute combined series in React.
+- A widget cannot save rich query configuration while the matching generated contracts are absent.
 
 Log and trace widget editor groups:
 
@@ -408,6 +455,8 @@ Dirty behavior:
 - closing inspector with dirty edits opens discard confirmation;
 - switching project with dirty dashboard edits opens discard confirmation;
 - save conflicts show inline version conflict and `Reload dashboard`.
+- route changes, dashboard selection changes, and project selection changes use the same discard confirmation model.
+- successful save clears undo/redo history for the current draft.
 
 ### Dashboard States
 
@@ -415,6 +464,9 @@ Dirty behavior:
 - No metrics for built-in dashboard: omit unavailable panels and explain missing metrics.
 - Query error in one widget: show widget-local retry and problem code; do not fail the entire dashboard.
 - Delete dashboard: destructive confirmation dialog.
+- Empty dashboard draft: show the canvas empty state with one `Add widget` action.
+- Unsupported rich widget contract: show a disabled widget type and short unavailable reason only in development builds; production hides it.
+- Layout validation failure: keep the draft open, mark the invalid widget, and show the validation problem near the save action and editor layout controls.
 
 ## Cross-View Pivots
 

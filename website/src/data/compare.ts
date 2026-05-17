@@ -186,10 +186,10 @@ export const rows: CompareRow[] = [
     },
   },
   {
-    criterion: "Public spec-driven roadmap",
-    detail: "Specs are the source of truth, not a marketing page.",
+    criterion: "Roadmap visible in the source repo",
+    detail: "Open issues, open milestones, open RFCs — no closed-door roadmap deck.",
     cells: {
-      cloudgrid: { value: "yes", note: "/specs in repo" },
+      cloudgrid: { value: "yes" },
       datadog: { value: "no" },
       honeycomb: { value: "no" },
       lgtm: { value: "partial" },

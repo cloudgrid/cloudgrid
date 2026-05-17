@@ -116,12 +116,17 @@ const (
 type MetricChartType string
 
 const (
-	MetricChartTypeLine  MetricChartType = "line"
-	MetricChartTypeArea  MetricChartType = "area"
-	MetricChartTypeBar   MetricChartType = "bar"
-	MetricChartTypePie   MetricChartType = "pie"
-	MetricChartTypeStat  MetricChartType = "stat"
-	MetricChartTypeTable MetricChartType = "table"
+	MetricChartTypeLine      MetricChartType = "line"
+	MetricChartTypeArea      MetricChartType = "area"
+	MetricChartTypeBar       MetricChartType = "bar"
+	MetricChartTypePie       MetricChartType = "pie"
+	MetricChartTypeDonut     MetricChartType = "donut"
+	MetricChartTypeStat      MetricChartType = "stat"
+	MetricChartTypeRadial    MetricChartType = "radial"
+	MetricChartTypeRadar     MetricChartType = "radar"
+	MetricChartTypeHeatmap   MetricChartType = "heatmap"
+	MetricChartTypeHistogram MetricChartType = "histogram"
+	MetricChartTypeTable     MetricChartType = "table"
 )
 
 type DashboardVisibility string
@@ -145,9 +150,42 @@ const (
 	DashboardWidgetKindMetricTimeseries DashboardWidgetKind = "metric_timeseries"
 	DashboardWidgetKindMetricStat       DashboardWidgetKind = "metric_stat"
 	DashboardWidgetKindMetricTable      DashboardWidgetKind = "metric_table"
+	DashboardWidgetKindMetricRich       DashboardWidgetKind = "metric_rich"
 	DashboardWidgetKindLogTable         DashboardWidgetKind = "log_table"
 	DashboardWidgetKindTraceTable       DashboardWidgetKind = "trace_table"
 	DashboardWidgetKindLiveTraceTable   DashboardWidgetKind = "live_trace_table"
+)
+
+type DashboardMetricFormulaExpressionKind string
+
+const (
+	DashboardMetricFormulaExpressionKindRef      DashboardMetricFormulaExpressionKind = "ref"
+	DashboardMetricFormulaExpressionKindNumber   DashboardMetricFormulaExpressionKind = "number"
+	DashboardMetricFormulaExpressionKindBinary   DashboardMetricFormulaExpressionKind = "binary"
+	DashboardMetricFormulaExpressionKindUnary    DashboardMetricFormulaExpressionKind = "unary"
+	DashboardMetricFormulaExpressionKindFunction DashboardMetricFormulaExpressionKind = "function"
+)
+
+type DashboardMetricFormulaBinaryOperator string
+
+const (
+	DashboardMetricFormulaBinaryOperatorAdd      DashboardMetricFormulaBinaryOperator = "add"
+	DashboardMetricFormulaBinaryOperatorSubtract DashboardMetricFormulaBinaryOperator = "subtract"
+	DashboardMetricFormulaBinaryOperatorMultiply DashboardMetricFormulaBinaryOperator = "multiply"
+	DashboardMetricFormulaBinaryOperatorDivide   DashboardMetricFormulaBinaryOperator = "divide"
+)
+
+type DashboardMetricFormulaFunction string
+
+const (
+	DashboardMetricFormulaFunctionSumSeries     DashboardMetricFormulaFunction = "sum_series"
+	DashboardMetricFormulaFunctionAvgSeries     DashboardMetricFormulaFunction = "avg_series"
+	DashboardMetricFormulaFunctionMinSeries     DashboardMetricFormulaFunction = "min_series"
+	DashboardMetricFormulaFunctionMaxSeries     DashboardMetricFormulaFunction = "max_series"
+	DashboardMetricFormulaFunctionRatio         DashboardMetricFormulaFunction = "ratio"
+	DashboardMetricFormulaFunctionClampMin      DashboardMetricFormulaFunction = "clamp_min"
+	DashboardMetricFormulaFunctionClampMax      DashboardMetricFormulaFunction = "clamp_max"
+	DashboardMetricFormulaFunctionMovingAverage DashboardMetricFormulaFunction = "moving_average"
 )
 
 type DashboardThresholdSeverity string
@@ -431,15 +469,16 @@ type DashboardSaveInput struct {
 }
 
 type DashboardWidgetInput struct {
-	ID          string                         `json:"id"`
-	Title       string                         `json:"title"`
-	Description *string                        `json:"description,omitempty"`
-	Kind        DashboardWidgetKind            `json:"kind"`
-	Layout      DashboardWidgetLayoutInput     `json:"layout"`
-	Metric      *DashboardMetricWidgetInput    `json:"metric,omitempty"`
-	Logs        *DashboardLogWidgetInput       `json:"logs,omitempty"`
-	Traces      *DashboardTraceWidgetInput     `json:"traces,omitempty"`
-	LiveTraces  *DashboardLiveTraceWidgetInput `json:"liveTraces,omitempty"`
+	ID          string                          `json:"id"`
+	Title       string                          `json:"title"`
+	Description *string                         `json:"description,omitempty"`
+	Kind        DashboardWidgetKind             `json:"kind"`
+	Layout      DashboardWidgetLayoutInput      `json:"layout"`
+	Metric      *DashboardMetricWidgetInput     `json:"metric,omitempty"`
+	RichMetric  *DashboardRichMetricWidgetInput `json:"richMetric,omitempty"`
+	Logs        *DashboardLogWidgetInput        `json:"logs,omitempty"`
+	Traces      *DashboardTraceWidgetInput      `json:"traces,omitempty"`
+	LiveTraces  *DashboardLiveTraceWidgetInput  `json:"liveTraces,omitempty"`
 }
 
 type DashboardWidgetLayoutInput struct {
@@ -462,6 +501,57 @@ type DashboardMetricWidgetInput struct {
 	Legend        *bool                     `json:"legend,omitempty"`
 	MaxSeries     *int                      `json:"maxSeries,omitempty"`
 	Thresholds    []DashboardThresholdInput `json:"thresholds,omitempty"`
+}
+
+type DashboardRichMetricWidgetInput struct {
+	Query         DashboardMetricQueryInput `json:"query"`
+	Visualization MetricChartType           `json:"visualization"`
+	Legend        *bool                     `json:"legend,omitempty"`
+	MaxSeries     *int                      `json:"maxSeries,omitempty"`
+	Thresholds    []DashboardThresholdInput `json:"thresholds,omitempty"`
+}
+
+type DashboardMetricQueryInput struct {
+	TimeWindow    *string                             `json:"timeWindow,omitempty"`
+	Interval      *string                             `json:"interval,omitempty"`
+	Queries       []DashboardMetricQueryRowInput      `json:"queries"`
+	Formulas      []DashboardMetricFormulaInput       `json:"formulas,omitempty"`
+	DisplaySeries []DashboardMetricDisplaySeriesInput `json:"displaySeries,omitempty"`
+}
+
+type DashboardMetricQueryRowInput struct {
+	ID          string            `json:"id"`
+	Label       string            `json:"label"`
+	MetricName  string            `json:"metricName"`
+	Aggregation MetricAggregation `json:"aggregation"`
+	GroupBy     []string          `json:"groupBy,omitempty"`
+	Filters     []AttributeFilter `json:"filters,omitempty"`
+	MaxSeries   *int              `json:"maxSeries,omitempty"`
+}
+
+type DashboardMetricFormulaInput struct {
+	ID         string                                `json:"id"`
+	Label      string                                `json:"label"`
+	Expression DashboardMetricFormulaExpressionInput `json:"expression"`
+	Unit       *string                               `json:"unit,omitempty"`
+}
+
+type DashboardMetricFormulaExpressionInput struct {
+	Kind      DashboardMetricFormulaExpressionKind    `json:"kind"`
+	RefID     *string                                 `json:"refId,omitempty"`
+	Value     *float64                                `json:"value,omitempty"`
+	Operator  *DashboardMetricFormulaBinaryOperator   `json:"operator,omitempty"`
+	Left      *DashboardMetricFormulaExpressionInput  `json:"left,omitempty"`
+	Right     *DashboardMetricFormulaExpressionInput  `json:"right,omitempty"`
+	Function  *DashboardMetricFormulaFunction         `json:"function,omitempty"`
+	Arguments []DashboardMetricFormulaExpressionInput `json:"arguments,omitempty"`
+}
+
+type DashboardMetricDisplaySeriesInput struct {
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	SourceID string `json:"sourceId"`
+	Visible  *bool  `json:"visible,omitempty"`
 }
 
 type DashboardLogWidgetInput struct {
@@ -645,6 +735,57 @@ type DashboardMetricWidget struct {
 	Thresholds    []DashboardThreshold `json:"thresholds"`
 }
 
+type DashboardRichMetricWidget struct {
+	Query         DashboardMetricQuery `json:"query"`
+	Visualization MetricChartType      `json:"visualization"`
+	Legend        bool                 `json:"legend"`
+	MaxSeries     int                  `json:"maxSeries"`
+	Thresholds    []DashboardThreshold `json:"thresholds"`
+}
+
+type DashboardMetricQuery struct {
+	TimeWindow    string                         `json:"timeWindow"`
+	Interval      *string                        `json:"interval,omitempty"`
+	Queries       []DashboardMetricQueryRow      `json:"queries"`
+	Formulas      []DashboardMetricFormula       `json:"formulas"`
+	DisplaySeries []DashboardMetricDisplaySeries `json:"displaySeries"`
+}
+
+type DashboardMetricQueryRow struct {
+	ID          string            `json:"id"`
+	Label       string            `json:"label"`
+	MetricName  string            `json:"metricName"`
+	Aggregation MetricAggregation `json:"aggregation"`
+	GroupBy     []string          `json:"groupBy"`
+	Filters     []AttributeFilter `json:"filters"`
+	MaxSeries   int               `json:"maxSeries"`
+}
+
+type DashboardMetricFormula struct {
+	ID         string                           `json:"id"`
+	Label      string                           `json:"label"`
+	Expression DashboardMetricFormulaExpression `json:"expression"`
+	Unit       *string                          `json:"unit,omitempty"`
+}
+
+type DashboardMetricFormulaExpression struct {
+	Kind      DashboardMetricFormulaExpressionKind  `json:"kind"`
+	RefID     *string                               `json:"refId,omitempty"`
+	Value     *float64                              `json:"value,omitempty"`
+	Operator  *DashboardMetricFormulaBinaryOperator `json:"operator,omitempty"`
+	Left      *DashboardMetricFormulaExpression     `json:"left,omitempty"`
+	Right     *DashboardMetricFormulaExpression     `json:"right,omitempty"`
+	Function  *DashboardMetricFormulaFunction       `json:"function,omitempty"`
+	Arguments []DashboardMetricFormulaExpression    `json:"arguments"`
+}
+
+type DashboardMetricDisplaySeries struct {
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	SourceID string `json:"sourceId"`
+	Visible  bool   `json:"visible"`
+}
+
 type DashboardLogWidget struct {
 	Service    *string              `json:"service,omitempty"`
 	TraceID    *string              `json:"traceId,omitempty"`
@@ -684,15 +825,16 @@ type DashboardLiveTraceWidget struct {
 }
 
 type DashboardWidget struct {
-	ID          string                    `json:"id"`
-	Title       string                    `json:"title"`
-	Description *string                   `json:"description,omitempty"`
-	Kind        DashboardWidgetKind       `json:"kind"`
-	Layout      DashboardWidgetLayout     `json:"layout"`
-	Metric      *DashboardMetricWidget    `json:"metric,omitempty"`
-	Logs        *DashboardLogWidget       `json:"logs,omitempty"`
-	Traces      *DashboardTraceWidget     `json:"traces,omitempty"`
-	LiveTraces  *DashboardLiveTraceWidget `json:"liveTraces,omitempty"`
+	ID          string                     `json:"id"`
+	Title       string                     `json:"title"`
+	Description *string                    `json:"description,omitempty"`
+	Kind        DashboardWidgetKind        `json:"kind"`
+	Layout      DashboardWidgetLayout      `json:"layout"`
+	Metric      *DashboardMetricWidget     `json:"metric,omitempty"`
+	RichMetric  *DashboardRichMetricWidget `json:"richMetric,omitempty"`
+	Logs        *DashboardLogWidget        `json:"logs,omitempty"`
+	Traces      *DashboardTraceWidget      `json:"traces,omitempty"`
+	LiveTraces  *DashboardLiveTraceWidget  `json:"liveTraces,omitempty"`
 }
 
 type Dashboard struct {
@@ -873,6 +1015,47 @@ type MetricSeriesResponse struct {
 	OK        bool              `json:"ok"`
 	Data      *MetricSeriesData `json:"data,omitempty"`
 	Error     *BridgeError      `json:"error,omitempty"`
+}
+
+type RichMetricSeriesInput struct {
+	From  time.Time                 `json:"from"`
+	To    time.Time                 `json:"to"`
+	Query DashboardMetricQueryInput `json:"query"`
+}
+
+type RichMetricSeries struct {
+	ID       string              `json:"id"`
+	Label    string              `json:"label"`
+	SourceID string              `json:"sourceId"`
+	Unit     *string             `json:"unit,omitempty"`
+	Labels   Attributes          `json:"labels"`
+	Points   []MetricSeriesPoint `json:"points"`
+}
+
+type RichMetricDisplaySeries struct {
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	SourceID string `json:"sourceId"`
+	Visible  bool   `json:"visible"`
+}
+
+type RichMetricSeriesData struct {
+	Interval      string                    `json:"interval"`
+	Series        []RichMetricSeries        `json:"series"`
+	DisplaySeries []RichMetricDisplaySeries `json:"displaySeries"`
+	Warnings      []MetricQueryWarning      `json:"warnings"`
+}
+
+type RichMetricSeriesRequest struct {
+	BridgeEnvelope
+	Input RichMetricSeriesInput `json:"input"`
+}
+
+type RichMetricSeriesResponse struct {
+	RequestID string                `json:"requestId"`
+	OK        bool                  `json:"ok"`
+	Data      *RichMetricSeriesData `json:"data,omitempty"`
+	Error     *BridgeError          `json:"error,omitempty"`
 }
 
 type LiveTraceStartRequest struct {

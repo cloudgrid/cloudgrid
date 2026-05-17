@@ -162,6 +162,7 @@ describe("UX v2 app shell", () => {
     const logs = markup.indexOf(">Logs<");
     const metrics = markup.indexOf(">Metrics<");
     const dashboards = markup.indexOf(">Dashboards<");
+    const aiEval = markup.indexOf(">AI eval<");
     const settings = markup.indexOf(">Settings<");
 
     expect(markup).not.toContain(">Overview<");
@@ -171,7 +172,8 @@ describe("UX v2 app shell", () => {
     expect(logs).toBeGreaterThan(traces);
     expect(metrics).toBeGreaterThan(logs);
     expect(dashboards).toBeGreaterThan(metrics);
-    expect(settings).toBeGreaterThan(dashboards);
+    expect(aiEval).toBeGreaterThan(dashboards);
+    expect(settings).toBeGreaterThan(aiEval);
     expect(markup).not.toContain(">Live<");
     expect(markup).toContain("Pinned dashboards");
     expect(markup).toContain("Service health");

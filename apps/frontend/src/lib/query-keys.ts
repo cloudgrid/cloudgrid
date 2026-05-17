@@ -2,6 +2,7 @@ import type {
   LogSearchInput,
   MetricNameSearchInput,
   MetricSeriesInput,
+  RichMetricSeriesInput,
   TelemetryFacetInput,
   TraceDetailInput,
   TraceSearchInput,
@@ -23,7 +24,9 @@ const projectScopedQueryKeyPrefixes = new Set([
   "TelemetryFacets",
   "MetricNames",
   "MetricSeries",
+  "RichMetricSeries",
   "Dashboards",
+  "ProjectAiSettings",
   "AlertRules",
   "AlertHistory",
   "AlertSilences",
@@ -44,6 +47,8 @@ export const queryKeys = {
     ["MetricNames", normalizeVariables({ ...input })] as const,
   metricSeries: (input: MetricSeriesInput) =>
     ["MetricSeries", normalizeVariables({ ...input })] as const,
+  richMetricSeries: (input: RichMetricSeriesInput) =>
+    ["RichMetricSeries", normalizeVariables({ ...input })] as const,
   dashboards: (input: DashboardListInput) =>
     ["Dashboards", normalizeVariables({ ...input })] as const,
   organizationMembers: (organizationId: string) => ["OrganizationMembers", organizationId] as const,
@@ -51,6 +56,7 @@ export const queryKeys = {
     ["OrganizationInvitations", organizationId] as const,
   projectMembers: (projectId: string) => ["ProjectMembers", projectId] as const,
   retentionPolicy: (projectId: string) => ["RetentionPolicy", projectId] as const,
+  projectAiSettings: (projectId: string) => ["ProjectAiSettings", projectId] as const,
   alertRules: (projectId: string) => ["AlertRules", projectId] as const,
   alertHistory: (
     projectId: string,

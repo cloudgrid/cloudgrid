@@ -46,6 +46,7 @@
               "metric_timeseries",
               "metric_stat",
               "metric_table",
+              "metric_rich",
               "log_table",
               "trace_table",
               "live_trace_table"
@@ -65,6 +66,7 @@
             }
           },
           "metric": { "$ref": "#/$defs/metricWidget" },
+          "richMetric": { "$ref": "#/$defs/richMetricWidget" },
           "logs": { "$ref": "#/$defs/logWidget" },
           "traces": { "$ref": "#/$defs/traceWidget" },
           "liveTraces": { "$ref": "#/$defs/liveTraceWidget" }
@@ -76,6 +78,7 @@
               "required": ["metric"],
               "not": {
                 "anyOf": [
+                  { "required": ["richMetric"] },
                   { "required": ["logs"] },
                   { "required": ["traces"] },
                   { "required": ["liveTraces"] }
@@ -89,6 +92,7 @@
               "required": ["metric"],
               "not": {
                 "anyOf": [
+                  { "required": ["richMetric"] },
                   { "required": ["logs"] },
                   { "required": ["traces"] },
                   { "required": ["liveTraces"] }
@@ -102,6 +106,21 @@
               "required": ["metric"],
               "not": {
                 "anyOf": [
+                  { "required": ["richMetric"] },
+                  { "required": ["logs"] },
+                  { "required": ["traces"] },
+                  { "required": ["liveTraces"] }
+                ]
+              }
+            }
+          },
+          {
+            "if": { "properties": { "kind": { "const": "metric_rich" } } },
+            "then": {
+              "required": ["richMetric"],
+              "not": {
+                "anyOf": [
+                  { "required": ["metric"] },
                   { "required": ["logs"] },
                   { "required": ["traces"] },
                   { "required": ["liveTraces"] }
@@ -116,6 +135,7 @@
               "not": {
                 "anyOf": [
                   { "required": ["metric"] },
+                  { "required": ["richMetric"] },
                   { "required": ["traces"] },
                   { "required": ["liveTraces"] }
                 ]
@@ -129,6 +149,7 @@
               "not": {
                 "anyOf": [
                   { "required": ["metric"] },
+                  { "required": ["richMetric"] },
                   { "required": ["logs"] },
                   { "required": ["liveTraces"] }
                 ]
@@ -142,6 +163,7 @@
               "not": {
                 "anyOf": [
                   { "required": ["metric"] },
+                  { "required": ["richMetric"] },
                   { "required": ["logs"] },
                   { "required": ["traces"] }
                 ]
@@ -177,11 +199,149 @@
         "interval": { "type": "string" },
         "visualization": {
           "type": "string",
-          "enum": ["line", "area", "bar", "pie", "stat", "table"]
+          "enum": [
+            "line",
+            "area",
+            "bar",
+            "pie",
+            "donut",
+            "stat",
+            "radial",
+            "radar",
+            "heatmap",
+            "histogram",
+            "table"
+          ]
         },
         "legend": { "type": "boolean", "default": true },
         "maxSeries": { "type": "integer", "minimum": 1, "maximum": 50, "default": 20 },
         "thresholds": { "type": "array", "maxItems": 8, "items": { "$ref": "#/$defs/threshold" } }
+      }
+    },
+    "richMetricWidget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query", "visualization"],
+      "properties": {
+        "query": { "$ref": "#/$defs/metricQuery" },
+        "visualization": {
+          "type": "string",
+          "enum": [
+            "line",
+            "area",
+            "bar",
+            "pie",
+            "donut",
+            "stat",
+            "radial",
+            "radar",
+            "heatmap",
+            "histogram",
+            "table"
+          ]
+        },
+        "legend": { "type": "boolean", "default": true },
+        "maxSeries": { "type": "integer", "minimum": 1, "maximum": 50, "default": 20 },
+        "thresholds": { "type": "array", "maxItems": 8, "items": { "$ref": "#/$defs/threshold" } }
+      }
+    },
+    "metricQuery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["queries"],
+      "properties": {
+        "timeWindow": { "type": "string", "default": "PT1H" },
+        "interval": { "type": "string" },
+        "queries": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/metricQueryRow" }
+        },
+        "formulas": {
+          "type": "array",
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/metricFormula" }
+        },
+        "displaySeries": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/metricDisplaySeries" }
+        }
+      }
+    },
+    "metricQueryRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "metricName", "aggregation"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{1,64}$" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 96 },
+        "metricName": { "type": "string", "minLength": 1 },
+        "aggregation": {
+          "type": "string",
+          "enum": ["avg", "sum", "min", "max", "count", "rate", "p50", "p90", "p95", "p99"]
+        },
+        "groupBy": { "type": "array", "maxItems": 6, "items": { "type": "string" } },
+        "filters": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "./attribute-filter.schema.json" }
+        },
+        "maxSeries": { "type": "integer", "minimum": 1, "maximum": 50, "default": 20 }
+      }
+    },
+    "metricFormula": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "expression"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{1,64}$" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 96 },
+        "expression": { "$ref": "#/$defs/metricFormulaExpression" },
+        "unit": { "type": "string", "maxLength": 32 }
+      }
+    },
+    "metricFormulaExpression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["ref", "number", "binary", "unary", "function"] },
+        "refId": { "type": "string" },
+        "value": { "type": "number" },
+        "operator": { "type": "string", "enum": ["add", "subtract", "multiply", "divide"] },
+        "left": { "$ref": "#/$defs/metricFormulaExpression" },
+        "right": { "$ref": "#/$defs/metricFormulaExpression" },
+        "function": {
+          "type": "string",
+          "enum": [
+            "sum_series",
+            "avg_series",
+            "min_series",
+            "max_series",
+            "ratio",
+            "clamp_min",
+            "clamp_max",
+            "moving_average"
+          ]
+        },
+        "arguments": {
+          "type": "array",
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/metricFormulaExpression" }
+        }
+      }
+    },
+    "metricDisplaySeries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "sourceId"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{1,64}$" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 96 },
+        "sourceId": { "type": "string", "minLength": 1 },
+        "visible": { "type": "boolean", "default": true }
       }
     },
     "logWidget": {

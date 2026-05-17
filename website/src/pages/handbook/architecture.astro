@@ -2,7 +2,7 @@
 import Layout from "../../layouts/Layout.astro";
 import Section from "../../components/Section.astro";
 import PageHeader from "../../components/PageHeader.astro";
-import ArchitectureDiagram from "../../components/visuals/ArchitectureDiagram.astro";
+import SystemCanvas from "../../components/visuals/SystemCanvas.astro";
 ---
 
 <Layout title="Architecture — CloudGrid Handbook">
@@ -16,11 +16,11 @@ import ArchitectureDiagram from "../../components/visuals/ArchitectureDiagram.as
   </Section>
 
   <Section tone="recessed">
-    <div class="rounded-xl border border-border-default bg-surface p-4 sm:p-6 reveal">
-      <ArchitectureDiagram />
+    <div class="reveal-scale">
+      <SystemCanvas />
     </div>
     <p class="mt-3 text-xs text-text-muted text-center">
-      Solid arrows: data flow. The accent line is the bridge — the boundary between public and private.
+      Trigger fires · ingest validates · bridge routes · core commits · switch authorizes · live fans out.
     </p>
   </Section>
 
@@ -90,19 +90,13 @@ import ArchitectureDiagram from "../../components/visuals/ArchitectureDiagram.as
 
       <h2>AI evaluation, briefly</h2>
       <p>
-        The <code>ai-eval-runner</code> service orchestrates experiment runs through the harness
-        adapter and persists results only by sending storage-write commands over the bridge. It
-        never reads or writes the database directly and never calls model providers directly. The
-        AI Evaluation feature page explains the user-visible surface; the
-        <a href="https://github.com/cloudgriddev/cloudgrid/tree/main/specs/04-backend" target="_blank" rel="noopener noreferrer">spec</a> is the contract.
+        The <code>core/ai-eval-runner</code> service is optional. When enabled, it consumes
+        AI projection notifications for online scoring, handles experiment start / cancel /
+        optimization-start subjects, reads datasets and scorers only through storage-read,
+        writes mutable AI-eval records only through storage-write, and calls the harness
+        adapter over HTTP. It never reads or writes the database directly and never calls
+        model providers directly. See the <a href="/features/ai-evaluation">AI Evaluation</a> feature page for the user-visible surface.
       </p>
-
-      <h2>Where to read more</h2>
-      <ul>
-        <li><a href="https://github.com/cloudgriddev/cloudgrid/blob/main/specs/04-backend/backend-architecture.md" target="_blank" rel="noopener noreferrer">specs/04-backend/backend-architecture.md</a></li>
-        <li><a href="https://github.com/cloudgriddev/cloudgrid/blob/main/specs/04-backend/telemetry-query-semantics.md" target="_blank" rel="noopener noreferrer">specs/04-backend/telemetry-query-semantics.md</a></li>
-        <li><a href="https://github.com/cloudgriddev/cloudgrid/tree/main/specs/03-contracts" target="_blank" rel="noopener noreferrer">specs/03-contracts — GraphQL + AsyncAPI</a></li>
-      </ul>
     </div>
   </Section>
 </Layout>
