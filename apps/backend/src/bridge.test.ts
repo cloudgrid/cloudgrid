@@ -80,7 +80,7 @@ describe("NATS telemetry query bridge", () => {
     });
   });
 
-  test("sends metric name and series requests to storage-read metric subjects", async () => {
+  test("sends metric name, series, and rich series requests to storage-read metric subjects", async () => {
     const codec = JSONCodec<unknown>();
     const requests: Array<{ subject: string; payload: unknown }> = [];
     const connection = {
@@ -94,14 +94,21 @@ describe("NATS telemetry query bridge", () => {
             data:
               requestedSubject === "telemetry.metrics.names"
                 ? { items: [] }
-                : {
-                    metric: metricDescriptor("gen_ai.client.token.usage"),
-                    aggregation: "sum",
-                    interval: "PT1M",
-                    groupBy: ["gen_ai.system"],
-                    series: [],
-                    warnings: [],
-                  },
+                : requestedSubject === "telemetry.metrics.rich_query"
+                  ? {
+                      interval: "PT1M",
+                      series: [],
+                      displaySeries: [],
+                      warnings: [],
+                    }
+                  : {
+                      metric: metricDescriptor("gen_ai.client.token.usage"),
+                      aggregation: "sum",
+                      interval: "PT1M",
+                      groupBy: ["gen_ai.system"],
+                      series: [],
+                      warnings: [],
+                    },
           }),
         };
       },
@@ -117,6 +124,24 @@ describe("NATS telemetry query bridge", () => {
       aggregation: "sum",
       groupBy: ["gen_ai.system"],
       limit: 100,
+    });
+    await bridge.richMetricSeries({
+      from: "2026-05-14T08:00:00.000Z",
+      to: "2026-05-14T09:00:00.000Z",
+      query: {
+        interval: "PT1M",
+        queries: [
+          {
+            id: "total",
+            label: "Total",
+            metricName: "gen_ai.client.token.usage",
+            aggregation: "sum",
+            maxSeries: 20,
+          },
+        ],
+        formulas: [],
+        displaySeries: [],
+      },
     });
 
     expect(requests).toMatchObject([
@@ -134,6 +159,29 @@ describe("NATS telemetry query bridge", () => {
             aggregation: "sum",
             groupBy: ["gen_ai.system"],
             limit: 100,
+          },
+        },
+      },
+      {
+        subject: "telemetry.metrics.rich_query",
+        payload: {
+          input: {
+            from: "2026-05-14T08:00:00.000Z",
+            to: "2026-05-14T09:00:00.000Z",
+            query: {
+              interval: "PT1M",
+              queries: [
+                {
+                  id: "total",
+                  label: "Total",
+                  metricName: "gen_ai.client.token.usage",
+                  aggregation: "sum",
+                  maxSeries: 20,
+                },
+              ],
+              formulas: [],
+              displaySeries: [],
+            },
           },
         },
       },

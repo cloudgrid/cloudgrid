@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-023",
+  "title": "DatasetExportJob",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "datasetId",
+    "datasetVersion",
+    "status",
+    "format",
+    "rowCount",
+    "createdAt",
+    "expiresAt"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "datasetId": { "type": "string" },
+    "datasetVersion": { "type": "integer", "minimum": 1 },
+    "status": {
+      "type": "string",
+      "enum": ["queued", "ready", "failed", "expired"]
+    },
+    "format": {
+      "type": "string",
+      "enum": ["jsonl", "json_array", "csv"]
+    },
+    "rowCount": { "type": "integer", "minimum": 0 },
+    "sizeBytes": { "type": "integer", "minimum": 0 },
+    "sha256": { "type": "string" },
+    "downloadUrl": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" }
+  }
+}

@@ -51,6 +51,10 @@ Runtime configuration:
 - Does not expose public HTTP endpoints.
 - Does not implement Python-based optimizers.
 - Does not own online policy matching semantics locally.
+- Does not call harness `/v1/score` for online scoring in v1.
+- Does not create annotation queue items automatically from online scoring
+  results in v1.
+- Does not feed online score results into alerting.
 - Does not read `holdout` split data during optimization.
 
 ## Harness Adapter Contract
@@ -120,6 +124,21 @@ For online scoring, runner receives matched policy references from storage-read.
 It may enforce budget, sampling, and concurrency decisions only from the
 resolved policy data. It must not inspect raw traces and invent policy matching
 outside storage-read semantics.
+
+Online scoring v1 is deterministic-only:
+
+- runner resolves matches through `eval.online.policy_matches.resolve`;
+- storage-read must return only deterministic scorer refs for executable v1
+  matches;
+- runner rejects or skips any non-deterministic scorer ref with `ERR-AIE-002`;
+- runner executes deterministic scorers locally;
+- runner must not call harness `/v1/score`, read provider profiles, or forward
+  prompt/completion/tool/retrieval content for online scoring;
+- runner persists only `EvalResult` or bounded skipped-result records through
+  `eval.results.persist`;
+- runner ignores online policy annotation defaults during notification
+  handling. Manual annotation creation is triggered only by user-facing BFF
+  mutations that route to `annotation.item.update`.
 
 ## Optimizer Rules
 

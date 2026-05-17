@@ -30,7 +30,9 @@ provenance: inferred-draft
 - `/metrics`: technical project metric explorer for `metricNames` and `metricSeries`; it is not a saved dashboard or widget editor.
 - `/dashboards`: saved dashboard/widget workspace for reusable visual compositions.
 - `/alerts`: project alert rules, alert history, silences, and trace/log/metric pivots. The route remains available but is not a primary project sidebar item.
-- `/ai-eval`: AI evaluation workspace when `CLOUDGRID_AI_EVAL_ENABLED=true`.
+- `/ai-eval`: AI evaluation workspace unless the AI-eval frontend feature is
+  explicitly disabled with `CLOUDGRID_AI_EVAL_ENABLED=false` or
+  `VITE_CLOUDGRID_AI_EVAL_ENABLED=false`.
 - `/projects/:projectId/settings/ai-eval`: project AI Eval settings in the
   admin settings shell.
 
@@ -62,7 +64,7 @@ provenance: inferred-draft
   provider profiles in frontend-local state.
 - The app shell has project selection mode and project workspace mode as defined in `05-frontend/product-ux-concept.md`.
 - In project selection mode, the topbar must not show `Live`, `Traces`, `Logs`, `Metrics`, or `AI Eval`.
-- In project workspace mode, primary navigation order is `Traces`, `Logs`, `Metrics`, `Dashboards`, and `AI Eval` when enabled. `Live` is a mode inside `Traces`; `Alerts` remains available at `/alerts` but is not a primary project sidebar item; there is no project Overview route. Company/member management and settings are reached through context menus or explicit management routes, not mixed into telemetry navigation.
+- In project workspace mode, primary navigation order is `Traces`, `Logs`, `Metrics`, `Dashboards`, and `AI Eval` when enabled. AI Eval is enabled by default and may be explicitly disabled with the AI-eval frontend feature flags. `Live` is a mode inside `Traces`; `Alerts` remains available at `/alerts` but is not a primary project sidebar item; there is no project Overview route. Company/member management and settings are reached through context menus or explicit management routes, not mixed into telemetry navigation.
 
 ## Development GraphQL UI
 

@@ -1,16 +1,16 @@
-import { z, parseWithZod } from "@cloudgrid/runtime";
+import { parseWithZod, z } from "@cloudgrid/runtime";
 import type {
   AgentRunSearchInput,
   AiQualityOverviewInput,
+  AlertRuleSearchInput,
   AnnotationQueueSearchInput,
   AppendDatasetItemsInput,
+  CommitDatasetImportInput,
   CreateAlertRuleInput,
   CreateAlertSilenceInput,
-  AlertRuleSearchInput,
   CreateDatasetInput,
   CreateExperimentInput,
   CreateIngestCredentialInput,
-  InviteOrganizationMemberInput,
   CreateProjectInput,
   CreateScorerInput,
   DashboardListInput,
@@ -18,21 +18,25 @@ import type {
   DatasetSearchInput,
   EvalResultSearchInput,
   ExperimentSearchInput,
-  LiveTraceInput,
+  InviteOrganizationMemberInput,
   LiveExperimentRunInput,
+  LiveTraceInput,
   LogSearchInput,
   MetricNameSearchInput,
   MetricSeriesInput,
-  PromotePromptVersionInput,
-  PromoteSpanToDatasetItemInput,
+  PrepareDatasetImportInput,
   ProjectListInput,
   ProjectRole,
-  ReorderDashboardPinsInput,
+  PromotePromptVersionInput,
+  PromoteSpanToDatasetItemInput,
   RemoveOrganizationMemberInput,
+  ReorderDashboardPinsInput,
   ResolveAnnotationInput,
+  RichMetricSeriesInput,
   SaveDashboardInput,
   ScorerSearchInput,
   SetDashboardPinnedInput,
+  StartDatasetExportInput,
   StartExperimentRunInput,
   StartOptimizationRunInput,
   TelemetryFacetInput,
@@ -168,7 +172,19 @@ const metricAggregationSchema = z.enum([
   "p95",
   "p99",
 ]);
-const metricChartTypeSchema = z.enum(["line", "area", "bar", "pie", "stat", "table"]);
+const metricChartTypeSchema = z.enum([
+  "line",
+  "area",
+  "bar",
+  "pie",
+  "donut",
+  "stat",
+  "radial",
+  "radar",
+  "heatmap",
+  "histogram",
+  "table",
+]);
 const metricNameSearchInputSchema = withTimeRange(
   z.object({
     query: z.string().min(1).optional(),
@@ -196,6 +212,7 @@ const dashboardWidgetKindSchema = z.enum([
   "metric_timeseries",
   "metric_stat",
   "metric_table",
+  "metric_rich",
   "log_table",
   "trace_table",
   "live_trace_table",
@@ -251,6 +268,85 @@ const dashboardMetricWidgetInputSchema = z.object({
   maxSeries: z.number().int().min(1).max(50).optional(),
   thresholds: z.array(dashboardThresholdInputSchema).optional(),
 });
+const dashboardMetricFormulaExpressionSchema: z.ZodTypeAny = z.lazy(() =>
+  z.object({
+    kind: z.enum(["ref", "number", "binary", "unary", "function"]),
+    refId: z.string().min(1).optional(),
+    value: z.number().optional(),
+    operator: z.enum(["add", "subtract", "multiply", "divide"]).optional(),
+    left: dashboardMetricFormulaExpressionSchema.optional().nullable(),
+    right: dashboardMetricFormulaExpressionSchema.optional().nullable(),
+    function: z
+      .enum([
+        "sum_series",
+        "avg_series",
+        "min_series",
+        "max_series",
+        "ratio",
+        "clamp_min",
+        "clamp_max",
+        "moving_average",
+      ])
+      .optional(),
+    arguments: z.array(dashboardMetricFormulaExpressionSchema).max(8).optional(),
+  }),
+);
+const dashboardMetricQueryInputSchema = z
+  .object({
+    timeWindow: z.string().min(1).optional(),
+    interval: z.string().min(1).optional(),
+    queries: z
+      .array(
+        z.object({
+          id: z.string().min(1),
+          label: z.string().min(1),
+          metricName: z.string().min(1),
+          aggregation: metricAggregationSchema,
+          groupBy: z.array(z.string().min(1)).max(6).optional(),
+          filters: z.array(attributeFilterSchema).max(20).optional(),
+          maxSeries: z.number().int().min(1).max(50).optional(),
+        }),
+      )
+      .min(1)
+      .max(8),
+    formulas: z
+      .array(
+        z.object({
+          id: z.string().min(1),
+          label: z.string().min(1),
+          expression: dashboardMetricFormulaExpressionSchema,
+          unit: z.string().min(1).optional(),
+        }),
+      )
+      .max(8)
+      .optional(),
+    displaySeries: z
+      .array(
+        z.object({
+          id: z.string().min(1),
+          label: z.string().min(1),
+          sourceId: z.string().min(1),
+          visible: z.boolean().optional(),
+        }),
+      )
+      .max(20)
+      .optional(),
+  })
+  .superRefine(validateDashboardMetricQueryDefinition);
+const dashboardRichMetricWidgetInputSchema = z.object({
+  query: dashboardMetricQueryInputSchema,
+  visualization: metricChartTypeSchema,
+  legend: z.boolean().optional(),
+  maxSeries: z.number().int().min(1).max(50).optional(),
+  thresholds: z.array(dashboardThresholdInputSchema).optional(),
+});
+const richMetricSeriesInputSchema = withTimeRange(
+  z.object({
+    from: isoDateTimeSchema,
+    to: isoDateTimeSchema,
+    query: dashboardMetricQueryInputSchema,
+  }),
+);
 const dashboardLogWidgetInputSchema = z.object({
   service: z.string().min(1).optional(),
   traceId: z.string().min(1).optional(),
@@ -302,6 +398,7 @@ const dashboardWidgetInputSchema = z
     kind: dashboardWidgetKindSchema,
     layout: dashboardLayoutInputSchema,
     metric: dashboardMetricWidgetInputSchema.optional().nullable(),
+    richMetric: dashboardRichMetricWidgetInputSchema.optional().nullable(),
     logs: dashboardLogWidgetInputSchema.optional().nullable(),
     traces: dashboardTraceWidgetInputSchema.optional().nullable(),
     liveTraces: dashboardLiveTraceWidgetInputSchema.optional().nullable(),
@@ -309,6 +406,7 @@ const dashboardWidgetInputSchema = z
   .superRefine((input, context) => {
     const presentConfigs = [
       input.metric ? "metric" : null,
+      input.richMetric ? "richMetric" : null,
       input.logs ? "logs" : null,
       input.traces ? "traces" : null,
       input.liveTraces ? "liveTraces" : null,
@@ -316,11 +414,13 @@ const dashboardWidgetInputSchema = z
     const expectedConfig =
       input.kind === "log_table"
         ? "logs"
-        : input.kind === "trace_table"
-          ? "traces"
-          : input.kind === "live_trace_table"
-            ? "liveTraces"
-            : "metric";
+        : input.kind === "metric_rich"
+          ? "richMetric"
+          : input.kind === "trace_table"
+            ? "traces"
+            : input.kind === "live_trace_table"
+              ? "liveTraces"
+              : "metric";
     if (presentConfigs.length !== 1 || presentConfigs[0] !== expectedConfig) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -507,6 +607,65 @@ const datasetItemInputSchema = z.object({
 const appendDatasetItemsInputSchema = z.object({
   datasetId: z.string().min(1),
   items: z.array(datasetItemInputSchema).min(1).max(500),
+});
+const datasetImportFormatSchema = z.enum(["jsonl", "json_array", "csv", "zip"]);
+const datasetExportFormatSchema = z.enum(["jsonl", "json_array", "csv"]);
+const datasetImportCommitModeSchema = z.enum(["valid_rows_only", "reject_if_any_error"]);
+const datasetImportScalarMappingInputSchema = z.object({
+  column: z.string().min(1).optional().nullable(),
+  jsonPath: z.string().min(1).optional().nullable(),
+  constant: z.unknown().optional(),
+  defaultValue: z.unknown().optional(),
+});
+const datasetImportFieldMappingInputSchema = z.object({
+  targetPath: z.string().min(1),
+  source: datasetImportScalarMappingInputSchema,
+});
+const datasetImportMappingInputSchema = z.object({
+  input: z.array(datasetImportFieldMappingInputSchema).min(1),
+  expected: z.array(datasetImportFieldMappingInputSchema).optional().nullable(),
+  metadata: z.array(datasetImportFieldMappingInputSchema).optional().nullable(),
+  sourceTraceId: datasetImportScalarMappingInputSchema.optional().nullable(),
+  sourceSpanId: datasetImportScalarMappingInputSchema.optional().nullable(),
+  split: datasetImportScalarMappingInputSchema.optional().nullable(),
+  reviewStatus: datasetImportScalarMappingInputSchema.optional().nullable(),
+});
+const prepareDatasetImportInputSchema = z.object({
+  datasetId: z.string().min(1),
+  uploadId: z.string().min(1),
+  format: datasetImportFormatSchema,
+  fileSelector: z
+    .object({
+      include: z.array(z.string().min(1)).optional().nullable(),
+      exclude: z.array(z.string().min(1)).optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+  mapping: datasetImportMappingInputSchema,
+  defaults: z
+    .object({
+      split: datasetSplitSchema.optional().nullable(),
+      reviewStatus: datasetReviewStatusSchema.optional().nullable(),
+      metadata: jsonObjectSchema.optional().nullable(),
+      synthetic: z.boolean().optional().nullable(),
+      allowPartialCommit: z.boolean().optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+  previewLimit: z.number().int().min(1).max(100).optional().nullable(),
+});
+const commitDatasetImportInputSchema = z.object({
+  importId: z.string().min(1),
+  expectedDatasetVersion: z.number().int().min(1),
+  mode: datasetImportCommitModeSchema.optional().nullable(),
+});
+const startDatasetExportInputSchema = z.object({
+  datasetId: z.string().min(1),
+  format: datasetExportFormatSchema,
+  split: datasetSplitSchema.optional().nullable(),
+  reviewStatus: datasetReviewStatusSchema.optional().nullable(),
+  includeMetadata: z.boolean().optional().nullable(),
+  includeSourcePointers: z.boolean().optional().nullable(),
 });
 const promoteSpanToDatasetItemInputSchema = z.object({
   datasetId: z.string().min(1),
@@ -735,6 +894,171 @@ const createAlertSilenceInputSchema = z
     }
   });
 
+const formulaAstMaxDepth = 8;
+
+function validateDashboardMetricQueryDefinition(
+  input: z.infer<typeof dashboardMetricQueryInputSchema>,
+  context: z.RefinementCtx,
+) {
+  const availableSourceIds = new Set<string>();
+  const allSourceIds = new Set<string>();
+
+  input.queries.forEach((query, index) => {
+    if (allSourceIds.has(query.id)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "rich metric query ids must be unique",
+        path: ["queries", index, "id"],
+      });
+    }
+    availableSourceIds.add(query.id);
+    allSourceIds.add(query.id);
+  });
+
+  input.formulas?.forEach((formula, index) => {
+    if (allSourceIds.has(formula.id)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "rich metric query ids must be unique",
+        path: ["formulas", index, "id"],
+      });
+    }
+    validateFormulaExpression(
+      formula.expression,
+      context,
+      ["formulas", index, "expression"],
+      availableSourceIds,
+      1,
+    );
+    availableSourceIds.add(formula.id);
+    allSourceIds.add(formula.id);
+  });
+
+  input.displaySeries?.forEach((displaySeries, index) => {
+    if (!allSourceIds.has(displaySeries.sourceId)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "display series sourceId must reference a query or formula",
+        path: ["displaySeries", index, "sourceId"],
+      });
+    }
+  });
+}
+
+function validateFormulaExpression(
+  expression: unknown,
+  context: z.RefinementCtx,
+  path: Array<string | number>,
+  availableSourceIds: Set<string>,
+  depth: number,
+) {
+  if (!isRecord(expression)) {
+    return;
+  }
+  if (depth > formulaAstMaxDepth) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `formula expression depth must be ${formulaAstMaxDepth} or less`,
+      path,
+    });
+    return;
+  }
+
+  const kind = expression.kind;
+  if (kind === "ref") {
+    if (typeof expression.refId !== "string" || !availableSourceIds.has(expression.refId)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "formula refId must reference an earlier query or formula",
+        path: [...path, "refId"],
+      });
+    }
+  }
+  if (kind === "number" && typeof expression.value !== "number") {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "formula number expression requires value",
+      path: [...path, "value"],
+    });
+  }
+  if (kind === "binary") {
+    if (typeof expression.operator !== "string") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "formula binary expression requires operator",
+        path: [...path, "operator"],
+      });
+    }
+    if (!isRecord(expression.left)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "formula binary expression requires left",
+        path: [...path, "left"],
+      });
+    }
+    if (!isRecord(expression.right)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "formula binary expression requires right",
+        path: [...path, "right"],
+      });
+    }
+  }
+  if (kind === "unary" && !isRecord(expression.left)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "formula unary expression requires left",
+      path: [...path, "left"],
+    });
+  }
+  if (kind === "function") {
+    if (typeof expression.function !== "string") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "formula function expression requires function",
+        path: [...path, "function"],
+      });
+    }
+    if (!Array.isArray(expression.arguments)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "formula function expression requires arguments",
+        path: [...path, "arguments"],
+      });
+    }
+  }
+
+  if (isRecord(expression.left)) {
+    validateFormulaExpression(
+      expression.left,
+      context,
+      [...path, "left"],
+      availableSourceIds,
+      depth + 1,
+    );
+  }
+  if (isRecord(expression.right)) {
+    validateFormulaExpression(
+      expression.right,
+      context,
+      [...path, "right"],
+      availableSourceIds,
+      depth + 1,
+    );
+  }
+  if (Array.isArray(expression.arguments)) {
+    expression.arguments.forEach((argument, index) => {
+      validateFormulaExpression(
+        argument,
+        context,
+        [...path, "arguments", index],
+        availableSourceIds,
+        depth + 1,
+      );
+    });
+  }
+}
+
 export function validateTraceSearchInput(input: TraceSearchInput): TraceSearchInput {
   try {
     return parseWithZod(
@@ -805,6 +1129,14 @@ export function validateMetricNameSearchInput(input: MetricNameSearchInput): Met
 
 export function validateMetricSeriesInput(input: MetricSeriesInput): MetricSeriesInput {
   return validateAiInput<MetricSeriesInput>(metricSeriesInputSchema, input, "Metric series input");
+}
+
+export function validateRichMetricSeriesInput(input: RichMetricSeriesInput): RichMetricSeriesInput {
+  return validateAiInput<RichMetricSeriesInput>(
+    richMetricSeriesInputSchema,
+    input,
+    "Rich metric series input",
+  );
 }
 
 export function validateDashboardListInput(input: DashboardListInput): DashboardListInput {
@@ -914,6 +1246,36 @@ export function validateAppendDatasetItemsInput(
     appendDatasetItemsInputSchema,
     input,
     "Append dataset items input",
+  );
+}
+
+export function validatePrepareDatasetImportInput(
+  input: PrepareDatasetImportInput,
+): PrepareDatasetImportInput {
+  return validateAiInput<PrepareDatasetImportInput>(
+    prepareDatasetImportInputSchema,
+    input,
+    "Prepare dataset import input",
+  );
+}
+
+export function validateCommitDatasetImportInput(
+  input: CommitDatasetImportInput,
+): CommitDatasetImportInput {
+  return validateAiInput<CommitDatasetImportInput>(
+    commitDatasetImportInputSchema,
+    input,
+    "Commit dataset import input",
+  );
+}
+
+export function validateStartDatasetExportInput(
+  input: StartDatasetExportInput,
+): StartDatasetExportInput {
+  return validateAiInput<StartDatasetExportInput>(
+    startDatasetExportInputSchema,
+    input,
+    "Start dataset export input",
   );
 }
 

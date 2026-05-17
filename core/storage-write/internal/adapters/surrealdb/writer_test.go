@@ -990,6 +990,41 @@ func TestBuildEvalMutationPersistQuerySupportsDatasetAppendPromoteAndPromptPromo
 	}
 }
 
+func TestBuildEvalMutationPersistQuerySupportsOnlineEvalResultWithoutExperimentRun(t *testing.T) {
+	occurredAt := time.Date(2026, 5, 8, 8, 0, 2, 0, time.UTC)
+	request := contracts.EvalMutationRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-online-result-1", IssuedAt: time.Date(2026, 5, 8, 8, 0, 0, 0, time.UTC)},
+		Input: map[string]any{
+			"results": []any{map[string]any{
+				"id":            "result-online-1",
+				"scorerId":      "scorer-1",
+				"scorerVersion": 1.0,
+				"targetKind":    "agentRun",
+				"targetId":      "agent-run-1",
+				"score":         1.0,
+				"passed":        true,
+				"producedAt":    occurredAt.Format(time.RFC3339),
+				"evidence":      map[string]any{"online": true, "policyId": "policy-1"},
+			}},
+		},
+	}
+
+	sql, vars, data, err := BuildEvalMutationPersistQuery("eval.results.persist", request, occurredAt)
+	if err != nil {
+		t.Fatalf("BuildEvalMutationPersistQuery() error = %v", err)
+	}
+	if !strings.Contains(sql, "UPSERT type::record('ai_eval_result'") {
+		t.Fatalf("query = %s, want ai_eval_result table", sql)
+	}
+	record := vars["record"].(map[string]any)
+	if record["id"] != "result-online-1" || record["targetKind"] != "agentRun" || record["experimentRunId"] != nil {
+		t.Fatalf("record = %#v, want online eval result without experimentRunId", record)
+	}
+	if data["id"] != "result-online-1" {
+		t.Fatalf("data = %#v, want online eval result data", data)
+	}
+}
+
 func TestPersisterImplementsAIPorts(t *testing.T) {
 	db := &fakeDB{}
 	p := Persister{DB: db}

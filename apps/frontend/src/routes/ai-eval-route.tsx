@@ -6,43 +6,74 @@ import type {
   AnnotationQueueItem,
   AnnotationQueueResult,
   AnnotationQueueSearchInput,
+  CommitDatasetImportInput,
   Dataset,
+  DatasetExportFormat,
+  DatasetExportJob,
+  DatasetImportCommitMode,
+  DatasetImportFieldMappingInput,
+  DatasetImportFormat,
+  DatasetImportJob,
+  DatasetImportScalarMappingInput,
+  DatasetReviewStatus,
   DatasetSearchInput,
   DatasetSearchResult,
+  DatasetSplit,
   Experiment,
-  ExperimentSearchResult,
   ExperimentRun,
   ExperimentSearchInput,
+  ExperimentSearchResult,
   GraphQLResponse,
+  JSONValue,
+  PrepareDatasetImportInput,
   ProjectAiSettings,
   Scorer,
+  StartDatasetExportInput,
 } from "@cloudgrid/ui-contracts";
-import { type UseQueryResult, useQuery } from "@tanstack/react-query";
+import { type UseQueryResult, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
   Bot,
   CheckCircle2,
   Database,
+  Download,
   ExternalLink,
+  FileText,
   FlaskConical,
   FolderOpen,
   Gauge,
-  PanelRightOpen,
   MessageSquareText,
+  PanelRightOpen,
   PencilLine,
+  Plus,
   Settings,
   Sparkles,
+  Trash2,
   Trophy,
+  Upload,
   XCircle,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { CodeBlock } from "../components/code-block";
 import { EmptyState, ErrorPanel, LoadingRows } from "../components/query-state";
 import { SearchInput } from "../components/search-input";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../components/ui/dialog";
+import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
+import { Input } from "../components/ui/input";
 import {
   Select,
   SelectContent,
@@ -51,7 +82,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "../components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "../components/ui/sheet";
 import {
   Table,
   TableBody,
@@ -62,8 +101,8 @@ import {
 } from "../components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import {
-  aiEvalOverviewModel,
   agentRunTimelineRows,
+  aiEvalOverviewModel,
   experimentScoreboardRows,
   itemRunScoreSummary,
   jsonPreview,
@@ -73,8 +112,8 @@ import { useAppSession } from "../providers/app-session-provider";
 import { useTelemetryClient } from "../providers/telemetry-client-provider";
 
 export const aiEvalEnabled =
-  import.meta.env.CLOUDGRID_AI_EVAL_ENABLED === "true" ||
-  import.meta.env.VITE_CLOUDGRID_AI_EVAL_ENABLED === "true";
+  import.meta.env.CLOUDGRID_AI_EVAL_ENABLED !== "false" &&
+  import.meta.env.VITE_CLOUDGRID_AI_EVAL_ENABLED !== "false";
 
 type AiEvalTab =
   | "overview"
@@ -374,6 +413,7 @@ export function AiEvalRoute() {
             <TabsContent className="m-0 min-h-0" value="datasets">
               <DatasetsView
                 onSelect={(id) => setSelected("dataset", id)}
+                projectId={projectId}
                 query={datasetsQuery}
                 selectedId={selectedDataset?.id ?? null}
               />
@@ -698,10 +738,12 @@ function AgentRunDetail({ run }: { run: AgentRun }) {
 function DatasetsView({
   query,
   onSelect,
+  projectId,
   selectedId,
 }: {
   query: QueryResult<Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchDatasets"]>>>;
   onSelect: (id: string) => void;
+  projectId: string;
   selectedId: string | null;
 }) {
   const selected =
@@ -732,17 +774,37 @@ function DatasetsView({
               ))}
             </TableBody>
           </Table>
-          {selected ? <DatasetItems dataset={selected} /> : null}
+          {selected ? (
+            <DatasetItems
+              dataset={selected}
+              onImported={() => void query.refetch()}
+              projectId={projectId}
+            />
+          ) : null}
         </div>
       ) : null}
     </QueryFrame>
   );
 }
 
-function DatasetItems({ dataset }: { dataset: Dataset }) {
+function DatasetItems({
+  dataset,
+  onImported,
+  projectId,
+}: {
+  dataset: Dataset;
+  onImported: () => void;
+  projectId: string;
+}) {
   return (
     <section>
-      <h2 className="mb-2 text-sm font-medium">{dataset.name}</h2>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-medium">{dataset.name}</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <DatasetImportSheet dataset={dataset} onImported={onImported} projectId={projectId} />
+          <DatasetExportDialog dataset={dataset} />
+        </div>
+      </div>
       <Table>
         <TableHeader>
           <TableRow>
@@ -762,6 +824,886 @@ function DatasetItems({ dataset }: { dataset: Dataset }) {
         </TableBody>
       </Table>
     </section>
+  );
+}
+
+type DatasetImportUploadResponse = {
+  uploadId: string;
+  projectId: string;
+  filename: string;
+  sizeBytes: number;
+  sha256: string;
+  detectedFormat?: DatasetImportFormat;
+  containedFiles?: Array<{
+    path: string;
+    sizeBytes: number;
+    detectedFormat: DatasetImportFormat | "unsupported";
+  }>;
+  expiresAt: string;
+};
+
+type MappingSourceKind = "column" | "jsonPath" | "constant" | "defaultValue";
+
+type FieldMappingDraft = {
+  id: string;
+  targetPath: string;
+  sourceKind: MappingSourceKind;
+  sourceValue: string;
+};
+
+type ScalarMappingDraft = {
+  sourceKind: MappingSourceKind;
+  sourceValue: string;
+};
+
+const datasetImportFormats: DatasetImportFormat[] = ["jsonl", "json_array", "csv", "zip"];
+const datasetExportFormats: DatasetExportFormat[] = ["jsonl", "json_array", "csv"];
+const datasetSplits: DatasetSplit[] = [
+  "dev",
+  "optimization",
+  "validation",
+  "regression",
+  "holdout",
+];
+const datasetReviewStatuses: DatasetReviewStatus[] = ["unreviewed", "reviewed", "rejected"];
+const mappingSourceKinds: MappingSourceKind[] = ["column", "jsonPath", "constant", "defaultValue"];
+
+function DatasetImportSheet({
+  dataset,
+  onImported,
+  projectId,
+}: {
+  dataset: Dataset;
+  onImported: () => void;
+  projectId: string;
+}) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [format, setFormat] = useState<DatasetImportFormat>("jsonl");
+  const [upload, setUpload] = useState<DatasetImportUploadResponse | null>(null);
+  const [includedFiles, setIncludedFiles] = useState<string[]>([]);
+  const [inputMappings, setInputMappings] = useState<FieldMappingDraft[]>([
+    mappingDraft("input", "prompt"),
+  ]);
+  const [expectedMappings, setExpectedMappings] = useState<FieldMappingDraft[]>([]);
+  const [metadataMappings, setMetadataMappings] = useState<FieldMappingDraft[]>([]);
+  const [sourceTraceId, setSourceTraceId] = useState<ScalarMappingDraft>(emptyScalarMapping());
+  const [sourceSpanId, setSourceSpanId] = useState<ScalarMappingDraft>(emptyScalarMapping());
+  const [splitMapping, setSplitMapping] = useState<ScalarMappingDraft>(emptyScalarMapping());
+  const [reviewStatusMapping, setReviewStatusMapping] = useState<ScalarMappingDraft>(
+    emptyScalarMapping(),
+  );
+  const [defaultSplit, setDefaultSplit] = useState<DatasetSplit>("dev");
+  const [defaultReviewStatus, setDefaultReviewStatus] = useState<DatasetReviewStatus>("unreviewed");
+  const [allowPartialCommit, setAllowPartialCommit] = useState(false);
+  const [previewJob, setPreviewJob] = useState<DatasetImportJob | null>(null);
+  const [committedJob, setCommittedJob] = useState<DatasetImportJob | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const uploadMutation = useMutation({
+    mutationFn: () => {
+      if (!file) {
+        throw new Error("Choose a dataset file before uploading.");
+      }
+      return uploadDatasetImportFile(projectId, file);
+    },
+    onSuccess(nextUpload) {
+      setUpload(nextUpload);
+      setFormat(nextUpload.detectedFormat ?? format);
+      setPreviewJob(null);
+      setCommittedJob(null);
+      setIncludedFiles(
+        nextUpload.containedFiles
+          ?.filter((containedFile) => containedFile.detectedFormat !== "unsupported")
+          .map((containedFile) => containedFile.path) ?? [],
+      );
+    },
+  });
+  const prepareMutation = useMutation({
+    mutationFn: () =>
+      prepareDatasetImport(
+        buildPrepareDatasetImportInput({
+          allowPartialCommit,
+          dataset,
+          defaultReviewStatus,
+          defaultSplit,
+          expectedMappings,
+          format,
+          includedFiles,
+          inputMappings,
+          metadataMappings,
+          reviewStatusMapping,
+          sourceSpanId,
+          sourceTraceId,
+          splitMapping,
+          upload,
+        }),
+      ),
+    onSuccess(job) {
+      setPreviewJob(job);
+      setCommittedJob(null);
+    },
+  });
+  const commitMutation = useMutation({
+    mutationFn: (mode: DatasetImportCommitMode) => {
+      if (!previewJob) {
+        throw new Error("Preview the import before committing.");
+      }
+      return commitDatasetImport({
+        importId: previewJob.id,
+        expectedDatasetVersion: dataset.version,
+        mode,
+      });
+    },
+    onSuccess(job) {
+      setCommittedJob(job);
+      setPreviewJob(job);
+      void queryClient.invalidateQueries({ queryKey: ["Datasets"] });
+      onImported();
+    },
+  });
+
+  const sourceFiles = previewJob?.sourceFiles ?? [];
+  const previewHasErrors = (previewJob?.errorRows ?? 0) > 0;
+  const canCommit =
+    previewJob?.status === "preview_ready" && (!previewHasErrors || allowPartialCommit);
+  const commitMode: DatasetImportCommitMode = allowPartialCommit
+    ? "valid_rows_only"
+    : "reject_if_any_error";
+  const error =
+    localError ??
+    uploadMutation.error?.message ??
+    prepareMutation.error?.message ??
+    commitMutation.error?.message ??
+    null;
+
+  const onPrepare = () => {
+    setLocalError(null);
+    try {
+      void prepareMutation.mutateAsync();
+    } catch (caught) {
+      setLocalError(caught instanceof Error ? caught.message : "Import preview failed.");
+    }
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button size="sm" type="button" variant="outline">
+          <Upload data-icon="inline-start" />
+          Import
+        </Button>
+      </SheetTrigger>
+      <SheetContent className="w-full gap-0 p-0 sm:max-w-xl" side="right">
+        <SheetHeader className="border-b px-4 py-3">
+          <SheetTitle>Import dataset items</SheetTitle>
+          <SheetDescription>
+            Upload JSONL, JSON array, CSV, or ZIP bytes, then preview backend validation before
+            commit.
+          </SheetDescription>
+        </SheetHeader>
+        <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
+          <div className="grid gap-5">
+            <section className="grid gap-3 border-b pb-4">
+              <h3 className="text-sm font-medium">1. Upload file</h3>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="dataset-import-file">File</FieldLabel>
+                  <Input
+                    accept=".jsonl,.json,.csv,.zip"
+                    id="dataset-import-file"
+                    onChange={(event) => {
+                      setFile(event.target.files?.[0] ?? null);
+                      setUpload(null);
+                      setPreviewJob(null);
+                      setCommittedJob(null);
+                    }}
+                    type="file"
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel>Format</FieldLabel>
+                  <Select
+                    onValueChange={(value) => setFormat(value as DatasetImportFormat)}
+                    value={format}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {datasetImportFormats.map((candidate) => (
+                        <SelectItem key={candidate} value={candidate}>
+                          {datasetImportFormatLabel(candidate)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Button
+                  disabled={!file || uploadMutation.isPending}
+                  onClick={() => void uploadMutation.mutateAsync()}
+                  type="button"
+                  variant="secondary"
+                >
+                  <Upload data-icon="inline-start" />
+                  {uploadMutation.isPending ? "Uploading..." : "Stage upload"}
+                </Button>
+              </FieldGroup>
+              {upload ? (
+                <div className="grid gap-1 text-sm text-muted-foreground">
+                  <span>
+                    {upload.filename} · {formatBytes(upload.sizeBytes)} · expires {upload.expiresAt}
+                  </span>
+                  <span className="break-all">SHA-256 {upload.sha256}</span>
+                </div>
+              ) : null}
+              {(upload?.containedFiles?.length ?? 0) > 0 ? (
+                <SourceFileSelector
+                  containedFiles={upload?.containedFiles ?? []}
+                  includedFiles={includedFiles}
+                  onChange={setIncludedFiles}
+                />
+              ) : null}
+            </section>
+            <section className="grid gap-4 border-b pb-4">
+              <div>
+                <h3 className="text-sm font-medium">2. Map fields</h3>
+                <p className="text-sm text-muted-foreground">
+                  Use explicit columns, JSON paths, constants, or defaults. Row parsing and
+                  validation happen in CloudGrid after preview.
+                </p>
+              </div>
+              <FieldMappingGroup
+                label="Input"
+                mappings={inputMappings}
+                onChange={setInputMappings}
+                targetPrefix="input"
+              />
+              <FieldMappingGroup
+                label="Expected"
+                mappings={expectedMappings}
+                onChange={setExpectedMappings}
+                targetPrefix="expected"
+              />
+              <FieldMappingGroup
+                label="Metadata"
+                mappings={metadataMappings}
+                onChange={setMetadataMappings}
+                targetPrefix="metadata"
+              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <ScalarMappingControl
+                  label="sourceTraceId"
+                  onChange={setSourceTraceId}
+                  value={sourceTraceId}
+                />
+                <ScalarMappingControl
+                  label="sourceSpanId"
+                  onChange={setSourceSpanId}
+                  value={sourceSpanId}
+                />
+                <ScalarMappingControl
+                  label="split"
+                  onChange={setSplitMapping}
+                  value={splitMapping}
+                />
+                <ScalarMappingControl
+                  label="reviewStatus"
+                  onChange={setReviewStatusMapping}
+                  value={reviewStatusMapping}
+                />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field>
+                  <FieldLabel>Default split</FieldLabel>
+                  <Select
+                    onValueChange={(value) => setDefaultSplit(value as DatasetSplit)}
+                    value={defaultSplit}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {datasetSplits.map((candidate) => (
+                        <SelectItem key={candidate} value={candidate}>
+                          {candidate}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel>Default review status</FieldLabel>
+                  <Select
+                    onValueChange={(value) => setDefaultReviewStatus(value as DatasetReviewStatus)}
+                    value={defaultReviewStatus}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {datasetReviewStatuses.map((candidate) => (
+                        <SelectItem key={candidate} value={candidate}>
+                          {candidate}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </div>
+              <div className="flex items-start gap-2 text-sm">
+                <Checkbox
+                  id="dataset-import-partial-commit"
+                  checked={allowPartialCommit}
+                  onCheckedChange={(checked) => setAllowPartialCommit(checked === true)}
+                />
+                <label htmlFor="dataset-import-partial-commit">
+                  Allow partial commit of valid rows when preview reports row errors.
+                  <span className="block text-muted-foreground">
+                    Uses commit mode <code>valid_rows_only</code>; otherwise commit uses{" "}
+                    <code>reject_if_any_error</code>.
+                  </span>
+                </label>
+              </div>
+              <Button
+                disabled={!upload || prepareMutation.isPending}
+                onClick={onPrepare}
+                type="button"
+                variant="secondary"
+              >
+                <FileText data-icon="inline-start" />
+                {prepareMutation.isPending ? "Previewing..." : "Preview import"}
+              </Button>
+            </section>
+            <DatasetImportPreview job={previewJob} sourceFiles={sourceFiles} />
+            {committedJob?.committedDatasetVersion ? (
+              <section className="grid gap-2 border-b pb-4 text-sm">
+                <h3 className="font-medium">Committed</h3>
+                <p className="text-muted-foreground">
+                  Dataset version {committedJob.committedDatasetVersion} was created from import{" "}
+                  {committedJob.id}.
+                </p>
+              </section>
+            ) : null}
+            {error ? (
+              <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <SheetFooter className="border-t px-4 py-3">
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button disabled={!canCommit || commitMutation.isPending} type="button">
+                <CheckCircle2 data-icon="inline-start" />
+                Commit preview
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Commit dataset import?</DialogTitle>
+                <DialogDescription>
+                  CloudGrid will append previewed rows to {dataset.name} using the prepared import
+                  job. This creates a new dataset version.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-2 text-sm">
+                <Metric label="Commit mode" value={commitMode} />
+                <Metric label="Valid rows" value={previewJob?.validRows ?? 0} />
+                <Metric label="Error rows" value={previewJob?.errorRows ?? 0} />
+              </div>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="outline">Cancel</Button>
+                </DialogClose>
+                <Button onClick={() => void commitMutation.mutateAsync(commitMode)} type="button">
+                  Commit import
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function SourceFileSelector({
+  containedFiles,
+  includedFiles,
+  onChange,
+}: {
+  containedFiles: DatasetImportUploadResponse["containedFiles"];
+  includedFiles: string[];
+  onChange: (files: string[]) => void;
+}) {
+  const supportedFiles =
+    containedFiles?.filter((file) => file.detectedFormat !== "unsupported") ?? [];
+  return (
+    <div className="grid gap-2">
+      <h4 className="text-xs font-medium text-muted-foreground">ZIP contents</h4>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-10">Use</TableHead>
+            <TableHead>Path</TableHead>
+            <TableHead>Format</TableHead>
+            <TableHead>Size</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {(containedFiles ?? []).map((containedFile) => {
+            const supported = containedFile.detectedFormat !== "unsupported";
+            const checked = includedFiles.includes(containedFile.path);
+            return (
+              <TableRow key={containedFile.path}>
+                <TableCell>
+                  <Checkbox
+                    checked={checked}
+                    disabled={!supported}
+                    onCheckedChange={(nextChecked) => {
+                      onChange(
+                        nextChecked === true
+                          ? [...includedFiles, containedFile.path]
+                          : includedFiles.filter((path) => path !== containedFile.path),
+                      );
+                    }}
+                  />
+                </TableCell>
+                <TableCell className="max-w-64 truncate">{containedFile.path}</TableCell>
+                <TableCell>{containedFile.detectedFormat}</TableCell>
+                <TableCell>{formatBytes(containedFile.sizeBytes)}</TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+      {supportedFiles.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No supported files were detected in this archive.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function FieldMappingGroup({
+  label,
+  mappings,
+  onChange,
+  targetPrefix,
+}: {
+  label: string;
+  mappings: FieldMappingDraft[];
+  onChange: (mappings: FieldMappingDraft[]) => void;
+  targetPrefix: "input" | "expected" | "metadata";
+}) {
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-xs font-medium text-muted-foreground">{label}</h4>
+        <Button
+          onClick={() => onChange([...mappings, mappingDraft(targetPrefix, "")])}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <Plus data-icon="inline-start" />
+          Add
+        </Button>
+      </div>
+      {mappings.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No {label.toLowerCase()} mapping.</p>
+      ) : null}
+      {mappings.map((mapping, index) => (
+        <div
+          className="grid gap-2 border-b pb-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_9rem_minmax(0,1fr)_auto]"
+          key={mapping.id}
+        >
+          <Field>
+            <FieldLabel>{targetPrefix} target path</FieldLabel>
+            <Input
+              onChange={(event) => {
+                const next = [...mappings];
+                next[index] = { ...mapping, targetPath: event.target.value };
+                onChange(next);
+              }}
+              placeholder={targetPrefix === "expected" ? "answer" : "prompt"}
+              value={mapping.targetPath}
+            />
+          </Field>
+          <SourceKindSelect
+            onChange={(sourceKind) => {
+              const next = [...mappings];
+              next[index] = { ...mapping, sourceKind };
+              onChange(next);
+            }}
+            value={mapping.sourceKind}
+          />
+          <Field>
+            <FieldLabel>{mapping.sourceKind}</FieldLabel>
+            <Input
+              onChange={(event) => {
+                const next = [...mappings];
+                next[index] = { ...mapping, sourceValue: event.target.value };
+                onChange(next);
+              }}
+              placeholder={mappingSourcePlaceholder(mapping.sourceKind)}
+              value={mapping.sourceValue}
+            />
+          </Field>
+          <Button
+            aria-label={`Remove ${targetPrefix} mapping`}
+            disabled={targetPrefix === "input" && mappings.length === 1}
+            onClick={() => onChange(mappings.filter((candidate) => candidate.id !== mapping.id))}
+            size="icon-sm"
+            type="button"
+            variant="ghost"
+          >
+            <Trash2 />
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ScalarMappingControl({
+  label,
+  onChange,
+  value,
+}: {
+  label: string;
+  onChange: (value: ScalarMappingDraft) => void;
+  value: ScalarMappingDraft;
+}) {
+  return (
+    <div className="grid gap-2">
+      <h4 className="text-xs font-medium text-muted-foreground">{label}</h4>
+      <div className="grid gap-2 sm:grid-cols-[8rem_minmax(0,1fr)]">
+        <SourceKindSelect
+          onChange={(sourceKind) => onChange({ ...value, sourceKind })}
+          value={value.sourceKind}
+        />
+        <Input
+          onChange={(event) => onChange({ ...value, sourceValue: event.target.value })}
+          placeholder={mappingSourcePlaceholder(value.sourceKind)}
+          value={value.sourceValue}
+        />
+      </div>
+    </div>
+  );
+}
+
+function SourceKindSelect({
+  onChange,
+  value,
+}: {
+  onChange: (value: MappingSourceKind) => void;
+  value: MappingSourceKind;
+}) {
+  return (
+    <Field>
+      <FieldLabel>Source</FieldLabel>
+      <Select onValueChange={(nextValue) => onChange(nextValue as MappingSourceKind)} value={value}>
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {mappingSourceKinds.map((sourceKind) => (
+            <SelectItem key={sourceKind} value={sourceKind}>
+              {sourceKind}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </Field>
+  );
+}
+
+function DatasetImportPreview({
+  job,
+  sourceFiles,
+}: {
+  job: DatasetImportJob | null;
+  sourceFiles: DatasetImportJob["sourceFiles"];
+}) {
+  if (!job) {
+    return (
+      <section className="grid gap-2 border-b pb-4 text-sm text-muted-foreground">
+        <h3 className="font-medium text-foreground">3. Preview rows</h3>
+        <p>Preview uses the GraphQL import contract and returns normalized sample rows.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="grid gap-3 border-b pb-4">
+      <h3 className="text-sm font-medium">3. Preview rows</h3>
+      <div className="grid gap-3 text-sm sm:grid-cols-4">
+        <Metric label="Total rows" value={job.totalRows} />
+        <Metric label="Valid rows" value={job.validRows} />
+        <Metric label="Error rows" value={job.errorRows} />
+        <Metric label="Warnings" value={job.warnings.length} />
+      </div>
+      {sourceFiles.length > 0 ? (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>File</TableHead>
+              <TableHead>Format</TableHead>
+              <TableHead>Rows</TableHead>
+              <TableHead>Size</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sourceFiles.map((sourceFile) => (
+              <TableRow key={sourceFile.path}>
+                <TableCell className="max-w-72 truncate">{sourceFile.path}</TableCell>
+                <TableCell>{sourceFile.format}</TableCell>
+                <TableCell>{sourceFile.rowCount ?? "–"}</TableCell>
+                <TableCell>{formatBytes(sourceFile.sizeBytes)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      ) : null}
+      {job.warnings.length > 0 ? (
+        <div className="grid gap-1 text-sm text-muted-foreground">
+          {job.warnings.map((warning) => (
+            <span key={warning}>{warning}</span>
+          ))}
+        </div>
+      ) : null}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Source</TableHead>
+            <TableHead>Item preview</TableHead>
+            <TableHead>Issues</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {job.previewRows.map((row) => (
+            <TableRow key={`${row.filePath}:${row.rowNumber}`}>
+              <TableCell className="max-w-48 truncate">
+                {row.filePath}:{row.rowNumber}
+              </TableCell>
+              <TableCell className="max-w-80 whitespace-normal">
+                {row.item ? jsonPreview(row.item as unknown as JSONValue, 180) : "–"}
+              </TableCell>
+              <TableCell className="max-w-80 whitespace-normal">
+                {[...row.errors, ...row.warnings]
+                  .map((issue) => `${issue.code}: ${issue.message}`)
+                  .join("; ") || "–"}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </section>
+  );
+}
+
+function DatasetExportDialog({ dataset }: { dataset: Dataset }) {
+  const [open, setOpen] = useState(false);
+  const [format, setFormat] = useState<DatasetExportFormat>("jsonl");
+  const [split, setSplit] = useState<DatasetSplit | "all">("all");
+  const [reviewStatus, setReviewStatus] = useState<DatasetReviewStatus | "all">("all");
+  const [includeMetadata, setIncludeMetadata] = useState(true);
+  const [includeSourcePointers, setIncludeSourcePointers] = useState(true);
+  const [job, setJob] = useState<DatasetExportJob | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  const exportMutation = useMutation({
+    mutationFn: () =>
+      startDatasetExport({
+        datasetId: dataset.id,
+        format,
+        split: split === "all" ? null : split,
+        reviewStatus: reviewStatus === "all" ? null : reviewStatus,
+        includeMetadata,
+        includeSourcePointers,
+      }),
+    onSuccess(nextJob) {
+      setJob(nextJob);
+      if (nextJob.status === "ready" && nextJob.downloadUrl) {
+        downloadSameOriginExport(nextJob);
+      }
+    },
+  });
+
+  const exportJobQuery = useQuery({
+    enabled: open && job?.status === "queued",
+    queryKey: ["DatasetExport", job?.id],
+    queryFn: () => fetchDatasetExport(job?.id ?? ""),
+    refetchInterval: 2000,
+  });
+
+  useEffect(() => {
+    if (!exportJobQuery.data || exportJobQuery.data.id !== job?.id) {
+      return;
+    }
+    setJob(exportJobQuery.data);
+    if (exportJobQuery.data.status === "ready" && exportJobQuery.data.downloadUrl) {
+      try {
+        downloadSameOriginExport(exportJobQuery.data);
+      } catch (caught) {
+        setLocalError(caught instanceof Error ? caught.message : "Export download failed.");
+      }
+    }
+  }, [exportJobQuery.data, job?.id]);
+
+  const error =
+    localError ?? exportMutation.error?.message ?? exportJobQuery.error?.message ?? null;
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" type="button" variant="outline">
+          <Download data-icon="inline-start" />
+          Export
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Export canonical dataset</DialogTitle>
+          <DialogDescription>
+            Export {dataset.name} as CloudGrid dataset-item data, not the original source file
+            layout.
+          </DialogDescription>
+        </DialogHeader>
+        <FieldGroup>
+          <Field>
+            <FieldLabel>Format</FieldLabel>
+            <Select
+              onValueChange={(value) => setFormat(value as DatasetExportFormat)}
+              value={format}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {datasetExportFormats.map((candidate) => (
+                  <SelectItem key={candidate} value={candidate}>
+                    {datasetExportFormatLabel(candidate)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldLabel>Split</FieldLabel>
+              <Select
+                onValueChange={(value) => setSplit(value as DatasetSplit | "all")}
+                value={split}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All splits</SelectItem>
+                  {datasetSplits.map((candidate) => (
+                    <SelectItem key={candidate} value={candidate}>
+                      {candidate}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Review status</FieldLabel>
+              <Select
+                onValueChange={(value) => setReviewStatus(value as DatasetReviewStatus | "all")}
+                value={reviewStatus}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  {datasetReviewStatuses.map((candidate) => (
+                    <SelectItem key={candidate} value={candidate}>
+                      {candidate}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <Checkbox
+              id="dataset-export-include-metadata"
+              checked={includeMetadata}
+              onCheckedChange={(checked) => setIncludeMetadata(checked === true)}
+            />
+            <label htmlFor="dataset-export-include-metadata">Include metadata</label>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <Checkbox
+              id="dataset-export-include-source-pointers"
+              checked={includeSourcePointers}
+              onCheckedChange={(checked) => setIncludeSourcePointers(checked === true)}
+            />
+            <label htmlFor="dataset-export-include-source-pointers">
+              Include source trace/span pointers
+            </label>
+          </div>
+          {job ? (
+            <div className="grid gap-2 border-y py-3 text-sm">
+              <Metric label="Status" value={job.status} />
+              <Metric label="Rows" value={job.rowCount} />
+              <Metric label="Size" value={formatBytes(job.sizeBytes)} />
+              <Metric label="Expires" value={job.expiresAt} />
+            </div>
+          ) : null}
+          {error ? (
+            <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </div>
+          ) : null}
+        </FieldGroup>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">Close</Button>
+          </DialogClose>
+          {job?.status === "ready" && job.downloadUrl ? (
+            <Button
+              onClick={() => {
+                setLocalError(null);
+                try {
+                  downloadSameOriginExport(job);
+                } catch (caught) {
+                  setLocalError(
+                    caught instanceof Error ? caught.message : "Export download failed.",
+                  );
+                }
+              }}
+              type="button"
+              variant="secondary"
+            >
+              <Download data-icon="inline-start" />
+              Download
+            </Button>
+          ) : null}
+          <Button
+            onClick={() => {
+              setLocalError(null);
+              void exportMutation.mutateAsync().catch((caught) => {
+                setLocalError(caught instanceof Error ? caught.message : "Dataset export failed.");
+              });
+            }}
+            type="button"
+          >
+            <Download data-icon="inline-start" />
+            {exportMutation.isPending ? "Starting..." : "Start export"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1424,6 +2366,225 @@ function formatUsd(value?: number | null) {
   return typeof value === "number" ? `$${value.toFixed(2)}` : "–";
 }
 
+function formatBytes(value?: number | null) {
+  if (typeof value !== "number") {
+    return "–";
+  }
+  if (value < 1024) {
+    return `${value} B`;
+  }
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KiB`;
+  }
+  return `${(value / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
+function mappingDraft(targetPrefix: "input" | "expected" | "metadata", targetPath: string) {
+  return {
+    id: `${targetPrefix}-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`,
+    targetPath,
+    sourceKind: "column" as const,
+    sourceValue: "",
+  };
+}
+
+function emptyScalarMapping(): ScalarMappingDraft {
+  return {
+    sourceKind: "column",
+    sourceValue: "",
+  };
+}
+
+function mappingSourcePlaceholder(sourceKind: MappingSourceKind) {
+  switch (sourceKind) {
+    case "column":
+      return "CSV header";
+    case "jsonPath":
+      return "$.messages[0].content";
+    case "constant":
+      return "Fixed value";
+    case "defaultValue":
+      return "Fallback value";
+  }
+}
+
+function fieldMappingsFromDraft(mappings: FieldMappingDraft[]): DatasetImportFieldMappingInput[] {
+  return mappings
+    .map((mapping) => {
+      const source = scalarMappingFromDraft(mapping);
+      if (!mapping.targetPath.trim() || !source) {
+        return null;
+      }
+      return {
+        targetPath: mapping.targetPath.trim(),
+        source,
+      };
+    })
+    .filter((mapping): mapping is DatasetImportFieldMappingInput => Boolean(mapping));
+}
+
+function scalarMappingFromDraft(
+  mapping: ScalarMappingDraft | FieldMappingDraft,
+): DatasetImportScalarMappingInput | null {
+  const sourceValue = mapping.sourceValue.trim();
+  if (!sourceValue) {
+    return null;
+  }
+  if (mapping.sourceKind === "column") {
+    return { column: sourceValue };
+  }
+  if (mapping.sourceKind === "jsonPath") {
+    return { jsonPath: sourceValue };
+  }
+  if (mapping.sourceKind === "constant") {
+    return { constant: sourceValue };
+  }
+  return { defaultValue: sourceValue };
+}
+
+function buildPrepareDatasetImportInput({
+  allowPartialCommit,
+  dataset,
+  defaultReviewStatus,
+  defaultSplit,
+  expectedMappings,
+  format,
+  includedFiles,
+  inputMappings,
+  metadataMappings,
+  reviewStatusMapping,
+  sourceSpanId,
+  sourceTraceId,
+  splitMapping,
+  upload,
+}: {
+  allowPartialCommit: boolean;
+  dataset: Dataset;
+  defaultReviewStatus: DatasetReviewStatus;
+  defaultSplit: DatasetSplit;
+  expectedMappings: FieldMappingDraft[];
+  format: DatasetImportFormat;
+  includedFiles: string[];
+  inputMappings: FieldMappingDraft[];
+  metadataMappings: FieldMappingDraft[];
+  reviewStatusMapping: ScalarMappingDraft;
+  sourceSpanId: ScalarMappingDraft;
+  sourceTraceId: ScalarMappingDraft;
+  splitMapping: ScalarMappingDraft;
+  upload: DatasetImportUploadResponse | null;
+}): PrepareDatasetImportInput {
+  if (!upload) {
+    throw new Error("Stage an upload before previewing the import.");
+  }
+  const input = fieldMappingsFromDraft(inputMappings);
+  if (input.length === 0) {
+    throw new Error("At least one input mapping is required.");
+  }
+  return {
+    datasetId: dataset.id,
+    uploadId: upload.uploadId,
+    format,
+    fileSelector: includedFiles.length > 0 ? { include: includedFiles } : null,
+    mapping: {
+      input,
+      expected: fieldMappingsFromDraft(expectedMappings),
+      metadata: fieldMappingsFromDraft(metadataMappings),
+      sourceTraceId: scalarMappingFromDraft(sourceTraceId),
+      sourceSpanId: scalarMappingFromDraft(sourceSpanId),
+      split: scalarMappingFromDraft(splitMapping),
+      reviewStatus: scalarMappingFromDraft(reviewStatusMapping),
+    },
+    defaults: {
+      split: defaultSplit,
+      reviewStatus: defaultReviewStatus,
+      metadata: {},
+      synthetic: false,
+      allowPartialCommit,
+    },
+    previewLimit: 100,
+  };
+}
+
+async function uploadDatasetImportFile(projectId: string, file: File) {
+  const formData = new FormData();
+  formData.append("projectId", projectId);
+  formData.append("file", file, file.name);
+  formData.append("filename", file.name);
+
+  const response = await fetch("/api/ai-eval/dataset-imports/uploads", {
+    method: "POST",
+    body: formData,
+  });
+  if (!response.ok) {
+    throw new Error(`Dataset import upload failed with HTTP ${response.status}`);
+  }
+  return (await response.json()) as DatasetImportUploadResponse;
+}
+
+async function prepareDatasetImport(input: PrepareDatasetImportInput): Promise<DatasetImportJob> {
+  const data = await requestAiEvalGraphQL<{ prepareDatasetImport: DatasetImportJob }>(
+    "PrepareDatasetImport",
+    prepareDatasetImportOperation,
+    { input },
+  );
+  return data.prepareDatasetImport;
+}
+
+async function commitDatasetImport(input: CommitDatasetImportInput): Promise<DatasetImportJob> {
+  const data = await requestAiEvalGraphQL<{ commitDatasetImport: DatasetImportJob }>(
+    "CommitDatasetImport",
+    commitDatasetImportOperation,
+    { input },
+  );
+  return data.commitDatasetImport;
+}
+
+async function startDatasetExport(input: StartDatasetExportInput): Promise<DatasetExportJob> {
+  const data = await requestAiEvalGraphQL<{ startDatasetExport: DatasetExportJob }>(
+    "StartDatasetExport",
+    startDatasetExportOperation,
+    { input },
+  );
+  return data.startDatasetExport;
+}
+
+async function fetchDatasetExport(id: string): Promise<DatasetExportJob> {
+  const data = await requestAiEvalGraphQL<{ datasetExport: DatasetExportJob | null }>(
+    "DatasetExport",
+    datasetExportOperation,
+    { id },
+  );
+  if (!data.datasetExport) {
+    throw new Error("Dataset export job was not found.");
+  }
+  return data.datasetExport;
+}
+
+function downloadSameOriginExport(job: DatasetExportJob) {
+  if (!job.downloadUrl) {
+    throw new Error("Dataset export is not ready for download.");
+  }
+  const url = new URL(job.downloadUrl, window.location.origin);
+  if (url.origin !== window.location.origin) {
+    throw new Error("Dataset export download URL must be same-origin.");
+  }
+  window.location.assign(`${url.pathname}${url.search}${url.hash}`);
+}
+
+function datasetImportFormatLabel(format: DatasetImportFormat) {
+  if (format === "json_array") {
+    return "JSON array";
+  }
+  return format.toUpperCase();
+}
+
+function datasetExportFormatLabel(format: DatasetExportFormat) {
+  if (format === "json_array") {
+    return "JSON array";
+  }
+  return format.toUpperCase();
+}
+
 async function fetchAiQualityOverview(input: AiQualityOverviewInput): Promise<AiQualityOverview> {
   const data = await requestAiEvalGraphQL<{ aiQualityOverview: AiQualityOverview }>(
     "AiQualityOverview",
@@ -1676,6 +2837,99 @@ const datasetsOperation = `
         }
       }
       nextCursor
+    }
+  }
+`;
+
+const datasetImportJobFields = `
+  id
+  datasetId
+  status
+  format
+  sourceFiles {
+    path
+    format
+    sizeBytes
+    rowCount
+    sha256
+  }
+  mapping
+  defaults
+  previewRows {
+    rowNumber
+    filePath
+    item {
+      input
+      expected
+      metadata
+      sourceTraceId
+      sourceSpanId
+      split
+      reviewStatus
+      synthetic
+    }
+    errors {
+      code
+      message
+      path
+    }
+    warnings {
+      code
+      message
+      path
+    }
+  }
+  totalRows
+  validRows
+  errorRows
+  warnings
+  createdAt
+  expiresAt
+  committedDatasetVersion
+`;
+
+const datasetExportJobFields = `
+  id
+  datasetId
+  datasetVersion
+  status
+  format
+  rowCount
+  sizeBytes
+  sha256
+  downloadUrl
+  createdAt
+  expiresAt
+`;
+
+const prepareDatasetImportOperation = `
+  mutation PrepareDatasetImport($input: PrepareDatasetImportInput!) {
+    prepareDatasetImport(input: $input) {
+      ${datasetImportJobFields}
+    }
+  }
+`;
+
+const commitDatasetImportOperation = `
+  mutation CommitDatasetImport($input: CommitDatasetImportInput!) {
+    commitDatasetImport(input: $input) {
+      ${datasetImportJobFields}
+    }
+  }
+`;
+
+const startDatasetExportOperation = `
+  mutation StartDatasetExport($input: StartDatasetExportInput!) {
+    startDatasetExport(input: $input) {
+      ${datasetExportJobFields}
+    }
+  }
+`;
+
+const datasetExportOperation = `
+  query DatasetExport($id: ID!) {
+    datasetExport(id: $id) {
+      ${datasetExportJobFields}
     }
   }
 `;

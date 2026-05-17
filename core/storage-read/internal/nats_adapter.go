@@ -25,6 +25,7 @@ func SubscribeTelemetryHandlers(nc *nats.Conn, store ports.TelemetryReadStore, l
 		SubjectLogSearch:                handleLogSearch(store, logger),
 		SubjectMetricNames:              handleMetricNameSearch(store, logger),
 		SubjectMetricQuery:              handleMetricSeriesQuery(store, logger),
+		SubjectRichMetricQuery:          handleRichMetricSeriesQuery(store, logger),
 		SubjectTelemetryFacets:          handleTelemetryFacets(store, logger),
 		SubjectLiveTraceStart:           handleLiveTraceStart(liveRegistry, logger),
 		SubjectLiveTraceStop:            handleLiveTraceStop(liveRegistry, logger),

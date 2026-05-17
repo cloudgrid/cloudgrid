@@ -244,6 +244,241 @@ func TestNonDeterministicScorerDelegatesScoringToHarnessAdapter(t *testing.T) {
 	}
 }
 
+func TestHandlePersistedProjectionsResolvesOnlinePolicyAndPersistsDeterministicResult(t *testing.T) {
+	reader := &fakeReader{
+		onlineMatches: ports.OnlinePolicyMatches{
+			Matches: []ports.OnlinePolicyMatch{{
+				PolicyID:      "policy-1",
+				PolicyVersion: 2,
+				PolicyName:    "production agent quality",
+				SampleRate:    1,
+				ScorerRefs: []ports.OnlinePolicyScorerRef{{
+					ScorerID:      "scorer-1",
+					ScorerVersion: 4,
+					Kind:          ports.ScorerKindDeterministic,
+				}},
+				Projection: ports.OnlinePolicyProjection{
+					ProjectID:      "project-1",
+					TraceID:        "trace-1",
+					SpanID:         "span-1",
+					ProjectionID:   "agent-run-1",
+					Kind:           "agent_run",
+					SafeAttributes: map[string]any{"answer": "helpful final response"},
+				},
+			}},
+		},
+		scorers: []ports.Scorer{{
+			ID:         "scorer-1",
+			Kind:       ports.ScorerKindDeterministic,
+			Definition: map[string]any{"type": "contains", "value": "helpful"},
+			Version:    4,
+		}},
+	}
+	writer := &fakeWriter{}
+	harness := &fakeHarness{}
+	runner := NewRunner(RunnerConfig{
+		StorageReader:  reader,
+		StorageWriter:  writer,
+		HarnessAdapter: harness,
+		Clock:          fixedClock(time.Date(2026, 5, 16, 10, 0, 0, 0, time.UTC)),
+		IDGenerator:    sequenceIDs("online-result-1"),
+	})
+
+	err := runner.HandlePersistedProjections(context.Background(), ports.PersistedProjectionNotification{
+		RequestID:     "projection-notification-1",
+		ProjectID:     "project-1",
+		TraceID:       "trace-1",
+		ProjectionIDs: []string{"agent-run-1"},
+		SpanIDs:       []string{"span-1"},
+		Kinds:         []string{"agent_run"},
+		PersistedAt:   "2026-05-16T09:59:00Z",
+	})
+
+	if err != nil {
+		t.Fatalf("HandlePersistedProjections returned error: %v", err)
+	}
+	if len(reader.onlineResolveRequests) != 1 {
+		t.Fatalf("online policy resolve calls = %d, want 1", len(reader.onlineResolveRequests))
+	}
+	resolve := reader.onlineResolveRequests[0]
+	if resolve.ProjectID != "project-1" || resolve.TraceID != "trace-1" || !reflect.DeepEqual(resolve.ProjectionIDs, []string{"agent-run-1"}) || !reflect.DeepEqual(resolve.SpanIDs, []string{"span-1"}) {
+		t.Fatalf("unexpected online resolve request: %#v", resolve)
+	}
+	if !reflect.DeepEqual(reader.scorerSearches, [][]string{{"scorer-1"}}) {
+		t.Fatalf("scorer lookup = %#v, want scorer-1 lookup", reader.scorerSearches)
+	}
+	if len(harness.scoreRequests) != 0 {
+		t.Fatalf("online scoring must not call harness /v1/score, got %#v", harness.scoreRequests)
+	}
+	if len(writer.persistedResults) != 1 {
+		t.Fatalf("persisted results = %d, want 1", len(writer.persistedResults))
+	}
+	persisted := writer.persistedResults[0]
+	if persisted.key != "eval_result:targetKind=agentRun:targetId=agent-run-1:scorerId=scorer-1:scorerVersion=4" {
+		t.Fatalf("unexpected idempotency key: %s", persisted.key)
+	}
+	if persisted.result.ID != "online-result-1" || persisted.result.TargetKind != ports.EvalTargetKindAgentRun || persisted.result.TargetID != "agent-run-1" {
+		t.Fatalf("unexpected result target: %#v", persisted.result)
+	}
+	if persisted.result.Score != 1 || !persisted.result.Passed {
+		t.Fatalf("unexpected deterministic online score: %#v", persisted.result)
+	}
+	if persisted.result.Evidence["policyId"] != "policy-1" || persisted.result.Evidence["online"] != true {
+		t.Fatalf("result evidence missing policy metadata: %#v", persisted.result.Evidence)
+	}
+}
+
+func TestHandlePersistedProjectionsNoMatchesIsNoop(t *testing.T) {
+	reader := &fakeReader{}
+	writer := &fakeWriter{}
+	harness := &fakeHarness{}
+	runner := NewRunner(RunnerConfig{
+		StorageReader:  reader,
+		StorageWriter:  writer,
+		HarnessAdapter: harness,
+		Clock:          fixedClock(time.Date(2026, 5, 16, 10, 0, 0, 0, time.UTC)),
+		IDGenerator:    sequenceIDs(),
+	})
+
+	err := runner.HandlePersistedProjections(context.Background(), ports.PersistedProjectionNotification{
+		RequestID:     "projection-notification-1",
+		ProjectID:     "project-1",
+		TraceID:       "trace-1",
+		ProjectionIDs: []string{"agent-run-1"},
+		Kinds:         []string{"agent_run"},
+		PersistedAt:   "2026-05-16T09:59:00Z",
+	})
+
+	if err != nil {
+		t.Fatalf("HandlePersistedProjections returned error: %v", err)
+	}
+	if len(reader.onlineResolveRequests) != 1 {
+		t.Fatalf("online policy resolve calls = %d, want 1", len(reader.onlineResolveRequests))
+	}
+	if len(writer.persistedResults) != 0 {
+		t.Fatalf("persisted results = %#v, want none", writer.persistedResults)
+	}
+	if len(harness.scoreRequests) != 0 {
+		t.Fatalf("harness score calls = %#v, want none", harness.scoreRequests)
+	}
+}
+
+func TestHandlePersistedProjectionsPersistsSkippedResultForUnsupportedOnlineScorerKind(t *testing.T) {
+	reader := &fakeReader{
+		onlineMatches: ports.OnlinePolicyMatches{
+			Matches: []ports.OnlinePolicyMatch{{
+				PolicyID:      "policy-llm",
+				PolicyVersion: 1,
+				PolicyName:    "future scorer",
+				SampleRate:    1,
+				ScorerRefs: []ports.OnlinePolicyScorerRef{{
+					ScorerID:      "scorer-llm",
+					ScorerVersion: 1,
+					Kind:          ports.ScorerKindLLMJudge,
+				}},
+				Projection: ports.OnlinePolicyProjection{
+					ProjectID:      "project-1",
+					TraceID:        "trace-1",
+					ProjectionID:   "agent-run-1",
+					Kind:           "agent_run",
+					SafeAttributes: map[string]any{"answer": "content"},
+				},
+			}},
+		},
+	}
+	writer := &fakeWriter{}
+	harness := &fakeHarness{}
+	runner := NewRunner(RunnerConfig{
+		StorageReader:  reader,
+		StorageWriter:  writer,
+		HarnessAdapter: harness,
+		Clock:          fixedClock(time.Date(2026, 5, 16, 10, 0, 0, 0, time.UTC)),
+		IDGenerator:    sequenceIDs("skip-result-1"),
+	})
+
+	err := runner.HandlePersistedProjections(context.Background(), ports.PersistedProjectionNotification{
+		RequestID:     "projection-notification-1",
+		ProjectID:     "project-1",
+		TraceID:       "trace-1",
+		ProjectionIDs: []string{"agent-run-1"},
+		Kinds:         []string{"agent_run"},
+		PersistedAt:   "2026-05-16T09:59:00Z",
+	})
+
+	if err != nil {
+		t.Fatalf("HandlePersistedProjections returned error: %v", err)
+	}
+	if len(reader.scorerSearches) != 0 {
+		t.Fatalf("unsupported online scorer must not be loaded for execution, got %#v", reader.scorerSearches)
+	}
+	if len(harness.scoreRequests) != 0 {
+		t.Fatalf("unsupported online scorer must not call harness, got %#v", harness.scoreRequests)
+	}
+	if len(writer.persistedResults) != 1 {
+		t.Fatalf("persisted results = %d, want skipped result", len(writer.persistedResults))
+	}
+	result := writer.persistedResults[0].result
+	if result.Evidence["status"] != "skipped" || result.Evidence["reason"] != "ERR-AIE-002" || result.Evidence["policyId"] != "policy-llm" {
+		t.Fatalf("unexpected skipped evidence: %#v", result.Evidence)
+	}
+}
+
+func TestHandlePersistedProjectionsPersistsSkippedResultWhenSamplingPreventsScoring(t *testing.T) {
+	reader := &fakeReader{
+		onlineMatches: ports.OnlinePolicyMatches{
+			Matches: []ports.OnlinePolicyMatch{{
+				PolicyID:      "policy-sampled-out",
+				PolicyVersion: 1,
+				PolicyName:    "sampled out",
+				SampleRate:    0,
+				ScorerRefs: []ports.OnlinePolicyScorerRef{{
+					ScorerID:      "scorer-1",
+					ScorerVersion: 1,
+					Kind:          ports.ScorerKindDeterministic,
+				}},
+				Projection: ports.OnlinePolicyProjection{
+					ProjectID:      "project-1",
+					TraceID:        "trace-1",
+					ProjectionID:   "agent-run-1",
+					Kind:           "agent_run",
+					SafeAttributes: map[string]any{"answer": "content"},
+				},
+			}},
+		},
+	}
+	writer := &fakeWriter{}
+	runner := NewRunner(RunnerConfig{
+		StorageReader:  reader,
+		StorageWriter:  writer,
+		HarnessAdapter: &fakeHarness{},
+		Clock:          fixedClock(time.Date(2026, 5, 16, 10, 0, 0, 0, time.UTC)),
+		IDGenerator:    sequenceIDs("skip-result-1"),
+	})
+
+	err := runner.HandlePersistedProjections(context.Background(), ports.PersistedProjectionNotification{
+		RequestID:     "projection-notification-1",
+		ProjectID:     "project-1",
+		TraceID:       "trace-1",
+		ProjectionIDs: []string{"agent-run-1"},
+		Kinds:         []string{"agent_run"},
+		PersistedAt:   "2026-05-16T09:59:00Z",
+	})
+
+	if err != nil {
+		t.Fatalf("HandlePersistedProjections returned error: %v", err)
+	}
+	if len(reader.scorerSearches) != 0 {
+		t.Fatalf("sampled out scorer must not be loaded for execution, got %#v", reader.scorerSearches)
+	}
+	if len(writer.persistedResults) != 1 {
+		t.Fatalf("persisted results = %d, want skipped result", len(writer.persistedResults))
+	}
+	result := writer.persistedResults[0].result
+	if result.Evidence["status"] != "skipped" || result.Evidence["reason"] != "ERR-AIE-004" || result.Evidence["policyId"] != "policy-sampled-out" {
+		t.Fatalf("unexpected sampled-out evidence: %#v", result.Evidence)
+	}
+}
+
 func TestStartOfflineExperimentResolvesManifestAndAppliesBudgetBeforeHarness(t *testing.T) {
 	reader := &fakeReader{
 		manifest: ports.ExperimentManifest{
@@ -372,10 +607,12 @@ type fakeReader struct {
 	items                   []ports.DatasetItem
 	scorers                 []ports.Scorer
 	manifest                ports.ExperimentManifest
+	onlineMatches           ports.OnlinePolicyMatches
 	experimentSearches      []string
 	datasetSearches         []datasetSearch
 	scorerSearches          [][]string
 	manifestResolveRequests []manifestResolveRequest
+	onlineResolveRequests   []ports.OnlinePolicyResolveRequest
 }
 
 func (r *fakeReader) SearchExperiments(ctx context.Context, experimentID string) ([]ports.Experiment, error) {
@@ -396,6 +633,11 @@ func (r *fakeReader) SearchScorers(ctx context.Context, scorerIDs []string) ([]p
 func (r *fakeReader) ResolveManifest(ctx context.Context, request ports.ManifestResolveRequest) (ports.ExperimentManifest, error) {
 	r.manifestResolveRequests = append(r.manifestResolveRequests, manifestResolveRequest{experimentRunID: request.ExperimentRunID, experimentID: request.ExperimentID})
 	return r.manifest, nil
+}
+
+func (r *fakeReader) ResolveOnlinePolicyMatches(ctx context.Context, request ports.OnlinePolicyResolveRequest) (ports.OnlinePolicyMatches, error) {
+	r.onlineResolveRequests = append(r.onlineResolveRequests, request)
+	return r.onlineMatches, nil
 }
 
 type fakeControlPlane struct {

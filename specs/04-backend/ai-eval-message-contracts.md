@@ -20,6 +20,10 @@ depends_on: [DOM-006, TEC-BE-024]
 | `eval.dataset.create` | BFF | `core/storage-write` | Create a dataset. |
 | `eval.dataset.items.append` | BFF | `core/storage-write` | Append manually authored or imported dataset items. |
 | `eval.dataset.item.promote` | BFF | `core/storage-write` | Promote a source trace/span into a dataset item. |
+| `eval.dataset.import.prepare` | BFF | `core/storage-write` | Validate staged dataset upload and return import preview. |
+| `eval.dataset.import.commit` | BFF | `core/storage-write` | Commit a prepared import preview into a dataset version. |
+| `eval.dataset.export.start` | BFF | `core/storage-read`, `core/storage-write` | Resolve and prepare canonical dataset export artifact. |
+| `eval.dataset.transfer.get` | BFF | `core/storage-read` | Read dataset import/export job state. |
 | `eval.dataset.search` | BFF, runner | `core/storage-read` | Search datasets and dataset items. |
 | `eval.agent_runs.search` | BFF | `core/storage-read` | Search projected agent runs. |
 | `eval.scorer.create` | BFF | `core/storage-write` | Create a scorer definition. |
@@ -31,6 +35,7 @@ depends_on: [DOM-006, TEC-BE-024]
 | `eval.experiment.search` | BFF, runner | `core/storage-read` | Search experiments and experiment runs. |
 | `eval.results.search` | BFF, runner | `core/storage-read` | Search eval results. |
 | `eval.results.persist` | `core/ai-eval-runner` | `core/storage-write` | Persist eval results and dataset item runs. |
+| `eval.online.policy_matches.resolve` | `core/ai-eval-runner` | `core/storage-read` | Resolve enabled deterministic online policy matches for a persisted AI projection notification. |
 | `eval.live.start` | BFF | `core/storage-read` | Register a live experiment subscription. |
 | `eval.live.stop` | BFF | `core/storage-read` | Stop a live experiment subscription. |
 | `eval.live.events.*.*` | `core/storage-read` | BFF | Deliver GraphQL-ready live experiment events. |
@@ -64,6 +69,62 @@ are declared in `specs/03-contracts/graphql/public-schema.graphql`.
 Implementation agents must use the machine-readable contracts and generated
 TypeScript/Go outputs. They must not implement these subjects as undocumented
 string constants or add unregistered message variants during service work.
+
+## Online Policy Match Contract
+
+`eval.online.policy_matches.resolve` is the only approved v1 request/reply
+subject for runner-side online policy resolution.
+
+Producer:
+
+- `core/ai-eval-runner`
+
+Consumer:
+
+- `core/storage-read`
+
+Request payload:
+
+- `BridgeEnvelope`.
+- `projectId`.
+- `traceId`.
+- `projectionIds`.
+- optional `spanIds`.
+- `kinds`.
+- `persistedAt`.
+
+Response payload:
+
+- `matches`: matched enabled online policies with `policyId`, `policyVersion`,
+  `policyName`, `target`, `sampleRate`, optional `maxDailyRuns`, and
+  deterministic `scorerRefs`.
+- `projection`: bounded scorer input read model with source IDs, routing fields,
+  safe indexed attributes, and no raw prompt/completion/tool/retrieval content.
+- `warnings`: bounded strings for invalid policies, stale scorer references, or
+  unsupported scorer kinds.
+
+Storage-read owns all policy target matching and scorer-kind validation. The
+runner must not reimplement target matching. If a policy references a scorer
+outside the deterministic v1 online set, storage-read either omits it with a
+warning or returns a validation error. Runner must not call harness to make the
+policy executable.
+
+## Dataset Import/Export Contract
+
+Dataset import/export subjects use `EvalMutationRequest` or `EvalQueryRequest`
+envelopes, but their `input` payloads are locked to the GraphQL input types in
+`public-schema.graphql`:
+
+- `eval.dataset.import.prepare` uses `PrepareDatasetImportInput`.
+- `eval.dataset.import.commit` uses `CommitDatasetImportInput`.
+- `eval.dataset.export.start` uses `StartDatasetExportInput`.
+- `eval.dataset.transfer.get` uses `{ id, kind }`, where `kind` is `import` or
+  `export`.
+
+The BFF must not bypass these subjects by parsing rows into `DatasetItemInput`
+and calling `eval.dataset.items.append` for uploaded files. Uploaded files must
+go through preview-before-commit so mapping, row validation, partial commit,
+and import job records are owned by storage-write.
 
 ## Durable Experiment Manifest Contract
 

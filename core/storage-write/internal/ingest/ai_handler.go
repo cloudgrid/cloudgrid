@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -97,6 +98,30 @@ func HandleEvalMutationMessage(ctx context.Context, msg RequestMessage, store po
 func HandleEvalMutationRequest(ctx context.Context, subject string, request contracts.EvalMutationRequest, store ports.AIWriteStore, publisher ports.AIEventPublisher, now func() time.Time) contracts.EvalMutationResponse {
 	if err := validateEvalMutationRequest(subject, request); err != nil {
 		return evalMutationErrorResponse(request.RequestID, validationBridgeError(err.Error()))
+	}
+
+	if subject == EvalDatasetImportPrepareSubject {
+		data, err := PrepareDatasetImport(ctx, datasetTransferRoot(), request, now)
+		if err != nil {
+			return evalMutationErrorResponse(request.RequestID, bridgeErrorFromError(err))
+		}
+		return contracts.EvalMutationResponse{RequestID: request.RequestID, OK: true, Data: data}
+	}
+	if subject == EvalDatasetImportCommitSubject {
+		appendRequests, err := DatasetImportAppendRequests(ctx, datasetTransferRoot(), request, now)
+		if err != nil {
+			return evalMutationErrorResponse(request.RequestID, bridgeErrorFromError(err))
+		}
+		for _, appendRequest := range appendRequests {
+			if _, err := store.PersistEvalMutation(ctx, EvalDatasetItemsAppendSubject, appendRequest, now()); err != nil {
+				return evalMutationErrorResponse(request.RequestID, storageBridgeError())
+			}
+		}
+		data, err := CommitDatasetImport(ctx, datasetTransferRoot(), request, now)
+		if err != nil {
+			return evalMutationErrorResponse(request.RequestID, bridgeErrorFromError(err))
+		}
+		return contracts.EvalMutationResponse{RequestID: request.RequestID, OK: true, Data: data}
 	}
 
 	occurredAt := now()
@@ -191,7 +216,7 @@ func BuildEvalMutationRecord(subject string, request contracts.EvalMutationReque
 		}, nil
 	case EvalResultsPersistSubject:
 		return map[string]any{
-			"experimentRunId": stringValue(request.Input, "experimentRunId"),
+			"experimentRunId": optionalStringValue(request.Input, "experimentRunId"),
 			"itemRuns":        arrayValue(request.Input, "itemRuns"),
 			"results":         arrayValue(request.Input, "results"),
 			"persistedAt":     now.UTC().Format(time.RFC3339),
@@ -286,6 +311,16 @@ func validateEvalMutationRequest(subject string, request contracts.EvalMutationR
 	}
 
 	switch subject {
+	case EvalDatasetImportPrepareSubject:
+		return validateDatasetImportPrepareRequest(request)
+	case EvalDatasetImportCommitSubject:
+		if err := requireNonBlank(request.Input, "importId"); err != nil {
+			return err
+		}
+		if intValue(request.Input, "expectedDatasetVersion") < 1 {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: expectedDatasetVersion must be at least 1")
+		}
+		return nil
 	case EvalDatasetCreateSubject:
 		return requireNonBlank(request.Input, "name")
 	case EvalDatasetItemsAppendSubject:
@@ -328,11 +363,11 @@ func validateEvalMutationRequest(subject string, request contracts.EvalMutationR
 		}
 		return nil
 	case EvalResultsPersistSubject:
-		if err := requireNonBlank(request.Input, "experimentRunId"); err != nil {
-			return err
-		}
 		if len(arrayValue(request.Input, "itemRuns")) == 0 && len(arrayValue(request.Input, "results")) == 0 {
 			return fmt.Errorf("ERR-001 VALIDATION_FAILED: itemRuns or results is required")
+		}
+		if len(arrayValue(request.Input, "itemRuns")) > 0 {
+			return requireNonBlank(request.Input, "experimentRunId")
 		}
 		return nil
 	case EvalPromptVersionPromoteSubject:
@@ -354,6 +389,13 @@ func validateEvalMutationRequest(subject string, request contracts.EvalMutationR
 	default:
 		return fmt.Errorf("ERR-001 VALIDATION_FAILED: unsupported eval mutation subject")
 	}
+}
+
+func datasetTransferRoot() string {
+	if value := strings.TrimSpace(os.Getenv("CLOUDGRID_DATASET_TRANSFER_DIR")); value != "" {
+		return value
+	}
+	return ".cloudgrid/dataset-transfer"
 }
 
 func aiProjectionPersistedNotification(command contracts.PersistAiProjectionCommand, projectionIDs []string, persistedAt time.Time) contracts.AiProjectionPersistedNotification {
@@ -427,6 +469,20 @@ func validationBridgeError(message string) contracts.BridgeError {
 
 func storageBridgeError() contracts.BridgeError {
 	return contracts.BridgeError{ID: storageErrorID, Code: storageErrorCode, Message: "storage is unavailable", Retryable: true}
+}
+
+func bridgeErrorFromError(err error) contracts.BridgeError {
+	if err == nil {
+		return storageBridgeError()
+	}
+	message := err.Error()
+	if strings.HasPrefix(message, validationErrorID) {
+		return validationBridgeError(message)
+	}
+	if strings.HasPrefix(message, storageErrorID) {
+		return storageBridgeError()
+	}
+	return storageBridgeError()
 }
 
 func requireNonBlank(input map[string]any, field string) error {

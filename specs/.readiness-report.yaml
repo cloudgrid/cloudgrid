@@ -19,6 +19,9 @@ inferred_defaults:
   - Scorers include deterministic, schema/JSON, semantic, RAG, LLM judge, tool correctness, trajectory/task completion, and human review families.
   - Experiments and optimizations require immutable manifests with dataset version, split selector, scorer versions, prompt/skill/tool refs, provider profile refs, budget caps, and manifest digest.
   - Production online evaluation is policy-driven and disabled until configured.
+  - "Online scoring v1 is conservative and deterministic-only: no production projection is scored until a project admin enables an explicit policy, no harness score call is allowed, no production content is sent to judge models, no annotation item is created automatically, and no alert rule is triggered from AI-eval results."
+  - Dataset import/export supports JSONL, JSON array, CSV, and ZIP upload with
+    preview-before-commit mapping into canonical CloudGrid dataset item fields.
   - Storage-read owns dataset health, policy matching, production quality summaries, manifest resolution, scoreboards, and live fanout.
   - Frontend renders GraphQL view models and owns only presentation state.
 gate_simulation:
@@ -68,8 +71,8 @@ gate_simulation:
       owner_boundary: storage-read
       read_scope: [specs/04-backend/ai-eval-query-semantics.md, specs/02-flows/ai-eval/live-experiment-subscription.md, specs/03-contracts/graphql/public-schema.graphql]
       write_scope: [core/storage-read]
-      contract_traceability: [eval.agent_runs.search, eval.dataset.search, eval.scorer.search, eval.experiment.search, eval.results.search, eval.dataset.health, eval.quality.overview, eval.manifest.resolve, eval.live.start, eval.live.stop, eval.live.events.*.*]
-      acceptance: Storage-read owns all AI-eval read derivations, manifest resolution, policy matching, live fanout, dataset health, and production quality summaries.
+      contract_traceability: [eval.agent_runs.search, eval.dataset.search, eval.scorer.search, eval.experiment.search, eval.results.search, eval.dataset.health, eval.quality.overview, eval.manifest.resolve, eval.online.policy_matches.resolve, eval.live.start, eval.live.stop, eval.live.events.*.*]
+      acceptance: Storage-read owns all AI-eval read derivations, manifest resolution, deterministic-only online policy matching, live fanout, dataset health, and production quality summaries.
       verification: ["go test -tags surrealdb ./core/storage-read/..."]
       open_decisions: []
     - id: AIE-5
@@ -86,8 +89,8 @@ gate_simulation:
       owner_boundary: ai-eval-runner
       read_scope: [specs/04-backend/ai-eval-runner.md, specs/06-nfr/ai-eval-cost-bounds.md, specs/02-flows/ai-eval/offline-experiment-run.md, specs/02-flows/ai-eval/online-evaluation.md]
       write_scope: [core/ai-eval-runner]
-      contract_traceability: [eval.experiment.start, eval.experiment.cancel, eval.optimization.start, eval.results.persist, eval.experiment.progress, eval.manifest.resolve, control.ai_settings.get]
-      acceptance: Runner enforces manifest, split, budget, sampling, concurrency, retry, cancellation, and idempotency rules before harness calls and never reads or writes SurrealDB directly.
+      contract_traceability: [eval.experiment.start, eval.experiment.cancel, eval.optimization.start, eval.results.persist, eval.experiment.progress, eval.manifest.resolve, eval.online.policy_matches.resolve, control.ai_settings.get]
+      acceptance: Runner enforces manifest, split, budget, sampling, concurrency, retry, cancellation, and idempotency rules; online scoring v1 resolves matches through storage-read, executes deterministic scorers locally, never calls harness scoring, never creates annotations automatically, and never reads or writes SurrealDB directly.
       verification: ["go test -tags surrealdb ./core/ai-eval-runner/..."]
       open_decisions: []
     - id: AIE-7
@@ -117,6 +120,15 @@ gate_simulation:
       acceptance: Bun CLI starts an experiment through GraphQL, subscribes to progress, exits non-zero on configured regression thresholds, and emits JUnit XML.
       verification: ["bun test tooling", "bun run contracts:check"]
       open_decisions: []
+    - id: AIE-10
+      name: Dataset import and export
+      owner_boundary: split bff/storage-write/storage-read/frontend
+      read_scope: [specs/02-capabilities/ai-eval/import-export-datasets.md, specs/02-flows/ai-eval/dataset-import-export.md, specs/04-backend/ai-eval-dataset-transfer.md, specs/05-frontend/ai-eval-views.md]
+      write_scope: [apps/backend, core/storage-write, core/storage-read, apps/frontend, apps/packages/ui-contracts]
+      contract_traceability: [prepareDatasetImport, commitDatasetImport, startDatasetExport, datasetImport, datasetExport, eval.dataset.import.prepare, eval.dataset.import.commit, eval.dataset.export.start, eval.dataset.transfer.get]
+      acceptance: Dataset import/export supports JSONL, JSON array, CSV, and ZIP through BFF byte transfer, GraphQL preview-before-commit, storage-write normalization/commit, storage-read export resolution/job reads, and frontend mapping/preview UI without frontend or BFF-owned dataset semantics.
+      verification: ["bun run contracts:check", "bun test apps/backend/src", "go test -tags surrealdb ./core/storage-write/... ./core/storage-read/...", "bun run --cwd apps/frontend typecheck"]
+      open_decisions: []
 deterministic_checks:
   - command: node /Users/sebastianwessel/.agents/skills/spec-architect/scripts/check_specs.mjs specs
     status: pass_with_warning_no_specs_03_flows_directory
@@ -137,11 +149,16 @@ risks:
   - Current implementation contains an earlier AI-eval scaffold and must not be treated as complete for the expanded product concept.
   - The implementation wave is broad and must be split by ownership boundary to avoid cross-agent drift.
   - Provider credential handling must remain outside CloudGrid v1 unless a separate secret-management spec is approved.
+  - Online LLM-judge, RAG, tool, trajectory, automatic annotation routing, and
+    alert integration are intentionally future features; implementing them in
+    the v1 online scoring wave would be scope drift.
+  - Excel/XLSX import and arbitrary import transform scripting are intentionally
+    out of scope for v1 dataset import.
   - Organization invitations are outside this AI-eval readiness scope and are not approved by this report.
 statistics:
-  ai_eval_capabilities: 8
-  ai_eval_flows: 4
-  ai_eval_backend_specs: 5
+  ai_eval_capabilities: 9
+  ai_eval_flows: 5
+  ai_eval_backend_specs: 6
   ai_eval_frontend_specs: 2
   ai_eval_nfrs: 2
-  simulated_implementation_tickets: 9
+  simulated_implementation_tickets: 10

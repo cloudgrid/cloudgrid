@@ -119,6 +119,101 @@ func TestMetricHandlersForwardInputsAndEnforceReadAuth(t *testing.T) {
 	if response.OK || response.Error == nil || response.Error.ID != "ERR-016" {
 		t.Fatalf("denied metric series response = %#v, want ERR-016", response)
 	}
+
+	richRequest := contracts.RichMetricSeriesRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{
+			RequestID:   "req-rich-metric-series",
+			AuthContext: &contracts.AuthContext{AuthMode: ptr("sso"), TenantID: ptr("tenant-1"), CompanyID: ptr("company-1"), ProjectID: ptr("project-1"), ReadAllowed: &allowed},
+		},
+		Input: contracts.RichMetricSeriesInput{
+			From: from,
+			To:   to,
+			Query: contracts.DashboardMetricQueryInput{
+				Queries: []contracts.DashboardMetricQueryRowInput{{
+					ID:          "requests",
+					Label:       "Requests",
+					MetricName:  "http.server.requests",
+					Aggregation: contracts.MetricAggregationRate,
+				}},
+			},
+		},
+	}
+	richMessage := bridgeMessageForTest(SubjectRichMetricQuery, mustMarshalNATSHandlerTest(t, richRequest))
+	handleRichMetricSeriesQuery(&loggingReadStore{}, nil)(richMessage)
+	var richResponse contracts.RichMetricSeriesResponse
+	if err := json.Unmarshal(richMessage.response, &richResponse); err != nil {
+		t.Fatalf("rich metric series response is not JSON: %v", err)
+	}
+	if !richResponse.OK || richResponse.Data == nil || richResponse.Data.Series == nil || richResponse.Data.DisplaySeries == nil {
+		t.Fatalf("rich metric series response = %#v, want successful bounded result", richResponse)
+	}
+	if lastMetricSeriesInput.MetricName != "http.server.requests" {
+		t.Fatalf("forwarded rich metric series row = %#v, want requests query", lastMetricSeriesInput)
+	}
+}
+
+func TestRichMetricHandlerEvaluatesBinaryFormulaFromMetricSeries(t *testing.T) {
+	from := time.Date(2026, 5, 14, 8, 0, 0, 0, time.UTC)
+	to := from.Add(time.Hour)
+	add := contracts.DashboardMetricFormulaBinaryOperatorAdd
+	request := contracts.RichMetricSeriesRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-rich-formula"},
+		Input: contracts.RichMetricSeriesInput{
+			From: from,
+			To:   to,
+			Query: contracts.DashboardMetricQueryInput{
+				Queries: []contracts.DashboardMetricQueryRowInput{{
+					ID:          "requests",
+					Label:       "Requests",
+					MetricName:  "http.server.requests",
+					Aggregation: contracts.MetricAggregationCount,
+				}},
+				Formulas: []contracts.DashboardMetricFormulaInput{{
+					ID:    "requests_plus_one",
+					Label: "Requests plus one",
+					Expression: contracts.DashboardMetricFormulaExpressionInput{
+						Kind:     contracts.DashboardMetricFormulaExpressionKindBinary,
+						Operator: &add,
+						Left: &contracts.DashboardMetricFormulaExpressionInput{
+							Kind:  contracts.DashboardMetricFormulaExpressionKindRef,
+							RefID: ptr("requests"),
+						},
+						Right: &contracts.DashboardMetricFormulaExpressionInput{
+							Kind:  contracts.DashboardMetricFormulaExpressionKindNumber,
+							Value: ptr(1.0),
+						},
+					},
+				}},
+				DisplaySeries: []contracts.DashboardMetricDisplaySeriesInput{{
+					ID:       "formula-line",
+					Label:    "Formula",
+					SourceID: "requests_plus_one",
+				}},
+			},
+		},
+	}
+	message := bridgeMessageForTest(SubjectRichMetricQuery, mustMarshalNATSHandlerTest(t, request))
+	handleRichMetricSeriesQuery(&fixedMetricReadStore{from: from}, nil)(message)
+
+	var response contracts.RichMetricSeriesResponse
+	if err := json.Unmarshal(message.response, &response); err != nil {
+		t.Fatalf("rich metric formula response is not JSON: %v", err)
+	}
+	if !response.OK || response.Data == nil {
+		t.Fatalf("rich metric formula response = %#v, want success", response)
+	}
+	var formula *contracts.RichMetricSeries
+	for index := range response.Data.Series {
+		if response.Data.Series[index].SourceID == "requests_plus_one" {
+			formula = &response.Data.Series[index]
+		}
+	}
+	if formula == nil || len(formula.Points) != 2 {
+		t.Fatalf("formula series = %#v, want two points", formula)
+	}
+	if formula.Points[0].Value != 3 || formula.Points[1].Value != 5 {
+		t.Fatalf("formula point values = %#v, want 3 and 5", formula.Points)
+	}
 }
 
 func TestProjectTelemetryOverviewHandlerForwardsTargetsAndEnforcesReadAuth(t *testing.T) {
@@ -584,4 +679,25 @@ func (store *failingReadStore) SearchMetricNames(_ context.Context, _ contracts.
 
 func (store *failingReadStore) QueryMetricSeries(_ context.Context, _ contracts.MetricSeriesInput, _ *contracts.AuthContext) (contracts.MetricSeriesData, error) {
 	return contracts.MetricSeriesData{}, store.err
+}
+
+type fixedMetricReadStore struct {
+	loggingReadStore
+	from time.Time
+}
+
+func (store *fixedMetricReadStore) QueryMetricSeries(_ context.Context, input contracts.MetricSeriesInput, _ *contracts.AuthContext) (contracts.MetricSeriesData, error) {
+	return contracts.MetricSeriesData{
+		Metric:      contracts.MetricDescriptor{Name: input.MetricName, Unit: "requests"},
+		Aggregation: input.Aggregation,
+		Interval:    "PT1M",
+		Series: []contracts.MetricSeries{{
+			Labels: contracts.Attributes{},
+			Points: []contracts.MetricSeriesPoint{
+				{Timestamp: store.from, Value: 2, Exemplars: []contracts.MetricExemplar{}},
+				{Timestamp: store.from.Add(time.Minute), Value: 4, Exemplars: []contracts.MetricExemplar{}},
+			},
+		}},
+		Warnings: []contracts.MetricQueryWarning{},
+	}, nil
 }

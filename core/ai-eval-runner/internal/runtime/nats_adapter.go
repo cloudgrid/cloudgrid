@@ -168,6 +168,83 @@ func (reader NATSStorageReader) ResolveManifest(ctx context.Context, request por
 	return manifestFromMap(manifest), nil
 }
 
+func (reader NATSStorageReader) ResolveOnlinePolicyMatches(ctx context.Context, request ports.OnlinePolicyResolveRequest) (ports.OnlinePolicyMatches, error) {
+	kinds := make([]contracts.AiProjectionKind, 0, len(request.Kinds))
+	for _, kind := range request.Kinds {
+		kinds = append(kinds, contracts.AiProjectionKind(kind))
+	}
+	persistedAt, err := time.Parse(time.RFC3339Nano, request.PersistedAt)
+	if err != nil {
+		return ports.OnlinePolicyMatches{}, err
+	}
+	resolveRequest := contracts.OnlinePolicyMatchesResolveRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: request.RequestID, IssuedAt: time.Now().UTC()},
+		ProjectID:      request.ProjectID,
+		TraceID:        request.TraceID,
+		ProjectionIDs:  append([]string(nil), request.ProjectionIDs...),
+		SpanIDs:        append([]string(nil), request.SpanIDs...),
+		Kinds:          kinds,
+		PersistedAt:    persistedAt.UTC(),
+	}
+	responseData, err := requestJSON(ctx, reader.Requester, reader.timeout(), SubjectOnlinePolicyResolve, resolveRequest)
+	if err != nil {
+		return ports.OnlinePolicyMatches{}, err
+	}
+	var response contracts.OnlinePolicyMatchesResolveResponse
+	if err := decodeStrict(responseData, &response); err != nil {
+		return ports.OnlinePolicyMatches{}, err
+	}
+	if !response.OK {
+		return ports.OnlinePolicyMatches{}, errorFromBridge(response.Error)
+	}
+	if response.Data == nil {
+		return ports.OnlinePolicyMatches{}, nil
+	}
+	matches := make([]ports.OnlinePolicyMatch, 0, len(response.Data.Matches))
+	for _, match := range response.Data.Matches {
+		scorerRefs := make([]ports.OnlinePolicyScorerRef, 0, len(match.ScorerRefs))
+		for _, ref := range match.ScorerRefs {
+			scorerRefs = append(scorerRefs, ports.OnlinePolicyScorerRef{
+				ScorerID:      ref.ScorerID,
+				ScorerVersion: ref.ScorerVersion,
+				Kind:          ref.Kind,
+			})
+		}
+		maxDailyRuns := 0
+		if match.MaxDailyRuns != nil {
+			maxDailyRuns = *match.MaxDailyRuns
+		}
+		matches = append(matches, ports.OnlinePolicyMatch{
+			PolicyID:      match.PolicyID,
+			PolicyVersion: match.PolicyVersion,
+			PolicyName:    match.PolicyName,
+			Target:        onlinePolicyTargetMap(match.Target),
+			SampleRate:    match.SampleRate,
+			MaxDailyRuns:  maxDailyRuns,
+			ScorerRefs:    scorerRefs,
+			Projection: ports.OnlinePolicyProjection{
+				ProjectID:       match.Projection.ProjectID,
+				TraceID:         match.Projection.TraceID,
+				SpanID:          stringPtrValue(match.Projection.SpanID),
+				ProjectionID:    match.Projection.ProjectionID,
+				Kind:            string(match.Projection.Kind),
+				AgentID:         stringPtrValue(match.Projection.AgentID),
+				AgentName:       stringPtrValue(match.Projection.AgentName),
+				Environment:     stringPtrValue(match.Projection.Environment),
+				ServiceName:     stringPtrValue(match.Projection.ServiceName),
+				Route:           stringPtrValue(match.Projection.Route),
+				ToolName:        stringPtrValue(match.Projection.ToolName),
+				RetrievalSource: stringPtrValue(match.Projection.RetrievalSource),
+				Model:           stringPtrValue(match.Projection.Model),
+				PromptVersionID: stringPtrValue(match.Projection.PromptVersionID),
+				ExperimentRunID: stringPtrValue(match.Projection.ExperimentRunID),
+				SafeAttributes:  match.Projection.SafeAttributes,
+			},
+		})
+	}
+	return ports.OnlinePolicyMatches{Matches: matches, Warnings: append([]string(nil), response.Data.Warnings...)}, nil
+}
+
 func (reader NATSStorageReader) evalQuery(ctx context.Context, subject string, input map[string]any) (map[string]any, error) {
 	request := contracts.EvalQueryRequest{
 		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: subject + ":runner", IssuedAt: time.Now().UTC()},
@@ -256,8 +333,7 @@ func (writer NATSStorageWriter) PersistDatasetItemRun(ctx context.Context, idemp
 }
 
 func (writer NATSStorageWriter) PersistEvalResult(ctx context.Context, idempotencyKey string, result ports.EvalResult) error {
-	_, err := writer.evalMutation(ctx, SubjectResultsPersist, map[string]any{
-		"experimentRunId": result.ExperimentRunID,
+	input := map[string]any{
 		"results": []any{map[string]any{
 			"id":              result.ID,
 			"idempotencyKey":  idempotencyKey,
@@ -272,7 +348,11 @@ func (writer NATSStorageWriter) PersistEvalResult(ctx context.Context, idempoten
 			"judgeRunRef":     result.JudgeRunRef,
 			"producedAt":      result.ProducedAt,
 		}},
-	})
+	}
+	if result.ExperimentRunID != "" {
+		input["experimentRunId"] = result.ExperimentRunID
+	}
+	_, err := writer.evalMutation(ctx, SubjectResultsPersist, input)
 	return err
 }
 
@@ -351,6 +431,39 @@ func splitSelectorMap(selector ports.DatasetSplitSelector) map[string]any {
 		"splits":           selector.Splits,
 		"reviewedOnly":     selector.ReviewedOnly,
 		"includeSynthetic": selector.IncludeSynthetic,
+	}
+}
+
+func onlinePolicyTargetMap(target contracts.OnlinePolicyTarget) map[string]any {
+	values := map[string]any{}
+	setOptionalString(values, "agentId", target.AgentID)
+	setOptionalString(values, "agentName", target.AgentName)
+	setOptionalString(values, "environment", target.Environment)
+	setOptionalString(values, "serviceName", target.ServiceName)
+	setOptionalString(values, "route", target.Route)
+	setOptionalString(values, "routePrefix", target.RoutePrefix)
+	setOptionalString(values, "toolName", target.ToolName)
+	setOptionalString(values, "retrievalSource", target.RetrievalSource)
+	setOptionalString(values, "model", target.Model)
+	setOptionalString(values, "promptVersionId", target.PromptVersionID)
+	setOptionalString(values, "experimentRunId", target.ExperimentRunID)
+	if len(target.Attributes) > 0 {
+		attributes := make([]any, 0, len(target.Attributes))
+		for _, attribute := range target.Attributes {
+			attributes = append(attributes, map[string]any{
+				"key":      attribute.Key,
+				"operator": string(attribute.Operator),
+				"value":    attribute.Value,
+			})
+		}
+		values["attributes"] = attributes
+	}
+	return values
+}
+
+func setOptionalString(values map[string]any, key string, value *string) {
+	if value != nil {
+		values[key] = *value
 	}
 }
 

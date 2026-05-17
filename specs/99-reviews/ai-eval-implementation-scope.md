@@ -52,7 +52,11 @@ Storage-write is the only SurrealDB mutator for AI-eval records.
 
 ### AIE-4 Storage-Read AI Query And Live Semantics
 
-Implement storage-read handlers for AI-eval query subjects, transcript derivation, scoreboard aggregation, annotation queue facets, and `eval.live.start` / `eval.live.stop`. Storage-read owns live experiment matching and publishes `eval.live.events.*.*` sink events.
+Implement storage-read handlers for AI-eval query subjects, transcript
+derivation, scoreboard aggregation, annotation queue facets,
+`eval.online.policy_matches.resolve`, and `eval.live.start` /
+`eval.live.stop`. Storage-read owns deterministic-only online policy matching,
+live experiment matching, and publishes `eval.live.events.*.*` sink events.
 
 ### AIE-5 Harness Adapter Package
 
@@ -68,7 +72,12 @@ The adapter is Bun ESM TypeScript, package name `@cloudgrid/harness-adapter`. It
 
 ### AIE-6 AI-Eval Runner
 
-Implement `core/ai-eval-runner` to orchestrate online scoring, offline experiment runs, cancellation, deterministic scoring, and optimization delegation. The runner reads only through storage-read NATS subjects and writes only through storage-write NATS subjects.
+Implement `core/ai-eval-runner` to orchestrate conservative deterministic-only
+online scoring, offline experiment runs, cancellation, deterministic scoring,
+and optimization delegation. The runner reads only through storage-read NATS
+subjects and writes only through storage-write NATS subjects. Online scoring v1
+must not call harness scoring, send production content to judge models, create
+annotation queue items automatically, or feed alerting.
 
 ### AIE-7 BFF GraphQL Resolvers
 
@@ -85,6 +94,28 @@ frontend renders GraphQL view models and owns presentation state only.
 
 Implement a Bun CLI script that starts an experiment run through GraphQL, subscribes to `liveExperimentRun`, exits non-zero on configured regression thresholds, and emits JUnit XML.
 
+### AIE-10 Dataset Import/Export
+
+Implement dataset import/export across the BFF transfer boundary, storage-write
+import preview/commit, storage-read export resolution/job reads, and frontend
+dataset import/export UI.
+
+Scope:
+
+- BFF upload/download endpoints in `specs/03-contracts/api/http-api.openapi.yaml`;
+- GraphQL operations `prepareDatasetImport`, `commitDatasetImport`,
+  `startDatasetExport`, `datasetImport`, and `datasetExport`;
+- message subjects `eval.dataset.import.prepare`,
+  `eval.dataset.import.commit`, `eval.dataset.export.start`, and
+  `eval.dataset.transfer.get`;
+- JSONL, JSON array, CSV, and ZIP import;
+- JSONL, JSON array, and CSV export;
+- mapping preview before commit.
+
+The frontend must not parse uploaded files into `DatasetItemInput`, infer
+mapping automatically, compute row validity, deduplicate rows, or call
+`appendDatasetItems` for uploaded files.
+
 ## Explicit Non-Scope
 
 - Public REST AI-eval endpoints in CloudGrid.
@@ -94,6 +125,15 @@ Implement a Bun CLI script that starts an experiment run through GraphQL, subscr
 - Runner direct SurrealDB access.
 - Harness adapter calls into CloudGrid GraphQL or NATS.
 - First-class projections for OpenInference `RERANKER`, `GUARDRAIL`, `EVALUATOR`, or `PROMPT` in v1.
+- Online LLM-judge, semantic, RAG, tool-correctness, trajectory, or
+  content-bearing scoring.
+- Automatic annotation queue routing from online score results.
+- Alert rules over AI-eval online quality signals.
+- Excel/XLSX import.
+- Arbitrary import transform scripts, regex replacements, templates, SQL,
+  JavaScript, Python, or shell-based mapping logic.
+- Recreating the original uploaded file layout during export; exports are
+  canonical CloudGrid dataset item data.
 
 ## Readiness Result
 
