@@ -23,6 +23,7 @@ type Query {
   ingestCredentials(projectId: ID!): IngestCredentialListResult!
   metricNames(input: MetricNameSearchInput = {}): MetricNameSearchResult!
   metricSeries(input: MetricSeriesInput!): MetricSeriesResult!
+  richMetricSeries(input: RichMetricSeriesInput!): RichMetricSeriesResult!
   dashboards(input: DashboardListInput = {}): DashboardListResult!
   retentionPolicy(projectId: ID!): RetentionPolicy!
   alertRules(projectId: ID!, input: AlertRuleSearchInput): [AlertRule!]!
@@ -298,6 +299,7 @@ input DashboardWidgetInput {
   kind: DashboardWidgetKind!
   layout: DashboardWidgetLayoutInput!
   metric: DashboardMetricWidgetInput
+  richMetric: DashboardRichMetricWidgetInput
   logs: DashboardLogWidgetInput
   traces: DashboardTraceWidgetInput
   liveTraces: DashboardLiveTraceWidgetInput
@@ -323,6 +325,63 @@ input DashboardMetricWidgetInput {
   legend: Boolean = true
   maxSeries: Int = 20
   thresholds: [DashboardThresholdInput!] = []
+}
+
+input DashboardRichMetricWidgetInput {
+  query: DashboardMetricQueryInput!
+  visualization: MetricChartType!
+  legend: Boolean = true
+  maxSeries: Int = 20
+  thresholds: [DashboardThresholdInput!] = []
+}
+
+input RichMetricSeriesInput {
+  from: DateTime!
+  to: DateTime!
+  query: DashboardMetricQueryInput!
+}
+
+input DashboardMetricQueryInput {
+  timeWindow: String = "PT1H"
+  interval: String
+  queries: [DashboardMetricQueryRowInput!]!
+  formulas: [DashboardMetricFormulaInput!] = []
+  displaySeries: [DashboardMetricDisplaySeriesInput!] = []
+}
+
+input DashboardMetricQueryRowInput {
+  id: ID!
+  label: String!
+  metricName: String!
+  aggregation: MetricAggregation!
+  groupBy: [String!] = []
+  filters: [AttributeFilterInput!] = []
+  maxSeries: Int = 20
+}
+
+input DashboardMetricFormulaInput {
+  id: ID!
+  label: String!
+  expression: DashboardMetricFormulaExpressionInput!
+  unit: String
+}
+
+input DashboardMetricFormulaExpressionInput {
+  kind: DashboardMetricFormulaExpressionKind!
+  refId: ID
+  value: Float
+  operator: DashboardMetricFormulaBinaryOperator
+  left: DashboardMetricFormulaExpressionInput
+  right: DashboardMetricFormulaExpressionInput
+  function: DashboardMetricFormulaFunction
+  arguments: [DashboardMetricFormulaExpressionInput!] = []
+}
+
+input DashboardMetricDisplaySeriesInput {
+  id: ID!
+  label: String!
+  sourceId: ID!
+  visible: Boolean = true
 }
 
 input DashboardLogWidgetInput {
@@ -750,7 +809,12 @@ enum MetricChartType {
   area
   bar
   pie
+  donut
   stat
+  radial
+  radar
+  heatmap
+  histogram
   table
 }
 
@@ -769,9 +833,36 @@ enum DashboardWidgetKind {
   metric_timeseries
   metric_stat
   metric_table
+  metric_rich
   log_table
   trace_table
   live_trace_table
+}
+
+enum DashboardMetricFormulaExpressionKind {
+  ref
+  number
+  binary
+  unary
+  function
+}
+
+enum DashboardMetricFormulaBinaryOperator {
+  add
+  subtract
+  multiply
+  divide
+}
+
+enum DashboardMetricFormulaFunction {
+  sum_series
+  avg_series
+  min_series
+  max_series
+  ratio
+  clamp_min
+  clamp_max
+  moving_average
 }
 
 enum DashboardThresholdSeverity {
@@ -1416,6 +1507,29 @@ type MetricSeriesResult {
   warnings: [MetricQueryWarning!]!
 }
 
+type RichMetricSeriesResult {
+  interval: String!
+  series: [RichMetricSeries!]!
+  displaySeries: [RichMetricDisplaySeries!]!
+  warnings: [MetricQueryWarning!]!
+}
+
+type RichMetricSeries {
+  id: ID!
+  label: String!
+  sourceId: ID!
+  unit: String
+  labels: JSON!
+  points: [MetricPoint!]!
+}
+
+type RichMetricDisplaySeries {
+  id: ID!
+  label: String!
+  sourceId: ID!
+  visible: Boolean!
+}
+
 type MetricSeries {
   labels: JSON!
   points: [MetricPoint!]!
@@ -1472,6 +1586,7 @@ type DashboardWidget {
   kind: DashboardWidgetKind!
   layout: DashboardWidgetLayout!
   metric: DashboardMetricWidget
+  richMetric: DashboardRichMetricWidget
   logs: DashboardLogWidget
   traces: DashboardTraceWidget
   liveTraces: DashboardLiveTraceWidget
@@ -1497,6 +1612,57 @@ type DashboardMetricWidget {
   legend: Boolean!
   maxSeries: Int!
   thresholds: [DashboardThreshold!]!
+}
+
+type DashboardRichMetricWidget {
+  query: DashboardMetricQuery!
+  visualization: MetricChartType!
+  legend: Boolean!
+  maxSeries: Int!
+  thresholds: [DashboardThreshold!]!
+}
+
+type DashboardMetricQuery {
+  timeWindow: String!
+  interval: String
+  queries: [DashboardMetricQueryRow!]!
+  formulas: [DashboardMetricFormula!]!
+  displaySeries: [DashboardMetricDisplaySeries!]!
+}
+
+type DashboardMetricQueryRow {
+  id: ID!
+  label: String!
+  metricName: String!
+  aggregation: MetricAggregation!
+  groupBy: [String!]!
+  filters: [AttributeFilter!]!
+  maxSeries: Int!
+}
+
+type DashboardMetricFormula {
+  id: ID!
+  label: String!
+  expression: DashboardMetricFormulaExpression!
+  unit: String
+}
+
+type DashboardMetricFormulaExpression {
+  kind: DashboardMetricFormulaExpressionKind!
+  refId: ID
+  value: Float
+  operator: DashboardMetricFormulaBinaryOperator
+  left: DashboardMetricFormulaExpression
+  right: DashboardMetricFormulaExpression
+  function: DashboardMetricFormulaFunction
+  arguments: [DashboardMetricFormulaExpression!]!
+}
+
+type DashboardMetricDisplaySeries {
+  id: ID!
+  label: String!
+  sourceId: ID!
+  visible: Boolean!
 }
 
 type DashboardLogWidget {

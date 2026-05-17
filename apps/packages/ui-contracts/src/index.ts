@@ -80,7 +80,18 @@ export type MetricAggregation =
   | "p95"
   | "p99";
 
-export type MetricChartType = "line" | "area" | "bar" | "pie" | "stat" | "table";
+export type MetricChartType =
+  | "line"
+  | "area"
+  | "bar"
+  | "pie"
+  | "donut"
+  | "stat"
+  | "radial"
+  | "radar"
+  | "heatmap"
+  | "histogram"
+  | "table";
 
 export type DashboardVisibility = "builtin" | "project" | "personal";
 
@@ -90,9 +101,29 @@ export type DashboardWidgetKind =
   | "metric_timeseries"
   | "metric_stat"
   | "metric_table"
+  | "metric_rich"
   | "log_table"
   | "trace_table"
   | "live_trace_table";
+
+export type DashboardMetricFormulaExpressionKind =
+  | "ref"
+  | "number"
+  | "binary"
+  | "unary"
+  | "function";
+
+export type DashboardMetricFormulaBinaryOperator = "add" | "subtract" | "multiply" | "divide";
+
+export type DashboardMetricFormulaFunction =
+  | "sum_series"
+  | "avg_series"
+  | "min_series"
+  | "max_series"
+  | "ratio"
+  | "clamp_min"
+  | "clamp_max"
+  | "moving_average";
 
 export type DashboardThresholdSeverity = "info" | "warning" | "error";
 
@@ -306,6 +337,12 @@ export interface MetricSeriesInput {
   limit?: number | null;
 }
 
+export interface RichMetricSeriesInput {
+  from: DateTime;
+  to: DateTime;
+  query: DashboardMetricQueryInput;
+}
+
 export interface DashboardListInput {
   includeBuiltins?: boolean | null;
   query?: string | null;
@@ -332,6 +369,7 @@ export interface DashboardWidgetInput {
   kind: DashboardWidgetKind;
   layout: DashboardWidgetLayoutInput;
   metric?: DashboardMetricWidgetInput | null;
+  richMetric?: DashboardRichMetricWidgetInput | null;
   logs?: DashboardLogWidgetInput | null;
   traces?: DashboardTraceWidgetInput | null;
   liveTraces?: DashboardLiveTraceWidgetInput | null;
@@ -357,6 +395,57 @@ export interface DashboardMetricWidgetInput {
   legend?: boolean | null;
   maxSeries?: number | null;
   thresholds?: DashboardThresholdInput[] | null;
+}
+
+export interface DashboardRichMetricWidgetInput {
+  query: DashboardMetricQueryInput;
+  visualization: MetricChartType;
+  legend?: boolean | null;
+  maxSeries?: number | null;
+  thresholds?: DashboardThresholdInput[] | null;
+}
+
+export interface DashboardMetricQueryInput {
+  timeWindow?: string | null;
+  interval?: string | null;
+  queries: DashboardMetricQueryRowInput[];
+  formulas?: DashboardMetricFormulaInput[] | null;
+  displaySeries?: DashboardMetricDisplaySeriesInput[] | null;
+}
+
+export interface DashboardMetricQueryRowInput {
+  id: string;
+  label: string;
+  metricName: string;
+  aggregation: MetricAggregation;
+  groupBy?: string[] | null;
+  filters?: AttributeFilterInput[] | null;
+  maxSeries?: number | null;
+}
+
+export interface DashboardMetricFormulaInput {
+  id: string;
+  label: string;
+  expression: DashboardMetricFormulaExpressionInput;
+  unit?: string | null;
+}
+
+export interface DashboardMetricFormulaExpressionInput {
+  kind: DashboardMetricFormulaExpressionKind;
+  refId?: string | null;
+  value?: number | null;
+  operator?: DashboardMetricFormulaBinaryOperator | null;
+  left?: DashboardMetricFormulaExpressionInput | null;
+  right?: DashboardMetricFormulaExpressionInput | null;
+  function?: DashboardMetricFormulaFunction | null;
+  arguments?: DashboardMetricFormulaExpressionInput[] | null;
+}
+
+export interface DashboardMetricDisplaySeriesInput {
+  id: string;
+  label: string;
+  sourceId: string;
+  visible?: boolean | null;
 }
 
 export interface DashboardLogWidgetInput {
@@ -1490,6 +1579,29 @@ export interface MetricSeriesResult {
   warnings: MetricQueryWarning[];
 }
 
+export interface RichMetricSeriesResult {
+  interval: string;
+  series: RichMetricSeries[];
+  displaySeries: RichMetricDisplaySeries[];
+  warnings: MetricQueryWarning[];
+}
+
+export interface RichMetricSeries {
+  id: string;
+  label: string;
+  sourceId: string;
+  unit?: string | null;
+  labels: JSONValue;
+  points: MetricSeriesPoint[];
+}
+
+export interface RichMetricDisplaySeries {
+  id: string;
+  label: string;
+  sourceId: string;
+  visible: boolean;
+}
+
 export interface DashboardListResult {
   items: Dashboard[];
   pinnedDashboardIds: string[];
@@ -1520,6 +1632,7 @@ export interface DashboardWidget {
   kind: DashboardWidgetKind;
   layout: DashboardWidgetLayout;
   metric?: DashboardMetricWidget | null;
+  richMetric?: DashboardRichMetricWidget | null;
   logs?: DashboardLogWidget | null;
   traces?: DashboardTraceWidget | null;
   liveTraces?: DashboardLiveTraceWidget | null;
@@ -1545,6 +1658,57 @@ export interface DashboardMetricWidget {
   legend: boolean;
   maxSeries: number;
   thresholds: DashboardThreshold[];
+}
+
+export interface DashboardRichMetricWidget {
+  query: DashboardMetricQuery;
+  visualization: MetricChartType;
+  legend: boolean;
+  maxSeries: number;
+  thresholds: DashboardThreshold[];
+}
+
+export interface DashboardMetricQuery {
+  timeWindow: string;
+  interval?: string | null;
+  queries: DashboardMetricQueryRow[];
+  formulas: DashboardMetricFormula[];
+  displaySeries: DashboardMetricDisplaySeries[];
+}
+
+export interface DashboardMetricQueryRow {
+  id: string;
+  label: string;
+  metricName: string;
+  aggregation: MetricAggregation;
+  groupBy: string[];
+  filters: AttributeFilterInput[];
+  maxSeries: number;
+}
+
+export interface DashboardMetricFormula {
+  id: string;
+  label: string;
+  expression: DashboardMetricFormulaExpression;
+  unit?: string | null;
+}
+
+export interface DashboardMetricFormulaExpression {
+  kind: DashboardMetricFormulaExpressionKind;
+  refId?: string | null;
+  value?: number | null;
+  operator?: DashboardMetricFormulaBinaryOperator | null;
+  left?: DashboardMetricFormulaExpression | null;
+  right?: DashboardMetricFormulaExpression | null;
+  function?: DashboardMetricFormulaFunction | null;
+  arguments: DashboardMetricFormulaExpression[];
+}
+
+export interface DashboardMetricDisplaySeries {
+  id: string;
+  label: string;
+  sourceId: string;
+  visible: boolean;
 }
 
 export interface DashboardLogWidget {
@@ -1810,6 +1974,10 @@ export interface MetricNamesQueryData {
 
 export interface MetricSeriesQueryData {
   metricSeries: MetricSeriesResult;
+}
+
+export interface RichMetricSeriesQueryData {
+  richMetricSeries: RichMetricSeriesResult;
 }
 
 export interface DashboardsQueryData {

@@ -12,8 +12,18 @@ import {
   LineChart,
   Pie,
   PieChart,
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
+  RadialBar,
+  RadialBarChart,
+  Scatter,
+  ScatterChart,
   XAxis,
   YAxis,
+  ZAxis,
 } from "recharts";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -47,7 +57,16 @@ export type TelemetryChartSeries = {
   color?: string;
 };
 
-export type TelemetryChartKind = "area" | "bar" | "line" | "pie";
+export type TelemetryChartKind =
+  | "area"
+  | "bar"
+  | "donut"
+  | "heatmap"
+  | "histogram"
+  | "line"
+  | "pie"
+  | "radar"
+  | "radial";
 
 type TelemetryChartProps = {
   data: TelemetryChartDatum[];
@@ -71,6 +90,65 @@ function buildChartConfig(series: TelemetryChartSeries[]) {
     };
     return config;
   }, {});
+}
+
+function numericValue(value: TelemetryChartDatum[string] | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function labelValue(datum: TelemetryChartDatum, xAxisKey: keyof TelemetryChartDatum & string) {
+  const value = datum[xAxisKey] ?? datum.label;
+  return typeof value === "string" || typeof value === "number" ? String(value) : datum.label;
+}
+
+function buildRadialData(data: TelemetryChartDatum[], series: TelemetryChartSeries[]) {
+  const orderedData = data.toReversed();
+
+  return series.flatMap((item) => {
+    const datum = orderedData.find((entry) => numericValue(entry[item.key]) !== null);
+    const value = datum ? numericValue(datum[item.key]) : null;
+
+    return value === null
+      ? []
+      : [
+          {
+            key: item.key,
+            label: item.label,
+            value,
+          },
+        ];
+  });
+}
+
+function buildHeatmapData(
+  data: TelemetryChartDatum[],
+  series: TelemetryChartSeries[],
+  xAxisKey: keyof TelemetryChartDatum & string,
+) {
+  const cells = data.flatMap((entry) =>
+    series.flatMap((item) => {
+      const value = numericValue(entry[item.key]);
+
+      return value === null
+        ? []
+        : [
+            {
+              label: labelValue(entry, xAxisKey),
+              magnitude: Math.abs(value),
+              seriesKey: item.key,
+              seriesLabel: item.label,
+              size: 1,
+              value,
+            },
+          ];
+    }),
+  );
+  const maxMagnitude = Math.max(...cells.map((cell) => cell.magnitude), 0);
+
+  return cells.map((cell) => ({
+    ...cell,
+    opacity: maxMagnitude > 0 ? 0.2 + (cell.magnitude / maxMagnitude) * 0.8 : 0.2,
+  }));
 }
 
 function ChartState({
@@ -126,6 +204,14 @@ export function TelemetryChart({
   xAxisKey = "label",
 }: TelemetryChartProps) {
   const chartConfig = useMemo(() => buildChartConfig(series), [series]);
+  const heatmapData = useMemo(
+    () => (kind === "heatmap" ? buildHeatmapData(data, series, xAxisKey) : []),
+    [data, kind, series, xAxisKey],
+  );
+  const radialData = useMemo(
+    () => (kind === "radial" ? buildRadialData(data, series) : []),
+    [data, kind, series],
+  );
   const summaryId = useId();
 
   if (loading) {
@@ -140,6 +226,13 @@ export function TelemetryChart({
     return <ChartState className={chartClassName} message={emptyMessage} state="empty" />;
   }
 
+  if (
+    (kind === "heatmap" && heatmapData.length === 0) ||
+    (kind === "radial" && radialData.length === 0)
+  ) {
+    return <ChartState className={chartClassName} message={emptyMessage} state="empty" />;
+  }
+
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <ChartContainer
@@ -147,14 +240,14 @@ export function TelemetryChart({
         className={cn("h-64 min-h-64 w-full", chartClassName)}
         config={chartConfig}
       >
-        {kind === "pie" ? (
+        {kind === "pie" || kind === "donut" ? (
           <PieChart accessibilityLayer>
             <ChartTooltip content={<ChartTooltipContent hideLabel />} />
             <Legend content={<ChartLegendContent />} />
             <Pie
               data={data}
               dataKey={series[0]?.key ?? "value"}
-              innerRadius={48}
+              innerRadius={kind === "donut" ? 58 : 48}
               nameKey={xAxisKey}
               outerRadius={84}
               paddingAngle={2}
@@ -167,6 +260,68 @@ export function TelemetryChart({
               ))}
             </Pie>
           </PieChart>
+        ) : kind === "radial" ? (
+          <RadialBarChart accessibilityLayer data={radialData} endAngle={-270} startAngle={90}>
+            <PolarAngleAxis domain={[0, 100]} tick={false} type="number" />
+            <PolarRadiusAxis axisLine={false} dataKey="label" tickLine={false} type="category" />
+            <ChartTooltip content={<ChartTooltipContent hideLabel nameKey="key" />} />
+            <Legend content={<ChartLegendContent nameKey="key" />} />
+            <RadialBar background cornerRadius={4} dataKey="value">
+              {radialData.map((entry) => (
+                <Cell fill={`var(--color-${entry.key})`} key={entry.key} />
+              ))}
+            </RadialBar>
+          </RadialBarChart>
+        ) : kind === "radar" ? (
+          <RadarChart accessibilityLayer data={data}>
+            <PolarGrid />
+            <PolarAngleAxis dataKey={xAxisKey} />
+            <PolarRadiusAxis axisLine={false} tickLine={false} />
+            <ChartTooltip content={<ChartTooltipContent />} />
+            <Legend content={<ChartLegendContent />} />
+            {series.map((item) => (
+              <Radar
+                dataKey={item.key}
+                fill={`var(--color-${item.key})`}
+                fillOpacity={0.16}
+                key={item.key}
+                stroke={`var(--color-${item.key})`}
+                strokeWidth={2}
+              />
+            ))}
+          </RadarChart>
+        ) : kind === "heatmap" ? (
+          <ScatterChart accessibilityLayer data={heatmapData}>
+            <CartesianGrid vertical={false} />
+            <XAxis
+              allowDuplicatedCategory={false}
+              axisLine={false}
+              dataKey="label"
+              name={String(xAxisKey)}
+              tickLine={false}
+              tickMargin={10}
+              type="category"
+            />
+            <YAxis
+              allowDuplicatedCategory={false}
+              axisLine={false}
+              dataKey="seriesLabel"
+              tickLine={false}
+              type="category"
+              width={88}
+            />
+            <ZAxis dataKey="size" range={[180, 180]} />
+            <ChartTooltip content={<ChartTooltipContent hideLabel nameKey="seriesKey" />} />
+            <Scatter dataKey="value" legendType="square" shape="square">
+              {heatmapData.map((entry) => (
+                <Cell
+                  fill={`var(--color-${entry.seriesKey})`}
+                  fillOpacity={entry.opacity}
+                  key={`${entry.label}-${entry.seriesKey}`}
+                />
+              ))}
+            </Scatter>
+          </ScatterChart>
         ) : kind === "line" ? (
           <LineChart accessibilityLayer data={data}>
             <CartesianGrid vertical={false} />
@@ -204,6 +359,17 @@ export function TelemetryChart({
               />
             ))}
           </AreaChart>
+        ) : kind === "histogram" ? (
+          <BarChart accessibilityLayer barCategoryGap={1} barGap={0} data={data}>
+            <CartesianGrid vertical={false} />
+            <XAxis axisLine={false} dataKey={xAxisKey} tickLine={false} tickMargin={10} />
+            <YAxis axisLine={false} tickLine={false} width={40} />
+            <ChartTooltip content={<ChartTooltipContent />} />
+            <Legend content={<ChartLegendContent />} />
+            {series.map((item) => (
+              <Bar dataKey={item.key} fill={`var(--color-${item.key})`} key={item.key} radius={2} />
+            ))}
+          </BarChart>
         ) : (
           <BarChart accessibilityLayer data={data}>
             <CartesianGrid vertical={false} />

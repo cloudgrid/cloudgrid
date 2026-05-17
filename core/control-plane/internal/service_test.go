@@ -1139,6 +1139,117 @@ func TestDashboardSaveEnforcesVisibilityRoleSecretsAndVersionConflicts(t *testin
 	}
 }
 
+func TestDashboardSaveAcceptsAndNormalizesRichMetricWidget(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	projectID := LocalProjectID
+	selected := localEnvelope("req-rich-dashboard", "admin-1", &projectID)
+
+	saved, err := service.SaveDashboard(ctx, DashboardSaveRequest{
+		BridgeEnvelope: selected,
+		Input: DashboardSaveInput{
+			Name:       "Rich metrics",
+			Visibility: ptr(DashboardVisibilityProject),
+			Widgets:    []DashboardWidgetInput{validDashboardRichMetricWidget()},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SaveDashboard rich metric returned error: %v", err)
+	}
+
+	if len(saved.Widgets) != 1 {
+		t.Fatalf("saved widgets length = %d, want 1", len(saved.Widgets))
+	}
+	widget := saved.Widgets[0]
+	if widget.Kind != DashboardWidgetKindMetricRich {
+		t.Fatalf("widget kind = %q, want metric_rich", widget.Kind)
+	}
+	if widget.RichMetric == nil || widget.Metric != nil || widget.Logs != nil || widget.Traces != nil || widget.LiveTraces != nil {
+		t.Fatalf("widget configs = %#v, want only richMetric", widget)
+	}
+	if widget.RichMetric.Query.TimeWindow == nil || *widget.RichMetric.Query.TimeWindow != "PT1H" {
+		t.Fatalf("rich metric timeWindow = %#v, want PT1H default", widget.RichMetric.Query.TimeWindow)
+	}
+	if widget.RichMetric.Legend == nil || !*widget.RichMetric.Legend {
+		t.Fatalf("rich metric legend = %#v, want true default", widget.RichMetric.Legend)
+	}
+	if widget.RichMetric.MaxSeries == nil || *widget.RichMetric.MaxSeries != 20 {
+		t.Fatalf("rich metric maxSeries = %#v, want 20 default", widget.RichMetric.MaxSeries)
+	}
+	if got := widget.RichMetric.Query.Queries[0].MaxSeries; got == nil || *got != 20 {
+		t.Fatalf("rich query row maxSeries = %#v, want 20 default", got)
+	}
+	if len(widget.RichMetric.Query.DisplaySeries) != 1 || widget.RichMetric.Query.DisplaySeries[0].Visible == nil || !*widget.RichMetric.Query.DisplaySeries[0].Visible {
+		t.Fatalf("rich display series = %#v, want visible default", widget.RichMetric.Query.DisplaySeries)
+	}
+}
+
+func TestDashboardSaveRejectsInvalidRichMetricWidget(t *testing.T) {
+	service := NewService(memory.NewStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	projectID := LocalProjectID
+	selected := localEnvelope("req-invalid-rich-dashboard", "admin-1", &projectID)
+
+	withUnrelatedConfig := validDashboardRichMetricWidget()
+	withUnrelatedConfig.Metric = validDashboardMetricWidget().Metric
+	if _, err := service.SaveDashboard(ctx, DashboardSaveRequest{
+		BridgeEnvelope: selected,
+		Input:          DashboardSaveInput{Name: "Invalid rich metrics", Visibility: ptr(DashboardVisibilityProject), Widgets: []DashboardWidgetInput{withUnrelatedConfig}},
+	}); !isValidation(err) {
+		t.Fatalf("SaveDashboard rich metric with unrelated config error = %v, want validation", err)
+	}
+
+	withDuplicateID := validDashboardRichMetricWidget()
+	withDuplicateID.RichMetric.Query.Formulas = []DashboardMetricFormulaInput{{
+		ID:    "requests",
+		Label: "Duplicate",
+		Expression: DashboardMetricFormulaExpressionInput{
+			Kind:  DashboardMetricFormulaExpressionKindRef,
+			RefID: ptr("requests"),
+		},
+	}}
+	if _, err := service.SaveDashboard(ctx, DashboardSaveRequest{
+		BridgeEnvelope: selected,
+		Input:          DashboardSaveInput{Name: "Invalid rich metrics", Visibility: ptr(DashboardVisibilityProject), Widgets: []DashboardWidgetInput{withDuplicateID}},
+	}); !isValidation(err) {
+		t.Fatalf("SaveDashboard rich metric duplicate id error = %v, want validation", err)
+	}
+
+	withUnknownRef := validDashboardRichMetricWidget()
+	withUnknownRef.RichMetric.Query.Formulas = []DashboardMetricFormulaInput{{
+		ID:    "rate",
+		Label: "Rate",
+		Expression: DashboardMetricFormulaExpressionInput{
+			Kind:  DashboardMetricFormulaExpressionKindRef,
+			RefID: ptr("missing"),
+		},
+	}}
+	if _, err := service.SaveDashboard(ctx, DashboardSaveRequest{
+		BridgeEnvelope: selected,
+		Input:          DashboardSaveInput{Name: "Invalid rich metrics", Visibility: ptr(DashboardVisibilityProject), Widgets: []DashboardWidgetInput{withUnknownRef}},
+	}); !isValidation(err) {
+		t.Fatalf("SaveDashboard rich metric unknown ref error = %v, want validation", err)
+	}
+
+	overlapping := validDashboardRichMetricWidget()
+	metric := validDashboardMetricWidget()
+	metric.ID = "w-overlap"
+	if _, err := service.SaveDashboard(ctx, DashboardSaveRequest{
+		BridgeEnvelope: selected,
+		Input:          DashboardSaveInput{Name: "Invalid rich metrics", Visibility: ptr(DashboardVisibilityProject), Widgets: []DashboardWidgetInput{overlapping, metric}},
+	}); !isValidation(err) {
+		t.Fatalf("SaveDashboard overlapping layout error = %v, want validation", err)
+	}
+}
+
 func TestDashboardDeleteForbidsBuiltinsRequiresOwnerOrAdminAndRemovesPins(t *testing.T) {
 	service := NewService(memory.NewStore(), fixedNow)
 	ctx := context.Background()
@@ -1308,6 +1419,38 @@ func validDashboardMetricWidget() DashboardWidgetInput {
 			MetricName:    "http.server.duration",
 			Aggregation:   contracts.MetricAggregationP95,
 			TimeWindow:    ptr("PT1H"),
+			Visualization: contracts.MetricChartTypeLine,
+		},
+	}
+}
+
+func validDashboardRichMetricWidget() DashboardWidgetInput {
+	return DashboardWidgetInput{
+		ID:    "w-rich",
+		Title: "Rich metrics",
+		Kind:  DashboardWidgetKindMetricRich,
+		Layout: DashboardWidgetLayoutInput{
+			X:    0,
+			Y:    0,
+			W:    8,
+			H:    5,
+			MinW: ptr(5),
+			MinH: ptr(3),
+		},
+		RichMetric: &DashboardRichMetricWidgetInput{
+			Query: DashboardMetricQueryInput{
+				Queries: []DashboardMetricQueryRowInput{{
+					ID:          "requests",
+					Label:       "Requests",
+					MetricName:  "http.server.requests",
+					Aggregation: contracts.MetricAggregationRate,
+				}},
+				DisplaySeries: []DashboardMetricDisplaySeriesInput{{
+					ID:       "requests-line",
+					Label:    "Requests",
+					SourceID: "requests",
+				}},
+			},
 			Visualization: contracts.MetricChartTypeLine,
 		},
 	}

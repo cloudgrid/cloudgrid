@@ -1,13 +1,12 @@
 ---
 interface Props {
   title?: string;
-  /** Optional class added to the outer container */
   class?: string;
 }
 const { title = "cloudgrid · /traces", class: className = "" } = Astro.props;
 ---
 
-<div class={`rounded-xl border border-border-default bg-surface shadow-sm overflow-hidden ${className}`}>
+<div class={`mock-frame ${className}`}>
   <div class="flex items-center gap-2 px-4 py-2.5 border-b border-border-subtle bg-recessed">
     <div class="flex items-center gap-1.5">
       <span class="w-2.5 h-2.5 rounded-full bg-[color:var(--color-rose)] opacity-70"></span>
@@ -15,6 +14,10 @@ const { title = "cloudgrid · /traces", class: className = "" } = Astro.props;
       <span class="w-2.5 h-2.5 rounded-full bg-[color:var(--color-emerald)] opacity-70"></span>
     </div>
     <span class="ml-2 text-xs font-mono text-text-muted truncate">{title}</span>
+    <div class="ml-auto flex items-center gap-1.5 text-[10px] text-text-muted font-mono">
+      <span class="pulse-dot inline-block w-1.5 h-1.5 rounded-full bg-[color:var(--color-emerald)]"></span>
+      live
+    </div>
   </div>
   <div class="relative">
     <slot />

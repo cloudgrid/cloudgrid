@@ -205,7 +205,11 @@ Dashboard customizations are stored as project-scoped `Dashboard` records in the
 - Metrics: use `/metrics` to discover metric descriptors and query raw series. This route is not a dashboard editor.
 - Dashboards: use `/dashboards` to view built-in dashboards, create personal or project dashboards, edit typed widgets, and manage dashboard pins.
 
+Dashboard builder mode opens at `/dashboards?dashboard=<dashboardId>` or from a new unsaved draft. It keeps widget edits and drag-resize layout changes local until explicit save. The widget editor is a drawer or sheet with `Data`, `Display`, and `Thresholds` groups. Rich metric widgets use typed query rows, typed formulas, and `Query.richMetricSeries`; storage-read computes timestamp alignment, formulas, warnings, and returned chart-ready series.
+
 Log-to-trace, trace-to-log, metric exemplar-to-trace, and dashboard-to-log/trace/metric pivots must stay inside the selected project. Missing, expired, or unauthorized targets show the target route's missing state instead of searching another project.
+
+For examples and dashboard editor details, see [Metrics And Dashboards](../02-core-concepts/metrics-and-dashboards.md).
 
 ## Monitoring The Message Bridge
 

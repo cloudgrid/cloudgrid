@@ -67,12 +67,13 @@ describe("dashboards UX migration", () => {
     expect(routeSource).toContain("TelemetryChart");
     expect(routeSource).toContain("buildMetricChartData");
     expect(routeSource).toContain('visualization === "pie"');
-    expect(routeSource).toContain('<SelectItem value="pie">pie</SelectItem>');
+    expect(routeSource).toContain("metricChartTypes.map");
     expect(routeSource).toContain("LogWidgetPreview");
     expect(routeSource).toContain("TraceWidgetPreview");
     expect(routeSource).toContain("LiveTraceWidgetPreview");
-    expect(routeSource).toContain("metricDescriptorQuery");
-    expect(routeSource).toContain("metricDescriptorExists");
+    expect(routeSource).toContain("MetricNameCombobox");
+    expect(routeSource).not.toContain("metricDescriptorQuery");
+    expect(routeSource).not.toContain("metricDescriptorExists");
     expect(routeSource).toContain("telemetryClient.getMetricNames");
     expect(routeSource).toContain("telemetryClient.searchLogs");
     expect(routeSource).toContain("telemetryClient.searchTraces");
@@ -91,5 +92,73 @@ describe("dashboards UX migration", () => {
     expect(routeSource).toContain("../components/ui/select");
     expect(routeSource).not.toContain("NativeSelect");
     expect(routeSource).not.toContain("native-select");
+  });
+
+  test("supports WYSIWYG layout editing with pointer and keyboard controls", () => {
+    expect(routeSource).toContain("moveDashboardWidget");
+    expect(routeSource).toContain("resizeDashboardWidget");
+    expect(routeSource).toContain("compactDashboardLayout");
+    expect(routeSource).toContain("onPointerDown");
+    expect(routeSource).toContain("onKeyDown");
+    expect(routeSource).toContain('aria-label="Move widget"');
+    expect(routeSource).toContain('aria-label="Resize widget"');
+    expect(routeSource).toContain("data-dashboard-canvas");
+    expect(routeSource).toContain("data-dashboard-widget-selected");
+    expect(routeSource).not.toContain("GRID_POINTER_CELL_WIDTH");
+    expect(routeSource).toContain("data-resize-handle");
+    expect(routeSource).toContain("getDashboardPointerCell");
+  });
+
+  test("exposes full widget draft actions and deterministic save ordering", () => {
+    expect(routeSource).toContain("duplicateWidgetInDraft");
+    expect(routeSource).toContain("removeWidgetFromDraft");
+    expect(routeSource).toContain("sortDashboardWidgetsForSave");
+    expect(routeSource).toContain('t("dashboards.duplicate")');
+    expect(routeSource).toContain('t("dashboards.delete")');
+    expect(routeSource).toContain("saveMutation.mutate(prepareDashboardSaveInput(draft))");
+  });
+
+  test("supports rich metric widgets through typed contract fields", () => {
+    expect(routeSource).toContain('"metric_rich"');
+    expect(routeSource).toContain("richMetric");
+    expect(routeSource).toContain("getRichMetricSeries");
+    expect(routeSource).toContain("queryKeys.richMetricSeries");
+    expect(routeSource).toContain("RichMetricWidgetEditor");
+    expect(routeSource).toContain("addRichMetricQueryRow");
+    expect(routeSource).toContain("addRichMetricFormula");
+    expect(routeSource).toContain("displaySeries");
+    expect(routeSource).not.toContain("eval(");
+    expect(routeSource).not.toContain("new Function");
+  });
+
+  test("offers the full dashboard chart catalog", () => {
+    expect(routeSource).toContain("const metricChartTypes: MetricChartType[]");
+    for (const chartType of [
+      "line",
+      "area",
+      "bar",
+      "pie",
+      "donut",
+      "stat",
+      "radial",
+      "radar",
+      "heatmap",
+      "histogram",
+      "table",
+    ]) {
+      expect(routeSource).toContain(`"${chartType}"`);
+    }
+  });
+
+  test("uses structured shadcn dashboard controls instead of raw text placeholders", () => {
+    expect(routeSource).toContain("DashboardDateRangeControl");
+    expect(routeSource).toContain("../components/ui/calendar");
+    expect(routeSource).toContain("../components/ui/command");
+    expect(routeSource).toContain("../components/ui/dropdown-menu");
+    expect(routeSource).toContain("MetricNameCombobox");
+    expect(routeSource).toContain("WidgetActionMenu");
+    expect(routeSource).not.toContain('id="dashboard-from"');
+    expect(routeSource).not.toContain('id="dashboard-to"');
+    expect(routeSource).not.toContain("metricDescriptorExists");
   });
 });

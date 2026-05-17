@@ -48,7 +48,7 @@ These are the differentiators the entire site repeats. Every page should echo at
 3. **Message-bridge isolation.** No public service touches the database. Every read and every write crosses NATS. The blast radius of a bad UI query is bounded by a request/reply contract, not a SQL connection pool.
 4. **AI-evaluation, first-class — without giving up your trace data.** AgentRuns, LlmCalls, ToolCalls, RetrievalEvents are projections of OTel spans you already emit. Datasets, scorers, experiments, prompt optimization runs are persisted next to the spans they came from. Prompt and completion content stays on the originating span event — never copied into a separate "AI database."
 5. **You own the data, end of paragraph.** Self-hosted by default. No telemetry leaves your network unless you wire it to. MIT-licensed. No open-core bait-and-switch.
-6. **Specs as source of truth.** The product is built from public specs (`/specs`). What you read in the contracts is what runs in production. Roadmap is not a marketing artifact, it's a directory of markdown files.
+6. **Open development.** Source is on GitHub. Roadmap is in issues and milestones, not a closed-door deck. (We deliberately do not surface the internal `/specs` directory on the public website — that's an implementation artifact, not a marketing message.)
 
 ## 5. Information architecture
 
@@ -167,10 +167,10 @@ Comparison criteria (rows):
 - Project-level isolation primitive
 - SSO included in OSS
 - No telemetry-volume pricing
-- Public spec-driven roadmap
+- Roadmap visible in the source repo
 
 ### Handbook overview (`/handbook`)
-Card grid linking to the five subpages. Top strip: "The handbook is the operator's view. The specs in `/specs` are authoritative."
+Card grid linking to the five subpages. Top strip: a single sentence explaining the Handbook is hand-authored, opinionated, and meant to be read top-to-bottom or jumped through.
 
 ### `/handbook/getting-started`
 One-command local run. Compose snippet. First OTLP POST. First trace in the UI. Three "what now" links.

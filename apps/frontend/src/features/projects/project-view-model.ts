@@ -15,12 +15,13 @@ export interface ProjectPickerModel {
 }
 
 export interface ProjectSettingsSection {
-  id: "general" | "ingest" | "retention" | "members";
+  id: "general" | "ingest" | "retention" | "ai-eval" | "members";
   href: string;
   labelKey:
     | "projects.settings.general"
     | "projects.settings.apiKeys"
     | "projects.settings.retention"
+    | "projects.settings.aiEval"
     | "projects.settings.members";
 }
 
@@ -76,11 +77,13 @@ export function buildProjectPickerModel({
   };
 }
 
-export function buildProjectSettingsSections(projectId: string): ProjectSettingsSection[] {
+export function buildProjectSettingsSections(
+  projectId: string,
+  options: { aiEvalEnabled?: boolean } = {},
+): ProjectSettingsSection[] {
   const encodedProjectId = encodeURIComponent(projectId);
   const base = `/projects/${encodedProjectId}/settings`;
-
-  return [
+  const sections: ProjectSettingsSection[] = [
     {
       id: "general",
       href: base,
@@ -96,12 +99,23 @@ export function buildProjectSettingsSections(projectId: string): ProjectSettings
       href: `${base}/retention`,
       labelKey: "projects.settings.retention",
     },
-    {
-      id: "members",
-      href: `${base}/members`,
-      labelKey: "projects.settings.members",
-    },
   ];
+
+  if (options.aiEvalEnabled) {
+    sections.push({
+      id: "ai-eval",
+      href: `${base}/ai-eval`,
+      labelKey: "projects.settings.aiEval",
+    });
+  }
+
+  sections.push({
+    id: "members",
+    href: `${base}/members`,
+    labelKey: "projects.settings.members",
+  });
+
+  return sections;
 }
 
 export function buildAdminSettingsModel({

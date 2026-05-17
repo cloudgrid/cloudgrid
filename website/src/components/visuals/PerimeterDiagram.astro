@@ -1,0 +1,107 @@
+---
+/**
+ * Data perimeter visualization — theme-aware via cv-* tokens.
+ */
+---
+
+<div class="canvas-surface relative rounded-2xl overflow-hidden border border-border-default">
+  <svg viewBox="0 0 1100 560" xmlns="http://www.w3.org/2000/svg" class="block w-full h-auto" role="img" aria-label="Data perimeter diagram">
+    <defs>
+      <marker id="pd-arrow" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+        <path class="cv-arrow-fill" d="M0,0 L12,6 L0,12 Z" />
+      </marker>
+    </defs>
+
+    <!-- Your perimeter zone -->
+    <rect x="200" y="60" width="760" height="430" rx="28"
+      class="cv-zone"
+      stroke-dasharray="6 4"
+      stroke-width="1.4"
+    />
+    <text x="220" y="92" font-family="JetBrains Mono, monospace" font-size="11" class="cv-callout-text" letter-spacing="1.5">
+      YOUR PERIMETER
+    </text>
+    <text x="220" y="108" font-family="Inter, sans-serif" font-size="11" class="cv-text-muted">
+      VPC · on-prem · regulated cloud
+    </text>
+
+    <!-- Outside actors (left) -->
+    <g>
+      <rect class="cv-node" x="30" y="200" width="150" height="56" rx="12" />
+      <text x="105" y="226" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" class="cv-text" font-weight="600">Your OTLP senders</text>
+      <text x="105" y="244" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" class="cv-text-faint">SDKs · collectors · agents</text>
+    </g>
+
+    <!-- SSO IdP -->
+    <g>
+      <rect class="cv-node" x="30" y="90" width="150" height="50" rx="12" />
+      <text x="105" y="112" text-anchor="middle" font-family="Inter, sans-serif" font-size="11.5" class="cv-text" font-weight="600">SSO IdP</text>
+      <text x="105" y="128" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9.5" class="cv-text-faint">GitHub · Google · Entra</text>
+    </g>
+
+    <!-- Optional LLM provider -->
+    <g opacity="0.9">
+      <rect class="cv-node" x="30" y="380" width="150" height="56" rx="12" stroke="rgba(245,158,11,0.45)" stroke-dasharray="3 3" />
+      <text x="105" y="404" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" fill="#d97706" font-weight="600">LLM provider (optional)</text>
+      <text x="105" y="422" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9.5" class="cv-text-faint">only via harness, if used</text>
+    </g>
+
+    <!-- Inside-perimeter components -->
+    <g>
+      <rect class="cv-node" x="250" y="180" width="160" height="56" rx="12" />
+      <text x="330" y="206" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" class="cv-text" font-weight="600">otlp-collector</text>
+      <text x="330" y="224" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9.5" class="cv-text-faint">Go · :4317/:4318</text>
+
+      <rect class="cv-node-accent" x="460" y="160" width="190" height="96" rx="14" stroke-opacity="0.55" />
+      <text x="555" y="186" text-anchor="middle" font-family="Inter, sans-serif" font-size="13" class="cv-text" font-weight="700">CloudGrid Core</text>
+      <text x="555" y="206" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#6366f1">bridge · storage · query</text>
+      <text x="555" y="222" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#6366f1">control-plane · live</text>
+      <text x="555" y="240" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#6366f1">ai-eval-runner (optional)</text>
+
+      <rect class="cv-node" x="700" y="180" width="160" height="56" rx="12" />
+      <text x="780" y="206" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" class="cv-text" font-weight="600">GraphQL BFF</text>
+      <text x="780" y="224" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9.5" class="cv-text-faint">React · live subs</text>
+    </g>
+
+    <!-- Database inside perimeter -->
+    <g>
+      <rect class="cv-port" x="460" y="320" width="190" height="50" rx="12" stroke-dasharray="3 3" />
+      <text x="555" y="343" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" class="cv-text-muted">SurrealDB (your disks)</text>
+      <text x="555" y="358" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9.5" class="cv-text-faint">storage adapter v1</text>
+    </g>
+
+    <!-- Connector arrows -->
+    <g class="cv-line" stroke-width="1.5" marker-end="url(#pd-arrow)">
+      <line x1="180" y1="228" x2="250" y2="208" />
+      <line x1="410" y1="208" x2="460" y2="208" />
+      <line x1="650" y1="208" x2="700" y2="208" />
+      <line x1="555" y1="256" x2="555" y2="320" />
+    </g>
+    <g fill="none" stroke="rgba(16,185,129,0.6)" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#pd-arrow)">
+      <line x1="180" y1="116" x2="700" y2="180" />
+    </g>
+    <g fill="none" stroke="rgba(245,158,11,0.55)" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#pd-arrow)">
+      <line x1="180" y1="404" x2="555" y2="320" />
+    </g>
+
+    <!-- Blocked phone-home arrow -->
+    <g>
+      <line x1="860" y1="208" x2="1040" y2="208"
+        stroke="#f43f5e" stroke-width="1.5" stroke-dasharray="4 3" fill="none" />
+      <line x1="940" y1="180" x2="960" y2="232" stroke="#f43f5e" stroke-width="2.2" stroke-linecap="round" />
+      <line x1="960" y1="180" x2="940" y2="232" stroke="#f43f5e" stroke-width="2.2" stroke-linecap="round" />
+      <text x="1050" y="212" font-family="Inter, sans-serif" font-size="11" fill="#f43f5e" font-weight="600">no egress</text>
+    </g>
+
+    <!-- Bottom legend strip -->
+    <g font-family="Inter, sans-serif" font-size="10.5">
+      <rect x="220" y="430" width="720" height="42" rx="10" class="cv-callout" />
+      <text x="580" y="450" text-anchor="middle" font-weight="600" class="cv-callout-text">
+        Everything stays inside your perimeter except what you explicitly wire to leave.
+      </text>
+      <text x="580" y="465" text-anchor="middle" class="cv-text-muted">
+        SSO callbacks ↔ your IdP · LLM calls ↔ your provider · CloudGrid itself never phones home.
+      </text>
+    </g>
+  </svg>
+</div>

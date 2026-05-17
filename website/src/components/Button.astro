@@ -5,16 +5,30 @@ interface Props {
   size?: "sm" | "md" | "lg";
   external?: boolean;
   class?: string;
+  /** Adds a subtle hover shimmer (primary only by default). */
+  shine?: boolean;
 }
-const { href, variant = "primary", size = "md", external = false, class: className = "" } = Astro.props;
+const {
+  href,
+  variant = "primary",
+  size = "md",
+  external = false,
+  class: className = "",
+  shine,
+} = Astro.props;
 
-const base = "inline-flex items-center justify-center gap-2 font-semibold rounded-md transition-colors";
-const sizeCls = size === "sm" ? "text-sm px-3 py-1.5" : size === "lg" ? "text-base px-5 py-3" : "text-sm px-4 py-2.5";
+const useShine = shine ?? variant === "primary";
+
+const base = "inline-flex items-center justify-center gap-2 font-semibold rounded-lg transition-all duration-200";
+const sizeCls =
+  size === "sm" ? "text-sm px-3.5 py-2" :
+  size === "lg" ? "text-base px-5 py-3" :
+  "text-sm px-4 py-2.5";
 const variantCls =
   variant === "primary"
-    ? "bg-inverse text-text-on-inverse hover:opacity-90"
+    ? "bg-inverse text-text-on-inverse hover:opacity-90 hover:-translate-y-0.5 shadow-[0_8px_24px_-12px_rgba(99,102,241,0.4)]"
     : variant === "secondary"
-      ? "border border-border-default bg-surface text-text hover:bg-surface-hover"
+      ? "border border-border-default bg-surface text-text hover:bg-surface-hover hover:border-border-strong"
       : "text-text-secondary hover:text-text hover:bg-surface-hover";
 ---
 
@@ -22,7 +36,7 @@ const variantCls =
   href={href}
   target={external ? "_blank" : undefined}
   rel={external ? "noopener noreferrer" : undefined}
-  class={`${base} ${sizeCls} ${variantCls} ${className}`}
+  class={`${base} ${sizeCls} ${variantCls} ${useShine ? "btn-shine" : ""} ${className}`}
 >
   <slot />
 </a>

@@ -70,6 +70,8 @@ Dashboards are stored as `Dashboard` and `DashboardWidget` contracts. CloudGrid 
 
 Dashboard pins are user preferences. The project sidebar may show up to five pinned dashboards and a collapsible dashboard list only when those values come from dashboard contracts and pin mutations.
 
+For the full dashboard builder workflow, rich metric query model, widget layout controls, and computation ownership rules, see [Metrics And Dashboards](./metrics-and-dashboards.md).
+
 ## Ingest Credentials
 
 Projects can have multiple ingest credentials for different emitters or environments. In user-facing setup copy these may be described as ingest API keys, but the runtime boundary still uses standard OTLP authorization metadata:

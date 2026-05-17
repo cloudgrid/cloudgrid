@@ -4,8 +4,8 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import "./styles.css";
 import { Toaster } from "./components/ui/sonner";
 import { AppSessionProvider } from "./providers/app-session-provider";
-import { ThemeProvider } from "./providers/theme-provider";
 import { TelemetryClientProvider } from "./providers/telemetry-client-provider";
+import { ThemeProvider } from "./providers/theme-provider";
 import { AiEvalRoute, aiEvalEnabled } from "./routes/ai-eval-route";
 import { AlertsRoute } from "./routes/alerts-route";
 import { AppShell } from "./routes/app-shell";
@@ -15,8 +15,8 @@ import {
   OrganizationOverviewRoute,
   OrganizationProjectsRoute,
   OrganizationsRoute,
-  ProjectsRoute,
   ProjectSettingsRoute,
+  ProjectsRoute,
   ProjectWorkspaceRedirectRoute,
 } from "./routes/control-plane-routes";
 import { DashboardsRoute } from "./routes/dashboards-route";
@@ -82,6 +82,12 @@ function App() {
                       element={<ProjectSettingsRoute />}
                       path="/projects/:projectId/settings/retention"
                     />
+                    {aiEvalEnabled ? (
+                      <Route
+                        element={<ProjectSettingsRoute />}
+                        path="/projects/:projectId/settings/ai-eval"
+                      />
+                    ) : null}
                     <Route
                       element={<ProjectSettingsRoute />}
                       path="/projects/:projectId/settings/members"

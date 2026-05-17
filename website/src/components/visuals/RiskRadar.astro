@@ -1,0 +1,74 @@
+---
+/**
+ * Risk-vs-vendor comparison radar (simple bar matrix, not a true radar).
+ * Each axis is a risk category enterprise procurement actually scores; we
+ * show "exposure" (lower bar = lower risk) for CloudGrid vs three vendor
+ * archetypes. Numbers are illustrative, not measured.
+ */
+const axes = [
+  { label: "Data residency risk", cg: 8, saas: 92, lgtm: 22, aieval: 70 },
+  { label: "Vendor lock-in", cg: 12, saas: 88, lgtm: 35, aieval: 75 },
+  { label: "Audit-trail exposure", cg: 15, saas: 78, lgtm: 30, aieval: 62 },
+  { label: "License risk (IP)", cg: 5, saas: 68, lgtm: 28, aieval: 60 },
+  { label: "Sub-processor footprint", cg: 6, saas: 90, lgtm: 18, aieval: 72 },
+  { label: "Telemetry-cost overrun", cg: 8, saas: 95, lgtm: 30, aieval: 65 },
+];
+
+const cols = [
+  { key: "cg",   label: "CloudGrid",        color: "var(--color-brand)" },
+  { key: "saas", label: "SaaS APM",         color: "var(--color-rose)" },
+  { key: "lgtm", label: "LGTM stack",       color: "var(--color-amber)" },
+  { key: "aieval", label: "AI-eval SaaS",   color: "var(--color-violet)" },
+];
+---
+
+<div class="card p-6 sm:p-7">
+  <div class="flex items-center justify-between mb-5">
+    <div>
+      <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Risk exposure</div>
+      <div class="text-base font-semibold text-text">Lower is better</div>
+    </div>
+    <div class="flex flex-wrap items-center gap-3 text-xs">
+      {cols.map((c) => (
+        <span class="inline-flex items-center gap-1.5 text-text-secondary">
+          <span class="inline-block w-2.5 h-2.5 rounded-sm" style={`background:${c.color}`}></span>
+          {c.label}
+        </span>
+      ))}
+    </div>
+  </div>
+
+  <div class="space-y-3.5">
+    {axes.map((row) => (
+      <div>
+        <div class="flex items-baseline justify-between mb-1.5">
+          <span class="text-sm font-medium text-text">{row.label}</span>
+          <span class="text-[10px] text-text-muted font-mono">0 — 100</span>
+        </div>
+        <div class="grid grid-cols-[80px_1fr] gap-3 items-center">
+          <div class="col-span-2 grid grid-cols-4 gap-1">
+            {cols.map((c) => (
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] font-mono text-text-muted w-10">{c.label.split(" ")[0]}</span>
+                  <div class="flex-1 h-1.5 rounded-full bg-recessed overflow-hidden">
+                    <div
+                      class="h-full rounded-full"
+                      style={`width:${(row as any)[c.key]}%; background:${c.color}; opacity:.85`}
+                    ></div>
+                  </div>
+                  <span class="text-[10px] font-mono text-text-muted w-6 text-right">{(row as any)[c.key]}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+
+  <p class="mt-5 text-xs text-text-muted leading-relaxed">
+    Illustrative scoring based on the most common procurement-risk dimensions for observability
+    and AI-eval tooling. Substitute your own scorecard — the dimensions are what matter.
+  </p>
+</div>

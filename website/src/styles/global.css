@@ -2,9 +2,6 @@
 
 /* ---------------------------------------------------------------------------
  * Tailwind v4 — custom dark variant.
- * We toggle the theme by setting `class="dark"` on <html> (the inline script
- * in Layout.astro applies it before paint). Anything else applies the light
- * theme via :root.
  * --------------------------------------------------------------------------- */
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -12,10 +9,32 @@
  * Theme tokens
  * --------------------------------------------------------------------------- */
 :root {
+  /* Theme-aware "canvas" — the dotted workflow board used by SystemCanvas,
+     PerimeterDiagram, EvalFlowCanvas. Light theme = subtle off-white board. */
+  --cv-bg: #f6f8fc;
+  --cv-dot: rgba(15, 23, 42, 0.10);
+  --cv-line: rgba(15, 23, 42, 0.35);
+  --cv-line-soft: rgba(15, 23, 42, 0.18);
+  --cv-arrow: rgba(15, 23, 42, 0.55);
+  --cv-node-fill-from: #ffffff;
+  --cv-node-fill-to: #eef2f9;
+  --cv-node-edge: rgba(15, 23, 42, 0.12);
+  --cv-node-edge-strong: rgba(15, 23, 42, 0.22);
+  --cv-text: #0b1220;
+  --cv-text-muted: #475569;
+  --cv-text-faint: #64748b;
+  --cv-zone-bg: rgba(99, 102, 241, 0.06);
+  --cv-zone-stroke: #6366f1;
+  --cv-callout-bg: rgba(99, 102, 241, 0.08);
+  --cv-callout-stroke: rgba(99, 102, 241, 0.40);
+  --cv-callout-text: #4f46e5;
+  --cv-port-fill: #ffffff;
+  --cv-port-edge: rgba(15, 23, 42, 0.18);
+
   --color-page: #ffffff;
-  --color-recessed: #f7f8fa;
+  --color-recessed: #f6f7fb;
   --color-surface: #ffffff;
-  --color-surface-hover: #f0f2f5;
+  --color-surface-hover: #eef0f6;
   --color-elevated: #ffffff;
 
   --color-text: #0b1220;
@@ -23,48 +42,93 @@
   --color-text-muted: #64748b;
   --color-text-on-inverse: #ffffff;
 
-  --color-border-subtle: rgba(15, 23, 42, 0.08);
-  --color-border-default: rgba(15, 23, 42, 0.12);
+  --color-border-subtle: rgba(15, 23, 42, 0.07);
+  --color-border-default: rgba(15, 23, 42, 0.11);
   --color-border-strong: rgba(15, 23, 42, 0.18);
 
   --color-inverse: #0b1220;
   --color-inverse-hover: #1f2937;
 
-  --color-grid-line: rgba(15, 23, 42, 0.06);
-  --color-dot: rgba(15, 23, 42, 0.12);
-  --color-code-bg: #0f1320;
+  --color-grid-line: rgba(15, 23, 42, 0.05);
+  --color-dot: rgba(15, 23, 42, 0.13);
+
+  /* Canvas: a flat dark surface used inside system / architecture viz, both themes */
+  --color-canvas: #0b1020;
+  --color-canvas-dot: rgba(148, 163, 184, 0.16);
+  --color-canvas-line: rgba(148, 163, 184, 0.08);
+  --color-canvas-node: #131b2f;
+  --color-canvas-node-edge: rgba(148, 163, 184, 0.18);
+  --color-canvas-text: #e2e8f0;
+  --color-canvas-text-muted: #94a3b8;
+
+  --color-code-bg: #0a0e1a;
   --color-code-text: #e2e8f0;
+
+  /* Shadow */
+  --shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -12px rgba(15, 23, 42, 0.08);
+  --shadow-lift: 0 1px 2px rgba(15, 23, 42, 0.05), 0 18px 40px -16px rgba(15, 23, 42, 0.18);
+  --shadow-glow: 0 0 0 1px rgba(79, 70, 229, 0.18), 0 24px 60px -20px rgba(79, 70, 229, 0.25);
 }
 
 .dark {
-  --color-page: #0a0d14;
-  --color-recessed: #0f1320;
-  --color-surface: #121826;
-  --color-surface-hover: #1a2030;
-  --color-elevated: #161d2c;
+  /* Canvas tokens — dark mode */
+  --cv-bg: #0b1020;
+  --cv-dot: rgba(148, 163, 184, 0.18);
+  --cv-line: rgba(148, 163, 184, 0.42);
+  --cv-line-soft: rgba(148, 163, 184, 0.18);
+  --cv-arrow: rgba(148, 163, 184, 0.55);
+  --cv-node-fill-from: #1a2237;
+  --cv-node-fill-to: #10172a;
+  --cv-node-edge: rgba(148, 163, 184, 0.18);
+  --cv-node-edge-strong: rgba(148, 163, 184, 0.30);
+  --cv-text: #f1f5f9;
+  --cv-text-muted: #cbd5e1;
+  --cv-text-faint: #94a3b8;
+  --cv-zone-bg: rgba(99, 102, 241, 0.06);
+  --cv-zone-stroke: #6366f1;
+  --cv-callout-bg: rgba(99, 102, 241, 0.06);
+  --cv-callout-stroke: rgba(99, 102, 241, 0.32);
+  --cv-callout-text: #a5b4fc;
+  --cv-port-fill: #0e1426;
+  --cv-port-edge: rgba(148, 163, 184, 0.22);
 
-  --color-text: #f8fafc;
-  --color-text-secondary: #94a3b8;
-  --color-text-muted: #64748b;
+  --color-page: #07090f;
+  --color-recessed: #0c1120;
+  --color-surface: #10172a;
+  --color-surface-hover: #18213a;
+  --color-elevated: #131b30;
+
+  --color-text: #f5f7fb;
+  --color-text-secondary: #a5b0c2;
+  --color-text-muted: #6f7d96;
   --color-text-on-inverse: #0b1220;
 
-  --color-border-subtle: rgba(148, 163, 184, 0.12);
+  --color-border-subtle: rgba(148, 163, 184, 0.10);
   --color-border-default: rgba(148, 163, 184, 0.16);
-  --color-border-strong: rgba(148, 163, 184, 0.22);
+  --color-border-strong: rgba(148, 163, 184, 0.26);
 
   --color-inverse: #ffffff;
-  --color-inverse-hover: #f1f5f9;
+  --color-inverse-hover: #e2e8f0;
 
   --color-grid-line: rgba(148, 163, 184, 0.06);
-  --color-dot: rgba(148, 163, 184, 0.12);
-  --color-code-bg: #060810;
+  --color-dot: rgba(148, 163, 184, 0.14);
+
+  --color-canvas: #06080f;
+  --color-canvas-dot: rgba(148, 163, 184, 0.20);
+  --color-canvas-line: rgba(148, 163, 184, 0.10);
+  --color-canvas-node: #0e1426;
+  --color-canvas-node-edge: rgba(148, 163, 184, 0.22);
+  --color-canvas-text: #f1f5f9;
+  --color-canvas-text-muted: #94a3b8;
+
+  --color-code-bg: #04060c;
   --color-code-text: #e2e8f0;
+
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.4), 0 14px 36px -18px rgba(0, 0, 0, 0.6);
+  --shadow-lift: 0 1px 2px rgba(0, 0, 0, 0.4), 0 26px 60px -24px rgba(0, 0, 0, 0.7);
+  --shadow-glow: 0 0 0 1px rgba(124, 137, 255, 0.32), 0 26px 70px -22px rgba(80, 90, 220, 0.45);
 }
 
-/* ---------------------------------------------------------------------------
- * Tailwind theme — every color below resolves through CSS variables so the
- * same utility (e.g. `bg-page`) returns the right value in either theme.
- * --------------------------------------------------------------------------- */
 @theme inline {
   --color-page: var(--color-page);
   --color-recessed: var(--color-recessed);
@@ -84,19 +148,22 @@
   --color-inverse: var(--color-inverse);
   --color-inverse-hover: var(--color-inverse-hover);
 
+  --color-canvas: var(--color-canvas);
+
   /* Accent palette — theme-stable */
-  --color-brand: #4f46e5;
-  --color-brand-soft: rgba(79, 70, 229, 0.12);
-  --color-cyan: #0891b2;
-  --color-cyan-soft: rgba(8, 145, 178, 0.12);
+  --color-brand: #6366f1;
+  --color-brand-soft: rgba(99, 102, 241, 0.14);
+  --color-brand-strong: #4f46e5;
+  --color-cyan: #06b6d4;
+  --color-cyan-soft: rgba(6, 182, 212, 0.14);
   --color-emerald: #10b981;
-  --color-emerald-soft: rgba(16, 185, 129, 0.12);
-  --color-amber: #d97706;
-  --color-amber-soft: rgba(217, 119, 6, 0.14);
-  --color-violet: #7c3aed;
-  --color-violet-soft: rgba(124, 58, 237, 0.14);
-  --color-rose: #e11d48;
-  --color-rose-soft: rgba(225, 29, 72, 0.12);
+  --color-emerald-soft: rgba(16, 185, 129, 0.14);
+  --color-amber: #f59e0b;
+  --color-amber-soft: rgba(245, 158, 11, 0.16);
+  --color-violet: #8b5cf6;
+  --color-violet-soft: rgba(139, 92, 246, 0.16);
+  --color-rose: #f43f5e;
+  --color-rose-soft: rgba(244, 63, 94, 0.14);
 
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -119,10 +186,11 @@ body {
   color: var(--color-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 ::selection {
-  background: rgba(79, 70, 229, 0.22);
+  background: rgba(99, 102, 241, 0.22);
   color: var(--color-text);
 }
 
@@ -142,13 +210,15 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
- * Subtle utilities
+ * Background ornaments
  * --------------------------------------------------------------------------- */
 .grid-bg {
   background-image:
     linear-gradient(var(--color-grid-line) 1px, transparent 1px),
     linear-gradient(90deg, var(--color-grid-line) 1px, transparent 1px);
   background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 50%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 50%, transparent 100%);
 }
 
 .dot-pattern {
@@ -156,6 +226,89 @@ body {
   background-size: 22px 22px;
 }
 
+/* The "canvas" used inside system viz — theme-aware via cv-* tokens. */
+.canvas-surface {
+  background-color: var(--cv-bg);
+  background-image: radial-gradient(var(--cv-dot) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: 0 0;
+  color: var(--cv-text);
+}
+
+/* ---------------------------------------------------------------------------
+ * Canvas SVG helper classes
+ *
+ * Used inside SystemCanvas, PerimeterDiagram, EvalFlowCanvas. They map node /
+ * line / text styling to theme-aware cv-* variables so a single SVG works in
+ * both themes.
+ * --------------------------------------------------------------------------- */
+.cv-node               { fill: var(--cv-node-fill-from); stroke: var(--cv-node-edge); }
+.cv-node-strong        { fill: var(--cv-node-fill-from); stroke: var(--cv-node-edge-strong); }
+.cv-node-accent        { fill: var(--cv-node-fill-from); stroke: var(--color-brand); }
+.cv-port               { fill: var(--cv-port-fill); stroke: var(--cv-port-edge); }
+.cv-line               { stroke: var(--cv-line); fill: none; }
+.cv-line-soft          { stroke: var(--cv-line-soft); fill: none; }
+.cv-arrow-fill         { fill: var(--cv-arrow); }
+.cv-zone               { fill: var(--cv-zone-bg); stroke: var(--cv-zone-stroke); }
+.cv-callout            { fill: var(--cv-callout-bg); stroke: var(--cv-callout-stroke); }
+.cv-text               { fill: var(--cv-text); }
+.cv-text-muted         { fill: var(--cv-text-muted); }
+.cv-text-faint         { fill: var(--cv-text-faint); }
+.cv-callout-text       { fill: var(--cv-callout-text); }
+.cv-divider            { stroke: var(--cv-line-soft); }
+.cv-grid               { stroke: var(--cv-line-soft); }
+.cv-bg-fill            { fill: var(--cv-bg); }
+
+/* Animated soft aurora behind heroes */
+.aurora {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+.aurora::before,
+.aurora::after {
+  content: "";
+  position: absolute;
+  width: 60vmax;
+  height: 60vmax;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.45;
+}
+.aurora::before {
+  top: -20vmax;
+  left: -10vmax;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.4), transparent 60%);
+  animation: aurora-drift-a 18s ease-in-out infinite alternate;
+}
+.aurora::after {
+  bottom: -30vmax;
+  right: -20vmax;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.35), transparent 60%);
+  animation: aurora-drift-b 22s ease-in-out infinite alternate;
+}
+.dark .aurora::before {
+  opacity: 0.30;
+  background: radial-gradient(circle, rgba(124, 137, 255, 0.5), transparent 60%);
+}
+.dark .aurora::after {
+  opacity: 0.22;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.5), transparent 60%);
+}
+@keyframes aurora-drift-a {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  100% { transform: translate3d(6vmax, 4vmax, 0) scale(1.1); }
+}
+@keyframes aurora-drift-b {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  100% { transform: translate3d(-5vmax, -4vmax, 0) scale(1.08); }
+}
+
+/* ---------------------------------------------------------------------------
+ * Typography helpers
+ * --------------------------------------------------------------------------- */
 .code-block {
   font-family: var(--font-mono);
   font-size: 0.85rem;
@@ -168,31 +321,30 @@ body {
   color: var(--color-code-text);
 }
 
-/* Single global reveal — fade + small translate. Used on scroll-into-view. */
-.reveal {
-  opacity: 0;
-  transform: translateY(12px);
-  transition:
-    opacity 0.5s ease-out,
-    transform 0.5s ease-out;
-  will-change: opacity, transform;
+.text-balance {
+  text-wrap: balance;
 }
-.reveal.visible {
-  opacity: 1;
-  transform: translateY(0);
+
+/* Gradient text used very sparingly — one accent per page */
+.text-accent-gradient {
+  background-image: linear-gradient(120deg, #6366f1 0%, #06b6d4 60%, #10b981 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
 }
 
 /* Prose helper for hand-authored handbook copy */
 .prose-handbook {
-  max-width: 70ch;
+  max-width: 72ch;
   color: var(--color-text-secondary);
-  line-height: 1.7;
+  line-height: 1.75;
+  font-size: 1rem;
 }
 .prose-handbook h2 {
   color: var(--color-text);
   font-size: 1.5rem;
   font-weight: 600;
-  margin-top: 2.5rem;
+  margin-top: 2.75rem;
   margin-bottom: 0.75rem;
   letter-spacing: -0.01em;
 }
@@ -200,7 +352,7 @@ body {
   color: var(--color-text);
   font-size: 1.125rem;
   font-weight: 600;
-  margin-top: 1.5rem;
+  margin-top: 1.75rem;
   margin-bottom: 0.5rem;
 }
 .prose-handbook p {
@@ -212,7 +364,7 @@ body {
   list-style: disc;
 }
 .prose-handbook li {
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.3rem;
 }
 .prose-handbook code {
   font-family: var(--font-mono);
@@ -231,4 +383,288 @@ body {
 }
 .prose-handbook a:hover {
   opacity: 0.8;
+}
+
+/* ---------------------------------------------------------------------------
+ * Surface primitives — replace the "bootstrap card" feel
+ * --------------------------------------------------------------------------- */
+
+/* Card with a subtle gradient ring, a soft top-edge highlight, and a hover lift */
+.card {
+  position: relative;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-default);
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 240ms ease,
+              border-color 240ms ease;
+}
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(140deg, rgba(99, 102, 241, 0.35), rgba(6, 182, 212, 0.15) 35%, transparent 65%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 240ms ease;
+  pointer-events: none;
+}
+.card:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-lift);
+}
+.card:hover::before {
+  opacity: 1;
+}
+.card.is-interactive:hover {
+  transform: translateY(-3px);
+}
+
+/* Corner tick — visual ornament for cards */
+.corner-tick {
+  position: relative;
+}
+.corner-tick::after {
+  content: "";
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 18px;
+  height: 18px;
+  background-image:
+    linear-gradient(to right, var(--color-border-strong) 0, var(--color-border-strong) 8px, transparent 8px),
+    linear-gradient(to bottom, var(--color-border-strong) 0, var(--color-border-strong) 8px, transparent 8px);
+  background-position: top right, top right;
+  background-repeat: no-repeat;
+  background-size: 100% 1px, 1px 100%;
+  opacity: 0.7;
+}
+
+/* Mock window frame — slightly more polished */
+.mock-frame {
+  border-radius: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-default);
+  box-shadow: var(--shadow-lift);
+  overflow: hidden;
+}
+
+/* Subtle spotlight that follows the pointer; opt-in per element */
+.spotlight {
+  position: relative;
+  overflow: hidden;
+}
+.spotlight::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: radial-gradient(
+    400px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(99, 102, 241, 0.12),
+    transparent 50%
+  );
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+.spotlight:hover::before {
+  opacity: 1;
+}
+
+/* Chip — for small labels */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+/* ---------------------------------------------------------------------------
+ * Reveal-on-scroll — direction-aware
+ * The JS in Layout.astro toggles `is-up` on the body when scrolling up so we
+ * can flip the enter direction subtly.
+ * --------------------------------------------------------------------------- */
+.reveal {
+  opacity: 0;
+  transform: translate3d(0, 18px, 0);
+  transition:
+    opacity 700ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+body.is-up .reveal {
+  transform: translate3d(0, -18px, 0);
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.reveal[data-delay="1"] { transition-delay: 60ms; }
+.reveal[data-delay="2"] { transition-delay: 120ms; }
+.reveal[data-delay="3"] { transition-delay: 180ms; }
+.reveal[data-delay="4"] { transition-delay: 240ms; }
+.reveal[data-delay="5"] { transition-delay: 300ms; }
+.reveal[data-delay="6"] { transition-delay: 360ms; }
+
+.reveal-x {
+  opacity: 0;
+  transform: translate3d(-24px, 0, 0);
+  transition:
+    opacity 700ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal-x.visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.reveal-scale {
+  opacity: 0;
+  transform: scale(0.965);
+  transition:
+    opacity 700ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.reveal-scale.visible {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* SVG path-draw — stroke reveals once the parent is in view */
+.path-draw {
+  stroke-dasharray: var(--path-len, 1000);
+  stroke-dashoffset: var(--path-len, 1000);
+  transition: stroke-dashoffset 1500ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+.path-draw.drawn {
+  stroke-dashoffset: 0;
+}
+
+/* Flow dot — travels along an SVG path using offset-path */
+.flow-dot {
+  fill: currentColor;
+  animation: flow-dot 3.6s linear infinite;
+}
+@keyframes flow-dot {
+  from { offset-distance: 0%; opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  to   { offset-distance: 100%; opacity: 0; }
+}
+
+/* Count-up text */
+.count-up {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Marquee — auto-scrolling row */
+.marquee {
+  display: flex;
+  overflow: hidden;
+  mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+}
+.marquee-track {
+  display: flex;
+  gap: 3rem;
+  flex-shrink: 0;
+  animation: marquee 38s linear infinite;
+}
+.marquee:hover .marquee-track {
+  animation-play-state: paused;
+}
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* Button shimmer on hover */
+.btn-shine {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.btn-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 30%, rgba(255, 255, 255, 0.25) 50%, transparent 70%);
+  transform: translateX(-100%);
+  transition: transform 600ms cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+.btn-shine:hover::after {
+  transform: translateX(100%);
+}
+
+/* Icon pop on parent hover */
+.group:hover .icon-pop {
+  transform: scale(1.08) rotate(-2deg);
+}
+.icon-pop {
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Pulse dot for "live" indicators */
+.pulse-dot {
+  position: relative;
+}
+.pulse-dot::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  background: inherit;
+  opacity: 0.35;
+  animation: pulse-ring 1.8s ease-out infinite;
+}
+@keyframes pulse-ring {
+  0%   { transform: scale(0.9); opacity: 0.4; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+
+/* Section divider hairlines */
+.hr-gradient {
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--color-border-strong), transparent);
+}
+
+/* ---------------------------------------------------------------------------
+ * Respect reduced motion
+ * --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal-x,
+  .reveal-scale {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .aurora::before,
+  .aurora::after,
+  .marquee-track,
+  .flow-dot,
+  .pulse-dot::before {
+    animation: none !important;
+  }
+  .path-draw {
+    stroke-dashoffset: 0 !important;
+    transition: none !important;
+  }
+  .card,
+  .card.is-interactive:hover {
+    transform: none !important;
+  }
 }

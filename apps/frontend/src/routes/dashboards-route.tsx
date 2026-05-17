@@ -2,18 +2,27 @@ import type {
   JSONValue,
   LiveTraceInput,
   LogSearchInput,
+  MetricAggregation,
   MetricChartType,
   MetricNameSearchInput,
   MetricSeriesInput,
+  RichMetricSeriesInput,
   TraceSearchInput,
 } from "@cloudgrid/ui-contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChart3,
+  CalendarDays,
+  Check,
+  ChevronsUpDown,
+  Clock,
   Copy,
+  CopyPlus,
   Edit3,
+  GripVertical,
   LineChart,
   ListTree,
+  Maximize2,
   MoreHorizontal,
   Plus,
   RefreshCw,
@@ -24,13 +33,23 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type KeyboardEvent, type PointerEvent, type ReactNode, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ErrorPanel, LoadingRows } from "../components/query-state";
 import { RouteBreadcrumb } from "../components/route-breadcrumb";
 import { SearchInput } from "../components/search-input";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { Calendar } from "../components/ui/calendar";
+import { Checkbox } from "../components/ui/checkbox";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "../components/ui/command";
 import {
   Dialog,
   DialogClose,
@@ -40,6 +59,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
@@ -51,6 +78,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
+import { Separator } from "../components/ui/separator";
 import {
   Sheet,
   SheetContent,
@@ -68,9 +96,21 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { Textarea } from "../components/ui/textarea";
+import {
+  compactDashboardLayout,
+  DASHBOARD_GRID_COLUMNS,
+  DASHBOARD_GRID_ROW_HEIGHT,
+  defaultDashboardWidgetLayout,
+  moveDashboardWidget,
+  resizeDashboardWidget,
+  sortDashboardWidgetsForSave,
+} from "../features/dashboards/dashboard-layout";
 import { TelemetryChart, type TelemetryChartKind } from "../features/telemetry/telemetry-chart";
 import type {
   Dashboard,
+  DashboardMetricFormulaInput,
+  DashboardMetricQueryInput,
+  DashboardMetricQueryRowInput,
   DashboardVisibility,
   DashboardWidget,
   DashboardWidgetInput,
@@ -84,6 +124,35 @@ import { queryKeys } from "../lib/query-keys";
 import { useAppSession } from "../providers/app-session-provider";
 import { useTelemetryClient } from "../providers/telemetry-client-provider";
 
+const EMPTY_METRIC_NAME = "gen_ai.client.token.usage";
+
+const metricChartTypes: MetricChartType[] = [
+  "line",
+  "area",
+  "bar",
+  "pie",
+  "donut",
+  "stat",
+  "radial",
+  "radar",
+  "heatmap",
+  "histogram",
+  "table",
+];
+
+const metricAggregations: MetricAggregation[] = [
+  "avg",
+  "sum",
+  "min",
+  "max",
+  "count",
+  "rate",
+  "p50",
+  "p90",
+  "p95",
+  "p99",
+];
+
 export function DashboardsRoute() {
   const { client, viewer } = useAppSession();
   const telemetryClient = useTelemetryClient();
@@ -95,9 +164,10 @@ export function DashboardsRoute() {
   const [pendingDashboardId, setPendingDashboardId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const dashboardId = searchParams.get("dashboard");
+  const [fallbackRange] = useState(defaultDashboardRange);
   const range = {
-    from: searchParams.get("from") ?? new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-    to: searchParams.get("to") ?? new Date().toISOString(),
+    from: searchParams.get("from") ?? fallbackRange.from,
+    to: searchParams.get("to") ?? fallbackRange.to,
   };
   const dashboardsQuery = useQuery({
     queryKey: queryKeys.dashboards({ includeBuiltins: true, query: query || null }),
@@ -200,7 +270,7 @@ export function DashboardsRoute() {
   };
   const addWidget = (kind: DashboardWidgetKind) => {
     setDraft((current) => {
-      const next = appendWidget(current ?? duplicateDashboardDraft(selectedDashboard), kind);
+      const next = appendWidget(current ?? editableDashboardDraft(selectedDashboard), kind);
       const widget = next.widgets.at(-1);
       if (widget) {
         setInspectorWidgetId(widget.id);
@@ -215,18 +285,56 @@ export function DashboardsRoute() {
   };
   const updateWidget = (widget: DashboardWidgetInput) => {
     setDraft((current) => {
-      const base = current ?? duplicateDashboardDraft(selectedDashboard);
+      const base = current ?? editableDashboardDraft(selectedDashboard);
       return {
         ...base,
         widgets: base.widgets.map((candidate) => (candidate.id === widget.id ? widget : candidate)),
       };
     });
   };
+  const duplicateWidget = (widgetId: string) => {
+    setDraft((current) =>
+      duplicateWidgetInDraft(current ?? editableDashboardDraft(selectedDashboard), widgetId),
+    );
+  };
+  const removeWidget = (widgetId: string) => {
+    setDraft((current) =>
+      removeWidgetFromDraft(current ?? editableDashboardDraft(selectedDashboard), widgetId),
+    );
+    setInspectorWidgetId((current) => (current === widgetId ? null : current));
+  };
+  const moveWidget = (widgetId: string, deltaX: number, deltaY: number) => {
+    setDraft((current) =>
+      moveDashboardWidget(
+        current ?? editableDashboardDraft(selectedDashboard),
+        widgetId,
+        deltaX,
+        deltaY,
+      ),
+    );
+  };
+  const resizeWidget = (widgetId: string, deltaWidth: number, deltaHeight: number) => {
+    setDraft((current) =>
+      resizeDashboardWidget(
+        current ?? editableDashboardDraft(selectedDashboard),
+        widgetId,
+        deltaWidth,
+        deltaHeight,
+      ),
+    );
+  };
   const openWidgetInspector = (widgetId: string) => {
     setInspectorWidgetId(widgetId);
     setSearchParams((params) => {
       params.set("widget", widgetId);
       params.set("inspector", "edit");
+      return params;
+    });
+  };
+  const updateRange = (nextRange: { from: string; to: string }) => {
+    setSearchParams((params) => {
+      params.set("from", nextRange.from);
+      params.set("to", nextRange.to);
       return params;
     });
   };
@@ -248,22 +356,7 @@ export function DashboardsRoute() {
           <p className="text-sm text-muted-foreground">{t("dashboards.description")}</p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
-          <Field className="w-48">
-            <FieldLabel htmlFor="dashboard-from">{t("dashboards.from")}</FieldLabel>
-            <Input
-              id="dashboard-from"
-              onChange={(event) => updateParam(setSearchParams, "from", event.target.value)}
-              value={range.from}
-            />
-          </Field>
-          <Field className="w-48">
-            <FieldLabel htmlFor="dashboard-to">{t("dashboards.to")}</FieldLabel>
-            <Input
-              id="dashboard-to"
-              onChange={(event) => updateParam(setSearchParams, "to", event.target.value)}
-              value={range.to}
-            />
-          </Field>
+          <DashboardDateRangeControl onRangeChange={updateRange} range={range} />
           <Button
             aria-label={t("dashboards.refresh")}
             onClick={() => void dashboardsQuery.refetch()}
@@ -287,7 +380,7 @@ export function DashboardsRoute() {
           {draft ? (
             <Button
               disabled={saveMutation.isPending}
-              onClick={() => void saveMutation.mutate(draft)}
+              onClick={() => void saveMutation.mutate(prepareDashboardSaveInput(draft))}
             >
               <Save data-icon="inline-start" />
               {t("dashboards.save")}
@@ -321,7 +414,7 @@ export function DashboardsRoute() {
         />
       ) : (
         <div className="min-h-0 flex-1 overflow-hidden">
-          <main className="min-h-0 min-w-0 overflow-auto border bg-background p-3">
+          <main className="min-h-0 min-w-0 overflow-auto bg-background">
             {dashboardsQuery.isLoading ? <LoadingRows /> : null}
             {dashboardsQuery.isError ? (
               <ErrorPanel
@@ -335,8 +428,13 @@ export function DashboardsRoute() {
                 draft={draft}
                 onAddWidget={addWidget}
                 onDraftChange={setDraft}
+                onDuplicateWidget={duplicateWidget}
                 onEditWidget={openWidgetInspector}
+                onMoveWidget={moveWidget}
+                onRemoveWidget={removeWidget}
+                onResizeWidget={resizeWidget}
                 range={range}
+                selectedWidgetId={inspectorWidgetId}
                 telemetryClient={telemetryClient}
                 widgets={widgets}
               />
@@ -354,6 +452,8 @@ export function DashboardsRoute() {
             }}
             onWidgetChange={updateWidget}
             open={Boolean(inspectorWidget)}
+            range={range}
+            telemetryClient={telemetryClient}
             widget={inspectorWidget}
           />
         </div>
@@ -476,7 +576,12 @@ function DashboardOverview({
         {isLoading ? <LoadingRows /> : null}
         {queryError ? <ErrorPanel error={queryError} onRetry={onRetry} /> : null}
         {!isLoading && dashboards.length === 0 ? (
-          <EmptyDashboardCanvas onCreate={onCreate} />
+          <EmptyDashboardCanvas
+            actionLabel={t("dashboards.create")}
+            description={t("dashboards.empty.noDashboards.description")}
+            onCreate={onCreate}
+            title={t("dashboards.empty.noDashboards.title")}
+          />
         ) : null}
         {groups.map(([title, visibility]) => {
           const groupDashboards = dashboards.filter((dashboard) =>
@@ -539,13 +644,143 @@ function DashboardOverview({
   );
 }
 
+function DashboardDateRangeControl({
+  onRangeChange,
+  range,
+}: {
+  onRangeChange: (range: { from: string; to: string }) => void;
+  range: { from: string; to: string };
+}) {
+  const fromDate = parseDateValue(range.from);
+  const toDate = parseDateValue(range.to);
+  const [open, setOpen] = useState(false);
+  const [fromTime, setFromTime] = useState(formatTimeInput(fromDate));
+  const [toTime, setToTime] = useState(formatTimeInput(toDate));
+
+  useEffect(() => {
+    setFromTime(formatTimeInput(parseDateValue(range.from)));
+    setToTime(formatTimeInput(parseDateValue(range.to)));
+  }, [range.from, range.to]);
+
+  const commitDates = (
+    nextFrom: Date | undefined,
+    nextTo: Date | undefined,
+    times: { fromTime?: string; toTime?: string } = {},
+  ) => {
+    if (!nextFrom || !nextTo) {
+      return;
+    }
+    const normalizedFrom = withTime(nextFrom, times.fromTime ?? fromTime);
+    const normalizedTo = withTime(nextTo, times.toTime ?? toTime);
+    if (normalizedFrom.getTime() > normalizedTo.getTime()) {
+      onRangeChange({
+        from: normalizedTo.toISOString(),
+        to: normalizedFrom.toISOString(),
+      });
+      return;
+    }
+    onRangeChange({
+      from: normalizedFrom.toISOString(),
+      to: normalizedTo.toISOString(),
+    });
+  };
+
+  const selectPreset = (hours: number) => {
+    const to = new Date();
+    const from = new Date(to.getTime() - hours * 60 * 60 * 1000);
+    setFromTime(formatTimeInput(from));
+    setToTime(formatTimeInput(to));
+    onRangeChange({ from: from.toISOString(), to: to.toISOString() });
+    setOpen(false);
+  };
+
+  return (
+    <Popover onOpenChange={setOpen} open={open}>
+      <PopoverTrigger asChild>
+        <Button className="min-w-72 justify-start" type="button" variant="outline">
+          <CalendarDays data-icon="inline-start" />
+          <span className="truncate text-left">
+            {formatDateTime(range.from)} - {formatDateTime(range.to)}
+          </span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-auto max-w-[calc(100vw-2rem)] p-0">
+        <div className="flex flex-col gap-3 p-3">
+          <div className="flex flex-wrap gap-2">
+            {[1, 6, 24, 168].map((hours) => (
+              <Button
+                key={hours}
+                onClick={() => selectPreset(hours)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                <Clock data-icon="inline-start" />
+                {hours === 1 ? "1h" : hours === 168 ? "7d" : `${hours}h`}
+              </Button>
+            ))}
+          </div>
+          <Calendar
+            captionLayout="dropdown"
+            mode="range"
+            numberOfMonths={2}
+            onSelect={(selected) => commitDates(selected?.from, selected?.to ?? selected?.from)}
+            selected={
+              fromDate
+                ? {
+                    from: fromDate,
+                    ...(toDate ? { to: toDate } : {}),
+                  }
+                : undefined
+            }
+          />
+          <Separator />
+          <FieldGroup className="grid gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="dashboard-range-from-time">{t("dashboards.from")}</FieldLabel>
+              <Input
+                id="dashboard-range-from-time"
+                onChange={(event) => {
+                  const nextTime = event.target.value;
+                  setFromTime(nextTime);
+                  commitDates(fromDate, toDate, { fromTime: nextTime });
+                }}
+                type="time"
+                value={fromTime}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="dashboard-range-to-time">{t("dashboards.to")}</FieldLabel>
+              <Input
+                id="dashboard-range-to-time"
+                onChange={(event) => {
+                  const nextTime = event.target.value;
+                  setToTime(nextTime);
+                  commitDates(fromDate, toDate, { toTime: nextTime });
+                }}
+                type="time"
+                value={toTime}
+              />
+            </Field>
+          </FieldGroup>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function DashboardCanvas({
   dashboard,
   draft,
   onAddWidget,
   onDraftChange,
+  onDuplicateWidget,
   onEditWidget,
+  onMoveWidget,
+  onRemoveWidget,
+  onResizeWidget,
   range,
+  selectedWidgetId,
   telemetryClient,
   widgets,
 }: {
@@ -553,15 +788,20 @@ function DashboardCanvas({
   draft: SaveDashboardInput | null;
   onAddWidget: (kind: DashboardWidgetKind) => void;
   onDraftChange: (draft: SaveDashboardInput | null) => void;
+  onDuplicateWidget: (widgetId: string) => void;
   onEditWidget: (widgetId: string) => void;
+  onMoveWidget: (widgetId: string, deltaX: number, deltaY: number) => void;
+  onRemoveWidget: (widgetId: string) => void;
+  onResizeWidget: (widgetId: string, deltaWidth: number, deltaHeight: number) => void;
   range: { from: string; to: string };
+  selectedWidgetId: string | null;
   telemetryClient: ReturnType<typeof useTelemetryClient>;
   widgets: Array<DashboardWidget | SaveDashboardInput["widgets"][number]>;
 }) {
   const editableDashboard = draft ?? dashboard;
   const updateDashboardDraft = (patch: Partial<SaveDashboardInput>) => {
     onDraftChange({
-      ...(draft ?? duplicateDashboardDraft(dashboard)),
+      ...(draft ?? editableDashboardDraft(dashboard)),
       ...patch,
     });
   };
@@ -589,13 +829,29 @@ function DashboardCanvas({
         <AddWidgetButton onAddWidget={onAddWidget} />
       </div>
       {widgets.length === 0 ? (
-        <EmptyDashboardCanvas onCreate={() => onAddWidget("metric_timeseries")} />
+        <EmptyDashboardCanvas
+          actionLabel={t("dashboards.widget.addMetric")}
+          description={t("dashboards.empty.noWidgets.description")}
+          onCreate={() => onAddWidget("metric_timeseries")}
+          title={t("dashboards.empty.noWidgets.title")}
+        />
       ) : (
-        <div className="grid auto-rows-[minmax(220px,auto)] grid-cols-12 gap-3">
+        <div
+          className="grid auto-rows-[72px] grid-cols-12 gap-3 overflow-auto"
+          data-dashboard-canvas
+        >
           {widgets.map((widget) => (
             <DashboardWidgetFrame
+              isEditing={Boolean(draft)}
+              isSelected={selectedWidgetId === widget.id}
               key={widget.id}
+              onDuplicate={() => onDuplicateWidget(widget.id)}
               onEdit={() => onEditWidget(widget.id)}
+              onMove={(deltaX, deltaY) => onMoveWidget(widget.id, deltaX, deltaY)}
+              onRemove={() => onRemoveWidget(widget.id)}
+              onResize={(deltaWidth, deltaHeight) =>
+                onResizeWidget(widget.id, deltaWidth, deltaHeight)
+              }
               range={range}
               telemetryClient={telemetryClient}
               widget={widget}
@@ -608,29 +864,96 @@ function DashboardCanvas({
 }
 
 function DashboardWidgetFrame({
+  isEditing,
+  isSelected,
+  onDuplicate,
   onEdit,
+  onMove,
+  onRemove,
+  onResize,
   range,
   telemetryClient,
   widget,
 }: {
+  isEditing: boolean;
+  isSelected: boolean;
+  onDuplicate: () => void;
   onEdit: () => void;
+  onMove: (deltaX: number, deltaY: number) => void;
+  onRemove: () => void;
+  onResize: (deltaWidth: number, deltaHeight: number) => void;
   range: { from: string; to: string };
   telemetryClient: ReturnType<typeof useTelemetryClient>;
   widget: DashboardWidget | SaveDashboardInput["widgets"][number];
 }) {
   const layout = widget.layout;
   const metric = widget.metric;
+  const richMetric = widget.richMetric;
   const logs = widget.logs;
   const traces = widget.traces;
   const liveTraces = widget.liveTraces;
-  const metricDescriptorInput: MetricNameSearchInput | null = metric
-    ? {
-        query: metric.metricName,
-        from: range.from,
-        to: range.to,
-        limit: 20,
+  const pointerDrag = (event: PointerEvent<HTMLElement>, mode: "move" | "resize") => {
+    if (!isEditing) {
+      return;
+    }
+    event.preventDefault();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const target = event.currentTarget;
+    const cell = getDashboardPointerCell(target);
+    let committedDeltaX = 0;
+    let committedDeltaY = 0;
+    target.setPointerCapture(event.pointerId);
+    const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
+      const nextDeltaX = Math.trunc((moveEvent.clientX - startX) / cell.width);
+      const nextDeltaY = Math.trunc((moveEvent.clientY - startY) / cell.height);
+      const deltaX = nextDeltaX - committedDeltaX;
+      const deltaY = nextDeltaY - committedDeltaY;
+      if (deltaX === 0 && deltaY === 0) {
+        return;
       }
-    : null;
+      if (mode === "move") {
+        onMove(deltaX, deltaY);
+      } else {
+        onResize(deltaX, deltaY);
+      }
+      committedDeltaX = nextDeltaX;
+      committedDeltaY = nextDeltaY;
+    };
+    const stopPointerDrag = () => {
+      target.removeEventListener("pointermove", handlePointerMove);
+      target.removeEventListener("pointerup", stopPointerDrag);
+      target.removeEventListener("pointercancel", stopPointerDrag);
+      if (target.hasPointerCapture(event.pointerId)) {
+        target.releasePointerCapture(event.pointerId);
+      }
+    };
+    target.addEventListener("pointermove", handlePointerMove);
+    target.addEventListener("pointerup", stopPointerDrag, { once: true });
+    target.addEventListener("pointercancel", stopPointerDrag, { once: true });
+  };
+  const handleKeyboard = (event: KeyboardEvent<HTMLElement>) => {
+    if (!isEditing) {
+      return;
+    }
+    const resize = event.shiftKey;
+    const directions: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0],
+      ArrowRight: [1, 0],
+      ArrowUp: [0, -1],
+      ArrowDown: [0, 1],
+    };
+    const delta = directions[event.key];
+    if (!delta) {
+      return;
+    }
+    event.preventDefault();
+    if (resize) {
+      onResize(delta[0], delta[1]);
+    } else {
+      onMove(delta[0], delta[1]);
+    }
+  };
   const metricInput: MetricSeriesInput | null = metric
     ? {
         metricName: metric.metricName,
@@ -643,17 +966,6 @@ function DashboardWidgetFrame({
         ...(metric.interval ? { interval: metric.interval } : {}),
       }
     : null;
-  const metricDescriptorQuery = useQuery({
-    enabled: Boolean(metricDescriptorInput),
-    queryKey: metricDescriptorInput
-      ? queryKeys.metricNames(metricDescriptorInput)
-      : ["MetricNames", "dashboard-idle"],
-    queryFn: () => telemetryClient.getMetricNames(metricDescriptorInput as MetricNameSearchInput),
-  });
-  const metricDescriptorExists =
-    metricDescriptorQuery.data?.items.some(
-      (descriptor) => descriptor.name === metric?.metricName,
-    ) ?? false;
   const logInput: LogSearchInput | null = logs
     ? {
         service: logs.service ?? null,
@@ -698,8 +1010,15 @@ function DashboardWidgetFrame({
         limit: liveTraces.limit ?? 50,
       }
     : null;
+  const richMetricInput: RichMetricSeriesInput | null = richMetric
+    ? {
+        from: range.from,
+        to: range.to,
+        query: richMetric.query,
+      }
+    : null;
   const metricQuery = useQuery({
-    enabled: Boolean(metricInput && metricDescriptorExists),
+    enabled: Boolean(metricInput),
     queryKey: metricInput
       ? queryKeys.metricSeries(metricInput)
       : ["MetricSeries", "dashboard-idle"],
@@ -715,19 +1034,41 @@ function DashboardWidgetFrame({
     queryKey: traceInput ? queryKeys.traces(traceInput) : ["TraceSearch", "dashboard-idle"],
     queryFn: () => telemetryClient.searchTraces(traceInput as TraceSearchInput),
   });
+  const richMetricQuery = useQuery({
+    enabled: Boolean(richMetricInput),
+    queryKey: richMetricInput
+      ? queryKeys.richMetricSeries(richMetricInput)
+      : ["RichMetricSeries", "dashboard-idle"],
+    queryFn: () => telemetryClient.getRichMetricSeries(richMetricInput as RichMetricSeriesInput),
+  });
 
   return (
     <section
-      className="col-span-12 flex min-h-56 flex-col overflow-hidden border bg-background lg:col-span-6"
+      className="group relative col-span-12 flex min-h-56 flex-col overflow-hidden border bg-background outline-none focus-visible:ring-2 focus-visible:ring-ring data-[dashboard-widget-selected=true]:ring-2 data-[dashboard-widget-selected=true]:ring-ring lg:col-span-6"
+      data-dashboard-widget-selected={isSelected}
       style={{
         gridColumn: `${Math.max(1, layout.x + 1)} / span ${Math.min(12, Math.max(layout.minW ?? 3, layout.w))}`,
         gridRow: `span ${Math.max(layout.minH ?? 2, layout.h)}`,
       }}
     >
       <header className="flex items-center justify-between gap-2 border-b px-3 py-2">
-        <div className="min-w-0">
-          <h3 className="truncate text-sm font-semibold">{widget.title}</h3>
-          <p className="text-xs text-muted-foreground">{widget.kind}</p>
+        <div className="flex min-w-0 items-center gap-2">
+          {isEditing ? (
+            <Button
+              aria-label="Move widget"
+              onKeyDown={handleKeyboard}
+              onPointerDown={(event) => pointerDrag(event, "move")}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              <GripVertical />
+            </Button>
+          ) : null}
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-semibold">{widget.title}</h3>
+            <p className="text-xs text-muted-foreground">{widget.kind}</p>
+          </div>
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -739,42 +1080,48 @@ function DashboardWidgetFrame({
           >
             <Edit3 />
           </Button>
-          <Button
-            aria-label={t("dashboards.widget.more")}
-            size="icon-sm"
-            type="button"
-            variant="ghost"
-          >
-            <MoreHorizontal />
-          </Button>
+          {isEditing ? (
+            <>
+              <Button
+                aria-label={t("dashboards.duplicate")}
+                onClick={onDuplicate}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <CopyPlus />
+              </Button>
+              <Button
+                aria-label={t("dashboards.delete")}
+                onClick={onRemove}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <Trash2 />
+              </Button>
+            </>
+          ) : null}
+          <WidgetActionMenu
+            isEditing={isEditing}
+            onDuplicate={onDuplicate}
+            onEdit={onEdit}
+            onRemove={onRemove}
+          />
         </div>
       </header>
       <div className="min-h-0 flex-1 overflow-auto p-3">
         {metric ? (
-          metricDescriptorQuery.isLoading ? (
-            <LoadingRows />
-          ) : metricDescriptorQuery.isError ? (
-            <ErrorPanel
-              error={metricDescriptorQuery.error}
-              onRetry={() => void metricDescriptorQuery.refetch()}
-            />
-          ) : !metricDescriptorExists ? (
-            <p className="text-sm text-muted-foreground">{t("dashboards.metric.noSeries")}</p>
-          ) : (
-            <QueryWidgetState
-              error={metricQuery.error}
-              isError={metricQuery.isError}
-              isLoading={metricQuery.isLoading}
-              onRetry={() => void metricQuery.refetch()}
-            >
-              {metricQuery.isSuccess ? (
-                <MetricWidgetPreview
-                  result={metricQuery.data}
-                  visualization={metric.visualization}
-                />
-              ) : null}
-            </QueryWidgetState>
-          )
+          <QueryWidgetState
+            error={metricQuery.error}
+            isError={metricQuery.isError}
+            isLoading={metricQuery.isLoading}
+            onRetry={() => void metricQuery.refetch()}
+          >
+            {metricQuery.isSuccess ? (
+              <MetricWidgetPreview result={metricQuery.data} visualization={metric.visualization} />
+            ) : null}
+          </QueryWidgetState>
         ) : null}
         {logs ? (
           <QueryWidgetState
@@ -799,9 +1146,90 @@ function DashboardWidgetFrame({
         {liveTraceInput ? (
           <LiveTraceWidgetPreview input={liveTraceInput} telemetryClient={telemetryClient} />
         ) : null}
-        {!metric && !logs && !traces && !liveTraceInput ? <WidgetSummary widget={widget} /> : null}
+        {richMetric ? (
+          <QueryWidgetState
+            error={richMetricQuery.error}
+            isError={richMetricQuery.isError}
+            isLoading={richMetricQuery.isLoading}
+            onRetry={() => void richMetricQuery.refetch()}
+          >
+            {richMetricQuery.isSuccess ? (
+              <RichMetricWidgetPreview
+                result={richMetricQuery.data}
+                visualization={richMetric.visualization}
+              />
+            ) : null}
+          </QueryWidgetState>
+        ) : null}
+        {!metric && !richMetric && !logs && !traces && !liveTraceInput ? (
+          <WidgetSummary widget={widget} />
+        ) : null}
       </div>
+      {isEditing ? (
+        <Button
+          aria-label="Resize widget"
+          className="absolute right-1 bottom-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+          data-resize-handle="corner"
+          onKeyDown={handleKeyboard}
+          onPointerDown={(event) => pointerDrag(event, "resize")}
+          size="icon-sm"
+          type="button"
+          variant="ghost"
+        >
+          <Maximize2 />
+        </Button>
+      ) : null}
     </section>
+  );
+}
+
+function WidgetActionMenu({
+  isEditing,
+  onDuplicate,
+  onEdit,
+  onRemove,
+}: {
+  isEditing: boolean;
+  onDuplicate: () => void;
+  onEdit: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          aria-label={t("dashboards.widget.more")}
+          size="icon-sm"
+          type="button"
+          variant="ghost"
+        >
+          <MoreHorizontal />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuGroup>
+          <DropdownMenuItem onSelect={onEdit}>
+            <Edit3 data-icon="inline-start" />
+            {t("dashboards.widget.edit")}
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        {isEditing ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem onSelect={onDuplicate}>
+                <CopyPlus data-icon="inline-start" />
+                {t("dashboards.duplicate")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onRemove} variant="destructive">
+                <Trash2 data-icon="inline-start" />
+                {t("dashboards.delete")}
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -825,6 +1253,23 @@ function QueryWidgetState({
       {children}
     </>
   );
+}
+
+function getDashboardPointerCell(target: HTMLElement) {
+  const canvas = target.closest<HTMLElement>("[data-dashboard-canvas]");
+  if (!canvas) {
+    return { width: 96, height: DASHBOARD_GRID_ROW_HEIGHT };
+  }
+  const bounds = canvas.getBoundingClientRect();
+  const style = window.getComputedStyle(canvas);
+  const columnGap = Number.parseFloat(style.columnGap) || 0;
+  const rowGap = Number.parseFloat(style.rowGap) || 0;
+  return {
+    width:
+      (bounds.width - columnGap * (DASHBOARD_GRID_COLUMNS - 1)) / DASHBOARD_GRID_COLUMNS +
+      columnGap,
+    height: DASHBOARD_GRID_ROW_HEIGHT + rowGap,
+  };
 }
 
 function MetricWidgetPreview({
@@ -897,6 +1342,83 @@ function MetricWidgetPreview({
   );
 }
 
+function RichMetricWidgetPreview({
+  result,
+  visualization,
+}: {
+  result: Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["getRichMetricSeries"]>>;
+  visualization: MetricChartType;
+}) {
+  const visibleIds = new Set(
+    result.displaySeries.filter((series) => series.visible).map((series) => series.sourceId),
+  );
+  const visibleSeries = visibleIds.size
+    ? result.series.filter((series) => visibleIds.has(series.id) || visibleIds.has(series.sourceId))
+    : result.series;
+
+  if (visibleSeries.length === 0) {
+    return <p className="text-sm text-muted-foreground">{t("dashboards.metric.noSeries")}</p>;
+  }
+
+  if (visualization === "stat" || visualization === "radial") {
+    const latest = visibleSeries
+      .flatMap((series) => series.points.map((point) => ({ ...point, label: series.label })))
+      .toSorted((left, right) => left.timestamp.localeCompare(right.timestamp))
+      .at(-1);
+    return (
+      <div className="flex h-full min-h-40 flex-col justify-center gap-2">
+        <span className="text-sm text-muted-foreground">{latest?.label ?? t("value.none")}</span>
+        <span className="text-3xl font-semibold tabular-nums">
+          {latest ? latest.value.toLocaleString() : t("value.none")}
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {latest?.timestamp ?? result.interval}
+        </span>
+      </div>
+    );
+  }
+
+  if (visualization === "table") {
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Display series</TableHead>
+            <TableHead>{t("metrics.series.timestamp")}</TableHead>
+            <TableHead>{t("metrics.series.value")}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {visibleSeries.slice(0, 12).map((series) => {
+            const point = series.points.at(-1);
+            return (
+              <TableRow key={series.id}>
+                <TableCell className="max-w-48 truncate text-xs">{series.label}</TableCell>
+                <TableCell>{point?.timestamp ?? t("value.none")}</TableCell>
+                <TableCell className="font-mono">{point?.value ?? t("value.none")}</TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    );
+  }
+
+  const chart = buildRichMetricChartData(visibleSeries, visualization);
+  return (
+    <TelemetryChart
+      chartClassName="h-60 min-h-60"
+      data={chart.data}
+      emptyMessage={t("dashboards.metric.noSeries")}
+      kind={chart.kind}
+      series={chart.series}
+      summary={`Rich metric ${visualization} chart with ${visibleSeries.length} ${t(
+        "dashboards.metric.series",
+      )}.`}
+    />
+  );
+}
+
 type MetricSeriesResultData = Awaited<
   ReturnType<ReturnType<typeof useTelemetryClient>["getMetricSeries"]>
 >;
@@ -916,7 +1438,7 @@ function seriesLabel(labels: JSONValue) {
 }
 
 function buildMetricChartData(result: MetricSeriesResultData, visualization: MetricChartType) {
-  if (visualization === "pie") {
+  if (visualization === "pie" || visualization === "donut" || visualization === "radar") {
     return {
       kind: "pie" as TelemetryChartKind,
       data: result.series.map((series) => ({
@@ -944,10 +1466,57 @@ function buildMetricChartData(result: MetricSeriesResultData, visualization: Met
   });
 
   return {
-    kind: visualization as TelemetryChartKind,
+    kind: normalizeChartKind(visualization),
     data,
     series,
   };
+}
+
+function buildRichMetricChartData(
+  richSeries: Awaited<
+    ReturnType<ReturnType<typeof useTelemetryClient>["getRichMetricSeries"]>
+  >["series"],
+  visualization: MetricChartType,
+) {
+  if (visualization === "pie" || visualization === "donut" || visualization === "radar") {
+    return {
+      kind: "pie" as TelemetryChartKind,
+      data: richSeries.slice(0, 12).map((series) => ({
+        label: series.label,
+        value: series.points.at(-1)?.value ?? 0,
+      })),
+      series: [{ key: "value", label: t("metrics.series.value") }],
+    };
+  }
+  const timestamps = Array.from(
+    new Set(richSeries.flatMap((series) => series.points.map((point) => point.timestamp))),
+  ).sort();
+  const series = richSeries.slice(0, 20).map((metricSeries) => ({
+    key: metricSeries.id,
+    label: metricSeries.label,
+  }));
+  const data = timestamps.map((timestamp) => {
+    const row: Record<string, number | string | null> = { label: timestamp };
+    richSeries.slice(0, 20).forEach((metricSeries) => {
+      row[metricSeries.id] =
+        metricSeries.points.find((point) => point.timestamp === timestamp)?.value ?? null;
+    });
+    return row as { label: string } & Record<string, number | string | null>;
+  });
+  return { kind: normalizeChartKind(visualization), data, series };
+}
+
+function normalizeChartKind(visualization: MetricChartType): TelemetryChartKind {
+  if (visualization === "area") {
+    return "area";
+  }
+  if (visualization === "bar" || visualization === "heatmap" || visualization === "histogram") {
+    return "bar";
+  }
+  if (visualization === "pie" || visualization === "donut" || visualization === "radar") {
+    return "pie";
+  }
+  return "line";
 }
 
 function LogWidgetPreview({
@@ -1099,6 +1668,8 @@ function WidgetEditorSheet({
   onOpenChange,
   onWidgetChange,
   open,
+  range,
+  telemetryClient,
   widget,
 }: {
   dashboard: Dashboard | null;
@@ -1107,6 +1678,8 @@ function WidgetEditorSheet({
   onOpenChange: (open: boolean) => void;
   onWidgetChange: (widget: DashboardWidgetInput) => void;
   open: boolean;
+  range: { from: string; to: string };
+  telemetryClient: ReturnType<typeof useTelemetryClient>;
   widget: DashboardWidget | SaveDashboardInput["widgets"][number] | null;
 }) {
   const editableWidget = widget ? toWidgetInput(widget) : null;
@@ -1161,6 +1734,8 @@ function WidgetEditorSheet({
             <WidgetEditorGroups
               disabled={!draft}
               onWidgetChange={onWidgetChange}
+              range={range}
+              telemetryClient={telemetryClient}
               widget={editableWidget}
             />
           ) : (
@@ -1179,6 +1754,7 @@ function WidgetEditorSheet({
 }
 
 function AddWidgetButton({ onAddWidget }: { onAddWidget: (kind: DashboardWidgetKind) => void }) {
+  const [open, setOpen] = useState(false);
   const actions: Array<[DashboardWidgetKind, ReactNode, string]> = [
     [
       "metric_timeseries",
@@ -1195,6 +1771,7 @@ function AddWidgetButton({ onAddWidget }: { onAddWidget: (kind: DashboardWidgetK
       <Table2 data-icon="inline-start" key="metric_table" />,
       t("dashboards.widget.metricTable"),
     ],
+    ["metric_rich", <LineChart data-icon="inline-start" key="metric_rich" />, "Rich metric"],
     [
       "log_table",
       <Table2 data-icon="inline-start" key="log_table" />,
@@ -1212,28 +1789,33 @@ function AddWidgetButton({ onAddWidget }: { onAddWidget: (kind: DashboardWidgetK
     ],
   ];
   return (
-    <Popover>
+    <Popover onOpenChange={setOpen} open={open}>
       <PopoverTrigger asChild>
         <Button type="button">
           <Plus data-icon="inline-start" />
           {t("dashboards.widget.add")}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-56 p-1">
-        <div className="grid gap-1">
-          {actions.map(([kind, icon, label]) => (
-            <Button
-              className="justify-start"
-              key={kind}
-              onClick={() => onAddWidget(kind)}
-              type="button"
-              variant="ghost"
-            >
-              {icon}
-              {label}
-            </Button>
-          ))}
-        </div>
+      <PopoverContent align="end" className="w-64 p-0" collisionPadding={16}>
+        <Command>
+          <CommandList>
+            <CommandGroup>
+              {actions.map(([kind, icon, label]) => (
+                <CommandItem
+                  key={kind}
+                  onSelect={() => {
+                    onAddWidget(kind);
+                    setOpen(false);
+                  }}
+                  value={label}
+                >
+                  {icon}
+                  {label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
       </PopoverContent>
     </Popover>
   );
@@ -1242,10 +1824,14 @@ function AddWidgetButton({ onAddWidget }: { onAddWidget: (kind: DashboardWidgetK
 function WidgetEditorGroups({
   disabled,
   onWidgetChange,
+  range,
+  telemetryClient,
   widget,
 }: {
   disabled: boolean;
   onWidgetChange: (widget: DashboardWidgetInput) => void;
+  range: { from: string; to: string };
+  telemetryClient: ReturnType<typeof useTelemetryClient>;
   widget: DashboardWidgetInput;
 }) {
   return (
@@ -1257,12 +1843,14 @@ function WidgetEditorGroups({
               <FieldLabel htmlFor={`${widget.id}-metric-name`}>
                 {t("dashboards.editor.metricName")}
               </FieldLabel>
-              <Input
+              <MetricNameCombobox
                 disabled={disabled}
                 id={`${widget.id}-metric-name`}
-                onChange={(event) =>
-                  updateMetricWidget(widget, { metricName: event.target.value }, onWidgetChange)
+                onChange={(value) =>
+                  updateMetricWidget(widget, { metricName: value }, onWidgetChange)
                 }
+                range={range}
+                telemetryClient={telemetryClient}
                 value={widget.metric.metricName}
               />
             </Field>
@@ -1288,11 +1876,11 @@ function WidgetEditorGroups({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="avg">avg</SelectItem>
-                    <SelectItem value="sum">sum</SelectItem>
-                    <SelectItem value="min">min</SelectItem>
-                    <SelectItem value="max">max</SelectItem>
-                    <SelectItem value="count">count</SelectItem>
+                    {metricAggregations.map((aggregation) => (
+                      <SelectItem key={aggregation} value={aggregation}>
+                        {aggregation}
+                      </SelectItem>
+                    ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>
@@ -1309,6 +1897,14 @@ function WidgetEditorGroups({
               {widget.metric.interval ?? t("dashboards.default")}
             </SummaryRow>
           </FieldGroup>
+        ) : widget.richMetric ? (
+          <RichMetricWidgetEditor
+            disabled={disabled}
+            onWidgetChange={onWidgetChange}
+            range={range}
+            telemetryClient={telemetryClient}
+            widget={widget}
+          />
         ) : widget.logs ? (
           <LogWidgetEditor disabled={disabled} onWidgetChange={onWidgetChange} widget={widget} />
         ) : widget.traces ? (
@@ -1334,35 +1930,46 @@ function WidgetEditorGroups({
               value={widget.title}
             />
           </Field>
-          {widget.metric ? (
+          {widget.metric || widget.richMetric ? (
             <Field data-disabled={disabled}>
               <FieldLabel htmlFor={`${widget.id}-visualization`}>
                 {t("dashboards.editor.chartType")}
               </FieldLabel>
               <Select
                 disabled={disabled}
-                onValueChange={(value) =>
-                  updateMetricWidget(
+                onValueChange={(value) => {
+                  if (widget.metric) {
+                    updateMetricWidget(
+                      widget,
+                      {
+                        visualization: value as NonNullable<typeof widget.metric>["visualization"],
+                      },
+                      onWidgetChange,
+                    );
+                    return;
+                  }
+                  updateRichMetricWidget(
                     widget,
                     {
-                      visualization: value as NonNullable<typeof widget.metric>["visualization"],
+                      visualization: value as NonNullable<
+                        typeof widget.richMetric
+                      >["visualization"],
                     },
                     onWidgetChange,
-                  )
-                }
-                value={widget.metric.visualization}
+                  );
+                }}
+                value={widget.metric?.visualization ?? widget.richMetric?.visualization ?? "line"}
               >
                 <SelectTrigger id={`${widget.id}-visualization`}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="line">line</SelectItem>
-                    <SelectItem value="area">area</SelectItem>
-                    <SelectItem value="bar">bar</SelectItem>
-                    <SelectItem value="pie">pie</SelectItem>
-                    <SelectItem value="stat">stat</SelectItem>
-                    <SelectItem value="table">table</SelectItem>
+                    {metricChartTypes.map((chartType) => (
+                      <SelectItem key={chartType} value={chartType}>
+                        {chartType}
+                      </SelectItem>
+                    ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>
@@ -1378,7 +1985,7 @@ function WidgetEditorGroups({
         </FieldGroup>
       </EditorGroup>
       <EditorGroup title={t("dashboards.editor.thresholds")}>
-        {widget.metric ? (
+        {widget.metric || widget.richMetric ? (
           <WidgetSummary widget={widget} />
         ) : (
           <p className="text-sm text-muted-foreground">
@@ -1414,6 +2021,361 @@ function updateMetricWidget(
       ...patch,
     },
   });
+}
+
+function updateRichMetricWidget(
+  widget: DashboardWidgetInput,
+  patch: Partial<NonNullable<DashboardWidgetInput["richMetric"]>>,
+  onWidgetChange: (widget: DashboardWidgetInput) => void,
+) {
+  if (!widget.richMetric) {
+    return;
+  }
+  onWidgetChange({
+    ...widget,
+    richMetric: {
+      ...widget.richMetric,
+      ...patch,
+    },
+  });
+}
+
+function MetricNameCombobox({
+  disabled,
+  id,
+  onChange,
+  range,
+  telemetryClient,
+  value,
+}: {
+  disabled: boolean;
+  id: string;
+  onChange: (value: string) => void;
+  range: { from: string; to: string };
+  telemetryClient: ReturnType<typeof useTelemetryClient>;
+  value: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(value);
+  const namesInput: MetricNameSearchInput = {
+    query: query || null,
+    from: range.from,
+    to: range.to,
+    limit: 20,
+  };
+  const namesQuery = useQuery({
+    enabled: open && !disabled,
+    queryKey: queryKeys.metricNames(namesInput),
+    queryFn: () => telemetryClient.getMetricNames(namesInput),
+  });
+  const descriptors = namesQuery.data?.items ?? [];
+  const hasTypedValue =
+    query.trim().length > 0 && descriptors.every((descriptor) => descriptor.name !== query.trim());
+
+  useEffect(() => {
+    setQuery(value);
+  }, [value]);
+
+  return (
+    <Popover onOpenChange={setOpen} open={open}>
+      <PopoverTrigger asChild>
+        <Button
+          aria-expanded={open}
+          className="w-full justify-between"
+          disabled={disabled}
+          id={id}
+          role="combobox"
+          type="button"
+          variant="outline"
+        >
+          <span className="truncate font-mono text-xs">
+            {value || t("dashboards.metric.select")}
+          </span>
+          <ChevronsUpDown data-icon="inline-end" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[min(32rem,calc(100vw-2rem))] p-0">
+        <Command shouldFilter={false}>
+          <CommandInput
+            onValueChange={setQuery}
+            placeholder={t("dashboards.metric.search")}
+            value={query}
+          />
+          <CommandList>
+            <CommandEmpty>
+              {namesQuery.isLoading ? t("state.loading") : t("dashboards.metric.noMatches")}
+            </CommandEmpty>
+            <CommandGroup>
+              {descriptors.map((descriptor) => (
+                <CommandItem
+                  key={descriptor.name}
+                  onSelect={() => {
+                    onChange(descriptor.name);
+                    setOpen(false);
+                  }}
+                  value={descriptor.name}
+                >
+                  <Check
+                    className={descriptor.name === value ? "opacity-100" : "opacity-0"}
+                    data-icon="inline-start"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-mono text-xs">{descriptor.name}</span>
+                    <span className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span>{descriptor.kind}</span>
+                      {descriptor.unit ? <span>{descriptor.unit}</span> : null}
+                      <span>{formatDateTime(descriptor.lastSeenAt)}</span>
+                    </span>
+                  </span>
+                </CommandItem>
+              ))}
+              {hasTypedValue ? (
+                <CommandItem
+                  onSelect={() => {
+                    onChange(query.trim());
+                    setOpen(false);
+                  }}
+                  value={query.trim()}
+                >
+                  <Plus data-icon="inline-start" />
+                  <span className="truncate font-mono text-xs">{query.trim()}</span>
+                </CommandItem>
+              ) : null}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function RichMetricWidgetEditor({
+  disabled,
+  onWidgetChange,
+  range,
+  telemetryClient,
+  widget,
+}: {
+  disabled: boolean;
+  onWidgetChange: (widget: DashboardWidgetInput) => void;
+  range: { from: string; to: string };
+  telemetryClient: ReturnType<typeof useTelemetryClient>;
+  widget: DashboardWidgetInput;
+}) {
+  if (!widget.richMetric) {
+    return null;
+  }
+  const query = widget.richMetric.query;
+  const updateQuery = (patch: Partial<DashboardMetricQueryInput>) =>
+    updateRichMetricWidget(widget, { query: { ...query, ...patch } }, onWidgetChange);
+  return (
+    <FieldGroup>
+      <Field data-disabled={disabled}>
+        <FieldLabel htmlFor={`${widget.id}-rich-interval`}>
+          {t("dashboards.editor.interval")}
+        </FieldLabel>
+        <Input
+          disabled={disabled}
+          id={`${widget.id}-rich-interval`}
+          onChange={(event) => updateQuery({ interval: stringOrNull(event.target.value) })}
+          value={query.interval ?? ""}
+        />
+      </Field>
+      <div className="grid gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-medium">Queries</h3>
+          <Button
+            disabled={disabled}
+            onClick={() => updateQuery(addRichMetricQueryRow(query))}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <Plus data-icon="inline-start" />
+            Add query
+          </Button>
+        </div>
+        {(query.queries ?? []).map((row, index) => (
+          <RichMetricQueryRowEditor
+            disabled={disabled}
+            key={row.id}
+            onChange={(nextRow) =>
+              updateQuery({
+                queries: query.queries.map((candidate) =>
+                  candidate.id === row.id ? nextRow : candidate,
+                ),
+              })
+            }
+            onRemove={() =>
+              updateQuery({
+                queries: (query.queries ?? []).filter((candidate) => candidate.id !== row.id),
+                displaySeries: (query.displaySeries ?? []).filter(
+                  (series) => series.sourceId !== row.id,
+                ),
+              })
+            }
+            range={range}
+            row={row}
+            rowNumber={index + 1}
+            telemetryClient={telemetryClient}
+          />
+        ))}
+      </div>
+      <div className="grid gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-medium">Formulas</h3>
+          <Button
+            disabled={disabled}
+            onClick={() =>
+              updateQuery({ formulas: addRichMetricFormula(query.formulas ?? [], query.queries) })
+            }
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <Plus data-icon="inline-start" />
+            Add formula
+          </Button>
+        </div>
+        {(query.formulas ?? []).map((formula) => (
+          <div className="grid gap-2 border p-2" key={formula.id}>
+            <TextWidgetField
+              disabled={disabled}
+              id={`${widget.id}-${formula.id}-label`}
+              label="Label"
+              onChange={(value) =>
+                updateQuery({
+                  formulas: (query.formulas ?? []).map((candidate) =>
+                    candidate.id === formula.id
+                      ? { ...candidate, label: value ?? candidate.label }
+                      : candidate,
+                  ),
+                })
+              }
+              placeholder="Label"
+              value={formula.label}
+            />
+            <SummaryRow label="Formula">{describeFormulaExpression(formula.expression)}</SummaryRow>
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-2">
+        <h3 className="text-sm font-medium">Display series</h3>
+        {(query.displaySeries ?? []).map((series) => (
+          <div className="flex items-center gap-2 text-sm" key={series.id}>
+            <Checkbox
+              aria-label={series.label}
+              checked={series.visible ?? true}
+              disabled={disabled}
+              onCheckedChange={(checked) =>
+                updateQuery({
+                  displaySeries: (query.displaySeries ?? []).map((candidate) =>
+                    candidate.id === series.id
+                      ? { ...candidate, visible: checked === true }
+                      : candidate,
+                  ),
+                })
+              }
+            />
+            <span>{series.label}</span>
+          </div>
+        ))}
+      </div>
+    </FieldGroup>
+  );
+}
+
+function RichMetricQueryRowEditor({
+  disabled,
+  onChange,
+  onRemove,
+  range,
+  row,
+  rowNumber,
+  telemetryClient,
+}: {
+  disabled: boolean;
+  onChange: (row: DashboardMetricQueryRowInput) => void;
+  onRemove: () => void;
+  range: { from: string; to: string };
+  row: DashboardMetricQueryRowInput;
+  rowNumber: number;
+  telemetryClient: ReturnType<typeof useTelemetryClient>;
+}) {
+  return (
+    <div className="grid gap-2 border p-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-medium text-muted-foreground">Query {rowNumber}</div>
+        <Button
+          aria-label={t("dashboards.editor.removeQuery")}
+          disabled={disabled}
+          onClick={onRemove}
+          size="icon-xs"
+          type="button"
+          variant="ghost"
+        >
+          <Trash2 />
+        </Button>
+      </div>
+      <TextWidgetField
+        disabled={disabled}
+        id={`${row.id}-label`}
+        label="Label"
+        onChange={(value) => onChange({ ...row, label: value ?? row.label })}
+        placeholder="Label"
+        value={row.label}
+      />
+      <Field data-disabled={disabled}>
+        <FieldLabel htmlFor={`${row.id}-metric`}>{t("dashboards.editor.metricName")}</FieldLabel>
+        <MetricNameCombobox
+          disabled={disabled}
+          id={`${row.id}-metric`}
+          onChange={(value) => onChange({ ...row, metricName: value })}
+          range={range}
+          telemetryClient={telemetryClient}
+          value={row.metricName}
+        />
+      </Field>
+      <Field data-disabled={disabled}>
+        <FieldLabel htmlFor={`${row.id}-aggregation`}>
+          {t("dashboards.editor.aggregation")}
+        </FieldLabel>
+        <Select
+          disabled={disabled}
+          onValueChange={(value) => onChange({ ...row, aggregation: value as MetricAggregation })}
+          value={row.aggregation}
+        >
+          <SelectTrigger id={`${row.id}-aggregation`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {metricAggregations.map((aggregation) => (
+                <SelectItem key={aggregation} value={aggregation}>
+                  {aggregation}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </Field>
+      <TextWidgetField
+        disabled={disabled}
+        id={`${row.id}-group-by`}
+        label={t("dashboards.editor.groupBy")}
+        onChange={(value) => onChange({ ...row, groupBy: csvToList(value) })}
+        placeholder="service.name, http.route"
+        value={(row.groupBy ?? []).join(", ")}
+      />
+      <NumberWidgetField
+        disabled={disabled}
+        id={`${row.id}-max-series`}
+        label="Max series"
+        onChange={(value) => onChange({ ...row, maxSeries: value })}
+        value={row.maxSeries}
+      />
+    </div>
+  );
 }
 
 function LogWidgetEditor({
@@ -1779,6 +2741,11 @@ function WidgetSummary({
       {widget.metric ? (
         <SummaryRow label={t("dashboards.metric.label")}>{widget.metric.metricName}</SummaryRow>
       ) : null}
+      {widget.richMetric ? (
+        <SummaryRow label="Rich metric">
+          {widget.richMetric.query.queries.map((query) => query.label).join(", ")}
+        </SummaryRow>
+      ) : null}
       {widget.logs ? (
         <SummaryRow label={t("logs.title")}>
           {widget.logs.search ?? widget.logs.service ?? t("dashboards.table")}
@@ -1807,18 +2774,26 @@ function SummaryRow({ children, label }: { children: ReactNode; label: string })
   );
 }
 
-function EmptyDashboardCanvas({ onCreate }: { onCreate: () => void }) {
+function EmptyDashboardCanvas({
+  actionLabel,
+  description,
+  onCreate,
+  title,
+}: {
+  actionLabel: string;
+  description: string;
+  onCreate: () => void;
+  title: string;
+}) {
   return (
     <div className="flex min-h-80 flex-col items-center justify-center gap-3 p-8 text-center">
       <div>
-        <h2 className="font-semibold">{t("dashboards.empty.noSelection.title")}</h2>
-        <p className="max-w-md text-sm text-muted-foreground">
-          {t("dashboards.empty.noSelection.description")}
-        </p>
+        <h2 className="font-semibold">{title}</h2>
+        <p className="max-w-md text-sm text-muted-foreground">{description}</p>
       </div>
       <Button onClick={onCreate} type="button">
         <Plus data-icon="inline-start" />
-        {t("dashboards.create")}
+        {actionLabel}
       </Button>
     </div>
   );
@@ -1848,6 +2823,7 @@ function duplicateDashboardDraft(dashboard: Dashboard | null): SaveDashboardInpu
       kind: widget.kind,
       layout: { ...widget.layout },
       metric: widget.metric ? { ...widget.metric } : null,
+      richMetric: widget.richMetric ? { ...widget.richMetric } : null,
       logs: widget.logs ? { ...widget.logs } : null,
       traces: widget.traces ? { ...widget.traces } : null,
       liveTraces: widget.liveTraces ? { ...widget.liveTraces } : null,
@@ -1855,27 +2831,37 @@ function duplicateDashboardDraft(dashboard: Dashboard | null): SaveDashboardInpu
   };
 }
 
+function editableDashboardDraft(dashboard: Dashboard | null): SaveDashboardInput {
+  if (!dashboard || dashboard.visibility === "builtin") {
+    return duplicateDashboardDraft(dashboard);
+  }
+  return {
+    id: dashboard.id,
+    version: dashboard.version,
+    name: dashboard.name,
+    description: dashboard.description ?? null,
+    tags: [...dashboard.tags],
+    visibility: dashboard.visibility,
+    defaultTimeWindow: dashboard.defaultTimeWindow,
+    widgets: dashboard.widgets.map(toWidgetInput),
+  };
+}
+
 function appendWidget(draft: SaveDashboardInput, kind: DashboardWidgetKind): SaveDashboardInput {
   const index = draft.widgets.length + 1;
+  const layout = defaultDashboardWidgetLayout(kind, index);
   const base = {
     id: `widget-${index}`,
     title: widgetTitle(kind),
     kind,
-    layout: {
-      x: ((index - 1) * 6) % 12,
-      y: Math.floor((index - 1) / 2) * 4,
-      w: 6,
-      h: 4,
-      minW: 3,
-      minH: 2,
-    },
+    layout,
   };
   const widget =
     kind === "metric_timeseries" || kind === "metric_stat" || kind === "metric_table"
       ? ({
           ...base,
           metric: {
-            metricName: "gen_ai.client.token.usage",
+            metricName: EMPTY_METRIC_NAME,
             aggregation: "sum",
             groupBy: [],
             filters: [],
@@ -1888,55 +2874,66 @@ function appendWidget(draft: SaveDashboardInput, kind: DashboardWidgetKind): Sav
             thresholds: [],
           },
         } satisfies DashboardWidgetInput)
-      : kind === "log_table"
+      : kind === "metric_rich"
         ? ({
             ...base,
-            logs: {
-              search: null,
-              service: null,
-              severity: null,
-              traceId: null,
-              spanId: null,
-              attributes: [],
-              sort: "timestamp_desc",
-              limit: 50,
-              columns: ["timestamp", "severity", "service", "trace_span", "body"],
+            richMetric: {
+              query: defaultRichMetricQuery(),
+              visualization: "line",
+              legend: true,
+              maxSeries: 20,
+              thresholds: [],
             },
           } satisfies DashboardWidgetInput)
-        : kind === "trace_table"
+        : kind === "log_table"
           ? ({
               ...base,
-              traces: {
-                query: null,
+              logs: {
+                search: null,
                 service: null,
-                operationName: null,
-                spanName: null,
-                status: null,
-                minDurationMs: null,
-                maxDurationMs: null,
+                severity: null,
+                traceId: null,
+                spanId: null,
                 attributes: [],
-                sort: "startedAt_desc",
+                sort: "timestamp_desc",
                 limit: 50,
-                columns: ["started_at", "status", "service", "operation", "duration"],
+                columns: ["timestamp", "severity", "service", "trace_span", "body"],
               },
             } satisfies DashboardWidgetInput)
-          : ({
-              ...base,
-              liveTraces: {
-                query: null,
-                service: null,
-                operationName: null,
-                spanName: null,
-                status: null,
-                minDurationMs: null,
-                maxDurationMs: null,
-                attributes: [],
-                limit: 50,
-              },
-            } satisfies DashboardWidgetInput);
+          : kind === "trace_table"
+            ? ({
+                ...base,
+                traces: {
+                  query: null,
+                  service: null,
+                  operationName: null,
+                  spanName: null,
+                  status: null,
+                  minDurationMs: null,
+                  maxDurationMs: null,
+                  attributes: [],
+                  sort: "startedAt_desc",
+                  limit: 50,
+                  columns: ["started_at", "status", "service", "operation", "duration"],
+                },
+              } satisfies DashboardWidgetInput)
+            : ({
+                ...base,
+                liveTraces: {
+                  query: null,
+                  service: null,
+                  operationName: null,
+                  spanName: null,
+                  status: null,
+                  minDurationMs: null,
+                  maxDurationMs: null,
+                  attributes: [],
+                  limit: 50,
+                },
+              } satisfies DashboardWidgetInput);
   return {
     ...draft,
-    widgets: [...draft.widgets, widget],
+    widgets: compactDashboardLayout([...draft.widgets, widget]),
   };
 }
 
@@ -1946,6 +2943,8 @@ function widgetTitle(kind: DashboardWidgetKind) {
       return t("dashboards.widget.metricStat");
     case "metric_table":
       return t("dashboards.widget.metricTable");
+    case "metric_rich":
+      return "Rich metric";
     case "log_table":
       return t("dashboards.widget.logTable");
     case "trace_table":
@@ -1972,10 +2971,136 @@ function toWidgetInput(widget: DashboardWidget | DashboardWidgetInput): Dashboar
       minH: widget.layout.minH ?? null,
     },
     metric: widget.metric ? { ...widget.metric } : null,
+    richMetric: widget.richMetric ? { ...widget.richMetric } : null,
     logs: widget.logs ? { ...widget.logs } : null,
     traces: widget.traces ? { ...widget.traces } : null,
     liveTraces: widget.liveTraces ? { ...widget.liveTraces } : null,
   };
+}
+
+function prepareDashboardSaveInput(draft: SaveDashboardInput): SaveDashboardInput {
+  return {
+    ...draft,
+    widgets: sortDashboardWidgetsForSave(compactDashboardLayout(draft.widgets)),
+  };
+}
+
+function duplicateWidgetInDraft(draft: SaveDashboardInput, widgetId: string): SaveDashboardInput {
+  const source = draft.widgets.find((widget) => widget.id === widgetId);
+  if (!source) {
+    return draft;
+  }
+  const clone: DashboardWidgetInput = {
+    ...toWidgetInput(source),
+    id: `${source.id}-copy-${Date.now().toString(36)}`,
+    title: `${source.title} ${t("dashboards.copySuffix")}`,
+    layout: {
+      ...source.layout,
+      y: source.layout.y + source.layout.h,
+    },
+  };
+  return { ...draft, widgets: compactDashboardLayout([...draft.widgets, clone], clone.id) };
+}
+
+function removeWidgetFromDraft(draft: SaveDashboardInput, widgetId: string): SaveDashboardInput {
+  return {
+    ...draft,
+    widgets: compactDashboardLayout(draft.widgets.filter((widget) => widget.id !== widgetId)),
+  };
+}
+
+function defaultRichMetricQuery(): DashboardMetricQueryInput {
+  const query = defaultRichMetricQueryRow(1);
+  return {
+    timeWindow: "PT1H",
+    interval: "PT1M",
+    queries: [query],
+    formulas: [],
+    displaySeries: [
+      { id: "display-query-a", label: query.label, sourceId: query.id, visible: true },
+    ],
+  };
+}
+
+function defaultRichMetricQueryRow(index: number): DashboardMetricQueryRowInput {
+  const suffix = String.fromCharCode(96 + index);
+  return {
+    id: `query-${suffix}`,
+    label: `Query ${suffix.toUpperCase()}`,
+    metricName: EMPTY_METRIC_NAME,
+    aggregation: "sum",
+    groupBy: [],
+    filters: [],
+    maxSeries: 20,
+  };
+}
+
+function addRichMetricQueryRow(
+  query: DashboardMetricQueryInput,
+): Partial<DashboardMetricQueryInput> {
+  const row = defaultRichMetricQueryRow((query.queries ?? []).length + 1);
+  return {
+    queries: [...(query.queries ?? []), row],
+    displaySeries: [
+      ...(query.displaySeries ?? []),
+      {
+        id: `display-${row.id}`,
+        label: row.label,
+        sourceId: row.id,
+        visible: true,
+      },
+    ],
+  };
+}
+
+function addRichMetricFormula(
+  formulas: DashboardMetricFormulaInput[],
+  queries: DashboardMetricQueryRowInput[],
+) {
+  const left = queries[0]?.id ?? "query-a";
+  const right = queries[1]?.id ?? left;
+  const formula: DashboardMetricFormulaInput = {
+    id: `formula-${formulas.length + 1}`,
+    label: `Formula ${formulas.length + 1}`,
+    expression: {
+      kind: "function",
+      function: "ratio",
+      arguments: [
+        { kind: "ref", refId: left },
+        { kind: "ref", refId: right },
+      ],
+    },
+  };
+  return [...formulas, formula];
+}
+
+function describeFormulaExpression(expression: DashboardMetricFormulaInput["expression"]): string {
+  if (expression.kind === "ref") {
+    return expression.refId ?? t("value.none");
+  }
+  if (expression.kind === "number") {
+    return String(expression.value ?? 0);
+  }
+  if (expression.kind === "function") {
+    return `${expression.function ?? "function"}(${(expression.arguments ?? [])
+      .map(describeFormulaExpression)
+      .join(", ")})`;
+  }
+  if (expression.kind === "binary") {
+    return `${describeFormulaExpression(expression.left ?? { kind: "number", value: 0 })} ${
+      expression.operator ?? "add"
+    } ${describeFormulaExpression(expression.right ?? { kind: "number", value: 0 })}`;
+  }
+  return expression.kind;
+}
+
+function csvToList(value: string | null) {
+  return (
+    value
+      ?.split(",")
+      .map((item) => item.trim())
+      .filter(Boolean) ?? []
+  );
 }
 
 function updateParam(
@@ -1991,6 +3116,33 @@ function updateParam(
     }
     return params;
   });
+}
+
+function defaultDashboardRange() {
+  const to = new Date();
+  const from = new Date(to.getTime() - 60 * 60 * 1000);
+  return { from: from.toISOString(), to: to.toISOString() };
+}
+
+function parseDateValue(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function formatTimeInput(date: Date | undefined) {
+  if (!date) {
+    return "00:00";
+  }
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+function withTime(date: Date, value: string) {
+  const [hours = "0", minutes = "0"] = value.split(":");
+  const next = new Date(date);
+  next.setHours(Number(hours), Number(minutes), 0, 0);
+  return next;
 }
 
 function stringOrNull(value: string | null) {

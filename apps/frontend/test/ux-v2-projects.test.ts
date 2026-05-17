@@ -1,17 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import type { Organization, Project, Viewer } from "@cloudgrid/ui-contracts";
 import { readFileSync } from "node:fs";
+import type { Organization, Project, Viewer } from "@cloudgrid/ui-contracts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { TooltipProvider } from "../src/components/ui/tooltip";
 import {
   buildAdminSettingsModel,
   buildProjectPickerModel,
   buildProjectSettingsSections,
   canMutateOrganizationMember,
 } from "../src/features/projects/project-view-model";
-import { TooltipProvider } from "../src/components/ui/tooltip";
 import { AppSessionProvider } from "../src/providers/app-session-provider";
 import { ThemeProvider } from "../src/providers/theme-provider";
 import {
@@ -106,6 +106,79 @@ function controlPlaneMarkup(path: string) {
     updatedByUserId: "user-1",
     version: 1,
   });
+  queryClient.setQueryData(["ProjectAiSettings", "project-checkout"], {
+    projectId: "project-checkout",
+    enabled: true,
+    defaultProviderProfileId: null,
+    defaultJudgeProfileId: null,
+    defaultOptimizerProfileId: null,
+    defaultEmbeddingProfileId: null,
+    providerProfiles: [
+      {
+        id: "profile-1",
+        projectId: "project-checkout",
+        label: "Default judge",
+        providerKind: "openai",
+        baseUrl: null,
+        credentialRef: "secret://openai",
+        models: ["gpt-5-mini"],
+        timeoutMs: 30000,
+        maxConcurrency: null,
+        disabledAt: null,
+      },
+    ],
+    modelAliases: [
+      {
+        id: "alias-1",
+        name: "judge",
+        providerProfileId: "profile-1",
+        model: "gpt-5-mini",
+        purpose: "judge",
+        parameters: {},
+      },
+    ],
+    onlinePolicies: [
+      {
+        id: "policy-1",
+        enabled: true,
+        name: "Checkout quality",
+        target: { service: "checkout" },
+        scorerIds: ["scorer-1"],
+        sampleRate: 0.1,
+        maxDailyRuns: 100,
+        annotationRules: [],
+        updatedAt: "2026-05-15T08:00:00.000Z",
+        updatedByUserId: "user-1",
+      },
+    ],
+    budget: {
+      dailyUsd: 5,
+      perRunUsd: 0.1,
+      deterministicOnly: false,
+      spentTodayUsd: 1.25,
+    },
+    sampling: {
+      defaultOnlineSampleRate: 0.1,
+      maxOnlineSampleRate: 1,
+      maxConcurrentExperimentItems: 4,
+      maxConcurrentOptimizationCandidates: 2,
+    },
+    datasetDefaults: {
+      splitAllocation: { train: 0.8, validation: 0.2 },
+      smallDatasetReviewedThreshold: 25,
+      requireReviewForRegression: true,
+    },
+    effective: {
+      warnings: [],
+      deterministicOnly: false,
+      missingProviderProfiles: [],
+      disabledProviderProfiles: [],
+      budgetExhausted: false,
+    },
+    version: 1,
+    updatedAt: "2026-05-15T08:00:00.000Z",
+    updatedByUserId: "user-1",
+  });
   queryClient.setQueryData(
     ["ProjectMembers", "project-checkout"],
     [
@@ -182,6 +255,8 @@ function controlPlaneMarkup(path: string) {
       updatedByUserId: "user-1",
       version: 1,
     }),
+    getProjectAiSettings: async () =>
+      queryClient.getQueryData(["ProjectAiSettings", "project-checkout"]),
     getViewer: async () => ({ ...viewer, selectedProject: checkoutProject }),
     removeProjectMember: async () => true,
     revokeIngestCredential: async () => true,
@@ -205,6 +280,11 @@ function controlPlaneMarkup(path: string) {
       updatedAt: "2026-05-15T08:00:00.000Z",
       updatedByUserId: "user-1",
       version: 2,
+    }),
+    updateProjectAiSettings: async (input) => ({
+      ...queryClient.getQueryData(["ProjectAiSettings", input.projectId]),
+      enabled: input.enabled,
+      version: input.expectedVersion + 1,
     }),
   };
 
@@ -278,7 +358,7 @@ describe("UX v2 project models", () => {
   });
 
   test("exposes dedicated project settings sections under the project settings route", () => {
-    expect(buildProjectSettingsSections("project-checkout")).toEqual([
+    expect(buildProjectSettingsSections("project-checkout", { aiEvalEnabled: true })).toEqual([
       {
         id: "general",
         href: "/projects/project-checkout/settings",
@@ -293,6 +373,11 @@ describe("UX v2 project models", () => {
         id: "retention",
         href: "/projects/project-checkout/settings/retention",
         labelKey: "projects.settings.retention",
+      },
+      {
+        id: "ai-eval",
+        href: "/projects/project-checkout/settings/ai-eval",
+        labelKey: "projects.settings.aiEval",
       },
       {
         id: "members",
@@ -429,6 +514,18 @@ describe("UX v2 project models", () => {
     expect(markup).not.toContain("Retention policy could not be saved.");
   });
 
+  test("renders project AI Eval settings from the GraphQL project settings contract", () => {
+    const markup = controlPlaneMarkup("/projects/project-checkout/settings/ai-eval");
+
+    expect(markup).toContain(">AI Eval<");
+    expect(markup).toContain("Enable AI Eval for this project");
+    expect(markup).toContain("Provider profiles");
+    expect(markup).toContain("$1.25 / $5.00");
+    expect(markup).toContain("Save AI Eval settings");
+    expect(markup).toContain("Open AI Eval workspace");
+    expect(markup).not.toContain("AI Eval settings could not be loaded.");
+  });
+
   test("disables retention fields that do not apply to the selected retention mode", () => {
     const markup = controlPlaneMarkup("/projects/project-checkout/settings/retention");
 
@@ -475,12 +572,12 @@ describe("UX v2 project models", () => {
       `export CLOUDGRID_PROJECT_API_KEY='cg_live_created'
 export OTEL_EXPORTER_OTLP_ENDPOINT='http://localhost:4318'`,
     );
-    expect(buildProjectSetupSnippet("http://localhost:4318", "cg_live_created").split("\n")).toEqual(
-      [
-        "export CLOUDGRID_PROJECT_API_KEY='cg_live_created'",
-        "export OTEL_EXPORTER_OTLP_ENDPOINT='http://localhost:4318'",
-      ],
-    );
+    expect(
+      buildProjectSetupSnippet("http://localhost:4318", "cg_live_created").split("\n"),
+    ).toEqual([
+      "export CLOUDGRID_PROJECT_API_KEY='cg_live_created'",
+      "export OTEL_EXPORTER_OTLP_ENDPOINT='http://localhost:4318'",
+    ]);
     expect(buildProjectSetupSnippet("http://localhost:4318", null)).toBe(
       "export OTEL_EXPORTER_OTLP_ENDPOINT='http://localhost:4318'",
     );

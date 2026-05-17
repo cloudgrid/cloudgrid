@@ -3,126 +3,320 @@ import Layout from "../../layouts/Layout.astro";
 import Section from "../../components/Section.astro";
 import PageHeader from "../../components/PageHeader.astro";
 import Button from "../../components/Button.astro";
-import CheckList from "../../components/CheckList.astro";
+import PerimeterDiagram from "../../components/visuals/PerimeterDiagram.astro";
+import RiskRadar from "../../components/visuals/RiskRadar.astro";
 
-const pillars = [
+// Key questions decision makers ask. Each one is a card with: who asks it,
+// the question in plain words, and CloudGrid's concrete answer.
+const concerns = [
   {
-    title: "Data ownership, by default",
-    body: "Self-hosted. No outbound telemetry. MIT-licensed. No 'enterprise edition' that flips on hidden features in the same binary.",
-    points: [
-      "Runs in your VPC, your Kubernetes, your laptop — your call.",
-      "OTLP receivers do not call home.",
-      "License is MIT; no commercial features are gated behind a paid SKU.",
-    ],
+    who: "Security & Audit",
+    accent: "var(--color-brand)",
+    icon: "M12 2 4 6v6c0 5 3.4 9.3 8 10 4.6-.7 8-5 8-10V6l-8-4Z",
+    q: "Where does telemetry physically live?",
+    a: "On disks you operate. CloudGrid is self-hosted; SurrealDB (the v1 storage adapter) runs inside your VPC, on-prem, or in your regulated cloud. No CloudGrid-operated SaaS receives your spans, logs, or metrics.",
+    proof: "Self-hosted only. Storage adapter is swappable; the database lives where you run it.",
   },
   {
-    title: "Deployment modes",
-    body: "Single binary for local development. Compose for a small team. Independent scale for production. One config flag flips local-mode auth into SSO mode.",
-    points: [
-      "CLOUDGRID_DEPLOYMENT_MODE=local | deployed.",
-      "CLOUDGRID_AUTH_MODE=local | sso.",
-      "Independently scale otlp-collector, BFF, storage-read.",
-    ],
+    who: "Privacy & DPO",
+    accent: "var(--color-violet)",
+    icon: "M12 2c4 0 7 3 7 7v3l2 4-2 1v3a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-3l-2-1 2-4V9c0-4 3-7 7-7Z",
+    q: "What about PII inside spans, logs, or AI prompts?",
+    a: "Redaction is owned by the OTel pipeline you control. CloudGrid stores what you send. For AI evaluation specifically: prompt and completion content stays on the originating span event and is shown only when content capture was explicitly enabled by the emitter — it is never copied into a separate AI database.",
+    proof: "Content-capture flag controls AI evaluation visibility. Projections are pointers, not duplicates.",
   },
   {
-    title: "SSO and sessions",
-    body: "Deployed mode supports GitHub, Google, and Microsoft Entra ID. Sessions are BFF-managed HttpOnly cookies — no provider tokens reach the browser.",
-    points: [
-      "Three first-class providers in the v1 auth adapter.",
-      "No provider tokens in localStorage or JavaScript.",
-      "Provider switching requires no schema migrations.",
-    ],
+    who: "Legal & Procurement",
+    accent: "var(--color-emerald)",
+    icon: "M3 7h18v12H3zM3 7l9-4 9 4M8 12h8M8 16h5",
+    q: "What is the license, and what are the IP & sub-processor risks?",
+    a: "MIT. Commercial use is permitted without negotiation. There is no open-core split, no 'community edition' you'll have to migrate off, no CLA, no per-seat license. CloudGrid has zero sub-processors that touch your telemetry — because there is no CloudGrid SaaS.",
+    proof: "MIT. No CLA. No sub-processors. Source is reviewable end-to-end.",
   },
   {
-    title: "Project isolation",
-    body: "Project is the strict telemetry boundary. Users only see their company's projects. Isolation is enforced at API, message, and persistence layers — not just in the UI.",
-    points: [
-      "OTLP ingest carries a project routing token.",
-      "Storage-read enforces project authorization before query execution.",
-      "Live subscriptions respect the same authorization as queries.",
-    ],
+    who: "Identity & Access",
+    accent: "var(--color-cyan)",
+    icon: "M12 7a4 4 0 1 1 0 8 4 4 0 0 1 0-8ZM4 21a8 8 0 0 1 16 0",
+    q: "How do users sign in and how are sessions protected?",
+    a: "Deployed mode uses GitHub, Google, or Microsoft Entra ID through a BFF-managed session: HttpOnly cookies, server-side OAuth exchange, no provider access tokens in browser storage. Project membership is enforced server-side at every query and live subscription.",
+    proof: "OIDC/OAuth. BFF-only sessions. Project membership enforced at read time.",
   },
   {
-    title: "Security posture",
-    body: "No public service touches the database. Adapter packages keep DB drivers off the public attack surface. Specs are reviewable artifacts.",
-    points: [
-      "Public BFF cannot import SurrealDB clients or storage adapters.",
-      "Every message bridge subject is documented in the AsyncAPI spec.",
-      "Structured JSON logs with trace and span correlation, one per line.",
-    ],
+    who: "Risk & Compliance",
+    accent: "var(--color-amber)",
+    icon: "M12 2 2 22h20L12 2Zm0 6v6m0 3v.01",
+    q: "What is the blast radius if something goes wrong?",
+    a: "Bounded by a request/reply contract. No public service touches the database. The TypeScript BFF owns transport only; storage services own query semantics and enforce authorization. A bad query cannot exhaust a SQL connection pool because the public surface doesn't have one.",
+    proof: "BFF cannot import DB clients or storage adapters. Service boundaries are structural.",
   },
   {
-    title: "License and governance",
-    body: "MIT-licensed. Public specs that are the source of truth. Contribution path is the same path the maintainers use.",
-    points: [
-      "MIT — commercial use is fine without negotiation.",
-      "/specs is the authoritative roadmap.",
-      "No CLA gate, no rebranded 'community edition'.",
-    ],
+    who: "Finance & FinOps",
+    accent: "var(--color-rose)",
+    icon: "M4 7h16M4 12h10M4 17h16",
+    q: "Will observability costs grow with traffic the way our SaaS bills do?",
+    a: "Telemetry-volume pricing is impossible because CloudGrid charges nothing. You pay for compute and storage in your cloud, on hardware you control. Costs scale with infrastructure, not with the number of spans your most-observed services emit.",
+    proof: "Self-priced. Volume scaling is a sizing question, not a billing event.",
   },
+];
+
+// Compliance / control posture rows. Honest "supported / your responsibility / on the roadmap".
+const posture = [
+  { control: "Data residency", cg: "supported", note: "You choose the region." },
+  { control: "Self-hosting", cg: "supported", note: "Local, Compose, Kubernetes." },
+  { control: "SSO (OIDC/OAuth)", cg: "supported", note: "GitHub, Google, Microsoft Entra ID." },
+  { control: "RBAC — company + project roles", cg: "supported", note: "admin / user · viewer / editor / admin." },
+  { control: "Project isolation", cg: "supported", note: "API, message, persistence layers." },
+  { control: "Structured logs (JSON + trace context)", cg: "supported", note: "One JSON object per line, Kubernetes-ready." },
+  { control: "Read authorization on every query and subscription", cg: "supported", note: "Live subs respect the same auth as queries." },
+  { control: "Audit log of admin actions", cg: "your-responsibility", note: "Ship it via OTLP into the same CloudGrid." },
+  { control: "Retention policy per project", cg: "supported", note: "Configurable in control-plane." },
+  { control: "PII redaction", cg: "your-responsibility", note: "Done in your OTel pipeline before ingest." },
+  { control: "Encryption at rest", cg: "your-responsibility", note: "SurrealDB + your filesystem / volume encryption." },
+  { control: "Encryption in transit", cg: "your-responsibility", note: "TLS at the BFF / collector — your terminator of choice." },
+  { control: "Backup / DR", cg: "your-responsibility", note: "SurrealDB backups, your DR posture." },
+  { control: "Alerting routing to PagerDuty / Opsgenie / Slack", cg: "maturing", note: "Foundations shipped; integrations evolving." },
+  { control: "Long-term cold storage offload", cg: "roadmap", note: "Future storage adapter." },
+];
+
+const postureBadge: Record<string, { label: string; color: string }> = {
+  supported: { label: "supported", color: "var(--color-emerald)" },
+  "your-responsibility": { label: "your responsibility", color: "var(--color-amber)" },
+  maturing: { label: "maturing", color: "var(--color-cyan)" },
+  roadmap: { label: "on the roadmap", color: "var(--color-violet)" },
+};
+
+// Quick-answer brief — the procurement reviewer one-pager.
+const brief = [
+  { k: "License", v: "MIT" },
+  { k: "Self-hostable", v: "Yes — only deployment model" },
+  { k: "Sub-processors that see telemetry", v: "Zero" },
+  { k: "Telemetry egress from CloudGrid", v: "None (no phone-home)" },
+  { k: "Auth (deployed)", v: "GitHub · Google · Microsoft Entra ID via OIDC/OAuth" },
+  { k: "Session model", v: "BFF-managed HttpOnly cookies" },
+  { k: "Data residency", v: "Wherever you deploy" },
+  { k: "Isolation primitive", v: "Project (API, message, persistence)" },
+  { k: "OTLP ingest", v: "HTTP :4318 + gRPC :4317 — traces, logs, metrics" },
+  { k: "AI evaluation", v: "Optional service; no provider credentials in CloudGrid" },
+  { k: "Backups & DR", v: "Your responsibility — SurrealDB tooling + your runbook" },
+  { k: "Cost model", v: "Self-priced compute + storage" },
 ];
 ---
 
 <Layout title="Enterprise — CloudGrid">
-  <Section size="lg">
-    <PageHeader
-      eyebrow="Enterprise"
-      accent="brand"
-      title="Built for the questions procurement actually asks."
-      description="CloudGrid is the OpenTelemetry-native platform you can deploy inside your own perimeter, point your SDKs at, and audit end-to-end. The same binary that runs on a laptop runs in production."
-    />
-    <div class="mt-7 flex flex-wrap gap-3">
-      <Button href="/enterprise/compare" variant="primary" size="md">
-        See how CloudGrid compares
-      </Button>
-      <Button href="/handbook/deployment" variant="secondary" size="md">
-        Deployment guide
-      </Button>
+  <!-- HERO -->
+  <Section size="lg" tone="grid">
+    <div class="grid lg:grid-cols-[1.1fr_1fr] gap-10 items-center">
+      <div>
+        <PageHeader
+          eyebrow="Enterprise"
+          accent="brand"
+          highlight="own"
+          title="Observability you own. End of clause."
+          description="CloudGrid is the OpenTelemetry-native platform you deploy inside your own perimeter. No SaaS receives your telemetry. No vendor sub-processor sits between your logs and your auditor. The questions procurement asks have one-line answers here."
+        />
+        <div class="reveal mt-7 flex flex-wrap gap-3" data-delay="3">
+          <Button href="#perimeter" variant="primary">See the data perimeter</Button>
+          <Button href="/enterprise/compare" variant="secondary">Compare risk vs alternatives</Button>
+        </div>
+        <div class="reveal mt-10 grid grid-cols-3 gap-6 max-w-xl" data-delay="4">
+          <div>
+            <div class="text-3xl font-semibold text-text font-mono"><span class="count-up" data-target="0" data-suffix="">0</span></div>
+            <div class="mt-1 text-xs text-text-muted uppercase tracking-wider">Sub-processors</div>
+          </div>
+          <div>
+            <div class="text-3xl font-semibold text-text font-mono"><span class="count-up" data-target="100" data-suffix="%">0%</span></div>
+            <div class="mt-1 text-xs text-text-muted uppercase tracking-wider">Source open</div>
+          </div>
+          <div>
+            <div class="text-3xl font-semibold text-text font-mono">MIT</div>
+            <div class="mt-1 text-xs text-text-muted uppercase tracking-wider">License</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="reveal-scale">
+        <RiskRadar />
+      </div>
     </div>
   </Section>
 
+  <!-- KEY QUESTIONS / ANSWERS -->
   <Section tone="recessed">
-    <div class="grid md:grid-cols-2 gap-5">
-      {pillars.map((p) => (
-        <div class="reveal rounded-xl border border-border-default bg-surface p-6">
-          <h3 class="text-base font-semibold text-text">{p.title}</h3>
-          <p class="mt-2 text-sm text-text-secondary leading-relaxed">{p.body}</p>
-          <div class="mt-4">
-            <CheckList items={p.points} />
+    <div class="max-w-3xl reveal">
+      <div class="chip bg-brand-soft text-[var(--color-brand)]">Decision lens</div>
+      <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text">
+        The six questions your reviewers will ask.
+      </h2>
+      <p class="mt-3 text-text-secondary">
+        Each is the version we hear most from enterprise procurement, security, legal, and finance.
+        Each has a one-paragraph answer and a one-line proof point.
+      </p>
+    </div>
+
+    <div class="mt-10 grid md:grid-cols-2 gap-5">
+      {concerns.map((c, i) => (
+        <div
+          class="card spotlight flex h-full flex-col p-6"
+          data-delay={(((i % 3) + 1)) as any}
+          style={`--accent: ${c.accent};`}
+        >
+          <div class="flex items-start justify-between gap-4">
+            <div
+              class="w-10 h-10 rounded-lg inline-flex items-center justify-center icon-pop"
+              style={`background: color-mix(in srgb, ${c.accent} 14%, transparent); color: ${c.accent};`}
+            >
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d={c.icon}></path>
+              </svg>
+            </div>
+            <div class="chip" style={`background: color-mix(in srgb, ${c.accent} 12%, transparent); color: ${c.accent};`}>
+              {c.who}
+            </div>
+          </div>
+          <h3 class="mt-5 text-base sm:text-lg font-semibold text-text leading-snug">
+            “{c.q}”
+          </h3>
+          <p class="mt-3 text-sm text-text-secondary leading-relaxed flex-1">{c.a}</p>
+          <div class="mt-5 pt-4 border-t border-border-subtle">
+            <div class="text-[10px] uppercase tracking-wider font-semibold text-text-muted mb-1">Proof</div>
+            <div class="text-xs text-text">{c.proof}</div>
           </div>
         </div>
       ))}
     </div>
   </Section>
 
+  <!-- DATA PERIMETER -->
+  <Section id="perimeter">
+    <div class="grid lg:grid-cols-[1fr_1.4fr] gap-10 items-start">
+      <div class="reveal-x">
+        <div class="chip bg-emerald-soft text-[var(--color-emerald)]">Data perimeter</div>
+        <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text">
+          What leaves your perimeter is what you wire to leave.
+        </h2>
+        <p class="mt-4 text-text-secondary leading-relaxed">
+          CloudGrid does not call home. It does not stream anonymized usage data to an analytics
+          backend. It does not require an internet round-trip to render a trace. Everything inside
+          the dashed boundary runs on your infrastructure. The only outbound channels are the ones
+          you configure — your SSO IdP for sign-in, and your model provider <em>only</em> if you
+          enable the AI-eval runner and route through harness.
+        </p>
+        <ul class="mt-6 space-y-2.5 text-sm">
+          <li class="flex gap-3 items-start">
+            <span class="mt-1 inline-block w-1.5 h-1.5 rounded-full bg-[color:var(--color-emerald)]"></span>
+            <span class="text-text"><strong>Allowed by default:</strong> inbound OTLP from your senders, outbound SSO callbacks to your IdP.</span>
+          </li>
+          <li class="flex gap-3 items-start">
+            <span class="mt-1 inline-block w-1.5 h-1.5 rounded-full bg-[color:var(--color-amber)]"></span>
+            <span class="text-text"><strong>Opt-in only:</strong> harness → model provider, alert routing to Slack / PagerDuty, etc.</span>
+          </li>
+          <li class="flex gap-3 items-start">
+            <span class="mt-1 inline-block w-1.5 h-1.5 rounded-full bg-[color:var(--color-rose)]"></span>
+            <span class="text-text"><strong>Never:</strong> telemetry egress to a CloudGrid-operated service. There isn't one.</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="reveal-scale">
+        <PerimeterDiagram />
+      </div>
+    </div>
+  </Section>
+
+  <!-- CONTROL POSTURE -->
+  <Section tone="recessed">
+    <div class="max-w-3xl reveal">
+      <div class="chip bg-cyan-soft text-[var(--color-cyan)]">Control posture</div>
+      <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text">
+        What's enforced, what's yours, what's coming.
+      </h2>
+      <p class="mt-3 text-text-secondary">
+        Honest map of which controls CloudGrid enforces in code, which controls live in your
+        runbook, and which are still maturing. Hand it to your security reviewer.
+      </p>
+    </div>
+
+    <div class="mt-8 reveal">
+      <div class="card overflow-hidden p-0">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-recessed border-b border-border-default">
+              <tr>
+                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-text-muted">Control</th>
+                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-text-muted w-44">Status</th>
+                <th class="text-left px-5 py-3 text-xs font-semibold uppercase tracking-wider text-text-muted">Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {posture.map((r) => {
+                const b = postureBadge[r.cg];
+                return (
+                  <tr class="border-b border-border-subtle last:border-b-0 hover:bg-surface-hover transition-colors">
+                    <td class="px-5 py-3 font-medium text-text">{r.control}</td>
+                    <td class="px-5 py-3">
+                      <span class="chip" style={`background: color-mix(in srgb, ${b.color} 12%, transparent); color: ${b.color};`}>
+                        {b.label}
+                      </span>
+                    </td>
+                    <td class="px-5 py-3 text-text-secondary">{r.note}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </Section>
+
+  <!-- ONE-PAGE BRIEF -->
   <Section>
-    <div class="grid lg:grid-cols-12 gap-10 items-start">
-      <div class="lg:col-span-5 reveal">
-        <h2 class="text-2xl font-semibold text-text">A short procurement-grade brief</h2>
+    <div class="grid lg:grid-cols-[1fr_1.5fr] gap-10 items-start">
+      <div class="reveal-x">
+        <div class="chip bg-amber-soft text-[var(--color-amber)]">One-page brief</div>
+        <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text">
+          The procurement-grade summary.
+        </h2>
         <p class="mt-3 text-text-secondary">
-          Print this section. Hand it to the security reviewer.
+          Print this. Send it to the security questionnaire owner. It answers most of what they
+          need to start, and it's honest about what is your responsibility.
+        </p>
+        <div class="mt-6">
+          <Button href="/enterprise/compare" variant="primary">
+            Compare CloudGrid to your current stack
+          </Button>
+        </div>
+      </div>
+
+      <div class="reveal">
+        <div class="card overflow-hidden p-0">
+          <dl class="divide-y divide-border-subtle">
+            {brief.map((row) => (
+              <div class="grid grid-cols-[180px_1fr] gap-4 px-5 py-3">
+                <dt class="text-xs uppercase tracking-wider font-semibold text-text-muted">{row.k}</dt>
+                <dd class="text-sm text-text">{row.v}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </div>
+    </div>
+  </Section>
+
+  <!-- CLOSE -->
+  <Section tone="recessed">
+    <div class="card spotlight p-8 sm:p-10 grid lg:grid-cols-[1fr_auto] gap-6 items-center reveal">
+      <div>
+        <h2 class="text-2xl font-semibold text-text">Bring it past the security review.</h2>
+        <p class="mt-3 text-text-secondary max-w-2xl">
+          The Handbook has the operational detail — deployment topology, SSO setup, isolation
+          model, scaling guidance. The compare page is for when you want to put CloudGrid against
+          your current vendor on a single page.
         </p>
       </div>
-      <div class="lg:col-span-7 reveal">
-        <dl class="divide-y divide-border-subtle border border-border-default rounded-xl bg-surface">
-          {[
-            { k: "License", v: "MIT. Commercial use permitted without negotiation." },
-            { k: "Source", v: "github.com/cloudgriddev/cloudgrid — full source, public specs." },
-            { k: "Data egress", v: "None by default. CloudGrid does not call home." },
-            { k: "Storage", v: "SurrealDB (v1). Storage adapter port is swappable." },
-            { k: "Transport", v: "NATS JetStream (v1). Message-bridge adapter port is swappable." },
-            { k: "Auth providers", v: "GitHub, Google, Microsoft Entra ID. Provider port is swappable." },
-            { k: "Sessions", v: "BFF-managed HttpOnly cookies. No provider tokens in the browser." },
-            { k: "Isolation primitive", v: "Project — enforced at API, message, persistence layers." },
-            { k: "Telemetry", v: "OTLP HTTP for traces, logs, metrics. OTLP gRPC on the spec path." },
-            { k: "AI workloads", v: "First-class projections of OTel GenAI / OpenInference spans." },
-          ].map((row) => (
-            <div class="grid grid-cols-[140px_1fr] gap-4 px-5 py-3">
-              <dt class="text-xs uppercase tracking-wider font-semibold text-text-muted">{row.k}</dt>
-              <dd class="text-sm text-text">{row.v}</dd>
-            </div>
-          ))}
-        </dl>
+      <div class="flex flex-wrap gap-3 lg:justify-end">
+        <Button href="/handbook/deployment" variant="primary">Deployment guide</Button>
+        <Button href="/enterprise/compare" variant="secondary">Side-by-side comparison</Button>
       </div>
     </div>
   </Section>
