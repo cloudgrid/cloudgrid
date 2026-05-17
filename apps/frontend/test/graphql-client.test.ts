@@ -593,6 +593,66 @@ describe("GraphQL client", () => {
         createdAt: "2026-05-17T08:00:00.000Z",
         expiresAt: "2026-05-17T09:00:00.000Z",
       };
+      const dataset = {
+        id: "dataset-1",
+        name: "Regression",
+        description: null,
+        version: 1,
+        createdAt: "2026-05-17T08:00:00.000Z",
+        itemCount: 0,
+        reviewedItemCount: 0,
+        splitCounts: {},
+        health: {
+          status: "ready",
+          reviewedItemCount: 0,
+          totalItemCount: 0,
+          splitCounts: {},
+          duplicateCandidateCount: 0,
+          leakageWarningCount: 0,
+          missingExpectedCount: 0,
+          schemaIssueCount: 0,
+          smallDataset: true,
+          warnings: [],
+        },
+        tags: [],
+        items: { items: [], nextCursor: null },
+      };
+      const scorer = {
+        id: "scorer-1",
+        name: "Contains answer",
+        kind: "deterministic",
+        definition: { type: "contains" },
+        judgeModelRef: null,
+        version: 1,
+      };
+      const experimentRun = {
+        id: "run-1",
+        experimentId: "experiment-1",
+        solverRef: { kind: "local" },
+        manifest: null,
+        baselineRunId: null,
+        status: "queued",
+        startedAt: "2026-05-17T08:00:00.000Z",
+        endedAt: null,
+        summary: {},
+        itemRuns: { items: [], nextCursor: null },
+      };
+      const experiment = {
+        id: "experiment-1",
+        name: "Baseline",
+        datasetId: "dataset-1",
+        datasetVersion: 1,
+        scorerIds: ["scorer-1"],
+        splitSelector: { splits: ["validation"], reviewedOnly: false, includeSynthetic: false },
+        baselineRef: null,
+        promptVersionRefs: [],
+        skillSnapshotRefs: [],
+        toolSnapshotRefs: [],
+        providerProfileRefs: [],
+        createdAt: "2026-05-17T08:00:00.000Z",
+        tags: [],
+        runs: { items: [experimentRun], nextCursor: null },
+      };
       const dataByOperation: Record<string, unknown> = {
         AiQualityOverview: {
           aiQualityOverview: {
@@ -604,6 +664,10 @@ describe("GraphQL client", () => {
             segments: [],
           },
         },
+        CreateDataset: { createDataset: dataset },
+        CreateScorer: { createScorer: scorer },
+        CreateExperiment: { createExperiment: experiment },
+        StartExperimentRun: { startExperimentRun: experimentRun },
         PrepareDatasetImport: { prepareDatasetImport: importJob },
         CommitDatasetImport: { commitDatasetImport: importJob },
         StartDatasetExport: { startDatasetExport: exportJob },
@@ -619,6 +683,30 @@ describe("GraphQL client", () => {
 
     await expect(client.getAiQualityOverview({ projectId: "project-1" })).resolves.toMatchObject({
       projectId: "project-1",
+    });
+    await expect(client.createDataset({ name: "Regression" })).resolves.toMatchObject({
+      id: "dataset-1",
+    });
+    await expect(
+      client.createScorer({
+        name: "Contains answer",
+        kind: "deterministic",
+        definition: { type: "contains" },
+      }),
+    ).resolves.toMatchObject({ id: "scorer-1" });
+    await expect(
+      client.createExperiment({
+        name: "Baseline",
+        datasetId: "dataset-1",
+        datasetVersion: 1,
+        scorerIds: ["scorer-1"],
+        solverRef: { kind: "local" },
+      }),
+    ).resolves.toMatchObject({ id: "experiment-1" });
+    await expect(
+      client.startExperimentRun({ experimentId: "experiment-1" }),
+    ).resolves.toMatchObject({
+      id: "run-1",
     });
     await expect(
       client.prepareDatasetImport({
@@ -643,6 +731,10 @@ describe("GraphQL client", () => {
     await expect(client.getDatasetExport("export-1")).resolves.toMatchObject({ id: "export-1" });
     expect(operationNames).toEqual([
       "AiQualityOverview",
+      "CreateDataset",
+      "CreateScorer",
+      "CreateExperiment",
+      "StartExperimentRun",
       "PrepareDatasetImport",
       "CommitDatasetImport",
       "StartDatasetExport",

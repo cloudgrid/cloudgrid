@@ -647,24 +647,37 @@ func evalMutationRecord(subject string, request contracts.EvalMutationRequest, o
 			if id == "" {
 				return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: eval result id is required")
 			}
+			if mapStringValue(result, "experimentId") != "" && mapStringValue(result, "status") != "" && mapStringValue(result, "scorerId") == "" {
+				record := cloneMap(result)
+				record["id"] = id
+				return "ai_experiment_run", record, nil
+			}
 			record := cloneMap(result)
 			if experimentRunID != "" {
 				record["experimentRunId"] = experimentRunID
 			} else if mapStringValue(record, "experimentRunId") == "" {
-				record["experimentRunId"] = nil
+				delete(record, "experimentRunId")
 			}
 			return "ai_eval_result", record, nil
 		}
 		if experimentRunID == "" {
 			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: experimentRunId is required")
 		}
-		return "ai_dataset_item_run", map[string]any{
-			"id":              stableRecordID("eval-results", request.RequestID, experimentRunID),
-			"experimentRunId": experimentRunID,
-			"itemRuns":        itemRuns,
-			"results":         results,
-			"persistedAt":     occurredAt.UTC(),
-		}, nil
+		itemRun := firstObject(itemRuns)
+		if len(itemRun) == 0 {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: itemRuns is required")
+		}
+		id := mapStringValue(itemRun, "id")
+		if id == "" {
+			id = stableRecordID("dataset-item-run", request.RequestID, experimentRunID)
+		}
+		record := cloneMap(itemRun)
+		record["id"] = id
+		if mapStringValue(record, "experimentRunId") == "" {
+			record["experimentRunId"] = experimentRunID
+		}
+		record["persistedAt"] = occurredAt.UTC()
+		return "ai_dataset_item_run", record, nil
 	case "eval.prompt_version.promote":
 		id := mapStringValue(request.Input, "promptVersionId")
 		tag := mapStringValue(request.Input, "tag")
@@ -1141,10 +1154,15 @@ func cloneMap(input map[string]any) map[string]any {
 func normalizeRecordDateStrings(record map[string]any) {
 	for _, key := range []string{"startedAt", "endedAt", "createdAt", "producedAt", "persistedAt"} {
 		value, ok := record[key].(string)
-		if !ok || strings.TrimSpace(value) == "" {
+		if !ok {
 			continue
 		}
-		parsed, err := time.Parse(time.RFC3339, value)
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			delete(record, key)
+			continue
+		}
+		parsed, err := time.Parse(time.RFC3339Nano, trimmed)
 		if err != nil {
 			continue
 		}

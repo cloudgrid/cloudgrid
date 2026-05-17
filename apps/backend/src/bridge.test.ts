@@ -324,6 +324,117 @@ describe("NATS telemetry query bridge", () => {
     expect(saved.widgets[0]?.richMetric?.thresholds).toEqual([]);
   });
 
+  test("normalizes lean dataset create responses to the public GraphQL dataset shape", async () => {
+    const codec = JSONCodec<unknown>();
+    let subject = "";
+    let payload: unknown;
+    const connection = {
+      request: async (requestedSubject: string, data: Uint8Array) => {
+        subject = requestedSubject;
+        payload = codec.decode(data);
+        return {
+          data: codec.encode({
+            requestId: requestId(payload),
+            ok: true,
+            data: {
+              id: "dataset-1",
+              name: "Regression",
+              description: null,
+              version: 1,
+              createdAt: "2026-05-17T10:00:00.000Z",
+              itemCount: 0,
+              health: null,
+              tags: null,
+            },
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+
+    const dataset = await bridge.createDataset({ name: "Regression", tags: ["nightly"] });
+
+    expect(subject).toBe("eval.dataset.create");
+    expect(payload).toMatchObject({
+      input: { name: "Regression", tags: ["nightly"] },
+    });
+    expect(dataset).toMatchObject({
+      id: "dataset-1",
+      name: "Regression",
+      itemCount: 0,
+      reviewedItemCount: 0,
+      splitCounts: {},
+      tags: [],
+      health: {
+        status: "needs_review",
+        reviewedItemCount: 0,
+        totalItemCount: 0,
+        splitCounts: {},
+        warnings: [],
+      },
+    });
+  });
+
+  test("normalizes lean experiment create responses to the public GraphQL experiment shape", async () => {
+    const codec = JSONCodec<unknown>();
+    let subject = "";
+    let payload: unknown;
+    const connection = {
+      request: async (requestedSubject: string, data: Uint8Array) => {
+        subject = requestedSubject;
+        payload = codec.decode(data);
+        return {
+          data: codec.encode({
+            requestId: requestId(payload),
+            ok: true,
+            data: {
+              id: "experiment-1",
+              name: "Regression",
+              datasetId: "dataset-1",
+              datasetVersion: 1,
+              scorerIds: ["scorer-1"],
+              createdAt: "2026-05-17T10:00:00.000Z",
+              tags: null,
+            },
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+
+    const experiment = await bridge.createExperiment({
+      name: "Regression",
+      datasetId: "dataset-1",
+      datasetVersion: 1,
+      scorerIds: ["scorer-1"],
+      solverRef: { kind: "integration" },
+    });
+
+    expect(subject).toBe("eval.experiment.create");
+    expect(payload).toMatchObject({
+      input: {
+        name: "Regression",
+        datasetId: "dataset-1",
+        scorerIds: ["scorer-1"],
+      },
+    });
+    expect(experiment).toMatchObject({
+      id: "experiment-1",
+      splitSelector: {
+        splits: ["validation"],
+        reviewedOnly: true,
+        includeSynthetic: false,
+      },
+      promptVersionRefs: [],
+      skillSnapshotRefs: [],
+      toolSnapshotRefs: [],
+      providerProfileRefs: [],
+      tags: [],
+    });
+  });
+
   test("sends project membership, retention, and alerting requests to control-plane subjects", async () => {
     const codec = JSONCodec<unknown>();
     const requests: Array<{ subject: string; payload: unknown }> = [];

@@ -5,6 +5,9 @@ import type {
   AiQualityOverviewInput,
   AnnotationQueueItem,
   AnnotationQueueSearchInput,
+  CreateDatasetInput,
+  CreateExperimentInput,
+  CreateScorerInput,
   Dataset,
   DatasetExportFormat,
   DatasetExportJob,
@@ -22,6 +25,8 @@ import type {
   PrepareDatasetImportInput,
   ProjectAiSettings,
   Scorer,
+  ScorerKind,
+  StartExperimentRunInput,
 } from "@cloudgrid/ui-contracts";
 import { type UseQueryResult, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -33,14 +38,12 @@ import {
   ExternalLink,
   FileText,
   FlaskConical,
-  FolderOpen,
   Gauge,
   MessageSquareText,
   PanelRightOpen,
   PencilLine,
   Plus,
   Settings,
-  Sparkles,
   Trash2,
   Trophy,
   Upload,
@@ -95,7 +98,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import {
   agentRunTimelineRows,
-  aiEvalOverviewModel,
   experimentScoreboardRows,
   itemRunScoreSummary,
   jsonPreview,
@@ -108,15 +110,7 @@ export const aiEvalEnabled =
   import.meta.env.CLOUDGRID_AI_EVAL_ENABLED !== "false" &&
   import.meta.env.VITE_CLOUDGRID_AI_EVAL_ENABLED !== "false";
 
-type AiEvalTab =
-  | "overview"
-  | "runs"
-  | "datasets"
-  | "scorers"
-  | "experiments"
-  | "optimizations"
-  | "production"
-  | "annotations";
+type AiEvalTab = "runs" | "datasets" | "scorers" | "experiments" | "production" | "annotations";
 
 export function AiEvalRoute() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -206,32 +200,32 @@ export function AiEvalRoute() {
     queryFn: () => telemetryClient.searchAgentRuns(agentRunInput),
   });
   const datasetsQuery = useQuery({
-    enabled: shouldQueryAiEval && (tab === "overview" || tab === "datasets"),
+    enabled: shouldQueryAiEval && (tab === "datasets" || tab === "experiments"),
     queryKey: ["Datasets", { query: query || null }],
     queryFn: () => telemetryClient.searchDatasets({ query: query || null, limit: 25 }),
   });
   const scorersQuery = useQuery({
-    enabled: shouldQueryAiEval && tab === "scorers",
+    enabled: shouldQueryAiEval && (tab === "scorers" || tab === "experiments"),
     queryKey: ["Scorers", { query: query || null }],
     queryFn: () => telemetryClient.searchScorers({ query: query || null, limit: 25 }),
   });
   const experimentsQuery = useQuery({
-    enabled: shouldQueryAiEval && (tab === "experiments" || tab === "optimizations"),
+    enabled: shouldQueryAiEval && tab === "experiments",
     queryKey: ["Experiments", experimentInput],
     queryFn: () => telemetryClient.searchExperiments(experimentInput),
   });
   const annotationsQuery = useQuery({
-    enabled: shouldQueryAiEval && (tab === "overview" || tab === "annotations"),
+    enabled: shouldQueryAiEval && tab === "annotations",
     queryKey: ["AnnotationQueue", annotationInput],
     queryFn: () => telemetryClient.searchAnnotationQueue(annotationInput),
   });
   const qualityQuery = useQuery({
-    enabled: shouldQueryAiEval && (tab === "overview" || tab === "production"),
+    enabled: shouldQueryAiEval && tab === "production",
     queryKey: ["AiQualityOverview", qualityInput],
     queryFn: () => telemetryClient.getAiQualityOverview(qualityInput),
   });
   const settingsQuery = useQuery({
-    enabled: shouldQueryAiEval && (tab === "overview" || tab === "production"),
+    enabled: shouldQueryAiEval && tab === "production",
     queryKey: ["ProjectAiSettings", projectId],
     queryFn: () => controlClient.getProjectAiSettings(projectId),
   });
@@ -273,7 +267,9 @@ export function AiEvalRoute() {
     <section className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
       <div className="shrink-0">
         <h1 className="text-xl font-semibold tracking-normal">{t("aiEval.title")}</h1>
-        <p className="text-sm text-muted-foreground">{t("aiEval.description")}</p>
+        <p className="text-sm text-muted-foreground">
+          Inspect agent runs, curate datasets, run evaluations, and monitor production quality.
+        </p>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         <SearchInput
@@ -310,6 +306,7 @@ export function AiEvalRoute() {
           </Select>
         )}
       </div>
+      <AiEvalWorkflowStrip activeTab={tab} onSelect={(value) => setParam("tab", value)} />
       <div className="grid min-h-0 flex-1 grid-cols-[220px_minmax(0,1fr)] overflow-hidden border xl:grid-cols-[220px_minmax(0,1fr)_360px]">
         <Tabs className="contents" onValueChange={(value) => setParam("tab", value)} value={tab}>
           <aside
@@ -317,10 +314,6 @@ export function AiEvalRoute() {
             data-ai-eval-left-rail="true"
           >
             <TabsList className="grid h-auto gap-1 bg-transparent p-0" variant="line">
-              <TabsTrigger className="justify-start" value="overview">
-                <Gauge />
-                Overview
-              </TabsTrigger>
               <TabsTrigger className="justify-start" value="runs">
                 <Bot />
                 {t("aiEval.runs")}
@@ -337,13 +330,9 @@ export function AiEvalRoute() {
                 <Trophy />
                 {t("aiEval.experiments")}
               </TabsTrigger>
-              <TabsTrigger className="justify-start" value="optimizations">
-                <Sparkles />
-                Optimizations
-              </TabsTrigger>
               <TabsTrigger className="justify-start" value="production">
                 <Gauge />
-                Production
+                Production quality
               </TabsTrigger>
               <TabsTrigger className="justify-start" value="annotations">
                 <PencilLine />
@@ -377,15 +366,6 @@ export function AiEvalRoute() {
                 </SheetContent>
               </Sheet>
             </div>
-            <TabsContent className="m-0 min-h-0" value="overview">
-              <OverviewView
-                annotationsQuery={annotationsQuery}
-                datasetsQuery={datasetsQuery}
-                qualityQuery={qualityQuery}
-                selectedProjectId={projectId}
-                settingsQuery={settingsQuery}
-              />
-            </TabsContent>
             <TabsContent className="m-0 min-h-0" value="runs">
               <AgentRunsView
                 onNext={(cursor) => setParam("cursor", cursor)}
@@ -411,13 +391,17 @@ export function AiEvalRoute() {
             </TabsContent>
             <TabsContent className="m-0 min-h-0" value="experiments">
               <ExperimentsView
+                datasets={datasetsQuery.data?.items ?? []}
+                onChanged={() => {
+                  void experimentsQuery.refetch();
+                  void datasetsQuery.refetch();
+                  void scorersQuery.refetch();
+                }}
                 onSelect={(id) => setSelected("experiment", id)}
                 query={experimentsQuery}
+                scorers={scorersQuery.data?.items ?? []}
                 selectedId={selectedExperiment?.id ?? null}
               />
-            </TabsContent>
-            <TabsContent className="m-0 min-h-0" value="optimizations">
-              <OptimizationsView query={experimentsQuery} />
             </TabsContent>
             <TabsContent className="m-0 min-h-0" value="production">
               <ProductionView
@@ -455,143 +439,61 @@ export function AiEvalRoute() {
 
 type QueryResult<T> = UseQueryResult<T, Error>;
 
-function OverviewView({
-  annotationsQuery,
-  datasetsQuery,
-  qualityQuery,
-  selectedProjectId,
-  settingsQuery,
-}: {
-  annotationsQuery: QueryResult<
-    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchAnnotationQueue"]>>
-  >;
-  datasetsQuery: QueryResult<
-    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchDatasets"]>>
-  >;
-  qualityQuery: QueryResult<AiQualityOverview>;
-  selectedProjectId: string;
-  settingsQuery: QueryResult<ProjectAiSettings>;
-}) {
-  const isLoading =
-    annotationsQuery.isLoading ||
-    datasetsQuery.isLoading ||
-    qualityQuery.isLoading ||
-    settingsQuery.isLoading;
-  const error =
-    annotationsQuery.error ?? datasetsQuery.error ?? qualityQuery.error ?? settingsQuery.error;
-
-  if (isLoading) {
-    return <LoadingRows />;
-  }
-  if (error) {
-    return (
-      <ErrorPanel
-        error={error}
-        onRetry={() => {
-          void annotationsQuery.refetch();
-          void datasetsQuery.refetch();
-          void qualityQuery.refetch();
-          void settingsQuery.refetch();
-        }}
-      />
-    );
-  }
-
-  const overview = aiEvalOverviewModel({
-    annotationsOpen: annotationsQuery.data?.items.length ?? 0,
-    datasets: datasetsQuery.data?.items ?? [],
-    quality: qualityQuery.data,
-    settings: settingsQuery.data,
-  });
-
-  return (
-    <div className="grid gap-4">
-      <section className="grid gap-3 border-b pb-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Production pass rate" value={formatPercent(overview.qualityPassRate)} />
-        <Metric label="Mean score" value={formatNumber(overview.qualityMeanScore)} />
-        <Metric label="Annotation backlog" value={overview.annotationBacklog} />
-        <Metric
-          label="Budget today"
-          value={`${formatUsd(overview.budgetSpentTodayUsd)} / ${formatUsd(overview.budgetDailyUsd)}`}
-        />
-      </section>
-      <section className="grid gap-3 border-b pb-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Datasets" value={overview.datasetCount} />
-        <Metric label="Datasets needing attention" value={overview.unhealthyDatasetCount} />
-        <Metric label="Active production policies" value={overview.activePolicyCount} />
-        <Metric label="Regressions" value={overview.qualityRegressionCount} />
-      </section>
-      {overview.warnings.length > 0 ? (
-        <section className="grid gap-2 border-b pb-4">
-          <h2 className="text-sm font-medium">Missing setup warnings</h2>
-          {overview.warnings.map((warning) => (
-            <div className="text-sm text-muted-foreground" key={warning}>
-              {warning}
-            </div>
-          ))}
-        </section>
-      ) : null}
-      <section className="grid gap-2">
-        <h2 className="text-sm font-medium">First-use setup</h2>
-        <SetupChecklistRow
-          actionHref="/traces"
-          actionLabel="Open traces"
-          label="Telemetry detected"
-          status={(qualityQuery.data?.segments.length ?? 0) > 0 ? "Ready" : "Needs data"}
-        />
-        <SetupChecklistRow
-          actionHref={`/projects/${encodeURIComponent(selectedProjectId)}/settings/ai-eval`}
-          actionLabel="Open settings"
-          label="Provider profile"
-          status={(settingsQuery.data?.providerProfiles.length ?? 0) > 0 ? "Ready" : "Missing"}
-        />
-        <SetupChecklistRow
-          actionHref="?tab=datasets"
-          actionLabel="Open datasets"
-          label="Dataset"
-          status={overview.datasetCount > 0 ? "Ready" : "Missing"}
-        />
-        <SetupChecklistRow
-          actionHref="?tab=scorers"
-          actionLabel="Open scorers"
-          label="Scorer"
-          status="Use templates"
-        />
-        <SetupChecklistRow
-          actionHref="?tab=experiments"
-          actionLabel="Open experiments"
-          label="Baseline experiment"
-          status="Required before promotion"
-        />
-        <SetupChecklistRow
-          actionHref="?tab=production"
-          actionLabel="Open production"
-          label="Production policy"
-          status={overview.activePolicyCount > 0 ? "Ready" : "Optional"}
-        />
-      </section>
-    </div>
-  );
-}
-
-function SetupChecklistRow({
-  actionHref,
-  actionLabel,
-  label,
-  status,
-}: {
-  actionHref: string;
-  actionLabel: string;
+const aiEvalWorkflowSteps: Array<{
+  tab: AiEvalTab;
   label: string;
-  status: string;
+  description: string;
+}> = [
+  {
+    tab: "runs",
+    label: "Observe runs",
+    description: "Review agent behavior from telemetry.",
+  },
+  {
+    tab: "datasets",
+    label: "Curate datasets",
+    description: "Create, import, review, and export examples.",
+  },
+  {
+    tab: "scorers",
+    label: "Define scorers",
+    description: "Register deterministic or judge-based checks.",
+  },
+  {
+    tab: "experiments",
+    label: "Run evaluations",
+    description: "Create experiments and execute evaluation runs.",
+  },
+  {
+    tab: "production",
+    label: "Monitor quality",
+    description: "Track online policy results and regressions.",
+  },
+];
+
+function AiEvalWorkflowStrip({
+  activeTab,
+  onSelect,
+}: {
+  activeTab: AiEvalTab;
+  onSelect: (tab: AiEvalTab) => void;
 }) {
   return (
-    <div className="grid gap-2 border-b py-3 text-sm last:border-b-0 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-center">
-      <span className="font-medium">{label}</span>
-      <Badge variant="outline">{status}</Badge>
-      <Button asChild size="sm" variant="outline">
-        <Link to={actionHref}>{actionLabel}</Link>
-      </Button>
+    <div className="grid shrink-0 gap-2 border bg-background p-2 xl:grid-cols-5">
+      {aiEvalWorkflowSteps.map((step, index) => (
+        <button
+          className="grid min-h-16 gap-1 border-l px-3 py-2 text-left text-sm first:border-l-0 hover:bg-muted/40 data-[active=true]:bg-muted"
+          data-active={activeTab === step.tab}
+          key={step.tab}
+          onClick={() => onSelect(step.tab)}
+          type="button"
+        >
+          <span className="font-medium">
+            {index + 1}. {step.label}
+          </span>
+          <span className="text-xs text-muted-foreground">{step.description}</span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -731,32 +633,55 @@ function DatasetsView({
 }) {
   const selected =
     query.data?.items.find((dataset) => dataset.id === selectedId) ?? query.data?.items[0];
+  const onCreated = (dataset: Dataset) => {
+    onSelect(dataset.id);
+    void query.refetch();
+  };
+
+  if (query.isLoading) {
+    return <LoadingRows />;
+  }
+  if (query.isError) {
+    return <ErrorPanel error={query.error} onRetry={() => void query.refetch()} />;
+  }
+
   return (
-    <QueryFrame query={query}>
+    <div className="flex min-h-0 flex-col gap-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b pb-3">
+        <div>
+          <h2 className="text-sm font-medium">Dataset administration</h2>
+          <p className="text-sm text-muted-foreground">
+            Create datasets, stage imports, review rows, and export canonical examples.
+          </p>
+        </div>
+        <CreateDatasetDialog onCreated={onCreated} />
+      </div>
       {query.data && query.data.items.length > 0 ? (
-        <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("aiEval.dataset")}</TableHead>
-                <TableHead>{t("aiEval.version")}</TableHead>
-                <TableHead>{t("aiEval.items")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {query.data.items.map((dataset) => (
-                <TableRow
-                  aria-selected={dataset.id === selected?.id}
-                  key={dataset.id}
-                  onClick={() => onSelect(dataset.id)}
-                >
-                  <TableCell>{dataset.name}</TableCell>
-                  <TableCell>{dataset.version}</TableCell>
-                  <TableCell>{dataset.itemCount}</TableCell>
+        <div className="grid min-h-0 gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+          <div className="min-h-0 overflow-auto border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("aiEval.dataset")}</TableHead>
+                  <TableHead>{t("aiEval.version")}</TableHead>
+                  <TableHead>{t("aiEval.items")}</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {query.data.items.map((dataset) => (
+                  <TableRow
+                    aria-selected={dataset.id === selected?.id}
+                    key={dataset.id}
+                    onClick={() => onSelect(dataset.id)}
+                  >
+                    <TableCell>{dataset.name}</TableCell>
+                    <TableCell>{dataset.version}</TableCell>
+                    <TableCell>{dataset.itemCount}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
           {selected ? (
             <DatasetItems
               dataset={selected}
@@ -765,8 +690,112 @@ function DatasetsView({
             />
           ) : null}
         </div>
-      ) : null}
-    </QueryFrame>
+      ) : (
+        <EmptyState
+          description="Create a dataset first, then import JSONL, JSON, CSV, or ZIP examples for evaluation runs."
+          filtered={false}
+          primaryAction={<CreateDatasetDialog onCreated={onCreated} triggerVariant="default" />}
+          title="No datasets yet"
+        />
+      )}
+    </div>
+  );
+}
+
+function CreateDatasetDialog({
+  onCreated,
+  triggerVariant = "outline",
+}: {
+  onCreated: (dataset: Dataset) => void;
+  triggerVariant?: "default" | "outline";
+}) {
+  const telemetryClient = useTelemetryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [tags, setTags] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const mutation = useMutation({
+    mutationFn: () => {
+      const input: CreateDatasetInput = {
+        name: name.trim(),
+        description: description.trim() || null,
+        tags: tags
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+      };
+      return telemetryClient.createDataset(input);
+    },
+    onSuccess(dataset) {
+      onCreated(dataset);
+      setOpen(false);
+      setName("");
+      setDescription("");
+      setTags("");
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" type="button" variant={triggerVariant}>
+          <Plus data-icon="inline-start" />
+          Create dataset
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create dataset</DialogTitle>
+          <DialogDescription>
+            Datasets hold versioned examples used by experiments and exports.
+          </DialogDescription>
+        </DialogHeader>
+        <FieldGroup>
+          <Field>
+            <FieldLabel>Name</FieldLabel>
+            <Input onChange={(event) => setName(event.target.value)} value={name} />
+          </Field>
+          <Field>
+            <FieldLabel>Description</FieldLabel>
+            <Input onChange={(event) => setDescription(event.target.value)} value={description} />
+          </Field>
+          <Field>
+            <FieldLabel>Tags</FieldLabel>
+            <Input
+              onChange={(event) => setTags(event.target.value)}
+              placeholder="baseline, checkout"
+              value={tags}
+            />
+          </Field>
+          {(localError ?? mutation.error?.message) ? (
+            <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {localError ?? mutation.error?.message}
+            </div>
+          ) : null}
+        </FieldGroup>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </DialogClose>
+          <Button
+            disabled={mutation.isPending}
+            onClick={() => {
+              setLocalError(null);
+              if (!name.trim()) {
+                setLocalError("Name is required.");
+                return;
+              }
+              void mutation.mutateAsync();
+            }}
+            type="button"
+          >
+            <Plus data-icon="inline-start" />
+            {mutation.isPending ? "Creating..." : "Create dataset"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -850,6 +879,16 @@ const datasetSplits: DatasetSplit[] = [
 ];
 const datasetReviewStatuses: DatasetReviewStatus[] = ["unreviewed", "reviewed", "rejected"];
 const mappingSourceKinds: MappingSourceKind[] = ["column", "jsonPath", "constant", "defaultValue"];
+const scorerKinds: ScorerKind[] = [
+  "deterministic",
+  "schema_json",
+  "semantic",
+  "rag",
+  "llm_judge",
+  "tool_correctness",
+  "trajectory",
+  "human",
+];
 
 function DatasetImportSheet({
   dataset,
@@ -1714,8 +1753,29 @@ function ScorersView({
   onSelect: (id: string) => void;
   selectedId: string | null;
 }) {
+  const onCreated = (scorer: Scorer) => {
+    onSelect(scorer.id);
+    void query.refetch();
+  };
+
+  if (query.isLoading) {
+    return <LoadingRows />;
+  }
+  if (query.isError) {
+    return <ErrorPanel error={query.error} onRetry={() => void query.refetch()} />;
+  }
+
   return (
-    <QueryFrame query={query}>
+    <div className="flex min-h-0 flex-col gap-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b pb-3">
+        <div>
+          <h2 className="text-sm font-medium">Scorer registry</h2>
+          <p className="text-sm text-muted-foreground">
+            Create scorer definitions that experiments use to evaluate dataset items.
+          </p>
+        </div>
+        <CreateScorerDialog onCreated={onCreated} />
+      </div>
       {query.data && query.data.items.length > 0 ? (
         <Table>
           <TableHeader>
@@ -1745,35 +1805,182 @@ function ScorersView({
             ))}
           </TableBody>
         </Table>
-      ) : null}
-    </QueryFrame>
+      ) : (
+        <EmptyState
+          description="Create at least one scorer before running an experiment."
+          filtered={false}
+          primaryAction={<CreateScorerDialog onCreated={onCreated} triggerVariant="default" />}
+          title="No scorers yet"
+        />
+      )}
+    </div>
+  );
+}
+
+function CreateScorerDialog({
+  onCreated,
+  triggerVariant = "outline",
+}: {
+  onCreated: (scorer: Scorer) => void;
+  triggerVariant?: "default" | "outline";
+}) {
+  const telemetryClient = useTelemetryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [kind, setKind] = useState<ScorerKind>("deterministic");
+  const [definition, setDefinition] = useState(
+    '{"type":"contains","field":"answer","expected":"ok"}',
+  );
+  const [localError, setLocalError] = useState<string | null>(null);
+  const mutation = useMutation({
+    mutationFn: () => {
+      const input: CreateScorerInput = {
+        name: name.trim(),
+        kind,
+        definition: JSON.parse(definition) as JSONValue,
+      };
+      return telemetryClient.createScorer(input);
+    },
+    onSuccess(scorer) {
+      onCreated(scorer);
+      setOpen(false);
+      setName("");
+      setDefinition('{"type":"contains","field":"answer","expected":"ok"}');
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" type="button" variant={triggerVariant}>
+          <Plus data-icon="inline-start" />
+          Create scorer
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create scorer</DialogTitle>
+          <DialogDescription>
+            A scorer evaluates each experiment item and returns structured results.
+          </DialogDescription>
+        </DialogHeader>
+        <FieldGroup>
+          <Field>
+            <FieldLabel>Name</FieldLabel>
+            <Input onChange={(event) => setName(event.target.value)} value={name} />
+          </Field>
+          <Field>
+            <FieldLabel>Kind</FieldLabel>
+            <Select onValueChange={(value) => setKind(value as ScorerKind)} value={kind}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {scorerKinds.map((candidate) => (
+                  <SelectItem key={candidate} value={candidate}>
+                    {candidate}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel>Definition JSON</FieldLabel>
+            <Input onChange={(event) => setDefinition(event.target.value)} value={definition} />
+          </Field>
+          {(localError ?? mutation.error?.message) ? (
+            <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {localError ?? mutation.error?.message}
+            </div>
+          ) : null}
+        </FieldGroup>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </DialogClose>
+          <Button
+            disabled={mutation.isPending}
+            onClick={() => {
+              setLocalError(null);
+              if (!name.trim()) {
+                setLocalError("Name is required.");
+                return;
+              }
+              try {
+                JSON.parse(definition);
+              } catch {
+                setLocalError("Definition must be valid JSON.");
+                return;
+              }
+              void mutation.mutateAsync();
+            }}
+            type="button"
+          >
+            <Plus data-icon="inline-start" />
+            {mutation.isPending ? "Creating..." : "Create scorer"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 function ExperimentsView({
+  datasets,
+  onChanged,
   query,
   onSelect,
+  scorers,
   selectedId,
 }: {
+  datasets: Dataset[];
+  onChanged: () => void;
   query: QueryResult<
     Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchExperiments"]>>
   >;
   onSelect: (id: string) => void;
+  scorers: Scorer[];
   selectedId: string | null;
 }) {
   const runs = query.data?.items.flatMap((experiment) => experiment.runs?.items ?? []) ?? [];
   const rows = experimentScoreboardRows(runs);
+  const onCreated = (experiment: Experiment) => {
+    onSelect(experiment.id);
+    onChanged();
+  };
+  const onRunStarted = () => {
+    onChanged();
+  };
+
+  if (query.isLoading) {
+    return <LoadingRows />;
+  }
+  if (query.isError) {
+    return <ErrorPanel error={query.error} onRetry={() => void query.refetch()} />;
+  }
+
   return (
-    <QueryFrame query={query}>
+    <div className="flex min-h-0 flex-col gap-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b pb-3">
+        <div>
+          <h2 className="text-sm font-medium">Evaluation experiments</h2>
+          <p className="text-sm text-muted-foreground">
+            Pair a dataset version with scorers, then run an evaluation and compare results.
+          </p>
+        </div>
+        <CreateExperimentDialog datasets={datasets} onCreated={onCreated} scorers={scorers} />
+      </div>
       {query.data && query.data.items.length > 0 ? (
-        <div className="flex flex-col gap-4">
+        <div className="flex min-h-0 flex-col gap-4 overflow-auto">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>{t("aiEval.experiment")}</TableHead>
                 <TableHead>{t("aiEval.dataset")}</TableHead>
                 <TableHead>{t("aiEval.scorers")}</TableHead>
+                <TableHead>Runs</TableHead>
                 <TableHead>{t("aiEval.tags")}</TableHead>
+                <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1788,15 +1995,247 @@ function ExperimentsView({
                     {experiment.datasetId}@{experiment.datasetVersion}
                   </TableCell>
                   <TableCell>{experiment.scorerIds.length}</TableCell>
+                  <TableCell>{experiment.runs?.items.length ?? 0}</TableCell>
                   <TableCell>{experiment.tags.join(", ") || t("value.none")}</TableCell>
+                  <TableCell className="text-right">
+                    <StartExperimentRunButton
+                      experiment={experiment}
+                      onStarted={onRunStarted}
+                      size="sm"
+                      variant="outline"
+                    />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
           <Scoreboard rows={rows} runs={runs} />
         </div>
-      ) : null}
-    </QueryFrame>
+      ) : (
+        <EmptyState
+          description="Create a dataset and scorer first, then define an experiment and run it."
+          filtered={false}
+          primaryAction={
+            <CreateExperimentDialog
+              datasets={datasets}
+              onCreated={onCreated}
+              scorers={scorers}
+              triggerVariant="default"
+            />
+          }
+          title="No experiments yet"
+        />
+      )}
+    </div>
+  );
+}
+
+function CreateExperimentDialog({
+  datasets,
+  onCreated,
+  scorers,
+  triggerVariant = "outline",
+}: {
+  datasets: Dataset[];
+  onCreated: (experiment: Experiment) => void;
+  scorers: Scorer[];
+  triggerVariant?: "default" | "outline";
+}) {
+  const telemetryClient = useTelemetryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [datasetId, setDatasetId] = useState(datasets[0]?.id ?? "");
+  const [scorerId, setScorerId] = useState(scorers[0]?.id ?? "");
+  const [split, setSplit] = useState<DatasetSplit>("validation");
+  const [solverRef, setSolverRef] = useState('{"kind":"local","name":"current-agent"}');
+  const [localError, setLocalError] = useState<string | null>(null);
+  const selectedDataset = datasets.find((dataset) => dataset.id === datasetId) ?? datasets[0];
+
+  useEffect(() => {
+    if (!datasetId && datasets[0]?.id) {
+      setDatasetId(datasets[0].id);
+    }
+    if (!scorerId && scorers[0]?.id) {
+      setScorerId(scorers[0].id);
+    }
+  }, [datasetId, datasets, scorerId, scorers]);
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      if (!selectedDataset) {
+        throw new Error("Create a dataset before creating an experiment.");
+      }
+      const input: CreateExperimentInput = {
+        name: name.trim(),
+        datasetId: selectedDataset.id,
+        datasetVersion: selectedDataset.version,
+        splitSelector: { splits: [split], reviewedOnly: false, includeSynthetic: false },
+        scorerIds: [scorerId],
+        solverRef: JSON.parse(solverRef) as JSONValue,
+        tags: [],
+      };
+      return telemetryClient.createExperiment(input);
+    },
+    onSuccess(experiment) {
+      onCreated(experiment);
+      setOpen(false);
+      setName("");
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" type="button" variant={triggerVariant}>
+          <Plus data-icon="inline-start" />
+          Create experiment
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create experiment</DialogTitle>
+          <DialogDescription>
+            Select the dataset version, scorer, and solver reference used by the evaluation run.
+          </DialogDescription>
+        </DialogHeader>
+        <FieldGroup>
+          <Field>
+            <FieldLabel>Name</FieldLabel>
+            <Input onChange={(event) => setName(event.target.value)} value={name} />
+          </Field>
+          <Field>
+            <FieldLabel>Dataset</FieldLabel>
+            <Select onValueChange={setDatasetId} value={datasetId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select dataset" />
+              </SelectTrigger>
+              <SelectContent>
+                {datasets.map((dataset) => (
+                  <SelectItem key={dataset.id} value={dataset.id}>
+                    {dataset.name} v{dataset.version}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel>Scorer</FieldLabel>
+            <Select onValueChange={setScorerId} value={scorerId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select scorer" />
+              </SelectTrigger>
+              <SelectContent>
+                {scorers.map((scorer) => (
+                  <SelectItem key={scorer.id} value={scorer.id}>
+                    {scorer.name} v{scorer.version}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel>Evaluation split</FieldLabel>
+            <Select onValueChange={(value) => setSplit(value as DatasetSplit)} value={split}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {datasetSplits.map((candidate) => (
+                  <SelectItem key={candidate} value={candidate}>
+                    {candidate}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel>Solver reference JSON</FieldLabel>
+            <Input onChange={(event) => setSolverRef(event.target.value)} value={solverRef} />
+          </Field>
+          {(localError ?? mutation.error?.message) ? (
+            <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {localError ?? mutation.error?.message}
+            </div>
+          ) : null}
+        </FieldGroup>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </DialogClose>
+          <Button
+            disabled={mutation.isPending || datasets.length === 0 || scorers.length === 0}
+            onClick={() => {
+              setLocalError(null);
+              if (!name.trim()) {
+                setLocalError("Name is required.");
+                return;
+              }
+              if (!datasetId || !scorerId) {
+                setLocalError("Select a dataset and scorer.");
+                return;
+              }
+              try {
+                JSON.parse(solverRef);
+              } catch {
+                setLocalError("Solver reference must be valid JSON.");
+                return;
+              }
+              void mutation.mutateAsync();
+            }}
+            type="button"
+          >
+            <Plus data-icon="inline-start" />
+            {mutation.isPending ? "Creating..." : "Create experiment"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function StartExperimentRunButton({
+  experiment,
+  onStarted,
+  size = "sm",
+  variant = "default",
+}: {
+  experiment: Experiment;
+  onStarted: () => void;
+  size?: "sm" | "default";
+  variant?: "default" | "outline";
+}) {
+  const telemetryClient = useTelemetryClient();
+  const [localError, setLocalError] = useState<string | null>(null);
+  const mutation = useMutation({
+    mutationFn: () => {
+      const input: StartExperimentRunInput = { experimentId: experiment.id };
+      return telemetryClient.startExperimentRun(input);
+    },
+    onSuccess() {
+      onStarted();
+    },
+  });
+
+  return (
+    <div className="inline-flex flex-col items-end gap-1">
+      <Button
+        disabled={mutation.isPending}
+        onClick={(event) => {
+          event.stopPropagation();
+          setLocalError(null);
+          void mutation.mutateAsync().catch((caught) => {
+            setLocalError(caught instanceof Error ? caught.message : "Experiment run failed.");
+          });
+        }}
+        size={size}
+        type="button"
+        variant={variant}
+      >
+        <FlaskConical data-icon="inline-start" />
+        {mutation.isPending ? "Starting..." : "Run evaluation"}
+      </Button>
+      {localError ? <span className="max-w-48 text-xs text-destructive">{localError}</span> : null}
+    </div>
   );
 }
 
@@ -1867,61 +2306,6 @@ function Scoreboard({
         )}
       </div>
     </section>
-  );
-}
-
-function OptimizationsView({
-  query,
-}: {
-  query: QueryResult<
-    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchExperiments"]>>
-  >;
-}) {
-  const runs = query.data?.items.flatMap((experiment) =>
-    (experiment.runs?.items ?? []).map((run) => ({ experiment, run })),
-  );
-
-  return (
-    <QueryFrame query={query}>
-      {query.data && query.data.items.length > 0 ? (
-        <div className="grid gap-4">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Candidate</TableHead>
-                <TableHead>{t("aiEval.experiment")}</TableHead>
-                <TableHead>{t("filters.status")}</TableHead>
-                <TableHead>{t("aiEval.dataset")}</TableHead>
-                <TableHead>Budget</TableHead>
-                <TableHead>Promotion gate</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(runs ?? []).map(({ experiment, run }) => (
-                <TableRow key={run.id}>
-                  <TableCell className="max-w-72 truncate">
-                    {jsonPreview(run.solverRef, 120)}
-                  </TableCell>
-                  <TableCell>{experiment.name}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={run.status} />
-                  </TableCell>
-                  <TableCell>
-                    {experiment.datasetId}@{experiment.datasetVersion}
-                  </TableCell>
-                  <TableCell className="max-w-56 truncate">
-                    {jsonPreview(run.manifest?.budget, 96) || t("value.none")}
-                  </TableCell>
-                  <TableCell className="max-w-72 truncate">
-                    {jsonPreview(run.summary, 120)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      ) : null}
-    </QueryFrame>
   );
 }
 
@@ -2099,9 +2483,6 @@ function AiEvalInspector({
   scorer: Scorer | null;
   tab: AiEvalTab;
 }) {
-  if (tab === "overview") {
-    return <InspectorEmpty />;
-  }
   if (tab === "runs") {
     return run ? <AgentRunDetail run={run} /> : <InspectorEmpty />;
   }
@@ -2112,9 +2493,6 @@ function AiEvalInspector({
     return scorer ? <ScorerInspector scorer={scorer} /> : <InspectorEmpty />;
   }
   if (tab === "experiments") {
-    return experiment ? <ExperimentInspector experiment={experiment} /> : <InspectorEmpty />;
-  }
-  if (tab === "optimizations") {
     return experiment ? <ExperimentInspector experiment={experiment} /> : <InspectorEmpty />;
   }
   if (tab === "production") {
@@ -2205,10 +2583,7 @@ function QueryFrame<T>({ query, children }: { query: QueryResult<T>; children: R
         filtered
         primaryAction={
           <Button asChild>
-            <Link to="/projects">
-              <FolderOpen data-icon="inline-start" />
-              {t("projects.checklist.aiEval.action")}
-            </Link>
+            <Link to="/projects">{t("projects.checklist.aiEval.action")}</Link>
           </Button>
         }
       />
@@ -2247,17 +2622,16 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
 
 function readTab(value: string | null): AiEvalTab {
   if (
-    value === "overview" ||
+    value === "runs" ||
     value === "datasets" ||
     value === "scorers" ||
     value === "experiments" ||
-    value === "optimizations" ||
     value === "production" ||
     value === "annotations"
   ) {
     return value;
   }
-  return "overview";
+  return "runs";
 }
 
 function readAgentRunStatus(value: string | null) {

@@ -222,6 +222,7 @@ func Statements() []string {
 			"DEFINE FIELD IF NOT EXISTS resultDigest ON "+table+" TYPE option<string>",
 			"DEFINE FIELD IF NOT EXISTS embeddingModel ON "+table+" TYPE option<string>",
 			"DEFINE FIELD IF NOT EXISTS datasetId ON "+table+" TYPE option<string>",
+			"DEFINE FIELD IF NOT EXISTS experimentId ON "+table+" TYPE option<string>",
 			"DEFINE FIELD IF NOT EXISTS datasetItemId ON "+table+" TYPE option<string>",
 			"DEFINE FIELD IF NOT EXISTS harnessRunId ON "+table+" TYPE option<string>",
 			"DEFINE FIELD IF NOT EXISTS scorerId ON "+table+" TYPE option<string>",

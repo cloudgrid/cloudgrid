@@ -238,6 +238,17 @@ func TestBuildAiEvalQueryRoutesExperimentRunLookupsToRunTable(t *testing.T) {
 	if !strings.Contains(byExperimentID.SQL, "FROM ai_experiment_run") || !strings.Contains(byExperimentID.SQL, "experimentId = $experimentId") {
 		t.Fatalf("SQL = %s, want experiment runs for experiment id", byExperimentID.SQL)
 	}
+
+	itemRuns, err := BuildAiEvalQuery(storage.SubjectEvalExperimentSearch, map[string]any{
+		"experimentRunId": "experiment-run-1",
+		"itemRuns":        true,
+	})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery item runs returned error: %v", err)
+	}
+	if !strings.Contains(itemRuns.SQL, "FROM ai_dataset_item_run") || !strings.Contains(itemRuns.SQL, "experimentRunId = $experimentRunId") {
+		t.Fatalf("SQL = %s, want dataset item runs for experiment run id", itemRuns.SQL)
+	}
 }
 
 func TestShapeAiEvalItemsReturnsGraphQLReadyRows(t *testing.T) {
@@ -311,7 +322,13 @@ func TestBuildExperimentManifestResolveQueriesResolveImmutableInputs(t *testing.
 	if !strings.Contains(stmts["datasetItems"].SQL, "split IN $splits") || !strings.Contains(stmts["datasetItems"].SQL, "reviewStatus = 'reviewed'") {
 		t.Fatalf("dataset item SQL = %s, want resolved reviewed split item query", stmts["datasetItems"].SQL)
 	}
-	if !strings.Contains(stmts["scorers"].SQL, "id IN $scorerIds") {
+	if !strings.Contains(stmts["run"].SQL, "record::id(id) = $experimentRunId") {
+		t.Fatalf("run SQL = %s, want record id lookup", stmts["run"].SQL)
+	}
+	if !strings.Contains(stmts["experiment"].SQL, "record::id(id) = $experimentId") {
+		t.Fatalf("experiment SQL = %s, want record id lookup", stmts["experiment"].SQL)
+	}
+	if !strings.Contains(stmts["scorers"].SQL, "record::id(id) IN $scorerIds") {
 		t.Fatalf("scorer SQL = %s, want versioned scorer lookup", stmts["scorers"].SQL)
 	}
 }

@@ -461,7 +461,7 @@ func TestNATSMessageAccessorsUseRawMessageAndFallbackAttempt(t *testing.T) {
 func TestRunConsumerReturnsSubscribeErrors(t *testing.T) {
 	js := &fakePullSubscriber{subscribeErr: errors.New("subscribe failed")}
 
-	err := RunConsumer(context.Background(), js, &fakeTraceNotificationPublisher{}, &fakeStore{}, testLogger(t))
+	err := RunConsumer(context.Background(), js, &fakeNotificationNATS{}, &fakeTraceNotificationPublisher{}, &fakeStore{}, testLogger(t))
 	if err == nil {
 		t.Fatal("RunConsumer() error = nil")
 	}

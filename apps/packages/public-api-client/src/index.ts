@@ -20,11 +20,17 @@ import type {
   CreateAlertRuleMutationData,
   CreateAlertSilenceInput,
   CreateAlertSilenceMutationData,
+  CreateDatasetInput,
+  CreateDatasetMutationData,
   CreatedIngestCredential,
+  CreateExperimentInput,
+  CreateExperimentMutationData,
   CreateIngestCredentialInput,
   CreateIngestCredentialMutationData,
   CreateProjectInput,
   CreateProjectMutationData,
+  CreateScorerInput,
+  CreateScorerMutationData,
   Dataset,
   DatasetExportJob,
   DatasetImportJob,
@@ -81,10 +87,13 @@ import type {
   RevokeOrganizationInvitationMutationData,
   RichMetricSeriesInput,
   RichMetricSeriesResult,
+  Scorer,
   ScorerSearchInput,
   ScorersQueryData,
   SelectProjectMutationData,
   StartDatasetExportInput,
+  StartExperimentRunInput,
+  StartExperimentRunMutationData,
   TelemetryFacetInput,
   TelemetryFacetQueryData,
   TelemetryFacetResult,
@@ -133,8 +142,14 @@ export interface TelemetryGraphQLClient {
   getAgentRun: (id: string) => Promise<AgentRun | null>;
   searchDatasets: (input: DatasetSearchInput) => Promise<DatasetsQueryData["datasets"]>;
   getDataset: (id: string) => Promise<Dataset | null>;
+  createDataset: (input: CreateDatasetInput) => Promise<Dataset>;
   searchScorers: (input: ScorerSearchInput) => Promise<ScorersQueryData["scorers"]>;
+  createScorer: (input: CreateScorerInput) => Promise<Scorer>;
   searchExperiments: (input: ExperimentSearchInput) => Promise<ExperimentsQueryData["experiments"]>;
+  createExperiment: (
+    input: CreateExperimentInput,
+  ) => Promise<ExperimentsQueryData["experiments"]["items"][number]>;
+  startExperimentRun: (input: StartExperimentRunInput) => Promise<ExperimentRun>;
   getExperimentRun: (id: string) => Promise<ExperimentRun | null>;
   searchAnnotationQueue: (input: AnnotationQueueSearchInput) => Promise<AnnotationQueueResult>;
   getAiQualityOverview: (input: AiQualityOverviewInput) => Promise<AiQualityOverview>;
@@ -344,11 +359,29 @@ export function createTelemetryGraphQLClient(endpoint = "/graphql"): TelemetryGr
       });
       return data.dataset ?? null;
     },
+    async createDataset(input) {
+      const data = await requestGraphQL<CreateDatasetMutationData>(
+        endpoint,
+        "CreateDataset",
+        createDatasetOperation,
+        { input },
+      );
+      return data.createDataset;
+    },
     async searchScorers(input) {
       const data = await requestGraphQL<ScorersQueryData>(endpoint, "Scorers", scorersOperation, {
         input,
       });
       return data.scorers;
+    },
+    async createScorer(input) {
+      const data = await requestGraphQL<CreateScorerMutationData>(
+        endpoint,
+        "CreateScorer",
+        createScorerOperation,
+        { input },
+      );
+      return data.createScorer;
     },
     async searchExperiments(input) {
       const data = await requestGraphQL<ExperimentsQueryData>(
@@ -358,6 +391,24 @@ export function createTelemetryGraphQLClient(endpoint = "/graphql"): TelemetryGr
         { input },
       );
       return data.experiments;
+    },
+    async createExperiment(input) {
+      const data = await requestGraphQL<CreateExperimentMutationData>(
+        endpoint,
+        "CreateExperiment",
+        createExperimentOperation,
+        { input },
+      );
+      return data.createExperiment;
+    },
+    async startExperimentRun(input) {
+      const data = await requestGraphQL<StartExperimentRunMutationData>(
+        endpoint,
+        "StartExperimentRun",
+        startExperimentRunOperation,
+        { input },
+      );
+      return data.startExperimentRun;
     },
     async getExperimentRun(id) {
       const data = await requestGraphQL<ExperimentRunQueryData>(
@@ -2047,6 +2098,40 @@ export const datasetOperation = `
   }
 `;
 
+export const createDatasetOperation = `
+  mutation CreateDataset($input: CreateDatasetInput!) {
+    createDataset(input: $input) {
+      id
+      name
+      description
+      version
+      createdAt
+      itemCount
+      reviewedItemCount
+      splitCounts
+      health {
+        status
+        reviewedItemCount
+        totalItemCount
+        splitCounts
+        duplicateCandidateCount
+        leakageWarningCount
+        missingExpectedCount
+        schemaIssueCount
+        smallDataset
+        warnings
+      }
+      tags
+      items {
+        items {
+          ${datasetItemFields}
+        }
+        nextCursor
+      }
+    }
+  }
+`;
+
 export const scorersOperation = `
   query Scorers($input: ScorerSearchInput) {
     scorers(input: $input) {
@@ -2059,6 +2144,19 @@ export const scorersOperation = `
         version
       }
       nextCursor
+    }
+  }
+`;
+
+export const createScorerOperation = `
+  mutation CreateScorer($input: CreateScorerInput!) {
+    createScorer(input: $input) {
+      id
+      name
+      kind
+      definition
+      judgeModelRef
+      version
     }
   }
 `;
@@ -2092,6 +2190,44 @@ export const experimentsOperation = `
         }
       }
       nextCursor
+    }
+  }
+`;
+
+export const createExperimentOperation = `
+  mutation CreateExperiment($input: CreateExperimentInput!) {
+    createExperiment(input: $input) {
+      id
+      name
+      datasetId
+      datasetVersion
+      scorerIds
+      splitSelector {
+        splits
+        reviewedOnly
+        includeSynthetic
+      }
+      baselineRef
+      promptVersionRefs
+      skillSnapshotRefs
+      toolSnapshotRefs
+      providerProfileRefs
+      createdAt
+      tags
+      runs {
+        items {
+          ${experimentRunFields}
+        }
+        nextCursor
+      }
+    }
+  }
+`;
+
+export const startExperimentRunOperation = `
+  mutation StartExperimentRun($input: StartExperimentRunInput!) {
+    startExperimentRun(input: $input) {
+      ${experimentRunFields}
     }
   }
 `;
@@ -2624,6 +2760,13 @@ export const publicGraphQLOperations = [
     requiresSelectedProject: true,
   },
   {
+    operationName: "CreateDataset",
+    document: createDatasetOperation,
+    kind: "mutation",
+    area: "ai-eval",
+    requiresSelectedProject: true,
+  },
+  {
     operationName: "Scorers",
     document: scorersOperation,
     kind: "query",
@@ -2631,9 +2774,30 @@ export const publicGraphQLOperations = [
     requiresSelectedProject: true,
   },
   {
+    operationName: "CreateScorer",
+    document: createScorerOperation,
+    kind: "mutation",
+    area: "ai-eval",
+    requiresSelectedProject: true,
+  },
+  {
     operationName: "Experiments",
     document: experimentsOperation,
     kind: "query",
+    area: "ai-eval",
+    requiresSelectedProject: true,
+  },
+  {
+    operationName: "CreateExperiment",
+    document: createExperimentOperation,
+    kind: "mutation",
+    area: "ai-eval",
+    requiresSelectedProject: true,
+  },
+  {
+    operationName: "StartExperimentRun",
+    document: startExperimentRunOperation,
+    kind: "mutation",
     area: "ai-eval",
     requiresSelectedProject: true,
   },
@@ -2725,8 +2889,12 @@ export type SupportedGraphQLData =
   | AgentRunQueryData
   | DatasetsQueryData
   | DatasetQueryData
+  | CreateDatasetMutationData
   | ScorersQueryData
+  | CreateScorerMutationData
   | ExperimentsQueryData
+  | CreateExperimentMutationData
+  | StartExperimentRunMutationData
   | ExperimentRunQueryData
   | AnnotationQueueQueryData
   | AiQualityOverviewQueryData

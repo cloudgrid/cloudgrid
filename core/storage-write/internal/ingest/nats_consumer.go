@@ -21,12 +21,17 @@ type PullSubscriberJetStream interface {
 	Publish(subject string, data []byte, opts ...nats.PubOpt) (*nats.PubAck, error)
 }
 
+type CorePublisher interface {
+	Publish(subject string, data []byte) error
+}
+
 func RegisterEvalMutationResponders(nc interface {
 	Subscribe(subject string, cb nats.MsgHandler) (*nats.Subscription, error)
+	Publish(subject string, data []byte) error
 }, js interface {
 	Publish(subject string, data []byte, opts ...nats.PubOpt) (*nats.PubAck, error)
 }, store ports.AIWriteStore, logger *slog.Logger) error {
-	publisher := natsAIEventPublisher{js: js}
+	publisher := natsAIEventPublisher{nc: nc, js: js}
 	for _, subject := range []string{
 		EvalDatasetCreateSubject,
 		EvalDatasetItemsAppendSubject,
@@ -48,12 +53,12 @@ func RegisterEvalMutationResponders(nc interface {
 	return nil
 }
 
-func RunConsumer(ctx context.Context, js PullSubscriberJetStream, notificationPublisher ports.TraceNotificationPublisher, store ports.TelemetryWriteStore, logger *slog.Logger) error {
+func RunConsumer(ctx context.Context, js PullSubscriberJetStream, nc CorePublisher, notificationPublisher ports.TraceNotificationPublisher, store ports.TelemetryWriteStore, logger *slog.Logger) error {
 	sub, err := js.PullSubscribe("telemetry.ingest.*", ConsumerName, nats.BindStream(StreamName), nats.ManualAck())
 	if err != nil {
 		return err
 	}
-	aiPublisher := natsAIEventPublisher{js: js}
+	aiPublisher := natsAIEventPublisher{nc: nc, js: js}
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -102,6 +107,9 @@ func (publisher natsTraceNotificationPublisher) PublishTracePersisted(_ context.
 }
 
 type natsAIEventPublisher struct {
+	nc interface {
+		Publish(subject string, data []byte) error
+	}
 	js interface {
 		Publish(subject string, data []byte, opts ...nats.PubOpt) (*nats.PubAck, error)
 	}
@@ -112,6 +120,9 @@ func (publisher natsAIEventPublisher) PublishAIProjectionPersisted(_ context.Con
 	if err != nil {
 		return err
 	}
+	if publisher.nc != nil {
+		return publisher.nc.Publish(AiProjectionPersistedSubject, data)
+	}
 	_, err = publisher.js.Publish(AiProjectionPersistedSubject, data)
 	return err
 }
@@ -120,6 +131,12 @@ func (publisher natsAIEventPublisher) PublishExperimentProgress(_ context.Contex
 	data, err := json.Marshal(notification)
 	if err != nil {
 		return err
+	}
+	if publisher.nc != nil {
+		return publisher.nc.Publish(EvalExperimentProgressSubject, data)
+	}
+	if publisher.js == nil {
+		return nil
 	}
 	_, err = publisher.js.Publish(EvalExperimentProgressSubject, data)
 	return err

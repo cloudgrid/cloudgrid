@@ -415,8 +415,9 @@ func TestHandleEvalMutationMessageRespondsWithMutationResponse(t *testing.T) {
 }
 
 func TestNATSAIEventPublisherPublishesConfiguredSubjects(t *testing.T) {
+	nc := &fakeNotificationNATS{}
 	js := &fakeNotificationJetStream{}
-	publisher := natsAIEventPublisher{js: js}
+	publisher := natsAIEventPublisher{nc: nc, js: js}
 
 	if err := publisher.PublishAIProjectionPersisted(context.Background(), contracts.AiProjectionPersistedNotification{
 		RequestID:     "req-ai-1",
@@ -427,8 +428,8 @@ func TestNATSAIEventPublisherPublishesConfiguredSubjects(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("PublishAIProjectionPersisted() error = %v", err)
 	}
-	if js.subject != AiProjectionPersistedSubject {
-		t.Fatalf("projection notification subject = %q, want %q", js.subject, AiProjectionPersistedSubject)
+	if nc.subject != AiProjectionPersistedSubject {
+		t.Fatalf("projection notification subject = %q, want %q", nc.subject, AiProjectionPersistedSubject)
 	}
 
 	if err := publisher.PublishExperimentProgress(context.Background(), contracts.ExperimentProgressNotification{
@@ -439,8 +440,8 @@ func TestNATSAIEventPublisherPublishesConfiguredSubjects(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("PublishExperimentProgress() error = %v", err)
 	}
-	if js.subject != EvalExperimentProgressSubject {
-		t.Fatalf("progress subject = %q, want %q", js.subject, EvalExperimentProgressSubject)
+	if nc.subject != EvalExperimentProgressSubject {
+		t.Fatalf("progress subject = %q, want %q", nc.subject, EvalExperimentProgressSubject)
 	}
 }
 

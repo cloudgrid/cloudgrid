@@ -15,8 +15,11 @@ import {
   commitDatasetImportOperation,
   createAlertRuleOperation,
   createAlertSilenceOperation,
+  createDatasetOperation,
+  createExperimentOperation,
   createIngestCredentialOperation,
   createProjectOperation,
+  createScorerOperation,
   dashboardsOperation,
   datasetExportOperation,
   datasetOperation,
@@ -54,6 +57,7 @@ import {
   selectProjectOperation,
   setDashboardPinnedOperation,
   startDatasetExportOperation,
+  startExperimentRunOperation,
   telemetryFacetsOperation,
   traceDetailOperation,
   traceSearchOperation,
@@ -267,6 +271,13 @@ async function main(args = process.argv.slice(2)) {
   const controlPlaneHealthPort = Number(
     baseEnv.CLOUDGRID_INTEGRATION_CONTROL_PLANE_HEALTH_PORT || (await freePort()),
   );
+  const aiEvalRunnerHealthPort = Number(
+    baseEnv.CLOUDGRID_INTEGRATION_AI_EVAL_RUNNER_HEALTH_PORT || (await freePort()),
+  );
+  const aiEvalHarnessPort = Number(
+    baseEnv.CLOUDGRID_INTEGRATION_AI_EVAL_HARNESS_PORT || (await freePort()),
+  );
+  const aiEvalHarnessURL = `http://127.0.0.1:${aiEvalHarnessPort}`;
   const natsPort = Number(baseEnv.CLOUDGRID_INTEGRATION_NATS_PORT || (await freePort()));
   const natsMonitorPort = Number(
     baseEnv.CLOUDGRID_INTEGRATION_NATS_MONITOR_PORT || (await freePort()),
@@ -299,6 +310,8 @@ async function main(args = process.argv.slice(2)) {
     `Dataset transfer: ${datasetTransferDir}`,
     `BFF: http://127.0.0.1:${bffPort}/graphql`,
     `Collector: http://127.0.0.1:${otlpPort}`,
+    `AI eval runner: http://127.0.0.1:${aiEvalRunnerHealthPort}/readyz`,
+    `AI eval harness: ${aiEvalHarnessURL}`,
     `Local E2E scenarios: ${integrationScenarios
       .filter((scenario) => scenario.mode === "local-e2e")
       .map((scenario) => scenario.id)
@@ -370,6 +383,10 @@ async function main(args = process.argv.slice(2)) {
       CLOUDGRID_STORAGE_WRITE_HEALTH_PORT: String(storageWriteHealthPort),
       CLOUDGRID_CONTROL_PLANE_HEALTH_HOST: "127.0.0.1",
       CLOUDGRID_CONTROL_PLANE_HEALTH_PORT: String(controlPlaneHealthPort),
+      CLOUDGRID_AI_EVAL_ENABLED: "true",
+      CLOUDGRID_AI_EVAL_RUNNER_HEALTH_HOST: "127.0.0.1",
+      CLOUDGRID_AI_EVAL_RUNNER_HEALTH_PORT: String(aiEvalRunnerHealthPort),
+      CLOUDGRID_AI_EVAL_HARNESS_URL: aiEvalHarnessURL,
       CLOUDGRID_BFF_HOST: "127.0.0.1",
       CLOUDGRID_BFF_PORT: String(bffPort),
       CLOUDGRID_GRAPHQL_UI: "false",
@@ -405,6 +422,24 @@ async function main(args = process.argv.slice(2)) {
       }),
     );
     await waitForHttp(`http://127.0.0.1:${controlPlaneHealthPort}/readyz`, 20_000);
+
+    processes.push(
+      startProcess(
+        "ai-eval-harness",
+        ["bun", "tooling/scripts/ai-eval-dev-harness.mjs"],
+        serviceEnv,
+      ),
+    );
+    await waitForHttp(`${aiEvalHarnessURL}/readyz`, 20_000);
+
+    processes.push(
+      startProcess(
+        "ai-eval-runner",
+        ["go", "run", "./core/ai-eval-runner/cmd/ai-eval-runner"],
+        serviceEnv,
+      ),
+    );
+    await waitForHttp(`http://127.0.0.1:${aiEvalRunnerHealthPort}/readyz`, 20_000);
 
     processes.push(
       startProcess("bff", ["bun", "run", "--cwd", "apps/backend", "src/index.ts"], {
@@ -1503,28 +1538,64 @@ async function assertAlertingScenario(port, projectId, metricName) {
 
 async function assertAiEvalScenario(port, natsUrl, runID, traceFixture) {
   console.log("Asserting public GraphQL AI Eval workspace workflows...");
-  const dataset = await evalMutation(natsUrl, "eval.dataset.create", {
-    name: `Integration dataset ${runID}`,
-    description: "Dataset created by the local integration runner",
-    tags: ["integration", runID],
-  });
-  assert(dataset.id, "eval.dataset.create did not return a dataset id");
+  const datasetResult = await graphql(
+    port,
+    createDatasetOperation,
+    {
+      input: {
+        name: `Integration dataset ${runID}`,
+        description: "Dataset created by the local integration runner",
+        tags: ["integration", runID],
+      },
+    },
+    "CreateDataset",
+  );
+  const dataset = datasetResult.data?.createDataset;
+  assert(dataset?.id, "CreateDataset did not return a dataset id");
 
-  const scorer = await evalMutation(natsUrl, "eval.scorer.create", {
-    name: `Integration deterministic scorer ${runID}`,
-    kind: "deterministic",
-    definition: { type: "contains", field: "answer", expected: "ok" },
-  });
-  assert(scorer.id, "eval.scorer.create did not return a scorer id");
+  const scorerResult = await graphql(
+    port,
+    createScorerOperation,
+    {
+      input: {
+        name: `Integration deterministic scorer ${runID}`,
+        kind: "deterministic",
+        definition: { type: "contains", field: "answer", expected: "ok" },
+      },
+    },
+    "CreateScorer",
+  );
+  const scorer = scorerResult.data?.createScorer;
+  assert(scorer?.id, "CreateScorer did not return a scorer id");
 
-  const experiment = await evalMutation(natsUrl, "eval.experiment.create", {
-    name: `Integration experiment ${runID}`,
-    datasetId: dataset.id,
-    datasetVersion: 1,
-    scorerIds: [scorer.id],
-    tags: ["integration"],
-  });
-  assert(experiment.id, "eval.experiment.create did not return an experiment id");
+  const experimentResult = await graphql(
+    port,
+    createExperimentOperation,
+    {
+      input: {
+        name: `Integration experiment ${runID}`,
+        datasetId: dataset.id,
+        datasetVersion: dataset.version,
+        scorerIds: [scorer.id],
+        solverRef: { kind: "integration", command: "cloudgrid-e2e" },
+        tags: ["integration"],
+      },
+    },
+    "CreateExperiment",
+  );
+  const experiment = experimentResult.data?.createExperiment;
+  assert(experiment?.id, "CreateExperiment did not return an experiment id");
+
+  const experimentRun = await graphql(
+    port,
+    startExperimentRunOperation,
+    { input: { experimentId: experiment.id } },
+    "StartExperimentRun",
+  );
+  assert(
+    experimentRun.data?.startExperimentRun?.experimentId === experiment.id,
+    "StartExperimentRun did not return a run for the created experiment",
+  );
 
   const upload = await uploadDatasetImport(port, dataset.id, runID);
   const preparedImport = await graphql(
@@ -1574,13 +1645,19 @@ async function assertAiEvalScenario(port, natsUrl, runID, traceFixture) {
   );
 
   const agentRunId = `agent-run-${runID}`;
-  await publishAiProjection(natsUrl, {
-    runID,
-    agentRunId,
-    traceId: traceFixture.traceIdHex,
-    spanId: traceFixture.rootSpanIdHex,
-    serviceName: traceFixture.serviceName,
-  });
+  try {
+    await publishAiProjection(natsUrl, {
+      runID,
+      agentRunId,
+      traceId: traceFixture.traceIdHex,
+      spanId: traceFixture.rootSpanIdHex,
+      serviceName: traceFixture.serviceName,
+    });
+  } catch (error) {
+    const detail = describeError(error);
+    console.error(`AI projection fixture publish failed: ${detail}`);
+    throw new Error(`AI projection fixture publish failed: ${detail}`);
+  }
 
   await eventually(async () => {
     const agentRuns = await graphql(
@@ -1778,25 +1855,6 @@ async function graphqlProblem(port, query, variables, operationName, expectedCod
   );
 }
 
-async function evalMutation(natsUrl, subject, input) {
-  const { JSONCodec, connect } = await loadNatsClient();
-  const nc = await connect({ servers: natsUrl, name: `cloudgrid-integration-${subject}` });
-  try {
-    const codec = JSONCodec();
-    const request = {
-      ...bridgeEnvelope(`integration-${subject}-${Date.now()}`),
-      input,
-    };
-    const message = await nc.request(subject, codec.encode(request), { timeout: 10_000 });
-    const response = codec.decode(message.data);
-    assert(response.ok === true, `${subject} failed: ${JSON.stringify(response.error)}`);
-    assert(response.data, `${subject} returned an empty response`);
-    return response.data;
-  } finally {
-    await nc.drain();
-  }
-}
-
 async function uploadDatasetImport(port, datasetId, runID) {
   const filename = `ai-eval-${runID}.jsonl`;
   const line = JSON.stringify({
@@ -1819,11 +1877,27 @@ async function uploadDatasetImport(port, datasetId, runID) {
 }
 
 async function publishAiProjection(natsUrl, { runID, agentRunId, traceId, spanId, serviceName }) {
-  const { JSONCodec, connect } = await loadNatsClient();
-  const nc = await connect({ servers: natsUrl, name: "cloudgrid-integration-ai-projection" });
+  let nc;
+  let step = "initializing AI projection publish";
   try {
+    step = "loading NATS client";
+    const { JSONCodec, connect } = await loadNatsClient();
+    step = "connecting to NATS for AI projection publish";
+    nc = await connect({ servers: natsUrl, name: "cloudgrid-integration-ai-projection" });
+    step = "creating JSON codec";
     const codec = JSONCodec();
+    step = "creating JetStream context";
     const js = nc.jetstream();
+    step = "checking TELEMETRY_INGEST stream";
+    const jsm = await nc.jetstreamManager();
+    const stream = await jsm.streams.info("TELEMETRY_INGEST");
+    assert(
+      stream.config.subjects?.includes("telemetry.ingest.ai_projections"),
+      `TELEMETRY_INGEST subjects do not include telemetry.ingest.ai_projections: ${JSON.stringify(
+        stream.config.subjects,
+      )}`,
+    );
+    step = "building AI projection command";
     const startedAt = new Date(Date.now() - 5_000).toISOString();
     const endedAt = new Date().toISOString();
     const command = {
@@ -1863,9 +1937,29 @@ async function publishAiProjection(natsUrl, { runID, agentRunId, traceId, spanId
         evalResults: [],
       },
     };
+    step = "publishing telemetry.ingest.ai_projections";
     await js.publish("telemetry.ingest.ai_projections", codec.encode(command));
+  } catch (error) {
+    throw new Error(`${step} failed: ${describeError(error)}`);
   } finally {
-    await nc.drain();
+    if (nc) {
+      try {
+        await nc.drain();
+      } catch (error) {
+        console.warn(`AI projection NATS drain failed after ${step}: ${describeError(error)}`);
+      }
+    }
+  }
+}
+
+function describeError(error) {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
   }
 }
 

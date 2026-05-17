@@ -234,7 +234,9 @@ func shapeAiEvalItems(subject string, input map[string]any, rows []map[string]an
 		case subjectEvalScorerSearch:
 			items = append(items, shapeScorerRow(row))
 		case subjectEvalExperimentSearch:
-			if aiEvalExperimentSearchReturnsRuns(input) {
+			if aiEvalExperimentSearchReturnsDatasetItemRuns(input) {
+				items = append(items, shapeDatasetItemRunRow(row))
+			} else if aiEvalExperimentSearchReturnsRuns(input) {
 				items = append(items, shapeExperimentRunRow(row))
 			} else {
 				items = append(items, shapeExperimentRow(row))
@@ -682,7 +684,9 @@ func BuildAiEvalQuery(subject string, input map[string]any) (QueryStatement, err
 		addStringFilter(&conditions, params, input, "kind", "kind")
 		addTextSearch(&conditions, params, input, []string{"id", "name"})
 	case subjectEvalExperimentSearch:
-		if _, ok := stringInput(input, "experimentRunId"); ok {
+		if aiEvalExperimentSearchReturnsDatasetItemRuns(input) {
+			addStringFilter(&conditions, params, input, "experimentRunId", "experimentRunId")
+		} else if _, ok := stringInput(input, "experimentRunId"); ok {
 			addRecordIDFilter(&conditions, params, input, "experimentRunId")
 		}
 		if !aiEvalExperimentSearchReturnsRuns(input) {
@@ -914,7 +918,7 @@ func BuildExperimentManifestResolveQueries(request contracts.ExperimentManifestR
 			SQL: strings.Join([]string{
 				"SELECT *",
 				"FROM ai_experiment_run",
-				whereClause(append(ownershipConditions(), "id = $experimentRunId")),
+				whereClause(append(ownershipConditions(), "record::id(id) = $experimentRunId")),
 				"LIMIT 1;",
 			}, " "),
 			Params: cloneParams(params),
@@ -923,7 +927,7 @@ func BuildExperimentManifestResolveQueries(request contracts.ExperimentManifestR
 			SQL: strings.Join([]string{
 				"SELECT *",
 				"FROM ai_experiment",
-				whereClause(append(ownershipConditions(), "id = $experimentId")),
+				whereClause(append(ownershipConditions(), "record::id(id) = $experimentId")),
 				"LIMIT 1;",
 			}, " "),
 			Params: cloneParams(params),
@@ -941,7 +945,7 @@ func BuildExperimentManifestResolveQueries(request contracts.ExperimentManifestR
 			SQL: strings.Join([]string{
 				"SELECT id, version",
 				"FROM ai_scorer",
-				whereClause(append(ownershipConditions(), "id IN $scorerIds")),
+				whereClause(append(ownershipConditions(), "record::id(id) IN $scorerIds")),
 				"ORDER BY id ASC;",
 			}, " "),
 			Params: cloneParams(params),
@@ -961,6 +965,9 @@ func aiEvalTableForSubject(subject string, input map[string]any) (string, error)
 	case subjectEvalScorerSearch:
 		return "ai_scorer", nil
 	case subjectEvalExperimentSearch:
+		if aiEvalExperimentSearchReturnsDatasetItemRuns(input) {
+			return "ai_dataset_item_run", nil
+		}
 		if aiEvalExperimentSearchReturnsRuns(input) {
 			return "ai_experiment_run", nil
 		}
@@ -975,6 +982,9 @@ func aiEvalTableForSubject(subject string, input map[string]any) (string, error)
 }
 
 func aiEvalExperimentSearchReturnsRuns(input map[string]any) bool {
+	if aiEvalExperimentSearchReturnsDatasetItemRuns(input) {
+		return false
+	}
 	if _, ok := stringInput(input, "experimentRunId"); ok {
 		return true
 	}
@@ -982,6 +992,11 @@ func aiEvalExperimentSearchReturnsRuns(input map[string]any) bool {
 		return true
 	}
 	return false
+}
+
+func aiEvalExperimentSearchReturnsDatasetItemRuns(input map[string]any) bool {
+	value, ok := input["itemRuns"].(bool)
+	return ok && value
 }
 
 func aiEvalProjectionForSubject(subject string, input map[string]any) string {

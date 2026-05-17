@@ -22,17 +22,17 @@ describe("AI Eval route UX migration", () => {
 
   test("covers all approved AI Eval sections and links settings without route-local GraphQL", () => {
     for (const section of [
-      "overview",
       "runs",
       "datasets",
       "scorers",
       "experiments",
-      "optimizations",
       "production",
       "annotations",
     ]) {
       expect(routeSource).toContain(`value="${section}"`);
     }
+    expect(routeSource).not.toContain('value="overview"');
+    expect(routeSource).not.toContain('value="optimizations"');
     expect(routeSource).toContain("/settings/ai-eval");
     expect(routeSource).toContain("controlClient.getProjectAiSettings");
     expect(routeSource).toContain("telemetryClient.getAiQualityOverview");
@@ -74,5 +74,17 @@ describe("AI Eval route UX migration", () => {
     expect(routeSource).toContain("telemetryClient.getDatasetExport");
     expect(routeSource).toContain("downloadSameOriginExport");
     expect(routeSource).toContain("new URL(job.downloadUrl, window.location.origin)");
+  });
+
+  test("exposes real dataset, scorer, and experiment administration actions", () => {
+    expect(routeSource).toContain("CreateDatasetDialog");
+    expect(routeSource).toContain("telemetryClient.createDataset");
+    expect(routeSource).toContain("CreateScorerDialog");
+    expect(routeSource).toContain("telemetryClient.createScorer");
+    expect(routeSource).toContain("CreateExperimentDialog");
+    expect(routeSource).toContain("telemetryClient.createExperiment");
+    expect(routeSource).toContain("StartExperimentRunButton");
+    expect(routeSource).toContain("telemetryClient.startExperimentRun");
+    expect(routeSource).toContain("Run evaluation");
   });
 });

@@ -984,7 +984,11 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
       subjects.experimentSearch,
       {
         ...envelope(authContext),
-        input: { experimentRunId, ...compactInput(input as Record<string, unknown>) },
+        input: {
+          experimentRunId,
+          itemRuns: true,
+          ...compactInput(input as Record<string, unknown>),
+        },
       },
       datasetItemRunSearchResultSchema,
     );
@@ -1763,6 +1767,14 @@ export function compactInput<T extends Record<string, unknown>>(input: T): T {
   ) as T;
 }
 
+function compactNullish(value: object) {
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([, entryValue]) => entryValue !== null && entryValue !== undefined,
+    ),
+  );
+}
+
 export function elapsedMilliseconds(start: number): number {
   return Math.max(0, Math.round(performance.now() - start));
 }
@@ -2208,32 +2220,79 @@ const datasetExportJobSchema = z.object({
   expiresAt: dateTimeSchema,
 });
 
-const datasetHealthSchema = z.object({
-  status: datasetHealthStatusSchema,
-  reviewedItemCount: z.number().int(),
-  totalItemCount: z.number().int(),
-  splitCounts: z.unknown(),
-  duplicateCandidateCount: z.number().int(),
-  leakageWarningCount: z.number().int(),
-  missingExpectedCount: z.number().int(),
-  schemaIssueCount: z.number().int(),
-  smallDataset: z.boolean(),
-  warnings: z.array(z.string()),
-});
+const datasetHealthSchema = z.preprocess(
+  (value) => ({
+    ...defaultDatasetHealth(),
+    ...(value && typeof value === "object" ? compactNullish(value) : {}),
+  }),
+  z.object({
+    status: datasetHealthStatusSchema,
+    reviewedItemCount: z.number().int(),
+    totalItemCount: z.number().int(),
+    splitCounts: z.unknown(),
+    duplicateCandidateCount: z.number().int(),
+    leakageWarningCount: z.number().int(),
+    missingExpectedCount: z.number().int(),
+    schemaIssueCount: z.number().int(),
+    smallDataset: z.boolean(),
+    warnings: z.array(z.string()),
+  }),
+);
 
-const datasetSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  description: z.string().optional().nullable(),
-  version: z.number().int(),
-  createdAt: dateTimeSchema,
-  itemCount: z.number().int(),
-  reviewedItemCount: z.number().int(),
-  splitCounts: z.unknown(),
-  health: datasetHealthSchema,
-  tags: z.array(z.string()),
-  items: z.unknown().optional(),
-});
+function defaultDatasetHealth() {
+  return {
+    status: "needs_review",
+    reviewedItemCount: 0,
+    totalItemCount: 0,
+    splitCounts: {},
+    duplicateCandidateCount: 0,
+    leakageWarningCount: 0,
+    missingExpectedCount: 0,
+    schemaIssueCount: 0,
+    smallDataset: true,
+    warnings: [],
+  };
+}
+
+const datasetSchema = z.preprocess(
+  (value) => {
+    const dataset = value && typeof value === "object" ? compactNullish(value) : {};
+    const itemCount = typeof dataset.itemCount === "number" ? dataset.itemCount : 0;
+    const reviewedItemCount =
+      typeof dataset.reviewedItemCount === "number" ? dataset.reviewedItemCount : 0;
+    const splitCounts =
+      dataset.splitCounts && typeof dataset.splitCounts === "object" ? dataset.splitCounts : {};
+    return {
+      ...dataset,
+      itemCount,
+      reviewedItemCount,
+      splitCounts,
+      health: {
+        ...defaultDatasetHealth(),
+        totalItemCount: itemCount,
+        reviewedItemCount,
+        splitCounts,
+        ...(dataset.health && typeof dataset.health === "object"
+          ? compactNullish(dataset.health)
+          : {}),
+      },
+      tags: Array.isArray(dataset.tags) ? dataset.tags : [],
+    };
+  },
+  z.object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    description: z.string().optional().nullable(),
+    version: z.number().int(),
+    createdAt: dateTimeSchema,
+    itemCount: z.number().int(),
+    reviewedItemCount: z.number().int(),
+    splitCounts: z.unknown(),
+    health: datasetHealthSchema,
+    tags: z.array(z.string()),
+    items: z.unknown().optional(),
+  }),
+);
 
 const scorerSchema = z.object({
   id: z.string().min(1),
@@ -2251,22 +2310,51 @@ const datasetSplitSelectorSchema = z.object({
   includeSynthetic: z.boolean(),
 });
 
-const experimentSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  datasetId: z.string().min(1),
-  datasetVersion: z.number().int(),
-  splitSelector: datasetSplitSelectorSchema,
-  scorerIds: z.array(z.string().min(1)),
-  baselineRef: z.unknown().optional().nullable(),
-  promptVersionRefs: z.array(z.string()),
-  skillSnapshotRefs: z.array(z.string()),
-  toolSnapshotRefs: z.array(z.string()),
-  providerProfileRefs: z.array(z.string()),
-  createdAt: dateTimeSchema,
-  tags: z.array(z.string()),
-  runs: z.unknown().optional(),
-});
+const experimentSchema = z.preprocess(
+  (value) => {
+    const experiment = value && typeof value === "object" ? compactNullish(value) : {};
+    return {
+      ...experiment,
+      splitSelector: {
+        splits: ["validation"],
+        reviewedOnly: true,
+        includeSynthetic: false,
+        ...(experiment.splitSelector && typeof experiment.splitSelector === "object"
+          ? compactNullish(experiment.splitSelector)
+          : {}),
+      },
+      promptVersionRefs: Array.isArray(experiment.promptVersionRefs)
+        ? experiment.promptVersionRefs
+        : [],
+      skillSnapshotRefs: Array.isArray(experiment.skillSnapshotRefs)
+        ? experiment.skillSnapshotRefs
+        : [],
+      toolSnapshotRefs: Array.isArray(experiment.toolSnapshotRefs)
+        ? experiment.toolSnapshotRefs
+        : [],
+      providerProfileRefs: Array.isArray(experiment.providerProfileRefs)
+        ? experiment.providerProfileRefs
+        : [],
+      tags: Array.isArray(experiment.tags) ? experiment.tags : [],
+    };
+  },
+  z.object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    datasetId: z.string().min(1),
+    datasetVersion: z.number().int(),
+    splitSelector: datasetSplitSelectorSchema,
+    scorerIds: z.array(z.string().min(1)),
+    baselineRef: z.unknown().optional().nullable(),
+    promptVersionRefs: z.array(z.string()),
+    skillSnapshotRefs: z.array(z.string()),
+    toolSnapshotRefs: z.array(z.string()),
+    providerProfileRefs: z.array(z.string()),
+    createdAt: dateTimeSchema,
+    tags: z.array(z.string()),
+    runs: z.unknown().optional(),
+  }),
+);
 
 const datasetItemRunSchema = z.object({
   id: z.string().min(1),

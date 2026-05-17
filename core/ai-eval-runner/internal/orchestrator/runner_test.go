@@ -101,6 +101,46 @@ func TestStartOfflineExperimentRunsDatasetItemsAndPersistsDeterministicResults(t
 	}
 }
 
+func TestStartOfflineExperimentFallsBackToManifestSolverRef(t *testing.T) {
+	reader := &fakeReader{
+		manifest: ports.ExperimentManifest{SolverRef: map[string]any{"kind": "manifest-solver"}},
+		experiments: []ports.Experiment{{
+			ID:             "experiment-1",
+			DatasetID:      "dataset-1",
+			DatasetVersion: 1,
+			ScorerIDs:      []string{"scorer-1"},
+		}},
+		items:   []ports.DatasetItem{{ID: "item-1", Input: map[string]any{"question": "ok"}}},
+		scorers: []ports.Scorer{{ID: "scorer-1", Kind: ports.ScorerKindDeterministic, Version: 1}},
+	}
+	writer := &fakeWriter{}
+	harness := &fakeHarness{
+		runResult: ports.HarnessRunResult{HarnessRunID: "harness-run-1", Output: map[string]any{"answer": "ok"}, LatencyMs: 1},
+	}
+	runner := NewRunner(RunnerConfig{
+		StorageReader:     reader,
+		StorageWriter:     writer,
+		HarnessAdapter:    harness,
+		ProgressPublisher: &fakePublisher{},
+		Clock:             fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)),
+		IDGenerator:       sequenceIDs("run-1", "item-run-1", "eval-result-1"),
+	})
+
+	_, err := runner.StartOfflineExperiment(context.Background(), StartExperimentRequest{
+		RequestID:    "request-1",
+		ExperimentID: "experiment-1",
+	})
+	if err != nil {
+		t.Fatalf("StartOfflineExperiment returned error: %v", err)
+	}
+	if !reflect.DeepEqual(writer.experimentRuns[0].SolverRef, map[string]any{"kind": "manifest-solver"}) {
+		t.Fatalf("persisted solverRef = %#v", writer.experimentRuns[0].SolverRef)
+	}
+	if !reflect.DeepEqual(harness.runRequests[0].SolverRef, map[string]any{"kind": "manifest-solver"}) {
+		t.Fatalf("harness solverRef = %#v", harness.runRequests[0].SolverRef)
+	}
+}
+
 func TestCancelOfflineExperimentStopsBeforeNextDatasetItem(t *testing.T) {
 	reader := &fakeReader{
 		experiments: []ports.Experiment{{

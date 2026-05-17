@@ -20,8 +20,10 @@ AI evaluation routes render only when `CLOUDGRID_AI_EVAL_ENABLED=true`. When dis
 AI evaluation layout follows `05-frontend/product-ux-concept.md` and
 `05-frontend/ai-eval-ux-concept.md`: feature-gated project workspace
 navigation, route-local AI Eval rail, main workspace surface, and right
-inspector drawer for run/dataset/scorer/experiment/optimization/policy/annotation
-detail surfaces.
+inspector drawer for run/dataset/scorer/experiment/policy/annotation detail
+surfaces. The route-local rail is task based and must not expose generic demo
+entries such as `Overview`. The approved rail entries are `Agent runs`,
+`Datasets`, `Scorers`, `Experiments`, `Production quality`, and `Annotations`.
 
 - Agent run timeline: trace waterfall with agent, model, tool, retrieval, token, and cost view models returned by GraphQL.
 - Transcript: GraphQL-provided transcript messages for long-running agent traces.
@@ -77,9 +79,11 @@ The production quality UI must:
 
 ## Dataset Import/Export UI
 
-Dataset import/export lives in the Datasets section and uses the existing route
-workspace plus right inspector/sheet patterns. It must not be implemented as a
-separate full-screen wizard.
+Dataset administration, import, and export lives in the Datasets section and
+uses the existing route workspace plus right inspector/sheet patterns. It must
+not be implemented as a separate full-screen wizard. The Datasets workspace must
+always show a dataset create action and a clear empty state that explains that a
+dataset is required before imports or experiment runs can happen.
 
 Import UI:
 
@@ -113,6 +117,24 @@ Export UI:
 Frontend must not parse uploaded file rows into `DatasetItemInput`, infer
 mapping automatically, compute row validity, deduplicate rows, compute leakage,
 or call `appendDatasetItems` for uploaded files.
+
+## Experiment Run UI
+
+Experiment creation and evaluation runs live in the Experiments section. The
+workspace must guide the user from prerequisite data to execution:
+
+- show which dataset version and scorers each experiment uses;
+- expose Create experiment from the Experiments workspace, using existing
+  dataset and scorer query results;
+- require a dataset, at least one scorer, a name, and a solver reference before
+  creating an experiment;
+- expose Run evaluation on every experiment row and in the selected experiment
+  inspector;
+- call `Mutation.startExperimentRun` for evaluation execution;
+- show existing experiment runs, status, pass rate, mean score, latency, and
+  item-run details returned by GraphQL;
+- keep prompt/tool/skill optimization details inside experiment/run details
+  until a dedicated optimization contract exists.
 
 ## Frontend Boundary
 
