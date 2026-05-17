@@ -14,6 +14,10 @@ import (
 
 type PullSubscriber interface {
 	PullSubscribe(subject string, durable string, opts ...nats.SubOpt) (*nats.Subscription, error)
+}
+
+type PullSubscriberJetStream interface {
+	PullSubscriber
 	Publish(subject string, data []byte, opts ...nats.PubOpt) (*nats.PubAck, error)
 }
 
@@ -44,12 +48,11 @@ func RegisterEvalMutationResponders(nc interface {
 	return nil
 }
 
-func RunConsumer(ctx context.Context, js PullSubscriber, store ports.TelemetryWriteStore, logger *slog.Logger) error {
+func RunConsumer(ctx context.Context, js PullSubscriberJetStream, notificationPublisher ports.TraceNotificationPublisher, store ports.TelemetryWriteStore, logger *slog.Logger) error {
 	sub, err := js.PullSubscribe("telemetry.ingest.*", ConsumerName, nats.BindStream(StreamName), nats.ManualAck())
 	if err != nil {
 		return err
 	}
-	publisher := natsTraceNotificationPublisher{js: js}
 	aiPublisher := natsAIEventPublisher{js: js}
 
 	for {
@@ -73,15 +76,21 @@ func RunConsumer(ctx context.Context, js PullSubscriber, store ports.TelemetryWr
 					continue
 				}
 			}
-			HandleMessage(ctx, wrapped, store, publisher, logger, time.Now)
+			HandleMessage(ctx, wrapped, store, notificationPublisher, logger, time.Now)
 		}
 	}
 }
 
 type natsTraceNotificationPublisher struct {
-	js interface {
-		Publish(subject string, data []byte, opts ...nats.PubOpt) (*nats.PubAck, error)
+	nc interface {
+		Publish(subject string, data []byte) error
 	}
+}
+
+func NewTraceNotificationPublisher(nc interface {
+	Publish(subject string, data []byte) error
+}) ports.TraceNotificationPublisher {
+	return natsTraceNotificationPublisher{nc: nc}
 }
 
 func (publisher natsTraceNotificationPublisher) PublishTracePersisted(_ context.Context, notification contracts.TracePersistedNotification) error {
@@ -89,8 +98,7 @@ func (publisher natsTraceNotificationPublisher) PublishTracePersisted(_ context.
 	if err != nil {
 		return err
 	}
-	_, err = publisher.js.Publish(PersistedTraceSubject, data)
-	return err
+	return publisher.nc.Publish(PersistedTraceSubject, data)
 }
 
 type natsAIEventPublisher struct {

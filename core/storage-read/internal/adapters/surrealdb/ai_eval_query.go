@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,18 +18,18 @@ import (
 )
 
 const (
-	subjectEvalAgentRunsSearch   = "eval.agent_runs.search"
-	subjectEvalDatasetSearch     = "eval.dataset.search"
+	subjectEvalAgentRunsSearch    = "eval.agent_runs.search"
+	subjectEvalDatasetSearch      = "eval.dataset.search"
 	subjectEvalDatasetExportStart = "eval.dataset.export.start"
 	subjectEvalDatasetTransferGet = "eval.dataset.transfer.get"
-	subjectEvalDatasetHealth     = "eval.dataset.health"
-	subjectEvalScorerSearch      = "eval.scorer.search"
-	subjectEvalExperimentSearch  = "eval.experiment.search"
-	subjectEvalResultsSearch     = "eval.results.search"
-	subjectEvalQualityOverview   = "eval.quality.overview"
-	subjectAnnotationQueueSearch = "annotation.queue.search"
-	aiEvalDefaultPageLimit       = 50
-	aiEvalMaxPageLimit           = 200
+	subjectEvalDatasetHealth      = "eval.dataset.health"
+	subjectEvalScorerSearch       = "eval.scorer.search"
+	subjectEvalExperimentSearch   = "eval.experiment.search"
+	subjectEvalResultsSearch      = "eval.results.search"
+	subjectEvalQualityOverview    = "eval.quality.overview"
+	subjectAnnotationQueueSearch  = "annotation.queue.search"
+	aiEvalDefaultPageLimit        = 50
+	aiEvalMaxPageLimit            = 200
 )
 
 func (store Store) QueryAiEval(ctx context.Context, subject string, input map[string]any) (map[string]any, error) {
@@ -49,10 +51,53 @@ func (store Store) QueryAiEval(ctx context.Context, subject string, input map[st
 	if err != nil {
 		return nil, storageError()
 	}
+	if subject == subjectEvalDatasetSearch {
+		if _, ok := stringInput(input, "datasetId"); !ok {
+			items, err = store.withDatasetListCounts(ctx, items)
+			if err != nil {
+				return nil, storageError()
+			}
+		}
+	}
 	return map[string]any{
-		"items":      items,
+		"items":      shapeAiEvalItems(subject, input, items),
 		"nextCursor": nil,
 	}, nil
+}
+
+func (store Store) withDatasetListCounts(ctx context.Context, rows []map[string]any) ([]map[string]any, error) {
+	datasetIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if id := aiEvalRecordID(row); id != "" {
+			datasetIDs = append(datasetIDs, id)
+		}
+	}
+	if len(datasetIDs) == 0 {
+		return rows, nil
+	}
+	stmt, err := BuildDatasetListCountsQuery(datasetIDs)
+	if err != nil {
+		return nil, err
+	}
+	counts, err := queryRows[map[string]any](ctx, store.DB, stmt)
+	if err != nil {
+		return nil, err
+	}
+	countsByDataset := map[string]map[string]any{}
+	for _, count := range counts {
+		if datasetID := aiEvalStringValue(count, "datasetId", ""); datasetID != "" {
+			countsByDataset[datasetID] = count
+		}
+	}
+	for _, row := range rows {
+		count := countsByDataset[aiEvalRecordID(row)]
+		if count == nil {
+			continue
+		}
+		row["itemCount"] = count["itemCount"]
+		row["reviewedItemCount"] = count["reviewedItemCount"]
+	}
+	return rows, nil
 }
 
 func (store Store) startDatasetExport(ctx context.Context, input map[string]any) (map[string]any, error) {
@@ -102,10 +147,12 @@ func (store Store) queryDatasetHealth(ctx context.Context, input map[string]any)
 	health["duplicateCandidateCount"] = len(duplicateRows)
 	health["smallDataset"] = numericValue(health["reviewedItemCount"]) < 30
 	health["warnings"] = datasetHealthWarnings(health)
-	if len(health["warnings"].([]string)) > 0 {
-		health["status"] = "warning"
+	if numericValue(health["leakageWarningCount"]) > 0 {
+		health["status"] = "leakage_warning"
+	} else if len(health["warnings"].([]string)) > 0 {
+		health["status"] = "needs_review"
 	} else {
-		health["status"] = "healthy"
+		health["status"] = "ready"
 	}
 	return health, nil
 }
@@ -127,10 +174,276 @@ func (store Store) queryAiQualityOverview(ctx context.Context, input map[string]
 		"projectId": aiEvalStringValue(input, "projectId", "default"),
 		"from":      input["from"],
 		"to":        input["to"],
-		"summary":   firstMap(summary),
-		"segments":  segments,
+		"summary":   shapeAiQualitySummary(firstMap(summary)),
+		"segments":  shapeAiQualitySegments(segments),
 		"warnings":  []string{},
 	}, nil
+}
+
+func shapeAiQualitySummary(row map[string]any) map[string]any {
+	return map[string]any{
+		"runCount":      intValueFromAny(row["runCount"]),
+		"meanLatencyMs": numericValue(row["meanLatencyMs"]),
+		"costUsd":       numericValue(row["costUsd"]),
+	}
+}
+
+func shapeAiQualitySegments(rows []map[string]any) []map[string]any {
+	segments := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		agentName := aiEvalStringValue(row, "agentName", "unknown")
+		environment := aiEvalStringValue(row, "environment", "")
+		service := aiEvalStringValue(row, "service", "")
+		route := aiEvalStringValue(row, "route", "")
+		segment := cloneParams(row)
+		segment["key"] = strings.Join([]string{agentName, environment, service, route}, ":")
+		segment["label"] = agentName
+		segment["dimensions"] = map[string]any{
+			"agentName":   agentName,
+			"environment": environment,
+			"service":     service,
+			"route":       route,
+		}
+		segment["runCount"] = intValueFromAny(row["runCount"])
+		segment["scoredRunCount"] = intValueFromAny(row["scoredRunCount"])
+		segment["p50LatencyMs"] = numericValue(row["p50LatencyMs"])
+		segment["p95LatencyMs"] = numericValue(row["p95LatencyMs"])
+		segment["costUsd"] = numericValue(row["costUsd"])
+		segment["regressionCount"] = intValueFromAny(row["regressionCount"])
+		delete(segment, "agentName")
+		delete(segment, "environment")
+		delete(segment, "service")
+		delete(segment, "route")
+		segments = append(segments, segment)
+	}
+	return segments
+}
+
+func shapeAiEvalItems(subject string, input map[string]any, rows []map[string]any) []map[string]any {
+	items := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		switch subject {
+		case subjectEvalAgentRunsSearch:
+			items = append(items, shapeAgentRunRow(row))
+		case subjectEvalDatasetSearch:
+			if _, ok := stringInput(input, "datasetId"); ok {
+				items = append(items, shapeDatasetItemRow(row))
+			} else {
+				items = append(items, shapeDatasetRow(row))
+			}
+		case subjectEvalScorerSearch:
+			items = append(items, shapeScorerRow(row))
+		case subjectEvalExperimentSearch:
+			if aiEvalExperimentSearchReturnsRuns(input) {
+				items = append(items, shapeExperimentRunRow(row))
+			} else {
+				items = append(items, shapeExperimentRow(row))
+			}
+		case subjectEvalResultsSearch:
+			items = append(items, shapeEvalResultRow(row))
+		case subjectAnnotationQueueSearch:
+			items = append(items, shapeAnnotationQueueRow(row))
+		default:
+			items = append(items, cloneParams(row))
+		}
+	}
+	return items
+}
+
+func shapeAgentRunRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	agent := objectMap(item["agent"])
+	if len(agent) == 0 {
+		agent = map[string]any{}
+	}
+	if _, ok := stringInput(agent, "name"); !ok {
+		agent["name"] = aiEvalStringValue(item, "agentName", "unknown")
+	}
+	item["agent"] = agent
+	if _, ok := stringInput(item, "rootSpanId"); !ok {
+		if spanID, ok := stringInput(item, "spanId"); ok {
+			item["rootSpanId"] = spanID
+		}
+	}
+	if _, ok := stringInput(item, "status"); !ok {
+		item["status"] = "unset"
+	}
+	if _, ok := item["startedAt"]; !ok || item["startedAt"] == nil {
+		item["startedAt"] = fallbackTime()
+	}
+	for _, key := range []string{"transcript", "llmCalls", "toolCalls", "retrievalEvents", "evalResults"} {
+		if _, ok := item[key]; !ok || item[key] == nil {
+			item[key] = []any{}
+		}
+	}
+	return item
+}
+
+func shapeDatasetRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	itemCount := intValueFromAny(item["itemCount"])
+	reviewedItemCount := intValueFromAny(item["reviewedItemCount"])
+	item["version"] = maxIntValue(intValueFromAny(item["version"]), 1)
+	item["itemCount"] = itemCount
+	item["reviewedItemCount"] = reviewedItemCount
+	splitCounts := objectMap(item["splitCounts"])
+	if len(splitCounts) == 0 {
+		splitCounts = map[string]any{}
+	}
+	item["splitCounts"] = splitCounts
+	item["tags"] = stringsFromAny(item["tags"])
+	health := objectMap(item["health"])
+	if len(health) == 0 {
+		health = map[string]any{}
+	}
+	health["reviewedItemCount"] = intValueFromAny(defaultAny(health["reviewedItemCount"], reviewedItemCount))
+	health["totalItemCount"] = intValueFromAny(defaultAny(health["totalItemCount"], itemCount))
+	health["splitCounts"] = defaultAny(health["splitCounts"], splitCounts)
+	health["duplicateCandidateCount"] = intValueFromAny(health["duplicateCandidateCount"])
+	health["leakageWarningCount"] = intValueFromAny(health["leakageWarningCount"])
+	health["missingExpectedCount"] = intValueFromAny(health["missingExpectedCount"])
+	health["schemaIssueCount"] = intValueFromAny(health["schemaIssueCount"])
+	health["smallDataset"] = boolFromAny(defaultAny(health["smallDataset"], reviewedItemCount < 30))
+	health["warnings"] = stringsFromAny(health["warnings"])
+	if _, ok := stringInput(health, "status"); !ok {
+		health["status"] = datasetHealthStatusFromCounts(health)
+	}
+	item["health"] = health
+	return item
+}
+
+func shapeDatasetItemRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	item["version"] = maxIntValue(intValueFromAny(item["version"]), 1)
+	if _, ok := item["metadata"]; !ok || item["metadata"] == nil {
+		item["metadata"] = map[string]any{}
+	}
+	if _, ok := stringInput(item, "split"); !ok {
+		item["split"] = "dev"
+	}
+	if _, ok := stringInput(item, "reviewStatus"); !ok {
+		item["reviewStatus"] = "unreviewed"
+	}
+	item["synthetic"] = boolFromAny(item["synthetic"])
+	item["leakageWarnings"] = stringsFromAny(item["leakageWarnings"])
+	return item
+}
+
+func shapeScorerRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	item["version"] = maxIntValue(intValueFromAny(item["version"]), 1)
+	if _, ok := item["definition"]; !ok || item["definition"] == nil {
+		item["definition"] = map[string]any{}
+	}
+	return item
+}
+
+func shapeExperimentRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	item["datasetVersion"] = maxIntValue(intValueFromAny(item["datasetVersion"]), 1)
+	if _, ok := item["createdAt"]; !ok || item["createdAt"] == nil {
+		item["createdAt"] = fallbackTime()
+	}
+	item["splitSelector"] = normalizeManifestSplitSelector(objectMap(item["splitSelector"]))
+	item["scorerIds"] = stringsFromAny(item["scorerIds"])
+	item["promptVersionRefs"] = stringsFromAny(item["promptVersionRefs"])
+	item["skillSnapshotRefs"] = stringsFromAny(item["skillSnapshotRefs"])
+	item["toolSnapshotRefs"] = stringsFromAny(item["toolSnapshotRefs"])
+	item["providerProfileRefs"] = stringsFromAny(item["providerProfileRefs"])
+	item["tags"] = stringsFromAny(item["tags"])
+	return item
+}
+
+func shapeExperimentRunRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	if _, ok := item["solverRef"]; !ok || item["solverRef"] == nil {
+		item["solverRef"] = map[string]any{}
+	}
+	if _, ok := stringInput(item, "status"); !ok {
+		item["status"] = "queued"
+	}
+	if _, ok := item["startedAt"]; !ok || item["startedAt"] == nil {
+		item["startedAt"] = fallbackTime()
+	}
+	if _, ok := item["summary"]; !ok || item["summary"] == nil {
+		item["summary"] = map[string]any{}
+	}
+	return item
+}
+
+func shapeDatasetItemRunRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	if _, ok := item["output"]; !ok || item["output"] == nil {
+		item["output"] = map[string]any{}
+	}
+	item["latencyMs"] = numericValue(item["latencyMs"])
+	if _, ok := item["evalResults"]; !ok || item["evalResults"] == nil {
+		item["evalResults"] = []any{}
+	}
+	return item
+}
+
+func shapeEvalResultRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	if _, ok := item["producedAt"]; !ok || item["producedAt"] == nil {
+		item["producedAt"] = fallbackTime()
+	}
+	return item
+}
+
+func shapeAnnotationQueueRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	if _, ok := stringInput(item, "status"); !ok {
+		item["status"] = "open"
+	}
+	if _, ok := item["createdAt"]; !ok || item["createdAt"] == nil {
+		item["createdAt"] = fallbackTime()
+	}
+	return item
+}
+
+func applyRecordID(item map[string]any) {
+	if id, ok := stringInput(item, "id"); ok {
+		item["id"] = id
+		return
+	}
+	if id, ok := stringInput(item, "recordId"); ok {
+		item["id"] = id
+		delete(item, "recordId")
+		return
+	}
+	if raw := item["id"]; raw != nil {
+		text := fmt.Sprint(raw)
+		text = strings.Trim(text, "{}")
+		if strings.TrimSpace(text) != "" {
+			item["id"] = strings.TrimSpace(text)
+		}
+	}
+}
+
+func aiEvalRecordID(item map[string]any) string {
+	if id, ok := stringInput(item, "recordId"); ok {
+		return id
+	}
+	if id, ok := stringInput(item, "id"); ok {
+		return id
+	}
+	if raw := item["id"]; raw != nil {
+		text := strings.Trim(fmt.Sprint(raw), "{}")
+		if strings.TrimSpace(text) != "" {
+			return strings.TrimSpace(text)
+		}
+	}
+	return ""
 }
 
 func (store Store) GetExperimentRunEventData(ctx context.Context, notification contracts.ExperimentProgressNotification) (map[string]any, map[string]any, error) {
@@ -144,7 +457,7 @@ func (store Store) GetExperimentRunEventData(ctx context.Context, notification c
 	}
 	var run map[string]any
 	if len(runs) > 0 {
-		run = runs[0]
+		run = shapeExperimentRunRow(runs[0])
 	}
 	var itemRun map[string]any
 	if itemStmt, ok := stmts["itemRun"]; ok {
@@ -153,7 +466,7 @@ func (store Store) GetExperimentRunEventData(ctx context.Context, notification c
 			return nil, nil, storageError()
 		}
 		if len(itemRuns) > 0 {
-			itemRun = itemRuns[0]
+			itemRun = shapeDatasetItemRunRow(itemRuns[0])
 		}
 	}
 	return run, itemRun, nil
@@ -348,7 +661,7 @@ func BuildAiEvalQuery(subject string, input map[string]any) (QueryStatement, err
 	params := map[string]any{"limit": limit}
 	addOwnershipParams(params, target)
 	conditions := ownershipConditions()
-	addStringFilter(&conditions, params, input, "id", "id")
+	addRecordIDFilter(&conditions, params, input, "id")
 	switch subject {
 	case subjectEvalAgentRunsSearch:
 		addStringFilter(&conditions, params, input, "agentId", "agent.id")
@@ -369,10 +682,17 @@ func BuildAiEvalQuery(subject string, input map[string]any) (QueryStatement, err
 		addStringFilter(&conditions, params, input, "kind", "kind")
 		addTextSearch(&conditions, params, input, []string{"id", "name"})
 	case subjectEvalExperimentSearch:
-		addStringFilter(&conditions, params, input, "datasetId", "datasetId")
+		if _, ok := stringInput(input, "experimentRunId"); ok {
+			addRecordIDFilter(&conditions, params, input, "experimentRunId")
+		}
+		if !aiEvalExperimentSearchReturnsRuns(input) {
+			addStringFilter(&conditions, params, input, "datasetId", "datasetId")
+		}
 		addStringFilter(&conditions, params, input, "status", "status")
 		addStringFilter(&conditions, params, input, "experimentId", "experimentId")
-		addTextSearch(&conditions, params, input, []string{"id", "name"})
+		if !aiEvalExperimentSearchReturnsRuns(input) {
+			addTextSearch(&conditions, params, input, []string{"id", "name"})
+		}
 	case subjectEvalResultsSearch:
 		addStringFilter(&conditions, params, input, "scorerId", "scorerId")
 		addStringFilter(&conditions, params, input, "experimentRunId", "experimentRunId")
@@ -389,7 +709,7 @@ func BuildAiEvalQuery(subject string, input map[string]any) (QueryStatement, err
 
 	return QueryStatement{
 		SQL: strings.Join([]string{
-			"SELECT *",
+			"SELECT " + aiEvalProjectionForSubject(subject, input),
 			"FROM " + table,
 			whereClause(conditions),
 			"ORDER BY createdAt DESC, id ASC",
@@ -442,6 +762,25 @@ func BuildDatasetHealthQueries(input map[string]any) (map[string]QueryStatement,
 	}, nil
 }
 
+func BuildDatasetListCountsQuery(datasetIDs []string) (QueryStatement, error) {
+	target, err := ResolveTelemetryTarget(nil)
+	if err != nil {
+		return QueryStatement{}, err
+	}
+	params := map[string]any{"datasetIds": datasetIDs}
+	addOwnershipParams(params, target)
+	conditions := append(ownershipConditions(), "datasetId IN $datasetIds")
+	return QueryStatement{
+		SQL: strings.Join([]string{
+			"SELECT datasetId, count() AS itemCount, math::sum(IF reviewStatus = 'reviewed' THEN 1 ELSE 0 END) AS reviewedItemCount",
+			"FROM ai_dataset_item",
+			whereClause(conditions),
+			"GROUP BY datasetId;",
+		}, " "),
+		Params: params,
+	}, nil
+}
+
 func BuildDatasetExportItemsQuery(input map[string]any) (QueryStatement, error) {
 	datasetID, ok := stringInput(input, "datasetId")
 	if !ok {
@@ -458,7 +797,7 @@ func BuildDatasetExportItemsQuery(input map[string]any) (QueryStatement, error) 
 	addStringFilter(&conditions, params, input, "reviewStatus", "reviewStatus")
 	return QueryStatement{
 		SQL: strings.Join([]string{
-			"SELECT input, expected, metadata, sourceTraceId, sourceSpanId, split, reviewStatus, synthetic",
+			"SELECT id, input, expected, metadata, sourceTraceId, sourceSpanId, split, reviewStatus, synthetic",
 			"FROM ai_dataset_item",
 			whereClause(conditions),
 			"ORDER BY id ASC LIMIT 50000;",
@@ -489,7 +828,7 @@ func BuildAiQualityOverviewQueries(input map[string]any) (map[string]QueryStatem
 	return map[string]QueryStatement{
 		"segments": {
 			SQL: strings.Join([]string{
-				"SELECT string::join([agent.name, metadata.environment, metadata.service, metadata.route], ':') AS key, agent.name AS label, { agentName: agent.name, environment: metadata.environment, service: metadata.service, route: metadata.route } AS dimensions, count() AS runCount, math::sum(IF status != 'unset' THEN 1 ELSE 0 END) AS scoredRunCount, math::mean(durationMs) AS p50LatencyMs, math::max(durationMs) AS p95LatencyMs, math::sum(costEstimate.amount) AS costUsd, 0 AS regressionCount",
+				"SELECT agent.name AS agentName, metadata.environment AS environment, metadata.service AS service, metadata.route AS route, count() AS runCount, math::sum(IF status != 'unset' THEN 1 ELSE 0 END) AS scoredRunCount, math::mean(durationMs) AS p50LatencyMs, math::max(durationMs) AS p95LatencyMs, math::sum(costEstimate.amount) AS costUsd, 0 AS regressionCount",
 				"FROM ai_agent_run",
 				whereClause(conditions),
 				"GROUP BY agent.name, metadata.environment, metadata.service, metadata.route",
@@ -525,7 +864,7 @@ func BuildExperimentRunEventQueries(experimentRunID string, datasetItemRunID *st
 			SQL: strings.Join([]string{
 				"SELECT *",
 				"FROM ai_experiment_run",
-				whereClause(append(ownershipConditions(), "id = $experimentRunId")),
+				whereClause(append(ownershipConditions(), "record::id(id) = $experimentRunId")),
 				"LIMIT 1;",
 			}, " "),
 			Params: runParams,
@@ -539,7 +878,7 @@ func BuildExperimentRunEventQueries(experimentRunID string, datasetItemRunID *st
 			SQL: strings.Join([]string{
 				"SELECT *",
 				"FROM ai_dataset_item_run",
-				whereClause(append(ownershipConditions(), "id = $datasetItemRunId")),
+				whereClause(append(ownershipConditions(), "record::id(id) = $datasetItemRunId")),
 				"LIMIT 1;",
 			}, " "),
 			Params: itemParams,
@@ -622,7 +961,7 @@ func aiEvalTableForSubject(subject string, input map[string]any) (string, error)
 	case subjectEvalScorerSearch:
 		return "ai_scorer", nil
 	case subjectEvalExperimentSearch:
-		if _, ok := stringInput(input, "experimentRunId"); ok {
+		if aiEvalExperimentSearchReturnsRuns(input) {
 			return "ai_experiment_run", nil
 		}
 		return "ai_experiment", nil
@@ -633,6 +972,25 @@ func aiEvalTableForSubject(subject string, input map[string]any) (string, error)
 	default:
 		return "", fmt.Errorf("ERR-001 VALIDATION_FAILED: storage-read does not handle AI eval subject %s", subject)
 	}
+}
+
+func aiEvalExperimentSearchReturnsRuns(input map[string]any) bool {
+	if _, ok := stringInput(input, "experimentRunId"); ok {
+		return true
+	}
+	if _, ok := stringInput(input, "experimentId"); ok {
+		return true
+	}
+	return false
+}
+
+func aiEvalProjectionForSubject(subject string, input map[string]any) string {
+	if subject == subjectEvalDatasetSearch {
+		if _, ok := stringInput(input, "datasetId"); !ok {
+			return "*, record::id(id) AS recordId"
+		}
+	}
+	return "*, record::id(id) AS recordId"
 }
 
 func aiEvalLimit(input map[string]any) (int, error) {
@@ -666,6 +1024,15 @@ func addStringFilter(conditions *[]string, params map[string]any, input map[stri
 	params[inputKey] = value
 }
 
+func addRecordIDFilter(conditions *[]string, params map[string]any, input map[string]any, inputKey string) {
+	value, ok := stringInput(input, inputKey)
+	if !ok {
+		return
+	}
+	*conditions = append(*conditions, "record::id(id) = $"+inputKey)
+	params[inputKey] = value
+}
+
 func addBoolFilter(conditions *[]string, params map[string]any, input map[string]any, inputKey string, field string) {
 	value, ok := input[inputKey].(bool)
 	if !ok {
@@ -691,6 +1058,10 @@ func addTextSearch(conditions *[]string, params map[string]any, input map[string
 	}
 	parts := make([]string, 0, len(fields))
 	for _, field := range fields {
+		if field == "id" {
+			parts = append(parts, "string::lowercase(record::id(id)) CONTAINS $query")
+			continue
+		}
 		parts = append(parts, "string::lowercase("+field+") CONTAINS $query")
 	}
 	*conditions = append(*conditions, "("+strings.Join(parts, " OR ")+")")
@@ -727,13 +1098,134 @@ func numericValue(value any) float64 {
 	switch typed := value.(type) {
 	case int:
 		return float64(typed)
+	case int8:
+		return float64(typed)
+	case int16:
+		return float64(typed)
+	case int32:
+		return float64(typed)
 	case int64:
 		return float64(typed)
+	case uint:
+		return float64(typed)
+	case uint8:
+		return float64(typed)
+	case uint16:
+		return float64(typed)
+	case uint32:
+		return float64(typed)
+	case uint64:
+		return float64(typed)
+	case float32:
+		return finiteNumber(float64(typed))
 	case float64:
-		return typed
+		return finiteNumber(typed)
+	case string:
+		parsed, err := strconv.ParseFloat(typed, 64)
+		if err == nil {
+			return finiteNumber(parsed)
+		}
+		return 0
 	default:
 		return 0
 	}
+}
+
+func finiteNumber(value float64) float64 {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return 0
+	}
+	return value
+}
+
+func intValueFromAny(value any) int {
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int8:
+		return int(typed)
+	case int16:
+		return int(typed)
+	case int32:
+		return int(typed)
+	case int64:
+		return int(typed)
+	case uint:
+		return int(typed)
+	case uint8:
+		return int(typed)
+	case uint16:
+		return int(typed)
+	case uint32:
+		return int(typed)
+	case uint64:
+		return int(typed)
+	case float64:
+		return int(typed)
+	case float32:
+		return int(typed)
+	case json.Number:
+		parsed, err := typed.Int64()
+		if err == nil {
+			return int(parsed)
+		}
+		return 0
+	default:
+		return 0
+	}
+}
+
+func maxIntValue(left int, right int) int {
+	if left > right {
+		return left
+	}
+	return right
+}
+
+func boolFromAny(value any) bool {
+	typed, _ := value.(bool)
+	return typed
+}
+
+func defaultAny(value any, fallback any) any {
+	if value == nil {
+		return fallback
+	}
+	return value
+}
+
+func stringsFromAny(value any) []string {
+	switch typed := value.(type) {
+	case []string:
+		return typed
+	case []any:
+		values := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text, ok := item.(string); ok && strings.TrimSpace(text) != "" {
+				values = append(values, strings.TrimSpace(text))
+			}
+		}
+		return values
+	default:
+		return []string{}
+	}
+}
+
+func datasetHealthStatusFromCounts(health map[string]any) string {
+	if intValueFromAny(health["leakageWarningCount"]) > 0 {
+		return "leakage_warning"
+	}
+	if intValueFromAny(health["schemaIssueCount"]) > 0 {
+		return "invalid"
+	}
+	if intValueFromAny(health["missingExpectedCount"]) > 0 || boolFromAny(health["smallDataset"]) {
+		return "needs_review"
+	}
+	return "ready"
+}
+
+func fallbackTime() string {
+	return time.Unix(0, 0).UTC().Format(time.RFC3339)
 }
 
 func datasetHealthWarnings(health map[string]any) []string {

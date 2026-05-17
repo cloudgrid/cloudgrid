@@ -1,6 +1,6 @@
 {
   "name": "@cloudgrid/frontend",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,6 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@cloudgrid/public-api-client": "workspace:*",
     "@cloudgrid/ui-contracts": "workspace:*",
     "@shikijs/langs": "4.0.2",
     "@shikijs/themes": "4.0.2",

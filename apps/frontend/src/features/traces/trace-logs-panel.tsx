@@ -11,19 +11,19 @@ import {
   DialogTitle,
 } from "../../components/ui/dialog";
 import {
+  SortableTableHead,
   Table,
   TableBody,
   TableCell,
   TableHeader,
   TableRow,
-  SortableTableHead,
   type TableSortDirection,
 } from "../../components/ui/table";
 import { formatDateTime, jsonPreview } from "../../lib/format";
 import { t } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { AttributeEvidenceBrowser, jsonValueToCopyText } from "./attribute-browser";
-import { type LogsMode, type RelatedLogsSortKey, compareRelatedLogs } from "./trace-detail-types";
+import { compareRelatedLogs, type LogsMode, type RelatedLogsSortKey } from "./trace-detail-types";
 
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (

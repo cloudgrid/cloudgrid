@@ -2,7 +2,14 @@ import type { AlertEvent, AlertRule, AlertSilence } from "@cloudgrid/ui-contract
 import { ExternalLink } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "../../components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { formatDateTime } from "../../lib/format";
 import { t } from "../../lib/i18n";
@@ -43,13 +50,28 @@ export function AlertInspector({
         </TabsList>
         <TabsContent className="min-h-0 overflow-auto" value="overview">
           <dl className="grid gap-3 text-sm">
-            <InspectorRow label={t("alerts.status")} value={rule.enabled ? "OK" : t("alerts.disabled")} />
+            <InspectorRow
+              label={t("alerts.status")}
+              value={rule.enabled ? "OK" : t("alerts.disabled")}
+            />
             <InspectorRow label={t("alerts.severity")} value={rule.severity} />
             <InspectorRow label={t("alerts.signal")} value={alertRuleSignal(rule.kind)} />
-            <InspectorRow label={t("alerts.window")} value={formatDurationSeconds(rule.evaluationWindowSeconds)} />
-            <InspectorRow label={t("alerts.pendingFor")} value={formatDurationSeconds(rule.pendingForSeconds)} />
-            <InspectorRow label={t("alerts.cooldown")} value={formatDurationSeconds(rule.cooldownSeconds)} />
-            <InspectorRow label={t("alerts.adapters")} value={rule.notificationAdapterIds.join(", ") || t("value.none")} />
+            <InspectorRow
+              label={t("alerts.window")}
+              value={formatDurationSeconds(rule.evaluationWindowSeconds)}
+            />
+            <InspectorRow
+              label={t("alerts.pendingFor")}
+              value={formatDurationSeconds(rule.pendingForSeconds)}
+            />
+            <InspectorRow
+              label={t("alerts.cooldown")}
+              value={formatDurationSeconds(rule.cooldownSeconds)}
+            />
+            <InspectorRow
+              label={t("alerts.adapters")}
+              value={rule.notificationAdapterIds.join(", ") || t("value.none")}
+            />
             <InspectorRow label={t("alerts.version")} value={String(rule.version)} />
             <InspectorRow label={t("alerts.updated")} value={formatDateTime(rule.updatedAt)} />
           </dl>
@@ -83,7 +105,9 @@ function AlertHistoryTable({ history }: { history: AlertEvent[] }) {
       <TableBody>
         {history.map((event) => (
           <TableRow key={event.id}>
-            <TableCell className={event.state === "FIRING" ? "text-destructive" : undefined}>{event.state}</TableCell>
+            <TableCell className={event.state === "FIRING" ? "text-destructive" : undefined}>
+              {event.state}
+            </TableCell>
             <TableCell>{event.severity}</TableCell>
             <TableCell>{formatDateTime(event.createdAt)}</TableCell>
             <TableCell>
@@ -91,7 +115,9 @@ function AlertHistoryTable({ history }: { history: AlertEvent[] }) {
                 <span>{event.summary}</span>
                 {event.evidenceTraceId ? (
                   <Button asChild size="sm" variant="outline">
-                    <Link to={`/traces/${event.evidenceTraceId}${event.evidenceSpanId ? `?spanId=${encodeURIComponent(event.evidenceSpanId)}` : ""}`}>
+                    <Link
+                      to={`/traces/${event.evidenceTraceId}${event.evidenceSpanId ? `?spanId=${encodeURIComponent(event.evidenceSpanId)}` : ""}`}
+                    >
                       <ExternalLink data-icon="inline-start" />
                       {t("alerts.openTrace")}
                     </Link>

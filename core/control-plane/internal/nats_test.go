@@ -2,10 +2,8 @@ package internal
 
 import (
 	"encoding/json"
-	"testing"
-
-	"github.com/cloudgrid-dev/cloudgrid/core/control-plane/internal/adapters/memory"
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
+	"testing"
 )
 
 func TestErrorResponseJSONSerializesRequestReplyErrorShape(t *testing.T) {
@@ -61,6 +59,8 @@ func TestControlSubjectsUseWaveOneContractNames(t *testing.T) {
 		SubjectDashboardsDelete,
 		SubjectDashboardPinsSet,
 		SubjectDashboardPinsReorder,
+		SubjectProjectAiSettingsGet,
+		SubjectProjectAiSettingsUpdate,
 		SubjectProjectMembersList,
 		SubjectProjectMembersUpdate,
 		SubjectProjectMembersRemove,
@@ -93,7 +93,7 @@ func TestControlSubjectsUseWaveOneContractNames(t *testing.T) {
 }
 
 func TestMemberAndInvitationNATSHandlersReturnContractShapes(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	admin := localEnvelope("req-admin", "admin-1", nil)
 
 	memberResponse := invokeJSONHandler(t, handleMembersList(service, nil), contracts.MemberListRequest{
@@ -132,7 +132,7 @@ func TestMemberAndInvitationNATSHandlersReturnContractShapes(t *testing.T) {
 }
 
 func TestProjectMemberRetentionAndAlertNATSHandlersReturnContractShapes(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 
 	memberResponse := invokeJSONHandler(t, handleProjectMembersList(service, nil), contracts.ProjectMemberListRequest{
 		BridgeEnvelope: localEnvelope("req-members", "local-user", nil),
@@ -157,10 +157,19 @@ func TestProjectMemberRetentionAndAlertNATSHandlersReturnContractShapes(t *testi
 	if _, ok := alertResponse["data"].(map[string]any)["items"]; !ok {
 		t.Fatalf("alert rules response missing data.items: %#v", alertResponse)
 	}
+
+	aiSettingsResponse := invokeJSONHandler(t, handleProjectAiSettingsGet(service, nil), contracts.ProjectAiSettingsGetRequest{
+		BridgeEnvelope: localEnvelope("req-ai-settings", "local-user", nil),
+		ProjectID:      LocalProjectID,
+	})
+	settings, ok := aiSettingsResponse["data"].(map[string]any)["settings"].(map[string]any)
+	if !ok || settings["projectId"] != LocalProjectID || settings["version"].(float64) != 1 {
+		t.Fatalf("AI settings response = %#v, want default settings", aiSettingsResponse)
+	}
 }
 
 func TestViewerAndSelectProjectNATSResponsesContainGraphQLRequiredTelemetryFields(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	viewerRequest := contracts.ViewerGetRequest{BridgeEnvelope: localEnvelope("req-viewer", "local-user", nil)}
 	viewerResponse := invokeJSONHandler(t, handleViewerGet(service, nil), viewerRequest)
 

@@ -123,8 +123,8 @@ export const AI_EVAL_SUBJECTS = [
 ] as const;
 
 export const CONTRACT_GENERATION_TARGETS = [
-  "apps/packages/ui-contracts/src/index.ts",
-  "core/go-contracts/contracts.go",
+  "apps/packages/ui-contracts/src/generated.ts",
+  "core/go-contracts/generated_contracts.go",
   "specs/03-contracts/messages/message-bridge.asyncapi.yaml",
 ] as const;
 

@@ -1,8 +1,8 @@
 asyncapi: 3.0.0
 info:
   title: Cloudgrid Message Bridge
-  version: 0.1.0
-  description: Private NATS and JetStream contract. All telemetry reads and writes cross this bridge.
+  version: 1.0.0
+  description: Private core NATS and JetStream contract. Durable ingest commands use JetStream; request/reply and live wake-up notifications use core NATS subjects unless this contract explicitly marks them as streams.
 servers:
   nats:
     host: localhost:4222
@@ -85,6 +85,10 @@ channels:
         $ref: "#/components/messages/LiveTraceEvent"
   telemetry.persisted.traces:
     address: telemetry.persisted.traces
+    x-cloudgrid-delivery: core_nats
+    x-cloudgrid-durability: volatile
+    x-cloudgrid-retention: none
+    x-cloudgrid-ack: none
     messages:
       TracePersistedNotification:
         $ref: "#/components/messages/TracePersistedNotification"
@@ -4808,19 +4812,21 @@ x-cloudgrid:
       ack_policy: explicit
       ack_wait: PT30S
       max_deliver: 5
-    storage_read_live:
-      durable: storage-read-live
-      subject: telemetry.persisted.traces
-      ack_policy: explicit
-      ack_wait: PT30S
-      max_deliver: 5
-      purpose: Fan out post-persist trace notifications to authorized live GraphQL subscriptions. The BFF must not create this consumer.
+  volatile_notifications:
+    telemetry.persisted.traces:
+      channel: telemetry.persisted.traces
+      publisher: storage-write
+      subscriber: storage-read
+      purpose: Wake currently registered live trace subscriptions after trace persistence commits.
+      retention: none
+      delivery_semantics: at-most-once
+      payload_limit: Trace IDs, persisted timestamp, and non-sensitive routing hints only.
   live_trace_delivery:
     public_api: GraphQL Subscription.liveTraces
     bff_start_subject: telemetry.traces.live.start
     bff_stop_subject: telemetry.traces.live.stop
     storage_read_event_subject_pattern: telemetry.traces.live.events.<bffInstanceId>.<subscriptionId>
-    bff_must_not_consume_streams: [TELEMETRY_INGEST, telemetry.persisted.traces]
+    bff_must_not_subscribe_subjects: [TELEMETRY_INGEST, telemetry.persisted.traces]
     storage_read_role: authorize_filter_match_and_emit_trace_events
     storage_write_role: publish_trace_ids_after_successful_persist
     heartbeat_interval_ms: 15000

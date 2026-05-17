@@ -18,7 +18,7 @@ provenance: inferred-draft
 - Owns public error mapping, future auth/session middleware, rate limits, and GraphQL resolver composition.
 - Talks to private services only through message bridge ports and contracts. The v1 adapter is NATS. Query resolvers use request/reply subjects. Subscription resolvers use storage-read live-session request/reply plus storage-read-owned ephemeral live event subjects.
 - Must not import SurrealDB clients, Go storage packages, OTLP parsers, or storage adapters.
-- Must not create JetStream consumers for `TELEMETRY_INGEST` or `telemetry.persisted.traces`.
+- Must not create JetStream consumers for `TELEMETRY_INGEST` and must not subscribe to `telemetry.persisted.traces`.
 - Validates runtime configuration, GraphQL resolver inputs, and decoded NATS request/reply responses with Zod before using them.
 - Maps all public GraphQL failures to `GraphQLError.extensions.problem`, using RFC 9457 Problem Details fields plus CloudGrid `id`, `code`, `retryable`, and optional `details` extension members.
 - Enables the GraphQL development UI only when running in development or when `CLOUDGRID_GRAPHQL_UI=true`; production defaults to disabled.
@@ -46,7 +46,7 @@ provenance: inferred-draft
 - Subscribes to `telemetry.ingest.traces`, `telemetry.ingest.logs`, and `telemetry.ingest.metrics` through durable JetStream consumer `storage-write`.
 - Is the only service that mutates SurrealDB.
 - Acknowledges messages only after persistence succeeds.
-- After a successful trace persistence commit, publishes `TracePersistedNotification` to `telemetry.persisted.traces` with trace IDs and non-sensitive routing hints. It must not include full spans, logs, attributes, or raw OTLP payloads in that notification.
+- After a successful trace persistence commit, publishes volatile `TracePersistedNotification` messages to the core NATS subject `telemetry.persisted.traces` with trace IDs and non-sensitive routing hints. It must not include full spans, logs, attributes, or raw OTLP payloads in that notification, and it must not create a second JetStream-backed telemetry store.
 - Depends on a storage writer port. Database-specific writer code, schema initialization, readiness checks, and future migrations live under `internal/adapters/<database>/`.
 
 ### Go Storage Read Service (`core/storage-read`)
@@ -56,7 +56,7 @@ provenance: inferred-draft
 - Returns typed success or `BridgeError` responses.
 - Depends on a storage reader port. Database-specific query builders, client code, and readiness checks live under `internal/adapters/<database>/`.
 - Owns telemetry filtering, aggregation, correlation, ranking, and view-model derivation. Its database adapters must push supported filters, counts, grouping, sorting, cursors, and bounded facet queries into the database instead of post-processing broad raw result sets.
-- Consumes post-persist `TracePersistedNotification` events through durable consumer `storage-read-live`, resolves matching trace summaries through the same storage reader query semantics used by `Query.traces`, applies read authorization, and publishes `LiveTraceEvent` messages only to BFF-owned ephemeral sink subjects that were registered through `telemetry.traces.live.start`.
+- Subscribes to volatile post-persist `TracePersistedNotification` events while live subscriptions are registered, resolves matching trace summaries through the same storage reader query semantics used by `Query.traces`, applies read authorization, and publishes `LiveTraceEvent` messages only to BFF-owned ephemeral sink subjects that were registered through `telemetry.traces.live.start`.
 - Does not expose public HTTP or WebSocket endpoints for live telemetry. All public realtime access remains GraphQL through the TypeScript BFF.
 
 ### Go Control Plane Service (`core/control-plane`)

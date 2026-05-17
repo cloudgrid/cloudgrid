@@ -12,7 +12,7 @@ trigger:
   expression: GraphQL Subscription.liveTraces
   event_id: null
   webhook_id: null
-  stream_id: telemetry.persisted.traces
+  stream_id: null
 orchestration: async
 delivery_semantics: at-most-once
 idempotency:
@@ -85,13 +85,14 @@ Stream trace-level realtime updates to GraphQL clients without exposing NATS str
 - **Retryable error**: Close subscription with ERR-006 or ERR-013 if storage or message bridge fails.
 - **Permanent error**: Close subscription with ERR-016 if authorization is revoked.
 
-### Step 4 - Persisted Trace Notification
+### Step 4 - Volatile Persisted Trace Notification
 
-- **Action**: Storage-write persists telemetry and publishes `TracePersistedNotification` to `telemetry.persisted.traces` after successful trace persistence.
+- **Action**: Storage-write persists telemetry and publishes `TracePersistedNotification` to the core NATS subject `telemetry.persisted.traces` after successful trace persistence.
 - **Boundary**: Notification contains trace IDs and non-sensitive hints only. It does not contain spans, logs, attributes, raw OTLP payloads, or credentials.
-- **Success**: Storage-read live consumer receives the notification.
-- **Retryable error**: NATS redelivery according to `storage-read-live` durable consumer policy.
-- **Permanent error**: Log terminal delivery failure with ERR-013.
+- **Success**: A currently running storage-read live subscriber receives the notification and treats it as a wake-up hint for registered live subscriptions.
+- **Delivery semantics**: At-most-once. The notification is not persisted in JetStream and is not a second telemetry store.
+- **Missed notification recovery**: If storage-read or the BFF subscription is not connected, no catch-up is attempted from NATS. New live sessions may request the bounded snapshot from SurrealDB before receiving new live events.
+- **Permanent error**: If the core NATS publish fails, storage-write logs ERR-013 but does not roll back the already committed telemetry write.
 
 ### Step 5 - Match And Emit Live Events
 
@@ -100,6 +101,40 @@ Stream trace-level realtime updates to GraphQL clients without exposing NATS str
 - **Success**: Storage-read publishes `added` or `updated` `LiveTraceEvent` messages to matching sink subjects.
 - **Retryable error**: Skip the event for that notification and log ERR-006 or ERR-013.
 - **Permanent error**: If authorization fails, close affected subscriptions with ERR-016.
+
+### Step 5a - BFF Delivery Watchdog
+
+- **Action**: After `LiveTraceStartResponse` succeeds, the BFF starts a
+  per-subscription delivery watchdog. The watchdog deadline is 45 seconds unless
+  the storage-read `heartbeatIntervalMs` is greater than 30 seconds; in that
+  case the deadline is `heartbeatIntervalMs * 3`.
+- **Boundary**: The BFF watchdog observes only `LiveTraceEvent` delivery on the
+  ephemeral sink subject. It must not read persisted telemetry streams or query
+  storage directly.
+- **Success**: Every `heartbeat`, `snapshot`, `added`, or `updated` event resets
+  the watchdog timer.
+- **Retryable error**: If no event arrives before the deadline, the BFF closes
+  the GraphQL subscription with ERR-014 `MESSAGE_BRIDGE_TIMEOUT`, sends
+  `LiveTraceStopRequest`, logs `graphql_subscription_stream_failed`, and lets
+  the client reconnect if desired.
+- **Permanent error**: None.
+
+### Step 5b - BFF Subscription Cancellation
+
+- **Action**: When the GraphQL WebSocket client sends `complete`, closes the
+  socket, changes filters, or otherwise cancels `Subscription.liveTraces`, the
+  BFF immediately cancels the pending sink wait and sends
+  `LiveTraceStopRequest`.
+- **Boundary**: Cancellation is a BFF subscription lifecycle concern. The BFF
+  must not wait for the next storage-read heartbeat or data event before
+  releasing the live session.
+- **Success**: Storage-read receives `telemetry.traces.live.stop` promptly, the
+  ephemeral sink subscription is disposed, and no additional live events are
+  forwarded to the cancelled GraphQL operation.
+- **Retryable error**: If stop request delivery fails, log the bridge error and
+  finish GraphQL subscription cleanup; cancellation must not hang the
+  WebSocket.
+- **Permanent error**: None.
 
 ### Step 6 - Filter Change
 

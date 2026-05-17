@@ -44,8 +44,7 @@ curl -sS -H 'content-type: application/x-protobuf' \
 If port `4318` is already in use, start with a free port, for example:
 
 ```sh
-CLOUDGRID_OTLP_PORT=14318 go run ./core/otlp-collector/cmd/otlp-collector
+CLOUDGRID_OTLP_HTTP_ADDR=0.0.0.0:14318 go run ./core/otlp-collector/cmd/otlp-collector
 ```
 
-The MVP has no collector-side authentication. Keep the collector on a trusted
-local or internal network.
+In local mode, the collector can route to `CLOUDGRID_OTLP_LOCAL_PROJECT_ID` without a token. In deployed mode, machine ingest callers must send a project API key as a bearer token. Keep local mode on a trusted local or internal network.

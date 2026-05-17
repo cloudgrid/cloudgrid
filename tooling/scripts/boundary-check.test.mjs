@@ -1,6 +1,6 @@
+import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, relative } from "node:path";
-import { describe, expect, test } from "bun:test";
 
 const root = join(import.meta.dir, "../..");
 
@@ -42,8 +42,37 @@ describe("CloudGrid private boundary checks", () => {
     }
   });
 
-  test("SurrealDB Go SDK imports stay inside storage service adapters", () => {
+  test("production source does not export test doubles", () => {
+    const checkedFiles = [
+      ...sourceFiles("apps/backend/src", [".ts"]),
+      ...sourceFiles("apps/frontend/src", [".ts", ".tsx"]),
+      ...sourceFiles("apps/packages", [".ts", ".tsx"]),
+      ...sourceFiles("core", [".go"]),
+    ];
+
+    for (const file of checkedFiles) {
+      const relativePath = relative(root, file);
+      if (
+        relativePath.includes("/test-helpers.") ||
+        relativePath.endsWith("_test.go") ||
+        relativePath.includes("/fixtures/")
+      ) {
+        continue;
+      }
+      const content = readFileSync(file, "utf8");
+      expect(content, relativePath).not.toMatch(
+        /\bexport\s+(?:const|let|var|function|class)\s+(?:mock|fake|stub)[A-Z_]/,
+      );
+      expect(content, relativePath).not.toMatch(
+        /\b(?:type|func|var|const)\s+(?:mock|fake|stub)[A-Z_]/,
+      );
+    }
+  });
+
+  test("SurrealDB Go SDK imports stay inside storage and control-plane adapters", () => {
     const allowed = new Set([
+      "core/control-plane/go.mod",
+      "core/control-plane/go.sum",
       "core/storage-read/go.mod",
       "core/storage-read/go.sum",
       "core/storage-write/go.mod",
@@ -57,6 +86,7 @@ describe("CloudGrid private boundary checks", () => {
       }
       expect(
         allowed.has(relativePath) ||
+          relativePath.startsWith("core/control-plane/internal/adapters/surrealdb/") ||
           relativePath.startsWith("core/storage-read/internal/adapters/surrealdb/") ||
           relativePath.startsWith("core/storage-write/internal/adapters/surrealdb/"),
         relativePath,

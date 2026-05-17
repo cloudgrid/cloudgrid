@@ -13,7 +13,10 @@
     "createdAt": { "type": "string", "format": "date-time" },
     "itemCount": { "type": "integer", "minimum": 0 },
     "reviewedItemCount": { "type": "integer", "minimum": 0, "default": 0 },
-    "splitCounts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+    "splitCounts": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
     "health": { "type": "object", "additionalProperties": true },
     "tags": { "type": "array", "items": { "type": "string" }, "default": [] }
   }

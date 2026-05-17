@@ -8,11 +8,11 @@ import (
 
 type TelemetryReadStore interface {
 	GetProjectTelemetryOverviews(ctx context.Context, request contracts.ProjectTelemetryOverviewRequest) (contracts.ProjectTelemetryOverviewData, error)
-	SearchTraces(ctx context.Context, query contracts.TraceSearchQuery) (contracts.TraceSearchData, error)
-	SearchLiveTraceCandidates(ctx context.Context, query contracts.LiveTraceQuery, traceIDs []string) ([]contracts.TraceSummary, error)
-	GetTraceDetail(ctx context.Context, traceID string, query *contracts.TraceDetailQuery) (*contracts.TraceDetailData, error)
-	SearchLogs(ctx context.Context, query contracts.LogSearchQuery) (contracts.LogSearchData, error)
-	GetTelemetryFacets(ctx context.Context, query contracts.TelemetryFacetQuery) (contracts.TelemetryFacetData, error)
+	SearchTraces(ctx context.Context, query contracts.TraceSearchQuery, authContext *contracts.AuthContext) (contracts.TraceSearchData, error)
+	SearchLiveTraceCandidates(ctx context.Context, query contracts.LiveTraceQuery, traceIDs []string, authContext *contracts.AuthContext) ([]contracts.TraceSummary, error)
+	GetTraceDetail(ctx context.Context, traceID string, query *contracts.TraceDetailQuery, authContext *contracts.AuthContext) (*contracts.TraceDetailData, error)
+	SearchLogs(ctx context.Context, query contracts.LogSearchQuery, authContext *contracts.AuthContext) (contracts.LogSearchData, error)
+	GetTelemetryFacets(ctx context.Context, query contracts.TelemetryFacetQuery, authContext *contracts.AuthContext) (contracts.TelemetryFacetData, error)
 	SearchMetricNames(ctx context.Context, input contracts.MetricNameSearchInput, authContext *contracts.AuthContext) (contracts.MetricNameSearchData, error)
 	QueryMetricSeries(ctx context.Context, input contracts.MetricSeriesInput, authContext *contracts.AuthContext) (contracts.MetricSeriesData, error)
 }

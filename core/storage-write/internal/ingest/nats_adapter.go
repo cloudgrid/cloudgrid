@@ -22,13 +22,8 @@ func EnsureJetStream(js JetStreamManager) error {
 		Storage:   nats.FileStorage,
 		MaxAge:    MaxAge,
 	}
-	if _, err := js.AddStream(stream); err != nil {
-		if !errors.Is(err, nats.ErrStreamNameAlreadyInUse) {
-			return fmt.Errorf("%s %s: %w", bridgeErrorID, bridgeErrorCode, err)
-		}
-		if _, updateErr := js.UpdateStream(stream); updateErr != nil {
-			return fmt.Errorf("%s %s: %w", bridgeErrorID, bridgeErrorCode, updateErr)
-		}
+	if err := ensureStream(js, stream); err != nil {
+		return err
 	}
 
 	consumer := &nats.ConsumerConfig{
@@ -47,5 +42,17 @@ func EnsureJetStream(js JetStreamManager) error {
 		}
 	}
 
+	return nil
+}
+
+func ensureStream(js JetStreamManager, stream *nats.StreamConfig) error {
+	if _, err := js.AddStream(stream); err != nil {
+		if !errors.Is(err, nats.ErrStreamNameAlreadyInUse) {
+			return fmt.Errorf("%s %s: %w", bridgeErrorID, bridgeErrorCode, err)
+		}
+		if _, updateErr := js.UpdateStream(stream); updateErr != nil {
+			return fmt.Errorf("%s %s: %w", bridgeErrorID, bridgeErrorCode, updateErr)
+		}
+	}
 	return nil
 }

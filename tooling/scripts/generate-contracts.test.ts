@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { $ } from "bun";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { $ } from "bun";
 import { buildSchema, isInputObjectType, isNonNullType, parse, validate } from "graphql";
 import {
+  AI_EVAL_SUBJECTS,
   AUTH_MODES,
   AUTH_PROVIDERS,
-  AI_EVAL_SUBJECTS,
   COMPANY_ROLES,
   CONTROL_PLANE_SUBJECTS,
   DEPLOYMENT_MODES,
@@ -39,11 +39,11 @@ describe("contract generation", () => {
     }
   });
 
-  test("frontend GraphQL operations validate against the public schema", () => {
+  test("public API GraphQL operations validate against the public schema", () => {
     const schema = buildSchema(
       readFileSync(join(root, "specs/03-contracts/graphql/public-schema.graphql"), "utf8"),
     );
-    const source = readFileSync(join(root, "apps/frontend/src/lib/graphql-client.ts"), "utf8");
+    const source = readFileSync(join(root, "apps/packages/public-api-client/src/index.ts"), "utf8");
     const templates = extractTemplates(source);
     const operations = [...templates.entries()]
       .filter(([name]) => name.endsWith("Operation"))

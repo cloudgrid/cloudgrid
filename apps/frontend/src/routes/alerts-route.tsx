@@ -59,7 +59,9 @@ export function AlertsRoute() {
     mutationFn: client.updateAlertRule,
     async onSuccess(_rule, variables) {
       notifyMutationSuccess(
-        typeof variables.enabled === "boolean" ? "Alert rule status updated." : "Alert rule updated.",
+        typeof variables.enabled === "boolean"
+          ? "Alert rule status updated."
+          : "Alert rule updated.",
       );
       await queryClient.invalidateQueries({ queryKey: ["AlertRules", projectId] });
     },

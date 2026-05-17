@@ -1,11 +1,12 @@
 import { createLogger } from "@cloudgrid/runtime";
-import { loadConfig, startupProblem } from "./config";
 import type { RuntimeConfig } from "./config";
+import { loadConfig, startupProblem } from "./config";
 import { createApp } from "./graphql";
-import { createGraphQLWebSocketHandler } from "./graphql-ws";
 import type { GraphQLWebSocketState } from "./graphql-ws";
+import { createGraphQLWebSocketHandler } from "./graphql-ws";
 
-export { NATSTelemetryQueryBridge, graphQLErrorFromBridge } from "./bridge";
+export type { AuthenticatedPrincipal, AuthProviderFixture, NormalizedAuthContext } from "./auth";
+export { CloudGridAuthService } from "./auth";
 export type {
   AiEvalBridge,
   CloudGridBridge,
@@ -13,12 +14,11 @@ export type {
   MetricQueryBridge,
   TelemetryQueryBridge,
 } from "./bridge";
-export { loadConfig, startupProblem } from "./config";
+export { graphQLErrorFromBridge, NATSTelemetryQueryBridge } from "./bridge";
 export type { RuntimeConfig } from "./config";
+export { loadConfig, startupProblem } from "./config";
 export { createApp, createAppWithBridge, createCloudGridSchema } from "./graphql";
 export { createGraphQLWebSocketHandler } from "./graphql-ws";
-export { CloudGridAuthService } from "./auth";
-export type { AuthProviderFixture, AuthenticatedPrincipal, NormalizedAuthContext } from "./auth";
 
 if (import.meta.main) {
   await startServer();

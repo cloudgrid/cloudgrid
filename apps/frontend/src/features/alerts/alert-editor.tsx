@@ -1,4 +1,10 @@
-import type { AlertRuleKind, AlertSeverity, CreateAlertRuleInput, JSONValue, Project } from "@cloudgrid/ui-contracts";
+import type {
+  AlertRuleKind,
+  AlertSeverity,
+  CreateAlertRuleInput,
+  JSONValue,
+  Project,
+} from "@cloudgrid/ui-contracts";
 import { Save } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { Button } from "../../components/ui/button";
@@ -13,7 +19,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "../../components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "../../components/ui/sheet";
 import { t } from "../../lib/i18n";
 
 const alertKinds: AlertRuleKind[] = [
@@ -47,7 +60,9 @@ export function AlertRuleEditorSheet({
   const [kind, setKind] = useState<AlertRuleKind>("TRACE_ERROR");
   const [alertSeverity, setAlertSeverity] = useState<AlertSeverity>("ERROR");
   const [query, setQuery] = useState<AlertQueryDraft>(() => defaultAlertQueryDraft("TRACE_ERROR"));
-  const [condition, setCondition] = useState<AlertConditionDraft>(() => defaultAlertConditionDraft("TRACE_ERROR"));
+  const [condition, setCondition] = useState<AlertConditionDraft>(() =>
+    defaultAlertConditionDraft("TRACE_ERROR"),
+  );
 
   function changeKind(value: AlertRuleKind) {
     setKind(value);
@@ -84,7 +99,12 @@ export function AlertRuleEditorSheet({
           <EditorSection title={t("alerts.basics")}>
             <div className="grid gap-1">
               <Label htmlFor="alert-name">{t("alerts.name")}</Label>
-              <Input id="alert-name" name="name" placeholder={t("alerts.namePlaceholder")} required />
+              <Input
+                id="alert-name"
+                name="name"
+                placeholder={t("alerts.namePlaceholder")}
+                required
+              />
             </div>
             <Label className="flex items-center gap-2 text-sm" htmlFor="alert-enabled">
               <Checkbox defaultChecked id="alert-enabled" name="enabled" />
@@ -109,7 +129,10 @@ export function AlertRuleEditorSheet({
             </div>
             <div className="grid gap-1">
               <Label htmlFor="alert-severity-input">{t("alerts.severity")}</Label>
-              <Select onValueChange={(value) => setAlertSeverity(value as AlertSeverity)} value={alertSeverity}>
+              <Select
+                onValueChange={(value) => setAlertSeverity(value as AlertSeverity)}
+                value={alertSeverity}
+              >
                 <SelectTrigger id="alert-severity-input">
                   <SelectValue />
                 </SelectTrigger>
@@ -132,8 +155,16 @@ export function AlertRuleEditorSheet({
             <AlertConditionControls kind={kind} onChange={setCondition} value={condition} />
           </EditorSection>
           <EditorSection title={t("alerts.timing")}>
-            <NumberInput defaultValue={300} label={t("alerts.evaluationWindow")} name="evaluationWindowSeconds" />
-            <NumberInput defaultValue={60} label={t("alerts.pendingFor")} name="pendingForSeconds" />
+            <NumberInput
+              defaultValue={300}
+              label={t("alerts.evaluationWindow")}
+              name="evaluationWindowSeconds"
+            />
+            <NumberInput
+              defaultValue={60}
+              label={t("alerts.pendingFor")}
+              name="pendingForSeconds"
+            />
             <NumberInput defaultValue={300} label={t("alerts.cooldown")} name="cooldownSeconds" />
           </EditorSection>
           <EditorSection title={t("alerts.notifications")}>
@@ -167,27 +198,65 @@ export function AlertSignalQueryControls({
   if (kind.startsWith("METRIC_")) {
     return (
       <>
-        <TextInput id="alert-metric-name" label="Metric name" onChange={(metricName) => onChange({ ...value, metricName })} value={value.metricName} />
-        <TextInput id="alert-metric-service" label={t("filters.service")} onChange={(service) => onChange({ ...value, service })} value={value.service} />
+        <TextInput
+          id="alert-metric-name"
+          label="Metric name"
+          onChange={(metricName) => onChange({ ...value, metricName })}
+          value={value.metricName}
+        />
+        <TextInput
+          id="alert-metric-service"
+          label={t("filters.service")}
+          onChange={(service) => onChange({ ...value, service })}
+          value={value.service}
+        />
       </>
     );
   }
   if (kind.startsWith("LOG_")) {
     return (
       <>
-        <TextInput id="alert-log-search" label={t("filters.search")} onChange={(search) => onChange({ ...value, search })} value={value.search} />
-        <TextInput id="alert-log-service" label={t("filters.service")} onChange={(service) => onChange({ ...value, service })} value={value.service} />
-        <TextInput id="alert-log-severity" label={t("filters.severity")} onChange={(severity) => onChange({ ...value, severity })} value={value.severity} />
+        <TextInput
+          id="alert-log-search"
+          label={t("filters.search")}
+          onChange={(search) => onChange({ ...value, search })}
+          value={value.search}
+        />
+        <TextInput
+          id="alert-log-service"
+          label={t("filters.service")}
+          onChange={(service) => onChange({ ...value, service })}
+          value={value.service}
+        />
+        <TextInput
+          id="alert-log-severity"
+          label={t("filters.severity")}
+          onChange={(severity) => onChange({ ...value, severity })}
+          value={value.severity}
+        />
       </>
     );
   }
   return (
     <>
-      <TextInput id="alert-trace-query" label={t("filters.query")} onChange={(search) => onChange({ ...value, search })} value={value.search} />
-      <TextInput id="alert-trace-service" label={t("filters.service")} onChange={(service) => onChange({ ...value, service })} value={value.service} />
+      <TextInput
+        id="alert-trace-query"
+        label={t("filters.query")}
+        onChange={(search) => onChange({ ...value, search })}
+        value={value.search}
+      />
+      <TextInput
+        id="alert-trace-service"
+        label={t("filters.service")}
+        onChange={(service) => onChange({ ...value, service })}
+        value={value.service}
+      />
       <div className="grid gap-1">
         <Label htmlFor="alert-trace-status">{t("alerts.status")}</Label>
-        <Select onValueChange={(status) => onChange({ ...value, status })} value={value.status || "all"}>
+        <Select
+          onValueChange={(status) => onChange({ ...value, status })}
+          value={value.status || "all"}
+        >
           <SelectTrigger id="alert-trace-status">
             <SelectValue />
           </SelectTrigger>
@@ -214,16 +283,33 @@ export function AlertConditionControls({
   value: AlertConditionDraft;
 }) {
   if (kind === "METRIC_ABSENCE") {
-    return <NumberDraftInput id="alert-max-count" label="Max allowed count" onChange={(maxAllowedCount) => onChange({ ...value, maxAllowedCount })} value={value.maxAllowedCount} />;
+    return (
+      <NumberDraftInput
+        id="alert-max-count"
+        label="Max allowed count"
+        onChange={(maxAllowedCount) => onChange({ ...value, maxAllowedCount })}
+        value={value.maxAllowedCount}
+      />
+    );
   }
   if (kind.endsWith("_MATCH") || kind === "TRACE_ERROR") {
-    return <NumberDraftInput id="alert-min-count" label="Minimum count" onChange={(minCount) => onChange({ ...value, minCount })} value={value.minCount} />;
+    return (
+      <NumberDraftInput
+        id="alert-min-count"
+        label="Minimum count"
+        onChange={(minCount) => onChange({ ...value, minCount })}
+        value={value.minCount}
+      />
+    );
   }
   return (
     <>
       <div className="grid gap-1">
         <Label htmlFor="alert-condition-operator">Operator</Label>
-        <Select onValueChange={(operator) => onChange({ ...value, operator })} value={value.operator || "GTE"}>
+        <Select
+          onValueChange={(operator) => onChange({ ...value, operator })}
+          value={value.operator || "GTE"}
+        >
           <SelectTrigger id="alert-condition-operator">
             <SelectValue />
           </SelectTrigger>
@@ -237,7 +323,12 @@ export function AlertConditionControls({
           </SelectContent>
         </Select>
       </div>
-      <NumberDraftInput id="alert-threshold" label="Threshold" onChange={(threshold) => onChange({ ...value, threshold })} value={value.threshold} />
+      <NumberDraftInput
+        id="alert-threshold"
+        label="Threshold"
+        onChange={(threshold) => onChange({ ...value, threshold })}
+        value={value.threshold}
+      />
     </>
   );
 }
@@ -284,7 +375,11 @@ function serializeAlertQuery(kind: AlertRuleKind, value: AlertQueryDraft): JSONV
   if (kind.startsWith("LOG_")) {
     return compactJson({ search: value.search, service: value.service, severity: value.severity });
   }
-  return compactJson({ search: value.search, service: value.service, status: value.status === "all" ? null : value.status });
+  return compactJson({
+    search: value.search,
+    service: value.service,
+    status: value.status === "all" ? null : value.status,
+  });
 }
 
 function serializeAlertCondition(kind: AlertRuleKind, value: AlertConditionDraft): JSONValue {
@@ -316,25 +411,63 @@ function EditorSection({ children, title }: { children: ReactNode; title: string
   );
 }
 
-function TextInput({ id, label, onChange, value }: { id: string; label: string; onChange: (value: string) => void; value?: string | undefined }) {
+function TextInput({
+  id,
+  label,
+  onChange,
+  value,
+}: {
+  id: string;
+  label: string;
+  onChange: (value: string) => void;
+  value?: string | undefined;
+}) {
   return (
     <div className="grid gap-1">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} onChange={(event) => onChange(event.currentTarget.value)} value={value ?? ""} />
+      <Input
+        id={id}
+        onChange={(event) => onChange(event.currentTarget.value)}
+        value={value ?? ""}
+      />
     </div>
   );
 }
 
-function NumberDraftInput({ id, label, onChange, value }: { id: string; label: string; onChange: (value: number | undefined) => void; value?: number | undefined }) {
+function NumberDraftInput({
+  id,
+  label,
+  onChange,
+  value,
+}: {
+  id: string;
+  label: string;
+  onChange: (value: number | undefined) => void;
+  value?: number | undefined;
+}) {
   return (
     <div className="grid gap-1">
       <Label htmlFor={id}>{label}</Label>
-      <Input id={id} min={0} onChange={(event) => onChange(numberField(event.currentTarget.value) ?? undefined)} type="number" value={value ?? 0} />
+      <Input
+        id={id}
+        min={0}
+        onChange={(event) => onChange(numberField(event.currentTarget.value) ?? undefined)}
+        type="number"
+        value={value ?? 0}
+      />
     </div>
   );
 }
 
-function NumberInput({ defaultValue, label, name }: { defaultValue: number; label: string; name: string }) {
+function NumberInput({
+  defaultValue,
+  label,
+  name,
+}: {
+  defaultValue: number;
+  label: string;
+  name: string;
+}) {
   return (
     <div className="grid gap-1">
       <Label htmlFor={`alert-${name}`}>{label}</Label>

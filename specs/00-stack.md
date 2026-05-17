@@ -58,7 +58,10 @@ provenance: from-user
 
 - CI: GitHub Actions.
 - Container runtime: Docker-compatible.
-- IAC: none for MVP.
+- Primary runtime distribution: signed OCI images.
+- Local distribution: Docker Compose with published service images plus NATS and SurrealDB.
+- Enterprise distribution: OCI-published Helm chart with configurable images, digests, security contexts, external dependencies, and scaling profiles.
+- IAC: none for MVP beyond Docker Compose and Helm chart artifacts.
 - Secret manager: environment variables or local config file for MVP.
 - Feature flags: none.
 - Optional AI evaluation feature flag: `CLOUDGRID_AI_EVAL_ENABLED`.

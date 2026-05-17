@@ -3,6 +3,8 @@
 package surrealdb
 
 import (
+	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -128,6 +130,26 @@ func TestBuildMetricSeriesQueryRejectsUnsupportedAggregationAndGrouping(t *testi
 	}, descriptor)
 	if err == nil || !strings.Contains(err.Error(), "groupBy") {
 		t.Fatalf("unsupported groupBy error = %v, want groupBy validation", err)
+	}
+}
+
+func TestBuildMetricSeriesNormalizesNonFiniteValues(t *testing.T) {
+	series := buildMetricSeries([]metricBucketRow{{
+		Bucket: time.Date(2026, 5, 14, 8, 0, 0, 0, time.UTC),
+		Group0: "checkout",
+		Value:  math.NaN(),
+		Count:  math.Inf(1),
+	}}, []string{"service.name"})
+
+	if len(series) != 1 || len(series[0].Points) != 1 {
+		t.Fatalf("series = %#v, want one point", series)
+	}
+	point := series[0].Points[0]
+	if point.Value != 0 || point.Count != nil {
+		t.Fatalf("point = %#v, want finite value and omitted count", point)
+	}
+	if _, err := json.Marshal(series); err != nil {
+		t.Fatalf("normalized series must be JSON encodable: %v", err)
 	}
 }
 

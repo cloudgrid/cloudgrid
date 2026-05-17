@@ -2,6 +2,27 @@
 
 This page covers day-to-day operation for local development, small shared environments, and deployed-mode preparation.
 
+## CI/CD And Distribution Status
+
+The repository has a baseline GitHub Actions quality workflow for pull requests
+and pushes to `main`, plus a separate website deployment workflow. The product
+release path is specified but not fully implemented yet: CloudGrid still needs
+service images, a release workflow, Helm chart artifacts, SBOM/provenance
+publication, image signing, and enterprise Kubernetes install docs before it is
+ready for public or enterprise distribution.
+
+The target distribution model is:
+
+- local evaluation through Docker Compose using published CloudGrid service
+  images, NATS, and SurrealDB;
+- enterprise Kubernetes through a versioned OCI Helm chart;
+- developer libraries through package registries only where they are meant to
+  be imported by users.
+
+See
+[Release, CI/CD, And Distribution](../../specs/06-nfr/release-distribution.md)
+for the source-of-truth delivery concept.
+
 ## Local Infrastructure
 
 Start infrastructure:
@@ -144,6 +165,8 @@ go run -tags surrealdb ./core/storage-write/cmd/storage-write
 ```
 
 SurrealDB credentials belong only in storage/control-plane service configuration. They must not appear in frontend bundles, BFF responses, collector logs, generated assets, or public docs examples with real values.
+
+The control-plane always uses the SurrealDB metadata store and applies its schema before it subscribes to NATS.
 
 ## Ingesting Telemetry
 

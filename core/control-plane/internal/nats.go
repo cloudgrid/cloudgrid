@@ -34,6 +34,8 @@ const (
 	SubjectDashboardsDelete        = "control.dashboards.delete"
 	SubjectDashboardPinsSet        = "control.dashboard_pins.set"
 	SubjectDashboardPinsReorder    = "control.dashboard_pins.reorder"
+	SubjectProjectAiSettingsGet    = "control.ai_settings.get"
+	SubjectProjectAiSettingsUpdate = "control.ai_settings.update"
 	SubjectProjectMembersList      = "control.project_members.list"
 	SubjectProjectMembersUpdate    = "control.project_members.update"
 	SubjectProjectMembersRemove    = "control.project_members.remove"
@@ -77,6 +79,8 @@ func ControlSubjects() map[string]struct{} {
 		SubjectDashboardsDelete:        {},
 		SubjectDashboardPinsSet:        {},
 		SubjectDashboardPinsReorder:    {},
+		SubjectProjectAiSettingsGet:    {},
+		SubjectProjectAiSettingsUpdate: {},
 		SubjectProjectMembersList:      {},
 		SubjectProjectMembersUpdate:    {},
 		SubjectProjectMembersRemove:    {},
@@ -338,6 +342,26 @@ func handleDashboardPinsReorder(service *Service, logger *slog.Logger) bridgeMes
 			return DashboardPreferencesResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
 		return DashboardPreferencesResponse{RequestID: request.RequestID, OK: true, Data: &data}
+	})
+}
+
+func handleProjectAiSettingsGet(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.ProjectAiSettingsGetRequest](SubjectProjectAiSettingsGet, logger, func(ctx context.Context, request contracts.ProjectAiSettingsGetRequest) contracts.ProjectAiSettingsGetResponse {
+		settings, err := service.GetProjectAiSettings(ctx, request)
+		if err != nil {
+			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"settings": settings}}
+	})
+}
+
+func handleProjectAiSettingsUpdate(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.ProjectAiSettingsUpdateRequest](SubjectProjectAiSettingsUpdate, logger, func(ctx context.Context, request contracts.ProjectAiSettingsUpdateRequest) contracts.ProjectAiSettingsUpdateResponse {
+		settings, err := service.UpdateProjectAiSettings(ctx, request)
+		if err != nil {
+			return contracts.ProjectAiSettingsUpdateResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.ProjectAiSettingsUpdateResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"settings": settings}}
 	})
 }
 

@@ -1,8 +1,10 @@
 package internal
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/cloudgrid-dev/cloudgrid/core/storage-read/internal/ports"
 	"github.com/nats-io/nats.go"
@@ -18,6 +20,7 @@ func ConnectNATS(url string) (*nats.Conn, error) {
 
 func SubscribeTelemetryHandlers(nc *nats.Conn, store ports.TelemetryReadStore, logger *slog.Logger) ([]*nats.Subscription, error) {
 	liveRegistry := NewLiveTraceRegistry(store, natsLiveTracePublisher{nc: nc}, LiveTraceOptions{})
+	runLiveTraceHeartbeats(liveRegistry)
 	handlers := map[string]bridgeMessageHandler{
 		SubjectProjectTelemetryOverview: handleProjectTelemetryOverview(store, logger),
 		SubjectTraceSearch:              handleTraceSearch(store, logger),
@@ -49,6 +52,19 @@ func SubscribeTelemetryHandlers(nc *nats.Conn, store ports.TelemetryReadStore, l
 		return nil, fmt.Errorf("ERR-013 MESSAGE_BRIDGE_UNAVAILABLE: NATS subscription flush failed")
 	}
 	return subscriptions, nil
+}
+
+func runLiveTraceHeartbeats(registry *LiveTraceRegistry) {
+	interval := time.Second
+	if registry.heartbeatInterval < interval {
+		interval = registry.heartbeatInterval
+	}
+	ticker := time.NewTicker(interval)
+	go func() {
+		for range ticker.C {
+			registry.EmitHeartbeats(context.Background())
+		}
+	}()
 }
 
 type natsLiveTracePublisher struct {

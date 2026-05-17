@@ -2,13 +2,13 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  AUTH_MODES,
-  AUTH_PROVIDERS,
   AI_EVAL_SUBJECTS,
   ALERT_EVALUATOR_SUBJECTS,
   ALERT_RULE_KINDS,
   ALERT_SEVERITIES,
   ALERT_STATES,
+  AUTH_MODES,
+  AUTH_PROVIDERS,
   COMPANY_ROLES,
   CONTRACT_GENERATION_TARGETS,
   CONTROL_PLANE_SUBJECTS,
@@ -30,7 +30,7 @@ export const DEPLOYMENT_MODES = ${inlineTsArray(DEPLOYMENT_MODES)} as const;
 export const AUTH_MODES = ${inlineTsArray(AUTH_MODES)} as const;
 export const AUTH_PROVIDERS = ${inlineTsArray(AUTH_PROVIDERS)} as const;
 export const COMPANY_ROLES = ${inlineTsArray(COMPANY_ROLES)} as const;
-export const ORGANIZATION_INVITATION_STATUSES = ${inlineTsArray(ORGANIZATION_INVITATION_STATUSES)} as const;
+export const ORGANIZATION_INVITATION_STATUSES = ${multilineTsArray(ORGANIZATION_INVITATION_STATUSES)} as const;
 export const PROJECT_ROLES = ${inlineTsArray(PROJECT_ROLES)} as const;
 export const PROJECT_MEMBER_SOURCES = ${inlineTsArray(PROJECT_MEMBER_SOURCES)} as const;
 export const PROJECT_STATUSES = ${inlineTsArray(PROJECT_STATUSES)} as const;

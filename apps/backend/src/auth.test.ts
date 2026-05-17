@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createLogger } from "@cloudgrid/runtime";
-import type { AuthProviderFixture, AuthenticatedPrincipal } from "./auth";
+import type { AuthenticatedPrincipal, AuthProviderFixture } from "./auth";
 import { createAppWithBridge } from "./index";
 import { bridge, ssoAuthConfig, viewer } from "./test-helpers";
 

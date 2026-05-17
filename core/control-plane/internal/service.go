@@ -568,6 +568,53 @@ func (service *Service) UpdateRetentionPolicy(ctx context.Context, request contr
 	return contractRetentionPolicy(updated), nil
 }
 
+func (service *Service) GetProjectAiSettings(ctx context.Context, request contracts.ProjectAiSettingsGetRequest) (map[string]any, error) {
+	project, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, request.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	return service.projectAiSettings(ctx, project.ID, principalID(request.BridgeEnvelope))
+}
+
+func (service *Service) UpdateProjectAiSettings(ctx context.Context, request contracts.ProjectAiSettingsUpdateRequest) (map[string]any, error) {
+	projectID, ok := stringFromMap(request.Input, "projectId")
+	if !ok {
+		return nil, validationError("projectId is required")
+	}
+	project, err := service.requireProjectAdmin(ctx, request.BridgeEnvelope, projectID)
+	if err != nil {
+		return nil, err
+	}
+	current, err := service.projectAiSettingsRecord(ctx, project.ID, principalID(request.BridgeEnvelope))
+	if err != nil {
+		return nil, err
+	}
+	expectedVersion := request.ExpectedVersion
+	if expectedVersion == nil {
+		if value, ok := intFromMap(request.Input, "expectedVersion"); ok {
+			expectedVersion = &value
+		}
+	}
+	if expectedVersion == nil || *expectedVersion != current.Version {
+		return nil, forbiddenError("project AI settings version is stale")
+	}
+	updated, err := normalizeProjectAiSettingsInput(request.Input, project.ID, service.now().UTC(), principalID(request.BridgeEnvelope), current.Version+1)
+	if err != nil {
+		return nil, err
+	}
+	record := ports.ProjectAiSettingsRecord{
+		ProjectID:       project.ID,
+		Settings:        updated,
+		UpdatedAt:       service.now().UTC(),
+		UpdatedByUserID: principalID(request.BridgeEnvelope),
+		Version:         current.Version + 1,
+	}
+	if err := service.store.PutProjectAiSettings(ctx, record); err != nil {
+		return nil, storageError()
+	}
+	return cloneAnyMap(updated), nil
+}
+
 func (service *Service) ListAlertRules(ctx context.Context, request contracts.AlertRuleListRequest) ([]contracts.AlertRule, error) {
 	project, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, request.ProjectID)
 	if err != nil {
@@ -2081,6 +2128,231 @@ func (service *Service) retentionPolicyRecord(ctx context.Context, projectID str
 	return record, nil
 }
 
+func (service *Service) projectAiSettings(ctx context.Context, projectID string, actor string) (map[string]any, error) {
+	record, err := service.projectAiSettingsRecord(ctx, projectID, actor)
+	if err != nil {
+		return nil, err
+	}
+	return cloneAnyMap(record.Settings), nil
+}
+
+func (service *Service) projectAiSettingsRecord(ctx context.Context, projectID string, actor string) (ports.ProjectAiSettingsRecord, error) {
+	record, ok, err := service.store.GetProjectAiSettings(ctx, projectID)
+	if err != nil {
+		return ports.ProjectAiSettingsRecord{}, storageError()
+	}
+	if ok {
+		return record, nil
+	}
+	now := service.now().UTC()
+	settings := defaultProjectAiSettings(projectID, now, actor, 1)
+	record = ports.ProjectAiSettingsRecord{
+		ProjectID:       projectID,
+		Settings:        settings,
+		UpdatedAt:       now,
+		UpdatedByUserID: actor,
+		Version:         1,
+	}
+	if err := service.store.PutProjectAiSettings(ctx, record); err != nil {
+		return ports.ProjectAiSettingsRecord{}, storageError()
+	}
+	return record, nil
+}
+
+func defaultProjectAiSettings(projectID string, now time.Time, actor string, version int) map[string]any {
+	return map[string]any{
+		"projectId":                 projectID,
+		"enabled":                   false,
+		"defaultProviderProfileId":  nil,
+		"defaultJudgeProfileId":     nil,
+		"defaultOptimizerProfileId": nil,
+		"defaultEmbeddingProfileId": nil,
+		"providerProfiles":          []any{},
+		"modelAliases":              []any{},
+		"onlinePolicies":            []any{},
+		"budget": map[string]any{
+			"dailyUsd":          0,
+			"perRunUsd":         nil,
+			"deterministicOnly": true,
+			"spentTodayUsd":     0,
+		},
+		"sampling": map[string]any{
+			"defaultOnlineSampleRate":             0,
+			"maxOnlineSampleRate":                 1,
+			"maxConcurrentExperimentItems":        4,
+			"maxConcurrentOptimizationCandidates": 2,
+		},
+		"datasetDefaults": map[string]any{
+			"splitAllocation": map[string]any{
+				"dev":          0.20,
+				"optimization": 0.40,
+				"validation":   0.20,
+				"regression":   0.15,
+				"holdout":      0.05,
+			},
+			"smallDatasetReviewedThreshold": 30,
+			"requireReviewForRegression":    true,
+		},
+		"effective": map[string]any{
+			"warnings":                 []any{},
+			"deterministicOnly":        true,
+			"missingProviderProfiles":  []any{},
+			"disabledProviderProfiles": []any{},
+			"budgetExhausted":          false,
+		},
+		"version":         version,
+		"updatedAt":       now,
+		"updatedByUserId": actor,
+	}
+}
+
+func normalizeProjectAiSettingsInput(input map[string]any, projectID string, now time.Time, actor string, version int) (map[string]any, error) {
+	if containsSecretLookingKey(input) {
+		return nil, validationError("project AI settings must not contain raw secret-looking fields")
+	}
+	settings := defaultProjectAiSettings(projectID, now, actor, version)
+	settings["enabled"] = boolFromMap(input, "enabled")
+	copyOptionalStringSetting(settings, input, "defaultProviderProfileId")
+	copyOptionalStringSetting(settings, input, "defaultJudgeProfileId")
+	copyOptionalStringSetting(settings, input, "defaultOptimizerProfileId")
+	copyOptionalStringSetting(settings, input, "defaultEmbeddingProfileId")
+	settings["providerProfiles"] = normalizeProviderProfiles(anySliceFromMap(input, "providerProfiles"), projectID, now)
+	settings["modelAliases"] = normalizeModelAliases(anySliceFromMap(input, "modelAliases"))
+	policies, err := normalizeOnlinePolicies(anySliceFromMap(input, "onlinePolicies"), now, actor)
+	if err != nil {
+		return nil, err
+	}
+	settings["onlinePolicies"] = policies
+	if budget, ok := mapFromMap(input, "budget"); ok {
+		settings["budget"] = map[string]any{
+			"dailyUsd":          numberFromMap(budget, "dailyUsd", 0),
+			"perRunUsd":         nullableNumberFromMap(budget, "perRunUsd"),
+			"deterministicOnly": boolFromMapDefault(budget, "deterministicOnly", false),
+			"spentTodayUsd":     0,
+		}
+	}
+	if sampling, ok := mapFromMap(input, "sampling"); ok {
+		settings["sampling"] = map[string]any{
+			"defaultOnlineSampleRate":             numberFromMap(sampling, "defaultOnlineSampleRate", 0),
+			"maxOnlineSampleRate":                 numberFromMap(sampling, "maxOnlineSampleRate", 1),
+			"maxConcurrentExperimentItems":        intNumberFromMap(sampling, "maxConcurrentExperimentItems", 4),
+			"maxConcurrentOptimizationCandidates": intNumberFromMap(sampling, "maxConcurrentOptimizationCandidates", 2),
+		}
+	}
+	if defaults, ok := mapFromMap(input, "datasetDefaults"); ok {
+		split, _ := mapFromMap(defaults, "splitAllocation")
+		settings["datasetDefaults"] = map[string]any{
+			"splitAllocation":               split,
+			"smallDatasetReviewedThreshold": intNumberFromMap(defaults, "smallDatasetReviewedThreshold", 30),
+			"requireReviewForRegression":    boolFromMapDefault(defaults, "requireReviewForRegression", true),
+		}
+	}
+	settings["effective"] = effectiveProjectAiSettings(settings)
+	return settings, nil
+}
+
+func normalizeProviderProfiles(items []any, projectID string, now time.Time) []any {
+	profiles := make([]any, 0, len(items))
+	for index, item := range items {
+		input, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := stringFromMap(input, "id")
+		if id == "" {
+			id = fmt.Sprintf("provider-%d", index+1)
+		}
+		profile := map[string]any{
+			"id":           id,
+			"projectId":    projectID,
+			"label":        stringFromMapDefault(input, "label", id),
+			"providerKind": stringFromMapDefault(input, "providerKind", "local_harness"),
+			"models":       valueOrDefault(input["models"], map[string]any{}),
+			"timeoutMs":    intNumberFromMap(input, "timeoutMs", 30000),
+		}
+		copyOptionalStringSetting(profile, input, "baseUrl")
+		copyOptionalStringSetting(profile, input, "credentialRef")
+		if value := nullableIntNumberFromMap(input, "maxConcurrency"); value != nil {
+			profile["maxConcurrency"] = value
+		}
+		if boolFromMapDefault(input, "disabled", false) {
+			profile["disabledAt"] = now
+		}
+		profiles = append(profiles, profile)
+	}
+	return profiles
+}
+
+func normalizeModelAliases(items []any) []any {
+	aliases := make([]any, 0, len(items))
+	for index, item := range items {
+		input, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := stringFromMap(input, "id")
+		if id == "" {
+			id = fmt.Sprintf("model-alias-%d", index+1)
+		}
+		aliases = append(aliases, map[string]any{
+			"id":                id,
+			"name":              stringFromMapDefault(input, "name", id),
+			"providerProfileId": stringFromMapDefault(input, "providerProfileId", ""),
+			"model":             stringFromMapDefault(input, "model", ""),
+			"purpose":           stringFromMapDefault(input, "purpose", "default"),
+			"parameters":        valueOrDefault(input["parameters"], map[string]any{}),
+		})
+	}
+	return aliases
+}
+
+func normalizeOnlinePolicies(items []any, now time.Time, actor string) ([]any, error) {
+	policies := make([]any, 0, len(items))
+	for index, item := range items {
+		input, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		target, _ := mapFromMap(input, "target")
+		if boolFromMapDefault(input, "enabled", false) && len(target) == 0 {
+			return nil, validationError("enabled online policies require a target")
+		}
+		id, _ := stringFromMap(input, "id")
+		if id == "" {
+			id = fmt.Sprintf("online-policy-%d", index+1)
+		}
+		policies = append(policies, map[string]any{
+			"id":              id,
+			"enabled":         boolFromMapDefault(input, "enabled", false),
+			"name":            stringFromMapDefault(input, "name", id),
+			"target":          target,
+			"scorerIds":       stringSliceFromAny(input["scorerIds"]),
+			"sampleRate":      numberFromMap(input, "sampleRate", 0),
+			"maxDailyRuns":    nullableIntNumberFromMap(input, "maxDailyRuns"),
+			"annotationRules": anySliceFromMap(input, "annotationRules"),
+			"updatedAt":       now,
+			"updatedByUserId": actor,
+		})
+	}
+	return policies, nil
+}
+
+func effectiveProjectAiSettings(settings map[string]any) map[string]any {
+	budget, _ := settings["budget"].(map[string]any)
+	deterministicOnly := boolFromMapDefault(budget, "deterministicOnly", false)
+	warnings := []any{}
+	if profiles := anySlice(settings["providerProfiles"]); len(profiles) == 0 && !deterministicOnly {
+		warnings = append(warnings, "No provider profiles configured.")
+	}
+	return map[string]any{
+		"warnings":                 warnings,
+		"deterministicOnly":        deterministicOnly,
+		"missingProviderProfiles":  []any{},
+		"disabledProviderProfiles": []any{},
+		"budgetExhausted":          numberFromMap(budget, "dailyUsd", 0) <= numberFromMap(budget, "spentTodayUsd", 0),
+	}
+}
+
 func defaultRetentionRuleRecords(now time.Time, actor string) []ports.RetentionRuleRecord {
 	days30 := 30
 	days90 := 90
@@ -2714,7 +2986,7 @@ func builtinDashboards(project ports.ProjectRecord, now time.Time) []Dashboard {
 					X: 0, Y: 0, W: 6, H: 4, MinW: 3, MinH: 2,
 				},
 				Metric: &DashboardMetricWidgetInput{
-					MetricName:    "http.server.duration",
+					MetricName:    "http.server.request.duration",
 					Aggregation:   contracts.MetricAggregationP95,
 					GroupBy:       []string{"service.name"},
 					Filters:       []contracts.AttributeFilter{},
@@ -2748,7 +3020,7 @@ func builtinDashboards(project ports.ProjectRecord, now time.Time) []Dashboard {
 				Metric: &DashboardMetricWidgetInput{
 					MetricName:    "gen_ai.client.token.usage",
 					Aggregation:   contracts.MetricAggregationSum,
-					GroupBy:       []string{"gen_ai.system"},
+					GroupBy:       []string{"gen_ai.token.type"},
 					Filters:       []contracts.AttributeFilter{},
 					TimeWindow:    ptr("PT1H"),
 					Visualization: contracts.MetricChartTypeBar,
@@ -3139,6 +3411,147 @@ func cloneAnyMap(input map[string]any) map[string]any {
 		output[key] = value
 	}
 	return output
+}
+
+func stringFromMap(input map[string]any, key string) (string, bool) {
+	value, ok := input[key].(string)
+	if !ok {
+		return "", false
+	}
+	value = strings.TrimSpace(value)
+	return value, value != ""
+}
+
+func stringFromMapDefault(input map[string]any, key string, fallback string) string {
+	if value, ok := stringFromMap(input, key); ok {
+		return value
+	}
+	return fallback
+}
+
+func boolFromMap(input map[string]any, key string) bool {
+	return boolFromMapDefault(input, key, false)
+}
+
+func boolFromMapDefault(input map[string]any, key string, fallback bool) bool {
+	value, ok := input[key].(bool)
+	if !ok {
+		return fallback
+	}
+	return value
+}
+
+func mapFromMap(input map[string]any, key string) (map[string]any, bool) {
+	value, ok := input[key].(map[string]any)
+	if !ok {
+		return map[string]any{}, false
+	}
+	return value, true
+}
+
+func anySliceFromMap(input map[string]any, key string) []any {
+	return anySlice(input[key])
+}
+
+func anySlice(input any) []any {
+	if values, ok := input.([]any); ok {
+		return values
+	}
+	return []any{}
+}
+
+func stringSliceFromAny(input any) []string {
+	values, ok := input.([]any)
+	if !ok {
+		return []string{}
+	}
+	output := make([]string, 0, len(values))
+	for _, value := range values {
+		if text, ok := value.(string); ok && strings.TrimSpace(text) != "" {
+			output = append(output, strings.TrimSpace(text))
+		}
+	}
+	return output
+}
+
+func valueOrDefault(value any, fallback any) any {
+	if value == nil {
+		return fallback
+	}
+	return value
+}
+
+func numberFromMap(input map[string]any, key string, fallback float64) float64 {
+	if value, ok := numericValue(input[key]); ok {
+		return value
+	}
+	return fallback
+}
+
+func nullableNumberFromMap(input map[string]any, key string) any {
+	if value, ok := numericValue(input[key]); ok {
+		return value
+	}
+	return nil
+}
+
+func intNumberFromMap(input map[string]any, key string, fallback int) int {
+	if value, ok := numericValue(input[key]); ok {
+		return int(value)
+	}
+	return fallback
+}
+
+func nullableIntNumberFromMap(input map[string]any, key string) any {
+	if value, ok := numericValue(input[key]); ok {
+		return int(value)
+	}
+	return nil
+}
+
+func intFromMap(input map[string]any, key string) (int, bool) {
+	if value, ok := numericValue(input[key]); ok {
+		return int(value), true
+	}
+	return 0, false
+}
+
+func copyOptionalStringSetting(output map[string]any, input map[string]any, key string) {
+	if value, ok := stringFromMap(input, key); ok {
+		output[key] = value
+		return
+	}
+	if _, exists := input[key]; exists {
+		output[key] = nil
+	}
+}
+
+func containsSecretLookingKey(value any) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, nested := range typed {
+			normalized := strings.ToLower(strings.ReplaceAll(key, "-", "_"))
+			if strings.Contains(normalized, "authorization") ||
+				strings.Contains(normalized, "cookie") ||
+				strings.Contains(normalized, "x_api_key") ||
+				strings.Contains(normalized, "api_key") ||
+				strings.Contains(normalized, "token") ||
+				strings.Contains(normalized, "secret") ||
+				strings.Contains(normalized, "password") {
+				return true
+			}
+			if containsSecretLookingKey(nested) {
+				return true
+			}
+		}
+	case []any:
+		for _, nested := range typed {
+			if containsSecretLookingKey(nested) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func defaultOrganizationName(organizationID string) string {

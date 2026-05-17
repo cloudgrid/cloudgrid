@@ -1,13 +1,13 @@
-import type { ReactNode } from "react";
 import type { TraceDetail } from "@cloudgrid/ui-contracts";
 import { ListTree, Move } from "lucide-react";
+import type { ReactNode } from "react";
 import { Button } from "../../components/ui/button";
 import { formatDuration } from "../../lib/format";
 import { t } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
+import type { TraceViewMode } from "./trace-detail-types";
 import { TraceFlowGraph } from "./trace-flow-graph";
 import { TraceTreeWaterfall } from "./trace-tree-waterfall";
-import type { TraceViewMode } from "./trace-detail-types";
 
 export interface TraceWaterfallPanelProps {
   detail: TraceDetail;

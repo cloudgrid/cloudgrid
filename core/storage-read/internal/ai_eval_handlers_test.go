@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -44,6 +45,32 @@ func TestAiEvalQueryHandlerRoutesDeclaredQuerySubjects(t *testing.T) {
 	}
 	if len(response.Data["items"].([]any)) != 1 {
 		t.Fatalf("response data = %#v, want GraphQL-ready items", response.Data)
+	}
+}
+
+func TestAiEvalQueryHandlerReturnsBridgeErrorWhenResponseCannotBeEncoded(t *testing.T) {
+	store := &aiEvalStoreForTest{
+		responses: map[string]map[string]any{
+			SubjectEvalQualityOverview: {"value": math.Inf(1)},
+		},
+	}
+	request := contracts.EvalQueryRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-unencodable-response"},
+		Input:          map[string]any{"projectId": "default"},
+	}
+	message := bridgeMessageForTest(SubjectEvalQualityOverview, mustMarshalNATSHandlerTest(t, request))
+
+	handleAiEvalQuery(store, nil)(message)
+
+	var response contracts.EvalQueryResponse
+	if err := json.Unmarshal(message.response, &response); err != nil {
+		t.Fatalf("response is not eval query JSON: %v", err)
+	}
+	if response.OK || response.RequestID != "req-unencodable-response" {
+		t.Fatalf("response = %#v, want failed request req-unencodable-response", response)
+	}
+	if response.Error == nil || response.Error.ID != "ERR-013" {
+		t.Fatalf("response error = %#v, want ERR-013", response.Error)
 	}
 }
 

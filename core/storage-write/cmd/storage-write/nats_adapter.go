@@ -39,7 +39,7 @@ func newMessageBridgeAdapter(natsURL string, store ports.TelemetryWriteStore, lo
 
 	return messageBridgeAdapter{
 		RunConsumer: func(ctx context.Context) error {
-			return ingest.RunConsumer(ctx, js, store, logger)
+			return ingest.RunConsumer(ctx, js, ingest.NewTraceNotificationPublisher(nc), store, logger)
 		},
 		IsClosed: nc.IsClosed,
 		Drain:    nc.Drain,

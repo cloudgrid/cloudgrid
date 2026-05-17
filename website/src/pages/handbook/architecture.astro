@@ -1,102 +1,21 @@
 ---
-import Layout from "../../layouts/Layout.astro";
-import Section from "../../components/Section.astro";
-import PageHeader from "../../components/PageHeader.astro";
-import SystemCanvas from "../../components/visuals/SystemCanvas.astro";
+import { render } from "astro:content";
+import HandbookLayout from "../../components/handbook/HandbookLayout.astro";
+import { findHandbookEntry } from "../../lib/handbook";
+
+const entry = await findHandbookEntry("architecture");
+if (!entry) throw new Error("handbook/architecture overview is missing");
+const { Content, headings } = await render(entry);
 ---
 
-<Layout title="Architecture — CloudGrid Handbook">
-  <Section size="lg">
-    <PageHeader
-      eyebrow="Handbook · Architecture"
-      accent="brand"
-      title="Services, message bridge, and what crosses what."
-      description="CloudGrid is a small number of single-purpose services arranged around a message bridge. The public surface is a TypeScript backend-for-frontend; everything sensitive is a private Go service that only the bridge can reach."
-    />
-  </Section>
-
-  <Section tone="recessed">
-    <div class="reveal-scale">
-      <SystemCanvas />
-    </div>
-    <p class="mt-3 text-xs text-text-muted text-center">
-      Trigger fires · ingest validates · bridge routes · core commits · switch authorizes · live fans out.
-    </p>
-  </Section>
-
-  <Section>
-    <div class="prose-handbook">
-      <h2>The five services</h2>
-      <h3>otlp-collector (Go, public)</h3>
-      <p>
-        Accepts OTLP HTTP on <code>/v1/traces</code>, <code>/v1/logs</code>,
-        <code>/v1/metrics</code>. Normalizes payloads into canonical entities and publishes
-        <code>PersistTelemetryCommand</code> / <code>PersistMetricsCommand</code> messages to the
-        bridge. Does not own storage adapters; does not parse storage formats.
-      </p>
-
-      <h3>storage-write (Go, private)</h3>
-      <p>
-        JetStream consumer that writes canonical telemetry to the database. The only service that
-        mutates SurrealDB. After committing a trace, publishes a
-        <code>TracePersistedNotification</code> on
-        <code>telemetry.persisted.traces</code> — without span bodies — so storage-read can fan
-        live trace events out to BFF-owned ephemeral subjects.
-      </p>
-
-      <h3>storage-read (Go, private)</h3>
-      <p>
-        Request/reply service that owns query semantics, filter pushdown, view-model derivation,
-        and live trace fanout. Database-specific code lives in
-        <code>internal/adapters/&lt;database&gt;/</code>.
-      </p>
-
-      <h3>control-plane (Go, private)</h3>
-      <p>
-        Companies, users, projects, project memberships, ingest credentials, dashboards,
-        retention policies, alerting foundation. Authoritative for everything that is not raw
-        telemetry.
-      </p>
-
-      <h3>BFF + UI (TypeScript + React, public)</h3>
-      <p>
-        GraphQL server, health, static frontend. Owns transport, public error mapping, and future
-        auth middleware. Never imports SurrealDB clients, Go storage adapters, or OTLP parsers.
-        Subscription resolvers use storage-read's live-session request/reply plus the
-        storage-read-owned ephemeral live event subjects.
-      </p>
-
-      <h2>The message bridge</h2>
-      <p>
-        Every telemetry read and write crosses the bridge. The v1 adapter is NATS JetStream.
-        Subjects fall into three families:
-      </p>
-      <ul>
-        <li><code>telemetry.ingest.*</code> — durable streams for OTLP payloads.</li>
-        <li><code>telemetry.persisted.*</code> — durable post-persist notifications.</li>
-        <li>Request/reply subjects for queries; ephemeral live subjects for subscription fanout.</li>
-      </ul>
-      <p>
-        The bridge is an adapter port, not a hard dependency. Alternative transports can
-        implement the same port shape; the rest of the system does not change.
-      </p>
-
-      <h2>What the BFF does <em>not</em> do</h2>
-      <ul>
-        <li>It does not import SurrealDB clients or Go storage adapters.</li>
-        <li>It does not create JetStream consumers for ingest streams.</li>
-        <li>It does not aggregate, correlate, score, normalize, or derive telemetry. Query semantics live in storage-read.</li>
-      </ul>
-
-      <h2>AI evaluation, briefly</h2>
-      <p>
-        The <code>core/ai-eval-runner</code> service is optional. When enabled, it consumes
-        AI projection notifications for online scoring, handles experiment start / cancel /
-        optimization-start subjects, reads datasets and scorers only through storage-read,
-        writes mutable AI-eval records only through storage-write, and calls the harness
-        adapter over HTTP. It never reads or writes the database directly and never calls
-        model providers directly. See the <a href="/features/ai-evaluation">AI Evaluation</a> feature page for the user-visible surface.
-      </p>
-    </div>
-  </Section>
-</Layout>
+<HandbookLayout
+  title={entry.data.title}
+  description={entry.data.description}
+  eyebrow={entry.data.eyebrow}
+  accent={entry.data.accent}
+  updated={entry.data.updated}
+  headings={headings}
+  currentSlug="/handbook/architecture"
+>
+  <Content />
+</HandbookLayout>

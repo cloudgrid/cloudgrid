@@ -402,7 +402,7 @@ describe("BFF GraphQL telemetry resolvers", () => {
       to: "2026-05-14T09:00:00.000Z",
       query: {
         timeWindow: "PT1H",
-        interval: "PT1M",
+        interval: null,
         queries: [
           {
             id: "errors",
@@ -428,8 +428,8 @@ describe("BFF GraphQL telemetry resolvers", () => {
               kind: "function",
               function: "ratio",
               arguments: [
-                { kind: "ref", refId: "errors" },
-                { kind: "ref", refId: "total" },
+                { kind: "ref", refId: "errors", value: null },
+                { kind: "ref", refId: "total", value: null },
               ],
             },
             unit: "1",
@@ -478,7 +478,6 @@ describe("BFF GraphQL telemetry resolvers", () => {
       to: "2026-05-14T09:00:00.000Z",
       query: {
         timeWindow: "PT1H",
-        interval: "PT1M",
         queries: [
           {
             id: "errors",
@@ -719,6 +718,7 @@ describe("BFF GraphQL telemetry resolvers", () => {
             id: "project-view",
             version: 1,
             name: "Token usage",
+            description: null,
             tags: ["genai"],
             visibility: "personal",
             defaultTimeWindow: "PT1H",
@@ -726,14 +726,41 @@ describe("BFF GraphQL telemetry resolvers", () => {
               {
                 id: "widget-1",
                 title: "Tokens",
+                description: null,
                 kind: "metric_timeseries",
                 layout: { x: 0, y: 0, w: 6, h: 4 },
+                richMetric: null,
+                logs: null,
+                traces: null,
+                liveTraces: null,
                 metric: {
                   metricName: "gen_ai.client.token.usage",
                   aggregation: "sum",
                   groupBy: ["gen_ai.token.type"],
                   timeWindow: "PT1H",
                   visualization: "line",
+                },
+              },
+              {
+                id: "widget-2",
+                title: "Recent logs",
+                description: null,
+                kind: "log_table",
+                layout: { x: 6, y: 0, w: 6, h: 4, minW: null, minH: null },
+                metric: null,
+                richMetric: null,
+                traces: null,
+                liveTraces: null,
+                logs: {
+                  search: null,
+                  service: null,
+                  severity: null,
+                  traceId: null,
+                  spanId: null,
+                  attributes: [],
+                  sort: "timestamp_desc",
+                  limit: 50,
+                  columns: ["timestamp", "severity", "service", "trace_span", "body"],
                 },
               },
             ],
@@ -789,7 +816,7 @@ describe("BFF GraphQL telemetry resolvers", () => {
     ]);
     expect(calls).toEqual([
       'list:{"includeBuiltins":true,"query":"token","tag":"genai","visibility":"personal","pinnedOnly":false}',
-      'save:{"id":"project-view","version":1,"name":"Token usage","tags":["genai"],"visibility":"personal","defaultTimeWindow":"PT1H","widgets":[{"id":"widget-1","title":"Tokens","kind":"metric_timeseries","layout":{"x":0,"y":0,"w":6,"h":4,"minW":3,"minH":2},"metric":{"metricName":"gen_ai.client.token.usage","aggregation":"sum","groupBy":["gen_ai.token.type"],"filters":[],"timeWindow":"PT1H","visualization":"line","legend":true,"maxSeries":20,"thresholds":[]}}]}',
+      'save:{"id":"project-view","version":1,"name":"Token usage","tags":["genai"],"visibility":"personal","defaultTimeWindow":"PT1H","widgets":[{"id":"widget-1","title":"Tokens","kind":"metric_timeseries","layout":{"x":0,"y":0,"w":6,"h":4,"minW":3,"minH":2},"metric":{"metricName":"gen_ai.client.token.usage","aggregation":"sum","groupBy":["gen_ai.token.type"],"filters":[],"timeWindow":"PT1H","visualization":"line","legend":true,"maxSeries":20,"thresholds":[]}},{"id":"widget-2","title":"Recent logs","kind":"log_table","layout":{"x":6,"y":0,"w":6,"h":4},"logs":{"attributes":[],"sort":"timestamp_desc","limit":50,"columns":["timestamp","severity","service","trace_span","body"]}}]}',
       "delete:saved-dashboard",
       'pin:{"dashboardId":"saved-dashboard","pinned":true}',
       'reorder:{"dashboardIds":["saved-dashboard","dashboard-1"]}',

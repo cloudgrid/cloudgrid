@@ -20,7 +20,7 @@ describe("AI Eval route UX migration", () => {
     expect(routeSource).toContain("ai-eval-right-inspector");
   });
 
-  test("covers all approved AI Eval sections and settings link without local telemetry truth", () => {
+  test("covers all approved AI Eval sections and links settings without route-local GraphQL", () => {
     for (const section of [
       "overview",
       "runs",
@@ -34,8 +34,10 @@ describe("AI Eval route UX migration", () => {
       expect(routeSource).toContain(`value="${section}"`);
     }
     expect(routeSource).toContain("/settings/ai-eval");
-    expect(routeSource).toContain("projectAiSettings(projectId: $projectId)");
-    expect(routeSource).toContain("aiQualityOverview(input: $input)");
+    expect(routeSource).toContain("controlClient.getProjectAiSettings");
+    expect(routeSource).toContain("telemetryClient.getAiQualityOverview");
+    expect(routeSource).not.toContain("requestAiEvalGraphQL");
+    expect(routeSource).not.toContain("Project AI Eval settings");
     expect(routeSource).not.toContain("localStorage");
   });
 
@@ -44,8 +46,8 @@ describe("AI Eval route UX migration", () => {
     expect(routeSource).toContain('"/api/ai-eval/dataset-imports/uploads"');
     expect(routeSource).toContain('formData.append("projectId"');
     expect(routeSource).toContain('formData.append("file"');
-    expect(routeSource).toContain("prepareDatasetImport(input: $input)");
-    expect(routeSource).toContain("commitDatasetImport(input: $input)");
+    expect(routeSource).toContain("telemetryClient.prepareDatasetImport");
+    expect(routeSource).toContain("telemetryClient.commitDatasetImport");
     expect(routeSource).toContain("allowPartialCommit");
     expect(routeSource).toContain("valid_rows_only");
     expect(routeSource).toContain("reject_if_any_error");
@@ -68,8 +70,8 @@ describe("AI Eval route UX migration", () => {
       expect(routeSource).toContain(sourceKind);
     }
     expect(routeSource).toContain("DatasetExportDialog");
-    expect(routeSource).toContain("startDatasetExport(input: $input)");
-    expect(routeSource).toContain("datasetExport(id: $id)");
+    expect(routeSource).toContain("telemetryClient.startDatasetExport");
+    expect(routeSource).toContain("telemetryClient.getDatasetExport");
     expect(routeSource).toContain("downloadSameOriginExport");
     expect(routeSource).toContain("new URL(job.downloadUrl, window.location.origin)");
   });

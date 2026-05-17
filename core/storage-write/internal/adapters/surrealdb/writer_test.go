@@ -856,6 +856,9 @@ func TestBuildAIProjectionPersistQueryUsesCanonicalProjectionTable(t *testing.T)
 	if record["traceId"] != "trace-1" || record["spanId"] != "span-1" || record["rootSpanId"] != "span-1" {
 		t.Fatalf("projection record = %#v", record)
 	}
+	if _, ok := record["id"]; ok {
+		t.Fatalf("projection record persisted GraphQL id inside SurrealDB content: %#v", record)
+	}
 	if record["tenantId"] != "tenant_1" || record["projectId"] != "project_1" {
 		t.Fatalf("projection record missing ownership: %#v", record)
 	}
@@ -909,8 +912,11 @@ func TestBuildEvalMutationPersistQueryUsesSubjectTable(t *testing.T) {
 	if record["name"] != "golden answers" || record["version"] != 1 || record["itemCount"] != 0 {
 		t.Fatalf("record = %#v", record)
 	}
-	if data["id"] != record["id"] {
-		t.Fatalf("data = %#v record = %#v", data, record)
+	if _, ok := record["id"]; ok {
+		t.Fatalf("record persisted GraphQL id inside SurrealDB content: %#v", record)
+	}
+	if data["id"] != vars["record_id"] {
+		t.Fatalf("data = %#v record_id = %#v", data, vars["record_id"])
 	}
 }
 
@@ -979,12 +985,29 @@ func TestBuildEvalMutationPersistQuerySupportsDatasetAppendPromoteAndPromptPromo
 			if !strings.Contains(sql, "UPSERT type::record('"+tt.wantTable+"'") {
 				t.Fatalf("query = %s, want table %s", sql, tt.wantTable)
 			}
-			record := vars["record"].(map[string]any)
-			if tt.wantID != "" && record["id"] != tt.wantID {
-				t.Fatalf("record id = %#v, want %q", record["id"], tt.wantID)
+			if tt.subject == "eval.dataset.items.append" {
+				for _, want := range []string{
+					"UPDATE type::record('ai_dataset', $dataset_id)",
+					"itemCount = (SELECT count() AS count FROM ai_dataset_item",
+					"datasetId = $dataset_id",
+				} {
+					if !strings.Contains(sql, want) {
+						t.Fatalf("query = %s, missing %q", sql, want)
+					}
+				}
+				if vars["dataset_id"] != "dataset-1" || vars["dataset_version"] != 2 {
+					t.Fatalf("dataset vars = %#v", vars)
+				}
 			}
-			if data["id"] != record["id"] {
-				t.Fatalf("data = %#v record = %#v", data, record)
+			record := vars["record"].(map[string]any)
+			if _, ok := record["id"]; ok {
+				t.Fatalf("record persisted GraphQL id inside SurrealDB content: %#v", record)
+			}
+			if tt.wantID != "" && vars["record_id"] != tt.wantID {
+				t.Fatalf("record id = %#v, want %q", vars["record_id"], tt.wantID)
+			}
+			if data["id"] != vars["record_id"] {
+				t.Fatalf("data = %#v record_id = %#v", data, vars["record_id"])
 			}
 		})
 	}
@@ -1017,7 +1040,10 @@ func TestBuildEvalMutationPersistQuerySupportsOnlineEvalResultWithoutExperimentR
 		t.Fatalf("query = %s, want ai_eval_result table", sql)
 	}
 	record := vars["record"].(map[string]any)
-	if record["id"] != "result-online-1" || record["targetKind"] != "agentRun" || record["experimentRunId"] != nil {
+	if _, ok := record["id"]; ok {
+		t.Fatalf("record persisted GraphQL id inside SurrealDB content: %#v", record)
+	}
+	if vars["record_id"] != "result-online-1" || record["targetKind"] != "agentRun" || record["experimentRunId"] != nil {
 		t.Fatalf("record = %#v, want online eval result without experimentRunId", record)
 	}
 	if data["id"] != "result-online-1" {

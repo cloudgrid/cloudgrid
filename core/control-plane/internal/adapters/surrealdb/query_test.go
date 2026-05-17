@@ -11,23 +11,29 @@ func TestControlPlaneSchemaIncludesRequiredTablesAndRelations(t *testing.T) {
 	schema := BuildSchemaStatements()
 	joined := strings.Join(schema, "\n")
 	for _, want := range []string{
-		"DEFINE TABLE organization",
-		"DEFINE TABLE user",
-		"DEFINE TABLE project",
-		"DEFINE TABLE membership TYPE RELATION",
-		"DEFINE TABLE owns_project TYPE RELATION",
-		"DEFINE TABLE ingest_credential",
-		"DEFINE TABLE project_status_event",
-		"DEFINE TABLE dashboard SCHEMAFULL TYPE NORMAL",
-		"DEFINE TABLE dashboard_pin TYPE RELATION",
-		"DEFINE TABLE project_membership SCHEMAFULL TYPE NORMAL",
-		"DEFINE INDEX project_membership_project_user ON project_membership FIELDS projectId, userId UNIQUE",
-		"DEFINE TABLE retention_policy SCHEMAFULL TYPE NORMAL",
-		"DEFINE TABLE alert_rule SCHEMAFULL TYPE NORMAL",
-		"DEFINE TABLE alert_silence SCHEMAFULL TYPE NORMAL",
-		"DEFINE TABLE alert_event SCHEMAFULL TYPE NORMAL",
-		"DEFINE INDEX dashboard_project_visibility_owner_slug ON dashboard FIELDS projectId, visibility, ownerUserId, slug UNIQUE",
-		"DEFINE INDEX dashboard_pin_user_dashboard_project ON dashboard_pin FIELDS in, out, projectId UNIQUE",
+		"DEFINE TABLE IF NOT EXISTS organization",
+		"DEFINE TABLE IF NOT EXISTS user",
+		"DEFINE TABLE IF NOT EXISTS project",
+		"DEFINE TABLE IF NOT EXISTS membership TYPE RELATION",
+		"DEFINE TABLE IF NOT EXISTS owns_project TYPE RELATION",
+		"DEFINE TABLE IF NOT EXISTS ingest_credential",
+		"DEFINE TABLE IF NOT EXISTS project_status_event",
+		"DEFINE TABLE IF NOT EXISTS dashboard SCHEMAFULL TYPE NORMAL",
+		"DEFINE FIELD IF NOT EXISTS widgets[*].metric ON dashboard TYPE option<object> FLEXIBLE",
+		"DEFINE TABLE IF NOT EXISTS dashboard_pin TYPE RELATION",
+		"DEFINE TABLE IF NOT EXISTS project_membership SCHEMAFULL TYPE NORMAL",
+		"DEFINE INDEX IF NOT EXISTS project_membership_project_user ON project_membership FIELDS projectId, userId UNIQUE",
+		"DEFINE TABLE IF NOT EXISTS retention_policy SCHEMAFULL TYPE NORMAL",
+		"DEFINE FIELD IF NOT EXISTS rules[*].retentionDays ON retention_policy TYPE option<int>",
+		"DEFINE TABLE IF NOT EXISTS project_ai_settings SCHEMAFULL TYPE NORMAL",
+		"DEFINE FIELD OVERWRITE settings ON project_ai_settings TYPE object FLEXIBLE",
+		"DEFINE INDEX IF NOT EXISTS project_ai_settings_project ON project_ai_settings FIELDS projectId UNIQUE",
+		"DEFINE TABLE IF NOT EXISTS alert_rule SCHEMAFULL TYPE NORMAL",
+		"DEFINE FIELD IF NOT EXISTS query ON alert_rule TYPE object FLEXIBLE",
+		"DEFINE TABLE IF NOT EXISTS alert_silence SCHEMAFULL TYPE NORMAL",
+		"DEFINE TABLE IF NOT EXISTS alert_event SCHEMAFULL TYPE NORMAL",
+		"DEFINE INDEX IF NOT EXISTS dashboard_project_visibility_owner_slug ON dashboard FIELDS projectId, visibility, ownerUserId, slug UNIQUE",
+		"DEFINE INDEX IF NOT EXISTS dashboard_pin_user_dashboard_project ON dashboard_pin FIELDS in, out, projectId UNIQUE",
 		"PERMISSIONS NONE",
 	} {
 		if !strings.Contains(joined, want) {
@@ -59,6 +65,7 @@ func TestControlPlaneReadinessRequiresDashboardTables(t *testing.T) {
 	info.Tables["dashboard_pin"] = "DEFINE TABLE dashboard_pin"
 	info.Tables["project_membership"] = "DEFINE TABLE project_membership"
 	info.Tables["retention_policy"] = "DEFINE TABLE retention_policy"
+	info.Tables["project_ai_settings"] = "DEFINE TABLE project_ai_settings"
 	info.Tables["alert_rule"] = "DEFINE TABLE alert_rule"
 	info.Tables["alert_silence"] = "DEFINE TABLE alert_silence"
 	info.Tables["alert_event"] = "DEFINE TABLE alert_event"
@@ -78,5 +85,30 @@ func TestProjectListQueryUsesParametersForFilters(t *testing.T) {
 	}
 	if stmt.Params["organizationId"] != "org-1" || stmt.Params["status"] != string(status) {
 		t.Fatalf("params = %#v, want organization/status params", stmt.Params)
+	}
+}
+
+func TestControlQueriesUseSurrealDBV3RecordFunctions(t *testing.T) {
+	status := contracts.ProjectStatusActive
+	statements := []string{
+		BuildOrganizationForUserQuery("user-1").SQL,
+		BuildMembershipAdminCountQuery("org-1", "user-1").SQL,
+		BuildProjectStatusSnapshotQuery("org-1", "project-1").SQL,
+	}
+	projectList, err := BuildProjectListQuery("org-1", &status)
+	if err != nil {
+		t.Fatalf("BuildProjectListQuery returned error: %v", err)
+	}
+	statements = append(statements, projectList.SQL)
+
+	joined := strings.Join(statements, "\n")
+	if strings.Contains(joined, "type::thing") {
+		t.Fatalf("queries use removed SurrealDB function type::thing:\n%s", joined)
+	}
+	if !strings.Contains(joined, "type::record") {
+		t.Fatalf("queries do not use SurrealDB v3 record constructor:\n%s", joined)
+	}
+	if strings.Contains(joined, "id.id") || strings.Contains(joined, "in.id") || strings.Contains(joined, "out.id") {
+		t.Fatalf("queries use record property access instead of record::id:\n%s", joined)
 	}
 }

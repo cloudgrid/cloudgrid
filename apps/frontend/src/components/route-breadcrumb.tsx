@@ -30,7 +30,7 @@ export function RouteBreadcrumb({
           return (
             <span
               className="flex min-w-0 items-center gap-1"
-              key={`${item.to ?? "current"}:${index}:${item.label}`}
+              key={`${item.to ?? "current"}:${item.label}`}
             >
               {index > 0 ? <ChevronRight className="size-3 shrink-0" aria-hidden /> : null}
               {item.to && !isLast ? (

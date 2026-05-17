@@ -6,7 +6,14 @@ import type {
   AlertState,
 } from "@cloudgrid/ui-contracts";
 
-export const alertStatuses: AlertState[] = ["OK", "PENDING", "FIRING", "RESOLVED", "SILENCED", "ERROR"];
+export const alertStatuses: AlertState[] = [
+  "OK",
+  "PENDING",
+  "FIRING",
+  "RESOLVED",
+  "SILENCED",
+  "ERROR",
+];
 export const alertSeverities: AlertSeverity[] = ["INFO", "WARNING", "ERROR", "CRITICAL"];
 export const alertSignals: AlertSignal[] = ["METRIC", "LOG", "TRACE"];
 export const alertRuleSorts: AlertRuleSort[] = [
@@ -36,7 +43,9 @@ export function readAlertRuleSearchInput(searchParams: URLSearchParams): AlertRu
 }
 
 export function hasAlertRuleFilters(input: AlertRuleSearchInput) {
-  return Boolean(input.search || input.status || input.severity || input.signal || input.enabled !== null);
+  return Boolean(
+    input.search || input.status || input.severity || input.signal || input.enabled !== null,
+  );
 }
 
 export function writeAlertRuleFilter(
@@ -56,7 +65,8 @@ export function writeAlertRuleFilter(
 }
 
 function stringOrNull(value: string | null) {
-  return value && value.trim() ? value.trim() : null;
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
 }
 
 function alertStateOrNull(value: string | null): AlertState | null {

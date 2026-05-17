@@ -2,6 +2,10 @@
 
 Advanced changes start in `specs/`. Do not add behavior such as storage adapters, GraphQL fields, NATS subjects, retention rules, auth flows, scaling switches, or deployment topology changes until the relevant spec and contracts define them.
 
+## AI Evaluation
+
+Optional AI evaluation workflows are covered in [AI Evaluation](./ai-eval.md). Start there when configuring datasets, scorers, experiments, harness adapters, online policies, or the AI eval runner.
+
 ## Performance And Scaling Concept
 
 CloudGrid scales by keeping the hot paths short and moving expensive work to the owner service.

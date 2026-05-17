@@ -16,7 +16,18 @@ This page collects stable commands, paths, ports, and contract locations.
 | Generate contracts | `bun run contracts:generate` |
 | Backend coverage | `bun run coverage:backend` |
 | Frontend smoke | `bun run smoke:frontend` |
-| Go workspace tests | `go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/...` |
+| Go workspace tests | `go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/ai-eval-runner/... ./core/storage-read/... ./core/storage-write/...` |
+
+## CI/CD And Distribution
+
+| Topic | Current state |
+| --- | --- |
+| Pull request quality gate | `.github/workflows/verify.yml` runs `bun run verify:full`. |
+| Website deployment | `.github/workflows/deploy-website.yml` publishes `website/` to GitHub Pages. |
+| Product release workflow | Specified in `specs/06-nfr/release-distribution.md`; not implemented yet. |
+| Runtime distribution target | Signed OCI service images plus an OCI Helm chart. |
+| Local distribution target | Docker Compose using published service images, NATS, and SurrealDB. |
+| Enterprise distribution target | Configurable Helm chart with image digest pinning, external dependencies, security contexts, and scaling profiles. |
 
 ## Default Ports
 
@@ -63,10 +74,20 @@ This page collects stable commands, paths, ports, and contract locations.
 | `CLOUDGRID_OTLP_GRPC_ADDR` | `0.0.0.0:4317` | OTLP/gRPC bind address for traces, logs, and metrics. |
 | `CLOUDGRID_OTLP_GRPC_MAX_MESSAGE_BYTES` | HTTP body limit | Maximum OTLP/gRPC message size. |
 | `CLOUDGRID_OTLP_GRPC_COMPRESSION` | `gzip` | OTLP/gRPC compression mode: `none` or `gzip`. |
+| `CLOUDGRID_OTLP_MAX_REQUEST_BYTES` | `4194304` | Maximum OTLP/HTTP request size. |
+| `CLOUDGRID_OTLP_LOCAL_PROJECT_ID` | `default` | Local single-project ingest target when no project token is supplied. |
+| `CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS` | unset | JSON object mapping local bearer tokens to project IDs for local multi-project ingest. |
 | `CLOUDGRID_STORAGE_ADAPTER` | `surrealdb` | Must match compiled Go adapter. |
+| `CLOUDGRID_FRONTEND_SERVE_STATIC` | `false` | When true, the BFF serves the built frontend. |
+| `CLOUDGRID_FRONTEND_STATIC_DIR` | `./apps/backend/public` | Static frontend directory used by the BFF. |
 | `CLOUDGRID_SURREALDB_URL` | `http://localhost:8000/rpc` | Storage/control-plane only. |
+| `CLOUDGRID_SURREALDB_NAMESPACE` | `observability` | SurrealDB namespace used by storage/control-plane services. |
+| `CLOUDGRID_SURREALDB_DATABASE` | `dev` | SurrealDB database used by storage/control-plane services. |
 | `CLOUDGRID_SURREALDB_USERNAME` | `root` locally | Do not expose publicly. |
 | `CLOUDGRID_SURREALDB_PASSWORD` | `root` locally | Do not expose publicly. |
+| `CLOUDGRID_AI_EVAL_ENABLED` | `false` | Enables optional AI evaluation surfaces and runner integration. |
+| `CLOUDGRID_AI_EVAL_RUNNER_HEALTH_PORT` | `8085` | AI eval runner health port. |
+| `CLOUDGRID_AI_EVAL_HARNESS_URL` | unset | Required only when AI eval is enabled and a harness adapter is used. |
 
 See [.env.example](../../.env.example) for the complete current set.
 
@@ -81,6 +102,7 @@ See [.env.example](../../.env.example) for the complete current set.
 | `apps/packages/ui-contracts` | Generated UI/GraphQL contracts. |
 | `core/otlp-collector` | Go OTLP HTTP/gRPC collector. |
 | `core/control-plane` | Go company/user/project, project membership, ingest credential, dashboard, retention policy, and alerting foundation service. |
+| `core/ai-eval-runner` | Optional Go AI evaluation runner for experiments, online scoring, optimization delegation, and progress publication. |
 | `core/storage-read` | Go telemetry read service. |
 | `core/storage-write` | Go telemetry write service. |
 | `core/go-contracts` | Generated/shared Go contracts. |

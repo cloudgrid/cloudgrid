@@ -17,7 +17,7 @@ describe("cloudgrid harness adapter server", () => {
     expect(await readJson(response)).toEqual({
       ok: true,
       service: "cloudgrid-harness-adapter",
-      version: "0.0.0",
+      version: "1.0.0",
     });
   });
 

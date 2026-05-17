@@ -69,24 +69,24 @@ func (store *loggingReadStore) GetProjectTelemetryOverviews(_ context.Context, r
 	return contracts.ProjectTelemetryOverviewData{Items: items}, nil
 }
 
-func (store *loggingReadStore) SearchTraces(_ context.Context, _ contracts.TraceSearchQuery) (contracts.TraceSearchData, error) {
+func (store *loggingReadStore) SearchTraces(_ context.Context, _ contracts.TraceSearchQuery, _ *contracts.AuthContext) (contracts.TraceSearchData, error) {
 	return contracts.TraceSearchData{Items: []contracts.TraceSummary{}}, nil
 }
 
-func (store *loggingReadStore) SearchLiveTraceCandidates(_ context.Context, _ contracts.LiveTraceQuery, _ []string) ([]contracts.TraceSummary, error) {
+func (store *loggingReadStore) SearchLiveTraceCandidates(_ context.Context, _ contracts.LiveTraceQuery, _ []string, _ *contracts.AuthContext) ([]contracts.TraceSummary, error) {
 	return []contracts.TraceSummary{}, nil
 }
 
-func (store *loggingReadStore) GetTraceDetail(_ context.Context, _ string, query *contracts.TraceDetailQuery) (*contracts.TraceDetailData, error) {
+func (store *loggingReadStore) GetTraceDetail(_ context.Context, _ string, query *contracts.TraceDetailQuery, _ *contracts.AuthContext) (*contracts.TraceDetailData, error) {
 	lastTraceDetailQuery = query
 	return &contracts.TraceDetailData{}, nil
 }
 
-func (store *loggingReadStore) SearchLogs(_ context.Context, _ contracts.LogSearchQuery) (contracts.LogSearchData, error) {
+func (store *loggingReadStore) SearchLogs(_ context.Context, _ contracts.LogSearchQuery, _ *contracts.AuthContext) (contracts.LogSearchData, error) {
 	return contracts.LogSearchData{Items: []contracts.LogEvent{}}, nil
 }
 
-func (store *loggingReadStore) GetTelemetryFacets(_ context.Context, query contracts.TelemetryFacetQuery) (contracts.TelemetryFacetData, error) {
+func (store *loggingReadStore) GetTelemetryFacets(_ context.Context, query contracts.TelemetryFacetQuery, _ *contracts.AuthContext) (contracts.TelemetryFacetData, error) {
 	lastFacetQuery = query
 	return contracts.TelemetryFacetData{Services: []contracts.FacetValue{}}, nil
 }

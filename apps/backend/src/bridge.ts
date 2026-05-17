@@ -513,6 +513,7 @@ interface ProjectTelemetryOverviewItem {
 interface BridgeOptions {
   bffInstanceId?: string;
   subscriptionId?: () => string;
+  liveTraceWatchdogMs?: number;
 }
 
 export class MessageBridgeCloudGridBridge implements CloudGridBridge {
@@ -523,6 +524,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   #logger: CloudGridLogger;
   #bffInstanceId: string;
   #subscriptionId: () => string;
+  #liveTraceWatchdogMs: number | undefined;
 
   constructor(
     requestReply: RequestReplyClient,
@@ -536,7 +538,8 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     this.#timeoutMs = timeoutMs;
     this.#logger = logger;
     this.#bffInstanceId = options.bffInstanceId ?? crypto.randomUUID();
-    this.#subscriptionId = options.subscriptionId ?? crypto.randomUUID;
+    this.#subscriptionId = options.subscriptionId ?? (() => crypto.randomUUID());
+    this.#liveTraceWatchdogMs = options.liveTraceWatchdogMs;
   }
 
   async viewer(authContext: NormalizedAuthContext): Promise<Viewer | null> {
@@ -862,11 +865,12 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   }
 
   async agentRun(id: string, authContext?: NormalizedAuthContext): Promise<AgentRun | null> {
-    return this.#requestParsed(
+    const result = await this.#requestParsed(
       subjects.agentRunSearch,
       { ...envelope(authContext), input: { id } },
-      typedAgentRunSchema.nullable(),
+      agentRunSearchResultSchema,
     );
+    return result.items[0] ?? null;
   }
 
   async datasets(
@@ -881,11 +885,12 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   }
 
   async dataset(id: string, authContext?: NormalizedAuthContext): Promise<Dataset | null> {
-    return this.#requestParsed(
+    const result = await this.#requestParsed(
       subjects.datasetSearch,
       { ...envelope(authContext), input: { id } },
-      typedDatasetSchema.nullable(),
+      datasetSearchResultSchema,
     );
+    return result.items[0] ?? null;
   }
 
   async datasetImport(
@@ -951,11 +956,12 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     id: string,
     authContext?: NormalizedAuthContext,
   ): Promise<ExperimentRun | null> {
-    return this.#requestParsed(
+    const result = await this.#requestParsed(
       subjects.experimentSearch,
       { ...envelope(authContext), input: { experimentRunId: id } },
-      typedExperimentRunSchema.nullable(),
+      experimentRunSearchResultSchema,
     );
+    return result.items[0] ?? null;
   }
 
   async experimentRuns(
@@ -1423,7 +1429,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     return data.credential;
   }
 
-  async *subscribeLiveTraces(
+  subscribeLiveTraces(
     input: LiveTraceInput,
     authContext?: NormalizedAuthContext,
   ): AsyncIterableIterator<LiveTraceEvent> {
@@ -1438,28 +1444,51 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     const subscriptionId = this.#subscriptionId();
     const sinkSubject = `telemetry.traces.live.events.${this.#bffInstanceId}.${subscriptionId}`;
     const events = createAsyncQueue<LiveTraceEvent>();
-    const subscription = await this.#pubSub.subscribe(sinkSubject, (message) => {
-      events.push(parseLiveTraceEvent(decodeJson(message.data)));
-    });
-    let started = false;
-    try {
-      await this.#request<LiveTraceStartData>(subjects.liveTraceStart, {
-        ...envelope(authContext),
-        subscriptionId,
-        sinkSubject,
-        query: compactInput(input as Record<string, unknown>) as LiveTraceInput,
+    async function* run(this: MessageBridgeCloudGridBridge) {
+      const subscription = await this.#pubSub?.subscribe(sinkSubject, (message) => {
+        events.push(parseLiveTraceEvent(decodeJson(message.data)));
       });
-      started = true;
-      for await (const event of events) {
-        yield event;
+      if (!subscription) {
+        throw graphQLErrorFromBridge({
+          id: "ERR-013",
+          code: "MESSAGE_BRIDGE_UNAVAILABLE",
+          message: "Message bridge live trace adapter is unavailable",
+          retryable: true,
+        });
       }
-    } finally {
-      events.close();
-      await subscription[Symbol.asyncDispose]();
-      if (started) {
-        await this.#stopLiveTraces(subscriptionId);
+      let started = false;
+      try {
+        const startData = await this.#request<LiveTraceStartData>(subjects.liveTraceStart, {
+          ...envelope(authContext),
+          subscriptionId,
+          sinkSubject,
+          query: compactInput(input as Record<string, unknown>) as LiveTraceInput,
+        });
+        started = true;
+        const watchdogMs = this.#liveTraceWatchdogMs ?? liveTraceWatchdogMs(startData);
+        while (true) {
+          const result = await nextWithTimeout(events, watchdogMs, () =>
+            graphQLErrorFromBridge({
+              id: "ERR-014",
+              code: "MESSAGE_BRIDGE_TIMEOUT",
+              message: "Live trace subscription did not receive heartbeat or data before deadline",
+              retryable: true,
+            }),
+          );
+          if (result.done) {
+            break;
+          }
+          yield result.value;
+        }
+      } finally {
+        events.close();
+        await subscription[Symbol.asyncDispose]();
+        if (started) {
+          await this.#stopLiveTraces(subscriptionId);
+        }
       }
     }
+    return cancelableAsyncIterator(run.call(this), events);
   }
 
   async health(): Promise<"ok" | "unavailable"> {
@@ -1598,9 +1627,12 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     schema: z.ZodType<Data>,
   ): Promise<Data> {
     const data = await this.#request<unknown>(subject, payload);
-    try {
-      return parseWithZod(schema, data, `${subject} response`) as Data;
-    } catch {
+    const parsed = schema.safeParse(data);
+    if (!parsed.success) {
+      this.#logger.error("nats_response_validation_failed", {
+        operation_or_subject: subject,
+        issues: parsed.error.issues,
+      });
       throw graphQLErrorFromBridge({
         id: "ERR-013",
         code: "MESSAGE_BRIDGE_UNAVAILABLE",
@@ -1608,6 +1640,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
         retryable: true,
       });
     }
+    return parsed.data;
   }
 
   async #request<Data>(subject: string, payload: unknown): Promise<Data> {
@@ -2411,14 +2444,14 @@ const dashboardThresholdSchema = z.object({
 const dashboardMetricWidgetSchema = z.object({
   metricName: z.string().min(1),
   aggregation: metricAggregationSchema,
-  groupBy: z.array(z.string()),
-  filters: z.array(attributeFilterSchema),
+  groupBy: z.array(z.string()).default([]),
+  filters: z.array(attributeFilterSchema).default([]),
   timeWindow: z.string().min(1),
   interval: z.string().optional().nullable(),
   visualization: metricChartTypeSchema,
   legend: z.boolean(),
   maxSeries: z.number().int().min(1).max(50),
-  thresholds: z.array(dashboardThresholdSchema),
+  thresholds: z.array(dashboardThresholdSchema).default([]),
 });
 const dashboardMetricFormulaExpressionSchema: z.ZodTypeAny = z.lazy(() =>
   z.object({
@@ -2441,7 +2474,7 @@ const dashboardMetricFormulaExpressionSchema: z.ZodTypeAny = z.lazy(() =>
       ])
       .optional()
       .nullable(),
-    arguments: z.array(dashboardMetricFormulaExpressionSchema),
+    arguments: z.array(dashboardMetricFormulaExpressionSchema).default([]),
   }),
 );
 const dashboardMetricQuerySchema = z.object({
@@ -2453,34 +2486,38 @@ const dashboardMetricQuerySchema = z.object({
       label: z.string().min(1),
       metricName: z.string().min(1),
       aggregation: metricAggregationSchema,
-      groupBy: z.array(z.string()),
-      filters: z.array(attributeFilterSchema),
+      groupBy: z.array(z.string()).default([]),
+      filters: z.array(attributeFilterSchema).default([]),
       maxSeries: z.number().int().min(1).max(50),
     }),
   ),
-  formulas: z.array(
-    z.object({
-      id: z.string().min(1),
-      label: z.string().min(1),
-      expression: dashboardMetricFormulaExpressionSchema,
-      unit: z.string().optional().nullable(),
-    }),
-  ),
-  displaySeries: z.array(
-    z.object({
-      id: z.string().min(1),
-      label: z.string().min(1),
-      sourceId: z.string().min(1),
-      visible: z.boolean(),
-    }),
-  ),
+  formulas: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        label: z.string().min(1),
+        expression: dashboardMetricFormulaExpressionSchema,
+        unit: z.string().optional().nullable(),
+      }),
+    )
+    .default([]),
+  displaySeries: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        label: z.string().min(1),
+        sourceId: z.string().min(1),
+        visible: z.boolean(),
+      }),
+    )
+    .default([]),
 });
 const dashboardRichMetricWidgetSchema = z.object({
   query: dashboardMetricQuerySchema,
   visualization: metricChartTypeSchema,
   legend: z.boolean(),
   maxSeries: z.number().int().min(1).max(50),
-  thresholds: z.array(dashboardThresholdSchema),
+  thresholds: z.array(dashboardThresholdSchema).default([]),
 });
 const dashboardLogWidgetSchema = z.object({
   service: z.string().optional().nullable(),
@@ -2584,7 +2621,6 @@ const ingestCredentialRevokeResponseSchema = z.object({
   credential: ingestCredentialSchema,
 }) as unknown as z.ZodType<{ credential: IngestCredential }>;
 
-const typedAgentRunSchema = agentRunSchema as unknown as z.ZodType<AgentRun>;
 const typedDatasetSchema = datasetSchema as unknown as z.ZodType<Dataset>;
 const typedDatasetImportJobSchema =
   datasetImportJobSchema as unknown as z.ZodType<DatasetImportJob>;
@@ -2757,4 +2793,46 @@ function createAsyncQueue<T>(): AsyncIterableIterator<T> & {
       return this;
     },
   };
+}
+
+function cancelableAsyncIterator<T>(
+  iterator: AsyncIterableIterator<T>,
+  queue: { close(): void },
+): AsyncIterableIterator<T> {
+  return {
+    next() {
+      return iterator.next();
+    },
+    return(value?: unknown) {
+      queue.close();
+      return iterator.return?.(value) ?? Promise.resolve({ value: undefined, done: true });
+    },
+    throw(error?: unknown) {
+      queue.close();
+      return iterator.throw?.(error) ?? Promise.reject(error);
+    },
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+  };
+}
+
+function liveTraceWatchdogMs(startData: LiveTraceStartData): number {
+  return startData.heartbeatIntervalMs > 30_000 ? startData.heartbeatIntervalMs * 3 : 45_000;
+}
+
+function nextWithTimeout<T>(
+  iterator: AsyncIterator<T>,
+  timeoutMs: number,
+  timeoutError: () => Error,
+): Promise<IteratorResult<T>> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<IteratorResult<T>>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(timeoutError()), timeoutMs);
+  });
+  return Promise.race([iterator.next(), timeoutPromise]).finally(() => {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  });
 }

@@ -1,4 +1,3 @@
-import type * as React from "react";
 import {
   Activity,
   AlertCircle,
@@ -8,6 +7,7 @@ import {
   Grid3X3,
   ShieldCheck,
 } from "lucide-react";
+import type * as React from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { FieldGroup } from "@/components/ui/field";

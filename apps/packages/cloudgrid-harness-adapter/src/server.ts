@@ -30,7 +30,7 @@ interface OtlpConfig {
   fetch: (request: Request) => Promise<Response>;
 }
 
-const adapterVersion = "0.0.0";
+const adapterVersion = "1.0.0";
 const jsonHeaders = { "content-type": "application/json" };
 const ndjsonHeaders = { "content-type": "application/x-ndjson" };
 const serviceName = "cloudgrid-harness-adapter";

@@ -1,6 +1,13 @@
 import type { AlertRule, AlertRuleKind } from "@cloudgrid/ui-contracts";
 import { Checkbox } from "../../components/ui/checkbox";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../components/ui/table";
 import { formatDateTime } from "../../lib/format";
 import { t } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
@@ -40,7 +47,9 @@ export function AlertRulesTable({
             key={rule.id}
             onClick={() => onSelect(rule)}
           >
-            <TableCell className="font-medium">{rule.enabled ? "OK" : t("alerts.disabled")}</TableCell>
+            <TableCell className="font-medium">
+              {rule.enabled ? "OK" : t("alerts.disabled")}
+            </TableCell>
             <TableCell className={rule.severity === "CRITICAL" ? "text-destructive" : undefined}>
               {rule.severity}
             </TableCell>

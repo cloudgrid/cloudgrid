@@ -41,6 +41,8 @@ func SubscribeControlHandlers(nc *nats.Conn, service *Service, logger *slog.Logg
 		SubjectDashboardsDelete:        handleDashboardsDelete(service, logger),
 		SubjectDashboardPinsSet:        handleDashboardPinsSet(service, logger),
 		SubjectDashboardPinsReorder:    handleDashboardPinsReorder(service, logger),
+		SubjectProjectAiSettingsGet:    handleProjectAiSettingsGet(service, logger),
+		SubjectProjectAiSettingsUpdate: handleProjectAiSettingsUpdate(service, logger),
 		SubjectProjectMembersList:      handleProjectMembersList(service, logger),
 		SubjectProjectMembersUpdate:    handleProjectMembersUpdate(service, logger),
 		SubjectProjectMembersRemove:    handleProjectMembersRemove(service, logger),

@@ -6,8 +6,6 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const encoder = new TextEncoder();
-const richFixtureBaseUnixNano = BigInt(Date.now() - 5 * 60 * 1000) * 1_000_000n;
-const richFixtureRunId = `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
 
 const fixtureDefinitions = [
   {
@@ -74,10 +72,13 @@ const allowedFixtureSets = new Set(["generated", "contracts", "all"]);
 
 export function parseSeedArgs(argv, env = process.env) {
   const options = {
+    continuous: false,
     endpoint:
       env.CLOUDGRID_OTLP_ENDPOINT || `http://127.0.0.1:${env.CLOUDGRID_OTLP_PORT || "4318"}`,
     fixtureSet: "generated",
     format: "all",
+    intervalMs: 5_000,
+    maxBatches: null,
     signal: "all",
     token: env.CLOUDGRID_OTLP_BEARER_TOKEN || env.CLOUDGRID_OTLP_TOKEN || null,
   };
@@ -100,6 +101,14 @@ export function parseSeedArgs(argv, env = process.env) {
     } else if (arg === "--fixture-set") {
       options.fixtureSet = requiredValue(arg, next);
       index += 1;
+    } else if (arg === "--continuous" || arg === "--watch") {
+      options.continuous = true;
+    } else if (arg === "--interval-ms") {
+      options.intervalMs = positiveInteger(arg, requiredValue(arg, next));
+      index += 1;
+    } else if (arg === "--max-batches") {
+      options.maxBatches = positiveInteger(arg, requiredValue(arg, next));
+      index += 1;
     } else if (arg === "--help" || arg === "-h") {
       options.help = true;
     } else {
@@ -116,6 +125,12 @@ export function parseSeedArgs(argv, env = process.env) {
   if (!allowedFixtureSets.has(options.fixtureSet)) {
     throw new Error("--fixture-set must be one of generated, contracts, all");
   }
+  if (options.continuous && options.fixtureSet !== "generated") {
+    throw new Error("--continuous only supports --fixture-set generated");
+  }
+  if (options.continuous && options.format !== "all" && options.format !== "json") {
+    throw new Error("--continuous only supports generated JSON fixtures");
+  }
   return options;
 }
 
@@ -123,6 +138,7 @@ export function buildFixtureRequests({
   endpoint,
   fixtureSet = "generated",
   format,
+  seedContext = createSeedRunContext(),
   signal,
   token,
 }) {
@@ -135,6 +151,7 @@ export function buildFixtureRequests({
       ...fixture,
       authorization: token ? `Bearer ${token}` : null,
       filePath: fixture.path ? resolve(repoRoot, fixture.path) : null,
+      seedContext: fixture.generated ? seedContext : null,
       url: `${base}/v1/${fixture.signal}`,
     }));
 }
@@ -165,26 +182,65 @@ export async function postFixture(request, fetchImpl = fetch) {
 
 async function fixtureBody(request) {
   if (request.generated) {
-    return encoder.encode(JSON.stringify(generatedFixture(request.generated)));
+    return encoder.encode(JSON.stringify(generatedFixture(request.generated, request.seedContext)));
   }
   return readFile(request.filePath);
 }
 
-export function generatedFixture(name) {
+export function createSeedRunContext(nowMs = Date.now()) {
+  const runId = `${nowMs.toString(16)}-${Math.random().toString(16).slice(2)}`;
+  return {
+    baseUnixNano: BigInt(nowMs - 5 * 60 * 1000) * 1_000_000n,
+    runId,
+  };
+}
+
+export async function runSeed(
+  options,
+  { fetchImpl = fetch, sleepImpl = sleep, log = console.log } = {},
+) {
+  let batches = 0;
+  while (true) {
+    const seedContext = createSeedRunContext();
+    const requests = buildFixtureRequests({ ...options, seedContext });
+    if (requests.length === 0) {
+      throw new Error("No fixtures matched the requested signal and format.");
+    }
+
+    const label = options.continuous ? `batch ${batches + 1}` : `${requests.length} request(s)`;
+    log(
+      options.continuous
+        ? `Sending OTLP fixture ${label} to ${options.endpoint}`
+        : `Sending ${label} to ${options.endpoint}`,
+    );
+    for (const request of requests) {
+      const result = await postFixture(request, fetchImpl);
+      log(`  ${result.signal.padEnd(7)} ${result.contentType.padEnd(28)} ${result.bytes} bytes`);
+    }
+
+    batches += 1;
+    if (!options.continuous || (options.maxBatches !== null && batches >= options.maxBatches)) {
+      break;
+    }
+    await sleepImpl(options.intervalMs);
+  }
+}
+
+export function generatedFixture(name, seedContext = createSeedRunContext()) {
   if (name === "rich-traces") {
-    return buildRichTraceFixture();
+    return buildRichTraceFixture(seedContext);
   }
   if (name === "rich-logs") {
-    return buildRichLogFixture();
+    return buildRichLogFixture(seedContext);
   }
   if (name === "rich-metrics") {
-    return buildRichMetricFixture();
+    return buildRichMetricFixture(seedContext);
   }
   throw new Error(`Unknown generated fixture: ${name}`);
 }
 
-function buildRichTraceFixture() {
-  const spansByService = groupBy(generatedTraceSpans(), (span) => span.serviceName);
+function buildRichTraceFixture(seedContext) {
+  const spansByService = groupBy(generatedTraceSpans(seedContext), (span) => span.serviceName);
   return {
     resourceSpans: Array.from(spansByService.entries()).map(([serviceName, serviceSpans]) => ({
       resource: {
@@ -193,6 +249,7 @@ function buildRichTraceFixture() {
           stringAttribute("deployment.environment", "local"),
           stringAttribute("deployment.release", "2026.05-dev"),
           stringAttribute("cloud.provider", "local"),
+          stringAttribute("cloudgrid.seed.run_id", seedContext.runId),
         ],
       },
       scopeSpans: [
@@ -214,8 +271,8 @@ function buildRichTraceFixture() {
   };
 }
 
-function buildRichLogFixture() {
-  const logRecords = generatedTraceSpans()
+function buildRichLogFixture(seedContext) {
+  const logRecords = generatedTraceSpans(seedContext)
     .filter((span, index) => span.logMessage || span.status?.code === 2 || index % 5 === 0)
     .map((span, logIndex) => {
       const error = span.status?.code === 2;
@@ -229,6 +286,7 @@ function buildRichLogFixture() {
         body: { stringValue: span.logMessage ?? `${span.serviceName} completed ${span.operation}` },
         attributes: [
           stringAttribute("service.name", span.serviceName),
+          stringAttribute("cloudgrid.seed.run_id", seedContext.runId),
           stringAttribute("cloudgrid.seed.scenario", span.scenarioSlug),
           stringAttribute("cloudgrid.seed.operation", span.operation),
           intAttribute("cloudgrid.seed.log_index", logIndex),
@@ -254,8 +312,8 @@ function buildRichLogFixture() {
   };
 }
 
-function buildRichMetricFixture() {
-  const base = richFixtureBaseUnixNano;
+function buildRichMetricFixture(seedContext) {
+  const base = seedContext.baseUnixNano;
   const serviceNames = services();
   const metrics = [
     {
@@ -327,22 +385,22 @@ function buildRichMetricFixture() {
   };
 }
 
-function generatedTraceSpans() {
+function generatedTraceSpans(seedContext) {
   return scenarios().flatMap((scenario, traceIndex) => {
-    const traceId = idBytes(traceIdHex(traceIndex));
+    const traceId = idBytes(traceIdHex(seedContext, traceIndex));
     return scenario.spans.map((definition, spanIndex) => {
       const start =
-        richFixtureBaseUnixNano +
+        seedContext.baseUnixNano +
         BigInt(traceIndex) * 7_000_000_000n +
         BigInt(definition.offsetMs) * 1_000_000n;
       const duration = BigInt(definition.durationMs) * 1_000_000n;
       const error = definition.status === "error";
       return {
         traceId,
-        spanId: spanId(traceIndex, spanIndex),
+        spanId: spanId(seedContext, traceIndex, spanIndex),
         ...(definition.parent == null
           ? {}
-          : { parentSpanId: spanId(traceIndex, definition.parent) }),
+          : { parentSpanId: spanId(seedContext, traceIndex, definition.parent) }),
         serviceName: definition.service,
         name: definition.name,
         operation: definition.operation ?? definition.name,
@@ -357,8 +415,8 @@ function generatedTraceSpans() {
           definition.linkPrevious && traceIndex > 0
             ? [
                 {
-                  traceId: idBytes(traceIdHex(traceIndex - 1)),
-                  spanId: spanId(traceIndex - 1, 0),
+                  traceId: idBytes(traceIdHex(seedContext, traceIndex - 1)),
+                  spanId: spanId(seedContext, traceIndex - 1, 0),
                   attributes: [stringAttribute("link.reason", "user-session-continuation")],
                 },
               ]
@@ -592,9 +650,9 @@ function routeForService(serviceName, index) {
   );
 }
 
-function traceIdHex(traceIndex) {
+function traceIdHex(seedContext, traceIndex) {
   return createHash("sha256")
-    .update(`cloudgrid-dev-seed:${richFixtureRunId}:trace:${traceIndex}`)
+    .update(`cloudgrid-dev-seed:${seedContext.runId}:trace:${traceIndex}`)
     .digest("hex")
     .slice(0, 32);
 }
@@ -607,10 +665,10 @@ function intAttribute(key, value) {
   return { key, value: { intValue: String(value) } };
 }
 
-function spanId(traceIndex, spanIndex) {
+function spanId(seedContext, traceIndex, spanIndex) {
   return idBytes(
     createHash("sha256")
-      .update(`cloudgrid-dev-seed:${richFixtureRunId}:span:${traceIndex}:${spanIndex}`)
+      .update(`cloudgrid-dev-seed:${seedContext.runId}:span:${traceIndex}:${spanIndex}`)
       .digest("hex")
       .slice(0, 16),
   );
@@ -637,19 +695,7 @@ async function main() {
     console.log(helpText());
     return;
   }
-
-  const requests = buildFixtureRequests(options);
-  if (requests.length === 0) {
-    throw new Error("No fixtures matched the requested signal and format.");
-  }
-
-  console.log(`Sending ${requests.length} OTLP fixture request(s) to ${options.endpoint}`);
-  for (const request of requests) {
-    const result = await postFixture(request);
-    console.log(
-      `  ${result.signal.padEnd(7)} ${result.contentType.padEnd(28)} ${result.bytes} bytes`,
-    );
-  }
+  await runSeed(options);
   console.log("Done. Refresh CloudGrid traces, logs, and metrics for the selected project.");
 }
 
@@ -660,8 +706,20 @@ function requiredValue(arg, value) {
   return value;
 }
 
+function positiveInteger(arg, value) {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number <= 0) {
+    throw new Error(`${arg} must be a positive integer`);
+  }
+  return number;
+}
+
+function sleep(ms) {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
+}
+
 function helpText() {
-  return `Usage: bun run dev:seed [--endpoint URL] [--token TOKEN] [--signal all|traces|logs|metrics] [--format all|json|protobuf] [--fixture-set generated|contracts|all]
+  return `Usage: bun run dev:seed [--endpoint URL] [--token TOKEN] [--signal all|traces|logs|metrics] [--format all|json|protobuf] [--fixture-set generated|contracts|all] [--continuous]
 
 Posts generated realistic development telemetry to the CloudGrid OTLP HTTP collector.
 
@@ -669,6 +727,9 @@ Options:
   --fixture-set generated   Default. Rich, current-time demo traces, logs, and metrics for UI development.
   --fixture-set contracts   Checked-in JSON/protobuf fixtures for collector contract coverage.
   --fixture-set all         Generated demo data plus checked-in contract fixtures.
+  --continuous, --watch     Keep sending fresh generated JSON telemetry for live UI development.
+  --interval-ms <number>    Delay between continuous batches. Defaults to 5000.
+  --max-batches <number>    Stop continuous mode after this many batches.
 
 Environment:
   CLOUDGRID_OTLP_ENDPOINT       Collector base URL. Defaults to http://127.0.0.1:4318.

@@ -437,6 +437,7 @@ func BuildAIProjectionPersistQuery(command contracts.PersistAiProjectionCommand,
 	}
 
 	record := cloneMap(command.Projection)
+	delete(record, "id")
 	record["traceId"] = command.TraceID
 	record["spanId"] = command.SpanID
 	record["kind"] = string(command.Kind)
@@ -494,13 +495,28 @@ func BuildEvalMutationPersistQuery(subject string, request contracts.EvalMutatio
 		return "", nil, nil, err
 	}
 	record := cloneMap(data)
+	recordID := record["id"]
+	delete(record, "id")
 	normalizeRecordDateStrings(record)
 	addOwnership(record, target)
 
 	sql := fmt.Sprintf("BEGIN TRANSACTION;\nUPSERT type::record('%s', $record_id) CONTENT $record;\nCOMMIT TRANSACTION;", table)
 	vars := map[string]any{
-		"record_id": record["id"],
+		"record_id": recordID,
 		"record":    record,
+	}
+	if subject == "eval.dataset.items.append" {
+		datasetID := mapStringValue(request.Input, "datasetId")
+		version := mapIntValue(request.Input, "version")
+		sql = fmt.Sprintf(
+			"BEGIN TRANSACTION;\nUPSERT type::record('%s', $record_id) CONTENT $record;\nUPDATE type::record('ai_dataset', $dataset_id) SET version = $dataset_version, itemCount = (SELECT count() AS count FROM ai_dataset_item WHERE tenantId = $tenant_id AND companyId = $company_id AND projectId = $project_id AND datasetId = $dataset_id GROUP ALL)[0].count;\nCOMMIT TRANSACTION;",
+			table,
+		)
+		vars["dataset_id"] = datasetID
+		vars["dataset_version"] = version
+		vars["tenant_id"] = target.TenantID
+		vars["company_id"] = target.CompanyID
+		vars["project_id"] = target.ProjectID
 	}
 	return sql, vars, data, nil
 }

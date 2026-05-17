@@ -120,6 +120,25 @@ Canonical records:
 
 Memberships are graph relation tables because they are low-volume, security-sensitive relationships that benefit from explicit edges and traversal. Organization invitations are schemafull normal documents because pending invites exist before a `user` relation endpoint exists. They are indexed by `organizationId`, `email`, and `status`. At most one pending invitation may exist for one normalized email inside one organization. Telemetry records do not use graph relations on the write hot path.
 
+## Runtime Store Selection
+
+The production control-plane runtime must use SurrealDB as its authoritative
+store. `core/control-plane/cmd/control-plane` does not expose a runtime store
+selector or compatibility fallback. SurrealDB connection settings are the shared
+storage settings:
+  `CLOUDGRID_SURREALDB_URL`, `CLOUDGRID_SURREALDB_NAMESPACE`,
+  `CLOUDGRID_SURREALDB_DATABASE`, `CLOUDGRID_SURREALDB_USERNAME`, and
+  `CLOUDGRID_SURREALDB_PASSWORD`.
+- Startup must apply the control-plane schema before accepting NATS requests.
+  Failure to connect, authenticate, apply schema, or pass readiness returns
+  ERR-006/ERR-010 and the service must not report ready.
+- The `/healthz` readiness payload must report `control-store=ok` only after
+  the selected adapter can run a bounded query against the configured database.
+
+Implementation agents must not add a memory runtime adapter path or silently
+fall back from SurrealDB. Fallbacks can hide data-loss bugs and invalid
+deployment configuration.
+
 ## NATS Subjects
 
 The control-plane wave must add these subjects before implementation:
@@ -243,11 +262,22 @@ state or bypass control-plane for project AI settings.
 
 The control-plane SurrealDB database uses SurrealDB's multi-model features deliberately:
 
-- `dashboard` is a `SCHEMAFULL TYPE NORMAL` document table. It stores the typed widget tree as one validated document because dashboards are loaded and versioned as one configuration unit.
-- `dashboard_pin` is a `SCHEMAFULL TYPE RELATION IN user OUT dashboard ENFORCED` graph relation. It stores `projectId`, `position`, `createdAt`, and `updatedAt`; graph traversal gives the current user's pinned dashboards without scanning all dashboards.
+- `organization`, `user`, `project`, `organization_invitation`,
+  `ingest_credential`, `project_membership`, `retention_policy`,
+  `project_ai_settings`, `alert_rule`, `alert_silence`, `alert_event`, and
+  `project_status_event` are `SCHEMAFULL TYPE NORMAL` document tables with
+  `PERMISSIONS NONE`.
+- `membership` and `dashboard_pin` are relation tables. Membership relates
+  `user -> organization`; dashboard pins relate `user -> dashboard`.
+- `dashboard` is a `SCHEMAFULL TYPE NORMAL` document table. It stores the typed widget tree as one validated document because dashboards are loaded and versioned as one configuration unit. The schema defines each widget's top-level identity, kind, and layout fields; service-validated widget configuration objects are stored as flexible nested objects so new typed widget contracts do not require ad hoc storage migrations for every nested filter field.
+- `dashboard_pin` is a `SCHEMAFULL TYPE RELATION IN user OUT dashboard` graph relation. It stores `projectId`, `position`, `createdAt`, and `updatedAt`; graph traversal gives the current user's pinned dashboards without scanning all dashboards.
 - Deterministic record IDs give key-value-style direct lookup for `dashboard:<projectId>_project_<slug>` and `dashboard:<projectId>_personal_<userId>_<slug>`.
 - SQL-like indexed predicates support list/search: `dashboard.projectId`, `dashboard.visibility`, `dashboard.ownerUserId`, `dashboard.slug`, `dashboard.updatedAt`, `dashboard.searchText`, `dashboard.tags`, and `dashboard_pin.in, dashboard_pin.projectId, dashboard_pin.position`.
 - Unique indexes enforce `(projectId, visibility, ownerUserId, slug)` for dashboards and `(in, out, projectId)` for pins.
+- `project_ai_settings` stores the complete redacted settings document as
+  a flexible `settings` object, plus first-class `projectId`, `version`,
+  `updatedAt`, and `updatedByUserId` fields. It is indexed uniquely by
+  `projectId`.
 - Table permissions are `NONE`; only the control-plane service credential reads or mutates these records.
 
 ## Project Membership
@@ -284,7 +314,11 @@ The SurrealDB `ingest_credential` table is schemafull and stores:
 `disabledAt`, and `lastUsedAt`. Control-plane adapters must provide indexed
 lookup by `projectId` for settings lists and future collector key cache
 snapshots.
-- Schema initialization uses `DEFINE TABLE OVERWRITE`, `DEFINE FIELD OVERWRITE`, and `DEFINE INDEX OVERWRITE` where supported, then verifies definitions through `INFO` before reporting readiness.
+- Schema initialization uses explicit current schema declarations, then verifies
+  definitions through `INFO` before reporting readiness. Additive tables, fields,
+  and indexes use `IF NOT EXISTS`; intentional pre-1.0 field shape changes use
+  explicit `DEFINE FIELD OVERWRITE` statements for the authoritative definition.
+  The service must not keep compatibility fallbacks for obsolete field shapes.
 
 ## Project Telemetry Overview
 

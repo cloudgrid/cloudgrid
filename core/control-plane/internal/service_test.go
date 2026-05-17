@@ -4,18 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/cloudgrid-dev/cloudgrid/core/control-plane/internal/ports"
+	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
 	"slices"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/cloudgrid-dev/cloudgrid/core/control-plane/internal/adapters/memory"
-	"github.com/cloudgrid-dev/cloudgrid/core/control-plane/internal/ports"
-	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
 )
 
 func TestViewerBootstrapCreatesLocalCompanyAndFirstUserAdmin(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 
 	viewer, err := service.GetViewer(context.Background(), localEnvelope("req-1", "local-user", nil))
 	if err != nil {
@@ -47,7 +45,7 @@ func TestViewerBootstrapCreatesLocalCompanyAndFirstUserAdmin(t *testing.T) {
 }
 
 func TestViewerBootstrapStoresSSOProfileAndConfiguredCompany(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	companyID := "company-1"
 	tenantID := "tenant-1"
 	authMode := "sso"
@@ -91,7 +89,7 @@ func TestViewerBootstrapStoresSSOProfileAndConfiguredCompany(t *testing.T) {
 }
 
 func TestIngestCredentialCreateListAndRevokeNeverReturnSecretAfterCreate(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -144,8 +142,67 @@ func TestIngestCredentialCreateListAndRevokeNeverReturnSecretAfterCreate(t *test
 	}
 }
 
+func TestProjectAiSettingsDefaultAndUpdate(t *testing.T) {
+	service := NewService(newTestStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-ai-settings", "admin-1", nil)
+	settings, err := service.GetProjectAiSettings(ctx, contracts.ProjectAiSettingsGetRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      LocalProjectID,
+	})
+	if err != nil {
+		t.Fatalf("GetProjectAiSettings returned error: %v", err)
+	}
+	if settings["projectId"] != LocalProjectID || settings["enabled"] != false || settings["version"] != 1 {
+		t.Fatalf("default settings = %#v, want disabled v1 local project", settings)
+	}
+
+	updated, err := service.UpdateProjectAiSettings(ctx, contracts.ProjectAiSettingsUpdateRequest{
+		BridgeEnvelope: admin,
+		Input: map[string]any{
+			"projectId": LocalProjectID,
+			"enabled":   true,
+			"providerProfiles": []any{map[string]any{
+				"id":           "provider-1",
+				"label":        "Local harness",
+				"providerKind": "local_harness",
+				"models":       map[string]any{},
+				"timeoutMs":    30000,
+			}},
+			"modelAliases":   []any{},
+			"onlinePolicies": []any{},
+			"budget": map[string]any{
+				"dailyUsd":          10,
+				"deterministicOnly": false,
+			},
+			"sampling": map[string]any{
+				"defaultOnlineSampleRate":             0.1,
+				"maxOnlineSampleRate":                 1,
+				"maxConcurrentExperimentItems":        4,
+				"maxConcurrentOptimizationCandidates": 2,
+			},
+			"datasetDefaults": map[string]any{
+				"splitAllocation":               map[string]any{},
+				"smallDatasetReviewedThreshold": 30,
+				"requireReviewForRegression":    true,
+			},
+			"expectedVersion": 1,
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateProjectAiSettings returned error: %v", err)
+	}
+	if updated["enabled"] != true || updated["version"] != 2 {
+		t.Fatalf("updated settings = %#v, want enabled v2", updated)
+	}
+	profiles := updated["providerProfiles"].([]any)
+	if len(profiles) != 1 || profiles[0].(map[string]any)["projectId"] != LocalProjectID {
+		t.Fatalf("provider profiles = %#v, want project-scoped provider", profiles)
+	}
+}
+
 func TestAdminInvariantDeniesFinalAdminRemovalAndDowngrade(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -171,7 +228,7 @@ func TestAdminInvariantDeniesFinalAdminRemovalAndDowngrade(t *testing.T) {
 }
 
 func TestNonAdminCannotRemoveOrDowngradeUsers(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -199,7 +256,7 @@ func TestNonAdminCannotRemoveOrDowngradeUsers(t *testing.T) {
 }
 
 func TestAdminCanCreateAndListOrganizationInvitation(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -243,7 +300,7 @@ func TestAdminCanCreateAndListOrganizationInvitation(t *testing.T) {
 }
 
 func TestNonAdminCannotCreateOrRevokeOrganizationInvitations(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -276,7 +333,7 @@ func TestNonAdminCannotCreateOrRevokeOrganizationInvitations(t *testing.T) {
 }
 
 func TestCreateInvitationRejectsDuplicateNormalizedEmailAndExistingMember(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -310,7 +367,7 @@ func TestCreateInvitationRejectsDuplicateNormalizedEmailAndExistingMember(t *tes
 }
 
 func TestSSOAcceptsPendingVerifiedMatchingInvitationAsUser(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	companyID := "company-1"
 	admin := ssoEnvelope("req-admin", companyID, "sso-admin", "Admin", "admin@example.test", true)
@@ -345,7 +402,7 @@ func TestSSOAcceptsPendingVerifiedMatchingInvitationAsUser(t *testing.T) {
 }
 
 func TestSSOWithoutAcceptableInvitationGetsNoMembership(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	companyID := "company-1"
 	admin := ssoEnvelope("req-admin", companyID, "sso-admin", "Admin", "admin@example.test", true)
@@ -384,7 +441,7 @@ func TestSSOWithoutAcceptableInvitationGetsNoMembership(t *testing.T) {
 }
 
 func TestRevokedAndExpiredInvitationsCannotBeAccepted(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	companyID := "company-1"
 	admin := ssoEnvelope("req-admin", companyID, "sso-admin", "Admin", "admin@example.test", true)
@@ -430,7 +487,7 @@ func TestRevokedAndExpiredInvitationsCannotBeAccepted(t *testing.T) {
 }
 
 func TestAcceptedInvitationCannotBeRevoked(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	companyID := "company-1"
 	admin := ssoEnvelope("req-admin", companyID, "sso-admin", "Admin", "admin@example.test", true)
@@ -458,7 +515,7 @@ func TestAcceptedInvitationCannotBeRevoked(t *testing.T) {
 }
 
 func TestListMembersReturnsActiveMembersOnly(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -478,7 +535,7 @@ func TestListMembersReturnsActiveMembersOnly(t *testing.T) {
 }
 
 func TestUpdateMemberRejectsUnknownUser(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -496,7 +553,7 @@ func TestUpdateMemberRejectsUnknownUser(t *testing.T) {
 }
 
 func TestProjectCreationStatusSnapshotAndStatusChange(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -550,7 +607,7 @@ func TestProjectCreationStatusSnapshotAndStatusChange(t *testing.T) {
 }
 
 func TestSelectProjectValidatesCompanyMembership(t *testing.T) {
-	store := memory.NewStore()
+	store := newTestStore()
 	service := NewService(store, fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
@@ -578,11 +635,11 @@ func TestSelectProjectValidatesCompanyMembership(t *testing.T) {
 		t.Fatalf("selected project = %#v, want %s", viewer.SelectedProject, project.ID)
 	}
 
-	foreignOrg := memory.OrganizationRecord{ID: "foreign", Name: "Foreign", Slug: "foreign"}
+	foreignOrg := ports.OrganizationRecord{ID: "foreign", Name: "Foreign", Slug: "foreign"}
 	if err := store.PutOrganization(ctx, foreignOrg); err != nil {
 		t.Fatalf("seed foreign organization: %v", err)
 	}
-	foreignProject := memory.ProjectRecord{ID: "project-foreign", OrganizationID: "foreign", Name: "Foreign", Slug: "foreign", Status: contracts.ProjectStatusActive, ChangedAt: fixedNow()}
+	foreignProject := ports.ProjectRecord{ID: "project-foreign", OrganizationID: "foreign", Name: "Foreign", Slug: "foreign", Status: contracts.ProjectStatusActive, ChangedAt: fixedNow()}
 	if err := store.PutProject(ctx, foreignProject); err != nil {
 		t.Fatalf("seed foreign project: %v", err)
 	}
@@ -596,7 +653,7 @@ func TestSelectProjectValidatesCompanyMembership(t *testing.T) {
 }
 
 func TestProjectMembersIncludeCompanyAdminFallbackAndDirectMembers(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -636,7 +693,7 @@ func TestProjectMembersIncludeCompanyAdminFallbackAndDirectMembers(t *testing.T)
 }
 
 func TestProjectMemberMutationsEnforceLocalPersonalAndFinalAdminInvariants(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "local-user", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -686,7 +743,7 @@ func TestProjectMemberMutationsEnforceLocalPersonalAndFinalAdminInvariants(t *te
 }
 
 func TestRetentionPolicyDefaultsAndFullReplacementValidation(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -743,7 +800,7 @@ func TestRetentionPolicyDefaultsAndFullReplacementValidation(t *testing.T) {
 }
 
 func TestAlertRulesSilencesAndHistoryCRUD(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -849,7 +906,7 @@ func TestAlertRulesSilencesAndHistoryCRUD(t *testing.T) {
 }
 
 func TestAlertRulesFilterAndSortDeterministically(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -941,7 +998,7 @@ func TestAlertRulesFilterAndSortDeterministically(t *testing.T) {
 }
 
 func TestDashboardsListIncludesBuiltinsProjectPersonalAndPins(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -1046,8 +1103,40 @@ func TestDashboardsListIncludesBuiltinsProjectPersonalAndPins(t *testing.T) {
 	}
 }
 
+func TestBuiltinDashboardMetricWidgetsMatchDevMetricDescriptors(t *testing.T) {
+	project := ports.ProjectRecord{ID: LocalProjectID, OrganizationID: LocalCompanyID}
+	attributeKeys := map[string]map[string]bool{
+		"http.server.request.duration": {
+			"http.route":   true,
+			"service.name": true,
+		},
+		"gen_ai.client.token.usage": {
+			"gen_ai.request.model": true,
+			"gen_ai.token.type":    true,
+			"service.name":         true,
+		},
+	}
+
+	for _, dashboard := range builtinDashboards(project, fixedNow()) {
+		for _, widget := range dashboard.Widgets {
+			if widget.Metric == nil {
+				continue
+			}
+			keys, ok := attributeKeys[widget.Metric.MetricName]
+			if !ok {
+				t.Fatalf("builtin widget %s uses unknown dev metric %q", widget.ID, widget.Metric.MetricName)
+			}
+			for _, groupBy := range widget.Metric.GroupBy {
+				if !keys[groupBy] {
+					t.Fatalf("builtin widget %s groups %q by unavailable key %q", widget.ID, widget.Metric.MetricName, groupBy)
+				}
+			}
+		}
+	}
+}
+
 func TestDashboardSaveEnforcesVisibilityRoleSecretsAndVersionConflicts(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -1140,7 +1229,7 @@ func TestDashboardSaveEnforcesVisibilityRoleSecretsAndVersionConflicts(t *testin
 }
 
 func TestDashboardSaveAcceptsAndNormalizesRichMetricWidget(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -1189,7 +1278,7 @@ func TestDashboardSaveAcceptsAndNormalizesRichMetricWidget(t *testing.T) {
 }
 
 func TestDashboardSaveRejectsInvalidRichMetricWidget(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -1251,7 +1340,7 @@ func TestDashboardSaveRejectsInvalidRichMetricWidget(t *testing.T) {
 }
 
 func TestDashboardDeleteForbidsBuiltinsRequiresOwnerOrAdminAndRemovesPins(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -1305,7 +1394,7 @@ func TestDashboardDeleteForbidsBuiltinsRequiresOwnerOrAdminAndRemovesPins(t *tes
 }
 
 func TestDashboardPinsSetAndReorderOnlyVisibleDashboards(t *testing.T) {
-	service := NewService(memory.NewStore(), fixedNow)
+	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
 	admin := localEnvelope("req-admin", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -1416,7 +1505,7 @@ func validDashboardMetricWidget() DashboardWidgetInput {
 			H: 4,
 		},
 		Metric: &DashboardMetricWidgetInput{
-			MetricName:    "http.server.duration",
+			MetricName:    "http.server.request.duration",
 			Aggregation:   contracts.MetricAggregationP95,
 			TimeWindow:    ptr("PT1H"),
 			Visualization: contracts.MetricChartTypeLine,

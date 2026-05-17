@@ -62,7 +62,9 @@ export function AlertFilters({
           onChange("enabled", value === "enabled" ? true : value === "disabled" ? false : null)
         }
         options={["enabled", "disabled"]}
-        value={filters.enabled === true ? "enabled" : filters.enabled === false ? "disabled" : "all"}
+        value={
+          filters.enabled === true ? "enabled" : filters.enabled === false ? "disabled" : "all"
+        }
       />
       <SelectFilter
         id="alert-sort"

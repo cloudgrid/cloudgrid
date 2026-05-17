@@ -1,9 +1,9 @@
-import { createLogger, type CloudGridLogger } from "@cloudgrid/runtime";
-import { parse, subscribe, type ExecutionResult } from "graphql";
-import type { AiEvalBridge, TelemetryQueryBridge } from "./bridge";
-import { createCloudGridSchema, type CloudGridYogaContext } from "./graphql";
-import { CloudGridAuthService, type AuthProviderFixture } from "./auth";
 import type { AuthRuntimeConfig } from "@cloudgrid/runtime";
+import { type CloudGridLogger, createLogger, createProblemDetails } from "@cloudgrid/runtime";
+import { type ExecutionResult, GraphQLError, parse, subscribe } from "graphql";
+import { type AuthProviderFixture, CloudGridAuthService } from "./auth";
+import type { AiEvalBridge, TelemetryQueryBridge } from "./bridge";
+import { type CloudGridYogaContext, createCloudGridSchema } from "./graphql";
 
 const GRAPHQL_TRANSPORT_WS_PROTOCOL = "graphql-transport-ws";
 
@@ -125,15 +125,18 @@ async function handleMessage(
     }
     socket.send(JSON.stringify({ id: message.id, type: "complete" }));
   } catch (error) {
+    logger.error("graphql_subscription_stream_failed", {
+      request_id: contextValue.requestId,
+      error_id: "ERR-014",
+      error_code: "MESSAGE_BRIDGE_TIMEOUT",
+      error_message: error instanceof Error ? error.message : String(error),
+    });
+    const formattedError = graphQLSubscriptionStreamError(contextValue.requestId, error);
     socket.send(
       JSON.stringify({
         id: message.id,
         type: "error",
-        payload: [
-          {
-            message: error instanceof Error ? error.message : "GraphQL subscription failed",
-          },
-        ],
+        payload: [formattedError],
       }),
     );
   } finally {
@@ -162,4 +165,23 @@ function isAsyncIterable(
   value: AsyncIterable<ExecutionResult> | ExecutionResult,
 ): value is AsyncIterable<ExecutionResult> {
   return typeof value === "object" && value !== null && Symbol.asyncIterator in value;
+}
+
+function graphQLSubscriptionStreamError(requestId: string, error: unknown) {
+  if (error instanceof GraphQLError) {
+    return error.toJSON();
+  }
+
+  const problem = createProblemDetails({
+    id: "ERR-014",
+    instance: `/graphql/subscription/${requestId}`,
+  });
+
+  return {
+    message: problem.detail,
+    extensions: {
+      code: problem.code,
+      problem,
+    },
+  };
 }

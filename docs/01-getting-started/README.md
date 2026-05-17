@@ -72,6 +72,18 @@ multi-service traces with realistic parent-child waterfalls, linked spans,
 related logs, and metrics. Use `--signal traces|logs|metrics` or
 `--format json` to narrow what is sent.
 
+For live trace UI development, keep a fresh generated telemetry stream running
+in a second terminal:
+
+```sh
+bun run dev:seed:live
+```
+
+This mode sends only generated JSON telemetry, regenerates timestamps and
+trace/span IDs on every batch, and defaults to one batch every five seconds.
+Use `-- --interval-ms 1000` for faster local live testing or
+`-- --max-batches 10` for a bounded run.
+
 If local project-token routing is enabled with
 `CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS`, pass the matching token:
 

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createLogger } from "@cloudgrid/runtime";
 import type { RetentionRuleInput } from "@cloudgrid/ui-contracts";
 import { JSONCodec, type NatsConnection } from "nats";
-import { NATSTelemetryQueryBridge } from "./bridge";
+import { MessageBridgeCloudGridBridge, NATSTelemetryQueryBridge } from "./bridge";
 
 describe("NATS telemetry query bridge", () => {
   test("sends trace detail input as the telemetry.traces.get query", async () => {
@@ -85,7 +85,7 @@ describe("NATS telemetry query bridge", () => {
     const requests: Array<{ subject: string; payload: unknown }> = [];
     const connection = {
       request: async (requestedSubject: string, data: Uint8Array) => {
-        const payload = codec.decode(data);
+        const payload = codec.decode(data) as { subscriptionId?: string };
         requests.push({ subject: requestedSubject, payload });
         return {
           data: codec.encode({
@@ -263,6 +263,65 @@ describe("NATS telemetry query bridge", () => {
     expect(requests[2]?.payload).toMatchObject({ dashboardId: "dashboard-1" });
     expect(requests[3]?.payload).toMatchObject({ dashboardId: "dashboard-1", pinned: true });
     expect(requests[4]?.payload).toMatchObject({ dashboardIds: ["dashboard-1"] });
+  });
+
+  test("normalizes dashboard rich metric response arrays omitted by Go bridge JSON", async () => {
+    const codec = JSONCodec<unknown>();
+    const connection = {
+      request: async (_requestedSubject: string, data: Uint8Array) => {
+        const payload = codec.decode(data);
+        return {
+          data: codec.encode({
+            requestId: requestId(payload),
+            ok: true,
+            data: {
+              dashboard: {
+                ...dashboard(),
+                widgets: [
+                  {
+                    id: "widget-rich",
+                    title: "Latency comparison",
+                    kind: "metric_rich",
+                    layout: { x: 0, y: 0, w: 6, h: 4, minW: 3, minH: 2 },
+                    richMetric: {
+                      query: {
+                        timeWindow: "PT1H",
+                        interval: "PT1M",
+                        queries: [
+                          {
+                            id: "a",
+                            label: "Latency",
+                            metricName: "http.server.request.duration",
+                            aggregation: "p95",
+                            maxSeries: 20,
+                          },
+                        ],
+                      },
+                      visualization: "line",
+                      legend: true,
+                      maxSeries: 20,
+                    },
+                  },
+                ],
+              },
+            },
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+
+    const saved = await bridge.saveDashboard({
+      name: "Latency comparison",
+      widgets: [],
+    });
+
+    expect(saved.widgets[0]?.richMetric?.query.queries[0]?.groupBy).toEqual([]);
+    expect(saved.widgets[0]?.richMetric?.query.queries[0]?.filters).toEqual([]);
+    expect(saved.widgets[0]?.richMetric?.query.formulas).toEqual([]);
+    expect(saved.widgets[0]?.richMetric?.query.displaySeries).toEqual([]);
+    expect(saved.widgets[0]?.richMetric?.thresholds).toEqual([]);
   });
 
   test("sends project membership, retention, and alerting requests to control-plane subjects", async () => {
@@ -496,6 +555,163 @@ describe("NATS telemetry query bridge", () => {
       "telemetry.traces.live.stop",
     ]);
   });
+
+  test("closes live trace subscriptions when no sink event arrives before the watchdog deadline", async () => {
+    const codec = JSONCodec<unknown>();
+    const requestedSubjects: string[] = [];
+    const requestReply = {
+      async request(subject: string, data: Uint8Array) {
+        requestedSubjects.push(subject);
+        const payload = codec.decode(data) as { subscriptionId?: string };
+        return codec.encode({
+          requestId: requestId(payload),
+          ok: true,
+          data:
+            subject === "telemetry.traces.live.start"
+              ? { subscriptionId: "sub-1", heartbeatIntervalMs: 15_000 }
+              : { subscriptionId: "sub-1" },
+        });
+      },
+    };
+    const pubSub = {
+      async subscribe() {
+        return {
+          async [Symbol.asyncDispose]() {},
+        };
+      },
+      async publish() {},
+    };
+    const bridge = new MessageBridgeCloudGridBridge(requestReply, 2000, createLogger("bff"), {
+      pubSub,
+      bffInstanceId: "bff-test",
+      subscriptionId: () => "sub-1",
+      liveTraceWatchdogMs: 10,
+    });
+
+    const iterator = bridge.subscribeLiveTraces({ service: "api", limit: 10 });
+    const result = await Promise.race([
+      iterator.next().then(
+        () => "resolved",
+        (error) => error,
+      ),
+      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 80)),
+    ]);
+    if (result !== "timeout") {
+      await iterator.return?.();
+    }
+
+    expect(result).not.toBe("timeout");
+    expect(result).toBeInstanceOf(Error);
+    expect(requestedSubjects).toEqual([
+      "telemetry.traces.live.start",
+      "telemetry.traces.live.stop",
+    ]);
+  });
+
+  test("cancels live trace subscriptions immediately while waiting for sink events", async () => {
+    const codec = JSONCodec<unknown>();
+    const requestedSubjects: string[] = [];
+    const requestReply = {
+      async request(subject: string, data: Uint8Array) {
+        requestedSubjects.push(subject);
+        const payload = codec.decode(data) as { subscriptionId?: string };
+        return codec.encode({
+          requestId: requestId(payload),
+          ok: true,
+          data:
+            subject === "telemetry.traces.live.start"
+              ? { subscriptionId: "sub-1", heartbeatIntervalMs: 15_000 }
+              : { subscriptionId: "sub-1" },
+        });
+      },
+    };
+    const pubSub = {
+      async subscribe() {
+        return {
+          async [Symbol.asyncDispose]() {},
+        };
+      },
+      async publish() {},
+    };
+    const bridge = new MessageBridgeCloudGridBridge(requestReply, 2000, createLogger("bff"), {
+      pubSub,
+      bffInstanceId: "bff-test",
+      subscriptionId: () => "sub-1",
+      liveTraceWatchdogMs: 10_000,
+    });
+
+    const iterator = bridge.subscribeLiveTraces({ service: "api", limit: 10 });
+    const pending = iterator.next();
+    await waitUntil(() => requestedSubjects.includes("telemetry.traces.live.start"), 80);
+
+    const result = await Promise.race([
+      iterator.return?.().then(() => "cancelled"),
+      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 80)),
+    ]);
+    await pending;
+
+    expect(result).toBe("cancelled");
+    expect(requestedSubjects).toEqual([
+      "telemetry.traces.live.start",
+      "telemetry.traces.live.stop",
+    ]);
+  });
+
+  test("uses the default crypto subscription id generator without binding errors", async () => {
+    const codec = JSONCodec<unknown>();
+    const requestedSubjects: string[] = [];
+    let sinkSubject = "";
+    const requestReply = {
+      async request(subject: string, data: Uint8Array) {
+        requestedSubjects.push(subject);
+        const payload = codec.decode(data) as { subscriptionId?: string };
+        return codec.encode({
+          requestId: requestId(payload),
+          ok: true,
+          data: { subscriptionId: payload.subscriptionId ?? "stopped", heartbeatIntervalMs: 15000 },
+        });
+      },
+    };
+    const pubSub = {
+      async subscribe(
+        subject: string,
+        onMessage: (message: { subject: string; data: Uint8Array }) => void,
+      ) {
+        sinkSubject = subject;
+        queueMicrotask(() =>
+          onMessage({
+            subject,
+            data: codec.encode({
+              type: "heartbeat",
+              seq: 1,
+              receivedAt: "2026-05-17T10:00:00.000Z",
+              trace: null,
+            }),
+          }),
+        );
+        return {
+          async [Symbol.asyncDispose]() {},
+        };
+      },
+      async publish() {},
+    };
+    const bridge = new MessageBridgeCloudGridBridge(requestReply, 2000, createLogger("bff"), {
+      pubSub,
+      bffInstanceId: "bff-test",
+      liveTraceWatchdogMs: 1000,
+    });
+
+    const iterator = bridge.subscribeLiveTraces({ service: "api", limit: 10 });
+    const first = await iterator.next();
+    await iterator.return?.();
+
+    expect(first.value).toMatchObject({ type: "heartbeat", seq: 1 });
+    expect(sinkSubject).toMatch(/^telemetry\.traces\.live\.events\.bff-test\.[0-9a-f-]+$/);
+    expect(requestedSubjects).toEqual([
+      "telemetry.traces.live.start",
+      "telemetry.traces.live.stop",
+    ]);
+  });
 });
 
 function requestId(payload: unknown): string {
@@ -508,6 +724,17 @@ function requestId(payload: unknown): string {
     return payload.requestId;
   }
   return "request-1";
+}
+
+async function waitUntil(predicate: () => boolean, timeoutMs: number) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  throw new Error("condition was not met before timeout");
 }
 
 function traceDetail() {

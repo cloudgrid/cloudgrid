@@ -17,8 +17,8 @@ Implementation tickets may be generated from this package after copying each tic
 - `specs/05-frontend/traces-and-metrics-ux-concept.md`
 - `specs/05-frontend/logs-metrics-dashboards-ux-concept.md`
 - `DESIGN.md`
-- `apps/frontend/public/concepts/traces-metrics-ux.html`
-- `apps/frontend/public/concepts/logs-metrics-dashboards-ux.html`
+- `plans/frontend-ux-concepts/traces-metrics-ux.html`
+- `plans/frontend-ux-concepts/logs-metrics-dashboards-ux.html`
 - Current frontend implementation under `apps/frontend/src`
 
 ## Audit Outputs

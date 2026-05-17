@@ -21,23 +21,28 @@ func TestEnsureJetStreamDefinesTelemetryIngestStreamAndConsumer(t *testing.T) {
 		t.Fatalf("EnsureJetStream() error = %v", err)
 	}
 
-	if js.stream == nil {
-		t.Fatal("stream config was not added")
+	ingestStream := js.streams[StreamName]
+	if ingestStream == nil {
+		t.Fatal("ingest stream config was not added")
 	}
-	if js.stream.Name != "TELEMETRY_INGEST" {
-		t.Fatalf("stream name = %q", js.stream.Name)
+	if ingestStream.Name != "TELEMETRY_INGEST" {
+		t.Fatalf("stream name = %q", ingestStream.Name)
 	}
-	if strings.Join(js.stream.Subjects, ",") != "telemetry.ingest.traces,telemetry.ingest.logs,telemetry.ingest.metrics,telemetry.ingest.ai_projections" {
-		t.Fatalf("stream subjects = %#v", js.stream.Subjects)
+	if strings.Join(ingestStream.Subjects, ",") != "telemetry.ingest.traces,telemetry.ingest.logs,telemetry.ingest.metrics,telemetry.ingest.ai_projections" {
+		t.Fatalf("stream subjects = %#v", ingestStream.Subjects)
 	}
-	if js.stream.Retention != nats.LimitsPolicy {
-		t.Fatalf("stream retention = %#v", js.stream.Retention)
+	if ingestStream.Retention != nats.LimitsPolicy {
+		t.Fatalf("stream retention = %#v", ingestStream.Retention)
 	}
-	if js.stream.Storage != nats.FileStorage {
-		t.Fatalf("stream storage = %#v", js.stream.Storage)
+	if ingestStream.Storage != nats.FileStorage {
+		t.Fatalf("stream storage = %#v", ingestStream.Storage)
 	}
-	if js.stream.MaxAge != 7*24*time.Hour {
-		t.Fatalf("stream max age = %s", js.stream.MaxAge)
+	if ingestStream.MaxAge != 7*24*time.Hour {
+		t.Fatalf("stream max age = %s", ingestStream.MaxAge)
+	}
+
+	if _, ok := js.streams["TELEMETRY_PERSISTED"]; ok {
+		t.Fatal("post-persist live notifications must not create a JetStream stream")
 	}
 
 	if js.consumerStream != "TELEMETRY_INGEST" || js.consumer == nil {
@@ -400,9 +405,9 @@ func TestTracePersistedNotificationDeduplicatesAndTrimsServiceNames(t *testing.T
 	}
 }
 
-func TestNATSTraceNotificationPublisherPublishesPersistedTraceSubject(t *testing.T) {
-	js := &fakeNotificationJetStream{}
-	publisher := natsTraceNotificationPublisher{js: js}
+func TestNATSTraceNotificationPublisherPublishesVolatilePersistedTraceSubject(t *testing.T) {
+	nc := &fakeNotificationNATS{}
+	publisher := natsTraceNotificationPublisher{nc: nc}
 	notification := contracts.TracePersistedNotification{
 		BridgeEnvelope: contracts.BridgeEnvelope{
 			RequestID: "req-1",
@@ -417,11 +422,11 @@ func TestNATSTraceNotificationPublisherPublishesPersistedTraceSubject(t *testing
 		t.Fatalf("PublishTracePersisted() error = %v", err)
 	}
 
-	if js.subject != PersistedTraceSubject {
-		t.Fatalf("subject = %q, want %q", js.subject, PersistedTraceSubject)
+	if nc.subject != PersistedTraceSubject {
+		t.Fatalf("subject = %q, want %q", nc.subject, PersistedTraceSubject)
 	}
 	var published contracts.TracePersistedNotification
-	if err := json.Unmarshal(js.data, &published); err != nil {
+	if err := json.Unmarshal(nc.data, &published); err != nil {
 		t.Fatalf("published data is not notification JSON: %v", err)
 	}
 	if published.CommandID != "cmd-1" || strings.Join(published.TraceIDs, ",") != "trace-1" {
@@ -456,7 +461,7 @@ func TestNATSMessageAccessorsUseRawMessageAndFallbackAttempt(t *testing.T) {
 func TestRunConsumerReturnsSubscribeErrors(t *testing.T) {
 	js := &fakePullSubscriber{subscribeErr: errors.New("subscribe failed")}
 
-	err := RunConsumer(context.Background(), js, &fakeStore{}, testLogger(t))
+	err := RunConsumer(context.Background(), js, &fakeTraceNotificationPublisher{}, &fakeStore{}, testLogger(t))
 	if err == nil {
 		t.Fatal("RunConsumer() error = nil")
 	}
@@ -551,7 +556,7 @@ func TestValidateCommandRejectsInvalidTelemetryShapes(t *testing.T) {
 }
 
 type fakeJetStreamManager struct {
-	stream              *nats.StreamConfig
+	streams             map[string]*nats.StreamConfig
 	consumerStream      string
 	consumer            *nats.ConsumerConfig
 	addStreamErr        error
@@ -563,7 +568,10 @@ type fakeJetStreamManager struct {
 }
 
 func (js *fakeJetStreamManager) AddStream(cfg *nats.StreamConfig, _ ...nats.JSOpt) (*nats.StreamInfo, error) {
-	js.stream = cfg
+	if js.streams == nil {
+		js.streams = map[string]*nats.StreamConfig{}
+	}
+	js.streams[cfg.Name] = cfg
 	if js.addStreamErr != nil {
 		return nil, js.addStreamErr
 	}
@@ -572,7 +580,10 @@ func (js *fakeJetStreamManager) AddStream(cfg *nats.StreamConfig, _ ...nats.JSOp
 
 func (js *fakeJetStreamManager) UpdateStream(cfg *nats.StreamConfig, _ ...nats.JSOpt) (*nats.StreamInfo, error) {
 	js.updateStreamCalls++
-	js.stream = cfg
+	if js.streams == nil {
+		js.streams = map[string]*nats.StreamConfig{}
+	}
+	js.streams[cfg.Name] = cfg
 	if js.updateStreamErr != nil {
 		return nil, js.updateStreamErr
 	}
@@ -801,6 +812,18 @@ func (publisher *fakeTraceNotificationPublisher) PublishTracePersisted(_ context
 		publisher.publishCallsBeforePersist = append(publisher.publishCallsBeforePersist, publisher.store.persistCalls)
 	}
 	return publisher.err
+}
+
+type fakeNotificationNATS struct {
+	subject string
+	data    []byte
+	err     error
+}
+
+func (nc *fakeNotificationNATS) Publish(subject string, data []byte) error {
+	nc.subject = subject
+	nc.data = append([]byte(nil), data...)
+	return nc.err
 }
 
 type fakeNotificationJetStream struct {

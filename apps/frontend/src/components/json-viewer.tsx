@@ -1,9 +1,9 @@
 import type { JSONValue } from "@cloudgrid/ui-contracts";
 import { Braces } from "lucide-react";
 import { useMemo, useState } from "react";
-import { CopyButton } from "./copy-button";
 import { t } from "../lib/i18n";
 import { CodeBlock } from "./code-block";
+import { CopyButton } from "./copy-button";
 import { Button } from "./ui/button";
 
 function isLargeObject(value: JSONValue) {

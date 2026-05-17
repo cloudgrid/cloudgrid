@@ -18,9 +18,13 @@ func TestEnsureJetStreamIncludesAIProjectionSubject(t *testing.T) {
 		t.Fatalf("EnsureJetStream() error = %v", err)
 	}
 
-	subjects := strings.Join(js.stream.Subjects, ",")
+	stream := js.streams[StreamName]
+	if stream == nil {
+		t.Fatal("ingest stream config was not added")
+	}
+	subjects := strings.Join(stream.Subjects, ",")
 	if !strings.Contains(subjects, AiProjectionSubject) {
-		t.Fatalf("stream subjects = %#v, want %q", js.stream.Subjects, AiProjectionSubject)
+		t.Fatalf("stream subjects = %#v, want %q", stream.Subjects, AiProjectionSubject)
 	}
 }
 

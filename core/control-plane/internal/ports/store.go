@@ -122,6 +122,14 @@ type RetentionPolicyRecord struct {
 	Version         int
 }
 
+type ProjectAiSettingsRecord struct {
+	ProjectID       string
+	Settings        map[string]any
+	UpdatedAt       time.Time
+	UpdatedByUserID string
+	Version         int
+}
+
 type RetentionRuleRecord struct {
 	DataClass       contracts.RetentionDataClass
 	Mode            contracts.RetentionMode
@@ -216,6 +224,8 @@ type ControlStore interface {
 	ListProjectMembers(ctx context.Context, projectID string) ([]ProjectMemberRecord, error)
 	GetRetentionPolicy(ctx context.Context, projectID string) (RetentionPolicyRecord, bool, error)
 	PutRetentionPolicy(ctx context.Context, policy RetentionPolicyRecord) error
+	GetProjectAiSettings(ctx context.Context, projectID string) (ProjectAiSettingsRecord, bool, error)
+	PutProjectAiSettings(ctx context.Context, settings ProjectAiSettingsRecord) error
 	GetAlertRule(ctx context.Context, id string) (AlertRuleRecord, bool, error)
 	PutAlertRule(ctx context.Context, rule AlertRuleRecord) error
 	DeleteAlertRule(ctx context.Context, id string) error

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { createLogger } from "@cloudgrid/runtime";
 import { JSONCodec, type NatsConnection } from "nats";
-import { NATSTelemetryQueryBridge } from "./bridge";
 import type { NormalizedAuthContext } from "./auth";
+import { NATSTelemetryQueryBridge } from "./bridge";
 
 describe("NATS control-plane bridge", () => {
   test("maps GraphQL control operations to control-plane request/reply subjects", async () => {

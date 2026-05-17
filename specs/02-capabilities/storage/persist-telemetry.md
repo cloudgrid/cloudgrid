@@ -43,7 +43,7 @@ acceptance_criteria:
     kind: happy-path
     given: A PersistTelemetryCommand with one or more trace records is persisted successfully
     when: The transaction or command-scope persistence completes
-    then: Storage-write publishes TracePersistedNotification with trace IDs and persistedAt after the write succeeds
+    then: Storage-write publishes a volatile TracePersistedNotification with trace IDs and persistedAt after the write succeeds
 ---
 
 # Persist Telemetry
@@ -55,6 +55,7 @@ acceptance_criteria:
 - If transactions are unavailable in the chosen SurrealDB mode, persist traces before spans and logs and record ERR-007 PARTIAL_WRITE if any later step fails.
 - Duplicate traces and spans are upserted by canonical ID.
 - Duplicate logs are upserted by generated `LogEvent.id`.
-- Storage-write publishes `TracePersistedNotification` only after successful trace persistence. The notification contains `commandId`, `traceIds`, `persistedAt`, and optional `serviceNames` hints.
+- Storage-write publishes `TracePersistedNotification` to the core NATS subject `telemetry.persisted.traces` only after successful trace persistence. The notification contains `commandId`, `traceIds`, `persistedAt`, and optional `serviceNames` hints.
+- Post-persist notifications are volatile live wake-up hints. They are not written to JetStream, are not replayed, and do not carry a redelivery obligation. Storage-write acknowledges the original ingest command after persistence even if the live notification publish fails, while logging ERR-013 for the notification failure.
 - `TracePersistedNotification` must not contain full spans, logs, attributes, raw OTLP payloads, SurrealDB record IDs, credentials, or authorization tokens.
 - Future ingestion authorization is enforced before `PersistTelemetryCommand` enters the bridge. Storage-write may persist future tenant/project ownership fields supplied by authorized commands, but it does not make public authorization decisions.

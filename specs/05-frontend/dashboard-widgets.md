@@ -160,7 +160,10 @@ Examples:
 - The Dashboards sidebar entry may expand to show visible custom dashboards; the parent entry still opens `/dashboards`.
 - `/metrics` remains a technical metric explorer and does not show dashboard management.
 - `/dashboards` is the saved visual composition workspace.
-- Built-in dashboards include GenAI token usage, model operation duration, harness run duration, tool duration, service health, and error counters when matching telemetry exists.
+- Built-in dashboards must use metric names and grouping keys that are present
+  in the generated development telemetry. The default built-ins include
+  `http.server.request.duration` grouped by `service.name` and
+  `gen_ai.client.token.usage` grouped by `gen_ai.token.type`.
 - Users can duplicate built-in dashboards into personal or project dashboards.
 - Personal dashboards are visible only to the owner. Project dashboards are visible to all company members with selected-project access.
 - Saving a dashboard is explicit. Editing a built-in dashboard creates an unsaved draft until the user saves it as personal or project visibility.

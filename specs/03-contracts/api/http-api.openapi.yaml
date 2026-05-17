@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Cloudgrid HTTP API
-  version: 0.1.0
+  version: 1.0.0
   description: HTTP endpoints exposed by public and ingress services. Telemetry reads are exposed through GraphQL, not REST.
 servers:
   - url: http://localhost:3000

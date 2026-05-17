@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildFixtureRequests,
+  createSeedRunContext,
   generatedFixture,
   parseSeedArgs,
   responseErrorMessage,
+  runSeed,
 } from "./seed-otlp-fixtures.mjs";
 
 describe("seed OTLP fixtures script", () => {
@@ -66,6 +68,23 @@ describe("seed OTLP fixtures script", () => {
     });
   });
 
+  test("parses continuous ingest options and rejects static fixture sets", () => {
+    const options = parseSeedArgs(["--continuous", "--interval-ms", "1000", "--max-batches", "2"]);
+
+    expect(options).toMatchObject({
+      continuous: true,
+      intervalMs: 1000,
+      maxBatches: 2,
+      fixtureSet: "generated",
+    });
+    expect(() => parseSeedArgs(["--continuous", "--fixture-set", "contracts"])).toThrow(
+      "--continuous only supports --fixture-set generated",
+    );
+    expect(() => parseSeedArgs(["--interval-ms", "0"])).toThrow(
+      "--interval-ms must be a positive integer",
+    );
+  });
+
   test("reports collector failures with method, URL, status, and body", async () => {
     const message = await responseErrorMessage({
       method: "POST",
@@ -83,9 +102,10 @@ describe("seed OTLP fixtures script", () => {
   });
 
   test("generates rich development telemetry with larger traces, logs, and metrics", () => {
-    const traces = generatedFixture("rich-traces");
-    const logs = generatedFixture("rich-logs");
-    const metrics = generatedFixture("rich-metrics");
+    const seedContext = createSeedRunContext();
+    const traces = generatedFixture("rich-traces", seedContext);
+    const logs = generatedFixture("rich-logs", seedContext);
+    const metrics = generatedFixture("rich-metrics", seedContext);
     const spanCount = traces.resourceSpans.reduce(
       (sum, resourceSpan) =>
         sum +
@@ -147,5 +167,35 @@ describe("seed OTLP fixtures script", () => {
     );
     expect(logBodies.some((body) => body.includes("processed fixture step"))).toBe(false);
     expect(logBodies).toContain("Card authorization declined by issuer");
+  });
+
+  test("continuous mode posts fresh generated telemetry batches", async () => {
+    const decoder = new TextDecoder();
+    const postedTraceBodies = [];
+    const fetchImpl = async (_url, init) => {
+      if (init.headers["content-type"] === "application/json") {
+        const body = JSON.parse(decoder.decode(init.body));
+        if (body.resourceSpans) {
+          postedTraceBodies.push(body);
+        }
+      }
+      return { ok: true };
+    };
+
+    await runSeed(
+      {
+        ...parseSeedArgs(["--continuous", "--max-batches", "2", "--interval-ms", "1"]),
+        endpoint: "http://127.0.0.1:4318",
+      },
+      { fetchImpl, sleepImpl: async () => {}, log: () => {} },
+    );
+
+    expect(postedTraceBodies).toHaveLength(2);
+    const firstSpan = postedTraceBodies[0].resourceSpans[0].scopeSpans[0].spans[0];
+    const secondSpan = postedTraceBodies[1].resourceSpans[0].scopeSpans[0].spans[0];
+    expect(firstSpan.traceId).not.toBe(secondSpan.traceId);
+    expect(Number(secondSpan.startTimeUnixNano)).toBeGreaterThanOrEqual(
+      Number(firstSpan.startTimeUnixNano),
+    );
   });
 });

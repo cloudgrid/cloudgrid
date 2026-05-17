@@ -152,6 +152,54 @@ func TestMetricHandlersForwardInputsAndEnforceReadAuth(t *testing.T) {
 	}
 }
 
+func TestTelemetryReadHandlersEnforceReadAuth(t *testing.T) {
+	denied := false
+	envelope := contracts.BridgeEnvelope{
+		RequestID:   "req-denied",
+		AuthContext: &contracts.AuthContext{AuthMode: ptr("sso"), TenantID: ptr("tenant-1"), CompanyID: ptr("company-1"), ProjectID: ptr("project-1"), ReadAllowed: &denied},
+	}
+	tests := []struct {
+		name string
+		run  func() *portableBridgeMessageTest
+	}{
+		{name: "trace search", run: func() *portableBridgeMessageTest {
+			message := bridgeMessageForTest(SubjectTraceSearch, mustMarshalNATSHandlerTest(t, contracts.TraceSearchRequest{BridgeEnvelope: envelope}))
+			handleTraceSearch(&loggingReadStore{}, nil)(message)
+			return message
+		}},
+		{name: "trace detail", run: func() *portableBridgeMessageTest {
+			message := bridgeMessageForTest(SubjectTraceGet, mustMarshalNATSHandlerTest(t, contracts.TraceDetailRequest{BridgeEnvelope: envelope, TraceID: "trace-1"}))
+			handleTraceGet(&loggingReadStore{}, nil)(message)
+			return message
+		}},
+		{name: "log search", run: func() *portableBridgeMessageTest {
+			message := bridgeMessageForTest(SubjectLogSearch, mustMarshalNATSHandlerTest(t, contracts.LogSearchRequest{BridgeEnvelope: envelope}))
+			handleLogSearch(&loggingReadStore{}, nil)(message)
+			return message
+		}},
+		{name: "facets", run: func() *portableBridgeMessageTest {
+			message := bridgeMessageForTest(SubjectTelemetryFacets, mustMarshalNATSHandlerTest(t, contracts.TelemetryFacetRequest{BridgeEnvelope: envelope}))
+			handleTelemetryFacets(&loggingReadStore{}, nil)(message)
+			return message
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			message := tt.run()
+			var response struct {
+				OK    bool                   `json:"ok"`
+				Error *contracts.BridgeError `json:"error"`
+			}
+			if err := json.Unmarshal(message.response, &response); err != nil {
+				t.Fatalf("response is not JSON: %v", err)
+			}
+			if response.OK || response.Error == nil || response.Error.ID != "ERR-016" {
+				t.Fatalf("response = %#v, want ERR-016", response)
+			}
+		})
+	}
+}
+
 func TestRichMetricHandlerEvaluatesBinaryFormulaFromMetricSeries(t *testing.T) {
 	from := time.Date(2026, 5, 14, 8, 0, 0, 0, time.UTC)
 	to := from.Add(time.Hour)
@@ -653,23 +701,23 @@ func (store *failingReadStore) GetProjectTelemetryOverviews(_ context.Context, _
 	return contracts.ProjectTelemetryOverviewData{}, store.err
 }
 
-func (store *failingReadStore) SearchTraces(_ context.Context, _ contracts.TraceSearchQuery) (contracts.TraceSearchData, error) {
+func (store *failingReadStore) SearchTraces(_ context.Context, _ contracts.TraceSearchQuery, _ *contracts.AuthContext) (contracts.TraceSearchData, error) {
 	return contracts.TraceSearchData{}, store.err
 }
 
-func (store *failingReadStore) SearchLiveTraceCandidates(_ context.Context, _ contracts.LiveTraceQuery, _ []string) ([]contracts.TraceSummary, error) {
+func (store *failingReadStore) SearchLiveTraceCandidates(_ context.Context, _ contracts.LiveTraceQuery, _ []string, _ *contracts.AuthContext) ([]contracts.TraceSummary, error) {
 	return nil, store.err
 }
 
-func (store *failingReadStore) GetTraceDetail(_ context.Context, _ string, _ *contracts.TraceDetailQuery) (*contracts.TraceDetailData, error) {
+func (store *failingReadStore) GetTraceDetail(_ context.Context, _ string, _ *contracts.TraceDetailQuery, _ *contracts.AuthContext) (*contracts.TraceDetailData, error) {
 	return nil, store.err
 }
 
-func (store *failingReadStore) SearchLogs(_ context.Context, _ contracts.LogSearchQuery) (contracts.LogSearchData, error) {
+func (store *failingReadStore) SearchLogs(_ context.Context, _ contracts.LogSearchQuery, _ *contracts.AuthContext) (contracts.LogSearchData, error) {
 	return contracts.LogSearchData{}, store.err
 }
 
-func (store *failingReadStore) GetTelemetryFacets(_ context.Context, _ contracts.TelemetryFacetQuery) (contracts.TelemetryFacetData, error) {
+func (store *failingReadStore) GetTelemetryFacets(_ context.Context, _ contracts.TelemetryFacetQuery, _ *contracts.AuthContext) (contracts.TelemetryFacetData, error) {
 	return contracts.TelemetryFacetData{}, store.err
 }
 

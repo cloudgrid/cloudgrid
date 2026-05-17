@@ -1,0 +1,257 @@
+---
+/**
+ * Three-column shell for handbook pages:
+ *
+ *   [ left nav ]   [ prose content ]   [ on-this-page ]
+ *
+ * The center column receives the rendered `<Content />` via slot.
+ * Sidebars are sticky; on smaller screens they collapse / hide.
+ */
+import Layout from "../../layouts/Layout.astro";
+import SidebarNav from "./SidebarNav.astro";
+import TableOfContents from "./TableOfContents.astro";
+
+interface Heading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+
+interface Props {
+  title: string;
+  description?: string;
+  eyebrow?: string;
+  accent?: "brand" | "cyan" | "emerald" | "amber" | "violet" | "rose";
+  updated?: Date;
+  headings: Heading[];
+  currentSlug: string;
+}
+
+const {
+  title,
+  description,
+  eyebrow,
+  accent = "brand",
+  updated,
+  headings,
+  currentSlug,
+} = Astro.props;
+
+const accentMap: Record<string, string> = {
+  brand: "bg-brand-soft text-[var(--color-brand)]",
+  cyan: "bg-cyan-soft text-[var(--color-cyan)]",
+  emerald: "bg-emerald-soft text-[var(--color-emerald)]",
+  amber: "bg-amber-soft text-[var(--color-amber)]",
+  violet: "bg-violet-soft text-[var(--color-violet)]",
+  rose: "bg-rose-soft text-[var(--color-rose)]",
+};
+---
+
+<Layout title={`${title} — CloudGrid Handbook`} description={description}>
+  <div class="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)_240px] gap-8 pt-10 pb-20">
+      <!-- LEFT: sidebar nav -->
+      <aside class="hidden lg:block">
+        <div class="sticky top-20 max-h-[calc(100vh-6rem)] overflow-y-auto pr-2">
+          <SidebarNav currentSlug={currentSlug} />
+        </div>
+      </aside>
+
+      <!-- CENTER: content -->
+      <article id="cg-handbook-article" class="min-w-0">
+        <header class="mb-10">
+          {eyebrow && (
+            <div class={`chip ${accentMap[accent]}`}>{eyebrow}</div>
+          )}
+          <h1 class="mt-4 text-3xl sm:text-4xl font-semibold tracking-tight text-text leading-[1.08] text-balance">
+            {title}
+          </h1>
+          {description && (
+            <p class="mt-4 text-lg text-text-secondary leading-relaxed max-w-2xl text-balance">
+              {description}
+            </p>
+          )}
+        </header>
+
+        <!-- Mobile TOC, collapsed -->
+        <details class="lg:hidden mb-6 rounded-xl border border-border-default bg-surface px-4 py-3">
+          <summary class="text-sm font-medium text-text cursor-pointer">On this page</summary>
+          <div class="mt-3">
+            <TableOfContents headings={headings} />
+          </div>
+        </details>
+
+        <div class="cg-prose">
+          <slot />
+        </div>
+
+        {updated && (
+          <p class="mt-12 pt-6 border-t border-border-subtle text-xs text-text-muted">
+            Last updated <time datetime={updated.toISOString()}>{updated.toISOString().slice(0, 10)}</time>.
+          </p>
+        )}
+      </article>
+
+      <!-- RIGHT: on-this-page -->
+      <aside class="hidden lg:block">
+        <div class="sticky top-20 max-h-[calc(100vh-6rem)] overflow-y-auto pl-2">
+          <TableOfContents headings={headings} />
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!--
+    Markdown enhancers: wraps every <pre> in a window-chrome frame with a
+    copy button, and renders mermaid fenced blocks via the CDN. Scoped to
+    the article so it doesn't touch sample code in the rest of the site.
+    Theme changes re-render mermaid for the new theme.
+  -->
+  <script is:inline>
+    (function () {
+      var article = document.getElementById("cg-handbook-article");
+      if (!article) return;
+      var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      // ---- 1. Wrap every <pre> in a window-chrome frame with copy button ----
+      function detectLang(pre) {
+        var code = pre.querySelector("code");
+        if (!code) return "";
+        var cls = code.className || "";
+        var m = cls.match(/language-([\w+\-]+)/);
+        return m ? m[1] : "";
+      }
+
+      function copyText(btn, text) {
+        function done() {
+          btn.classList.add("is-copied");
+          btn.textContent = "✓ copied";
+          setTimeout(function () {
+            btn.classList.remove("is-copied");
+            btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>copy';
+          }, 1400);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(function () {
+            fallback(); done();
+          });
+        } else {
+          fallback(); done();
+        }
+        function fallback() {
+          var ta = document.createElement("textarea");
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand("copy"); } catch (_e) {}
+          document.body.removeChild(ta);
+        }
+      }
+
+      article.querySelectorAll("pre").forEach(function (pre) {
+        // Skip if this <pre> is already inside a wrapper or is a mermaid placeholder.
+        if (pre.closest(".cg-codeblock") || pre.classList.contains("cg-mermaid")) return;
+        var lang = detectLang(pre);
+        if (lang === "mermaid") return; // handled separately
+
+        var wrapper = document.createElement("div");
+        wrapper.className = "cg-codeblock";
+
+        var header = document.createElement("div");
+        header.className = "cg-codeblock-header";
+        header.innerHTML =
+          '<span class="cg-codeblock-dots"><span></span><span></span><span></span></span>' +
+          '<span class="cg-codeblock-title">' + (lang || "text") + "</span>" +
+          '<button type="button" class="cg-codeblock-copy" aria-label="Copy code">' +
+            '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>copy' +
+          "</button>";
+
+        pre.parentNode.insertBefore(wrapper, pre);
+        wrapper.appendChild(header);
+        wrapper.appendChild(pre);
+
+        var btn = header.querySelector(".cg-codeblock-copy");
+        btn.addEventListener("click", function () {
+          var code = pre.querySelector("code");
+          copyText(btn, code ? code.innerText : pre.innerText);
+        });
+      });
+
+      // ---- 2. Mermaid: convert ```mermaid blocks into render targets ----
+      var mermaidNodes = [];
+      article.querySelectorAll('pre > code.language-mermaid, pre > code[class*="language-mermaid"]').forEach(function (code) {
+        var pre = code.parentElement;
+        var src = code.textContent || "";
+        var holder = document.createElement("div");
+        holder.className = "cg-mermaid";
+        holder.setAttribute("data-mermaid-src", src);
+        pre.parentNode.replaceChild(holder, pre);
+        mermaidNodes.push(holder);
+      });
+
+      function currentMermaidTheme() {
+        return document.documentElement.classList.contains("dark") ? "dark" : "default";
+      }
+
+      function renderMermaid() {
+        if (!mermaidNodes.length || !window.mermaid) return;
+        try {
+          window.mermaid.initialize({
+            startOnLoad: false,
+            theme: currentMermaidTheme(),
+            securityLevel: "loose",
+            fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif",
+          });
+        } catch (_e) {}
+        mermaidNodes.forEach(function (node, i) {
+          var src = node.getAttribute("data-mermaid-src") || "";
+          var id = "cg-mermaid-" + Date.now() + "-" + i;
+          try {
+            window.mermaid.render(id, src).then(function (out) {
+              node.innerHTML = out.svg;
+            }).catch(function () {
+              node.innerHTML = '<pre>' + escapeHtml(src) + '</pre>';
+            });
+          } catch (_e) {
+            node.innerHTML = '<pre>' + escapeHtml(src) + '</pre>';
+          }
+        });
+      }
+
+      function escapeHtml(s) {
+        return s.replace(/[&<>"']/g, function (c) {
+          return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+        });
+      }
+
+      function loadMermaid() {
+        if (!mermaidNodes.length) return;
+        if (window.mermaid) { renderMermaid(); return; }
+        var s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js";
+        s.onload = function () { renderMermaid(); };
+        s.onerror = function () {
+          mermaidNodes.forEach(function (n) {
+            n.innerHTML = '<pre class="cg-prose">' + escapeHtml(n.getAttribute("data-mermaid-src") || "") + '</pre>';
+          });
+        };
+        document.head.appendChild(s);
+      }
+
+      loadMermaid();
+
+      // Re-render mermaid when the theme toggles.
+      if (!reduced) {
+        var mo = new MutationObserver(function (mutations) {
+          for (var i = 0; i < mutations.length; i++) {
+            if (mutations[i].attributeName === "class") {
+              renderMermaid();
+              break;
+            }
+          }
+        });
+        mo.observe(document.documentElement, { attributes: true });
+      }
+    })();
+  </script>
+</Layout>

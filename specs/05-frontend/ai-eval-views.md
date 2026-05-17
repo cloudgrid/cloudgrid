@@ -44,6 +44,9 @@ detail surfaces.
 
 Online policy management lives in Project Settings / AI Eval configuration, with
 read-only production quality monitoring in the AI Eval route.
+The AI Eval route may link to `/projects/:projectId/settings/ai-eval` from setup
+or administrative actions, but it must not render settings as a rail item,
+right-inspector detail surface, or alternate settings form.
 
 The settings UI must:
 

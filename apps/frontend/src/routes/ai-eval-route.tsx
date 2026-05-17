@@ -4,9 +4,7 @@ import type {
   AiQualityOverview,
   AiQualityOverviewInput,
   AnnotationQueueItem,
-  AnnotationQueueResult,
   AnnotationQueueSearchInput,
-  CommitDatasetImportInput,
   Dataset,
   DatasetExportFormat,
   DatasetExportJob,
@@ -16,19 +14,14 @@ import type {
   DatasetImportJob,
   DatasetImportScalarMappingInput,
   DatasetReviewStatus,
-  DatasetSearchInput,
-  DatasetSearchResult,
   DatasetSplit,
   Experiment,
   ExperimentRun,
   ExperimentSearchInput,
-  ExperimentSearchResult,
-  GraphQLResponse,
   JSONValue,
   PrepareDatasetImportInput,
   ProjectAiSettings,
   Scorer,
-  StartDatasetExportInput,
 } from "@cloudgrid/ui-contracts";
 import { type UseQueryResult, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -135,8 +128,8 @@ export function AiEvalRoute() {
   const selectedScorerId = searchParams.get("scorer");
   const selectedExperimentId = searchParams.get("experiment");
   const selectedAnnotationId = searchParams.get("annotation");
-  const client = useTelemetryClient();
-  const { viewer } = useAppSession();
+  const telemetryClient = useTelemetryClient();
+  const { client: controlClient, viewer } = useAppSession();
   const selectedProject = viewer?.selectedProject ?? null;
   const projectId = selectedProject?.id ?? "";
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -210,37 +203,37 @@ export function AiEvalRoute() {
   const agentRunsQuery = useQuery({
     enabled: shouldQueryAiEval && tab === "runs",
     queryKey: ["AgentRuns", agentRunInput],
-    queryFn: () => client.searchAgentRuns(agentRunInput),
+    queryFn: () => telemetryClient.searchAgentRuns(agentRunInput),
   });
   const datasetsQuery = useQuery({
     enabled: shouldQueryAiEval && (tab === "overview" || tab === "datasets"),
     queryKey: ["Datasets", { query: query || null }],
-    queryFn: () => fetchDatasets({ query: query || null, limit: 25 }),
+    queryFn: () => telemetryClient.searchDatasets({ query: query || null, limit: 25 }),
   });
   const scorersQuery = useQuery({
     enabled: shouldQueryAiEval && tab === "scorers",
     queryKey: ["Scorers", { query: query || null }],
-    queryFn: () => client.searchScorers({ query: query || null, limit: 25 }),
+    queryFn: () => telemetryClient.searchScorers({ query: query || null, limit: 25 }),
   });
   const experimentsQuery = useQuery({
     enabled: shouldQueryAiEval && (tab === "experiments" || tab === "optimizations"),
     queryKey: ["Experiments", experimentInput],
-    queryFn: () => fetchExperiments(experimentInput),
+    queryFn: () => telemetryClient.searchExperiments(experimentInput),
   });
   const annotationsQuery = useQuery({
     enabled: shouldQueryAiEval && (tab === "overview" || tab === "annotations"),
     queryKey: ["AnnotationQueue", annotationInput],
-    queryFn: () => fetchAnnotationQueue(annotationInput),
+    queryFn: () => telemetryClient.searchAnnotationQueue(annotationInput),
   });
   const qualityQuery = useQuery({
     enabled: shouldQueryAiEval && (tab === "overview" || tab === "production"),
     queryKey: ["AiQualityOverview", qualityInput],
-    queryFn: () => fetchAiQualityOverview(qualityInput),
+    queryFn: () => telemetryClient.getAiQualityOverview(qualityInput),
   });
   const settingsQuery = useQuery({
     enabled: shouldQueryAiEval && (tab === "overview" || tab === "production"),
     queryKey: ["ProjectAiSettings", projectId],
-    queryFn: () => fetchProjectAiSettings(projectId),
+    queryFn: () => controlClient.getProjectAiSettings(projectId),
   });
   const selectedRun =
     agentRunsQuery.data?.items.find((run) => run.id === selectedRunId) ??
@@ -356,14 +349,6 @@ export function AiEvalRoute() {
                 <PencilLine />
                 {t("aiEval.annotations")}
               </TabsTrigger>
-              {selectedProject ? (
-                <Button asChild className="mt-3 justify-start" variant="ghost">
-                  <Link to={`/projects/${encodeURIComponent(selectedProject.id)}/settings/ai-eval`}>
-                    <Settings data-icon="inline-start" />
-                    Settings
-                  </Link>
-                </Button>
-              ) : null}
             </TabsList>
           </aside>
           <main className="min-h-0 overflow-auto p-3" data-ai-eval-main-workspace="true">
@@ -386,7 +371,6 @@ export function AiEvalRoute() {
                       experiment={selectedExperiment}
                       run={selectedRun}
                       scorer={selectedScorer}
-                      settings={settingsQuery.data ?? null}
                       tab={tab}
                     />
                   </div>
@@ -460,7 +444,6 @@ export function AiEvalRoute() {
               experiment={selectedExperiment}
               run={selectedRun}
               scorer={selectedScorer}
-              settings={settingsQuery.data ?? null}
               tab={tab}
             />
           </aside>
@@ -878,6 +861,7 @@ function DatasetImportSheet({
   projectId: string;
 }) {
   const queryClient = useQueryClient();
+  const telemetryClient = useTelemetryClient();
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [format, setFormat] = useState<DatasetImportFormat>("jsonl");
@@ -922,7 +906,7 @@ function DatasetImportSheet({
   });
   const prepareMutation = useMutation({
     mutationFn: () =>
-      prepareDatasetImport(
+      telemetryClient.prepareDatasetImport(
         buildPrepareDatasetImportInput({
           allowPartialCommit,
           dataset,
@@ -950,7 +934,7 @@ function DatasetImportSheet({
       if (!previewJob) {
         throw new Error("Preview the import before committing.");
       }
-      return commitDatasetImport({
+      return telemetryClient.commitDatasetImport({
         importId: previewJob.id,
         expectedDatasetVersion: dataset.version,
         mode,
@@ -1216,9 +1200,13 @@ function DatasetImportSheet({
               </div>
               <DialogFooter>
                 <DialogClose asChild>
-                  <Button variant="outline">Cancel</Button>
+                  <Button variant="outline">
+                    <XCircle data-icon="inline-start" />
+                    Cancel
+                  </Button>
                 </DialogClose>
                 <Button onClick={() => void commitMutation.mutateAsync(commitMode)} type="button">
+                  <CheckCircle2 data-icon="inline-start" />
                   Commit import
                 </Button>
               </DialogFooter>
@@ -1508,6 +1496,7 @@ function DatasetImportPreview({
 }
 
 function DatasetExportDialog({ dataset }: { dataset: Dataset }) {
+  const telemetryClient = useTelemetryClient();
   const [open, setOpen] = useState(false);
   const [format, setFormat] = useState<DatasetExportFormat>("jsonl");
   const [split, setSplit] = useState<DatasetSplit | "all">("all");
@@ -1519,7 +1508,7 @@ function DatasetExportDialog({ dataset }: { dataset: Dataset }) {
 
   const exportMutation = useMutation({
     mutationFn: () =>
-      startDatasetExport({
+      telemetryClient.startDatasetExport({
         datasetId: dataset.id,
         format,
         split: split === "all" ? null : split,
@@ -1538,7 +1527,13 @@ function DatasetExportDialog({ dataset }: { dataset: Dataset }) {
   const exportJobQuery = useQuery({
     enabled: open && job?.status === "queued",
     queryKey: ["DatasetExport", job?.id],
-    queryFn: () => fetchDatasetExport(job?.id ?? ""),
+    queryFn: async () => {
+      const nextJob = await telemetryClient.getDatasetExport(job?.id ?? "");
+      if (!nextJob) {
+        throw new Error("Dataset export job was not found.");
+      }
+      return nextJob;
+    },
     refetchInterval: 2000,
   });
 
@@ -1668,7 +1663,10 @@ function DatasetExportDialog({ dataset }: { dataset: Dataset }) {
         </FieldGroup>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">Close</Button>
+            <Button variant="outline">
+              <XCircle data-icon="inline-start" />
+              Close
+            </Button>
           </DialogClose>
           {job?.status === "ready" && job.downloadUrl ? (
             <Button
@@ -2092,7 +2090,6 @@ function AiEvalInspector({
   experiment,
   run,
   scorer,
-  settings,
   tab,
 }: {
   annotation: AnnotationQueueItem | null;
@@ -2100,11 +2097,10 @@ function AiEvalInspector({
   experiment: Experiment | null;
   run: AgentRun | null;
   scorer: Scorer | null;
-  settings: ProjectAiSettings | null;
   tab: AiEvalTab;
 }) {
   if (tab === "overview") {
-    return settings ? <SettingsInspector settings={settings} /> : <InspectorEmpty />;
+    return <InspectorEmpty />;
   }
   if (tab === "runs") {
     return run ? <AgentRunDetail run={run} /> : <InspectorEmpty />;
@@ -2122,7 +2118,7 @@ function AiEvalInspector({
     return experiment ? <ExperimentInspector experiment={experiment} /> : <InspectorEmpty />;
   }
   if (tab === "production") {
-    return settings ? <SettingsInspector settings={settings} /> : <InspectorEmpty />;
+    return <InspectorEmpty />;
   }
   return annotation ? <AnnotationInspector annotation={annotation} /> : <InspectorEmpty />;
 }
@@ -2192,26 +2188,6 @@ function AnnotationInspector({ annotation }: { annotation: AnnotationQueueItem }
           {t("traceDetail.traceStructure")}
         </Link>
       </Button>
-    </section>
-  );
-}
-
-function SettingsInspector({ settings }: { settings: ProjectAiSettings }) {
-  return (
-    <section className="grid gap-3 text-sm">
-      <h2 className="font-semibold">Project AI Eval settings</h2>
-      <Metric label={t("filters.status")} value={settings.enabled ? "Enabled" : "Disabled"} />
-      <Metric label="Provider profiles" value={settings.providerProfiles.length} />
-      <Metric label="Model aliases" value={settings.modelAliases.length} />
-      <Metric label="Online policies" value={settings.onlinePolicies.length} />
-      <Metric
-        label="Daily budget"
-        value={`${formatUsd(settings.budget.spentTodayUsd)} / ${formatUsd(settings.budget.dailyUsd)}`}
-      />
-      <Metric
-        label="Deterministic only"
-        value={settings.effective.deterministicOnly ? "Yes" : "No"}
-      />
     </section>
   );
 }
@@ -2521,45 +2497,6 @@ async function uploadDatasetImportFile(projectId: string, file: File) {
   return (await response.json()) as DatasetImportUploadResponse;
 }
 
-async function prepareDatasetImport(input: PrepareDatasetImportInput): Promise<DatasetImportJob> {
-  const data = await requestAiEvalGraphQL<{ prepareDatasetImport: DatasetImportJob }>(
-    "PrepareDatasetImport",
-    prepareDatasetImportOperation,
-    { input },
-  );
-  return data.prepareDatasetImport;
-}
-
-async function commitDatasetImport(input: CommitDatasetImportInput): Promise<DatasetImportJob> {
-  const data = await requestAiEvalGraphQL<{ commitDatasetImport: DatasetImportJob }>(
-    "CommitDatasetImport",
-    commitDatasetImportOperation,
-    { input },
-  );
-  return data.commitDatasetImport;
-}
-
-async function startDatasetExport(input: StartDatasetExportInput): Promise<DatasetExportJob> {
-  const data = await requestAiEvalGraphQL<{ startDatasetExport: DatasetExportJob }>(
-    "StartDatasetExport",
-    startDatasetExportOperation,
-    { input },
-  );
-  return data.startDatasetExport;
-}
-
-async function fetchDatasetExport(id: string): Promise<DatasetExportJob> {
-  const data = await requestAiEvalGraphQL<{ datasetExport: DatasetExportJob | null }>(
-    "DatasetExport",
-    datasetExportOperation,
-    { id },
-  );
-  if (!data.datasetExport) {
-    throw new Error("Dataset export job was not found.");
-  }
-  return data.datasetExport;
-}
-
 function downloadSameOriginExport(job: DatasetExportJob) {
   if (!job.downloadUrl) {
     throw new Error("Dataset export is not ready for download.");
@@ -2584,431 +2521,3 @@ function datasetExportFormatLabel(format: DatasetExportFormat) {
   }
   return format.toUpperCase();
 }
-
-async function fetchAiQualityOverview(input: AiQualityOverviewInput): Promise<AiQualityOverview> {
-  const data = await requestAiEvalGraphQL<{ aiQualityOverview: AiQualityOverview }>(
-    "AiQualityOverview",
-    aiQualityOverviewOperation,
-    { input },
-  );
-  return data.aiQualityOverview;
-}
-
-async function fetchDatasets(input: DatasetSearchInput): Promise<DatasetSearchResult> {
-  const data = await requestAiEvalGraphQL<{ datasets: DatasetSearchResult }>(
-    "Datasets",
-    datasetsOperation,
-    {
-      input,
-    },
-  );
-  return data.datasets;
-}
-
-async function fetchExperiments(input: ExperimentSearchInput): Promise<ExperimentSearchResult> {
-  const data = await requestAiEvalGraphQL<{ experiments: ExperimentSearchResult }>(
-    "Experiments",
-    experimentsOperation,
-    { input },
-  );
-  return data.experiments;
-}
-
-async function fetchAnnotationQueue(
-  input: AnnotationQueueSearchInput,
-): Promise<AnnotationQueueResult> {
-  const data = await requestAiEvalGraphQL<{ annotationQueue: AnnotationQueueResult }>(
-    "AnnotationQueue",
-    annotationQueueOperation,
-    { input },
-  );
-  return data.annotationQueue;
-}
-
-async function fetchProjectAiSettings(projectId: string): Promise<ProjectAiSettings> {
-  const data = await requestAiEvalGraphQL<{ projectAiSettings: ProjectAiSettings }>(
-    "ProjectAiSettings",
-    projectAiSettingsOperation,
-    { projectId },
-  );
-  return data.projectAiSettings;
-}
-
-async function requestAiEvalGraphQL<Data>(
-  operationName: string,
-  query: string,
-  variables: Record<string, unknown>,
-): Promise<Data> {
-  const response = await fetch(import.meta.env.VITE_CLOUDGRID_GRAPHQL_URL || "/graphql", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ operationName, query, variables }),
-  });
-  if (!response.ok) {
-    throw new Error(`GraphQL ${operationName} failed with HTTP ${response.status}`);
-  }
-  const payload = (await response.json()) as GraphQLResponse<Data>;
-  if (payload.errors?.length) {
-    throw new Error(payload.errors.map((error) => error.message).join("; "));
-  }
-  if (!payload.data) {
-    throw new Error(`GraphQL ${operationName} returned no data`);
-  }
-  return payload.data;
-}
-
-const projectAiSettingsOperation = `
-  query ProjectAiSettings($projectId: ID!) {
-    projectAiSettings(projectId: $projectId) {
-      projectId
-      enabled
-      providerProfiles {
-        id
-        label
-        providerKind
-        disabledAt
-      }
-      modelAliases {
-        id
-        name
-        providerProfileId
-        model
-        purpose
-      }
-      onlinePolicies {
-        id
-        enabled
-        name
-        target
-        scorerIds
-        sampleRate
-        maxDailyRuns
-        updatedAt
-        updatedByUserId
-      }
-      budget {
-        dailyUsd
-        perRunUsd
-        deterministicOnly
-        spentTodayUsd
-      }
-      sampling {
-        defaultOnlineSampleRate
-        maxOnlineSampleRate
-        maxConcurrentExperimentItems
-        maxConcurrentOptimizationCandidates
-      }
-      datasetDefaults {
-        splitAllocation
-        smallDatasetReviewedThreshold
-        requireReviewForRegression
-      }
-      effective {
-        warnings
-        deterministicOnly
-        missingProviderProfiles
-        disabledProviderProfiles
-        budgetExhausted
-      }
-      version
-      updatedAt
-      updatedByUserId
-    }
-  }
-`;
-
-const datasetItemFields = `
-  id
-  datasetId
-  version
-  input
-  expected
-  metadata
-  sourceTraceId
-  sourceSpanId
-  split
-  reviewStatus
-  synthetic
-  duplicateOfItemId
-  leakageWarnings
-`;
-
-const evalResultFields = `
-  id
-  scorerId
-  scorerVersion
-  targetKind
-  targetId
-  experimentRunId
-  score
-  passed
-  evidence
-  judgeRunRef
-  producedAt
-`;
-
-const datasetItemRunFields = `
-  id
-  experimentRunId
-  datasetItemId
-  harnessRunId
-  output
-  latencyMs
-  tokenTotals {
-    input
-    output
-    total
-  }
-  evalResults {
-    ${evalResultFields}
-  }
-`;
-
-const experimentRunFields = `
-  id
-  experimentId
-  solverRef
-  manifest {
-    digest
-    datasetId
-    datasetVersion
-    splitSelector {
-      splits
-      reviewedOnly
-      includeSynthetic
-    }
-    scorerRefs {
-      id
-      version
-    }
-    baselineRef
-    solverRef
-    promptVersionRefs
-    skillSnapshotRefs
-    toolSnapshotRefs
-    providerProfileRefs
-    budget
-    concurrency
-    createdAt
-  }
-  baselineRunId
-  status
-  startedAt
-  endedAt
-  summary
-  itemRuns {
-    items {
-      ${datasetItemRunFields}
-    }
-    nextCursor
-  }
-`;
-
-const datasetsOperation = `
-  query Datasets($input: DatasetSearchInput) {
-    datasets(input: $input) {
-      items {
-        id
-        name
-        description
-        version
-        createdAt
-        itemCount
-        reviewedItemCount
-        splitCounts
-        health {
-          status
-          reviewedItemCount
-          totalItemCount
-          splitCounts
-          duplicateCandidateCount
-          leakageWarningCount
-          missingExpectedCount
-          schemaIssueCount
-          smallDataset
-          warnings
-        }
-        tags
-        items {
-          items {
-            ${datasetItemFields}
-          }
-          nextCursor
-        }
-      }
-      nextCursor
-    }
-  }
-`;
-
-const datasetImportJobFields = `
-  id
-  datasetId
-  status
-  format
-  sourceFiles {
-    path
-    format
-    sizeBytes
-    rowCount
-    sha256
-  }
-  mapping
-  defaults
-  previewRows {
-    rowNumber
-    filePath
-    item {
-      input
-      expected
-      metadata
-      sourceTraceId
-      sourceSpanId
-      split
-      reviewStatus
-      synthetic
-    }
-    errors {
-      code
-      message
-      path
-    }
-    warnings {
-      code
-      message
-      path
-    }
-  }
-  totalRows
-  validRows
-  errorRows
-  warnings
-  createdAt
-  expiresAt
-  committedDatasetVersion
-`;
-
-const datasetExportJobFields = `
-  id
-  datasetId
-  datasetVersion
-  status
-  format
-  rowCount
-  sizeBytes
-  sha256
-  downloadUrl
-  createdAt
-  expiresAt
-`;
-
-const prepareDatasetImportOperation = `
-  mutation PrepareDatasetImport($input: PrepareDatasetImportInput!) {
-    prepareDatasetImport(input: $input) {
-      ${datasetImportJobFields}
-    }
-  }
-`;
-
-const commitDatasetImportOperation = `
-  mutation CommitDatasetImport($input: CommitDatasetImportInput!) {
-    commitDatasetImport(input: $input) {
-      ${datasetImportJobFields}
-    }
-  }
-`;
-
-const startDatasetExportOperation = `
-  mutation StartDatasetExport($input: StartDatasetExportInput!) {
-    startDatasetExport(input: $input) {
-      ${datasetExportJobFields}
-    }
-  }
-`;
-
-const datasetExportOperation = `
-  query DatasetExport($id: ID!) {
-    datasetExport(id: $id) {
-      ${datasetExportJobFields}
-    }
-  }
-`;
-
-const experimentsOperation = `
-  query Experiments($input: ExperimentSearchInput) {
-    experiments(input: $input) {
-      items {
-        id
-        name
-        datasetId
-        datasetVersion
-        splitSelector {
-          splits
-          reviewedOnly
-          includeSynthetic
-        }
-        scorerIds
-        baselineRef
-        promptVersionRefs
-        skillSnapshotRefs
-        toolSnapshotRefs
-        providerProfileRefs
-        createdAt
-        tags
-        runs {
-          items {
-            ${experimentRunFields}
-          }
-          nextCursor
-        }
-      }
-      nextCursor
-    }
-  }
-`;
-
-const annotationQueueOperation = `
-  query AnnotationQueue($input: AnnotationQueueSearchInput) {
-    annotationQueue(input: $input) {
-      items {
-        id
-        targetTraceId
-        targetSpanId
-        reason
-        assignedTo
-        status
-        createdAt
-        resolvedDatasetItemId
-        scorerId
-        score
-        evidence
-      }
-      nextCursor
-    }
-  }
-`;
-
-const aiQualityOverviewOperation = `
-  query AiQualityOverview($input: AiQualityOverviewInput!) {
-    aiQualityOverview(input: $input) {
-      projectId
-      from
-      to
-      summary
-      warnings
-      segments {
-        key
-        label
-        dimensions
-        runCount
-        scoredRunCount
-        passRate
-        meanScore
-        p50LatencyMs
-        p95LatencyMs
-        costUsd
-        regressionCount
-      }
-    }
-  }
-`;

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { createLogger } from "@cloudgrid/runtime";
-import { JSONCodec, type NatsConnection } from "nats";
-import { NATSTelemetryQueryBridge, createAppWithBridge } from "./index";
 import type { LiveTraceEvent, LogSearchInput, TraceSearchInput } from "@cloudgrid/ui-contracts";
+import { JSONCodec, type NatsConnection } from "nats";
+import { createAppWithBridge, NATSTelemetryQueryBridge } from "./index";
 
 describe("BFF completion logging", () => {
   test("logs GraphQL operation completion without query text", async () => {

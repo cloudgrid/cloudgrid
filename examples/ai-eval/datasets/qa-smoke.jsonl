@@ -1,0 +1,2 @@
+{"input":{"question":"What is CloudGrid?"},"expected":{"answer":"An OTLP observability workspace for traces, logs, metrics, dashboards, and AI evaluation."},"metadata":{"topic":"overview"},"split":"validation","reviewStatus":"reviewed"}
+{"input":{"question":"Where should telemetry reads go?"},"expected":{"answer":"Through the public GraphQL boundary, backed by storage-read."},"metadata":{"topic":"architecture"},"split":"validation","reviewStatus":"reviewed"}

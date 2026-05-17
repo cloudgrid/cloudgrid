@@ -19,7 +19,7 @@ implements:
   events_consumed: [TracePersistedNotification]
   jobs: []
   webhooks: []
-  streams: [telemetry.persisted.traces]
+  streams: []
 invariants:
   idempotent: false
   side_effects_reversible: true
@@ -71,6 +71,12 @@ The only public realtime API is GraphQL `Subscription.liveTraces(input: LiveTrac
 
 `LiveTraceInput` does not include `to`, `sort`, or `cursor`. Historical closed-range exploration uses `Query.traces`.
 
+If `from` is omitted, storage-read does not synthesize a subscription-start
+`startedAt` filter. The live stream is bounded by volatile post-persist
+notifications rather than historical notification replay, so freshly persisted
+OTLP traces are eligible even when their span timestamps predate the WebSocket
+subscription by a small exporter or batching delay.
+
 `LiveTraceEvent` fields:
 
 - `type`: `snapshot`, `added`, `updated`, or `heartbeat`
@@ -83,8 +89,8 @@ The only public realtime API is GraphQL `Subscription.liveTraces(input: LiveTrac
 1. BFF validates the GraphQL input and creates a BFF-local ephemeral NATS sink subject.
 2. BFF sends `LiveTraceStartRequest` to `telemetry.traces.live.start` with `subscriptionId`, `sinkSubject`, normalized `query`, and normalized `authContext`.
 3. Storage-read validates the query, applies read authorization when auth context is present or auth mode is not disabled, registers the subscription, optionally sends a bounded `snapshot`, and responds with `LiveTraceStartData`.
-4. Storage-write publishes `TracePersistedNotification` to `telemetry.persisted.traces` only after trace persistence succeeds.
-5. Storage-read consumes `telemetry.persisted.traces`, narrows by trace ID, reuses trace search semantics to load matching `TraceSummary` records, assigns `seq`, and publishes `LiveTraceEvent` to the sink subject.
+4. Storage-write publishes volatile `TracePersistedNotification` messages to core NATS subject `telemetry.persisted.traces` only after trace persistence succeeds.
+5. Storage-read receives currently delivered `telemetry.persisted.traces` hints, narrows by trace ID, reuses trace search semantics to load matching `TraceSummary` records, assigns `seq`, and publishes `LiveTraceEvent` to the sink subject.
 6. BFF forwards events to the GraphQL subscription stream and sends `LiveTraceStopRequest` when the GraphQL operation ends.
 
 ## Filter Changes
@@ -106,6 +112,6 @@ Live trace subscriptions are read operations. The BFF attaches read claims to `B
 
 - No public Server-Sent Events endpoint.
 - No frontend NATS connection.
-- No BFF JetStream consumer for ingest or persisted notifications.
+- No BFF JetStream consumer for ingest or persisted notifications. Persisted trace notifications are volatile live hints, not durable telemetry state.
 - No replay by `seq` in MVP.
 - No live logs subscription until a separate GraphQL field and message contract are specified.
