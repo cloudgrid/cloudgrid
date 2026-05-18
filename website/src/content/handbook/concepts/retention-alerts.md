@@ -41,7 +41,7 @@ Default policy:
 | `DATASETS`, `SCORERS`, `DASHBOARD_HISTORY` | Retain |
 | `INGEST_CREDENTIAL_AUDIT` | Delete after 365 days |
 
-Control-plane owns retention policy records. A dedicated storage-maintenance boundary owns deletion execution. The BFF and frontend never delete telemetry for retention. The repository includes the storage-maintenance batch-executor module, but production deletion requires scheduler and storage-adapter wiring in the deployed environment.
+Control-plane owns retention policy records. A dedicated storage-maintenance boundary owns deletion execution. The BFF and frontend never delete telemetry for retention. The scheduler is disabled by default; production deletion requires the SurrealDB retention adapter plus explicit scheduler configuration for project IDs, batch limit, cadence, and lease duration.
 
 ## Alerting
 

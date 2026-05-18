@@ -11,12 +11,15 @@ import (
 	sdk "github.com/surrealdb/surrealdb.go"
 )
 
-var requiredTables = []string{"trace", "span", "log_event", "service", "ingest_command"}
+var requiredTables = []string{"trace", "span", "log_event", "metric_descriptor", "metric_point", "metric_ingest_cardinality", "service", "ingest_command"}
 
 var requiredIndexes = map[string][]string{
-	"trace":     {"startedAt", "serviceName", "status", "tenantId, projectId, startedAt", "tenantId, projectId, traceId"},
-	"span":      {"traceId", "parentSpanId"},
-	"log_event": {"timestamp", "serviceName", "traceId", "spanId", "severityText", "tenantId, projectId, timestamp", "tenantId, projectId, serviceName"},
+	"trace":                     {"startedAt", "serviceName", "status", "tenantId, projectId, startedAt", "tenantId, projectId, traceId"},
+	"span":                      {"traceId", "parentSpanId"},
+	"log_event":                 {"timestamp", "serviceName", "traceId", "spanId", "severityText", "tenantId, projectId, timestamp", "tenantId, projectId, serviceName"},
+	"metric_descriptor":         {"metricName", "lastSeenAt"},
+	"metric_point":              {"metricName", "metricName, timestamp", "serviceName, timestamp", "timestamp"},
+	"metric_ingest_cardinality": {"metricName, windowStart"},
 }
 
 type DatabaseInfo struct {
@@ -27,26 +30,61 @@ type TableInfo struct {
 	Indexes map[string]string `json:"indexes"`
 }
 
+type SchemaIndexRef struct {
+	Table string
+	Field string
+}
+
+type SchemaReadinessReport struct {
+	MissingTables   []string
+	MissingIndexes  []SchemaIndexRef
+	BuildingIndexes []SchemaIndexRef
+}
+
 func CheckSchemaReadiness(dbInfo DatabaseInfo, tableInfo map[string]TableInfo) error {
+	report := CheckSchemaReadinessReport(dbInfo, tableInfo)
+	if len(report.MissingTables) > 0 {
+		return fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: required SurrealDB table %q is missing", report.MissingTables[0])
+	}
+	if len(report.MissingIndexes) > 0 {
+		index := report.MissingIndexes[0]
+		return fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: required SurrealDB index %s.%s is missing", index.Table, index.Field)
+	}
+	if len(report.BuildingIndexes) > 0 {
+		index := report.BuildingIndexes[0]
+		return fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: required SurrealDB index %s.%s is still building", index.Table, index.Field)
+	}
+	return nil
+}
+
+func CheckSchemaReadinessReport(dbInfo DatabaseInfo, tableInfo map[string]TableInfo) SchemaReadinessReport {
+	report := SchemaReadinessReport{}
 	for _, table := range requiredTables {
 		if _, ok := dbInfo.Tables[table]; !ok {
-			return fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: required SurrealDB table %q is missing", table)
+			report.MissingTables = append(report.MissingTables, table)
 		}
 	}
 
 	for table, fields := range requiredIndexes {
 		info, ok := tableInfo[table]
 		if !ok {
-			return fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: required SurrealDB table info for %q is missing", table)
+			for _, field := range fields {
+				report.MissingIndexes = append(report.MissingIndexes, SchemaIndexRef{Table: table, Field: field})
+			}
+			continue
 		}
 		for _, field := range fields {
-			if !hasIndexForField(info.Indexes, field) {
-				return fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: required SurrealDB index %s.%s is missing", table, field)
+			status := indexStatusForField(info.Indexes, field)
+			switch status {
+			case schemaIndexMissing:
+				report.MissingIndexes = append(report.MissingIndexes, SchemaIndexRef{Table: table, Field: field})
+			case schemaIndexBuilding:
+				report.BuildingIndexes = append(report.BuildingIndexes, SchemaIndexRef{Table: table, Field: field})
 			}
 		}
 	}
 
-	return nil
+	return report
 }
 
 func CheckReadiness(ctx context.Context, db *sdk.DB) error {
@@ -91,16 +129,33 @@ func queryOne[T any](ctx context.Context, db *sdk.DB, sql string, vars map[strin
 	return result.Result, nil
 }
 
-func hasIndexForField(indexes map[string]string, field string) bool {
+type schemaIndexStatus int
+
+const (
+	schemaIndexMissing schemaIndexStatus = iota
+	schemaIndexReady
+	schemaIndexBuilding
+)
+
+func indexStatusForField(indexes map[string]string, field string) schemaIndexStatus {
+	status := schemaIndexMissing
 	for name, definition := range indexes {
 		if strings.EqualFold(name, field) || strings.Contains(name, field) {
-			return true
+			if indexDefinitionIndicatesBuildInProgress(definition) {
+				status = schemaIndexBuilding
+				continue
+			}
+			return schemaIndexReady
 		}
 		if indexDefinitionContainsField(definition, field) {
-			return true
+			if indexDefinitionIndicatesBuildInProgress(definition) {
+				status = schemaIndexBuilding
+				continue
+			}
+			return schemaIndexReady
 		}
 	}
-	return false
+	return status
 }
 
 func indexDefinitionContainsField(definition string, field string) bool {
@@ -117,4 +172,9 @@ func indexDefinitionContainsField(definition string, field string) bool {
 	return slices.ContainsFunc(parts, func(part string) bool {
 		return strings.EqualFold(part, field)
 	})
+}
+
+func indexDefinitionIndicatesBuildInProgress(definition string) bool {
+	normalized := strings.ToLower(definition)
+	return strings.Contains(normalized, "building") || strings.Contains(normalized, "indexing")
 }

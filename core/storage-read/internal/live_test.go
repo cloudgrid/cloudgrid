@@ -538,6 +538,75 @@ func TestLiveTraceNotificationRemovesSubscriptionWhenDataPublishFails(t *testing
 	}
 }
 
+func TestLiveTraceNotificationDropsSubscriptionWhenEventBufferIsFull(t *testing.T) {
+	now := fixedLiveNow()
+	store := &liveTestStore{candidates: []contracts.TraceSummary{
+		liveTraceSummary("trace-1", "api", contracts.TraceStatusOK, now, 12),
+	}}
+	publisher := &liveTestPublisher{}
+	registry := NewLiveTraceRegistry(store, publisher, LiveTraceOptions{
+		EventBufferSize: 1,
+		Now:             func() time.Time { return now },
+	})
+	_, err := registry.Start(context.Background(), contracts.LiveTraceStartRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-start"},
+		SubscriptionID: "sub-1",
+		SinkSubject:    "telemetry.traces.live.events.bff-1.sub-1",
+		Query:          contracts.LiveTraceQuery{},
+	})
+	if err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+
+	registry.mu.Lock()
+	registry.subscriptions["sub-1"].inFlight = 1
+	registry.mu.Unlock()
+
+	err = registry.HandleTracePersisted(context.Background(), contracts.TracePersistedNotification{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-notify"},
+		CommandID:      "cmd-1",
+		TraceIDs:       []string{"trace-1"},
+		PersistedAt:    now,
+	})
+	if err != nil {
+		t.Fatalf("HandleTracePersisted returned error: %v", err)
+	}
+	if registry.Count() != 0 {
+		t.Fatalf("subscription count = %d, want full-buffer subscription removed", registry.Count())
+	}
+	if len(publisher.events) != 1 {
+		t.Fatalf("published events = %d, want only initial heartbeat before overflow", len(publisher.events))
+	}
+}
+
+func TestLiveTraceHeartbeatRemovesSubscriptionAfterDeliveryTimeout(t *testing.T) {
+	now := fixedLiveNow()
+	publisher := &liveTestPublisher{}
+	registry := NewLiveTraceRegistry(&liveTestStore{}, publisher, LiveTraceOptions{
+		HeartbeatInterval: time.Second,
+		DeliveryTimeout:   time.Second,
+		Now:               func() time.Time { return now },
+	})
+	_, err := registry.Start(context.Background(), contracts.LiveTraceStartRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-start"},
+		SubscriptionID: "sub-1",
+		SinkSubject:    "telemetry.traces.live.events.bff-1.sub-1",
+		Query:          contracts.LiveTraceQuery{},
+	})
+	if err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+
+	now = now.Add(time.Second)
+	registry.EmitHeartbeats(context.Background())
+	if registry.Count() != 0 {
+		t.Fatalf("subscription count = %d, want stale subscription removed", registry.Count())
+	}
+	if len(publisher.events) != 1 {
+		t.Fatalf("published events = %d, want no heartbeat after delivery timeout", len(publisher.events))
+	}
+}
+
 func TestLiveTraceSummaryMatchingCoversQueryDurationsAndAttributeOperators(t *testing.T) {
 	now := fixedLiveNow()
 	rootSpanID := "root-1"

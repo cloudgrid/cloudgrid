@@ -33,7 +33,7 @@ Do not present CloudGrid as a complete public production distribution until thes
 | Kubernetes | Helm chart and profile overlays are present; operators still need environment-specific values, secrets, ingress/TLS, and published image digests. |
 | Retention execution | Retention policy CRUD and a storage-maintenance batch executor are implemented; production scheduling, storage adapter wiring, and retention audit execution remain follow-on work. |
 | Alert execution | Alert rule/silence/history CRUD and evaluator domain/runtime logic are implemented; production scheduling, storage-read/control-plane adapters, and notification dispatch adapters remain follow-on work. |
-| Production scale | The performance and scaling spec defines targets and variables; benchmark scripts such as `bench:local`, `bench:read`, and `bench:ingest` are not present in `package.json`. |
+| Production scale | The performance and scaling spec defines targets and variables; opt-in benchmark scripts `bench:local`, `bench:read`, and `bench:ingest` are present, but production-like NATS/SurrealDB capacity runs and SurrealDB query-plan gates remain follow-on work. |
 | Auth hardening | Local/default project isolation is implemented; production multi-tenant hardening remains a stated follow-on gap. |
 
 ## Deployment Boundary

@@ -77,6 +77,96 @@ Soft delete marks eligible records with `deletedAt`, `deletedByRetentionPolicyId
 
 Retention decisions use record event time when available and persisted time otherwise. A trace is eligible when its root trace end time is older than the cutoff. Logs and metrics are eligible by their timestamp. AI eval and dataset records are eligible by completed/persisted time according to their class.
 
+## Scheduler Semantics
+
+The storage-maintenance service owns retention scheduling. The BFF, frontend,
+control-plane, storage-read, and storage-write must not run retention loops.
+
+Scheduler configuration:
+
+- `CLOUDGRID_RETENTION_SCHEDULER_ENABLED`: default `false`; production
+  deployments set `true` only after the SurrealDB retention adapter is enabled.
+- `CLOUDGRID_RETENTION_SCHEDULER_INTERVAL_SECONDS`: default `3600`; integer
+  `300..86400`.
+- `CLOUDGRID_RETENTION_SCHEDULER_PROJECT_IDS`: comma-separated project IDs for
+  the first production wave. Automatic project discovery is not part of this
+  contract until a project-enumeration message bridge contract exists.
+- `CLOUDGRID_RETENTION_BATCH_LIMIT`: default `1000`; integer `1..100000`;
+  passed as `limit` to every scheduled batch.
+- `CLOUDGRID_RETENTION_LEASE_SECONDS`: default `900`; integer
+  `60..86400`; must be greater than the scheduler interval only when one batch
+  can overlap the next interval for the same project/data class.
+
+On each tick, storage-maintenance evaluates every configured project ID and
+every `RetentionDataClass` in the enum order listed in this spec. It sends the
+same internal request shape as `storage_maintenance.retention.execute_batch`
+with `requestedAt` set once per tick, `dryRun=false`, and
+`limit=CLOUDGRID_RETENTION_BATCH_LIMIT`.
+
+Scheduled execution must be project/data-class isolated. Failure in one project
+or data class must not stop the rest of the tick.
+
+## Lease And Retry Semantics
+
+The production scheduler uses a SurrealDB-backed lease table owned by
+storage-maintenance. Lease key:
+
+```text
+retention:{projectId}:{dataClass}
+```
+
+Lease fields:
+
+- `key`
+- `projectId`
+- `dataClass`
+- `ownerId`
+- `acquiredAt`
+- `expiresAt`
+- `lastCompletedAt`
+- `lastErrorCode`
+- `lastErrorAt`
+
+Only one storage-maintenance replica may execute a project/data-class batch
+while the lease is valid. A replica may acquire a lease when no row exists or
+`expiresAt <= now`. Lease acquisition and update must be a single SurrealDB
+transaction or an equivalent compare-and-set query. The `ownerId` is a stable
+process ID generated at startup and never exposed publicly.
+
+Retry policy:
+
+- retryable storage or bridge errors leave the lease with `lastErrorCode` and
+  `lastErrorAt`; the next scheduler tick may retry after the lease expires;
+- validation errors, missing policy, and `retain` rules are terminal for that
+  batch and must not be retried before the next normal tick;
+- repeated retryable failures are not parked in a dead-letter stream in this
+  wave; operators inspect structured logs and the lease row fields.
+
+## Production Storage Adapter Contract
+
+The production SurrealDB adapter implements the same `RetentionStore` port used
+by the direct executor. It must:
+
+- load the effective control-plane retention policy through the private
+  control-plane bridge or a storage-maintenance-local control-plane adapter;
+- execute deletes only inside the selected tenant/company/project partition;
+- implement class-specific dependency order for hard deletes;
+- mark soft-deleted rows with `deletedAt`, `deletedByRetentionPolicyId`, and
+  `finalDeleteAfter` where the target table supports soft deletion;
+- hide soft-deleted telemetry from storage-read normal queries before final
+  deletion ships to production;
+- record one audit row per attempted batch after executor completion.
+
+Adapter tests must run by default against isolated in-memory fixtures. Real
+SurrealDB adapter tests are opt-in with:
+
+```sh
+CLOUDGRID_ENABLE_SURREALDB_RETENTION_TESTS=true
+```
+
+Default root verification must not require the scheduler, real SurrealDB
+retention deletion, or production credentials.
+
 ## Implementation Status
 
 Implemented:
@@ -100,9 +190,9 @@ Implemented:
 Remaining before retention deletes telemetry:
 
 - production SurrealDB storage adapter for project-scoped hard delete, soft delete, and final delete execution;
-- production scheduler behavior, because this spec currently defines direct batch execution but does not define scheduling cadence, ownership, lease/lock behavior, or retry policy;
+- production scheduler implementation for the cadence, project/data-class loop, lease, and retry semantics defined above;
 - integration tests against the production storage adapter once that adapter is specified and implemented;
-- docs that clearly separate configured policy from executed deletion.
+- docs that clearly separate configured policy from executed deletion and describe scheduler enablement.
 
 `storage_maintenance.retention.execute_batch` accepts `projectId`, `dataClass`, `requestedAt`, optional `dryRun`, and optional `limit`. It returns `projectId`, `dataClass`, `policyVersion`, `dryRun`, `matchedCount`, `hardDeletedCount`, `softDeletedCount`, `finalDeletedCount`, `startedAt`, `completedAt`, and optional `error`.
 
@@ -118,3 +208,6 @@ Required tests:
 - soft delete hides records from normal reads and final delete removes them later;
 - every data class has at least one retention fixture;
 - root verification commands do not require production retention env vars.
+- scheduler tests cover disabled default behavior, configured project/data-class
+  tick expansion, lease acquisition, lease contention skip, retryable failure
+  retry-after-expiry, and terminal validation behavior.

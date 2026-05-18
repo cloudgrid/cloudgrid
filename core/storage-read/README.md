@@ -31,7 +31,13 @@ This service handles private NATS request/reply subjects for GraphQL reads:
 It is the only service that fetches telemetry from SurrealDB.
 
 Health probes are served on `CLOUDGRID_STORAGE_READ_HEALTH_PORT` (`8081` by
-default). Readiness checks both NATS and the required SurrealDB schema.
+default). Readiness checks both NATS and the required SurrealDB schema,
+including trace, log, metric, and ingest-command hot-path indexes.
+
+Live trace subscriptions are bounded by `CLOUDGRID_LIVE_MAX_SUBSCRIPTIONS` and
+`CLOUDGRID_LIVE_EVENT_BUFFER_SIZE`. storage-read emits heartbeats every 15
+seconds by default and removes sessions whose private sink delivery stops making
+progress for 45 seconds.
 
 The storage adapter is selected at build time, then validated by
 `CLOUDGRID_STORAGE_ADAPTER`. The MVP SurrealDB build uses `-tags surrealdb` and

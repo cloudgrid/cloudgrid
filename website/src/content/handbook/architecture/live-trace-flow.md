@@ -40,10 +40,14 @@ sequenceDiagram
 - Missed volatile notifications are not replayed from NATS.
 - New live sessions may request bounded snapshots through storage-read.
 - Per-subscription sequence numbers are owned by storage-read.
+- storage-read bounds per-subscription live delivery with `CLOUDGRID_LIVE_EVENT_BUFFER_SIZE`.
+- If a subscription falls behind or the delivery path stops making progress, storage-read drops that subscription with retryable `ERR-014`.
 
 ## Watchdog And Cleanup
 
 The BFF starts a delivery watchdog after live session start. Every heartbeat, snapshot, added, or updated event resets it. If no event arrives before the watchdog deadline, the BFF closes the GraphQL subscription with a bridge timeout error and sends a stop request.
+
+storage-read emits heartbeats every 15 seconds by default and removes sessions whose live delivery path has not made progress for 45 seconds. This cleanup is a fallback for broken BFF connections or blocked private sink delivery.
 
 Stop requests are idempotent and must not hang WebSocket cleanup.
 

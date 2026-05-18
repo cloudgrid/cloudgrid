@@ -271,14 +271,16 @@ Current implementation status:
 - BFF rejects GraphQL operations above configured depth or complexity before resolver and NATS bridge execution;
 - storage-read parses and validates query timeout, max page size, max metric points, live subscription count, and live event buffer size configuration;
 - storage-read applies query timeout to store calls, wires max page and metric point limits into SurrealDB query builders, and applies the live subscription count limit to the registry;
+- storage-read wires `CLOUDGRID_LIVE_EVENT_BUFFER_SIZE` into the live trace registry, bounds per-subscription publish in-flight capacity, emits heartbeats every 15 seconds by default, removes subscriptions whose delivery path has not made progress for 45 seconds, and drops full-buffer subscriptions with retryable `ERR-014`;
+- storage-read readiness verifies trace, span, log, metric descriptor, metric point, metric cardinality, service, and ingest command tables plus hot-path indexes, and reports index-building state separately from missing schema;
 - benchmark scripts skip by default, require explicit target URLs when enabled, and write JSON results under `tmp/benchmarks/`;
 - production benchmark thresholds are represented in the output schema, but required production profiles are not part of default verification.
+- frontend smoke tests cover populated trace list, trace detail waterfall, populated log list, telemetry error panels, loading rows, mobile trace detail, and critical axe checks on MVP telemetry routes;
+- trace detail waterfall virtualizes visible span rows above 500 rows with overscan; trace and log tables rely on storage-read page limits and stable table rows.
 
 Remaining production-scale work:
 
-- storage-read per-subscription event buffering and slow-consumer termination semantics;
-- SurrealDB query plan gates and readiness index-building status;
-- frontend virtualization/performance smoke coverage;
+- opt-in SurrealDB query plan gates using `CLOUDGRID_ENABLE_SURREALDB_PLAN_TESTS=true`;
 - end-to-end capacity benchmarking against real production-like NATS and SurrealDB deployments.
 
 ## Acceptance Matrix

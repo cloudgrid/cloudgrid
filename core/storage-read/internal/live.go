@@ -15,10 +15,12 @@ import (
 )
 
 const (
-	defaultLiveHeartbeatInterval = 15 * time.Second
-	defaultMaxLiveSubscriptions  = 500
-	defaultLiveLimit             = 100
-	maxLiveLimit                 = 500
+	defaultLiveHeartbeatInterval    = 15 * time.Second
+	defaultLiveDeliveryTimeout      = 45 * time.Second
+	defaultLiveTraceEventBufferSize = 100
+	defaultMaxLiveSubscriptions     = 500
+	defaultLiveLimit                = 100
+	maxLiveLimit                    = 500
 )
 
 type LiveTracePublisher interface {
@@ -27,6 +29,8 @@ type LiveTracePublisher interface {
 
 type LiveTraceOptions struct {
 	HeartbeatInterval time.Duration
+	DeliveryTimeout   time.Duration
+	EventBufferSize   int
 	MaxSubscriptions  int
 	Now               func() time.Time
 }
@@ -35,6 +39,8 @@ type LiveTraceRegistry struct {
 	store             ports.TelemetryReadStore
 	publisher         LiveTracePublisher
 	heartbeatInterval time.Duration
+	deliveryTimeout   time.Duration
+	eventBufferSize   int
 	maxSubscriptions  int
 	now               func() time.Time
 
@@ -43,20 +49,30 @@ type LiveTraceRegistry struct {
 }
 
 type liveTraceSubscription struct {
-	id          string
-	sinkSubject string
-	query       contracts.LiveTraceQuery
-	authContext *contracts.AuthContext
-	createdAt   time.Time
-	lastBeat    time.Time
-	nextSeq     int
-	emitted     map[string]bool
+	id           string
+	sinkSubject  string
+	query        contracts.LiveTraceQuery
+	authContext  *contracts.AuthContext
+	createdAt    time.Time
+	lastBeat     time.Time
+	lastProgress time.Time
+	nextSeq      int
+	inFlight     int
+	emitted      map[string]bool
 }
 
 func NewLiveTraceRegistry(store ports.TelemetryReadStore, publisher LiveTracePublisher, options LiveTraceOptions) *LiveTraceRegistry {
 	heartbeatInterval := options.HeartbeatInterval
 	if heartbeatInterval <= 0 {
 		heartbeatInterval = defaultLiveHeartbeatInterval
+	}
+	deliveryTimeout := options.DeliveryTimeout
+	if deliveryTimeout <= 0 {
+		deliveryTimeout = defaultLiveDeliveryTimeout
+	}
+	eventBufferSize := options.EventBufferSize
+	if eventBufferSize <= 0 {
+		eventBufferSize = defaultLiveTraceEventBufferSize
 	}
 	maxSubscriptions := options.MaxSubscriptions
 	if maxSubscriptions <= 0 {
@@ -70,6 +86,8 @@ func NewLiveTraceRegistry(store ports.TelemetryReadStore, publisher LiveTracePub
 		store:             store,
 		publisher:         publisher,
 		heartbeatInterval: heartbeatInterval,
+		deliveryTimeout:   deliveryTimeout,
+		eventBufferSize:   eventBufferSize,
 		maxSubscriptions:  maxSubscriptions,
 		now:               now,
 		subscriptions:     map[string]*liveTraceSubscription{},
@@ -95,14 +113,15 @@ func (registry *LiveTraceRegistry) Start(ctx context.Context, request contracts.
 
 	now := registry.now().UTC()
 	subscription := &liveTraceSubscription{
-		id:          request.SubscriptionID,
-		sinkSubject: request.SinkSubject,
-		query:       normalizeLiveQuery(request.Query, now),
-		authContext: request.AuthContext,
-		createdAt:   now,
-		lastBeat:    now,
-		nextSeq:     1,
-		emitted:     map[string]bool{},
+		id:           request.SubscriptionID,
+		sinkSubject:  request.SinkSubject,
+		query:        normalizeLiveQuery(request.Query, now),
+		authContext:  request.AuthContext,
+		createdAt:    now,
+		lastBeat:     now,
+		lastProgress: now,
+		nextSeq:      1,
+		emitted:      map[string]bool{},
 	}
 
 	registry.mu.Lock()
@@ -162,6 +181,10 @@ func (registry *LiveTraceRegistry) HandleTracePersisted(ctx context.Context, not
 func (registry *LiveTraceRegistry) EmitHeartbeats(ctx context.Context) {
 	now := registry.now().UTC()
 	for _, subscription := range registry.snapshotSubscriptions() {
+		if registry.subscriptionStalled(subscription, now) {
+			registry.remove(subscription.id)
+			continue
+		}
 		if now.Sub(subscription.lastBeat) < registry.heartbeatInterval {
 			continue
 		}
@@ -199,13 +222,25 @@ func (registry *LiveTraceRegistry) markEmitted(subscription *liveTraceSubscripti
 
 func (registry *LiveTraceRegistry) publish(_ context.Context, subscription *liveTraceSubscription, eventType contracts.LiveTraceEventType, trace *contracts.TraceSummary) error {
 	registry.mu.Lock()
+	if registry.subscriptions[subscription.id] != subscription {
+		registry.mu.Unlock()
+		return bridgeError("ERR-014", "MESSAGE_BRIDGE_TIMEOUT", "Message bridge request timed out", true)
+	}
+	if subscription.inFlight >= registry.eventBufferSize {
+		delete(registry.subscriptions, subscription.id)
+		registry.mu.Unlock()
+		return bridgeError("ERR-014", "MESSAGE_BRIDGE_TIMEOUT", "Message bridge request timed out", true)
+	}
 	seq := subscription.nextSeq
 	subscription.nextSeq++
+	subscription.inFlight++
 	now := registry.now().UTC()
 	if eventType == contracts.LiveTraceEventTypeHeartbeat {
 		subscription.lastBeat = now
 	}
 	registry.mu.Unlock()
+
+	defer registry.completePublish(subscription, now)
 
 	event := contracts.LiveTraceEvent{
 		SubscriptionID: subscription.id,
@@ -219,6 +254,25 @@ func (registry *LiveTraceRegistry) publish(_ context.Context, subscription *live
 		return err
 	}
 	return registry.publisher.Publish(subscription.sinkSubject, payload)
+}
+
+func (registry *LiveTraceRegistry) completePublish(subscription *liveTraceSubscription, completedAt time.Time) {
+	registry.mu.Lock()
+	defer registry.mu.Unlock()
+	if subscription.inFlight > 0 {
+		subscription.inFlight--
+	}
+	if registry.subscriptions[subscription.id] == subscription {
+		subscription.lastProgress = completedAt
+	}
+}
+
+func (registry *LiveTraceRegistry) subscriptionStalled(subscription *liveTraceSubscription, now time.Time) bool {
+	registry.mu.Lock()
+	defer registry.mu.Unlock()
+	return registry.subscriptions[subscription.id] == subscription &&
+		registry.deliveryTimeout > 0 &&
+		now.Sub(subscription.lastProgress) >= registry.deliveryTimeout
 }
 
 func validateLiveStart(request contracts.LiveTraceStartRequest) error {

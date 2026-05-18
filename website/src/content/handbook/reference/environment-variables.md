@@ -121,7 +121,7 @@ The performance spec also defines production-scale collector variables for span 
 | `CLOUDGRID_STORAGE_WRITE_HEALTH_HOST` | `0.0.0.0` | storage-write health bind host. |
 | `CLOUDGRID_STORAGE_WRITE_HEALTH_PORT` | `8082` | storage-write health port. |
 
-The production scaling spec defines additional storage-write pull-consumer, GraphQL depth/complexity, storage-read timeout/page-size, and live subscription backpressure variables. This reference intentionally lists only variables verified in the current repository examples or runtime code.
+Storage-read uses the live buffer setting to bound per-subscription publish work. A live subscription is dropped with retryable `ERR-014` when its delivery path stalls or its buffer is full.
 
 ## AI Evaluation
 

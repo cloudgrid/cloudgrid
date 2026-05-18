@@ -13,7 +13,7 @@ Retention is configured per project. Project retention policy CRUD is implemente
 
 Project admins can read and save the effective retention policy for a project. A policy has exactly one rule per data class, and updates replace the complete rule set using optimistic version checks.
 
-Saved policies are durable configuration. The repository includes a storage-maintenance batch-executor module and service image/chart shape. Production deletion still requires wiring that executor to the intended storage adapter and scheduler for the deployed environment.
+Saved policies are durable configuration. The repository includes the storage-maintenance batch-executor module, service image/chart shape, and scheduler specification. Production deletion still depends on wiring the executor to the SurrealDB retention adapter and enabling the scheduler in the deployed environment.
 
 ## Data Classes
 
@@ -58,7 +58,21 @@ When deletion execution is present, operators should check:
 - terminal errors and retry behavior;
 - confirmation that no deletion crosses tenant/company/project boundaries.
 
-Do not invent a scheduler command or batch command name in runbooks until the executable or script exposes it. The retention spec defines the `storage_maintenance.retention.execute_batch` contract shape; the current service boundary keeps that behavior behind the storage-maintenance module.
+## Specified Scheduler Configuration
+
+The production scheduler contract is specified, but the runtime wiring is still pending. It stays disabled by default until the SurrealDB retention adapter is enabled.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `CLOUDGRID_RETENTION_SCHEDULER_ENABLED` | `false` | Enables scheduled deletion in storage-maintenance. |
+| `CLOUDGRID_RETENTION_SCHEDULER_INTERVAL_SECONDS` | `3600` | Tick cadence, from 5 minutes to 24 hours. |
+| `CLOUDGRID_RETENTION_SCHEDULER_PROJECT_IDS` | none | Comma-separated project IDs for the first production wave. |
+| `CLOUDGRID_RETENTION_BATCH_LIMIT` | `1000` | Maximum rows per project/data-class batch. |
+| `CLOUDGRID_RETENTION_LEASE_SECONDS` | `900` | SurrealDB-backed lease duration per project/data class. |
+
+When implemented, the scheduler iterates configured project IDs and every retention data class. One failed project/data class does not stop the rest of the tick. Multiple storage-maintenance replicas coordinate with a SurrealDB lease key shaped as `retention:{projectId}:{dataClass}`.
+
+Do not add custom runbook commands around retention until the executable exposes them. The private batch contract is `storage_maintenance.retention.execute_batch`.
 
 ## Safety Rules
 
