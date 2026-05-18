@@ -88,12 +88,13 @@ low_level_escape_hatch: NATS subjects, SurrealDB schema details, storage adapter
 ## Extension Points
 
 - Storage adapters are extended by adding sibling adapter packages under each storage service and a matching Go build tag.
-- UI trace investigation can add future panels without changing the private storage boundary when fields are added first to GraphQL and message contracts.
+- UI trace investigation adds panels only after fields are added first to
+  GraphQL and message contracts, preserving the private storage boundary.
 - Realtime telemetry views extend through GraphQL subscriptions first, then storage-read-owned message contracts. The BFF never becomes a telemetry stream processor.
 - AI evaluation extends through optional projection, runner, and UI surfaces while preserving the same storage-read/storage-write boundaries.
-- Provider profiles and production deployment manifests remain deferred. Retention policy
-  CRUD and OTLP/gRPC ingest are implemented; retention deletion execution remains a
-  dedicated storage-maintenance follow-on wave.
+- Provider profiles, production deployment manifests, and retention execution
+  are specified in their dedicated specs. Implementation work must follow those
+  specs instead of adding ad hoc behavior here.
 - Metrics are specified as a project-scoped OTLP signal and must preserve the same public/private boundaries as traces and logs.
 - Self-observability uses the ordinary OTLP ingest path and a project-scoped UI surface. Local mode defaults to a visible fixed `CloudGrid` project in `Personal`; deployed mode requires explicit company, project, endpoint, and ingest credential configuration.
 - Multi-tenant tenant/project isolation is deferred from MVP but must be designed through API, message, and persistence boundaries before production SaaS use.

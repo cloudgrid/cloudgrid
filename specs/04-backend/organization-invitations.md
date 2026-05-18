@@ -170,7 +170,7 @@ CloudGrid supports this lifecycle policy shape:
 
 - `manual`: default. Admins remove members in CloudGrid. Provider login failure
   does not mutate CloudGrid memberships.
-- `sso_sync`: future provider-directory sync mode. A trusted SCIM or provider
+- `sso_sync`: provider-directory sync mode. A trusted SCIM or provider
   admin API integration may mark users as deprovisioned and remove their
   memberships.
 
@@ -208,5 +208,5 @@ Required default tests:
 - revoked and expired invitations cannot be accepted;
 - accepted invitations cannot be revoked and membership removal uses
   `removeOrganizationMember`;
-- final-admin protection still holds for member removal, demotion, and future
+- final-admin protection still holds for member removal, demotion, and
   `sso_sync` deprovisioning.

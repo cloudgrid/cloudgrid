@@ -40,7 +40,7 @@ Let teams continuously score selected live agent runs and route failures into re
   `ERR-AIE-002` and does not call harness.
 - The runner must not call harness `/v1/score` for online scoring in v1.
   LLM-judge, semantic, RAG, tool-correctness, trajectory, and content-bearing
-  online scoring are future features and require a separate approved spec.
+  online scoring require a separate approved spec.
 - Runner persists `EvalResult` records through storage-write command subjects.
 - Runner must not create `AnnotationQueueItem` records automatically from online
   scoring in v1. Annotation creation is a user-triggered action after reviewing

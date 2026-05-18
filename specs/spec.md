@@ -127,7 +127,7 @@ This directory is the implementation specification for the MVP. The original sin
 - [AI evaluation product concept and market synthesis](./99-reviews/ai-eval-product-concept.md)
 - [Metrics implementation scope](./99-reviews/metrics-implementation-scope.md)
 - [Frontend UX v2 migration plan](./99-reviews/frontend-ux-v2-migration-plan.md) - superseded by `plans/frontend-ux-migration-check/` until the frontend readiness gate is approved.
-- [AI provider settings and AI Chat follow-on scope](./99-reviews/ai-chat-provider-settings-scope.md) - draft product and architecture direction; not an approved implementation wave until contracts and readiness gate are updated.
+- [AI provider settings and AI Chat scope](./99-reviews/ai-chat-provider-settings-scope.md) - product and architecture direction; implementation requires matching contracts and readiness gate updates.
 
 ## Implementation Rule
 

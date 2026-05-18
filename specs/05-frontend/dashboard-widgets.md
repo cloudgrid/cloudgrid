@@ -101,6 +101,9 @@ Default minimum sizes:
 | `log_table` | `w=6 h=4` | `minW=4 minH=3` |
 | `trace_table` | `w=6 h=4` | `minW=4 minH=3` |
 | `live_trace_table` | `w=6 h=4` | `minW=4 minH=3` |
+| `alert_status` | `w=4 h=3` | `minW=3 minH=2` |
+| `alert_history` | `w=6 h=4` | `minW=4 minH=3` |
+| `alert_evidence` | `w=4 h=3` | `minW=3 minH=2` |
 | rich metric chart | `w=8 h=5` | `minW=5 minH=3` |
 
 ## Visualization Catalog
@@ -152,6 +155,33 @@ Examples:
 - Error rate: query `errors` as `http.server.requests` filtered to error status, query `total` as all requests, formula `ratio(errors,total)`.
 - Token cost estimate: query prompt tokens and completion tokens separately, formula `add(prompt,completion)` only if both series share compatible grouping.
 - Latency SLO panel: query p50, p95, and p99 duration as separate queries and render a multi-series line or area chart.
+
+## Alert Widgets
+
+Alert widgets are dashboard readers backed by the project alerting contracts in
+`04-backend/alerting.md`. They do not create, update, enable, disable, silence,
+or delete alert rules.
+
+Supported alert widget kinds:
+
+- `alert_status`: summary counts grouped by state, severity, and signal;
+- `alert_history`: bounded alert event table or timeline;
+- `alert_evidence`: one selected alert event with evidence links.
+
+Widget source fields:
+
+- optional `ruleIds`, max 20;
+- optional `states`, values from `AlertState`;
+- optional `severities`, values from `AlertSeverity`;
+- optional `signals`, values from `AlertSignal`;
+- `timeWindow`, using the dashboard time-window model;
+- `limit`, integer `1..100`, default `20`.
+
+`alert_history` and `alert_evidence` use `Query.alertHistory`. `alert_status`
+uses `Query.alertSummary` when aggregate counts are needed; the frontend must
+not compute status counts from an incomplete alert history page. Evidence links
+route to existing trace, log, metric, and alert rule surfaces in the selected
+project.
 
 ## UX Rules
 

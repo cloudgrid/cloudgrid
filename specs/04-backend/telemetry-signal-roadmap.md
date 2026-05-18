@@ -52,11 +52,11 @@ CloudGrid should provide tested Collector configuration examples for:
 
 CloudGrid should not read Kubernetes pod log files directly from the backend or storage services.
 
-## Future Storage Adapter Research
+## Storage Adapter Research
 
-Monoscope research on 2026-05-09 highlighted demand for cheap long-retention telemetry storage through S3-compatible object storage and for simple local artifacts that agents and CLI tools can inspect. CloudGrid should keep this as future research only; it does not change the SurrealDB-only MVP.
+Monoscope research on 2026-05-09 highlighted demand for cheap long-retention telemetry storage through S3-compatible object storage and for simple local artifacts that agents and CLI tools can inspect. CloudGrid keeps this as research only; it does not change the SurrealDB-only MVP.
 
-Future object-storage or local-file work must define before implementation:
+Object-storage or local-file work must define before implementation:
 
 - whether the adapter is a primary query store, cold archive, export target, or replay/import format;
 - the on-disk or object format, with preference for columnar or indexed formats for large telemetry instead of raw JSON as the primary query surface;
@@ -67,4 +67,4 @@ Future object-storage or local-file work must define before implementation:
 - credentials handling that keeps object-store secrets private to storage services;
 - adapter build tags and sibling `internal/adapters/<database-or-store>/` packages that preserve the public BFF, frontend, collector, and NATS contracts.
 
-A local JSON backend may be useful as a developer import/export fixture or small offline demo format, but it should not be treated as a durable production store unless a future spec proves acceptable indexing, retention, and corruption-recovery behavior.
+A local JSON backend may be useful as a developer import/export fixture or small offline demo format, but it must not be treated as a durable production store without a spec that proves acceptable indexing, retention, and corruption-recovery behavior.

@@ -101,10 +101,10 @@ Project workspace mode:
 
 Admin settings mode:
 
-- Applies to company and administrative routes: `/organizations`, `/organizations/:organizationId`, `/organizations/:organizationId/projects`, `/organizations/:organizationId/members`, and future billing/security/audit routes.
+- Applies to company and administrative routes: `/organizations`, `/organizations/:organizationId`, `/organizations/:organizationId/projects`, `/organizations/:organizationId/members`, and specified billing/security/audit routes.
 - Global topbar remains visible.
 - A dedicated admin settings sidebar replaces the project/domain sidebar.
-- Admin sidebar groups are `Organization`, `Projects`, `Members`, `AI Provider` when AI Chat is enabled, and future admin-only sections when specified.
+- Admin sidebar groups are `Organization`, `Projects`, `Members`, `AI Provider` when AI Chat is enabled, and explicitly specified admin-only sections.
 - Telemetry navigation remains hidden in admin settings mode.
 
 ### Route Groups
@@ -777,8 +777,8 @@ backend ownership must exist before a route claims the behavior as enforcing.
   credential management. Stored secrets are never displayed after creation.
 - Data retention policy: Project Settings renders and mutates project-level
   retention policies through generated contracts. Storage-maintenance owns
-  batch execution and scheduling; the remaining production gap is the SurrealDB
-  retention adapter plus storage-read soft-delete filtering described in
+  batch execution and scheduling; the production completion package is the
+  SurrealDB retention adapter plus storage-read soft-delete filtering described in
   `04-backend/data-retention-policy.md`. The UI must not imply that a saved
   policy has deleted telemetry until that production adapter is enabled.
 - Alerting: Project-scoped alert rule, silence, and history management is

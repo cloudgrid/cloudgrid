@@ -64,7 +64,7 @@ The settings UI must:
 - select judge, optimizer, embedding, replay, and default provider references
   from Project AI Providers instead of editing provider profiles inline;
 - allow selecting deterministic scorers only for v1 online policies;
-- show non-deterministic scorer families as future/offline-only when useful,
+- show non-deterministic scorer families as offline-only when useful,
   but never submit them in enabled online policies;
 - show sample rate, max daily runs, and manual annotation defaults;
 - describe annotation defaults as user-triggered batch action defaults, not

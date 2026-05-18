@@ -49,7 +49,7 @@ Supported kinds:
 - `exponential_histogram`
 - `summary`
 
-Unknown future OTLP metric kinds fail the request with ERR-001 until this spec adds mapping rules.
+Unknown OTLP metric kinds fail the request with ERR-001 until this spec adds mapping rules.
 
 ## Cardinality Policy
 

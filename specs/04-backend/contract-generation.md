@@ -14,7 +14,7 @@ CloudGrid must converge on one contract source so GraphQL, AsyncAPI, TypeScript 
 
 ## Source Of Truth
 
-`apps/packages/definition` is the only future source package for generated contracts. It must contain data-only TypeScript definitions and generator metadata. It must not import:
+`apps/packages/definition` is the only source package for generated contracts. It must contain data-only TypeScript definitions and generator metadata. It must not import:
 
 - React, browser, Vite, Hono, GraphQL Yoga, NATS, SurrealDB, Go service code, filesystem side effects, or runtime environment readers.
 

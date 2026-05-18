@@ -168,7 +168,8 @@ All filters, active tab, selected span ID, collapsed search state, and sort orde
 - Missing parent: show affected spans at root level with a missing-parent warning.
 - Missing root: show earliest span as synthetic root candidate and warn.
 - Clock skew: show warning when child timing starts before parent by more than 100 milliseconds.
-- Large trace preview: show a warning and explicit fetch-more affordance when the API returns a preview in the future.
+- Large trace preview: show a warning and explicit fetch-more affordance when
+  the API returns a preview instead of the complete trace.
 
 ## Design Constraints
 

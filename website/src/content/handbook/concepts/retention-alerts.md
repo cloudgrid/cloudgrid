@@ -28,7 +28,7 @@ Rule modes:
 
 | Mode | Meaning |
 | --- | --- |
-| `retain` | Keep the data class until explicit deletion or a future policy changes it. |
+| `retain` | Keep the data class until explicit deletion or a later saved policy changes it. |
 | `delete` | Hard-delete eligible records after `retentionDays`. |
 | `soft_delete_then_delete` | Hide eligible records first, then final-delete after `softDeleteDays`. |
 

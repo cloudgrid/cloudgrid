@@ -1,6 +1,6 @@
 ---
 id: REV-007
-title: AI provider settings and AI Chat follow-on scope
+title: AI provider settings and AI Chat scope
 layer: review
 status: draft
 owner: sebastian.wessel@egg-ai.com
@@ -9,12 +9,12 @@ provenance: from-user
 depends_on: [DOM-007, TEC-BE-028, TEC-BE-029, TEC-FE-009]
 ---
 
-# AI Provider Settings And AI Chat Follow-On Scope
+# AI Provider Settings And AI Chat Scope
 
 ## Scope Decision
 
-CloudGrid will add a draft follow-on wave for reusable AI provider settings and
-project AI Chat.
+CloudGrid has a draft implementation scope for reusable AI provider settings
+and project AI Chat.
 
 The wave is intentionally separate from the currently approved AI Eval
 implementation readiness report. It becomes implementation-ready only after the
@@ -64,7 +64,7 @@ generated contracts, or validation tests are missing.
 
 ## Critical Gap Pass
 
-The follow-on scope must not proceed to planning unless these specified areas
+The scope must not proceed to planning unless these specified areas
 remain covered in the contract wave:
 
 - provider runtime resolution is separate from control-plane structural

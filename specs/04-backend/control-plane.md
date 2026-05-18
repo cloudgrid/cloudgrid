@@ -18,7 +18,7 @@ Target service: `core/control-plane`.
 
 Responsibilities:
 
-- Store and query organizations, projects, users, memberships, organization invitations, invitation email outbox records, roles, project status, ingest credential metadata, dashboards, dashboard pins, AI-eval project settings, AI provider settings, AI Chat history metadata, action approvals, online evaluation policies, and future low-volume project configuration.
+- Store and query organizations, projects, users, memberships, organization invitations, invitation email outbox records, roles, project status, ingest credential metadata, dashboards, dashboard pins, AI-eval project settings, AI provider settings, AI Chat history metadata, action approvals, online evaluation policies, and low-volume project configuration.
 - Own organization/project/user management mutations.
 - Publish project status snapshots for fast auth validation by public boundaries.
 - Never ingest, query, aggregate, or enrich telemetry records.
@@ -428,7 +428,7 @@ operation is exposed in v1.
 The SurrealDB `ingest_credential` table is schemafull and stores:
 `projectId`, `secretHash`, `displayName`, `createdByUser`, `createdAt`,
 `disabledAt`, and `lastUsedAt`. Control-plane adapters must provide indexed
-lookup by `projectId` for settings lists and future collector key cache
+lookup by `projectId` for settings lists and collector key cache
 snapshots.
 - Schema initialization uses explicit current schema declarations, then verifies
   definitions through `INFO` before reporting readiness. Additive tables, fields,

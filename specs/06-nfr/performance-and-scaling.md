@@ -181,7 +181,9 @@ Storage-read must enforce:
 - filter normalization for stable subscription identity;
 - cleanup on BFF disconnect and explicit stop.
 
-When a live subscription falls behind, storage-read must drop the subscription with a terminal `ERR-014 MESSAGE_BRIDGE_TIMEOUT` or future `ERR-018 LIVE_SUBSCRIPTION_BACKPRESSURE` after that error code is added. It must not grow unbounded buffers.
+When a live subscription falls behind, storage-read must drop the subscription
+with terminal `ERR-014 MESSAGE_BRIDGE_TIMEOUT`. It must not grow unbounded
+buffers.
 
 ## Frontend Performance
 
@@ -284,7 +286,7 @@ Current implementation status:
 - frontend smoke tests cover populated trace list, trace detail waterfall, populated log list, telemetry error panels, loading rows, mobile trace detail, and critical axe checks on MVP telemetry routes;
 - trace detail waterfall virtualizes visible span rows above 500 rows with overscan; trace and log tables rely on storage-read page limits and stable table rows.
 
-Remaining production-scale work:
+Production benchmark evidence package:
 
 - running and publishing production-like benchmark results against an actual NATS and SurrealDB deployment before declaring a specific environment production-ready.
 

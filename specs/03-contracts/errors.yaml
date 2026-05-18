@@ -153,7 +153,7 @@ errors:
     message_template: "Authentication is required"
     terminal_action: reject
     retry_preconditions: []
-    description: A future authenticated public boundary could not identify a principal for an ingestion or read request.
+    description: An authenticated public boundary could not identify a principal for an ingestion or read request.
   ERR-016:
     code: FORBIDDEN
     category: authorization
@@ -163,7 +163,7 @@ errors:
     message_template: "The principal is not allowed to access this telemetry"
     terminal_action: reject
     retry_preconditions: []
-    description: A future authorization policy denied telemetry ingestion, telemetry reads, or a live trace subscription.
+    description: An authorization policy denied telemetry ingestion, telemetry reads, or a live trace subscription.
   ERR-017:
     code: SUBSCRIPTION_LIMIT_EXCEEDED
     category: rate_limit

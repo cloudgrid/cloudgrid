@@ -58,4 +58,6 @@ acceptance_criteria:
 - Storage-write publishes `TracePersistedNotification` to the core NATS subject `telemetry.persisted.traces` only after successful trace persistence. The notification contains `commandId`, `traceIds`, `persistedAt`, and optional `serviceNames` hints.
 - Post-persist notifications are volatile live wake-up hints. They are not written to JetStream, are not replayed, and do not carry a redelivery obligation. Storage-write acknowledges the original ingest command after persistence even if the live notification publish fails, while logging ERR-013 for the notification failure.
 - `TracePersistedNotification` must not contain full spans, logs, attributes, raw OTLP payloads, SurrealDB record IDs, credentials, or authorization tokens.
-- Future ingestion authorization is enforced before `PersistTelemetryCommand` enters the bridge. Storage-write may persist future tenant/project ownership fields supplied by authorized commands, but it does not make public authorization decisions.
+- Ingestion authorization is enforced before `PersistTelemetryCommand` enters
+  the bridge. Storage-write may persist tenant/project ownership fields supplied
+  by authorized commands, but it does not make public authorization decisions.

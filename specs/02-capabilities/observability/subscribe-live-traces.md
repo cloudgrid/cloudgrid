@@ -40,7 +40,7 @@ acceptance_criteria:
     when: The BFF handles the subscription
     then: The BFF only uses telemetry.traces.live.start, a storage-read ephemeral sink subject, and telemetry.traces.live.stop; it does not consume TELEMETRY_INGEST or telemetry.persisted.traces
   - id: AC-CAP-OBS-006-03
-    kind: future-security
+    kind: production-security
     given: Future read authorization denies a principal access to the requested project or filter scope
     when: The client starts Subscription.liveTraces
     then: The BFF returns GraphQL error ERR-016 FORBIDDEN and storage-read does not register the live subscription
@@ -50,7 +50,7 @@ acceptance_criteria:
 
 ## Business Intent
 
-Let engineers watch traces appear in realtime while keeping all telemetry read semantics and future read authorization inside storage-read.
+Let engineers watch traces appear in realtime while keeping all telemetry read semantics and read authorization inside storage-read.
 
 ## Public Contract
 

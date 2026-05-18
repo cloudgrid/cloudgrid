@@ -57,7 +57,9 @@ Required index prefixes for read-heavy project databases:
 - `tenantId, projectId, timestamp` for logs.
 - `tenantId, projectId, serviceName` for bounded facets and service filters.
 
-Separate encryption keys per tenant are allowed only as future deployment hardening and must be implemented behind storage adapters without changing public GraphQL, NATS, or entity contracts.
+Separate encryption keys per tenant are allowed only as deployment hardening and
+must be implemented behind storage adapters without changing public GraphQL,
+NATS, or entity contracts.
 
 ## Security Rules
 

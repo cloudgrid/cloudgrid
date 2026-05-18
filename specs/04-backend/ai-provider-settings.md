@@ -161,8 +161,8 @@ Allowed v1 forms:
   service startup.
 
 The frontend may collect and save `credentialRef`; it must not collect raw
-secret values. If a future encrypted secret store is added, it needs a separate
-secret-management spec before any UI accepts write-only raw secret input.
+secret values. CloudGrid does not accept write-only raw secret input in the UI
+unless a separate secret-management spec and storage boundary exist.
 
 Returned GraphQL settings include only the redacted `credentialRef`, a
 human-readable credential label, and effective warnings. They never include

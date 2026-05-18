@@ -147,7 +147,7 @@ ConfigMaps can hold non-secret values such as deployment mode, ports, provider I
 - Configure SMTP invitation email variables for deployed SSO onboarding.
 - Keep `CLOUDGRID_GRAPHQL_UI` disabled unless the environment is trusted.
 - Mount SurrealDB credentials only into storage-read, storage-write, control-plane, and storage-maintenance.
-- Use external managed NATS and SurrealDB for production unless a future chart profile explicitly documents bundled production dependencies.
+- Use external managed NATS and SurrealDB for production unless a chart profile explicitly documents bundled production dependencies.
 
 ## Production Profiles
 

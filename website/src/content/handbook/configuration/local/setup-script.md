@@ -26,7 +26,7 @@ Token values are opaque URL-safe bearer tokens with at least 32 random bytes of 
 
 ## Idempotency
 
-When valid token mappings for `default` and `cloudgrid-system` already exist, the script preserves them. Rotation is not implicit. A future rotation flag must be explicitly documented before implementation.
+When valid token mappings for `default` and `cloudgrid-system` already exist, the script preserves them. Rotation is not implicit. A rotation flag must be explicitly documented before implementation.
 
 ## Run It
 

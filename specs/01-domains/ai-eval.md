@@ -96,7 +96,7 @@ Related provider entities:
   and enabled an online policy.
 - Online scoring v1 executes deterministic scorers only. LLM-judge, semantic,
   RAG, tool-correctness, trajectory, and human-review scorer families remain
-  valid for offline workflows or future online waves, but online policies must
+  valid for offline workflows, but online policies must
   reject them in v1.
 - Online scoring v1 never sends production prompt, completion, tool parameter,
   or retrieved-document content to an external model provider or harness judge.
@@ -106,8 +106,8 @@ Related provider entities:
 - Online scoring v1 never creates annotation queue items automatically. Users
   must first review/filter online score results and then trigger annotation item
   creation as an explicit manual or batch action.
-- Online score results do not feed alerting in v1. Alert integration requires a
-  future alerting contract that explicitly declares AI-eval signals.
+- Online score results do not feed alerting in v1. Alert integration requires an
+  alerting contract that explicitly declares AI-eval signals.
 
 ## Boundaries
 

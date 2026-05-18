@@ -1,6 +1,6 @@
 # Production Readiness
 
-CloudGrid has implemented the main product surfaces for local and deployed-mode evaluation, but the repository still separates those surfaces from production distribution and execution gaps. Treat this page as the operator readiness map before exposing a shared CloudGrid environment.
+CloudGrid has implemented the main product surfaces for local and deployed-mode evaluation. Treat this page as the operator readiness map before exposing a shared CloudGrid environment.
 
 ## Implemented Surfaces
 
@@ -16,18 +16,18 @@ The current implementation readiness file and repository artifacts show these us
 - Helm chart and release workflow definitions with static release-artifact validation;
 - root verification scripts and GitHub Actions verification for pull requests and pushes to `main`.
 
-## Open Production Gaps
+## Production Completion Packages
 
-Do not present CloudGrid as a complete public production distribution until these gaps are closed by visible repository artifacts:
+Do not present CloudGrid as a complete public production distribution until these packages have visible repository artifacts:
 
 | Area | Current status |
 | --- | --- |
 | Release artifacts | Release workflow and Dockerfiles are present; signed images, image provenance, release manifest, SBOM output, and vulnerability reports are produced when the release workflow runs. |
 | Kubernetes | Helm chart and profile overlays are present; operators still need environment-specific values, secrets, ingress/TLS, and published image digests. |
-| Retention execution | Retention policy CRUD, storage-maintenance batch execution, and disabled-by-default scheduling are present; production SurrealDB deletion adapter wiring and environment-specific enablement remain before telemetry is deleted. |
-| Alert execution | Alert rule/silence/history CRUD and evaluator domain logic are present; production scheduling, live service adapters, and non-core notification dispatch adapters still need environment wiring. |
+| Retention execution | Retention policy CRUD, storage-maintenance batch execution, and disabled-by-default scheduling are present; implement the specified production SurrealDB deletion adapter and enable it per environment before telemetry is deleted. |
+| Alert execution | Alert rule/silence/history CRUD and evaluator domain logic are present; implement the specified project enumeration, email/webhook adapter runtime, and dashboard alert widgets before presenting alerting as production-executing. |
 | Production scale | The performance and scaling spec defines targets and variables; opt-in local and production-like benchmark scripts are present, but each deployment still needs its own recorded benchmark run before being declared production-ready. |
-| Auth hardening | Local/default project isolation is implemented; production multi-tenant hardening remains a stated follow-on gap. |
+| Auth hardening | Local/default project isolation is implemented; implement the production hardening package in the authentication and authorization spec before exposing multi-tenant deployed environments. |
 
 ## Deployment Boundary
 

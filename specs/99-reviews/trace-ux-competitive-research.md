@@ -75,6 +75,7 @@ Monoscope's backend currently shows a PostgreSQL/TimescaleDB-centered implementa
 
 ## Explicit Deferrals
 
-- Profiles, service graph across the whole deployment, anomaly scoring, and percentile baselines remain future work.
+- Profiles, service graph across the whole deployment, anomaly scoring, and
+  percentile baselines require explicit contracts before implementation.
 - A full Datadog-style service map for a single trace is not MVP, but `TraceStructure.serviceBreakdown` keeps the data path extensible.
 - AI-generated summaries are not MVP. The layout must leave room for an investigation summary panel later without making it required now.

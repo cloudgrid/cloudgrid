@@ -65,7 +65,9 @@ Control-plane owns retention policy records and GraphQL/project settings mutatio
 
 A dedicated storage-maintenance service owns deletion execution. Storage-write remains the only normal telemetry mutation service, but retention deletion is a maintenance mutation boundary and must not be implemented in the BFF or frontend.
 
-Storage-read hides soft-deleted records from normal GraphQL queries. Admin-only future audit/export surfaces may include soft-deleted records only through explicit contracts.
+Storage-read hides soft-deleted records from normal GraphQL queries. Admin
+audit/export surfaces are not part of the current product contract and must not
+read soft-deleted records unless a dedicated contract is added.
 
 ## Deletion Semantics
 
@@ -164,8 +166,7 @@ policy and copies these fields into the executor model:
 - `retentionDays`;
 - `softDeleteDays`;
 - `version`;
-- `policyId`, derived as `retention_policy:{projectId}:{dataClass}:v{version}`
-  unless a future control-plane contract adds a stored per-rule ID;
+- `policyId`, derived as `retention_policy:{projectId}:{dataClass}:v{version}`;
 - `updatedAt`;
 - `updatedByUserId`.
 
@@ -311,10 +312,10 @@ Implemented:
 - focused Go tests for runtime subject handling and invalid request JSON.
 - focused Go tests for scheduler disabled defaults, config parsing, invalid config rejection, project/data-class expansion, lease acquisition, lease contention, recorded errors, and retry after lease expiry.
 
-Remaining before retention deletes telemetry:
+Retention production execution package status:
 
 - production SurrealDB storage adapter for project-scoped hard delete, soft delete, and final delete execution;
-- integration tests against the production storage adapter once that adapter is specified and implemented.
+- integration tests against the production storage adapter.
 
 `storage_maintenance.retention.execute_batch` accepts `projectId`, `dataClass`, `requestedAt`, optional `dryRun`, and optional `limit`. It returns `projectId`, `dataClass`, `policyVersion`, `dryRun`, `matchedCount`, `hardDeletedCount`, `softDeletedCount`, `finalDeletedCount`, `startedAt`, `completedAt`, and optional `error`.
 

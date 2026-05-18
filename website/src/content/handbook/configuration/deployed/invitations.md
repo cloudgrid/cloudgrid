@@ -98,7 +98,7 @@ Configure the delivery provider in
 
 The default lifecycle policy is manual. Removing a user from the upstream SSO provider does not automatically remove CloudGrid access. Admins remove members in CloudGrid.
 
-Provider-driven deprovisioning is reserved for a future explicit `sso_sync` mode backed by trusted directory sync contracts.
+Provider-driven deprovisioning is reserved for the explicit `sso_sync` mode backed by trusted directory sync contracts.
 
 ## Next Step
 

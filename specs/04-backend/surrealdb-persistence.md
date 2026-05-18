@@ -17,7 +17,7 @@ Implementation code for this adapter lives under:
 - `core/storage-read/internal/adapters/surrealdb`
 - `core/storage-write/internal/adapters/surrealdb`
 
-Schema definitions, query builders, client setup, readiness checks, and future SurrealDB migrations must stay inside those adapter directories. Service runtime packages depend on storage ports and compose this adapter at startup.
+Schema definitions, query builders, client setup, readiness checks, and SurrealDB migrations must stay inside those adapter directories. Service runtime packages depend on storage ports and compose this adapter at startup.
 
 Control-plane schema definitions for organizations, users, projects, memberships, ingest credentials, dashboards, and dashboard pins live under `core/control-plane/internal/adapters/surrealdb`. The telemetry storage adapters must not create, update, or query control-plane dashboard tables.
 

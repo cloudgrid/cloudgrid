@@ -19,7 +19,7 @@ The routes have separate user jobs:
 
 - `/logs`: search raw and correlated log evidence, then pivot to trace/span context.
 - `/metrics`: inspect available project metrics, understand descriptors, query series, and run low-level aggregations without creating a dashboard.
-- `/dashboards`: view, create, edit, and manage reusable visual compositions built from metrics, logs, trace/live widgets, and future alert evidence.
+- `/dashboards`: view, create, edit, and manage reusable visual compositions built from metrics, logs, trace/live widgets, and typed alert widgets.
 
 Do not merge these responsibilities into one route. Metrics exploration is technical discovery; dashboards are saved presentation/composition workspaces.
 
@@ -464,13 +464,16 @@ Log and trace widget editor groups:
 
 - Data: filter fields, search, sort, limit, and columns;
 - Display: title, compact column set, row density, and empty-state copy;
-- Thresholds: unavailable and hidden for log/trace widgets until dashboard alert widget contracts and evaluator-backed alert evidence exist.
+- Thresholds: unavailable and hidden for log/trace widgets. Alert behavior is
+  represented through the typed alert widgets from `dashboard-widgets.md`, not
+  through generic table thresholds.
 
 Live trace widget editor groups:
 
 - Data: live trace filters and row limit;
 - Display: title, columns, stream status, and pause/resume presentation;
-- Thresholds: unavailable and hidden until dashboard alert widget contracts and evaluator-backed alert evidence exist.
+- Thresholds: unavailable and hidden. Live alert behavior is represented
+  through typed alert widgets, not through live table thresholds.
 
 Dirty behavior:
 
@@ -576,13 +579,13 @@ History pivots:
 Silence behavior:
 
 - create silence is available from the selected rule inspector for project admins;
-- delete silence is destructive only when active or future scheduled;
+- delete silence is destructive only when active or scheduled;
 - expired silences are read-only history entries.
 
 Dashboard relationship:
 
 - dashboard threshold display settings are not alert rules;
-- dashboards may link to `/alerts?ruleId=<id>` when an alert history widget is later specified;
+- dashboards may link to `/alerts?ruleId=<id>` from typed alert widgets;
 - v1 dashboard editing must not create, update, or delete alert rules.
 
 ## URL State
@@ -611,4 +614,4 @@ Alerts:
 - `/dashboards` renders saved/built-in dashboards based on `Query.dashboards`, with dashboard rail, widget grid, inspector/editor, and pin/star affordances backed by dashboard pin mutations.
 - The project sidebar supports pinned dashboard shortcuts and a collapsible `Dashboards` child list backed by `DashboardListResult.pinnedDashboardIds` and visible dashboard data.
 - Live trace receiving remains a mode inside `/traces`, not a dashboard or logs route.
-- `/alerts` renders project-scoped alert rules, history, silences, editor, and trace/log/metric pivots through the generated alert contracts. Dashboards may show alert evidence only through typed alert widgets or alert-history widgets specified after `04-backend/alerting.md`; generic dashboard thresholds are not alert rules.
+- `/alerts` renders project-scoped alert rules, history, silences, editor, and trace/log/metric pivots through the generated alert contracts. Dashboards may show alert evidence only through typed alert widgets; generic dashboard thresholds are not alert rules.

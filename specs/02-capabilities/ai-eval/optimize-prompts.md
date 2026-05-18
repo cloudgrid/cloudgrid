@@ -35,7 +35,7 @@ calls outside CloudGrid services.
   candidate `PromptVersion` records, candidate skill/tool snapshot refs, and
   child experiment summaries.
 - CloudGrid never auto-promotes a candidate. `promotePromptVersion` is an explicit user mutation.
-- Python-based optimizers are out of scope for the deployable surface.
+- Python-based optimizers are not part of the deployable surface.
 - Optimizers may read `optimization` and `validation` splits. They must not
   read `holdout`.
 - Small-dataset optimizations are allowed but the resulting candidate confidence

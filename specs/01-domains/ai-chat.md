@@ -104,8 +104,9 @@ bridge, storage-read, control-plane, and harness boundaries as the regular UI.
   logs, or telemetry attributes.
 - Arbitrary database, NATS, filesystem, network, shell, or browser automation
   tools exposed to the assistant.
-- Cross-project queries inside one chat run. A future company-level assistant
-  may define a separate cross-project authorization and query plan.
+- Cross-project queries inside one chat run. Company-level assistant behavior
+  requires a separate cross-project authorization and query plan before
+  implementation.
 - Automatic execution of destructive actions, membership changes, provider
   settings changes, retention deletion, alert deletion, or project deletion.
 - Fine tuning, vector backfill, autonomous background agents, scheduled chat

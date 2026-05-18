@@ -44,7 +44,7 @@ The authoritative UX source is `specs/05-frontend/product-ux-concept.md`. When i
 - Frontend renders GraphQL view models only. It must not derive telemetry counts, facets, trace structure, metric aggregations, AI-eval scores, credential truth, or retention policy.
 - Frontend talks only to the TypeScript BFF. It must not call NATS, Go services, OTLP collector endpoints, or SurrealDB.
 - Do not add GraphQL fields, NATS subjects, REST telemetry read endpoints, storage tables, error codes, route modes, or settings semantics from route components.
-- Do not expose stored ingest credential secrets. Secret values may be shown only once when a future credential-creation mutation exists.
+- Do not expose stored ingest credential secrets. Secret values may be shown only once when a credential-creation mutation returns them.
 - Do not implement telemetry retention or deletion behavior as part of this UX migration.
 
 ## Ticket UXV2-01: Shell, Route Frame, And Shared UX Foundation
@@ -498,9 +498,9 @@ This ticket must not fix route implementation files. It files findings against t
 - QA findings must not introduce new UX behavior. They cite the exact source spec and route owner.
 - Do not edit implementation files from this ticket.
 
-## Future Backlog: Multi Ingest API Key Handling
+## Superseded Scope: Multi Ingest API Key Handling
 
-**Status:** future backend/security/control-plane work, not part of UX v2 migration.
+**Status:** backend/security/control-plane work, not part of UX v2 migration.
 
 **Reason for deferral:** Current UX specs allow setup surfaces to show project-scoped endpoint and ingest credential metadata. They do not define a complete multi-key lifecycle contract in GraphQL, AsyncAPI, error taxonomy, authorization policy, storage schema, or one-time-secret handling.
 
@@ -511,13 +511,13 @@ This ticket must not fix route implementation files. It files findings against t
 - Define AsyncAPI control-plane subjects and Go/TypeScript generated contract outputs.
 - Define authorization rules for who can create, rotate, disable, and view metadata.
 - Define secret hashing, prefix display, redaction, logging, clipboard, and test requirements.
-- Add future UI ticket for multiple-key metadata tables and create/rotate/disable drawers only after backend/security contracts are approved.
+- Add a UI ticket for multiple-key metadata tables and create/rotate/disable drawers only after backend/security contracts are approved.
 
 **UX migration rule:** UXV2 tickets may show current credential metadata and safe setup copy only. They must not add multiple key management UI, fake keys, local-only key state, or new credential GraphQL fields.
 
-## Future Backlog: Data Retention Policy
+## Superseded Scope: Data Retention Policy
 
-**Status:** future backend/storage/security work, not part of UX v2 migration.
+**Status:** backend/storage/security work, not part of UX v2 migration.
 
 **Current status:** project retention policy CRUD is implemented through generated contracts and Project Settings. Retention deletion execution remains deferred until the storage-maintenance worker, tenant/project-scoped deletion semantics, and integration tests are implemented.
 
@@ -527,7 +527,7 @@ This ticket must not fix route implementation files. It files findings against t
 - Define config validation for `CLOUDGRID_RETENTION_MODE`, `CLOUDGRID_RETENTION_DAYS`, and `CLOUDGRID_RETENTION_BATCH_SIZE`.
 - Define GraphQL/control-plane read models for effective retention policy only after backend behavior exists.
 - Define docs that explain local indefinite retention and production TTL behavior.
-- Add future UI ticket for project/company retention display or controls only after retention worker and authorization contracts are approved.
+- Add a UI ticket for project/company retention display or controls only after retention worker and authorization contracts are approved.
 
 **UX migration rule:** UXV2 tickets may state that local telemetry is retained until operator deletion when such copy is already defined in documentation and specs. They must not add retention controls, deletion APIs, fake policy state, or frontend-triggered telemetry deletion.
 

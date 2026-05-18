@@ -152,7 +152,10 @@ The default CI path must not depend on exact `EXPLAIN` output shape.
 
 SurrealDB events and live queries must not be used on the ingest hot path for MVP live telemetry. CloudGrid's public realtime path remains storage-write post-persist notification through NATS and storage-read fanout.
 
-SurrealDB changefeeds may be used in a future backfill/export/materialization worker, not for BFF live subscriptions. A changefeed-based worker must define retention duration, replay cursor storage, and failure recovery before implementation.
+SurrealDB changefeeds are reserved for a specified backfill, export, or
+materialization worker and must not power BFF live subscriptions. A
+changefeed-based worker must define retention duration, replay cursor storage,
+and failure recovery before implementation.
 
 Database events may be used for low-volume control-plane audit rows. They must not perform expensive telemetry aggregation inside the write transaction.
 
