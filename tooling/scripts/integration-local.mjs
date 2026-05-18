@@ -1903,7 +1903,7 @@ async function uploadDatasetImport(port, datasetId, runID) {
 
 async function publishAiProjection(natsUrl, { runID, agentRunId, traceId, spanId, serviceName }) {
   let nc;
-  let step = "initializing AI projection publish";
+  let step;
   try {
     step = "loading NATS client";
     const { JSONCodec, connect } = await loadNatsClient();
