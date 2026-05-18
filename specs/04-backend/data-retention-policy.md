@@ -4,7 +4,7 @@ title: Project data retention policy
 layer: backend
 status: draft
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-15
+updated: 2026-05-18
 provenance: user-directed
 depends_on: [NFR-006, TEC-BE-004, TEC-BE-011, TEC-BE-009]
 ---
@@ -85,19 +85,20 @@ Implemented:
 - control-plane message bridge subjects for get/update policy;
 - SurrealDB schema and control-plane storage for `retention_policy`;
 - BFF bridge/resolver validation and project settings UI for policy read/update;
-- `storage-maintenance` service shell with health/readiness logging;
+- `storage-maintenance` service shell with NATS health/readiness logging;
 - direct retention batch executor for the `storage_maintenance.retention.execute_batch` request/response contract;
+- NATS request/reply runtime handler for the `storage_maintenance.retention.execute_batch` subject;
 - in-memory isolated retention fixtures for every `RetentionDataClass`;
 - executor validation for request fields, delete/soft-delete policy range rules, mode-specific `softDeleteDays`, and missing policies;
 - executor retain/no-op handling;
 - fixture-backed hard delete, soft delete, final delete, dry-run, limit, project isolation, and normal-read soft-delete hiding behavior;
 - structured retention batch logs with project, data class, policy version, dry-run, matched count, hard-deleted count, soft-deleted count, final-deleted count, duration, and terminal error fields;
 - focused Go tests for executor behavior, policy validation, every data-class fixture, structured logs, and fixture deletion semantics.
+- focused Go tests for runtime subject handling and invalid request JSON.
 
 Remaining before retention deletes telemetry:
 
 - maintenance audit records;
-- NATS request/reply wiring for the `storage_maintenance.retention.execute_batch` subject;
 - production SurrealDB storage adapter for project-scoped hard delete, soft delete, and final delete execution;
 - production scheduler behavior, because this spec currently defines direct batch execution but does not define scheduling cadence, ownership, lease/lock behavior, or retry policy;
 - integration tests against the production storage adapter once that adapter is specified and implemented;

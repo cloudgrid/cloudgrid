@@ -14,11 +14,13 @@ import (
 	"time"
 
 	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/health"
+	"github.com/cloudgrid-dev/cloudgrid/core/storage-maintenance/internal/retention"
 )
 
 const (
 	defaultHealthHost = "0.0.0.0"
 	defaultHealthPort = "8087"
+	defaultNATSURL    = "nats://localhost:4222"
 )
 
 func main() {
@@ -28,10 +30,27 @@ func main() {
 func run() int {
 	logger := newLogger(os.Stdout)
 	cfg := loadConfig(os.Getenv)
+	store := retention.NewFixtureStore()
+	executor := retention.NewExecutor(store, logger, time.Now)
+	runtimeService := retention.NewRuntimeService(executor)
+	nc, err := retention.ConnectNATS(cfg.NATSURL)
+	if err != nil {
+		logError(logger, "message_bridge_unavailable", err, "ERR-013")
+		return 1
+	}
+	defer nc.Close()
+	if _, err := retention.SubscribeHandlers(nc, runtimeService); err != nil {
+		logError(logger, "message_bridge_subscribe_failed", err, "ERR-013")
+		return 1
+	}
 	probes := health.NewState("storage-maintenance", func(context.Context) map[string]health.Check {
-		return map[string]health.Check{
-			"runtime": health.OK(),
+		checks := map[string]health.Check{"runtime": health.OK()}
+		if nc.IsClosed() {
+			checks["nats"] = health.Unavailable("ERR-013", "MESSAGE_BRIDGE_UNAVAILABLE", "message bridge is unavailable")
+		} else {
+			checks["nats"] = health.OK()
 		}
+		return checks
 	})
 	healthServer := &http.Server{
 		Addr:              net.JoinHostPort(cfg.HealthHost, cfg.HealthPort),
@@ -52,6 +71,7 @@ func run() int {
 		"service", "storage-maintenance",
 		"event", "startup_ready",
 		"request_id", "",
+		"subject", retention.SubjectRetentionExecuteBatch,
 		"health_addr", healthServer.Addr,
 	)
 	select {
@@ -81,12 +101,14 @@ func run() int {
 type config struct {
 	HealthHost string
 	HealthPort string
+	NATSURL    string
 }
 
 func loadConfig(getenv func(string) string) config {
 	return config{
 		HealthHost: valueOrDefault(getenv("CLOUDGRID_STORAGE_MAINTENANCE_HEALTH_HOST"), defaultHealthHost),
 		HealthPort: valueOrDefault(getenv("CLOUDGRID_STORAGE_MAINTENANCE_HEALTH_PORT"), defaultHealthPort),
+		NATSURL:    valueOrDefault(getenv("CLOUDGRID_NATS_URL"), defaultNATSURL),
 	}
 }
 
@@ -119,10 +141,21 @@ func logError(logger *slog.Logger, event string, err error, fallbackID string, f
 		"event", event,
 		"request_id", "",
 		"error_id", fallbackID,
-		"error_code", "RUNTIME_COMPOSITION_FAILED",
+		"error_code", errorCodeForID(fallbackID),
 	}
 	args = append(args, fields...)
 	logger.Error(err.Error(), args...)
+}
+
+func errorCodeForID(errorID string) string {
+	switch errorID {
+	case "ERR-013":
+		return "MESSAGE_BRIDGE_UNAVAILABLE"
+	case "ERR-010":
+		return "RUNTIME_COMPOSITION_FAILED"
+	default:
+		return "RUNTIME_COMPOSITION_FAILED"
+	}
 }
 
 func valueOrDefault(value string, fallback string) string {
