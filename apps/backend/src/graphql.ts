@@ -4,6 +4,7 @@ import {
   type AuthRuntimeConfig,
   type CloudGridErrorId,
   type CloudGridLogger,
+  createProblemDetails,
   createLogger,
   type LogFields,
 } from "@cloudgrid/runtime";
@@ -59,7 +60,16 @@ import type {
   UpdateProjectInput,
   UpdateRetentionPolicyInput,
 } from "@cloudgrid/ui-contracts";
-import { GraphQLError, GraphQLScalarType, Kind } from "graphql";
+import {
+  type DocumentNode,
+  type FieldNode,
+  type FragmentDefinitionNode,
+  GraphQLError,
+  GraphQLScalarType,
+  Kind,
+  parse,
+  type SelectionNode,
+} from "graphql";
 import { createSchema, createYoga } from "graphql-yoga";
 import { Hono } from "hono";
 import {
@@ -162,6 +172,9 @@ type AppBridge = TelemetryQueryBridge &
 
 interface CreateAppOptions {
   graphqlUI: boolean;
+  graphqlMaxDepth?: number;
+  graphqlMaxComplexity?: number;
+  graphqlResponseMediaType?: "compatible" | "graphql-response-json";
   auth?: AuthRuntimeConfig;
   authProvider?: AuthProviderFixture;
   authFetch?: typeof fetch;
@@ -265,9 +278,22 @@ export function createAppWithBridge(
     }),
   });
 
-  app.on(["GET", "POST", "OPTIONS"], "/graphql", (context) =>
-    yoga.handle(context.req.raw, { hono: context }),
-  );
+  app.on(["GET", "POST", "OPTIONS"], "/graphql", async (context) => {
+    const request = context.req.raw;
+    const preflightResponse = await validateGraphQLRequestBounds(request, {
+      maxDepth: config.graphqlMaxDepth ?? 12,
+      maxComplexity: config.graphqlMaxComplexity ?? 500,
+      responseMediaType: config.graphqlResponseMediaType ?? "compatible",
+    });
+    if (preflightResponse) {
+      return preflightResponse;
+    }
+    const response = await yoga.handle(request, { hono: context });
+    return normalizeGraphQLResponseMediaType(
+      response,
+      config.graphqlResponseMediaType ?? "compatible",
+    );
+  });
 
   attachStaticRoutes(app, {
     frontendServeStatic: config.frontendServeStatic ?? false,
@@ -286,6 +312,261 @@ export type CloudGridYogaContext = {
   logRecorder?: SelfObservabilityLogRecorder;
   authContext?: Promise<NormalizedAuthContext> | NormalizedAuthContext;
 };
+
+interface GraphQLRequestBounds {
+  maxDepth: number;
+  maxComplexity: number;
+  responseMediaType: "compatible" | "graphql-response-json";
+}
+
+async function validateGraphQLRequestBounds(
+  request: Request,
+  bounds: GraphQLRequestBounds,
+): Promise<Response | undefined> {
+  if (request.method === "OPTIONS") {
+    return undefined;
+  }
+  const operation = await readGraphQLOperation(request);
+  if (!operation?.query) {
+    return undefined;
+  }
+
+  let document: DocumentNode;
+  try {
+    document = parse(operation.query);
+  } catch {
+    return undefined;
+  }
+
+  const depth = graphQLOperationDepth(document, operation.operationName);
+  if (depth > bounds.maxDepth) {
+    return graphQLValidationResponse(
+      `GraphQL operation depth ${depth} exceeds configured maximum ${bounds.maxDepth}`,
+      bounds.responseMediaType,
+    );
+  }
+
+  const complexity = graphQLOperationComplexity(document, operation.operationName);
+  if (complexity > bounds.maxComplexity) {
+    return graphQLValidationResponse(
+      `GraphQL operation complexity ${complexity} exceeds configured maximum ${bounds.maxComplexity}`,
+      bounds.responseMediaType,
+    );
+  }
+  return undefined;
+}
+
+async function readGraphQLOperation(
+  request: Request,
+): Promise<{ query: string; operationName?: string } | undefined> {
+  if (request.method === "GET") {
+    const url = new URL(request.url);
+    const query = url.searchParams.get("query");
+    if (!query) {
+      return undefined;
+    }
+    const operationName = url.searchParams.get("operationName");
+    return operationName ? { query, operationName } : { query };
+  }
+  if (request.method !== "POST") {
+    return undefined;
+  }
+  const contentType = request.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    return undefined;
+  }
+  try {
+    const payload = (await request.clone().json()) as unknown;
+    if (
+      typeof payload === "object" &&
+      payload !== null &&
+      "query" in payload &&
+      typeof payload.query === "string"
+    ) {
+      if ("operationName" in payload && typeof payload.operationName === "string") {
+        return { query: payload.query, operationName: payload.operationName };
+      }
+      return { query: payload.query };
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function graphQLOperationDepth(document: DocumentNode, operationName?: string): number {
+  const fragments = graphQLFragments(document);
+  const operation =
+    document.definitions.find(
+      (definition) =>
+        definition.kind === Kind.OPERATION_DEFINITION &&
+        (!operationName || definition.name?.value === operationName),
+    ) ?? document.definitions.find((definition) => definition.kind === Kind.OPERATION_DEFINITION);
+  if (!operation || operation.kind !== Kind.OPERATION_DEFINITION) {
+    return 0;
+  }
+  return selectionDepth(operation.selectionSet.selections, fragments, new Set());
+}
+
+function selectionDepth(
+  selections: readonly SelectionNode[],
+  fragments: Map<string, FragmentDefinitionNode>,
+  seenFragments: Set<string>,
+): number {
+  let maxDepth = 0;
+  for (const selection of selections) {
+    if (selection.kind === Kind.FIELD) {
+      const childDepth = selection.selectionSet
+        ? selectionDepth(selection.selectionSet.selections, fragments, seenFragments)
+        : 0;
+      maxDepth = Math.max(maxDepth, 1 + childDepth);
+    } else if (selection.kind === Kind.INLINE_FRAGMENT) {
+      maxDepth = Math.max(
+        maxDepth,
+        selectionDepth(selection.selectionSet.selections, fragments, seenFragments),
+      );
+    } else if (
+      selection.kind === Kind.FRAGMENT_SPREAD &&
+      !seenFragments.has(selection.name.value)
+    ) {
+      const fragment = fragments.get(selection.name.value);
+      if (fragment) {
+        seenFragments.add(selection.name.value);
+        maxDepth = Math.max(
+          maxDepth,
+          selectionDepth(fragment.selectionSet.selections, fragments, seenFragments),
+        );
+        seenFragments.delete(selection.name.value);
+      }
+    }
+  }
+  return maxDepth;
+}
+
+function graphQLOperationComplexity(document: DocumentNode, operationName?: string): number {
+  const fragments = graphQLFragments(document);
+  const operation =
+    document.definitions.find(
+      (definition) =>
+        definition.kind === Kind.OPERATION_DEFINITION &&
+        (!operationName || definition.name?.value === operationName),
+    ) ?? document.definitions.find((definition) => definition.kind === Kind.OPERATION_DEFINITION);
+  if (!operation || operation.kind !== Kind.OPERATION_DEFINITION) {
+    return 0;
+  }
+  return selectionComplexity(operation.selectionSet.selections, fragments, new Set());
+}
+
+function selectionComplexity(
+  selections: readonly SelectionNode[],
+  fragments: Map<string, FragmentDefinitionNode>,
+  seenFragments: Set<string>,
+): number {
+  let complexity = 0;
+  for (const selection of selections) {
+    if (selection.kind === Kind.FIELD) {
+      complexity += fieldComplexity(selection, fragments, seenFragments);
+    } else if (selection.kind === Kind.INLINE_FRAGMENT) {
+      complexity += selectionComplexity(
+        selection.selectionSet.selections,
+        fragments,
+        seenFragments,
+      );
+    } else if (
+      selection.kind === Kind.FRAGMENT_SPREAD &&
+      !seenFragments.has(selection.name.value)
+    ) {
+      const fragment = fragments.get(selection.name.value);
+      if (fragment) {
+        seenFragments.add(selection.name.value);
+        complexity += selectionComplexity(
+          fragment.selectionSet.selections,
+          fragments,
+          seenFragments,
+        );
+        seenFragments.delete(selection.name.value);
+      }
+    }
+  }
+  return complexity;
+}
+
+function fieldComplexity(
+  field: FieldNode,
+  fragments: Map<string, FragmentDefinitionNode>,
+  seenFragments: Set<string>,
+): number {
+  return (
+    1 +
+    (field.selectionSet
+      ? selectionComplexity(field.selectionSet.selections, fragments, seenFragments)
+      : 0)
+  );
+}
+
+function graphQLFragments(document: DocumentNode): Map<string, FragmentDefinitionNode> {
+  const fragments = new Map<string, FragmentDefinitionNode>();
+  for (const definition of document.definitions) {
+    if (definition.kind === Kind.FRAGMENT_DEFINITION) {
+      fragments.set(definition.name.value, definition);
+    }
+  }
+  return fragments;
+}
+
+function graphQLValidationResponse(
+  detail: string,
+  responseMediaType: GraphQLRequestBounds["responseMediaType"],
+): Response {
+  const problem = createProblemDetails({
+    id: "ERR-001",
+    code: "VALIDATION_FAILED",
+    detail,
+    retryable: false,
+    instance: "/graphql/request/preflight",
+  });
+  return new Response(
+    JSON.stringify({
+      errors: [
+        {
+          message: problem.detail,
+          extensions: {
+            code: problem.code,
+            problem,
+          },
+        },
+      ],
+    }),
+    {
+      status: problem.status,
+      headers: {
+        "content-type": graphQLContentType(responseMediaType),
+      },
+    },
+  );
+}
+
+function normalizeGraphQLResponseMediaType(
+  response: Response,
+  responseMediaType: GraphQLRequestBounds["responseMediaType"],
+): Response {
+  if (responseMediaType !== "graphql-response-json") {
+    return response;
+  }
+  const headers = new Headers(response.headers);
+  headers.set("content-type", graphQLContentType(responseMediaType));
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function graphQLContentType(responseMediaType: GraphQLRequestBounds["responseMediaType"]): string {
+  return responseMediaType === "graphql-response-json"
+    ? "application/graphql-response+json; charset=utf-8"
+    : "application/json; charset=utf-8";
+}
 
 export function createCloudGridSchema() {
   return createSchema<CloudGridYogaContext>({

@@ -274,6 +274,26 @@ func buildHandlerOptionsFromEnv(ctx context.Context, getenv func(string) string,
 		return collector.HandlerOptions{}, err
 	}
 	options.MaxRequestBytes = maxRequestBytes
+	maxSpans, err := intEnv(getenv, "CLOUDGRID_OTLP_MAX_SPANS_PER_REQUEST", 10_000, 1, 100_000)
+	if err != nil {
+		return collector.HandlerOptions{}, err
+	}
+	options.MaxSpans = maxSpans
+	maxLogs, err := intEnv(getenv, "CLOUDGRID_OTLP_MAX_LOGS_PER_REQUEST", 10_000, 1, 100_000)
+	if err != nil {
+		return collector.HandlerOptions{}, err
+	}
+	options.MaxLogs = maxLogs
+	maxMetricPoints, err := intEnv(getenv, "CLOUDGRID_OTLP_MAX_METRIC_POINTS_PER_REQUEST", 20_000, 1, 200_000)
+	if err != nil {
+		return collector.HandlerOptions{}, err
+	}
+	options.MaxMetricPoints = maxMetricPoints
+	publishTimeoutMS, err := intEnv(getenv, "CLOUDGRID_OTLP_PUBLISH_TIMEOUT_MS", 1_000, 100, 30_000)
+	if err != nil {
+		return collector.HandlerOptions{}, err
+	}
+	options.PublishTimeout = time.Duration(publishTimeoutMS) * time.Millisecond
 	if deploymentMode == collector.DeploymentModeLocal && authMode == collector.AuthModeLocal {
 		options.LocalProjectID = getenv("CLOUDGRID_OTLP_LOCAL_PROJECT_ID")
 		if strings.TrimSpace(options.LocalProjectID) == "" {
@@ -309,8 +329,24 @@ func buildHandlerOptionsFromEnv(ctx context.Context, getenv func(string) string,
 		return collector.HandlerOptions{}, err
 	}
 	options.TokenValidator = validator
-	options.ProjectCache = collector.NewProjectStatusCache(collector.ProjectStatusCacheOptions{})
+	cacheTTLSeconds, err := intEnv(getenv, "CLOUDGRID_PROJECT_STATUS_CACHE_TTL_SECONDS", 60, 5, 3600)
+	if err != nil {
+		return collector.HandlerOptions{}, err
+	}
+	cacheStaleSeconds, err := minIntEnv(getenv, "CLOUDGRID_PROJECT_STATUS_CACHE_STALE_SECONDS", 120, cacheTTLSeconds)
+	if err != nil {
+		return collector.HandlerOptions{}, err
+	}
+	options.ProjectCache = collector.NewProjectStatusCache(collector.ProjectStatusCacheOptions{
+		TTL:          time.Duration(cacheTTLSeconds) * time.Second,
+		MaxStaleness: time.Duration(cacheStaleSeconds) * time.Second,
+	})
 	return options, nil
+}
+
+func intEnv(getenv func(string) string, name string, fallback int, min int, max int) (int, error) {
+	value, err := int64Env(getenv, name, int64(fallback), int64(min), int64(max))
+	return int(value), err
 }
 
 func int64Env(getenv func(string) string, name string, fallback int64, min int64, max int64) (int64, error) {
@@ -321,6 +357,21 @@ func int64Env(getenv func(string) string, name string, fallback int64, min int64
 	value, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || value < min || value > max {
 		return 0, fmt.Errorf("%s must be an integer between %d and %d", name, min, max)
+	}
+	return value, nil
+}
+
+func minIntEnv(getenv func(string) string, name string, fallback int, min int) (int, error) {
+	raw := strings.TrimSpace(getenv(name))
+	if raw == "" {
+		if fallback < min {
+			return 0, fmt.Errorf("%s must be an integer greater than or equal to %d", name, min)
+		}
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < min {
+		return 0, fmt.Errorf("%s must be an integer greater than or equal to %d", name, min)
 	}
 	return value, nil
 }

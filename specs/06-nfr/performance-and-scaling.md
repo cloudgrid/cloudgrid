@@ -265,14 +265,18 @@ Current implementation status:
 - storage-write parses and validates the storage-write scaling environment variables listed in this spec;
 - storage-write provisions the durable `storage-write` JetStream consumer with configured ack wait, max deliver, and max ack pending;
 - storage-write fetches with configured pull batch size, pull max wait, and bounded in-process concurrency;
+- OTLP collector parses and validates request byte, decoded trace span, log record, metric point, publish timeout, and deployed project status cache limits;
+- OTLP collector rejects oversized HTTP, gRPC, trace, log, and metric exports before JetStream publish and uses the configured publish acknowledgement timeout;
+- BFF parses and validates GraphQL depth, selected-field complexity, and response media-type configuration;
+- BFF rejects GraphQL operations above configured depth or complexity before resolver and NATS bridge execution;
+- storage-read parses and validates query timeout, max page size, max metric points, live subscription count, and live event buffer size configuration;
+- storage-read applies query timeout to store calls, wires max page and metric point limits into SurrealDB query builders, and applies the live subscription count limit to the registry;
 - benchmark scripts skip by default, require explicit target URLs when enabled, and write JSON results under `tmp/benchmarks/`;
 - production benchmark thresholds are represented in the output schema, but required production profiles are not part of default verification.
 
 Remaining production-scale work:
 
-- collector request/body/log/metric point limits and publish timeout wiring;
-- BFF GraphQL depth/complexity/media-type limits;
-- storage-read page-size/query-timeout/live-subscription backpressure limits;
+- storage-read per-subscription event buffering and slow-consumer termination semantics;
 - SurrealDB query plan gates and readiness index-building status;
 - frontend virtualization/performance smoke coverage;
 - end-to-end capacity benchmarking against real production-like NATS and SurrealDB deployments.

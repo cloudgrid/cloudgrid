@@ -137,6 +137,10 @@ func (server *grpcTraceServer) Export(ctx context.Context, request *collectortra
 		result = "rejected"
 		return nil, err
 	}
+	if problem := server.handler.validateTraceCount(request); problem != nil {
+		result = "rejected"
+		return nil, grpcProblem(*problem)
+	}
 	command, err := server.handler.traceCommandForRequestID(grpcRequestID(ctx), request, grpcAuthContext(ctx))
 	if err != nil {
 		result = "rejected"
@@ -166,6 +170,10 @@ func (server *grpcLogsServer) Export(ctx context.Context, request *collectorlogs
 		result = "rejected"
 		return nil, err
 	}
+	if problem := server.handler.validateLogCount(request); problem != nil {
+		result = "rejected"
+		return nil, grpcProblem(*problem)
+	}
 	command, err := server.handler.logCommandForRequestID(grpcRequestID(ctx), request, grpcAuthContext(ctx))
 	if err != nil {
 		result = "rejected"
@@ -188,6 +196,10 @@ func (server *grpcMetricsServer) Export(ctx context.Context, request *collectorm
 	if err := server.validateSize(request); err != nil {
 		result = "rejected"
 		return nil, err
+	}
+	if problem := server.handler.validateMetricPointCount(request); problem != nil {
+		result = "rejected"
+		return nil, grpcProblem(*problem)
 	}
 	command, err := server.handler.metricCommandForRequestID(grpcRequestID(ctx), request, grpcAuthContext(ctx))
 	if err != nil {

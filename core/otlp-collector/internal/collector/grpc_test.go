@@ -185,6 +185,23 @@ func TestGRPCPayloadTooLargeMapsToResourceExhausted(t *testing.T) {
 	}
 }
 
+func TestGRPCDecodedCountLimitMapsToInvalidArgument(t *testing.T) {
+	publisher, conn := newGRPCTestServer(t, HandlerOptions{MaxSpans: 1})
+	client := collectortracepb.NewTraceServiceClient(conn)
+
+	_, err := client.Export(context.Background(), traceRequest())
+
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("status code = %s, want %s (err=%v)", status.Code(err), codes.InvalidArgument, err)
+	}
+	if !strings.Contains(status.Convert(err).Message(), "ERR-001") {
+		t.Fatalf("status message = %q, want ERR-001", status.Convert(err).Message())
+	}
+	if publisher.callCount() != 0 {
+		t.Fatalf("publisher calls = %d, want 0", publisher.callCount())
+	}
+}
+
 func TestGRPCPublishFailureRecordsMetricsAndSelfObservabilityError(t *testing.T) {
 	publisher := &recordingPublisher{err: errors.New("nats unavailable")}
 	metrics := NewInMemoryMetricsRecorder()

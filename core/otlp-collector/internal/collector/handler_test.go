@@ -510,6 +510,63 @@ func TestMalformedProtobufReturnsDecodeProblemAndDoesNotPublish(t *testing.T) {
 	}
 }
 
+func TestOversizedTraceLogAndMetricExportsReturnValidationProblemAndDoNotPublish(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		options HandlerOptions
+		payload []byte
+	}{
+		{
+			name:    "traces",
+			path:    "/v1/traces",
+			options: HandlerOptions{MaxSpans: 1},
+			payload: mustProtoJSON(t, traceRequest()),
+		},
+		{
+			name:    "logs",
+			path:    "/v1/logs",
+			options: HandlerOptions{MaxLogs: 0},
+			payload: mustProtoJSON(t, logsRequestWithRecords(2)),
+		},
+		{
+			name:    "metrics",
+			path:    "/v1/metrics",
+			options: HandlerOptions{MaxMetricPoints: 1},
+			payload: mustProtoJSON(t, metricsRequest()),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.name == "logs" {
+				tt.options.MaxLogs = 1
+			}
+			publisher := &recordingPublisher{}
+			handler := NewHandlerWithOptions(publisher, NewDiscardLogger(), tt.options)
+			request := httptest.NewRequest(http.MethodPost, tt.path, bytes.NewReader(tt.payload))
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d body = %s, want 400", response.Code, response.Body.String())
+			}
+			var body errorResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+				t.Fatalf("unmarshal error response: %v", err)
+			}
+			if body.Error.ID != "ERR-001" || body.Error.Code != "VALIDATION_FAILED" {
+				t.Fatalf("problem = %#v, want ERR-001 VALIDATION_FAILED", body.Error)
+			}
+			if publisher.callCount() != 0 {
+				t.Fatalf("publisher calls = %d, want 0", publisher.callCount())
+			}
+		})
+	}
+}
+
 func TestInvalidSpanReturnsValidationProblemAndDoesNotPublish(t *testing.T) {
 	publisher := &recordingPublisher{}
 	handler := NewHandler(publisher, NewDiscardLogger())
@@ -687,6 +744,29 @@ func TestHTTP200WaitsForPublishAck(t *testing.T) {
 	}
 }
 
+func TestPublishUsesConfiguredAckTimeout(t *testing.T) {
+	publisher := &recordingPublisher{
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	handler := NewHandlerWithOptions(publisher, NewDiscardLogger(), HandlerOptions{
+		PublishTimeout: 10 * time.Millisecond,
+	})
+	payload := mustProtoJSON(t, traceRequest())
+	request := httptest.NewRequest(http.MethodPost, "/v1/traces", bytes.NewReader(payload))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d body = %s, want 503", response.Code, response.Body.String())
+	}
+	if publisher.callCount() != 0 {
+		t.Fatalf("publisher calls = %d, want no acked publish", publisher.callCount())
+	}
+}
+
 type publishCall struct {
 	subject string
 	data    []byte
@@ -801,6 +881,23 @@ func aiTraceRequest() *collectortracepb.ExportTraceServiceRequest {
 }
 
 func logsRequest() *collectorlogspb.ExportLogsServiceRequest {
+	return logsRequestWithRecords(1)
+}
+
+func logsRequestWithRecords(count int) *collectorlogspb.ExportLogsServiceRequest {
+	records := make([]*logspb.LogRecord, 0, count)
+	for i := 0; i < count; i++ {
+		records = append(records, &logspb.LogRecord{
+			TimeUnixNano:         1_700_000_001_000_000_000 + uint64(i),
+			ObservedTimeUnixNano: 1_700_000_001_100_000_000 + uint64(i),
+			TraceId:              []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+			SpanId:               []byte{17, 18, 19, 20, 21, 22, 23, 24},
+			SeverityText:         "INFO",
+			SeverityNumber:       logspb.SeverityNumber_SEVERITY_NUMBER_INFO,
+			Body:                 stringValue("order created"),
+			Attributes:           []*commonpb.KeyValue{stringAttr("log.key", "log-value")},
+		})
+	}
 	return &collectorlogspb.ExportLogsServiceRequest{
 		ResourceLogs: []*logspb.ResourceLogs{{
 			Resource: &resourcepb.Resource{Attributes: []*commonpb.KeyValue{
@@ -810,16 +907,7 @@ func logsRequest() *collectorlogspb.ExportLogsServiceRequest {
 				Scope: &commonpb.InstrumentationScope{
 					Attributes: []*commonpb.KeyValue{stringAttr("scope.key", "scope-value")},
 				},
-				LogRecords: []*logspb.LogRecord{{
-					TimeUnixNano:         1_700_000_001_000_000_000,
-					ObservedTimeUnixNano: 1_700_000_001_100_000_000,
-					TraceId:              []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-					SpanId:               []byte{17, 18, 19, 20, 21, 22, 23, 24},
-					SeverityText:         "INFO",
-					SeverityNumber:       logspb.SeverityNumber_SEVERITY_NUMBER_INFO,
-					Body:                 stringValue("order created"),
-					Attributes:           []*commonpb.KeyValue{stringAttr("log.key", "log-value")},
-				}},
+				LogRecords: records,
 			}},
 		}},
 	}

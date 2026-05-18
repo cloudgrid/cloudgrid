@@ -3,6 +3,7 @@ package internal
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadConfigAppliesDefaultsAndOptionalCredentials(t *testing.T) {
@@ -32,6 +33,59 @@ func TestLoadConfigAppliesDefaultsAndOptionalCredentials(t *testing.T) {
 	}
 	if cfg.SurrealDB.Username != "" || cfg.SurrealDB.Password != "" {
 		t.Fatalf("credentials should be optional and empty by default")
+	}
+	if cfg.Limits.QueryTimeout != 1500*time.Millisecond ||
+		cfg.Limits.MaxPageSize != 200 ||
+		cfg.Limits.MaxMetricPoints != 5000 ||
+		cfg.Limits.LiveMaxSubscriptions != 2000 ||
+		cfg.Limits.LiveEventBufferSize != 100 {
+		t.Fatalf("Limits = %#v, want production-scale defaults", cfg.Limits)
+	}
+}
+
+func TestLoadConfigReadsStorageReadScalingLimits(t *testing.T) {
+	cfg, err := LoadConfig(MapEnv(map[string]string{
+		"CLOUDGRID_SURREALDB_URL":                  "http://localhost:8000/rpc",
+		"CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS":  "2500",
+		"CLOUDGRID_STORAGE_READ_MAX_PAGE_SIZE":     "500",
+		"CLOUDGRID_STORAGE_READ_MAX_METRIC_POINTS": "10000",
+		"CLOUDGRID_LIVE_MAX_SUBSCRIPTIONS":         "3000",
+		"CLOUDGRID_LIVE_EVENT_BUFFER_SIZE":         "250",
+	}))
+	if err != nil {
+		t.Fatalf("LoadConfig returned error: %v", err)
+	}
+	if cfg.Limits.QueryTimeout != 2500*time.Millisecond ||
+		cfg.Limits.MaxPageSize != 500 ||
+		cfg.Limits.MaxMetricPoints != 10000 ||
+		cfg.Limits.LiveMaxSubscriptions != 3000 ||
+		cfg.Limits.LiveEventBufferSize != 250 {
+		t.Fatalf("Limits = %#v, want configured values", cfg.Limits)
+	}
+}
+
+func TestLoadConfigRejectsInvalidStorageReadScalingLimits(t *testing.T) {
+	tests := []struct {
+		name  string
+		key   string
+		value string
+	}{
+		{name: "query timeout", key: "CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS", value: "99"},
+		{name: "page size", key: "CLOUDGRID_STORAGE_READ_MAX_PAGE_SIZE", value: "1001"},
+		{name: "metric points", key: "CLOUDGRID_STORAGE_READ_MAX_METRIC_POINTS", value: "99"},
+		{name: "live subscriptions", key: "CLOUDGRID_LIVE_MAX_SUBSCRIPTIONS", value: "0"},
+		{name: "live buffer", key: "CLOUDGRID_LIVE_EVENT_BUFFER_SIZE", value: "0"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := LoadConfig(MapEnv(map[string]string{
+				"CLOUDGRID_SURREALDB_URL": "http://localhost:8000/rpc",
+				tt.key:                    tt.value,
+			}))
+			if err == nil || !strings.Contains(err.Error(), tt.key) {
+				t.Fatalf("error = %v, want validation mentioning %s", err, tt.key)
+			}
+		})
 	}
 }
 

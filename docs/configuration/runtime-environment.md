@@ -17,6 +17,9 @@ Runtime configuration is service-owned. Each service validates only the variable
 | --- | --- | --- |
 | `CLOUDGRID_BFF_HOST` | `0.0.0.0` | BFF bind host. |
 | `CLOUDGRID_BFF_PORT` | `3000` | BFF HTTP, GraphQL, auth, health, and static serving port. |
+| `CLOUDGRID_GRAPHQL_MAX_DEPTH` | `12` | Maximum accepted GraphQL operation selection depth. |
+| `CLOUDGRID_GRAPHQL_MAX_COMPLEXITY` | `500` | Maximum accepted GraphQL selected field count. |
+| `CLOUDGRID_GRAPHQL_RESPONSE_MEDIA_TYPE` | `compatible` | GraphQL response content type mode, `compatible` or `graphql-response-json`. |
 | `CLOUDGRID_FRONTEND_SERVE_STATIC` | `true` in production, otherwise `false` | Serve built frontend from the BFF. |
 | `CLOUDGRID_FRONTEND_STATIC_DIR` | `./apps/backend/public` | Static frontend directory used by the BFF. |
 | `CLOUDGRID_GRAPHQL_UI` | development default | Enables GraphiQL only for trusted operator sessions. |
@@ -32,8 +35,14 @@ Runtime configuration is service-owned. Each service validates only the variable
 | `CLOUDGRID_OTLP_PORT` | `4318` | Legacy port fallback when `CLOUDGRID_OTLP_HTTP_ADDR` is unset. |
 | `CLOUDGRID_OTLP_GRPC_ADDR` | `0.0.0.0:4317` | OTLP/gRPC bind address. |
 | `CLOUDGRID_OTLP_MAX_REQUEST_BYTES` | `4194304` | Maximum OTLP/HTTP request body size. |
+| `CLOUDGRID_OTLP_MAX_SPANS_PER_REQUEST` | `10000` | Maximum spans accepted in one trace export. |
+| `CLOUDGRID_OTLP_MAX_LOGS_PER_REQUEST` | `10000` | Maximum log records accepted in one log export. |
+| `CLOUDGRID_OTLP_MAX_METRIC_POINTS_PER_REQUEST` | `20000` | Maximum metric points accepted in one metric export. |
+| `CLOUDGRID_OTLP_PUBLISH_TIMEOUT_MS` | `1000` | JetStream publish acknowledgement timeout. |
 | `CLOUDGRID_OTLP_GRPC_MAX_MESSAGE_BYTES` | HTTP body limit | Maximum OTLP/gRPC message size. |
 | `CLOUDGRID_OTLP_GRPC_COMPRESSION` | `gzip` | OTLP/gRPC compression mode, `gzip` or `none`. |
+| `CLOUDGRID_PROJECT_STATUS_CACHE_TTL_SECONDS` | `60` | Deployed-mode project status freshness window. |
+| `CLOUDGRID_PROJECT_STATUS_CACHE_STALE_SECONDS` | `120` | Deployed-mode fail-closed staleness boundary. |
 | `CLOUDGRID_OTLP_LOCAL_PROJECT_ID` | `default` | Local single-project fallback when token routing is not configured. |
 | `CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS` | unset | JSON token-to-project map for local multi-project ingest. |
 
@@ -46,7 +55,11 @@ Runtime configuration is service-owned. Each service validates only the variable
 | `CLOUDGRID_SURREALDB_DATABASE` | `dev` | SurrealDB database. |
 | `CLOUDGRID_SURREALDB_USERNAME` | local `root` | Storage/control-plane credential. |
 | `CLOUDGRID_SURREALDB_PASSWORD` | local `root` | Storage/control-plane credential. |
+| `CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS` | `1500` | Query timeout applied by storage-read before SurrealDB calls. |
+| `CLOUDGRID_STORAGE_READ_MAX_PAGE_SIZE` | `200` | Maximum trace/log/facet page size. |
 | `CLOUDGRID_STORAGE_READ_MAX_METRIC_POINTS` | `5000` | Maximum points returned by one metric series query. |
+| `CLOUDGRID_LIVE_MAX_SUBSCRIPTIONS` | `2000` | Maximum active live trace subscriptions per storage-read process. |
+| `CLOUDGRID_LIVE_EVENT_BUFFER_SIZE` | `100` | Configured per-subscription live event buffer size for bounded live delivery. |
 
 ## Self-Observability Variables
 
