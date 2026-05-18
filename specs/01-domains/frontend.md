@@ -46,3 +46,4 @@ The frontend domain renders project-scoped observability, AI evaluation, control
 - Project selection and onboarding are defined by `05-frontend/product-ux-concept.md` and control-plane specs.
 - Dashboard widget configuration is defined by `05-frontend/dashboard-widgets.md`; metric explorer behavior is defined by `05-frontend/logs-metrics-dashboards-ux-concept.md`.
 - Feature-gated AI evaluation workspace behavior is defined by `05-frontend/ai-eval-views.md`.
+- Feature-gated AI Chat workspace behavior is defined by `05-frontend/ai-chat-views.md`.

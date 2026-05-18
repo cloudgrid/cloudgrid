@@ -5,14 +5,14 @@ domain: ai-eval
 layer: capability
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-16
+updated: 2026-05-18
 provenance: from-user
 traits:
   interaction: http
   sync_async: sync
   visibility: user
   authentication: prepared
-depends_on: [DOM-006, TEC-BE-024]
+depends_on: [DOM-006, TEC-BE-024, TEC-BE-028]
 implements:
   api: [GQL-Query-projectAiSettings, GQL-Mutation-updateProjectAiSettings, MSG-control-ai-settings-get, MSG-control-ai-settings-update]
 ---
@@ -21,16 +21,16 @@ implements:
 
 ## Business Intent
 
-Let project admins configure AI-eval provider profiles, model aliases, budgets,
+Let project admins configure AI-eval defaults, provider references, budgets,
 online policies, and dataset defaults without exposing raw provider secrets to
-CloudGrid services.
+CloudGrid services. Reusable provider profiles and model aliases are managed on
+the dedicated Project AI Providers settings page.
 
 ## Behavior
 
 - Project admins enable or disable AI Eval for the selected project.
-- Project admins configure provider profiles and model aliases.
-- Project admins select default judge, optimizer, embedding, and replay model
-  aliases.
+- Project admins select default provider profiles and model aliases from
+  Project AI Providers.
 - Project admins configure budget, sampling, concurrency, and dataset split
   defaults.
 - Project admins configure online policies, but v1 policies are disabled by
@@ -43,9 +43,9 @@ CloudGrid services.
 - Control-plane validates and persists settings with optimistic concurrency.
 - The BFF exposes only GraphQL request/reply mappings. It does not merge or
   derive effective settings locally.
-- Runner uses settings only through storage-read/control-plane bridge ports and
-  passes provider profile references to harness; it never reads provider
-  credentials.
+- Runner uses settings only through storage-read/control-plane bridge ports,
+  resolves provider references through project AI provider settings, and passes
+  provider profile references to harness; it never reads provider credentials.
 
 ## Acceptance Criteria
 

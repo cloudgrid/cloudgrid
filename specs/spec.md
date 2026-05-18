@@ -31,6 +31,7 @@ This directory is the implementation specification for the MVP. The original sin
 - [Runtime](./01-domains/runtime.md)
 - [Frontend](./01-domains/frontend.md)
 - [AI evaluation](./01-domains/ai-eval.md)
+- [AI Chat](./01-domains/ai-chat.md)
 - [Metrics](./01-domains/metrics.md)
 
 ## Contracts
@@ -64,12 +65,15 @@ This directory is the implementation specification for the MVP. The original sin
 - [Contract generation source and outputs](./04-backend/contract-generation.md)
 - [AI evaluation protocol interop](./04-backend/ai-eval-protocol-interop.md)
 - [AI evaluation project settings](./04-backend/ai-eval-project-settings.md)
+- [Project and company AI provider settings](./04-backend/ai-provider-settings.md)
 - [AI evaluation runner](./04-backend/ai-eval-runner.md)
+- [AI Chat runtime](./04-backend/ai-chat.md)
 - [AI evaluation query semantics](./04-backend/ai-eval-query-semantics.md)
 - [AI evaluation message contracts](./04-backend/ai-eval-message-contracts.md)
 - [Frontend application](./05-frontend/frontend-application.md)
 - [AI evaluation views](./05-frontend/ai-eval-views.md)
 - [AI evaluation UX concept](./05-frontend/ai-eval-ux-concept.md)
+- [AI Chat views](./05-frontend/ai-chat-views.md)
 - [Dashboard widgets](./05-frontend/dashboard-widgets.md)
 - [Enterprise product UX concept](./05-frontend/product-ux-concept.md) - source of truth for UX v2 shell, navigation, settings, modal, and layout rules.
 - [Traces and metrics UX concept](./05-frontend/traces-and-metrics-ux-concept.md) - source of truth for trace search, trace detail, metric workspace, visualization, and detail-inspector behavior.
@@ -85,6 +89,13 @@ This directory is the implementation specification for the MVP. The original sin
 - [Prompt optimization](./02-capabilities/ai-eval/optimize-prompts.md)
 - [Trace annotation for datasets](./02-capabilities/ai-eval/annotate-traces.md)
 - [Project AI settings](./02-capabilities/ai-eval/manage-project-ai-settings.md)
+- [Project AI providers](./02-capabilities/ai-platform/manage-project-ai-providers.md)
+- [Company AI Chat provider](./02-capabilities/ai-platform/manage-company-ai-chat-provider.md)
+- [Project AI Chat](./02-capabilities/ai-chat/use-ai-chat.md)
+- [AI provider settings resolution flow](./02-flows/ai-platform/provider-settings-resolution.md)
+- [AI Chat run flow](./02-flows/ai-chat/chat-run.md)
+- [AI Chat action approval flow](./02-flows/ai-chat/action-approval.md)
+- [AI Chat conversation compaction flow](./02-flows/ai-chat/conversation-compaction.md)
 - [Dataset curation and splits](./02-capabilities/ai-eval/curate-datasets.md)
 - [Production AI quality tracking](./02-capabilities/ai-eval/track-production-quality.md)
 - [Metric ingest](./02-capabilities/metrics/ingest-otlp-metrics.md)
@@ -116,6 +127,7 @@ This directory is the implementation specification for the MVP. The original sin
 - [AI evaluation product concept and market synthesis](./99-reviews/ai-eval-product-concept.md)
 - [Metrics implementation scope](./99-reviews/metrics-implementation-scope.md)
 - [Frontend UX v2 migration plan](./99-reviews/frontend-ux-v2-migration-plan.md) - superseded by `plans/frontend-ux-migration-check/` until the frontend readiness gate is approved.
+- [AI provider settings and AI Chat follow-on scope](./99-reviews/ai-chat-provider-settings-scope.md) - draft product and architecture direction; not an approved implementation wave until contracts and readiness gate are updated.
 
 ## Implementation Rule
 

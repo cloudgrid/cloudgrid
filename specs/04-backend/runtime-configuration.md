@@ -51,6 +51,25 @@ provenance: inferred-draft
 - `CLOUDGRID_SESSION_SECRET`, required when `CLOUDGRID_AUTH_MODE=sso`; used only by the BFF for session-cookie integrity/encryption.
 - `CLOUDGRID_SESSION_TTL_SECONDS`, default `28800`.
 - `CLOUDGRID_PUBLIC_URL`, required in deployed mode when invitation email delivery is enabled; external browser base URL used in invitation emails.
+- `CLOUDGRID_AI_CHAT_ENABLED`, default `false`; enables the BFF AI Chat route,
+  stream endpoint, GraphQL chat operations, and frontend navigation.
+- `CLOUDGRID_AI_CHAT_TRACING_ENABLED`, default `true` in local mode and `false`
+  in deployed mode.
+- `CLOUDGRID_AI_CHAT_PROVIDER_KIND`, optional local-mode bootstrap provider
+  kind: `anthropic`, `openai`, `azure_foundry`, `aws_bedrock`, or
+  `openai_compatible`.
+- `CLOUDGRID_AI_CHAT_MODEL`, required when local-mode AI Chat provider bootstrap
+  is used.
+- `CLOUDGRID_AI_CHAT_CREDENTIAL_REF`, required when local-mode AI Chat provider
+  bootstrap is used. It must use `env:<NAME>` or `external:<provider>/<path>`.
+- `CLOUDGRID_AI_CHAT_BASE_URL`, required for local-mode `azure_foundry` and
+  `openai_compatible` bootstrap providers.
+- `CLOUDGRID_AI_CHAT_AZURE_DEPLOYMENT`, required for local-mode
+  `azure_foundry` bootstrap providers.
+- `CLOUDGRID_AI_CHAT_AWS_REGION`, required for local-mode `aws_bedrock`
+  bootstrap providers.
+- `CLOUDGRID_AI_CHAT_SANDBOX_MAX_INPUT_BYTES`, default `104857600`.
+- `CLOUDGRID_AI_CHAT_SANDBOX_MAX_ARTIFACT_BYTES`, default `52428800`.
 
 ## Invitation Email Variables
 
@@ -133,6 +152,10 @@ Invalid combinations:
 - `CLOUDGRID_DEPLOYMENT_MODE=deployed` with invitation email mode `disabled` and `CLOUDGRID_INVITATION_EMAIL_REQUIRE_DELIVERY=true`.
 - `CLOUDGRID_DEPLOYMENT_MODE=deployed` with `CLOUDGRID_SELF_OBSERVABILITY_ENABLED=true` and missing `CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID`, `CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID`, `CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT`, or `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN`.
 - `CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS` outside `1..300`.
+- `CLOUDGRID_AI_CHAT_ENABLED=true` with malformed AI Chat sandbox byte limits.
+- Any `CLOUDGRID_AI_CHAT_PROVIDER_KIND` outside the supported provider kinds.
+- Local-mode AI Chat provider bootstrap with missing provider-specific required
+  fields.
 
 ## Performance And Scaling Variables
 

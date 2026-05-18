@@ -1,0 +1,535 @@
+---
+id: TEC-BE-029
+title: AI Chat runtime
+layer: backend
+status: draft
+owner: sebastian.wessel@egg-ai.com
+updated: 2026-05-18
+provenance: from-user
+depends_on: [DOM-007, TEC-BE-001, TEC-BE-008, TEC-BE-011, TEC-BE-028, NFR-003]
+---
+
+# AI Chat Runtime
+
+## Purpose
+
+AI Chat runtime lets the TypeScript BFF host a project-scoped assistant backed
+by the AI harness. It streams responses to the browser, persists conversation
+history through control-plane, retrieves telemetry through approved read paths,
+executes bounded sandbox scripts, renders typed artifacts, and mediates user
+approval for actions.
+
+## Boundary
+
+The v1 runtime is modularly integrated into `apps/backend`.
+
+The BFF owns:
+
+- browser session and project authorization checks;
+- AI Chat HTTP/SSE streaming endpoint;
+- GraphQL resolvers for chat history and action approvals;
+- harness integration for chat model calls;
+- tool orchestration;
+- sandbox lifecycle;
+- redacted run telemetry;
+- message-bridge calls to control-plane and storage-read.
+
+The BFF does not:
+
+- import SurrealDB clients;
+- call model providers directly;
+- expose a REST telemetry read API;
+- subscribe to telemetry ingest or persisted-notification streams;
+- execute arbitrary shell commands;
+- run assistant actions without the existing GraphQL/control-plane mutation
+  contracts and authorization checks.
+
+Control-plane owns chat history, provider settings, action approvals, and
+conversation metadata. Storage-read owns trace/log/metric/AI-eval query
+semantics. Harness owns model-provider execution.
+
+## Public Runtime Surface
+
+### GraphQL
+
+The contract wave must add:
+
+- `Query.aiChatHistory(input: AiChatHistoryInput!): AiChatHistory!`
+- `Query.aiChatConversation(id: ID!): AiChatConversation`
+- `Mutation.createAiChatConversation(input:
+  CreateAiChatConversationInput!): AiChatConversation!`
+- `Mutation.archiveAiChatConversation(id: ID!): AiChatConversation!`
+- `Mutation.approveAiChatAction(input:
+  ApproveAiChatActionInput!): AiChatActionProposal!`
+
+GraphQL history and action approval mutations are normal BFF resolver paths.
+They use control-plane request/reply subjects and return redacted view models.
+
+`AiChatHistoryInput` fields:
+
+- `companyId`: required current company ID.
+- `includeArchived`: default `false`.
+- `first`: default `50`, maximum `200`.
+- `after`: optional cursor over `(lastMessageAt, conversationId)`.
+
+History returns conversations the current user owns, grouped by accessible
+project. Archived conversations are excluded unless `includeArchived=true`.
+
+### Streaming HTTP
+
+The contract wave must add a BFF-owned streaming endpoint:
+
+- `POST /api/ai-chat/stream`
+
+The request contains `conversationId`, `projectId`, user message parts, and an
+idempotency key. The response uses an AI SDK compatible UI message stream over
+SSE. The stream may emit text parts, tool-call status parts, artifact parts,
+action proposal parts, compaction status, and terminal error parts.
+
+This endpoint is not a telemetry read endpoint. All telemetry access happens
+inside the BFF runtime through approved GraphQL resolver helpers or private
+message bridge calls.
+
+The request and stream event envelope are also defined by
+`specs/03-contracts/entities/ai/ai-chat-stream.schema.json`.
+
+#### AiChatStreamRequest
+
+Fields:
+
+- `conversationId`: required existing conversation ID.
+- `projectId`: selected project ID. Must match the conversation project.
+- `userMessageClientId`: stable client-generated ID for the submitted user
+  message.
+- `idempotencyKey`: stable client-generated key for this user submission.
+- `parts`: non-empty array of user message parts. V1 allows `text` parts only.
+- `timezone`: optional IANA timezone for date phrasing.
+
+File attachments, screenshots, model picker values, web-search toggles, and
+arbitrary tool choices are not accepted in v1.
+
+#### Stream Event Envelope
+
+Every SSE data event is JSON:
+
+```json
+{
+  "type": "run.started",
+  "conversationId": "chat_...",
+  "runId": "run_...",
+  "sequence": 1,
+  "createdAt": "2026-05-18T00:00:00Z",
+  "payload": {}
+}
+```
+
+Supported `type` values, in allowed order:
+
+1. `run.started`
+2. zero or more `message.created`
+3. zero or more `text.delta`
+4. zero or more `tool.started`
+5. zero or more `tool.completed`
+6. zero or more `artifact.created`
+7. zero or more `action.proposed`
+8. zero or more `compaction.started`
+9. zero or more `compaction.saved`
+10. exactly one `run.completed` or `run.failed`
+
+`heartbeat` events may appear between any two events and carry the latest
+`runId` and `sequence`. Sequence numbers are strictly increasing per run,
+excluding heartbeat.
+
+The BFF must not stream hidden provider reasoning text. Provider reasoning may
+only surface as generic `tool.started` or `message.created` status labels.
+
+## Harness Chat Port
+
+The BFF integrates the AI harness through an internal `AiChatHarnessPort`.
+
+Required methods:
+
+- `streamChat(request): AsyncIterable<AiChatHarnessEvent>`
+- `compactConversation(request): Promise<AiChatCompactionDraft>`
+
+`streamChat` request fields:
+
+- redacted provider kind, model, base URL when required, and bounded parameters;
+- resolved credential material in memory only;
+- recent conversation messages and latest compaction summary;
+- tool declaration schemas;
+- W3C trace context;
+- max tool calls, max output tokens, and timeout budget.
+
+Harness event kinds:
+
+- `text_delta`
+- `tool_call_requested`
+- `final_message`
+- `usage`
+- `provider_error`
+
+The harness can request tools by name and JSON arguments. The BFF validates the
+request, executes the tool, and returns the result to harness. Harness never
+calls CloudGrid GraphQL, NATS, SurrealDB, OTLP, or sandbox APIs directly.
+
+## Entities
+
+### AiChatConversation
+
+Fields:
+
+- `id`.
+- `companyId`.
+- `projectId`.
+- `userId`.
+- `title`: assistant- or user-edited title.
+- `title`: BFF-generated from the first user text part, trimmed to 80
+  characters. Conversation rename is not supported in v1.
+- `status`: `active` or `archived`.
+- `providerProfileSnapshot`: redacted company provider profile ID, kind, model,
+  and parameters used for the latest run.
+- `lastMessageAt`.
+- `lastRunStatus`: `idle`, `streaming`, `failed`, or `awaiting_approval`.
+- `compaction`: optional latest compaction metadata.
+- `createdAt`, `updatedAt`.
+
+### AiChatMessage
+
+Fields:
+
+- `id`.
+- `conversationId`.
+- `role`: `user`, `assistant`, `tool`, or `system`.
+- `parts`: ordered typed parts: `text`, `artifact`, `tool_status`,
+  `action_proposal`, `approval_result`, `error`, or `compaction_summary`.
+- `tokenEstimate`.
+- `createdAt`.
+
+Message parts store sanitized assistant output and artifact references. Large
+tool result files are not embedded in message parts; they are stored as bounded
+artifacts.
+
+Archiving a conversation sets `status=archived`, hides it from default history,
+and prevents new runs in that conversation. It does not delete messages,
+artifacts, action approvals, compactions, or audit records.
+
+### AiChatRun
+
+Fields:
+
+- `id`.
+- `conversationId`.
+- `projectId`.
+- `userId`.
+- `status`: `queued`, `streaming`, `completed`, `failed`, `cancelled`, or
+  `awaiting_approval`.
+- `providerKind`.
+- `model`.
+- `traceId`: optional CloudGrid self-observability trace ID.
+- `toolCallCount`, `sandboxScriptCount`, `artifactCount`.
+- `inputTokenCount`, `outputTokenCount`, `estimatedCostUsd`.
+- `startedAt`, `completedAt`.
+
+### AiChatArtifact
+
+Fields:
+
+- `id`.
+- `conversationId`.
+- `runId`.
+- `kind`: `json_render`, `data_file`, `script`, `script_output`, or
+  `download`.
+- `label`.
+- `mediaType`.
+- `sizeBytes`.
+- `renderSpec`: present only for `json_render`.
+- `fileRef`: opaque storage reference for sandbox files retained with the
+  conversation.
+- `createdAt`.
+
+### AiChatActionProposal
+
+Fields:
+
+- `id`.
+- `conversationId`.
+- `runId`.
+- `projectId`.
+- `risk`: `low`, `medium`, `high`, or `destructive`.
+- `status`: `proposed`, `approved`, `rejected`, `executing`, `succeeded`,
+  `failed`, or `expired`.
+- `actionKind`: stable whitelist key such as `dashboard.save`,
+  `alert.create`, `dataset.item.append`, `scorer.create`,
+  `retention.update`, `provider.update`, or `membership.update`.
+- `graphqlMutation`: existing public mutation name when execution is GraphQL.
+- `inputPreview`: redacted structured mutation input.
+- `requiresApproval`: boolean.
+- `approval`: optional approver user ID and timestamp.
+- `idempotencyKey`.
+- `expiresAt`.
+
+### AiChatCompaction
+
+Fields:
+
+- `id`.
+- `conversationId`.
+- `sourceMessageCount`.
+- `summary`.
+- `retainedMessageIds`.
+- `artifactSummaries`.
+- `pendingActionIds`.
+- `createdAt`.
+
+## Tool Model
+
+Allowed read tools:
+
+- `telemetry.searchTraces`
+- `telemetry.getTrace`
+- `telemetry.searchLogs`
+- `telemetry.queryMetrics`
+- `telemetry.getFacets`
+- `dashboards.list`
+- `dashboards.get`
+- `alerts.list`
+- `alerts.history`
+- `aiEval.searchAgentRuns`
+- `aiEval.searchDatasets`
+- `aiEval.searchScorers`
+- `aiEval.searchExperiments`
+- `aiEval.searchEvalResults`
+- `project.get`
+
+Allowed sandbox tools:
+
+- `sandbox.writeDataFile`
+- `sandbox.readFile`
+- `sandbox.writeScript`
+- `sandbox.runScript`
+- `sandbox.listFiles`
+
+Allowed output tools:
+
+- `render.emitJsonRender`
+- `action.propose`
+- `conversation.compact`
+
+No tool may accept raw SQL, SurrealQL, NATS subject names, arbitrary URLs,
+arbitrary filesystem paths, shell commands, environment variable reads, browser
+automation instructions, or provider credential inputs.
+
+The BFF injects `companyId`, `projectId`, `userId`, and authorization context
+into every tool call. Model-supplied `companyId`, `projectId`, `userId`,
+tenant, or auth fields are ignored and treated as validation errors when
+present.
+
+### Read Tool Limits
+
+| Tool | Backend path | Default window | Default limit | Hard limit |
+| --- | --- | --- | --- | --- |
+| `telemetry.searchTraces` | `Query.traces` / storage-read trace search | last 1 hour | 50 traces | 200 traces |
+| `telemetry.getTrace` | `Query.trace` / storage-read trace detail | not applicable | full trace detail | 5000 spans |
+| `telemetry.searchLogs` | `Query.logs` / storage-read log search | last 1 hour | 100 logs | 1000 logs |
+| `telemetry.queryMetrics` | `Query.metricSeries` or `Query.richMetricSeries` | last 1 hour | storage-read default step | 5000 points |
+| `telemetry.getFacets` | `Query.telemetryFacets` | last 1 hour | backend default | backend cap |
+| `dashboards.list` | `Query.dashboards` | not applicable | all visible dashboards | backend cap |
+| `alerts.list` | `Query.alertRules` | not applicable | all visible rules | backend cap |
+| `alerts.history` | `Query.alertHistory` | last 24 hours | 50 events | 200 events |
+| `aiEval.*` search tools | AI Eval GraphQL queries | last 7 days when time is supported | 50 rows | 200 rows |
+
+When a tool result exceeds 64 KiB, the BFF writes the full bounded result into
+the sandbox as JSON or JSONL and passes only a file handle, schema summary, row
+count, and sampled preview to harness.
+
+If a trace detail contains more than 5000 spans, the tool returns a bounded
+summary, root span, service/time breakdown, and a CloudGrid trace route link
+instead of full span rows.
+
+## Sandbox
+
+Each run receives a fresh sandbox directory. The sandbox has:
+
+- read-only input files produced by CloudGrid tools;
+- writable `scripts/` and `outputs/` directories;
+- no host path mounts except the sandbox root;
+- no environment variables except fixed non-secret runtime metadata;
+- no network;
+- no child process execution except the approved Bun script runner;
+- wall-clock timeout of 15 seconds per script;
+- CPU time budget of 5 seconds per script where the platform supports it;
+- memory limit of 256 MiB per script process;
+- maximum input file size of 100 MiB per run;
+- maximum individual output file size of 25 MiB;
+- maximum retained artifact size of 50 MiB per conversation.
+
+Scripts must be JavaScript or TypeScript. The runner injects a small standard
+library for reading JSON, JSONL, CSV, and writing JSON-render data files.
+
+Scripts run as ESM with imports disabled except for `cloudgrid:sandbox`. The
+shim exposes `readJson`, `readJsonl`, `readCsv`, `writeJson`, `writeJsonl`, and
+`emitRenderData`. Direct `fs`, `Bun.file`, `process.env`, `fetch`,
+`WebSocket`, `Worker`, dynamic import, child processes, and native addons are
+blocked. A blocked API returns `ERR-AIC-002`.
+
+Sandbox files are ephemeral. After a terminal run, the BFF deletes full data
+files and keeps only persisted message parts, render specs, artifact metadata,
+and bounded previews. V1 does not expose full sandbox file downloads.
+
+## Rendering
+
+Assistant artifacts use JSON-render specs. The approved catalog keys are:
+
+- `metric_timeseries`
+- `metric_bar`
+- `table`
+- `key_value`
+- `trace_waterfall`
+- `log_list`
+- `mermaid`
+- `json_tree`
+- `diff`
+- `status_summary`
+- `action_approval`
+
+The BFF validates each render spec before streaming or persisting it. Rejected
+specs become assistant-visible tool errors and user-visible compact errors.
+
+Render specs must be at most 512 KiB after JSON serialization. Embedded table
+data is capped at 500 rows, chart data at 5000 points, log lists at 200 rows,
+and trace waterfalls at 5000 spans. Larger artifacts must render summarized
+views with a warning and a link back to the source CloudGrid route.
+
+## Action Approval
+
+Risk policy:
+
+- `low`: read-only navigation suggestions, filter suggestions, or draft-only
+  artifact creation. Approval is not required.
+- `medium`: create/update non-destructive project artifacts such as dashboards,
+  datasets, scorers, and alert rules. Approval is required.
+- `high`: retention, provider, budget, online policy, and project/member role
+  changes. Approval is required and the UI must show the exact changed fields.
+- `destructive`: delete, revoke, disable, archive, remove member, delete
+  dashboard, revoke ingest credential, delete alert, or disable provider.
+  Approval is required through a destructive confirmation dialog.
+
+After approval, the BFF revalidates project/company access, checks the current
+resource version where available, and executes only the whitelisted mutation or
+control-plane action. Stale versions fail without retrying a mutated input.
+
+### Action Whitelist
+
+| Action kind | Mutation/action | Risk |
+| --- | --- | --- |
+| `dashboard.save` | `Mutation.saveDashboard` | medium |
+| `dashboard.delete` | `Mutation.deleteDashboard` | destructive |
+| `dashboard.pin` | `Mutation.setDashboardPinned` | low |
+| `dashboard.reorder_pins` | `Mutation.reorderDashboardPins` | low |
+| `alert.create` | `Mutation.createAlertRule` | medium |
+| `alert.update` | `Mutation.updateAlertRule` | medium |
+| `alert.delete` | `Mutation.deleteAlertRule` | destructive |
+| `alert.silence_create` | `Mutation.createAlertSilence` | medium |
+| `alert.silence_delete` | `Mutation.deleteAlertSilence` | destructive |
+| `dataset.create` | `Mutation.createDataset` | medium |
+| `dataset.items_append` | `Mutation.appendDatasetItems` | medium |
+| `dataset.item_promote` | `Mutation.promoteSpanToDatasetItem` | medium |
+| `scorer.create` | `Mutation.createScorer` | medium |
+| `experiment.create` | `Mutation.createExperiment` | medium |
+| `experiment.start` | `Mutation.startExperimentRun` | medium |
+| `experiment.cancel` | `Mutation.cancelExperimentRun` | medium |
+| `optimization.start` | `Mutation.startOptimizationRun` | medium |
+| `prompt.promote` | `Mutation.promotePromptVersion` | high |
+| `annotation.resolve` | `Mutation.resolveAnnotation` | medium |
+| `retention.update` | `Mutation.updateRetentionPolicy` | high |
+| `ingest_credential.revoke` | `Mutation.revokeIngestCredential` | destructive |
+| `project.update` | `Mutation.updateProject` | high |
+| `project_member.invite` | `Mutation.inviteProjectMember` | high |
+| `project_member.update` | `Mutation.updateProjectMember` | high |
+| `project_member.remove` | `Mutation.removeProjectMember` | destructive |
+| `organization_member.invite` | `Mutation.inviteOrganizationMember` | high |
+| `organization_member.update` | `Mutation.updateOrganizationMember` | high |
+| `organization_member.remove` | `Mutation.removeOrganizationMember` | destructive |
+| `organization_invitation.resend` | `Mutation.resendOrganizationInvitation` | high |
+| `organization_invitation.revoke` | `Mutation.revokeOrganizationInvitation` | destructive |
+| `provider.project_update` | `Mutation.updateProjectAiProviderSettings` | high |
+| `provider.company_update` | `Mutation.updateCompanyAiProviderSettings` | high |
+| `ai_eval.settings_update` | `Mutation.updateProjectAiSettings` | high |
+
+Any action not in this table can be explained or drafted by the assistant, but
+it cannot be emitted as an executable `AiChatActionProposal`.
+
+Secret-returning actions are excluded from AI Chat v1. In particular,
+`Mutation.createIngestCredential` is not executable from AI Chat because it
+returns one-time credential material. The assistant may navigate the user to the
+API Keys settings page instead.
+
+## Conversation Compaction
+
+The BFF compacts a conversation before a run when either threshold is reached:
+
+- more than 40 messages since the latest compaction;
+- estimated context input exceeds 70 percent of the configured model context
+  budget.
+
+Compaction is performed through harness using the same company provider. The
+summary must include user goals, project context, durable decisions, relevant
+artifacts, retained message IDs, pending actions, and unresolved failures.
+Approval records and action proposals are never removed by compaction.
+
+## Observability
+
+AI Chat emits structured logs and optional OTLP spans/metrics through the normal
+CloudGrid self-observability path.
+
+Metrics:
+
+- `cloudgrid_ai_chat_runs_total`
+- `cloudgrid_ai_chat_run_duration_ms`
+- `cloudgrid_ai_chat_tool_calls_total`
+- `cloudgrid_ai_chat_sandbox_scripts_total`
+- `cloudgrid_ai_chat_sandbox_failures_total`
+- `cloudgrid_ai_chat_action_proposals_total`
+- `cloudgrid_ai_chat_action_approvals_total`
+- `cloudgrid_ai_chat_compactions_total`
+- `cloudgrid_ai_chat_tokens_total`
+
+Trace attributes may include project ID, company ID, provider kind, model,
+run ID, tool names, artifact counts, and error code. They must not include raw
+prompt text, tool result payloads, rendered data values, credentials, cookies,
+or provider errors.
+
+Runtime flags:
+
+- `CLOUDGRID_AI_CHAT_ENABLED`: enables the route and BFF runtime.
+- `CLOUDGRID_AI_CHAT_TRACING_ENABLED`: defaults to `true` in local mode and
+  `false` in deployed mode.
+- `CLOUDGRID_AI_CHAT_SANDBOX_MAX_INPUT_BYTES`: defaults to `104857600`.
+- `CLOUDGRID_AI_CHAT_SANDBOX_MAX_ARTIFACT_BYTES`: defaults to `52428800`.
+
+## Error Mapping
+
+- Missing company AI Chat provider: `ERR-AIC-001`.
+- Missing runtime credential for a configured provider: `ERR-AIP-001`.
+- Sandbox policy violation: `ERR-AIC-002`.
+- Expired, stale, or already terminal action proposal: `ERR-AIC-003`.
+- Run, tool, token, or sandbox limit exceeded: `ERR-AIC-004`.
+- Invalid render spec: `ERR-AIC-005`.
+
+## Verification
+
+Required tests:
+
+- BFF stream endpoint requires an authenticated session and selected-project
+  access;
+- missing company provider returns a setup error before harness execution;
+- read tools call only approved BFF helper or message bridge paths;
+- sandbox rejects network, environment, host path, and oversized output access;
+- render specs reject unapproved catalog keys and executable content;
+- critical actions require approval and re-run authorization checks;
+- stale action versions fail without mutation;
+- conversation history is scoped to the current user and grouped by project;
+- compaction preserves pending actions and approval records;
+- AI Chat spans and logs do not contain prompt text, tool result payloads, raw
+  provider errors, or secrets.

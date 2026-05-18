@@ -18,7 +18,7 @@ Target service: `core/control-plane`.
 
 Responsibilities:
 
-- Store and query organizations, projects, users, memberships, organization invitations, invitation email outbox records, roles, project status, ingest credential metadata, dashboards, dashboard pins, AI-eval project settings, provider profile metadata, model aliases, online evaluation policies, and future low-volume project configuration.
+- Store and query organizations, projects, users, memberships, organization invitations, invitation email outbox records, roles, project status, ingest credential metadata, dashboards, dashboard pins, AI-eval project settings, AI provider settings, AI Chat history metadata, action approvals, online evaluation policies, and future low-volume project configuration.
 - Own organization/project/user management mutations.
 - Publish project status snapshots for fast auth validation by public boundaries.
 - Never ingest, query, aggregate, or enrich telemetry records.
@@ -156,9 +156,14 @@ Canonical records:
 - `dashboard`: saved personal and project dashboard definitions. Built-in dashboards are deterministic read models and are not mutable rows.
 - `dashboard_pin`: relation edge from user to dashboard with project ID and sidebar position.
 - `project_ai_settings`: low-volume project AI-eval settings document.
-- `ai_provider_profile`: project-scoped provider profile metadata and opaque credential references. It never stores raw provider secrets.
+- `ai_provider_profile`: project-scoped and company-scoped provider profile metadata and opaque credential references. It never stores raw provider secrets.
 - `ai_model_alias`: project-scoped model aliases for judge, optimizer, embedding, replay, and default model purposes.
 - `ai_online_policy`: project-scoped online evaluation policy definitions.
+- `ai_chat_conversation`: per-user, project-scoped AI Chat conversation metadata.
+- `ai_chat_message`: sanitized AI Chat message parts and artifact references.
+- `ai_chat_artifact`: bounded AI Chat artifact metadata and render specs.
+- `ai_chat_action_proposal`: action proposal, approval, execution, and audit state.
+- `ai_chat_compaction`: compacted conversation memory snapshots.
 
 Memberships are graph relation tables because they are low-volume, security-sensitive relationships that benefit from explicit edges and traversal. Organization invitations are schemafull normal documents because pending invites exist before a `user` relation endpoint exists. They are indexed by `organizationId`, `email`, and `status`. At most one pending invitation may exist for one normalized email inside one organization. Telemetry records do not use graph relations on the write hot path.
 
@@ -213,6 +218,19 @@ The control-plane wave must add these subjects before implementation:
 - `control.dashboard_pins.reorder`
 - `control.ai_settings.get`
 - `control.ai_settings.update`
+- `control.ai_providers.project.get`
+- `control.ai_providers.project.update`
+- `control.ai_providers.company.get`
+- `control.ai_providers.company.update`
+- `control.ai_chat.history`
+- `control.ai_chat.conversation.get`
+- `control.ai_chat.conversation.create`
+- `control.ai_chat.conversation.archive`
+- `control.ai_chat.message.append`
+- `control.ai_chat.action.propose`
+- `control.ai_chat.action.approve`
+- `control.ai_chat.action.finish`
+- `control.ai_chat.compaction.save`
 
 Implementation agents must not add GraphQL management fields without matching control-plane message contracts.
 
@@ -297,7 +315,9 @@ Rules:
 - Settings use optimistic concurrency through `version`.
 - Control-plane returns an effective redacted view with derived defaults and
   missing-configuration warnings.
-- Provider profiles store metadata and opaque `credentialRef` values only.
+- Reusable provider profiles and model aliases are owned by
+  `specs/04-backend/ai-provider-settings.md`; AI-eval settings reference those
+  entries by ID.
 - Raw provider API keys, bearer tokens, refresh tokens, cookies, Authorization
   headers, and provider secret JSON must not be persisted, returned, logged, or
   bundled.
@@ -307,6 +327,37 @@ Rules:
 GraphQL, AsyncAPI, JSON Schema, and generated contracts for these settings must
 be added before implementation. Agents must not create frontend-local AI settings
 state or bypass control-plane for project AI settings.
+
+## AI Provider Settings
+
+Control-plane owns project and company AI provider settings according to
+`specs/04-backend/ai-provider-settings.md`.
+
+Rules:
+
+- Project provider settings are project-scoped and low-volume.
+- Company provider settings are company-scoped and expose exactly one active AI
+  Chat provider profile in v1.
+- Reads return redacted provider metadata and effective warnings only.
+- Updates require project `admin` or company `admin` according to scope.
+- Provider settings use optimistic concurrency through `version`.
+- Control-plane stores credential references, never resolved credential values.
+
+## AI Chat History And Approvals
+
+Control-plane owns AI Chat conversation metadata, sanitized message parts,
+artifacts, compactions, and action approval state according to
+`specs/04-backend/ai-chat.md`.
+
+Rules:
+
+- Conversations are per user and project scoped.
+- History reads require the requesting user to match the conversation owner and
+  have access to the conversation project.
+- Action approvals require the requesting user to match the proposal owner and
+  pass the same project/company authorization required by the underlying action.
+- Action proposal records are durable audit state. Compaction must not delete
+  approval records or pending actions.
 
 ## SurrealDB Control-Plane Schema
 
@@ -328,6 +379,21 @@ The control-plane SurrealDB database uses SurrealDB's multi-model features delib
   a flexible `settings` object, plus first-class `projectId`, `version`,
   `updatedAt`, and `updatedByUserId` fields. It is indexed uniquely by
   `projectId`.
+- `ai_provider_profile` stores one redacted provider profile per project or
+  company scope. It has first-class `companyId`, optional `projectId`,
+  `scope`, `providerKind`, `disabledAt`, `version`, `updatedAt`, and
+  `updatedByUserId` fields and a flexible validated `profile` object. Indexes:
+  `(scope, companyId)`, `(scope, projectId)`, and unique `(scope, companyId,
+  projectId, id)`.
+- `ai_model_alias` stores project-scoped model aliases. It has first-class
+  `companyId`, `projectId`, `name`, `providerProfileId`, `purpose`, `version`,
+  `updatedAt`, and `updatedByUserId` fields. Unique index:
+  `(projectId, name)`.
+- `ai_chat_conversation`, `ai_chat_message`, `ai_chat_artifact`,
+  `ai_chat_action_proposal`, and `ai_chat_compaction` are schemafull normal
+  document tables scoped by `companyId`, `projectId`, and `userId` where
+  applicable. Conversation history uses indexes on `(userId, projectId,
+  lastMessageAt)` and `(userId, lastMessageAt)`.
 - Table permissions are `NONE`; only the control-plane service credential reads or mutates these records.
 
 ## Project Membership

@@ -218,6 +218,48 @@ export type ProviderKind =
 
 export type ModelPurpose = "judge" | "optimizer" | "embedding" | "replay" | "default";
 
+export type AiProviderKind =
+  | "anthropic"
+  | "openai"
+  | "azure_foundry"
+  | "aws_bedrock"
+  | "openai_compatible";
+
+export type AiModelPurpose = "default" | "chat" | "judge" | "optimizer" | "embedding" | "replay";
+
+export type AiChatConversationStatus = "active" | "archived";
+
+export type AiChatRunStatus =
+  | "idle"
+  | "queued"
+  | "streaming"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "awaiting_approval";
+
+export type AiChatMessageRole = "user" | "assistant" | "system" | "tool";
+
+export type AiChatMessagePartType =
+  | "text"
+  | "json_render"
+  | "tool_call"
+  | "tool_result"
+  | "action_request";
+
+export type AiChatArtifactKind = "json_render" | "data_file" | "script" | "script_output";
+
+export type AiChatActionRisk = "low" | "medium" | "high" | "destructive";
+
+export type AiChatActionStatus =
+  | "proposed"
+  | "approved"
+  | "rejected"
+  | "executing"
+  | "succeeded"
+  | "failed"
+  | "expired";
+
 export type ExperimentRunEventType =
   | "started"
   | "item_completed"
@@ -758,6 +800,71 @@ export interface UpdateProjectAiSettingsInput {
   budget: AiEvalBudgetInput;
   sampling: AiEvalSamplingInput;
   datasetDefaults: DatasetDefaultsInput;
+  expectedVersion: number;
+}
+
+export interface UpdateProjectAiProviderSettingsInput {
+  projectId: string;
+  providerProfiles: AiProviderProfileInput[];
+  modelAliases: AiModelAliasInput[];
+  expectedVersion: number;
+}
+
+export interface UpdateCompanyAiProviderSettingsInput {
+  companyId: string;
+  providerProfile: AiProviderProfileInput;
+  chatModelAlias: AiModelAliasInput;
+  expectedVersion: number;
+}
+
+export interface AiProviderProfileInput {
+  id?: string | null;
+  label: string;
+  providerKind: AiProviderKind;
+  baseUrl?: string | null;
+  credentialRef: string;
+  models: JSONValue;
+  timeoutMs?: number | null;
+  maxConcurrency?: number | null;
+  disabled?: boolean | null;
+}
+
+export interface AiModelAliasInput {
+  id?: string | null;
+  name: string;
+  providerProfileId: string;
+  model: string;
+  purpose: AiModelPurpose;
+  parameters?: AiProviderParametersInput | null;
+}
+
+export interface AiProviderParametersInput {
+  temperature?: number | null;
+  topP?: number | null;
+  maxOutputTokens?: number | null;
+  reasoningEffort?: string | null;
+  extras?: JSONValue;
+}
+
+export interface AiChatHistoryInput {
+  companyId: string;
+  projectId?: string | null;
+  includeArchived?: boolean | null;
+  first?: number | null;
+  after?: string | null;
+}
+
+export interface CreateAiChatConversationInput {
+  companyId: string;
+  projectId: string;
+  title?: string | null;
+  firstUserMessage: string;
+}
+
+export interface ApproveAiChatActionInput {
+  actionId: string;
+  approved: boolean;
+  reason?: string | null;
   expectedVersion: number;
 }
 
@@ -1469,6 +1576,158 @@ export interface ProjectAiSettingsEffective {
   budgetExhausted: boolean;
 }
 
+export interface ProjectAiProviderSettings {
+  projectId: string;
+  providerProfiles: AiProviderProfile[];
+  modelAliases: AiModelAlias[];
+  effective: AiProviderSettingsEffective;
+  version: number;
+  updatedAt: DateTime;
+  updatedByUserId: string;
+}
+
+export interface CompanyAiProviderSettings {
+  companyId: string;
+  providerProfile?: AiProviderProfile | null;
+  chatModelAlias?: AiModelAlias | null;
+  effective: AiProviderSettingsEffective;
+  version: number;
+  updatedAt: DateTime;
+  updatedByUserId: string;
+}
+
+export interface AiProviderProfile {
+  id: string;
+  ownerScope: string;
+  ownerId: string;
+  label: string;
+  providerKind: AiProviderKind;
+  baseUrl?: string | null;
+  credentialRef: string;
+  models: JSONValue;
+  timeoutMs: number;
+  maxConcurrency?: number | null;
+  disabledAt?: DateTime | null;
+}
+
+export interface AiModelAlias {
+  id: string;
+  name: string;
+  providerProfileId: string;
+  model: string;
+  purpose: AiModelPurpose;
+  parameters: AiProviderParameters;
+}
+
+export interface AiProviderParameters {
+  temperature?: number | null;
+  topP?: number | null;
+  maxOutputTokens?: number | null;
+  reasoningEffort?: string | null;
+  extras: JSONValue;
+}
+
+export interface AiProviderSettingsEffective {
+  warnings: string[];
+  missingProviderProfiles: string[];
+  disabledProviderProfiles: string[];
+  missingChatProvider: boolean;
+}
+
+export interface AiChatHistory {
+  companyId: string;
+  userId: string;
+  projectGroups: AiChatProjectGroup[];
+  pageInfo: PageInfo;
+}
+
+export interface AiChatProjectGroup {
+  projectId: string;
+  projectName: string;
+  conversations: AiChatConversation[];
+}
+
+export interface AiChatConversation {
+  id: string;
+  companyId: string;
+  projectId: string;
+  userId: string;
+  title: string;
+  status: AiChatConversationStatus;
+  messages: AiChatMessage[];
+  latestRun?: AiChatRun | null;
+  compaction?: AiChatCompaction | null;
+  createdAt: DateTime;
+  updatedAt: DateTime;
+  lastMessageAt: DateTime;
+  version: number;
+}
+
+export interface AiChatMessage {
+  id: string;
+  conversationId: string;
+  role: AiChatMessageRole;
+  parts: AiChatMessagePart[];
+  createdAt: DateTime;
+}
+
+export interface AiChatMessagePart {
+  type: AiChatMessagePartType;
+  text?: string | null;
+  json?: JSONValue;
+  artifactId?: string | null;
+  actionId?: string | null;
+}
+
+export interface AiChatRun {
+  id: string;
+  conversationId: string;
+  status: AiChatRunStatus;
+  providerProfileId: string;
+  model: string;
+  artifacts: AiChatArtifact[];
+  actionProposals: AiChatActionProposal[];
+  startedAt: DateTime;
+  completedAt?: DateTime | null;
+  error?: string | null;
+}
+
+export interface AiChatArtifact {
+  id: string;
+  runId: string;
+  kind: AiChatArtifactKind;
+  label: string;
+  mimeType?: string | null;
+  content: JSONValue;
+  createdAt: DateTime;
+}
+
+export interface AiChatActionProposal {
+  id: string;
+  runId: string;
+  conversationId: string;
+  title: string;
+  description: string;
+  risk: AiChatActionRisk;
+  status: AiChatActionStatus;
+  operation: string;
+  preview: JSONValue;
+  result?: JSONValue;
+  requestedAt: DateTime;
+  decidedAt?: DateTime | null;
+  decidedByUserId?: string | null;
+  version: number;
+}
+
+export interface AiChatCompaction {
+  id: string;
+  conversationId: string;
+  summary: string;
+  coveredMessageIds: string[];
+  tokenCount: number;
+  createdAt: DateTime;
+}
+
 export interface AiQualityOverview {
   projectId: string;
   from?: DateTime | null;
@@ -2114,6 +2373,22 @@ export interface ProjectAiSettingsQueryData {
   projectAiSettings: ProjectAiSettings;
 }
 
+export interface ProjectAiProviderSettingsQueryData {
+  projectAiProviderSettings: ProjectAiProviderSettings;
+}
+
+export interface CompanyAiProviderSettingsQueryData {
+  companyAiProviderSettings: CompanyAiProviderSettings;
+}
+
+export interface AiChatHistoryQueryData {
+  aiChatHistory: AiChatHistory;
+}
+
+export interface AiChatConversationQueryData {
+  aiChatConversation?: AiChatConversation | null;
+}
+
 export interface AiQualityOverviewQueryData {
   aiQualityOverview: AiQualityOverview;
 }
@@ -2260,6 +2535,26 @@ export interface ResolveAnnotationMutationData {
 
 export interface UpdateProjectAiSettingsMutationData {
   updateProjectAiSettings: ProjectAiSettings;
+}
+
+export interface UpdateProjectAiProviderSettingsMutationData {
+  updateProjectAiProviderSettings: ProjectAiProviderSettings;
+}
+
+export interface UpdateCompanyAiProviderSettingsMutationData {
+  updateCompanyAiProviderSettings: CompanyAiProviderSettings;
+}
+
+export interface CreateAiChatConversationMutationData {
+  createAiChatConversation: AiChatConversation;
+}
+
+export interface ArchiveAiChatConversationMutationData {
+  archiveAiChatConversation: AiChatConversation;
+}
+
+export interface ApproveAiChatActionMutationData {
+  approveAiChatAction: AiChatActionProposal;
 }
 
 export interface LiveExperimentRunSubscriptionData {

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIC-007",
+  "title": "AiChatStream",
+  "type": "object",
+  "additionalProperties": false,
+  "oneOf": [
+    { "$ref": "#/$defs/streamRequest" },
+    { "$ref": "#/$defs/streamEvent" }
+  ],
+  "$defs": {
+    "userMessagePart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "text"],
+      "properties": {
+        "type": { "type": "string", "const": "text" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 20000 }
+      }
+    },
+    "streamRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "conversationId",
+        "projectId",
+        "userMessageClientId",
+        "idempotencyKey",
+        "parts"
+      ],
+      "properties": {
+        "conversationId": { "type": "string", "minLength": 1 },
+        "projectId": { "type": "string", "minLength": 1 },
+        "userMessageClientId": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "idempotencyKey": { "type": "string", "minLength": 16, "maxLength": 160 },
+        "parts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/userMessagePart" },
+          "minItems": 1,
+          "maxItems": 16
+        },
+        "timezone": { "type": "string", "minLength": 1, "maxLength": 80 }
+      }
+    },
+    "streamEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "conversationId", "runId", "createdAt", "payload"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "run.started",
+            "message.created",
+            "text.delta",
+            "tool.started",
+            "tool.completed",
+            "artifact.created",
+            "action.proposed",
+            "compaction.started",
+            "compaction.saved",
+            "run.completed",
+            "run.failed",
+            "heartbeat"
+          ]
+        },
+        "conversationId": { "type": "string", "minLength": 1 },
+        "runId": { "type": "string", "minLength": 1 },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "payload": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

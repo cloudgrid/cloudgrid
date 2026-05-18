@@ -463,6 +463,97 @@ channels:
         $ref: "#/components/messages/ProjectAiSettingsUpdateRequest"
       ProjectAiSettingsUpdateResponse:
         $ref: "#/components/messages/ProjectAiSettingsUpdateResponse"
+  control.ai_providers.project.get:
+    address: control.ai_providers.project.get
+    messages:
+      ProjectAiProviderSettingsGetRequest:
+        $ref: "#/components/messages/ProjectAiProviderSettingsGetRequest"
+      ProjectAiProviderSettingsGetResponse:
+        $ref: "#/components/messages/ProjectAiProviderSettingsGetResponse"
+  control.ai_providers.project.update:
+    address: control.ai_providers.project.update
+    messages:
+      ProjectAiProviderSettingsUpdateRequest:
+        $ref: "#/components/messages/ProjectAiProviderSettingsUpdateRequest"
+      ProjectAiProviderSettingsUpdateResponse:
+        $ref: "#/components/messages/ProjectAiProviderSettingsUpdateResponse"
+  control.ai_providers.company.get:
+    address: control.ai_providers.company.get
+    messages:
+      CompanyAiProviderSettingsGetRequest:
+        $ref: "#/components/messages/CompanyAiProviderSettingsGetRequest"
+      CompanyAiProviderSettingsGetResponse:
+        $ref: "#/components/messages/CompanyAiProviderSettingsGetResponse"
+  control.ai_providers.company.update:
+    address: control.ai_providers.company.update
+    messages:
+      CompanyAiProviderSettingsUpdateRequest:
+        $ref: "#/components/messages/CompanyAiProviderSettingsUpdateRequest"
+      CompanyAiProviderSettingsUpdateResponse:
+        $ref: "#/components/messages/CompanyAiProviderSettingsUpdateResponse"
+  control.ai_chat.history:
+    address: control.ai_chat.history
+    messages:
+      AiChatHistoryRequest:
+        $ref: "#/components/messages/AiChatHistoryRequest"
+      AiChatHistoryResponse:
+        $ref: "#/components/messages/AiChatHistoryResponse"
+  control.ai_chat.conversation.get:
+    address: control.ai_chat.conversation.get
+    messages:
+      AiChatConversationGetRequest:
+        $ref: "#/components/messages/AiChatConversationGetRequest"
+      AiChatConversationGetResponse:
+        $ref: "#/components/messages/AiChatConversationGetResponse"
+  control.ai_chat.conversation.create:
+    address: control.ai_chat.conversation.create
+    messages:
+      AiChatConversationCreateRequest:
+        $ref: "#/components/messages/AiChatConversationCreateRequest"
+      AiChatConversationCreateResponse:
+        $ref: "#/components/messages/AiChatConversationCreateResponse"
+  control.ai_chat.conversation.archive:
+    address: control.ai_chat.conversation.archive
+    messages:
+      AiChatConversationArchiveRequest:
+        $ref: "#/components/messages/AiChatConversationArchiveRequest"
+      AiChatConversationArchiveResponse:
+        $ref: "#/components/messages/AiChatConversationArchiveResponse"
+  control.ai_chat.message.append:
+    address: control.ai_chat.message.append
+    messages:
+      AiChatMessageAppendRequest:
+        $ref: "#/components/messages/AiChatMessageAppendRequest"
+      AiChatMessageAppendResponse:
+        $ref: "#/components/messages/AiChatMessageAppendResponse"
+  control.ai_chat.action.propose:
+    address: control.ai_chat.action.propose
+    messages:
+      AiChatActionProposeRequest:
+        $ref: "#/components/messages/AiChatActionProposeRequest"
+      AiChatActionProposeResponse:
+        $ref: "#/components/messages/AiChatActionProposeResponse"
+  control.ai_chat.action.approve:
+    address: control.ai_chat.action.approve
+    messages:
+      AiChatActionApproveRequest:
+        $ref: "#/components/messages/AiChatActionApproveRequest"
+      AiChatActionApproveResponse:
+        $ref: "#/components/messages/AiChatActionApproveResponse"
+  control.ai_chat.action.finish:
+    address: control.ai_chat.action.finish
+    messages:
+      AiChatActionFinishRequest:
+        $ref: "#/components/messages/AiChatActionFinishRequest"
+      AiChatActionFinishResponse:
+        $ref: "#/components/messages/AiChatActionFinishResponse"
+  control.ai_chat.compaction.save:
+    address: control.ai_chat.compaction.save
+    messages:
+      AiChatCompactionSaveRequest:
+        $ref: "#/components/messages/AiChatCompactionSaveRequest"
+      AiChatCompactionSaveResponse:
+        $ref: "#/components/messages/AiChatCompactionSaveResponse"
   control.project_status.snapshot:
     address: control.project_status.snapshot
     messages:
@@ -1486,6 +1577,110 @@ components:
       name: ProjectAiSettingsUpdateResponse
       payload:
         $ref: "#/components/schemas/ProjectAiSettingsUpdateResponse"
+    ProjectAiProviderSettingsGetRequest:
+      name: ProjectAiProviderSettingsGetRequest
+      payload:
+        $ref: "#/components/schemas/ProjectAiProviderSettingsGetRequest"
+    ProjectAiProviderSettingsGetResponse:
+      name: ProjectAiProviderSettingsGetResponse
+      payload:
+        $ref: "#/components/schemas/ProjectAiProviderSettingsGetResponse"
+    ProjectAiProviderSettingsUpdateRequest:
+      name: ProjectAiProviderSettingsUpdateRequest
+      payload:
+        $ref: "#/components/schemas/ProjectAiProviderSettingsUpdateRequest"
+    ProjectAiProviderSettingsUpdateResponse:
+      name: ProjectAiProviderSettingsUpdateResponse
+      payload:
+        $ref: "#/components/schemas/ProjectAiProviderSettingsUpdateResponse"
+    CompanyAiProviderSettingsGetRequest:
+      name: CompanyAiProviderSettingsGetRequest
+      payload:
+        $ref: "#/components/schemas/CompanyAiProviderSettingsGetRequest"
+    CompanyAiProviderSettingsGetResponse:
+      name: CompanyAiProviderSettingsGetResponse
+      payload:
+        $ref: "#/components/schemas/CompanyAiProviderSettingsGetResponse"
+    CompanyAiProviderSettingsUpdateRequest:
+      name: CompanyAiProviderSettingsUpdateRequest
+      payload:
+        $ref: "#/components/schemas/CompanyAiProviderSettingsUpdateRequest"
+    CompanyAiProviderSettingsUpdateResponse:
+      name: CompanyAiProviderSettingsUpdateResponse
+      payload:
+        $ref: "#/components/schemas/CompanyAiProviderSettingsUpdateResponse"
+    AiChatHistoryRequest:
+      name: AiChatHistoryRequest
+      payload:
+        $ref: "#/components/schemas/AiChatHistoryRequest"
+    AiChatHistoryResponse:
+      name: AiChatHistoryResponse
+      payload:
+        $ref: "#/components/schemas/AiChatHistoryResponse"
+    AiChatConversationGetRequest:
+      name: AiChatConversationGetRequest
+      payload:
+        $ref: "#/components/schemas/AiChatConversationGetRequest"
+    AiChatConversationGetResponse:
+      name: AiChatConversationGetResponse
+      payload:
+        $ref: "#/components/schemas/AiChatConversationGetResponse"
+    AiChatConversationCreateRequest:
+      name: AiChatConversationCreateRequest
+      payload:
+        $ref: "#/components/schemas/AiChatConversationCreateRequest"
+    AiChatConversationCreateResponse:
+      name: AiChatConversationCreateResponse
+      payload:
+        $ref: "#/components/schemas/AiChatConversationCreateResponse"
+    AiChatConversationArchiveRequest:
+      name: AiChatConversationArchiveRequest
+      payload:
+        $ref: "#/components/schemas/AiChatConversationArchiveRequest"
+    AiChatConversationArchiveResponse:
+      name: AiChatConversationArchiveResponse
+      payload:
+        $ref: "#/components/schemas/AiChatConversationArchiveResponse"
+    AiChatMessageAppendRequest:
+      name: AiChatMessageAppendRequest
+      payload:
+        $ref: "#/components/schemas/AiChatMessageAppendRequest"
+    AiChatMessageAppendResponse:
+      name: AiChatMessageAppendResponse
+      payload:
+        $ref: "#/components/schemas/AiChatMessageAppendResponse"
+    AiChatActionProposeRequest:
+      name: AiChatActionProposeRequest
+      payload:
+        $ref: "#/components/schemas/AiChatActionProposeRequest"
+    AiChatActionProposeResponse:
+      name: AiChatActionProposeResponse
+      payload:
+        $ref: "#/components/schemas/AiChatActionProposeResponse"
+    AiChatActionApproveRequest:
+      name: AiChatActionApproveRequest
+      payload:
+        $ref: "#/components/schemas/AiChatActionApproveRequest"
+    AiChatActionApproveResponse:
+      name: AiChatActionApproveResponse
+      payload:
+        $ref: "#/components/schemas/AiChatActionApproveResponse"
+    AiChatActionFinishRequest:
+      name: AiChatActionFinishRequest
+      payload:
+        $ref: "#/components/schemas/AiChatActionFinishRequest"
+    AiChatActionFinishResponse:
+      name: AiChatActionFinishResponse
+      payload:
+        $ref: "#/components/schemas/AiChatActionFinishResponse"
+    AiChatCompactionSaveRequest:
+      name: AiChatCompactionSaveRequest
+      payload:
+        $ref: "#/components/schemas/AiChatCompactionSaveRequest"
+    AiChatCompactionSaveResponse:
+      name: AiChatCompactionSaveResponse
+      payload:
+        $ref: "#/components/schemas/AiChatCompactionSaveResponse"
     ProjectStatusSnapshotRequest:
       name: ProjectStatusSnapshotRequest
       payload:
@@ -3610,6 +3805,407 @@ components:
           properties:
             settings:
               $ref: "../entities/ai/project-ai-settings.schema.json"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    ProjectAiProviderSettingsGetRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId]
+          properties:
+            projectId:
+              type: string
+    ProjectAiProviderSettingsGetResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [settings]
+          properties:
+            settings:
+              $ref: "../entities/ai/ai-provider-settings.schema.json"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    ProjectAiProviderSettingsUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, providerProfiles, modelAliases, expectedVersion]
+          properties:
+            projectId:
+              type: string
+            providerProfiles:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            modelAliases:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            expectedVersion:
+              type: integer
+              minimum: 1
+    ProjectAiProviderSettingsUpdateResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [settings]
+          properties:
+            settings:
+              $ref: "../entities/ai/ai-provider-settings.schema.json"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    CompanyAiProviderSettingsGetRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [companyId]
+          properties:
+            companyId:
+              type: string
+    CompanyAiProviderSettingsGetResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [settings]
+          properties:
+            settings:
+              $ref: "../entities/ai/ai-provider-settings.schema.json"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    CompanyAiProviderSettingsUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [companyId, providerProfile, chatModelAlias, expectedVersion]
+          properties:
+            companyId:
+              type: string
+            providerProfile:
+              type: object
+              additionalProperties: true
+            chatModelAlias:
+              type: object
+              additionalProperties: true
+            expectedVersion:
+              type: integer
+              minimum: 1
+    CompanyAiProviderSettingsUpdateResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [settings]
+          properties:
+            settings:
+              $ref: "../entities/ai/ai-provider-settings.schema.json"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AiChatHistoryRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [companyId, userId]
+          properties:
+            companyId:
+              type: string
+            userId:
+              type: string
+            projectId:
+              type: string
+            includeArchived:
+              type: boolean
+            first:
+              type: integer
+              minimum: 1
+              maximum: 100
+            after:
+              type: string
+    AiChatHistoryResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: true
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AiChatConversationGetRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [conversationId]
+          properties:
+            conversationId:
+              type: string
+    AiChatConversationGetResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          $ref: "../entities/ai/ai-chat.schema.json"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AiChatConversationCreateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [companyId, projectId, userId, firstUserMessage]
+          properties:
+            companyId:
+              type: string
+            projectId:
+              type: string
+            userId:
+              type: string
+            title:
+              type: string
+            firstUserMessage:
+              type: string
+    AiChatConversationCreateResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          $ref: "../entities/ai/ai-chat.schema.json"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AiChatConversationArchiveRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [conversationId, userId, expectedVersion]
+          properties:
+            conversationId:
+              type: string
+            userId:
+              type: string
+            expectedVersion:
+              type: integer
+              minimum: 1
+    AiChatConversationArchiveResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          $ref: "../entities/ai/ai-chat.schema.json"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AiChatMessageAppendRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [conversationId, runId, role, parts]
+          properties:
+            conversationId:
+              type: string
+            runId:
+              type: string
+            role:
+              type: string
+            parts:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+    AiChatMessageAppendResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: true
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AiChatActionProposeRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [conversationId, runId, title, risk, operation, preview]
+          properties:
+            conversationId:
+              type: string
+            runId:
+              type: string
+            title:
+              type: string
+            risk:
+              type: string
+            operation:
+              type: string
+            preview:
+              type: object
+              additionalProperties: true
+    AiChatActionProposeResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: true
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AiChatActionApproveRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [actionId, approved, userId, expectedVersion]
+          properties:
+            actionId:
+              type: string
+            approved:
+              type: boolean
+            userId:
+              type: string
+            reason:
+              type: string
+            expectedVersion:
+              type: integer
+              minimum: 1
+    AiChatActionApproveResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: true
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AiChatActionFinishRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [actionId, status]
+          properties:
+            actionId:
+              type: string
+            status:
+              type: string
+            result:
+              type: object
+              additionalProperties: true
+    AiChatActionFinishResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: true
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AiChatCompactionSaveRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [conversationId, summary, coveredMessageIds, tokenCount]
+          properties:
+            conversationId:
+              type: string
+            summary:
+              type: string
+            coveredMessageIds:
+              type: array
+              items:
+                type: string
+            tokenCount:
+              type: integer
+    AiChatCompactionSaveResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: true
         error:
           $ref: "#/components/schemas/BridgeError"
     ProjectStatusSnapshotRequest:

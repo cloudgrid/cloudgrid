@@ -2124,6 +2124,67 @@ const (
 	ModelPurposeDefault   ModelPurpose = "default"
 )
 
+type AiProviderKind string
+
+const (
+	AiProviderKindAnthropic        AiProviderKind = "anthropic"
+	AiProviderKindOpenAI           AiProviderKind = "openai"
+	AiProviderKindAzureFoundry     AiProviderKind = "azure_foundry"
+	AiProviderKindAWSBedrock       AiProviderKind = "aws_bedrock"
+	AiProviderKindOpenAICompatible AiProviderKind = "openai_compatible"
+)
+
+type AiModelPurpose string
+
+const (
+	AiModelPurposeDefault   AiModelPurpose = "default"
+	AiModelPurposeChat      AiModelPurpose = "chat"
+	AiModelPurposeJudge     AiModelPurpose = "judge"
+	AiModelPurposeOptimizer AiModelPurpose = "optimizer"
+	AiModelPurposeEmbedding AiModelPurpose = "embedding"
+	AiModelPurposeReplay    AiModelPurpose = "replay"
+)
+
+type AiChatConversationStatus string
+
+const (
+	AiChatConversationStatusActive   AiChatConversationStatus = "active"
+	AiChatConversationStatusArchived AiChatConversationStatus = "archived"
+)
+
+type AiChatRunStatus string
+
+const (
+	AiChatRunStatusIdle             AiChatRunStatus = "idle"
+	AiChatRunStatusQueued           AiChatRunStatus = "queued"
+	AiChatRunStatusStreaming        AiChatRunStatus = "streaming"
+	AiChatRunStatusCompleted        AiChatRunStatus = "completed"
+	AiChatRunStatusFailed           AiChatRunStatus = "failed"
+	AiChatRunStatusCancelled        AiChatRunStatus = "cancelled"
+	AiChatRunStatusAwaitingApproval AiChatRunStatus = "awaiting_approval"
+)
+
+type AiChatActionRisk string
+
+const (
+	AiChatActionRiskLow         AiChatActionRisk = "low"
+	AiChatActionRiskMedium      AiChatActionRisk = "medium"
+	AiChatActionRiskHigh        AiChatActionRisk = "high"
+	AiChatActionRiskDestructive AiChatActionRisk = "destructive"
+)
+
+type AiChatActionStatus string
+
+const (
+	AiChatActionStatusProposed  AiChatActionStatus = "proposed"
+	AiChatActionStatusApproved  AiChatActionStatus = "approved"
+	AiChatActionStatusRejected  AiChatActionStatus = "rejected"
+	AiChatActionStatusExecuting AiChatActionStatus = "executing"
+	AiChatActionStatusSucceeded AiChatActionStatus = "succeeded"
+	AiChatActionStatusFailed    AiChatActionStatus = "failed"
+	AiChatActionStatusExpired   AiChatActionStatus = "expired"
+)
+
 type PersistAiProjectionCommand struct {
 	BridgeEnvelope
 	CommandID             string           `json:"commandId"`
@@ -2371,4 +2432,103 @@ type ProjectAiSettingsUpdateResponse struct {
 	OK        bool           `json:"ok"`
 	Data      map[string]any `json:"data,omitempty"`
 	Error     *BridgeError   `json:"error,omitempty"`
+}
+
+type ProjectAiProviderSettingsGetRequest struct {
+	BridgeEnvelope
+	ProjectID string `json:"projectId"`
+}
+
+type ProjectAiProviderSettingsUpdateRequest struct {
+	BridgeEnvelope
+	ProjectID        string           `json:"projectId"`
+	ProviderProfiles []map[string]any `json:"providerProfiles"`
+	ModelAliases     []map[string]any `json:"modelAliases"`
+	ExpectedVersion  int              `json:"expectedVersion"`
+}
+
+type CompanyAiProviderSettingsGetRequest struct {
+	BridgeEnvelope
+	CompanyID string `json:"companyId"`
+}
+
+type CompanyAiProviderSettingsUpdateRequest struct {
+	BridgeEnvelope
+	CompanyID       string         `json:"companyId"`
+	ProviderProfile map[string]any `json:"providerProfile"`
+	ChatModelAlias  map[string]any `json:"chatModelAlias"`
+	ExpectedVersion int            `json:"expectedVersion"`
+}
+
+type AiChatHistoryRequest struct {
+	BridgeEnvelope
+	CompanyID       string  `json:"companyId"`
+	UserID          string  `json:"userId"`
+	ProjectID       *string `json:"projectId,omitempty"`
+	IncludeArchived bool    `json:"includeArchived,omitempty"`
+	First           *int    `json:"first,omitempty"`
+	After           *string `json:"after,omitempty"`
+}
+
+type AiChatConversationGetRequest struct {
+	BridgeEnvelope
+	ConversationID string `json:"conversationId"`
+}
+
+type AiChatConversationCreateRequest struct {
+	BridgeEnvelope
+	CompanyID        string  `json:"companyId"`
+	ProjectID        string  `json:"projectId"`
+	UserID           string  `json:"userId"`
+	Title            *string `json:"title,omitempty"`
+	FirstUserMessage string  `json:"firstUserMessage"`
+}
+
+type AiChatConversationArchiveRequest struct {
+	BridgeEnvelope
+	ConversationID  string `json:"conversationId"`
+	UserID          string `json:"userId"`
+	ExpectedVersion int    `json:"expectedVersion"`
+}
+
+type AiChatMessageAppendRequest struct {
+	BridgeEnvelope
+	ConversationID string           `json:"conversationId"`
+	RunID          string           `json:"runId"`
+	Role           string           `json:"role"`
+	Parts          []map[string]any `json:"parts"`
+}
+
+type AiChatActionProposeRequest struct {
+	BridgeEnvelope
+	ConversationID string         `json:"conversationId"`
+	RunID          string         `json:"runId"`
+	Title          string         `json:"title"`
+	Risk           string         `json:"risk"`
+	Operation      string         `json:"operation"`
+	Preview        map[string]any `json:"preview"`
+}
+
+type AiChatActionApproveRequest struct {
+	BridgeEnvelope
+	ActionID        string  `json:"actionId"`
+	Approved        bool    `json:"approved"`
+	UserID          string  `json:"userId"`
+	Reason          *string `json:"reason,omitempty"`
+	ExpectedVersion int     `json:"expectedVersion"`
+}
+
+type AiChatActionFinishRequest struct {
+	BridgeEnvelope
+	ActionID string         `json:"actionId"`
+	Status   string         `json:"status"`
+	Result   map[string]any `json:"result,omitempty"`
+}
+
+type AiChatCompactionSaveRequest struct {
+	BridgeEnvelope
+	ConversationID    string   `json:"conversationId"`
+	Summary           string   `json:"summary"`
+	CoveredMessageIDs []string `json:"coveredMessageIds"`
+	TokenCount        int      `json:"tokenCount"`
 }

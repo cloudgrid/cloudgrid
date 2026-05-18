@@ -41,6 +41,10 @@ type Query {
   evalResults(input: EvalResultSearchInput = {}): EvalResultSearchResult!
   annotationQueue(input: AnnotationQueueSearchInput = {}): AnnotationQueueResult!
   projectAiSettings(projectId: ID!): ProjectAiSettings!
+  projectAiProviderSettings(projectId: ID!): ProjectAiProviderSettings!
+  companyAiProviderSettings(companyId: ID!): CompanyAiProviderSettings!
+  aiChatHistory(input: AiChatHistoryInput!): AiChatHistory!
+  aiChatConversation(id: ID!): AiChatConversation
   aiQualityOverview(input: AiQualityOverviewInput!): AiQualityOverview!
 }
 
@@ -82,6 +86,11 @@ type Mutation {
   promotePromptVersion(input: PromotePromptVersionInput!): PromptVersion!
   resolveAnnotation(input: ResolveAnnotationInput!): AnnotationQueueItem!
   updateProjectAiSettings(input: UpdateProjectAiSettingsInput!): ProjectAiSettings!
+  updateProjectAiProviderSettings(input: UpdateProjectAiProviderSettingsInput!): ProjectAiProviderSettings!
+  updateCompanyAiProviderSettings(input: UpdateCompanyAiProviderSettingsInput!): CompanyAiProviderSettings!
+  createAiChatConversation(input: CreateAiChatConversationInput!): AiChatConversation!
+  archiveAiChatConversation(id: ID!): AiChatConversation!
+  approveAiChatAction(input: ApproveAiChatActionInput!): AiChatActionProposal!
 }
 
 type Subscription {
@@ -693,6 +702,71 @@ input UpdateProjectAiSettingsInput {
   expectedVersion: Int!
 }
 
+input UpdateProjectAiProviderSettingsInput {
+  projectId: ID!
+  providerProfiles: [AiProviderProfileInput!]!
+  modelAliases: [AiModelAliasInput!]!
+  expectedVersion: Int!
+}
+
+input UpdateCompanyAiProviderSettingsInput {
+  companyId: ID!
+  providerProfile: AiProviderProfileInput!
+  chatModelAlias: AiModelAliasInput!
+  expectedVersion: Int!
+}
+
+input AiProviderProfileInput {
+  id: ID
+  label: String!
+  providerKind: AiProviderKind!
+  baseUrl: String
+  credentialRef: String!
+  models: JSON!
+  timeoutMs: Int = 30000
+  maxConcurrency: Int
+  disabled: Boolean = false
+}
+
+input AiModelAliasInput {
+  id: ID
+  name: String!
+  providerProfileId: ID!
+  model: String!
+  purpose: AiModelPurpose!
+  parameters: AiProviderParametersInput = {}
+}
+
+input AiProviderParametersInput {
+  temperature: Float
+  topP: Float
+  maxOutputTokens: Int
+  reasoningEffort: String
+  extras: JSON = {}
+}
+
+input AiChatHistoryInput {
+  companyId: ID!
+  projectId: ID
+  includeArchived: Boolean = false
+  first: Int = 50
+  after: String
+}
+
+input CreateAiChatConversationInput {
+  companyId: ID!
+  projectId: ID!
+  title: String
+  firstUserMessage: String!
+}
+
+input ApproveAiChatActionInput {
+  actionId: ID!
+  approved: Boolean!
+  reason: String
+  expectedVersion: Int!
+}
+
 input ProviderProfileInput {
   id: ID
   label: String!
@@ -1140,6 +1214,77 @@ enum ModelPurpose {
   embedding
   replay
   default
+}
+
+enum AiProviderKind {
+  anthropic
+  openai
+  azure_foundry
+  aws_bedrock
+  openai_compatible
+}
+
+enum AiModelPurpose {
+  default
+  chat
+  judge
+  optimizer
+  embedding
+  replay
+}
+
+enum AiChatConversationStatus {
+  active
+  archived
+}
+
+enum AiChatRunStatus {
+  idle
+  queued
+  streaming
+  completed
+  failed
+  cancelled
+  awaiting_approval
+}
+
+enum AiChatMessageRole {
+  user
+  assistant
+  system
+  tool
+}
+
+enum AiChatMessagePartType {
+  text
+  json_render
+  tool_call
+  tool_result
+  action_request
+}
+
+enum AiChatArtifactKind {
+  json_render
+  data_file
+  script
+  script_output
+}
+
+enum AiChatActionRisk {
+  low
+  medium
+  high
+  destructive
+}
+
+enum AiChatActionStatus {
+  proposed
+  approved
+  rejected
+  executing
+  succeeded
+  failed
+  expired
 }
 
 enum ExperimentRunEventType {
@@ -2179,6 +2324,158 @@ type ProjectAiSettingsEffective {
   missingProviderProfiles: [String!]!
   disabledProviderProfiles: [ID!]!
   budgetExhausted: Boolean!
+}
+
+type ProjectAiProviderSettings {
+  projectId: ID!
+  providerProfiles: [AiProviderProfile!]!
+  modelAliases: [AiModelAlias!]!
+  effective: AiProviderSettingsEffective!
+  version: Int!
+  updatedAt: DateTime!
+  updatedByUserId: ID!
+}
+
+type CompanyAiProviderSettings {
+  companyId: ID!
+  providerProfile: AiProviderProfile
+  chatModelAlias: AiModelAlias
+  effective: AiProviderSettingsEffective!
+  version: Int!
+  updatedAt: DateTime!
+  updatedByUserId: ID!
+}
+
+type AiProviderProfile {
+  id: ID!
+  ownerScope: String!
+  ownerId: ID!
+  label: String!
+  providerKind: AiProviderKind!
+  baseUrl: String
+  credentialRef: String!
+  models: JSON!
+  timeoutMs: Int!
+  maxConcurrency: Int
+  disabledAt: DateTime
+}
+
+type AiModelAlias {
+  id: ID!
+  name: String!
+  providerProfileId: ID!
+  model: String!
+  purpose: AiModelPurpose!
+  parameters: AiProviderParameters!
+}
+
+type AiProviderParameters {
+  temperature: Float
+  topP: Float
+  maxOutputTokens: Int
+  reasoningEffort: String
+  extras: JSON!
+}
+
+type AiProviderSettingsEffective {
+  warnings: [String!]!
+  missingProviderProfiles: [String!]!
+  disabledProviderProfiles: [ID!]!
+  missingChatProvider: Boolean!
+}
+
+type AiChatHistory {
+  companyId: ID!
+  userId: ID!
+  projectGroups: [AiChatProjectGroup!]!
+  pageInfo: PageInfo!
+}
+
+type AiChatProjectGroup {
+  projectId: ID!
+  projectName: String!
+  conversations: [AiChatConversation!]!
+}
+
+type AiChatConversation {
+  id: ID!
+  companyId: ID!
+  projectId: ID!
+  userId: ID!
+  title: String!
+  status: AiChatConversationStatus!
+  messages: [AiChatMessage!]!
+  latestRun: AiChatRun
+  compaction: AiChatCompaction
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  lastMessageAt: DateTime!
+  version: Int!
+}
+
+type AiChatMessage {
+  id: ID!
+  conversationId: ID!
+  role: AiChatMessageRole!
+  parts: [AiChatMessagePart!]!
+  createdAt: DateTime!
+}
+
+type AiChatMessagePart {
+  type: AiChatMessagePartType!
+  text: String
+  json: JSON
+  artifactId: ID
+  actionId: ID
+}
+
+type AiChatRun {
+  id: ID!
+  conversationId: ID!
+  status: AiChatRunStatus!
+  providerProfileId: ID!
+  model: String!
+  artifacts: [AiChatArtifact!]!
+  actionProposals: [AiChatActionProposal!]!
+  startedAt: DateTime!
+  completedAt: DateTime
+  error: String
+}
+
+type AiChatArtifact {
+  id: ID!
+  runId: ID!
+  kind: AiChatArtifactKind!
+  label: String!
+  mimeType: String
+  content: JSON!
+  createdAt: DateTime!
+}
+
+type AiChatActionProposal {
+  id: ID!
+  runId: ID!
+  conversationId: ID!
+  title: String!
+  description: String!
+  risk: AiChatActionRisk!
+  status: AiChatActionStatus!
+  operation: String!
+  preview: JSON!
+  result: JSON
+  requestedAt: DateTime!
+  decidedAt: DateTime
+  decidedByUserId: ID
+  version: Int!
+}
+
+type AiChatCompaction {
+  id: ID!
+  conversationId: ID!
+  summary: String!
+  coveredMessageIds: [ID!]!
+  tokenCount: Int!
+  createdAt: DateTime!
 }
 
 type AiQualityOverview {

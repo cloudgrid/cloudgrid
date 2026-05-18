@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIP-001",
+  "title": "AiProviderSettings",
+  "type": "object",
+  "additionalProperties": false,
+  "oneOf": [
+    { "$ref": "#/$defs/projectAiProviderSettings" },
+    { "$ref": "#/$defs/companyAiProviderSettings" }
+  ],
+  "$defs": {
+    "providerKind": {
+      "type": "string",
+      "enum": ["anthropic", "openai", "azure_foundry", "aws_bedrock", "openai_compatible"]
+    },
+    "modelPurpose": {
+      "type": "string",
+      "enum": ["default", "chat", "judge", "optimizer", "embedding", "replay"]
+    },
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+        "maxOutputTokens": { "type": "integer", "minimum": 1, "maximum": 200000 },
+        "reasoningEffort": { "type": "string", "enum": ["low", "medium", "high"] },
+        "timeoutMs": { "type": "integer", "minimum": 1000, "maximum": 300000 },
+        "region": { "type": "string", "minLength": 1 },
+        "deployment": { "type": "string", "minLength": 1 }
+      },
+      "default": {}
+    },
+    "aiProviderProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "scope",
+        "companyId",
+        "label",
+        "providerKind",
+        "credentialRef",
+        "models",
+        "parameters",
+        "createdAt",
+        "updatedAt",
+        "updatedByUserId"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "scope": { "type": "string", "enum": ["project", "company"] },
+        "companyId": { "type": "string", "minLength": 1 },
+        "projectId": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "providerKind": { "$ref": "#/$defs/providerKind" },
+        "baseUrl": { "type": "string", "format": "uri" },
+        "credentialRef": { "type": "string", "pattern": "^(env|external):[A-Za-z0-9_./:-]+$" },
+        "defaultModel": { "type": "string", "minLength": 1 },
+        "models": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "default": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "chat": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "judge": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "optimizer": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "embedding": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "replay": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          },
+          "default": {}
+        },
+        "parameters": { "$ref": "#/$defs/parameters" },
+        "maxConcurrency": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "disabledAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedByUserId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "aiModelAlias": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "companyId",
+        "projectId",
+        "name",
+        "providerProfileId",
+        "model",
+        "purpose",
+        "parameters",
+        "createdAt",
+        "updatedAt",
+        "updatedByUserId"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "companyId": { "type": "string", "minLength": 1 },
+        "projectId": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,62}$" },
+        "providerProfileId": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "purpose": { "$ref": "#/$defs/modelPurpose" },
+        "parameters": { "$ref": "#/$defs/parameters" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedByUserId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "effective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "warnings", "missingCredentialRefs", "disabledProviderProfileIds"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "warnings": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "missingCredentialRefs": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "disabledProviderProfileIds": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "missingAliasPurposes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/modelPurpose" },
+          "default": []
+        },
+        "runtimeSource": { "type": "string", "enum": ["stored", "environment"] }
+      }
+    },
+    "projectAiProviderSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectId",
+        "providerProfiles",
+        "modelAliases",
+        "effective",
+        "version",
+        "updatedAt",
+        "updatedByUserId"
+      ],
+      "properties": {
+        "projectId": { "type": "string", "minLength": 1 },
+        "providerProfiles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/aiProviderProfile" },
+          "default": []
+        },
+        "modelAliases": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/aiModelAlias" },
+          "default": []
+        },
+        "effective": { "$ref": "#/$defs/effective" },
+        "version": { "type": "integer", "minimum": 1 },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedByUserId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "companyAiProviderSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["companyId", "effective", "version", "updatedAt", "updatedByUserId"],
+      "properties": {
+        "companyId": { "type": "string", "minLength": 1 },
+        "chatProviderProfile": { "$ref": "#/$defs/aiProviderProfile" },
+        "effective": { "$ref": "#/$defs/effective" },
+        "version": { "type": "integer", "minimum": 1 },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedByUserId": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

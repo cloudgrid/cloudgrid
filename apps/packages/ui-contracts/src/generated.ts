@@ -50,6 +50,58 @@ export const ALERT_RULE_KINDS = [
 ] as const;
 export const ALERT_SEVERITIES = ["INFO", "WARNING", "ERROR", "CRITICAL"] as const;
 export const ALERT_STATES = ["OK", "PENDING", "FIRING", "RESOLVED", "SILENCED", "ERROR"] as const;
+export const AI_PROVIDER_KINDS = [
+  "anthropic",
+  "openai",
+  "azure_foundry",
+  "aws_bedrock",
+  "openai_compatible",
+] as const;
+export const AI_MODEL_PURPOSES = [
+  "default",
+  "chat",
+  "judge",
+  "optimizer",
+  "embedding",
+  "replay",
+] as const;
+export const AI_CHAT_CONVERSATION_STATUSES = ["active", "archived"] as const;
+export const AI_CHAT_RUN_STATUSES = [
+  "idle",
+  "queued",
+  "streaming",
+  "completed",
+  "failed",
+  "cancelled",
+  "awaiting_approval",
+] as const;
+export const AI_CHAT_ACTION_RISKS = ["low", "medium", "high", "destructive"] as const;
+export const AI_CHAT_ACTION_STATUSES = [
+  "proposed",
+  "approved",
+  "rejected",
+  "executing",
+  "succeeded",
+  "failed",
+  "expired",
+] as const;
+export const AI_CHAT_ARTIFACT_KINDS = [
+  "json_render",
+  "data_file",
+  "script",
+  "script_output",
+] as const;
+export const AI_CHAT_STREAM_EVENT_TYPES = [
+  "run.started",
+  "message.delta",
+  "message.completed",
+  "artifact.created",
+  "action.proposed",
+  "action.updated",
+  "run.completed",
+  "run.failed",
+  "heartbeat",
+] as const;
 export const CONTROL_PLANE_SUBJECTS = [
   "control.viewer.get",
   "control.organizations.list",
@@ -72,6 +124,19 @@ export const CONTROL_PLANE_SUBJECTS = [
   "control.ingest_credentials.revoke",
   "control.ai_settings.get",
   "control.ai_settings.update",
+  "control.ai_providers.project.get",
+  "control.ai_providers.project.update",
+  "control.ai_providers.company.get",
+  "control.ai_providers.company.update",
+  "control.ai_chat.history",
+  "control.ai_chat.conversation.get",
+  "control.ai_chat.conversation.create",
+  "control.ai_chat.conversation.archive",
+  "control.ai_chat.message.append",
+  "control.ai_chat.action.propose",
+  "control.ai_chat.action.approve",
+  "control.ai_chat.action.finish",
+  "control.ai_chat.compaction.save",
   "control.project_status.snapshot",
   "control.project_status.changed",
   "control.dashboards.list",

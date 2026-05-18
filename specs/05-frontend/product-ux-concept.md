@@ -50,7 +50,7 @@ Primary jobs in priority order:
 2. Send the first telemetry signal into that project.
 3. Confirm data is arriving.
 4. Investigate a live or historical behavior problem.
-5. Pivot between trace, log, metric, dashboard, and AI-eval evidence without losing project context.
+5. Pivot between trace, log, metric, dashboard, AI Chat, and AI-eval evidence without losing project context.
 6. Save reusable dashboard and evaluation views for the project.
 7. Manage project/company settings only when needed.
 
@@ -91,7 +91,7 @@ Project workspace mode:
 - Applies after `viewer.selectedProject` exists and the route is project-scoped.
 - Global topbar shows CloudGrid identity/home, company dropdown, project dropdown, command/search button, help/setup entry, theme/language controls when implemented, and user menu.
 - A left project/domain sidebar owns primary project navigation.
-- Sidebar order is `Traces`, `Logs`, `Metrics`, `Dashboards`, `AI Eval` when enabled, then a separated `Project settings` entry.
+- Sidebar order is `Traces`, `Logs`, `Metrics`, `Dashboards`, `AI Chat` when enabled, `AI Eval` when enabled, then a separated `Project settings` entry.
 - The project sidebar must not repeat the selected company/project summary. The global topbar owns company and project context with dropdown selectors.
 - Pinned dashboard shortcuts may appear above the primary navigation when explicit user dashboard preference data exists.
 - The `Dashboards` entry may be expanded to show custom dashboards available to the current user; the parent entry still opens the dashboard workspace.
@@ -104,7 +104,7 @@ Admin settings mode:
 - Applies to company and administrative routes: `/organizations`, `/organizations/:organizationId`, `/organizations/:organizationId/projects`, `/organizations/:organizationId/members`, and future billing/security/audit routes.
 - Global topbar remains visible.
 - A dedicated admin settings sidebar replaces the project/domain sidebar.
-- Admin sidebar groups are `Organization`, `Projects`, `Members`, and future admin-only sections when specified.
+- Admin sidebar groups are `Organization`, `Projects`, `Members`, `AI Provider` when AI Chat is enabled, and future admin-only sections when specified.
 - Telemetry navigation remains hidden in admin settings mode.
 
 ### Route Groups
@@ -119,6 +119,7 @@ Admin settings routes:
 - `/organizations/:organizationId`: company overview.
 - `/organizations/:organizationId/projects`: company-scoped project list and creation.
 - `/organizations/:organizationId/members`: company members and roles.
+- `/organizations/:organizationId/ai-provider`: company AI Chat provider settings, visible only to company admins.
 
 Project workspace routes:
 
@@ -128,6 +129,7 @@ Project workspace routes:
 - `/logs`: log search.
 - `/metrics`: metric explorer workspace.
 - `/dashboards`: dashboard view and editor workspace.
+- `/ai-chat`: project-scoped AI Chat assistant, visible when enabled.
 - `/alerts`: project alert rules and history workspace. This route remains available by URL, command palette action, alert evidence links, and any explicit alert-management entry points defined by alerting specs, but it is not a primary project sidebar item.
 - `/ai-eval`: AI evaluation workspace when enabled.
 - `/projects/:projectId/settings`: project general settings. There is no separate project settings overview subpage.
@@ -135,6 +137,8 @@ Project workspace routes:
 - `/projects/:projectId/settings/ingest`: settings item labeled `API Keys`; one concise project setup page with OTLP endpoint, copyable setup snippets, and multiple project ingest API keys.
 - `/projects/:projectId/settings/retention`: project-level editable retention policy for each supported data class once backend retention contracts are generated.
 - `/projects/:projectId/settings/members`: project-specific members and roles once backend project-membership contracts are generated.
+- `/projects/:projectId/settings/ai-providers`: reusable project AI provider profiles and model aliases.
+- `/projects/:projectId/settings/ai-eval`: AI Eval policy, budget, sampling, and dataset defaults that reference Project AI Providers.
 
 Route redirects:
 
@@ -258,6 +262,9 @@ Settings page:
 - Project settings are scoped under `/projects/:projectId/settings/*`.
 - Project settings routes are flat, border-led forms and tables. Do not wrap settings pages in an outer card when inner sections, tables, setup snippets, or alerts already have their own surface.
 - Admin settings are scoped under organization routes and use the admin settings shell.
+- AI Chat uses a project route with a route-local conversation history rail and
+  transcript, not a settings route. AI provider configuration remains in
+  project/company settings.
 
 Popover:
 
@@ -569,6 +576,8 @@ Layout:
 
 - Company routes use admin-focused list/detail layouts.
 - Company project list and member list are dense tables, not dashboard cards.
+- Company AI Provider settings uses the same admin shell and is visible only to
+  company admins.
 - Member mutation actions use dialogs for confirmation and drawers for invite/edit forms.
 - The Members route has one primary `Invite member` action for company admins.
   The invite drawer accepts one email address, explains that access activates
@@ -658,7 +667,7 @@ The app may feel dense, but it must not feel cramped. Density comes from aligned
 Copy rules:
 
 - Use verb-first actions: `Create project`, `Select project`, `Copy endpoint`, `Clear filters`, `Open trace`.
-- Avoid implementation terms in user-facing navigation. Use `Company`, `Project`, `Traces`, `Logs`, `Metrics`, `Dashboards`, `AI Eval`, and `Settings`. Use `Live` only as a trace workspace mode label, not as a primary navigation entry.
+- Avoid implementation terms in user-facing navigation. Use `Company`, `Project`, `Traces`, `Logs`, `Metrics`, `Dashboards`, `AI Chat`, `AI Eval`, and `Settings`. Use `Live` only as a trace workspace mode label, not as a primary navigation entry.
 - Technical protocol terms are allowed only inside setup and documentation surfaces: `OTLP`, `OpenTelemetry`, `Bearer token`, `GraphQL`.
 - Every user-visible string goes through the translation layer.
 
@@ -752,8 +761,9 @@ Implementation agents must split UI work by ownership boundary:
 2. Project selection and onboarding: `/projects`, ingest setup, project empty states.
 3. Telemetry workspaces: Traces with History/Live modes, Logs, trace detail route frames, filters, facets, and primary surfaces.
 4. Metrics and dashboards: metric explorer, dashboard rail, widget grid, editor drawer, dirty state, save/delete dialogs.
-5. Project settings: general settings at the settings root, API Keys, retention, and members.
-6. Admin settings shell: organization overview, project list, member list, and admin navigation.
+5. Project settings: general settings at the settings root, API Keys, retention, members, AI Providers, and AI Eval settings.
+6. AI Chat: project assistant route with per-user history grouped by project, BFF streaming, approved action proposals, and json-render artifacts.
+7. Admin settings shell: organization overview, project list, member list, AI Provider, and admin navigation.
 7. AI Eval workspace: feature-gated layout, section rail/tabs, inspector drawers, trace pivots.
 8. Design QA: responsive checks, accessibility checks, no nested-card checks, translation coverage.
 

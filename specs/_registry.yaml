@@ -3,16 +3,20 @@ generated_by: spec-architect
 last_updated: 2026-05-11T00:00:00Z
 
 counters:
-  DOM: 5
+  DOM: 7
   CAP-ING: 3
   CAP-OBS: 6
   CAP-STO: 2
   CAP-RUN: 3
   CAP-FE: 6
   CAP-AIE: 9
+  CAP-AIP: 2
+  CAP-AIC: 1
   FLW-ING: 2
   FLW-OBS: 2
   FLW-AIE: 5
+  FLW-AIP: 1
+  FLW-AIC: 3
   ENT: 23
   ADR: 5
   NFR: 8
@@ -20,12 +24,12 @@ counters:
   OPR-API: 1
   GQL: 5
   MSG: 10
-  ERR: 17
-  REV: 6
+  ERR: 34
+  REV: 7
   GLS: 1
   ARC: 1
-  TEC-BE: 27
-  TEC-FE: 8
+  TEC-BE: 29
+  TEC-FE: 9
   FTR: 0
 
 ids:
@@ -791,6 +795,12 @@ ids:
     status: approved
     depends_on: [VIS-001, CNV-001, TEC-BE-001, TEC-BE-008, ADR-0003, REV-006]
     deprecated_by: null
+  DOM-007:
+    slug: ai-chat
+    file: specs/01-domains/ai-chat.md
+    status: draft
+    depends_on: [VIS-001, CNV-001, TEC-BE-001, TEC-BE-008, TEC-BE-028]
+    deprecated_by: null
   CAP-AIE-001:
     slug: ingest-ai-projections
     file: specs/02-capabilities/ai-eval/ingest-ai-projections.md
@@ -825,7 +835,7 @@ ids:
     slug: manage-project-ai-settings
     file: specs/02-capabilities/ai-eval/manage-project-ai-settings.md
     status: approved
-    depends_on: [DOM-006, TEC-BE-024]
+    depends_on: [DOM-006, TEC-BE-024, TEC-BE-028]
     deprecated_by: null
   CAP-AIE-007:
     slug: curate-datasets
@@ -844,6 +854,48 @@ ids:
     file: specs/02-capabilities/ai-eval/import-export-datasets.md
     status: approved
     depends_on: [CAP-AIE-007, FLW-AIE-005, TEC-BE-025]
+    deprecated_by: null
+  CAP-AIP-001:
+    slug: manage-project-ai-providers
+    file: specs/02-capabilities/ai-platform/manage-project-ai-providers.md
+    status: draft
+    depends_on: [TEC-BE-028, TEC-FE-001]
+    deprecated_by: null
+  CAP-AIP-002:
+    slug: manage-company-ai-chat-provider
+    file: specs/02-capabilities/ai-platform/manage-company-ai-chat-provider.md
+    status: draft
+    depends_on: [TEC-BE-028, TEC-FE-009]
+    deprecated_by: null
+  CAP-AIC-001:
+    slug: use-ai-chat
+    file: specs/02-capabilities/ai-chat/use-ai-chat.md
+    status: draft
+    depends_on: [DOM-007, TEC-BE-029, TEC-FE-009]
+    deprecated_by: null
+  FLW-AIP-001:
+    slug: provider-settings-resolution
+    file: specs/02-flows/ai-platform/provider-settings-resolution.md
+    status: draft
+    depends_on: [CAP-AIP-001, CAP-AIP-002, TEC-BE-028]
+    deprecated_by: null
+  FLW-AIC-001:
+    slug: chat-run
+    file: specs/02-flows/ai-chat/chat-run.md
+    status: draft
+    depends_on: [CAP-AIC-001, TEC-BE-029]
+    deprecated_by: null
+  FLW-AIC-002:
+    slug: action-approval
+    file: specs/02-flows/ai-chat/action-approval.md
+    status: draft
+    depends_on: [CAP-AIC-001, TEC-BE-029]
+    deprecated_by: null
+  FLW-AIC-003:
+    slug: conversation-compaction
+    file: specs/02-flows/ai-chat/conversation-compaction.md
+    status: draft
+    depends_on: [CAP-AIC-001, TEC-BE-029]
     deprecated_by: null
   FLW-AIE-001:
     slug: offline-experiment-run
@@ -879,7 +931,7 @@ ids:
     slug: ai-eval-project-settings
     file: specs/04-backend/ai-eval-project-settings.md
     status: approved
-    depends_on: [DOM-006, TEC-BE-011, TEC-BE-023, NFR-010]
+    depends_on: [DOM-006, TEC-BE-011, TEC-BE-023, TEC-BE-028, NFR-010]
     deprecated_by: null
   TEC-BE-013:
     slug: ai-eval-protocol-interop
@@ -941,6 +993,24 @@ ids:
     status: approved
     depends_on: [TEC-FE-007, TEC-BE-024, TEC-BE-015, DSY-001]
     deprecated_by: null
+  TEC-BE-028:
+    slug: ai-provider-settings
+    file: specs/04-backend/ai-provider-settings.md
+    status: draft
+    depends_on: [TEC-BE-009, TEC-BE-011]
+    deprecated_by: null
+  TEC-BE-029:
+    slug: ai-chat-runtime
+    file: specs/04-backend/ai-chat.md
+    status: draft
+    depends_on: [DOM-007, TEC-BE-001, TEC-BE-008, TEC-BE-011, TEC-BE-028, NFR-003]
+    deprecated_by: null
+  TEC-FE-009:
+    slug: ai-chat-views
+    file: specs/05-frontend/ai-chat-views.md
+    status: draft
+    depends_on: [DOM-007, TEC-BE-029, TEC-FE-001, TEC-FE-002]
+    deprecated_by: null
   REV-005:
     slug: ai-eval-implementation-scope
     file: specs/99-reviews/ai-eval-implementation-scope.md
@@ -952,4 +1022,10 @@ ids:
     file: specs/99-reviews/ai-eval-product-concept.md
     status: approved
     depends_on: [DOM-006, REV-005]
+    deprecated_by: null
+  REV-007:
+    slug: ai-chat-provider-settings-scope
+    file: specs/99-reviews/ai-chat-provider-settings-scope.md
+    status: draft
+    depends_on: [DOM-007, TEC-BE-028, TEC-BE-029, TEC-FE-009]
     deprecated_by: null

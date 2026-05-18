@@ -37,8 +37,6 @@ workflows on top of preserved telemetry.
 - ENT-AIE-012: PromptVersion
 - ENT-AIE-013: AnnotationQueueItem
 - ENT-AIE-014: ProjectAiSettings
-- ENT-AIE-015: ProviderProfile
-- ENT-AIE-016: ModelAlias
 - ENT-AIE-017: OnlineEvaluationPolicy
 - ENT-AIE-018: DatasetSplitAssignment
 - ENT-AIE-019: ExperimentManifest
@@ -46,6 +44,11 @@ workflows on top of preserved telemetry.
 - ENT-AIE-021: ToolSnapshotRef
 - ENT-AIE-022: DatasetImportJob
 - ENT-AIE-023: DatasetExportJob
+
+Related provider entities:
+
+- ENT-AIP-001: AiProviderProfile
+- ENT-AIP-002: AiModelAlias
 
 ## Capabilities
 
@@ -73,10 +76,10 @@ workflows on top of preserved telemetry.
   controlled by GraphQL and private message bridge contracts.
 - Harness is the only execution surface for agent replay, LLM-judge scoring, and prompt optimization.
 - Harness run summaries are the adapter source for basic run outcomes. CloudGrid must not infer those outcomes by scraping spans when a run summary is available.
-- Project AI settings are control-plane configuration. They store provider
-  metadata, model aliases, online scoring policies, budgets, and opaque
-  credential references only. Raw model-provider API keys are not stored in
-  CloudGrid v1.
+- Project AI settings are control-plane configuration. AI Eval stores policy,
+  budget, sampling, dataset, and default provider reference choices. Reusable
+  provider profiles and model aliases are owned by project AI provider settings
+  in `specs/04-backend/ai-provider-settings.md`.
 - Dataset items have an explicit split. `holdout` items must never be used as
   optimization input.
 - Experiment and optimization runs use immutable manifests that snapshot dataset
@@ -114,8 +117,8 @@ workflows on top of preserved telemetry.
 - Dataset, scorer, experiment, experiment-run, prompt-version, result, and annotation records.
 - Dataset import preview jobs, dataset export jobs, and temporary transfer
   artifacts for JSONL, JSON array, CSV, and ZIP-based dataset exchange.
-- Project AI settings, provider profile metadata, model aliases, online scoring
-  policies, dataset split governance, and experiment manifests.
+- Project AI settings, provider profile references, model alias references,
+  online scoring policies, dataset split governance, and experiment manifests.
 - Conservative online scoring of newly persisted AI projections, bounded by
   configured sampling and concurrency limits, and limited to deterministic
   scorers for v1.
