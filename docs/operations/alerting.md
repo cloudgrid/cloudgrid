@@ -1,17 +1,17 @@
 # Alerting Operations
 
-CloudGrid alerting is project-scoped. Rules, silences, and in-app alert history are control-plane records. Rule execution belongs to a dedicated alert evaluator.
+CloudGrid alerting is project-scoped. Alert rule, silence, and history CRUD is implemented through GraphQL, the BFF bridge, control-plane storage, and the alert management UI. Rule execution belongs to a dedicated alert evaluator.
 
-## Current Product Boundary
+## Current Product Status
 
-CloudGrid exposes alerting foundations:
+CloudGrid exposes alert management surfaces:
 
 - alert rule configuration;
 - alert silences;
 - in-app alert history;
 - typed rule shapes over metrics, logs, and traces.
 
-The alert evaluator is the component that executes rules, transitions states, and dispatches notifications. If the evaluator is not running, configured rules remain stored but do not fire.
+The alert evaluator is the component that executes rules, transitions states, and dispatches notifications. The repository includes evaluator domain logic, transport-neutral handlers, and service image/chart shape. Production scheduling, live storage-read/control-plane adapters, and non-core notification adapters remain explicit follow-on work.
 
 ## Rule Kinds
 
@@ -21,19 +21,21 @@ The alert evaluator is the component that executes rules, transitions states, an
 | Logs | `LOG_MATCH`, `LOG_COUNT` |
 | Traces | `TRACE_MATCH`, `TRACE_COUNT`, `TRACE_LATENCY`, `TRACE_ERROR` |
 
-## State Flow
+## Evaluation Lifecycle
 
 ```mermaid
-stateDiagram-v2
-  [*] --> OK
-  OK --> PENDING
-  PENDING --> FIRING
-  FIRING --> RESOLVED
-  FIRING --> SILENCED
-  PENDING --> ERROR
-  FIRING --> ERROR
-  RESOLVED --> OK
-  SILENCED --> FIRING
+flowchart TD
+  Rule["Alert rule\ncontrol-plane"] --> Tick["Evaluator tick"]
+  Tick --> Query["storage-read query\nproject scoped"]
+  Query --> Condition{"Condition met?"}
+  Condition -->|No| OK["State OK or RESOLVED"]
+  Condition -->|Yes| Pending["State PENDING\npendingForSeconds"]
+  Pending --> Firing["State FIRING"]
+  Firing --> Silence{"Matching silence?"}
+  Silence -->|Yes| Silenced["State SILENCED"]
+  Silence -->|No| Notify["Dispatch notification adapter"]
+  Notify --> History["Persist alert history"]
+  Query --> Error["State ERROR\non unsupported query or timeout"]
 ```
 
 ## Notification Adapters
@@ -44,7 +46,7 @@ Do not add notification provider secrets to dashboard widgets, frontend state, B
 
 ## Operator Checks
 
-When the evaluator is implemented and running, check:
+When the evaluator is present, check:
 
 - evaluator schedule/tick logs;
 - rule execution duration and errors;
@@ -52,6 +54,8 @@ When the evaluator is implemented and running, check:
 - notification delivery status;
 - alert history persistence;
 - silence matching.
+
+Do not document email, webhook, Slack, or Teams alert notifications as available until their provider configuration and secret-handling specs and adapters exist. Invitation email SMTP is a separate onboarding path and is not an alert notification adapter.
 
 ## Dashboard Thresholds
 

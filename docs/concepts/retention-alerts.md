@@ -1,6 +1,6 @@
 # Retention And Alerts
 
-Retention and alerting are project-scoped administrative foundations. They are visible in the product model, but some execution components are still separate implementation work.
+Retention and alerting are project-scoped administrative surfaces. Policy and rule management is implemented; deletion and alert execution are separate service responsibilities.
 
 ## Retention Policies
 
@@ -34,9 +34,9 @@ Default policy:
 | `DATASETS`, `SCORERS`, `DASHBOARD_HISTORY` | Retain |
 | `INGEST_CREDENTIAL_AUDIT` | Delete after 365 days |
 
-Control-plane owns retention policy records. A dedicated storage-maintenance boundary owns deletion execution. The BFF and frontend never delete telemetry for retention.
+Control-plane owns retention policy records. A dedicated storage-maintenance boundary owns deletion execution. The BFF and frontend never delete telemetry for retention. The repository includes the storage-maintenance batch-executor module, but production deletion requires scheduler and storage-adapter wiring in the deployed environment.
 
-## Alerting Foundations
+## Alerting
 
 Alerting is project-scoped. Supported rule kinds are metric, log, and trace rules:
 
@@ -71,10 +71,10 @@ flowchart LR
   Control --> History["in-app alert history"]
 ```
 
-The alert evaluator owns schedules, rule execution, state transitions, deduplication, and notification dispatch. Dashboard widget thresholds are visual dashboard settings and do not execute alert rules.
+The alert evaluator owns schedules, rule execution, state transitions, deduplication, and notification dispatch. The repository includes evaluator domain logic and transport-neutral handlers, but production firing requires scheduler, storage-read/control-plane adapters, and configured notification dispatch. Dashboard widget thresholds are visual dashboard settings and do not execute alert rules.
 
 Non-core adapters such as email, webhook, Slack, or Teams require their own provider config and secret-handling specs before implementation.
 
 ## Next Step
 
-Operate saved policies with [Retention operations](../operations/retention.md) and alert foundations with [Alerting operations](../operations/alerting.md).
+Operate saved policies with [Retention operations](../operations/retention.md) and alert management with [Alerting operations](../operations/alerting.md).

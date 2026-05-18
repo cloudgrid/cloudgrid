@@ -28,10 +28,10 @@ The repository already has:
   workspace tests, frontend smoke, and backend coverage;
 - `compose.yaml` for local NATS and SurrealDB infrastructure only.
 
-The repository does not yet have product release workflows, deployable
-CloudGrid service images, Helm charts, SBOM/provenance output, container
-signing, or Kubernetes manifests. Those are required before a public or
-enterprise distribution is considered complete.
+The repository now has release workflow, Dockerfile, Helm chart, SBOM,
+provenance, signing, and Kubernetes manifest validation definitions. A public
+or enterprise distribution is complete only after a tagged release runs the
+workflow successfully and publishes the referenced artifacts.
 
 ## Delivery Goals
 
@@ -42,11 +42,15 @@ CloudGrid has three supported distribution paths:
 2. Enterprise Kubernetes: operators install a versioned Helm chart that deploys
    CloudGrid services, NATS, and SurrealDB either as bundled dependencies for
    evaluation or as external managed dependencies for production.
-3. Developer integrations: versioned source and package artifacts are available
-   for SDK-like packages, examples, and the optional harness adapter.
+3. Developer integrations and inspection tooling: versioned source archives,
+   package artifacts, and signed binary archives are available for SDK-like
+   packages, examples, optional harness adapter use, and direct service
+   inspection.
 
 The primary runtime distribution format is OCI. Git packages are allowed for
 developer libraries and examples, not for production service runtime delivery.
+Binary archives are convenience artifacts, not the primary production service
+delivery path.
 
 ## CI Quality Gates
 
@@ -89,9 +93,10 @@ Before release artifacts are published, CI/CD must produce and retain:
 - SBOMs for every service image and Helm chart artifact;
 - vulnerability scan reports for every service image;
 - signed images and signed provenance attestations;
-- checksum files for source archives and any binary assets;
+- checksum files for source archives and binary assets;
 - a release manifest listing image names, tags, digests, chart version,
-  application version, commit SHA, SBOM locations, and signatures.
+  application version, commit SHA, binary archive checksums, SBOM locations,
+  and signatures.
 
 Release publication must fail on critical vulnerabilities in runtime layers
 unless a time-bounded exception is recorded in the release manifest with the
@@ -113,6 +118,8 @@ Publish one image per deployable service:
 | `cloudgrid-storage-write` | `core/storage-write` | Private JetStream persistence worker. |
 | `cloudgrid-control-plane` | `core/control-plane` | Private company, user, project, dashboard, alert, and retention control service. |
 | `cloudgrid-ai-eval-runner` | `core/ai-eval-runner` | Optional private AI evaluation runner. |
+| `cloudgrid-alert-evaluator` | `core/alert-evaluator` | Optional private alert rule evaluator. |
+| `cloudgrid-storage-maintenance` | `core/storage-maintenance` | Private retention maintenance worker. |
 
 The BFF image is the only image that may contain frontend assets. No image may
 contain `.env`, local credentials, test secrets, private keys, dependency cache
@@ -123,6 +130,7 @@ Image tags:
 - immutable release tag: `vX.Y.Z`;
 - immutable commit tag: `sha-<shortsha>`;
 - optional pre-release tag: `vX.Y.Z-rc.N`;
+- optional beta pre-release tag: `vX.Y.Z-beta` or `vX.Y.Z-beta.N`;
 - mutable convenience tag: `latest` only for stable releases.
 
 Helm charts and examples must pin image digests by default in generated release
@@ -164,6 +172,38 @@ needed by a runtime, executable permission for service binaries, writable temp
 directory if the service explicitly requires one, and no shell requirement at
 runtime.
 
+Alpine is acceptable as a builder base when it does not leak into the runtime
+image. It is not the preferred default runtime base for Go services because
+static Go binaries can run from smaller shell-free images with fewer runtime
+packages.
+
+## Binary Archives
+
+Each release publishes signed checksumed binary archives for the Go services:
+
+- `cloudgrid-otlp-collector`;
+- `cloudgrid-storage-read`;
+- `cloudgrid-storage-write`;
+- `cloudgrid-control-plane`;
+- `cloudgrid-ai-eval-runner`;
+- `cloudgrid-alert-evaluator`;
+- `cloudgrid-storage-maintenance`.
+
+Archives use the name shape
+`<service>_<version>_<os>_<arch>.zip` and include the service executable plus a
+small README that states the commit, version, and runtime environment
+expectations. Supported binary targets are:
+
+- `linux/amd64`;
+- `linux/arm64`;
+- `darwin/amd64`;
+- `darwin/arm64`;
+- `windows/amd64`.
+
+The BFF is not distributed as a standalone binary because it depends on the Bun
+runtime and built frontend assets; its supported runtime artifact is the
+`cloudgrid-bff` OCI image.
+
 ## Local Distribution
 
 Local users should be able to run:
@@ -180,6 +220,8 @@ The local compose distribution must include:
 - storage-write;
 - control-plane;
 - optional AI eval runner only when explicitly enabled;
+- optional alert evaluator and storage-maintenance service shells only when
+  explicitly enabled;
 - NATS with JetStream;
 - SurrealDB with persistent local volume.
 
@@ -187,6 +229,28 @@ Local defaults may use published images by tag for readability, but release
 documentation must include a digest-pinned example. Local mode uses
 `CLOUDGRID_DEPLOYMENT_MODE=local` and `CLOUDGRID_AUTH_MODE=local` and must warn
 that it is not safe for untrusted networks.
+
+The release workflow must publish:
+
+- `cloudgrid.compose.yaml`;
+- `cloudgrid.env.example`;
+- `cloudgrid-local.sh`;
+- checksums that cover both files.
+
+The release Compose file must use published CloudGrid images, keep NATS and
+SurrealDB on localhost-bound ports for inspection, and keep storage-read,
+storage-write, control-plane, alert evaluator, and storage-maintenance private
+to the Compose network.
+
+The release Compose bundle must provide one primary local entry point:
+
+```sh
+./cloudgrid-local.sh up
+```
+
+Raw `docker compose` commands may remain documented as the transparent fallback,
+but the storyline should lead with the wrapper so release users do not need to
+assemble flags by hand.
 
 ## Enterprise Kubernetes Distribution
 
@@ -221,8 +285,8 @@ Production chart defaults:
 - NATS and SurrealDB are private cluster services or external managed
   endpoints, never exposed publicly by the chart.
 - OTLP collector and BFF are the only public ingress candidates.
-- SurrealDB credentials are mounted only into storage-read, storage-write, and
-  control-plane pods.
+- SurrealDB credentials are mounted only into storage-read, storage-write,
+  control-plane, and storage-maintenance pods.
 - BFF, frontend assets, collector, and clients never receive SurrealDB
   credentials.
 
@@ -249,6 +313,7 @@ Publish artifacts to registry locations chosen by release configuration:
 - OCI service images: GitHub Container Registry by default,
   `ghcr.io/cloudgrid-dev/<image>`.
 - Helm chart OCI artifact: `oci://ghcr.io/cloudgrid-dev/charts/cloudgrid`.
+- Service binary archives: GitHub Releases.
 - Developer packages: GitHub Packages or npm-compatible registry only for
   packages intended to be consumed as libraries, such as
   `@cloudgrid/harness-adapter`.
@@ -260,20 +325,31 @@ separate production delivery mechanism.
 
 ## Release Workflow
 
-Create a `release` workflow triggered by version tags and manual dispatch.
+Create a `release` workflow triggered by manual dispatch. The workflow creates
+the release tag itself after validation, then publishes all release artifacts
+from the tagged commit. This avoids accidental releases from ad hoc tag pushes
+and keeps version promotion explicit.
 
 Required stages:
 
-1. Run the full `verify` gate.
-2. Build service images for `linux/amd64` and `linux/arm64`.
-3. Generate SBOMs and vulnerability reports.
-4. Sign image digests and provenance attestations.
-5. Package and lint the Helm chart.
-6. Render Helm templates for `local`, `small`, and `enterprise` profiles and
+1. Validate that the requested version is a supported `vX.Y.Z`,
+   `vX.Y.Z-beta`, `vX.Y.Z-beta.N`, or `vX.Y.Z-rc.N` tag.
+2. Verify package and chart versions match the requested tag without the
+   leading `v`.
+3. Run the full `verify` gate.
+4. Create the release tag on the selected commit only if it does not already
+   exist.
+5. Build service images for `linux/amd64` and `linux/arm64`.
+6. Generate SBOMs and vulnerability reports.
+7. Sign image digests and provenance attestations.
+8. Package and lint the Helm chart.
+9. Render Helm templates for `local`, `small`, and `enterprise` profiles and
    validate Kubernetes manifests.
-7. Publish images, chart, source archive, checksums, release manifest, SBOMs,
-   and signatures.
-8. Create or update the GitHub release notes with install commands and artifact
+10. Build service binary archives for supported targets and generate signed
+   checksums.
+11. Publish images, chart, source archive, binary archives, checksums, release
+   manifest, SBOMs, and signatures.
+12. Create or update the GitHub release notes with install commands and artifact
    digests.
 
 The workflow must not publish mutable release artifacts until all gates pass.

@@ -47,7 +47,9 @@ This fallback is for single-project development only. It does not route CloudGri
 | `.env` | Local values consumed by scripts and Docker Compose. |
 | `.env.example` | Example values and image versions. |
 | `compose.yaml` | Local NATS and SurrealDB infrastructure. |
+| `deploy/compose/cloudgrid.compose.yaml` | Release Compose stack using published CloudGrid images. |
+| `deploy/compose/cloudgrid.env.example` | Release Compose environment example. |
 
 ## Next Step
 
-Use [Local setup script](./setup-script.md) for repeatable setup, then read [Local project-token routing](./project-token-routing.md).
+Use [Local setup script](./setup-script.md) for repeatable source setup, or [Run the release Compose stack](../../getting-started/docker-compose-release.md) for published images.

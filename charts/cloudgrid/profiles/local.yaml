@@ -1,0 +1,34 @@
+deploymentMode: local
+authMode: local
+
+nats:
+  bundled:
+    enabled: true
+  external:
+    url: ""
+
+surrealdb:
+  bundled:
+    enabled: true
+    username: root
+    password: root
+  external:
+    url: ""
+    existingSecret: ""
+
+bff:
+  replicas: 1
+
+otlpCollector:
+  replicas: 1
+
+storageRead:
+  replicas: 1
+
+storageWrite:
+  replicas: 1
+  env:
+    CLOUDGRID_STORAGE_WRITE_CONSUMER_MODE: push
+
+controlPlane:
+  replicas: 1

@@ -1,0 +1,177 @@
+name: cloudgrid
+
+x-cloudgrid-common: &cloudgrid-common
+  restart: unless-stopped
+  networks:
+    - cloudgrid
+
+x-cloudgrid-service-env: &cloudgrid-service-env
+  CLOUDGRID_DEPLOYMENT_MODE: local
+  CLOUDGRID_AUTH_MODE: local
+  CLOUDGRID_NATS_URL: nats://nats:4222
+  CLOUDGRID_STORAGE_ADAPTER: surrealdb
+  CLOUDGRID_SURREALDB_URL: http://surrealdb:8000/rpc
+  CLOUDGRID_SURREALDB_NAMESPACE: ${CLOUDGRID_SURREALDB_NAMESPACE:-observability}
+  CLOUDGRID_SURREALDB_DATABASE: ${CLOUDGRID_SURREALDB_DATABASE:-cloudgrid}
+  CLOUDGRID_SURREALDB_USERNAME: ${CLOUDGRID_SURREALDB_USERNAME:-root}
+  CLOUDGRID_SURREALDB_PASSWORD: ${CLOUDGRID_SURREALDB_PASSWORD:-root}
+
+services:
+  nats:
+    <<: *cloudgrid-common
+    image: nats:${CLOUDGRID_NATS_IMAGE_TAG:-2.14.0}
+    command:
+      - "-js"
+      - "-sd"
+      - "/data/jetstream"
+      - "-m"
+      - "8222"
+    ports:
+      - "127.0.0.1:${CLOUDGRID_NATS_PORT:-4222}:4222"
+      - "127.0.0.1:${CLOUDGRID_NATS_MONITOR_PORT:-8222}:8222"
+    volumes:
+      - nats-data:/data/jetstream
+
+  surrealdb:
+    <<: *cloudgrid-common
+    image: surrealdb/surrealdb:${CLOUDGRID_SURREALDB_IMAGE_TAG:-v3.0.5}
+    user: "0:0"
+    command:
+      - "start"
+      - "--user"
+      - "${CLOUDGRID_SURREALDB_USERNAME:-root}"
+      - "--pass"
+      - "${CLOUDGRID_SURREALDB_PASSWORD:-root}"
+      - "rocksdb:/data/cloudgrid.db"
+    ports:
+      - "127.0.0.1:${CLOUDGRID_SURREALDB_PORT:-8000}:8000"
+    volumes:
+      - surrealdb-data:/data
+
+  control-plane:
+    <<: *cloudgrid-common
+    image: ${CLOUDGRID_IMAGE_REGISTRY:-ghcr.io/cloudgrid-dev}/cloudgrid-control-plane:${CLOUDGRID_IMAGE_TAG:-v1.0.0-beta}
+    environment:
+      <<: *cloudgrid-service-env
+      CLOUDGRID_CONTROL_PLANE_HEALTH_HOST: 0.0.0.0
+      CLOUDGRID_CONTROL_PLANE_HEALTH_PORT: 8084
+      CLOUDGRID_INVITATION_EMAIL_MODE: disabled
+      CLOUDGRID_INVITATION_EMAIL_REQUIRE_DELIVERY: "false"
+    depends_on:
+      - nats
+      - surrealdb
+
+  storage-read:
+    <<: *cloudgrid-common
+    image: ${CLOUDGRID_IMAGE_REGISTRY:-ghcr.io/cloudgrid-dev}/cloudgrid-storage-read:${CLOUDGRID_IMAGE_TAG:-v1.0.0-beta}
+    environment:
+      <<: *cloudgrid-service-env
+      CLOUDGRID_STORAGE_READ_HEALTH_HOST: 0.0.0.0
+      CLOUDGRID_STORAGE_READ_HEALTH_PORT: 8081
+    depends_on:
+      - nats
+      - surrealdb
+
+  storage-write:
+    <<: *cloudgrid-common
+    image: ${CLOUDGRID_IMAGE_REGISTRY:-ghcr.io/cloudgrid-dev}/cloudgrid-storage-write:${CLOUDGRID_IMAGE_TAG:-v1.0.0-beta}
+    environment:
+      <<: *cloudgrid-service-env
+      CLOUDGRID_STORAGE_WRITE_HEALTH_HOST: 0.0.0.0
+      CLOUDGRID_STORAGE_WRITE_HEALTH_PORT: 8082
+    depends_on:
+      - nats
+      - surrealdb
+
+  otlp-collector:
+    <<: *cloudgrid-common
+    image: ${CLOUDGRID_IMAGE_REGISTRY:-ghcr.io/cloudgrid-dev}/cloudgrid-otlp-collector:${CLOUDGRID_IMAGE_TAG:-v1.0.0-beta}
+    environment:
+      CLOUDGRID_DEPLOYMENT_MODE: local
+      CLOUDGRID_AUTH_MODE: local
+      CLOUDGRID_NATS_URL: nats://nats:4222
+      CLOUDGRID_OTLP_HTTP_ADDR: 0.0.0.0:4318
+      CLOUDGRID_OTLP_GRPC_ADDR: 0.0.0.0:4317
+      CLOUDGRID_OTLP_GRPC_MAX_MESSAGE_BYTES: ${CLOUDGRID_OTLP_GRPC_MAX_MESSAGE_BYTES:-4194304}
+      CLOUDGRID_OTLP_GRPC_COMPRESSION: ${CLOUDGRID_OTLP_GRPC_COMPRESSION:-gzip}
+      CLOUDGRID_OTLP_LOCAL_PROJECT_ID: ${CLOUDGRID_OTLP_LOCAL_PROJECT_ID:-default}
+      CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS: ${CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS:-}
+    ports:
+      - "${CLOUDGRID_OTLP_HTTP_PORT:-4318}:4318"
+      - "${CLOUDGRID_OTLP_GRPC_PORT:-4317}:4317"
+    depends_on:
+      - nats
+      - storage-write
+      - control-plane
+
+  bff:
+    <<: *cloudgrid-common
+    image: ${CLOUDGRID_IMAGE_REGISTRY:-ghcr.io/cloudgrid-dev}/cloudgrid-bff:${CLOUDGRID_IMAGE_TAG:-v1.0.0-beta}
+    environment:
+      CLOUDGRID_DEPLOYMENT_MODE: local
+      CLOUDGRID_AUTH_MODE: local
+      CLOUDGRID_NATS_URL: nats://nats:4222
+      CLOUDGRID_BFF_HOST: 0.0.0.0
+      CLOUDGRID_BFF_PORT: 3000
+      CLOUDGRID_PUBLIC_URL: ${CLOUDGRID_PUBLIC_URL:-http://localhost:3000}
+      CLOUDGRID_FRONTEND_SERVE_STATIC: "true"
+      CLOUDGRID_FRONTEND_STATIC_DIR: /app/apps/backend/public
+      CLOUDGRID_GRAPHQL_UI: ${CLOUDGRID_GRAPHQL_UI:-true}
+      CLOUDGRID_INVITATION_EMAIL_MODE: disabled
+      CLOUDGRID_INVITATION_EMAIL_REQUIRE_DELIVERY: "false"
+      CLOUDGRID_SELF_OBSERVABILITY_ENABLED: ${CLOUDGRID_SELF_OBSERVABILITY_ENABLED:-false}
+      CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID: ${CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID:-local}
+      CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID: ${CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID:-cloudgrid-system}
+      CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT: ${CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT:-http://otlp-collector:4318}
+    ports:
+      - "${CLOUDGRID_BFF_PORT:-3000}:3000"
+    depends_on:
+      - nats
+      - control-plane
+      - storage-read
+
+  ai-eval-runner:
+    <<: *cloudgrid-common
+    profiles:
+      - ai-eval
+    image: ${CLOUDGRID_IMAGE_REGISTRY:-ghcr.io/cloudgrid-dev}/cloudgrid-ai-eval-runner:${CLOUDGRID_IMAGE_TAG:-v1.0.0-beta}
+    environment:
+      CLOUDGRID_NATS_URL: nats://nats:4222
+      CLOUDGRID_AI_EVAL_RUNNER_HEALTH_HOST: 0.0.0.0
+      CLOUDGRID_AI_EVAL_RUNNER_HEALTH_PORT: 8085
+      CLOUDGRID_AI_EVAL_HARNESS_URL: ${CLOUDGRID_AI_EVAL_HARNESS_URL:-}
+    depends_on:
+      - nats
+
+  alert-evaluator:
+    <<: *cloudgrid-common
+    profiles:
+      - maintenance
+    image: ${CLOUDGRID_IMAGE_REGISTRY:-ghcr.io/cloudgrid-dev}/cloudgrid-alert-evaluator:${CLOUDGRID_IMAGE_TAG:-v1.0.0-beta}
+    environment:
+      CLOUDGRID_NATS_URL: nats://nats:4222
+      CLOUDGRID_ALERT_EVALUATOR_HEALTH_HOST: 0.0.0.0
+      CLOUDGRID_ALERT_EVALUATOR_HEALTH_PORT: 8086
+    depends_on:
+      - nats
+
+  storage-maintenance:
+    <<: *cloudgrid-common
+    profiles:
+      - maintenance
+    image: ${CLOUDGRID_IMAGE_REGISTRY:-ghcr.io/cloudgrid-dev}/cloudgrid-storage-maintenance:${CLOUDGRID_IMAGE_TAG:-v1.0.0-beta}
+    environment:
+      <<: *cloudgrid-service-env
+      CLOUDGRID_STORAGE_MAINTENANCE_HEALTH_HOST: 0.0.0.0
+      CLOUDGRID_STORAGE_MAINTENANCE_HEALTH_PORT: 8087
+    depends_on:
+      - nats
+      - surrealdb
+
+networks:
+  cloudgrid:
+    driver: bridge
+
+volumes:
+  nats-data:
+  surrealdb-data:

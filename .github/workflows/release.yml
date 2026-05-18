@@ -1,0 +1,456 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version such as v1.0.0-beta
+        required: true
+        type: string
+      create_tag:
+        description: Create the release tag when it does not exist
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: cloudgrid-dev
+  CHART_PATH: charts/cloudgrid
+  PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      package_version: ${{ steps.meta.outputs.package_version }}
+      short_sha: ${{ steps.meta.outputs.short_sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Resolve and validate release metadata
+        id: meta
+        run: |
+          set -euo pipefail
+          version="${{ github.event.inputs.version }}"
+          if ! [[ "${version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(beta(\.[0-9]+)?|rc\.[0-9]+))?$ ]]; then
+            echo "Unsupported release version '${version}'" >&2
+            exit 1
+          fi
+          package_version="${version#v}"
+          package_json_version="$(jq -r '.version' package.json)"
+          chart_version="$(awk '$1 == "version:" { print $2 }' "${CHART_PATH}/Chart.yaml" | tr -d '"')"
+          app_version="$(awk '$1 == "appVersion:" { print $2 }' "${CHART_PATH}/Chart.yaml" | tr -d '"')"
+          if [ "${package_json_version}" != "${package_version}" ]; then
+            echo "package.json version ${package_json_version} does not match ${package_version}" >&2
+            exit 1
+          fi
+          if [ "${chart_version}" != "${package_version}" ] || [ "${app_version}" != "${package_version}" ]; then
+            echo "Chart version/appVersion must both match ${package_version}" >&2
+            exit 1
+          fi
+          short_sha="$(git rev-parse --short=12 HEAD)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "package_version=${package_version}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
+
+  verify:
+    needs: prepare
+    uses: ./.github/workflows/verify.yml
+
+  tag:
+    needs:
+      - prepare
+      - verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Create release tag
+        if: ${{ github.event.inputs.create_tag == 'true' }}
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          if git rev-parse "${version}" >/dev/null 2>&1; then
+            tagged_commit="$(git rev-list -n 1 "${version}")"
+            if [ "${tagged_commit}" != "${GITHUB_SHA}" ]; then
+              echo "Tag ${version} already points to ${tagged_commit}, not ${GITHUB_SHA}" >&2
+              exit 1
+            fi
+            echo "Tag ${version} already exists on this commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${version}" -m "CloudGrid ${version}" "${GITHUB_SHA}"
+          git push origin "${version}"
+
+      - name: Require existing tag when tag creation is disabled
+        if: ${{ github.event.inputs.create_tag != 'true' }}
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          tagged_commit="$(git rev-list -n 1 "${version}")"
+          if [ "${tagged_commit}" != "${GITHUB_SHA}" ]; then
+            echo "Tag ${version} points to ${tagged_commit}, not ${GITHUB_SHA}" >&2
+            exit 1
+          fi
+
+  release:
+    needs:
+      - prepare
+      - verify
+      - tag
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: cloudgrid-bff
+            dockerfile: deploy/docker/cloudgrid-bff.Dockerfile
+          - image: cloudgrid-otlp-collector
+            dockerfile: deploy/docker/cloudgrid-otlp-collector.Dockerfile
+          - image: cloudgrid-storage-read
+            dockerfile: deploy/docker/cloudgrid-storage-read.Dockerfile
+          - image: cloudgrid-storage-write
+            dockerfile: deploy/docker/cloudgrid-storage-write.Dockerfile
+          - image: cloudgrid-control-plane
+            dockerfile: deploy/docker/cloudgrid-control-plane.Dockerfile
+          - image: cloudgrid-ai-eval-runner
+            dockerfile: deploy/docker/cloudgrid-ai-eval-runner.Dockerfile
+          - image: cloudgrid-alert-evaluator
+            dockerfile: deploy/docker/cloudgrid-alert-evaluator.Dockerfile
+          - image: cloudgrid-storage-maintenance
+            dockerfile: deploy/docker/cloudgrid-storage-maintenance.Dockerfile
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Resolve release metadata
+        id: meta
+        run: |
+          echo "version=${{ needs.prepare.outputs.version }}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${{ needs.prepare.outputs.short_sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR with GitHub token
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          provenance: true
+          sbom: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}:${{ steps.meta.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}:sha-${{ steps.meta.outputs.short_sha }}
+
+      - name: Generate SBOM
+        # anchore/sbom-action is backed by syft.
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: artifacts/${{ matrix.image }}.spdx.json
+
+      - name: Scan image
+        uses: anchore/scan-action@v6
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          fail-build: true
+          severity-cutoff: critical
+          output-format: sarif
+          output-file: artifacts/${{ matrix.image }}.grype.sarif
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4
+
+      - name: Sign image digest
+        run: cosign sign --yes "${REGISTRY}/${IMAGE_NAMESPACE}/${{ matrix.image }}@${{ steps.build.outputs.digest }}"
+
+      - name: Attest image provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Write image release manifest fragment
+        run: |
+          mkdir -p artifacts
+          cat > "artifacts/${{ matrix.image }}.json" <<EOF
+          {
+            "image": "${REGISTRY}/${IMAGE_NAMESPACE}/${{ matrix.image }}",
+            "versionTag": "${{ steps.meta.outputs.version }}",
+            "commitTag": "sha-${{ steps.meta.outputs.short_sha }}",
+            "digest": "${{ steps.build.outputs.digest }}",
+            "sbom": "${{ matrix.image }}.spdx.json",
+            "scan": "${{ matrix.image }}.grype.sarif"
+          }
+          EOF
+
+      - name: Upload image artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.image }}
+          path: artifacts/
+
+  binaries:
+    needs:
+      - prepare
+      - verify
+      - tag
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - os: linux
+            arch: amd64
+          - os: linux
+            arch: arm64
+          - os: darwin
+            arch: amd64
+          - os: darwin
+            arch: arm64
+          - os: windows
+            arch: amd64
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.work
+
+      - name: Resolve release metadata
+        id: meta
+        run: |
+          echo "version=${{ needs.prepare.outputs.version }}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${{ needs.prepare.outputs.short_sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build service binary archives
+        env:
+          GOOS: ${{ matrix.target.os }}
+          GOARCH: ${{ matrix.target.arch }}
+          CGO_ENABLED: "0"
+          VERSION: ${{ steps.meta.outputs.version }}
+          SHORT_SHA: ${{ steps.meta.outputs.short_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/binaries
+
+          services='
+          cloudgrid-otlp-collector ./core/otlp-collector/cmd/otlp-collector
+          cloudgrid-storage-read ./core/storage-read/cmd/storage-read -tags surrealdb
+          cloudgrid-storage-write ./core/storage-write/cmd/storage-write -tags surrealdb
+          cloudgrid-control-plane ./core/control-plane/cmd/control-plane
+          cloudgrid-ai-eval-runner ./core/ai-eval-runner/cmd/ai-eval-runner
+          cloudgrid-alert-evaluator ./core/alert-evaluator/cmd/alert-evaluator
+          cloudgrid-storage-maintenance ./core/storage-maintenance/cmd/storage-maintenance
+          '
+
+          while read -r service package tag_flag tag_value; do
+            [ -z "${service}" ] && continue
+            binary="${service}"
+            if [ "${GOOS}" = "windows" ]; then
+              binary="${service}.exe"
+            fi
+
+            workdir="$(mktemp -d)"
+            ldflags="-s -w -X main.version=${VERSION} -X main.commit=${GITHUB_SHA}"
+            if [ "${tag_flag:-}" = "-tags" ]; then
+              go build -trimpath -ldflags="${ldflags}" -tags "${tag_value}" -o "${workdir}/${binary}" "${package}"
+            else
+              go build -trimpath -ldflags="${ldflags}" -o "${workdir}/${binary}" "${package}"
+            fi
+            cat > "${workdir}/README.txt" <<EOF
+          ${service}
+          version: ${VERSION}
+          commit: ${GITHUB_SHA}
+          target: ${GOOS}/${GOARCH}
+
+          This binary archive is a convenience artifact. Production service deployment uses the signed OCI images and Helm chart from the same release.
+          EOF
+            archive="${service}_${VERSION}_${GOOS}_${GOARCH}.zip"
+            (cd "${workdir}" && zip -q "${GITHUB_WORKSPACE}/artifacts/binaries/${archive}" "${binary}" README.txt)
+            rm -rf "${workdir}"
+          done <<EOF
+          ${services}
+          EOF
+
+          (cd artifacts/binaries && sha256sum *.zip > "checksums-${GOOS}-${GOARCH}.txt")
+
+      - name: Upload binary artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-binaries-${{ matrix.target.os }}-${{ matrix.target.arch }}
+          path: artifacts/binaries/
+
+  chart:
+    needs:
+      - prepare
+      - release
+      - binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: azure/setup-helm@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Static release artifact validation
+        run: bun tooling/scripts/validate-release-artifacts.mjs
+
+      - name: Lint Helm chart
+        run: helm lint "${CHART_PATH}"
+
+      - name: Render Helm profiles
+        run: |
+          mkdir -p artifacts/rendered
+          helm template cloudgrid-local "${CHART_PATH}" -f "${CHART_PATH}/profiles/local.yaml" > artifacts/rendered/local.yaml
+          helm template cloudgrid-small "${CHART_PATH}" -f "${CHART_PATH}/profiles/small.yaml" > artifacts/rendered/small.yaml
+          helm template cloudgrid-enterprise "${CHART_PATH}" -f "${CHART_PATH}/profiles/enterprise.yaml" > artifacts/rendered/enterprise.yaml
+
+      - name: Validate Kubernetes manifests
+        uses: yannh/kubeconform-action@v0.6.7
+        with:
+          files: artifacts/rendered
+          strict: true
+
+      - name: Package Helm chart
+        run: |
+          mkdir -p artifacts/chart
+          helm package "${CHART_PATH}" --destination artifacts/chart
+          sha256sum artifacts/chart/*.tgz > artifacts/chart/checksums.txt
+
+      - name: Generate Helm chart SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: ${{ env.CHART_PATH }}
+          format: spdx-json
+          output-file: artifacts/chart/cloudgrid-chart.spdx.json
+
+      - name: Login to GHCR with GitHub token
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Push Helm chart OCI artifact
+        run: helm push artifacts/chart/cloudgrid-*.tgz "oci://${REGISTRY}/${IMAGE_NAMESPACE}/charts"
+
+      - name: Sign Helm chart package
+        uses: sigstore/cosign-installer@v4
+
+      - name: Sign chart checksum
+        run: cosign sign-blob --yes --output-signature artifacts/chart/checksums.txt.sig artifacts/chart/checksums.txt
+
+      - name: Download image artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: release-cloudgrid-*
+          path: artifacts/images
+          merge-multiple: true
+
+      - name: Download binary artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: release-binaries-*
+          path: artifacts/binaries
+          merge-multiple: true
+
+      - name: Create release manifest
+        run: |
+          version="${{ needs.prepare.outputs.version }}"
+          mkdir -p artifacts/compose
+          cp deploy/compose/cloudgrid.compose.yaml artifacts/compose/cloudgrid.compose.yaml
+          cp deploy/compose/cloudgrid.env.example artifacts/compose/cloudgrid.env.example
+          cp deploy/compose/cloudgrid-local.sh artifacts/compose/cloudgrid-local.sh
+          sed -i "s/^CLOUDGRID_IMAGE_TAG=.*/CLOUDGRID_IMAGE_TAG=${version}/" artifacts/compose/cloudgrid.env.example
+          (cd artifacts/binaries && sha256sum *.zip > checksums.txt)
+          VERSION="$version" jq -s '{version: env.VERSION, commit: env.GITHUB_SHA, images: ., chart: {path: "artifacts/chart", sbom: "cloudgrid-chart.spdx.json", releaseValues: "release-values.yaml"}, compose: {path: "artifacts/compose", file: "cloudgrid.compose.yaml", envExample: "cloudgrid.env.example"}, binaries: {path: "artifacts/binaries", checksums: "checksums.txt"}}' artifacts/images/*.json > artifacts/release-manifest.json
+          jq -r '
+            def imageKey:
+              .image | split("/")[-1] |
+              {
+                "cloudgrid-bff": "bff",
+                "cloudgrid-otlp-collector": "otlpCollector",
+                "cloudgrid-storage-read": "storageRead",
+                "cloudgrid-storage-write": "storageWrite",
+                "cloudgrid-control-plane": "controlPlane",
+                "cloudgrid-ai-eval-runner": "aiEvalRunner",
+                "cloudgrid-alert-evaluator": "alertEvaluator",
+                "cloudgrid-storage-maintenance": "storageMaintenance"
+              }[.];
+            .images[] | "\(imageKey).image.repository=\(.image | split("/")[-1])\n\(imageKey).image.digest=\(.digest)"
+          ' artifacts/release-manifest.json |
+            awk -F= '
+              BEGIN { print "global:\n  imageRegistry: ghcr.io/cloudgrid-dev" }
+              {
+                split($1, path, ".")
+                if (path[1] != current) {
+                  current = path[1]
+                  print current ":"
+                  print "  image:"
+                }
+                print "    " path[3] ": " $2
+              }
+            ' > artifacts/chart/release-values.yaml
+          sha256sum artifacts/release-manifest.json >> artifacts/chart/checksums.txt
+          sha256sum artifacts/compose/cloudgrid.compose.yaml artifacts/compose/cloudgrid.env.example artifacts/compose/cloudgrid-local.sh >> artifacts/chart/checksums.txt
+
+      - name: Sign binary checksums
+        run: cosign sign-blob --yes --output-signature artifacts/binaries/checksums.txt.sig artifacts/binaries/checksums.txt
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-distribution
+          path: artifacts/
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.version }}
+          prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}
+          files: |
+            artifacts/release-manifest.json
+            artifacts/chart/*.tgz
+            artifacts/chart/checksums.txt
+            artifacts/chart/checksums.txt.sig
+            artifacts/chart/release-values.yaml
+            artifacts/chart/cloudgrid-chart.spdx.json
+            artifacts/compose/cloudgrid.compose.yaml
+            artifacts/compose/cloudgrid.env.example
+            artifacts/compose/cloudgrid-local.sh
+            artifacts/images/*.spdx.json
+            artifacts/images/*.grype.sarif
+            artifacts/binaries/*.zip
+            artifacts/binaries/checksums.txt
+            artifacts/binaries/checksums.txt.sig

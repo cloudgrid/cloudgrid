@@ -18,7 +18,7 @@ updated: 2026-05-18
 | `/logs` | Project log search, selected-log inspector, and trace/span pivots. |
 | `/metrics` | Metric explorer for descriptors, series queries, group-by, filters, and exemplars. |
 | `/dashboards` | Saved and built-in dashboards using typed metric, log, trace, and live widgets. |
-| `/alerts` | Project alert rules, silences, and in-app alert history foundations. |
+| `/alerts` | Project alert rules, silences, and in-app alert history records. |
 | `/ai-eval` | Optional AI evaluation workspace. |
 | `/projects/:projectId/settings` | Project general settings. |
 | `/projects/:projectId/settings/ingest` | Project API key setup and key management. |

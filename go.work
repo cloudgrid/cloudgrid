@@ -1,11 +1,13 @@
 go 1.25.0
 
 use (
+	./core/alert-evaluator
 	./core/ai-eval-runner
 	./core/control-plane
 	./core/go-contracts
 	./core/go-runtime
 	./core/otlp-collector
 	./core/storage-read
+	./core/storage-maintenance
 	./core/storage-write
 )

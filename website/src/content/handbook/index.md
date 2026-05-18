@@ -8,7 +8,7 @@ eyebrow: "Handbook"
 updated: 2026-05-18
 ---
 
-CloudGrid is an OTLP observability workspace for project-scoped traces, logs, metrics, live trace receiving, dashboards, ingest credentials, retention policies, alerting foundations, and optional AI evaluation workflows.
+CloudGrid is an OTLP observability workspace for project-scoped traces, logs, metrics, live trace receiving, dashboards, ingest credentials, retention policies, alert management, and optional AI evaluation workflows.
 
 This documentation is written as a storyline. Start with the product model, run a local stack, configure the runtime, send telemetry, investigate the data, then operate the services.
 
@@ -18,7 +18,7 @@ This documentation is written as a storyline. Start with the product model, run 
 | --- | --- | --- |
 | 1 | [What CloudGrid is](/handbook/overview/what-is-cloudgrid) | Understand the product boundary and the current implementation status. |
 | 2 | [Runtime modes](/handbook/overview/runtime-modes) | Choose local mode or deployed SSO mode. |
-| 3 | [Local quickstart](/handbook/getting-started/local-quickstart) | Run CloudGrid locally and open the UI. |
+| 3 | [Local quickstart](/handbook/getting-started/local-quickstart) or [release Compose](/handbook/getting-started/docker-compose-release) | Run CloudGrid locally and open the UI. |
 | 4 | [Send telemetry](/handbook/getting-started/send-telemetry) | Push traces, logs, and metrics through the real OTLP collector. |
 | 5 | [Configuration](/handbook/configuration) | Set local, deployed, SSO, storage, and self-observability values. |
 | 6 | [Guides](/handbook/guides/ingest-otlp) | Use project API keys, traces, logs, metrics, dashboards, and AI eval. |
@@ -30,7 +30,7 @@ This documentation is written as a storyline. Start with the product model, run 
 ```text
 handbook/
   overview/                 Product model and runtime modes
-  getting-started/          First local run and first telemetry
+  getting-started/          Source quickstart, release Compose, and first telemetry
   concepts/                 Companies, projects, telemetry, access, live data
   configuration/
     local/                  Local mode, token routing, self-observability

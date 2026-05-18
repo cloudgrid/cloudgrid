@@ -1,0 +1,27 @@
+{{- $root := . -}}
+{{- range $name, $svc := dict "cloudgrid-bff" .Values.bff "cloudgrid-otlp-collector" .Values.otlpCollector "cloudgrid-storage-read" .Values.storageRead "cloudgrid-storage-write" .Values.storageWrite "cloudgrid-control-plane" .Values.controlPlane "cloudgrid-ai-eval-runner" .Values.aiEvalRunner "cloudgrid-alert-evaluator" .Values.alertEvaluator "cloudgrid-storage-maintenance" .Values.storageMaintenance }}
+{{- if and (or (and (ne $name "cloudgrid-ai-eval-runner") (ne $name "cloudgrid-alert-evaluator") (ne $name "cloudgrid-storage-maintenance")) $svc.enabled) $svc.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "cloudgrid.fullname" $root }}-{{ trimPrefix "cloudgrid-" $name }}
+  labels:
+    {{- include "cloudgrid.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "cloudgrid.fullname" $root }}-{{ trimPrefix "cloudgrid-" $name }}
+  minReplicas: {{ $svc.autoscaling.minReplicas }}
+  maxReplicas: {{ $svc.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $svc.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
+{{- end }}

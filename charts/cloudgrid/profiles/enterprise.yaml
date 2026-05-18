@@ -1,0 +1,35 @@
+bff:
+  replicas: 3
+  autoscaling:
+    enabled: true
+
+otlpCollector:
+  replicas: 3
+  autoscaling:
+    enabled: true
+
+storageRead:
+  replicas: 3
+  autoscaling:
+    enabled: true
+
+storageWrite:
+  replicas: 2
+  env:
+    CLOUDGRID_STORAGE_WRITE_CONSUMER_MODE: pull
+
+controlPlane:
+  replicas: 2
+
+nats:
+  bundled:
+    enabled: false
+  external:
+    url: nats://nats.private:4222
+
+surrealdb:
+  bundled:
+    enabled: false
+  external:
+    url: http://surrealdb.private:8000/rpc
+    existingSecret: cloudgrid-surrealdb

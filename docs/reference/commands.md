@@ -15,6 +15,16 @@ Run commands from the repository root unless a command says otherwise.
 | Seed continuous live telemetry | `bun run dev:seed:live` |
 | Reset local infrastructure data | `docker compose --env-file .env down -v` |
 
+## Release Compose
+
+| Purpose | Command |
+| --- | --- |
+| Start release stack | `./cloudgrid-local.sh up` |
+| Start release stack from checkout | `deploy/compose/cloudgrid-local.sh up` |
+| Pull release images | `./cloudgrid-local.sh pull` |
+| Stop release stack | `./cloudgrid-local.sh down` |
+| Reset release stack data | `./cloudgrid-local.sh reset` |
+
 ## Verification
 
 | Purpose | Command |
@@ -32,6 +42,8 @@ Run commands from the repository root unless a command says otherwise.
 | Go workspace tests | `bun run go:test` |
 | Docker-backed integration | `bun run integration:local` |
 
+`bun run verify:full` includes `smoke:frontend` and `git diff --check` after the default verification chain. Any GraphQL, AsyncAPI, UI contract, BFF bridge, or Go message contract change must keep `bun run contracts:check` passing.
+
 ## Manual Service Startup
 
 | Step | Service | Command |
@@ -41,6 +53,14 @@ Run commands from the repository root unless a command says otherwise.
 | 3 | control-plane | `go run ./core/control-plane/cmd/control-plane` |
 | 4 | BFF and frontend | `bun run dev` |
 | 5 | OTLP collector | `go run ./core/otlp-collector/cmd/otlp-collector` |
+
+Start NATS and SurrealDB before manual service startup:
+
+```sh
+bun run dev:infra
+```
+
+The root `package.json` does not currently expose production benchmark commands. If benchmark scripts are added later, document the exact names only after verifying them in `package.json`.
 
 ## AI Evaluation Runner Scaffold
 

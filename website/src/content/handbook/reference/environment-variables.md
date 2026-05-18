@@ -13,6 +13,8 @@ This table summarizes the current CloudGrid runtime variables. See [Runtime envi
 
 | Variable | Default | Notes |
 | --- | --- | --- |
+| `CLOUDGRID_IMAGE_REGISTRY` | `ghcr.io/cloudgrid-dev` in release Compose | OCI image registry for release Compose. |
+| `CLOUDGRID_IMAGE_TAG` | current release tag | OCI image tag for release Compose. |
 | `CLOUDGRID_DEPLOYMENT_MODE` | `local` | `local` or `deployed`. |
 | `CLOUDGRID_AUTH_MODE` | `local` | `local` or `sso`; must match deployment mode. |
 | `CLOUDGRID_NATS_URL` | `nats://localhost:4222` | Private message bridge. |
@@ -90,6 +92,8 @@ and retries email asynchronously.
 | `CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS` | unset | JSON bearer-token-to-project map. |
 | `CLOUDGRID_OTLP_MAX_METRIC_POINTS_PER_REQUEST` | `20000` | Reject oversized metric exports before publish. |
 
+The performance spec also defines production-scale collector variables for span and log request limits, publish timeouts, and project status cache freshness. Add them to this reference only after they are present in runtime parsing or `.env.example`.
+
 ## Self-Observability
 
 | Variable | Default | Notes |
@@ -114,6 +118,10 @@ and retries email asynchronously.
 | `CLOUDGRID_SURREALDB_USERNAME` | local `root` | Do not expose publicly. |
 | `CLOUDGRID_SURREALDB_PASSWORD` | local `root` | Do not expose publicly. |
 | `CLOUDGRID_STORAGE_READ_MAX_METRIC_POINTS` | `5000` | Maximum metric points in one response. |
+| `CLOUDGRID_STORAGE_WRITE_HEALTH_HOST` | `0.0.0.0` | storage-write health bind host. |
+| `CLOUDGRID_STORAGE_WRITE_HEALTH_PORT` | `8082` | storage-write health port. |
+
+The production scaling spec defines additional storage-write pull-consumer, GraphQL depth/complexity, storage-read timeout/page-size, and live subscription backpressure variables. This reference intentionally lists only variables verified in the current repository examples or runtime code.
 
 ## AI Evaluation
 

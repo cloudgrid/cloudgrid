@@ -34,4 +34,4 @@ flowchart LR
 - The collector publishes ingest commands and never writes SurrealDB directly.
 - `storage-write` is the only normal telemetry mutator.
 - `storage-read` is the only telemetry reader.
-- `control-plane` owns companies, users, projects, memberships, dashboards, retention policies, alert foundations, and AI-eval project settings.
+- `control-plane` owns companies, users, projects, memberships, dashboards, retention policies, alert records, and AI-eval project settings.

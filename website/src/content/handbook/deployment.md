@@ -31,4 +31,4 @@ flowchart LR
 | Check Kubernetes status | [Kubernetes and deployment status](/handbook/configuration/deployed/kubernetes) |
 | Review production gaps | [Production readiness](/handbook/operations/production-readiness) |
 
-The repository does not yet ship signed service images, Helm charts, SBOM/provenance output, or production release workflows. Those remain production distribution work, not local runtime prerequisites.
+The repository includes Helm chart and release workflow definitions. Signed service images, SBOM/provenance output, and release manifests are produced by the release workflow and remain production distribution concerns, not local runtime prerequisites.

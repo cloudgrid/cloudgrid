@@ -5,7 +5,7 @@ CloudGrid has two supported runtime mode pairs. The deployment mode and auth mod
 | Deployment mode | Auth mode | Use for | Login | Company model |
 | --- | --- | --- | --- | --- |
 | `local` | `local` | Development, local evaluation, trusted demos | No login | One visible local company named `Personal` |
-| `deployed` | `sso` | Shared environments and future production deployments | GitHub, Google, or Azure Entra ID SSO | Configured deployed company boundary |
+| `deployed` | `sso` | Shared environments and production-target deployments | GitHub, Google, or Azure Entra ID SSO | Configured deployed company boundary |
 
 Invalid combinations fail startup with `ERR-009 CONFIG_INVALID`:
 

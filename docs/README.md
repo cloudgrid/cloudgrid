@@ -1,6 +1,6 @@
 # CloudGrid Documentation
 
-CloudGrid is an OTLP observability workspace for project-scoped traces, logs, metrics, live trace receiving, dashboards, ingest credentials, retention policies, alerting foundations, and optional AI evaluation workflows.
+CloudGrid is an OTLP observability workspace for project-scoped traces, logs, metrics, live trace receiving, dashboards, ingest credentials, retention policies, alert management, and optional AI evaluation workflows.
 
 This documentation is written as a storyline. Start with the product model, run a local stack, configure the runtime, send telemetry, investigate the data, then operate the services.
 
@@ -10,7 +10,7 @@ This documentation is written as a storyline. Start with the product model, run 
 | --- | --- | --- |
 | 1 | [What CloudGrid is](./overview/what-is-cloudgrid.md) | Understand the product boundary and the current implementation status. |
 | 2 | [Runtime modes](./overview/runtime-modes.md) | Choose local mode or deployed SSO mode. |
-| 3 | [Local quickstart](./getting-started/local-quickstart.md) | Run CloudGrid locally and open the UI. |
+| 3 | [Local quickstart](./getting-started/local-quickstart.md) or [release Compose](./getting-started/docker-compose-release.md) | Run CloudGrid locally and open the UI. |
 | 4 | [Send telemetry](./getting-started/send-telemetry.md) | Push traces, logs, and metrics through the real OTLP collector. |
 | 5 | [Configuration](./configuration/README.md) | Set local, deployed, SSO, storage, and self-observability values. |
 | 6 | [Guides](./guides/ingest-otlp.md) | Use project API keys, traces, logs, metrics, dashboards, and AI eval. |
@@ -22,7 +22,7 @@ This documentation is written as a storyline. Start with the product model, run 
 ```text
 docs/
   overview/                 Product model and runtime modes
-  getting-started/          First local run and first telemetry
+  getting-started/          Source quickstart, release Compose, and first telemetry
   concepts/                 Companies, projects, telemetry, access, live data
   configuration/
     local/                  Local mode, token routing, self-observability

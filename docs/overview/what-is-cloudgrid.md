@@ -12,7 +12,7 @@ Primary users:
 | --- | --- |
 | Local developer | Run CloudGrid locally, create a project, send OTLP data, and inspect traces, logs, and metrics. |
 | Team engineer | Select a project, investigate telemetry, pivot between evidence, and share URLs. |
-| Platform admin | Manage projects, members, ingest credentials, retention policies, and alert foundations. |
+| Platform admin | Manage projects, members, ingest credentials, retention policies, and alert rules. |
 | AI-agent engineer | Inspect agent runs, datasets, scorers, experiments, and AI quality signals when AI eval is enabled. |
 
 ## What CloudGrid Does Today
@@ -23,13 +23,13 @@ Primary users:
 - Persists telemetry in SurrealDB through private Go services.
 - Reads telemetry through GraphQL queries served by the TypeScript BFF.
 - Streams live trace updates through GraphQL subscriptions backed by `storage-read`.
-- Manages companies, projects, memberships, ingest credentials, dashboards, retention policies, and alerting foundations through `control-plane`.
+- Manages companies, projects, memberships, ingest credentials, dashboards, retention policies, and alert records through `control-plane`.
 - Supports local no-login mode and deployed SSO mode.
 - Supports optional AI evaluation surfaces and runner integration behind a feature flag.
 
 ## What Is Still Production-Readiness Work
 
-The specs define the production target, but the repository does not yet ship public release artifacts such as signed service images, Helm charts, SBOM/provenance output, or Kubernetes manifests. Retention deletion execution, alert evaluator execution, and non-core notification adapters are also separate implementation work.
+The specs define the production target, and the repository now includes release workflow and Helm chart definitions. Published signed service images, SBOM/provenance output, and release manifests exist only after the release workflow runs. Retention policy CRUD and alert rule/silence/history CRUD are implemented; full retention deletion scheduling, full alert evaluator scheduling, and non-core notification adapters are still separate implementation work.
 
 Do not configure CloudGrid local mode on an untrusted network. Local mode intentionally skips login.
 

@@ -1,0 +1,45 @@
+{{- $root := . -}}
+{{- $services := dict
+  "cloudgrid-bff" (dict "values" .Values.bff "port" .Values.bff.service.port "targetPort" 3000 "enabled" true)
+  "cloudgrid-otlp-collector" (dict "values" .Values.otlpCollector "port" .Values.otlpCollector.service.otlpHttpPort "targetPort" 4318 "grpcPort" .Values.otlpCollector.service.otlpGrpcPort "enabled" true)
+  "cloudgrid-storage-read" (dict "values" .Values.storageRead "port" .Values.storageRead.service.port "targetPort" 8081 "enabled" true)
+  "cloudgrid-storage-write" (dict "values" .Values.storageWrite "port" .Values.storageWrite.service.port "targetPort" 8082 "enabled" true)
+  "cloudgrid-control-plane" (dict "values" .Values.controlPlane "port" .Values.controlPlane.service.port "targetPort" 8084 "enabled" true)
+  "cloudgrid-ai-eval-runner" (dict "values" .Values.aiEvalRunner "port" .Values.aiEvalRunner.service.port "targetPort" 8085 "enabled" .Values.aiEvalRunner.enabled)
+  "cloudgrid-alert-evaluator" (dict "values" .Values.alertEvaluator "port" .Values.alertEvaluator.service.port "targetPort" 8086 "enabled" .Values.alertEvaluator.enabled)
+  "cloudgrid-storage-maintenance" (dict "values" .Values.storageMaintenance "port" .Values.storageMaintenance.service.port "targetPort" 8087 "enabled" .Values.storageMaintenance.enabled)
+-}}
+{{- range $name, $service := $services }}
+{{- $svc := $service.values }}
+{{- if $service.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cloudgrid.fullname" $root }}-{{ trimPrefix "cloudgrid-" $name }}
+  labels:
+    {{- include "cloudgrid.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+    {{- with $svc.service.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $svc.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $svc.service.type }}
+  selector:
+    app.kubernetes.io/instance: {{ $root.Release.Name }}
+    app.kubernetes.io/component: {{ $name }}
+  ports:
+    - name: http
+      port: {{ $service.port }}
+      targetPort: http
+    {{- if $service.grpcPort }}
+    - name: grpc
+      port: {{ $service.grpcPort }}
+      targetPort: grpc
+    {{- end }}
+{{- end }}
+{{- end }}

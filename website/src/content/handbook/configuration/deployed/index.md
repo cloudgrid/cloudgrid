@@ -18,7 +18,7 @@ CLOUDGRID_AUTH_PROVIDERS=github
 CLOUDGRID_SESSION_SECRET='<32-plus-byte-secret>'
 ```
 
-The repository does not yet ship production release artifacts, Helm charts, or Kubernetes manifests. Use this page to understand required configuration and readiness boundaries before deploying shared environments.
+The repository includes a Helm chart and release workflow definition. Use this page to understand required configuration and readiness boundaries before deploying shared environments; signed images, SBOMs, provenance, and the release manifest exist after the release workflow publishes them.
 
 ## Required Decisions
 
@@ -77,13 +77,13 @@ mutations, then sends and retries email asynchronously from the durable outbox.
 
 ## Production-Readiness Gaps
 
-Before public or enterprise distribution, CloudGrid still needs:
+Before public or enterprise distribution, verify:
 
 - signed OCI images per service;
-- release workflow, SBOMs, provenance, checksums, and image signing;
-- Helm chart artifacts and rendered Kubernetes manifests;
-- storage-maintenance retention deletion execution;
-- alert evaluator scheduling/execution;
+- SBOMs, provenance, checksums, and image signatures from the release workflow artifacts;
+- Helm chart lint/template output for the selected profile;
+- storage-maintenance retention deletion execution is wired to the intended storage adapter and scheduler;
+- alert evaluator scheduling/execution is wired to storage-read and control-plane ports;
 - production operational dashboards and load/capacity envelopes.
 
 ## Next Step

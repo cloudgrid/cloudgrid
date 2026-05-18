@@ -29,7 +29,7 @@ flowchart LR
 | `/logs` | Search project logs and pivot to same-project traces or spans. |
 | `/metrics` | Discover metric names, inspect descriptors, query series, and review exemplars. |
 | `/dashboards` | Build saved metric, log, trace, and live trace dashboards. |
-| `/alerts` | Configure project alert rules, silences, and in-app alert history foundations. |
+| `/alerts` | Configure project alert rules, silences, and in-app alert history records. |
 | `/ai-eval` | Optional AI evaluation workspace when `CLOUDGRID_AI_EVAL_ENABLED=true`. |
 
 ## Navigation Rules

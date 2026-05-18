@@ -1,6 +1,6 @@
 {
   "name": "@cloudgrid/root",
-  "version": "1.0.0",
+  "version": "1.0.0-beta",
   "private": true,
   "description": "CloudGrid AI-native OTLP observability platform",
   "homepage": "https://cloudgrid.dev",
@@ -20,7 +20,7 @@
     "setup:local": "bun tooling/scripts/setup-local.mjs",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "go:test": "go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/ai-eval-runner/... ./core/storage-read/... ./core/storage-write/...",
+    "go:test": "go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/ai-eval-runner/... ./core/alert-evaluator/... ./core/storage-read/... ./core/storage-maintenance/... ./core/storage-write/...",
     "lint": "biome lint .",
     "smoke:frontend": "bun run --cwd apps/frontend smoke",
     "test": "bun test --pass-with-no-tests apps/backend/src apps/frontend/test apps/packages/runtime/src apps/packages/cloudgrid-harness-adapter/src tooling/scripts",
@@ -28,9 +28,10 @@
     "coverage:backend": "bun tooling/scripts/backend-coverage.mjs",
     "contracts:generate": "bun tooling/scripts/generate-contracts.mjs",
     "contracts:check": "bun tooling/scripts/check-contracts.mjs",
+    "release:validate": "bun tooling/scripts/validate-release-artifacts.mjs",
     "integration:local": "bun --cwd apps/backend ../../tooling/scripts/integration-local.mjs",
     "eval:gate": "bun tooling/scripts/ai-eval-regression-gate.mjs",
-    "verify": "bun run format:check && bun run typecheck && bun run lint && bun run test && bun run contracts:check && bun run build && bun run go:test && bun run coverage:backend",
+    "verify": "bun run format:check && bun run typecheck && bun run lint && bun run test && bun run contracts:check && bun run release:validate && bun run build && bun run go:test && bun run coverage:backend",
     "verify:full": "bun run verify && bun run smoke:frontend && git diff --check"
   },
   "engines": {
