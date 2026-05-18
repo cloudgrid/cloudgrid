@@ -178,6 +178,9 @@ Implemented:
 - `storage-maintenance` service shell with NATS health/readiness logging;
 - direct retention batch executor for the `storage_maintenance.retention.execute_batch` request/response contract;
 - NATS request/reply runtime handler for the `storage_maintenance.retention.execute_batch` subject;
+- disabled-by-default storage-maintenance scheduler configuration for cadence, project IDs, batch limit, lease duration, and startup owner ID;
+- scheduler tick expansion across configured project IDs and all retention data classes;
+- fixture-backed retention lease acquisition, lease contention skip, error recording, completion recording, and retry-after-expiry behavior;
 - in-memory isolated retention fixtures for every `RetentionDataClass`;
 - executor validation for request fields, delete/soft-delete policy range rules, mode-specific `softDeleteDays`, and missing policies;
 - executor retain/no-op handling;
@@ -186,11 +189,11 @@ Implemented:
 - maintenance audit record hook with fixture-backed audit assertions;
 - focused Go tests for executor behavior, policy validation, every data-class fixture, structured logs, audit recording, and fixture deletion semantics;
 - focused Go tests for runtime subject handling and invalid request JSON.
+- focused Go tests for scheduler disabled defaults, config parsing, invalid config rejection, project/data-class expansion, lease acquisition, lease contention, recorded errors, and retry after lease expiry.
 
 Remaining before retention deletes telemetry:
 
 - production SurrealDB storage adapter for project-scoped hard delete, soft delete, and final delete execution;
-- production scheduler implementation for the cadence, project/data-class loop, lease, and retry semantics defined above;
 - integration tests against the production storage adapter once that adapter is specified and implemented;
 - docs that clearly separate configured policy from executed deletion and describe scheduler enablement.
 

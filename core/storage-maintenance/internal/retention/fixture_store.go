@@ -25,6 +25,7 @@ type FixtureStore struct {
 	policies map[policyKey]RetentionPolicy
 	records  map[string]FixtureRecord
 	audits   []RetentionAuditRecord
+	leases   map[string]RetentionLease
 }
 
 type policyKey struct {
@@ -37,6 +38,7 @@ func NewFixtureStore() *FixtureStore {
 		policies: map[policyKey]RetentionPolicy{},
 		records:  map[string]FixtureRecord{},
 		audits:   []RetentionAuditRecord{},
+		leases:   map[string]RetentionLease{},
 	}
 }
 
@@ -173,6 +175,53 @@ func (store *FixtureStore) Audits() []RetentionAuditRecord {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	return append([]RetentionAuditRecord(nil), store.audits...)
+}
+
+func (store *FixtureStore) AcquireRetentionLease(ctx context.Context, lease RetentionLease) (bool, error) {
+	_ = ctx
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	current, ok := store.leases[lease.Key]
+	if ok && current.ExpiresAt.After(lease.AcquiredAt) {
+		return false, nil
+	}
+	store.leases[lease.Key] = lease
+	return true, nil
+}
+
+func (store *FixtureStore) CompleteRetentionLease(ctx context.Context, lease RetentionLease, result contracts.RetentionExecuteBatchData) error {
+	_ = ctx
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	current, ok := store.leases[lease.Key]
+	if !ok || current.OwnerID != lease.OwnerID {
+		return nil
+	}
+	if result.Error != nil {
+		errorAt := result.CompletedAt
+		if errorAt.IsZero() {
+			errorAt = lease.AcquiredAt
+		}
+		current.LastErrorCode = result.Error.Code
+		current.LastErrorAt = &errorAt
+	} else {
+		completedAt := result.CompletedAt
+		if completedAt.IsZero() {
+			completedAt = lease.AcquiredAt
+		}
+		current.LastCompletedAt = &completedAt
+		current.LastErrorCode = ""
+		current.LastErrorAt = nil
+	}
+	store.leases[lease.Key] = current
+	return nil
+}
+
+func (store *FixtureStore) Lease(key string) (RetentionLease, bool) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	lease, ok := store.leases[key]
+	return lease, ok
 }
 
 func recordMatchesPlan(record FixtureRecord, plan RetentionExecutionPlan) bool {

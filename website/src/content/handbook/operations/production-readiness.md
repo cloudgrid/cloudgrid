@@ -31,9 +31,9 @@ Do not present CloudGrid as a complete public production distribution until thes
 | --- | --- |
 | Release artifacts | Release workflow and Dockerfiles are present; signed images, image provenance, release manifest, SBOM output, and vulnerability reports are produced when the release workflow runs. |
 | Kubernetes | Helm chart and profile overlays are present; operators still need environment-specific values, secrets, ingress/TLS, and published image digests. |
-| Retention execution | Retention policy CRUD and a storage-maintenance batch executor are implemented; production scheduling, storage adapter wiring, and retention audit execution remain follow-on work. |
+| Retention execution | Retention policy CRUD, storage-maintenance batch execution, and disabled-by-default scheduling are implemented; production SurrealDB deletion adapter wiring and environment-specific enablement remain before telemetry is deleted. |
 | Alert execution | Alert rule/silence/history CRUD and evaluator domain/runtime logic are implemented; production scheduling, storage-read/control-plane adapters, and notification dispatch adapters remain follow-on work. |
-| Production scale | The performance and scaling spec defines targets and variables; opt-in benchmark scripts `bench:local`, `bench:read`, and `bench:ingest` are present, but production-like NATS/SurrealDB capacity runs and SurrealDB query-plan gates remain follow-on work. |
+| Production scale | The performance and scaling spec defines targets and variables; opt-in local and production-like benchmark scripts are present, but each deployment still needs its own recorded benchmark run before being declared production-ready. |
 | Auth hardening | Local/default project isolation is implemented; production multi-tenant hardening remains a stated follow-on gap. |
 
 ## Deployment Boundary

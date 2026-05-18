@@ -232,19 +232,12 @@ func validatePolicy(policy RetentionPolicy, projectID string, dataClass contract
 }
 
 func validDataClass(dataClass contracts.RetentionDataClass) bool {
-	switch dataClass {
-	case contracts.RetentionDataClassTraces,
-		contracts.RetentionDataClassLogs,
-		contracts.RetentionDataClassMetrics,
-		contracts.RetentionDataClassAIEvals,
-		contracts.RetentionDataClassDatasets,
-		contracts.RetentionDataClassScorers,
-		contracts.RetentionDataClassDashboardHistory,
-		contracts.RetentionDataClassIngestCredentialAudit:
-		return true
-	default:
-		return false
+	for _, item := range RetentionDataClasses() {
+		if item == dataClass {
+			return true
+		}
 	}
+	return false
 }
 
 func (executor *Executor) logResult(result contracts.RetentionExecuteBatchData, startedAt time.Time) {

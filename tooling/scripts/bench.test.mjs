@@ -63,4 +63,42 @@ describe("benchmark harness", () => {
     expect(written.targets.graphqlP99Ms).toBe(750);
     expect(logs.join("\n")).toContain("Wrote local-read benchmark result");
   });
+
+  test("writes production-like benchmark JSON result", async () => {
+    const fixedDate = new Date("2026-05-18T10:00:00.000Z");
+    const result = await runBenchmark({
+      profile: "production",
+      cwd: tempDir,
+      env: {
+        CLOUDGRID_ENABLE_BENCHMARKS: "true",
+        CLOUDGRID_BENCH_DEPLOYMENT_PROFILE: "production-like",
+        CLOUDGRID_BENCH_GRAPHQL_URL: "https://cloudgrid.example/graphql",
+        CLOUDGRID_BENCH_OTLP_TRACES_URL: "https://collector.example/v1/traces",
+      },
+      now: () => fixedDate,
+      fetchImpl: async () => ({ ok: true }),
+    });
+
+    expect(result.profile).toBe("production");
+    expect(result.deploymentProfile).toBe("production-like");
+    expect(result.passed).toBe(true);
+    const written = JSON.parse(await readFile(result.outputPath, "utf8"));
+    expect(written.deploymentProfile).toBe("production-like");
+    expect(written.targets.graphqlP99Ms).toBe(750);
+    expect(written.targets.otlpPublishAckP99Ms).toBe(250);
+  });
+
+  test("rejects incorrectly labeled production profiles", async () => {
+    await expect(
+      runBenchmark({
+        profile: "production-read",
+        cwd: tempDir,
+        env: {
+          CLOUDGRID_ENABLE_BENCHMARKS: "true",
+          CLOUDGRID_BENCH_DEPLOYMENT_PROFILE: "local",
+          CLOUDGRID_BENCH_GRAPHQL_URL: "https://cloudgrid.example/graphql",
+        },
+      }),
+    ).rejects.toThrow("production-like");
+  });
 });

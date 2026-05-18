@@ -8,6 +8,9 @@ const targetDefaults = {
   local: { graphqlP99Ms: 750, otlpPublishAckP99Ms: 250 },
   "local-read": { graphqlP99Ms: 750 },
   "local-ingest": { otlpPublishAckP99Ms: 250 },
+  production: { graphqlP99Ms: 750, otlpPublishAckP99Ms: 250 },
+  "production-read": { graphqlP99Ms: 750 },
+  "production-ingest": { otlpPublishAckP99Ms: 250 },
 };
 
 export async function runBenchmark({
@@ -35,6 +38,7 @@ export async function runBenchmark({
   const startedAtDate = now();
   const startedAt = startedAtDate.toISOString();
   const requestCount = boundedRequestCount(env.CLOUDGRID_BENCH_REQUESTS);
+  const deploymentProfile = deploymentProfileFor(normalizedProfile, env);
   const observed = { errorRate: 0 };
   let failures = 0;
   let attempts = 0;
@@ -67,6 +71,7 @@ export async function runBenchmark({
       observed.otlpPublishAckP99Ms <= targets.otlpPublishAckP99Ms);
   const result = {
     profile: normalizedProfile,
+    deploymentProfile,
     startedAt,
     durationSeconds,
     targets,
@@ -83,14 +88,32 @@ function normalizeProfile(profile) {
     case "local":
     case "local-read":
     case "local-ingest":
+    case "production":
+    case "production-read":
+    case "production-ingest":
       return profile;
     case "read":
       return "local-read";
     case "ingest":
       return "local-ingest";
     default:
-      throw new Error("benchmark profile must be local, local-read, or local-ingest");
+      throw new Error(
+        "benchmark profile must be local, local-read, local-ingest, production, production-read, or production-ingest",
+      );
   }
+}
+
+function deploymentProfileFor(profile, env) {
+  const configured = env.CLOUDGRID_BENCH_DEPLOYMENT_PROFILE?.trim();
+  if (profile.startsWith("production")) {
+    if (configured && configured !== "production-like") {
+      throw new Error(
+        "CLOUDGRID_BENCH_DEPLOYMENT_PROFILE must be production-like for production profiles",
+      );
+    }
+    return "production-like";
+  }
+  return configured || "local";
 }
 
 function requiredTarget(env, profile, kind, name) {
@@ -109,11 +132,21 @@ function requiredTarget(env, profile, kind, name) {
 }
 
 function needsRead(profile) {
-  return profile === "local" || profile === "local-read";
+  return (
+    profile === "local" ||
+    profile === "local-read" ||
+    profile === "production" ||
+    profile === "production-read"
+  );
 }
 
 function needsIngest(profile) {
-  return profile === "local" || profile === "local-ingest";
+  return (
+    profile === "local" ||
+    profile === "local-ingest" ||
+    profile === "production" ||
+    profile === "production-ingest"
+  );
 }
 
 function boundedRequestCount(raw) {
@@ -194,5 +227,8 @@ async function writeResult(cwd, profile, startedAt, result) {
 
 if (import.meta.main) {
   const [, , profile = "local"] = process.argv;
-  await runBenchmark({ profile });
+  const result = await runBenchmark({ profile });
+  if (process.env.CLOUDGRID_BENCH_REQUIRED === "true" && result.passed === false) {
+    process.exitCode = 1;
+  }
 }
