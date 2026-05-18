@@ -355,6 +355,175 @@ func TestHandleEvalMutationRequestSupportsDatasetAppendPromoteAndPromptPromotion
 	}
 }
 
+func TestBuildEvalMutationRecordCoversScorerExperimentResultsAndAnnotation(t *testing.T) {
+	tests := []struct {
+		name       string
+		subject    string
+		input      map[string]any
+		wantFields map[string]any
+	}{
+		{
+			name:    "scorer",
+			subject: EvalScorerCreateSubject,
+			input: map[string]any{
+				"name":          "exact match",
+				"kind":          "deterministic",
+				"definition":    map[string]any{"operator": "eq", "path": "$.answer"},
+				"judgeModelRef": "gpt-release",
+			},
+			wantFields: map[string]any{"name": "exact match", "kind": "deterministic", "version": 1, "judgeModelRef": "gpt-release"},
+		},
+		{
+			name:    "experiment",
+			subject: EvalExperimentCreateSubject,
+			input: map[string]any{
+				"name":           "release eval",
+				"datasetId":      "dataset-1",
+				"datasetVersion": 2,
+				"scorerIds":      []any{"scorer-1", "scorer-2"},
+				"tags":           []any{"release"},
+			},
+			wantFields: map[string]any{"name": "release eval", "datasetId": "dataset-1", "datasetVersion": 2},
+		},
+		{
+			name:    "results",
+			subject: EvalResultsPersistSubject,
+			input: map[string]any{
+				"experimentRunId": "run-1",
+				"itemRuns": []any{map[string]any{
+					"id":            "item-run-1",
+					"datasetItemId": "dataset-item-1",
+					"output":        map[string]any{"answer": "4"},
+				}},
+				"results": []any{map[string]any{
+					"id":       "result-1",
+					"scorerId": "scorer-1",
+					"passed":   true,
+				}},
+			},
+			wantFields: map[string]any{"experimentRunId": "run-1"},
+		},
+		{
+			name:    "annotation",
+			subject: AnnotationItemUpdateSubject,
+			input: map[string]any{
+				"annotationQueueItemId": "annotation-1",
+				"status":                "dismissed",
+			},
+			wantFields: map[string]any{"id": "annotation-1", "status": "dismissed", "resolvedDatasetItemId": nil},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			record, err := BuildEvalMutationRecord(tt.subject, contracts.EvalMutationRequest{
+				BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-" + tt.name, IssuedAt: fixedClock()},
+				Input:          tt.input,
+			}, fixedClock())
+			if err != nil {
+				t.Fatalf("BuildEvalMutationRecord() error = %v", err)
+			}
+			for key, want := range tt.wantFields {
+				if record[key] != want {
+					t.Fatalf("record[%s] = %#v, want %#v in %#v", key, record[key], want, record)
+				}
+			}
+			if tt.subject == EvalResultsPersistSubject && record["persistedAt"] == "" {
+				t.Fatalf("result record = %#v, want persistedAt", record)
+			}
+		})
+	}
+}
+
+func TestValidateEvalMutationRequestRejectsSubjectSpecificInvalidShapes(t *testing.T) {
+	tests := []struct {
+		name    string
+		subject string
+		input   map[string]any
+	}{
+		{
+			name:    "append requires version",
+			subject: EvalDatasetItemsAppendSubject,
+			input:   map[string]any{"datasetId": "dataset-1", "items": []any{map[string]any{"input": map[string]any{"prompt": "hi"}}}},
+		},
+		{
+			name:    "scorer requires definition",
+			subject: EvalScorerCreateSubject,
+			input:   map[string]any{"name": "scorer", "kind": "deterministic"},
+		},
+		{
+			name:    "experiment requires scorer ids",
+			subject: EvalExperimentCreateSubject,
+			input:   map[string]any{"name": "experiment", "datasetId": "dataset-1", "datasetVersion": 1},
+		},
+		{
+			name:    "results require item runs or results",
+			subject: EvalResultsPersistSubject,
+			input:   map[string]any{"experimentRunId": "run-1"},
+		},
+		{
+			name:    "annotation rejects unknown status",
+			subject: AnnotationItemUpdateSubject,
+			input:   map[string]any{"annotationQueueItemId": "annotation-1", "status": "closed"},
+		},
+		{
+			name:    "unsupported subject",
+			subject: "eval.unknown",
+			input:   map[string]any{"id": "x"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := BuildEvalMutationRecord(tt.subject, contracts.EvalMutationRequest{
+				BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-invalid-" + tt.name, IssuedAt: fixedClock()},
+				Input:          tt.input,
+			}, fixedClock())
+
+			if err == nil || !strings.HasPrefix(err.Error(), "ERR-001") {
+				t.Fatalf("error = %v, want validation failure", err)
+			}
+		})
+	}
+}
+
+func TestEvalMutationJSONDecodersRejectTrailingValuesAndUnknownFields(t *testing.T) {
+	request := contracts.EvalMutationRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-decode", IssuedAt: fixedClock()},
+		Input:          map[string]any{"name": "dataset"},
+	}
+	data := mustMarshalIngestTest(t, request)
+	decoded, err := decodeEvalMutationRequest(data)
+	if err != nil {
+		t.Fatalf("decodeEvalMutationRequest(valid) error = %v", err)
+	}
+	if decoded.RequestID != "req-decode" || decoded.Input["name"] != "dataset" {
+		t.Fatalf("decoded request = %#v", decoded)
+	}
+
+	for _, data := range [][]byte{
+		[]byte(`{"requestId":"req","issuedAt":"2026-05-16T09:00:00Z","input":{}} {}`),
+		[]byte(`{"requestId":"req","issuedAt":"2026-05-16T09:00:00Z","input":{},"unknown":true}`),
+	} {
+		if _, err := decodeEvalMutationRequest(data); err == nil {
+			t.Fatalf("decodeEvalMutationRequest(%s) returned nil error", string(data))
+		}
+	}
+
+	command := validAIProjectionCommand()
+	commandData := mustMarshalIngestTest(t, command)
+	decodedCommand, err := decodeAIProjectionCommand(commandData)
+	if err != nil {
+		t.Fatalf("decodeAIProjectionCommand(valid) error = %v", err)
+	}
+	if decodedCommand.CommandID != command.CommandID {
+		t.Fatalf("decoded command = %#v", decodedCommand)
+	}
+	if _, err := decodeAIProjectionCommand([]byte(`{"requestId":"req"} {}`)); err == nil {
+		t.Fatal("decodeAIProjectionCommand(trailing) returned nil error")
+	}
+}
+
 func TestHandleEvalMutationRequestRejectsInvalidInputWithoutStoreCall(t *testing.T) {
 	store := &fakeAIWriteStore{}
 	request := contracts.EvalMutationRequest{

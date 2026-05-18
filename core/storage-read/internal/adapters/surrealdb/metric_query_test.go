@@ -177,3 +177,104 @@ func TestBuildMetricSeriesQueryUsesFlatAggregatesForGaugeAverage(t *testing.T) {
 		t.Fatalf("metric series SQL missing flat gauge average:\n%s", stmt.SQL)
 	}
 }
+
+func TestMetricQueryHelpersCoverSupportedAggregationsAndIntervals(t *testing.T) {
+	tests := []struct {
+		name        string
+		kind        contracts.MetricKind
+		aggregation contracts.MetricAggregation
+		wantSQL     string
+	}{
+		{name: "histogram sum", kind: contracts.MetricKindHistogram, aggregation: contracts.MetricAggregationSum, wantSQL: "math::sum(sum) AS value"},
+		{name: "sum rate", kind: contracts.MetricKindSum, aggregation: contracts.MetricAggregationRate, wantSQL: "math::sum(value) / $intervalSeconds"},
+		{name: "gauge min", kind: contracts.MetricKindGauge, aggregation: contracts.MetricAggregationMin, wantSQL: "math::min(value) AS value"},
+		{name: "gauge max", kind: contracts.MetricKindGauge, aggregation: contracts.MetricAggregationMax, wantSQL: "math::max(value) AS value"},
+		{name: "summary p99", kind: contracts.MetricKindSummary, aggregation: contracts.MetricAggregationP99, wantSQL: "99) AS value"},
+		{name: "count", kind: contracts.MetricKindGauge, aggregation: contracts.MetricAggregationCount, wantSQL: "count() AS value"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !metricAggregationAllowed(tt.kind, tt.aggregation) {
+				t.Fatalf("metricAggregationAllowed(%s, %s) = false", tt.kind, tt.aggregation)
+			}
+			if got := metricAggregationSelect(tt.aggregation, tt.kind); !strings.Contains(got, tt.wantSQL) {
+				t.Fatalf("metricAggregationSelect() = %q, want %q", got, tt.wantSQL)
+			}
+		})
+	}
+
+	for _, input := range []string{"5m", "PT1H30M", "PT45S"} {
+		interval, err := parseMetricInterval(input)
+		if err != nil {
+			t.Fatalf("parseMetricInterval(%q) error = %v", input, err)
+		}
+		if interval <= 0 || surrealDurationLiteral(interval) == "" || formatMetricInterval(interval) == "" {
+			t.Fatalf("interval helpers for %q returned %v", input, interval)
+		}
+	}
+	for _, input := range []string{"", "P1D", "PT0S"} {
+		if _, err := parseMetricInterval(input); err == nil {
+			t.Fatalf("parseMetricInterval(%q) returned nil error", input)
+		}
+	}
+}
+
+func TestMetricQueryValidationCoversLimitIntervalAndGroupErrors(t *testing.T) {
+	from := time.Date(2026, 5, 14, 8, 0, 0, 0, time.UTC)
+	to := from.Add(time.Hour)
+	descriptor := contracts.MetricDescriptor{
+		Name:          "queue.depth",
+		Kind:          contracts.MetricKindGauge,
+		AttributeKeys: []string{"env", "region", "host", "zone", "route"},
+	}
+
+	tooManyGroups := []string{"env", "region", "host", "zone", "route", "extra"}
+	badLimit := 0
+	badInterval := "PT0S"
+	tests := []contracts.MetricSeriesInput{
+		{MetricName: "other", From: from, To: to, Aggregation: contracts.MetricAggregationAvg},
+		{MetricName: "queue.depth", From: to, To: from, Aggregation: contracts.MetricAggregationAvg},
+		{MetricName: "queue.depth", From: from, To: to, Aggregation: contracts.MetricAggregationAvg, GroupBy: tooManyGroups},
+		{MetricName: "queue.depth", From: from, To: to, Aggregation: contracts.MetricAggregationAvg, GroupBy: []string{"env", "env"}},
+		{MetricName: "queue.depth", From: from, To: to, Aggregation: contracts.MetricAggregationAvg, GroupBy: []string{" "}},
+		{MetricName: "queue.depth", From: from, To: to, Aggregation: contracts.MetricAggregationAvg, Limit: &badLimit},
+		{MetricName: "queue.depth", From: from, To: to, Aggregation: contracts.MetricAggregationAvg, Interval: &badInterval},
+	}
+	for index, input := range tests {
+		if _, _, err := BuildMetricSeriesQuery(input, descriptor); err == nil {
+			t.Fatalf("BuildMetricSeriesQuery invalid case %d returned nil error", index)
+		}
+	}
+
+	if _, err := BuildMetricDescriptorByNameQuery(" "); err == nil {
+		t.Fatal("BuildMetricDescriptorByNameQuery(blank) returned nil error")
+	}
+	if _, err := normalizedMetricNameLimit(&badLimit); err == nil {
+		t.Fatal("normalizedMetricNameLimit(0) returned nil error")
+	}
+	if _, err := normalizedMetricPointLimit(&badLimit); err == nil {
+		t.Fatal("normalizedMetricPointLimit(0) returned nil error")
+	}
+}
+
+func TestMetricSeriesBuildsDistinctGroupedSeriesAndExemplars(t *testing.T) {
+	attrs := contracts.Attributes{"traceId": "trace-1"}
+	series := buildMetricSeries([]metricBucketRow{
+		{Bucket: time.Date(2026, 5, 14, 8, 0, 0, 0, time.UTC), Group0: "api", Group1: "GET", Value: int64(10), Count: uint32(2), Exemplars: []contracts.MetricExemplar{{TraceID: ptrString("trace-1"), Attributes: nil}}},
+		{Bucket: time.Date(2026, 5, 14, 8, 1, 0, 0, time.UTC), Group0: "api", Group1: "POST", Value: uint64(8), Count: int32(1), Exemplars: []contracts.MetricExemplar{{TraceID: ptrString("trace-2"), Attributes: attrs}}},
+		{Bucket: time.Date(2026, 5, 14, 8, 2, 0, 0, time.UTC), Group0: "api", Group1: "GET", Value: float32(12), Count: uint(3)},
+	}, []string{"service.name", "http.method"})
+
+	if len(series) != 2 {
+		t.Fatalf("series = %#v, want two grouped series", series)
+	}
+	if series[0].Labels["service.name"] != "api" || series[0].Labels["http.method"] != "GET" || len(series[0].Points) != 2 {
+		t.Fatalf("first series = %#v", series[0])
+	}
+	if series[0].Points[0].Exemplars[0].Attributes == nil {
+		t.Fatalf("exemplar attributes were not initialized: %#v", series[0].Points[0].Exemplars[0])
+	}
+	if requiredFloat("not numeric") != 0 || optionalFloat(nil) != nil {
+		t.Fatal("numeric helpers did not normalize unsupported values")
+	}
+}

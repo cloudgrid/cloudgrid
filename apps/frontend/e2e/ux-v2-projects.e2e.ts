@@ -83,6 +83,32 @@ async function mockViewer(page: Page, selectedProject: typeof project | null = n
       return;
     }
 
+    if (requestBody.operationName === "TraceSearch") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: { data: { traces: { items: [], nextCursor: null } } },
+      });
+      return;
+    }
+
+    if (requestBody.operationName === "TelemetryFacets") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          data: {
+            telemetryFacets: {
+              services: [],
+              operations: [],
+              spanNames: [],
+              severities: [],
+              attributeKeys: [],
+            },
+          },
+        },
+      });
+      return;
+    }
+
     if (requestBody.operationName === "IngestCredentials") {
       await route.fulfill({
         contentType: "application/json",
@@ -115,16 +141,18 @@ test("projects route is a centered project-card picker without telemetry navigat
   await expect(page.getByText(/companies$/i)).toHaveCount(0);
 });
 
-test("project overview owns setup and settings entry points", async ({ page }) => {
+test("project route selects the project and lands in the trace workspace", async ({ page }) => {
   await mockViewer(page, project);
 
   await page.goto(`/projects/${projectId}`);
 
-  await expect(page.getByRole("heading", { name: "UX v2 project" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /project setup/i })).toBeVisible();
-  await page.getByRole("link", { exact: true, name: "Setup" }).click();
-  await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/settings/ingest$`));
-  await expect(page.getByText(/stored secrets are never displayed/i)).toBeVisible();
+  await expect(page).toHaveURL(/\/traces$/);
+  await expect(page.getByRole("heading", { name: /trace search/i })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^live$/i })).toHaveCount(0);
+
+  await page.goto(`/projects/${projectId}/settings/ingest`);
+  await expect(page.getByRole("heading", { name: "API Keys", exact: true })).toBeVisible();
+  await expect(page.getByText(/stored credential secrets are never displayed/i)).toBeVisible();
 });
 
 test("project settings use a settings sidebar and focused forms", async ({ page }) => {
@@ -132,9 +160,11 @@ test("project settings use a settings sidebar and focused forms", async ({ page 
 
   await page.goto(`/projects/${projectId}/settings`);
 
-  await expect(page.getByRole("heading", { name: /^settings$/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^general$/i })).toBeVisible();
   await expect(
-    page.getByRole("navigation", { name: /settings/i }).getByText(/ingest/i),
-  ).toBeVisible();
-  await expect(page.getByText(/stored secrets are never displayed/i)).toBeVisible();
+    page.getByRole("navigation", { name: /settings/i }).getByRole("link", { name: /^api keys$/i }),
+  ).toHaveAttribute("href", `/projects/${projectId}/settings/ingest`);
+  await page.goto(`/projects/${projectId}/settings/ingest`);
+  await expect(page.getByRole("heading", { name: "API Keys", exact: true })).toBeVisible();
+  await expect(page.getByText(/stored credential secrets are never displayed/i)).toBeVisible();
 });
