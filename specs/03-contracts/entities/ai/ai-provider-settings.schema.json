@@ -115,7 +115,11 @@
         "enabled": { "type": "boolean" },
         "warnings": { "type": "array", "items": { "type": "string" }, "default": [] },
         "missingCredentialRefs": { "type": "array", "items": { "type": "string" }, "default": [] },
-        "disabledProviderProfileIds": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "disabledProviderProfileIds": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
         "missingAliasPurposes": {
           "type": "array",
           "items": { "$ref": "#/$defs/modelPurpose" },

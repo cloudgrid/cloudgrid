@@ -176,7 +176,15 @@
         "risk": { "type": "string", "enum": ["low", "medium", "high", "destructive"] },
         "status": {
           "type": "string",
-          "enum": ["proposed", "approved", "rejected", "executing", "succeeded", "failed", "expired"]
+          "enum": [
+            "proposed",
+            "approved",
+            "rejected",
+            "executing",
+            "succeeded",
+            "failed",
+            "expired"
+          ]
         },
         "actionKind": { "type": "string", "pattern": "^[a-z]+\\.[a-z_]+$" },
         "graphqlMutation": { "type": "string" },

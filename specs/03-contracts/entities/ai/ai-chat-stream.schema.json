@@ -4,10 +4,7 @@
   "title": "AiChatStream",
   "type": "object",
   "additionalProperties": false,
-  "oneOf": [
-    { "$ref": "#/$defs/streamRequest" },
-    { "$ref": "#/$defs/streamEvent" }
-  ],
+  "oneOf": [{ "$ref": "#/$defs/streamRequest" }, { "$ref": "#/$defs/streamEvent" }],
   "$defs": {
     "userMessagePart": {
       "type": "object",
@@ -21,13 +18,7 @@
     "streamRequest": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "conversationId",
-        "projectId",
-        "userMessageClientId",
-        "idempotencyKey",
-        "parts"
-      ],
+      "required": ["conversationId", "projectId", "userMessageClientId", "idempotencyKey", "parts"],
       "properties": {
         "conversationId": { "type": "string", "minLength": 1 },
         "projectId": { "type": "string", "minLength": 1 },
