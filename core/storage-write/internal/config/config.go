@@ -23,8 +23,19 @@ type Config struct {
 	NATSURL           string
 	HealthHost        string
 	HealthPort        string
+	Consumer          ConsumerConfig
 	SurrealDB         SurrealDBConfig
 	SelfObservability SelfObservabilityConfig
+}
+
+type ConsumerConfig struct {
+	Mode           string
+	PullBatchSize  int
+	PullMaxWaitMS  int
+	AckWaitSeconds int
+	MaxDeliver     int
+	MaxAckPending  int
+	Concurrency    int
 }
 
 type SurrealDBConfig struct {
@@ -56,12 +67,17 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	consumer, err := loadConsumerConfig()
+	if err != nil {
+		return Config{}, err
+	}
 	cfg := Config{
 		StorageAdapter:    valueOrDefault(os.Getenv("CLOUDGRID_STORAGE_ADAPTER"), AdapterSurrealDB),
 		DeploymentMode:    valueOrDefault(os.Getenv("CLOUDGRID_DEPLOYMENT_MODE"), "local"),
 		NATSURL:           valueOrDefault(os.Getenv("CLOUDGRID_NATS_URL"), defaultNATSURL),
 		HealthHost:        valueOrDefault(os.Getenv("CLOUDGRID_STORAGE_WRITE_HEALTH_HOST"), defaultHealthHost),
 		HealthPort:        valueOrDefault(os.Getenv("CLOUDGRID_STORAGE_WRITE_HEALTH_PORT"), defaultHealthPort),
+		Consumer:          consumer,
 		SelfObservability: self,
 		SurrealDB: SurrealDBConfig{
 			URL:       strings.TrimSpace(os.Getenv("CLOUDGRID_SURREALDB_URL")),
@@ -77,6 +93,46 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func loadConsumerConfig() (ConsumerConfig, error) {
+	mode := valueOrDefault(os.Getenv("CLOUDGRID_STORAGE_WRITE_CONSUMER_MODE"), "push")
+	if mode != "push" && mode != "pull" {
+		return ConsumerConfig{}, configError("CLOUDGRID_STORAGE_WRITE_CONSUMER_MODE must be push or pull")
+	}
+	batchSize, err := boundedIntEnv("CLOUDGRID_STORAGE_WRITE_PULL_BATCH_SIZE", 100, 1, 1000)
+	if err != nil {
+		return ConsumerConfig{}, err
+	}
+	maxWaitMS, err := boundedIntEnv("CLOUDGRID_STORAGE_WRITE_PULL_MAX_WAIT_MS", 500, 10, 30000)
+	if err != nil {
+		return ConsumerConfig{}, err
+	}
+	ackWaitSeconds, err := boundedIntEnv("CLOUDGRID_STORAGE_WRITE_ACK_WAIT_SECONDS", 30, 1, 600)
+	if err != nil {
+		return ConsumerConfig{}, err
+	}
+	maxDeliver, err := boundedIntEnv("CLOUDGRID_STORAGE_WRITE_MAX_DELIVER", 5, 1, 100)
+	if err != nil {
+		return ConsumerConfig{}, err
+	}
+	maxAckPending, err := boundedIntEnv("CLOUDGRID_STORAGE_WRITE_MAX_ACK_PENDING", 1000, 1, 100000)
+	if err != nil {
+		return ConsumerConfig{}, err
+	}
+	concurrency, err := boundedIntEnv("CLOUDGRID_STORAGE_WRITE_CONCURRENCY", 4, 1, 128)
+	if err != nil {
+		return ConsumerConfig{}, err
+	}
+	return ConsumerConfig{
+		Mode:           mode,
+		PullBatchSize:  batchSize,
+		PullMaxWaitMS:  maxWaitMS,
+		AckWaitSeconds: ackWaitSeconds,
+		MaxDeliver:     maxDeliver,
+		MaxAckPending:  maxAckPending,
+		Concurrency:    concurrency,
+	}, nil
 }
 
 func loadSelfObservabilityConfig() (SelfObservabilityConfig, error) {
@@ -213,6 +269,17 @@ func intValue(value string, fallback int, name string) (int, error) {
 	parsed, err := strconv.Atoi(value)
 	if err != nil {
 		return 0, configError(name + " must be an integer")
+	}
+	return parsed, nil
+}
+
+func boundedIntEnv(name string, fallback int, min int, max int) (int, error) {
+	parsed, err := intValue(os.Getenv(name), fallback, name)
+	if err != nil {
+		return 0, err
+	}
+	if parsed < min || parsed > max {
+		return 0, configError(fmt.Sprintf("%s must be between %d and %d", name, min, max))
 	}
 	return parsed, nil
 }

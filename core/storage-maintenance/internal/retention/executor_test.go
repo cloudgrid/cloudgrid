@@ -79,6 +79,9 @@ func TestExecuteBatchSoftDeleteMarksEligibleRecords(t *testing.T) {
 	if record.DeletedByRetentionPolicyID != "project-a:AI_EVALS:v5" {
 		t.Fatalf("deletedByRetentionPolicyID = %q", record.DeletedByRetentionPolicyID)
 	}
+	if _, visible := store.VisibleRecord("eval-old"); visible {
+		t.Fatal("soft-deleted record is visible to normal fixture reads")
+	}
 }
 
 func TestExecuteBatchFinalDeleteRemovesDueSoftDeletedRecords(t *testing.T) {
@@ -123,6 +126,25 @@ func TestExecuteBatchLimitBoundsMutations(t *testing.T) {
 	}
 }
 
+func TestExecuteBatchRetainPolicyDoesNotDelete(t *testing.T) {
+	now := fixedNow()
+	store := NewFixtureStore()
+	store.PutPolicy(policy("project-a", contracts.RetentionDataClassScorers, contracts.RetentionModeRetain, 0, nil, 8))
+	store.PutRecord(FixtureRecord{ID: "scorer-old", ProjectID: "project-a", DataClass: contracts.RetentionDataClassScorers, EventTime: now.AddDate(0, 0, -400)})
+
+	result := executeForTest(t, store, request("project-a", contracts.RetentionDataClassScorers, now, nil, nil))
+
+	if result.Error != nil {
+		t.Fatalf("result error = %#v, want nil", result.Error)
+	}
+	if result.MatchedCount != 0 || result.HardDeletedCount != 0 || result.SoftDeletedCount != 0 || result.FinalDeletedCount != 0 {
+		t.Fatalf("counts = %#v, want retain no-op", result)
+	}
+	if !store.HasRecord("scorer-old") {
+		t.Fatal("retain policy deleted record")
+	}
+}
+
 func TestExecuteBatchFixturesCoverEveryRetentionDataClass(t *testing.T) {
 	now := fixedNow()
 	for _, dataClass := range []contracts.RetentionDataClass{
@@ -164,6 +186,49 @@ func TestExecuteBatchReportsUnknownAndMissingPolicy(t *testing.T) {
 	missing := executeForTest(t, store, request("project-a", contracts.RetentionDataClassScorers, now, nil, nil))
 	if missing.Error == nil || missing.Error.ID != "ERR-016" {
 		t.Fatalf("missing policy error = %#v, want ERR-016", missing.Error)
+	}
+}
+
+func TestExecuteBatchValidatesPolicyRangesAndModeFields(t *testing.T) {
+	now := fixedNow()
+	softDaysTooHigh := 91
+	tests := []struct {
+		name   string
+		policy RetentionPolicy
+	}{
+		{
+			name:   "delete retention below range",
+			policy: policy("project-a", contracts.RetentionDataClassLogs, contracts.RetentionModeDelete, 0, nil, 1),
+		},
+		{
+			name:   "delete retention above range",
+			policy: policy("project-a", contracts.RetentionDataClassLogs, contracts.RetentionModeDelete, 366, nil, 1),
+		},
+		{
+			name:   "soft delete missing soft days",
+			policy: policy("project-a", contracts.RetentionDataClassLogs, contracts.RetentionModeSoftDeleteThenDelete, 30, nil, 1),
+		},
+		{
+			name:   "soft delete soft days above range",
+			policy: policy("project-a", contracts.RetentionDataClassLogs, contracts.RetentionModeSoftDeleteThenDelete, 30, &softDaysTooHigh, 1),
+		},
+		{
+			name:   "policy version below range",
+			policy: policy("project-a", contracts.RetentionDataClassLogs, contracts.RetentionModeDelete, 30, nil, 0),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := NewFixtureStore()
+			store.PutPolicy(tt.policy)
+
+			result := executeForTest(t, store, request("project-a", contracts.RetentionDataClassLogs, now, nil, nil))
+
+			if result.Error == nil || result.Error.ID != "ERR-001" {
+				t.Fatalf("result error = %#v, want ERR-001", result.Error)
+			}
+		})
 	}
 }
 

@@ -3,6 +3,7 @@ package ingest
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/nats-io/nats.go"
 )
@@ -14,7 +15,60 @@ type JetStreamManager interface {
 	UpdateConsumer(stream string, cfg *nats.ConsumerConfig, opts ...nats.JSOpt) (*nats.ConsumerInfo, error)
 }
 
+type ConsumerOptions struct {
+	PullBatchSize int
+	PullMaxWait   time.Duration
+	AckWait       time.Duration
+	MaxDeliver    int
+	MaxAckPending int
+	Concurrency   int
+	ConsumerMode  string
+}
+
+func DefaultConsumerOptions() ConsumerOptions {
+	return ConsumerOptions{
+		PullBatchSize: 100,
+		PullMaxWait:   500 * time.Millisecond,
+		AckWait:       AckWait,
+		MaxDeliver:    MaxDeliver,
+		MaxAckPending: 1000,
+		Concurrency:   4,
+		ConsumerMode:  "push",
+	}
+}
+
+func (options ConsumerOptions) normalized() ConsumerOptions {
+	defaults := DefaultConsumerOptions()
+	if options.PullBatchSize <= 0 {
+		options.PullBatchSize = defaults.PullBatchSize
+	}
+	if options.PullMaxWait <= 0 {
+		options.PullMaxWait = defaults.PullMaxWait
+	}
+	if options.AckWait <= 0 {
+		options.AckWait = defaults.AckWait
+	}
+	if options.MaxDeliver <= 0 {
+		options.MaxDeliver = defaults.MaxDeliver
+	}
+	if options.MaxAckPending <= 0 {
+		options.MaxAckPending = defaults.MaxAckPending
+	}
+	if options.Concurrency <= 0 {
+		options.Concurrency = defaults.Concurrency
+	}
+	if options.ConsumerMode == "" {
+		options.ConsumerMode = defaults.ConsumerMode
+	}
+	return options
+}
+
 func EnsureJetStream(js JetStreamManager) error {
+	return EnsureJetStreamWithOptions(js, DefaultConsumerOptions())
+}
+
+func EnsureJetStreamWithOptions(js JetStreamManager, options ConsumerOptions) error {
+	options = options.normalized()
 	stream := &nats.StreamConfig{
 		Name:      StreamName,
 		Subjects:  []string{TraceSubject, LogSubject, MetricSubject, AiProjectionSubject},
@@ -29,9 +83,9 @@ func EnsureJetStream(js JetStreamManager) error {
 	consumer := &nats.ConsumerConfig{
 		Durable:       ConsumerName,
 		AckPolicy:     nats.AckExplicitPolicy,
-		AckWait:       AckWait,
-		MaxDeliver:    MaxDeliver,
-		MaxAckPending: MaxInFlight,
+		AckWait:       options.AckWait,
+		MaxDeliver:    options.MaxDeliver,
+		MaxAckPending: options.MaxAckPending,
 	}
 	if _, err := js.AddConsumer(StreamName, consumer); err != nil {
 		if !errors.Is(err, nats.ErrConsumerNameAlreadyInUse) {

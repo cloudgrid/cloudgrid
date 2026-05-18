@@ -134,15 +134,17 @@ Required test categories:
 
 ## Documentation
 
-- End-user docs live in `docs/`.
+- End-user and operator docs live in `website/`, primarily under `website/src/content/handbook/`.
+- Do not add or update documentation in `docs/`. That tree is legacy content pending migration and will be removed after outstanding agent work is reconciled.
 - Docs are structured from easy to expert level:
-  - `00-overview`
-  - `01-getting-started`
-  - `02-core-concepts`
-  - `03-operations`
-  - `04-architecture`
-  - `05-advanced`
-  - `99-reference`
+  - overview
+  - getting started
+  - concepts
+  - guides
+  - configuration
+  - operations
+  - architecture
+  - reference
 - Update docs whenever setup, configuration, or user-visible behavior changes.
 
 ## Frontend UX Implementation Rules

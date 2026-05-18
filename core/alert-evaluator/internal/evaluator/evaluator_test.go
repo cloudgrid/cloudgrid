@@ -32,6 +32,18 @@ func TestValidateRuleCoversAllRuleKinds(t *testing.T) {
 	if !isCoded(err, "ERR-018") {
 		t.Fatalf("expected ERR-018 for invalid count threshold, got %v", err)
 	}
+
+	invalidLogQuery := alertRule("bad-log-query", contracts.AlertRuleKindLogMatch, map[string]any{"unknown": "field"}, map[string]any{"minCount": 1})
+	err = ValidateRule(invalidLogQuery, now)
+	if !isCoded(err, "ERR-018") {
+		t.Fatalf("expected ERR-018 for invalid log query, got %v", err)
+	}
+
+	invalidTraceQuery := alertRule("bad-trace-query", contracts.AlertRuleKindTraceMatch, map[string]any{"unknown": "field"}, map[string]any{"minCount": 1})
+	err = ValidateRule(invalidTraceQuery, now)
+	if !isCoded(err, "ERR-018") {
+		t.Fatalf("expected ERR-018 for invalid trace query, got %v", err)
+	}
 }
 
 func TestEvaluateThresholdAbsenceCountLatencyAndErrorRules(t *testing.T) {

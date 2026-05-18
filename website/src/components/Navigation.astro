@@ -13,10 +13,15 @@ const features = [
   { label: "Adapters", href: "/features/adapters", desc: "Storage, bridge, auth, harness" },
 ];
 
+const enterprise = [
+  { label: "Overview", href: "/enterprise", desc: "Ownership, controls, procurement answers" },
+  { label: "Compare", href: "/enterprise/compare", desc: "Risk and licensing vs alternatives" },
+];
+
 const topLevel = [
   { label: "Home", href: "/" },
   { label: "Features", href: "/features", children: features },
-  { label: "Enterprise", href: "/enterprise" },
+  { label: "Enterprise", href: "/enterprise", children: enterprise },
   {
     label: "Handbook",
     href: "/handbook",

@@ -4,7 +4,7 @@ title: Project alerting
 layer: backend
 status: draft
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-16
+updated: 2026-05-18
 provenance: user-directed
 depends_on: [TEC-BE-004, TEC-BE-008, TEC-BE-017, TEC-BE-009]
 ---
@@ -143,15 +143,19 @@ Implemented:
 - GraphQL alert rule, alert history, alert event, silence, and mutation contracts;
 - control-plane message bridge subjects for rule CRUD, silence CRUD, history reads, and history record writes;
 - SurrealDB schema for `alert_rule`, `alert_event`, and `alert_silence`;
-- BFF bridge/resolver validation and project alert management UI.
+- BFF bridge/resolver validation and project alert management UI;
+- alert evaluator core package for all v1 rule kinds, kind-specific `query`/`condition` validation, storage-read port calls, project-scoped execution, pending/firing/resolved/silenced/error state transitions, cooldown deduplication, alert history recording, and notification dispatch status mapping;
+- alert evaluator runtime handlers for `alert_evaluator.tick`, `alert_evaluator.rules.evaluate`, and `alert_evaluator.notifications.dispatch`;
+- evaluator timeout and notification terminal-failure errors mapped to `ERR-021` and `ERR-020`;
+- narrow Go tests for rule validation, project isolation at the evaluator port boundary, state transitions, retryable/terminal notification statuses, runtime subjects, and evaluator timeout handling;
+- alert evaluator binary health/readiness endpoint.
 
 Remaining before alerting is production-executing:
 
-- alert evaluator service for schedule ticks, rule execution, state transitions, and notification dispatch;
-- storage-read-backed evaluator queries with project isolation tests;
-- notification delivery adapters and retry/terminal delivery handling;
-- dashboard alert widgets and alert evidence widgets, if those surfaces are added;
-- implementation of evaluator timeout and notification failure errors in the executing service.
+- production scheduler/tick orchestration for periodic evaluation remains unspecified and unwired;
+- concrete NATS message bridge composition for the alert evaluator process to call control-plane and storage-read remains to be implemented;
+- concrete notification adapters remain limited to the evaluator notification port contract; non-core adapters such as email, webhook, Slack, or Teams remain out of scope until provider config and secret-handling specs exist;
+- dashboard alert widgets and alert evidence widgets remain out of scope unless those surfaces are explicitly specified.
 
 Alerting-specific errors:
 

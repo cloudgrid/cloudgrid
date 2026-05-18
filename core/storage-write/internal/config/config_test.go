@@ -25,6 +25,64 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if cfg.SurrealDB.Database != "dev" {
 		t.Fatalf("Database = %q", cfg.SurrealDB.Database)
 	}
+	if cfg.Consumer.Mode != "push" || cfg.Consumer.PullBatchSize != 100 || cfg.Consumer.PullMaxWaitMS != 500 || cfg.Consumer.AckWaitSeconds != 30 || cfg.Consumer.MaxDeliver != 5 || cfg.Consumer.MaxAckPending != 1000 || cfg.Consumer.Concurrency != 4 {
+		t.Fatalf("Consumer defaults = %#v", cfg.Consumer)
+	}
+}
+
+func TestLoadAppliesStorageWriteConsumerOverrides(t *testing.T) {
+	t.Setenv("CLOUDGRID_SURREALDB_URL", "ws://localhost:8000/rpc")
+	t.Setenv("CLOUDGRID_STORAGE_WRITE_CONSUMER_MODE", "pull")
+	t.Setenv("CLOUDGRID_STORAGE_WRITE_PULL_BATCH_SIZE", "250")
+	t.Setenv("CLOUDGRID_STORAGE_WRITE_PULL_MAX_WAIT_MS", "750")
+	t.Setenv("CLOUDGRID_STORAGE_WRITE_ACK_WAIT_SECONDS", "45")
+	t.Setenv("CLOUDGRID_STORAGE_WRITE_MAX_DELIVER", "8")
+	t.Setenv("CLOUDGRID_STORAGE_WRITE_MAX_ACK_PENDING", "5000")
+	t.Setenv("CLOUDGRID_STORAGE_WRITE_CONCURRENCY", "12")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	want := ConsumerConfig{
+		Mode:           "pull",
+		PullBatchSize:  250,
+		PullMaxWaitMS:  750,
+		AckWaitSeconds: 45,
+		MaxDeliver:     8,
+		MaxAckPending:  5000,
+		Concurrency:    12,
+	}
+	if cfg.Consumer != want {
+		t.Fatalf("Consumer = %#v, want %#v", cfg.Consumer, want)
+	}
+}
+
+func TestLoadRejectsInvalidStorageWriteConsumerConfig(t *testing.T) {
+	tests := map[string]string{
+		"CLOUDGRID_STORAGE_WRITE_CONSUMER_MODE":    "sideways",
+		"CLOUDGRID_STORAGE_WRITE_PULL_BATCH_SIZE":  "0",
+		"CLOUDGRID_STORAGE_WRITE_PULL_MAX_WAIT_MS": "9",
+		"CLOUDGRID_STORAGE_WRITE_ACK_WAIT_SECONDS": "0",
+		"CLOUDGRID_STORAGE_WRITE_MAX_DELIVER":      "101",
+		"CLOUDGRID_STORAGE_WRITE_MAX_ACK_PENDING":  "0",
+		"CLOUDGRID_STORAGE_WRITE_CONCURRENCY":      "129",
+	}
+	for key, value := range tests {
+		t.Run(key, func(t *testing.T) {
+			t.Setenv("CLOUDGRID_SURREALDB_URL", "ws://localhost:8000/rpc")
+			t.Setenv(key, value)
+
+			_, err := Load()
+			if err == nil {
+				t.Fatal("Load() error = nil")
+			}
+			if !strings.Contains(err.Error(), "ERR-009") || !strings.Contains(err.Error(), key) {
+				t.Fatalf("Load() error = %q, want ERR-009 mentioning %s", err.Error(), key)
+			}
+		})
+	}
 }
 
 func TestLoadAppliesLocalSelfObservabilityDefaults(t *testing.T) {

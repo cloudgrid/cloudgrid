@@ -84,14 +84,23 @@ Implemented:
 - GraphQL `RetentionPolicy`, `RetentionRule`, `retentionPolicy(projectId)`, and `updateRetentionPolicy` contracts;
 - control-plane message bridge subjects for get/update policy;
 - SurrealDB schema and control-plane storage for `retention_policy`;
-- BFF bridge/resolver validation and project settings UI for policy read/update.
+- BFF bridge/resolver validation and project settings UI for policy read/update;
+- `storage-maintenance` service shell with health/readiness logging;
+- direct retention batch executor for the `storage_maintenance.retention.execute_batch` request/response contract;
+- in-memory isolated retention fixtures for every `RetentionDataClass`;
+- executor validation for request fields, delete/soft-delete policy range rules, mode-specific `softDeleteDays`, and missing policies;
+- executor retain/no-op handling;
+- fixture-backed hard delete, soft delete, final delete, dry-run, limit, project isolation, and normal-read soft-delete hiding behavior;
+- structured retention batch logs with project, data class, policy version, dry-run, matched count, hard-deleted count, soft-deleted count, final-deleted count, duration, and terminal error fields;
+- focused Go tests for executor behavior, policy validation, every data-class fixture, structured logs, and fixture deletion semantics.
 
 Remaining before retention deletes telemetry:
 
-- storage-maintenance execution service for `storage_maintenance.retention.execute_batch`;
 - maintenance audit records;
-- structured maintenance logs with project, data class, deleted count, soft-deleted count, duration, and terminal error;
-- hard-delete and soft-delete storage execution against isolated fixtures;
+- NATS request/reply wiring for the `storage_maintenance.retention.execute_batch` subject;
+- production SurrealDB storage adapter for project-scoped hard delete, soft delete, and final delete execution;
+- production scheduler behavior, because this spec currently defines direct batch execution but does not define scheduling cadence, ownership, lease/lock behavior, or retry policy;
+- integration tests against the production storage adapter once that adapter is specified and implemented;
 - docs that clearly separate configured policy from executed deletion.
 
 `storage_maintenance.retention.execute_batch` accepts `projectId`, `dataClass`, `requestedAt`, optional `dryRun`, and optional `limit`. It returns `projectId`, `dataClass`, `policyVersion`, `dryRun`, `matchedCount`, `hardDeletedCount`, `softDeletedCount`, `finalDeletedCount`, `startedAt`, `completedAt`, and optional `error`.

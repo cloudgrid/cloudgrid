@@ -137,6 +137,16 @@ func (store *FixtureStore) Record(id string) (FixtureRecord, bool) {
 	return record, ok
 }
 
+func (store *FixtureStore) VisibleRecord(id string) (FixtureRecord, bool) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	record, ok := store.records[id]
+	if !ok || record.DeletedAt != nil {
+		return FixtureRecord{}, false
+	}
+	return record, true
+}
+
 func (store *FixtureStore) CountRecords(projectID string, dataClass contracts.RetentionDataClass) int {
 	store.mu.Lock()
 	defer store.mu.Unlock()
