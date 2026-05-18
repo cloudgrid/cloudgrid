@@ -43,18 +43,62 @@ type MembershipRecord struct {
 }
 
 type InvitationRecord struct {
-	ID               string
-	OrganizationID   string
-	Email            string
-	Role             contracts.CompanyRole
-	Status           contracts.OrganizationInvitationStatus
-	InvitedByUserID  string
-	AcceptedByUserID *string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	AcceptedAt       *time.Time
-	RevokedAt        *time.Time
-	ExpiresAt        *time.Time
+	ID                    string
+	OrganizationID        string
+	Email                 string
+	Role                  contracts.CompanyRole
+	Status                contracts.OrganizationInvitationStatus
+	DeliveryStatus        contracts.InvitationDeliveryStatus
+	LastDeliveryAttemptAt *time.Time
+	LastDeliveryErrorCode *string
+	LastEmailDeliveryID   *string
+	ProjectGrants         []contracts.InvitationProjectGrant
+	InvitedByUserID       string
+	AcceptedByUserID      *string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+	AcceptedAt            *time.Time
+	RevokedAt             *time.Time
+	ExpiresAt             *time.Time
+}
+
+type EmailDeliveryStatus string
+
+const (
+	EmailDeliveryStatusPending         EmailDeliveryStatus = "pending"
+	EmailDeliveryStatusSending         EmailDeliveryStatus = "sending"
+	EmailDeliveryStatusSent            EmailDeliveryStatus = "sent"
+	EmailDeliveryStatusFailedRetryable EmailDeliveryStatus = "failed_retryable"
+	EmailDeliveryStatusFailedTerminal  EmailDeliveryStatus = "failed_terminal"
+	EmailDeliveryStatusSuppressed      EmailDeliveryStatus = "suppressed"
+)
+
+type EmailDeliveryKind string
+
+const (
+	EmailDeliveryKindOrganizationInvitation EmailDeliveryKind = "organization_invitation"
+	EmailDeliveryKindProjectAccess          EmailDeliveryKind = "project_access"
+)
+
+type EmailDeliveryRecord struct {
+	ID              string
+	Kind            EmailDeliveryKind
+	OrganizationID  string
+	ProjectID       *string
+	InvitationID    *string
+	RecipientEmail  string
+	RecipientUserID *string
+	Template        string
+	Status          EmailDeliveryStatus
+	AttemptCount    int
+	NextAttemptAt   *time.Time
+	LastAttemptAt   *time.Time
+	LastErrorCode   *string
+	Subject         string
+	Body            string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	SentAt          *time.Time
 }
 
 type IngestCredentialRecord struct {
@@ -201,8 +245,11 @@ type ControlStore interface {
 	ListMembershipsForUser(ctx context.Context, userID string) ([]MembershipRecord, error)
 	GetInvitation(ctx context.Context, invitationID string) (InvitationRecord, bool, error)
 	PutInvitation(ctx context.Context, invitation InvitationRecord) error
+	PutInvitationAndEmailDelivery(ctx context.Context, invitation InvitationRecord, delivery *EmailDeliveryRecord) error
 	ListInvitations(ctx context.Context, organizationID string) ([]InvitationRecord, error)
 	GetPendingInvitationByEmail(ctx context.Context, organizationID string, email string) (InvitationRecord, bool, error)
+	PutEmailDelivery(ctx context.Context, delivery EmailDeliveryRecord) error
+	ListDueEmailDeliveries(ctx context.Context, now time.Time, limit int) ([]EmailDeliveryRecord, error)
 	GetProject(ctx context.Context, projectID string) (ProjectRecord, bool, error)
 	PutProject(ctx context.Context, project ProjectRecord) error
 	ListProjects(ctx context.Context, organizationID *string, status *contracts.ProjectStatus) ([]ProjectRecord, error)

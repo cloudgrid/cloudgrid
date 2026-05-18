@@ -35,6 +35,33 @@ const (
 	OrganizationInvitationStatusExpired  OrganizationInvitationStatus = "expired"
 )
 
+type InvitationDeliveryStatus string
+
+const (
+	InvitationDeliveryStatusNotConfigured   InvitationDeliveryStatus = "not_configured"
+	InvitationDeliveryStatusPending         InvitationDeliveryStatus = "pending"
+	InvitationDeliveryStatusSent            InvitationDeliveryStatus = "sent"
+	InvitationDeliveryStatusFailedRetryable InvitationDeliveryStatus = "failed_retryable"
+	InvitationDeliveryStatusFailedTerminal  InvitationDeliveryStatus = "failed_terminal"
+	InvitationDeliveryStatusSuppressed      InvitationDeliveryStatus = "suppressed"
+)
+
+type InvitationProjectGrantStatus string
+
+const (
+	InvitationProjectGrantStatusPending InvitationProjectGrantStatus = "pending"
+	InvitationProjectGrantStatusApplied InvitationProjectGrantStatus = "applied"
+	InvitationProjectGrantStatusRevoked InvitationProjectGrantStatus = "revoked"
+	InvitationProjectGrantStatusFailed  InvitationProjectGrantStatus = "failed"
+)
+
+type ProjectInvitationOutcome string
+
+const (
+	ProjectInvitationOutcomeInvitationPending ProjectInvitationOutcome = "invitation_pending"
+	ProjectInvitationOutcomeMembershipCreated ProjectInvitationOutcome = "membership_created"
+)
+
 type ProjectRole string
 
 const (
@@ -279,14 +306,17 @@ type AttributeFilter struct {
 }
 
 type Trace struct {
-	ID          string       `json:"id"`
-	ServiceName *string      `json:"serviceName,omitempty"`
-	StartedAt   time.Time    `json:"startedAt"`
-	EndedAt     *time.Time   `json:"endedAt,omitempty"`
-	DurationMs  *float64     `json:"durationMs,omitempty"`
-	RootSpanID  *string      `json:"rootSpanId,omitempty"`
-	Status      *TraceStatus `json:"status,omitempty"`
-	Attributes  Attributes   `json:"attributes"`
+	ID                string       `json:"id"`
+	ServiceName       *string      `json:"serviceName,omitempty"`
+	StartedAt         time.Time    `json:"startedAt"`
+	StartedAtUnixNano string       `json:"startedAtUnixNano,omitempty"`
+	EndedAt           *time.Time   `json:"endedAt,omitempty"`
+	EndedAtUnixNano   *string      `json:"endedAtUnixNano,omitempty"`
+	DurationNano      *string      `json:"durationNano,omitempty"`
+	DurationMs        *float64     `json:"durationMs,omitempty"`
+	RootSpanID        *string      `json:"rootSpanId,omitempty"`
+	Status            *TraceStatus `json:"status,omitempty"`
+	Attributes        Attributes   `json:"attributes"`
 }
 
 type TraceSummary struct {
@@ -299,9 +329,10 @@ type TraceSummary struct {
 }
 
 type SpanEvent struct {
-	Name       string     `json:"name"`
-	Timestamp  time.Time  `json:"timestamp"`
-	Attributes Attributes `json:"attributes"`
+	Name              string     `json:"name"`
+	Timestamp         time.Time  `json:"timestamp"`
+	TimestampUnixNano string     `json:"timestampUnixNano,omitempty"`
+	Attributes        Attributes `json:"attributes"`
 }
 
 type SpanLinkDirection string
@@ -340,27 +371,31 @@ type SpanException struct {
 }
 
 type Span struct {
-	ID             string          `json:"id"`
-	TraceID        string          `json:"traceId"`
-	ParentSpanID   *string         `json:"parentSpanId,omitempty"`
-	Name           string          `json:"name"`
-	Kind           *string         `json:"kind,omitempty"`
-	ServiceName    *string         `json:"serviceName,omitempty"`
-	StartedAt      time.Time       `json:"startedAt"`
-	EndedAt        time.Time       `json:"endedAt"`
-	DurationMs     float64         `json:"durationMs"`
-	Status         *TraceStatus    `json:"status,omitempty"`
-	Attributes     Attributes      `json:"attributes"`
-	Depth          int             `json:"depth"`
-	ChildCount     int             `json:"childCount"`
-	HasError       bool            `json:"hasError"`
-	IsCriticalPath bool            `json:"isCriticalPath"`
-	IsOrphan       bool            `json:"isOrphan"`
-	IsServiceEntry bool            `json:"isServiceEntry"`
-	ExceptionCount int             `json:"exceptionCount"`
-	Events         []SpanEvent     `json:"events"`
-	Links          []SpanLink      `json:"links"`
-	Exceptions     []SpanException `json:"exceptions"`
+	ID                string          `json:"id"`
+	TraceID           string          `json:"traceId"`
+	ParentSpanID      *string         `json:"parentSpanId,omitempty"`
+	Name              string          `json:"name"`
+	Kind              *string         `json:"kind,omitempty"`
+	ServiceName       *string         `json:"serviceName,omitempty"`
+	StartedAt         time.Time       `json:"startedAt"`
+	StartedAtUnixNano string          `json:"startedAtUnixNano,omitempty"`
+	EndedAt           time.Time       `json:"endedAt"`
+	EndedAtUnixNano   string          `json:"endedAtUnixNano,omitempty"`
+	StartOffsetNano   string          `json:"startOffsetNano,omitempty"`
+	DurationNano      string          `json:"durationNano,omitempty"`
+	DurationMs        float64         `json:"durationMs"`
+	Status            *TraceStatus    `json:"status,omitempty"`
+	Attributes        Attributes      `json:"attributes"`
+	Depth             int             `json:"depth"`
+	ChildCount        int             `json:"childCount"`
+	HasError          bool            `json:"hasError"`
+	IsCriticalPath    bool            `json:"isCriticalPath"`
+	IsOrphan          bool            `json:"isOrphan"`
+	IsServiceEntry    bool            `json:"isServiceEntry"`
+	ExceptionCount    int             `json:"exceptionCount"`
+	Events            []SpanEvent     `json:"events"`
+	Links             []SpanLink      `json:"links"`
+	Exceptions        []SpanException `json:"exceptions"`
 }
 
 type LogEvent struct {
@@ -1165,18 +1200,32 @@ type OrganizationMember struct {
 }
 
 type OrganizationInvitation struct {
-	ID               string                       `json:"id"`
-	OrganizationID   string                       `json:"organizationId"`
-	Email            string                       `json:"email"`
-	Role             CompanyRole                  `json:"role"`
-	Status           OrganizationInvitationStatus `json:"status"`
-	InvitedByUserID  string                       `json:"invitedByUserId"`
-	AcceptedByUserID *string                      `json:"acceptedByUserId,omitempty"`
-	CreatedAt        time.Time                    `json:"createdAt"`
-	UpdatedAt        time.Time                    `json:"updatedAt"`
-	AcceptedAt       *time.Time                   `json:"acceptedAt,omitempty"`
-	RevokedAt        *time.Time                   `json:"revokedAt,omitempty"`
-	ExpiresAt        *time.Time                   `json:"expiresAt,omitempty"`
+	ID                    string                       `json:"id"`
+	OrganizationID        string                       `json:"organizationId"`
+	Email                 string                       `json:"email"`
+	Role                  CompanyRole                  `json:"role"`
+	Status                OrganizationInvitationStatus `json:"status"`
+	DeliveryStatus        InvitationDeliveryStatus     `json:"deliveryStatus"`
+	LastDeliveryAttemptAt *time.Time                   `json:"lastDeliveryAttemptAt,omitempty"`
+	LastDeliveryErrorCode *string                      `json:"lastDeliveryErrorCode,omitempty"`
+	LastEmailDeliveryID   *string                      `json:"lastEmailDeliveryId,omitempty"`
+	ProjectGrants         []InvitationProjectGrant     `json:"projectGrants"`
+	InvitedByUserID       string                       `json:"invitedByUserId"`
+	AcceptedByUserID      *string                      `json:"acceptedByUserId,omitempty"`
+	CreatedAt             time.Time                    `json:"createdAt"`
+	UpdatedAt             time.Time                    `json:"updatedAt"`
+	AcceptedAt            *time.Time                   `json:"acceptedAt,omitempty"`
+	RevokedAt             *time.Time                   `json:"revokedAt,omitempty"`
+	ExpiresAt             *time.Time                   `json:"expiresAt,omitempty"`
+}
+
+type InvitationProjectGrant struct {
+	ProjectID       string                       `json:"projectId"`
+	Role            ProjectRole                  `json:"role"`
+	Status          InvitationProjectGrantStatus `json:"status"`
+	CreatedAt       time.Time                    `json:"createdAt"`
+	CreatedByUserID string                       `json:"createdByUserId"`
+	AppliedAt       *time.Time                   `json:"appliedAt,omitempty"`
 }
 
 type ViewerGetRequest struct {
@@ -1364,6 +1413,11 @@ type InvitationCreateRequest struct {
 	Email          string `json:"email"`
 }
 
+type InvitationResendRequest struct {
+	BridgeEnvelope
+	InvitationID string `json:"invitationId"`
+}
+
 type InvitationRevokeRequest struct {
 	BridgeEnvelope
 	InvitationID string `json:"invitationId"`
@@ -1378,6 +1432,26 @@ type InvitationMutationResponse struct {
 	OK        bool                    `json:"ok"`
 	Data      *InvitationMutationData `json:"data,omitempty"`
 	Error     *BridgeError            `json:"error,omitempty"`
+}
+
+type ProjectInvitationCreateRequest struct {
+	BridgeEnvelope
+	ProjectID string      `json:"projectId"`
+	Email     string      `json:"email"`
+	Role      ProjectRole `json:"role"`
+}
+
+type ProjectInvitationData struct {
+	Outcome       ProjectInvitationOutcome `json:"outcome"`
+	Invitation    *OrganizationInvitation  `json:"invitation,omitempty"`
+	ProjectMember *ProjectMember           `json:"projectMember,omitempty"`
+}
+
+type ProjectInvitationMutationResponse struct {
+	RequestID string                 `json:"requestId"`
+	OK        bool                   `json:"ok"`
+	Data      *ProjectInvitationData `json:"data,omitempty"`
+	Error     *BridgeError           `json:"error,omitempty"`
 }
 
 type ProjectMember struct {

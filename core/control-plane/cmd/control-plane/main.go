@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -54,7 +55,37 @@ func run() int {
 		}
 	}()
 
-	service := internal.NewService(store, time.Now)
+	invitationEmailConfig, err := resolveInvitationEmailConfig(os.Getenv)
+	if err != nil {
+		logError(logger, "invitation_email_config_invalid", err, "ERR-009")
+		return 1
+	}
+	var invitationEmailTransport internal.InvitationEmailTransport
+	if invitationEmailConfig.Mode == internal.InvitationEmailModeSMTP {
+		invitationEmailTransport = internal.NewSMTPInvitationEmailTransport(invitationEmailConfig)
+	}
+	service := internal.NewServiceWithOptions(store, time.Now, internal.ServiceOptions{
+		InvitationEmail: invitationEmailConfig,
+		EmailTransport:  invitationEmailTransport,
+	})
+	stopInvitationEmailWorker := startInvitationEmailWorker(service, invitationEmailConfig, logger)
+	defer stopInvitationEmailWorker()
+	if err := validateSelfObservabilityProjectConfig(context.Background(), store); err != nil {
+		logError(logger, "self_observability_config_invalid", err, "ERR-009")
+		return 1
+	}
+	signalExporter, err := controlPlaneSelfObservabilitySignalExporter(os.Getenv, logger)
+	if err != nil {
+		logError(logger, "self_observability_config_invalid", err, "ERR-009")
+		return 1
+	}
+	if signalExporter != nil {
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			_ = signalExporter.Shutdown(shutdownCtx)
+		}()
+	}
 	nc, err := internal.ConnectNATS(valueOrDefault(os.Getenv("CLOUDGRID_NATS_URL"), defaultNATSURL))
 	if err != nil {
 		logError(logger, "message_bridge_unavailable", err, "ERR-013")
@@ -62,7 +93,7 @@ func run() int {
 	}
 	defer nc.Close()
 
-	if _, err := internal.SubscribeControlHandlers(nc, service, logger); err != nil {
+	if _, err := internal.SubscribeControlHandlersWithOptions(nc, service, logger, internal.ControlHandlerOptions{SelfObservability: signalExporter}); err != nil {
 		logError(logger, "message_bridge_subscribe_failed", err, "ERR-013")
 		return 1
 	}
@@ -78,6 +109,11 @@ func run() int {
 			checks["control-store"] = health.Unavailable("ERR-006", "STORAGE_UNAVAILABLE", "control store is unavailable")
 		} else {
 			checks["control-store"] = health.OK()
+		}
+		if err := validateSelfObservabilityProjectConfig(ctx, store); err != nil {
+			checks["self-observability"] = health.Unavailable("ERR-009", "CONFIG_INVALID", "self-observability configuration is invalid")
+		} else {
+			checks["self-observability"] = health.OK()
 		}
 		return checks
 	})
@@ -136,6 +172,29 @@ func run() int {
 	return 0
 }
 
+func startInvitationEmailWorker(service *internal.Service, config internal.InvitationEmailConfig, logger *slog.Logger) func() {
+	if config.Mode != internal.InvitationEmailModeSMTP {
+		return func() {}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			_, err := service.ProcessDueInvitationEmails(ctx, 25)
+			if err != nil {
+				logError(logger, "invitation_email_delivery_failed", err, "ERR-022")
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	return cancel
+}
+
 func shutdownSignal() <-chan os.Signal {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
@@ -185,13 +244,242 @@ func safeErrorMessage(err error, errorID string) string {
 
 func errorCodeForID(errorID string) string {
 	switch errorID {
+	case "ERR-009":
+		return "CONFIG_INVALID"
 	case "ERR-010":
 		return "RUNTIME_COMPOSITION_FAILED"
 	case "ERR-013":
 		return "MESSAGE_BRIDGE_UNAVAILABLE"
+	case "ERR-022":
+		return "INVITATION_EMAIL_DELIVERY_FAILED"
 	default:
 		return "RUNTIME_COMPOSITION_FAILED"
 	}
+}
+
+type selfObservabilityProjectReader interface {
+	GetProject(ctx context.Context, projectID string) (ports.ProjectRecord, bool, error)
+}
+
+func validateSelfObservabilityProjectConfig(ctx context.Context, store selfObservabilityProjectReader) error {
+	mode := strings.ToLower(valueOrDefault(os.Getenv("CLOUDGRID_DEPLOYMENT_MODE"), "local"))
+	enabled, err := selfObservabilityEnabled(mode, os.Getenv("CLOUDGRID_SELF_OBSERVABILITY_ENABLED"))
+	if err != nil {
+		return err
+	}
+	if mode != "deployed" || !enabled {
+		return nil
+	}
+	companyID := strings.TrimSpace(os.Getenv("CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID"))
+	projectID := strings.TrimSpace(os.Getenv("CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID"))
+	endpoint := strings.TrimSpace(os.Getenv("CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT"))
+	token := strings.TrimSpace(os.Getenv("CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN"))
+	if companyID == "" || projectID == "" || endpoint == "" || token == "" {
+		return configInvalidError("deployed self-observability requires company ID, project ID, OTLP endpoint, and bearer token")
+	}
+	project, ok, err := store.GetProject(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if !ok || project.OrganizationID != companyID {
+		return configInvalidError("self-observability project does not exist in the configured company")
+	}
+	return nil
+}
+
+func resolveInvitationEmailConfig(getenv func(string) string) (internal.InvitationEmailConfig, error) {
+	mode := strings.ToLower(valueOrDefault(getenv("CLOUDGRID_DEPLOYMENT_MODE"), "local"))
+	authMode := strings.ToLower(valueOrDefault(getenv("CLOUDGRID_AUTH_MODE"), "local"))
+	config := internal.DefaultInvitationEmailConfig()
+	config.Mode = internal.InvitationEmailMode(strings.ToLower(strings.TrimSpace(getenv("CLOUDGRID_INVITATION_EMAIL_MODE"))))
+	if config.Mode == "" {
+		if mode == "deployed" && authMode == "sso" {
+			config.Mode = internal.InvitationEmailModeSMTP
+		} else {
+			config.Mode = internal.InvitationEmailModeDisabled
+		}
+	}
+	requireDefault := mode == "deployed" && authMode == "sso"
+	requireDelivery, err := invitationEmailBool(getenv("CLOUDGRID_INVITATION_EMAIL_REQUIRE_DELIVERY"), requireDefault, "CLOUDGRID_INVITATION_EMAIL_REQUIRE_DELIVERY")
+	if err != nil {
+		return internal.InvitationEmailConfig{}, err
+	}
+	config.RequireDelivery = requireDelivery
+	config.PublicURL = strings.TrimSpace(getenv("CLOUDGRID_PUBLIC_URL"))
+	config.From = strings.TrimSpace(getenv("CLOUDGRID_INVITATION_EMAIL_FROM"))
+	config.ReplyTo = strings.TrimSpace(getenv("CLOUDGRID_INVITATION_EMAIL_REPLY_TO"))
+	config.SMTPHost = strings.TrimSpace(getenv("CLOUDGRID_INVITATION_EMAIL_SMTP_HOST"))
+	config.SMTPPort = strings.TrimSpace(getenv("CLOUDGRID_INVITATION_EMAIL_SMTP_PORT"))
+	config.SMTPUsername = strings.TrimSpace(getenv("CLOUDGRID_INVITATION_EMAIL_SMTP_USERNAME"))
+	config.SMTPPassword = getenv("CLOUDGRID_INVITATION_EMAIL_SMTP_PASSWORD")
+	if value := strings.TrimSpace(getenv("CLOUDGRID_INVITATION_EMAIL_SMTP_TLS")); value != "" {
+		config.SMTPTLS = internal.InvitationEmailTLSMode(strings.ToLower(value))
+	}
+	if value := strings.TrimSpace(getenv("CLOUDGRID_INVITATION_EMAIL_SMTP_TIMEOUT_MS")); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil {
+			return internal.InvitationEmailConfig{}, configInvalidError("CLOUDGRID_INVITATION_EMAIL_SMTP_TIMEOUT_MS must be an integer")
+		}
+		config.SMTPTimeout = time.Duration(parsed) * time.Millisecond
+	}
+	if value := strings.TrimSpace(getenv("CLOUDGRID_INVITATION_EMAIL_MAX_ATTEMPTS")); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil {
+			return internal.InvitationEmailConfig{}, configInvalidError("CLOUDGRID_INVITATION_EMAIL_MAX_ATTEMPTS must be an integer")
+		}
+		config.MaxAttempts = parsed
+	}
+	if value := strings.TrimSpace(getenv("CLOUDGRID_INVITATION_EMAIL_RETRY_BASE_SECONDS")); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil {
+			return internal.InvitationEmailConfig{}, configInvalidError("CLOUDGRID_INVITATION_EMAIL_RETRY_BASE_SECONDS must be an integer")
+		}
+		config.RetryBase = time.Duration(parsed) * time.Second
+	}
+	if err := config.Validate(); err != nil {
+		return internal.InvitationEmailConfig{}, err
+	}
+	return config, nil
+}
+
+func invitationEmailBool(value string, fallback bool, name string) (bool, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch value {
+	case "":
+		return fallback, nil
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, configInvalidError(name + " must be true or false")
+	}
+}
+
+func selfObservabilityEnabled(mode string, value string) (bool, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch value {
+	case "":
+		return mode == "local", nil
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, configInvalidError("CLOUDGRID_SELF_OBSERVABILITY_ENABLED must be true or false")
+	}
+}
+
+func configInvalidError(reason string) error {
+	return errors.New("ERR-009 CONFIG_INVALID: " + reason)
+}
+
+type controlPlaneSelfObservabilityConfig struct {
+	Enabled               bool
+	CompanyID             string
+	ProjectID             string
+	OTLPEndpoint          string
+	OTLPBearerToken       string
+	ExportIntervalSeconds int
+	TracesEnabled         bool
+	LogsEnabled           bool
+}
+
+func controlPlaneSelfObservabilitySignalExporter(getenv func(string) string, logger *slog.Logger) (*internal.SelfObservabilitySignalExporter, error) {
+	config, err := resolveControlPlaneSelfObservabilityConfig(getenv)
+	if err != nil {
+		return nil, err
+	}
+	if !config.Enabled || (!config.TracesEnabled && !config.LogsEnabled) {
+		return nil, nil
+	}
+	mode := strings.ToLower(valueOrDefault(getenv("CLOUDGRID_DEPLOYMENT_MODE"), "local"))
+	return internal.NewSelfObservabilitySignalExporter(internal.SelfObservabilitySignalExporterConfig{
+		Enabled:               true,
+		Endpoint:              config.OTLPEndpoint,
+		BearerToken:           config.OTLPBearerToken,
+		ExportIntervalSeconds: config.ExportIntervalSeconds,
+		ServiceName:           "cloudgrid.control_plane",
+		DeploymentMode:        mode,
+		CompanyID:             config.CompanyID,
+		ProjectID:             config.ProjectID,
+		TracesEnabled:         config.TracesEnabled,
+		LogsEnabled:           config.LogsEnabled,
+		Logger:                logger,
+	})
+}
+
+func resolveControlPlaneSelfObservabilityConfig(getenv func(string) string) (controlPlaneSelfObservabilityConfig, error) {
+	mode := strings.ToLower(valueOrDefault(getenv("CLOUDGRID_DEPLOYMENT_MODE"), "local"))
+	enabled, err := selfObservabilityBool(getenv("CLOUDGRID_SELF_OBSERVABILITY_ENABLED"), mode == "local")
+	if err != nil {
+		return controlPlaneSelfObservabilityConfig{}, configInvalidError("CLOUDGRID_SELF_OBSERVABILITY_ENABLED must be true or false")
+	}
+	interval, err := selfObservabilityInterval(getenv("CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS"))
+	if err != nil {
+		return controlPlaneSelfObservabilityConfig{}, err
+	}
+	config := controlPlaneSelfObservabilityConfig{
+		Enabled:               enabled,
+		CompanyID:             strings.TrimSpace(getenv("CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID")),
+		ProjectID:             strings.TrimSpace(getenv("CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID")),
+		OTLPEndpoint:          strings.TrimSpace(getenv("CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT")),
+		OTLPBearerToken:       strings.TrimSpace(getenv("CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN")),
+		ExportIntervalSeconds: interval,
+	}
+	if mode == "local" {
+		if config.CompanyID == "" {
+			config.CompanyID = internal.LocalCompanyID
+		}
+		if config.ProjectID == "" {
+			config.ProjectID = internal.LocalSelfObservabilityProjectID
+		}
+		if config.OTLPEndpoint == "" {
+			config.OTLPEndpoint = "http://localhost:4318"
+		}
+	}
+	config.TracesEnabled, err = selfObservabilityBool(getenv("CLOUDGRID_SELF_OBSERVABILITY_TRACES_ENABLED"), enabled)
+	if err != nil {
+		return controlPlaneSelfObservabilityConfig{}, configInvalidError("CLOUDGRID_SELF_OBSERVABILITY_TRACES_ENABLED must be true or false")
+	}
+	config.LogsEnabled, err = selfObservabilityBool(getenv("CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED"), enabled)
+	if err != nil {
+		return controlPlaneSelfObservabilityConfig{}, configInvalidError("CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED must be true or false")
+	}
+	if !enabled {
+		config.TracesEnabled = false
+		config.LogsEnabled = false
+	}
+	if mode == "deployed" && enabled && (config.CompanyID == "" || config.ProjectID == "" || config.OTLPEndpoint == "" || config.OTLPBearerToken == "") {
+		return controlPlaneSelfObservabilityConfig{}, configInvalidError("deployed self-observability requires company ID, project ID, OTLP endpoint, and bearer token")
+	}
+	return config, nil
+}
+
+func selfObservabilityBool(value string, fallback bool) (bool, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch value {
+	case "":
+		return fallback, nil
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, configInvalidError("boolean value must be true or false")
+	}
+}
+
+func selfObservabilityInterval(value string) (int, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 10, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 1 || parsed > 300 {
+		return 0, configInvalidError("CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS must be an integer between 1 and 300")
+	}
+	return parsed, nil
 }
 
 func valueOrDefault(value string, fallback string) string {

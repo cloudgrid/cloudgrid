@@ -48,6 +48,8 @@ type HandlerOptions struct {
 	TokenValidator     BearerTokenValidator
 	ProjectCache       *ProjectStatusCache
 	MaxRequestBytes    int64
+	MetricsRecorder    MetricsRecorder
+	SelfObservability  SelfObservabilityRecorder
 	Now                func() time.Time
 }
 

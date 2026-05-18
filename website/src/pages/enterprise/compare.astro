@@ -8,48 +8,39 @@ import { vendors, rows } from "../../data/compare";
 const vendorNotes = [
   {
     name: "Datadog",
-    body:
-      "The most complete commercial APM. Polished UI, vast integration catalogue, mature AI Observability add-on. Trade-off: SaaS-only, your telemetry lives on Datadog's disks, per-host and per-GB pricing makes the workloads that need observability most also the workloads that get rate-limited first. CloudGrid trades polish for ownership and predictable cost.",
+    body: "The most complete commercial APM. Polished UI, vast integration catalogue, mature AI Observability add-on. Trade-off: SaaS-only, your telemetry lives on Datadog's disks, per-host and per-GB pricing makes the workloads that need observability most also the workloads that get rate-limited first. CloudGrid trades polish for ownership and predictable cost.",
   },
   {
     name: "Honeycomb",
-    body:
-      "Best-in-class wide-event tracing UX and BubbleUp-style exploration. SaaS-only, no first-class logs or AI evaluation today. CloudGrid is closer to Honeycomb than to Datadog in spirit — but self-hostable, with logs and AI-eval included.",
+    body: "Best-in-class wide-event tracing UX and BubbleUp-style exploration. SaaS-only, no first-class logs or AI evaluation today. CloudGrid is closer to Honeycomb than to Datadog in spirit — but self-hostable, with logs and AI-eval included.",
   },
   {
     name: "Grafana LGTM (Tempo + Loki + Mimir/Prometheus)",
-    body:
-      "The reference open-source observability stack. Strong components, ubiquitous deployment patterns, and you own everything. Trade-off: you're operating three to five products with three to five query languages, and signal correlation is glue you wrote. CloudGrid is one product, one query path, one storage adapter — with AI evaluation in the same box.",
+    body: "The reference open-source observability stack. Strong components, ubiquitous deployment patterns, and you own everything. Trade-off: you're operating three to five products with three to five query languages, and signal correlation is glue you wrote. CloudGrid is one product, one query path, one storage adapter — with AI evaluation in the same box.",
   },
   {
     name: "SigNoz",
-    body:
-      "Closest single-product OSS competitor: traces, logs, metrics in one UI. Tight ClickHouse coupling and no adapter port for storage. AI evaluation is not its focus. CloudGrid's wedge vs SigNoz is adapter-driven extensibility and first-class AI eval.",
+    body: "Closest single-product OSS competitor: traces, logs, metrics in one UI. Tight ClickHouse coupling and no adapter port for storage. AI evaluation is not its focus. CloudGrid's wedge vs SigNoz is adapter-driven extensibility and first-class AI eval.",
   },
   {
     name: "Jaeger (+ Tempo)",
-    body:
-      "Mature, well-understood, multi-backend distributed tracing. Tracing only — no logs, no metrics, no AI-eval. Great as a tracing backend; not the whole observability story.",
+    body: "Mature, well-understood, multi-backend distributed tracing. Tracing only — no logs, no metrics, no AI-eval. Great as a tracing backend; not the whole observability story.",
   },
   {
     name: "Langfuse",
-    body:
-      "Strong AI-eval product with prompt versioning, judge scorers, and tracing for LLM apps. Open-core: cloud and enterprise tiers gate features. CloudGrid covers the same AI-eval surface, MIT-licensed, evaluating agents inside a full observability platform — so the non-AI parts of your stack are visible in the same UI.",
+    body: "Strong AI-eval product with prompt versioning, judge scorers, and tracing for LLM apps. Open-core: cloud and enterprise tiers gate features. CloudGrid covers the same AI-eval surface, MIT-licensed, evaluating agents inside a full observability platform — so the non-AI parts of your stack are visible in the same UI.",
   },
   {
     name: "Arize Phoenix",
-    body:
-      "Excellent OSS evaluation and tracing tool for AI applications, strong in retrieval-augmented generation analysis. Single-purpose: it doesn't replace your APM or your logs system. CloudGrid covers both jobs with shared isolation and authorization.",
+    body: "Excellent OSS evaluation and tracing tool for AI applications, strong in retrieval-augmented generation analysis. Single-purpose: it doesn't replace your APM or your logs system. CloudGrid covers both jobs with shared isolation and authorization.",
   },
   {
     name: "Braintrust",
-    body:
-      "Polished commercial AI-eval platform with dataset, scorer, and experiment management. SaaS-only, proprietary. CloudGrid covers the same eval workflows in OSS, with the rest of your stack visible alongside.",
+    body: "Polished commercial AI-eval platform with dataset, scorer, and experiment management. SaaS-only, proprietary. CloudGrid covers the same eval workflows in OSS, with the rest of your stack visible alongside.",
   },
   {
     name: "Helicone (and similar gateways)",
-    body:
-      "LLM proxy / observability tools that sit in front of model providers. Useful for cost capture and rate limiting; not a general-purpose observability platform. Complementary, not a substitute — CloudGrid ingests OTLP from whichever proxy you choose.",
+    body: "LLM proxy / observability tools that sit in front of model providers. Useful for cost capture and rate limiting; not a general-purpose observability platform. Complementary, not a substitute — CloudGrid ingests OTLP from whichever proxy you choose.",
   },
 ];
 ---

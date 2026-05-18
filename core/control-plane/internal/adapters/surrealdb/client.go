@@ -100,8 +100,12 @@ func (client *Client) exec(ctx context.Context, sql string, vars map[string]any)
 	if err != nil {
 		return err
 	}
-	if results != nil && len(*results) > 0 && (*results)[0].Error != nil {
-		return (*results)[0].Error
+	if results != nil {
+		for _, result := range *results {
+			if result.Error != nil {
+				return result.Error
+			}
+		}
 	}
 	return nil
 }

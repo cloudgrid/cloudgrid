@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/cloudgrid-dev/cloudgrid/core/control-plane/internal/ports"
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
@@ -36,6 +37,7 @@ type testStore struct {
 	dashboards        map[string]ports.DashboardRecord
 	dashboardPins     map[string]ports.DashboardPinRecord
 	projectMembers    map[string]ports.ProjectMemberRecord
+	emailDeliveries   map[string]ports.EmailDeliveryRecord
 	retentionPolicies map[string]ports.RetentionPolicyRecord
 	projectAiSettings map[string]ports.ProjectAiSettingsRecord
 	alertRules        map[string]ports.AlertRuleRecord
@@ -54,6 +56,7 @@ func newTestStore() *testStore {
 		dashboards:        map[string]ports.DashboardRecord{},
 		dashboardPins:     map[string]ports.DashboardPinRecord{},
 		projectMembers:    map[string]ports.ProjectMemberRecord{},
+		emailDeliveries:   map[string]ports.EmailDeliveryRecord{},
 		retentionPolicies: map[string]ports.RetentionPolicyRecord{},
 		projectAiSettings: map[string]ports.ProjectAiSettingsRecord{},
 		alertRules:        map[string]ports.AlertRuleRecord{},
@@ -158,13 +161,26 @@ func (store *testStore) GetInvitation(_ context.Context, invitationID string) (p
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 	invitation, ok := store.invitations[invitationID]
+	invitation.ProjectGrants = append([]contracts.InvitationProjectGrant{}, invitation.ProjectGrants...)
 	return invitation, ok, nil
 }
 
 func (store *testStore) PutInvitation(_ context.Context, invitation ports.InvitationRecord) error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	invitation.ProjectGrants = append([]contracts.InvitationProjectGrant{}, invitation.ProjectGrants...)
 	store.invitations[invitation.ID] = invitation
+	return nil
+}
+
+func (store *testStore) PutInvitationAndEmailDelivery(_ context.Context, invitation ports.InvitationRecord, delivery *ports.EmailDeliveryRecord) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	invitation.ProjectGrants = append([]contracts.InvitationProjectGrant{}, invitation.ProjectGrants...)
+	store.invitations[invitation.ID] = invitation
+	if delivery != nil {
+		store.emailDeliveries[delivery.ID] = *delivery
+	}
 	return nil
 }
 
@@ -174,6 +190,7 @@ func (store *testStore) ListInvitations(_ context.Context, organizationID string
 	items := []ports.InvitationRecord{}
 	for _, invitation := range store.invitations {
 		if invitation.OrganizationID == organizationID {
+			invitation.ProjectGrants = append([]contracts.InvitationProjectGrant{}, invitation.ProjectGrants...)
 			items = append(items, invitation)
 		}
 	}
@@ -193,10 +210,51 @@ func (store *testStore) GetPendingInvitationByEmail(_ context.Context, organizat
 		if invitation.OrganizationID == organizationID &&
 			invitation.Email == email &&
 			invitation.Status == contracts.OrganizationInvitationStatusPending {
+			invitation.ProjectGrants = append([]contracts.InvitationProjectGrant{}, invitation.ProjectGrants...)
 			return invitation, true, nil
 		}
 	}
 	return ports.InvitationRecord{}, false, nil
+}
+
+func (store *testStore) PutEmailDelivery(_ context.Context, delivery ports.EmailDeliveryRecord) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.emailDeliveries[delivery.ID] = delivery
+	return nil
+}
+
+func (store *testStore) ListDueEmailDeliveries(_ context.Context, now time.Time, limit int) ([]ports.EmailDeliveryRecord, error) {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	items := []ports.EmailDeliveryRecord{}
+	for _, delivery := range store.emailDeliveries {
+		if delivery.Status != ports.EmailDeliveryStatusPending && delivery.Status != ports.EmailDeliveryStatusFailedRetryable {
+			continue
+		}
+		if delivery.NextAttemptAt != nil && delivery.NextAttemptAt.After(now) {
+			continue
+		}
+		items = append(items, delivery)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		left := items[i].CreatedAt
+		right := items[j].CreatedAt
+		if items[i].NextAttemptAt != nil {
+			left = *items[i].NextAttemptAt
+		}
+		if items[j].NextAttemptAt != nil {
+			right = *items[j].NextAttemptAt
+		}
+		if left.Equal(right) {
+			return items[i].ID < items[j].ID
+		}
+		return left.Before(right)
+	})
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	return items, nil
 }
 
 func (store *testStore) GetProject(_ context.Context, projectID string) (ports.ProjectRecord, bool, error) {

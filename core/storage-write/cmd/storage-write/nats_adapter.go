@@ -10,6 +10,14 @@ import (
 )
 
 func newMessageBridgeAdapter(natsURL string, store ports.TelemetryWriteStore, logger *slog.Logger) (messageBridgeAdapter, error) {
+	return newMessageBridgeAdapterWithMetrics(natsURL, store, logger, nil)
+}
+
+func newMessageBridgeAdapterWithMetrics(natsURL string, store ports.TelemetryWriteStore, logger *slog.Logger, recorder ingest.MetricsRecorder) (messageBridgeAdapter, error) {
+	return newMessageBridgeAdapterWithSelfObservability(natsURL, store, logger, recorder, nil)
+}
+
+func newMessageBridgeAdapterWithSelfObservability(natsURL string, store ports.TelemetryWriteStore, logger *slog.Logger, recorder ingest.MetricsRecorder, traceLogRecorder ingest.TraceLogRecorder) (messageBridgeAdapter, error) {
 	nc, err := nats.Connect(natsURL, nats.Name("cloudgrid-storage-write"))
 	if err != nil {
 		return messageBridgeAdapter{}, err
@@ -39,10 +47,18 @@ func newMessageBridgeAdapter(natsURL string, store ports.TelemetryWriteStore, lo
 
 	return messageBridgeAdapter{
 		RunConsumer: func(ctx context.Context) error {
-			return ingest.RunConsumer(ctx, js, nc, ingest.NewTraceNotificationPublisher(nc), store, logger)
+			return ingest.RunConsumerWithSelfObservability(ctx, pullSubscriberJetStream{JetStreamContext: js}, nc, ingest.NewTraceNotificationPublisher(nc), store, logger, recorder, traceLogRecorder)
 		},
 		IsClosed: nc.IsClosed,
 		Drain:    nc.Drain,
 		Close:    nc.Close,
 	}, nil
+}
+
+type pullSubscriberJetStream struct {
+	nats.JetStreamContext
+}
+
+func (js pullSubscriberJetStream) PullSubscribe(subject string, durable string, opts ...nats.SubOpt) (ingest.PullSubscription, error) {
+	return js.JetStreamContext.PullSubscribe(subject, durable, opts...)
 }

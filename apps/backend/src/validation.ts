@@ -19,6 +19,7 @@ import type {
   EvalResultSearchInput,
   ExperimentSearchInput,
   InviteOrganizationMemberInput,
+  InviteProjectMemberInput,
   LiveExperimentRunInput,
   LiveTraceInput,
   LogSearchInput,
@@ -826,6 +827,11 @@ const inviteOrganizationMemberInputSchema = z.object({
   organizationId: z.string().min(1),
   email: z.string().trim().email(),
 });
+const inviteProjectMemberInputSchema = z.object({
+  projectId: z.string().min(1),
+  email: z.string().trim().email(),
+  role: projectRoleSchema,
+});
 const removeOrganizationMemberInputSchema = z.object({
   organizationId: z.string().min(1),
   userId: z.string().min(1),
@@ -1462,6 +1468,20 @@ export function validateInviteOrganizationMemberInput(
     ) as InviteOrganizationMemberInput;
   } catch {
     throw validationGraphQLError("Invite organization member input failed validation");
+  }
+}
+
+export function validateInviteProjectMemberInput(
+  input: InviteProjectMemberInput,
+): InviteProjectMemberInput {
+  try {
+    return parseWithZod(
+      inviteProjectMemberInputSchema,
+      compactInput(input as unknown as Record<string, unknown>),
+      "invite project member input",
+    ) as InviteProjectMemberInput;
+  } catch {
+    throw validationGraphQLError("Invite project member input failed validation");
   }
 }
 

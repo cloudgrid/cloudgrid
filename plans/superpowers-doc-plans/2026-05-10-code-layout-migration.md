@@ -1,5 +1,9 @@
 # Code Layout Migration Implementation Plan
 
+> Status: superseded by current repository layout. Do not treat the unchecked
+> boxes as pending work; `apps/` and `core/` are already the active layout. This
+> file remains historical planning context only.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Move implementation code into a clean `apps` and `core` structure while keeping specs, docs, tooling, and skills at the repository root.

@@ -180,6 +180,10 @@ Examples:
 - Frontend renders GraphQL dashboard and telemetry view models only.
 - Frontend may keep local draft state while editing, but save always calls `Mutation.saveDashboard`.
 - Frontend must not compute metric rates, percentiles, rollups, trace counts, log counts, or live event semantics from raw telemetry.
+- If the dashboard URL does not carry an explicit time range, metric widgets use
+  the observed descriptor range for their configured metric names. This keeps
+  built-in dashboards useful with local seeded data without requiring manual
+  date edits.
 - Metric widgets execute through `Query.metricSeries`.
 - Log widgets execute through `Query.logs`.
 - Trace widgets execute through `Query.traces`.

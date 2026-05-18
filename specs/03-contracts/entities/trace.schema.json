@@ -4,7 +4,7 @@
   "title": "Trace",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "startedAt", "attributes"],
+  "required": ["id", "startedAt", "startedAtUnixNano", "attributes"],
   "properties": {
     "id": { "type": "string", "description": "OpenTelemetry trace ID as lowercase hex." },
     "serviceName": {
@@ -16,10 +16,25 @@
       "format": "date-time",
       "description": "Trace start time in UTC."
     },
+    "startedAtUnixNano": {
+      "type": "string",
+      "pattern": "^[0-9]+$",
+      "description": "Trace start time as OpenTelemetry Unix nanoseconds. Read models must preserve this value for waterfall precision."
+    },
     "endedAt": {
       "type": "string",
       "format": "date-time",
       "description": "Trace end time in UTC when known."
+    },
+    "endedAtUnixNano": {
+      "type": "string",
+      "pattern": "^[0-9]+$",
+      "description": "Trace end time as OpenTelemetry Unix nanoseconds when known."
+    },
+    "durationNano": {
+      "type": "string",
+      "pattern": "^[0-9]+$",
+      "description": "Trace duration in nanoseconds when known."
     },
     "durationMs": {
       "type": "number",

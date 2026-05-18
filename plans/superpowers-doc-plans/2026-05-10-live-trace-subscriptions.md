@@ -1,5 +1,10 @@
 # Live Trace Subscriptions Implementation Plan
 
+> Status: superseded by current implementation. Do not execute the unchecked
+> boxes as pending work without first re-auditing `Subscription.liveTraces`,
+> storage-read live sessions, and storage-write post-persist notifications. This
+> file remains historical planning context only.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement trace-level realtime telemetry via GraphQL subscriptions while keeping live matching and authorization preparation in storage-read.

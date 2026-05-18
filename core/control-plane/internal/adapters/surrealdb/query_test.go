@@ -1,10 +1,14 @@
 package surrealdb
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/cloudgrid-dev/cloudgrid/core/control-plane/internal/ports"
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
+	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
 func TestControlPlaneSchemaIncludesRequiredTablesAndRelations(t *testing.T) {
@@ -15,6 +19,11 @@ func TestControlPlaneSchemaIncludesRequiredTablesAndRelations(t *testing.T) {
 		"DEFINE TABLE IF NOT EXISTS user",
 		"DEFINE TABLE IF NOT EXISTS project",
 		"DEFINE TABLE IF NOT EXISTS membership TYPE RELATION",
+		"DEFINE TABLE IF NOT EXISTS organization_invitation SCHEMAFULL TYPE NORMAL",
+		"DEFINE FIELD IF NOT EXISTS deliveryStatus ON organization_invitation TYPE string",
+		"DEFINE FIELD OVERWRITE projectGrants ON organization_invitation TYPE array<object>",
+		"DEFINE TABLE IF NOT EXISTS email_delivery SCHEMAFULL TYPE NORMAL",
+		"DEFINE INDEX IF NOT EXISTS email_delivery_due ON email_delivery FIELDS status, nextAttemptAt",
 		"DEFINE TABLE IF NOT EXISTS owns_project TYPE RELATION",
 		"DEFINE TABLE IF NOT EXISTS ingest_credential",
 		"DEFINE TABLE IF NOT EXISTS project_status_event",
@@ -63,6 +72,8 @@ func TestControlPlaneReadinessRequiresDashboardTables(t *testing.T) {
 
 	info.Tables["dashboard"] = "DEFINE TABLE dashboard"
 	info.Tables["dashboard_pin"] = "DEFINE TABLE dashboard_pin"
+	info.Tables["organization_invitation"] = "DEFINE TABLE organization_invitation"
+	info.Tables["email_delivery"] = "DEFINE TABLE email_delivery"
 	info.Tables["project_membership"] = "DEFINE TABLE project_membership"
 	info.Tables["retention_policy"] = "DEFINE TABLE retention_policy"
 	info.Tables["project_ai_settings"] = "DEFINE TABLE project_ai_settings"
@@ -85,6 +96,100 @@ func TestProjectListQueryUsesParametersForFilters(t *testing.T) {
 	}
 	if stmt.Params["organizationId"] != "org-1" || stmt.Params["status"] != string(status) {
 		t.Fatalf("params = %#v, want organization/status params", stmt.Params)
+	}
+}
+
+func TestProjectListQueryOmitsWhereClauseWhenFiltersAreBlank(t *testing.T) {
+	stmt, err := BuildProjectListQuery("  ", nil)
+	if err != nil {
+		t.Fatalf("BuildProjectListQuery returned error: %v", err)
+	}
+	if strings.Contains(stmt.SQL, "WHERE") {
+		t.Fatalf("SQL = %q, want no WHERE clause for blank filters", stmt.SQL)
+	}
+	if len(stmt.Params) != 0 {
+		t.Fatalf("params = %#v, want no params for blank filters", stmt.Params)
+	}
+}
+
+func TestDashboardPayloadBuildsSearchTextAndRejectsInvalidWidgetJSON(t *testing.T) {
+	description := " Production "
+	payload, err := dashboardPayload(ports.DashboardRecord{
+		ProjectID:         "project-1",
+		OrganizationID:    "org-1",
+		Slug:              "latency",
+		Name:              "Latency",
+		Description:       &description,
+		Tags:              []string{"SLO", "API"},
+		Visibility:        ports.DashboardVisibilityProject,
+		DefaultTimeWindow: "1h",
+		Widgets:           json.RawMessage(`[{"id":"w1","kind":"metric"}]`),
+		CreatedAt:         time.Unix(1, 0),
+		UpdatedAt:         time.Unix(2, 0),
+	})
+	if err != nil {
+		t.Fatalf("dashboardPayload returned error: %v", err)
+	}
+	if payload.SearchText != "latency latency production slo api" {
+		t.Fatalf("searchText = %q, want lower-case searchable fields", payload.SearchText)
+	}
+	if len(payload.Widgets) != 1 || payload.Widgets[0]["id"] != "w1" {
+		t.Fatalf("widgets = %#v, want decoded widget payload", payload.Widgets)
+	}
+
+	if _, err := dashboardPayload(ports.DashboardRecord{Widgets: json.RawMessage(`{"not":"an array"}`)}); err == nil {
+		t.Fatalf("dashboardPayload with object widgets returned nil error, want JSON type error")
+	}
+}
+
+func TestDashboardRowRecordNormalizesPublicIDAndWidgetJSON(t *testing.T) {
+	description := "ops"
+	created := time.Unix(1, 0)
+	updated := time.Unix(2, 0)
+	row := dashboardRow{
+		ID:                models.RecordID{Table: "dashboard", ID: "project-1_project_latency"},
+		ProjectID:         "project-1",
+		OrganizationID:    "org-1",
+		Slug:              "latency",
+		Name:              "Latency",
+		Description:       &description,
+		Tags:              []string{"api"},
+		Version:           3,
+		Visibility:        string(ports.DashboardVisibilityProject),
+		DefaultTimeWindow: "1h",
+		Widgets:           []map[string]any{{"id": "w1", "kind": "metric"}},
+		CreatedAt:         created,
+		UpdatedAt:         updated,
+	}
+
+	record, ok, err := row.record()
+	if err != nil {
+		t.Fatalf("record returned error: %v", err)
+	}
+	if !ok {
+		t.Fatalf("record ok = false, want true")
+	}
+	if record.ID != "dashboard:project-1_project_latency" {
+		t.Fatalf("record ID = %q, want public dashboard ID", record.ID)
+	}
+	if string(record.Widgets) != `[{"id":"w1","kind":"metric"}]` {
+		t.Fatalf("widgets = %s, want encoded widget JSON", string(record.Widgets))
+	}
+}
+
+func TestSurrealDBRecordIdentifierHelpersAreDeterministic(t *testing.T) {
+	description := "  description  "
+	if recordKey("dashboard", " dashboard:abc ") != "abc" {
+		t.Fatalf("recordKey did not trim table prefix")
+	}
+	if publicDashboardID("abc") != "dashboard:abc" || publicDashboardID("builtin-overview") != "builtin-overview" {
+		t.Fatalf("publicDashboardID did not preserve expected public forms")
+	}
+	if pointerString(&description) != "description" || pointerString(nil) != "" {
+		t.Fatalf("pointerString did not trim or handle nil")
+	}
+	if compoundID("org/1", "user:2 email") != "org_1_user_2_email" {
+		t.Fatalf("compoundID did not sanitize separators")
 	}
 }
 

@@ -12,6 +12,7 @@ import {
   alertRulesOperation,
   alertSilencesOperation,
   annotationQueueOperation,
+  appendDatasetItemsOperation,
   commitDatasetImportOperation,
   createAlertRuleOperation,
   createAlertSilenceOperation,
@@ -1642,6 +1643,30 @@ async function assertAiEvalScenario(port, natsUrl, runID, traceFixture) {
   assert(
     committedImport.data?.commitDatasetImport?.status === "committed",
     "CommitDatasetImport did not commit the preview",
+  );
+
+  const appendedDataset = await graphql(
+    port,
+    appendDatasetItemsOperation,
+    {
+      input: {
+        datasetId: dataset.id,
+        items: [
+          {
+            input: { prompt: `manual integration row ${runID}` },
+            expected: { answer: "ok" },
+            metadata: { source: "integration-local", mode: "manual-append" },
+            split: "validation",
+            reviewStatus: "reviewed",
+          },
+        ],
+      },
+    },
+    "AppendDatasetItems",
+  );
+  assert(
+    appendedDataset.data?.appendDatasetItems?.itemCount >= 2,
+    "AppendDatasetItems did not persist a manual dataset row",
   );
 
   const agentRunId = `agent-run-${runID}`;

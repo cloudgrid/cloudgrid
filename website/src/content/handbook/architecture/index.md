@@ -1,45 +1,45 @@
 ---
-title: Architecture
-description: Services, message bridge, and what crosses what.
-sidebar: Overview
-order: 2
+title: "Architecture"
+description: "CloudGrid is split into a public BFF, public OTLP collector, private Go services, NATS, and SurrealDB. The split keeps authorization, telemetry query."
+sidebar: "Architecture"
+order: 7
 accent: brand
-eyebrow: Handbook · Architecture
-updated: 2026-05-17
+eyebrow: "Handbook - Architecture"
+updated: 2026-05-18
 ---
 
-CloudGrid is a small number of single-purpose services arranged around a
-message bridge. The public surface is a TypeScript backend-for-frontend;
-everything sensitive is a private Go service that only the bridge can reach.
+CloudGrid is split into a public BFF, public OTLP collector, private Go services, NATS, and SurrealDB. The split keeps authorization, telemetry query semantics, and database access owned by the right service.
 
-## At a glance
+| Topic | Page |
+| --- | --- |
+| Service ownership | [Service boundaries](/handbook/architecture/service-boundaries) |
+| OTLP write path | [Ingest flow](/handbook/architecture/ingest-flow) |
+| GraphQL read path | [Read flow](/handbook/architecture/read-flow) |
+| GraphQL live subscriptions | [Live trace flow](/handbook/architecture/live-trace-flow) |
+| Tenant, project, and secret boundaries | [Tenancy and security](/handbook/architecture/tenancy-security) |
+
+## At A Glance
 
 ```mermaid
 flowchart LR
-  Sender["OTLP sender"] --> Collector["otlp-collector"]
-  Collector --> NATS{{"NATS JetStream"}}
-  NATS --> Writer["storage-write"]
-  Writer --> DB[("SurrealDB")]
-  Browser["Browser"] --> BFF["TypeScript BFF"]
-  BFF --> NATS
-  NATS --> Reader["storage-read"]
-  Reader --> DB
-  BFF --> Control["control-plane"]
+  Browser["Browser UI"] --> BFF["TypeScript BFF"]
+  Sender["OTLP sender"] --> Collector["Go OTLP collector"]
+  BFF --> NATS["NATS request/reply"]
+  Collector --> JetStream["NATS JetStream"]
+  NATS --> Read["storage-read"]
+  NATS --> Control["control-plane"]
+  JetStream --> Write["storage-write"]
+  Read --> DB["SurrealDB"]
+  Write --> DB
   Control --> DB
-  classDef public fill:#6366f1,stroke:#6366f1,color:#fff;
-  classDef private fill:#10172a,stroke:#94a3b8,color:#e2e8f0;
-  class BFF,Collector public;
-  class Writer,Reader,Control private;
 ```
 
-The browser talks only to the BFF. The BFF talks to private services through
-NATS request/reply. Storage services own database access. The shape is
-deliberate: every authorization decision lives in one place per
-responsibility.
+## Boundary Summary
 
-## Read more
-
-- [Services](/handbook/architecture/services) — what each Go and TypeScript
-  service owns, and what it must not do.
-- [Message bridge](/handbook/architecture/message-bridge) — subjects,
-  request/reply semantics, durable streams, and live subscription fanout.
+- Frontend talks only to the TypeScript BFF.
+- Public telemetry reads use GraphQL.
+- The BFF talks to private services only through NATS request/reply and declared contracts.
+- The collector publishes ingest commands and never writes SurrealDB directly.
+- `storage-write` is the only normal telemetry mutator.
+- `storage-read` is the only telemetry reader.
+- `control-plane` owns companies, users, projects, memberships, dashboards, retention policies, alert foundations, and AI-eval project settings.

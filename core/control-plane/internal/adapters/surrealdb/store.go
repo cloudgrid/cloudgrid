@@ -70,12 +70,64 @@ func (store *Store) PutInvitation(ctx context.Context, invitation ports.Invitati
 	return store.put(ctx, "organization_invitation", invitation.ID, invitation)
 }
 
+func (store *Store) PutInvitationAndEmailDelivery(ctx context.Context, invitation ports.InvitationRecord, delivery *ports.EmailDeliveryRecord) error {
+	if delivery == nil {
+		return store.PutInvitation(ctx, invitation)
+	}
+	invitationPayload, err := recordMap(invitation, "ID")
+	if err != nil {
+		return err
+	}
+	deliveryPayload, err := recordMap(*delivery, "ID")
+	if err != nil {
+		return err
+	}
+	return store.client.exec(ctx, strings.Join([]string{
+		"BEGIN TRANSACTION;",
+		"UPSERT type::record('organization_invitation', $invitationId) CONTENT $invitation;",
+		"UPSERT type::record('email_delivery', $deliveryId) CONTENT $delivery;",
+		"COMMIT TRANSACTION;",
+	}, " "), map[string]any{
+		"invitationId": recordKey("organization_invitation", invitation.ID),
+		"deliveryId":   recordKey("email_delivery", delivery.ID),
+		"invitation":   invitationPayload,
+		"delivery":     deliveryPayload,
+	})
+}
+
 func (store *Store) ListInvitations(ctx context.Context, organizationID string) ([]ports.InvitationRecord, error) {
 	return queryRows[ports.InvitationRecord](ctx, store.client, QueryStatement{SQL: "SELECT record::id(id) AS ID, * FROM organization_invitation WHERE organizationId = $organizationId ORDER BY createdAt ASC, ID ASC;", Params: map[string]any{"organizationId": organizationID}})
 }
 
 func (store *Store) GetPendingInvitationByEmail(ctx context.Context, organizationID string, email string) (ports.InvitationRecord, bool, error) {
 	return queryRecord[ports.InvitationRecord](ctx, store.client, "SELECT record::id(id) AS ID, * FROM organization_invitation WHERE organizationId = $organizationId AND email = $email AND status = $status LIMIT 1;", map[string]any{"organizationId": organizationID, "email": email, "status": string(contracts.OrganizationInvitationStatusPending)})
+}
+
+func (store *Store) PutEmailDelivery(ctx context.Context, delivery ports.EmailDeliveryRecord) error {
+	return store.put(ctx, "email_delivery", delivery.ID, delivery)
+}
+
+func (store *Store) ListDueEmailDeliveries(ctx context.Context, now time.Time, limit int) ([]ports.EmailDeliveryRecord, error) {
+	if limit <= 0 {
+		limit = 25
+	}
+	return queryRows[ports.EmailDeliveryRecord](ctx, store.client, QueryStatement{
+		SQL: strings.Join([]string{
+			"SELECT record::id(id) AS ID, * FROM email_delivery",
+			"WHERE status IN $statuses",
+			"AND (nextAttemptAt = NONE OR nextAttemptAt <= $now)",
+			"ORDER BY nextAttemptAt ASC, createdAt ASC, ID ASC",
+			"LIMIT $limit;",
+		}, " "),
+		Params: map[string]any{
+			"statuses": []string{
+				string(ports.EmailDeliveryStatusPending),
+				string(ports.EmailDeliveryStatusFailedRetryable),
+			},
+			"now":   now,
+			"limit": limit,
+		},
+	})
 }
 
 func (store *Store) GetProject(ctx context.Context, projectID string) (ports.ProjectRecord, bool, error) {

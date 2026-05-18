@@ -1,5 +1,10 @@
 # Organization Invitations Implementation Plan
 
+> Status: superseded by current implementation. Do not execute the unchecked
+> boxes as pending work without first re-auditing the current contracts,
+> control-plane, BFF, frontend, and docs. This file remains historical planning
+> context only.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Implement invite-only organization membership end to end with pending email invitations accepted by matching verified SSO identity.

@@ -214,6 +214,16 @@ errors:
     terminal_action: retry
     retry_preconditions: ["Evaluator capacity is available", "Storage-read health is ok"]
     description: Alert evaluator exceeded its configured execution deadline while evaluating a rule or dispatching notification work.
+  ERR-022:
+    code: INVITATION_EMAIL_DELIVERY_FAILED
+    category: provider
+    http_status: 503
+    retryable: true
+    user_visible: true
+    message_template: "Invitation email delivery failed"
+    terminal_action: retry
+    retry_preconditions: ["SMTP provider health and invitation email configuration are valid"]
+    description: Invitation email could not be enqueued or delivered through the configured email provider.
   ERR-AIE-001:
     code: EVAL_DATASET_NOT_FOUND
     category: not_found

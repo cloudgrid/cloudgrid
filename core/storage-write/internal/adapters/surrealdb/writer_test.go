@@ -123,6 +123,9 @@ func TestBuildPersistQueryUsesParameterizedIdempotentUpserts(t *testing.T) {
 	if traceRecord["startedAt"] != startedAt.UTC() {
 		t.Fatalf("startedAt = %#v", traceRecord["startedAt"])
 	}
+	if traceRecord["startedAtUnixNano"] != "1778227200000000000" || traceRecord["endedAtUnixNano"] != "1778227201500000000" || traceRecord["durationNano"] != "1500000000" {
+		t.Fatalf("trace nanosecond fields = %#v", traceRecord)
+	}
 	if traceRecord["spanCount"] != 1 {
 		t.Fatalf("spanCount = %#v", traceRecord["spanCount"])
 	}

@@ -11,24 +11,25 @@
 import { getCollection, render, type CollectionEntry } from "astro:content";
 import HandbookLayout from "../../components/handbook/HandbookLayout.astro";
 
-// Slugs that have a dedicated static page in /pages/handbook/. The dynamic
-// route skips them to avoid duplicate-route errors at build time.
-const SHIM_SLUGS = new Set([
-  "",                  // handled by index.astro
-  "getting-started",
-  "architecture",
-  "deployment",
-  "configuration",
-  "adapters",
-]);
-
-function entryToSlug(id: string): string {
-  if (id === "" || id === "index") return "";
-  if (id.endsWith("/index")) return id.slice(0, -"/index".length);
-  return id;
-}
-
 export async function getStaticPaths() {
+  // Slugs that have a dedicated static page in /pages/handbook/. The dynamic
+  // route skips them to avoid duplicate-route errors at build time.
+  const SHIM_SLUGS = new Set<string>([
+    "", // handled by index.astro
+    "getting-started",
+    "architecture",
+    "deployment",
+    "configuration",
+    "adapters",
+  ]);
+
+  // Locally scoped so Astro's getStaticPaths sandbox can see it.
+  const entryToSlug = (id: string): string => {
+    if (id === "" || id === "index") return "";
+    if (id.endsWith("/index")) return id.slice(0, -"/index".length);
+    return id;
+  };
+
   const entries = await getCollection("handbook");
   const seen = new Set<string>();
   const out: { params: { slug: string }; props: { entry: CollectionEntry<"handbook"> } }[] = [];

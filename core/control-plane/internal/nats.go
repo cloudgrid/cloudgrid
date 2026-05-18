@@ -10,91 +10,95 @@ import (
 )
 
 const (
-	SubjectViewerGet               = "control.viewer.get"
-	SubjectOrganizationsList       = "control.organizations.list"
-	SubjectOrganizationsGet        = "control.organizations.get"
-	SubjectProjectsList            = "control.projects.list"
-	SubjectProjectsGet             = "control.projects.get"
-	SubjectProjectsCreate          = "control.projects.create"
-	SubjectProjectsUpdate          = "control.projects.update"
-	SubjectProjectsSelect          = "control.projects.select"
-	SubjectMembersList             = "control.members.list"
-	SubjectMembersUpdate           = "control.members.update"
-	SubjectMembersRemove           = "control.members.remove"
-	SubjectInvitationsList         = "control.invitations.list"
-	SubjectInvitationsCreate       = "control.invitations.create"
-	SubjectInvitationsRevoke       = "control.invitations.revoke"
-	SubjectIngestCredentialsList   = "control.ingest_credentials.list"
-	SubjectIngestCredentialsCreate = "control.ingest_credentials.create"
-	SubjectIngestCredentialsRevoke = "control.ingest_credentials.revoke"
-	SubjectProjectStatusSnapshot   = "control.project_status.snapshot"
-	SubjectProjectStatusChanged    = "control.project_status.changed"
-	SubjectDashboardsList          = "control.dashboards.list"
-	SubjectDashboardsSave          = "control.dashboards.save"
-	SubjectDashboardsDelete        = "control.dashboards.delete"
-	SubjectDashboardPinsSet        = "control.dashboard_pins.set"
-	SubjectDashboardPinsReorder    = "control.dashboard_pins.reorder"
-	SubjectProjectAiSettingsGet    = "control.ai_settings.get"
-	SubjectProjectAiSettingsUpdate = "control.ai_settings.update"
-	SubjectProjectMembersList      = "control.project_members.list"
-	SubjectProjectMembersUpdate    = "control.project_members.update"
-	SubjectProjectMembersRemove    = "control.project_members.remove"
-	SubjectRetentionGet            = "control.retention.get"
-	SubjectRetentionUpdate         = "control.retention.update"
-	SubjectAlertRulesList          = "control.alert_rules.list"
-	SubjectAlertRulesCreate        = "control.alert_rules.create"
-	SubjectAlertRulesUpdate        = "control.alert_rules.update"
-	SubjectAlertRulesDelete        = "control.alert_rules.delete"
-	SubjectAlertSilencesList       = "control.alert_silences.list"
-	SubjectAlertSilencesCreate     = "control.alert_silences.create"
-	SubjectAlertSilencesDelete     = "control.alert_silences.delete"
-	SubjectAlertHistoryList        = "control.alert_history.list"
-	SubjectAlertHistoryRecord      = "control.alert_history.record"
-	controlPlaneService            = "control-plane"
+	SubjectViewerGet                = "control.viewer.get"
+	SubjectOrganizationsList        = "control.organizations.list"
+	SubjectOrganizationsGet         = "control.organizations.get"
+	SubjectProjectsList             = "control.projects.list"
+	SubjectProjectsGet              = "control.projects.get"
+	SubjectProjectsCreate           = "control.projects.create"
+	SubjectProjectsUpdate           = "control.projects.update"
+	SubjectProjectsSelect           = "control.projects.select"
+	SubjectMembersList              = "control.members.list"
+	SubjectMembersUpdate            = "control.members.update"
+	SubjectMembersRemove            = "control.members.remove"
+	SubjectInvitationsList          = "control.invitations.list"
+	SubjectInvitationsCreate        = "control.invitations.create"
+	SubjectInvitationsResend        = "control.invitations.resend"
+	SubjectInvitationsRevoke        = "control.invitations.revoke"
+	SubjectProjectInvitationsCreate = "control.project_invitations.create"
+	SubjectIngestCredentialsList    = "control.ingest_credentials.list"
+	SubjectIngestCredentialsCreate  = "control.ingest_credentials.create"
+	SubjectIngestCredentialsRevoke  = "control.ingest_credentials.revoke"
+	SubjectProjectStatusSnapshot    = "control.project_status.snapshot"
+	SubjectProjectStatusChanged     = "control.project_status.changed"
+	SubjectDashboardsList           = "control.dashboards.list"
+	SubjectDashboardsSave           = "control.dashboards.save"
+	SubjectDashboardsDelete         = "control.dashboards.delete"
+	SubjectDashboardPinsSet         = "control.dashboard_pins.set"
+	SubjectDashboardPinsReorder     = "control.dashboard_pins.reorder"
+	SubjectProjectAiSettingsGet     = "control.ai_settings.get"
+	SubjectProjectAiSettingsUpdate  = "control.ai_settings.update"
+	SubjectProjectMembersList       = "control.project_members.list"
+	SubjectProjectMembersUpdate     = "control.project_members.update"
+	SubjectProjectMembersRemove     = "control.project_members.remove"
+	SubjectRetentionGet             = "control.retention.get"
+	SubjectRetentionUpdate          = "control.retention.update"
+	SubjectAlertRulesList           = "control.alert_rules.list"
+	SubjectAlertRulesCreate         = "control.alert_rules.create"
+	SubjectAlertRulesUpdate         = "control.alert_rules.update"
+	SubjectAlertRulesDelete         = "control.alert_rules.delete"
+	SubjectAlertSilencesList        = "control.alert_silences.list"
+	SubjectAlertSilencesCreate      = "control.alert_silences.create"
+	SubjectAlertSilencesDelete      = "control.alert_silences.delete"
+	SubjectAlertHistoryList         = "control.alert_history.list"
+	SubjectAlertHistoryRecord       = "control.alert_history.record"
+	controlPlaneService             = "control-plane"
 )
 
 func ControlSubjects() map[string]struct{} {
 	return map[string]struct{}{
-		SubjectViewerGet:               {},
-		SubjectOrganizationsList:       {},
-		SubjectOrganizationsGet:        {},
-		SubjectProjectsList:            {},
-		SubjectProjectsGet:             {},
-		SubjectProjectsCreate:          {},
-		SubjectProjectsUpdate:          {},
-		SubjectProjectsSelect:          {},
-		SubjectMembersList:             {},
-		SubjectMembersUpdate:           {},
-		SubjectMembersRemove:           {},
-		SubjectInvitationsList:         {},
-		SubjectInvitationsCreate:       {},
-		SubjectInvitationsRevoke:       {},
-		SubjectIngestCredentialsList:   {},
-		SubjectIngestCredentialsCreate: {},
-		SubjectIngestCredentialsRevoke: {},
-		SubjectProjectStatusSnapshot:   {},
-		SubjectProjectStatusChanged:    {},
-		SubjectDashboardsList:          {},
-		SubjectDashboardsSave:          {},
-		SubjectDashboardsDelete:        {},
-		SubjectDashboardPinsSet:        {},
-		SubjectDashboardPinsReorder:    {},
-		SubjectProjectAiSettingsGet:    {},
-		SubjectProjectAiSettingsUpdate: {},
-		SubjectProjectMembersList:      {},
-		SubjectProjectMembersUpdate:    {},
-		SubjectProjectMembersRemove:    {},
-		SubjectRetentionGet:            {},
-		SubjectRetentionUpdate:         {},
-		SubjectAlertRulesList:          {},
-		SubjectAlertRulesCreate:        {},
-		SubjectAlertRulesUpdate:        {},
-		SubjectAlertRulesDelete:        {},
-		SubjectAlertSilencesList:       {},
-		SubjectAlertSilencesCreate:     {},
-		SubjectAlertSilencesDelete:     {},
-		SubjectAlertHistoryList:        {},
-		SubjectAlertHistoryRecord:      {},
+		SubjectViewerGet:                {},
+		SubjectOrganizationsList:        {},
+		SubjectOrganizationsGet:         {},
+		SubjectProjectsList:             {},
+		SubjectProjectsGet:              {},
+		SubjectProjectsCreate:           {},
+		SubjectProjectsUpdate:           {},
+		SubjectProjectsSelect:           {},
+		SubjectMembersList:              {},
+		SubjectMembersUpdate:            {},
+		SubjectMembersRemove:            {},
+		SubjectInvitationsList:          {},
+		SubjectInvitationsCreate:        {},
+		SubjectInvitationsResend:        {},
+		SubjectInvitationsRevoke:        {},
+		SubjectProjectInvitationsCreate: {},
+		SubjectIngestCredentialsList:    {},
+		SubjectIngestCredentialsCreate:  {},
+		SubjectIngestCredentialsRevoke:  {},
+		SubjectProjectStatusSnapshot:    {},
+		SubjectProjectStatusChanged:     {},
+		SubjectDashboardsList:           {},
+		SubjectDashboardsSave:           {},
+		SubjectDashboardsDelete:         {},
+		SubjectDashboardPinsSet:         {},
+		SubjectDashboardPinsReorder:     {},
+		SubjectProjectAiSettingsGet:     {},
+		SubjectProjectAiSettingsUpdate:  {},
+		SubjectProjectMembersList:       {},
+		SubjectProjectMembersUpdate:     {},
+		SubjectProjectMembersRemove:     {},
+		SubjectRetentionGet:             {},
+		SubjectRetentionUpdate:          {},
+		SubjectAlertRulesList:           {},
+		SubjectAlertRulesCreate:         {},
+		SubjectAlertRulesUpdate:         {},
+		SubjectAlertRulesDelete:         {},
+		SubjectAlertSilencesList:        {},
+		SubjectAlertSilencesCreate:      {},
+		SubjectAlertSilencesDelete:      {},
+		SubjectAlertHistoryList:         {},
+		SubjectAlertHistoryRecord:       {},
 	}
 }
 
@@ -245,6 +249,16 @@ func handleInvitationsCreate(service *Service, logger *slog.Logger) bridgeMessag
 	})
 }
 
+func handleInvitationsResend(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.InvitationResendRequest](SubjectInvitationsResend, logger, func(ctx context.Context, request contracts.InvitationResendRequest) contracts.InvitationMutationResponse {
+		invitation, err := service.ResendInvitation(ctx, request)
+		if err != nil {
+			return contracts.InvitationMutationResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.InvitationMutationResponse{RequestID: request.RequestID, OK: true, Data: &contracts.InvitationMutationData{Invitation: invitation}}
+	})
+}
+
 func handleInvitationsRevoke(service *Service, logger *slog.Logger) bridgeMessageHandler {
 	return requestHandler[contracts.InvitationRevokeRequest](SubjectInvitationsRevoke, logger, func(ctx context.Context, request contracts.InvitationRevokeRequest) contracts.InvitationMutationResponse {
 		invitation, err := service.RevokeInvitation(ctx, request)
@@ -252,6 +266,16 @@ func handleInvitationsRevoke(service *Service, logger *slog.Logger) bridgeMessag
 			return contracts.InvitationMutationResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
 		return contracts.InvitationMutationResponse{RequestID: request.RequestID, OK: true, Data: &contracts.InvitationMutationData{Invitation: invitation}}
+	})
+}
+
+func handleProjectInvitationsCreate(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.ProjectInvitationCreateRequest](SubjectProjectInvitationsCreate, logger, func(ctx context.Context, request contracts.ProjectInvitationCreateRequest) contracts.ProjectInvitationMutationResponse {
+		result, err := service.CreateProjectInvitation(ctx, request)
+		if err != nil {
+			return contracts.ProjectInvitationMutationResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.ProjectInvitationMutationResponse{RequestID: request.RequestID, OK: true, Data: &result}
 	})
 }
 

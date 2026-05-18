@@ -1,4 +1,4 @@
-import { connect, JSONCodec, type NatsConnection } from "nats";
+import { connect, headers, JSONCodec, type NatsConnection } from "nats";
 import type { BridgeMessage, EphemeralPubSub, RequestReplyClient } from "../../bridge";
 
 interface NATSConnectionOptions {
@@ -21,11 +21,16 @@ export class NATSRequestReplyClient implements RequestReplyClient {
   async request(
     subject: string,
     payload: Uint8Array,
-    options: { timeoutMs: number },
+    options: { timeoutMs: number; headers?: Record<string, string> },
   ): Promise<Uint8Array> {
     const requestPayload = this.#codec.decode(payload);
+    const messageHeaders = headers();
+    for (const [key, value] of Object.entries(options.headers ?? {})) {
+      messageHeaders.set(key, value);
+    }
     const message = await this.#connection.request(subject, this.#codec.encode(requestPayload), {
       timeout: options.timeoutMs,
+      headers: messageHeaders,
     });
     const responsePayload = this.#codec.decode(message.data);
     return this.#codec.encode(responsePayload);

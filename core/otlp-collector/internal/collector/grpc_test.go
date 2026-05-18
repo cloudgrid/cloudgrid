@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"strings"
 	"testing"
@@ -41,6 +42,21 @@ func TestGRPCTraceExportPublishesNormalizedTelemetry(t *testing.T) {
 	}
 	if command.RequestID != "req-grpc-trace" || command.Source != sourceTraces || len(command.Traces) != 1 || len(command.Spans) != 2 {
 		t.Fatalf("command = %#v", command)
+	}
+}
+
+func TestGRPCTraceExportRecordsSelfObservabilitySpan(t *testing.T) {
+	recorder := NewInMemorySelfObservabilityRecorder()
+	_, conn := newGRPCTestServer(t, HandlerOptions{SelfObservability: recorder})
+	client := collectortracepb.NewTraceServiceClient(conn)
+	ctx := metadata.AppendToOutgoingContext(context.Background(), "x-request-id", "req-grpc-selfobs")
+
+	if _, err := client.Export(ctx, traceRequest()); err != nil {
+		t.Fatalf("TraceService.Export returned error: %v", err)
+	}
+
+	if !recorder.HasSpan("otlp.grpc traces") {
+		t.Fatalf("spans = %#v, want gRPC trace self-observability span", recorder.Spans())
 	}
 }
 
@@ -169,9 +185,77 @@ func TestGRPCPayloadTooLargeMapsToResourceExhausted(t *testing.T) {
 	}
 }
 
+func TestGRPCPublishFailureRecordsMetricsAndSelfObservabilityError(t *testing.T) {
+	publisher := &recordingPublisher{err: errors.New("nats unavailable")}
+	metrics := NewInMemoryMetricsRecorder()
+	recorder := NewInMemorySelfObservabilityRecorder()
+	_, conn := newGRPCTestServerWithPublisher(t, publisher, HandlerOptions{
+		MetricsRecorder:   metrics,
+		SelfObservability: recorder,
+	})
+	client := collectorlogspb.NewLogsServiceClient(conn)
+	ctx := metadata.AppendToOutgoingContext(context.Background(), "x-request-id", "req-grpc-publish-error")
+
+	_, err := client.Export(ctx, logsRequest())
+
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("status code = %s, want %s (err=%v)", status.Code(err), codes.Unavailable, err)
+	}
+	if !strings.Contains(status.Convert(err).Message(), "ERR-013") {
+		t.Fatalf("status message = %q, want ERR-013", status.Convert(err).Message())
+	}
+	assertMetricRecord(t, metrics.Records(), "cloudgrid.ingest.requests", map[string]string{
+		"signal":    "logs",
+		"transport": "grpc",
+		"result":    "rejected",
+	})
+	assertMetricRecord(t, metrics.Records(), "cloudgrid.ingest.publish.duration", map[string]string{
+		"signal": "logs",
+		"result": "error",
+	})
+	assertNoMetricRecord(t, metrics.Records(), "cloudgrid.ingest.commands.published")
+	if !recorder.HasSpan("otlp.grpc logs") || !recorder.HasLog("grpc_request_failed") {
+		t.Fatalf("self-observability spans=%#v logs=%#v, want gRPC error span/log", recorder.Spans(), recorder.Logs())
+	}
+}
+
+func TestGRPCValidationFailureRecordsRejectedMetricsAndNoPublish(t *testing.T) {
+	metrics := NewInMemoryMetricsRecorder()
+	recorder := NewInMemorySelfObservabilityRecorder()
+	publisher, conn := newGRPCTestServer(t, HandlerOptions{
+		MetricsRecorder:   metrics,
+		SelfObservability: recorder,
+	})
+	client := collectormetricspb.NewMetricsServiceClient(conn)
+	request := metricsRequest()
+	request.ResourceMetrics[0].ScopeMetrics[0].Metrics[0].Name = ""
+
+	_, err := client.Export(context.Background(), request)
+
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("status code = %s, want %s (err=%v)", status.Code(err), codes.InvalidArgument, err)
+	}
+	if publisher.callCount() != 0 {
+		t.Fatalf("publisher calls = %d, want 0", publisher.callCount())
+	}
+	assertMetricRecord(t, metrics.Records(), "cloudgrid.ingest.requests", map[string]string{
+		"signal":    "metrics",
+		"transport": "grpc",
+		"result":    "rejected",
+	})
+	if !recorder.HasLog("grpc_request_failed") {
+		t.Fatalf("logs = %#v, want grpc_request_failed log", recorder.Logs())
+	}
+}
+
 func newGRPCTestServer(t *testing.T, options HandlerOptions) (*recordingPublisher, *grpc.ClientConn) {
 	t.Helper()
 	publisher := &recordingPublisher{}
+	return newGRPCTestServerWithPublisher(t, publisher, options)
+}
+
+func newGRPCTestServerWithPublisher(t *testing.T, publisher *recordingPublisher, options HandlerOptions) (*recordingPublisher, *grpc.ClientConn) {
+	t.Helper()
 	listener := bufconn.Listen(1024 * 1024)
 	server := NewGRPCServerWithOptions(publisher, NewDiscardLogger(), options, GRPCOptions{})
 	t.Cleanup(server.Stop)

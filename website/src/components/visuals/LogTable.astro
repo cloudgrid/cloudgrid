@@ -1,10 +1,40 @@
 ---
 const rows = [
-  { t: "12:04:18.421", sev: "INFO", svc: "agent-svc", msg: "started agent run agt_8f1e", trace: "1a7b…c901" },
-  { t: "12:04:18.532", sev: "INFO", svc: "llm-router", msg: "openai.chat completion · 832 tokens", trace: "1a7b…c901" },
-  { t: "12:04:18.711", sev: "WARN", svc: "tool-router", msg: "web_search rate-limit retry attempt=2", trace: "1a7b…c901" },
-  { t: "12:04:18.890", sev: "ERROR", svc: "retrieval", msg: "vector.lookup timeout after 250ms", trace: "1a7b…c901" },
-  { t: "12:04:19.018", sev: "INFO", svc: "agent-svc", msg: "agent run completed status=partial", trace: "1a7b…c901" },
+  {
+    t: "12:04:18.421",
+    sev: "INFO",
+    svc: "agent-svc",
+    msg: "started agent run agt_8f1e",
+    trace: "1a7b…c901",
+  },
+  {
+    t: "12:04:18.532",
+    sev: "INFO",
+    svc: "llm-router",
+    msg: "openai.chat completion · 832 tokens",
+    trace: "1a7b…c901",
+  },
+  {
+    t: "12:04:18.711",
+    sev: "WARN",
+    svc: "tool-router",
+    msg: "web_search rate-limit retry attempt=2",
+    trace: "1a7b…c901",
+  },
+  {
+    t: "12:04:18.890",
+    sev: "ERROR",
+    svc: "retrieval",
+    msg: "vector.lookup timeout after 250ms",
+    trace: "1a7b…c901",
+  },
+  {
+    t: "12:04:19.018",
+    sev: "INFO",
+    svc: "agent-svc",
+    msg: "agent run completed status=partial",
+    trace: "1a7b…c901",
+  },
 ];
 
 const sevColor: Record<string, string> = {

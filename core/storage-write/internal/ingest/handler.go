@@ -47,9 +47,19 @@ type Message interface {
 }
 
 func HandleMessage(ctx context.Context, msg Message, store ports.TelemetryWriteStore, publisher ports.TraceNotificationPublisher, logger *slog.Logger, now func() time.Time) {
+	HandleMessageWithMetrics(ctx, msg, store, publisher, logger, now, nil)
+}
+
+func HandleMessageWithMetrics(ctx context.Context, msg Message, store ports.TelemetryWriteStore, publisher ports.TraceNotificationPublisher, logger *slog.Logger, now func() time.Time, recorder MetricsRecorder) {
+	recorder = metricsRecorderOrNoop(recorder)
 	start := now()
 	subject := msg.Subject()
 	attempt := msg.Attempt()
+	signal := signalForSubject(subject)
+	result := "error"
+	defer func() {
+		recordPersistCommandMetrics(recorder, signal, result, now().Sub(start))
+	}()
 
 	if subject == MetricSubject {
 		metricsStore, ok := store.(ports.MetricsWriteStore)
@@ -58,18 +68,20 @@ func HandleMessage(ctx context.Context, msg Message, store ports.TelemetryWriteS
 			_ = msg.NakWithDelay(nakDelay(attempt))
 			return
 		}
-		handleMetricMessage(ctx, msg, metricsStore, logger, now, start, attempt)
+		result = handleMetricMessage(ctx, msg, metricsStore, logger, now, start, attempt, recorder)
 		return
 	}
 
 	command, err := decodeCommand(msg.Data())
 	if err != nil {
+		result = "rejected"
 		logCommand(logger, slog.LevelWarn, "telemetry_ingest_validation_failed", "telemetry ingest validation failed", command, subject, attempt, now().Sub(start), validationErrorID, validationErrorCode)
 		_ = msg.Ack()
 		return
 	}
 
 	if err := validateCommand(command, subject); err != nil {
+		result = "rejected"
 		logCommand(logger, slog.LevelWarn, "telemetry_ingest_validation_failed", "telemetry ingest validation failed", command, subject, attempt, now().Sub(start), validationErrorID, validationErrorCode)
 		_ = msg.Ack()
 		return
@@ -82,6 +94,7 @@ func HandleMessage(ctx context.Context, msg Message, store ports.TelemetryWriteS
 		return
 	}
 	if exists {
+		result = "success"
 		logCommand(logger, slog.LevelInfo, "telemetry_ingest_duplicate_acknowledged", "telemetry ingest duplicate acknowledged", command, subject, attempt, now().Sub(start), "", "")
 		_ = msg.Ack()
 		return
@@ -93,6 +106,8 @@ func HandleMessage(ctx context.Context, msg Message, store ports.TelemetryWriteS
 		_ = msg.NakWithDelay(nakDelay(attempt))
 		return
 	}
+	result = "persisted"
+	recordTelemetryRecords(recorder, command, result)
 
 	if notification := tracePersistedNotification(command, completedAt); notification != nil {
 		if err := publisher.PublishTracePersisted(ctx, *notification); err != nil {
@@ -104,38 +119,40 @@ func HandleMessage(ctx context.Context, msg Message, store ports.TelemetryWriteS
 	_ = msg.Ack()
 }
 
-func handleMetricMessage(ctx context.Context, msg Message, store ports.MetricsWriteStore, logger *slog.Logger, now func() time.Time, start time.Time, attempt int) {
+func handleMetricMessage(ctx context.Context, msg Message, store ports.MetricsWriteStore, logger *slog.Logger, now func() time.Time, start time.Time, attempt int, recorder MetricsRecorder) string {
 	subject := msg.Subject()
 	command, err := decodeMetricsCommand(msg.Data())
 	if err != nil {
 		logMetricsCommand(logger, slog.LevelWarn, "telemetry_ingest_validation_failed", "telemetry ingest validation failed", command, subject, attempt, now().Sub(start), validationErrorID, validationErrorCode)
 		_ = msg.Ack()
-		return
+		return "rejected"
 	}
 	if err := validateMetricsCommand(command, subject); err != nil {
 		logMetricsCommand(logger, slog.LevelWarn, "telemetry_ingest_validation_failed", "telemetry ingest validation failed", command, subject, attempt, now().Sub(start), validationErrorID, validationErrorCode)
 		_ = msg.Ack()
-		return
+		return "rejected"
 	}
 	exists, err := store.MetricsCommandExists(ctx, command)
 	if err != nil {
 		logMetricsCommand(logger, slog.LevelError, "telemetry_ingest_duplicate_check_failed", "storage is unavailable", command, subject, attempt, now().Sub(start), storageErrorID, storageErrorCode)
 		_ = msg.NakWithDelay(nakDelay(attempt))
-		return
+		return "error"
 	}
 	if exists {
 		logMetricsCommand(logger, slog.LevelInfo, "telemetry_ingest_duplicate_acknowledged", "telemetry ingest duplicate acknowledged", command, subject, attempt, now().Sub(start), "", "")
 		_ = msg.Ack()
-		return
+		return "success"
 	}
 	completedAt := now()
 	if err := store.PersistMetrics(ctx, command, subject, completedAt); err != nil {
 		logMetricsCommand(logger, slog.LevelError, "telemetry_ingest_storage_failed", "storage is unavailable", command, subject, attempt, now().Sub(start), storageErrorID, storageErrorCode)
 		_ = msg.NakWithDelay(nakDelay(attempt))
-		return
+		return "error"
 	}
+	recordMetricRecords(recorder, command, "persisted")
 	logMetricsCommand(logger, slog.LevelInfo, "telemetry_ingest_persisted", "telemetry ingest persisted", command, subject, attempt, now().Sub(start), "", "")
 	_ = msg.Ack()
+	return "persisted"
 }
 
 func HandleMaxDeliveryAdvisory(data []byte, logger *slog.Logger) {
@@ -295,6 +312,58 @@ func validateMetricsCommand(command contracts.PersistMetricsCommand, subject str
 		}
 	}
 	return nil
+}
+
+func recordPersistCommandMetrics(recorder MetricsRecorder, signal string, result string, duration time.Duration) {
+	labels := map[string]string{
+		"signal": signal,
+		"result": result,
+	}
+	recorder.Increment("cloudgrid.storage.persist.commands", 1, labels)
+	recorder.Observe("cloudgrid.storage.persist.duration", duration.Seconds(), labels)
+}
+
+func recordTelemetryRecords(recorder MetricsRecorder, command contracts.PersistTelemetryCommand, result string) {
+	if len(command.Traces) > 0 {
+		recordPersistRecords(recorder, "trace", result, len(command.Traces))
+	}
+	if len(command.Spans) > 0 {
+		recordPersistRecords(recorder, "span", result, len(command.Spans))
+	}
+	if len(command.Logs) > 0 {
+		recordPersistRecords(recorder, "log", result, len(command.Logs))
+	}
+}
+
+func recordMetricRecords(recorder MetricsRecorder, command contracts.PersistMetricsCommand, result string) {
+	if len(command.Descriptors) > 0 {
+		recordPersistRecords(recorder, "metric_descriptor", result, len(command.Descriptors))
+	}
+	if len(command.Points) > 0 {
+		recordPersistRecords(recorder, "metric_point", result, len(command.Points))
+	}
+}
+
+func recordPersistRecords(recorder MetricsRecorder, recordKind string, result string, count int) {
+	recorder.Increment("cloudgrid.storage.persist.records", int64(count), map[string]string{
+		"record_kind": recordKind,
+		"result":      result,
+	})
+}
+
+func signalForSubject(subject string) string {
+	switch subject {
+	case TraceSubject:
+		return "traces"
+	case LogSubject:
+		return "logs"
+	case MetricSubject:
+		return "metrics"
+	case AiProjectionSubject:
+		return "ai_projections"
+	default:
+		return "unknown"
+	}
 }
 
 func nakDelay(attempt int) time.Duration {

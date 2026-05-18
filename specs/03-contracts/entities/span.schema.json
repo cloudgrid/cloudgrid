@@ -4,7 +4,19 @@
   "title": "Span",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "traceId", "name", "startedAt", "endedAt", "durationMs", "attributes"],
+  "required": [
+    "id",
+    "traceId",
+    "name",
+    "startedAt",
+    "startedAtUnixNano",
+    "endedAt",
+    "endedAtUnixNano",
+    "startOffsetNano",
+    "durationNano",
+    "durationMs",
+    "attributes"
+  ],
   "properties": {
     "id": { "type": "string", "description": "OpenTelemetry span ID as lowercase hex." },
     "traceId": { "type": "string", "description": "Owning OpenTelemetry trace ID." },
@@ -17,7 +29,27 @@
       "format": "date-time",
       "description": "Span start time in UTC."
     },
+    "startedAtUnixNano": {
+      "type": "string",
+      "pattern": "^[0-9]+$",
+      "description": "Span start time as OpenTelemetry Unix nanoseconds. Waterfall renderers must prefer this over parsed ISO timestamps."
+    },
     "endedAt": { "type": "string", "format": "date-time", "description": "Span end time in UTC." },
+    "endedAtUnixNano": {
+      "type": "string",
+      "pattern": "^[0-9]+$",
+      "description": "Span end time as OpenTelemetry Unix nanoseconds."
+    },
+    "startOffsetNano": {
+      "type": "string",
+      "pattern": "^[0-9]+$",
+      "description": "Span start offset from the trace start in nanoseconds."
+    },
+    "durationNano": {
+      "type": "string",
+      "pattern": "^[0-9]+$",
+      "description": "Span duration in nanoseconds."
+    },
     "durationMs": {
       "type": "number",
       "minimum": 0,

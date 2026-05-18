@@ -11,6 +11,7 @@ import (
 	"time"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
+	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/selfobs"
 	"github.com/nats-io/nats.go"
 )
 
@@ -362,6 +363,59 @@ func TestHandleMessagePersistsMetricCommandsWithoutTraceNotification(t *testing.
 	}
 }
 
+func TestHandleMessageRecordsBoundedPersistMetrics(t *testing.T) {
+	command := validComplexCommand()
+	store := &fakeStore{}
+	publisher := &fakeTraceNotificationPublisher{}
+	msg := newFakeMessage(t, command)
+	recorder := NewInMemoryMetricsRecorder()
+
+	HandleMessageWithMetrics(context.Background(), msg, store, publisher, testLogger(t), fixedClock, recorder)
+
+	snapshot := recorder.Snapshot()
+	assertMetricEvent(t, snapshot, "cloudgrid.storage.persist.commands", map[string]string{
+		"signal": "traces",
+		"result": "persisted",
+	})
+	assertMetricEvent(t, snapshot, "cloudgrid.storage.persist.duration", map[string]string{
+		"signal": "traces",
+		"result": "persisted",
+	})
+	assertMetricEvent(t, snapshot, "cloudgrid.storage.persist.records", map[string]string{
+		"record_kind": "trace",
+		"result":      "persisted",
+	})
+	assertMetricEvent(t, snapshot, "cloudgrid.storage.persist.records", map[string]string{
+		"record_kind": "span",
+		"result":      "persisted",
+	})
+	assertMetricEvent(t, snapshot, "cloudgrid.storage.persist.records", map[string]string{
+		"record_kind": "log",
+		"result":      "persisted",
+	})
+	assertMetricLabelsDoNotContain(t, snapshot, "trace-1", "span-1", "user-secret", "project_1", "ERR-006")
+}
+
+func TestHandleMessageRecordsErrorPersistMetrics(t *testing.T) {
+	store := &fakeStore{persistErr: errors.New("ERR-006 STORAGE_UNAVAILABLE: down")}
+	publisher := &fakeTraceNotificationPublisher{}
+	msg := newFakeMetricMessage(t, validMetricCommand())
+	recorder := NewInMemoryMetricsRecorder()
+
+	HandleMessageWithMetrics(context.Background(), msg, store, publisher, testLogger(t), fixedClock, recorder)
+
+	snapshot := recorder.Snapshot()
+	assertMetricEvent(t, snapshot, "cloudgrid.storage.persist.commands", map[string]string{
+		"signal": "metrics",
+		"result": "error",
+	})
+	assertMetricEvent(t, snapshot, "cloudgrid.storage.persist.duration", map[string]string{
+		"signal": "metrics",
+		"result": "error",
+	})
+	assertMetricLabelsDoNotContain(t, snapshot, "orders.created", "/orders", "ERR-006", "down")
+}
+
 func TestHandleMessageAcksUnknownJSONFieldsWithoutStoreCalls(t *testing.T) {
 	store := &fakeStore{}
 	publisher := &fakeTraceNotificationPublisher{}
@@ -434,6 +488,32 @@ func TestNATSTraceNotificationPublisherPublishesVolatilePersistedTraceSubject(t 
 	}
 }
 
+func TestNATSTraceNotificationPublisherPropagatesTraceHeaders(t *testing.T) {
+	nc := &fakeNotificationNATS{}
+	publisher := natsTraceNotificationPublisher{nc: nc}
+	ctx := selfobs.ContextWithTraceContext(context.Background(), selfobs.TraceContext{
+		TraceID:    "4bf92f3577b34da6a3ce929d0e0e4736",
+		SpanID:     "00f067aa0ba902b7",
+		TraceState: "rojo=1",
+	})
+
+	if err := publisher.PublishTracePersisted(ctx, contracts.TracePersistedNotification{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-1", IssuedAt: fixedClock()},
+		CommandID:      "cmd-1",
+		TraceIDs:       []string{"trace-1"},
+		PersistedAt:    fixedClock(),
+	}); err != nil {
+		t.Fatalf("PublishTracePersisted() error = %v", err)
+	}
+
+	if nc.message.Header.Get("traceparent") != "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" {
+		t.Fatalf("traceparent = %q", nc.message.Header.Get("traceparent"))
+	}
+	if nc.message.Header.Get("tracestate") != "rojo=1" {
+		t.Fatalf("tracestate = %q", nc.message.Header.Get("tracestate"))
+	}
+}
+
 func TestNATSMessageAccessorsUseRawMessageAndFallbackAttempt(t *testing.T) {
 	raw := &nats.Msg{
 		Subject: TraceSubject,
@@ -471,6 +551,108 @@ func TestRunConsumerReturnsSubscribeErrors(t *testing.T) {
 	if js.subject != "telemetry.ingest.*" || js.durable != ConsumerName {
 		t.Fatalf("subscription subject=%q durable=%q", js.subject, js.durable)
 	}
+}
+
+func TestRunConsumerWithSelfObservabilityProcessesFetchedTraceMessageAndStopsOnCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	js := &fakePullSubscriber{
+		subscription: &fakePullSubscription{
+			afterFetch: cancel,
+			messages: [][]*nats.Msg{{{
+				Subject: TraceSubject,
+				Data:    mustMarshalIngestTest(t, validCommand()),
+			}}},
+		},
+	}
+	store := &fakeStore{}
+	publisher := &fakeTraceNotificationPublisher{store: store}
+	recorder := NewInMemoryTraceLogRecorder()
+
+	err := RunConsumerWithSelfObservability(ctx, js, &fakeNotificationNATS{}, publisher, store, testLogger(t), nil, recorder)
+	if err != nil {
+		t.Fatalf("RunConsumerWithSelfObservability() error = %v", err)
+	}
+
+	if store.persistCalls != 1 {
+		t.Fatalf("persist calls = %d, want 1", store.persistCalls)
+	}
+	if len(publisher.notifications) != 1 {
+		t.Fatalf("trace notifications = %d, want 1", len(publisher.notifications))
+	}
+	snapshot := recorder.Snapshot()
+	if !hasSpanEvent(snapshot.Spans, "storage-write ingest message", "traces", "success") {
+		t.Fatalf("spans = %#v, want successful trace ingest span", snapshot.Spans)
+	}
+	if len(snapshot.Logs) != 0 {
+		t.Fatalf("logs = %#v, want no failure logs for successful ingest", snapshot.Logs)
+	}
+}
+
+func TestRunConsumerWithSelfObservabilityRoutesAIProjectionMessagesToAIStore(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	store := &fakeCombinedWriteStore{}
+	coreNC := &fakeNotificationNATS{}
+	js := &fakePullSubscriber{
+		subscription: &fakePullSubscription{
+			afterFetch: cancel,
+			messages: [][]*nats.Msg{{{
+				Subject: AiProjectionSubject,
+				Data:    mustMarshalIngestTest(t, validAIProjectionCommand()),
+			}}},
+		},
+	}
+
+	err := RunConsumerWithSelfObservability(ctx, js, coreNC, &fakeTraceNotificationPublisher{}, store, testLogger(t), nil, NewInMemoryTraceLogRecorder())
+	if err != nil {
+		t.Fatalf("RunConsumerWithSelfObservability() error = %v", err)
+	}
+
+	if store.projectionExistsCalls != 1 || store.persistProjectionCalls != 1 {
+		t.Fatalf("AI store calls exists=%d persist=%d, want 1/1", store.projectionExistsCalls, store.persistProjectionCalls)
+	}
+	if store.persistCalls != 0 || store.metricPersistCalls != 0 {
+		t.Fatalf("telemetry store calls persist=%d metric=%d, want none for AI projection", store.persistCalls, store.metricPersistCalls)
+	}
+	if coreNC.subject != AiProjectionPersistedSubject {
+		t.Fatalf("AI notification subject = %q, want %q", coreNC.subject, AiProjectionPersistedSubject)
+	}
+	if js.publishSubject != "" {
+		t.Fatalf("JetStream publish subject = %q, want core NATS publisher to be used first", js.publishSubject)
+	}
+}
+
+func TestRunConsumerWithSelfObservabilityContinuesAfterFetchTimeoutAndReturnsNonTimeoutFetchError(t *testing.T) {
+	t.Run("timeout then canceled context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		js := &fakePullSubscriber{
+			subscription: &fakePullSubscription{
+				errors:     []error{nats.ErrTimeout},
+				afterFetch: cancel,
+			},
+		}
+
+		err := RunConsumerWithSelfObservability(ctx, js, &fakeNotificationNATS{}, &fakeTraceNotificationPublisher{}, &fakeStore{}, testLogger(t), nil, nil)
+		if err != nil {
+			t.Fatalf("RunConsumerWithSelfObservability() error = %v", err)
+		}
+		if js.subscription.fetchCalls != 1 {
+			t.Fatalf("fetch calls = %d, want one timeout before context cancellation", js.subscription.fetchCalls)
+		}
+	})
+
+	t.Run("non-timeout fetch error", func(t *testing.T) {
+		js := &fakePullSubscriber{
+			subscription: &fakePullSubscription{errors: []error{errors.New("consumer unavailable")}},
+		}
+
+		err := RunConsumerWithSelfObservability(context.Background(), js, &fakeNotificationNATS{}, &fakeTraceNotificationPublisher{}, &fakeStore{}, testLogger(t), nil, nil)
+		if err == nil {
+			t.Fatal("RunConsumerWithSelfObservability() error = nil")
+		}
+		if !strings.Contains(err.Error(), "consumer unavailable") {
+			t.Fatalf("RunConsumerWithSelfObservability() error = %v", err)
+		}
+	})
 }
 
 func TestValidateCommandRejectsInvalidTelemetryShapes(t *testing.T) {
@@ -657,6 +839,7 @@ type fakeMessage struct {
 	subject  string
 	data     []byte
 	attempt  int
+	headers  map[string]string
 	acked    bool
 	naked    bool
 	nakDelay time.Duration
@@ -698,6 +881,10 @@ func (msg *fakeMessage) Data() []byte {
 
 func (msg *fakeMessage) Attempt() int {
 	return msg.attempt
+}
+
+func (msg *fakeMessage) Header(name string) string {
+	return msg.headers[name]
 }
 
 func (msg *fakeMessage) Ack() error {
@@ -782,6 +969,39 @@ func floatPtr(value float64) *float64 {
 	return &value
 }
 
+func assertMetricEvent(t *testing.T, events []MetricEvent, name string, labels map[string]string) {
+	t.Helper()
+	for _, event := range events {
+		if event.Name != name {
+			continue
+		}
+		matches := true
+		for key, value := range labels {
+			if event.Labels[key] != value {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return
+		}
+	}
+	t.Fatalf("metric %s with labels %#v not found in %#v", name, labels, events)
+}
+
+func assertMetricLabelsDoNotContain(t *testing.T, events []MetricEvent, forbidden ...string) {
+	t.Helper()
+	for _, event := range events {
+		for key, value := range event.Labels {
+			for _, blocked := range forbidden {
+				if strings.Contains(key, blocked) || strings.Contains(value, blocked) {
+					t.Fatalf("metric label leaked %q in event %#v", blocked, event)
+				}
+			}
+		}
+	}
+}
+
 func validComplexCommand() contracts.PersistTelemetryCommand {
 	command := validCommand()
 	command.Spans = []contracts.Span{{
@@ -817,12 +1037,20 @@ func (publisher *fakeTraceNotificationPublisher) PublishTracePersisted(_ context
 type fakeNotificationNATS struct {
 	subject string
 	data    []byte
+	message *nats.Msg
 	err     error
 }
 
 func (nc *fakeNotificationNATS) Publish(subject string, data []byte) error {
 	nc.subject = subject
 	nc.data = append([]byte(nil), data...)
+	return nc.err
+}
+
+func (nc *fakeNotificationNATS) PublishMsg(message *nats.Msg) error {
+	nc.subject = message.Subject
+	nc.data = append([]byte(nil), message.Data...)
+	nc.message = message
 	return nc.err
 }
 
@@ -839,19 +1067,62 @@ func (js *fakeNotificationJetStream) Publish(subject string, data []byte, _ ...n
 }
 
 type fakePullSubscriber struct {
-	subject      string
-	durable      string
-	subscribeErr error
+	subject        string
+	durable        string
+	subscribeErr   error
+	subscription   *fakePullSubscription
+	publishSubject string
+	publishData    []byte
 }
 
-func (js *fakePullSubscriber) PullSubscribe(subject string, durable string, _ ...nats.SubOpt) (*nats.Subscription, error) {
+func (js *fakePullSubscriber) PullSubscribe(subject string, durable string, _ ...nats.SubOpt) (PullSubscription, error) {
 	js.subject = subject
 	js.durable = durable
-	return nil, js.subscribeErr
+	if js.subscribeErr != nil {
+		return nil, js.subscribeErr
+	}
+	if js.subscription == nil {
+		js.subscription = &fakePullSubscription{}
+	}
+	return js.subscription, nil
 }
 
 func (js *fakePullSubscriber) Publish(subject string, data []byte, _ ...nats.PubOpt) (*nats.PubAck, error) {
+	js.publishSubject = subject
+	js.publishData = append([]byte(nil), data...)
 	return &nats.PubAck{}, nil
+}
+
+type fakePullSubscription struct {
+	messages   [][]*nats.Msg
+	errors     []error
+	afterFetch func()
+	fetchCalls int
+}
+
+func (sub *fakePullSubscription) Fetch(_ int, _ ...nats.PullOpt) ([]*nats.Msg, error) {
+	sub.fetchCalls++
+	defer func() {
+		if sub.afterFetch != nil {
+			sub.afterFetch()
+		}
+	}()
+	if len(sub.errors) > 0 {
+		err := sub.errors[0]
+		sub.errors = sub.errors[1:]
+		return nil, err
+	}
+	if len(sub.messages) == 0 {
+		return nil, nats.ErrTimeout
+	}
+	messages := sub.messages[0]
+	sub.messages = sub.messages[1:]
+	return messages, nil
+}
+
+type fakeCombinedWriteStore struct {
+	fakeStore
+	fakeAIWriteStore
 }
 
 func fixedClock() time.Time {
@@ -886,4 +1157,13 @@ func decodeJSONLog(t *testing.T, data []byte) map[string]any {
 		t.Fatalf("log entry is not JSON: %v\n%s", err, string(data))
 	}
 	return entry
+}
+
+func mustMarshalIngestTest(t *testing.T, value any) []byte {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	return data
 }

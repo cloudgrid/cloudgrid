@@ -32,6 +32,7 @@ describe("GraphQL WebSocket transport", () => {
                 id: "trace-1",
                 serviceName: "api",
                 startedAt: "2026-05-10T09:59:59.000Z",
+                startedAtUnixNano: "1778407199000000000",
                 attributes: {},
                 spanCount: 1,
                 errorSpanCount: 0,

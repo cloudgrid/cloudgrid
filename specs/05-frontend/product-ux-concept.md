@@ -529,7 +529,7 @@ Rules:
 - `/metrics` is not a dashboard builder and does not show the dashboard rail.
 - `/dashboards` owns saved visual compositions.
 - Dashboard grid must not show empty placeholder widgets for metrics that do not exist.
-- Log, trace, metric, and live widgets save through typed dashboard widget configs. Alert widgets remain disabled placeholders until alert contracts exist.
+- Log, trace, metric, and live widgets save through typed dashboard widget configs. Alert widgets remain disabled until dashboard alert widget contracts and evaluator-backed alert evidence are specified.
 - Pin/unpin dashboard shortcuts must not be implemented as fake shared state or hidden local data.
 - Unsaved dashboard draft state is visually explicit.
 - Dirty state prompts before route/project switch.
@@ -757,14 +757,28 @@ Implementation agents must split UI work by ownership boundary:
 7. AI Eval workspace: feature-gated layout, section rail/tabs, inspector drawers, trace pivots.
 8. Design QA: responsive checks, accessibility checks, no nested-card checks, translation coverage.
 
-## Future Feature Backlog
+## Remaining Feature Backlog
 
-These items are approved UX placeholders but require backend/contract specs before implementation:
+These items are intentionally not frontend-owned product decisions. Contracts and
+backend ownership must exist before a route claims the behavior as enforcing.
 
-- Multi ingest API keys: project settings implements listing, creating with a required title, one-time secret display with copy, revoking, and last-used metadata for multiple project-scoped ingest credentials. Stored secrets are never displayed after creation.
-- Data retention policy: Project Settings implements project-level editable retention policies after contracts from `04-backend/data-retention-policy.md` are generated. UI must expose per-data-class rules and hard-delete versus soft-delete-then-delete mode where authorized.
-- Alerting: Project-scoped alerting supports metrics, logs, and traces after contracts from `04-backend/alerting.md` are generated. Notification delivery is adapter-based; in-app alert history is the core reference adapter.
-- Full OTLP protocol compatibility: backend setup snippets may claim full OTLP support only when HTTP JSON/protobuf on `4318` and gRPC protobuf on `4317` are implemented for traces, logs, and metrics according to `04-backend/otlp-grpc-compatibility.md`.
-- Project members: Project Settings implements real project-specific membership and roles after contracts from `04-backend/project-membership.md` are generated.
+- Multi ingest API keys: listing, titled creation, one-time secret display,
+  revocation, and last-used metadata are implemented as project-scoped ingest
+  credential management. Stored secrets are never displayed after creation.
+- Data retention policy: Project Settings renders and mutates project-level
+  retention policies through generated contracts. Actual deletion execution is
+  still owned by the future storage-maintenance worker from
+  `04-backend/data-retention-policy.md`; the UI must not imply that retention
+  has deleted telemetry until that worker ships.
+- Alerting: Project-scoped alert rule, silence, and history management is
+  implemented through generated contracts. Rule scheduling/evaluation,
+  notification dispatch, and dashboard alert widgets remain disabled until the
+  evaluator and dashboard alert widget contracts are implemented.
+- Full OTLP protocol compatibility: setup snippets may describe OTLP/HTTP
+  JSON/protobuf on `4318` and OTLP/gRPC protobuf on `4317` for traces, logs, and
+  metrics when the collector is used with the current implementation.
+- Project members: Project Settings uses real project-specific membership and
+  roles through generated contracts. Pending project grants from invitations are
+  not active memberships until accepted.
 
 Agents must not choose alternative IA, modal behavior, navigation ordering, onboarding placement, or empty-state structure without updating this spec first.

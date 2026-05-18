@@ -33,6 +33,7 @@ export const integrationScenarios = [
       "OrganizationMembers",
       "OrganizationInvitations",
       "InviteOrganizationMember",
+      "ResendOrganizationInvitation",
       "RevokeOrganizationInvitation",
       "UpdateOrganizationMember",
       "RemoveOrganizationMember",
@@ -45,6 +46,7 @@ export const integrationScenarios = [
       "Exercises project membership, ingest credential, retention, and AI settings workflows through the local GraphQL stack.",
     covers: [
       "ProjectMembers",
+      "InviteProjectMember",
       "UpdateProjectMember",
       "RemoveProjectMember",
       "IngestCredentials",
@@ -125,6 +127,7 @@ export const integrationScenarios = [
       "Datasets",
       "Dataset",
       "CreateDataset",
+      "AppendDatasetItems",
       "Scorers",
       "CreateScorer",
       "Experiments",

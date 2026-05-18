@@ -30,6 +30,7 @@ import type {
   ExperimentRun,
   ExperimentSearchInput,
   InviteOrganizationMemberInput,
+  InviteProjectMemberInput,
   LiveExperimentRunInput,
   LiveTraceInput,
   LogSearchInput,
@@ -79,7 +80,18 @@ import {
 } from "./bridge";
 import { loadConfig } from "./config";
 import { attachDatasetTransferRoutes } from "./dataset-transfer";
+import type { GraphQLMetricsRecorder } from "./graphql-metrics";
+import {
+  graphQLOperationType,
+  recordGraphQLMetrics,
+  sanitizeGraphQLOperationName,
+} from "./graphql-metrics";
 import { healthResponse } from "./health";
+import {
+  OTLPSelfObservabilityExporter,
+  type SelfObservabilityLogRecorder,
+  type SelfObservabilityTraceRecorder,
+} from "./self-observability";
 import { attachStaticRoutes } from "./static";
 import {
   validateAgentRunSearchInput,
@@ -102,6 +114,7 @@ import {
   validateExperimentSearchInput,
   validateId,
   validateInviteOrganizationMemberInput,
+  validateInviteProjectMemberInput,
   validateLiveExperimentRunInput,
   validateLiveTraceInput,
   validateLogSearchInput,
@@ -155,6 +168,9 @@ interface CreateAppOptions {
   frontendServeStatic?: boolean;
   frontendStaticDir?: string;
   datasetTransferDir?: string;
+  metricsRecorder?: GraphQLMetricsRecorder;
+  traceRecorder?: SelfObservabilityTraceRecorder;
+  logRecorder?: SelfObservabilityLogRecorder;
 }
 
 const JSONScalar = new GraphQLScalarType({
@@ -172,12 +188,38 @@ const DateTimeScalar = new GraphQLScalarType({
 });
 
 export async function createApp(config = loadConfig(), logger = createLogger("bff")) {
+  const selfObservability = OTLPSelfObservabilityExporter.fromConfig({
+    serviceName: "cloudgrid.bff",
+    deploymentMode: config.deploymentMode,
+    selfObservability: config.selfObservability,
+  });
   const bridge = await createNATSTelemetryQueryBridge(
     config.natsUrl,
     config.requestTimeoutMs,
     logger,
+    selfObservability
+      ? {
+          metricsRecorder: selfObservability,
+          traceRecorder: selfObservability,
+          logRecorder: selfObservability,
+        }
+      : {},
   );
-  return createAppWithBridge(bridge, config, logger);
+  return {
+    ...createAppWithBridge(
+      bridge,
+      selfObservability
+        ? {
+            ...config,
+            metricsRecorder: selfObservability,
+            traceRecorder: selfObservability,
+            logRecorder: selfObservability,
+          }
+        : config,
+      logger,
+    ),
+    selfObservability,
+  };
 }
 
 export function createAppWithBridge(
@@ -216,6 +258,9 @@ export function createAppWithBridge(
     context: ({ request }) => ({
       requestId: crypto.randomUUID(),
       logger,
+      metricsRecorder: config.metricsRecorder,
+      traceRecorder: config.traceRecorder,
+      logRecorder: config.logRecorder,
       authContext: auth.authenticateRequest(request),
     }),
   });
@@ -236,6 +281,9 @@ export type CloudGridYogaContext = {
   hono: { get: (key: "bridge") => AppBridge };
   requestId: string;
   logger: CloudGridLogger;
+  metricsRecorder?: GraphQLMetricsRecorder;
+  traceRecorder?: SelfObservabilityTraceRecorder;
+  logRecorder?: SelfObservabilityLogRecorder;
   authContext?: Promise<NormalizedAuthContext> | NormalizedAuthContext;
 };
 
@@ -535,6 +583,20 @@ export function createCloudGridSchema() {
           logGraphQLOperation(context, "inviteOrganizationMember", async () =>
             requireControlBridge(context).inviteOrganizationMember(
               validateInviteOrganizationMemberInput(args.input),
+              await authContext(context),
+            ),
+          ),
+        inviteProjectMember: async (_parent, args: { input: InviteProjectMemberInput }, context) =>
+          logGraphQLOperation(context, "inviteProjectMember", async () =>
+            requireControlBridge(context).inviteProjectMember(
+              validateInviteProjectMemberInput(args.input),
+              await authContext(context),
+            ),
+          ),
+        resendOrganizationInvitation: async (_parent, args: { id: string }, context) =>
+          logGraphQLOperation(context, "resendOrganizationInvitation", async () =>
+            requireControlBridge(context).resendOrganizationInvitation(
+              validateId(args.id, "invitation id"),
               await authContext(context),
             ),
           ),
@@ -949,13 +1011,37 @@ function requireAiEvalBridge(context: CloudGridYogaContext): AiEvalBridge {
 }
 
 async function logGraphQLOperation<T>(
-  context: { requestId: string; logger: CloudGridLogger },
+  context: {
+    requestId: string;
+    logger: CloudGridLogger;
+    metricsRecorder?: GraphQLMetricsRecorder;
+    traceRecorder?: SelfObservabilityTraceRecorder;
+    logRecorder?: SelfObservabilityLogRecorder;
+  },
   operation: string,
   run: () => Promise<T>,
 ): Promise<T> {
   const start = performance.now();
+  const operationName = sanitizeGraphQLOperationName(operation);
+  const operationType = graphQLOperationType(operationName);
   try {
     const result = await run();
+    context.traceRecorder?.recordSpan({
+      name: "graphql.request",
+      result: "success",
+      durationSeconds: elapsedSecondsFromMilliseconds(start),
+      attributes: {
+        "cloudgrid.request_id": context.requestId,
+        "graphql.operation.name": operationName,
+        "graphql.operation.type": operationType,
+      },
+    });
+    recordGraphQLMetrics(
+      context.metricsRecorder,
+      operation,
+      "success",
+      elapsedSecondsFromMilliseconds(start),
+    );
     context.logger.info("graphql_operation_completed", {
       request_id: context.requestId,
       operation_or_subject: operation,
@@ -965,6 +1051,34 @@ async function logGraphQLOperation<T>(
     return result;
   } catch (error) {
     const mapped = graphQLErrorLogFields(error);
+    const errorID = mapped.error_id ?? "ERR-006";
+    const errorCode = mapped.error_code ?? "STORAGE_UNAVAILABLE";
+    context.traceRecorder?.recordSpan({
+      name: "graphql.request",
+      result: "error",
+      durationSeconds: elapsedSecondsFromMilliseconds(start),
+      attributes: {
+        "cloudgrid.request_id": context.requestId,
+        "graphql.operation.name": operationName,
+        "graphql.operation.type": operationType,
+      },
+    });
+    context.logRecorder?.recordLog({
+      event: "graphql_operation_failed",
+      severity: "WARN",
+      attributes: {
+        "graphql.operation.name": operationName,
+        "graphql.operation.type": operationType,
+        "error.id": errorID,
+        "error.code": errorCode,
+      },
+    });
+    recordGraphQLMetrics(
+      context.metricsRecorder,
+      operation,
+      "error",
+      elapsedSecondsFromMilliseconds(start),
+    );
     context.logger.warn("graphql_operation_completed", {
       request_id: context.requestId,
       operation_or_subject: operation,
@@ -974,6 +1088,10 @@ async function logGraphQLOperation<T>(
     });
     throw error;
   }
+}
+
+function elapsedSecondsFromMilliseconds(start: number): number {
+  return elapsedMilliseconds(start) / 1000;
 }
 
 function graphQLErrorLogFields(error: unknown): Pick<LogFields, "error_id" | "error_code"> {

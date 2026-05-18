@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
 	"github.com/cloudgrid-dev/cloudgrid/core/otlp-collector/internal/ai"
@@ -126,18 +127,28 @@ func grpcAuthContext(ctx context.Context) *contracts.AuthContext {
 }
 
 func (server *grpcTraceServer) Export(ctx context.Context, request *collectortracepb.ExportTraceServiceRequest) (*collectortracepb.ExportTraceServiceResponse, error) {
+	start := server.handler.now()
+	result := "accepted"
+	defer func() {
+		server.handler.recordGRPCIngestMetrics("traces", result, int64(proto.Size(request)))
+		server.handler.recordGRPCSpan("traces", grpcRequestID(ctx), result, start)
+	}()
 	if err := server.validateSize(request); err != nil {
+		result = "rejected"
 		return nil, err
 	}
 	command, err := server.handler.traceCommandForRequestID(grpcRequestID(ctx), request, grpcAuthContext(ctx))
 	if err != nil {
+		result = "rejected"
 		return nil, grpcProblem(validationProblem(err.Error()))
 	}
 	if err := server.handler.publish(ctx, SubjectTraceIngest, command); err != nil {
+		result = "rejected"
 		return nil, grpcPublishProblem(err)
 	}
 	for _, projection := range ai.ExtractProjections(command.Spans, command.BridgeEnvelope, nil) {
 		if err := server.handler.publishJSON(ctx, SubjectAIProjectionIngest, projection); err != nil {
+			result = "rejected"
 			return nil, grpcPublishProblem(err)
 		}
 	}
@@ -145,31 +156,83 @@ func (server *grpcTraceServer) Export(ctx context.Context, request *collectortra
 }
 
 func (server *grpcLogsServer) Export(ctx context.Context, request *collectorlogspb.ExportLogsServiceRequest) (*collectorlogspb.ExportLogsServiceResponse, error) {
+	start := server.handler.now()
+	result := "accepted"
+	defer func() {
+		server.handler.recordGRPCIngestMetrics("logs", result, int64(proto.Size(request)))
+		server.handler.recordGRPCSpan("logs", grpcRequestID(ctx), result, start)
+	}()
 	if err := server.validateSize(request); err != nil {
+		result = "rejected"
 		return nil, err
 	}
 	command, err := server.handler.logCommandForRequestID(grpcRequestID(ctx), request, grpcAuthContext(ctx))
 	if err != nil {
+		result = "rejected"
 		return nil, grpcProblem(validationProblem(err.Error()))
 	}
 	if err := server.handler.publish(ctx, SubjectLogIngest, command); err != nil {
+		result = "rejected"
 		return nil, grpcPublishProblem(err)
 	}
 	return &collectorlogspb.ExportLogsServiceResponse{}, nil
 }
 
 func (server *grpcMetricsServer) Export(ctx context.Context, request *collectormetricspb.ExportMetricsServiceRequest) (*collectormetricspb.ExportMetricsServiceResponse, error) {
+	start := server.handler.now()
+	result := "accepted"
+	defer func() {
+		server.handler.recordGRPCIngestMetrics("metrics", result, int64(proto.Size(request)))
+		server.handler.recordGRPCSpan("metrics", grpcRequestID(ctx), result, start)
+	}()
 	if err := server.validateSize(request); err != nil {
+		result = "rejected"
 		return nil, err
 	}
 	command, err := server.handler.metricCommandForRequestID(grpcRequestID(ctx), request, grpcAuthContext(ctx))
 	if err != nil {
+		result = "rejected"
 		return nil, grpcProblem(validationProblem(err.Error()))
 	}
 	if err := server.handler.publishJSON(ctx, SubjectMetricIngest, command); err != nil {
+		result = "rejected"
 		return nil, grpcPublishProblem(err)
 	}
 	return &collectormetricspb.ExportMetricsServiceResponse{}, nil
+}
+
+func (h *handler) recordGRPCSpan(signal string, requestID string, result string, start time.Time) {
+	if h.selfObservability == nil {
+		return
+	}
+	status := "success"
+	if result != "accepted" {
+		status = "error"
+	}
+	h.selfObservability.RecordSpan(SelfObservabilitySpan{
+		Name:      "otlp.grpc " + signal,
+		StartTime: start,
+		EndTime:   h.now(),
+		Attributes: map[string]string{
+			"rpc.method":           "otlp." + signal + ".Export",
+			"cloudgrid.request_id": requestID,
+			"result":               status,
+		},
+	})
+	if status == "error" {
+		h.selfObservability.RecordLog(SelfObservabilityLog{
+			Timestamp:    h.now(),
+			SeverityText: "WARN",
+			Body:         "collector gRPC request failed",
+			Attributes: map[string]string{
+				"event":                "grpc_request_failed",
+				"cloudgrid.request_id": requestID,
+				"signal":               signal,
+				"error_id":             "ERR-001",
+				"error_code":           "VALIDATION_FAILED",
+			},
+		})
+	}
 }
 
 func (server *grpcTraceServer) validateSize(message proto.Message) error {

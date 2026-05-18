@@ -43,10 +43,19 @@ export function TraceOverviewMinimap({
       buildTraceTreeIndexes({
         spans,
         traceStartedAt: trace.startedAt,
+        traceStartedAtUnixNano: trace.startedAtUnixNano,
+        traceDurationNano: trace.durationNano,
         traceDurationMs: trace.durationMs,
         rootSpanIds: trace.rootSpanId ? [trace.rootSpanId] : [],
       }),
-    [spans, trace.durationMs, trace.rootSpanId, trace.startedAt],
+    [
+      spans,
+      trace.durationMs,
+      trace.durationNano,
+      trace.rootSpanId,
+      trace.startedAt,
+      trace.startedAtUnixNano,
+    ],
   );
 
   const markers = useMemo(

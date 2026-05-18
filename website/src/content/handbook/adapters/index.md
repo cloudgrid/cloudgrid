@@ -1,8 +1,8 @@
 ---
 title: Adapters
 description: Author your own storage, bridge, auth, or harness adapter.
-sidebar: Overview
-order: 5
+sidebar: Adapters
+order: 10
 accent: rose
 eyebrow: Handbook · Adapters
 updated: 2026-05-17

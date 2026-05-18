@@ -13,7 +13,10 @@ import {
   CONTRACT_GENERATION_TARGETS,
   CONTROL_PLANE_SUBJECTS,
   DEPLOYMENT_MODES,
+  INVITATION_DELIVERY_STATUSES,
+  INVITATION_PROJECT_GRANT_STATUSES,
   ORGANIZATION_INVITATION_STATUSES,
+  PROJECT_INVITATION_OUTCOMES,
   PROJECT_MEMBER_SOURCES,
   PROJECT_ROLES,
   PROJECT_STATUSES,
@@ -31,6 +34,9 @@ export const AUTH_MODES = ${inlineTsArray(AUTH_MODES)} as const;
 export const AUTH_PROVIDERS = ${inlineTsArray(AUTH_PROVIDERS)} as const;
 export const COMPANY_ROLES = ${inlineTsArray(COMPANY_ROLES)} as const;
 export const ORGANIZATION_INVITATION_STATUSES = ${multilineTsArray(ORGANIZATION_INVITATION_STATUSES)} as const;
+export const INVITATION_DELIVERY_STATUSES = ${multilineTsArray(INVITATION_DELIVERY_STATUSES)} as const;
+export const INVITATION_PROJECT_GRANT_STATUSES = ${multilineTsArray(INVITATION_PROJECT_GRANT_STATUSES)} as const;
+export const PROJECT_INVITATION_OUTCOMES = ${inlineTsArray(PROJECT_INVITATION_OUTCOMES)} as const;
 export const PROJECT_ROLES = ${inlineTsArray(PROJECT_ROLES)} as const;
 export const PROJECT_MEMBER_SOURCES = ${inlineTsArray(PROJECT_MEMBER_SOURCES)} as const;
 export const PROJECT_STATUSES = ${inlineTsArray(PROJECT_STATUSES)} as const;
@@ -54,6 +60,9 @@ var AuthModes = []string{${AUTH_MODES.map(quoteGo).join(", ")}}
 var AuthProviders = []string{${AUTH_PROVIDERS.map(quoteGo).join(", ")}}
 var CompanyRoles = []string{${COMPANY_ROLES.map(quoteGo).join(", ")}}
 var OrganizationInvitationStatuses = []string{${ORGANIZATION_INVITATION_STATUSES.map(quoteGo).join(", ")}}
+var InvitationDeliveryStatuses = []string{${INVITATION_DELIVERY_STATUSES.map(quoteGo).join(", ")}}
+var InvitationProjectGrantStatuses = []string{${INVITATION_PROJECT_GRANT_STATUSES.map(quoteGo).join(", ")}}
+var ProjectInvitationOutcomes = []string{${PROJECT_INVITATION_OUTCOMES.map(quoteGo).join(", ")}}
 var ProjectRoles = []string{${PROJECT_ROLES.map(quoteGo).join(", ")}}
 var ProjectMemberSources = []string{${PROJECT_MEMBER_SOURCES.map(quoteGo).join(", ")}}
 var ProjectStatuses = []string{${PROJECT_STATUSES.map(quoteGo).join(", ")}}

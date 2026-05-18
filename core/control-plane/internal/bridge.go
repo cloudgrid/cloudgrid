@@ -29,6 +29,10 @@ func storageError() error {
 	return codedError("ERR-006", "STORAGE_UNAVAILABLE", "Storage is unavailable", true)
 }
 
+func invitationEmailDeliveryFailedError(reason string) error {
+	return codedError("ERR-022", "INVITATION_EMAIL_DELIVERY_FAILED", "Invitation email delivery failed", true, reason)
+}
+
 func codedError(id string, code string, message string, retryable bool, details ...string) error {
 	bridge := contracts.BridgeError{
 		ID:        id,

@@ -55,7 +55,11 @@ Deployable apps may depend on `apps/packages/*`. Shared TypeScript packages must
 ## Time
 
 - Persist timestamps as UTC.
-- API responses return ISO 8601 strings.
+- API responses return ISO 8601 strings. Telemetry timestamps originating from
+  OTLP nanosecond fields must retain sub-second precision in trace detail,
+  span detail, span event, log detail, and waterfall layout responses.
+- Raw nanosecond timestamp fields exposed through JSON or GraphQL must be
+  decimal strings, not JSON numbers.
 - UI displays local browser time and must keep raw UTC available in tooltips or detail panels.
 
 ## IDs

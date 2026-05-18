@@ -4,26 +4,27 @@ title: Data retention
 category: compliance
 status: draft
 provenance: inferred-draft
-target: Local MVP retains telemetry until operator deletion; production retention uses project-level editable policies with explicit deletion ownership.
-measurement: Documentation check, absence of deletion jobs in local MVP, and future retention-worker tests before production retention is enabled.
+target: Local MVP exposes project retention policy configuration but retains telemetry until operator deletion unless a future storage-maintenance worker executes policy batches.
+measurement: Documentation check, presence of policy CRUD contracts, absence of deletion jobs in local MVP, and future retention-worker tests before production retention execution is enabled.
 applies_to: [CAP-STO-*]
 enforcement: blocking-for-production-retention
 ---
 
 # Data Retention
 
-The MVP does not implement retention policies or deletion APIs. This must be visible to operators because telemetry may contain sensitive attributes.
+The MVP implements project-level retention policy CRUD, but it does not implement automatic deletion jobs or public telemetry deletion APIs. This split must be visible to operators because telemetry may contain sensitive attributes.
 
 ## Local MVP
 
+- Project admins can configure retention policy metadata.
 - No automatic deletion job runs.
-- No public deletion API exists.
+- No public telemetry deletion API exists.
 - Operators delete local data by resetting or deleting the SurrealDB database.
 - Docs must warn that telemetry may contain sensitive attributes and is retained until operator action.
 
-## Production Retention Target
+## Production Retention Execution Target
 
-When retention is implemented, it must follow [Project data retention policy](../04-backend/data-retention-policy.md). The approved product decision is project-level editable retention in Project Settings, not deployment-wide-only retention.
+Retention execution must follow [Project data retention policy](../04-backend/data-retention-policy.md). The approved product decision is project-level editable retention in Project Settings, not deployment-wide-only retention.
 
 Use these defaults unless a project policy overrides them:
 

@@ -77,6 +77,23 @@ provenance: inferred-draft
 - Must not import SurrealDB clients, storage adapters, model-provider SDKs, or provider credentials.
 - Publishes durable experiment progress notifications for storage-read-managed GraphQL subscription fanout.
 
+### Self-Observability
+
+CloudGrid services may emit OpenTelemetry for CloudGrid itself according to
+`04-backend/self-observability.md`.
+
+- Self-observability uses the normal OTLP ingest path and must not add a direct
+  SurrealDB write path, direct storage-read query path, or BFF telemetry
+  derivation path.
+- Local mode bootstraps a visible fixed project named `CloudGrid` in the
+  `Personal` company for CloudGrid service telemetry.
+- Deployed mode requires explicit self-observability company, project,
+  endpoint, and ingest credential configuration; access to the project remains
+  controlled by normal company membership and project selection semantics.
+- Internal CloudGrid metrics, including ingest, publish, persist, storage-read,
+  GraphQL, message-bridge, live-subscription, and exporter-failure counters and
+  histograms, use the first-class OTLP metrics signal.
+
 ## Storage Adapter Layout
 
 Storage and control-plane services must keep adapter implementations behind explicit service ports:

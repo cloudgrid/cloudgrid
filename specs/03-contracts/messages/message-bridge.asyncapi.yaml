@@ -407,6 +407,13 @@ channels:
         $ref: "#/components/messages/InvitationCreateRequest"
       InvitationMutationResponse:
         $ref: "#/components/messages/InvitationMutationResponse"
+  control.invitations.resend:
+    address: control.invitations.resend
+    messages:
+      InvitationResendRequest:
+        $ref: "#/components/messages/InvitationResendRequest"
+      InvitationMutationResponse:
+        $ref: "#/components/messages/InvitationMutationResponse"
   control.invitations.revoke:
     address: control.invitations.revoke
     messages:
@@ -414,6 +421,13 @@ channels:
         $ref: "#/components/messages/InvitationRevokeRequest"
       InvitationMutationResponse:
         $ref: "#/components/messages/InvitationMutationResponse"
+  control.project_invitations.create:
+    address: control.project_invitations.create
+    messages:
+      ProjectInvitationCreateRequest:
+        $ref: "#/components/messages/ProjectInvitationCreateRequest"
+      ProjectInvitationMutationResponse:
+        $ref: "#/components/messages/ProjectInvitationMutationResponse"
   control.ingest_credentials.list:
     address: control.ingest_credentials.list
     messages:
@@ -905,6 +919,18 @@ operations:
       $ref: "#/channels/control.invitations.create"
     messages:
       - $ref: "#/channels/control.invitations.create/messages/InvitationMutationResponse"
+  requestInvitationResend:
+    action: send
+    channel:
+      $ref: "#/channels/control.invitations.resend"
+    messages:
+      - $ref: "#/channels/control.invitations.resend/messages/InvitationResendRequest"
+  replyInvitationResend:
+    action: receive
+    channel:
+      $ref: "#/channels/control.invitations.resend"
+    messages:
+      - $ref: "#/channels/control.invitations.resend/messages/InvitationMutationResponse"
   requestInvitationRevoke:
     action: send
     channel:
@@ -917,6 +943,18 @@ operations:
       $ref: "#/channels/control.invitations.revoke"
     messages:
       - $ref: "#/channels/control.invitations.revoke/messages/InvitationMutationResponse"
+  requestProjectInvitationCreate:
+    action: send
+    channel:
+      $ref: "#/channels/control.project_invitations.create"
+    messages:
+      - $ref: "#/channels/control.project_invitations.create/messages/ProjectInvitationCreateRequest"
+  replyProjectInvitationCreate:
+    action: receive
+    channel:
+      $ref: "#/channels/control.project_invitations.create"
+    messages:
+      - $ref: "#/channels/control.project_invitations.create/messages/ProjectInvitationMutationResponse"
   requestProjectMembers:
     action: send
     channel:
@@ -1104,6 +1142,17 @@ operations:
     messages:
       - $ref: "#/channels/alert_evaluator.notifications.dispatch/messages/AlertNotificationDispatchRequest"
 components:
+  x-cloudgrid-nats-headers:
+    traceparent:
+      description: Optional W3C Trace Context traceparent header propagated as NATS message metadata.
+      schema:
+        type: string
+        pattern: "^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$"
+    tracestate:
+      description: Optional W3C Trace Context tracestate header propagated as NATS message metadata.
+      schema:
+        type: string
+        maxLength: 512
   messages:
     TraceSearchRequest:
       name: TraceSearchRequest
@@ -1377,6 +1426,10 @@ components:
       name: InvitationCreateRequest
       payload:
         $ref: "#/components/schemas/InvitationCreateRequest"
+    InvitationResendRequest:
+      name: InvitationResendRequest
+      payload:
+        $ref: "#/components/schemas/InvitationResendRequest"
     InvitationRevokeRequest:
       name: InvitationRevokeRequest
       payload:
@@ -1385,6 +1438,14 @@ components:
       name: InvitationMutationResponse
       payload:
         $ref: "#/components/schemas/InvitationMutationResponse"
+    ProjectInvitationCreateRequest:
+      name: ProjectInvitationCreateRequest
+      payload:
+        $ref: "#/components/schemas/ProjectInvitationCreateRequest"
+    ProjectInvitationMutationResponse:
+      name: ProjectInvitationMutationResponse
+      payload:
+        $ref: "#/components/schemas/ProjectInvitationMutationResponse"
     IngestCredentialListRequest:
       name: IngestCredentialListRequest
       payload:
@@ -1622,6 +1683,7 @@ components:
           format: date-time
         traceContext:
           type: object
+          description: Deprecated compatibility metadata. New implementations propagate W3C Trace Context in NATS headers `traceparent` and `tracestate`; consumers must not require this payload field for parent-child tracing.
           additionalProperties: true
         authContext:
           $ref: "#/components/schemas/AuthContext"
@@ -2138,6 +2200,15 @@ components:
     OrganizationInvitationStatus:
       type: string
       enum: [pending, accepted, revoked, expired]
+    InvitationDeliveryStatus:
+      type: string
+      enum: [not_configured, pending, sent, failed_retryable, failed_terminal, suppressed]
+    InvitationProjectGrantStatus:
+      type: string
+      enum: [pending, applied, revoked, failed]
+    ProjectInvitationOutcome:
+      type: string
+      enum: [invitation_pending, membership_created]
     ProjectStatus:
       type: string
       enum: [active, read_only, disabled]
@@ -2267,7 +2338,7 @@ components:
     OrganizationInvitation:
       type: object
       additionalProperties: false
-      required: [id, organizationId, email, role, status, invitedByUserId, createdAt, updatedAt]
+      required: [id, organizationId, email, role, status, deliveryStatus, projectGrants, invitedByUserId, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -2280,6 +2351,19 @@ components:
           $ref: "#/components/schemas/CompanyRole"
         status:
           $ref: "#/components/schemas/OrganizationInvitationStatus"
+        deliveryStatus:
+          $ref: "#/components/schemas/InvitationDeliveryStatus"
+        lastDeliveryAttemptAt:
+          type: string
+          format: date-time
+        lastDeliveryErrorCode:
+          type: string
+        lastEmailDeliveryId:
+          type: string
+        projectGrants:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvitationProjectGrant"
         invitedByUserId:
           type: string
         acceptedByUserId:
@@ -2297,6 +2381,25 @@ components:
           type: string
           format: date-time
         expiresAt:
+          type: string
+          format: date-time
+    InvitationProjectGrant:
+      type: object
+      additionalProperties: false
+      required: [projectId, role, status, createdAt, createdByUserId]
+      properties:
+        projectId:
+          type: string
+        role:
+          $ref: "#/components/schemas/ProjectRole"
+        status:
+          $ref: "#/components/schemas/InvitationProjectGrantStatus"
+        createdAt:
+          type: string
+          format: date-time
+        createdByUserId:
+          type: string
+        appliedAt:
           type: string
           format: date-time
     ViewerGetRequest:
@@ -2622,6 +2725,15 @@ components:
             email:
               type: string
               format: email
+    InvitationResendRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [invitationId]
+          properties:
+            invitationId:
+              type: string
     InvitationRevokeRequest:
       allOf:
         - $ref: "#/components/schemas/BridgeEnvelope"
@@ -2749,6 +2861,37 @@ components:
           required: [removed]
           properties:
             removed: { type: boolean }
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    ProjectInvitationCreateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, email, role]
+          properties:
+            projectId: { type: string }
+            email: { type: string, format: email }
+            role:
+              $ref: "#/components/schemas/ProjectRole"
+    ProjectInvitationMutationResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId: { type: string }
+        ok: { type: boolean }
+        data:
+          type: object
+          additionalProperties: false
+          required: [outcome]
+          properties:
+            outcome:
+              $ref: "#/components/schemas/ProjectInvitationOutcome"
+            invitation:
+              $ref: "#/components/schemas/OrganizationInvitation"
+            projectMember:
+              $ref: "#/components/schemas/ProjectMember"
         error:
           $ref: "#/components/schemas/BridgeError"
     RetentionDataClass:

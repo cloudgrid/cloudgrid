@@ -203,7 +203,12 @@ When local project tokens are configured, the collector must fail closed:
 - The token value is never logged, persisted in telemetry, copied into attributes, or returned in an error body.
 - The resulting command `AuthContext` uses `tenantId=local`, `companyId=local`, and the project ID bound to the validated token.
 
-When no local project tokens are configured, local ingest may use `CLOUDGRID_OTLP_LOCAL_PROJECT_ID` and otherwise falls back to `projectId=default`. This fallback is for single-project local development only.
+When no local project tokens are configured, local ingest may use
+`CLOUDGRID_OTLP_LOCAL_PROJECT_ID` and otherwise falls back to
+`projectId=default`. This fallback is for single-project local development only.
+Self-observability must not change this fallback to `cloudgrid-system`; routing
+CloudGrid's own telemetry to the system project requires a local token mapping
+or deployed-mode bearer token.
 
 ## Error Mapping
 

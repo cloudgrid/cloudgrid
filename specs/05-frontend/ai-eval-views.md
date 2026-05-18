@@ -4,7 +4,7 @@ title: AI evaluation views
 layer: frontend
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-16
+updated: 2026-05-17
 provenance: from-user
 depends_on: [DOM-006, TEC-BE-015, TEC-FE-008]
 ---
@@ -19,15 +19,15 @@ AI evaluation routes render only when `CLOUDGRID_AI_EVAL_ENABLED=true`. When dis
 
 AI evaluation layout follows `05-frontend/product-ux-concept.md` and
 `05-frontend/ai-eval-ux-concept.md`: feature-gated project workspace
-navigation, route-local AI Eval rail, main workspace surface, and right
-inspector drawer for run/dataset/scorer/experiment/policy/annotation detail
-surfaces. The route-local rail is task based and must not expose generic demo
-entries such as `Overview`. The approved rail entries are `Agent runs`,
-`Datasets`, `Scorers`, `Experiments`, `Production quality`, and `Annotations`.
+navigation, route-local AI Eval rail, and one main workspace surface. The
+route-local rail is task based and must not expose generic demo entries such as
+`Overview`, duplicate telemetry entries such as `Agent runs`, or unbacked work
+queues such as `Annotations`. The approved rail entries are `Datasets`,
+`Scorers`, `Experiments`, and `Production quality`.
 
-- Agent run timeline: trace waterfall with agent, model, tool, retrieval, token, and cost view models returned by GraphQL.
-- Transcript: GraphQL-provided transcript messages for long-running agent traces.
-- Dataset editor: dataset list, item list, version history, item create/edit, and span promotion.
+- Trace evidence pivots: rows that need execution detail link to `/traces`.
+- Dataset workbench: dataset list, item table, version health, structured row
+  create, import/export, and source trace pivots.
 - Dataset import/export: upload JSONL, JSON array, CSV, or ZIP files; map
   source fields; preview validation; commit valid rows; export canonical
   dataset files.
@@ -40,7 +40,8 @@ entries such as `Overview`. The approved rail entries are `Agent runs`,
   explicit promotion gating.
 - Production quality: online policies, quality trend, cost trend, latency trend,
   tool/retrieval health, and budget status.
-- Annotation queue: review queue filtered by reason, status, assignee, target trace, and target span.
+- Annotation actions: only appear from experiment or production result context
+  when the approved mutation path is available.
 
 ## Online Policy UI V1
 
@@ -79,11 +80,16 @@ The production quality UI must:
 
 ## Dataset Import/Export UI
 
-Dataset administration, import, and export lives in the Datasets section and
-uses the existing route workspace plus right inspector/sheet patterns. It must
-not be implemented as a separate full-screen wizard. The Datasets workspace must
-always show a dataset create action and a clear empty state that explains that a
-dataset is required before imports or experiment runs can happen.
+Dataset administration, import, and export lives in the Datasets section.
+Import uses a dedicated workflow view inside the route workspace, not a narrow
+side sheet. The Datasets workspace must always show a dataset create action and
+a clear empty state that explains that a dataset is required before imports or
+experiment runs can happen.
+
+Dataset list and dataset detail are separate states. The list state is a
+full-width overview and selection table. Opening a dataset replaces the list
+with a full-width dataset workbench; the list must not remain as a side column
+that steals row-editing space.
 
 Import UI:
 
@@ -104,6 +110,12 @@ Import UI:
   commit and the preview allows it;
 - calls `Mutation.commitDatasetImport` only after user confirmation.
 
+Manual row creation uses `Mutation.appendDatasetItems` with structured fields
+for input prompt, expected answer, split, review status, and optional source
+trace/span. Text answers use a text field. JSON answers use a field editor for
+name, scalar type, and value. The UI must not require JSON input for the common
+manual-row path.
+
 Export UI:
 
 - exposes Export on the selected dataset;
@@ -117,6 +129,14 @@ Export UI:
 Frontend must not parse uploaded file rows into `DatasetItemInput`, infer
 mapping automatically, compute row validity, deduplicate rows, compute leakage,
 or call `appendDatasetItems` for uploaded files.
+
+The import workflow must minimize visual noise:
+
+- show one active decision area at a time where possible;
+- provide presets for common CSV and JSONL shapes;
+- explain disabled preview/commit states next to the disabled action;
+- avoid repeating dataset version, item counts, and health values in a separate
+  inspector when they are already visible in the workspace.
 
 ## Experiment Run UI
 
@@ -136,6 +156,35 @@ workspace must guide the user from prerequisite data to execution:
 - keep prompt/tool/skill optimization details inside experiment/run details
   until a dedicated optimization contract exists.
 
+Experiment creation must use form controls for solver kind and solver name. The
+primary UI must not ask users to type a JSON object.
+
+## Scorer Creation UI
+
+Scorer creation uses structured templates. The primary UI must expose:
+
+- scorer name;
+- template;
+- template-specific inputs such as selectable match field, expected value type,
+  expected value, threshold, rubric text, or provider alias;
+- deterministic/offline-only availability guidance for scorer families that
+  cannot run online in v1.
+
+The primary UI must not contain a `Definition JSON` text input. Match field is a
+dropdown of known expected/model output paths and must not be free text.
+
+## Project AI Eval Settings
+
+Project Settings / AI Eval exposes the operational setup required to run AI
+Eval:
+
+- enable/disable AI Eval for the project;
+- default provider and judge profile ids;
+- provider profile timeout and max parallel request controls;
+- daily and per-run budget limits;
+- max parallel experiment item execution;
+- existing provider/profile/policy counts and effective warnings.
+
 ## Frontend Boundary
 
 Frontend code owns route state, selection, tabs, focus, expansion, sorting
@@ -149,13 +198,13 @@ facets from raw spans.
 Implementation must cover the flows in `05-frontend/ai-eval-ux-concept.md`:
 
 - first-use setup;
-- production trace to dataset item;
+- production trace to dataset item through Traces pivots;
 - dataset split management;
 - scorer template creation;
 - baseline experiment run;
 - prompt/skill/tool optimization;
 - candidate promotion;
 - production online policy monitoring;
-- annotation queue resolution;
+- annotation actions from result context when supported;
 - dataset import/export;
 - Project Settings / AI Eval configuration.

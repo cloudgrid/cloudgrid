@@ -97,6 +97,34 @@ The current `puristajs/harness` main emits metrics through OpenTelemetry meter i
 
 CloudGrid does not require a CloudGrid SDK for those metrics.
 
+## CloudGrid Internal Metrics
+
+CloudGrid services use this same OTLP metrics signal for self-observability as
+specified in `self-observability.md`.
+
+Required internal metric names include:
+
+- `cloudgrid.ingest.requests`
+- `cloudgrid.ingest.bytes`
+- `cloudgrid.ingest.publish.duration`
+- `cloudgrid.ingest.commands.published`
+- `cloudgrid.storage.persist.commands`
+- `cloudgrid.storage.persist.duration`
+- `cloudgrid.storage.persist.records`
+- `cloudgrid.storage.read.requests`
+- `cloudgrid.storage.read.duration`
+- `cloudgrid.bff.graphql.operations`
+- `cloudgrid.bff.graphql.duration`
+- `cloudgrid.message_bridge.requests`
+- `cloudgrid.message_bridge.duration`
+- `cloudgrid.live.subscriptions`
+- `cloudgrid.exporter.failures`
+
+Internal metric labels must be bounded enums or known handler names. They must
+not contain tenant IDs, company IDs, project IDs, trace IDs, span IDs, user IDs,
+emails, raw request paths with IDs, raw error messages, bearer tokens, cookies,
+or provider secrets.
+
 ## Verification
 
 - Collector tests cover JSON/protobuf metric decoding, auth-before-decode, unsupported metric kind, and publish acknowledgement.

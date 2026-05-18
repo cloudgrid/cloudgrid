@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -960,16 +961,22 @@ type serviceRecord struct {
 
 func traceRecord(trace contracts.Trace, spanCount int, errorSpanCount int, logCount int, serviceCount int, target TelemetryTarget) map[string]any {
 	record := map[string]any{
-		"traceId":        trace.ID,
-		"startedAt":      trace.StartedAt.UTC(),
-		"attributes":     nonNilAttributes(trace.Attributes),
-		"spanCount":      spanCount,
-		"errorSpanCount": errorSpanCount,
-		"logCount":       logCount,
-		"serviceCount":   serviceCount,
+		"traceId":           trace.ID,
+		"startedAt":         trace.StartedAt.UTC(),
+		"startedAtUnixNano": unixNanoString(trace.StartedAt),
+		"attributes":        nonNilAttributes(trace.Attributes),
+		"spanCount":         spanCount,
+		"errorSpanCount":    errorSpanCount,
+		"logCount":          logCount,
+		"serviceCount":      serviceCount,
 	}
 	putStringPtr(record, "serviceName", trace.ServiceName)
-	putTimePtr(record, "endedAt", trace.EndedAt)
+	if trace.EndedAt != nil {
+		endedAtNano := unixNanoString(*trace.EndedAt)
+		record["endedAt"] = trace.EndedAt.UTC()
+		record["endedAtUnixNano"] = endedAtNano
+		record["durationNano"] = durationNanoString(trace.StartedAt, *trace.EndedAt)
+	}
 	putFloatPtr(record, "durationMs", trace.DurationMs)
 	putStringPtr(record, "rootSpanId", trace.RootSpanID)
 	putStatusPtr(record, "status", trace.Status)
@@ -979,15 +986,18 @@ func traceRecord(trace contracts.Trace, spanCount int, errorSpanCount int, logCo
 
 func spanRecord(span contracts.Span, target TelemetryTarget) map[string]any {
 	record := map[string]any{
-		"spanId":     span.ID,
-		"traceId":    span.TraceID,
-		"name":       span.Name,
-		"startedAt":  span.StartedAt.UTC(),
-		"endedAt":    span.EndedAt.UTC(),
-		"durationMs": span.DurationMs,
-		"attributes": nonNilAttributes(span.Attributes),
-		"events":     spanEvents(span.Events),
-		"links":      spanLinks(span.Links),
+		"spanId":            span.ID,
+		"traceId":           span.TraceID,
+		"name":              span.Name,
+		"startedAt":         span.StartedAt.UTC(),
+		"startedAtUnixNano": unixNanoString(span.StartedAt),
+		"endedAt":           span.EndedAt.UTC(),
+		"endedAtUnixNano":   unixNanoString(span.EndedAt),
+		"durationNano":      durationNanoString(span.StartedAt, span.EndedAt),
+		"durationMs":        span.DurationMs,
+		"attributes":        nonNilAttributes(span.Attributes),
+		"events":            spanEvents(span.Events),
+		"links":             spanLinks(span.Links),
 	}
 	putStringPtr(record, "parentSpanId", span.ParentSpanID)
 	putStringPtr(record, "kind", span.Kind)
@@ -1023,12 +1033,25 @@ func spanEvents(events []contracts.SpanEvent) []map[string]any {
 	out := make([]map[string]any, 0, len(events))
 	for _, event := range events {
 		out = append(out, map[string]any{
-			"name":       event.Name,
-			"timestamp":  event.Timestamp.UTC(),
-			"attributes": nonNilAttributes(event.Attributes),
+			"name":              event.Name,
+			"timestamp":         event.Timestamp.UTC(),
+			"timestampUnixNano": unixNanoString(event.Timestamp),
+			"attributes":        nonNilAttributes(event.Attributes),
 		})
 	}
 	return out
+}
+
+func unixNanoString(value time.Time) string {
+	return strconv.FormatInt(value.UTC().UnixNano(), 10)
+}
+
+func durationNanoString(start time.Time, end time.Time) string {
+	duration := end.Sub(start)
+	if duration < 0 {
+		duration = 0
+	}
+	return strconv.FormatInt(duration.Nanoseconds(), 10)
 }
 
 func spanLinks(links []contracts.SpanLink) []map[string]any {

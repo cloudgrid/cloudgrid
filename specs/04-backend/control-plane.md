@@ -10,7 +10,7 @@ provenance: user-directed
 
 # Control Plane And Project Management
 
-CloudGrid has one central control plane for companies, users, memberships, organization invitations, projects, project selection, and authz metadata. Telemetry ingestion and reads stay separate from the control plane hot path.
+CloudGrid has one central control plane for companies, users, memberships, organization invitations, invitation email delivery, projects, project selection, and authz metadata. Telemetry ingestion and reads stay separate from the control plane hot path.
 
 ## Service Boundary
 
@@ -18,7 +18,7 @@ Target service: `core/control-plane`.
 
 Responsibilities:
 
-- Store and query organizations, projects, users, memberships, organization invitations, roles, project status, ingest credential metadata, dashboards, dashboard pins, AI-eval project settings, provider profile metadata, model aliases, online evaluation policies, and future low-volume project configuration.
+- Store and query organizations, projects, users, memberships, organization invitations, invitation email outbox records, roles, project status, ingest credential metadata, dashboards, dashboard pins, AI-eval project settings, provider profile metadata, model aliases, online evaluation policies, and future low-volume project configuration.
 - Own organization/project/user management mutations.
 - Publish project status snapshots for fast auth validation by public boundaries.
 - Never ingest, query, aggregate, or enrich telemetry records.
@@ -31,7 +31,9 @@ The BFF talks to `core/control-plane` only through NATS request/reply subjects d
 - GraphQL/entity name: `Organization`.
 - A company owns projects.
 - Users are members of companies.
-- A membership grants one company-level role. All company users can see all company projects.
+- A company membership grants organization visibility and one company-level
+  role. Project access is controlled by project membership unless the user is a
+  company `admin`.
 
 Use `Organization` in contracts and `company` in user-facing copy where that is clearer.
 
@@ -39,15 +41,20 @@ Use `Organization` in contracts and `company` in user-facing copy where that is 
 
 Company roles:
 
-- `admin`: can view all projects, ingest/read telemetry, create/update projects, and add/remove/change company users.
-- `user`: can view all projects and ingest/read telemetry, but cannot administer company users.
+- `admin`: can manage company users and has implied project `admin` access for
+  every project in the company.
+- `user`: can see the company boundary and can receive direct project
+  memberships, but does not administer company users.
 
-There are no project-specific user roles in the current product. The data model must keep role assignment extensible so a later spec can add project-specific or permission-specific roles without rewriting users, companies, projects, or telemetry ownership.
+Company roles are separate from project roles. Project-specific roles are defined in [Project membership and roles](./project-membership.md).
 
-Role-to-scope mapping:
+Company role-to-scope mapping:
 
-- `admin`: `telemetry:read`, `telemetry:live`, `telemetry:ingest:traces`, `telemetry:ingest:logs`, `telemetry:ingest:metrics`, `company:admin`.
-- `user`: `telemetry:read`, `telemetry:live`, `telemetry:ingest:traces`, `telemetry:ingest:logs`, `telemetry:ingest:metrics`.
+- `admin`: `company:admin`, plus implied project `admin` scopes for selected
+  projects.
+- `user`: no telemetry scopes from company membership alone. Telemetry scopes
+  come from project membership according to
+  [Project membership and roles](./project-membership.md).
 
 Company admin invariant:
 
@@ -62,8 +69,12 @@ Company membership in deployed SSO mode is invite-only after bootstrap:
 - later SSO users do not gain company access from SSO authentication alone;
 - company admins invite users by email;
 - invitations are always created with target role `user`;
+- project admins and company admins may attach pending project grants to an
+  invitation when inviting a user to a project role;
 - an invitation becomes an active membership only after an SSO provider returns a
   matching verified email;
+- pending project grants become active project memberships only after the
+  invitation is accepted;
 - admin promotion is allowed only for active members.
 
 ## Project Status
@@ -90,7 +101,10 @@ The cache is populated from control-plane snapshots and invalidation events. Def
 
 ## BFF Project Selection
 
-The BFF owns the selected project for browser sessions. The selected project is stored in the BFF session and mirrored in frontend route state. A selected project is valid only if the user is a member of the company that owns the project.
+The BFF owns the selected project for browser sessions. The selected project is
+stored in the BFF session and mirrored in frontend route state. A selected
+project is valid only if control-plane resolves project access through direct
+project membership, company-admin fallback, or local Personal admin fallback.
 
 Project selection rules:
 
@@ -99,6 +113,33 @@ Project selection rules:
 - When the user selects a project, the frontend calls `Mutation.selectProject(projectId)`.
 - The BFF validates access through control-plane, updates the session, and all subsequent GraphQL telemetry resolvers send that project in `AuthContext.projectId`.
 - Direct URL access to `/projects/:projectId/...` may select the project only after BFF validation.
+
+## Self-Observability Project
+
+CloudGrid self-observability is specified in
+`04-backend/self-observability.md`.
+
+Local mode bootstraps two durable projects in the `Personal` company:
+
+- `default`, name `Default project`, slug `default`, status `active`, for user/application telemetry.
+- `cloudgrid-system`, name `CloudGrid`, slug `cloudgrid-system`, status `active`, for CloudGrid service telemetry.
+
+The `cloudgrid-system` project is visible and selectable through the same GraphQL
+viewer, project list, and selected-project flows as ordinary projects. It is a
+fixed local system project: `Mutation.updateProject` must reject attempts to
+change its name, slug, or status with ERR-016. If project deletion is added
+later, deleting `cloudgrid-system` must also be rejected with ERR-016 unless a
+later spec explicitly changes this invariant.
+
+In deployed mode, control-plane must not create a company for
+self-observability. Operators must configure
+`CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID` and
+`CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID` to point at an existing company/project
+that should receive CloudGrid telemetry. When self-observability is enabled in
+deployed mode, control-plane startup/readiness must validate that the project
+exists and belongs to the configured company; a mismatch fails with ERR-009.
+Normal company membership and project selection rules are the only way to see
+that project's telemetry.
 
 ## Control Plane Data Model
 
@@ -110,6 +151,7 @@ Canonical records:
 - `membership`: relation edge from user to organization with company role.
 - `organization_invitation`: pending and terminal invite records keyed by
   organization and normalized email.
+- `email_delivery`: durable outbound invitation email outbox and retry state.
 - `ingest_credential`: metadata for tokens or client credentials allowed to ingest into one project. Secrets are never stored in plaintext.
 - `dashboard`: saved personal and project dashboard definitions. Built-in dashboards are deterministic read models and are not mutable rows.
 - `dashboard_pin`: relation edge from user to dashboard with project ID and sidebar position.
@@ -156,7 +198,9 @@ The control-plane wave must add these subjects before implementation:
 - `control.members.remove`
 - `control.invitations.list`
 - `control.invitations.create`
+- `control.invitations.resend`
 - `control.invitations.revoke`
+- `control.project_invitations.create`
 - `control.project_members.list`
 - `control.project_members.update`
 - `control.project_members.remove`
@@ -223,11 +267,17 @@ Public GraphQL and BFF bridge contracts must expose:
 - `Query.organizationMembers(organizationId)` for active members;
 - `Query.organizationInvitations(organizationId)` for admin-visible invitations;
 - `Mutation.inviteOrganizationMember(input: { organizationId, email })`;
+- `Mutation.inviteProjectMember(input: { projectId, email, role })`;
+- `Mutation.resendOrganizationInvitation(id)`;
 - `Mutation.revokeOrganizationInvitation(id)`.
 
 The old `updateOrganizationMember` mutation remains only for changing active
 member roles. It must not create members for unknown users and must not create
 pending invitations.
+
+Invitation email delivery, resend behavior, and project-grant onboarding are
+specified in
+[Invitation email delivery and project onboarding](./invitation-email-delivery.md).
 
 SSO provider deprovisioning is useful for enterprise deployments, but it is a
 separate `sso_sync` lifecycle policy. It must not be inferred from login
@@ -263,7 +313,7 @@ state or bypass control-plane for project AI settings.
 The control-plane SurrealDB database uses SurrealDB's multi-model features deliberately:
 
 - `organization`, `user`, `project`, `organization_invitation`,
-  `ingest_credential`, `project_membership`, `retention_policy`,
+  `email_delivery`, `ingest_credential`, `project_membership`, `retention_policy`,
   `project_ai_settings`, `alert_rule`, `alert_silence`, `alert_event`, and
   `project_status_event` are `SCHEMAFULL TYPE NORMAL` document tables with
   `PERMISSIONS NONE`.
@@ -284,7 +334,7 @@ The control-plane SurrealDB database uses SurrealDB's multi-model features delib
 
 Project-specific membership and roles are required. Company membership grants organization visibility, but project access is controlled by project membership unless the user is a company `admin`.
 
-Control-plane owns `project_membership` records and must follow [Project membership and roles](./project-membership.md). Project settings member pages are placeholders only until GraphQL, message, and SurrealDB contracts for project members are generated.
+Control-plane owns `project_membership` records and must follow [Project membership and roles](./project-membership.md). GraphQL, message bridge, SurrealDB schema, BFF bridge, and project settings UI support project member list/update/remove plus project invitations; pending project grants remain inactive until invitation acceptance creates direct project membership.
 
 ## Ingest Credential Management
 

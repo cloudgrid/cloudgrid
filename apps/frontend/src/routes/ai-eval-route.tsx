@@ -1,10 +1,7 @@
 import type {
-  AgentRun,
-  AgentRunSearchInput,
   AiQualityOverview,
   AiQualityOverviewInput,
-  AnnotationQueueItem,
-  AnnotationQueueSearchInput,
+  AppendDatasetItemsInput,
   CreateDatasetInput,
   CreateExperimentInput,
   CreateScorerInput,
@@ -16,6 +13,7 @@ import type {
   DatasetImportFormat,
   DatasetImportJob,
   DatasetImportScalarMappingInput,
+  DatasetItemInput,
   DatasetReviewStatus,
   DatasetSplit,
   Experiment,
@@ -30,18 +28,14 @@ import type {
 } from "@cloudgrid/ui-contracts";
 import { type UseQueryResult, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowRight,
-  Bot,
+  AlertCircle,
+  ArrowLeft,
   CheckCircle2,
   Database,
   Download,
-  ExternalLink,
   FileText,
   FlaskConical,
   Gauge,
-  MessageSquareText,
-  PanelRightOpen,
-  PencilLine,
   Plus,
   Settings,
   Trash2,
@@ -52,7 +46,6 @@ import {
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { CodeBlock } from "../components/code-block";
 import { EmptyState, ErrorPanel, LoadingRows } from "../components/query-state";
 import { SearchInput } from "../components/search-input";
 import { Badge } from "../components/ui/badge";
@@ -79,15 +72,6 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "../components/ui/sheet";
-import {
   Table,
   TableBody,
   TableCell,
@@ -96,8 +80,8 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Textarea } from "../components/ui/textarea";
 import {
-  agentRunTimelineRows,
   experimentScoreboardRows,
   itemRunScoreSummary,
   jsonPreview,
@@ -110,23 +94,30 @@ export const aiEvalEnabled =
   import.meta.env.CLOUDGRID_AI_EVAL_ENABLED !== "false" &&
   import.meta.env.VITE_CLOUDGRID_AI_EVAL_ENABLED !== "false";
 
-type AiEvalTab = "runs" | "datasets" | "scorers" | "experiments" | "production" | "annotations";
+type AiEvalTab = "datasets" | "scorers" | "experiments" | "production";
+type ExpectedAnswerMode = "text" | "json";
+type ExpectedJsonFieldType = "text" | "number" | "boolean";
+type ExpectedJsonField = {
+  id: string;
+  name: string;
+  type: ExpectedJsonFieldType;
+  value: string;
+};
+type ScorerExpectedValueType = "text" | "number" | "boolean" | "json";
 
 export function AiEvalRoute() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = readTab(searchParams.get("tab"));
   const query = searchParams.get("query") ?? "";
   const status = searchParams.get("status") ?? "";
-  const selectedRunId = searchParams.get("run");
+  const workflow = searchParams.get("workflow");
   const selectedDatasetId = searchParams.get("dataset");
   const selectedScorerId = searchParams.get("scorer");
   const selectedExperimentId = searchParams.get("experiment");
-  const selectedAnnotationId = searchParams.get("annotation");
   const telemetryClient = useTelemetryClient();
   const { client: controlClient, viewer } = useAppSession();
   const selectedProject = viewer?.selectedProject ?? null;
   const projectId = selectedProject?.id ?? "";
-  const [inspectorOpen, setInspectorOpen] = useState(false);
 
   const setParam = (key: string, value: string) => {
     const next = new URLSearchParams(searchParams);
@@ -139,46 +130,39 @@ export function AiEvalRoute() {
       next.delete("cursor");
     }
     if (key === "tab") {
-      next.delete("run");
       next.delete("dataset");
       next.delete("scorer");
       next.delete("experiment");
-      next.delete("annotation");
+      next.delete("workflow");
     }
     setSearchParams(next);
   };
-  const setSelected = (
-    key: "run" | "dataset" | "scorer" | "experiment" | "annotation",
-    value: string,
-  ) => {
+  const setSelected = (key: "dataset" | "scorer" | "experiment", value: string) => {
     const next = new URLSearchParams(searchParams);
-    next.set(key, value);
+    if (value) {
+      next.set(key, value);
+    } else {
+      next.delete(key);
+    }
     setSearchParams(next);
-    setInspectorOpen(true);
+  };
+  const setDatasetImportWorkflow = (datasetId: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", "datasets");
+    next.set("dataset", datasetId);
+    next.set("workflow", "dataset-import");
+    setSearchParams(next);
+  };
+  const clearWorkflow = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("workflow");
+    setSearchParams(next);
   };
 
-  const agentRunInput = useMemo<AgentRunSearchInput>(
-    () => ({
-      query: query || null,
-      status: readAgentRunStatus(status),
-      limit: 25,
-      cursor: searchParams.get("cursor"),
-    }),
-    [query, searchParams, status],
-  );
   const experimentInput = useMemo<ExperimentSearchInput>(
     () => ({
       query: query || null,
       status: readExperimentStatus(status),
-      limit: 25,
-      cursor: searchParams.get("cursor"),
-    }),
-    [query, searchParams, status],
-  );
-  const annotationInput = useMemo<AnnotationQueueSearchInput>(
-    () => ({
-      status: readAnnotationStatus(status),
-      reason: query || null,
       limit: 25,
       cursor: searchParams.get("cursor"),
     }),
@@ -194,11 +178,6 @@ export function AiEvalRoute() {
 
   const shouldQueryAiEval = aiEvalEnabled && Boolean(projectId);
 
-  const agentRunsQuery = useQuery({
-    enabled: shouldQueryAiEval && tab === "runs",
-    queryKey: ["AgentRuns", agentRunInput],
-    queryFn: () => telemetryClient.searchAgentRuns(agentRunInput),
-  });
   const datasetsQuery = useQuery({
     enabled: shouldQueryAiEval && (tab === "datasets" || tab === "experiments"),
     queryKey: ["Datasets", { query: query || null }],
@@ -214,11 +193,6 @@ export function AiEvalRoute() {
     queryKey: ["Experiments", experimentInput],
     queryFn: () => telemetryClient.searchExperiments(experimentInput),
   });
-  const annotationsQuery = useQuery({
-    enabled: shouldQueryAiEval && tab === "annotations",
-    queryKey: ["AnnotationQueue", annotationInput],
-    queryFn: () => telemetryClient.searchAnnotationQueue(annotationInput),
-  });
   const qualityQuery = useQuery({
     enabled: shouldQueryAiEval && tab === "production",
     queryKey: ["AiQualityOverview", qualityInput],
@@ -229,14 +203,8 @@ export function AiEvalRoute() {
     queryKey: ["ProjectAiSettings", projectId],
     queryFn: () => controlClient.getProjectAiSettings(projectId),
   });
-  const selectedRun =
-    agentRunsQuery.data?.items.find((run) => run.id === selectedRunId) ??
-    agentRunsQuery.data?.items[0] ??
-    null;
   const selectedDataset =
-    datasetsQuery.data?.items.find((dataset) => dataset.id === selectedDatasetId) ??
-    datasetsQuery.data?.items[0] ??
-    null;
+    datasetsQuery.data?.items.find((dataset) => dataset.id === selectedDatasetId) ?? null;
   const selectedScorer =
     scorersQuery.data?.items.find((scorer) => scorer.id === selectedScorerId) ??
     scorersQuery.data?.items[0] ??
@@ -244,10 +212,6 @@ export function AiEvalRoute() {
   const selectedExperiment =
     experimentsQuery.data?.items.find((experiment) => experiment.id === selectedExperimentId) ??
     experimentsQuery.data?.items[0] ??
-    null;
-  const selectedAnnotation =
-    annotationsQuery.data?.items.find((annotation) => annotation.id === selectedAnnotationId) ??
-    annotationsQuery.data?.items[0] ??
     null;
 
   if (!aiEvalEnabled) {
@@ -268,18 +232,26 @@ export function AiEvalRoute() {
       <div className="shrink-0">
         <h1 className="text-xl font-semibold tracking-normal">{t("aiEval.title")}</h1>
         <p className="text-sm text-muted-foreground">
-          Inspect agent runs, curate datasets, run evaluations, and monitor production quality.
+          Build datasets, define scorers, run experiments, and monitor production quality.
         </p>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <SearchInput
-          aria-label={t("filters.query")}
-          className="max-w-80"
-          onChange={(event) => setParam("query", event.target.value)}
-          placeholder={t("aiEval.searchPlaceholder")}
-          value={query}
-        />
-        {(tab === "runs" || tab === "experiments" || tab === "annotations") && (
+        {tab !== "production" ? (
+          <SearchInput
+            aria-label={t("filters.query")}
+            className="max-w-72"
+            onChange={(event) => setParam("query", event.target.value)}
+            placeholder={
+              tab === "datasets"
+                ? "Search datasets"
+                : tab === "scorers"
+                  ? "Search scorers"
+                  : "Search experiments"
+            }
+            value={query}
+          />
+        ) : null}
+        {tab === "experiments" && (
           <Select
             aria-label={t("filters.status")}
             onValueChange={(value) => setParam("status", value === "all" ? "" : value)}
@@ -291,12 +263,7 @@ export function AiEvalRoute() {
             <SelectContent>
               <SelectGroup>
                 <SelectItem value="all">{t("filters.allStatuses")}</SelectItem>
-                {(tab === "annotations"
-                  ? ["open", "in_review", "resolved", "dismissed"]
-                  : tab === "runs"
-                    ? ["ok", "error", "unset", "cancelled"]
-                    : ["queued", "running", "failed", "finished"]
-                ).map((candidate) => (
+                {["queued", "running", "failed", "finished"].map((candidate) => (
                   <SelectItem key={candidate} value={candidate}>
                     {aiEvalStatusLabel(candidate)}
                   </SelectItem>
@@ -307,17 +274,13 @@ export function AiEvalRoute() {
         )}
       </div>
       <AiEvalWorkflowStrip activeTab={tab} onSelect={(value) => setParam("tab", value)} />
-      <div className="grid min-h-0 flex-1 grid-cols-[220px_minmax(0,1fr)] overflow-hidden border xl:grid-cols-[220px_minmax(0,1fr)_360px]">
+      <div className="grid min-h-0 flex-1 grid-cols-[220px_minmax(0,1fr)] overflow-hidden border">
         <Tabs className="contents" onValueChange={(value) => setParam("tab", value)} value={tab}>
           <aside
             className="min-h-0 overflow-auto border-r bg-background p-3"
             data-ai-eval-left-rail="true"
           >
             <TabsList className="grid h-auto gap-1 bg-transparent p-0" variant="line">
-              <TabsTrigger className="justify-start" value="runs">
-                <Bot />
-                {t("aiEval.runs")}
-              </TabsTrigger>
               <TabsTrigger className="justify-start" value="datasets">
                 <Database />
                 {t("aiEval.datasets")}
@@ -334,53 +297,25 @@ export function AiEvalRoute() {
                 <Gauge />
                 Production quality
               </TabsTrigger>
-              <TabsTrigger className="justify-start" value="annotations">
-                <PencilLine />
-                {t("aiEval.annotations")}
-              </TabsTrigger>
             </TabsList>
           </aside>
           <main className="min-h-0 overflow-auto p-3" data-ai-eval-main-workspace="true">
-            <div className="mb-3 flex justify-end xl:hidden">
-              <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
-                <SheetTrigger asChild>
-                  <Button type="button" variant="outline">
-                    <PanelRightOpen data-icon="inline-start" />
-                    {t("aiEval.inspector")}
-                  </Button>
-                </SheetTrigger>
-                <SheetContent className="flex flex-col gap-0 p-0" side="right">
-                  <SheetHeader className="border-b px-4 py-3">
-                    <SheetTitle>{t("aiEval.inspector")}</SheetTitle>
-                  </SheetHeader>
-                  <div className="min-h-0 flex-1 overflow-auto p-4">
-                    <AiEvalInspector
-                      annotation={selectedAnnotation}
-                      dataset={selectedDataset}
-                      experiment={selectedExperiment}
-                      run={selectedRun}
-                      scorer={selectedScorer}
-                      tab={tab}
-                    />
-                  </div>
-                </SheetContent>
-              </Sheet>
-            </div>
-            <TabsContent className="m-0 min-h-0" value="runs">
-              <AgentRunsView
-                onNext={(cursor) => setParam("cursor", cursor)}
-                onSelect={(id) => setSelected("run", id)}
-                query={agentRunsQuery}
-                selectedId={selectedRun?.id ?? null}
-              />
-            </TabsContent>
             <TabsContent className="m-0 min-h-0" value="datasets">
-              <DatasetsView
-                onSelect={(id) => setSelected("dataset", id)}
-                projectId={projectId}
-                query={datasetsQuery}
-                selectedId={selectedDataset?.id ?? null}
-              />
+              {workflow === "dataset-import" && selectedDataset ? (
+                <DatasetImportWorkflow
+                  dataset={selectedDataset}
+                  onBack={clearWorkflow}
+                  onImported={() => void datasetsQuery.refetch()}
+                  projectId={projectId}
+                />
+              ) : (
+                <DatasetsView
+                  onImport={setDatasetImportWorkflow}
+                  onSelect={(id) => setSelected("dataset", id)}
+                  query={datasetsQuery}
+                  selectedId={selectedDataset?.id ?? null}
+                />
+              )}
             </TabsContent>
             <TabsContent className="m-0 min-h-0" value="scorers">
               <ScorersView
@@ -410,27 +345,7 @@ export function AiEvalRoute() {
                 settingsQuery={settingsQuery}
               />
             </TabsContent>
-            <TabsContent className="m-0 min-h-0" value="annotations">
-              <AnnotationQueueView
-                onSelect={(id) => setSelected("annotation", id)}
-                query={annotationsQuery}
-                selectedId={selectedAnnotation?.id ?? null}
-              />
-            </TabsContent>
           </main>
-          <aside
-            className="hidden min-h-0 overflow-auto border-l bg-background p-3 xl:block"
-            data-ai-eval-right-inspector="true"
-          >
-            <AiEvalInspector
-              annotation={selectedAnnotation}
-              dataset={selectedDataset}
-              experiment={selectedExperiment}
-              run={selectedRun}
-              scorer={selectedScorer}
-              tab={tab}
-            />
-          </aside>
         </Tabs>
       </div>
     </section>
@@ -444,11 +359,6 @@ const aiEvalWorkflowSteps: Array<{
   label: string;
   description: string;
 }> = [
-  {
-    tab: "runs",
-    label: "Observe runs",
-    description: "Review agent behavior from telemetry.",
-  },
   {
     tab: "datasets",
     label: "Curate datasets",
@@ -479,160 +389,39 @@ function AiEvalWorkflowStrip({
   onSelect: (tab: AiEvalTab) => void;
 }) {
   return (
-    <div className="grid shrink-0 gap-2 border bg-background p-2 xl:grid-cols-5">
+    <div className="grid shrink-0 gap-2 border bg-background p-2 xl:grid-cols-4">
       {aiEvalWorkflowSteps.map((step, index) => (
-        <button
-          className="grid min-h-16 gap-1 border-l px-3 py-2 text-left text-sm first:border-l-0 hover:bg-muted/40 data-[active=true]:bg-muted"
+        <Button
+          className="grid h-auto min-h-16 justify-start gap-1 rounded-none border-l px-3 py-2 text-left text-sm first:border-l-0 hover:bg-muted/40 data-[active=true]:bg-muted"
           data-active={activeTab === step.tab}
           key={step.tab}
           onClick={() => onSelect(step.tab)}
           type="button"
+          variant="ghost"
         >
+          <CheckCircle2 className="sr-only" aria-hidden />
           <span className="font-medium">
             {index + 1}. {step.label}
           </span>
           <span className="text-xs text-muted-foreground">{step.description}</span>
-        </button>
+        </Button>
       ))}
-    </div>
-  );
-}
-
-function AgentRunsView({
-  query,
-  onNext,
-  onSelect,
-  selectedId,
-}: {
-  query: QueryResult<Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchAgentRuns"]>>>;
-  onNext: (cursor: string) => void;
-  onSelect: (id: string) => void;
-  selectedId: string | null;
-}) {
-  return (
-    <QueryFrame query={query}>
-      {query.data && query.data.items.length > 0 ? (
-        <div className="min-h-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("aiEval.agent")}</TableHead>
-                <TableHead>{t("filters.status")}</TableHead>
-                <TableHead>{t("traceDetail.duration")}</TableHead>
-                <TableHead>{t("traceDetail.traceStructure")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {query.data.items.map((run) => (
-                <TableRow
-                  aria-selected={run.id === selectedId}
-                  key={run.id}
-                  onClick={() => onSelect(run.id)}
-                >
-                  <TableCell>{run.agent.name}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={run.status} />
-                  </TableCell>
-                  <TableCell>{formatMs(run.durationMs)}</TableCell>
-                  <TableCell>
-                    <Link
-                      className="text-primary underline-offset-4 hover:underline"
-                      to={`/traces/${run.traceId}`}
-                    >
-                      {run.traceId.slice(0, 12)}
-                    </Link>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {query.data.nextCursor ? (
-            <Button onClick={() => onNext(query.data.nextCursor ?? "")} variant="outline">
-              <ArrowRight data-icon="inline-start" />
-              {t("actions.nextPage")}
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-    </QueryFrame>
-  );
-}
-
-function AgentRunDetail({ run }: { run: AgentRun }) {
-  const timelineRows = agentRunTimelineRows(run);
-  return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <section className="border-b pb-3">
-        <h2 className="flex items-center gap-2 text-base font-semibold">
-          <Bot />
-          {run.agent.name}
-        </h2>
-        <div className="mt-3 grid gap-3 text-sm">
-          <Metric label={t("aiEval.tokens")} value={run.tokenTotals?.total ?? t("value.none")} />
-          <Metric label={t("aiEval.cost")} value={formatMoney(run.costEstimate)} />
-          <Metric label={t("traceDetail.duration")} value={formatMs(run.durationMs)} />
-        </div>
-      </section>
-      <section className="grid gap-4">
-        <div>
-          <h2 className="mb-2 text-sm font-medium">{t("aiEval.timeline")}</h2>
-          <div className="flex flex-col gap-2">
-            {timelineRows.map((row) => (
-              <div className="border-b bg-background py-3 text-sm last:border-b-0" key={row.id}>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium">{row.label}</span>
-                  <Badge variant="outline">{row.kind}</Badge>
-                </div>
-                <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
-                  <span>{row.spanId}</span>
-                  <span>
-                    {formatMs(row.latencyMs)}
-                    {row.tokenTotal ? ` · ${row.tokenTotal} ${t("aiEval.tokens")}` : ""}
-                  </span>
-                  <span>{row.details}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div>
-          <h2 className="mb-2 text-sm font-medium">{t("aiEval.transcript")}</h2>
-          <div className="flex flex-col gap-2">
-            {run.transcript.map((message) => (
-              <div
-                className="border-b bg-background py-3 text-sm last:border-b-0"
-                key={`${message.spanId}-${message.timestamp ?? message.role}-${message.contentDigest ?? jsonPreview(message.content, 24)}`}
-              >
-                <div className="flex items-center gap-2">
-                  <MessageSquareText className="size-4" />
-                  <span className="font-medium">{message.role}</span>
-                  <span className="text-xs text-muted-foreground">{message.timestamp}</span>
-                </div>
-                <p className="mt-2 break-words text-muted-foreground">
-                  {message.contentDigest ?? jsonPreview(message.content, 240)}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
     </div>
   );
 }
 
 function DatasetsView({
   query,
+  onImport,
   onSelect,
-  projectId,
   selectedId,
 }: {
   query: QueryResult<Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchDatasets"]>>>;
+  onImport: (datasetId: string) => void;
   onSelect: (id: string) => void;
-  projectId: string;
   selectedId: string | null;
 }) {
-  const selected =
-    query.data?.items.find((dataset) => dataset.id === selectedId) ?? query.data?.items[0];
+  const selected = query.data?.items.find((dataset) => dataset.id === selectedId) ?? null;
   const onCreated = (dataset: Dataset) => {
     onSelect(dataset.id);
     void query.refetch();
@@ -649,15 +438,27 @@ function DatasetsView({
     <div className="flex min-h-0 flex-col gap-3">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b pb-3">
         <div>
-          <h2 className="text-sm font-medium">Dataset administration</h2>
+          <h2 className="text-sm font-medium">{selected ? selected.name : "Datasets"}</h2>
           <p className="text-sm text-muted-foreground">
-            Create datasets, stage imports, review rows, and export canonical examples.
+            {selected
+              ? "Manage rows, imports, exports, answer shape, and review state for this dataset."
+              : "Create and select versioned example sets for scorer calibration and experiment runs."}
           </p>
         </div>
-        <CreateDatasetDialog onCreated={onCreated} />
+        <div className="flex flex-wrap items-center gap-2">
+          {selected ? (
+            <Button onClick={() => onSelect("")} size="sm" type="button" variant="outline">
+              <ArrowLeft data-icon="inline-start" />
+              All datasets
+            </Button>
+          ) : null}
+          <CreateDatasetDialog onCreated={onCreated} />
+        </div>
       </div>
       {query.data && query.data.items.length > 0 ? (
-        <div className="grid min-h-0 gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+        selected ? (
+          <DatasetItems dataset={selected} onImport={() => onImport(selected.id)} />
+        ) : (
           <div className="min-h-0 overflow-auto border">
             <Table>
               <TableHeader>
@@ -665,31 +466,24 @@ function DatasetsView({
                   <TableHead>{t("aiEval.dataset")}</TableHead>
                   <TableHead>{t("aiEval.version")}</TableHead>
                   <TableHead>{t("aiEval.items")}</TableHead>
+                  <TableHead>Reviewed</TableHead>
+                  <TableHead>Health</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {query.data.items.map((dataset) => (
-                  <TableRow
-                    aria-selected={dataset.id === selected?.id}
-                    key={dataset.id}
-                    onClick={() => onSelect(dataset.id)}
-                  >
+                  <TableRow key={dataset.id} onClick={() => onSelect(dataset.id)}>
                     <TableCell>{dataset.name}</TableCell>
                     <TableCell>{dataset.version}</TableCell>
                     <TableCell>{dataset.itemCount}</TableCell>
+                    <TableCell>{dataset.reviewedItemCount}</TableCell>
+                    <TableCell>{dataset.health.status}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
-          {selected ? (
-            <DatasetItems
-              dataset={selected}
-              onImported={() => void query.refetch()}
-              projectId={projectId}
-            />
-          ) : null}
-        </div>
+        )
       ) : (
         <EmptyState
           description="Create a dataset first, then import JSONL, JSON, CSV, or ZIP examples for evaluation runs."
@@ -776,7 +570,10 @@ function CreateDatasetDialog({
         </FieldGroup>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">Cancel</Button>
+            <Button variant="outline">
+              <XCircle data-icon="inline-start" />
+              Cancel
+            </Button>
           </DialogClose>
           <Button
             disabled={mutation.isPending}
@@ -799,44 +596,366 @@ function CreateDatasetDialog({
   );
 }
 
-function DatasetItems({
-  dataset,
-  onImported,
-  projectId,
-}: {
-  dataset: Dataset;
-  onImported: () => void;
-  projectId: string;
-}) {
+function DatasetItems({ dataset, onImport }: { dataset: Dataset; onImport: () => void }) {
+  const items = dataset.items?.items ?? [];
+
   return (
-    <section>
+    <section className="min-h-0" data-ai-eval-dataset-workbench="true">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-medium">{dataset.name}</h2>
+        <div>
+          <h2 className="text-sm font-medium">{dataset.name}</h2>
+          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span>v{dataset.version}</span>
+            <span>{dataset.itemCount} items</span>
+            <span>{dataset.reviewedItemCount} reviewed</span>
+            <span>{dataset.health.status}</span>
+          </div>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
-          <DatasetImportSheet dataset={dataset} onImported={onImported} projectId={projectId} />
+          <Button onClick={onImport} size="sm" type="button" variant="outline">
+            <Upload data-icon="inline-start" />
+            Import
+          </Button>
           <DatasetExportDialog dataset={dataset} />
         </div>
+      </div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-y py-2">
+        <p className="text-sm text-muted-foreground">
+          Review rows here before using them in experiments.
+        </p>
+        <AddDatasetRowDialog dataset={dataset} />
       </div>
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead>Split</TableHead>
+            <TableHead>Review</TableHead>
             <TableHead>{t("aiEval.input")}</TableHead>
             <TableHead>{t("aiEval.expected")}</TableHead>
             <TableHead>{t("aiEval.source")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {(dataset.items?.items ?? []).map((item) => (
+          {items.map((item) => (
             <TableRow key={item.id}>
+              <TableCell>{item.split}</TableCell>
+              <TableCell>{item.reviewStatus}</TableCell>
               <TableCell className="max-w-72 truncate">{jsonPreview(item.input)}</TableCell>
               <TableCell className="max-w-72 truncate">{jsonPreview(item.expected)}</TableCell>
-              <TableCell>{item.sourceTraceId ?? t("value.none")}</TableCell>
+              <TableCell>
+                {item.sourceTraceId ? (
+                  <Link
+                    className="text-primary underline-offset-4 hover:underline"
+                    to={`/traces/${item.sourceTraceId}`}
+                  >
+                    {item.sourceSpanId
+                      ? `${item.sourceTraceId.slice(0, 10)} / ${item.sourceSpanId.slice(0, 10)}`
+                      : item.sourceTraceId.slice(0, 12)}
+                  </Link>
+                ) : (
+                  t("value.none")
+                )}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
+      {items.length === 0 ? (
+        <div className="mt-3 border border-dashed p-6 text-center">
+          <h3 className="text-sm font-medium">No rows in this dataset version</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Import examples to create a reviewed dataset version for experiments.
+          </p>
+          <Button className="mt-3" onClick={onImport} type="button">
+            <Upload data-icon="inline-start" />
+            Import rows
+          </Button>
+        </div>
+      ) : null}
     </section>
   );
+}
+
+function AddDatasetRowDialog({ dataset }: { dataset: Dataset }) {
+  const telemetryClient = useTelemetryClient();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [inputText, setInputText] = useState("");
+  const [expectedText, setExpectedText] = useState("");
+  const [expectedMode, setExpectedMode] = useState<ExpectedAnswerMode>("text");
+  const [expectedJsonFields, setExpectedJsonFields] = useState<ExpectedJsonField[]>([
+    { id: "answer", name: "answer", type: "text", value: "" },
+  ]);
+  const [split, setSplit] = useState<DatasetSplit>("dev");
+  const [reviewStatus, setReviewStatus] = useState<DatasetReviewStatus>("unreviewed");
+  const [sourceTraceId, setSourceTraceId] = useState("");
+  const [sourceSpanId, setSourceSpanId] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const mutation = useMutation({
+    mutationFn: () => {
+      const item: DatasetItemInput = {
+        input: { prompt: inputText.trim() },
+        expected:
+          expectedMode === "json"
+            ? buildExpectedJsonValue(expectedJsonFields)
+            : expectedText.trim()
+              ? { answer: expectedText.trim() }
+              : null,
+        metadata: {},
+        sourceTraceId: sourceTraceId.trim() || null,
+        sourceSpanId: sourceSpanId.trim() || null,
+        split,
+        reviewStatus,
+      };
+      const input: AppendDatasetItemsInput = { datasetId: dataset.id, items: [item] };
+      return telemetryClient.appendDatasetItems(input);
+    },
+    onSuccess() {
+      setOpen(false);
+      setInputText("");
+      setExpectedText("");
+      setExpectedMode("text");
+      setExpectedJsonFields([{ id: "answer", name: "answer", type: "text", value: "" }]);
+      setSourceTraceId("");
+      setSourceSpanId("");
+      void queryClient.invalidateQueries({ queryKey: ["Datasets"] });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" type="button" variant="outline">
+          <Plus data-icon="inline-start" />
+          Add row
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add dataset row</DialogTitle>
+          <DialogDescription>
+            Add one reviewed example to the next dataset version.
+          </DialogDescription>
+        </DialogHeader>
+        <FieldGroup>
+          <Field>
+            <FieldLabel>Input prompt</FieldLabel>
+            <Textarea
+              onChange={(event) => setInputText(event.target.value)}
+              placeholder="Question, user request, or evaluation input"
+              value={inputText}
+            />
+          </Field>
+          <Field>
+            <FieldLabel>Expected answer format</FieldLabel>
+            <Select
+              onValueChange={(value) => setExpectedMode(value as ExpectedAnswerMode)}
+              value={expectedMode}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="text">Text answer</SelectItem>
+                <SelectItem value="json">JSON fields</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          {expectedMode === "text" ? (
+            <Field>
+              <FieldLabel>Expected answer</FieldLabel>
+              <Textarea
+                onChange={(event) => setExpectedText(event.target.value)}
+                placeholder="Expected output or acceptance target"
+                value={expectedText}
+              />
+            </Field>
+          ) : (
+            <ExpectedJsonFieldsEditor
+              fields={expectedJsonFields}
+              onChange={setExpectedJsonFields}
+            />
+          )}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldLabel>Split</FieldLabel>
+              <Select onValueChange={(value) => setSplit(value as DatasetSplit)} value={split}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {datasetSplits.map((candidate) => (
+                    <SelectItem key={candidate} value={candidate}>
+                      {candidate}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Review status</FieldLabel>
+              <Select
+                onValueChange={(value) => setReviewStatus(value as DatasetReviewStatus)}
+                value={reviewStatus}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {datasetReviewStatuses.map((candidate) => (
+                    <SelectItem key={candidate} value={candidate}>
+                      {candidate}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldLabel>Source trace</FieldLabel>
+              <Input
+                onChange={(event) => setSourceTraceId(event.target.value)}
+                value={sourceTraceId}
+              />
+            </Field>
+            <Field>
+              <FieldLabel>Source span</FieldLabel>
+              <Input
+                onChange={(event) => setSourceSpanId(event.target.value)}
+                value={sourceSpanId}
+              />
+            </Field>
+          </div>
+          {(localError ?? mutation.error?.message) ? (
+            <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {localError ?? mutation.error?.message}
+            </div>
+          ) : null}
+        </FieldGroup>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">
+              <XCircle data-icon="inline-start" />
+              Cancel
+            </Button>
+          </DialogClose>
+          <Button
+            disabled={mutation.isPending}
+            onClick={() => {
+              setLocalError(null);
+              if (!inputText.trim()) {
+                setLocalError("Input prompt is required.");
+                return;
+              }
+              void mutation.mutateAsync();
+            }}
+            type="button"
+          >
+            <Plus data-icon="inline-start" />
+            {mutation.isPending ? "Adding..." : "Add row"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ExpectedJsonFieldsEditor({
+  fields,
+  onChange,
+}: {
+  fields: ExpectedJsonField[];
+  onChange: (fields: ExpectedJsonField[]) => void;
+}) {
+  const update = (id: string, patch: Partial<ExpectedJsonField>) => {
+    onChange(fields.map((field) => (field.id === id ? { ...field, ...patch } : field)));
+  };
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <FieldLabel>Expected JSON shape</FieldLabel>
+        <Button
+          onClick={() =>
+            onChange([...fields, { id: `field-${Date.now()}`, name: "", type: "text", value: "" }])
+          }
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <Plus data-icon="inline-start" />
+          Add field
+        </Button>
+      </div>
+      <div className="grid gap-2">
+        {fields.map((field) => (
+          <div
+            className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_9rem_minmax(0,1fr)_auto]"
+            key={field.id}
+          >
+            <Input
+              aria-label="JSON field name"
+              onChange={(event) => update(field.id, { name: event.target.value })}
+              placeholder="answer"
+              value={field.name}
+            />
+            <Select
+              onValueChange={(value) => update(field.id, { type: value as ExpectedJsonFieldType })}
+              value={field.type}
+            >
+              <SelectTrigger aria-label="JSON field type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="text">Text</SelectItem>
+                <SelectItem value="number">Number</SelectItem>
+                <SelectItem value="boolean">Boolean</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input
+              aria-label="JSON field value"
+              onChange={(event) => update(field.id, { value: event.target.value })}
+              placeholder={
+                field.type === "boolean" ? "true" : field.type === "number" ? "1" : "value"
+              }
+              value={field.value}
+            />
+            <Button
+              aria-label="Remove expected JSON field"
+              disabled={fields.length === 1}
+              onClick={() => onChange(fields.filter((candidate) => candidate.id !== field.id))}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              <Trash2 />
+            </Button>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Define the output fields this dataset expects. Scorers can target these paths later.
+      </p>
+    </div>
+  );
+}
+
+function buildExpectedJsonValue(fields: ExpectedJsonField[]) {
+  const entries = fields
+    .map((field) => [field.name.trim(), coerceExpectedFieldValue(field)] as const)
+    .filter(([name]) => Boolean(name));
+  return entries.length ? Object.fromEntries(entries) : null;
+}
+
+function coerceExpectedFieldValue(field: ExpectedJsonField) {
+  if (field.type === "number") {
+    const parsed = Number(field.value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (field.type === "boolean") {
+    return field.value === "true";
+  }
+  return field.value;
 }
 
 type DatasetImportUploadResponse = {
@@ -879,37 +998,85 @@ const datasetSplits: DatasetSplit[] = [
 ];
 const datasetReviewStatuses: DatasetReviewStatus[] = ["unreviewed", "reviewed", "rejected"];
 const mappingSourceKinds: MappingSourceKind[] = ["column", "jsonPath", "constant", "defaultValue"];
-const scorerKinds: ScorerKind[] = [
-  "deterministic",
-  "schema_json",
-  "semantic",
-  "rag",
-  "llm_judge",
-  "tool_correctness",
-  "trajectory",
-  "human",
-];
+type ScorerTemplateId = "contains" | "exact" | "json_schema" | "semantic" | "llm_judge";
 
-function DatasetImportSheet({
+const scorerTemplates: Array<{
+  id: ScorerTemplateId;
+  label: string;
+  kind: ScorerKind;
+  description: string;
+}> = [
+  {
+    id: "contains",
+    label: "Contains text",
+    kind: "deterministic",
+    description: "Passes when a field contains required text.",
+  },
+  {
+    id: "exact",
+    label: "Exact match",
+    kind: "deterministic",
+    description: "Passes when a field equals the expected value.",
+  },
+  {
+    id: "json_schema",
+    label: "JSON schema",
+    kind: "schema_json",
+    description: "Validates structured output against a named schema.",
+  },
+  {
+    id: "semantic",
+    label: "Semantic similarity",
+    kind: "semantic",
+    description: "Offline scorer for meaning-level answer similarity.",
+  },
+  {
+    id: "llm_judge",
+    label: "LLM judge rubric",
+    kind: "llm_judge",
+    description: "Uses a judge rubric and provider alias for offline evaluation.",
+  },
+];
+const defaultScorerTemplate = scorerTemplates[0] ?? {
+  id: "contains" as const,
+  label: "Contains text",
+  kind: "deterministic" as const,
+  description: "Passes when a field contains required text.",
+};
+const scorerMatchFields = [
+  { value: "expected.answer", label: "Expected answer", valueType: "text" },
+  { value: "output.answer", label: "Model JSON field: answer", valueType: "text/json" },
+  { value: "output.text", label: "Model text output", valueType: "text" },
+  { value: "output.score", label: "Model JSON field: score", valueType: "number" },
+  { value: "output.passed", label: "Model JSON field: passed", valueType: "boolean" },
+] as const;
+
+function DatasetImportWorkflow({
   dataset,
+  onBack,
   onImported,
   projectId,
 }: {
   dataset: Dataset;
+  onBack: () => void;
   onImported: () => void;
   projectId: string;
 }) {
   const queryClient = useQueryClient();
   const telemetryClient = useTelemetryClient();
-  const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [format, setFormat] = useState<DatasetImportFormat>("jsonl");
+  const [format, setFormat] = useState<DatasetImportFormat>("csv");
+  const [preset, setPreset] = useState<"csvPromptAnswer" | "jsonlMessages" | "custom">(
+    "csvPromptAnswer",
+  );
   const [upload, setUpload] = useState<DatasetImportUploadResponse | null>(null);
   const [includedFiles, setIncludedFiles] = useState<string[]>([]);
   const [inputMappings, setInputMappings] = useState<FieldMappingDraft[]>([
-    mappingDraft("input", "prompt"),
+    mappingDraft("input", "prompt", "prompt"),
   ]);
-  const [expectedMappings, setExpectedMappings] = useState<FieldMappingDraft[]>([]);
+  const [expectedMappings, setExpectedMappings] = useState<FieldMappingDraft[]>([
+    mappingDraft("expected", "answer", "answer"),
+  ]);
   const [metadataMappings, setMetadataMappings] = useState<FieldMappingDraft[]>([]);
   const [sourceTraceId, setSourceTraceId] = useState<ScalarMappingDraft>(emptyScalarMapping());
   const [sourceSpanId, setSourceSpanId] = useState<ScalarMappingDraft>(emptyScalarMapping());
@@ -1010,213 +1177,269 @@ function DatasetImportSheet({
     }
   };
 
+  const applyPreset = (nextPreset: typeof preset) => {
+    setPreset(nextPreset);
+    if (nextPreset === "csvPromptAnswer") {
+      setFormat("csv");
+      setInputMappings([mappingDraft("input", "prompt", "prompt")]);
+      setExpectedMappings([mappingDraft("expected", "answer", "answer")]);
+    }
+    if (nextPreset === "jsonlMessages") {
+      setFormat("jsonl");
+      setInputMappings([mappingDraft("input", "messages", "$.messages")]);
+      setExpectedMappings([mappingDraft("expected", "answer", "$.expected")]);
+    }
+  };
+
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <Button size="sm" type="button" variant="outline">
-          <Upload data-icon="inline-start" />
-          Import
-        </Button>
-      </SheetTrigger>
-      <SheetContent className="w-full gap-0 p-0 sm:max-w-xl" side="right">
-        <SheetHeader className="border-b px-4 py-3">
-          <SheetTitle>Import dataset items</SheetTitle>
-          <SheetDescription>
-            Upload JSONL, JSON array, CSV, or ZIP bytes, then preview backend validation before
-            commit.
-          </SheetDescription>
-        </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
-          <div className="grid gap-5">
-            <section className="grid gap-3 border-b pb-4">
-              <h3 className="text-sm font-medium">1. Upload file</h3>
-              <FieldGroup>
-                <Field>
-                  <FieldLabel htmlFor="dataset-import-file">File</FieldLabel>
-                  <Input
-                    accept=".jsonl,.json,.csv,.zip"
-                    id="dataset-import-file"
-                    onChange={(event) => {
-                      setFile(event.target.files?.[0] ?? null);
-                      setUpload(null);
-                      setPreviewJob(null);
-                      setCommittedJob(null);
-                    }}
-                    type="file"
-                  />
-                </Field>
-                <Field>
-                  <FieldLabel>Format</FieldLabel>
-                  <Select
-                    onValueChange={(value) => setFormat(value as DatasetImportFormat)}
-                    value={format}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {datasetImportFormats.map((candidate) => (
-                        <SelectItem key={candidate} value={candidate}>
-                          {datasetImportFormatLabel(candidate)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Button
-                  disabled={!file || uploadMutation.isPending}
-                  onClick={() => void uploadMutation.mutateAsync()}
-                  type="button"
-                  variant="secondary"
-                >
-                  <Upload data-icon="inline-start" />
-                  {uploadMutation.isPending ? "Uploading..." : "Stage upload"}
-                </Button>
-              </FieldGroup>
-              {upload ? (
-                <div className="grid gap-1 text-sm text-muted-foreground">
-                  <span>
-                    {upload.filename} · {formatBytes(upload.sizeBytes)} · expires {upload.expiresAt}
-                  </span>
-                  <span className="break-all">SHA-256 {upload.sha256}</span>
-                </div>
-              ) : null}
-              {(upload?.containedFiles?.length ?? 0) > 0 ? (
-                <SourceFileSelector
-                  containedFiles={upload?.containedFiles ?? []}
-                  includedFiles={includedFiles}
-                  onChange={setIncludedFiles}
-                />
-              ) : null}
-            </section>
-            <section className="grid gap-4 border-b pb-4">
-              <div>
-                <h3 className="text-sm font-medium">2. Map fields</h3>
-                <p className="text-sm text-muted-foreground">
-                  Use explicit columns, JSON paths, constants, or defaults. Row parsing and
-                  validation happen in CloudGrid after preview.
-                </p>
-              </div>
-              <FieldMappingGroup
-                label="Input"
-                mappings={inputMappings}
-                onChange={setInputMappings}
-                targetPrefix="input"
-              />
-              <FieldMappingGroup
-                label="Expected"
-                mappings={expectedMappings}
-                onChange={setExpectedMappings}
-                targetPrefix="expected"
-              />
-              <FieldMappingGroup
-                label="Metadata"
-                mappings={metadataMappings}
-                onChange={setMetadataMappings}
-                targetPrefix="metadata"
-              />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <ScalarMappingControl
-                  label="sourceTraceId"
-                  onChange={setSourceTraceId}
-                  value={sourceTraceId}
-                />
-                <ScalarMappingControl
-                  label="sourceSpanId"
-                  onChange={setSourceSpanId}
-                  value={sourceSpanId}
-                />
-                <ScalarMappingControl
-                  label="split"
-                  onChange={setSplitMapping}
-                  value={splitMapping}
-                />
-                <ScalarMappingControl
-                  label="reviewStatus"
-                  onChange={setReviewStatusMapping}
-                  value={reviewStatusMapping}
-                />
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field>
-                  <FieldLabel>Default split</FieldLabel>
-                  <Select
-                    onValueChange={(value) => setDefaultSplit(value as DatasetSplit)}
-                    value={defaultSplit}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {datasetSplits.map((candidate) => (
-                        <SelectItem key={candidate} value={candidate}>
-                          {candidate}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field>
-                  <FieldLabel>Default review status</FieldLabel>
-                  <Select
-                    onValueChange={(value) => setDefaultReviewStatus(value as DatasetReviewStatus)}
-                    value={defaultReviewStatus}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {datasetReviewStatuses.map((candidate) => (
-                        <SelectItem key={candidate} value={candidate}>
-                          {candidate}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              </div>
-              <div className="flex items-start gap-2 text-sm">
-                <Checkbox
-                  id="dataset-import-partial-commit"
-                  checked={allowPartialCommit}
-                  onCheckedChange={(checked) => setAllowPartialCommit(checked === true)}
-                />
-                <label htmlFor="dataset-import-partial-commit">
-                  Allow partial commit of valid rows when preview reports row errors.
-                  <span className="block text-muted-foreground">
-                    Uses commit mode <code>valid_rows_only</code>; otherwise commit uses{" "}
-                    <code>reject_if_any_error</code>.
-                  </span>
-                </label>
-              </div>
+    <div className="flex min-h-0 flex-col gap-4" data-ai-eval-dataset-import-workflow="true">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3">
+        <div>
+          <Button className="mb-2" onClick={onBack} size="sm" type="button" variant="ghost">
+            <ArrowLeft data-icon="inline-start" />
+            Back to dataset
+          </Button>
+          <h2 className="text-sm font-medium">Import dataset rows</h2>
+          <p className="text-sm text-muted-foreground">
+            Stage a file, map source fields, preview backend validation, then commit a new version
+            of {dataset.name}.
+          </p>
+        </div>
+        <div className="grid min-w-40 gap-1 text-xs text-muted-foreground">
+          <span>Dataset v{dataset.version}</span>
+          <span>{dataset.itemCount} current items</span>
+        </div>
+      </div>
+      <div className="grid gap-5">
+        <section className="grid gap-3 border-b pb-4">
+          <h3 className="text-sm font-medium">1. Choose import shape</h3>
+          <div className="grid gap-2 md:grid-cols-3">
+            {[
+              {
+                id: "csvPromptAnswer" as const,
+                label: "CSV prompt/answer",
+                description: "Columns named prompt and answer.",
+              },
+              {
+                id: "jsonlMessages" as const,
+                label: "JSONL messages",
+                description: "Each line has messages and expected.",
+              },
+              {
+                id: "custom" as const,
+                label: "Custom mapping",
+                description: "Pick columns, JSON paths, constants, or defaults.",
+              },
+            ].map((candidate) => (
               <Button
-                disabled={!upload || prepareMutation.isPending}
-                onClick={onPrepare}
+                className="h-auto justify-start rounded-none border p-3 text-left text-sm hover:bg-muted/40 data-[active=true]:bg-muted"
+                data-active={preset === candidate.id}
+                key={candidate.id}
+                onClick={() => applyPreset(candidate.id)}
                 type="button"
-                variant="secondary"
+                variant="ghost"
               >
-                <FileText data-icon="inline-start" />
-                {prepareMutation.isPending ? "Previewing..." : "Preview import"}
+                <CheckCircle2 className="sr-only" aria-hidden />
+                <span className="block font-medium">{candidate.label}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {candidate.description}
+                </span>
               </Button>
-            </section>
-            <DatasetImportPreview job={previewJob} sourceFiles={sourceFiles} />
-            {committedJob?.committedDatasetVersion ? (
-              <section className="grid gap-2 border-b pb-4 text-sm">
-                <h3 className="font-medium">Committed</h3>
-                <p className="text-muted-foreground">
-                  Dataset version {committedJob.committedDatasetVersion} was created from import{" "}
-                  {committedJob.id}.
-                </p>
-              </section>
-            ) : null}
-            {error ? (
-              <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
-              </div>
+            ))}
+          </div>
+        </section>
+        <section className="grid gap-3 border-b pb-4">
+          <h3 className="text-sm font-medium">2. Upload file</h3>
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_14rem]">
+            <Field>
+              <FieldLabel htmlFor="dataset-import-file">File</FieldLabel>
+              <Input
+                accept=".jsonl,.json,.csv,.zip"
+                id="dataset-import-file"
+                onChange={(event) => {
+                  setFile(event.target.files?.[0] ?? null);
+                  setUpload(null);
+                  setPreviewJob(null);
+                  setCommittedJob(null);
+                }}
+                type="file"
+              />
+            </Field>
+            <Field>
+              <FieldLabel>Format</FieldLabel>
+              <Select
+                onValueChange={(value) => setFormat(value as DatasetImportFormat)}
+                value={format}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {datasetImportFormats.map((candidate) => (
+                    <SelectItem key={candidate} value={candidate}>
+                      {datasetImportFormatLabel(candidate)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              disabled={!file || uploadMutation.isPending}
+              onClick={() => void uploadMutation.mutateAsync()}
+              type="button"
+              variant="secondary"
+            >
+              <Upload data-icon="inline-start" />
+              {uploadMutation.isPending ? "Uploading..." : "Stage upload"}
+            </Button>
+            {!file ? (
+              <span className="text-xs text-muted-foreground">Choose a file before staging.</span>
             ) : null}
           </div>
-        </div>
-        <SheetFooter className="border-t px-4 py-3">
+          {upload ? (
+            <div className="grid gap-1 text-sm text-muted-foreground">
+              <span>
+                {upload.filename} · {formatBytes(upload.sizeBytes)} · expires {upload.expiresAt}
+              </span>
+              <span className="break-all">SHA-256 {upload.sha256}</span>
+            </div>
+          ) : null}
+          {(upload?.containedFiles?.length ?? 0) > 0 ? (
+            <SourceFileSelector
+              containedFiles={upload?.containedFiles ?? []}
+              includedFiles={includedFiles}
+              onChange={setIncludedFiles}
+            />
+          ) : null}
+        </section>
+        <section className="grid gap-4 border-b pb-4">
+          <div>
+            <h3 className="text-sm font-medium">3. Map fields</h3>
+            <p className="text-sm text-muted-foreground">
+              Use columns, JSON paths, constants, or defaults. Parsing and validation happen after
+              preview, not in the browser.
+            </p>
+          </div>
+          <FieldMappingGroup
+            label="Input"
+            mappings={inputMappings}
+            onChange={setInputMappings}
+            targetPrefix="input"
+          />
+          <FieldMappingGroup
+            label="Expected"
+            mappings={expectedMappings}
+            onChange={setExpectedMappings}
+            targetPrefix="expected"
+          />
+          <FieldMappingGroup
+            label="Metadata"
+            mappings={metadataMappings}
+            onChange={setMetadataMappings}
+            targetPrefix="metadata"
+          />
+          <div className="grid gap-3 md:grid-cols-4">
+            <ScalarMappingControl
+              label="sourceTraceId"
+              onChange={setSourceTraceId}
+              value={sourceTraceId}
+            />
+            <ScalarMappingControl
+              label="sourceSpanId"
+              onChange={setSourceSpanId}
+              value={sourceSpanId}
+            />
+            <ScalarMappingControl label="split" onChange={setSplitMapping} value={splitMapping} />
+            <ScalarMappingControl
+              label="reviewStatus"
+              onChange={setReviewStatusMapping}
+              value={reviewStatusMapping}
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldLabel>Default split</FieldLabel>
+              <Select
+                onValueChange={(value) => setDefaultSplit(value as DatasetSplit)}
+                value={defaultSplit}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {datasetSplits.map((candidate) => (
+                    <SelectItem key={candidate} value={candidate}>
+                      {candidate}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Default review status</FieldLabel>
+              <Select
+                onValueChange={(value) => setDefaultReviewStatus(value as DatasetReviewStatus)}
+                value={defaultReviewStatus}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {datasetReviewStatuses.map((candidate) => (
+                    <SelectItem key={candidate} value={candidate}>
+                      {candidate}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+          <div className="flex items-start gap-2 text-sm">
+            <Checkbox
+              id="dataset-import-partial-commit"
+              checked={allowPartialCommit}
+              onCheckedChange={(checked) => setAllowPartialCommit(checked === true)}
+            />
+            <label htmlFor="dataset-import-partial-commit">
+              Commit valid rows even when the preview reports row errors.
+              <span className="block text-muted-foreground">
+                Leave off to reject the import if any row fails validation.
+              </span>
+            </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              disabled={!upload || prepareMutation.isPending}
+              onClick={onPrepare}
+              type="button"
+              variant="secondary"
+            >
+              <FileText data-icon="inline-start" />
+              {prepareMutation.isPending ? "Previewing..." : "Preview import"}
+            </Button>
+            {!upload ? (
+              <span className="text-xs text-muted-foreground">Stage an upload before preview.</span>
+            ) : null}
+          </div>
+        </section>
+        <DatasetImportPreview job={previewJob} sourceFiles={sourceFiles} />
+        {committedJob?.committedDatasetVersion ? (
+          <section className="grid gap-2 border-b pb-4 text-sm">
+            <h3 className="font-medium">Committed</h3>
+            <p className="text-muted-foreground">
+              Dataset version {committedJob.committedDatasetVersion} was created from import{" "}
+              {committedJob.id}.
+            </p>
+          </section>
+        ) : null}
+        {error ? (
+          <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </div>
+        ) : null}
+        <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
           <Dialog>
             <DialogTrigger asChild>
               <Button disabled={!canCommit || commitMutation.isPending} type="button">
@@ -1251,9 +1474,9 @@ function DatasetImportSheet({
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1460,7 +1683,7 @@ function DatasetImportPreview({
   if (!job) {
     return (
       <section className="grid gap-2 border-b pb-4 text-sm text-muted-foreground">
-        <h3 className="font-medium text-foreground">3. Preview rows</h3>
+        <h3 className="font-medium text-foreground">4. Preview rows</h3>
         <p>Preview uses the GraphQL import contract and returns normalized sample rows.</p>
       </section>
     );
@@ -1468,7 +1691,7 @@ function DatasetImportPreview({
 
   return (
     <section className="grid gap-3 border-b pb-4">
-      <h3 className="text-sm font-medium">3. Preview rows</h3>
+      <h3 className="text-sm font-medium">4. Preview rows</h3>
       <div className="grid gap-3 text-sm sm:grid-cols-4">
         <Metric label="Total rows" value={job.totalRows} />
         <Metric label="Valid rows" value={job.validRows} />
@@ -1783,7 +2006,7 @@ function ScorersView({
               <TableHead>{t("aiEval.scorer")}</TableHead>
               <TableHead>{t("aiEval.kind")}</TableHead>
               <TableHead>{t("aiEval.version")}</TableHead>
-              <TableHead>{t("aiEval.definition")}</TableHead>
+              <TableHead>Rule</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1799,7 +2022,7 @@ function ScorersView({
                 </TableCell>
                 <TableCell>{scorer.version}</TableCell>
                 <TableCell className="max-w-xl truncate">
-                  {jsonPreview(scorer.definition, 160)}
+                  {describeScorerDefinition(scorer)}
                 </TableCell>
               </TableRow>
             ))}
@@ -1827,17 +2050,32 @@ function CreateScorerDialog({
   const telemetryClient = useTelemetryClient();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
-  const [kind, setKind] = useState<ScorerKind>("deterministic");
-  const [definition, setDefinition] = useState(
-    '{"type":"contains","field":"answer","expected":"ok"}',
-  );
+  const [template, setTemplate] = useState<ScorerTemplateId>("contains");
+  const [matchField, setMatchField] = useState("output.answer");
+  const [expectedValueType, setExpectedValueType] = useState<ScorerExpectedValueType>("text");
+  const [expectedValue, setExpectedValue] = useState("ok");
+  const [threshold, setThreshold] = useState("0.8");
+  const [schemaName, setSchemaName] = useState("expected_answer");
+  const [rubric, setRubric] = useState("Answer is correct, complete, and grounded.");
+  const [providerAlias, setProviderAlias] = useState("default-judge");
   const [localError, setLocalError] = useState<string | null>(null);
+  const selectedTemplate =
+    scorerTemplates.find((candidate) => candidate.id === template) ?? defaultScorerTemplate;
   const mutation = useMutation({
     mutationFn: () => {
       const input: CreateScorerInput = {
         name: name.trim(),
-        kind,
-        definition: JSON.parse(definition) as JSONValue,
+        kind: selectedTemplate.kind,
+        definition: buildScorerDefinition({
+          expectedValue,
+          expectedValueType,
+          matchField,
+          providerAlias,
+          rubric,
+          schemaName,
+          template,
+          threshold,
+        }),
       };
       return telemetryClient.createScorer(input);
     },
@@ -1845,7 +2083,6 @@ function CreateScorerDialog({
       onCreated(scorer);
       setOpen(false);
       setName("");
-      setDefinition('{"type":"contains","field":"answer","expected":"ok"}');
     },
   });
 
@@ -1870,24 +2107,114 @@ function CreateScorerDialog({
             <Input onChange={(event) => setName(event.target.value)} value={name} />
           </Field>
           <Field>
-            <FieldLabel>Kind</FieldLabel>
-            <Select onValueChange={(value) => setKind(value as ScorerKind)} value={kind}>
+            <FieldLabel>Scorer template</FieldLabel>
+            <Select
+              onValueChange={(value) => setTemplate(value as ScorerTemplateId)}
+              value={template}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {scorerKinds.map((candidate) => (
-                  <SelectItem key={candidate} value={candidate}>
-                    {candidate}
+                {scorerTemplates.map((candidate) => (
+                  <SelectItem key={candidate.id} value={candidate.id}>
+                    {candidate.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">{selectedTemplate.description}</p>
           </Field>
-          <Field>
-            <FieldLabel>Definition JSON</FieldLabel>
-            <Input onChange={(event) => setDefinition(event.target.value)} value={definition} />
-          </Field>
+          {(template === "contains" || template === "exact" || template === "semantic") && (
+            <div className="grid gap-3">
+              <Field>
+                <FieldLabel>Match field</FieldLabel>
+                <Select onValueChange={(value) => setMatchField(value)} value={matchField}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {scorerMatchFields.map((field) => (
+                      <SelectItem key={field.value} value={field.value}>
+                        {field.label} ({field.valueType})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Select a known field from the expected answer or model output shape.
+                </p>
+              </Field>
+              <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+                <Field>
+                  <FieldLabel>Value type</FieldLabel>
+                  <Select
+                    onValueChange={(value) =>
+                      setExpectedValueType(value as ScorerExpectedValueType)
+                    }
+                    value={expectedValueType}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="text">Text</SelectItem>
+                      <SelectItem value="number">Number</SelectItem>
+                      <SelectItem value="boolean">Boolean</SelectItem>
+                      <SelectItem value="json">JSON</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel>Expected value</FieldLabel>
+                  <Input
+                    onChange={(event) => setExpectedValue(event.target.value)}
+                    placeholder={
+                      expectedValueType === "boolean"
+                        ? "true"
+                        : expectedValueType === "number"
+                          ? "1"
+                          : expectedValueType === "json"
+                            ? '{"answer":"ok"}'
+                            : "Expected answer or phrase"
+                    }
+                    value={expectedValue}
+                  />
+                </Field>
+              </div>
+            </div>
+          )}
+          {template === "semantic" ? (
+            <Field>
+              <FieldLabel>Pass threshold</FieldLabel>
+              <Input onChange={(event) => setThreshold(event.target.value)} value={threshold} />
+            </Field>
+          ) : null}
+          {template === "json_schema" ? (
+            <Field>
+              <FieldLabel>Schema reference</FieldLabel>
+              <Input onChange={(event) => setSchemaName(event.target.value)} value={schemaName} />
+            </Field>
+          ) : null}
+          {template === "llm_judge" ? (
+            <div className="grid gap-3">
+              <Field>
+                <FieldLabel>Judge provider alias</FieldLabel>
+                <Input
+                  onChange={(event) => setProviderAlias(event.target.value)}
+                  value={providerAlias}
+                />
+              </Field>
+              <Field>
+                <FieldLabel>Rubric</FieldLabel>
+                <Input onChange={(event) => setRubric(event.target.value)} value={rubric} />
+              </Field>
+              <div className="flex gap-2 border px-3 py-2 text-sm text-muted-foreground">
+                <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                LLM judge scorers are offline-only in v1 production policy setup.
+              </div>
+            </div>
+          ) : null}
           {(localError ?? mutation.error?.message) ? (
             <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {localError ?? mutation.error?.message}
@@ -1896,7 +2223,10 @@ function CreateScorerDialog({
         </FieldGroup>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">Cancel</Button>
+            <Button variant="outline">
+              <XCircle data-icon="inline-start" />
+              Cancel
+            </Button>
           </DialogClose>
           <Button
             disabled={mutation.isPending}
@@ -1906,10 +2236,19 @@ function CreateScorerDialog({
                 setLocalError("Name is required.");
                 return;
               }
-              try {
-                JSON.parse(definition);
-              } catch {
-                setLocalError("Definition must be valid JSON.");
+              if (
+                !buildScorerDefinition({
+                  expectedValue,
+                  expectedValueType,
+                  matchField,
+                  providerAlias,
+                  rubric,
+                  schemaName,
+                  template,
+                  threshold,
+                })
+              ) {
+                setLocalError("Complete the required scorer fields.");
                 return;
               }
               void mutation.mutateAsync();
@@ -1970,6 +2309,26 @@ function ExperimentsView({
         </div>
         <CreateExperimentDialog datasets={datasets} onCreated={onCreated} scorers={scorers} />
       </div>
+      {datasets.length === 0 || scorers.length === 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border px-3 py-2 text-sm">
+          <div className="flex gap-2 text-muted-foreground">
+            <AlertCircle className="mt-0.5 size-4 shrink-0" />
+            Create one dataset and one scorer before experiments can run.
+          </div>
+          <div className="flex gap-2">
+            {datasets.length === 0 ? (
+              <Button size="sm" type="button" variant="outline" asChild>
+                <Link to="?tab=datasets">Create dataset</Link>
+              </Button>
+            ) : null}
+            {scorers.length === 0 ? (
+              <Button size="sm" type="button" variant="outline" asChild>
+                <Link to="?tab=scorers">Create scorer</Link>
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       {query.data && query.data.items.length > 0 ? (
         <div className="flex min-h-0 flex-col gap-4 overflow-auto">
           <Table>
@@ -2047,9 +2406,16 @@ function CreateExperimentDialog({
   const [datasetId, setDatasetId] = useState(datasets[0]?.id ?? "");
   const [scorerId, setScorerId] = useState(scorers[0]?.id ?? "");
   const [split, setSplit] = useState<DatasetSplit>("validation");
-  const [solverRef, setSolverRef] = useState('{"kind":"local","name":"current-agent"}');
+  const [solverKind, setSolverKind] = useState("local");
+  const [solverName, setSolverName] = useState("current-agent");
   const [localError, setLocalError] = useState<string | null>(null);
   const selectedDataset = datasets.find((dataset) => dataset.id === datasetId) ?? datasets[0];
+  const disabledReason =
+    datasets.length === 0
+      ? "Create or import a dataset before creating an experiment."
+      : scorers.length === 0
+        ? "Create a scorer before creating an experiment."
+        : null;
 
   useEffect(() => {
     if (!datasetId && datasets[0]?.id) {
@@ -2071,7 +2437,7 @@ function CreateExperimentDialog({
         datasetVersion: selectedDataset.version,
         splitSelector: { splits: [split], reviewedOnly: false, includeSynthetic: false },
         scorerIds: [scorerId],
-        solverRef: JSON.parse(solverRef) as JSONValue,
+        solverRef: { kind: solverKind, name: solverName } satisfies JSONValue,
         tags: [],
       };
       return telemetryClient.createExperiment(input);
@@ -2086,7 +2452,7 @@ function CreateExperimentDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" type="button" variant={triggerVariant}>
+        <Button disabled={Boolean(disabledReason)} size="sm" type="button" variant={triggerVariant}>
           <Plus data-icon="inline-start" />
           Create experiment
         </Button>
@@ -2149,9 +2515,32 @@ function CreateExperimentDialog({
             </Select>
           </Field>
           <Field>
-            <FieldLabel>Solver reference JSON</FieldLabel>
-            <Input onChange={(event) => setSolverRef(event.target.value)} value={solverRef} />
+            <FieldLabel>Solver kind</FieldLabel>
+            <Select onValueChange={setSolverKind} value={solverKind}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="local">Local runner</SelectItem>
+                <SelectItem value="provider">Provider profile</SelectItem>
+                <SelectItem value="prompt_version">Prompt version</SelectItem>
+              </SelectContent>
+            </Select>
           </Field>
+          <Field>
+            <FieldLabel>Solver name</FieldLabel>
+            <Input
+              onChange={(event) => setSolverName(event.target.value)}
+              placeholder="current-agent"
+              value={solverName}
+            />
+          </Field>
+          {disabledReason ? (
+            <div className="flex gap-2 border px-3 py-2 text-sm text-muted-foreground">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" />
+              {disabledReason}
+            </div>
+          ) : null}
           {(localError ?? mutation.error?.message) ? (
             <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {localError ?? mutation.error?.message}
@@ -2160,7 +2549,10 @@ function CreateExperimentDialog({
         </FieldGroup>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">Cancel</Button>
+            <Button variant="outline">
+              <XCircle data-icon="inline-start" />
+              Cancel
+            </Button>
           </DialogClose>
           <Button
             disabled={mutation.isPending || datasets.length === 0 || scorers.length === 0}
@@ -2174,10 +2566,8 @@ function CreateExperimentDialog({
                 setLocalError("Select a dataset and scorer.");
                 return;
               }
-              try {
-                JSON.parse(solverRef);
-              } catch {
-                setLocalError("Solver reference must be valid JSON.");
+              if (!solverName.trim()) {
+                setLocalError("Solver name is required.");
                 return;
               }
               void mutation.mutateAsync();
@@ -2348,258 +2738,90 @@ function ProductionView({
             </Link>
           </Button>
         </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Policy</TableHead>
-              <TableHead>{t("filters.status")}</TableHead>
-              <TableHead>Sample rate</TableHead>
-              <TableHead>{t("aiEval.scorers")}</TableHead>
-              <TableHead>Budget</TableHead>
-              <TableHead>Target</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(settingsQuery.data?.onlinePolicies ?? []).map((policy) => (
-              <TableRow key={policy.id}>
-                <TableCell>{policy.name}</TableCell>
-                <TableCell>
-                  <StatusBadge status={policy.enabled ? "enabled" : "disabled"} />
-                </TableCell>
-                <TableCell>{formatPercent(policy.sampleRate)}</TableCell>
-                <TableCell>{policy.scorerIds.length}</TableCell>
-                <TableCell>{policy.maxDailyRuns ?? t("value.none")}</TableCell>
-                <TableCell className="max-w-80 truncate">
-                  {jsonPreview(policy.target, 140)}
-                </TableCell>
+        {(settingsQuery.data?.onlinePolicies ?? []).length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Policy</TableHead>
+                <TableHead>{t("filters.status")}</TableHead>
+                <TableHead>Sample rate</TableHead>
+                <TableHead>{t("aiEval.scorers")}</TableHead>
+                <TableHead>Budget</TableHead>
+                <TableHead>Target</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {(settingsQuery.data?.onlinePolicies ?? []).map((policy) => (
+                <TableRow key={policy.id}>
+                  <TableCell>{policy.name}</TableCell>
+                  <TableCell>
+                    <StatusBadge status={policy.enabled ? "enabled" : "disabled"} />
+                  </TableCell>
+                  <TableCell>{formatPercent(policy.sampleRate)}</TableCell>
+                  <TableCell>{policy.scorerIds.length}</TableCell>
+                  <TableCell>{policy.maxDailyRuns ?? t("value.none")}</TableCell>
+                  <TableCell className="max-w-80 truncate">
+                    {describePolicyTarget(policy.target)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <div className="border border-dashed p-6 text-sm">
+            <h3 className="font-medium">Production scoring is not configured</h3>
+            <p className="mt-1 text-muted-foreground">
+              Create an online policy in Project Settings when you are ready to sample production
+              traffic with deterministic scorers.
+            </p>
+            <Button asChild className="mt-3" size="sm" variant="outline">
+              <Link to={`/projects/${encodeURIComponent(selectedProjectId)}/settings/ai-eval`}>
+                <Settings data-icon="inline-start" />
+                Configure policy
+              </Link>
+            </Button>
+          </div>
+        )}
       </section>
       <section>
         <h2 className="mb-2 text-sm font-medium">Quality trend segments</h2>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Segment</TableHead>
-              <TableHead>Runs</TableHead>
-              <TableHead>Scored</TableHead>
-              <TableHead>{t("aiEval.passRate")}</TableHead>
-              <TableHead>{t("aiEval.meanScore")}</TableHead>
-              <TableHead>p95 latency</TableHead>
-              <TableHead>{t("aiEval.cost")}</TableHead>
-              <TableHead>{t("aiEval.regression")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(qualityQuery.data?.segments ?? []).map((segment) => (
-              <TableRow key={segment.key}>
-                <TableCell>{segment.label}</TableCell>
-                <TableCell>{segment.runCount}</TableCell>
-                <TableCell>{segment.scoredRunCount}</TableCell>
-                <TableCell>{formatPercent(segment.passRate)}</TableCell>
-                <TableCell>{formatNumber(segment.meanScore)}</TableCell>
-                <TableCell>{formatMs(segment.p95LatencyMs)}</TableCell>
-                <TableCell>{formatUsd(segment.costUsd)}</TableCell>
-                <TableCell>{segment.regressionCount}</TableCell>
+        {(qualityQuery.data?.segments ?? []).length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Segment</TableHead>
+                <TableHead>Runs</TableHead>
+                <TableHead>Scored</TableHead>
+                <TableHead>{t("aiEval.passRate")}</TableHead>
+                <TableHead>{t("aiEval.meanScore")}</TableHead>
+                <TableHead>p95 latency</TableHead>
+                <TableHead>{t("aiEval.cost")}</TableHead>
+                <TableHead>{t("aiEval.regression")}</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {(qualityQuery.data?.segments ?? []).map((segment) => (
+                <TableRow key={segment.key}>
+                  <TableCell>{segment.label}</TableCell>
+                  <TableCell>{segment.runCount}</TableCell>
+                  <TableCell>{segment.scoredRunCount}</TableCell>
+                  <TableCell>{formatPercent(segment.passRate)}</TableCell>
+                  <TableCell>{formatNumber(segment.meanScore)}</TableCell>
+                  <TableCell>{formatMs(segment.p95LatencyMs)}</TableCell>
+                  <TableCell>{formatUsd(segment.costUsd)}</TableCell>
+                  <TableCell>{segment.regressionCount}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <div className="border border-dashed p-6 text-sm text-muted-foreground">
+            No online scoring results yet. Quality trends appear after enabled policies score
+            production traffic.
+          </div>
+        )}
       </section>
     </div>
-  );
-}
-
-function AnnotationQueueView({
-  query,
-  onSelect,
-  selectedId,
-}: {
-  query: QueryResult<
-    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchAnnotationQueue"]>>
-  >;
-  onSelect: (id: string) => void;
-  selectedId: string | null;
-}) {
-  return (
-    <QueryFrame query={query}>
-      {query.data && query.data.items.length > 0 ? (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("aiEval.reason")}</TableHead>
-              <TableHead>{t("filters.status")}</TableHead>
-              <TableHead>{t("aiEval.assignee")}</TableHead>
-              <TableHead>{t("filters.traceId")}</TableHead>
-              <TableHead>{t("filters.spanId")}</TableHead>
-              <TableHead>{t("aiEval.created")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {query.data.items.map((item) => (
-              <TableRow
-                aria-selected={item.id === selectedId}
-                key={item.id}
-                onClick={() => onSelect(item.id)}
-              >
-                <TableCell>{item.reason}</TableCell>
-                <TableCell>
-                  <StatusBadge status={item.status} />
-                </TableCell>
-                <TableCell>{item.assignedTo ?? t("value.none")}</TableCell>
-                <TableCell>
-                  <Link
-                    className="text-primary underline-offset-4 hover:underline"
-                    to={`/traces/${item.targetTraceId}`}
-                  >
-                    {item.targetTraceId}
-                  </Link>
-                </TableCell>
-                <TableCell>{item.targetSpanId ?? t("value.none")}</TableCell>
-                <TableCell>{item.createdAt}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      ) : null}
-    </QueryFrame>
-  );
-}
-
-function AiEvalInspector({
-  annotation,
-  dataset,
-  experiment,
-  run,
-  scorer,
-  tab,
-}: {
-  annotation: AnnotationQueueItem | null;
-  dataset: Dataset | null;
-  experiment: Experiment | null;
-  run: AgentRun | null;
-  scorer: Scorer | null;
-  tab: AiEvalTab;
-}) {
-  if (tab === "runs") {
-    return run ? <AgentRunDetail run={run} /> : <InspectorEmpty />;
-  }
-  if (tab === "datasets") {
-    return dataset ? <DatasetInspector dataset={dataset} /> : <InspectorEmpty />;
-  }
-  if (tab === "scorers") {
-    return scorer ? <ScorerInspector scorer={scorer} /> : <InspectorEmpty />;
-  }
-  if (tab === "experiments") {
-    return experiment ? <ExperimentInspector experiment={experiment} /> : <InspectorEmpty />;
-  }
-  if (tab === "production") {
-    return <InspectorEmpty />;
-  }
-  return annotation ? <AnnotationInspector annotation={annotation} /> : <InspectorEmpty />;
-}
-
-function InspectorEmpty() {
-  return <p className="text-sm text-muted-foreground">{t("aiEval.selectRow")}</p>;
-}
-
-function DatasetInspector({ dataset }: { dataset: Dataset }) {
-  return (
-    <section className="grid gap-3 text-sm">
-      <h2 className="font-semibold">{dataset.name}</h2>
-      <Metric label={t("aiEval.version")} value={dataset.version} />
-      <Metric label={t("aiEval.items")} value={dataset.itemCount} />
-      <Metric label="Reviewed" value={dataset.reviewedItemCount} />
-      <Metric label="Health" value={dataset.health.status} />
-      <Metric label="Duplicate candidates" value={dataset.health.duplicateCandidateCount} />
-      <Metric label="Leakage warnings" value={dataset.health.leakageWarningCount} />
-    </section>
-  );
-}
-
-function ScorerInspector({ scorer }: { scorer: Scorer }) {
-  return (
-    <section className="grid gap-3 text-sm">
-      <h2 className="font-semibold">{scorer.name}</h2>
-      <Metric label={t("aiEval.kind")} value={scorer.kind} />
-      <Metric label={t("aiEval.version")} value={scorer.version} />
-      <CodeBlock
-        code={JSON.stringify(scorer.definition, null, 2)}
-        language="json"
-        maxHeightClassName="max-h-56"
-        title={t("aiEval.definition")}
-      />
-    </section>
-  );
-}
-
-function ExperimentInspector({ experiment }: { experiment: Experiment }) {
-  return (
-    <section className="grid gap-3 text-sm">
-      <h2 className="font-semibold">{experiment.name}</h2>
-      <Metric
-        label={t("aiEval.dataset")}
-        value={
-          experiment.datasetId
-            ? `${experiment.datasetId}@${experiment.datasetVersion}`
-            : t("value.none")
-        }
-      />
-      <Metric label={t("aiEval.tags")} value={experiment.tags.join(", ") || t("value.none")} />
-    </section>
-  );
-}
-
-function AnnotationInspector({ annotation }: { annotation: AnnotationQueueItem }) {
-  return (
-    <section className="grid gap-3 text-sm">
-      <h2 className="font-semibold">{annotation.reason}</h2>
-      <Metric label={t("filters.status")} value={annotation.status} />
-      <Metric label={t("aiEval.assignee")} value={annotation.assignedTo ?? t("value.none")} />
-      <Metric label={t("aiEval.scorer")} value={annotation.scorerId ?? t("value.none")} />
-      <Metric label={t("aiEval.meanScore")} value={formatNumber(annotation.score)} />
-      <Button asChild variant="outline">
-        <Link to={`/traces/${annotation.targetTraceId}`}>
-          <ExternalLink data-icon="inline-start" />
-          {t("traceDetail.traceStructure")}
-        </Link>
-      </Button>
-    </section>
-  );
-}
-
-function QueryFrame<T>({ query, children }: { query: QueryResult<T>; children: ReactNode }) {
-  if (query.isLoading) {
-    return <LoadingRows />;
-  }
-  if (query.isError) {
-    return <ErrorPanel error={query.error} onRetry={() => void query.refetch()} />;
-  }
-  if (query.isSuccess && hasNoItems(query.data)) {
-    return (
-      <EmptyState
-        filtered
-        primaryAction={
-          <Button asChild>
-            <Link to="/projects">{t("projects.checklist.aiEval.action")}</Link>
-          </Button>
-        }
-      />
-    );
-  }
-  return children;
-}
-
-function hasNoItems(value: unknown) {
-  return (
-    Boolean(value) &&
-    typeof value === "object" &&
-    value !== null &&
-    "items" in value &&
-    Array.isArray(value.items) &&
-    value.items.length === 0
   );
 }
 
@@ -2622,23 +2844,14 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
 
 function readTab(value: string | null): AiEvalTab {
   if (
-    value === "runs" ||
     value === "datasets" ||
     value === "scorers" ||
     value === "experiments" ||
-    value === "production" ||
-    value === "annotations"
+    value === "production"
   ) {
     return value;
   }
-  return "runs";
-}
-
-function readAgentRunStatus(value: string | null) {
-  if (value === "ok" || value === "error" || value === "unset" || value === "cancelled") {
-    return value;
-  }
-  return null;
+  return "datasets";
 }
 
 function readExperimentStatus(value: string | null) {
@@ -2649,13 +2862,6 @@ function readExperimentStatus(value: string | null) {
     value === "failed" ||
     value === "finished"
   ) {
-    return value;
-  }
-  return null;
-}
-
-function readAnnotationStatus(value: string | null) {
-  if (value === "open" || value === "in_review" || value === "resolved" || value === "dismissed") {
     return value;
   }
   return null;
@@ -2700,10 +2906,6 @@ function formatMs(value?: number | null) {
   return typeof value === "number" ? `${Math.round(value)} ms` : "–";
 }
 
-function formatMoney(value: { amount: number; currency: string } | null | undefined) {
-  return value ? `${value.amount.toFixed(4)} ${value.currency}` : "–";
-}
-
 function formatPercent(value?: number | null) {
   return typeof value === "number" ? `${(value * 100).toFixed(1)}%` : "–";
 }
@@ -2729,12 +2931,16 @@ function formatBytes(value?: number | null) {
   return `${(value / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
-function mappingDraft(targetPrefix: "input" | "expected" | "metadata", targetPath: string) {
+function mappingDraft(
+  targetPrefix: "input" | "expected" | "metadata",
+  targetPath: string,
+  sourceValue = "",
+) {
   return {
     id: `${targetPrefix}-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`,
     targetPath,
     sourceKind: "column" as const,
-    sourceValue: "",
+    sourceValue,
   };
 }
 
@@ -2894,4 +3100,107 @@ function datasetExportFormatLabel(format: DatasetExportFormat) {
     return "JSON array";
   }
   return format.toUpperCase();
+}
+
+function buildScorerDefinition({
+  expectedValue,
+  expectedValueType,
+  matchField,
+  providerAlias,
+  rubric,
+  schemaName,
+  template,
+  threshold,
+}: {
+  expectedValue: string;
+  expectedValueType: ScorerExpectedValueType;
+  matchField: string;
+  providerAlias: string;
+  rubric: string;
+  schemaName: string;
+  template: ScorerTemplateId;
+  threshold: string;
+}): JSONValue {
+  const expected = coerceScorerExpectedValue(expectedValue, expectedValueType);
+  if (template === "exact") {
+    return { type: "exact_match", field: matchField.trim(), expected };
+  }
+  if (template === "json_schema") {
+    return { type: "json_schema", schemaRef: schemaName.trim() };
+  }
+  if (template === "semantic") {
+    return {
+      type: "semantic_similarity",
+      field: matchField.trim(),
+      expected,
+      threshold: Number.parseFloat(threshold) || 0.8,
+    };
+  }
+  if (template === "llm_judge") {
+    return {
+      type: "llm_judge",
+      providerAlias: providerAlias.trim(),
+      rubric: rubric.trim(),
+    };
+  }
+  return { type: "contains", field: matchField.trim(), expected };
+}
+
+function coerceScorerExpectedValue(value: string, valueType: ScorerExpectedValueType): JSONValue {
+  if (valueType === "number") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (valueType === "boolean") {
+    return value === "true";
+  }
+  if (valueType === "json") {
+    try {
+      return JSON.parse(value) as JSONValue;
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
+function describeScorerDefinition(scorer: Scorer) {
+  const definition = scorer.definition;
+  if (!definition || typeof definition !== "object" || Array.isArray(definition)) {
+    return scorer.kind;
+  }
+  const record = definition as Record<string, unknown>;
+  if (record.type === "contains") {
+    return `${String(record.field ?? "field")} contains ${String(record.expected ?? "value")}`;
+  }
+  if (record.type === "exact_match") {
+    return `${String(record.field ?? "field")} equals ${String(record.expected ?? "value")}`;
+  }
+  if (record.type === "json_schema") {
+    return `Schema ${String(record.schemaRef ?? "configured")}`;
+  }
+  if (record.type === "semantic_similarity") {
+    return `Semantic match at ${String(record.threshold ?? "threshold")}`;
+  }
+  if (record.type === "llm_judge") {
+    return `Judge rubric via ${String(record.providerAlias ?? "provider")}`;
+  }
+  return scorer.kind;
+}
+
+function describePolicyTarget(target: JSONValue) {
+  if (!target || typeof target !== "object" || Array.isArray(target)) {
+    return "Configured target";
+  }
+  const record = target as Record<string, unknown>;
+  const parts = [
+    record.serviceName,
+    record.route,
+    record.environment,
+    record.model,
+    record.promptVersion,
+  ]
+    .filter((part): part is string => typeof part === "string" && part.length > 0)
+    .slice(0, 3);
+  return parts.length > 0 ? parts.join(" / ") : "Configured target";
 }

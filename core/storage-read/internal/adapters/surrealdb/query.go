@@ -188,8 +188,8 @@ func BuildTraceDetailQuery(request contracts.TraceDetailRequest) (QueryStatement
 	}
 
 	sql := strings.Join([]string{
-		"LET $trace = SELECT traceId AS id, serviceName, startedAt, endedAt, durationMs, rootSpanId, status, attributes FROM trace WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId = $traceId;",
-		"LET $spans = SELECT spanId AS id, traceId, parentSpanId, name, kind, serviceName, startedAt, endedAt, durationMs, status, attributes, events, links FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId = $traceId ORDER BY startedAt ASC, spanId ASC;",
+		"LET $trace = SELECT traceId AS id, serviceName, startedAt, startedAtUnixNano, endedAt, endedAtUnixNano, durationNano, durationMs, rootSpanId, status, attributes FROM trace WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId = $traceId;",
+		"LET $spans = SELECT spanId AS id, traceId, parentSpanId, name, kind, serviceName, startedAt, startedAtUnixNano, endedAt, endedAtUnixNano, durationNano, durationMs, status, attributes, events, links FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId = $traceId ORDER BY startedAt ASC, spanId ASC;",
 		"LET $spanIds = $spans.map(|$span| $span.id);",
 		"LET $contextFrom = $trace[0].startedAt - 5s;",
 		"LET $contextTo = ($trace[0].endedAt ?? $trace[0].startedAt) + 5s;",
@@ -219,7 +219,7 @@ func BuildTraceByIDQuery(traceID string, authContext ...*contracts.AuthContext) 
 	addOwnershipParams(params, target)
 	return QueryStatement{
 		SQL: strings.Join([]string{
-			"SELECT traceId AS id, serviceName, startedAt, endedAt, durationMs, rootSpanId, status, attributes",
+			"SELECT traceId AS id, serviceName, startedAt, startedAtUnixNano, endedAt, endedAtUnixNano, durationNano, durationMs, rootSpanId, status, attributes",
 			"FROM trace",
 			"WHERE traceId = $traceId AND tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId",
 			"LIMIT 1;",
@@ -241,7 +241,7 @@ func BuildSpansByTraceIDQuery(traceID string, authContext ...*contracts.AuthCont
 	addOwnershipParams(params, target)
 	return QueryStatement{
 		SQL: strings.Join([]string{
-			"SELECT spanId AS id, traceId, parentSpanId, name, kind, serviceName, startedAt, endedAt, durationMs, status, attributes, events, links",
+			"SELECT spanId AS id, traceId, parentSpanId, name, kind, serviceName, startedAt, startedAtUnixNano, endedAt, endedAtUnixNano, durationNano, durationMs, status, attributes, events, links",
 			"FROM span",
 			"WHERE traceId = $traceId AND tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId",
 			"ORDER BY startedAt ASC, spanId ASC;",

@@ -8,17 +8,22 @@ import (
 	"time"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
+	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/selfobs"
 	"github.com/cloudgrid-dev/cloudgrid/core/storage-write/internal/ports"
 	"github.com/nats-io/nats.go"
 )
 
 type PullSubscriber interface {
-	PullSubscribe(subject string, durable string, opts ...nats.SubOpt) (*nats.Subscription, error)
+	PullSubscribe(subject string, durable string, opts ...nats.SubOpt) (PullSubscription, error)
 }
 
 type PullSubscriberJetStream interface {
 	PullSubscriber
 	Publish(subject string, data []byte, opts ...nats.PubOpt) (*nats.PubAck, error)
+}
+
+type PullSubscription interface {
+	Fetch(batch int, opts ...nats.PullOpt) ([]*nats.Msg, error)
 }
 
 type CorePublisher interface {
@@ -54,6 +59,14 @@ func RegisterEvalMutationResponders(nc interface {
 }
 
 func RunConsumer(ctx context.Context, js PullSubscriberJetStream, nc CorePublisher, notificationPublisher ports.TraceNotificationPublisher, store ports.TelemetryWriteStore, logger *slog.Logger) error {
+	return RunConsumerWithMetrics(ctx, js, nc, notificationPublisher, store, logger, nil)
+}
+
+func RunConsumerWithMetrics(ctx context.Context, js PullSubscriberJetStream, nc CorePublisher, notificationPublisher ports.TraceNotificationPublisher, store ports.TelemetryWriteStore, logger *slog.Logger, recorder MetricsRecorder) error {
+	return RunConsumerWithSelfObservability(ctx, js, nc, notificationPublisher, store, logger, recorder, nil)
+}
+
+func RunConsumerWithSelfObservability(ctx context.Context, js PullSubscriberJetStream, nc CorePublisher, notificationPublisher ports.TraceNotificationPublisher, store ports.TelemetryWriteStore, logger *slog.Logger, recorder MetricsRecorder, traceLogRecorder TraceLogRecorder) error {
 	sub, err := js.PullSubscribe("telemetry.ingest.*", ConsumerName, nats.BindStream(StreamName), nats.ManualAck())
 	if err != nil {
 		return err
@@ -81,7 +94,7 @@ func RunConsumer(ctx context.Context, js PullSubscriberJetStream, nc CorePublish
 					continue
 				}
 			}
-			HandleMessage(ctx, wrapped, store, notificationPublisher, logger, time.Now)
+			HandleMessageWithSelfObservability(ctx, wrapped, store, notificationPublisher, logger, time.Now, recorder, traceLogRecorder)
 		}
 	}
 }
@@ -98,10 +111,23 @@ func NewTraceNotificationPublisher(nc interface {
 	return natsTraceNotificationPublisher{nc: nc}
 }
 
-func (publisher natsTraceNotificationPublisher) PublishTracePersisted(_ context.Context, notification contracts.TracePersistedNotification) error {
+func (publisher natsTraceNotificationPublisher) PublishTracePersisted(ctx context.Context, notification contracts.TracePersistedNotification) error {
 	data, err := json.Marshal(notification)
 	if err != nil {
 		return err
+	}
+	if msgPublisher, ok := publisher.nc.(interface {
+		PublishMsg(message *nats.Msg) error
+	}); ok {
+		message := &nats.Msg{Subject: PersistedTraceSubject, Data: data}
+		if traceContext, ok := selfobs.TraceContextFromContext(ctx); ok {
+			message.Header = nats.Header{}
+			message.Header.Set(selfobs.TraceParentHeader, selfobs.FormatTraceParent(traceContext))
+			if traceContext.TraceState != "" {
+				message.Header.Set(selfobs.TraceStateHeader, traceContext.TraceState)
+			}
+		}
+		return msgPublisher.PublishMsg(message)
 	}
 	return publisher.nc.Publish(PersistedTraceSubject, data)
 }
@@ -160,6 +186,10 @@ func (msg natsMessage) Attempt() int {
 		return 1
 	}
 	return int(metadata.NumDelivered)
+}
+
+func (msg natsMessage) Header(name string) string {
+	return msg.msg.Header.Get(name)
 }
 
 func (msg natsMessage) Ack() error {

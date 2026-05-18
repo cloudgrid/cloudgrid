@@ -2,6 +2,7 @@ import {
   type AuthRuntimeConfig,
   type CloudGridErrorId,
   type DeploymentMode,
+  type SelfObservabilityRuntimeConfig,
   parseBooleanFlag,
   parseDeploymentRuntimeConfig,
   parsePort,
@@ -10,6 +11,7 @@ import {
 export interface RuntimeConfig {
   deploymentMode: DeploymentMode;
   auth: AuthRuntimeConfig;
+  selfObservability: SelfObservabilityRuntimeConfig;
   host: string;
   port: number;
   natsUrl: string;
@@ -25,6 +27,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
   return {
     deploymentMode: deployment.deploymentMode,
     auth: deployment.auth,
+    selfObservability: deployment.selfObservability,
     host: env.CLOUDGRID_BFF_HOST || "0.0.0.0",
     port: parsePort(env.CLOUDGRID_BFF_PORT, 3000),
     natsUrl: parseNatsUrl(env.CLOUDGRID_NATS_URL || "nats://localhost:4222"),

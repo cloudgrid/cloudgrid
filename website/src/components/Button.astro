@@ -19,11 +19,14 @@ const {
 
 const useShine = shine ?? variant === "primary";
 
-const base = "inline-flex items-center justify-center gap-2 font-semibold rounded-lg transition-all duration-200";
+const base =
+  "inline-flex items-center justify-center gap-2 font-semibold rounded-lg transition-all duration-200";
 const sizeCls =
-  size === "sm" ? "text-sm px-3.5 py-2" :
-  size === "lg" ? "text-base px-5 py-3" :
-  "text-sm px-4 py-2.5";
+  size === "sm"
+    ? "text-sm px-3.5 py-2"
+    : size === "lg"
+      ? "text-base px-5 py-3"
+      : "text-sm px-4 py-2.5";
 const variantCls =
   variant === "primary"
     ? "bg-inverse text-text-on-inverse hover:opacity-90 hover:-translate-y-0.5 shadow-[0_8px_24px_-12px_rgba(99,102,241,0.4)]"

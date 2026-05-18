@@ -3,8 +3,35 @@ import { createLogger } from "@cloudgrid/runtime";
 import type { RetentionRuleInput } from "@cloudgrid/ui-contracts";
 import { JSONCodec, type NatsConnection } from "nats";
 import { MessageBridgeCloudGridBridge, NATSTelemetryQueryBridge } from "./bridge";
+import { NATSRequestReplyClient } from "./bridge/adapters/nats";
 
 describe("NATS telemetry query bridge", () => {
+  test("injects W3C trace context as NATS request headers", async () => {
+    const codec = JSONCodec<unknown>();
+    let traceparent = "";
+    let tracestate = "";
+    const connection = {
+      request: async (_subject: string, data: Uint8Array, options?: { headers?: Headers }) => {
+        traceparent = options?.headers?.get("traceparent") ?? "";
+        tracestate = options?.headers?.get("tracestate") ?? "";
+        const payload = codec.decode(data);
+        return { data: codec.encode(payload) };
+      },
+    } as unknown as NatsConnection;
+    const client = new NATSRequestReplyClient(connection);
+
+    await client.request("telemetry.traces.search", codec.encode({ requestId: "req-1" }), {
+      timeoutMs: 2000,
+      headers: {
+        traceparent: "00-11111111111111111111111111111111-2222222222222222-01",
+        tracestate: "vendor=value",
+      },
+    });
+
+    expect(traceparent).toBe("00-11111111111111111111111111111111-2222222222222222-01");
+    expect(tracestate).toBe("vendor=value");
+  });
+
   test("sends trace detail input as the telemetry.traces.get query", async () => {
     const codec = JSONCodec<unknown>();
     let subject = "";
@@ -556,6 +583,14 @@ describe("NATS telemetry query bridge", () => {
       { organizationId: "org-1", email: "ada@example.test" },
       { mode: "authenticated", authMode: "sso" },
     );
+    await bridge.inviteProjectMember(
+      { projectId: "project-1", email: "grace@example.test", role: "editor" },
+      { mode: "authenticated", authMode: "sso" },
+    );
+    await bridge.resendOrganizationInvitation("invite-1", {
+      mode: "authenticated",
+      authMode: "sso",
+    });
     await bridge.revokeOrganizationInvitation("invite-1", {
       mode: "authenticated",
       authMode: "sso",
@@ -565,6 +600,8 @@ describe("NATS telemetry query bridge", () => {
       "control.members.list",
       "control.invitations.list",
       "control.invitations.create",
+      "control.project_invitations.create",
+      "control.invitations.resend",
       "control.invitations.revoke",
     ]);
     expect(requests[0]?.payload).toMatchObject({
@@ -580,7 +617,13 @@ describe("NATS telemetry query bridge", () => {
       organizationId: "org-1",
       email: "ada@example.test",
     });
-    expect(requests[3]?.payload).toMatchObject({ invitationId: "invite-1" });
+    expect(requests[3]?.payload).toMatchObject({
+      projectId: "project-1",
+      email: "grace@example.test",
+      role: "editor",
+    });
+    expect(requests[4]?.payload).toMatchObject({ invitationId: "invite-1" });
+    expect(requests[5]?.payload).toMatchObject({ invitationId: "invite-1" });
   });
 
   test("starts live traces through storage-read and stops on iterator return", async () => {
@@ -920,8 +963,27 @@ function controlResponseFor(subject: string) {
     case "control.invitations.list":
       return { items: [organizationInvitation()] };
     case "control.invitations.create":
+    case "control.invitations.resend":
     case "control.invitations.revoke":
       return { invitation: organizationInvitation() };
+    case "control.project_invitations.create":
+      return {
+        outcome: "invitation_pending",
+        invitation: organizationInvitation({
+          email: "grace@example.test",
+          projectGrants: [
+            {
+              projectId: "project-1",
+              role: "editor",
+              status: "pending",
+              createdAt: "2026-05-16T09:00:00.000Z",
+              createdByUserId: "admin-1",
+              appliedAt: null,
+            },
+          ],
+        }),
+        projectMember: null,
+      };
     case "control.retention.get":
     case "control.retention.update":
       return { policy: retentionPolicy() };
@@ -951,6 +1013,11 @@ function organizationInvitation(overrides: Record<string, unknown> = {}) {
     email: "ada@example.test",
     role: "user",
     status: "pending",
+    deliveryStatus: "suppressed",
+    lastDeliveryAttemptAt: null,
+    lastDeliveryErrorCode: null,
+    lastEmailDeliveryId: null,
+    projectGrants: [],
     invitedByUserId: "admin-1",
     acceptedByUserId: null,
     createdAt: "2026-05-16T09:00:00.000Z",

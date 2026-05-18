@@ -23,7 +23,8 @@ const concerns = [
     icon: "M12 2c4 0 7 3 7 7v3l2 4-2 1v3a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-3l-2-1 2-4V9c0-4 3-7 7-7Z",
     q: "What about PII inside spans, logs, or AI prompts?",
     a: "Redaction is owned by the OTel pipeline you control. CloudGrid stores what you send. For AI evaluation specifically: prompt and completion content stays on the originating span event and is shown only when content capture was explicitly enabled by the emitter — it is never copied into a separate AI database.",
-    proof: "Content-capture flag controls AI evaluation visibility. Projections are pointers, not duplicates.",
+    proof:
+      "Content-capture flag controls AI evaluation visibility. Projections are pointers, not duplicates.",
   },
   {
     who: "Legal & Procurement",
@@ -64,17 +65,57 @@ const posture = [
   { control: "Data residency", cg: "supported", note: "You choose the region." },
   { control: "Self-hosting", cg: "supported", note: "Local, Compose, Kubernetes." },
   { control: "SSO (OIDC/OAuth)", cg: "supported", note: "GitHub, Google, Microsoft Entra ID." },
-  { control: "RBAC — company + project roles", cg: "supported", note: "admin / user · viewer / editor / admin." },
+  {
+    control: "RBAC — company + project roles",
+    cg: "supported",
+    note: "admin / user · viewer / editor / admin.",
+  },
   { control: "Project isolation", cg: "supported", note: "API, message, persistence layers." },
-  { control: "Structured logs (JSON + trace context)", cg: "supported", note: "One JSON object per line, Kubernetes-ready." },
-  { control: "Read authorization on every query and subscription", cg: "supported", note: "Live subs respect the same auth as queries." },
-  { control: "Audit log of admin actions", cg: "your-responsibility", note: "Ship it via OTLP into the same CloudGrid." },
-  { control: "Retention policy per project", cg: "supported", note: "Configurable in control-plane." },
-  { control: "PII redaction", cg: "your-responsibility", note: "Done in your OTel pipeline before ingest." },
-  { control: "Encryption at rest", cg: "your-responsibility", note: "SurrealDB + your filesystem / volume encryption." },
-  { control: "Encryption in transit", cg: "your-responsibility", note: "TLS at the BFF / collector — your terminator of choice." },
-  { control: "Backup / DR", cg: "your-responsibility", note: "SurrealDB backups, your DR posture." },
-  { control: "Alerting routing to PagerDuty / Opsgenie / Slack", cg: "maturing", note: "Foundations shipped; integrations evolving." },
+  {
+    control: "Structured logs (JSON + trace context)",
+    cg: "supported",
+    note: "One JSON object per line, Kubernetes-ready.",
+  },
+  {
+    control: "Read authorization on every query and subscription",
+    cg: "supported",
+    note: "Live subs respect the same auth as queries.",
+  },
+  {
+    control: "Audit log of admin actions",
+    cg: "your-responsibility",
+    note: "Ship it via OTLP into the same CloudGrid.",
+  },
+  {
+    control: "Retention policy per project",
+    cg: "supported",
+    note: "Configurable in control-plane.",
+  },
+  {
+    control: "PII redaction",
+    cg: "your-responsibility",
+    note: "Done in your OTel pipeline before ingest.",
+  },
+  {
+    control: "Encryption at rest",
+    cg: "your-responsibility",
+    note: "SurrealDB + your filesystem / volume encryption.",
+  },
+  {
+    control: "Encryption in transit",
+    cg: "your-responsibility",
+    note: "TLS at the BFF / collector — your terminator of choice.",
+  },
+  {
+    control: "Backup / DR",
+    cg: "your-responsibility",
+    note: "SurrealDB backups, your DR posture.",
+  },
+  {
+    control: "Alerting routing to PagerDuty / Opsgenie / Slack",
+    cg: "maturing",
+    note: "Foundations shipped; integrations evolving.",
+  },
   { control: "Long-term cold storage offload", cg: "roadmap", note: "Future storage adapter." },
 ];
 

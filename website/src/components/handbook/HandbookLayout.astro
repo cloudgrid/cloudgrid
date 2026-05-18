@@ -177,17 +177,13 @@ const accentMap: Record<string, string> = {
         });
       });
 
-      // ---- 2. Mermaid: convert ```mermaid blocks into render targets ----
-      var mermaidNodes = [];
-      article.querySelectorAll('pre > code.language-mermaid, pre > code[class*="language-mermaid"]').forEach(function (code) {
-        var pre = code.parentElement;
-        var src = code.textContent || "";
-        var holder = document.createElement("div");
-        holder.className = "cg-mermaid";
-        holder.setAttribute("data-mermaid-src", src);
-        pre.parentNode.replaceChild(holder, pre);
-        mermaidNodes.push(holder);
-      });
+      // ---- 2. Mermaid: render the divs that remark-mermaid produced ----
+      // The markdown pipeline already turned ```mermaid blocks into
+      // <div class="cg-mermaid" data-mermaid-src="..."></div>. We just need
+      // to load mermaid.js and call render() for each one.
+      var mermaidNodes = Array.prototype.slice.call(
+        article.querySelectorAll(".cg-mermaid[data-mermaid-src]")
+      );
 
       function currentMermaidTheme() {
         return document.documentElement.classList.contains("dark") ? "dark" : "default";

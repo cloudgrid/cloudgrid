@@ -50,7 +50,11 @@ provenance: from-user
 ## Observability
 
 - Metrics: structured service counters exposed through logs.
-- Tracing: services preserve incoming OpenTelemetry trace context when available and include NATS correlation IDs.
+- Tracing: services preserve incoming OpenTelemetry trace context when
+  available. HTTP and gRPC use standard W3C Trace Context headers. NATS
+  request/reply, publish/subscribe, and JetStream messages use NATS headers
+  named `traceparent` and `tracestate`. NATS correlation/request IDs remain
+  attributes only and must not be treated as parent span IDs.
 - Logs: structured JSON logs to stdout.
 - Error tracking: none for MVP.
 

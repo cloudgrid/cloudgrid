@@ -200,6 +200,107 @@ func TestTelemetryReadHandlersEnforceReadAuth(t *testing.T) {
 	}
 }
 
+func TestReadHandlerRecordsBoundedRequestMetrics(t *testing.T) {
+	service := "api"
+	rawQuery := "secret-search-text"
+	request := contracts.TraceSearchRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-trace-search"},
+		Query: contracts.TraceSearchQuery{
+			Service: &service,
+			Query:   &rawQuery,
+		},
+	}
+	recorder := NewInMemoryMetricsRecorder()
+
+	handleTraceSearchWithMetrics(&loggingReadStore{}, nil, recorder)(bridgeMessageForTest(SubjectTraceSearch, mustMarshalNATSHandlerTest(t, request)))
+
+	snapshot := recorder.Snapshot()
+	assertReadMetricEvent(t, snapshot, "cloudgrid.storage.read.requests", map[string]string{
+		"operation": "trace_search",
+		"result":    "success",
+	})
+	assertReadMetricEvent(t, snapshot, "cloudgrid.storage.read.duration", map[string]string{
+		"operation": "trace_search",
+		"result":    "success",
+	})
+	assertReadMetricLabelsDoNotContain(t, snapshot, rawQuery, "req-trace-search", "api", "trace-1")
+}
+
+func TestReadHandlerRecordsErrorRequestMetrics(t *testing.T) {
+	request := contracts.TraceSearchRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-trace-search"},
+		Query:          contracts.TraceSearchQuery{},
+	}
+	recorder := NewInMemoryMetricsRecorder()
+
+	handleTraceSearchWithMetrics(&failingReadStore{err: errors.New("database timeout for project_1")}, nil, recorder)(bridgeMessageForTest(SubjectTraceSearch, mustMarshalNATSHandlerTest(t, request)))
+
+	snapshot := recorder.Snapshot()
+	assertReadMetricEvent(t, snapshot, "cloudgrid.storage.read.requests", map[string]string{
+		"operation": "trace_search",
+		"result":    "error",
+	})
+	assertReadMetricEvent(t, snapshot, "cloudgrid.storage.read.duration", map[string]string{
+		"operation": "trace_search",
+		"result":    "error",
+	})
+	assertReadMetricLabelsDoNotContain(t, snapshot, "database timeout", "project_1", "ERR-006")
+}
+
+func TestLiveTraceHandlersRecordSubscriptionMetrics(t *testing.T) {
+	recorder := NewInMemoryMetricsRecorder()
+	registry := NewLiveTraceRegistry(&liveTestStore{}, &liveTestPublisher{}, LiveTraceOptions{
+		HeartbeatInterval: time.Second,
+		MaxSubscriptions:  10,
+		Now:               fixedLiveNow,
+	})
+	startRequest := contracts.LiveTraceStartRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-live-start"},
+		SubscriptionID: "sub-1",
+		SinkSubject:    "telemetry.traces.live.events.bff-1.sub-1",
+		Query:          contracts.LiveTraceQuery{},
+	}
+
+	handleLiveTraceStartWithMetrics(registry, nil, recorder)(bridgeMessageForTest(SubjectLiveTraceStart, mustMarshalNATSHandlerTest(t, startRequest)))
+	handleLiveTraceStopWithMetrics(registry, nil, recorder)(bridgeMessageForTest(SubjectLiveTraceStop, mustMarshalNATSHandlerTest(t, contracts.LiveTraceStopRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-live-stop"},
+		SubscriptionID: "sub-1",
+	})))
+
+	snapshot := recorder.Snapshot()
+	assertReadMetricEventValue(t, snapshot, "cloudgrid.live.subscriptions", map[string]string{
+		"service": "cloudgrid.storage_read",
+		"result":  "success",
+	}, 1)
+	assertReadMetricEventValue(t, snapshot, "cloudgrid.live.subscriptions", map[string]string{
+		"service": "cloudgrid.storage_read",
+		"result":  "success",
+	}, -1)
+	assertReadMetricLabelsDoNotContain(t, snapshot, "sub-1", "telemetry.traces.live.events.bff-1.sub-1", "req-live")
+}
+
+func TestTelemetryHandlersWireRecorderIntoProductionHandlerMap(t *testing.T) {
+	recorder := NewInMemoryMetricsRecorder()
+	registry := NewLiveTraceRegistry(&liveTestStore{}, &liveTestPublisher{}, LiveTraceOptions{
+		HeartbeatInterval: time.Second,
+		MaxSubscriptions:  10,
+		Now:               fixedLiveNow,
+	})
+	handlers := telemetryHandlers(nil, &loggingReadStore{}, registry, nil, recorder)
+	service := "api"
+	request := contracts.TraceSearchRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-trace-search"},
+		Query:          contracts.TraceSearchQuery{Service: &service},
+	}
+
+	handlers[SubjectTraceSearch](bridgeMessageForTest(SubjectTraceSearch, mustMarshalNATSHandlerTest(t, request)))
+
+	assertReadMetricEvent(t, recorder.Snapshot(), "cloudgrid.storage.read.requests", map[string]string{
+		"operation": "trace_search",
+		"result":    "success",
+	})
+}
+
 func TestRichMetricHandlerEvaluatesBinaryFormulaFromMetricSeries(t *testing.T) {
 	from := time.Date(2026, 5, 14, 8, 0, 0, 0, time.UTC)
 	to := from.Add(time.Hour)
@@ -330,6 +431,59 @@ func TestErrorResponseJSONSerializesBridgeErrorEnvelope(t *testing.T) {
 	}
 	if response.Error == nil || response.Error.ID != "ERR-006" || response.Error.Code != "STORAGE_UNAVAILABLE" || !response.Error.Retryable {
 		t.Fatalf("response error = %#v, want retryable ERR-006", response.Error)
+	}
+}
+
+func assertReadMetricEvent(t *testing.T, events []MetricEvent, name string, labels map[string]string) {
+	t.Helper()
+	for _, event := range events {
+		if event.Name != name {
+			continue
+		}
+		matches := true
+		for key, value := range labels {
+			if event.Labels[key] != value {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return
+		}
+	}
+	t.Fatalf("metric %s with labels %#v not found in %#v", name, labels, events)
+}
+
+func assertReadMetricEventValue(t *testing.T, events []MetricEvent, name string, labels map[string]string, value float64) {
+	t.Helper()
+	for _, event := range events {
+		if event.Name != name || event.Value != value {
+			continue
+		}
+		matches := true
+		for key, labelValue := range labels {
+			if event.Labels[key] != labelValue {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return
+		}
+	}
+	t.Fatalf("metric %s value %f with labels %#v not found in %#v", name, value, labels, events)
+}
+
+func assertReadMetricLabelsDoNotContain(t *testing.T, events []MetricEvent, forbidden ...string) {
+	t.Helper()
+	for _, event := range events {
+		for key, value := range event.Labels {
+			for _, blocked := range forbidden {
+				if strings.Contains(key, blocked) || strings.Contains(value, blocked) {
+					t.Fatalf("metric label leaked %q in event %#v", blocked, event)
+				}
+			}
+		}
 	}
 }
 

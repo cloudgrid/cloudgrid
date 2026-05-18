@@ -36,11 +36,109 @@ func TestViewerBootstrapCreatesLocalCompanyAndFirstUserAdmin(t *testing.T) {
 	if org.Role != contracts.CompanyRoleAdmin {
 		t.Fatalf("role = %q, want admin", org.Role)
 	}
-	if len(org.Projects) != 1 || org.Projects[0].ID != LocalProjectID {
+	if len(org.Projects) != 2 {
+		t.Fatalf("projects length = %d, want local default and self-observability projects: %#v", len(org.Projects), org.Projects)
+	}
+	defaultProject, ok := projectByID(org.Projects, LocalProjectID)
+	if !ok {
 		t.Fatalf("projects = %#v, want local default project", org.Projects)
+	}
+	if defaultProject.Name != "Default project" || defaultProject.Slug != LocalProjectID || defaultProject.Status != contracts.ProjectStatusActive {
+		t.Fatalf("default project = %#v, want active Default project", defaultProject)
+	}
+	systemProject, ok := projectByID(org.Projects, "cloudgrid-system")
+	if !ok {
+		t.Fatalf("projects = %#v, want local self-observability project", org.Projects)
+	}
+	if systemProject.Name != "CloudGrid" || systemProject.Slug != "cloudgrid-system" || systemProject.Status != contracts.ProjectStatusActive {
+		t.Fatalf("self-observability project = %#v, want active CloudGrid project", systemProject)
 	}
 	if viewer.SelectedProject != nil {
 		t.Fatalf("selected project = %#v, want nil", viewer.SelectedProject)
+	}
+}
+
+func TestListProjectsIncludesLocalDefaultAndSelfObservabilityProjects(t *testing.T) {
+	service := NewService(newTestStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+
+	projects, err := service.ListProjects(ctx, contracts.ProjectListRequest{BridgeEnvelope: admin})
+	if err != nil {
+		t.Fatalf("ListProjects returned error: %v", err)
+	}
+	if len(projects) != 2 {
+		t.Fatalf("projects length = %d, want local default and self-observability projects: %#v", len(projects), projects)
+	}
+	if _, ok := projectByID(projects, LocalProjectID); !ok {
+		t.Fatalf("projects = %#v, want default project", projects)
+	}
+	systemProject, ok := projectByID(projects, "cloudgrid-system")
+	if !ok {
+		t.Fatalf("projects = %#v, want self-observability project", projects)
+	}
+	if systemProject.OrganizationID != LocalCompanyID || systemProject.Name != "CloudGrid" || systemProject.Status != contracts.ProjectStatusActive {
+		t.Fatalf("self-observability project = %#v, want active CloudGrid project in Personal", systemProject)
+	}
+}
+
+func TestSelectProjectAllowsLocalSelfObservabilityProject(t *testing.T) {
+	service := NewService(newTestStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+
+	viewer, err := service.SelectProject(ctx, contracts.ProjectSelectRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      "cloudgrid-system",
+	})
+	if err != nil {
+		t.Fatalf("SelectProject returned error: %v", err)
+	}
+	if viewer.SelectedProject == nil || viewer.SelectedProject.ID != "cloudgrid-system" {
+		t.Fatalf("selected project = %#v, want cloudgrid-system", viewer.SelectedProject)
+	}
+	if viewer.SelectedProject.Name != "CloudGrid" || viewer.SelectedProject.Status != contracts.ProjectStatusActive {
+		t.Fatalf("selected project = %#v, want active CloudGrid project", viewer.SelectedProject)
+	}
+}
+
+func TestUpdateProjectRejectsLocalSelfObservabilityNameChange(t *testing.T) {
+	store := newTestStore()
+	service := NewService(store, fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	seedLocalSelfObservabilityProject(t, store)
+	name := "Renamed CloudGrid"
+
+	if _, err := service.UpdateProject(ctx, contracts.ProjectUpdateRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      "cloudgrid-system",
+		Name:           &name,
+	}); !isForbidden(err) {
+		t.Fatalf("UpdateProject name change error = %v, want forbidden", err)
+	}
+}
+
+func TestUpdateProjectRejectsLocalSelfObservabilityStatusChange(t *testing.T) {
+	store := newTestStore()
+	service := NewService(store, fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	seedLocalSelfObservabilityProject(t, store)
+	status := contracts.ProjectStatusReadOnly
+
+	if _, err := service.UpdateProject(ctx, contracts.ProjectUpdateRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      "cloudgrid-system",
+		Status:         &status,
+	}); !isForbidden(err) {
+		t.Fatalf("UpdateProject status change error = %v, want forbidden", err)
 	}
 }
 
@@ -398,6 +496,157 @@ func TestSSOAcceptsPendingVerifiedMatchingInvitationAsUser(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].Status != contracts.OrganizationInvitationStatusAccepted || items[0].AcceptedByUserID == nil || *items[0].AcceptedByUserID != "sso-ada" {
 		t.Fatalf("accepted invitation = %#v, want accepted by sso-ada", items)
+	}
+}
+
+func TestProjectInvitationForInactiveEmailAppliesProjectGrantAfterSSOAcceptance(t *testing.T) {
+	service := NewService(newTestStore(), fixedNow)
+	ctx := context.Background()
+	companyID := "company-1"
+	admin := ssoEnvelope("req-admin", companyID, "sso-admin", "Admin", "admin@example.test", true)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	project, err := service.CreateProject(ctx, contracts.ProjectCreateRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: companyID,
+		Name:           "Checkout",
+		Slug:           "checkout",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject returned error: %v", err)
+	}
+
+	result, err := service.CreateProjectInvitation(ctx, contracts.ProjectInvitationCreateRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      project.ID,
+		Email:          " Ada@Example.TEST ",
+		Role:           contracts.ProjectRoleEditor,
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectInvitation returned error: %v", err)
+	}
+	if result.Outcome != contracts.ProjectInvitationOutcomeInvitationPending {
+		t.Fatalf("outcome = %q, want invitation_pending", result.Outcome)
+	}
+	if result.Invitation == nil || result.ProjectMember != nil {
+		t.Fatalf("result = %#v, want pending invitation without active member", result)
+	}
+	if len(result.Invitation.ProjectGrants) != 1 {
+		t.Fatalf("project grants = %#v, want one pending grant", result.Invitation.ProjectGrants)
+	}
+	grant := result.Invitation.ProjectGrants[0]
+	if grant.ProjectID != project.ID || grant.Role != contracts.ProjectRoleEditor || grant.Status != contracts.InvitationProjectGrantStatusPending {
+		t.Fatalf("grant = %#v, want pending editor grant for project", grant)
+	}
+	if _, ok, err := service.store.GetProjectMember(ctx, project.ID, "sso-ada"); err != nil {
+		t.Fatalf("GetProjectMember before acceptance returned error: %v", err)
+	} else if ok {
+		t.Fatalf("project grant created active membership before acceptance")
+	}
+
+	if _, err := service.GetViewer(ctx, ssoEnvelope("req-ada", companyID, "sso-ada", "Ada", "ada@example.test", true)); err != nil {
+		t.Fatalf("GetViewer invitee returned error: %v", err)
+	}
+	member, ok, err := service.store.GetProjectMember(ctx, project.ID, "sso-ada")
+	if err != nil {
+		t.Fatalf("GetProjectMember after acceptance returned error: %v", err)
+	}
+	if !ok || member.Role != contracts.ProjectRoleEditor {
+		t.Fatalf("project member = %#v, %v; want applied editor membership", member, ok)
+	}
+	items, err := service.ListInvitations(ctx, contracts.InvitationListRequest{BridgeEnvelope: admin, OrganizationID: companyID})
+	if err != nil {
+		t.Fatalf("ListInvitations returned error: %v", err)
+	}
+	if len(items) != 1 || len(items[0].ProjectGrants) != 1 || items[0].ProjectGrants[0].Status != contracts.InvitationProjectGrantStatusApplied || items[0].ProjectGrants[0].AppliedAt == nil {
+		t.Fatalf("accepted invitation grants = %#v, want applied grant", items)
+	}
+}
+
+func TestProjectInvitationForActiveCompanyMemberCreatesDirectMembership(t *testing.T) {
+	service := NewService(newTestStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	seedOrganizationMember(t, service, LocalCompanyID, "user-1", contracts.CompanyRoleUser, "member@example.test")
+
+	result, err := service.CreateProjectInvitation(ctx, contracts.ProjectInvitationCreateRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      LocalProjectID,
+		Email:          " Member@Example.TEST ",
+		Role:           contracts.ProjectRoleViewer,
+	})
+	if err != nil {
+		t.Fatalf("CreateProjectInvitation returned error: %v", err)
+	}
+	if result.Outcome != contracts.ProjectInvitationOutcomeMembershipCreated {
+		t.Fatalf("outcome = %q, want membership_created", result.Outcome)
+	}
+	if result.ProjectMember == nil || result.Invitation != nil {
+		t.Fatalf("result = %#v, want project member without invitation", result)
+	}
+	if result.ProjectMember.UserID != "user-1" || result.ProjectMember.Role != contracts.ProjectRoleViewer || result.ProjectMember.Source != contracts.ProjectMemberSourceDirect {
+		t.Fatalf("project member = %#v, want direct viewer for user-1", result.ProjectMember)
+	}
+	items, err := service.ListInvitations(ctx, contracts.InvitationListRequest{BridgeEnvelope: admin, OrganizationID: LocalCompanyID})
+	if err != nil {
+		t.Fatalf("ListInvitations returned error: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("invitations = %#v, want no company invitation for active member", items)
+	}
+}
+
+func TestInvitationEmailDeliveryCreatesOutboxAndUpdatesStatus(t *testing.T) {
+	store := newTestStore()
+	transport := &fakeInvitationEmailTransport{}
+	service := NewServiceWithOptions(store, fixedNow, ServiceOptions{
+		InvitationEmail: InvitationEmailConfig{
+			Mode:            InvitationEmailModeSMTP,
+			RequireDelivery: true,
+			PublicURL:       "https://cloudgrid.example.test",
+			From:            "CloudGrid <noreply@example.test>",
+			MaxAttempts:     3,
+			RetryBase:       time.Minute,
+		},
+		EmailTransport: transport,
+	})
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+
+	invitation, err := service.CreateInvitation(ctx, contracts.InvitationCreateRequest{
+		BridgeEnvelope: admin,
+		OrganizationID: LocalCompanyID,
+		Email:          "ada@example.test",
+	})
+	if err != nil {
+		t.Fatalf("CreateInvitation returned error: %v", err)
+	}
+	if invitation.DeliveryStatus != contracts.InvitationDeliveryStatusPending || invitation.LastEmailDeliveryID == nil {
+		t.Fatalf("invitation delivery = %#v, want pending with delivery ID", invitation)
+	}
+	if len(store.emailDeliveries) != 1 {
+		t.Fatalf("email deliveries = %#v, want one outbox row", store.emailDeliveries)
+	}
+
+	if sent, err := service.ProcessDueInvitationEmails(ctx, 10); err != nil || sent != 1 {
+		t.Fatalf("ProcessDueInvitationEmails = %d, %v; want 1 nil", sent, err)
+	}
+	if len(transport.messages) != 1 {
+		t.Fatalf("transport messages = %#v, want one message", transport.messages)
+	}
+	updated, ok, err := service.store.GetInvitation(ctx, invitation.ID)
+	if err != nil || !ok {
+		t.Fatalf("GetInvitation after send = %#v, %v, %v", updated, ok, err)
+	}
+	if updated.DeliveryStatus != contracts.InvitationDeliveryStatusSent {
+		t.Fatalf("updated delivery status = %q, want sent", updated.DeliveryStatus)
 	}
 }
 
@@ -1570,6 +1819,32 @@ func retentionRule(policy contracts.RetentionPolicy, dataClass contracts.Retenti
 	return contracts.RetentionRule{}
 }
 
+func projectByID(projects []contracts.Project, id string) (contracts.Project, bool) {
+	for _, project := range projects {
+		if project.ID == id {
+			return project, true
+		}
+	}
+	return contracts.Project{}, false
+}
+
+func seedLocalSelfObservabilityProject(t *testing.T, store *testStore) {
+	t.Helper()
+	now := fixedNow()
+	if err := store.PutProject(context.Background(), ports.ProjectRecord{
+		ID:             "cloudgrid-system",
+		OrganizationID: LocalCompanyID,
+		Name:           "CloudGrid",
+		Slug:           "cloudgrid-system",
+		Status:         contracts.ProjectStatusActive,
+		ChangedAt:      now,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("seed self-observability project: %v", err)
+	}
+}
+
 func localEnvelope(requestID string, principal string, projectID *string) contracts.BridgeEnvelope {
 	companyID := LocalCompanyID
 	tenantID := LocalCompanyID
@@ -1640,19 +1915,34 @@ func seedOrganizationMember(t *testing.T, service *Service, organizationID strin
 
 func portsInvitationRecordFromContract(invitation contracts.OrganizationInvitation) ports.InvitationRecord {
 	return ports.InvitationRecord{
-		ID:               invitation.ID,
-		OrganizationID:   invitation.OrganizationID,
-		Email:            invitation.Email,
-		Role:             invitation.Role,
-		Status:           invitation.Status,
-		InvitedByUserID:  invitation.InvitedByUserID,
-		AcceptedByUserID: invitation.AcceptedByUserID,
-		CreatedAt:        invitation.CreatedAt,
-		UpdatedAt:        invitation.UpdatedAt,
-		AcceptedAt:       invitation.AcceptedAt,
-		RevokedAt:        invitation.RevokedAt,
-		ExpiresAt:        invitation.ExpiresAt,
+		ID:                    invitation.ID,
+		OrganizationID:        invitation.OrganizationID,
+		Email:                 invitation.Email,
+		Role:                  invitation.Role,
+		Status:                invitation.Status,
+		DeliveryStatus:        invitation.DeliveryStatus,
+		LastDeliveryAttemptAt: invitation.LastDeliveryAttemptAt,
+		LastDeliveryErrorCode: invitation.LastDeliveryErrorCode,
+		LastEmailDeliveryID:   invitation.LastEmailDeliveryID,
+		ProjectGrants:         append([]contracts.InvitationProjectGrant{}, invitation.ProjectGrants...),
+		InvitedByUserID:       invitation.InvitedByUserID,
+		AcceptedByUserID:      invitation.AcceptedByUserID,
+		CreatedAt:             invitation.CreatedAt,
+		UpdatedAt:             invitation.UpdatedAt,
+		AcceptedAt:            invitation.AcceptedAt,
+		RevokedAt:             invitation.RevokedAt,
+		ExpiresAt:             invitation.ExpiresAt,
 	}
+}
+
+type fakeInvitationEmailTransport struct {
+	messages []InvitationEmailMessage
+	err      error
+}
+
+func (transport *fakeInvitationEmailTransport) SendInvitationEmail(_ context.Context, message InvitationEmailMessage) error {
+	transport.messages = append(transport.messages, message)
+	return transport.err
 }
 
 func fixedNow() time.Time {

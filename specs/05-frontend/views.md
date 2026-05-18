@@ -43,7 +43,13 @@ Traces, logs, metrics, and dashboards with no project telemetry link to the sele
 
 ## Company User Management
 
-Company member pages list active users, company roles, pending invitations, terminal invitation state, and last activity when available. Admins invite users by email from a drawer. Invitations are always created as `user`; admin promotion is shown only for active members after first sign-in. Role changes call GraphQL control-plane mutations and show optimistic UI only after the mutation succeeds. The current roles are `admin` and `user`; the UI must not expose project-specific role controls until a later granular-permissions spec adds them.
+Company member pages list active users, company roles, pending invitations, terminal invitation state, and last activity when available. Admins invite users by email from a drawer. Invitations are always created as company role `user`; admin promotion is shown only for active members after first sign-in. Role changes call GraphQL control-plane mutations and show optimistic UI only after the mutation succeeds. Company roles remain `admin` and `user`.
+
+Project member pages expose project-specific roles from
+[Project membership and roles](../04-backend/project-membership.md). Project
+admins and company admins can invite an email address to a project role. When
+the recipient is not an active company member, the UI must represent the result
+as a pending project invitation grant, not as an active `ProjectMember`.
 
 ## Trace List
 

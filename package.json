@@ -17,6 +17,7 @@
     "dev:infra": "docker compose --env-file .env up -d nats surrealdb",
     "dev:seed": "bun tooling/scripts/seed-otlp-fixtures.mjs",
     "dev:seed:live": "bun tooling/scripts/seed-otlp-fixtures.mjs --continuous",
+    "setup:local": "bun tooling/scripts/setup-local.mjs",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "go:test": "go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/ai-eval-runner/... ./core/storage-read/... ./core/storage-write/...",

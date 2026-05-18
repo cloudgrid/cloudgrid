@@ -54,13 +54,33 @@ Project member mutations must enforce:
 
 `removeProjectMember(projectId, userId)` removes only direct project membership rows and returns `true` after the row is absent. Removing implied `company_admin` or `local_personal` entries must fail with `ERR-016`. Removing a non-existent direct membership returns `true`.
 
-## Required Contracts Before Implementation
+## Project Invitations
 
-Implementation requires:
+Project admins and company admins may invite an email address to a project role.
+The lifecycle is specified in
+[Invitation email delivery and project onboarding](./invitation-email-delivery.md).
+
+When the invited email already belongs to an active company member,
+`inviteProjectMember` creates or updates the direct `project_membership` row
+immediately and may enqueue a project-access notification email. When the email
+does not belong to an active company member, control-plane creates or reuses a
+pending organization invitation and attaches a pending project grant with the
+requested `ProjectRole`.
+
+Pending project grants are not project memberships. They must not authorize
+GraphQL reads, live telemetry, ingest credential management, dashboard access,
+or settings access before SSO acceptance creates the active company membership
+and applies the direct project membership.
+
+## Implementation Status
+
+Implemented:
 
 - GraphQL `ProjectMember`, `ProjectRole`, `projectMembers`, `updateProjectMember`, and `removeProjectMember` contracts;
-- control-plane message bridge subjects for project-member list/update/remove;
+- GraphQL project invitation contracts for `inviteProjectMember` and pending invitation project grants;
+- control-plane message bridge subjects for project-member list/update/remove and project invitation creation;
 - SurrealDB schema and indexes for `(projectId, userId)` and user lookup;
+- SurrealDB schema support for pending invitation project grants;
 - project settings UX for members with clear role descriptions and local-mode restrictions.
 
 ## Tests
@@ -71,4 +91,6 @@ Required tests:
 - project viewer/editor/admin authorization boundaries;
 - final project admin invariant;
 - local Personal admin cannot be removed or demoted;
-- selected-project read/write checks use project membership.
+- selected-project read/write checks use project membership;
+- pending project grants do not authorize any project action before invitation
+  acceptance.

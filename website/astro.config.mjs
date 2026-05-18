@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import tailwindcss from "@tailwindcss/vite";
+import remarkMermaid from "./src/lib/remark-mermaid.mjs";
 
 // https://astro.build/config
 export default defineConfig({
@@ -10,6 +11,10 @@ export default defineConfig({
     plugins: [tailwindcss()],
   },
   markdown: {
+    // remark-mermaid converts ```mermaid blocks into <div class="cg-mermaid">
+    // so Shiki never tries to highlight them and the client-side renderer
+    // can pick them up. Order matters — run BEFORE Shiki.
+    remarkPlugins: [remarkMermaid],
     // Shiki with both light + dark themes. Astro emits CSS variables on every
     // token; global.css then toggles which variable wins based on the manual
     // theme class on <html>. See src/styles/global.css → "Shiki dual-theme".
@@ -18,11 +23,9 @@ export default defineConfig({
         light: "github-light",
         dark: "github-dark-dimmed",
       },
-      // Make GenAI keywords pop a bit; harmless if the language is unknown.
       langs: [],
       wrap: false,
     },
-    // Adds an `id` slug to every heading so the right-rail TOC can link to it.
     syntaxHighlight: "shiki",
     gfm: true,
   },

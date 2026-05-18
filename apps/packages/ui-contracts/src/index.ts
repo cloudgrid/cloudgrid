@@ -20,6 +20,18 @@ export type CompanyRole = "admin" | "user";
 
 export type OrganizationInvitationStatus = "pending" | "accepted" | "revoked" | "expired";
 
+export type InvitationDeliveryStatus =
+  | "not_configured"
+  | "pending"
+  | "sent"
+  | "failed_retryable"
+  | "failed_terminal"
+  | "suppressed";
+
+export type InvitationProjectGrantStatus = "pending" | "applied" | "revoked" | "failed";
+
+export type ProjectInvitationOutcome = "invitation_pending" | "membership_created";
+
 export type ProjectRole = "viewer" | "editor" | "admin";
 
 export type ProjectMemberSource = "direct" | "company_admin" | "local_personal";
@@ -902,7 +914,10 @@ export interface Trace {
   id: string;
   serviceName?: string | null;
   startedAt: DateTime;
+  startedAtUnixNano: string;
   endedAt?: DateTime | null;
+  endedAtUnixNano?: string | null;
+  durationNano?: string | null;
   durationMs?: number | null;
   rootSpanId?: string | null;
   status?: TraceStatus | null;
@@ -920,6 +935,7 @@ export interface TraceSummary extends Trace {
 export interface SpanEvent {
   name: string;
   timestamp: DateTime;
+  timestampUnixNano: string;
   attributes: JSONValue;
 }
 
@@ -958,7 +974,11 @@ export interface Span {
   kind?: string | null;
   serviceName?: string | null;
   startedAt: DateTime;
+  startedAtUnixNano: string;
   endedAt: DateTime;
+  endedAtUnixNano: string;
+  startOffsetNano: string;
+  durationNano: string;
   durationMs: number;
   status?: TraceStatus | null;
   attributes: JSONValue;
@@ -1835,6 +1855,11 @@ export interface OrganizationInvitation {
   email: string;
   role: CompanyRole;
   status: OrganizationInvitationStatus;
+  deliveryStatus: InvitationDeliveryStatus;
+  lastDeliveryAttemptAt?: DateTime | null;
+  lastDeliveryErrorCode?: string | null;
+  lastEmailDeliveryId?: string | null;
+  projectGrants: InvitationProjectGrant[];
   invitedByUserId: string;
   acceptedByUserId?: string | null;
   createdAt: DateTime;
@@ -1842,6 +1867,15 @@ export interface OrganizationInvitation {
   acceptedAt?: DateTime | null;
   revokedAt?: DateTime | null;
   expiresAt?: DateTime | null;
+}
+
+export interface InvitationProjectGrant {
+  projectId: string;
+  role: ProjectRole;
+  status: InvitationProjectGrantStatus;
+  createdAt: DateTime;
+  createdByUserId: string;
+  appliedAt?: DateTime | null;
 }
 
 export interface ProjectMember {
@@ -2098,6 +2132,26 @@ export interface UpdateOrganizationMemberMutationData {
 
 export interface InviteOrganizationMemberMutationData {
   inviteOrganizationMember: OrganizationInvitation;
+}
+
+export interface InviteProjectMemberInput {
+  projectId: string;
+  email: string;
+  role: ProjectRole;
+}
+
+export interface ProjectInvitationResult {
+  outcome: ProjectInvitationOutcome;
+  invitation?: OrganizationInvitation | null;
+  projectMember?: ProjectMember | null;
+}
+
+export interface InviteProjectMemberMutationData {
+  inviteProjectMember: ProjectInvitationResult;
+}
+
+export interface ResendOrganizationInvitationMutationData {
+  resendOrganizationInvitation: OrganizationInvitation;
 }
 
 export interface RevokeOrganizationInvitationMutationData {

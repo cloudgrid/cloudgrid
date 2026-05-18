@@ -99,8 +99,10 @@ export function TraceWaterfallPanel({
           rootSpanIds={detail.structure.rootSpanIds}
           selectedSpanId={selectedSpanId ?? null}
           spans={detail.spans}
+          traceDurationNano={detail.trace.durationNano ?? null}
           traceDurationMs={detail.trace.durationMs ?? null}
           traceStartedAt={detail.trace.startedAt}
+          traceStartedAtUnixNano={detail.trace.startedAtUnixNano}
         />
       )}
     </section>

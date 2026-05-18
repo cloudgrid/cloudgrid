@@ -15,6 +15,8 @@ import type {
   AnnotationQueueQueryData,
   AnnotationQueueResult,
   AnnotationQueueSearchInput,
+  AppendDatasetItemsInput,
+  AppendDatasetItemsMutationData,
   CommitDatasetImportInput,
   CreateAlertRuleInput,
   CreateAlertRuleMutationData,
@@ -49,6 +51,8 @@ import type {
   IngestCredentialsQueryData,
   InviteOrganizationMemberInput,
   InviteOrganizationMemberMutationData,
+  InviteProjectMemberInput,
+  InviteProjectMemberMutationData,
   LiveExperimentRunInput,
   LiveExperimentRunSubscriptionData,
   LiveTraceEvent,
@@ -72,6 +76,7 @@ import type {
   Project,
   ProjectAiSettings,
   ProjectAiSettingsQueryData,
+  ProjectInvitationResult,
   ProjectListInput,
   ProjectMember,
   ProjectMembersQueryData,
@@ -85,6 +90,7 @@ import type {
   RetentionPolicyQueryData,
   RevokeIngestCredentialMutationData,
   RevokeOrganizationInvitationMutationData,
+  ResendOrganizationInvitationMutationData,
   RichMetricSeriesInput,
   RichMetricSeriesResult,
   Scorer,
@@ -143,6 +149,7 @@ export interface TelemetryGraphQLClient {
   searchDatasets: (input: DatasetSearchInput) => Promise<DatasetsQueryData["datasets"]>;
   getDataset: (id: string) => Promise<Dataset | null>;
   createDataset: (input: CreateDatasetInput) => Promise<Dataset>;
+  appendDatasetItems: (input: AppendDatasetItemsInput) => Promise<Dataset>;
   searchScorers: (input: ScorerSearchInput) => Promise<ScorersQueryData["scorers"]>;
   createScorer: (input: CreateScorerInput) => Promise<Scorer>;
   searchExperiments: (input: ExperimentSearchInput) => Promise<ExperimentsQueryData["experiments"]>;
@@ -176,6 +183,8 @@ export interface ControlPlaneGraphQLClient {
   inviteOrganizationMember: (
     input: InviteOrganizationMemberInput,
   ) => Promise<OrganizationInvitation>;
+  inviteProjectMember: (input: InviteProjectMemberInput) => Promise<ProjectInvitationResult>;
+  resendOrganizationInvitation: (id: string) => Promise<OrganizationInvitation>;
   revokeOrganizationInvitation: (id: string) => Promise<OrganizationInvitation>;
   updateOrganizationMember: (input: UpdateOrganizationMemberInput) => Promise<OrganizationMember>;
   removeOrganizationMember: (input: RemoveOrganizationMemberInput) => Promise<boolean>;
@@ -367,6 +376,15 @@ export function createTelemetryGraphQLClient(endpoint = "/graphql"): TelemetryGr
         { input },
       );
       return data.createDataset;
+    },
+    async appendDatasetItems(input) {
+      const data = await requestGraphQL<AppendDatasetItemsMutationData>(
+        endpoint,
+        "AppendDatasetItems",
+        appendDatasetItemsOperation,
+        { input },
+      );
+      return data.appendDatasetItems;
     },
     async searchScorers(input) {
       const data = await requestGraphQL<ScorersQueryData>(endpoint, "Scorers", scorersOperation, {
@@ -586,6 +604,24 @@ export function createControlPlaneGraphQLClient(endpoint = "/graphql"): ControlP
         { input },
       );
       return data.inviteOrganizationMember;
+    },
+    async inviteProjectMember(input) {
+      const data = await requestGraphQL<InviteProjectMemberMutationData>(
+        endpoint,
+        "InviteProjectMember",
+        inviteProjectMemberOperation,
+        { input },
+      );
+      return data.inviteProjectMember;
+    },
+    async resendOrganizationInvitation(id) {
+      const data = await requestGraphQL<ResendOrganizationInvitationMutationData>(
+        endpoint,
+        "ResendOrganizationInvitation",
+        resendOrganizationInvitationOperation,
+        { id },
+      );
+      return data.resendOrganizationInvitation;
     },
     async revokeOrganizationInvitation(id) {
       const data = await requestGraphQL<RevokeOrganizationInvitationMutationData>(
@@ -953,6 +989,18 @@ const organizationInvitationFields = `
   email
   role
   status
+  deliveryStatus
+  lastDeliveryAttemptAt
+  lastDeliveryErrorCode
+  lastEmailDeliveryId
+  projectGrants {
+    projectId
+    role
+    status
+    createdAt
+    createdByUserId
+    appliedAt
+  }
   invitedByUserId
   acceptedByUserId
   createdAt
@@ -986,6 +1034,14 @@ export const inviteOrganizationMemberOperation = `
   }
 `;
 
+export const resendOrganizationInvitationOperation = `
+  mutation ResendOrganizationInvitation($id: ID!) {
+    resendOrganizationInvitation(id: $id) {
+      ${organizationInvitationFields}
+    }
+  }
+`;
+
 export const revokeOrganizationInvitationOperation = `
   mutation RevokeOrganizationInvitation($id: ID!) {
     revokeOrganizationInvitation(id: $id) {
@@ -1006,6 +1062,20 @@ const projectMemberFields = `
   createdByUserId
   updatedAt
   updatedByUserId
+`;
+
+export const inviteProjectMemberOperation = `
+  mutation InviteProjectMember($input: InviteProjectMemberInput!) {
+    inviteProjectMember(input: $input) {
+      outcome
+      invitation {
+        ${organizationInvitationFields}
+      }
+      projectMember {
+        ${projectMemberFields}
+      }
+    }
+  }
 `;
 
 export const projectMembersOperation = `
@@ -1078,7 +1148,10 @@ export const traceSearchOperation = `
         id
         serviceName
         startedAt
+        startedAtUnixNano
         endedAt
+        endedAtUnixNano
+        durationNano
         durationMs
         rootSpanId
         status
@@ -1100,7 +1173,10 @@ export const traceDetailOperation = `
         id
         serviceName
         startedAt
+        startedAtUnixNano
         endedAt
+        endedAtUnixNano
+        durationNano
         durationMs
         rootSpanId
         status
@@ -1127,7 +1203,11 @@ export const traceDetailOperation = `
         kind
         serviceName
         startedAt
+        startedAtUnixNano
         endedAt
+        endedAtUnixNano
+        startOffsetNano
+        durationNano
         durationMs
         status
         attributes
@@ -1141,6 +1221,7 @@ export const traceDetailOperation = `
         events {
           name
           timestamp
+          timestampUnixNano
           attributes
         }
         links {
@@ -1175,7 +1256,11 @@ export const traceDetailOperation = `
         kind
         serviceName
         startedAt
+        startedAtUnixNano
         endedAt
+        endedAtUnixNano
+        startOffsetNano
+        durationNano
         durationMs
         status
         attributes
@@ -1189,6 +1274,7 @@ export const traceDetailOperation = `
         events {
           name
           timestamp
+          timestampUnixNano
           attributes
         }
         links {
@@ -2132,6 +2218,40 @@ export const createDatasetOperation = `
   }
 `;
 
+export const appendDatasetItemsOperation = `
+  mutation AppendDatasetItems($input: AppendDatasetItemsInput!) {
+    appendDatasetItems(input: $input) {
+      id
+      name
+      description
+      version
+      createdAt
+      itemCount
+      reviewedItemCount
+      splitCounts
+      health {
+        status
+        reviewedItemCount
+        totalItemCount
+        splitCounts
+        duplicateCandidateCount
+        leakageWarningCount
+        missingExpectedCount
+        schemaIssueCount
+        smallDataset
+        warnings
+      }
+      tags
+      items {
+        items {
+          ${datasetItemFields}
+        }
+        nextCursor
+      }
+    }
+  }
+`;
+
 export const scorersOperation = `
   query Scorers($input: ScorerSearchInput) {
     scorers(input: $input) {
@@ -2515,6 +2635,20 @@ export const publicGraphQLOperations = [
     requiresSelectedProject: false,
   },
   {
+    operationName: "InviteProjectMember",
+    document: inviteProjectMemberOperation,
+    kind: "mutation",
+    area: "settings",
+    requiresSelectedProject: true,
+  },
+  {
+    operationName: "ResendOrganizationInvitation",
+    document: resendOrganizationInvitationOperation,
+    kind: "mutation",
+    area: "control",
+    requiresSelectedProject: false,
+  },
+  {
     operationName: "RevokeOrganizationInvitation",
     document: revokeOrganizationInvitationOperation,
     kind: "mutation",
@@ -2767,6 +2901,13 @@ export const publicGraphQLOperations = [
     requiresSelectedProject: true,
   },
   {
+    operationName: "AppendDatasetItems",
+    document: appendDatasetItemsOperation,
+    kind: "mutation",
+    area: "ai-eval",
+    requiresSelectedProject: true,
+  },
+  {
     operationName: "Scorers",
     document: scorersOperation,
     kind: "query",
@@ -2879,6 +3020,8 @@ export type SupportedGraphQLData =
   | TelemetryFacetQueryData
   | OrganizationMembersQueryData
   | OrganizationInvitationsQueryData
+  | InviteProjectMemberMutationData
+  | ResendOrganizationInvitationMutationData
   | ProjectMembersQueryData
   | RetentionPolicyQueryData
   | AlertRulesQueryData

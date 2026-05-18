@@ -9,7 +9,93 @@ describe("deployment runtime config", () => {
         mode: "local",
         sessionTtlSeconds: 28_800,
       },
+      selfObservability: {
+        enabled: true,
+        projectId: "cloudgrid-system",
+        companyId: "local",
+        otlpEndpoint: "http://localhost:4318",
+        exportIntervalSeconds: 10,
+        tracesEnabled: true,
+        logsEnabled: true,
+        metricsEnabled: true,
+      },
     });
+  });
+
+  test("defaults deployed self-observability to disabled", () => {
+    const config = parseDeploymentRuntimeConfig({
+      CLOUDGRID_DEPLOYMENT_MODE: "deployed",
+      CLOUDGRID_AUTH_MODE: "sso",
+      CLOUDGRID_AUTH_PROVIDERS: "github",
+      CLOUDGRID_AUTH_GITHUB_CLIENT_ID: "github-client-id",
+      CLOUDGRID_AUTH_GITHUB_REDIRECT_URI: "https://cloudgrid.example/auth/callback",
+      CLOUDGRID_SESSION_SECRET: "session-secret",
+    });
+
+    expect(config.selfObservability).toEqual({
+      enabled: false,
+      projectId: "cloudgrid-system",
+      exportIntervalSeconds: 10,
+      tracesEnabled: false,
+      logsEnabled: false,
+      metricsEnabled: false,
+    });
+  });
+
+  test("requires deployed self-observability routing and credential config when enabled", () => {
+    const base = {
+      CLOUDGRID_DEPLOYMENT_MODE: "deployed",
+      CLOUDGRID_AUTH_MODE: "sso",
+      CLOUDGRID_AUTH_PROVIDERS: "github",
+      CLOUDGRID_AUTH_GITHUB_CLIENT_ID: "github-client-id",
+      CLOUDGRID_AUTH_GITHUB_REDIRECT_URI: "https://cloudgrid.example/auth/callback",
+      CLOUDGRID_SESSION_SECRET: "session-secret",
+      CLOUDGRID_SELF_OBSERVABILITY_ENABLED: "true",
+    };
+
+    expect(() => parseDeploymentRuntimeConfig(base)).toThrow(
+      "CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID",
+    );
+    expect(() =>
+      parseDeploymentRuntimeConfig({
+        ...base,
+        CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID: "ops",
+      }),
+    ).toThrow("CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID");
+    expect(() =>
+      parseDeploymentRuntimeConfig({
+        ...base,
+        CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID: "ops",
+        CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID: "cloudgrid-prod",
+      }),
+    ).toThrow("CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT");
+    expect(() =>
+      parseDeploymentRuntimeConfig({
+        ...base,
+        CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID: "ops",
+        CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID: "cloudgrid-prod",
+        CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT: "https://collector.example",
+      }),
+    ).toThrow("CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN");
+  });
+
+  test("validates self-observability export interval bounds", () => {
+    expect(() =>
+      parseDeploymentRuntimeConfig({
+        CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS: "0",
+      }),
+    ).toThrow("CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS");
+    expect(() =>
+      parseDeploymentRuntimeConfig({
+        CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS: "301",
+      }),
+    ).toThrow("CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS");
+
+    expect(
+      parseDeploymentRuntimeConfig({
+        CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS: "300",
+      }).selfObservability.exportIntervalSeconds,
+    ).toBe(300);
   });
 
   test("parses deployed SSO config for configured providers", () => {
@@ -69,6 +155,14 @@ describe("deployment runtime config", () => {
         },
         sessionSecret: "session-secret",
         sessionTtlSeconds: 900,
+      },
+      selfObservability: {
+        enabled: false,
+        projectId: "cloudgrid-system",
+        exportIntervalSeconds: 10,
+        tracesEnabled: false,
+        logsEnabled: false,
+        metricsEnabled: false,
       },
     });
   });

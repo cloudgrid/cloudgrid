@@ -53,6 +53,7 @@ import type {
   IngestCredential,
   IngestCredentialListResult,
   InviteOrganizationMemberInput,
+  InviteProjectMemberInput,
   LiveExperimentRunInput,
   LiveTraceEvent,
   LiveTraceInput,
@@ -68,6 +69,7 @@ import type {
   PrepareDatasetImportInput,
   Project,
   ProjectAiSettings,
+  ProjectInvitationResult,
   ProjectListInput,
   ProjectMember,
   ProjectRole,
@@ -110,6 +112,12 @@ import {
   NATSEphemeralPubSub,
   NATSRequestReplyClient,
 } from "./bridge/adapters/nats";
+import type {
+  SelfObservabilityLogRecorder,
+  SelfObservabilityTraceRecorder,
+  TraceContext,
+} from "./self-observability";
+import { createTraceContext, traceContextToTraceParent } from "./self-observability";
 
 const subjects = {
   viewerGet: "control.viewer.get",
@@ -118,7 +126,9 @@ const subjects = {
   membersList: "control.members.list",
   invitationsList: "control.invitations.list",
   invitationCreate: "control.invitations.create",
+  invitationResend: "control.invitations.resend",
   invitationRevoke: "control.invitations.revoke",
+  projectInvitationCreate: "control.project_invitations.create",
   projectsList: "control.projects.list",
   projectGet: "control.projects.get",
   projectCreate: "control.projects.create",
@@ -266,6 +276,14 @@ export interface ControlPlaneBridge {
   selectProject(id: string, authContext: NormalizedAuthContext): Promise<Viewer>;
   inviteOrganizationMember(
     input: InviteOrganizationMemberInput,
+    authContext: NormalizedAuthContext,
+  ): Promise<OrganizationInvitation>;
+  inviteProjectMember(
+    input: InviteProjectMemberInput,
+    authContext: NormalizedAuthContext,
+  ): Promise<ProjectInvitationResult>;
+  resendOrganizationInvitation(
+    id: string,
     authContext: NormalizedAuthContext,
   ): Promise<OrganizationInvitation>;
   revokeOrganizationInvitation(
@@ -470,7 +488,7 @@ export interface RequestReplyClient {
   request(
     subject: string,
     payload: Uint8Array,
-    options: { timeoutMs: number },
+    options: { timeoutMs: number; headers?: Record<string, string> },
   ): Promise<Uint8Array>;
 }
 
@@ -514,6 +532,34 @@ interface BridgeOptions {
   bffInstanceId?: string;
   subscriptionId?: () => string;
   liveTraceWatchdogMs?: number;
+  metricsRecorder?: MessageBridgeMetricsRecorder;
+  traceRecorder?: SelfObservabilityTraceRecorder;
+  traceContextFactory?: () => TraceContext;
+  logRecorder?: SelfObservabilityLogRecorder;
+}
+
+export type MessageBridgeMetricRecord =
+  | {
+      metric: "cloudgrid.message_bridge.requests";
+      kind: "counter";
+      value: 1;
+      attributes: MessageBridgeMetricAttributes;
+    }
+  | {
+      metric: "cloudgrid.message_bridge.duration";
+      kind: "histogram";
+      value: number;
+      attributes: MessageBridgeMetricAttributes;
+    };
+
+export interface MessageBridgeMetricAttributes {
+  service: "cloudgrid.bff";
+  subject: string;
+  result: "success" | "error";
+}
+
+export interface MessageBridgeMetricsRecorder {
+  record(record: MessageBridgeMetricRecord): void;
 }
 
 export class MessageBridgeCloudGridBridge implements CloudGridBridge {
@@ -525,6 +571,10 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   #bffInstanceId: string;
   #subscriptionId: () => string;
   #liveTraceWatchdogMs: number | undefined;
+  #metricsRecorder: MessageBridgeMetricsRecorder | undefined;
+  #traceRecorder: SelfObservabilityTraceRecorder | undefined;
+  #traceContextFactory: () => TraceContext;
+  #logRecorder: SelfObservabilityLogRecorder | undefined;
 
   constructor(
     requestReply: RequestReplyClient,
@@ -540,6 +590,10 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     this.#bffInstanceId = options.bffInstanceId ?? crypto.randomUUID();
     this.#subscriptionId = options.subscriptionId ?? (() => crypto.randomUUID());
     this.#liveTraceWatchdogMs = options.liveTraceWatchdogMs;
+    this.#metricsRecorder = options.metricsRecorder;
+    this.#traceRecorder = options.traceRecorder;
+    this.#traceContextFactory = options.traceContextFactory ?? createTraceContext;
+    this.#logRecorder = options.logRecorder;
   }
 
   async viewer(authContext: NormalizedAuthContext): Promise<Viewer | null> {
@@ -661,6 +715,31 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
       },
     );
     return requiredData(data.invitation, "Invitation create returned an empty response");
+  }
+
+  async inviteProjectMember(
+    input: InviteProjectMemberInput,
+    authContext: NormalizedAuthContext,
+  ): Promise<ProjectInvitationResult> {
+    const data = await this.#request<ProjectInvitationResult>(subjects.projectInvitationCreate, {
+      ...envelope(authContext),
+      ...input,
+    });
+    return data;
+  }
+
+  async resendOrganizationInvitation(
+    id: string,
+    authContext: NormalizedAuthContext,
+  ): Promise<OrganizationInvitation> {
+    const data = await this.#request<{ invitation?: OrganizationInvitation }>(
+      subjects.invitationResend,
+      {
+        ...envelope(authContext),
+        invitationId: id,
+      },
+    );
+    return requiredData(data.invitation, "Invitation resend returned an empty response");
   }
 
   async revokeOrganizationInvitation(
@@ -1650,9 +1729,11 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   async #request<Data>(subject: string, payload: unknown): Promise<Data> {
     const start = performance.now();
     const requestId = requestIdFromPayload(payload);
+    const traceContext = this.#traceContextFactory();
     try {
       const data = await this.#requestReply.request(subject, encodeJson(payload), {
         timeoutMs: this.#timeoutMs,
+        headers: traceContextHeaders(traceContext),
       });
       const response = parseBridgeResponse<Data>(decodeJson(data));
       if (!response.ok) {
@@ -1662,6 +1743,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
           response.requestId || requestId,
           start,
           "error",
+          traceContext,
           response.error,
         );
         throw graphQLErrorFromBridge(response.error, response.requestId);
@@ -1673,10 +1755,18 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
           message: "Storage returned an empty response",
           retryable: true,
         } satisfies BridgeErrorLike;
-        this.#logRequest("error", subject, response.requestId || requestId, start, "error", error);
+        this.#logRequest(
+          "error",
+          subject,
+          response.requestId || requestId,
+          start,
+          "error",
+          traceContext,
+          error,
+        );
         throw graphQLErrorFromBridge(error, response.requestId || requestId);
       }
-      this.#logRequest("info", subject, response.requestId || requestId, start, "ok");
+      this.#logRequest("info", subject, response.requestId || requestId, start, "ok", traceContext);
       return response.data;
     } catch (error) {
       if (error instanceof GraphQLError) {
@@ -1688,7 +1778,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
         message: "Message bridge request timed out",
         retryable: true,
       } satisfies BridgeErrorLike;
-      this.#logRequest("error", subject, requestId, start, "error", bridgeError);
+      this.#logRequest("error", subject, requestId, start, "error", traceContext, bridgeError);
       throw graphQLErrorFromBridge(bridgeError, requestId);
     }
   }
@@ -1699,16 +1789,87 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     requestId: string,
     start: number,
     status: "ok" | "error",
+    traceContext: TraceContext,
     error?: BridgeErrorLike,
   ) {
+    const durationMs = elapsedMilliseconds(start);
+    const subjectLabel = boundedMetricSubject(subject);
+    const result = status === "ok" ? "success" : "error";
+    this.#traceRecorder?.recordSpan({
+      name: "nats.request",
+      traceId: traceContext.traceId,
+      spanId: traceContext.spanId,
+      ...(traceContext.parentSpanId ? { parentSpanId: traceContext.parentSpanId } : {}),
+      ...(traceContext.traceState ? { traceState: traceContext.traceState } : {}),
+      result,
+      durationSeconds: durationMs / 1000,
+      attributes: {
+        "cloudgrid.request_id": requestId,
+        "messaging.system": "nats",
+        "messaging.destination.name": subjectLabel,
+        "rpc.method": subjectLabel,
+      },
+    });
+    if (error) {
+      this.#logRecorder?.recordLog({
+        event: "message_bridge_request_failed",
+        severity: "WARN",
+        attributes: {
+          "messaging.system": "nats",
+          "messaging.destination.name": subjectLabel,
+          "rpc.method": subjectLabel,
+          "error.id": error.id,
+          "error.code": error.code,
+        },
+      });
+    }
+    this.#recordMessageBridgeMetrics(subject, status, durationMs / 1000);
     this.#logger[level]("nats_request_completed", {
       request_id: requestId,
       operation_or_subject: subject,
       status,
-      duration_ms: elapsedMilliseconds(start),
+      duration_ms: durationMs,
       ...(error ? { error_id: error.id, error_code: error.code } : {}),
     });
   }
+
+  #recordMessageBridgeMetrics(subject: string, status: "ok" | "error", durationSeconds: number) {
+    if (!this.#metricsRecorder) {
+      return;
+    }
+    const attributes = {
+      service: "cloudgrid.bff",
+      subject: boundedMetricSubject(subject),
+      result: status === "ok" ? "success" : "error",
+    } satisfies MessageBridgeMetricAttributes;
+    try {
+      this.#metricsRecorder.record({
+        metric: "cloudgrid.message_bridge.requests",
+        kind: "counter",
+        value: 1,
+        attributes,
+      });
+      this.#metricsRecorder.record({
+        metric: "cloudgrid.message_bridge.duration",
+        kind: "histogram",
+        value: durationSeconds,
+        attributes,
+      });
+    } catch {
+      // Self-observability must not affect user-facing message bridge behavior.
+    }
+  }
+}
+
+function traceContextHeaders(context: TraceContext): Record<string, string> {
+  return {
+    traceparent: traceContextToTraceParent(context),
+    ...(context.traceState ? { tracestate: context.traceState } : {}),
+  };
+}
+
+function boundedMetricSubject(subject: string): string {
+  return /^[a-z][a-z0-9_.]{0,127}$/.test(subject) ? subject : "unknown";
 }
 
 export class NATSTelemetryQueryBridge extends MessageBridgeCloudGridBridge {
@@ -1732,9 +1893,10 @@ export async function createNATSTelemetryQueryBridge(
   servers: string,
   timeoutMs: number,
   logger: CloudGridLogger,
+  options: BridgeOptions & { pubSub?: EphemeralPubSub; lifecycle?: MessageBridgeLifecycle } = {},
 ): Promise<NATSTelemetryQueryBridge> {
   const connection = await connectNATS({ servers, name: "cloudgrid-bff" });
-  return new NATSTelemetryQueryBridge(connection, timeoutMs, logger);
+  return new NATSTelemetryQueryBridge(connection, timeoutMs, logger, options);
 }
 
 export function graphQLErrorFromBridge(error?: BridgeErrorLike, requestId?: string) {
@@ -1883,6 +2045,7 @@ const cloudGridErrorIdSchema = z.enum([
   "ERR-019",
   "ERR-020",
   "ERR-021",
+  "ERR-022",
 ]);
 
 const bridgeErrorSchema = z.object({

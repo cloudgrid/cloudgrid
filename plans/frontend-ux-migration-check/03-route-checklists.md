@@ -50,7 +50,7 @@ Use these checklists during implementation review. A route is not complete until
 - [ ] Newly created full key is shown once with copy.
 - [ ] Stored keys show only preview/title/created/last-used/status.
 - [ ] Revoke requires confirmation dialog.
-- [ ] Retention and project members remain placeholders until backend support is implemented.
+- [ ] Retention policy and project members use generated backend contracts; retention deletion execution is clearly described as pending storage-maintenance support.
 
 ## `/traces`
 

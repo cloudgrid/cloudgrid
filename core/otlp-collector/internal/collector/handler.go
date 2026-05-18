@@ -15,6 +15,7 @@ import (
 	"time"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
+	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/selfobs"
 	"github.com/cloudgrid-dev/cloudgrid/core/otlp-collector/internal/ai"
 	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	collectormetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
@@ -56,6 +57,8 @@ type handler struct {
 	tokenValidator     BearerTokenValidator
 	projectCache       *ProjectStatusCache
 	maxRequestBytes    int64
+	metricsRecorder    MetricsRecorder
+	selfObservability  SelfObservabilityRecorder
 }
 
 type completionResponseWriter struct {
@@ -69,6 +72,17 @@ type completionResponseWriter struct {
 func (w *completionResponseWriter) WriteHeader(status int) {
 	w.status = status
 	w.ResponseWriter.WriteHeader(status)
+}
+
+type countingReadCloser struct {
+	io.ReadCloser
+	bytes int64
+}
+
+func (reader *countingReadCloser) Read(p []byte) (int, error) {
+	n, err := reader.ReadCloser.Read(p)
+	reader.bytes += int64(n)
+	return n, err
 }
 
 func NewHandler(publisher Publisher, logger *slog.Logger) http.Handler {
@@ -102,6 +116,8 @@ func NewHandlerWithOptions(publisher Publisher, logger *slog.Logger, options Han
 		tokenValidator:     options.TokenValidator,
 		projectCache:       options.ProjectCache,
 		maxRequestBytes:    maxRequestBytes(options.MaxRequestBytes),
+		metricsRecorder:    options.MetricsRecorder,
+		selfObservability:  options.SelfObservability,
 	}
 }
 
@@ -125,7 +141,13 @@ func maxRequestBytes(configured int64) int64 {
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := h.now()
+	traceContext := selfobs.NewRootTraceContext()
+	if parent, ok := selfobs.ParseTraceContext(r.Header.Get(selfobs.TraceParentHeader), r.Header.Get(selfobs.TraceStateHeader)); ok {
+		traceContext = selfobs.NewChildTraceContext(parent)
+	}
+	r = r.WithContext(selfobs.ContextWithTraceContext(r.Context(), traceContext))
 	recorder := &completionResponseWriter{ResponseWriter: w, status: http.StatusOK}
+	bodyCounter := countRequestBody(r)
 	switch r.URL.Path {
 	case "/v1/traces":
 		h.handleTraces(recorder, r)
@@ -136,7 +158,28 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(recorder, r)
 	}
+	h.recordHTTPSpan(r, recorder, start)
+	h.recordHTTPIngestMetrics(r, recorder, requestBodyBytes(r, bodyCounter))
 	h.logCompletion(r, recorder, h.now().Sub(start))
+}
+
+func countRequestBody(r *http.Request) *countingReadCloser {
+	if r.Body == nil {
+		return nil
+	}
+	counter := &countingReadCloser{ReadCloser: r.Body}
+	r.Body = counter
+	return counter
+}
+
+func requestBodyBytes(r *http.Request, counter *countingReadCloser) int64 {
+	if counter != nil && counter.bytes > 0 {
+		return counter.bytes
+	}
+	if r.ContentLength > 0 {
+		return r.ContentLength
+	}
+	return 0
 }
 
 func (h *handler) handleTraces(w http.ResponseWriter, r *http.Request) {
@@ -363,7 +406,103 @@ func (h *handler) publishJSON(ctx context.Context, subject string, command any) 
 	}
 	publishCtx, cancel := context.WithTimeout(ctx, publishAckTimeout)
 	defer cancel()
-	return h.publisher.Publish(publishCtx, subject, payload)
+	start := h.now()
+	traceContext := selfobs.NewRootTraceContext()
+	if parent, ok := selfobs.TraceContextFromContext(ctx); ok {
+		traceContext = selfobs.NewChildTraceContext(parent)
+	}
+	publishCtx = selfobs.ContextWithTraceContext(publishCtx, traceContext)
+	err = h.publisher.Publish(publishCtx, subject, payload)
+	h.recordPublishSpan(subject, err, start, traceContext)
+	h.recordPublish(subject, err, h.now().Sub(start))
+	return err
+}
+
+func (h *handler) recordHTTPSpan(r *http.Request, w *completionResponseWriter, start time.Time) {
+	if h.selfObservability == nil {
+		return
+	}
+	status := "success"
+	if w.status >= 400 {
+		status = "error"
+	}
+	traceContext, _ := selfobs.TraceContextFromContext(r.Context())
+	h.selfObservability.RecordSpan(SelfObservabilitySpan{
+		Name:         "otlp.http " + r.URL.Path,
+		TraceID:      traceContext.TraceID,
+		SpanID:       traceContext.SpanID,
+		ParentSpanID: traceContext.ParentSpanID,
+		TraceState:   traceContext.TraceState,
+		StartTime:    start,
+		EndTime:      h.now(),
+		Attributes: map[string]string{
+			"http.route":           r.URL.Path,
+			"http.request.method":  r.Method,
+			"http.response.status": fmt.Sprintf("%d", w.status),
+			"cloudgrid.request_id": completionRequestID(r, w),
+			"result":               status,
+		},
+	})
+}
+
+func (h *handler) recordPublishSpan(subject string, err error, start time.Time, traceContext selfobs.TraceContext) {
+	if h.selfObservability == nil {
+		return
+	}
+	result := "success"
+	if err != nil {
+		result = "error"
+	}
+	h.selfObservability.RecordSpan(SelfObservabilitySpan{
+		Name:         "nats publish " + subject,
+		TraceID:      traceContext.TraceID,
+		SpanID:       traceContext.SpanID,
+		ParentSpanID: traceContext.ParentSpanID,
+		TraceState:   traceContext.TraceState,
+		StartTime:    start,
+		EndTime:      h.now(),
+		Attributes: map[string]string{
+			"messaging.system":           "nats",
+			"messaging.destination.name": subject,
+			"result":                     result,
+		},
+	})
+}
+
+func (h *handler) recordHTTPIngestMetrics(r *http.Request, w *completionResponseWriter, requestBytes int64) {
+	signal := signalForPath(r.URL.Path)
+	if signal == "unknown" || h.metricsRecorder == nil {
+		return
+	}
+	result := "accepted"
+	if w.status >= 400 {
+		result = "rejected"
+	}
+	h.metricsRecorder.RecordIngestRequest(signal, "http", result)
+	h.metricsRecorder.RecordIngestBytes(signal, "http", result, requestBytes)
+}
+
+func (h *handler) recordGRPCIngestMetrics(signal string, result string, bytes int64) {
+	if h.metricsRecorder == nil {
+		return
+	}
+	h.metricsRecorder.RecordIngestRequest(signal, "grpc", result)
+	h.metricsRecorder.RecordIngestBytes(signal, "grpc", result, bytes)
+}
+
+func (h *handler) recordPublish(subject string, err error, duration time.Duration) {
+	if h.metricsRecorder == nil {
+		return
+	}
+	signal := signalForSubject(subject)
+	result := "published"
+	if err != nil {
+		result = "error"
+	}
+	h.metricsRecorder.RecordPublishDuration(signal, result, duration)
+	if err == nil {
+		h.metricsRecorder.RecordCommandPublished(signal, "published")
+	}
 }
 
 func (h *handler) writeTraceResponse(w http.ResponseWriter, r *http.Request, encoding payloadEncoding) {
@@ -395,6 +534,19 @@ func (h *handler) writeOTLPResponse(w http.ResponseWriter, r *http.Request, enco
 
 func (h *handler) writeProblem(w http.ResponseWriter, r *http.Request, problem problemDetails) {
 	setCompletionProblem(w, requestID(r, ""), problem.ID, problem.Code)
+	if h.selfObservability != nil {
+		h.selfObservability.RecordLog(SelfObservabilityLog{
+			Timestamp:    h.now(),
+			SeverityText: "WARN",
+			Body:         "collector request failed",
+			Attributes: map[string]string{
+				"event":                "request_failed",
+				"cloudgrid.request_id": requestID(r, ""),
+				"error_id":             problem.ID,
+				"error_code":           problem.Code,
+			},
+		})
+	}
 	h.logger.Warn(problem.Detail,
 		"service", serviceName,
 		"event", "request_failed",
@@ -405,6 +557,13 @@ func (h *handler) writeProblem(w http.ResponseWriter, r *http.Request, problem p
 	w.Header().Set("Content-Type", contentTypeJSON)
 	w.WriteHeader(problem.Status)
 	_ = json.NewEncoder(w).Encode(errorResponse{Error: problem})
+}
+
+func completionRequestID(r *http.Request, w *completionResponseWriter) string {
+	if w != nil && w.requestID != "" {
+		return w.requestID
+	}
+	return requestID(r, "")
 }
 
 func (h *handler) validateRequestSize(r *http.Request) *problemDetails {

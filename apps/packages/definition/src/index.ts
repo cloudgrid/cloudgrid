@@ -8,6 +8,21 @@ export const ORGANIZATION_INVITATION_STATUSES = [
   "revoked",
   "expired",
 ] as const;
+export const INVITATION_DELIVERY_STATUSES = [
+  "not_configured",
+  "pending",
+  "sent",
+  "failed_retryable",
+  "failed_terminal",
+  "suppressed",
+] as const;
+export const INVITATION_PROJECT_GRANT_STATUSES = [
+  "pending",
+  "applied",
+  "revoked",
+  "failed",
+] as const;
+export const PROJECT_INVITATION_OUTCOMES = ["invitation_pending", "membership_created"] as const;
 export const PROJECT_ROLES = ["viewer", "editor", "admin"] as const;
 export const PROJECT_MEMBER_SOURCES = ["direct", "company_admin", "local_personal"] as const;
 export const PROJECT_STATUSES = ["active", "read_only", "disabled"] as const;
@@ -49,7 +64,9 @@ export const CONTROL_PLANE_SUBJECTS = [
   "control.members.remove",
   "control.invitations.list",
   "control.invitations.create",
+  "control.invitations.resend",
   "control.invitations.revoke",
+  "control.project_invitations.create",
   "control.ingest_credentials.list",
   "control.ingest_credentials.create",
   "control.ingest_credentials.revoke",
@@ -133,6 +150,9 @@ export type AuthMode = (typeof AUTH_MODES)[number];
 export type AuthProvider = (typeof AUTH_PROVIDERS)[number];
 export type CompanyRole = (typeof COMPANY_ROLES)[number];
 export type OrganizationInvitationStatus = (typeof ORGANIZATION_INVITATION_STATUSES)[number];
+export type InvitationDeliveryStatus = (typeof INVITATION_DELIVERY_STATUSES)[number];
+export type InvitationProjectGrantStatus = (typeof INVITATION_PROJECT_GRANT_STATUSES)[number];
+export type ProjectInvitationOutcome = (typeof PROJECT_INVITATION_OUTCOMES)[number];
 export type ProjectRole = (typeof PROJECT_ROLES)[number];
 export type ProjectMemberSource = (typeof PROJECT_MEMBER_SOURCES)[number];
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];

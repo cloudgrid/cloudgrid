@@ -50,7 +50,15 @@ for (const slug of bySlug.keys()) {
 
 type Node =
   | { kind: "leaf"; slug: string; entry: Entry; href: string }
-  | { kind: "section"; folder: string; label: string; order: number; overview?: Entry; overviewHref?: string; children: { slug: string; entry: Entry; href: string }[] };
+  | {
+      kind: "section";
+      folder: string;
+      label: string;
+      order: number;
+      overview?: Entry;
+      overviewHref?: string;
+      children: { slug: string; entry: Entry; href: string }[];
+    };
 
 const sectionMap = new Map<string, Extract<Node, { kind: "section" }>>();
 const rootLeaves: Extract<Node, { kind: "leaf" }>[] = [];

@@ -80,7 +80,11 @@ export function parseSeedArgs(argv, env = process.env) {
     intervalMs: 5_000,
     maxBatches: null,
     signal: "all",
-    token: env.CLOUDGRID_OTLP_BEARER_TOKEN || env.CLOUDGRID_OTLP_TOKEN || null,
+    token:
+      env.CLOUDGRID_OTLP_BEARER_TOKEN ||
+      env.CLOUDGRID_OTLP_TOKEN ||
+      env.CLOUDGRID_PROJECT_API_KEY ||
+      null,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -189,8 +193,11 @@ async function fixtureBody(request) {
 
 export function createSeedRunContext(nowMs = Date.now()) {
   const runId = `${nowMs.toString(16)}-${Math.random().toString(16).slice(2)}`;
+  const windowEndMs = nowMs - 60 * 1000;
+  const windowStartMs = oneMonthBeforeMs(windowEndMs);
   return {
-    baseUnixNano: BigInt(nowMs - 5 * 60 * 1000) * 1_000_000n,
+    baseUnixNano: BigInt(windowStartMs) * 1_000_000n,
+    windowEndUnixNano: BigInt(windowEndMs) * 1_000_000n,
     runId,
   };
 }
@@ -314,6 +321,7 @@ function buildRichLogFixture(seedContext) {
 
 function buildRichMetricFixture(seedContext) {
   const base = seedContext.baseUnixNano;
+  const metricBases = timelineUnixNanos(seedContext, 31);
   const serviceNames = services();
   const metrics = [
     {
@@ -322,18 +330,21 @@ function buildRichMetricFixture(seedContext) {
       unit: "ms",
       histogram: {
         aggregationTemporality: 2,
-        dataPoints: serviceNames.map((serviceName, index) => ({
-          attributes: [
-            stringAttribute("service.name", serviceName),
-            stringAttribute("http.route", routeForService(serviceName, index)),
-          ],
-          startTimeUnixNano: String(base),
-          timeUnixNano: String(base + 3_000_000_000n + BigInt(index) * 20_000_000n),
-          count: "12",
-          sum: 180 + index * 42,
-          bucketCounts: ["2", "7", "3"],
-          explicitBounds: [50, 250],
-        })),
+        dataPoints: metricBases.flatMap((pointBase, dayIndex) =>
+          serviceNames.map((serviceName, index) => ({
+            attributes: [
+              stringAttribute("service.name", serviceName),
+              stringAttribute("http.route", routeForService(serviceName, index)),
+              intAttribute("cloudgrid.seed.day_index", dayIndex),
+            ],
+            startTimeUnixNano: String(base),
+            timeUnixNano: String(pointBase + 3_000_000_000n + BigInt(index) * 20_000_000n),
+            count: "12",
+            sum: 180 + index * 42 + dayIndex * 3,
+            bucketCounts: ["2", "7", "3"],
+            explicitBounds: [50, 250],
+          })),
+        ),
       },
     },
     {
@@ -341,11 +352,16 @@ function buildRichMetricFixture(seedContext) {
       description: "Telemetry batch size observed by local development services",
       unit: "{item}",
       gauge: {
-        dataPoints: serviceNames.map((serviceName, index) => ({
-          attributes: [stringAttribute("service.name", serviceName)],
-          timeUnixNano: String(base + 4_000_000_000n + BigInt(index) * 10_000_000n),
-          asInt: String(12 + index * 3),
-        })),
+        dataPoints: metricBases.flatMap((pointBase, dayIndex) =>
+          serviceNames.map((serviceName, index) => ({
+            attributes: [
+              stringAttribute("service.name", serviceName),
+              intAttribute("cloudgrid.seed.day_index", dayIndex),
+            ],
+            timeUnixNano: String(pointBase + 4_000_000_000n + BigInt(index) * 10_000_000n),
+            asInt: String(12 + index * 3 + (dayIndex % 7)),
+          })),
+        ),
       },
     },
     {
@@ -355,22 +371,29 @@ function buildRichMetricFixture(seedContext) {
       sum: {
         aggregationTemporality: 2,
         isMonotonic: false,
-        dataPoints: ["assistant-api", "llm-proxy", "retrieval"].flatMap((serviceName, index) =>
-          ["input", "output"].map((tokenType, tokenIndex) => ({
-            attributes: [
-              stringAttribute("service.name", serviceName),
-              stringAttribute(
-                "gen_ai.request.model",
-                index === 1 ? "gpt-5.2" : "text-embedding-3-large",
+        dataPoints: metricBases.flatMap((pointBase, dayIndex) =>
+          ["assistant-api", "llm-proxy", "retrieval"].flatMap((serviceName, index) =>
+            ["input", "output"].map((tokenType, tokenIndex) => ({
+              attributes: [
+                stringAttribute("service.name", serviceName),
+                stringAttribute(
+                  "gen_ai.request.model",
+                  index === 1 ? "gpt-5.2" : "text-embedding-3-large",
+                ),
+                stringAttribute("gen_ai.token.type", tokenType),
+                intAttribute("cloudgrid.seed.day_index", dayIndex),
+              ],
+              startTimeUnixNano: String(base),
+              timeUnixNano: String(
+                pointBase + 5_000_000_000n + BigInt(index * 2 + tokenIndex) * 10_000_000n,
               ),
-              stringAttribute("gen_ai.token.type", tokenType),
-            ],
-            startTimeUnixNano: String(base),
-            timeUnixNano: String(
-              base + 5_000_000_000n + BigInt(index * 2 + tokenIndex) * 10_000_000n,
-            ),
-            asInt: String(tokenType === "input" ? 820 + index * 130 : 240 + index * 90),
-          })),
+              asInt: String(
+                tokenType === "input"
+                  ? 820 + index * 130 + dayIndex * 9
+                  : 240 + index * 90 + dayIndex * 4,
+              ),
+            })),
+          ),
         ),
       },
     },
@@ -386,13 +409,14 @@ function buildRichMetricFixture(seedContext) {
 }
 
 function generatedTraceSpans(seedContext) {
-  return scenarios().flatMap((scenario, traceIndex) => {
+  const scenarioDefinitions = scenarios();
+  const traceCount = scenarioDefinitions.length * 31;
+  return Array.from({ length: traceCount }, (_, traceIndex) => {
+    const scenario = scenarioDefinitions[traceIndex % scenarioDefinitions.length];
     const traceId = idBytes(traceIdHex(seedContext, traceIndex));
+    const traceBase = timelineUnixNanos(seedContext, traceCount, traceIndex);
     return scenario.spans.map((definition, spanIndex) => {
-      const start =
-        seedContext.baseUnixNano +
-        BigInt(traceIndex) * 7_000_000_000n +
-        BigInt(definition.offsetMs) * 1_000_000n;
+      const start = traceBase + BigInt(definition.offsetMs) * 1_000_000n;
       const duration = BigInt(definition.durationMs) * 1_000_000n;
       const error = definition.status === "error";
       return {
@@ -425,7 +449,27 @@ function generatedTraceSpans(seedContext) {
         logSeverity: definition.logSeverity,
       };
     });
-  });
+  }).flat();
+}
+
+function oneMonthBeforeMs(valueMs) {
+  const date = new Date(valueMs);
+  date.setUTCMonth(date.getUTCMonth() - 1);
+  return date.getTime();
+}
+
+function timelineUnixNanos(seedContext, count, index = null) {
+  if (count <= 1) {
+    return index === null ? [seedContext.windowEndUnixNano] : seedContext.windowEndUnixNano;
+  }
+  const start = seedContext.baseUnixNano;
+  const end = seedContext.windowEndUnixNano;
+  const span = end > start ? end - start : 0n;
+  const pointAt = (pointIndex) => start + (span * BigInt(pointIndex)) / BigInt(count - 1);
+  if (index !== null) {
+    return pointAt(index);
+  }
+  return Array.from({ length: count }, (_, pointIndex) => pointAt(pointIndex));
 }
 
 function scenarios() {
@@ -724,7 +768,7 @@ function helpText() {
 Posts generated realistic development telemetry to the CloudGrid OTLP HTTP collector.
 
 Options:
-  --fixture-set generated   Default. Rich, current-time demo traces, logs, and metrics for UI development.
+  --fixture-set generated   Default. Rich demo traces, logs, and metrics spread from one month ago through now.
   --fixture-set contracts   Checked-in JSON/protobuf fixtures for collector contract coverage.
   --fixture-set all         Generated demo data plus checked-in contract fixtures.
   --continuous, --watch     Keep sending fresh generated JSON telemetry for live UI development.
@@ -736,6 +780,7 @@ Environment:
   CLOUDGRID_OTLP_PORT           Used for the default endpoint when set.
   CLOUDGRID_OTLP_BEARER_TOKEN   Optional bearer token for local project-token mode.
   CLOUDGRID_OTLP_TOKEN          Fallback optional bearer token.
+  CLOUDGRID_PROJECT_API_KEY     Fallback token written by bun run setup:local for the default local project.
 `;
 }
 

@@ -15,22 +15,35 @@ import (
 )
 
 const (
-	LocalCompanyID = "local"
-	LocalProjectID = "default"
-	localUserID    = "local-user"
+	LocalCompanyID                  = "local"
+	LocalProjectID                  = "default"
+	LocalSelfObservabilityProjectID = "cloudgrid-system"
+	localUserID                     = "local-user"
 )
 
 type Service struct {
-	store         ports.ControlStore
-	now           func() time.Time
-	statusChanges []contracts.ProjectStatusChangedNotification
+	store           ports.ControlStore
+	now             func() time.Time
+	statusChanges   []contracts.ProjectStatusChangedNotification
+	invitationEmail InvitationEmailConfig
+	emailTransport  InvitationEmailTransport
 }
 
 func NewService(store ports.ControlStore, now func() time.Time) *Service {
+	return NewServiceWithOptions(store, now, ServiceOptions{})
+}
+
+func NewServiceWithOptions(store ports.ControlStore, now func() time.Time, options ServiceOptions) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{store: store, now: now}
+	config := options.InvitationEmail.normalized()
+	return &Service{
+		store:           store,
+		now:             now,
+		invitationEmail: config,
+		emailTransport:  options.EmailTransport,
+	}
 }
 
 func (service *Service) GetViewer(ctx context.Context, envelope contracts.BridgeEnvelope) (contracts.Viewer, error) {
@@ -145,6 +158,9 @@ func (service *Service) UpdateProject(ctx context.Context, request contracts.Pro
 	}
 	if err := service.requireAdmin(ctx, request.BridgeEnvelope, project.OrganizationID); err != nil {
 		return contracts.Project{}, err
+	}
+	if isLocalSelfObservabilityProject(project) && isSelfObservabilityProjectChange(project, request) {
+		return contracts.Project{}, forbiddenError("local self-observability project is fixed")
 	}
 	if request.Name != nil && strings.TrimSpace(*request.Name) != "" {
 		project.Name = strings.TrimSpace(*request.Name)
@@ -279,10 +295,55 @@ func (service *Service) CreateInvitation(ctx context.Context, request contracts.
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
-	if err := service.store.PutInvitation(ctx, record); err != nil {
+	delivery, err := service.prepareInvitationEmailDelivery(ctx, &record, ports.EmailDeliveryKindOrganizationInvitation, nil, nil)
+	if err != nil {
+		return contracts.OrganizationInvitation{}, err
+	}
+	if err := service.store.PutInvitationAndEmailDelivery(ctx, record, delivery); err != nil {
 		return contracts.OrganizationInvitation{}, storageError()
 	}
 	return contractInvitation(record), nil
+}
+
+func (service *Service) ResendInvitation(ctx context.Context, request contracts.InvitationResendRequest) (contracts.OrganizationInvitation, error) {
+	if strings.TrimSpace(request.InvitationID) == "" {
+		return contracts.OrganizationInvitation{}, validationError("invitationId is required")
+	}
+	invitation, ok, err := service.store.GetInvitation(ctx, request.InvitationID)
+	if err != nil {
+		return contracts.OrganizationInvitation{}, storageError()
+	}
+	if !ok {
+		return contracts.OrganizationInvitation{}, forbiddenError("invitation is not accessible")
+	}
+	if err := service.bootstrapViewer(ctx, request.BridgeEnvelope); err != nil {
+		return contracts.OrganizationInvitation{}, err
+	}
+	if err := service.requireAdmin(ctx, request.BridgeEnvelope, invitation.OrganizationID); err != nil {
+		return contracts.OrganizationInvitation{}, err
+	}
+	if invitation.Status != contracts.OrganizationInvitationStatusPending {
+		return contracts.OrganizationInvitation{}, forbiddenError("only pending invitations can be resent")
+	}
+	kind := ports.EmailDeliveryKindOrganizationInvitation
+	var projectID *string
+	if len(invitation.ProjectGrants) > 0 {
+		kind = ports.EmailDeliveryKindProjectAccess
+		for _, grant := range invitation.ProjectGrants {
+			if grant.Status == contracts.InvitationProjectGrantStatusPending {
+				projectID = &grant.ProjectID
+				break
+			}
+		}
+	}
+	delivery, err := service.prepareInvitationEmailDelivery(ctx, &invitation, kind, projectID, nil)
+	if err != nil {
+		return contracts.OrganizationInvitation{}, err
+	}
+	if err := service.store.PutInvitationAndEmailDelivery(ctx, invitation, delivery); err != nil {
+		return contracts.OrganizationInvitation{}, storageError()
+	}
+	return contractInvitation(invitation), nil
 }
 
 func (service *Service) RevokeInvitation(ctx context.Context, request contracts.InvitationRevokeRequest) (contracts.OrganizationInvitation, error) {
@@ -308,6 +369,11 @@ func (service *Service) RevokeInvitation(ctx context.Context, request contracts.
 		invitation.Status = contracts.OrganizationInvitationStatusRevoked
 		invitation.RevokedAt = &now
 		invitation.UpdatedAt = now
+		for index := range invitation.ProjectGrants {
+			if invitation.ProjectGrants[index].Status == contracts.InvitationProjectGrantStatusPending {
+				invitation.ProjectGrants[index].Status = contracts.InvitationProjectGrantStatusRevoked
+			}
+		}
 		if err := service.store.PutInvitation(ctx, invitation); err != nil {
 			return contracts.OrganizationInvitation{}, storageError()
 		}
@@ -482,6 +548,81 @@ func (service *Service) UpdateProjectMember(ctx context.Context, request contrac
 		return contracts.ProjectMember{}, storageError()
 	}
 	return service.contractProjectMember(ctx, current, contracts.ProjectMemberSourceDirect)
+}
+
+func (service *Service) CreateProjectInvitation(ctx context.Context, request contracts.ProjectInvitationCreateRequest) (contracts.ProjectInvitationData, error) {
+	if strings.TrimSpace(request.ProjectID) == "" {
+		return contracts.ProjectInvitationData{}, validationError("projectId is required")
+	}
+	email, err := normalizeEmail(request.Email)
+	if err != nil {
+		return contracts.ProjectInvitationData{}, err
+	}
+	if err := validateProjectRole(request.Role); err != nil {
+		return contracts.ProjectInvitationData{}, err
+	}
+	project, err := service.requireProjectAdmin(ctx, request.BridgeEnvelope, request.ProjectID)
+	if err != nil {
+		return contracts.ProjectInvitationData{}, err
+	}
+	membership, user, ok, err := service.findActiveMemberByEmail(ctx, project.OrganizationID, email)
+	if err != nil {
+		return contracts.ProjectInvitationData{}, err
+	}
+	if ok {
+		member, err := service.createOrUpdateProjectMemberForActiveUser(ctx, request.BridgeEnvelope, project, membership, user, request.Role)
+		if err != nil {
+			return contracts.ProjectInvitationData{}, err
+		}
+		return contracts.ProjectInvitationData{
+			Outcome:       contracts.ProjectInvitationOutcomeMembershipCreated,
+			ProjectMember: &member,
+		}, nil
+	}
+
+	invitation, created, err := service.pendingInvitationForProjectGrant(ctx, project, email, principalID(request.BridgeEnvelope))
+	if err != nil {
+		return contracts.ProjectInvitationData{}, err
+	}
+	now := service.now().UTC()
+	grantUpdated := false
+	for index := range invitation.ProjectGrants {
+		grant := &invitation.ProjectGrants[index]
+		if grant.ProjectID != project.ID {
+			continue
+		}
+		if grant.Status == contracts.InvitationProjectGrantStatusPending {
+			grant.Role = request.Role
+			grant.CreatedAt = now
+			grant.CreatedByUserID = principalID(request.BridgeEnvelope)
+			grantUpdated = true
+			break
+		}
+	}
+	if !grantUpdated {
+		invitation.ProjectGrants = append(invitation.ProjectGrants, contracts.InvitationProjectGrant{
+			ProjectID:       project.ID,
+			Role:            request.Role,
+			Status:          contracts.InvitationProjectGrantStatusPending,
+			CreatedAt:       now,
+			CreatedByUserID: principalID(request.BridgeEnvelope),
+		})
+	}
+	if !created {
+		invitation.UpdatedAt = now
+	}
+	delivery, err := service.prepareInvitationEmailDelivery(ctx, &invitation, ports.EmailDeliveryKindProjectAccess, &project.ID, nil)
+	if err != nil {
+		return contracts.ProjectInvitationData{}, err
+	}
+	if err := service.store.PutInvitationAndEmailDelivery(ctx, invitation, delivery); err != nil {
+		return contracts.ProjectInvitationData{}, storageError()
+	}
+	contract := contractInvitation(invitation)
+	return contracts.ProjectInvitationData{
+		Outcome:    contracts.ProjectInvitationOutcomeInvitationPending,
+		Invitation: &contract,
+	}, nil
 }
 
 func (service *Service) RemoveProjectMember(ctx context.Context, request contracts.ProjectMemberRemoveRequest) (bool, error) {
@@ -1500,10 +1641,8 @@ func (service *Service) bootstrapViewer(ctx context.Context, envelope contracts.
 		}
 	}
 	if organizationID == LocalCompanyID {
-		if _, ok, err := service.store.GetProject(ctx, LocalProjectID); err != nil {
-			return storageError()
-		} else if !ok {
-			if err := service.store.PutProject(ctx, ports.ProjectRecord{
+		localProjects := []ports.ProjectRecord{
+			{
 				ID:             LocalProjectID,
 				OrganizationID: LocalCompanyID,
 				Name:           "Default project",
@@ -1512,8 +1651,25 @@ func (service *Service) bootstrapViewer(ctx context.Context, envelope contracts.
 				ChangedAt:      now,
 				CreatedAt:      now,
 				UpdatedAt:      now,
-			}); err != nil {
+			},
+			{
+				ID:             LocalSelfObservabilityProjectID,
+				OrganizationID: LocalCompanyID,
+				Name:           "CloudGrid",
+				Slug:           LocalSelfObservabilityProjectID,
+				Status:         contracts.ProjectStatusActive,
+				ChangedAt:      now,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			},
+		}
+		for _, project := range localProjects {
+			if _, ok, err := service.store.GetProject(ctx, project.ID); err != nil {
 				return storageError()
+			} else if !ok {
+				if err := service.store.PutProject(ctx, project); err != nil {
+					return storageError()
+				}
 			}
 		}
 	}
@@ -1569,12 +1725,53 @@ func (service *Service) acceptMatchingInvitation(ctx context.Context, envelope c
 	}); err != nil {
 		return storageError()
 	}
+	if err := service.applyInvitationProjectGrants(ctx, &invitation, userID, now); err != nil {
+		return err
+	}
 	invitation.Status = contracts.OrganizationInvitationStatusAccepted
 	invitation.AcceptedByUserID = &userID
 	invitation.AcceptedAt = &now
 	invitation.UpdatedAt = now
 	if err := service.store.PutInvitation(ctx, invitation); err != nil {
 		return storageError()
+	}
+	return nil
+}
+
+func (service *Service) applyInvitationProjectGrants(ctx context.Context, invitation *ports.InvitationRecord, userID string, now time.Time) error {
+	for index := range invitation.ProjectGrants {
+		grant := &invitation.ProjectGrants[index]
+		if grant.Status != contracts.InvitationProjectGrantStatusPending {
+			continue
+		}
+		project, ok, err := service.store.GetProject(ctx, grant.ProjectID)
+		if err != nil {
+			return storageError()
+		}
+		if !ok || project.OrganizationID != invitation.OrganizationID || project.Status == contracts.ProjectStatusDisabled {
+			grant.Status = contracts.InvitationProjectGrantStatusFailed
+			continue
+		}
+		member, ok, err := service.store.GetProjectMember(ctx, grant.ProjectID, userID)
+		if err != nil {
+			return storageError()
+		}
+		if !ok {
+			member = ports.ProjectMemberRecord{
+				ProjectID:       grant.ProjectID,
+				UserID:          userID,
+				CreatedAt:       now,
+				CreatedByUserID: grant.CreatedByUserID,
+			}
+		}
+		member.Role = grant.Role
+		member.UpdatedAt = now
+		member.UpdatedByUserID = grant.CreatedByUserID
+		if err := service.store.PutProjectMember(ctx, member); err != nil {
+			return storageError()
+		}
+		grant.Status = contracts.InvitationProjectGrantStatusApplied
+		grant.AppliedAt = &now
 	}
 	return nil
 }
@@ -1880,24 +2077,88 @@ func normalizeEmail(value string) (string, error) {
 }
 
 func (service *Service) requireEmailNotActiveMember(ctx context.Context, organizationID string, email string) error {
+	if _, _, ok, err := service.findActiveMemberByEmail(ctx, organizationID, email); err != nil {
+		return err
+	} else if ok {
+		return validationError("email already belongs to an active member")
+	}
+	return nil
+}
+
+func (service *Service) findActiveMemberByEmail(ctx context.Context, organizationID string, email string) (ports.MembershipRecord, ports.UserRecord, bool, error) {
 	memberships, err := service.store.ListMemberships(ctx, organizationID)
 	if err != nil {
-		return storageError()
+		return ports.MembershipRecord{}, ports.UserRecord{}, false, storageError()
 	}
 	for _, membership := range memberships {
 		user, ok, err := service.store.GetUser(ctx, membership.UserID)
 		if err != nil {
-			return storageError()
+			return ports.MembershipRecord{}, ports.UserRecord{}, false, storageError()
 		}
 		if !ok || user.Email == nil {
 			continue
 		}
 		memberEmail, err := normalizeEmail(*user.Email)
 		if err == nil && memberEmail == email {
-			return validationError("email already belongs to an active member")
+			return membership, user, true, nil
 		}
 	}
-	return nil
+	return ports.MembershipRecord{}, ports.UserRecord{}, false, nil
+}
+
+func (service *Service) createOrUpdateProjectMemberForActiveUser(ctx context.Context, envelope contracts.BridgeEnvelope, project ports.ProjectRecord, membership ports.MembershipRecord, user ports.UserRecord, role contracts.ProjectRole) (contracts.ProjectMember, error) {
+	if membership.Role == contracts.CompanyRoleAdmin {
+		return service.impliedProjectMember(ctx, project.ID, membership, contracts.ProjectMemberSourceCompanyAdmin)
+	}
+	current, ok, err := service.store.GetProjectMember(ctx, project.ID, membership.UserID)
+	if err != nil {
+		return contracts.ProjectMember{}, storageError()
+	}
+	if ok && current.Role == contracts.ProjectRoleAdmin && role != contracts.ProjectRoleAdmin {
+		if err := service.requireAnotherProjectAdminOrCompanyAdmin(ctx, project, membership.UserID); err != nil {
+			return contracts.ProjectMember{}, err
+		}
+	}
+	now := service.now().UTC()
+	actor := principalID(envelope)
+	if !ok {
+		current = ports.ProjectMemberRecord{
+			ProjectID:       project.ID,
+			UserID:          membership.UserID,
+			CreatedAt:       now,
+			CreatedByUserID: actor,
+		}
+	}
+	current.Role = role
+	current.UpdatedAt = now
+	current.UpdatedByUserID = actor
+	if err := service.store.PutProjectMember(ctx, current); err != nil {
+		return contracts.ProjectMember{}, storageError()
+	}
+	return service.contractProjectMember(ctx, current, contracts.ProjectMemberSourceDirect)
+}
+
+func (service *Service) pendingInvitationForProjectGrant(ctx context.Context, project ports.ProjectRecord, email string, actor string) (ports.InvitationRecord, bool, error) {
+	if invitation, ok, err := service.store.GetPendingInvitationByEmail(ctx, project.OrganizationID, email); err != nil {
+		return ports.InvitationRecord{}, false, storageError()
+	} else if ok {
+		return invitation, false, nil
+	}
+	existing, err := service.store.ListInvitations(ctx, project.OrganizationID)
+	if err != nil {
+		return ports.InvitationRecord{}, false, storageError()
+	}
+	now := service.now().UTC()
+	return ports.InvitationRecord{
+		ID:              fmt.Sprintf("invitation-%s-%d", normalizeID(project.OrganizationID), len(existing)+1),
+		OrganizationID:  project.OrganizationID,
+		Email:           email,
+		Role:            contracts.CompanyRoleUser,
+		Status:          contracts.OrganizationInvitationStatusPending,
+		InvitedByUserID: actor,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}, true, nil
 }
 
 func optionalStringPtr(value string) *string {
@@ -1920,19 +2181,32 @@ func contractUser(user ports.UserRecord) contracts.User {
 }
 
 func contractInvitation(invitation ports.InvitationRecord) contracts.OrganizationInvitation {
+	deliveryStatus := invitation.DeliveryStatus
+	if deliveryStatus == "" {
+		deliveryStatus = contracts.InvitationDeliveryStatusSuppressed
+	}
+	projectGrants := append([]contracts.InvitationProjectGrant{}, invitation.ProjectGrants...)
+	if projectGrants == nil {
+		projectGrants = []contracts.InvitationProjectGrant{}
+	}
 	return contracts.OrganizationInvitation{
-		ID:               invitation.ID,
-		OrganizationID:   invitation.OrganizationID,
-		Email:            invitation.Email,
-		Role:             invitation.Role,
-		Status:           invitation.Status,
-		InvitedByUserID:  invitation.InvitedByUserID,
-		AcceptedByUserID: invitation.AcceptedByUserID,
-		CreatedAt:        invitation.CreatedAt,
-		UpdatedAt:        invitation.UpdatedAt,
-		AcceptedAt:       invitation.AcceptedAt,
-		RevokedAt:        invitation.RevokedAt,
-		ExpiresAt:        invitation.ExpiresAt,
+		ID:                    invitation.ID,
+		OrganizationID:        invitation.OrganizationID,
+		Email:                 invitation.Email,
+		Role:                  invitation.Role,
+		Status:                invitation.Status,
+		DeliveryStatus:        deliveryStatus,
+		LastDeliveryAttemptAt: invitation.LastDeliveryAttemptAt,
+		LastDeliveryErrorCode: invitation.LastDeliveryErrorCode,
+		LastEmailDeliveryID:   invitation.LastEmailDeliveryID,
+		ProjectGrants:         projectGrants,
+		InvitedByUserID:       invitation.InvitedByUserID,
+		AcceptedByUserID:      invitation.AcceptedByUserID,
+		CreatedAt:             invitation.CreatedAt,
+		UpdatedAt:             invitation.UpdatedAt,
+		AcceptedAt:            invitation.AcceptedAt,
+		RevokedAt:             invitation.RevokedAt,
+		ExpiresAt:             invitation.ExpiresAt,
 	}
 }
 
@@ -3281,6 +3555,20 @@ func normalizeID(value string) string {
 
 func isLocalPersonalProject(projectID string, organizationID string, userID string) bool {
 	return projectID == LocalProjectID && organizationID == LocalCompanyID && userID == localUserID
+}
+
+func isLocalSelfObservabilityProject(project ports.ProjectRecord) bool {
+	return project.ID == LocalSelfObservabilityProjectID && project.OrganizationID == LocalCompanyID
+}
+
+func isSelfObservabilityProjectChange(project ports.ProjectRecord, request contracts.ProjectUpdateRequest) bool {
+	if request.Name != nil {
+		name := strings.TrimSpace(*request.Name)
+		if name != "" && name != project.Name {
+			return true
+		}
+	}
+	return request.Status != nil && *request.Status != project.Status
 }
 
 func sortProjectMembers(items []contracts.ProjectMember) {

@@ -17,6 +17,7 @@ export type {
 export { graphQLErrorFromBridge, NATSTelemetryQueryBridge } from "./bridge";
 export type { RuntimeConfig } from "./config";
 export { loadConfig, startupProblem } from "./config";
+export type { GraphQLMetricRecord, GraphQLMetricsRecorder } from "./graphql-metrics";
 export { createApp, createAppWithBridge, createCloudGridSchema } from "./graphql";
 export { createGraphQLWebSocketHandler } from "./graphql-ws";
 
@@ -28,7 +29,7 @@ export async function startServer() {
   const logger = createLogger("bff");
   try {
     const config = loadConfig();
-    const { app, bridge } = await createApp(config, logger);
+    const { app, bridge, selfObservability } = await createApp(config, logger);
     const graphQLWebSocket = createGraphQLWebSocketHandler(bridge, logger, { auth: config.auth });
     const server = Bun.serve(createServeOptions(config, app, graphQLWebSocket));
 
@@ -48,6 +49,7 @@ export async function startServer() {
       try {
         server.stop(false);
         await bridge.close();
+        await selfObservability?.shutdown();
         clearTimeout(timeout);
         logger.info("shutdown_completed", { signal });
         process.exit(0);

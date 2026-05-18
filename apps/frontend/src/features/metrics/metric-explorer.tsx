@@ -7,7 +7,7 @@ import type {
   MetricSeries,
   MetricSeriesResult,
 } from "@cloudgrid/ui-contracts";
-import { Activity, Check, ClipboardCopy, ExternalLink, X } from "lucide-react";
+import { Activity, ClipboardCopy, ExternalLink, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
 import { SearchInput } from "../../components/search-input";
@@ -27,6 +27,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { t } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
+import { TelemetryChart, type TelemetryChartKind } from "../telemetry/telemetry-chart";
 
 export const metricAggregations: MetricAggregation[] = [
   "avg",
@@ -132,8 +133,8 @@ export function MetricQueryControls({
   };
 }) {
   return (
-    <section className="shrink-0 border bg-background p-3">
-      <FieldGroup className="grid gap-3 sm:grid-cols-2">
+    <section className="shrink-0 border bg-background p-2">
+      <FieldGroup className="grid gap-2 md:grid-cols-3 xl:grid-cols-5">
         <Field>
           <FieldLabel htmlFor="metric-aggregation">{t("metrics.aggregation")}</FieldLabel>
           <Select
@@ -229,6 +230,7 @@ export function MetricSeriesExplorer({
       />
     );
   }
+  const chart = buildMetricExplorerChartData(result, chartType);
 
   return (
     <div className="flex min-w-[760px] flex-col">
@@ -253,6 +255,24 @@ export function MetricSeriesExplorer({
           ))}
         </div>
       ) : null}
+      {chartType === "table" ? null : (
+        <div className="border-b p-3">
+          {chartType === "stat" ? (
+            <MetricStat result={result} />
+          ) : (
+            <TelemetryChart
+              chartClassName="h-72 min-h-72"
+              data={chart.data}
+              emptyMessage={t("metrics.empty.noSeries.title")}
+              kind={chart.kind}
+              series={chart.series}
+              summary={`${result.metric.name} ${chartType} chart with ${result.series.length} ${t(
+                "metrics.series",
+              )}.`}
+            />
+          )}
+        </div>
+      )}
       <div className="divide-y">
         {result.series.slice(0, 20).map((series) => (
           <MetricSeriesRows key={metricSeriesKey(series)} series={series} />
@@ -382,6 +402,7 @@ function DescriptorKeyPicker({
   onChange: (groupBy: string[]) => void;
   selected: string[];
 }) {
+  const selectValue = selected[0] ?? "none";
   if (!descriptor?.attributeKeys.length) {
     return (
       <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
@@ -391,26 +412,22 @@ function DescriptorKeyPicker({
   }
 
   return (
-    <div className="flex max-h-24 flex-wrap gap-1 overflow-auto rounded-md border p-1">
-      {descriptor.attributeKeys.map((key) => {
-        const active = selected.includes(key);
-        return (
-          <Button
-            aria-pressed={active}
-            key={key}
-            onClick={() =>
-              onChange(active ? selected.filter((item) => item !== key) : [...selected, key])
-            }
-            size="sm"
-            type="button"
-            variant={active ? "secondary" : "ghost"}
-          >
-            <Check className={cn(!active && "opacity-0")} data-icon="inline-start" />
+    <Select
+      onValueChange={(value) => onChange(value === "none" ? [] : [value])}
+      value={selectValue}
+    >
+      <SelectTrigger>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="none">{t("value.none")}</SelectItem>
+        {descriptor.attributeKeys.map((key) => (
+          <SelectItem key={key} value={key}>
             {key}
-          </Button>
-        );
-      })}
-    </div>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -454,6 +471,72 @@ function MetricSeriesRows({ series }: { series: MetricSeries }) {
       </div>
     </section>
   );
+}
+
+function MetricStat({ result }: { result: MetricSeriesResult }) {
+  const latest = result.series
+    .flatMap((series) => series.points)
+    .toSorted((left, right) => left.timestamp.localeCompare(right.timestamp))
+    .at(-1);
+
+  return (
+    <div className="flex h-72 min-h-72 flex-col justify-center gap-2">
+      <span className="text-sm text-muted-foreground">{result.metric.name}</span>
+      <span className="text-4xl font-semibold tabular-nums">
+        {latest ? latest.value.toLocaleString() : t("value.none")}
+      </span>
+      <span className="text-xs text-muted-foreground">
+        {latest?.timestamp ?? result.metric.lastSeenAt}
+      </span>
+    </div>
+  );
+}
+
+function buildMetricExplorerChartData(result: MetricSeriesResult, chartType: MetricChartType) {
+  if (chartType === "pie") {
+    return {
+      kind: "pie" as TelemetryChartKind,
+      data: result.series.map((series) => ({
+        label: metricSeriesLabel(series.labels),
+        value: series.points.at(-1)?.value ?? 0,
+      })),
+      series: [{ key: "value", label: result.metric.name }],
+    };
+  }
+
+  const timestamps = Array.from(
+    new Set(result.series.flatMap((series) => series.points.map((point) => point.timestamp))),
+  ).sort();
+  const series = result.series.slice(0, 8).map((metricSeries, index) => ({
+    key: `series_${index}`,
+    label: metricSeriesLabel(metricSeries.labels),
+  }));
+  const data = timestamps.map((timestamp) => {
+    const row: Record<string, number | string | null> = { label: timestamp };
+    result.series.slice(0, 8).forEach((metricSeries, index) => {
+      row[`series_${index}`] =
+        metricSeries.points.find((point) => point.timestamp === timestamp)?.value ?? null;
+    });
+    return row as { label: string } & Record<string, number | string | null>;
+  });
+
+  return {
+    kind:
+      chartType === "area"
+        ? ("area" as const)
+        : chartType === "bar"
+          ? ("bar" as const)
+          : ("line" as const),
+    data,
+    series,
+  };
+}
+
+function metricSeriesLabel(labels: MetricSeries["labels"]) {
+  if (!labels || (typeof labels === "object" && Object.keys(labels).length === 0)) {
+    return t("value.all");
+  }
+  return JSON.stringify(labels);
 }
 
 function DescriptorTab({ descriptor }: { descriptor: MetricDescriptor | null }) {

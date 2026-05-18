@@ -24,7 +24,7 @@ counters:
   REV: 6
   GLS: 1
   ARC: 1
-  TEC-BE: 26
+  TEC-BE: 27
   TEC-FE: 8
   FTR: 0
 
@@ -418,6 +418,18 @@ ids:
     file: specs/04-backend/project-membership.md
     status: draft
     depends_on: [TEC-BE-009, TEC-BE-011]
+    deprecated_by: null
+  TEC-BE-026:
+    slug: self-observability
+    file: specs/04-backend/self-observability.md
+    status: draft
+    depends_on: [TEC-BE-001, TEC-BE-005, TEC-BE-011, TEC-BE-017]
+    deprecated_by: null
+  TEC-BE-027:
+    slug: invitation-email-delivery
+    file: specs/04-backend/invitation-email-delivery.md
+    status: draft
+    depends_on: [TEC-BE-009, TEC-BE-011, TEC-BE-023, TEC-BE-025]
     deprecated_by: null
   TEC-FE-001:
     slug: frontend-application

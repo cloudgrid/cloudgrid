@@ -12,7 +12,7 @@ provenance: from-user
 
 ## What This Is
 
-The system is a focused observability application for OpenTelemetry data produced by services and AI-agent workloads. It ingests OTLP traces and logs through a private message-bridge architecture, normalizes them into canonical internal entities, persists them in SurrealDB through private Go storage services, and exposes a browser UI through a TypeScript backend-for-frontend for tracing service and agent behavior through correlated spans and logs. Metrics are a planned future OpenTelemetry signal.
+The system is a focused observability application for OpenTelemetry data produced by services and AI-agent workloads. It ingests OTLP traces, logs, and metrics through a private message-bridge architecture, normalizes them into canonical internal entities, persists them in SurrealDB through private Go storage services, and exposes a browser UI through a TypeScript backend-for-frontend for tracing service and agent behavior through correlated spans, logs, metrics, and dashboards.
 
 ## Who It Is For
 
@@ -31,7 +31,7 @@ The MVP targets engineers building or debugging AI agents and TypeScript service
 
 ## Non-Goals
 
-- No metrics, profiles, or gRPC OTLP ingest in MVP. Metrics are planned after trace/log exploration and require a dedicated metrics contract, storage, query, and UI wave.
+- No profiles in MVP.
 - No ClickHouse, Postgres, S3, OpenSearch, or multi-storage implementation in MVP.
 - No Kafka, Redpanda, or distributed stream processing in MVP.
 - No Jaeger or Tempo export implementation in MVP.

@@ -27,6 +27,121 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadAppliesLocalSelfObservabilityDefaults(t *testing.T) {
+	t.Setenv("CLOUDGRID_SURREALDB_URL", "ws://localhost:8000/rpc")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	self := cfg.SelfObservability
+	if !self.Enabled {
+		t.Fatal("SelfObservability.Enabled = false, want local default enabled")
+	}
+	if self.ProjectID != "cloudgrid-system" || self.CompanyID != "local" || self.OTLPEndpoint != "http://localhost:4318" {
+		t.Fatalf("self-observability identity/endpoint = %#v, want local defaults", self)
+	}
+	if self.OTLPBearerToken != "" {
+		t.Fatal("local self-observability token should be empty by default")
+	}
+	if self.ExportIntervalSeconds != 10 {
+		t.Fatalf("ExportIntervalSeconds = %d, want 10", self.ExportIntervalSeconds)
+	}
+	if !self.TracesEnabled || !self.LogsEnabled || !self.MetricsEnabled {
+		t.Fatalf("signal defaults = traces:%v logs:%v metrics:%v, want all enabled", self.TracesEnabled, self.LogsEnabled, self.MetricsEnabled)
+	}
+}
+
+func TestLoadAppliesDeployedSelfObservabilityDisabledDefaults(t *testing.T) {
+	t.Setenv("CLOUDGRID_DEPLOYMENT_MODE", "deployed")
+	t.Setenv("CLOUDGRID_SURREALDB_URL", "ws://localhost:8000/rpc")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	self := cfg.SelfObservability
+	if self.Enabled {
+		t.Fatal("SelfObservability.Enabled = true, want deployed default disabled")
+	}
+	if self.ProjectID != "cloudgrid-system" {
+		t.Fatalf("ProjectID = %q, want cloudgrid-system", self.ProjectID)
+	}
+	if self.CompanyID != "" || self.OTLPEndpoint != "" || self.OTLPBearerToken != "" {
+		t.Fatalf("deployed disabled credentials = %#v, want empty company/endpoint/token", self)
+	}
+	if self.TracesEnabled || self.LogsEnabled || self.MetricsEnabled {
+		t.Fatalf("deployed disabled signals = traces:%v logs:%v metrics:%v, want all disabled", self.TracesEnabled, self.LogsEnabled, self.MetricsEnabled)
+	}
+}
+
+func TestLoadRejectsDeployedEnabledSelfObservabilityWithoutRequiredValues(t *testing.T) {
+	required := map[string]string{
+		"CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID":        "company-1",
+		"CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID":        "project-1",
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT":     "https://collector.example.test",
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN": "secret-token",
+	}
+
+	for key := range required {
+		t.Run(key, func(t *testing.T) {
+			t.Setenv("CLOUDGRID_DEPLOYMENT_MODE", "deployed")
+			t.Setenv("CLOUDGRID_SELF_OBSERVABILITY_ENABLED", "true")
+			t.Setenv("CLOUDGRID_SURREALDB_URL", "ws://localhost:8000/rpc")
+			for k, v := range required {
+				if k == key {
+					t.Setenv(k, "")
+				} else {
+					t.Setenv(k, v)
+				}
+			}
+
+			_, err := Load()
+			if err == nil {
+				t.Fatal("Load() error = nil")
+			}
+			if !strings.Contains(err.Error(), "ERR-009") || !strings.Contains(err.Error(), key) {
+				t.Fatalf("Load() error = %q, want ERR-009 mentioning %s", err.Error(), key)
+			}
+			if strings.Contains(err.Error(), "secret-token") {
+				t.Fatalf("error leaked bearer token: %q", err.Error())
+			}
+		})
+	}
+}
+
+func TestLoadValidatesSelfObservabilityExportInterval(t *testing.T) {
+	for _, value := range []string{"0", "301", "not-a-number"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("CLOUDGRID_SURREALDB_URL", "ws://localhost:8000/rpc")
+			t.Setenv("CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS", value)
+
+			_, err := Load()
+			if err == nil {
+				t.Fatal("Load() error = nil")
+			}
+			if !strings.Contains(err.Error(), "CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS") {
+				t.Fatalf("Load() error = %q, want export interval validation", err.Error())
+			}
+		})
+	}
+}
+
+func TestLoadRejectsNumericSelfObservabilityBooleans(t *testing.T) {
+	t.Setenv("CLOUDGRID_SURREALDB_URL", "ws://localhost:8000/rpc")
+	t.Setenv("CLOUDGRID_SELF_OBSERVABILITY_ENABLED", "1")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil")
+	}
+	if !strings.Contains(err.Error(), "ERR-009") || !strings.Contains(err.Error(), "CLOUDGRID_SELF_OBSERVABILITY_ENABLED") {
+		t.Fatalf("Load() error = %q, want strict boolean validation", err.Error())
+	}
+}
+
 func TestLoadPreservesStorageAdapterSelection(t *testing.T) {
 	t.Setenv("CLOUDGRID_STORAGE_ADAPTER", "postgres")
 

@@ -19,27 +19,17 @@ func ConnectNATS(url string) (*nats.Conn, error) {
 }
 
 func SubscribeTelemetryHandlers(nc *nats.Conn, store ports.TelemetryReadStore, logger *slog.Logger) ([]*nats.Subscription, error) {
+	return SubscribeTelemetryHandlersWithMetrics(nc, store, logger, nil)
+}
+
+func SubscribeTelemetryHandlersWithMetrics(nc *nats.Conn, store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder) ([]*nats.Subscription, error) {
+	return SubscribeTelemetryHandlersWithSelfObservability(nc, store, logger, recorder, nil)
+}
+
+func SubscribeTelemetryHandlersWithSelfObservability(nc *nats.Conn, store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder, traceLogRecorder TraceLogRecorder) ([]*nats.Subscription, error) {
 	liveRegistry := NewLiveTraceRegistry(store, natsLiveTracePublisher{nc: nc}, LiveTraceOptions{})
 	runLiveTraceHeartbeats(liveRegistry)
-	handlers := map[string]bridgeMessageHandler{
-		SubjectProjectTelemetryOverview: handleProjectTelemetryOverview(store, logger),
-		SubjectTraceSearch:              handleTraceSearch(store, logger),
-		SubjectTraceGet:                 handleTraceGet(store, logger),
-		SubjectLogSearch:                handleLogSearch(store, logger),
-		SubjectMetricNames:              handleMetricNameSearch(store, logger),
-		SubjectMetricQuery:              handleMetricSeriesQuery(store, logger),
-		SubjectRichMetricQuery:          handleRichMetricSeriesQuery(store, logger),
-		SubjectTelemetryFacets:          handleTelemetryFacets(store, logger),
-		SubjectLiveTraceStart:           handleLiveTraceStart(liveRegistry, logger),
-		SubjectLiveTraceStop:            handleLiveTraceStop(liveRegistry, logger),
-		SubjectPersistedTraces:          handleTracePersistedNotification(liveRegistry, logger),
-	}
-	if aiEvalStore, ok := store.(ports.AiEvalReadStore); ok {
-		evalLiveRegistry := NewEvalLiveRegistry(aiEvalStore, natsLiveTracePublisher{nc: nc}, EvalLiveOptions{})
-		for subject, handler := range aiEvalReadSubjectHandlers(aiEvalStore, evalLiveRegistry, logger) {
-			handlers[subject] = handler
-		}
-	}
+	handlers := telemetryHandlersWithSelfObservability(nc, store, liveRegistry, logger, recorder, traceLogRecorder)
 	subscriptions := make([]*nats.Subscription, 0, len(handlers))
 	for subject, handler := range handlers {
 		subscription, err := nc.Subscribe(subject, adaptNATSHandler(handler))
@@ -52,6 +42,33 @@ func SubscribeTelemetryHandlers(nc *nats.Conn, store ports.TelemetryReadStore, l
 		return nil, fmt.Errorf("ERR-013 MESSAGE_BRIDGE_UNAVAILABLE: NATS subscription flush failed")
 	}
 	return subscriptions, nil
+}
+
+func telemetryHandlers(nc *nats.Conn, store ports.TelemetryReadStore, liveRegistry *LiveTraceRegistry, logger *slog.Logger, recorder MetricsRecorder) map[string]bridgeMessageHandler {
+	return telemetryHandlersWithSelfObservability(nc, store, liveRegistry, logger, recorder, nil)
+}
+
+func telemetryHandlersWithSelfObservability(nc *nats.Conn, store ports.TelemetryReadStore, liveRegistry *LiveTraceRegistry, logger *slog.Logger, recorder MetricsRecorder, traceLogRecorder TraceLogRecorder) map[string]bridgeMessageHandler {
+	handlers := map[string]bridgeMessageHandler{
+		SubjectProjectTelemetryOverview: withReadSelfObservability("project_telemetry_overview", traceLogRecorder, handleProjectTelemetryOverviewWithMetrics(store, logger, recorder)),
+		SubjectTraceSearch:              withReadSelfObservability("trace_search", traceLogRecorder, handleTraceSearchWithMetrics(store, logger, recorder)),
+		SubjectTraceGet:                 withReadSelfObservability("trace_get", traceLogRecorder, handleTraceGetWithMetrics(store, logger, recorder)),
+		SubjectLogSearch:                withReadSelfObservability("log_search", traceLogRecorder, handleLogSearchWithMetrics(store, logger, recorder)),
+		SubjectMetricNames:              withReadSelfObservability("metric_names", traceLogRecorder, handleMetricNameSearchWithMetrics(store, logger, recorder)),
+		SubjectMetricQuery:              withReadSelfObservability("metric_series", traceLogRecorder, handleMetricSeriesQueryWithMetrics(store, logger, recorder)),
+		SubjectRichMetricQuery:          withReadSelfObservability("rich_metric_series", traceLogRecorder, handleRichMetricSeriesQueryWithMetrics(store, logger, recorder)),
+		SubjectTelemetryFacets:          withReadSelfObservability("telemetry_facets", traceLogRecorder, handleTelemetryFacetsWithMetrics(store, logger, recorder)),
+		SubjectLiveTraceStart:           withReadSelfObservability("live_trace_start", traceLogRecorder, handleLiveTraceStartWithMetrics(liveRegistry, logger, recorder)),
+		SubjectLiveTraceStop:            withReadSelfObservability("live_trace_stop", traceLogRecorder, handleLiveTraceStopWithMetrics(liveRegistry, logger, recorder)),
+		SubjectPersistedTraces:          handleTracePersistedNotification(liveRegistry, logger),
+	}
+	if aiEvalStore, ok := store.(ports.AiEvalReadStore); ok {
+		evalLiveRegistry := NewEvalLiveRegistry(aiEvalStore, natsLiveTracePublisher{nc: nc}, EvalLiveOptions{})
+		for subject, handler := range aiEvalReadSubjectHandlers(aiEvalStore, evalLiveRegistry, logger) {
+			handlers[subject] = handler
+		}
+	}
+	return handlers
 }
 
 func runLiveTraceHeartbeats(registry *LiveTraceRegistry) {
@@ -89,6 +106,10 @@ func (message natsBridgeMessage) Data() []byte {
 
 func (message natsBridgeMessage) Respond(response []byte) error {
 	return message.msg.Respond(response)
+}
+
+func (message natsBridgeMessage) Header(name string) string {
+	return message.msg.Header.Get(name)
 }
 
 func adaptNATSHandler(handler bridgeMessageHandler) nats.MsgHandler {

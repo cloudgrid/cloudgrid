@@ -68,6 +68,25 @@ describe("seed OTLP fixtures script", () => {
     });
   });
 
+  test("uses local OTLP token environment variables in documented precedence", () => {
+    expect(
+      parseSeedArgs([], {
+        CLOUDGRID_OTLP_BEARER_TOKEN: "bearer-token",
+        CLOUDGRID_OTLP_TOKEN: "legacy-token",
+        CLOUDGRID_PROJECT_API_KEY: "project-api-key",
+      }).token,
+    ).toBe("bearer-token");
+    expect(
+      parseSeedArgs([], {
+        CLOUDGRID_OTLP_TOKEN: "legacy-token",
+        CLOUDGRID_PROJECT_API_KEY: "project-api-key",
+      }).token,
+    ).toBe("legacy-token");
+    expect(parseSeedArgs([], { CLOUDGRID_PROJECT_API_KEY: "project-api-key" }).token).toBe(
+      "project-api-key",
+    );
+  });
+
   test("parses continuous ingest options and rejects static fixture sets", () => {
     const options = parseSeedArgs(["--continuous", "--interval-ms", "1000", "--max-batches", "2"]);
 
@@ -102,7 +121,8 @@ describe("seed OTLP fixtures script", () => {
   });
 
   test("generates rich development telemetry with larger traces, logs, and metrics", () => {
-    const seedContext = createSeedRunContext();
+    const nowMs = Date.UTC(2026, 4, 18, 12, 0, 0, 0);
+    const seedContext = createSeedRunContext(nowMs);
     const traces = generatedFixture("rich-traces", seedContext);
     const logs = generatedFixture("rich-logs", seedContext);
     const metrics = generatedFixture("rich-metrics", seedContext);
@@ -130,6 +150,11 @@ describe("seed OTLP fixtures script", () => {
         .filter((value) => value && typeof value === "object" && "dataPoints" in value)
         .flatMap((value) => value.dataPoints.map((point) => Number(point.timeUnixNano) / 1e6)),
     );
+    const spanStartTimes = traces.resourceSpans.flatMap((resourceSpan) =>
+      resourceSpan.scopeSpans.flatMap((scopeSpan) =>
+        scopeSpan.spans.map((span) => Number(span.startTimeUnixNano) / 1e6),
+      ),
+    );
     const spansByTrace = new Map();
     for (const resourceSpan of traces.resourceSpans) {
       for (const scopeSpan of resourceSpan.scopeSpans) {
@@ -141,11 +166,13 @@ describe("seed OTLP fixtures script", () => {
       }
     }
 
-    expect(spanCount).toBeGreaterThanOrEqual(50);
-    expect(logCount).toBeGreaterThanOrEqual(15);
+    expect(spanCount).toBeGreaterThanOrEqual(1500);
+    expect(logCount).toBeGreaterThanOrEqual(450);
     expect(metricCount).toBeGreaterThanOrEqual(3);
-    expect(Math.max(...metricPointTimes)).toBeGreaterThan(Date.now() - 60 * 60 * 1000);
-    expect(Math.min(...metricPointTimes)).toBeLessThan(Date.now() + 60 * 1000);
+    expect(Math.min(...spanStartTimes)).toBe(Date.UTC(2026, 3, 18, 11, 59, 0, 0));
+    expect(Math.max(...spanStartTimes)).toBeLessThanOrEqual(nowMs);
+    expect(Math.min(...metricPointTimes)).toBe(Date.UTC(2026, 3, 18, 11, 59, 3, 0));
+    expect(Math.max(...metricPointTimes)).toBeLessThanOrEqual(nowMs);
     expect([...spansByTrace.keys()]).not.toContain("44444444444444444444444444444444");
     expect([...spansByTrace.keys()]).not.toContain("d4444444444444444444444444444444");
     for (const spans of spansByTrace.values()) {

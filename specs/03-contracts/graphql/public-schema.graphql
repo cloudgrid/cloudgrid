@@ -49,6 +49,8 @@ type Mutation {
   createProject(input: CreateProjectInput!): Project!
   updateProject(id: ID!, input: UpdateProjectInput!): Project!
   inviteOrganizationMember(input: InviteOrganizationMemberInput!): OrganizationInvitation!
+  inviteProjectMember(input: InviteProjectMemberInput!): ProjectInvitationResult!
+  resendOrganizationInvitation(id: ID!): OrganizationInvitation!
   revokeOrganizationInvitation(id: ID!): OrganizationInvitation!
   updateOrganizationMember(input: UpdateOrganizationMemberInput!): OrganizationMember!
   removeOrganizationMember(input: RemoveOrganizationMemberInput!): Boolean!
@@ -112,6 +114,12 @@ input UpdateOrganizationMemberInput {
 input InviteOrganizationMemberInput {
   organizationId: ID!
   email: String!
+}
+
+input InviteProjectMemberInput {
+  projectId: ID!
+  email: String!
+  role: ProjectRole!
 }
 
 input RemoveOrganizationMemberInput {
@@ -910,6 +918,27 @@ enum OrganizationInvitationStatus {
   expired
 }
 
+enum InvitationDeliveryStatus {
+  not_configured
+  pending
+  sent
+  failed_retryable
+  failed_terminal
+  suppressed
+}
+
+enum InvitationProjectGrantStatus {
+  pending
+  applied
+  revoked
+  failed
+}
+
+enum ProjectInvitationOutcome {
+  invitation_pending
+  membership_created
+}
+
 enum ProjectRole {
   viewer
   editor
@@ -1192,6 +1221,11 @@ type OrganizationInvitation {
   email: String!
   role: CompanyRole!
   status: OrganizationInvitationStatus!
+  deliveryStatus: InvitationDeliveryStatus!
+  lastDeliveryAttemptAt: DateTime
+  lastDeliveryErrorCode: String
+  lastEmailDeliveryId: ID
+  projectGrants: [InvitationProjectGrant!]!
   invitedByUserId: ID!
   acceptedByUserId: ID
   createdAt: DateTime!
@@ -1199,6 +1233,21 @@ type OrganizationInvitation {
   acceptedAt: DateTime
   revokedAt: DateTime
   expiresAt: DateTime
+}
+
+type InvitationProjectGrant {
+  projectId: ID!
+  role: ProjectRole!
+  status: InvitationProjectGrantStatus!
+  createdAt: DateTime!
+  createdByUserId: ID!
+  appliedAt: DateTime
+}
+
+type ProjectInvitationResult {
+  outcome: ProjectInvitationOutcome!
+  invitation: OrganizationInvitation
+  projectMember: ProjectMember
 }
 
 type ProjectMember {
@@ -1296,7 +1345,10 @@ type Trace {
   id: ID!
   serviceName: String
   startedAt: DateTime!
+  startedAtUnixNano: String!
   endedAt: DateTime
+  endedAtUnixNano: String
+  durationNano: String
   durationMs: Float
   rootSpanId: ID
   status: TraceStatus
@@ -1308,7 +1360,10 @@ type TraceSummary {
   serviceName: String
   operationName: String
   startedAt: DateTime!
+  startedAtUnixNano: String!
   endedAt: DateTime
+  endedAtUnixNano: String
+  durationNano: String
   durationMs: Float
   rootSpanId: ID
   status: TraceStatus
@@ -1327,7 +1382,11 @@ type Span {
   kind: String
   serviceName: String
   startedAt: DateTime!
+  startedAtUnixNano: String!
   endedAt: DateTime!
+  endedAtUnixNano: String!
+  startOffsetNano: String!
+  durationNano: String!
   durationMs: Float!
   status: TraceStatus
   attributes: JSON!
@@ -1346,6 +1405,7 @@ type Span {
 type SpanEvent {
   name: String!
   timestamp: DateTime!
+  timestampUnixNano: String!
   attributes: JSON!
 }
 

@@ -137,6 +137,47 @@ func TestBuildTraceDetailDataRequiresAllSpanFilters(t *testing.T) {
 	}
 }
 
+func TestBuildTraceDetailDataEnrichesNanosecondPrecision(t *testing.T) {
+	base := time.Date(2026, 5, 8, 8, 0, 0, 123456789, time.UTC)
+	endedAt := base.Add(2500 * time.Microsecond)
+	trace := contracts.Trace{ID: "trace-precision", StartedAt: base, EndedAt: &endedAt, Attributes: contracts.Attributes{}}
+	spans := []contracts.Span{
+		{
+			ID:         "span-precision",
+			TraceID:    trace.ID,
+			Name:       "same-second-work",
+			StartedAt:  base.Add(1500 * time.Microsecond),
+			EndedAt:    base.Add(2200 * time.Microsecond),
+			DurationMs: 0.7,
+			Attributes: contracts.Attributes{},
+			Events: []contracts.SpanEvent{{
+				Name:       "event",
+				Timestamp:  base.Add(1600 * time.Microsecond),
+				Attributes: contracts.Attributes{},
+			}},
+		},
+	}
+
+	data := buildTraceDetailData(trace, spans, nil, nil)
+
+	if data.Trace.StartedAtUnixNano != "1778227200123456789" || data.Trace.EndedAtUnixNano == nil || *data.Trace.EndedAtUnixNano != "1778227200125956789" {
+		t.Fatalf("trace precision = %#v", data.Trace)
+	}
+	if data.Trace.DurationNano == nil || *data.Trace.DurationNano != "2500000" {
+		t.Fatalf("trace durationNano = %#v", data.Trace.DurationNano)
+	}
+	got := data.Spans[0]
+	if got.StartedAtUnixNano != "1778227200124956789" || got.EndedAtUnixNano != "1778227200125656789" {
+		t.Fatalf("span precision = %#v", got)
+	}
+	if got.StartOffsetNano != "1500000" || got.DurationNano != "700000" {
+		t.Fatalf("span waterfall nanos = offset %q duration %q", got.StartOffsetNano, got.DurationNano)
+	}
+	if got.Events[0].TimestampUnixNano != "1778227200125056789" {
+		t.Fatalf("event timestampUnixNano = %q", got.Events[0].TimestampUnixNano)
+	}
+}
+
 func spansByID(spans []contracts.Span) map[string]contracts.Span {
 	byID := map[string]contracts.Span{}
 	for _, span := range spans {

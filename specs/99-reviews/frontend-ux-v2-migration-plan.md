@@ -519,7 +519,7 @@ This ticket must not fix route implementation files. It files findings against t
 
 **Status:** future backend/storage/security work, not part of UX v2 migration.
 
-**Reason for deferral:** `specs/06-nfr/data-retention-local.md` states the local MVP does not implement retention policies or deletion APIs. Production retention requires a worker or storage-maintenance owner, tenant/project scoping, configuration, deletion semantics, and integration tests before UI controls can be meaningful.
+**Current status:** project retention policy CRUD is implemented through generated contracts and Project Settings. Retention deletion execution remains deferred until the storage-maintenance worker, tenant/project-scoped deletion semantics, and integration tests are implemented.
 
 **Backlog items:**
 

@@ -2,8 +2,10 @@ package internal
 
 import (
 	"encoding/json"
-	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
 	"testing"
+	"time"
+
+	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
 )
 
 func TestErrorResponseJSONSerializesRequestReplyErrorShape(t *testing.T) {
@@ -128,6 +130,100 @@ func TestMemberAndInvitationNATSHandlersReturnContractShapes(t *testing.T) {
 	})
 	if _, ok := revokeResponse["data"].(map[string]any)["invitation"]; !ok {
 		t.Fatalf("invitation revoke response missing data.invitation: %#v", revokeResponse)
+	}
+}
+
+func TestNATSHandlerRecordsSelfObservabilitySpanAndFailureLog(t *testing.T) {
+	recorder := NewInMemorySelfObservabilityRecorder()
+	handler := adaptBridgeHandlerWithSelfObservability(
+		SubjectProjectsGet,
+		handleProjectsGet(NewService(newTestStore(), fixedNow), nil),
+		recorder,
+	)
+	request := contracts.ProjectGetRequest{
+		BridgeEnvelope: localEnvelope("req-selfobs", "user-1", nil),
+		ProjectID:      "missing-project",
+	}
+	payload, err := json.Marshal(request)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	message := &captureBridgeMessage{data: payload}
+
+	handler(message)
+
+	if !recorder.HasSpan("nats control.projects.get") {
+		t.Fatalf("spans = %#v, want NATS handler span", recorder.Spans())
+	}
+	if !recorder.HasLog("nats_handler_failed") {
+		t.Fatalf("logs = %#v, want failed handler log", recorder.Logs())
+	}
+}
+
+func TestNATSHandlerRecordsBoundedBridgeErrorAttributes(t *testing.T) {
+	recorder := NewInMemorySelfObservabilityRecorder()
+	handler := adaptBridgeHandlerWithSelfObservability(
+		SubjectProjectsGet,
+		func(message BridgeMessage) {
+			payload, err := ErrorResponseJSON("req-selfobs", contracts.BridgeError{
+				ID:        "ERR-004",
+				Code:      "TRACE_NOT_FOUND",
+				Message:   "project was not found",
+				Retryable: false,
+			})
+			if err != nil {
+				t.Fatalf("build error response: %v", err)
+			}
+			if err := message.Respond(payload); err != nil {
+				t.Fatalf("respond: %v", err)
+			}
+		},
+		recorder,
+	)
+
+	handler(&captureBridgeMessage{})
+
+	logs := recorder.Logs()
+	if len(logs) != 1 {
+		t.Fatalf("logs = %#v, want one failure log", logs)
+	}
+	if logs[0].Attributes["cloudgrid.request_id"] != "req-selfobs" {
+		t.Fatalf("request id attribute = %q, want req-selfobs", logs[0].Attributes["cloudgrid.request_id"])
+	}
+	if logs[0].Attributes["error_id"] != "ERR-004" || logs[0].Attributes["error_code"] != "TRACE_NOT_FOUND" {
+		t.Fatalf("error attributes = %#v, want ERR-004 TRACE_NOT_FOUND", logs[0].Attributes)
+	}
+}
+
+func TestPublishJSONSkipsPublisherWhenMessageCannotMarshal(t *testing.T) {
+	publisher := &capturePublisher{}
+
+	publishJSON(publisher, SubjectProjectStatusChanged, map[string]any{"invalid": make(chan struct{})})
+
+	if publisher.calls != 0 {
+		t.Fatalf("publish calls = %d, want 0 when JSON encoding fails", publisher.calls)
+	}
+}
+
+func TestPublishJSONIgnoresPublisherErrorAfterEncodingContractPayload(t *testing.T) {
+	publisher := &capturePublisher{err: assertError("publish failed")}
+	change := contracts.ProjectStatusChangedNotification{
+		CompanyID: "local",
+		ProjectID: LocalProjectID,
+		Status:    contracts.ProjectStatusActive,
+		ChangedAt: time.Unix(1, 0),
+	}
+
+	publishJSON(publisher, SubjectProjectStatusChanged, change)
+
+	if publisher.calls != 1 {
+		t.Fatalf("publish calls = %d, want one publish attempt", publisher.calls)
+	}
+	if publisher.subject != SubjectProjectStatusChanged {
+		t.Fatalf("subject = %q, want status changed subject", publisher.subject)
+	}
+	if !json.Valid(publisher.data) {
+		t.Fatalf("published payload is not valid JSON: %q", string(publisher.data))
 	}
 }
 
@@ -260,6 +356,27 @@ func assertGraphQLProjectTelemetryShape(t *testing.T, response map[string]any, p
 type captureBridgeMessage struct {
 	data     []byte
 	response []byte
+	headers  map[string]string
+}
+
+type assertError string
+
+func (err assertError) Error() string {
+	return string(err)
+}
+
+type capturePublisher struct {
+	calls   int
+	subject string
+	data    []byte
+	err     error
+}
+
+func (publisher *capturePublisher) Publish(subject string, data []byte) error {
+	publisher.calls++
+	publisher.subject = subject
+	publisher.data = append([]byte(nil), data...)
+	return publisher.err
 }
 
 func (message *captureBridgeMessage) Data() []byte {
@@ -269,4 +386,8 @@ func (message *captureBridgeMessage) Data() []byte {
 func (message *captureBridgeMessage) Respond(response []byte) error {
 	message.response = append([]byte{}, response...)
 	return nil
+}
+
+func (message *captureBridgeMessage) Header(name string) string {
+	return message.headers[name]
 }

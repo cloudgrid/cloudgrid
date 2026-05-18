@@ -29,7 +29,9 @@ const xFor = (i: number, n: number) => padL + (i / (n - 1)) * (w - padL - padR);
 const yFor = (v: number) => h - padB - v * (h - padT - padB);
 
 const pathFor = (pts: number[]) =>
-  pts.map((p, i) => `${i === 0 ? "M" : "L"} ${xFor(i, pts.length).toFixed(1)} ${yFor(p).toFixed(1)}`).join(" ");
+  pts
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${xFor(i, pts.length).toFixed(1)} ${yFor(p).toFixed(1)}`)
+    .join(" ");
 
 const areaFor = (pts: number[]) =>
   `${pathFor(pts)} L ${xFor(pts.length - 1, pts.length).toFixed(1)} ${h - padB} L ${xFor(0, pts.length).toFixed(1)} ${h - padB} Z`;

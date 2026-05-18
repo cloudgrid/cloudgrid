@@ -665,6 +665,33 @@ describe("GraphQL client", () => {
           },
         },
         CreateDataset: { createDataset: dataset },
+        AppendDatasetItems: {
+          appendDatasetItems: {
+            ...dataset,
+            itemCount: 1,
+            reviewedItemCount: 1,
+            items: {
+              items: [
+                {
+                  id: "item-1",
+                  datasetId: "dataset-1",
+                  version: 2,
+                  input: { prompt: "Check answer" },
+                  expected: { answer: "42" },
+                  metadata: {},
+                  sourceTraceId: null,
+                  sourceSpanId: null,
+                  split: "validation",
+                  reviewStatus: "reviewed",
+                  synthetic: false,
+                  duplicateOfItemId: null,
+                  leakageWarnings: [],
+                },
+              ],
+              nextCursor: null,
+            },
+          },
+        },
         CreateScorer: { createScorer: scorer },
         CreateExperiment: { createExperiment: experiment },
         StartExperimentRun: { startExperimentRun: experimentRun },
@@ -687,6 +714,20 @@ describe("GraphQL client", () => {
     await expect(client.createDataset({ name: "Regression" })).resolves.toMatchObject({
       id: "dataset-1",
     });
+    await expect(
+      client.appendDatasetItems({
+        datasetId: "dataset-1",
+        items: [
+          {
+            input: { prompt: "Check answer" },
+            expected: { answer: "42" },
+            metadata: {},
+            split: "validation",
+            reviewStatus: "reviewed",
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({ id: "dataset-1", itemCount: 1 });
     await expect(
       client.createScorer({
         name: "Contains answer",
@@ -732,6 +773,7 @@ describe("GraphQL client", () => {
     expect(operationNames).toEqual([
       "AiQualityOverview",
       "CreateDataset",
+      "AppendDatasetItems",
       "CreateScorer",
       "CreateExperiment",
       "StartExperimentRun",

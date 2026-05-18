@@ -7,21 +7,74 @@
 const spans = [
   { name: "POST /v1/agent/run", service: "edge-gw", x: 60, w: 600, depth: 0, kind: "server" },
   { name: "agent.run", service: "agent-svc", x: 90, w: 540, depth: 1, kind: "internal" },
-  { name: "llm.chat-completions", service: "llm-router", x: 130, w: 220, depth: 2, kind: "client", color: "violet" },
-  { name: "tool.web_search", service: "tool-router", x: 360, w: 90, depth: 2, kind: "client", color: "cyan" },
-  { name: "llm.chat-completions", service: "llm-router", x: 460, w: 170, depth: 2, kind: "client", color: "violet" },
-  { name: "vector.lookup", service: "retrieval", x: 165, w: 60, depth: 3, kind: "client", color: "emerald" },
-  { name: "openai.chat", service: "external", x: 200, w: 130, depth: 3, kind: "external", color: "amber" },
-  { name: "openai.chat", service: "external", x: 480, w: 130, depth: 3, kind: "external", color: "amber" },
+  {
+    name: "llm.chat-completions",
+    service: "llm-router",
+    x: 130,
+    w: 220,
+    depth: 2,
+    kind: "client",
+    color: "violet",
+  },
+  {
+    name: "tool.web_search",
+    service: "tool-router",
+    x: 360,
+    w: 90,
+    depth: 2,
+    kind: "client",
+    color: "cyan",
+  },
+  {
+    name: "llm.chat-completions",
+    service: "llm-router",
+    x: 460,
+    w: 170,
+    depth: 2,
+    kind: "client",
+    color: "violet",
+  },
+  {
+    name: "vector.lookup",
+    service: "retrieval",
+    x: 165,
+    w: 60,
+    depth: 3,
+    kind: "client",
+    color: "emerald",
+  },
+  {
+    name: "openai.chat",
+    service: "external",
+    x: 200,
+    w: 130,
+    depth: 3,
+    kind: "external",
+    color: "amber",
+  },
+  {
+    name: "openai.chat",
+    service: "external",
+    x: 480,
+    w: 130,
+    depth: 3,
+    kind: "external",
+    color: "amber",
+  },
 ];
 
 const colorFor = (c?: string) => {
   switch (c) {
-    case "violet": return "var(--color-violet)";
-    case "cyan": return "var(--color-cyan)";
-    case "emerald": return "var(--color-emerald)";
-    case "amber": return "var(--color-amber)";
-    default: return "var(--color-brand)";
+    case "violet":
+      return "var(--color-violet)";
+    case "cyan":
+      return "var(--color-cyan)";
+    case "emerald":
+      return "var(--color-emerald)";
+    case "amber":
+      return "var(--color-amber)";
+    default:
+      return "var(--color-brand)";
   }
 };
 ---

@@ -36,6 +36,8 @@ import {
 export interface TraceTreeWaterfallProps {
   spans: Span[];
   traceStartedAt: string;
+  traceStartedAtUnixNano?: string | null;
+  traceDurationNano?: string | null;
   traceDurationMs?: number | null;
   rootSpanIds?: readonly string[];
   orphanSpanIds?: readonly string[];
@@ -249,6 +251,8 @@ function TimelineHeader() {
 export function TraceTreeWaterfall({
   spans,
   traceStartedAt,
+  traceStartedAtUnixNano,
+  traceDurationNano,
   traceDurationMs,
   rootSpanIds,
   orphanSpanIds,
@@ -280,11 +284,21 @@ export function TraceTreeWaterfall({
       buildTraceTreeIndexes({
         spans,
         traceStartedAt,
+        traceStartedAtUnixNano,
+        traceDurationNano,
         traceDurationMs,
         rootSpanIds,
         orphanSpanIds,
       }),
-    [spans, traceStartedAt, traceDurationMs, rootSpanIds, orphanSpanIds],
+    [
+      spans,
+      traceStartedAt,
+      traceStartedAtUnixNano,
+      traceDurationNano,
+      traceDurationMs,
+      rootSpanIds,
+      orphanSpanIds,
+    ],
   );
   const errorSpanIds = useMemo(
     () => new Set(spans.filter((span) => span.hasError).map((span) => span.id)),

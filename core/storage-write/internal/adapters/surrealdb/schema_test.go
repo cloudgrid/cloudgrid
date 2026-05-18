@@ -70,6 +70,24 @@ func TestStatementsDefineOwnershipMetadataFields(t *testing.T) {
 	}
 }
 
+func TestStatementsDefineTracePrecisionFields(t *testing.T) {
+	got := strings.Join(Statements(), "\n")
+
+	for _, want := range []string{
+		"DEFINE FIELD IF NOT EXISTS startedAtUnixNano ON trace TYPE string",
+		"DEFINE FIELD IF NOT EXISTS endedAtUnixNano ON trace TYPE option<string>",
+		"DEFINE FIELD IF NOT EXISTS durationNano ON trace TYPE option<string>",
+		"DEFINE FIELD IF NOT EXISTS startedAtUnixNano ON span TYPE string",
+		"DEFINE FIELD IF NOT EXISTS endedAtUnixNano ON span TYPE string",
+		"DEFINE FIELD IF NOT EXISTS durationNano ON span TYPE string",
+		"DEFINE FIELD OVERWRITE events[*].timestampUnixNano ON span TYPE string",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("schema missing %q in:\n%s", want, got)
+		}
+	}
+}
+
 func TestStatementsDefineAiEvalRelationshipFields(t *testing.T) {
 	got := strings.Join(Statements(), "\n")
 
