@@ -14,11 +14,18 @@ import (
 
 const (
 	defaultPageLimit           = 50
-	maxPageLimit               = 200
 	defaultLiveLimit           = 100
 	maxLiveLimit               = 500
 	attributeKeyFacetScanLimit = 5000
 )
+
+var maxPageLimit = 200
+
+func ConfigureQueryLimits(maxPageSize int) {
+	if maxPageSize > 0 {
+		maxPageLimit = maxPageSize
+	}
+}
 
 const traceSummaryProjection = "traceId AS id, serviceName, (SELECT name, startedAt, spanId FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId = $parent.traceId AND parentSpanId = NONE ORDER BY startedAt ASC, spanId ASC LIMIT 1)[0].name AS operationName, startedAt, endedAt, durationMs, rootSpanId, status, attributes, spanCount, errorSpanCount, logCount, serviceCount"
 

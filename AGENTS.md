@@ -42,7 +42,8 @@ If implementation needs behavior not covered by specs, stop and update the relev
 - `apps/packages/ui-contracts`: generated GraphQL/UI TypeScript contracts.
 - `core/go-contracts`: generated/shared Go contract types.
 - `core/go-runtime`: shared Go runtime helpers.
-- `docs`: end-user and operator documentation, organized from beginner to advanced topics.
+- `docs`: legacy end-user and operator documentation pending migration; do not add or update files here.
+- `website`: public website and the only current target for end-user/operator documentation updates.
 - `skills`: skills that help AI agents use, configure, operate, and extend CloudGrid.
 - `core/otlp-collector`: Go OTLP HTTP collector.
 - `core/control-plane`: Go NATS request/reply service for companies, users, projects, memberships, and project status.
@@ -122,7 +123,8 @@ go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otl
 
 ## Documentation
 
-- User-facing docs belong in `docs/`.
+- User-facing and operator docs belong in `website/`, primarily under `website/src/content/handbook/`.
+- Do not add or update documentation in `docs/`. That tree is legacy content pending migration and will be removed after outstanding agent work is reconciled.
 - Docs must follow a storyline from easy to expert level.
 - Keep topics separated and link back to relevant specs only when useful.
 - Update docs when behavior or setup changes.

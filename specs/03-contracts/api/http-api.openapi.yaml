@@ -179,6 +179,40 @@ paths:
           $ref: "#/components/responses/Error"
         "410":
           $ref: "#/components/responses/Error"
+  /api/ai-chat/runs:
+    post:
+      operationId: OPR-AIC-post-chat-run
+      summary: Start an AI Chat run and stream server-sent events.
+      description: >
+        BFF-owned SSE endpoint for AI Chat only. The endpoint starts or resumes a
+        chat run through the integrated AI harness, persists messages and action
+        proposals through control-plane bridge subjects, and streams typed events
+        to the browser. Telemetry data access continues through GraphQL and
+        private storage-read subjects; this endpoint must not expose REST
+        telemetry reads.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiChatRunRequest"
+      responses:
+        "200":
+          description: Server-sent event stream for the chat run.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/Error"
+        "401":
+          $ref: "#/components/responses/Error"
+        "403":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
   /v1/traces:
     post:
       operationId: OPR-OTLP-post-v1-traces
@@ -372,6 +406,53 @@ components:
         expiresAt:
           type: string
           format: date-time
+    AiChatRunRequest:
+      type: object
+      additionalProperties: false
+      required: [companyId, projectId, conversationId, message]
+      properties:
+        companyId:
+          type: string
+        projectId:
+          type: string
+        conversationId:
+          type: string
+        message:
+          type: string
+        idempotencyKey:
+          type: string
+        resumeRunId:
+          type: string
+    AiChatStreamEvent:
+      type: object
+      additionalProperties: false
+      required: [type, runId, seq, emittedAt]
+      properties:
+        type:
+          type: string
+          enum:
+            - run.started
+            - message.delta
+            - message.completed
+            - artifact.created
+            - action.proposed
+            - action.updated
+            - run.completed
+            - run.failed
+            - heartbeat
+        runId:
+          type: string
+        conversationId:
+          type: string
+        seq:
+          type: integer
+          minimum: 0
+        emittedAt:
+          type: string
+          format: date-time
+        payload:
+          type: object
+          additionalProperties: true
     LivenessResponse:
       type: object
       additionalProperties: false

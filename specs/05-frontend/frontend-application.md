@@ -29,12 +29,18 @@ provenance: inferred-draft
 - `/logs`: log search with filters.
 - `/metrics`: technical project metric explorer for `metricNames` and `metricSeries`; it is not a saved dashboard or widget editor.
 - `/dashboards`: saved dashboard/widget workspace for reusable visual compositions.
+- `/ai-chat`: project-scoped AI Chat assistant when enabled and when the company
+  AI Chat provider is configured or setup is visible to the user.
 - `/alerts`: project alert rules, alert history, silences, and trace/log/metric pivots. The route remains available but is not a primary project sidebar item.
 - `/ai-eval`: AI evaluation workspace unless the AI-eval frontend feature is
   explicitly disabled with `CLOUDGRID_AI_EVAL_ENABLED=false` or
   `VITE_CLOUDGRID_AI_EVAL_ENABLED=false`.
 - `/projects/:projectId/settings/ai-eval`: project AI Eval settings in the
   admin settings shell.
+- `/projects/:projectId/settings/ai-providers`: reusable project AI provider
+  profiles and model aliases in the project settings shell.
+- `/organizations/:organizationId/ai-provider`: company admin settings for the
+  one provider used by AI Chat.
 
 ## Data Access
 
@@ -62,9 +68,16 @@ provenance: inferred-draft
 - AI-eval settings live in project settings. The AI Eval workspace links to
   settings for setup, but it must not create a second settings shell or store
   provider profiles in frontend-local state.
+- AI provider settings live in dedicated project and company settings routes.
+  AI Eval, AI Chat, and later judge settings reference those entries instead of
+  embedding provider configuration.
+- AI Chat routes require a selected project, use the BFF AI Chat stream endpoint
+  for message streaming, and use GraphQL for history and approvals. The
+  frontend must not call harness, providers, sandbox, NATS, SurrealDB, or
+  storage-read directly.
 - The app shell has project selection mode and project workspace mode as defined in `05-frontend/product-ux-concept.md`.
 - In project selection mode, the topbar must not show `Live`, `Traces`, `Logs`, `Metrics`, or `AI Eval`.
-- In project workspace mode, primary navigation order is `Traces`, `Logs`, `Metrics`, `Dashboards`, and `AI Eval` when enabled. AI Eval is enabled by default and may be explicitly disabled with the AI-eval frontend feature flags. `Live` is a mode inside `Traces`; `Alerts` remains available at `/alerts` but is not a primary project sidebar item; there is no project Overview route. Company/member management and settings are reached through context menus or explicit management routes, not mixed into telemetry navigation.
+- In project workspace mode, primary navigation order is `Traces`, `Logs`, `Metrics`, `Dashboards`, `AI Chat`, and `AI Eval` when enabled. AI Eval is enabled by default and may be explicitly disabled with the AI-eval frontend feature flags. AI Chat is enabled only when the AI Chat feature flag and company provider settings allow it. `Live` is a mode inside `Traces`; `Alerts` remains available at `/alerts` but is not a primary project sidebar item; there is no project Overview route. Company/member management and settings are reached through context menus or explicit management routes, not mixed into telemetry navigation.
 
 ## Development GraphQL UI
 

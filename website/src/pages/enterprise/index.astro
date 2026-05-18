@@ -60,7 +60,7 @@ const concerns = [
   },
 ];
 
-// Compliance / control posture rows. Honest "supported / your responsibility / on the roadmap".
+// Compliance / control posture rows. Honest "supported / your control / on the roadmap".
 const posture = [
   { control: "Data residency", cg: "supported", note: "You choose the region." },
   { control: "Self-hosting", cg: "supported", note: "Local, Compose, Kubernetes." },
@@ -83,7 +83,7 @@ const posture = [
   },
   {
     control: "Audit log of admin actions",
-    cg: "your-responsibility",
+    cg: "your-control",
     note: "Ship it via OTLP into the same CloudGrid.",
   },
   {
@@ -93,22 +93,22 @@ const posture = [
   },
   {
     control: "PII redaction",
-    cg: "your-responsibility",
+    cg: "your-control",
     note: "Done in your OTel pipeline before ingest.",
   },
   {
     control: "Encryption at rest",
-    cg: "your-responsibility",
+    cg: "your-control",
     note: "SurrealDB + your filesystem / volume encryption.",
   },
   {
     control: "Encryption in transit",
-    cg: "your-responsibility",
+    cg: "your-control",
     note: "TLS at the BFF / collector — your terminator of choice.",
   },
   {
     control: "Backup / DR",
-    cg: "your-responsibility",
+    cg: "your-control",
     note: "SurrealDB backups, your DR posture.",
   },
   {
@@ -121,7 +121,7 @@ const posture = [
 
 const postureBadge: Record<string, { label: string; color: string }> = {
   supported: { label: "supported", color: "var(--color-emerald)" },
-  "your-responsibility": { label: "your responsibility", color: "var(--color-amber)" },
+  "your-control": { label: "your control", color: "var(--color-amber)" },
   maturing: { label: "maturing", color: "var(--color-cyan)" },
   roadmap: { label: "on the roadmap", color: "var(--color-violet)" },
 };
@@ -138,7 +138,7 @@ const brief = [
   { k: "Isolation primitive", v: "Project (API, message, persistence)" },
   { k: "OTLP ingest", v: "HTTP :4318 + gRPC :4317 — traces, logs, metrics" },
   { k: "AI evaluation", v: "Optional service; no provider credentials in CloudGrid" },
-  { k: "Backups & DR", v: "Your responsibility — SurrealDB tooling + your runbook" },
+  { k: "Backups & DR", v: "Your control — SurrealDB tooling + your runbook" },
   { k: "Cost model", v: "Self-priced compute + storage" },
 ];
 ---
@@ -159,17 +159,13 @@ const brief = [
           <Button href="#perimeter" variant="primary">See the data perimeter</Button>
           <Button href="/enterprise/compare" variant="secondary">Compare risk vs alternatives</Button>
         </div>
-        <div class="reveal mt-10 grid grid-cols-3 gap-6 max-w-xl" data-delay="4">
-          <div>
-            <div class="text-3xl font-semibold text-text font-mono"><span class="count-up" data-target="0" data-suffix="">0</span></div>
-            <div class="mt-1 text-xs text-text-muted uppercase tracking-wider">Sub-processors</div>
-          </div>
+        <div class="reveal mt-10 grid grid-cols-2 gap-6 max-w-lg" data-delay="4">
           <div>
             <div class="text-3xl font-semibold text-text font-mono"><span class="count-up" data-target="100" data-suffix="%">0%</span></div>
             <div class="mt-1 text-xs text-text-muted uppercase tracking-wider">Source open</div>
           </div>
           <div>
-            <div class="text-3xl font-semibold text-text font-mono">Apache 2.0</div>
+            <div class="text-3xl font-semibold text-text font-mono whitespace-nowrap">Apache 2.0</div>
             <div class="mt-1 text-xs text-text-muted uppercase tracking-wider">License</div>
           </div>
         </div>
@@ -273,7 +269,7 @@ const brief = [
       </h2>
       <p class="mt-3 text-text-secondary">
         Honest map of which controls CloudGrid enforces in code, which controls live in your
-        runbook, and which are still maturing. Hand it to your security reviewer.
+        control, and which are still maturing. Hand it to your security reviewer.
       </p>
     </div>
 
@@ -320,7 +316,7 @@ const brief = [
         </h2>
         <p class="mt-3 text-text-secondary">
           Print this. Send it to the security questionnaire owner. It answers most of what they
-          need to start, and it's honest about what is your responsibility.
+          need to start, and it's honest about what stays in your control.
         </p>
         <div class="mt-6">
           <Button href="/enterprise/compare" variant="primary">

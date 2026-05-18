@@ -4,20 +4,20 @@ title: Data retention
 category: compliance
 status: draft
 provenance: inferred-draft
-target: Local MVP exposes project retention policy configuration but retains telemetry until operator deletion unless a future storage-maintenance worker executes policy batches.
-measurement: Documentation check, presence of policy CRUD contracts, absence of deletion jobs in local MVP, and future retention-worker tests before production retention execution is enabled.
+target: Local MVP exposes project retention policy configuration and keeps scheduled deletion disabled unless operators explicitly enable storage-maintenance after the production SurrealDB retention adapter exists.
+measurement: Documentation check, presence of policy CRUD contracts, disabled-by-default scheduler config, absence of enabled deletion jobs in local MVP, and opt-in retention adapter tests before production retention execution is enabled.
 applies_to: [CAP-STO-*]
 enforcement: blocking-for-production-retention
 ---
 
 # Data Retention
 
-The MVP implements project-level retention policy CRUD, but it does not implement automatic deletion jobs or public telemetry deletion APIs. This split must be visible to operators because telemetry may contain sensitive attributes.
+The MVP implements project-level retention policy CRUD and the storage-maintenance execution boundary, but local mode does not enable automatic deletion jobs or public telemetry deletion APIs. This split must be visible to operators because telemetry may contain sensitive attributes.
 
 ## Local MVP
 
 - Project admins can configure retention policy metadata.
-- No automatic deletion job runs.
+- No automatic deletion job runs by default.
 - No public telemetry deletion API exists.
 - Operators delete local data by resetting or deleting the SurrealDB database.
 - Docs must warn that telemetry may contain sensitive attributes and is retained until operator action.
@@ -33,8 +33,8 @@ Use these defaults unless a project policy overrides them:
 - Default ingest credential audit retention: 365 days.
 - Minimum configurable retention: 1 day.
 - Maximum configurable retention: 365 days unless a paid plan or compliance spec explicitly raises it.
-- Deletion cadence: background worker runs at least hourly.
-- Deletion owner: a dedicated storage-maintenance service. The BFF and frontend must not delete retained records directly.
+- Deletion cadence: storage-maintenance scheduler defaults to hourly once enabled.
+- Deletion owner: the dedicated storage-maintenance service. The BFF and frontend must not delete retained records directly.
 
 ## Deletion Semantics
 
@@ -46,14 +46,16 @@ Retention must be tenant/project scoped when tenant/project isolation is enabled
 
 ## Configuration
 
-Future retention config keys:
+Retention execution config keys:
 
-- `CLOUDGRID_RETENTION_MODE`, allowed values `disabled` and `ttl`, default `disabled` in local development and `ttl` in production templates once the worker exists.
-- `CLOUDGRID_RETENTION_DAYS`, integer from 1 to 365, default `30` when mode is `ttl`.
-- `CLOUDGRID_RETENTION_BATCH_SIZE`, integer from 1 to 10000, default `1000`.
+- `CLOUDGRID_RETENTION_SCHEDULER_ENABLED`, default `false`.
+- `CLOUDGRID_RETENTION_SCHEDULER_INTERVAL_SECONDS`, integer from 300 to 86400, default `3600`.
+- `CLOUDGRID_RETENTION_SCHEDULER_PROJECT_IDS`, comma-separated project IDs required when the scheduler is enabled.
+- `CLOUDGRID_RETENTION_BATCH_LIMIT`, integer from 1 to 100000, default `1000`.
+- `CLOUDGRID_RETENTION_LEASE_SECONDS`, integer from 60 to 86400, default `900`.
 
-Until the worker exists, setting `CLOUDGRID_RETENTION_MODE=ttl` must fail startup with ERR-009 instead of silently doing nothing.
+Setting the scheduler enabled without project IDs must fail startup with ERR-009. Production templates must keep the scheduler disabled until the production SurrealDB retention adapter and storage-read soft-delete filters are implemented.
 
 ## Tests
 
-Default tests assert that no retention worker starts in local mode. Retention integration tests are opt-in and must create isolated test records, run one deletion batch, assert dependent record deletion, and assert that records outside the tenant/project and cutoff remain.
+Default tests assert that no retention scheduler starts in local mode. Retention integration tests are opt-in and must create isolated test records, run one deletion batch, assert dependent record deletion, assert soft-delete hiding behavior, and assert that records outside the tenant/project and cutoff remain.

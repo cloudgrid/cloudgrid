@@ -45,7 +45,7 @@ acceptance_criteria:
 
 ## Business Intent
 
-Keep OpenTelemetry-specific payload handling separate from product data models while retaining enough original attributes for future AI-native modeling.
+Keep OpenTelemetry-specific payload handling separate from product data models while retaining enough original attributes for AI-native modeling.
 
 ## Constraints
 

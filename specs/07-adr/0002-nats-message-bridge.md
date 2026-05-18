@@ -22,7 +22,7 @@ alternatives_considered:
 decision: NATS bridge for reads and writes
 decision_rationale: NATS keeps storage services private while allowing TypeScript and Go services to communicate through typed contracts. Request/reply is used only for read queries; JetStream is used for durable writes.
 consequences:
-  positive: [No direct storage access from public or ingress services, write service can scale independently, BFF owns future auth once]
+  positive: [No direct storage access from public or ingress services, write service can scale independently, BFF owns auth once]
   negative: [Message schema validation and timeout/error mapping are mandatory]
 affects: [CAP-ING-001, CAP-ING-002, CAP-STO-001, CAP-STO-002, CAP-OBS-001, CAP-OBS-002, CAP-OBS-003]
 ---

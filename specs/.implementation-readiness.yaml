@@ -23,3 +23,6 @@ explicit_deferrals:
   - alert evaluator scheduling, rule execution, state transitions, and notification dispatch adapters
   - production deployment manifests
   - production multi-tenant auth hardening beyond local/default project isolation
+  - project/company AI provider settings and AI Chat are now specified as a
+    draft follow-on wave; implementation starts only after GraphQL, AsyncAPI,
+    generated contracts, and a readiness report are approved for that wave

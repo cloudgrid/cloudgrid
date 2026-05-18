@@ -39,7 +39,10 @@ const (
 	contentTypeJSON     = "application/json"
 	contentTypeProtobuf = "application/x-protobuf"
 
-	publishAckTimeout = time.Second
+	defaultMaxSpansPerRequest        = 10_000
+	defaultMaxLogsPerRequest         = 10_000
+	defaultMaxMetricPointsPerRequest = 20_000
+	defaultPublishAckTimeout         = time.Second
 )
 
 type Publisher interface {
@@ -57,6 +60,10 @@ type handler struct {
 	tokenValidator     BearerTokenValidator
 	projectCache       *ProjectStatusCache
 	maxRequestBytes    int64
+	maxSpans           int
+	maxLogs            int
+	maxMetricPoints    int
+	publishTimeout     time.Duration
 	metricsRecorder    MetricsRecorder
 	selfObservability  SelfObservabilityRecorder
 }
@@ -116,6 +123,10 @@ func NewHandlerWithOptions(publisher Publisher, logger *slog.Logger, options Han
 		tokenValidator:     options.TokenValidator,
 		projectCache:       options.ProjectCache,
 		maxRequestBytes:    maxRequestBytes(options.MaxRequestBytes),
+		maxSpans:           maxPositiveInt(options.MaxSpans, defaultMaxSpansPerRequest),
+		maxLogs:            maxPositiveInt(options.MaxLogs, defaultMaxLogsPerRequest),
+		maxMetricPoints:    maxPositiveInt(options.MaxMetricPoints, defaultMaxMetricPointsPerRequest),
+		publishTimeout:     defaultDuration(options.PublishTimeout, defaultPublishAckTimeout),
 		metricsRecorder:    options.MetricsRecorder,
 		selfObservability:  options.SelfObservability,
 	}
@@ -137,6 +148,20 @@ func maxRequestBytes(configured int64) int64 {
 		return configured
 	}
 	return defaultMaxRequestBytes
+}
+
+func maxPositiveInt(configured int, fallback int) int {
+	if configured > 0 {
+		return configured
+	}
+	return fallback
+}
+
+func defaultDuration(configured time.Duration, fallback time.Duration) time.Duration {
+	if configured > 0 {
+		return configured
+	}
+	return fallback
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -210,6 +235,10 @@ func (h *handler) handleTraces(w http.ResponseWriter, r *http.Request) {
 		h.writeProblem(w, r, decodeProblem(err.Error()))
 		return
 	}
+	if problem := h.validateTraceCount(&request); problem != nil {
+		h.writeProblem(w, r, *problem)
+		return
+	}
 	command, err := h.traceCommand(r, &request, authContext)
 	if err != nil {
 		h.writeProblem(w, r, validationProblem(err.Error()))
@@ -257,6 +286,10 @@ func (h *handler) handleLogs(w http.ResponseWriter, r *http.Request) {
 		h.writeProblem(w, r, decodeProblem(err.Error()))
 		return
 	}
+	if problem := h.validateLogCount(&request); problem != nil {
+		h.writeProblem(w, r, *problem)
+		return
+	}
 	command, err := h.logCommand(r, &request, authContext)
 	if err != nil {
 		h.writeProblem(w, r, validationProblem(err.Error()))
@@ -296,6 +329,10 @@ func (h *handler) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.writeProblem(w, r, decodeProblem(err.Error()))
+		return
+	}
+	if problem := h.validateMetricPointCount(&request); problem != nil {
+		h.writeProblem(w, r, *problem)
 		return
 	}
 	command, err := h.metricCommand(r, &request, authContext)
@@ -404,7 +441,7 @@ func (h *handler) publishJSON(ctx context.Context, subject string, command any) 
 	if err != nil {
 		return err
 	}
-	publishCtx, cancel := context.WithTimeout(ctx, publishAckTimeout)
+	publishCtx, cancel := context.WithTimeout(ctx, h.publishTimeout)
 	defer cancel()
 	start := h.now()
 	traceContext := selfobs.NewRootTraceContext()
@@ -574,8 +611,71 @@ func (h *handler) validateRequestSize(r *http.Request) *problemDetails {
 	return nil
 }
 
+func (h *handler) validateTraceCount(request *collectortracepb.ExportTraceServiceRequest) *problemDetails {
+	count := traceSpanCount(request)
+	if count > h.maxSpans {
+		problem := validationProblem(fmt.Sprintf("trace export has %d spans, exceeds configured limit %d", count, h.maxSpans))
+		return &problem
+	}
+	return nil
+}
+
+func (h *handler) validateLogCount(request *collectorlogspb.ExportLogsServiceRequest) *problemDetails {
+	count := logRecordCount(request)
+	if count > h.maxLogs {
+		problem := validationProblem(fmt.Sprintf("log export has %d log records, exceeds configured limit %d", count, h.maxLogs))
+		return &problem
+	}
+	return nil
+}
+
+func (h *handler) validateMetricPointCount(request *collectormetricspb.ExportMetricsServiceRequest) *problemDetails {
+	count := metricPointCount(request)
+	if count > h.maxMetricPoints {
+		problem := validationProblem(fmt.Sprintf("metric export has %d points, exceeds configured limit %d", count, h.maxMetricPoints))
+		return &problem
+	}
+	return nil
+}
+
 func (h *handler) decodeRequestBody(body io.Reader, encoding payloadEncoding, message proto.Message) error {
 	return decodeOTLPWithLimit(body, h.maxRequestBytes, encoding, message)
+}
+
+func traceSpanCount(request *collectortracepb.ExportTraceServiceRequest) int {
+	count := 0
+	for _, resourceSpans := range request.GetResourceSpans() {
+		for _, scopeSpans := range resourceSpans.GetScopeSpans() {
+			count += len(scopeSpans.GetSpans())
+		}
+	}
+	return count
+}
+
+func logRecordCount(request *collectorlogspb.ExportLogsServiceRequest) int {
+	count := 0
+	for _, resourceLogs := range request.GetResourceLogs() {
+		for _, scopeLogs := range resourceLogs.GetScopeLogs() {
+			count += len(scopeLogs.GetLogRecords())
+		}
+	}
+	return count
+}
+
+func metricPointCount(request *collectormetricspb.ExportMetricsServiceRequest) int {
+	count := 0
+	for _, resourceMetrics := range request.GetResourceMetrics() {
+		for _, scopeMetrics := range resourceMetrics.GetScopeMetrics() {
+			for _, metric := range scopeMetrics.GetMetrics() {
+				count += len(metric.GetGauge().GetDataPoints())
+				count += len(metric.GetSum().GetDataPoints())
+				count += len(metric.GetHistogram().GetDataPoints())
+				count += len(metric.GetExponentialHistogram().GetDataPoints())
+				count += len(metric.GetSummary().GetDataPoints())
+			}
+		}
+	}
+	return count
 }
 
 func (h *handler) logCompletion(r *http.Request, w *completionResponseWriter, duration time.Duration) {

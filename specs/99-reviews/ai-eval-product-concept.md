@@ -57,7 +57,7 @@ project admin settings shell, not as a primary telemetry tab.
 
 CloudGrid stores provider metadata and opaque credential references. CloudGrid
 does not store raw model-provider API keys in v1 and does not become a model
-gateway. Harness or a future separately specified secret service resolves
+gateway. Harness or a separately specified secret service resolves
 credential material.
 
 ### Dataset Operations
@@ -104,7 +104,7 @@ latency, cost, and segment-level regression thresholds pass.
 ### Prompt, Skill, And Tool Optimization
 
 Optimization improves prompts and harness-side skill/tool configurations, not
-model weights. Model fine tuning is out of scope.
+model weights. Model fine tuning is not part of this deployable surface.
 
 Supported optimization families:
 

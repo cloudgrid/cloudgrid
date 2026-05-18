@@ -44,7 +44,7 @@ sequenceDiagram
 
 Live notifications are at-most-once wake-up hints. They are not a second telemetry store. If a live session is disconnected, new sessions may request a bounded snapshot through storage-read query semantics, then receive new events.
 
-The BFF closes a subscription when storage-read events or heartbeats stop arriving within the configured watchdog window. Clients may reconnect.
+storage-read bounds each live subscription with `CLOUDGRID_LIVE_EVENT_BUFFER_SIZE`, emits heartbeats every 15 seconds by default, and drops stalled sessions with retryable `ERR-014`. The BFF also closes a subscription when storage-read events or heartbeats stop arriving within the configured watchdog window. Clients may reconnect.
 
 ## Filter Changes
 

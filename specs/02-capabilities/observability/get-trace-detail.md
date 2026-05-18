@@ -54,7 +54,10 @@ Show a complete trace investigation view with span hierarchy, timing, attributes
 - Logs must include both direct trace/span matches and service/time-window matches defined by CAP-OBS-004.
 - Span events with OpenTelemetry exception attributes must be exposed as `Span.exceptions` with readable stack trace data when possible.
 - Span links must be preserved as `Span.links` and marked `forward`, `backward`, or `unknown` when direction can be inferred from linked trace timing.
-- `TraceDetail.structure.criticalPathSpanIds` identifies spans that contribute to end-to-end trace duration. The MVP may use a deterministic longest-child-chain approximation; future algorithms can improve accuracy without changing the contract.
+- `TraceDetail.structure.criticalPathSpanIds` identifies spans that contribute
+  to end-to-end trace duration. The MVP may use a deterministic
+  longest-child-chain approximation; improved algorithms can ship without
+  changing the contract.
 - `TraceDetail.relatedLogs` is scoped to the selected span when `selectedSpanId` is provided. Otherwise it returns the most relevant trace-level logs ordered by exact span match, trace match, contextual match, then timestamp.
 - `TraceDetail.warnings` includes missing root, missing parent, clock skew, partial trace, and large trace preview warnings.
 - Trace detail input filters apply to span matching and related log selection; they must not mutate persisted telemetry.

@@ -10,7 +10,12 @@ provenance: inferred-draft
 
 # Bridge Ports
 
-CloudGrid services depend on message bridge ports, not NATS client APIs. NATS is the first implemented message bridge adapter. A future bridge adapter must preserve the contract-level semantics declared in `specs/03-contracts/messages/message-bridge.asyncapi.yaml` or an approved successor contract without changing domain, GraphQL, storage, collector, or runner business logic.
+CloudGrid services depend on message bridge ports, not NATS client APIs. NATS is
+the first implemented message bridge adapter. Any additional bridge adapter must
+preserve the contract-level semantics declared in
+`specs/03-contracts/messages/message-bridge.asyncapi.yaml` or an approved
+successor contract without changing domain, GraphQL, storage, collector, or
+runner business logic.
 
 ## Message Bridge Adapter Boundary
 
@@ -184,7 +189,7 @@ type TelemetryWriteStore interface {
 - Partial non-transactional writes: ERR-007.
 - Message bridge unavailable: ERR-013.
 - Message bridge timeout: ERR-014.
-- Missing future authentication: ERR-015.
+- Missing authentication: ERR-015.
 - Authorization denied: ERR-016.
 - Live subscription limits exceeded: ERR-017.
 

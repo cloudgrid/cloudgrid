@@ -20,7 +20,7 @@ alternatives_considered:
     pros: [Strong runtime performance, fewer language boundaries]
     cons: [Less ergonomic frontend BFF development, auth/API concerns tied to storage adapter service]
 decision: TypeScript BFF React Go private services NATS SurrealDB
-decision_rationale: This option preserves a single public TypeScript boundary for frontend, GraphQL, and future auth while keeping storage access private and allowing adapters to be implemented in Go. The extra message-contract work is accepted because isolation and parallel implementation are core requirements.
+decision_rationale: This option preserves a single public TypeScript boundary for frontend, GraphQL, and auth while keeping storage access private and allowing adapters to be implemented in Go. The extra message-contract work is accepted because isolation and parallel implementation are core requirements.
 consequences:
   positive: [Public auth/API changes happen in one BFF, read and write storage services can scale independently, multiple agents can implement services in parallel]
   negative: [Local development requires NATS, contract drift must be guarded by AsyncAPI and GraphQL tests]

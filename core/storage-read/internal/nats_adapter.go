@@ -27,7 +27,14 @@ func SubscribeTelemetryHandlersWithMetrics(nc *nats.Conn, store ports.TelemetryR
 }
 
 func SubscribeTelemetryHandlersWithSelfObservability(nc *nats.Conn, store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder, traceLogRecorder TraceLogRecorder) ([]*nats.Subscription, error) {
-	liveRegistry := NewLiveTraceRegistry(store, natsLiveTracePublisher{nc: nc}, LiveTraceOptions{})
+	return SubscribeTelemetryHandlersWithOptions(nc, store, logger, recorder, traceLogRecorder, RuntimeLimits{})
+}
+
+func SubscribeTelemetryHandlersWithOptions(nc *nats.Conn, store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder, traceLogRecorder TraceLogRecorder, limits RuntimeLimits) ([]*nats.Subscription, error) {
+	liveRegistry := NewLiveTraceRegistry(store, natsLiveTracePublisher{nc: nc}, LiveTraceOptions{
+		MaxSubscriptions: limits.LiveMaxSubscriptions,
+		EventBufferSize:  limits.LiveEventBufferSize,
+	})
 	runLiveTraceHeartbeats(liveRegistry)
 	handlers := telemetryHandlersWithSelfObservability(nc, store, liveRegistry, logger, recorder, traceLogRecorder)
 	subscriptions := make([]*nats.Subscription, 0, len(handlers))

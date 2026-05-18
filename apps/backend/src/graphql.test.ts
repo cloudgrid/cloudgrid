@@ -60,6 +60,86 @@ describe("BFF GraphQL telemetry resolvers", () => {
     });
   });
 
+  test("rejects GraphQL operations above configured depth before bridge calls", async () => {
+    let calls = 0;
+    const { app } = createAppWithBridge(
+      bridge({
+        searchTraces: async () => {
+          calls++;
+          return { items: [], nextCursor: null };
+        },
+      }),
+      { graphqlUI: false, graphqlMaxDepth: 2 },
+    );
+
+    const response = await app.request("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: `query { traces { items { id operationName } } }`,
+      }),
+    });
+
+    const body = await response.json();
+    expect(response.status).toBe(400);
+    expect(body.errors[0].extensions.problem).toMatchObject({
+      id: "ERR-001",
+      code: "VALIDATION_FAILED",
+      retryable: false,
+    });
+    expect(body.errors[0].message).toContain("depth");
+    expect(calls).toBe(0);
+  });
+
+  test("rejects GraphQL operations above configured complexity before bridge calls", async () => {
+    let calls = 0;
+    const { app } = createAppWithBridge(
+      bridge({
+        searchTraces: async () => {
+          calls++;
+          return { items: [], nextCursor: null };
+        },
+      }),
+      { graphqlUI: false, graphqlMaxComplexity: 3 },
+    );
+
+    const response = await app.request("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: `query { traces { items { id operationName } nextCursor } }`,
+      }),
+    });
+
+    const body = await response.json();
+    expect(response.status).toBe(400);
+    expect(body.errors[0].extensions.problem).toMatchObject({
+      id: "ERR-001",
+      code: "VALIDATION_FAILED",
+    });
+    expect(body.errors[0].message).toContain("complexity");
+    expect(calls).toBe(0);
+  });
+
+  test("uses GraphQL response media type when strict mode is configured", async () => {
+    const { app } = createAppWithBridge(bridge(), {
+      graphqlUI: false,
+      graphqlResponseMediaType: "graphql-response-json",
+    });
+
+    const response = await app.request("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: `query { traces { nextCursor } }`,
+      }),
+    });
+
+    expect(response.headers.get("content-type")).toStartWith("application/graphql-response+json");
+    const body = await response.json();
+    expect(body.errors).toBeUndefined();
+  });
+
   test("passes TraceDetailInput to the trace bridge request", async () => {
     let receivedTraceId = "";
     let receivedInput: TraceDetailInput | undefined;

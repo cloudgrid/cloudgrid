@@ -89,7 +89,7 @@ func run() int {
 	if metricsExporter != nil {
 		recorder = storage.NewOTLPMetricsRecorder(metricsExporter)
 	}
-	if _, err := storage.SubscribeTelemetryHandlersWithSelfObservability(nc, adapter.Store, logger, recorder, traceLogExporter); err != nil {
+	if _, err := storage.SubscribeTelemetryHandlersWithOptions(nc, adapter.Store, logger, recorder, traceLogExporter, cfg.Limits); err != nil {
 		logError(logger, "message_bridge_subscribe_failed", err, "ERR-013")
 		return 1
 	}

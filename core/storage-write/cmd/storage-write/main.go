@@ -87,7 +87,7 @@ func run() int {
 	if traceLogExporter != nil {
 		traceLogRecorder = ingest.NewSignalFilteredTraceLogRecorder(traceLogExporter, cfg.SelfObservability.TracesEnabled, cfg.SelfObservability.LogsEnabled)
 	}
-	bridge, err := newMessageBridgeAdapterWithSelfObservability(cfg.NATSURL, adapter.Store, logger, recorder, traceLogRecorder)
+	bridge, err := newMessageBridgeAdapterWithSelfObservability(cfg.NATSURL, adapter.Store, logger, recorder, traceLogRecorder, cfg.Consumer)
 	if err != nil {
 		logError(logger, "message_bridge_unavailable", err, "", "ERR-013")
 		return 1
@@ -133,6 +133,10 @@ func run() int {
 		"event", "startup_ready",
 		"request_id", "",
 		"consumer", "storage-write",
+		"consumer_mode", cfg.Consumer.Mode,
+		"pull_batch_size", cfg.Consumer.PullBatchSize,
+		"max_ack_pending", cfg.Consumer.MaxAckPending,
+		"concurrency", cfg.Consumer.Concurrency,
 		"adapter", adapter.Name,
 		"health_addr", healthServer.Addr,
 	)

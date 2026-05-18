@@ -118,10 +118,21 @@ The performance spec also defines production-scale collector variables for span 
 | `CLOUDGRID_SURREALDB_USERNAME` | local `root` | Do not expose publicly. |
 | `CLOUDGRID_SURREALDB_PASSWORD` | local `root` | Do not expose publicly. |
 | `CLOUDGRID_STORAGE_READ_MAX_METRIC_POINTS` | `5000` | Maximum metric points in one response. |
+| `CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS` | `1500` | Query timeout applied by storage-read before SurrealDB calls. |
+| `CLOUDGRID_STORAGE_READ_MAX_PAGE_SIZE` | `200` | Maximum trace/log/facet page size. |
+| `CLOUDGRID_LIVE_MAX_SUBSCRIPTIONS` | `2000` | Maximum active live trace subscriptions per storage-read process. |
+| `CLOUDGRID_LIVE_EVENT_BUFFER_SIZE` | `100` | Configured per-subscription live event buffer size for bounded live delivery. |
 | `CLOUDGRID_STORAGE_WRITE_HEALTH_HOST` | `0.0.0.0` | storage-write health bind host. |
 | `CLOUDGRID_STORAGE_WRITE_HEALTH_PORT` | `8082` | storage-write health port. |
+| `CLOUDGRID_STORAGE_MAINTENANCE_HEALTH_HOST` | `0.0.0.0` | storage-maintenance health bind host. |
+| `CLOUDGRID_STORAGE_MAINTENANCE_HEALTH_PORT` | `8087` | storage-maintenance health port. |
+| `CLOUDGRID_RETENTION_SCHEDULER_ENABLED` | `false` | Enables scheduled retention batches in storage-maintenance. |
+| `CLOUDGRID_RETENTION_SCHEDULER_INTERVAL_SECONDS` | `3600` | Retention scheduler tick cadence, 300..86400. |
+| `CLOUDGRID_RETENTION_SCHEDULER_PROJECT_IDS` | unset | Required comma-separated project IDs when the retention scheduler is enabled. |
+| `CLOUDGRID_RETENTION_BATCH_LIMIT` | `1000` | Maximum rows processed per scheduled project/data-class batch. |
+| `CLOUDGRID_RETENTION_LEASE_SECONDS` | `900` | Lease duration for project/data-class scheduler ownership. |
 
-The production scaling spec defines additional storage-write pull-consumer, GraphQL depth/complexity, storage-read timeout/page-size, and live subscription backpressure variables. This reference intentionally lists only variables verified in the current repository examples or runtime code.
+Storage-read uses the live buffer setting to bound per-subscription publish work. A live subscription is dropped with retryable `ERR-014` when its delivery path stalls or its buffer is full.
 
 ## AI Evaluation
 

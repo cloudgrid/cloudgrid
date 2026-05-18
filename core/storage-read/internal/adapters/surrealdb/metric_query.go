@@ -17,10 +17,17 @@ const (
 	defaultMetricNameLimit  = 50
 	maxMetricNameLimit      = 200
 	defaultMetricPointLimit = 1000
-	maxMetricPointLimit     = 5000
 	maxMetricGroupByKeys    = 5
 	defaultMetricBuckets    = 300
 )
+
+var maxMetricPointLimit = 5000
+
+func ConfigureMetricLimits(maxMetricPoints int) {
+	if maxMetricPoints > 0 {
+		maxMetricPointLimit = maxMetricPoints
+	}
+}
 
 type ResolvedMetricSeriesQuery struct {
 	Interval string

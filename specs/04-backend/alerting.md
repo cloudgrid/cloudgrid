@@ -4,7 +4,7 @@ title: Project alerting
 layer: backend
 status: draft
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-16
+updated: 2026-05-18
 provenance: user-directed
 depends_on: [TEC-BE-004, TEC-BE-008, TEC-BE-017, TEC-BE-009]
 ---
@@ -60,7 +60,37 @@ Adapter contract:
 - adapters must not receive SurrealDB credentials, raw telemetry payload bodies beyond the safe summary, bearer tokens, session cookies, or provider secrets;
 - adapters must be replaceable without changing alert rule, alert history, GraphQL, or evaluator contracts.
 
-Non-core adapters such as email, webhook, Slack, or Teams require their own provider config and secret-handling specs before implementation.
+Production alerting supports these notification adapters:
+
+| Adapter ID | Purpose | Configuration owner | Secret handling |
+| --- | --- | --- | --- |
+| `in_app` | Persist alert events and history for CloudGrid UI. | control-plane alert history tables | No external secret. |
+| `email` | Send alert summaries to configured recipients through the deployed SMTP runtime. | project alert rule `notificationAdapterIds` plus deployment SMTP env | Reuses the deployed SMTP secret env. Secrets never enter GraphQL. |
+| `webhook` | POST a signed JSON alert summary to one configured HTTPS endpoint per adapter config. | deployment env/config map, referenced by adapter ID | `CLOUDGRID_ALERT_WEBHOOK_<ID>_SIGNING_SECRET` read only by alert-evaluator. |
+
+Slack and Teams delivery are not product-scope adapter IDs in this repository.
+They can be reached through the `webhook` adapter when an operator supplies a
+compatible HTTPS endpoint.
+
+Email adapter behavior:
+
+- only sends the rendered safe summary, rule metadata, severity, project ID, and
+  evidence links; it must not include raw telemetry bodies or provider tokens;
+- uses SMTP configuration from the deployed invitation email runtime;
+- returns `failed_retryable` for transient SMTP/network errors and
+  `failed_terminal` for invalid recipient configuration.
+
+Webhook adapter behavior:
+
+- supports only `https://` URLs;
+- sends `POST` with `Content-Type: application/json`;
+- signs the canonical JSON body with HMAC-SHA256 using header
+  `X-CloudGrid-Signature`;
+- times out after `CLOUDGRID_ALERT_WEBHOOK_TIMEOUT_SECONDS`, default `10`, range
+  `1..30`;
+- treats HTTP `2xx` as `delivered`, `408/429/5xx` as `failed_retryable`, and
+  all other statuses as `failed_terminal`;
+- redacts the URL query string and signing secret from logs and errors.
 
 ## Alert State
 
@@ -136,6 +166,88 @@ Reading alert rules and history requires selected-project read access.
 
 Creating, updating, deleting, silencing, or enabling alert rules requires project `admin` or company `admin`.
 
+## Production Execution Packages
+
+These packages are fully specified and can be implemented without adding product
+behavior outside this spec.
+
+### Project Enumeration For Schedulers
+
+Control-plane exposes a private service subject:
+
+```text
+control.projects.list_for_service
+```
+
+Request fields:
+
+- `serviceScope`: enum `alert_evaluator` or `storage_maintenance`;
+- `status`: optional `ProjectStatus`, default `ACTIVE`;
+- `cursor`: optional opaque cursor;
+- `limit`: integer `1..500`, default `100`;
+- `authContext`: service auth context with private service scope.
+
+Response fields:
+
+- `items`: ordered by `projectId`, each with `projectId`, `companyId`,
+  `tenantId`, `status`, and `changedAt`;
+- `nextCursor`: optional opaque cursor.
+
+The alert evaluator uses this subject when
+`CLOUDGRID_ALERT_EVALUATOR_PROJECT_DISCOVERY_ENABLED=true`. If discovery is
+disabled, it uses `CLOUDGRID_ALERT_EVALUATOR_PROJECT_IDS`. Startup rejects
+enabled scheduling when neither discovery nor explicit project IDs are
+configured. Storage-maintenance may use the same subject after its retention
+adapter is enabled.
+
+### Notification Adapter Runtime
+
+Alert-evaluator owns adapter dispatch. Adapter configuration is loaded at
+startup from environment variables and is never read by the BFF or frontend.
+
+Required env keys:
+
+- `CLOUDGRID_ALERT_NOTIFICATION_ADAPTERS`: comma-separated adapter IDs from
+  `in_app`, `email`, and configured webhook IDs;
+- `CLOUDGRID_ALERT_WEBHOOK_<ID>_URL`;
+- `CLOUDGRID_ALERT_WEBHOOK_<ID>_SIGNING_SECRET`;
+- `CLOUDGRID_ALERT_WEBHOOK_TIMEOUT_SECONDS`, default `10`;
+- SMTP variables already defined for deployed invitation email when `email` is
+  enabled.
+
+Control-plane validates `notificationAdapterIds` against the configured adapter
+catalog exposed by alert-evaluator at startup. Unknown adapter IDs fail alert
+rule create/update with `ERR-018`.
+
+### Dashboard Alert Widgets
+
+Dashboard alert widgets are first-class dashboard widgets, not alert rule
+editors. They read existing alert history and never create, update, enable,
+disable, or delete alert rules.
+
+Widget kinds:
+
+- `alert_status`: compact rule-state summary for selected severities and
+  signals;
+- `alert_history`: table/timeline of alert events using `alertHistory`;
+- `alert_evidence`: selected alert event evidence card with links to trace,
+  log, metric, and rule detail routes.
+
+Widget data inputs:
+
+- `projectId` comes from selected project context, not widget JSON;
+- optional `ruleIds`, max `20`;
+- optional `states`, values from `AlertState`;
+- optional `severities`, values from `AlertSeverity`;
+- optional `signals`, values from `AlertSignal`;
+- `timeWindow`, same dashboard time-window model as metric widgets;
+- `limit`, integer `1..100`, default `20`.
+
+GraphQL uses existing alert contracts where possible. If a widget needs a
+pre-aggregated status count, add `Query.alertSummary(projectId, input)` with
+backend-owned counts grouped by state, severity, and signal. The frontend must
+not compute counts from an incomplete history page.
+
 ## Implementation Status
 
 Implemented:
@@ -143,15 +255,21 @@ Implemented:
 - GraphQL alert rule, alert history, alert event, silence, and mutation contracts;
 - control-plane message bridge subjects for rule CRUD, silence CRUD, history reads, and history record writes;
 - SurrealDB schema for `alert_rule`, `alert_event`, and `alert_silence`;
-- BFF bridge/resolver validation and project alert management UI.
+- BFF bridge/resolver validation and project alert management UI;
+- alert evaluator core package for all v1 rule kinds, kind-specific `query`/`condition` validation, storage-read port calls, project-scoped execution, pending/firing/resolved/silenced/error state transitions, cooldown deduplication, alert history recording, and notification dispatch status mapping;
+- alert evaluator runtime handlers for `alert_evaluator.tick`, `alert_evaluator.rules.evaluate`, and `alert_evaluator.notifications.dispatch`;
+- alert evaluator process wiring for NATS request/reply handlers and NATS-backed control-plane/storage-read ports used by explicit project/rule evaluation requests;
+- service-scoped control-plane access for the private alert evaluator scope, constrained to the requested project;
+- optional periodic scheduler loop driven by `CLOUDGRID_ALERT_EVALUATOR_PROJECT_IDS` and `CLOUDGRID_ALERT_EVALUATOR_INTERVAL_SECONDS`;
+- evaluator timeout and notification terminal-failure errors mapped to `ERR-021` and `ERR-020`;
+- narrow Go tests for rule validation, project isolation at the evaluator port boundary, state transitions, retryable/terminal notification statuses, runtime subjects, NATS-backed port request shapes, service-scoped control-plane access, and evaluator timeout handling;
+- alert evaluator binary health/readiness endpoint.
 
-Remaining before alerting is production-executing:
+Production execution package status:
 
-- alert evaluator service for schedule ticks, rule execution, state transitions, and notification dispatch;
-- storage-read-backed evaluator queries with project isolation tests;
-- notification delivery adapters and retry/terminal delivery handling;
-- dashboard alert widgets and alert evidence widgets, if those surfaces are added;
-- implementation of evaluator timeout and notification failure errors in the executing service.
+- project enumeration subject is specified above and not yet implemented;
+- email and webhook adapter runtime is specified above and not yet implemented;
+- dashboard alert widgets are specified above and not yet implemented.
 
 Alerting-specific errors:
 
@@ -168,4 +286,9 @@ Required tests:
 - project isolation for rule execution and history;
 - evaluator state transitions for pending, firing, resolved, silenced, and error;
 - in-app notification adapter delivery and retry/terminal failure behavior;
-- no alerting behavior in dashboards until dashboard alert widgets are explicitly specified.
+- project enumeration scheduler mode, including disabled fallback and startup
+  rejection when no project source is configured;
+- email adapter retry/terminal mapping with SMTP test double;
+- webhook adapter signing, timeout, status mapping, and secret redaction;
+- dashboard alert widgets render only backend alert view models and do not
+  mutate alert rules.

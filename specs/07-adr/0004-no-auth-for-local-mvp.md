@@ -20,7 +20,7 @@ alternatives_considered:
     pros: [Production-ready access foundation]
     cons: [Requires product decisions absent from the draft]
 decision: No authentication
-decision_rationale: No user or tenancy requirements were provided. The MVP implements no auth enforcement, but the only future auth integration point is the TypeScript BFF. Go collector and storage services remain private and do not implement public auth.
+decision_rationale: No user or tenancy requirements were provided. The MVP implements no auth enforcement, but the auth integration point is the TypeScript BFF. Go collector and storage services remain private and do not implement public auth.
 consequences:
   positive: [No invented access model, simpler OTLP sender setup]
   negative: [The app must not be exposed to untrusted networks]

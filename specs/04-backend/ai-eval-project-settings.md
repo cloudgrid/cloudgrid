@@ -4,7 +4,7 @@ title: AI evaluation project settings
 layer: backend
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-16
+updated: 2026-05-18
 provenance: from-user
 depends_on: [DOM-006, TEC-BE-011, TEC-BE-023, NFR-010]
 ---
@@ -15,15 +15,16 @@ depends_on: [DOM-006, TEC-BE-011, TEC-BE-023, NFR-010]
 
 Project AI settings define how a CloudGrid project evaluates and optimizes AI
 agents. These settings are low-volume project configuration owned by
-`core/control-plane`.
+`core/control-plane`. Reusable provider profiles and model aliases live in
+project AI provider settings, defined by
+`specs/04-backend/ai-provider-settings.md`.
 
 ## Boundary
 
 Control-plane owns:
 
 - project AI-eval enablement;
-- provider profile metadata;
-- model aliases;
+- default references to project AI provider profiles and model aliases;
 - default judge, optimizer, embedding, and replay model references;
 - online evaluation policies;
 - budget, sampling, and concurrency defaults;
@@ -43,14 +44,16 @@ Fields:
 
 - `projectId`: selected project ID.
 - `enabled`: whether AI Eval is available for the project.
-- `defaultProviderProfileId`: optional provider profile for replay and
-  non-judge calls.
-- `defaultJudgeProfileId`: optional profile for LLM-judge scorers.
-- `defaultOptimizerProfileId`: optional profile for prompt/skill optimization.
-- `defaultEmbeddingProfileId`: optional profile for semantic/RAG scorers.
-- `providerProfiles`: ordered provider profiles visible to project admins.
-- `modelAliases`: project-owned alias names that point at provider profile model
-  references.
+- `defaultProviderProfileId`: optional profile from Project AI Providers for
+  replay and non-judge calls.
+- `defaultJudgeProfileId`: optional profile from Project AI Providers for
+  LLM-judge scorers.
+- `defaultOptimizerProfileId`: optional profile from Project AI Providers for
+  prompt/skill optimization.
+- `defaultEmbeddingProfileId`: optional profile from Project AI Providers for
+  semantic/RAG scorers.
+- `defaultModelAliasIds`: optional model aliases from Project AI Providers,
+  keyed by `judge`, `optimizer`, `embedding`, `replay`, and `default`.
 - `onlinePolicies`: enabled/disabled online scoring policies.
 - `budget`: daily and per-run budget caps.
 - `sampling`: online sampling defaults.
@@ -58,43 +61,13 @@ Fields:
 - `version`: optimistic concurrency version.
 - `updatedAt`, `updatedByUserId`.
 
-### ProviderProfile
+### Provider References
 
-Fields:
-
-- `id`: opaque project-scoped ID.
-- `projectId`.
-- `label`: user-facing name.
-- `providerKind`: one of `openai`, `anthropic`, `azure_openai`,
-  `google_vertex`, `bedrock`, `openai_compatible`, `local_harness`, or
-  `custom_harness`.
-- `baseUrl`: optional URL for OpenAI-compatible or custom harness providers.
-- `credentialRef`: optional opaque reference resolved by harness or a future
-  separately specified secret service.
-- `models`: allowed model refs grouped by `judge`, `optimizer`, `embedding`,
-  `replay`, and `default`.
-- `timeoutMs`: request timeout hint for harness.
-- `maxConcurrency`: optional project-level cap for this profile.
-- `disabledAt`: optional timestamp.
-
-CloudGrid must not store raw API keys, bearer tokens, provider refresh tokens,
-or provider-specific secret JSON in `ProviderProfile`.
-
-### ModelAlias
-
-Fields:
-
-- `id`.
-- `name`: stable project alias such as `judge-fast`, `optimizer-best`, or
-  `embedding-default`.
-- `providerProfileId`.
-- `model`: provider model identifier.
-- `purpose`: one of `judge`, `optimizer`, `embedding`, `replay`, or `default`.
-- `parameters`: bounded JSON for temperature, max output tokens, reasoning
-  effort, or equivalent provider-neutral hints.
-
+Provider profiles and model aliases are defined by
+`ProjectAiProviderSettings`. AI Eval settings reference those entries by ID.
 Model aliases are resolved by the runner into harness adapter requests. The
-runner never calls model providers directly.
+runner never calls model providers directly and never resolves provider secrets
+itself.
 
 ### OnlineEvaluationPolicy
 
@@ -169,11 +142,12 @@ When AI Eval is enabled for a project:
 
 The approved public contract includes:
 
-- GraphQL `ProjectAiSettings`, `ProviderProfile`, `ModelAlias`,
-  `OnlineEvaluationPolicy`, `AiEvalBudget`, `AiEvalSampling`, and
-  `DatasetDefaults` types.
+- GraphQL `ProjectAiSettings`, `OnlineEvaluationPolicy`, `AiEvalBudget`,
+  `AiEvalSampling`, and `DatasetDefaults` types.
 - GraphQL `Query.projectAiSettings(projectId: ID!)`.
 - GraphQL `Mutation.updateProjectAiSettings(input: UpdateProjectAiSettingsInput!)`.
+- GraphQL project/provider reference fields that point at
+  `ProjectAiProviderSettings` profile IDs or model alias IDs.
 - AsyncAPI request/reply subjects:
   - `control.ai_settings.get`;
   - `control.ai_settings.update`.
@@ -191,8 +165,9 @@ not present in the JSON Schema and generated contracts.
 - Reading project AI settings requires selected-project read access.
 - Updating project AI settings requires project `admin` or company `admin`.
 - Local mode treats the Personal user as project admin.
-- Returned settings never include raw secrets. `credentialRef` is safe metadata
-  but must not be accepted as an actual credential by any public API.
+- Returned settings never include raw secrets. Provider credential references
+  live in Project AI Provider settings and are returned only through that
+  redacted settings contract.
 
 ## Effective Configuration
 
@@ -205,9 +180,10 @@ configuration warnings.
 
 Updates fail with `ERR-001` when:
 
-- profile IDs are duplicated;
-- default profile references are missing or disabled;
-- model alias names are duplicated;
+- default provider profile references are missing or disabled in Project AI
+  Provider settings;
+- default model alias references are missing, disabled, or assigned to an
+  incompatible purpose in Project AI Provider settings;
 - sample rates are outside `0..1`;
 - daily budget is negative;
 - an enabled online policy has an empty target;
@@ -215,7 +191,6 @@ Updates fail with `ERR-001` when:
   selector;
 - an enabled online policy references any scorer whose resolved kind is not
   `deterministic`;
-- `baseUrl` is present for provider kinds that do not support it;
 - strings contain secret-looking keys such as `authorization`, `cookie`,
   `x-api-key`, `api_key`, `token`, `secret`, or `password`.
 
@@ -227,6 +202,7 @@ Required tests:
 
 - project admin can update settings;
 - viewer cannot update settings;
+- provider/profile/model alias references resolve through Project AI Provider settings;
 - raw secret-looking fields are rejected;
 - disabled default provider references are rejected;
 - effective settings include derived defaults;

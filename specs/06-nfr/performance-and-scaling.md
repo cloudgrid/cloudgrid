@@ -181,7 +181,9 @@ Storage-read must enforce:
 - filter normalization for stable subscription identity;
 - cleanup on BFF disconnect and explicit stop.
 
-When a live subscription falls behind, storage-read must drop the subscription with a terminal `ERR-014 MESSAGE_BRIDGE_TIMEOUT` or future `ERR-018 LIVE_SUBSCRIPTION_BACKPRESSURE` after that error code is added. It must not grow unbounded buffers.
+When a live subscription falls behind, storage-read must drop the subscription
+with terminal `ERR-014 MESSAGE_BRIDGE_TIMEOUT`. It must not grow unbounded
+buffers.
 
 ## Frontend Performance
 
@@ -225,18 +227,23 @@ Logs must not include raw OTLP payloads, provider tokens, session cookies, Surre
 
 ## Benchmark Harness
 
-Add scripts:
+Implemented scripts:
 
 ```sh
 bun run bench:local
 bun run bench:read
 bun run bench:ingest
+bun run bench:production
+bun run bench:production:read
+bun run bench:production:ingest
 ```
 
 Default behavior:
 
 - skip with a clear message unless `CLOUDGRID_ENABLE_BENCHMARKS=true`;
 - require explicit target URL variables;
+- production profiles require `CLOUDGRID_BENCH_DEPLOYMENT_PROFILE=production-like`;
+- `CLOUDGRID_BENCH_REQUIRED=true` makes a failed benchmark exit non-zero;
 - write JSON results under `tmp/benchmarks/`;
 - never run from default unit test commands.
 
@@ -260,6 +267,29 @@ Acceptance output schema:
 }
 ```
 
+Current implementation status:
+
+- storage-write parses and validates the storage-write scaling environment variables listed in this spec;
+- storage-write provisions the durable `storage-write` JetStream consumer with configured ack wait, max deliver, and max ack pending;
+- storage-write fetches with configured pull batch size, pull max wait, and bounded in-process concurrency;
+- OTLP collector parses and validates request byte, decoded trace span, log record, metric point, publish timeout, and deployed project status cache limits;
+- OTLP collector rejects oversized HTTP, gRPC, trace, log, and metric exports before JetStream publish and uses the configured publish acknowledgement timeout;
+- BFF parses and validates GraphQL depth, selected-field complexity, and response media-type configuration;
+- BFF rejects GraphQL operations above configured depth or complexity before resolver and NATS bridge execution;
+- storage-read parses and validates query timeout, max page size, max metric points, live subscription count, and live event buffer size configuration;
+- storage-read applies query timeout to store calls, wires max page and metric point limits into SurrealDB query builders, and applies the live subscription count limit to the registry;
+- storage-read wires `CLOUDGRID_LIVE_EVENT_BUFFER_SIZE` into the live trace registry, bounds per-subscription publish in-flight capacity, emits heartbeats every 15 seconds by default, removes subscriptions whose delivery path has not made progress for 45 seconds, and drops full-buffer subscriptions with retryable `ERR-014`;
+- storage-read readiness verifies trace, span, log, metric descriptor, metric point, metric cardinality, service, and ingest command tables plus hot-path indexes, and reports index-building state separately from missing schema;
+- opt-in SurrealDB query-plan integration tests skip unless `CLOUDGRID_ENABLE_SURREALDB_PLAN_TESTS=true` and assert hot trace, log, and metric query plans mention expected indexes;
+- benchmark scripts skip by default, require explicit target URLs when enabled, write JSON results under `tmp/benchmarks/`, and include explicit production-like profiles for real target environments;
+- production benchmark thresholds are represented in the output schema and can be enforced with `CLOUDGRID_BENCH_REQUIRED=true`, but production profiles are not part of default verification.
+- frontend smoke tests cover populated trace list, trace detail waterfall, populated log list, telemetry error panels, loading rows, mobile trace detail, and critical axe checks on MVP telemetry routes;
+- trace detail waterfall virtualizes visible span rows above 500 rows with overscan; trace and log tables rely on storage-read page limits and stable table rows.
+
+Production benchmark evidence package:
+
+- running and publishing production-like benchmark results against an actual NATS and SurrealDB deployment before declaring a specific environment production-ready.
+
 ## Acceptance Matrix
 
 | Area | Required tests |
@@ -275,10 +305,10 @@ Acceptance output schema:
 
 ## Non-Goals
 
-- Do not implement metrics ingest.
 - Do not add gRPC OTLP.
-- Do not add retention or deletion.
-- Do not add production manifests in this wave.
 - Do not move log ingest to `core/log-ingest`.
+- Do not declare a deployment production-ready from repository defaults alone;
+  production readiness requires a benchmark run against that deployment's own
+  NATS, SurrealDB, image, and runtime configuration.
 - Do not introduce Kafka, Redis, or another queue.
 - Do not replace GraphQL subscriptions with public SSE or raw WebSockets.

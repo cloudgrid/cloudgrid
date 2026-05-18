@@ -11,7 +11,7 @@ CloudGrid exposes alert management surfaces:
 - in-app alert history;
 - typed rule shapes over metrics, logs, and traces.
 
-The alert evaluator is the component that executes rules, transitions states, and dispatches notifications. The repository includes evaluator domain logic, transport-neutral handlers, and service image/chart shape. Production scheduling, live storage-read/control-plane adapters, and non-core notification adapters remain explicit follow-on work.
+The alert evaluator is the component that executes rules, transitions states, and dispatches notifications. The repository includes evaluator domain logic, transport-neutral handlers, and service image/chart shape. Production completion packages are project discovery, email/webhook notification adapters, and dashboard alert widgets.
 
 ## Rule Kinds
 
@@ -40,7 +40,7 @@ flowchart TD
 
 ## Notification Adapters
 
-The core reference adapter is in-app alert history. Non-core adapters such as email, webhook, Slack, or Teams require separate provider configuration and secret-handling specs before implementation.
+The core reference adapter is in-app alert history. The production adapter package adds email and webhook delivery using the configuration and secret-handling rules in `specs/04-backend/alerting.md`. Slack and Teams delivery use webhook endpoints when operators provide compatible HTTPS receivers.
 
 Do not add notification provider secrets to dashboard widgets, frontend state, BFF responses, or alert summaries.
 
@@ -55,7 +55,7 @@ When the evaluator is present, check:
 - alert history persistence;
 - silence matching.
 
-Do not document email, webhook, Slack, or Teams alert notifications as available until their provider configuration and secret-handling specs and adapters exist. Invitation email SMTP is a separate onboarding path and is not an alert notification adapter.
+Do not document email or webhook alert notifications as available until their adapters exist. Invitation email SMTP is a separate onboarding path; alert email may reuse the deployed SMTP runtime only after the alert email adapter is implemented.
 
 ## Dashboard Thresholds
 

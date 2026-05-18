@@ -1154,6 +1154,62 @@ func TestAlertRulesSilencesAndHistoryCRUD(t *testing.T) {
 	}
 }
 
+func TestInternalServiceScopedProjectAccess(t *testing.T) {
+	service := NewService(newTestStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+	rule, err := service.CreateAlertRule(ctx, contracts.AlertRuleCreateRequest{
+		BridgeEnvelope: admin,
+		Input: contracts.AlertRuleCreateInput{
+			ProjectID:               LocalProjectID,
+			Name:                    "Error count",
+			Enabled:                 true,
+			Kind:                    contracts.AlertRuleKindTraceError,
+			Severity:                contracts.AlertSeverityError,
+			Query:                   map[string]any{"service": "api"},
+			Condition:               map[string]any{"minCount": float64(1)},
+			EvaluationWindowSeconds: 300,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateAlertRule returned error: %v", err)
+	}
+
+	projectID := LocalProjectID
+	readAllowed := true
+	serviceEnvelope := contracts.BridgeEnvelope{
+		RequestID: "req-service",
+		IssuedAt:  fixedNow(),
+		AuthContext: &contracts.AuthContext{
+			Mode:        "service",
+			PrincipalID: ptr("cloudgrid-alert-evaluator"),
+			ProjectID:   &projectID,
+			Scopes:      []string{"cloudgrid:alert-evaluator"},
+			ReadAllowed: &readAllowed,
+			CheckedAt:   ptr(fixedNow()),
+		},
+	}
+	rules, err := service.ListAlertRules(ctx, contracts.AlertRuleListRequest{BridgeEnvelope: serviceEnvelope, ProjectID: LocalProjectID})
+	if err != nil {
+		t.Fatalf("ListAlertRules with service scope returned error: %v", err)
+	}
+	if len(rules) != 1 || rules[0].ID != rule.ID {
+		t.Fatalf("rules = %#v, want service scoped rule", rules)
+	}
+	if _, err := service.GetRetentionPolicy(ctx, contracts.RetentionGetRequest{BridgeEnvelope: serviceEnvelope, ProjectID: LocalProjectID}); err != nil {
+		t.Fatalf("GetRetentionPolicy with service scope returned error: %v", err)
+	}
+
+	foreignProjectID := "other-project"
+	serviceEnvelope.AuthContext.ProjectID = &foreignProjectID
+	if _, err := service.ListAlertRules(ctx, contracts.AlertRuleListRequest{BridgeEnvelope: serviceEnvelope, ProjectID: LocalProjectID}); !isForbidden(err) {
+		t.Fatalf("ListAlertRules with mismatched service project error = %v, want forbidden", err)
+	}
+}
+
 func TestAlertRulesFilterAndSortDeterministically(t *testing.T) {
 	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()

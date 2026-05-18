@@ -19,6 +19,9 @@ This table summarizes the current CloudGrid runtime variables. See [Runtime envi
 | --- | --- | --- |
 | `CLOUDGRID_BFF_HOST` | `0.0.0.0` | BFF bind host. |
 | `CLOUDGRID_BFF_PORT` | `3000` | BFF port. |
+| `CLOUDGRID_GRAPHQL_MAX_DEPTH` | `12` | Reject deeper GraphQL operations before resolver or bridge execution. |
+| `CLOUDGRID_GRAPHQL_MAX_COMPLEXITY` | `500` | Reject GraphQL operations with more selected fields than the configured limit. |
+| `CLOUDGRID_GRAPHQL_RESPONSE_MEDIA_TYPE` | `compatible` | `compatible` keeps JSON responses; `graphql-response-json` emits `application/graphql-response+json`. |
 | `CLOUDGRID_FRONTEND_DEV_PORT` | `5173` | Vite dev server port. |
 | `CLOUDGRID_FRONTEND_SERVE_STATIC` | `false` in dev | BFF serves built frontend when true. |
 | `CLOUDGRID_FRONTEND_STATIC_DIR` | `./apps/backend/public` | Static frontend directory. |
@@ -79,13 +82,16 @@ and retries email asynchronously.
 | `CLOUDGRID_OTLP_PORT` | `4318` | Fallback port when `CLOUDGRID_OTLP_HTTP_ADDR` is unset. |
 | `CLOUDGRID_OTLP_GRPC_ADDR` | `0.0.0.0:4317` | OTLP/gRPC bind address. |
 | `CLOUDGRID_OTLP_MAX_REQUEST_BYTES` | `4194304` | HTTP body limit. |
+| `CLOUDGRID_OTLP_MAX_SPANS_PER_REQUEST` | `10000` | Reject oversized trace exports before publish. |
+| `CLOUDGRID_OTLP_MAX_LOGS_PER_REQUEST` | `10000` | Reject oversized log exports before publish. |
+| `CLOUDGRID_OTLP_MAX_METRIC_POINTS_PER_REQUEST` | `20000` | Reject oversized metric exports before publish. |
+| `CLOUDGRID_OTLP_PUBLISH_TIMEOUT_MS` | `1000` | JetStream publish acknowledgement timeout. |
 | `CLOUDGRID_OTLP_GRPC_MAX_MESSAGE_BYTES` | HTTP body limit | gRPC message limit. |
 | `CLOUDGRID_OTLP_GRPC_COMPRESSION` | `gzip` | `gzip` or `none`. |
+| `CLOUDGRID_PROJECT_STATUS_CACHE_TTL_SECONDS` | `60` | Deployed-mode project status freshness window. |
+| `CLOUDGRID_PROJECT_STATUS_CACHE_STALE_SECONDS` | `120` | Deployed-mode fail-closed staleness boundary; must be greater than or equal to the TTL. |
 | `CLOUDGRID_OTLP_LOCAL_PROJECT_ID` | `default` | Single-project local fallback. |
 | `CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS` | unset | JSON bearer-token-to-project map. |
-| `CLOUDGRID_OTLP_MAX_METRIC_POINTS_PER_REQUEST` | `20000` | Reject oversized metric exports before publish. |
-
-The performance spec also defines production-scale collector variables for span and log request limits, publish timeouts, and project status cache freshness. Add them to this reference only after they are present in runtime parsing or `.env.example`.
 
 ## Self-Observability
 
@@ -111,10 +117,21 @@ The performance spec also defines production-scale collector variables for span 
 | `CLOUDGRID_SURREALDB_USERNAME` | local `root` | Do not expose publicly. |
 | `CLOUDGRID_SURREALDB_PASSWORD` | local `root` | Do not expose publicly. |
 | `CLOUDGRID_STORAGE_READ_MAX_METRIC_POINTS` | `5000` | Maximum metric points in one response. |
+| `CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS` | `1500` | Query timeout applied by storage-read before SurrealDB calls. |
+| `CLOUDGRID_STORAGE_READ_MAX_PAGE_SIZE` | `200` | Maximum trace/log/facet page size. |
+| `CLOUDGRID_LIVE_MAX_SUBSCRIPTIONS` | `2000` | Maximum active live trace subscriptions per storage-read process. |
+| `CLOUDGRID_LIVE_EVENT_BUFFER_SIZE` | `100` | Configured per-subscription live event buffer size for bounded live delivery. |
 | `CLOUDGRID_STORAGE_WRITE_HEALTH_HOST` | `0.0.0.0` | storage-write health bind host. |
 | `CLOUDGRID_STORAGE_WRITE_HEALTH_PORT` | `8082` | storage-write health port. |
+| `CLOUDGRID_STORAGE_MAINTENANCE_HEALTH_HOST` | `0.0.0.0` | storage-maintenance health bind host. |
+| `CLOUDGRID_STORAGE_MAINTENANCE_HEALTH_PORT` | `8087` | storage-maintenance health port. |
+| `CLOUDGRID_RETENTION_SCHEDULER_ENABLED` | `false` | Enables scheduled retention batches in storage-maintenance. |
+| `CLOUDGRID_RETENTION_SCHEDULER_INTERVAL_SECONDS` | `3600` | Retention scheduler tick cadence, 300..86400. |
+| `CLOUDGRID_RETENTION_SCHEDULER_PROJECT_IDS` | unset | Required comma-separated project IDs when the retention scheduler is enabled. |
+| `CLOUDGRID_RETENTION_BATCH_LIMIT` | `1000` | Maximum rows processed per scheduled project/data-class batch. |
+| `CLOUDGRID_RETENTION_LEASE_SECONDS` | `900` | Lease duration for project/data-class scheduler ownership. |
 
-The production scaling spec defines additional storage-write pull-consumer, GraphQL depth/complexity, storage-read timeout/page-size, and live subscription backpressure variables. This reference intentionally lists only variables verified in the current repository examples or runtime code.
+Storage-read uses the live buffer setting to bound per-subscription publish work. A live subscription is dropped with retryable `ERR-014` when its delivery path stalls or its buffer is full.
 
 ## AI Evaluation
 

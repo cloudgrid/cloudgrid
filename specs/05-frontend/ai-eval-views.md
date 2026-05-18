@@ -48,8 +48,9 @@ queues such as `Annotations`. The approved rail entries are `Datasets`,
 Online policy management lives in Project Settings / AI Eval configuration, with
 read-only production quality monitoring in the AI Eval route.
 The AI Eval route may link to `/projects/:projectId/settings/ai-eval` from setup
-or administrative actions, but it must not render settings as a rail item,
-right-inspector detail surface, or alternate settings form.
+or administrative actions, and to `/projects/:projectId/settings/ai-providers`
+when provider configuration is missing. It must not render settings as a rail
+item, right-inspector detail surface, or alternate settings form.
 
 The settings UI must:
 
@@ -60,8 +61,10 @@ The settings UI must:
 - require at least one target filter before a policy can be enabled;
 - expose only the approved target fields from
   `specs/04-backend/ai-eval-project-settings.md`;
+- select judge, optimizer, embedding, replay, and default provider references
+  from Project AI Providers instead of editing provider profiles inline;
 - allow selecting deterministic scorers only for v1 online policies;
-- show non-deterministic scorer families as future/offline-only when useful,
+- show non-deterministic scorer families as offline-only when useful,
   but never submit them in enabled online policies;
 - show sample rate, max daily runs, and manual annotation defaults;
 - describe annotation defaults as user-triggered batch action defaults, not

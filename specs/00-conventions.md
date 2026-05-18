@@ -42,15 +42,20 @@ Deployable apps may depend on `apps/packages/*`. Shared TypeScript packages must
 - Go storage-read service is the only service that fetches telemetry from SurrealDB.
 - Go control-plane service is the only service that reads or mutates central organization, user, membership, project, and project status state.
 - SurrealDB is not reachable from public network paths.
-- Live telemetry delivery must flow through storage-read so future read authorization remains centralized.
+- Live telemetry delivery must flow through storage-read so read authorization
+  remains centralized.
 
 ## Authorization Preparation
 
 - Public ingestion authorization and public read authorization are separate policy decisions.
 - Ingestion authorization is enforced at public OTLP ingest boundaries before commands are published.
 - Read authorization is enforced by the TypeScript BFF at the public GraphQL boundary and by storage-read before executing telemetry queries or live trace subscriptions.
-- `BridgeEnvelope.authContext` is optional in the local MVP but reserved for future principal, tenant, project, and scope claims. Services must preserve it when forwarding bridge messages and must not log secrets or raw authorization tokens.
-- Live trace subscriptions must use the same future read authorization context as GraphQL queries. The BFF must not bypass storage-read to enforce live filters.
+- `BridgeEnvelope.authContext` is optional in local mode but is the production
+  carrier for principal, tenant, project, and scope claims. Services must
+  preserve it when forwarding bridge messages and must not log secrets or raw
+  authorization tokens.
+- Live trace subscriptions must use the same read authorization context as
+  GraphQL queries. The BFF must not bypass storage-read to enforce live filters.
 
 ## Time
 

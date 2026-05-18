@@ -40,7 +40,8 @@ Do not add Apache ECharts, Nivo, visx, uPlot, or `@xyflow/react` in this wave.
 - Nivo is a broader chart suite but does not align as directly with shadcn's chart component path.
 - visx is useful for custom SVG systems, but React 19 support is not the stable default package path in the reviewed version.
 - uPlot is excellent for dense time-series performance, but its React wrapper surface is smaller and less aligned with shadcn composition.
-- `@xyflow/react` is a good future candidate for interactive service topology diagrams, but service topology is deferred until CloudGrid has a service graph contract.
+- `@xyflow/react` is allowed only for interactive service topology diagrams
+  after CloudGrid has a service graph contract.
 
 Do not add `react-arborist`, `react-accessible-treeview`, `shadcn-treeview`, `react-virtuoso`, or `react-window` for the trace waterfall in this wave.
 

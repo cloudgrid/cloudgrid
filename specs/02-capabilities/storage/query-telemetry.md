@@ -60,6 +60,6 @@ acceptance_criteria:
 - Storage-read owns telemetry query semantics and must return GraphQL-ready view models through NATS responses.
 - The TypeScript BFF and frontend must not compute trace/log filters, counts, facets, service breakdowns, span matches, related logs, or trace structure from broader raw result sets.
 - Storage-read adapters must push supported filters, sorting, cursor predicates, grouping, counts, and bounded facet aggregation into the database. Code-side derivation is allowed only for the exceptions listed in `04-backend/telemetry-query-semantics.md`.
-- Live trace subscriptions are read operations. Storage-read owns live filter matching, future read authorization, per-subscription sequence numbers, heartbeat scheduling, and cleanup.
+- Live trace subscriptions are read operations. Storage-read owns live filter matching, read authorization, per-subscription sequence numbers, heartbeat scheduling, and cleanup.
 - Live trace candidate resolution must reuse trace search filter construction for overlapping fields and may add only a trace ID candidate predicate plus live-specific limit behavior.
 - Storage-read must consume post-persist notifications, not ingest commands, for live reads.

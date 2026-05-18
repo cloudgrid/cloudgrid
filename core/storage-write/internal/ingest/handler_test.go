@@ -61,8 +61,25 @@ func TestEnsureJetStreamDefinesTelemetryIngestStreamAndConsumer(t *testing.T) {
 	if js.consumer.MaxDeliver != 5 {
 		t.Fatalf("consumer max deliver = %d", js.consumer.MaxDeliver)
 	}
-	if js.consumer.MaxAckPending != 16 {
+	if js.consumer.MaxAckPending != 1000 {
 		t.Fatalf("consumer max ack pending = %d", js.consumer.MaxAckPending)
+	}
+}
+
+func TestEnsureJetStreamUsesConfiguredConsumerOptions(t *testing.T) {
+	js := &fakeJetStreamManager{}
+
+	err := EnsureJetStreamWithOptions(js, ConsumerOptions{
+		AckWait:       45 * time.Second,
+		MaxDeliver:    9,
+		MaxAckPending: 5000,
+	})
+	if err != nil {
+		t.Fatalf("EnsureJetStreamWithOptions() error = %v", err)
+	}
+
+	if js.consumer.AckWait != 45*time.Second || js.consumer.MaxDeliver != 9 || js.consumer.MaxAckPending != 5000 {
+		t.Fatalf("consumer = %#v, want configured ack wait/max deliver/max ack pending", js.consumer)
 	}
 }
 
@@ -568,9 +585,12 @@ func TestRunConsumerWithSelfObservabilityProcessesFetchedTraceMessageAndStopsOnC
 	publisher := &fakeTraceNotificationPublisher{store: store}
 	recorder := NewInMemoryTraceLogRecorder()
 
-	err := RunConsumerWithSelfObservability(ctx, js, &fakeNotificationNATS{}, publisher, store, testLogger(t), nil, recorder)
+	err := RunConsumerWithOptions(ctx, js, &fakeNotificationNATS{}, publisher, store, testLogger(t), nil, recorder, ConsumerOptions{PullBatchSize: 3, PullMaxWait: 25 * time.Millisecond, Concurrency: 1})
 	if err != nil {
 		t.Fatalf("RunConsumerWithSelfObservability() error = %v", err)
+	}
+	if js.subscription.lastFetchBatch != 3 {
+		t.Fatalf("fetch batch = %d, want configured batch size", js.subscription.lastFetchBatch)
 	}
 
 	if store.persistCalls != 1 {
@@ -1094,14 +1114,16 @@ func (js *fakePullSubscriber) Publish(subject string, data []byte, _ ...nats.Pub
 }
 
 type fakePullSubscription struct {
-	messages   [][]*nats.Msg
-	errors     []error
-	afterFetch func()
-	fetchCalls int
+	messages       [][]*nats.Msg
+	errors         []error
+	afterFetch     func()
+	fetchCalls     int
+	lastFetchBatch int
 }
 
-func (sub *fakePullSubscription) Fetch(_ int, _ ...nats.PullOpt) ([]*nats.Msg, error) {
+func (sub *fakePullSubscription) Fetch(batch int, _ ...nats.PullOpt) ([]*nats.Msg, error) {
 	sub.fetchCalls++
+	sub.lastFetchBatch = batch
 	defer func() {
 		if sub.afterFetch != nil {
 			sub.afterFetch()

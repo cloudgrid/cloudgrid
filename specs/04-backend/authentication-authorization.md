@@ -10,7 +10,10 @@ provenance: inferred-standard
 
 # Authentication And Authorization Model
 
-This spec defines the future production auth shape so implementation agents can keep current boundaries compatible without inventing auth behavior. The local MVP still runs with auth enforcement disabled.
+This spec defines the production auth shape. Implementation agents must follow
+these boundaries instead of inventing auth modes, token formats, trust rules, or
+service-specific policy engines. Local mode keeps auth enforcement disabled only
+for single-instance development.
 
 ## Modes
 
@@ -140,6 +143,28 @@ Revocation validation:
   exists in another project.
 - Revoking an already revoked key is idempotent and returns existing metadata.
 - Revoked keys remain listed with `revokedAt` so users can audit setup history.
+
+## Production Hardening Package
+
+Production auth hardening is implementation-ready when these items are present:
+
+- BFF session validation for GraphQL HTTP, GraphQL WebSocket connection init,
+  static app shell requests that require a viewer, and auth route redirects;
+- BFF authorization checks for company membership, selected-project membership,
+  project admin mutations, company admin mutations, and final-admin safeguards;
+- collector bearer validation for deployed ingest tokens and local opaque
+  project tokens;
+- storage-read enforcement of normalized read/live auth context on every query
+  and live registration;
+- storage-write persistence of tenant/company/project routing supplied by the
+  authorized ingest boundary;
+- control-plane membership and invitation checks for organization/project
+  membership mutations;
+- sanitized errors using `ERR-015` for unauthenticated and `ERR-016` for
+  authenticated-but-forbidden cases.
+
+Default tests use signed local JWT fixtures and in-memory JWKS fixtures. Real
+OIDC discovery is opt-in only through the test variables listed below.
 
 ## Boundary Responsibilities
 

@@ -3,6 +3,14 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   AI_EVAL_SUBJECTS,
+  AI_CHAT_ACTION_RISKS,
+  AI_CHAT_ACTION_STATUSES,
+  AI_CHAT_ARTIFACT_KINDS,
+  AI_CHAT_CONVERSATION_STATUSES,
+  AI_CHAT_RUN_STATUSES,
+  AI_CHAT_STREAM_EVENT_TYPES,
+  AI_MODEL_PURPOSES,
+  AI_PROVIDER_KINDS,
   ALERT_EVALUATOR_SUBJECTS,
   ALERT_RULE_KINDS,
   ALERT_SEVERITIES,
@@ -45,6 +53,14 @@ export const RETENTION_MODES = ${inlineTsArray(RETENTION_MODES)} as const;
 export const ALERT_RULE_KINDS = ${multilineTsArray(ALERT_RULE_KINDS)} as const;
 export const ALERT_SEVERITIES = ${inlineTsArray(ALERT_SEVERITIES)} as const;
 export const ALERT_STATES = ${inlineTsArray(ALERT_STATES)} as const;
+export const AI_PROVIDER_KINDS = ${multilineTsArray(AI_PROVIDER_KINDS)} as const;
+export const AI_MODEL_PURPOSES = ${multilineTsArray(AI_MODEL_PURPOSES)} as const;
+export const AI_CHAT_CONVERSATION_STATUSES = ${inlineTsArray(AI_CHAT_CONVERSATION_STATUSES)} as const;
+export const AI_CHAT_RUN_STATUSES = ${multilineTsArray(AI_CHAT_RUN_STATUSES)} as const;
+export const AI_CHAT_ACTION_RISKS = ${inlineTsArray(AI_CHAT_ACTION_RISKS)} as const;
+export const AI_CHAT_ACTION_STATUSES = ${multilineTsArray(AI_CHAT_ACTION_STATUSES)} as const;
+export const AI_CHAT_ARTIFACT_KINDS = ${multilineTsArray(AI_CHAT_ARTIFACT_KINDS)} as const;
+export const AI_CHAT_STREAM_EVENT_TYPES = ${multilineTsArray(AI_CHAT_STREAM_EVENT_TYPES)} as const;
 export const CONTROL_PLANE_SUBJECTS = ${multilineTsArray(CONTROL_PLANE_SUBJECTS)} as const;
 export const STORAGE_MAINTENANCE_SUBJECTS = ${multilineTsArray(STORAGE_MAINTENANCE_SUBJECTS)} as const;
 export const ALERT_EVALUATOR_SUBJECTS = ${multilineTsArray(ALERT_EVALUATOR_SUBJECTS)} as const;
@@ -71,6 +87,14 @@ var RetentionModes = []string{${RETENTION_MODES.map(quoteGo).join(", ")}}
 var AlertRuleKinds = []string{${ALERT_RULE_KINDS.map(quoteGo).join(", ")}}
 var AlertSeverities = []string{${ALERT_SEVERITIES.map(quoteGo).join(", ")}}
 var AlertStates = []string{${ALERT_STATES.map(quoteGo).join(", ")}}
+var AiProviderKinds = []string{${AI_PROVIDER_KINDS.map(quoteGo).join(", ")}}
+var AiModelPurposes = []string{${AI_MODEL_PURPOSES.map(quoteGo).join(", ")}}
+var AiChatConversationStatuses = []string{${AI_CHAT_CONVERSATION_STATUSES.map(quoteGo).join(", ")}}
+var AiChatRunStatuses = []string{${AI_CHAT_RUN_STATUSES.map(quoteGo).join(", ")}}
+var AiChatActionRisks = []string{${AI_CHAT_ACTION_RISKS.map(quoteGo).join(", ")}}
+var AiChatActionStatuses = []string{${AI_CHAT_ACTION_STATUSES.map(quoteGo).join(", ")}}
+var AiChatArtifactKinds = []string{${AI_CHAT_ARTIFACT_KINDS.map(quoteGo).join(", ")}}
+var AiChatStreamEventTypes = []string{${AI_CHAT_STREAM_EVENT_TYPES.map(quoteGo).join(", ")}}
 var ControlPlaneSubjects = []string{${CONTROL_PLANE_SUBJECTS.map(quoteGo).join(", ")}}
 var StorageMaintenanceSubjects = []string{${STORAGE_MAINTENANCE_SUBJECTS.map(quoteGo).join(", ")}}
 var AlertEvaluatorSubjects = []string{${ALERT_EVALUATOR_SUBJECTS.map(quoteGo).join(", ")}}

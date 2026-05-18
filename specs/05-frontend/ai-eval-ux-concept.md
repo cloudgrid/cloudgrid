@@ -57,7 +57,7 @@ from empty states and admin actions.
 - Use tables for datasets, dataset items, scorers, experiments, production
   policy lists, and quality segments.
 - Do not render a permanent inspector that says "select a row" when no useful
-  detail is selected. Details live inline in the current workspace. If a future
+  detail is selected. Details live inline in the current workspace. If another
   detail surface needs an inspector, it opens only after a selection, is
   resizable on desktop, becomes a sheet on mobile, and does not duplicate facts
   already visible in the table.

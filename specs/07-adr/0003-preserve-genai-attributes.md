@@ -10,13 +10,13 @@ alternatives_considered:
   - name: Preserve attributes only
     summary: Keep GenAI semantic convention attributes in generic span/log attributes.
     pros: [Avoids premature modeling, preserves source data, keeps MVP focused]
-    cons: [UI cannot offer rich AI-specific workflows yet, future migration may be needed]
+    cons: [UI cannot offer rich AI-specific workflows until AI entity contracts exist, migration may be needed]
   - name: Model AI entities immediately
     summary: Create first-class AI domain entities in MVP.
-    pros: [More AI-native UI from day one, clearer future product direction]
+    pros: [More AI-native UI from day one, clearer product direction]
     cons: [Requires unresolved semantic decisions, increases implementation scope]
 decision: Preserve attributes only
-decision_rationale: The product cannot safely model AI-specific entities until trace/log ingest and correlation are stable. Preserving attributes keeps future options open without forcing premature decisions.
+decision_rationale: The product cannot safely model AI-specific entities until trace/log ingest and correlation are stable. Preserving attributes keeps options open without forcing premature decisions.
 consequences:
   positive: [No source telemetry loss, reduced MVP scope]
   negative: [AI-specific views are deferred]

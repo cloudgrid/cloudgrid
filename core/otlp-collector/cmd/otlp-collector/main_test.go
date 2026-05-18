@@ -244,6 +244,50 @@ func TestBuildHandlerOptionsDefaultsToLocalWithoutExternalProvider(t *testing.T)
 	if options.LocalProjectID != "default" {
 		t.Fatalf("LocalProjectID = %q, want default anonymous local project", options.LocalProjectID)
 	}
+	if options.MaxRequestBytes != 4*1024*1024 || options.MaxSpans != 10_000 || options.MaxLogs != 10_000 || options.MaxMetricPoints != 20_000 || options.PublishTimeout != time.Second {
+		t.Fatalf("limits = bytes:%d spans:%d logs:%d metrics:%d timeout:%s, want defaults", options.MaxRequestBytes, options.MaxSpans, options.MaxLogs, options.MaxMetricPoints, options.PublishTimeout)
+	}
+}
+
+func TestBuildHandlerOptionsReadsCollectorScalingLimits(t *testing.T) {
+	env := map[string]string{
+		"CLOUDGRID_OTLP_MAX_REQUEST_BYTES":             "65536",
+		"CLOUDGRID_OTLP_MAX_SPANS_PER_REQUEST":         "50",
+		"CLOUDGRID_OTLP_MAX_LOGS_PER_REQUEST":          "60",
+		"CLOUDGRID_OTLP_MAX_METRIC_POINTS_PER_REQUEST": "70",
+		"CLOUDGRID_OTLP_PUBLISH_TIMEOUT_MS":            "250",
+	}
+
+	options, err := buildHandlerOptionsFromEnv(context.Background(), func(name string) string { return env[name] }, http.DefaultClient)
+	if err != nil {
+		t.Fatalf("buildHandlerOptionsFromEnv() error = %v", err)
+	}
+
+	if options.MaxRequestBytes != 65_536 || options.MaxSpans != 50 || options.MaxLogs != 60 || options.MaxMetricPoints != 70 || options.PublishTimeout != 250*time.Millisecond {
+		t.Fatalf("options = %#v, want configured scaling limits", options)
+	}
+}
+
+func TestBuildHandlerOptionsRejectsInvalidCollectorScalingLimits(t *testing.T) {
+	tests := []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{name: "spans", env: map[string]string{"CLOUDGRID_OTLP_MAX_SPANS_PER_REQUEST": "0"}, want: "CLOUDGRID_OTLP_MAX_SPANS_PER_REQUEST"},
+		{name: "logs", env: map[string]string{"CLOUDGRID_OTLP_MAX_LOGS_PER_REQUEST": "100001"}, want: "CLOUDGRID_OTLP_MAX_LOGS_PER_REQUEST"},
+		{name: "metrics", env: map[string]string{"CLOUDGRID_OTLP_MAX_METRIC_POINTS_PER_REQUEST": "200001"}, want: "CLOUDGRID_OTLP_MAX_METRIC_POINTS_PER_REQUEST"},
+		{name: "publish timeout", env: map[string]string{"CLOUDGRID_OTLP_PUBLISH_TIMEOUT_MS": "99"}, want: "CLOUDGRID_OTLP_PUBLISH_TIMEOUT_MS"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := buildHandlerOptionsFromEnv(context.Background(), func(name string) string { return tt.env[name] }, http.DefaultClient)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want %s validation", err, tt.want)
+			}
+		})
+	}
 }
 
 func TestBuildHandlerOptionsReadsLocalProjectRoutingConfig(t *testing.T) {
@@ -314,6 +358,74 @@ func TestBuildHandlerOptionsFetchesConfiguredJWKSForDeployedSSO(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("jwks fetch calls = %d, want one startup fetch", calls)
+	}
+}
+
+func TestBuildHandlerOptionsReadsProjectStatusCacheBounds(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"keys": []map[string]any{{
+				"kty": "RSA",
+				"kid": "fixture",
+				"n":   base64URL(key.N.Bytes()),
+				"e":   base64URL(big.NewInt(int64(key.E)).Bytes()),
+			}},
+		})
+	}))
+	defer server.Close()
+	env := map[string]string{
+		"CLOUDGRID_DEPLOYMENT_MODE":                    "deployed",
+		"CLOUDGRID_AUTH_MODE":                          "sso",
+		"CLOUDGRID_AUTH_ISSUER":                        "https://issuer.example",
+		"CLOUDGRID_AUTH_AUDIENCE":                      "cloudgrid-ingest",
+		"CLOUDGRID_AUTH_JWKS_URL":                      server.URL,
+		"CLOUDGRID_PROJECT_STATUS_CACHE_TTL_SECONDS":   "30",
+		"CLOUDGRID_PROJECT_STATUS_CACHE_STALE_SECONDS": "90",
+	}
+
+	options, err := buildHandlerOptionsFromEnv(context.Background(), func(name string) string { return env[name] }, server.Client())
+	if err != nil {
+		t.Fatalf("buildHandlerOptionsFromEnv() error = %v", err)
+	}
+
+	if options.ProjectCache.TTL() != 30*time.Second || options.ProjectCache.MaxStaleness() != 90*time.Second {
+		t.Fatalf("cache ttl=%s stale=%s, want 30s/90s", options.ProjectCache.TTL(), options.ProjectCache.MaxStaleness())
+	}
+}
+
+func TestBuildHandlerOptionsRejectsProjectStatusStalenessBelowTTL(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"keys": []map[string]any{{
+				"kty": "RSA",
+				"kid": "fixture",
+				"n":   base64URL(key.N.Bytes()),
+				"e":   base64URL(big.NewInt(int64(key.E)).Bytes()),
+			}},
+		})
+	}))
+	defer server.Close()
+	env := map[string]string{
+		"CLOUDGRID_DEPLOYMENT_MODE":                    "deployed",
+		"CLOUDGRID_AUTH_MODE":                          "sso",
+		"CLOUDGRID_AUTH_ISSUER":                        "https://issuer.example",
+		"CLOUDGRID_AUTH_AUDIENCE":                      "cloudgrid-ingest",
+		"CLOUDGRID_AUTH_JWKS_URL":                      server.URL,
+		"CLOUDGRID_PROJECT_STATUS_CACHE_TTL_SECONDS":   "60",
+		"CLOUDGRID_PROJECT_STATUS_CACHE_STALE_SECONDS": "30",
+	}
+
+	_, err = buildHandlerOptionsFromEnv(context.Background(), func(name string) string { return env[name] }, server.Client())
+	if err == nil || !strings.Contains(err.Error(), "CLOUDGRID_PROJECT_STATUS_CACHE_STALE_SECONDS") {
+		t.Fatalf("error = %v, want stale lower-bound validation", err)
 	}
 }
 

@@ -79,6 +79,9 @@ func TestExecuteBatchSoftDeleteMarksEligibleRecords(t *testing.T) {
 	if record.DeletedByRetentionPolicyID != "project-a:AI_EVALS:v5" {
 		t.Fatalf("deletedByRetentionPolicyID = %q", record.DeletedByRetentionPolicyID)
 	}
+	if _, visible := store.VisibleRecord("eval-old"); visible {
+		t.Fatal("soft-deleted record is visible to normal fixture reads")
+	}
 }
 
 func TestExecuteBatchFinalDeleteRemovesDueSoftDeletedRecords(t *testing.T) {
@@ -120,6 +123,25 @@ func TestExecuteBatchLimitBoundsMutations(t *testing.T) {
 	}
 	if store.CountRecords("project-a", contracts.RetentionDataClassMetrics) != 1 {
 		t.Fatalf("remaining metrics = %d, want 1", store.CountRecords("project-a", contracts.RetentionDataClassMetrics))
+	}
+}
+
+func TestExecuteBatchRetainPolicyDoesNotDelete(t *testing.T) {
+	now := fixedNow()
+	store := NewFixtureStore()
+	store.PutPolicy(policy("project-a", contracts.RetentionDataClassScorers, contracts.RetentionModeRetain, 0, nil, 8))
+	store.PutRecord(FixtureRecord{ID: "scorer-old", ProjectID: "project-a", DataClass: contracts.RetentionDataClassScorers, EventTime: now.AddDate(0, 0, -400)})
+
+	result := executeForTest(t, store, request("project-a", contracts.RetentionDataClassScorers, now, nil, nil))
+
+	if result.Error != nil {
+		t.Fatalf("result error = %#v, want nil", result.Error)
+	}
+	if result.MatchedCount != 0 || result.HardDeletedCount != 0 || result.SoftDeletedCount != 0 || result.FinalDeletedCount != 0 {
+		t.Fatalf("counts = %#v, want retain no-op", result)
+	}
+	if !store.HasRecord("scorer-old") {
+		t.Fatal("retain policy deleted record")
 	}
 }
 
@@ -167,6 +189,49 @@ func TestExecuteBatchReportsUnknownAndMissingPolicy(t *testing.T) {
 	}
 }
 
+func TestExecuteBatchValidatesPolicyRangesAndModeFields(t *testing.T) {
+	now := fixedNow()
+	softDaysTooHigh := 91
+	tests := []struct {
+		name   string
+		policy RetentionPolicy
+	}{
+		{
+			name:   "delete retention below range",
+			policy: policy("project-a", contracts.RetentionDataClassLogs, contracts.RetentionModeDelete, 0, nil, 1),
+		},
+		{
+			name:   "delete retention above range",
+			policy: policy("project-a", contracts.RetentionDataClassLogs, contracts.RetentionModeDelete, 366, nil, 1),
+		},
+		{
+			name:   "soft delete missing soft days",
+			policy: policy("project-a", contracts.RetentionDataClassLogs, contracts.RetentionModeSoftDeleteThenDelete, 30, nil, 1),
+		},
+		{
+			name:   "soft delete soft days above range",
+			policy: policy("project-a", contracts.RetentionDataClassLogs, contracts.RetentionModeSoftDeleteThenDelete, 30, &softDaysTooHigh, 1),
+		},
+		{
+			name:   "policy version below range",
+			policy: policy("project-a", contracts.RetentionDataClassLogs, contracts.RetentionModeDelete, 30, nil, 0),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := NewFixtureStore()
+			store.PutPolicy(tt.policy)
+
+			result := executeForTest(t, store, request("project-a", contracts.RetentionDataClassLogs, now, nil, nil))
+
+			if result.Error == nil || result.Error.ID != "ERR-001" {
+				t.Fatalf("result error = %#v, want ERR-001", result.Error)
+			}
+		})
+	}
+}
+
 func TestExecuteBatchRecordsStructuredMaintenanceLog(t *testing.T) {
 	now := fixedNow()
 	store := NewFixtureStore()
@@ -186,6 +251,30 @@ func TestExecuteBatchRecordsStructuredMaintenanceLog(t *testing.T) {
 		if !strings.Contains(line, want) {
 			t.Fatalf("log %s does not contain %s", line, want)
 		}
+	}
+}
+
+func TestExecuteBatchRecordsMaintenanceAudit(t *testing.T) {
+	now := fixedNow()
+	store := NewFixtureStore()
+	store.PutPolicy(policy("project-a", contracts.RetentionDataClassLogs, contracts.RetentionModeDelete, 30, nil, 11))
+	store.PutRecord(FixtureRecord{ID: "log-old", ProjectID: "project-a", DataClass: contracts.RetentionDataClassLogs, EventTime: now.AddDate(0, 0, -45)})
+
+	result := executeForTest(t, store, request("project-a", contracts.RetentionDataClassLogs, now, nil, nil))
+
+	if result.Error != nil {
+		t.Fatalf("result error = %#v, want nil", result.Error)
+	}
+	audits := store.Audits()
+	if len(audits) != 1 {
+		t.Fatalf("audits = %#v, want one record", audits)
+	}
+	audit := audits[0]
+	if audit.ProjectID != "project-a" || audit.DataClass != contracts.RetentionDataClassLogs || audit.PolicyVersion != 11 {
+		t.Fatalf("audit identity = %#v", audit)
+	}
+	if audit.MatchedCount != 1 || audit.HardDeletedCount != 1 || audit.ErrorID != "" {
+		t.Fatalf("audit counts/error = %#v", audit)
 	}
 }
 

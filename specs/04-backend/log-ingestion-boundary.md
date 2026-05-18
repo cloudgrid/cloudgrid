@@ -12,7 +12,9 @@ provenance: user-directed
 
 ## Decision
 
-Introduce a future dedicated `core/log-ingest` boundary for log-specific control, but keep the current MVP `core/otlp-collector` implementation until the next backend ingestion wave.
+Introduce a dedicated `core/log-ingest` boundary for log-specific control only
+when the backend ingestion wave implements it. Until then, keep the current MVP
+`core/otlp-collector` implementation.
 
 ## Rationale
 
@@ -25,7 +27,9 @@ Logs have different operational characteristics from traces:
 - source-specific enrichment,
 - different retry and drop policies.
 
-A dedicated log ingestion service gives CloudGrid a clean place for log-specific validation, redaction, parsing policy, rate limits, and future tenant/project routing without coupling those concerns to trace ingest.
+A dedicated log ingestion service gives CloudGrid a clean place for
+log-specific validation, redaction, parsing policy, rate limits, and
+tenant/project routing without coupling those concerns to trace ingest.
 
 ## Target Shape
 

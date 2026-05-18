@@ -28,7 +28,9 @@ Implementation consequence: unsupported content types return ERR-002; decode fai
 
 Decision: MVP target is local and small-team operation with 10 OTLP requests per second and 20 GraphQL read requests per second in smoke benchmarks.
 
-Implementation consequence: NATS and storage services must support this target; production ingestion clusters are out of scope.
+Implementation consequence: NATS and storage services must support this target;
+production ingestion clusters require their dedicated specs and are not part of
+this decision.
 
 ## RD-004: Data Retention
 
@@ -40,7 +42,8 @@ Implementation consequence: no TTL cleanup job, deletion API, or retention worke
 
 Decision: local Docker-compatible multi-service stack: TypeScript BFF, frontend assets, NATS with JetStream, Go OTLP collector, Go storage-read, Go storage-write, and SurrealDB.
 
-Implementation consequence: Docker Compose is the required local orchestration target; Kubernetes and cloud IaC are out of scope.
+Implementation consequence: Docker Compose is the required local orchestration
+target; Kubernetes and cloud IaC are handled by separate deployment specs.
 
 ## RD-006: Public Read API
 

@@ -15,6 +15,10 @@ type Store interface {
 	ExecuteRetention(ctx context.Context, plan RetentionExecutionPlan) (RetentionExecutionResult, error)
 }
 
+type AuditStore interface {
+	RecordRetentionAudit(ctx context.Context, audit RetentionAuditRecord) error
+}
+
 type RetentionPolicy struct {
 	ProjectID       string
 	DataClass       contracts.RetentionDataClass
@@ -44,6 +48,21 @@ type RetentionExecutionResult struct {
 	HardDeletedCount  int
 	SoftDeletedCount  int
 	FinalDeletedCount int
+}
+
+type RetentionAuditRecord struct {
+	ProjectID         string
+	DataClass         contracts.RetentionDataClass
+	PolicyVersion     int
+	DryRun            bool
+	MatchedCount      int
+	HardDeletedCount  int
+	SoftDeletedCount  int
+	FinalDeletedCount int
+	StartedAt         time.Time
+	CompletedAt       time.Time
+	ErrorID           string
+	ErrorCode         string
 }
 
 type Executor struct {
@@ -77,6 +96,7 @@ func (executor *Executor) ExecuteBatch(ctx context.Context, request contracts.Re
 	if err := validateRequest(request); err != nil {
 		result.Error = bridgeError("ERR-001", "VALIDATION_FAILED", err.Error(), false)
 		executor.logResult(result, startedAt)
+		_ = executor.recordAudit(ctx, result)
 		return result, nil
 	}
 
@@ -84,11 +104,13 @@ func (executor *Executor) ExecuteBatch(ctx context.Context, request contracts.Re
 	if err != nil {
 		result.Error = bridgeError("ERR-006", "STORAGE_UNAVAILABLE", "Storage is unavailable", true)
 		executor.logResult(result, startedAt)
+		_ = executor.recordAudit(ctx, result)
 		return result, nil
 	}
 	if !ok {
 		result.Error = bridgeError("ERR-016", "FORBIDDEN", "Retention policy is missing for project data class", false)
 		executor.logResult(result, startedAt)
+		_ = executor.recordAudit(ctx, result)
 		return result, nil
 	}
 
@@ -96,11 +118,13 @@ func (executor *Executor) ExecuteBatch(ctx context.Context, request contracts.Re
 	if err := validatePolicy(policy, request.ProjectID, request.DataClass); err != nil {
 		result.Error = bridgeError("ERR-001", "VALIDATION_FAILED", err.Error(), false)
 		executor.logResult(result, startedAt)
+		_ = executor.recordAudit(ctx, result)
 		return result, nil
 	}
 	if policy.Mode == contracts.RetentionModeRetain {
 		result.CompletedAt = executor.now().UTC()
 		executor.logResult(result, startedAt)
+		_ = executor.recordAudit(ctx, result)
 		return result, nil
 	}
 
@@ -126,6 +150,7 @@ func (executor *Executor) ExecuteBatch(ctx context.Context, request contracts.Re
 	if err != nil {
 		result.Error = bridgeError("ERR-006", "STORAGE_UNAVAILABLE", "Storage is unavailable", true)
 		executor.logResult(result, startedAt)
+		_ = executor.recordAudit(ctx, result)
 		return result, nil
 	}
 	result.MatchedCount = counts.MatchedCount
@@ -134,7 +159,32 @@ func (executor *Executor) ExecuteBatch(ctx context.Context, request contracts.Re
 	result.FinalDeletedCount = counts.FinalDeletedCount
 	result.CompletedAt = executor.now().UTC()
 	executor.logResult(result, startedAt)
+	_ = executor.recordAudit(ctx, result)
 	return result, nil
+}
+
+func (executor *Executor) recordAudit(ctx context.Context, result contracts.RetentionExecuteBatchData) error {
+	auditStore, ok := executor.store.(AuditStore)
+	if !ok {
+		return nil
+	}
+	audit := RetentionAuditRecord{
+		ProjectID:         result.ProjectID,
+		DataClass:         result.DataClass,
+		PolicyVersion:     result.PolicyVersion,
+		DryRun:            result.DryRun,
+		MatchedCount:      result.MatchedCount,
+		HardDeletedCount:  result.HardDeletedCount,
+		SoftDeletedCount:  result.SoftDeletedCount,
+		FinalDeletedCount: result.FinalDeletedCount,
+		StartedAt:         result.StartedAt,
+		CompletedAt:       result.CompletedAt,
+	}
+	if result.Error != nil {
+		audit.ErrorID = result.Error.ID
+		audit.ErrorCode = result.Error.Code
+	}
+	return auditStore.RecordRetentionAudit(ctx, audit)
 }
 
 func validateRequest(request contracts.RetentionExecuteBatchRequest) error {
@@ -182,19 +232,12 @@ func validatePolicy(policy RetentionPolicy, projectID string, dataClass contract
 }
 
 func validDataClass(dataClass contracts.RetentionDataClass) bool {
-	switch dataClass {
-	case contracts.RetentionDataClassTraces,
-		contracts.RetentionDataClassLogs,
-		contracts.RetentionDataClassMetrics,
-		contracts.RetentionDataClassAIEvals,
-		contracts.RetentionDataClassDatasets,
-		contracts.RetentionDataClassScorers,
-		contracts.RetentionDataClassDashboardHistory,
-		contracts.RetentionDataClassIngestCredentialAudit:
-		return true
-	default:
-		return false
+	for _, item := range RetentionDataClasses() {
+		if item == dataClass {
+			return true
+		}
 	}
+	return false
 }
 
 func (executor *Executor) logResult(result contracts.RetentionExecuteBatchData, startedAt time.Time) {

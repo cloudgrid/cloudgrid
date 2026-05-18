@@ -143,13 +143,34 @@ func ValidateRule(rule contracts.AlertRule, now time.Time) error {
 			return alertRuleInvalid("maxAllowedCount must be 0 for metric absence rules")
 		}
 		return nil
-	case contracts.AlertRuleKindLogMatch, contracts.AlertRuleKindTraceMatch, contracts.AlertRuleKindTraceError:
+	case contracts.AlertRuleKindLogMatch:
+		if _, err := parseLogQuery(rule.Query, now, rule.EvaluationWindowSeconds); err != nil {
+			return err
+		}
 		_, err := parseMinCountCondition(rule.Condition)
 		return err
-	case contracts.AlertRuleKindLogCount, contracts.AlertRuleKindTraceCount:
+	case contracts.AlertRuleKindLogCount:
+		if _, err := parseLogQuery(rule.Query, now, rule.EvaluationWindowSeconds); err != nil {
+			return err
+		}
+		_, err := parseIntegerThresholdCondition(rule.Condition)
+		return err
+	case contracts.AlertRuleKindTraceMatch, contracts.AlertRuleKindTraceError:
+		if _, err := parseTraceQuery(rule.Query, now, rule.EvaluationWindowSeconds); err != nil {
+			return err
+		}
+		_, err := parseMinCountCondition(rule.Condition)
+		return err
+	case contracts.AlertRuleKindTraceCount:
+		if _, err := parseTraceQuery(rule.Query, now, rule.EvaluationWindowSeconds); err != nil {
+			return err
+		}
 		_, err := parseIntegerThresholdCondition(rule.Condition)
 		return err
 	case contracts.AlertRuleKindTraceLatency:
+		if _, err := parseTraceQuery(rule.Query, now, rule.EvaluationWindowSeconds); err != nil {
+			return err
+		}
 		_, err := parseNumericCondition(rule.Condition)
 		return err
 	default:

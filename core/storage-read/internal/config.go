@@ -5,15 +5,21 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
-	AdapterSurrealDB          = "surrealdb"
-	defaultNATSURL            = "nats://localhost:4222"
-	defaultSurrealDBNamespace = "observability"
-	defaultSurrealDBDatabase  = "dev"
-	defaultHealthHost         = "0.0.0.0"
-	defaultHealthPort         = "8081"
+	AdapterSurrealDB            = "surrealdb"
+	defaultNATSURL              = "nats://localhost:4222"
+	defaultSurrealDBNamespace   = "observability"
+	defaultSurrealDBDatabase    = "dev"
+	defaultHealthHost           = "0.0.0.0"
+	defaultHealthPort           = "8081"
+	defaultQueryTimeout         = 1500 * time.Millisecond
+	defaultMaxPageSize          = 200
+	defaultMaxMetricPoints      = 5000
+	defaultLiveMaxSubscriptions = 2000
+	defaultLiveEventBufferSize  = 100
 )
 
 type EnvLookup func(string) string
@@ -24,8 +30,17 @@ type Config struct {
 	NATSURL           string
 	HealthHost        string
 	HealthPort        string
+	Limits            RuntimeLimits
 	SurrealDB         SurrealDBConfig
 	SelfObservability SelfObservabilityConfig
+}
+
+type RuntimeLimits struct {
+	QueryTimeout         time.Duration
+	MaxPageSize          int
+	MaxMetricPoints      int
+	LiveMaxSubscriptions int
+	LiveEventBufferSize  int
 }
 
 type SurrealDBConfig struct {
@@ -63,12 +78,17 @@ func LoadConfig(env EnvLookup) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	limits, err := loadRuntimeLimits(env)
+	if err != nil {
+		return Config{}, err
+	}
 	cfg := Config{
 		StorageAdapter:    valueOrDefault(env("CLOUDGRID_STORAGE_ADAPTER"), AdapterSurrealDB),
 		DeploymentMode:    valueOrDefault(env("CLOUDGRID_DEPLOYMENT_MODE"), "local"),
 		NATSURL:           valueOrDefault(env("CLOUDGRID_NATS_URL"), defaultNATSURL),
 		HealthHost:        valueOrDefault(env("CLOUDGRID_STORAGE_READ_HEALTH_HOST"), defaultHealthHost),
 		HealthPort:        valueOrDefault(env("CLOUDGRID_STORAGE_READ_HEALTH_PORT"), defaultHealthPort),
+		Limits:            limits,
 		SelfObservability: self,
 		SurrealDB: SurrealDBConfig{
 			URL:       strings.TrimSpace(env("CLOUDGRID_SURREALDB_URL")),
@@ -93,6 +113,36 @@ func LoadConfig(env EnvLookup) (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func loadRuntimeLimits(env EnvLookup) (RuntimeLimits, error) {
+	queryTimeoutMS, err := rangedIntValue(env("CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS"), int(defaultQueryTimeout/time.Millisecond), 100, 30000, "CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS")
+	if err != nil {
+		return RuntimeLimits{}, err
+	}
+	maxPageSize, err := rangedIntValue(env("CLOUDGRID_STORAGE_READ_MAX_PAGE_SIZE"), defaultMaxPageSize, 1, 1000, "CLOUDGRID_STORAGE_READ_MAX_PAGE_SIZE")
+	if err != nil {
+		return RuntimeLimits{}, err
+	}
+	maxMetricPoints, err := rangedIntValue(env("CLOUDGRID_STORAGE_READ_MAX_METRIC_POINTS"), defaultMaxMetricPoints, 100, 100000, "CLOUDGRID_STORAGE_READ_MAX_METRIC_POINTS")
+	if err != nil {
+		return RuntimeLimits{}, err
+	}
+	liveMaxSubscriptions, err := rangedIntValue(env("CLOUDGRID_LIVE_MAX_SUBSCRIPTIONS"), defaultLiveMaxSubscriptions, 1, 100000, "CLOUDGRID_LIVE_MAX_SUBSCRIPTIONS")
+	if err != nil {
+		return RuntimeLimits{}, err
+	}
+	liveEventBufferSize, err := rangedIntValue(env("CLOUDGRID_LIVE_EVENT_BUFFER_SIZE"), defaultLiveEventBufferSize, 1, 10000, "CLOUDGRID_LIVE_EVENT_BUFFER_SIZE")
+	if err != nil {
+		return RuntimeLimits{}, err
+	}
+	return RuntimeLimits{
+		QueryTimeout:         time.Duration(queryTimeoutMS) * time.Millisecond,
+		MaxPageSize:          maxPageSize,
+		MaxMetricPoints:      maxMetricPoints,
+		LiveMaxSubscriptions: liveMaxSubscriptions,
+		LiveEventBufferSize:  liveEventBufferSize,
+	}, nil
 }
 
 func loadSelfObservabilityConfig(env EnvLookup) (SelfObservabilityConfig, error) {
@@ -182,6 +232,17 @@ func intValue(value string, fallback int, name string) (int, error) {
 	parsed, err := strconv.Atoi(value)
 	if err != nil {
 		return 0, configError(name + " must be an integer")
+	}
+	return parsed, nil
+}
+
+func rangedIntValue(value string, fallback int, min int, max int, name string) (int, error) {
+	parsed, err := intValue(value, fallback, name)
+	if err != nil {
+		return 0, err
+	}
+	if parsed < min || parsed > max {
+		return 0, configError(fmt.Sprintf("%s must be between %d and %d", name, min, max))
 	}
 	return parsed, nil
 }

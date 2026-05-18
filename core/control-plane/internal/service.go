@@ -1883,6 +1883,9 @@ func (service *Service) requireProjectAccess(ctx context.Context, envelope contr
 	if !ok {
 		return ports.ProjectRecord{}, forbiddenError("project is not accessible")
 	}
+	if serviceScopedProjectAccess(envelope, project.ID) {
+		return project, nil
+	}
 	membership, ok, err := service.store.GetMembership(ctx, project.OrganizationID, principalID(envelope))
 	if err != nil {
 		return ports.ProjectRecord{}, storageError()
@@ -1899,6 +1902,20 @@ func (service *Service) requireProjectAccess(ctx context.Context, envelope contr
 		return ports.ProjectRecord{}, forbiddenError("viewer is not a member of project")
 	}
 	return project, nil
+}
+
+func serviceScopedProjectAccess(envelope contracts.BridgeEnvelope, projectID string) bool {
+	auth := envelope.AuthContext
+	if auth == nil || auth.ProjectID == nil || *auth.ProjectID != projectID {
+		return false
+	}
+	for _, scope := range auth.Scopes {
+		switch scope {
+		case "cloudgrid:alert-evaluator", "cloudgrid:storage-maintenance":
+			return true
+		}
+	}
+	return false
 }
 
 func (service *Service) projectForViewer(ctx context.Context, userID string, projectID string) (contracts.Project, error) {

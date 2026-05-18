@@ -218,7 +218,7 @@ The header context contains:
 - total duration;
 - started time;
 
-The trace detail page must not add a separate service-percentage strip above the waterfall. Service-level information belongs in the span rows, span inspector, or a future explicitly specified service-breakdown section. Do not invent unlabeled percentage cards such as `checkout-api 68%` without a contract that defines the denominator and user action.
+The trace detail page must not add a separate service-percentage strip above the waterfall. Service-level information belongs in the span rows, span inspector, or an explicitly specified service-breakdown section. Do not invent unlabeled percentage cards such as `checkout-api 68%` without a contract that defines the denominator and user action.
 
 ### Trace View Modes
 
@@ -426,7 +426,7 @@ The source of truth for those routes is [Logs, metrics explorer, and dashboards 
 
 ## Cross-View Pivots
 
-Trace-to-metric pivots are limited to explicit links already present in view models. The frontend must not infer metric queries from trace attributes unless a future contract adds a backend-supported pivot.
+Trace-to-metric pivots are limited to explicit links already present in view models. The frontend must not infer metric queries from trace attributes unless a contract adds a backend-supported pivot.
 
 Metric-to-trace pivots happen through metric exemplars only. Exemplar trace links preserve the selected project and open the trace detail route.
 

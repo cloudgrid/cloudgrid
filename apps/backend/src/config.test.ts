@@ -26,6 +26,9 @@ describe("BFF runtime config", () => {
       },
       requestTimeoutMs: 2000,
       graphqlUI: true,
+      graphqlMaxDepth: 12,
+      graphqlMaxComplexity: 500,
+      graphqlResponseMediaType: "compatible",
       frontendServeStatic: false,
       frontendStaticDir: "./apps/backend/public",
       datasetTransferDir: ".cloudgrid/dataset-transfer",
@@ -46,6 +49,9 @@ describe("BFF runtime config", () => {
       port: 4000,
       natsUrl: "tls://nats.example.test:4222",
       graphqlUI: false,
+      graphqlMaxDepth: 12,
+      graphqlMaxComplexity: 500,
+      graphqlResponseMediaType: "compatible",
       deploymentMode: "local",
       auth: {
         mode: "local",
@@ -115,6 +121,30 @@ describe("BFF runtime config", () => {
 
   test("rejects unsupported NATS URL protocols as config errors", () => {
     expect(() => loadConfig({ CLOUDGRID_NATS_URL: "http://localhost:4222" })).toThrow(
+      "ERR-009 CONFIG_INVALID",
+    );
+  });
+
+  test("parses GraphQL backpressure config", () => {
+    const config = loadConfig({
+      CLOUDGRID_GRAPHQL_MAX_DEPTH: "8",
+      CLOUDGRID_GRAPHQL_MAX_COMPLEXITY: "1000",
+      CLOUDGRID_GRAPHQL_RESPONSE_MEDIA_TYPE: "graphql-response-json",
+    });
+
+    expect(config.graphqlMaxDepth).toBe(8);
+    expect(config.graphqlMaxComplexity).toBe(1000);
+    expect(config.graphqlResponseMediaType).toBe("graphql-response-json");
+  });
+
+  test("rejects invalid GraphQL backpressure config", () => {
+    expect(() => loadConfig({ CLOUDGRID_GRAPHQL_MAX_DEPTH: "0" })).toThrow(
+      "ERR-009 CONFIG_INVALID",
+    );
+    expect(() => loadConfig({ CLOUDGRID_GRAPHQL_MAX_COMPLEXITY: "10001" })).toThrow(
+      "ERR-009 CONFIG_INVALID",
+    );
+    expect(() => loadConfig({ CLOUDGRID_GRAPHQL_RESPONSE_MEDIA_TYPE: "application/json" })).toThrow(
       "ERR-009 CONFIG_INVALID",
     );
   });

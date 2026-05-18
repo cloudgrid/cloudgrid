@@ -15,7 +15,8 @@ provenance: inferred-draft
 ### TypeScript BFF (`apps/backend`)
 
 - Serves `/graphql`, GraphQL subscriptions on the same GraphQL endpoint, `/api/health`, frontend assets, and frontend fallback routes.
-- Owns public error mapping, future auth/session middleware, rate limits, and GraphQL resolver composition.
+- Owns public error mapping, auth/session middleware, rate limits, and GraphQL
+  resolver composition.
 - Talks to private services only through message bridge ports and contracts. The v1 adapter is NATS. Query resolvers use request/reply subjects. Subscription resolvers use storage-read live-session request/reply plus storage-read-owned ephemeral live event subjects.
 - Must not import SurrealDB clients, Go storage packages, OTLP parsers, or storage adapters.
 - Must not create JetStream consumers for `TELEMETRY_INGEST` and must not subscribe to `telemetry.persisted.traces`.
@@ -39,7 +40,10 @@ provenance: inferred-draft
 - Normalizes payloads into canonical entities.
 - Publishes `PersistTelemetryCommand` and `PersistMetricsCommand` messages through the message bridge stream publisher. The v1 adapter publishes to NATS JetStream subjects.
 - Must not import SurrealDB clients or storage adapters.
-- A future `core/log-ingest` service may take ownership of `/v1/logs` and log-specific parsing/redaction/routing while preserving the public OTLP path and private `telemetry.ingest.logs` subject.
+- Log-specific parsing, redaction, and routing remain inside
+  `core/otlp-collector` until a dedicated `core/log-ingest` service is
+  specified with the same public OTLP path and private `telemetry.ingest.logs`
+  subject.
 
 ### Go Storage Write Service (`core/storage-write`)
 
@@ -47,7 +51,9 @@ provenance: inferred-draft
 - Is the only service that mutates SurrealDB.
 - Acknowledges messages only after persistence succeeds.
 - After a successful trace persistence commit, publishes volatile `TracePersistedNotification` messages to the core NATS subject `telemetry.persisted.traces` with trace IDs and non-sensitive routing hints. It must not include full spans, logs, attributes, or raw OTLP payloads in that notification, and it must not create a second JetStream-backed telemetry store.
-- Depends on a storage writer port. Database-specific writer code, schema initialization, readiness checks, and future migrations live under `internal/adapters/<database>/`.
+- Depends on a storage writer port. Database-specific writer code, schema
+  initialization, readiness checks, and migrations live under
+  `internal/adapters/<database>/`.
 
 ### Go Storage Read Service (`core/storage-read`)
 
@@ -112,9 +118,16 @@ core/control-plane/internal/
   adapters/<database>/
 ```
 
-The SurrealDB adapter is the only implemented MVP adapter. A future Postgres adapter must be added as a sibling adapter directory and must not change BFF, frontend, collector, or NATS message contracts.
+The SurrealDB adapter is the only implemented MVP adapter. Additional database
+adapters must be added as sibling adapter directories and must not change BFF,
+frontend, collector, or NATS message contracts.
 
-Storage services are built with exactly the required storage adapter dependency set. The MVP SurrealDB binaries are built with the Go build tag `surrealdb` and then validated at startup with `CLOUDGRID_STORAGE_ADAPTER=surrealdb`. Future adapters must use sibling adapter packages plus their own build tags, so operators can ship a Postgres build without SurrealDB dependencies or a SurrealDB build without Postgres dependencies.
+Storage services are built with exactly the required storage adapter dependency
+set. The MVP SurrealDB binaries are built with the Go build tag `surrealdb` and
+then validated at startup with `CLOUDGRID_STORAGE_ADAPTER=surrealdb`.
+Additional adapters must use sibling adapter packages plus their own build tags,
+so operators can ship a Postgres build without SurrealDB dependencies or a
+SurrealDB build without Postgres dependencies.
 
 ## Private Boundary
 
@@ -128,12 +141,16 @@ Live trace subscriptions are part of the same read model boundary. Storage-read 
 
 ## Authorization Boundaries
 
-Authentication and authorization are not enforced in the local MVP, but service boundaries must be shaped for future enforcement:
+Authentication and authorization are not enforced in local mode, but service
+boundaries must preserve production enforcement:
 
-- Ingestion authorization is evaluated at the OTLP collector or a future public ingest gateway before `PersistTelemetryCommand` is published.
+- Ingestion authorization is evaluated at the OTLP collector before
+  `PersistTelemetryCommand` is published.
 - Read authorization is evaluated at the BFF GraphQL boundary and in storage-read before query execution or live subscription start.
 - `BridgeEnvelope.authContext` carries normalized principal, tenant, project, scopes, and authorization decisions across BFF-to-storage-read calls. In local MVP it may be omitted only when the receiver normalizes missing context to `mode=anonymous`, `tenantId=local`, and `projectId=default`.
-- Storage-write does not make read authorization decisions. It may persist future tenant/project ownership metadata supplied by authorized ingest commands, then emits only trace IDs and routing hints in post-persist notifications.
+- Storage-write does not make read authorization decisions. It may persist
+  tenant/project ownership metadata supplied by authorized ingest commands, then
+  emits only trace IDs and routing hints in post-persist notifications.
 - The detailed auth contract is `04-backend/authentication-authorization.md`. Implementation agents must not add cookie sessions, custom API keys, policy engines, or alternate claim names without updating that spec and the machine-readable contracts first.
 - Company, user, membership, project, and project status decisions are centralized in `core/control-plane` as specified by `04-backend/control-plane.md`.
 

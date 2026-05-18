@@ -95,6 +95,19 @@ const expectedChannels = [
   "control.projects.select",
   "control.members.update",
   "control.members.remove",
+  "control.ai_providers.project.get",
+  "control.ai_providers.project.update",
+  "control.ai_providers.company.get",
+  "control.ai_providers.company.update",
+  "control.ai_chat.history",
+  "control.ai_chat.conversation.get",
+  "control.ai_chat.conversation.create",
+  "control.ai_chat.conversation.archive",
+  "control.ai_chat.message.append",
+  "control.ai_chat.action.propose",
+  "control.ai_chat.action.approve",
+  "control.ai_chat.action.finish",
+  "control.ai_chat.compaction.save",
   "control.project_status.snapshot",
   "control.project_status.changed",
   "control.project_members.list",
@@ -341,6 +354,16 @@ for (const exportedType of [
   "AlertRule",
   "AlertEventConnection",
   "AlertSilence",
+  "AiProviderKind",
+  "AiModelPurpose",
+  "AiChatConversationStatus",
+  "AiChatRunStatus",
+  "AiChatActionRisk",
+  "AiChatActionStatus",
+  "ProjectAiProviderSettings",
+  "CompanyAiProviderSettings",
+  "AiChatConversation",
+  "AiChatActionProposal",
 ]) {
   if (!uiContracts.includes(` ${exportedType}`)) {
     throw new Error(`ui contracts missing ${exportedType}`);
@@ -356,6 +379,12 @@ for (const generatedSymbol of [
   "CONTROL_PLANE_SUBJECTS",
   "STORAGE_MAINTENANCE_SUBJECTS",
   "ALERT_EVALUATOR_SUBJECTS",
+  "AI_PROVIDER_KINDS",
+  "AI_MODEL_PURPOSES",
+  "AI_CHAT_CONVERSATION_STATUSES",
+  "AI_CHAT_RUN_STATUSES",
+  "AI_CHAT_ACTION_RISKS",
+  "AI_CHAT_ACTION_STATUSES",
 ]) {
   if (!generatedUiContracts.includes(`const ${generatedSymbol}`)) {
     throw new Error(`generated ui contracts missing ${generatedSymbol}`);
@@ -410,6 +439,20 @@ for (const exportedType of [
   "AlertRule",
   "AlertEventConnection",
   "AlertSilence",
+  "AiProviderKind",
+  "AiModelPurpose",
+  "AiChatConversationStatus",
+  "AiChatRunStatus",
+  "AiChatActionRisk",
+  "AiChatActionStatus",
+  "ProjectAiProviderSettingsGetRequest",
+  "ProjectAiProviderSettingsUpdateRequest",
+  "CompanyAiProviderSettingsGetRequest",
+  "CompanyAiProviderSettingsUpdateRequest",
+  "AiChatHistoryRequest",
+  "AiChatConversationGetRequest",
+  "AiChatConversationCreateRequest",
+  "AiChatActionApproveRequest",
 ]) {
   if (!goContracts.includes(`type ${exportedType} `)) {
     throw new Error(`go contracts missing ${exportedType}`);
@@ -425,6 +468,12 @@ for (const generatedSymbol of [
   "ControlPlaneSubjects",
   "StorageMaintenanceSubjects",
   "AlertEvaluatorSubjects",
+  "AiProviderKinds",
+  "AiModelPurposes",
+  "AiChatConversationStatuses",
+  "AiChatRunStatuses",
+  "AiChatActionRisks",
+  "AiChatActionStatuses",
 ]) {
   if (!generatedGoContracts.includes(`var ${generatedSymbol}`)) {
     throw new Error(`generated go contracts missing ${generatedSymbol}`);

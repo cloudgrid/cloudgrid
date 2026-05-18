@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"sync"
 	"time"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
@@ -67,6 +68,11 @@ func RunConsumerWithMetrics(ctx context.Context, js PullSubscriberJetStream, nc 
 }
 
 func RunConsumerWithSelfObservability(ctx context.Context, js PullSubscriberJetStream, nc CorePublisher, notificationPublisher ports.TraceNotificationPublisher, store ports.TelemetryWriteStore, logger *slog.Logger, recorder MetricsRecorder, traceLogRecorder TraceLogRecorder) error {
+	return RunConsumerWithOptions(ctx, js, nc, notificationPublisher, store, logger, recorder, traceLogRecorder, DefaultConsumerOptions())
+}
+
+func RunConsumerWithOptions(ctx context.Context, js PullSubscriberJetStream, nc CorePublisher, notificationPublisher ports.TraceNotificationPublisher, store ports.TelemetryWriteStore, logger *slog.Logger, recorder MetricsRecorder, traceLogRecorder TraceLogRecorder, options ConsumerOptions) error {
+	options = options.normalized()
 	sub, err := js.PullSubscribe("telemetry.ingest.*", ConsumerName, nats.BindStream(StreamName), nats.ManualAck())
 	if err != nil {
 		return err
@@ -78,7 +84,7 @@ func RunConsumerWithSelfObservability(ctx context.Context, js PullSubscriberJetS
 			return nil
 		}
 
-		messages, err := sub.Fetch(MaxInFlight, nats.MaxWait(time.Second))
+		messages, err := sub.Fetch(options.PullBatchSize, nats.MaxWait(options.PullMaxWait))
 		if err != nil {
 			if errors.Is(err, nats.ErrTimeout) {
 				continue
@@ -86,17 +92,41 @@ func RunConsumerWithSelfObservability(ctx context.Context, js PullSubscriberJetS
 			return err
 		}
 
+		processFetchedMessages(ctx, messages, store, aiPublisher, notificationPublisher, logger, recorder, traceLogRecorder, options.Concurrency)
+	}
+}
+
+func processFetchedMessages(ctx context.Context, messages []*nats.Msg, store ports.TelemetryWriteStore, aiPublisher natsAIEventPublisher, notificationPublisher ports.TraceNotificationPublisher, logger *slog.Logger, recorder MetricsRecorder, traceLogRecorder TraceLogRecorder, concurrency int) {
+	if concurrency <= 1 || len(messages) <= 1 {
 		for _, msg := range messages {
-			wrapped := natsMessage{msg: msg}
-			if msg.Subject == AiProjectionSubject {
-				if aiStore, ok := store.(ports.AIWriteStore); ok {
-					HandleAIProjectionMessage(ctx, wrapped, aiStore, aiPublisher, logger, time.Now)
-					continue
-				}
-			}
-			HandleMessageWithSelfObservability(ctx, wrapped, store, notificationPublisher, logger, time.Now, recorder, traceLogRecorder)
+			processFetchedMessage(ctx, msg, store, aiPublisher, notificationPublisher, logger, recorder, traceLogRecorder)
+		}
+		return
+	}
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	for _, msg := range messages {
+		msg := msg
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			processFetchedMessage(ctx, msg, store, aiPublisher, notificationPublisher, logger, recorder, traceLogRecorder)
+		}()
+	}
+	wg.Wait()
+}
+
+func processFetchedMessage(ctx context.Context, msg *nats.Msg, store ports.TelemetryWriteStore, aiPublisher natsAIEventPublisher, notificationPublisher ports.TraceNotificationPublisher, logger *slog.Logger, recorder MetricsRecorder, traceLogRecorder TraceLogRecorder) {
+	wrapped := natsMessage{msg: msg}
+	if msg.Subject == AiProjectionSubject {
+		if aiStore, ok := store.(ports.AIWriteStore); ok {
+			HandleAIProjectionMessage(ctx, wrapped, aiStore, aiPublisher, logger, time.Now)
+			return
 		}
 	}
+	HandleMessageWithSelfObservability(ctx, wrapped, store, notificationPublisher, logger, time.Now, recorder, traceLogRecorder)
 }
 
 type natsTraceNotificationPublisher struct {
