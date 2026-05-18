@@ -14,14 +14,7 @@ import HandbookLayout from "../../components/handbook/HandbookLayout.astro";
 export async function getStaticPaths() {
   // Slugs that have a dedicated static page in /pages/handbook/. The dynamic
   // route skips them to avoid duplicate-route errors at build time.
-  const SHIM_SLUGS = new Set<string>([
-    "", // handled by index.astro
-    "getting-started",
-    "architecture",
-    "deployment",
-    "configuration",
-    "adapters",
-  ]);
+  const SHIM_SLUGS = new Set<string>([""]); // handled by index.astro
 
   // Locally scoped so Astro's getStaticPaths sandbox can see it.
   const entryToSlug = (id: string): string => {

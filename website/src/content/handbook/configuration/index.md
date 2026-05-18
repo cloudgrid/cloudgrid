@@ -8,7 +8,12 @@ eyebrow: "Handbook - Configuration"
 updated: 2026-05-18
 ---
 
-CloudGrid is configured with environment variables. Start with the smallest mode that works, then add deployed-mode hardening only when the deployment needs shared users or production boundaries.
+CloudGrid is configured with environment variables. Start with the smallest mode that works, then add deployed-mode hardening only when the deployment needs shared users, invite-only access, or production boundaries.
+
+Configuration has two main branches:
+
+- **Local mode** is for one developer or one local workstation. It uses local auth, local project routing, and safe defaults.
+- **Deployed mode** is for shared access. It uses SSO, invite-controlled membership, explicit SMTP delivery, and hardened infrastructure settings.
 
 ## Configuration Storyline
 
@@ -31,7 +36,7 @@ flowchart TD
 | Topic | Page |
 | --- | --- |
 | Runtime modes and validation | [Runtime environment](/handbook/configuration/runtime-environment) |
-| Local mode setup | [Local configuration](/handbook/configuration/local) |
+| Local mode setup | [Local configuration](/handbook/configuration/local) and [setup script](/handbook/configuration/local/setup-script) |
 | Local token routing | [Local project-token routing](/handbook/configuration/local/project-token-routing) |
 | Local self-observability | [Local self-observability](/handbook/configuration/local/self-observability) |
 | Deployed mode setup | [Deployed configuration](/handbook/configuration/deployed) |
@@ -69,6 +74,17 @@ CLOUDGRID_INVITATION_EMAIL_FROM='CloudGrid <noreply@example.com>'
 CLOUDGRID_INVITATION_EMAIL_SMTP_HOST=smtp.example.com
 CLOUDGRID_INVITATION_EMAIL_SMTP_PORT=587
 ```
+
+## Invite And Email Boundary
+
+In deployed mode, other users reach a project through invitations. A user may authenticate with a configured SSO provider, but project membership is still controlled by invitation acceptance and control-plane membership state.
+
+Invitation email delivery is intentionally separate from SSO:
+
+1. SSO proves identity.
+2. The invitation links the identity to a company and project role.
+3. SMTP delivery decides whether CloudGrid can send the invite email itself.
+4. `CLOUDGRID_INVITATION_EMAIL_REQUIRE_DELIVERY=true` makes failed email delivery fail the invite operation instead of silently relying on manual link sharing.
 
 ## Boundary Rules
 

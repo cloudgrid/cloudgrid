@@ -31,8 +31,8 @@ const concerns = [
     accent: "var(--color-emerald)",
     icon: "M3 7h18v12H3zM3 7l9-4 9 4M8 12h8M8 16h5",
     q: "What is the license, and what are the IP & sub-processor risks?",
-    a: "MIT. Commercial use is permitted without negotiation. There is no open-core split, no 'community edition' you'll have to migrate off, no CLA, no per-seat license. CloudGrid has zero sub-processors that touch your telemetry — because there is no CloudGrid SaaS.",
-    proof: "MIT. No CLA. No sub-processors. Source is reviewable end-to-end.",
+    a: "Apache 2.0. Commercial use is permitted without negotiation. There is no open-core split, no 'community edition' you'll have to migrate off, no CLA, no per-seat license. CloudGrid has zero sub-processors that touch your telemetry — because there is no CloudGrid SaaS.",
+    proof: "Apache 2.0. No CLA. No sub-processors. Source is reviewable end-to-end.",
   },
   {
     who: "Identity & Access",
@@ -128,7 +128,7 @@ const postureBadge: Record<string, { label: string; color: string }> = {
 
 // Quick-answer brief — the procurement reviewer one-pager.
 const brief = [
-  { k: "License", v: "MIT" },
+  { k: "License", v: "Apache 2.0" },
   { k: "Self-hostable", v: "Yes — only deployment model" },
   { k: "Sub-processors that see telemetry", v: "Zero" },
   { k: "Telemetry egress from CloudGrid", v: "None (no phone-home)" },
@@ -169,7 +169,7 @@ const brief = [
             <div class="mt-1 text-xs text-text-muted uppercase tracking-wider">Source open</div>
           </div>
           <div>
-            <div class="text-3xl font-semibold text-text font-mono">MIT</div>
+            <div class="text-3xl font-semibold text-text font-mono">Apache 2.0</div>
             <div class="mt-1 text-xs text-text-muted uppercase tracking-wider">License</div>
           </div>
         </div>

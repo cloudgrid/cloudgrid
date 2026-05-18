@@ -1,11 +1,13 @@
 ---
 name: cloudgrid-observability-ui
-description: Use this for CloudGrid frontend, BFF, docs, or contract work involving traces, logs, metrics, dashboards, dashboard widgets, dashboard pins, log-to-trace links, metric exemplars, live trace receiving, multi ingest API keys, retention placeholders, alerting placeholders, or MetricView removal. Trigger whenever an agent edits or reviews CloudGrid observability routes or related documentation so the work stays aligned with the dashboard/logs/metrics/traces specs.
+description: Implements or reviews CloudGrid observability UI, BFF, docs, and contracts. Use when working on traces, logs, metrics, dashboards, widgets, pins, log-to-trace links, metric exemplars, live trace receiving, project API keys, retention/alerting UI boundaries, or removal of old MetricView surfaces.
 ---
 
 # CloudGrid Observability UI And Dashboard Work
 
-Use this skill when implementing, reviewing, or documenting CloudGrid observability workflows for traces, logs, metrics, dashboards, and live trace receiving.
+Use this skill when implementing, reviewing, or documenting CloudGrid
+observability workflows for traces, logs, metrics, dashboards, widgets, and
+live trace receiving.
 
 ## Source Order
 
@@ -18,11 +20,12 @@ Read the source specs before editing:
 5. `specs/05-frontend/traces-and-metrics-ux-concept.md` for trace search/detail and live trace behavior
 6. `specs/04-backend/control-plane.md`
 7. `specs/04-backend/bridge-ports.md`
-8. `specs/04-backend/metrics-signal.md`
-9. `specs/04-backend/authentication-authorization.md`
-10. `specs/03-contracts/graphql/public-schema.graphql`
-11. `specs/03-contracts/messages/message-bridge.asyncapi.yaml`
-12. `specs/03-contracts/errors.yaml`
+8. `specs/04-backend/telemetry-query-semantics.md`
+9. `specs/04-backend/metrics-signal.md`
+10. `specs/04-backend/authentication-authorization.md`
+11. `specs/03-contracts/graphql/public-schema.graphql`
+12. `specs/03-contracts/messages/message-bridge.asyncapi.yaml`
+13. `specs/03-contracts/errors.yaml`
 
 If the requested behavior is not covered, stop and update the relevant spec first. Do not invent GraphQL fields, routes, subjects, widget kinds, project routing, retention behavior, alert rules, or error codes.
 
@@ -37,6 +40,22 @@ Keep these jobs separate:
 - `/dashboards`: saved visual composition workspace with dashboard rail, widget grid, widget inspector/editor, explicit save, built-in duplication, personal/project visibility, and dashboard pin actions.
 
 Do not merge `/metrics` and `/dashboards`. Metrics exploration is technical discovery; dashboards are reusable presentation/composition.
+
+## Work Locations
+
+Use the owning module:
+
+| Surface | Location |
+| --- | --- |
+| React UI | `apps/frontend/src/routes`, `apps/frontend/src/features`, shared UI components. |
+| GraphQL/BFF mapping | `apps/backend/src`, BFF bridge clients, public API client descriptors. |
+| Shared public operations | `apps/packages/public-api-client`. |
+| Generated UI contracts | `apps/packages/ui-contracts`. |
+| GraphQL SDL | `specs/03-contracts/graphql/public-schema.graphql`. |
+| Public docs | `docs/` and `website/src/content/handbook/` when behavior changes. |
+
+Do not define route-local GraphQL documents or direct `/graphql` calls when a
+shared public API client operation exists or should be added.
 
 ## Dashboard Contract Rules
 
@@ -115,6 +134,19 @@ Every telemetry and dashboard workflow is project-scoped.
 
 Do not expose SurrealDB credentials, provider tokens, bearer values, session cookies, or raw Authorization headers in UI, docs examples, logs, dashboard definitions, generated assets, or skill output.
 
+## Implementation Workflow
+
+1. Read the source specs and current route implementation.
+2. Identify whether the change is UI-only, BFF mapping, public contract, or
+   private service behavior.
+3. Update specs/contracts first if a new field, input, widget kind, route state,
+   error, or subject is needed.
+4. Keep frontend state presentational: selection, focus, tabs, URL params,
+   virtualization, and inspector state are allowed.
+5. Put telemetry query semantics in storage-read, not frontend or BFF.
+6. Add focused tests for the changed route, view model, or bridge mapping.
+7. Update handbook/docs if the user workflow changes.
+
 ## Current TODO Boundaries
 
 Document these as future work, not hidden features:
@@ -132,4 +164,8 @@ Before finishing:
 3. Confirm log and metric pivots stay in the selected project.
 4. Confirm dashboard pins use dashboard contracts and pin mutations, not localStorage as truth.
 5. Confirm retention, alerting, and full OTLP compatibility are described only within their implemented or TODO boundaries.
-6. Run the narrowest relevant checks. For docs-only changes, use `git diff --check` and a targeted Markdown/text scan.
+6. Confirm frontend operations are shared through the public API client when the
+   route uses a public endpoint.
+7. Run the narrowest relevant checks. Contract/BFF bridge changes require
+   `bun run contracts:check`; frontend UX changes usually need focused frontend
+   tests and, when visual behavior is material, `bun run smoke:frontend`.

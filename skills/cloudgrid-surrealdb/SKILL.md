@@ -1,13 +1,16 @@
 ---
 name: cloudgrid-surrealdb
-description: Use this for CloudGrid SurrealDB schema, query, readiness, and storage debugging work. Trigger whenever an agent is editing or reviewing core/storage-write or core/storage-read SurrealQL, SurrealDB schema initialization, table/index readiness checks, storage query behavior, or storage credential handling. This skill keeps work grounded in CloudGrid specs and official SurrealDB docs, and explicitly avoids MCP or third-party skill installation.
+description: Implements or reviews CloudGrid SurrealDB schema, query, readiness, storage adapter, and credential-handling work. Use when editing storage-read, storage-write, control-plane SurrealDB adapters, SurrealQL, schema initialization, INFO readiness checks, telemetry query behavior, or storage debugging.
 ---
 
 # CloudGrid SurrealDB Development
 
 Use this skill when implementing or debugging CloudGrid storage work that touches SurrealDB schema, SurrealQL queries, readiness checks, or storage credentials.
 
-Do not install SurrealDB MCP servers, third-party skills, or external code generators. This skill is a local guide only. When syntax might depend on the SurrealDB server or Go SDK version, verify against official docs before editing code.
+Do not install SurrealDB MCP servers, third-party skills, or external code
+generators. This skill is a local guide only. When syntax might depend on the
+SurrealDB server or Go SDK version, verify against official docs before editing
+code.
 
 ## Source Order
 
@@ -17,9 +20,9 @@ Start with the repo specs, then use official docs only to confirm SurrealDB synt
 2. `specs/00-conventions.md`
 3. `specs/04-backend/backend-architecture.md`
 4. `specs/04-backend/surrealdb-persistence.md`
-5. `specs/01-domains/storage.md`
-6. `specs/02-capabilities/storage/persist-telemetry.md`
-7. `specs/02-capabilities/storage/query-telemetry.md`
+5. `specs/04-backend/surrealdb-tenancy-and-modeling.md`
+6. `specs/04-backend/telemetry-query-semantics.md`
+7. `specs/01-domains/storage.md`
 8. `specs/03-contracts/messages/message-bridge.asyncapi.yaml`
 9. `specs/03-contracts/errors.yaml`
 
@@ -31,6 +34,9 @@ Respect these CloudGrid boundaries exactly:
 
 - Only `core/storage-write` creates, updates, deletes, or initializes SurrealDB schema.
 - Only `core/storage-read` fetches telemetry from SurrealDB.
+- Only `core/control-plane` reads or mutates central company, user,
+  membership, project, dashboard, retention, alert, invitation, and email outbox
+  state.
 - `core/storage-read` may check schema readiness, but it must not create missing tables or indexes.
 - `core/otlp-collector` publishes ingest commands to NATS and never imports or calls SurrealDB.
 - `apps/backend` talks to storage through NATS request/reply only and must not import SurrealDB clients or storage adapters.
@@ -40,7 +46,7 @@ Respect these CloudGrid boundaries exactly:
 
 The required tables and indexes are defined in `specs/04-backend/surrealdb-persistence.md`. Treat that file as the source path for schema shape until the specs change.
 
-Required MVP tables:
+Telemetry tables:
 
 - `trace`
 - `span`
@@ -63,6 +69,10 @@ Required MVP indexes:
 `span_event` is embedded in `span.events` for the MVP. Do not add a `span_event` table unless the spec changes.
 
 Use direct ID fields for MVP correlation, as accepted by `specs/07-adr/0005-surrealdb-record-model.md`. Do not introduce relation tables for trace-span, span-log, trace-log, or service relationships unless the ADR and persistence spec change.
+
+Control-plane tables belong to `core/control-plane/internal/adapters/surrealdb`.
+Do not reuse telemetry storage adapters for company, project, invitation,
+dashboard, retention, alert, or email outbox data.
 
 ## Schema Initialization Guidance
 
@@ -96,6 +106,10 @@ All telemetry read queries belong in `core/storage-read`. Validate request shape
 Use parameterized SurrealQL instead of string interpolation for values. Bind trace IDs, span IDs, service names, status values, severity values, timestamps, limits, cursors, and search text through the SurrealDB client API supported by the current Go SDK. Never concatenate user or message input into SurrealQL.
 
 Only interpolate table or index identifiers if there is no SDK-safe alternative and the identifier comes from a closed, hard-coded allowlist matching the spec-required tables/indexes. Do not accept table names from NATS messages, GraphQL inputs, frontend state, environment variables, or logs.
+
+Storage-read must push supported filters, sorting, cursor predicates, counts,
+grouping, and bounded facets into the database adapter. Do not fetch broad raw
+datasets and post-process them in Go when the spec requires adapter pushdown.
 
 Official docs for query syntax and parameter behavior:
 
@@ -157,6 +171,9 @@ Before editing storage code:
 4. Check official SurrealDB docs for version-sensitive syntax.
 5. Use parameter bindings for values and hard-coded allowlists for any identifiers.
 6. Add readiness checks with `INFO` statements when schema presence affects startup health.
-7. Run the narrowest relevant Go tests when code changes are in scope.
+7. Add or update tests for query generation, readiness, persistence idempotency,
+   or failure mapping.
+8. Run the narrowest relevant Go tests when code changes are in scope. Contract
+   changes also require `bun run contracts:check`.
 
 For skill/docs-only work, inspect the Markdown for clarity and grounding. Do not run application code unless it directly helps verification.
