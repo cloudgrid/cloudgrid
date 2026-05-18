@@ -254,6 +254,30 @@ func TestExecuteBatchRecordsStructuredMaintenanceLog(t *testing.T) {
 	}
 }
 
+func TestExecuteBatchRecordsMaintenanceAudit(t *testing.T) {
+	now := fixedNow()
+	store := NewFixtureStore()
+	store.PutPolicy(policy("project-a", contracts.RetentionDataClassLogs, contracts.RetentionModeDelete, 30, nil, 11))
+	store.PutRecord(FixtureRecord{ID: "log-old", ProjectID: "project-a", DataClass: contracts.RetentionDataClassLogs, EventTime: now.AddDate(0, 0, -45)})
+
+	result := executeForTest(t, store, request("project-a", contracts.RetentionDataClassLogs, now, nil, nil))
+
+	if result.Error != nil {
+		t.Fatalf("result error = %#v, want nil", result.Error)
+	}
+	audits := store.Audits()
+	if len(audits) != 1 {
+		t.Fatalf("audits = %#v, want one record", audits)
+	}
+	audit := audits[0]
+	if audit.ProjectID != "project-a" || audit.DataClass != contracts.RetentionDataClassLogs || audit.PolicyVersion != 11 {
+		t.Fatalf("audit identity = %#v", audit)
+	}
+	if audit.MatchedCount != 1 || audit.HardDeletedCount != 1 || audit.ErrorID != "" {
+		t.Fatalf("audit counts/error = %#v", audit)
+	}
+}
+
 func executeForTest(t *testing.T, store *FixtureStore, req contracts.RetentionExecuteBatchRequest) contracts.RetentionExecuteBatchData {
 	t.Helper()
 	executor := NewExecutor(store, slog.New(slog.NewTextHandler(bytes.NewBuffer(nil), nil)), func() time.Time { return req.RequestedAt })

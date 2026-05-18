@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/cloudgrid-dev/cloudgrid/core/alert-evaluator/internal/evaluator"
@@ -26,8 +28,9 @@ type Requester interface {
 }
 
 type NATSControlPlanePort struct {
-	requester Requester
-	timeout   time.Duration
+	requester  Requester
+	timeout    time.Duration
+	projectIDs []string
 }
 
 type NATSStorageReadPort struct {
@@ -39,17 +42,44 @@ func NewNATSControlPlanePort(requester Requester, timeout time.Duration) *NATSCo
 	return &NATSControlPlanePort{requester: requester, timeout: defaultTimeout(timeout)}
 }
 
+func NewNATSControlPlanePortForProjects(requester Requester, timeout time.Duration, projectIDs []string) *NATSControlPlanePort {
+	return &NATSControlPlanePort{requester: requester, timeout: defaultTimeout(timeout), projectIDs: normalizedProjectIDs(projectIDs)}
+}
+
 func NewNATSStorageReadPort(requester Requester, timeout time.Duration) *NATSStorageReadPort {
 	return &NATSStorageReadPort{requester: requester, timeout: defaultTimeout(timeout)}
 }
 
 func (port *NATSControlPlanePort) ListEnabledAlertRules(ctx context.Context) ([]contracts.AlertRule, error) {
-	return nil, evaluator.CodedError{ID: "ERR-019", Code: "ALERT_QUERY_UNSUPPORTED", Message: "scheduled alert ticks require project-scoped scheduler inputs", Retryable: false}
+	if len(port.projectIDs) == 0 {
+		return nil, evaluator.CodedError{ID: "ERR-019", Code: "ALERT_QUERY_UNSUPPORTED", Message: "scheduled alert ticks require configured project IDs", Retryable: false}
+	}
+	rules := []contracts.AlertRule{}
+	enabled := true
+	for _, projectID := range port.projectIDs {
+		response, err := requestJSON[contracts.AlertRuleListResponse](ctx, port.requester, port.timeout, SubjectControlAlertRulesList, contracts.AlertRuleListRequest{
+			BridgeEnvelope: controlPlaneEnvelope(projectID, "alert-rule-list"),
+			ProjectID:      projectID,
+			Input:          &contracts.AlertRuleSearchInput{Enabled: &enabled},
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !response.OK || response.Data == nil {
+			return nil, bridgeResponseError(response.Error, "alert rule list failed")
+		}
+		for _, rule := range response.Data.Items {
+			if rule.Enabled {
+				rules = append(rules, rule)
+			}
+		}
+	}
+	return rules, nil
 }
 
 func (port *NATSControlPlanePort) GetAlertRule(ctx context.Context, projectID string, ruleID string) (contracts.AlertRule, error) {
 	response, err := requestJSON[contracts.AlertRuleListResponse](ctx, port.requester, port.timeout, SubjectControlAlertRulesList, contracts.AlertRuleListRequest{
-		BridgeEnvelope: bridgeEnvelope("alert-rule-list"),
+		BridgeEnvelope: controlPlaneEnvelope(projectID, "alert-rule-list"),
 		ProjectID:      projectID,
 	})
 	if err != nil {
@@ -69,7 +99,7 @@ func (port *NATSControlPlanePort) GetAlertRule(ctx context.Context, projectID st
 func (port *NATSControlPlanePort) LatestAlertEvent(ctx context.Context, projectID string, ruleID string) (*contracts.AlertEvent, error) {
 	first := 1
 	response, err := requestJSON[contracts.AlertHistoryListResponse](ctx, port.requester, port.timeout, SubjectControlAlertHistoryList, contracts.AlertHistoryListRequest{
-		BridgeEnvelope: bridgeEnvelope("alert-history-list"),
+		BridgeEnvelope: controlPlaneEnvelope(projectID, "alert-history-list"),
 		ProjectID:      projectID,
 		RuleID:         &ruleID,
 		First:          &first,
@@ -89,7 +119,7 @@ func (port *NATSControlPlanePort) LatestAlertEvent(ctx context.Context, projectI
 
 func (port *NATSControlPlanePort) ActiveSilences(ctx context.Context, projectID string, ruleID string, now time.Time) ([]contracts.AlertSilence, error) {
 	response, err := requestJSON[contracts.AlertSilenceListResponse](ctx, port.requester, port.timeout, SubjectControlAlertSilencesList, contracts.AlertSilenceListRequest{
-		BridgeEnvelope: bridgeEnvelope("alert-silence-list"),
+		BridgeEnvelope: controlPlaneEnvelope(projectID, "alert-silence-list"),
 		ProjectID:      projectID,
 		RuleID:         &ruleID,
 	})
@@ -110,7 +140,7 @@ func (port *NATSControlPlanePort) ActiveSilences(ctx context.Context, projectID 
 
 func (port *NATSControlPlanePort) RecordAlertEvent(ctx context.Context, event contracts.AlertEvent) (contracts.AlertEvent, error) {
 	response, err := requestJSON[contracts.AlertHistoryRecordResponse](ctx, port.requester, port.timeout, SubjectControlAlertHistoryRecord, contracts.AlertHistoryRecordRequest{
-		BridgeEnvelope: bridgeEnvelope("alert-history-record"),
+		BridgeEnvelope: controlPlaneEnvelope(event.ProjectID, "alert-history-record"),
 		Event:          event,
 	})
 	if err != nil {
@@ -192,8 +222,21 @@ func bridgeResponseError(err *contracts.BridgeError, fallback string) error {
 	return evaluator.CodedError{ID: err.ID, Code: err.Code, Message: err.Message, Retryable: err.Retryable}
 }
 
-func bridgeEnvelope(requestID string) contracts.BridgeEnvelope {
-	return contracts.BridgeEnvelope{RequestID: requestID, IssuedAt: time.Now().UTC()}
+func controlPlaneEnvelope(projectID string, requestID string) contracts.BridgeEnvelope {
+	readAllowed := true
+	now := time.Now().UTC()
+	return contracts.BridgeEnvelope{
+		RequestID: requestID,
+		IssuedAt:  now,
+		AuthContext: &contracts.AuthContext{
+			Mode:        "service",
+			PrincipalID: ptr("cloudgrid-alert-evaluator"),
+			ProjectID:   &projectID,
+			Scopes:      []string{"cloudgrid:alert-evaluator"},
+			ReadAllowed: &readAllowed,
+			CheckedAt:   &now,
+		},
+	}
 }
 
 func storageReadEnvelope(projectID string, requestID string) contracts.BridgeEnvelope {
@@ -207,6 +250,24 @@ func storageReadEnvelope(projectID string, requestID string) contracts.BridgeEnv
 			CheckedAt:   ptr(time.Now().UTC()),
 		},
 	}
+}
+
+func normalizedProjectIDs(projectIDs []string) []string {
+	seen := map[string]struct{}{}
+	result := []string{}
+	for _, projectID := range projectIDs {
+		projectID = strings.TrimSpace(projectID)
+		if projectID == "" {
+			continue
+		}
+		if _, ok := seen[projectID]; ok {
+			continue
+		}
+		seen[projectID] = struct{}{}
+		result = append(result, projectID)
+	}
+	sort.Strings(result)
+	return result
 }
 
 func defaultTimeout(timeout time.Duration) time.Duration {

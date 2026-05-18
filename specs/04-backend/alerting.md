@@ -147,14 +147,15 @@ Implemented:
 - alert evaluator core package for all v1 rule kinds, kind-specific `query`/`condition` validation, storage-read port calls, project-scoped execution, pending/firing/resolved/silenced/error state transitions, cooldown deduplication, alert history recording, and notification dispatch status mapping;
 - alert evaluator runtime handlers for `alert_evaluator.tick`, `alert_evaluator.rules.evaluate`, and `alert_evaluator.notifications.dispatch`;
 - alert evaluator process wiring for NATS request/reply handlers and NATS-backed control-plane/storage-read ports used by explicit project/rule evaluation requests;
+- service-scoped control-plane access for the private alert evaluator scope, constrained to the requested project;
+- optional periodic scheduler loop driven by `CLOUDGRID_ALERT_EVALUATOR_PROJECT_IDS` and `CLOUDGRID_ALERT_EVALUATOR_INTERVAL_SECONDS`;
 - evaluator timeout and notification terminal-failure errors mapped to `ERR-021` and `ERR-020`;
-- narrow Go tests for rule validation, project isolation at the evaluator port boundary, state transitions, retryable/terminal notification statuses, runtime subjects, NATS-backed port request shapes, and evaluator timeout handling;
+- narrow Go tests for rule validation, project isolation at the evaluator port boundary, state transitions, retryable/terminal notification statuses, runtime subjects, NATS-backed port request shapes, service-scoped control-plane access, and evaluator timeout handling;
 - alert evaluator binary health/readiness endpoint.
 
 Remaining before alerting is production-executing:
 
-- production scheduler/tick orchestration for periodic evaluation remains unspecified and unwired;
-- scheduled global ticks remain unsupported until scheduler input semantics define how projects are enumerated and authorized for evaluation;
+- automatic project discovery for scheduled ticks remains out of scope; production deployments must configure the evaluator project IDs explicitly until a project-enumeration contract is specified;
 - concrete notification adapters remain limited to the evaluator notification port contract; non-core adapters such as email, webhook, Slack, or Teams remain out of scope until provider config and secret-handling specs exist;
 - dashboard alert widgets and alert evidence widgets remain out of scope unless those surfaces are explicitly specified.
 

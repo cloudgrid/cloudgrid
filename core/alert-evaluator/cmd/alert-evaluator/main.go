@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -37,7 +38,7 @@ func run() int {
 		return 1
 	}
 	defer nc.Close()
-	controlPort := runtime.NewNATSControlPlanePort(nc, cfg.RequestTimeout)
+	controlPort := runtime.NewNATSControlPlanePortForProjects(nc, cfg.RequestTimeout, cfg.ProjectIDs)
 	storagePort := runtime.NewNATSStorageReadPort(nc, cfg.RequestTimeout)
 	alertEvaluator := evaluator.New(evaluator.EvaluatorConfig{
 		StorageRead:  storagePort,
@@ -73,11 +74,15 @@ func run() int {
 	go func() {
 		healthErrors <- healthServer.Serve(listener)
 	}()
+	schedulerCtx, schedulerCancel := context.WithCancel(context.Background())
+	defer schedulerCancel()
+	startAlertScheduler(schedulerCtx, alertEvaluator, logger, cfg)
 	logger.Info("alert evaluator service ready",
 		"service", "alert-evaluator",
 		"event", "startup_ready",
 		"request_id", "",
 		"subjects", strings.Join([]string{runtime.SubjectTick, runtime.SubjectRuleEvaluate, runtime.SubjectNotificationDispatch}, ","),
+		"scheduled_project_count", len(cfg.ProjectIDs),
 		"health_addr", healthServer.Addr,
 	)
 	select {
@@ -109,15 +114,58 @@ type config struct {
 	HealthPort     string
 	NATSURL        string
 	RequestTimeout time.Duration
+	ProjectIDs     []string
+	Interval       time.Duration
 }
 
 func loadConfig(getenv func(string) string) config {
+	intervalSeconds := intValue(getenv("CLOUDGRID_ALERT_EVALUATOR_INTERVAL_SECONDS"), 60)
 	return config{
 		HealthHost:     valueOrDefault(getenv("CLOUDGRID_ALERT_EVALUATOR_HEALTH_HOST"), defaultHealthHost),
 		HealthPort:     valueOrDefault(getenv("CLOUDGRID_ALERT_EVALUATOR_HEALTH_PORT"), defaultHealthPort),
 		NATSURL:        valueOrDefault(getenv("CLOUDGRID_NATS_URL"), defaultNATSURL),
 		RequestTimeout: 1500 * time.Millisecond,
+		ProjectIDs:     splitCSV(getenv("CLOUDGRID_ALERT_EVALUATOR_PROJECT_IDS")),
+		Interval:       time.Duration(intervalSeconds) * time.Second,
 	}
+}
+
+func startAlertScheduler(ctx context.Context, alertEvaluator *evaluator.Evaluator, logger *slog.Logger, cfg config) {
+	if len(cfg.ProjectIDs) == 0 || cfg.Interval <= 0 {
+		logger.Info("alert evaluator scheduler disabled",
+			"service", "alert-evaluator",
+			"event", "scheduler_disabled",
+			"request_id", "",
+			"reason", "no_project_ids_configured",
+		)
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(cfg.Interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-ticker.C:
+				started := time.Now()
+				result, err := alertEvaluator.Tick(ctx, now.UTC())
+				if err != nil {
+					logError(logger, "scheduler_tick_failed", err, "ERR-021", "duration_ms", time.Since(started).Milliseconds())
+					continue
+				}
+				logger.Info("alert evaluator scheduler tick completed",
+					"service", "alert-evaluator",
+					"event", "scheduler_tick_completed",
+					"request_id", "",
+					"duration_ms", time.Since(started).Milliseconds(),
+					"evaluated_rules", result.EvaluatedRules,
+					"firing_rules", result.FiringRules,
+					"error_rules", result.ErrorRules,
+				)
+			}
+		}
+	}()
 }
 
 func shutdownSignal() <-chan os.Signal {
@@ -159,6 +207,8 @@ func errorCodeForID(errorID string) string {
 	switch errorID {
 	case "ERR-013":
 		return "MESSAGE_BRIDGE_UNAVAILABLE"
+	case "ERR-021":
+		return "ALERT_EVALUATOR_TIMEOUT"
 	case "ERR-010":
 		return "RUNTIME_COMPOSITION_FAILED"
 	default:
@@ -172,4 +222,27 @@ func valueOrDefault(value string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func intValue(value string, fallback int) int {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
+		return fallback
+	}
+	return parsed
+}
+
+func splitCSV(value string) []string {
+	items := []string{}
+	for _, item := range strings.Split(value, ",") {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			items = append(items, item)
+		}
+	}
+	return items
 }

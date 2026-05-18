@@ -24,6 +24,7 @@ type FixtureStore struct {
 	mu       sync.Mutex
 	policies map[policyKey]RetentionPolicy
 	records  map[string]FixtureRecord
+	audits   []RetentionAuditRecord
 }
 
 type policyKey struct {
@@ -35,6 +36,7 @@ func NewFixtureStore() *FixtureStore {
 	return &FixtureStore{
 		policies: map[policyKey]RetentionPolicy{},
 		records:  map[string]FixtureRecord{},
+		audits:   []RetentionAuditRecord{},
 	}
 }
 
@@ -157,6 +159,20 @@ func (store *FixtureStore) CountRecords(projectID string, dataClass contracts.Re
 		}
 	}
 	return count
+}
+
+func (store *FixtureStore) RecordRetentionAudit(ctx context.Context, audit RetentionAuditRecord) error {
+	_ = ctx
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.audits = append(store.audits, audit)
+	return nil
+}
+
+func (store *FixtureStore) Audits() []RetentionAuditRecord {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	return append([]RetentionAuditRecord(nil), store.audits...)
 }
 
 func recordMatchesPlan(record FixtureRecord, plan RetentionExecutionPlan) bool {

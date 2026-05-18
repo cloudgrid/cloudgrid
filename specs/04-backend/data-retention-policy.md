@@ -93,12 +93,12 @@ Implemented:
 - executor retain/no-op handling;
 - fixture-backed hard delete, soft delete, final delete, dry-run, limit, project isolation, and normal-read soft-delete hiding behavior;
 - structured retention batch logs with project, data class, policy version, dry-run, matched count, hard-deleted count, soft-deleted count, final-deleted count, duration, and terminal error fields;
-- focused Go tests for executor behavior, policy validation, every data-class fixture, structured logs, and fixture deletion semantics.
+- maintenance audit record hook with fixture-backed audit assertions;
+- focused Go tests for executor behavior, policy validation, every data-class fixture, structured logs, audit recording, and fixture deletion semantics;
 - focused Go tests for runtime subject handling and invalid request JSON.
 
 Remaining before retention deletes telemetry:
 
-- maintenance audit records;
 - production SurrealDB storage adapter for project-scoped hard delete, soft delete, and final delete execution;
 - production scheduler behavior, because this spec currently defines direct batch execution but does not define scheduling cadence, ownership, lease/lock behavior, or retry policy;
 - integration tests against the production storage adapter once that adapter is specified and implemented;

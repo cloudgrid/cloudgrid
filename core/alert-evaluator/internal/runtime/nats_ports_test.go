@@ -45,6 +45,36 @@ func TestNATSControlPlanePortLoadsAndRecordsAlertRuleState(t *testing.T) {
 	if err != nil || recorded.ID != "event-1" {
 		t.Fatalf("recorded = %#v err=%v", recorded, err)
 	}
+	var ruleListRequest contracts.AlertRuleListRequest
+	if err := json.Unmarshal(requester.requests[SubjectControlAlertRulesList], &ruleListRequest); err != nil {
+		t.Fatalf("alert rule list request invalid JSON: %v", err)
+	}
+	if ruleListRequest.AuthContext == nil || ruleListRequest.AuthContext.ProjectID == nil || *ruleListRequest.AuthContext.ProjectID != "project-a" {
+		t.Fatalf("alert rule list auth context = %#v", ruleListRequest.AuthContext)
+	}
+	if len(ruleListRequest.AuthContext.Scopes) != 1 || ruleListRequest.AuthContext.Scopes[0] != "cloudgrid:alert-evaluator" {
+		t.Fatalf("alert rule list scopes = %#v", ruleListRequest.AuthContext.Scopes)
+	}
+}
+
+func TestNATSControlPlanePortListsEnabledRulesForConfiguredProjects(t *testing.T) {
+	now := time.Date(2026, 5, 18, 12, 0, 0, 0, time.UTC)
+	enabledRule := contracts.AlertRule{ID: "rule-enabled", ProjectID: "project-a", Name: "Enabled", Enabled: true, Kind: contracts.AlertRuleKindLogCount, Severity: contracts.AlertSeverityWarning, EvaluationWindowSeconds: 300, CreatedAt: now, UpdatedAt: now, UpdatedByUserID: "user-a", Version: 1}
+	disabledRule := enabledRule
+	disabledRule.ID = "rule-disabled"
+	disabledRule.Enabled = false
+	requester := &fakeRequester{responses: map[string]any{
+		SubjectControlAlertRulesList: contracts.AlertRuleListResponse{RequestID: "alert-rule-list", OK: true, Data: &contracts.AlertRuleListData{Items: []contracts.AlertRule{disabledRule, enabledRule}}},
+	}}
+	port := NewNATSControlPlanePortForProjects(requester, time.Second, []string{"project-a", "project-a", " "})
+
+	rules, err := port.ListEnabledAlertRules(context.Background())
+	if err != nil {
+		t.Fatalf("ListEnabledAlertRules returned error: %v", err)
+	}
+	if len(rules) != 1 || rules[0].ID != "rule-enabled" {
+		t.Fatalf("rules = %#v, want only enabled rule", rules)
+	}
 }
 
 func TestNATSStorageReadPortQueriesProjectScopedStorageSubjects(t *testing.T) {
