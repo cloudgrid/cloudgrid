@@ -1,5 +1,6 @@
 ---
 import Logo from "./Logo.astro";
+import { handbookTopNav } from "../lib/handbook-navigation";
 
 const pathname = Astro.url.pathname;
 
@@ -12,20 +13,19 @@ const features = [
   { label: "Adapters", href: "/features/adapters", desc: "Storage, bridge, auth, harness" },
 ];
 
-const handbook = [
-  { label: "Getting started", href: "/handbook/getting-started", desc: "Run it in one command" },
-  { label: "Architecture", href: "/handbook/architecture", desc: "Services & message bridge" },
-  { label: "Deployment", href: "/handbook/deployment", desc: "Local, deployed, Kubernetes" },
-  { label: "Configuration", href: "/handbook/configuration", desc: "Env, modes, SSO" },
-  { label: "Adapters", href: "/handbook/adapters", desc: "Author guide for ports" },
-  { label: "Browse the handbook", href: "/handbook", desc: "Sidebar nav · search later" },
-];
-
 const topLevel = [
   { label: "Home", href: "/" },
   { label: "Features", href: "/features", children: features },
   { label: "Enterprise", href: "/enterprise" },
-  { label: "Handbook", href: "/handbook", children: handbook },
+  {
+    label: "Handbook",
+    href: "/handbook",
+    children: handbookTopNav.map((item) => ({
+      label: item.label,
+      href: item.href,
+      desc: item.description ?? "",
+    })),
+  },
 ];
 
 function isActive(href: string) {

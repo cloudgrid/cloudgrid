@@ -10,37 +10,36 @@ updated: 2026-05-18
 
 CloudGrid is an OTLP observability workspace for project-scoped traces, logs, metrics, live trace receiving, dashboards, ingest credentials, retention policies, alert management, and optional AI evaluation workflows.
 
-This documentation is written as a storyline. Start with the product model, run a local stack, configure the runtime, send telemetry, investigate the data, then operate the services.
+This handbook is written as a product journey rather than a folder dump. Start by understanding the boundary of the product, run a stack, send telemetry, configure access, then move into daily workflows and operations.
 
-## Reading Path
+## Recommended Path
 
 | Step | Read | Outcome |
 | --- | --- | --- |
-| 1 | [What CloudGrid is](/handbook/overview/what-is-cloudgrid) | Understand the product boundary and the current implementation status. |
-| 2 | [Runtime modes](/handbook/overview/runtime-modes) | Choose local mode or deployed SSO mode. |
-| 3 | [Local quickstart](/handbook/getting-started/local-quickstart) or [release Compose](/handbook/getting-started/docker-compose-release) | Run CloudGrid locally and open the UI. |
-| 4 | [Send telemetry](/handbook/getting-started/send-telemetry) | Push traces, logs, and metrics through the real OTLP collector. |
-| 5 | [Configuration](/handbook/configuration) | Set local, deployed, SSO, storage, and self-observability values. |
-| 6 | [Guides](/handbook/guides/ingest-otlp) | Use project API keys, traces, logs, metrics, dashboards, and AI eval. |
-| 7 | [Operations](/handbook/operations) | Start, stop, monitor, troubleshoot, and prepare for production. |
-| 8 | [Reference](/handbook/reference) | Look up commands, ports, environment variables, routes, and contracts. |
+| 1 | [What CloudGrid is](/handbook/overview/what-is-cloudgrid) | Understand the product boundary, implemented surfaces, and known production gaps. |
+| 2 | [Runtime modes](/handbook/overview/runtime-modes) | Decide whether you are running local mode or deployed SSO mode. |
+| 3 | [Release Compose](/handbook/getting-started/docker-compose-release) or [Local quickstart](/handbook/getting-started/local-quickstart) | Start CloudGrid either from published images or from source. |
+| 4 | [Send telemetry](/handbook/getting-started/send-telemetry) | Prove the OTLP collector, bridge, writer, reader, and UI path end to end. |
+| 5 | [Configuration](/handbook/configuration) | Add the right local, deployed, SSO, SMTP, storage, and self-observability values. |
+| 6 | [Use CloudGrid](/handbook/guides) | Work with ingest credentials, traces, logs, metrics, dashboards, and AI evaluation. |
+| 7 | [Operate](/handbook/operations) | Start, stop, monitor, troubleshoot, and assess production readiness. |
+| 8 | [Reference](/handbook/reference) | Look up commands, ports, environment variables, routes, contracts, and errors. |
 
-## Handbook Tree
+## How The Handbook Is Organized
 
-```text
-handbook/
-  overview/                 Product model and runtime modes
-  getting-started/          Source quickstart, release Compose, and first telemetry
-  concepts/                 Companies, projects, telemetry, access, live data
-  configuration/
-    local/                  Local mode, token routing, self-observability
-    deployed/
-      sso/                  GitHub, Google, and Azure Entra ID SSO
-  guides/                   Task-focused user workflows
-  operations/               Health, reset, bridge monitoring, troubleshooting
-  architecture/             Public/private service boundaries and flows
-  reference/                Lookup tables for commands, env vars, ports, routes
-```
+The left navigation mirrors the journey:
+
+| Area | What belongs there |
+| --- | --- |
+| Start here | Product scope, runtime modes, and the route tour. |
+| Get running | The two supported local paths and the first telemetry export. |
+| Understand the model | Companies, projects, access, signals, live traces, metrics, retention, and alerts. |
+| Use CloudGrid | Task guides for day-to-day observability work. |
+| Configure | Local mode, deployed mode, SSO, invitations, SMTP, Kubernetes, storage, and environment values. |
+| Operate | Health checks, resets, bridge behavior, retention, alerting, troubleshooting, and production readiness. |
+| Architecture | Internal service boundaries and flows when you need to reason about implementation behavior. |
+| Reference | Stable lookup tables. |
+| Extend | Adapter authoring boundaries. |
 
 ## System Thumbnail
 

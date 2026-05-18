@@ -1,33 +1,24 @@
-/**
- * remark-mermaid
- *
- * Turn fenced markdown ``` ```mermaid ``` blocks into a raw HTML <div> the
- * client-side enhancer can pick up. Running this in the markdown pipeline
- * means Shiki never tries to highlight "mermaid" as a language — the block
- * leaves the markdown phase as already-rendered HTML.
- *
- * The emitted markup is:
- *
- *   <div class="cg-mermaid" data-mermaid-src="...escaped..."></div>
- *
- * which our HandbookLayout client script finds and renders via mermaid@10.
- *
- * No dependency on `unist-util-visit` — we walk the tree by hand, which is
- * tiny and avoids pulling another import.
- */
+import { renderMermaidSVG, THEMES } from "beautiful-mermaid";
 
-function escapeAttr(s) {
-  return String(s).replace(
+const lightTheme = THEMES["github-light"];
+const darkTheme = THEMES["github-dark"];
+
+function escapeHtml(value) {
+  return String(value).replace(
     /[&<>"']/g,
-    (c) =>
+    (character) =>
       ({
         "&": "&amp;",
         "<": "&lt;",
         ">": "&gt;",
         '"': "&quot;",
         "'": "&#39;",
-      })[c],
+      })[character],
   );
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replace(/\n/g, "&#10;");
 }
 
 function walk(node, parent, index, transform) {
@@ -39,9 +30,41 @@ function walk(node, parent, index, transform) {
   }
 }
 
+function renderDiagram(source) {
+  const svg = renderMermaidSVG(source, {
+    bg: "var(--cg-mermaid-bg)",
+    fg: "var(--cg-mermaid-fg)",
+    line: "var(--cg-mermaid-line)",
+    accent: "var(--cg-mermaid-accent)",
+    muted: "var(--cg-mermaid-muted)",
+    surface: "var(--cg-mermaid-surface)",
+    border: "var(--cg-mermaid-border)",
+    font: "Inter",
+    padding: 32,
+    transparent: true,
+  });
+
+  return [
+    `<figure class="cg-mermaid-frame" style="--cg-mermaid-light-bg:${lightTheme.bg};--cg-mermaid-light-fg:${lightTheme.fg};--cg-mermaid-light-line:${lightTheme.line};--cg-mermaid-light-accent:${lightTheme.accent};--cg-mermaid-light-muted:${lightTheme.muted};--cg-mermaid-dark-bg:${darkTheme.bg};--cg-mermaid-dark-fg:${darkTheme.fg};--cg-mermaid-dark-line:${darkTheme.line};--cg-mermaid-dark-accent:${darkTheme.accent};--cg-mermaid-dark-muted:${darkTheme.muted};" data-mermaid-src="${escapeAttr(source)}">`,
+    '<div class="cg-mermaid-toolbar" aria-label="Diagram controls">',
+    '<span class="cg-mermaid-title">diagram</span>',
+    '<button type="button" class="cg-icon-button" data-mermaid-action="zoom-out" aria-label="Zoom out"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>',
+    '<button type="button" class="cg-icon-button" data-mermaid-action="reset" aria-label="Reset diagram view"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></svg></button>',
+    '<button type="button" class="cg-icon-button" data-mermaid-action="zoom-in" aria-label="Zoom in"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>',
+    '<button type="button" class="cg-icon-button" data-mermaid-action="fullscreen" aria-label="Open diagram fullscreen"><svg viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M21 16v5h-5"/></svg></button>',
+    "</div>",
+    '<div class="cg-mermaid-viewport" tabindex="0">',
+    '<div class="cg-mermaid-canvas">',
+    svg,
+    "</div>",
+    "</div>",
+    '<figcaption class="sr-only">Mermaid diagram rendered with beautiful-mermaid.</figcaption>',
+    "</figure>",
+  ].join("");
+}
+
 export default function remarkMermaid() {
   return (tree) => {
-    // First pass: collect mermaid code nodes with their location.
     const hits = [];
     walk(tree, null, 0, (node, parent, index) => {
       if (
@@ -57,11 +80,17 @@ export default function remarkMermaid() {
       }
     });
 
-    // Replace in reverse so earlier indexes stay valid.
     for (let i = hits.length - 1; i >= 0; i--) {
       const { parent, index, value } = hits[i];
-      const html = `<div class="cg-mermaid" data-mermaid-src="${escapeAttr(value)}"></div>`;
-      parent.children[index] = { type: "html", value: html };
+      try {
+        parent.children[index] = { type: "html", value: renderDiagram(value) };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        parent.children[index] = {
+          type: "html",
+          value: `<div class="cg-mermaid-error"><strong>Diagram failed to render.</strong><pre>${escapeHtml(value)}</pre><p>${escapeHtml(message)}</p></div>`,
+        };
+      }
     }
   };
 }

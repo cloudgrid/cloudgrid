@@ -25,7 +25,7 @@ export const rows: CompareRow[] = [
     criterion: "Open source",
     detail: "Core under a permissive license, no open-core split.",
     cells: {
-      cloudgrid: { value: "yes", note: "MIT" },
+      cloudgrid: { value: "yes", note: "Apache 2.0" },
       datadog: { value: "no" },
       honeycomb: { value: "no" },
       lgtm: { value: "yes", note: "AGPL/Apache mix" },

@@ -1,176 +1,55 @@
 ---
-/**
- * Left sidebar: auto-built from the `handbook` content collection.
- *
- * Section detection is convention-tolerant. Astro's glob loader may expose
- * a folder's `index.md` as either `"<folder>/index"` or just `"<folder>"`.
- * We treat any entry whose id is a single segment as either:
- *   - a leaf, if no sibling entry exists under `<id>/...`, OR
- *   - a section overview, if at least one sibling exists at `<id>/<child>`.
- */
-import { getCollection, type CollectionEntry } from "astro:content";
+import { handbookNav, type HandbookNavItem } from "../../lib/handbook-navigation";
 
 interface Props {
   currentSlug: string;
 }
+
 const { currentSlug } = Astro.props;
 
-type Entry = CollectionEntry<"handbook">;
-
-const all = (await getCollection("handbook")).filter((e) => !e.data.hidden);
-
-// Normalize each entry to a URL slug. id "" and "index" both → root overview;
-// "architecture/index" → "architecture"; everything else → id verbatim.
-function entryToSlug(id: string): string {
-  if (id === "" || id === "index") return "";
-  if (id.endsWith("/index")) return id.slice(0, -"/index".length);
-  return id;
-}
-function slugToHref(slug: string): string {
-  return slug === "" ? "/handbook" : `/handbook/${slug}`;
-}
-
-// Index by slug for fast lookup; collapse duplicates (e.g. when both "architecture"
-// and "architecture/index" id forms exist, prefer the shorter one).
-const bySlug = new Map<string, Entry>();
-for (const entry of all) {
-  const slug = entryToSlug(entry.id);
-  const existing = bySlug.get(slug);
-  if (!existing || entry.id.length < existing.id.length) bySlug.set(slug, entry);
-}
-
-// A slug is a "section" if any other slug starts with `${slug}/`. The root
-// ("") is treated as the special handbook landing — not enumerated below.
-const sectionFolders = new Set<string>();
-for (const slug of bySlug.keys()) {
-  if (slug === "") continue;
-  const parts = slug.split("/");
-  if (parts.length > 1) sectionFolders.add(parts[0]);
-}
-
-type Node =
-  | { kind: "leaf"; slug: string; entry: Entry; href: string }
-  | {
-      kind: "section";
-      folder: string;
-      label: string;
-      order: number;
-      overview?: Entry;
-      overviewHref?: string;
-      children: { slug: string; entry: Entry; href: string }[];
-    };
-
-const sectionMap = new Map<string, Extract<Node, { kind: "section" }>>();
-const rootLeaves: Extract<Node, { kind: "leaf" }>[] = [];
-
-for (const [slug, entry] of bySlug) {
-  if (slug === "") continue; // root overview handled separately
-
-  const parts = slug.split("/");
-  const isSectionMember = sectionFolders.has(parts[0]);
-
-  if (isSectionMember) {
-    const folder = parts[0];
-    let section = sectionMap.get(folder);
-    if (!section) {
-      section = {
-        kind: "section",
-        folder,
-        label: folder.replace(/-/g, " "),
-        order: 100,
-        children: [],
-      };
-      sectionMap.set(folder, section);
-    }
-    if (parts.length === 1) {
-      // This entry IS the section's overview.
-      section.overview = entry;
-      section.overviewHref = slugToHref(slug);
-      section.label = entry.data.sidebar ?? entry.data.title;
-      section.order = entry.data.order ?? 100;
-    } else {
-      section.children.push({ slug, entry, href: slugToHref(slug) });
-    }
-  } else {
-    rootLeaves.push({ kind: "leaf", slug, entry, href: slugToHref(slug) });
-  }
-}
-
-// Sort children inside each section
-for (const section of sectionMap.values()) {
-  section.children.sort((a, b) => {
-    const ao = a.entry.data.order ?? 100;
-    const bo = b.entry.data.order ?? 100;
-    if (ao !== bo) return ao - bo;
-    return a.entry.data.title.localeCompare(b.entry.data.title);
-  });
-}
-
-const root: Node[] = [...rootLeaves, ...sectionMap.values()];
-root.sort((a, b) => {
-  const ao = a.kind === "leaf" ? (a.entry.data.order ?? 100) : a.order;
-  const bo = b.kind === "leaf" ? (b.entry.data.order ?? 100) : b.order;
-  if (ao !== bo) return ao - bo;
-  const at = a.kind === "leaf" ? a.entry.data.title : a.label;
-  const bt = b.kind === "leaf" ? b.entry.data.title : b.label;
-  return at.localeCompare(bt);
-});
-
-const rootEntry = bySlug.get("");
-const rootHref = "/handbook";
-
 function isActive(href: string): boolean {
-  if (href === "/handbook") return currentSlug === "/handbook";
-  return currentSlug === href || currentSlug.startsWith(href + "/");
+  const normalized = currentSlug.replace(/\/$/, "") || "/handbook";
+  if (href === "/handbook") return normalized === href;
+  return normalized === href || normalized.startsWith(`${href}/`);
 }
-function sectionIsOpen(folder: string): boolean {
-  return currentSlug.startsWith(`/handbook/${folder}`);
+
+function hasActiveChild(item: HandbookNavItem): boolean {
+  return isActive(item.href) || Boolean(item.children?.some(hasActiveChild));
 }
 ---
 
-<nav aria-label="Handbook navigation" class="text-sm">
-  <div class="px-2 mb-2">
-    <a href={rootHref} class={`cg-nav-link ${isActive(rootHref) ? "is-active" : ""}`}>
-      <svg class="w-4 h-4 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 12l9-9 9 9M5 10v10h14V10" />
-      </svg>
-      {rootEntry?.data.title ?? "Handbook"}
-    </a>
-  </div>
-
-  {root.map((node) => {
-    if (node.kind === "leaf") {
-      const active = isActive(node.href);
-      return (
-        <div class="px-2">
-          <a href={node.href} class={`cg-nav-link ${active ? "is-active" : ""}`}>
-            {node.entry.data.sidebar ?? node.entry.data.title}
-          </a>
-        </div>
-      );
-    }
-    const open = sectionIsOpen(node.folder);
-    return (
-      <details class="px-2" open={open}>
-        <summary class="cg-nav-section-title cursor-pointer list-none flex items-center gap-1 select-none">
-          <svg class="w-3 h-3 opacity-60 transition-transform duration-150 -rotate-90 [details[open]_&]:rotate-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+<nav aria-label="Handbook navigation" class="cg-handbook-nav">
+  {
+    handbookNav.map((section) => (
+      <details class="cg-nav-group" open={hasActiveChild(section)}>
+        <summary class="cg-nav-section-title">
+          <span>{section.label}</span>
+          <svg aria-hidden="true" class="cg-nav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M6 9l6 6 6-6" />
           </svg>
-          <span class="capitalize">{node.label}</span>
         </summary>
-        <div class="space-y-px pl-2 pb-1">
-          {node.overviewHref && (
-            <a href={node.overviewHref} class={`cg-nav-link ${isActive(node.overviewHref) ? "is-active" : ""}`}>
-              <span class="opacity-70">Overview</span>
-            </a>
-          )}
-          {node.children.map((c) => (
-            <a href={c.href} class={`cg-nav-link ${isActive(c.href) ? "is-active" : ""}`}>
-              {c.entry.data.sidebar ?? c.entry.data.title}
-            </a>
+        <div class="cg-nav-group-body">
+          <a href={section.href} class={`cg-nav-link ${currentSlug === section.href ? "is-active" : ""}`}>
+            {section.label} overview
+          </a>
+          {section.children?.map((item) => (
+            <div class="cg-nav-node">
+              <a href={item.href} class={`cg-nav-link ${currentSlug === item.href ? "is-active" : ""}`}>
+                {item.label}
+              </a>
+              {item.children && (
+                <div class="cg-nav-nested">
+                  {item.children.map((child) => (
+                    <a href={child.href} class={`cg-nav-link cg-nav-link-sub ${currentSlug === child.href ? "is-active" : ""}`}>
+                      {child.label}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </div>
       </details>
-    );
-  })}
+    ))
+  }
 </nav>

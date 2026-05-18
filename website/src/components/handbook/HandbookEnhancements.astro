@@ -1,0 +1,152 @@
+<script is:inline>
+  (function () {
+    var article = document.getElementById("cg-handbook-article");
+    if (!article) return;
+
+    function detectLang(pre) {
+      var attr = pre.getAttribute("data-language");
+      if (attr) return attr;
+      var code = pre.querySelector("code");
+      if (!code) return "";
+      var cls = code.className || "";
+      var m = cls.match(/language-([\w+\-]+)/);
+      return m ? m[1] : "";
+    }
+
+    function copyText(btn, text) {
+      function done() {
+        btn.classList.add("is-copied");
+        btn.textContent = "copied";
+        setTimeout(function () {
+          btn.classList.remove("is-copied");
+          btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>copy';
+        }, 1400);
+      }
+      function fallback() {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand("copy");
+        } catch (_e) {}
+        document.body.removeChild(ta);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard
+          .writeText(text)
+          .then(done)
+          .catch(function () {
+            fallback();
+            done();
+          });
+      } else {
+        fallback();
+        done();
+      }
+    }
+
+    article.querySelectorAll("pre").forEach(function (pre) {
+      if (pre.closest(".cg-codeblock")) return;
+      var lang = detectLang(pre);
+      if (lang === "mermaid") return;
+
+      var wrapper = document.createElement("div");
+      wrapper.className = "cg-codeblock";
+
+      var header = document.createElement("div");
+      header.className = "cg-codeblock-header";
+      header.innerHTML =
+        '<span class="cg-codeblock-dots"><span></span><span></span><span></span></span>' +
+        '<span class="cg-codeblock-title">' +
+        (lang || "text") +
+        "</span>" +
+        '<button type="button" class="cg-codeblock-copy" aria-label="Copy code">' +
+        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>copy' +
+        "</button>";
+
+      pre.parentNode.insertBefore(wrapper, pre);
+      wrapper.appendChild(header);
+      wrapper.appendChild(pre);
+
+      var btn = header.querySelector(".cg-codeblock-copy");
+      btn.addEventListener("click", function () {
+        var code = pre.querySelector("code");
+        copyText(btn, code ? code.innerText : pre.innerText);
+      });
+    });
+
+    article.querySelectorAll(".cg-mermaid-frame").forEach(function (frame) {
+      var canvas = frame.querySelector(".cg-mermaid-canvas");
+      var viewport = frame.querySelector(".cg-mermaid-viewport");
+      if (!canvas || !viewport) return;
+
+      var scale = 1;
+      var x = 0;
+      var y = 0;
+      var dragging = false;
+      var startX = 0;
+      var startY = 0;
+
+      function paint() {
+        canvas.style.transform =
+          "translate(" + x + "px, " + y + "px) scale(" + scale + ")";
+      }
+      function reset() {
+        scale = 1;
+        x = 0;
+        y = 0;
+        paint();
+      }
+      function zoom(delta) {
+        scale = Math.min(2.5, Math.max(0.5, scale + delta));
+        paint();
+      }
+
+      frame.addEventListener("click", function (event) {
+        var btn = event.target.closest("[data-mermaid-action]");
+        if (!btn) return;
+        var action = btn.getAttribute("data-mermaid-action");
+        if (action === "zoom-in") zoom(0.15);
+        if (action === "zoom-out") zoom(-0.15);
+        if (action === "reset") reset();
+        if (action === "fullscreen" && frame.requestFullscreen) {
+          frame.requestFullscreen();
+        }
+      });
+
+      viewport.addEventListener(
+        "wheel",
+        function (event) {
+          if (!event.ctrlKey && !event.metaKey) return;
+          event.preventDefault();
+          zoom(event.deltaY > 0 ? -0.1 : 0.1);
+        },
+        { passive: false },
+      );
+
+      viewport.addEventListener("pointerdown", function (event) {
+        dragging = true;
+        viewport.setPointerCapture(event.pointerId);
+        startX = event.clientX - x;
+        startY = event.clientY - y;
+        viewport.classList.add("is-panning");
+      });
+      viewport.addEventListener("pointermove", function (event) {
+        if (!dragging) return;
+        x = event.clientX - startX;
+        y = event.clientY - startY;
+        paint();
+      });
+      viewport.addEventListener("pointerup", function (event) {
+        dragging = false;
+        viewport.releasePointerCapture(event.pointerId);
+        viewport.classList.remove("is-panning");
+      });
+      viewport.addEventListener("pointercancel", function () {
+        dragging = false;
+        viewport.classList.remove("is-panning");
+      });
+    });
+  })();
+</script>

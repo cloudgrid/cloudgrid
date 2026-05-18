@@ -47,7 +47,7 @@ These are the differentiators the entire site repeats. Every page should echo at
 2. **Adapter-driven infrastructure.** Every external dependency — storage backend, message bridge, auth providers, evaluation harness — sits behind an explicit port. v1 ships with SurrealDB, NATS JetStream, GitHub/Google/Entra ID SSO, and the `puristajs/harness` adapter. You can implement your own.
 3. **Message-bridge isolation.** No public service touches the database. Every read and every write crosses NATS. The blast radius of a bad UI query is bounded by a request/reply contract, not a SQL connection pool.
 4. **AI-evaluation, first-class — without giving up your trace data.** AgentRuns, LlmCalls, ToolCalls, RetrievalEvents are projections of OTel spans you already emit. Datasets, scorers, experiments, prompt optimization runs are persisted next to the spans they came from. Prompt and completion content stays on the originating span event — never copied into a separate "AI database."
-5. **You own the data, end of paragraph.** Self-hosted by default. No telemetry leaves your network unless you wire it to. MIT-licensed. No open-core bait-and-switch.
+5. **You own the data, end of paragraph.** Self-hosted by default. No telemetry leaves your network unless you wire it to. Apache 2.0-licensed. No open-core bait-and-switch.
 6. **Open development.** Source is on GitHub. Roadmap is in issues and milestones, not a closed-door deck. (We deliberately do not surface the internal `/specs` directory on the public website — that's an implementation artifact, not a marketing message.)
 
 ## 5. Information architecture
@@ -91,7 +91,7 @@ Sections in order:
 5. **Adapter-driven** — small grid showing the four adapter slots (storage / bridge / auth / harness) with the v1 implementation chip on each. CTA to Features → Adapters.
 6. **AI-native, signal-complete** — small mockup of an AgentRun with linked LlmCalls and a scoreboard. CTA to Features → AI Evaluation.
 7. **Compare strip** — a 4-row preview of the comparison table. CTA to Enterprise → Compare.
-8. **Open-source footer block** — MIT, public specs, public roadmap, GitHub.
+8. **Open-source footer block** — Apache 2.0, public specs, public roadmap, GitHub.
 
 ### Features overview (`/features`)
 Card grid of the six feature pages, each with an SVG glyph, one-line value, and "read more." Below the grid: the three architectural truths that hold across every feature (message bridge, project isolation, adapter-driven).
@@ -139,13 +139,13 @@ Card grid of the six feature pages, each with an SVG glyph, one-line value, and 
 **Job:** answer the buyer-grade questions in one read.
 
 Sections:
-1. **Data ownership.** Self-hosted by default. No outbound telemetry. MIT.
+1. **Data ownership.** Self-hosted by default. No outbound telemetry. Apache 2.0.
 2. **Deployment modes.** Local single-binary, Compose, Kubernetes. Single config flag flips local-mode auth into SSO mode.
 3. **SSO & sessions.** GitHub, Google, Entra ID. BFF-managed HttpOnly cookies. No provider tokens in the browser.
 4. **Project isolation.** Every project is a strict telemetry boundary. Users only see their company's projects. Isolation enforced at API, message, and persistence layers.
 5. **Security posture.** No public service touches the database. Adapter packages keep DB drivers out of the public attack surface. Spec-driven contracts are reviewable.
 6. **Operational characteristics.** Independent scale of collector, BFF, storage-read. Storage-write is the only mutator. Live subscriptions respect the same authorization as queries.
-7. **License & governance.** MIT. Public specs. No hidden enterprise switches.
+7. **License & governance.** Apache 2.0. Public specs. No hidden enterprise switches.
 8. **CTA:** Compare to your current stack → `/enterprise/compare`.
 
 ### Enterprise — Compare (`/enterprise/compare`)

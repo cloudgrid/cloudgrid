@@ -8,18 +8,19 @@ eyebrow: "Handbook - Getting started"
 updated: 2026-05-18
 ---
 
-Start here when you want a working local CloudGrid stack. Use release Compose
-for published images, or the source quickstart when changing CloudGrid itself.
+Start here when you want a working CloudGrid stack on your machine. Use release Compose when you want to evaluate the product from published images. Use the source quickstart when you are changing CloudGrid itself.
 
 ## Path
 
 ```mermaid
 flowchart LR
-  Install["Install dependencies"] --> Setup["Prepare .env"]
-  Setup --> Infra["Start NATS + SurrealDB"]
-  Infra --> Services["Start app services"]
-  Services --> Seed["Seed OTLP telemetry"]
-  Seed --> Verify["Run focused checks"]
+  Choose{"What are you doing?"}
+  Choose -->|Evaluate product| Compose["Run release Compose"]
+  Choose -->|Change code| Source["Run source quickstart"]
+  Compose --> Telemetry["Send telemetry"]
+  Source --> Telemetry
+  Telemetry --> UI["Open project workspaces"]
+  Source --> Verify["Run focused checks"]
 ```
 
 ## Pages
@@ -33,6 +34,8 @@ flowchart LR
 
 ## Minimal Commands
 
+Source development:
+
 ```sh
 bun install
 bun run setup:local
@@ -42,9 +45,10 @@ bun run dev:all
 
 Then open the frontend at <http://127.0.0.1:5173/>.
 
-For release images:
+Release images:
 
 ```sh
+cd deploy/compose
 ./cloudgrid-local.sh up
 ```
 
