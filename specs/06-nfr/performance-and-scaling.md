@@ -303,10 +303,10 @@ Remaining production-scale work:
 
 ## Non-Goals
 
-- Do not implement metrics ingest.
 - Do not add gRPC OTLP.
-- Do not add retention or deletion.
-- Do not add production manifests in this wave.
 - Do not move log ingest to `core/log-ingest`.
+- Do not declare a deployment production-ready from repository defaults alone;
+  production readiness requires a benchmark run against that deployment's own
+  NATS, SurrealDB, image, and runtime configuration.
 - Do not introduce Kafka, Redis, or another queue.
 - Do not replace GraphQL subscriptions with public SSE or raw WebSockets.

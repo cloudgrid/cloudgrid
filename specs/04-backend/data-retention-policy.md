@@ -194,8 +194,7 @@ Implemented:
 Remaining before retention deletes telemetry:
 
 - production SurrealDB storage adapter for project-scoped hard delete, soft delete, and final delete execution;
-- integration tests against the production storage adapter once that adapter is specified and implemented;
-- docs that clearly separate configured policy from executed deletion and describe scheduler enablement.
+- integration tests against the production storage adapter once that adapter is specified and implemented.
 
 `storage_maintenance.retention.execute_batch` accepts `projectId`, `dataClass`, `requestedAt`, optional `dryRun`, and optional `limit`. It returns `projectId`, `dataClass`, `policyVersion`, `dryRun`, `matchedCount`, `hardDeletedCount`, `softDeletedCount`, `finalDeletedCount`, `startedAt`, `completedAt`, and optional `error`.
 
