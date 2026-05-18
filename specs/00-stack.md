@@ -50,7 +50,11 @@ provenance: from-user
 ## Observability
 
 - Metrics: structured service counters exposed through logs.
-- Tracing: services preserve incoming OpenTelemetry trace context when available and include NATS correlation IDs.
+- Tracing: services preserve incoming OpenTelemetry trace context when
+  available. HTTP and gRPC use standard W3C Trace Context headers. NATS
+  request/reply, publish/subscribe, and JetStream messages use NATS headers
+  named `traceparent` and `tracestate`. NATS correlation/request IDs remain
+  attributes only and must not be treated as parent span IDs.
 - Logs: structured JSON logs to stdout.
 - Error tracking: none for MVP.
 
@@ -58,7 +62,10 @@ provenance: from-user
 
 - CI: GitHub Actions.
 - Container runtime: Docker-compatible.
-- IAC: none for MVP.
+- Primary runtime distribution: signed OCI images.
+- Local distribution: Docker Compose with published service images plus NATS and SurrealDB.
+- Enterprise distribution: OCI-published Helm chart with configurable images, digests, security contexts, external dependencies, and scaling profiles.
+- IAC: none for MVP beyond Docker Compose and Helm chart artifacts.
 - Secret manager: environment variables or local config file for MVP.
 - Feature flags: none.
 - Optional AI evaluation feature flag: `CLOUDGRID_AI_EVAL_ENABLED`.

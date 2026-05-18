@@ -22,13 +22,13 @@ import { t } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { SpanFiltersDialog, SpanInspector } from "./span-inspector";
 import {
-  type LogsMode,
-  type TraceDetailFilters,
-  type TraceViewMode,
   copyText,
   filterSpans,
   isTab,
+  type LogsMode,
   selectedSpanFor,
+  type TraceDetailFilters,
+  type TraceViewMode,
   traceErrorSpanCount,
   traceSearchBackHref,
   traceSpanCount,

@@ -1,4 +1,4 @@
-import { z } from "./validation";
+import { parseBooleanFlag, z } from "./validation";
 
 export const deploymentModeSchema = z.enum(["local", "deployed"]);
 export const authModeSchema = z.enum(["local", "sso"]);
@@ -36,6 +36,19 @@ export interface AuthRuntimeConfig {
 export interface DeploymentRuntimeConfig {
   deploymentMode: DeploymentMode;
   auth: AuthRuntimeConfig;
+  selfObservability: SelfObservabilityRuntimeConfig;
+}
+
+export interface SelfObservabilityRuntimeConfig {
+  enabled: boolean;
+  projectId: string;
+  companyId?: string;
+  otlpEndpoint?: string;
+  otlpBearerToken?: string;
+  exportIntervalSeconds: number;
+  tracesEnabled: boolean;
+  logsEnabled: boolean;
+  metricsEnabled: boolean;
 }
 
 export function parseDeploymentRuntimeConfig(env: NodeJS.ProcessEnv): DeploymentRuntimeConfig {
@@ -78,7 +91,74 @@ export function parseDeploymentRuntimeConfig(env: NodeJS.ProcessEnv): Deployment
     throwConfig("CLOUDGRID_AUTH_PROVIDER is only valid when CLOUDGRID_AUTH_MODE=sso");
   }
 
-  return { deploymentMode, auth };
+  return {
+    deploymentMode,
+    auth,
+    selfObservability: parseSelfObservabilityConfig(env, deploymentMode),
+  };
+}
+
+function parseSelfObservabilityConfig(
+  env: NodeJS.ProcessEnv,
+  deploymentMode: DeploymentMode,
+): SelfObservabilityRuntimeConfig {
+  const enabled = parseBooleanFlag(
+    env.CLOUDGRID_SELF_OBSERVABILITY_ENABLED,
+    deploymentMode === "local",
+  );
+  const exportIntervalSeconds = parseSelfObservabilityExportInterval(
+    env.CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS,
+  );
+  const projectId = optionalString(env.CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID);
+  const companyId = optionalString(env.CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID);
+  const otlpEndpoint = optionalString(env.CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT);
+  const otlpBearerToken = optionalString(env.CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN);
+
+  if (deploymentMode === "deployed" && enabled) {
+    if (!companyId) {
+      throwConfig(
+        "CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID is required when deployed self-observability is enabled",
+      );
+    }
+    if (!projectId) {
+      throwConfig(
+        "CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID is required when deployed self-observability is enabled",
+      );
+    }
+    if (!otlpEndpoint) {
+      throwConfig(
+        "CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT is required when deployed self-observability is enabled",
+      );
+    }
+    if (!otlpBearerToken) {
+      throwConfig(
+        "CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN is required when deployed self-observability is enabled",
+      );
+    }
+  }
+
+  const resolvedProjectId = projectId ?? "cloudgrid-system";
+  const resolvedCompanyId = companyId ?? (deploymentMode === "local" ? "local" : undefined);
+  const resolvedEndpoint =
+    otlpEndpoint ?? (deploymentMode === "local" ? "http://localhost:4318" : undefined);
+  const tracesEnabled =
+    enabled && parseBooleanFlag(env.CLOUDGRID_SELF_OBSERVABILITY_TRACES_ENABLED, true);
+  const logsEnabled =
+    enabled && parseBooleanFlag(env.CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED, true);
+  const metricsEnabled =
+    enabled && parseBooleanFlag(env.CLOUDGRID_SELF_OBSERVABILITY_METRICS_ENABLED, true);
+
+  return {
+    enabled,
+    projectId: resolvedProjectId,
+    ...(resolvedCompanyId ? { companyId: resolvedCompanyId } : {}),
+    ...(resolvedEndpoint ? { otlpEndpoint: resolvedEndpoint } : {}),
+    ...(otlpBearerToken ? { otlpBearerToken } : {}),
+    exportIntervalSeconds,
+    tracesEnabled,
+    logsEnabled,
+    metricsEnabled,
+  };
 }
 
 function parseAuthProviders(
@@ -170,6 +250,17 @@ function parseSessionTtl(value: string | undefined): number {
   const parsed = z.coerce.number().int().min(300).safeParse(value);
   if (!parsed.success) {
     throwConfig("invalid CLOUDGRID_SESSION_TTL_SECONDS");
+  }
+  return parsed.data;
+}
+
+function parseSelfObservabilityExportInterval(value: string | undefined): number {
+  if (value === undefined || value === "") {
+    return 10;
+  }
+  const parsed = z.coerce.number().int().min(1).max(300).safeParse(value);
+  if (!parsed.success) {
+    throwConfig("invalid CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS");
   }
   return parsed.data;
 }

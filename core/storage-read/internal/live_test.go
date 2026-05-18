@@ -48,7 +48,10 @@ func TestLiveTraceStartRegistersSubscriptionAndEmitsHeartbeat(t *testing.T) {
 func TestLiveTraceStartRetainsAuthContextForFutureReadAuthorization(t *testing.T) {
 	readAllowed := true
 	principalID := "principal-1"
-	registry := NewLiveTraceRegistry(&liveTestStore{}, &liveTestPublisher{}, LiveTraceOptions{
+	store := &liveTestStore{candidates: []contracts.TraceSummary{
+		liveTraceSummary("trace-1", "api", contracts.TraceStatusOK, fixedLiveNow(), 10),
+	}}
+	registry := NewLiveTraceRegistry(store, &liveTestPublisher{}, LiveTraceOptions{
 		Now: fixedLiveNow,
 	})
 
@@ -82,6 +85,24 @@ func TestLiveTraceStartRetainsAuthContextForFutureReadAuthorization(t *testing.T
 		subscription.authContext.ReadAllowed == nil ||
 		!*subscription.authContext.ReadAllowed {
 		t.Fatalf("subscription auth context = %#v", subscription.authContext)
+	}
+
+	if err := registry.HandleTracePersisted(context.Background(), contracts.TracePersistedNotification{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-persisted"},
+		CommandID:      "cmd-1",
+		TraceIDs:       []string{"trace-1"},
+		PersistedAt:    fixedLiveNow(),
+	}); err != nil {
+		t.Fatalf("HandleTracePersisted returned error: %v", err)
+	}
+	if len(store.liveCandidateCalls) != 1 || store.liveCandidateCalls[0].auth == nil {
+		t.Fatalf("live candidate calls = %#v, want retained auth context", store.liveCandidateCalls)
+	}
+	if store.liveCandidateCalls[0].query.From != nil {
+		t.Fatalf("candidate query from = %v, want nil when LiveTraceInput.from is omitted", store.liveCandidateCalls[0].query.From)
+	}
+	if store.liveCandidateCalls[0].auth.PrincipalID == nil || *store.liveCandidateCalls[0].auth.PrincipalID != principalID {
+		t.Fatalf("candidate auth = %#v, want principal", store.liveCandidateCalls[0].auth)
 	}
 }
 
@@ -622,6 +643,7 @@ func TestLiveTraceSummaryContainsHandlesNestedAttributesAndUnmarshalableValues(t
 type liveCandidateCall struct {
 	query    contracts.LiveTraceQuery
 	traceIDs []string
+	auth     *contracts.AuthContext
 }
 
 type liveTestStore struct {
@@ -634,27 +656,27 @@ func (store *liveTestStore) GetProjectTelemetryOverviews(_ context.Context, _ co
 	return contracts.ProjectTelemetryOverviewData{Items: []contracts.ProjectTelemetryOverviewItem{}}, nil
 }
 
-func (store *liveTestStore) SearchTraces(_ context.Context, _ contracts.TraceSearchQuery) (contracts.TraceSearchData, error) {
+func (store *liveTestStore) SearchTraces(_ context.Context, _ contracts.TraceSearchQuery, _ *contracts.AuthContext) (contracts.TraceSearchData, error) {
 	return contracts.TraceSearchData{Items: []contracts.TraceSummary{}}, nil
 }
 
-func (store *liveTestStore) SearchLiveTraceCandidates(_ context.Context, query contracts.LiveTraceQuery, traceIDs []string) ([]contracts.TraceSummary, error) {
-	store.liveCandidateCalls = append(store.liveCandidateCalls, liveCandidateCall{query: query, traceIDs: append([]string(nil), traceIDs...)})
+func (store *liveTestStore) SearchLiveTraceCandidates(_ context.Context, query contracts.LiveTraceQuery, traceIDs []string, authContext *contracts.AuthContext) ([]contracts.TraceSummary, error) {
+	store.liveCandidateCalls = append(store.liveCandidateCalls, liveCandidateCall{query: query, traceIDs: append([]string(nil), traceIDs...), auth: authContext})
 	if store.err != nil {
 		return nil, store.err
 	}
 	return append([]contracts.TraceSummary(nil), store.candidates...), nil
 }
 
-func (store *liveTestStore) GetTraceDetail(_ context.Context, _ string, _ *contracts.TraceDetailQuery) (*contracts.TraceDetailData, error) {
+func (store *liveTestStore) GetTraceDetail(_ context.Context, _ string, _ *contracts.TraceDetailQuery, _ *contracts.AuthContext) (*contracts.TraceDetailData, error) {
 	return &contracts.TraceDetailData{}, nil
 }
 
-func (store *liveTestStore) SearchLogs(_ context.Context, _ contracts.LogSearchQuery) (contracts.LogSearchData, error) {
+func (store *liveTestStore) SearchLogs(_ context.Context, _ contracts.LogSearchQuery, _ *contracts.AuthContext) (contracts.LogSearchData, error) {
 	return contracts.LogSearchData{Items: []contracts.LogEvent{}}, nil
 }
 
-func (store *liveTestStore) GetTelemetryFacets(_ context.Context, _ contracts.TelemetryFacetQuery) (contracts.TelemetryFacetData, error) {
+func (store *liveTestStore) GetTelemetryFacets(_ context.Context, _ contracts.TelemetryFacetQuery, _ *contracts.AuthContext) (contracts.TelemetryFacetData, error) {
 	return contracts.TelemetryFacetData{}, nil
 }
 

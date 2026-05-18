@@ -13,7 +13,7 @@ import { vendors, rows } from "../data/compare";
 
 // Slim comparison teaser
 const teaserVendors = vendors.filter((v) =>
-  ["cloudgrid", "datadog", "lgtm", "langfuse"].includes(v.key)
+  ["cloudgrid", "datadog", "lgtm", "langfuse"].includes(v.key),
 );
 const teaserRowNames = [
   "Open source",
@@ -26,19 +26,68 @@ const teaserRowNames = [
 const slimRows = rows.filter((r) => teaserRowNames.includes(r.criterion));
 
 const signalPillars = [
-  { icon: "trace" as const,     title: "Traces",        description: "Distributed waterfalls, span attributes, events, live receiving.",          href: "/features/traces",         accent: "brand"   as const },
-  { icon: "log" as const,       title: "Logs",          description: "Search-first analytics with trace-id pivots out of the box.",               href: "/features/logs",           accent: "cyan"    as const },
-  { icon: "metric" as const,    title: "Metrics",       description: "Descriptors, attributes, exemplar pivots back into traces.",                href: "/features/metrics",        accent: "emerald" as const },
-  { icon: "dashboard" as const, title: "Dashboards",    description: "Saved typed widgets, pinned where you work.",                                href: "/features/dashboards",     accent: "amber"   as const },
-  { icon: "ai" as const,        title: "AI Evaluation", description: "Agent runs, datasets, scorers, prompt optimization.",                       href: "/features/ai-evaluation",  accent: "violet"  as const },
-  { icon: "adapter" as const,   title: "Adapters",      description: "Storage, message bridge, auth, eval harness — all pluggable.",              href: "/features/adapters",       accent: "rose"    as const },
+  {
+    icon: "trace" as const,
+    title: "Traces",
+    description: "Distributed waterfalls, span attributes, events, live receiving.",
+    href: "/features/traces",
+    accent: "brand" as const,
+  },
+  {
+    icon: "log" as const,
+    title: "Logs",
+    description: "Search-first analytics with trace-id pivots out of the box.",
+    href: "/features/logs",
+    accent: "cyan" as const,
+  },
+  {
+    icon: "metric" as const,
+    title: "Metrics",
+    description: "Descriptors, attributes, exemplar pivots back into traces.",
+    href: "/features/metrics",
+    accent: "emerald" as const,
+  },
+  {
+    icon: "dashboard" as const,
+    title: "Dashboards",
+    description: "Saved typed widgets, pinned where you work.",
+    href: "/features/dashboards",
+    accent: "amber" as const,
+  },
+  {
+    icon: "ai" as const,
+    title: "AI Evaluation",
+    description: "Agent runs, datasets, scorers, prompt optimization.",
+    href: "/features/ai-evaluation",
+    accent: "violet" as const,
+  },
+  {
+    icon: "adapter" as const,
+    title: "Adapters",
+    description: "Storage, message bridge, auth, eval harness — all pluggable.",
+    href: "/features/adapters",
+    accent: "rose" as const,
+  },
 ];
 
 // Tech marquee — what CloudGrid speaks
 const techRow = [
-  "OpenTelemetry", "OTLP HTTP", "OTLP gRPC", "NATS JetStream", "SurrealDB",
-  "GraphQL", "OIDC", "GitHub", "Google", "Microsoft Entra ID",
-  "GenAI spans", "OpenInference", "W3C Trace Context", "Go", "TypeScript", "React",
+  "OpenTelemetry",
+  "OTLP HTTP",
+  "OTLP gRPC",
+  "NATS JetStream",
+  "SurrealDB",
+  "GraphQL",
+  "OIDC",
+  "GitHub",
+  "Google",
+  "Microsoft Entra ID",
+  "GenAI spans",
+  "OpenInference",
+  "W3C Trace Context",
+  "Go",
+  "TypeScript",
+  "React",
 ];
 ---
 

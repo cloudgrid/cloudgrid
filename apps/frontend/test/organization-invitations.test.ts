@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+  inviteProjectMemberOperation,
   inviteOrganizationMemberOperation,
   organizationInvitationsOperation,
   organizationMembersOperation,
+  resendOrganizationInvitationOperation,
   revokeOrganizationInvitationOperation,
 } from "../src/lib/graphql-client";
 import { queryKeys } from "../src/lib/query-keys";
@@ -23,6 +25,13 @@ describe("organization member invitation GraphQL operations", () => {
     );
     expect(inviteOrganizationMemberOperation).toContain(
       "mutation InviteOrganizationMember($input: InviteOrganizationMemberInput!)",
+    );
+    expect(inviteProjectMemberOperation).toContain(
+      "mutation InviteProjectMember($input: InviteProjectMemberInput!)",
+    );
+    expect(inviteProjectMemberOperation).toContain("projectGrants");
+    expect(resendOrganizationInvitationOperation).toContain(
+      "mutation ResendOrganizationInvitation($id: ID!)",
     );
     expect(revokeOrganizationInvitationOperation).toContain(
       "mutation RevokeOrganizationInvitation($id: ID!)",

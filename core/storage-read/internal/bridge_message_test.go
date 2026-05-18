@@ -42,6 +42,7 @@ type portableBridgeMessageTest struct {
 	subject  string
 	data     []byte
 	response []byte
+	headers  map[string]string
 }
 
 func (message *portableBridgeMessageTest) Subject() string {
@@ -55,6 +56,10 @@ func (message *portableBridgeMessageTest) Data() []byte {
 func (message *portableBridgeMessageTest) Respond(response []byte) error {
 	message.response = append(message.response[:0], response...)
 	return nil
+}
+
+func (message *portableBridgeMessageTest) Header(name string) string {
+	return message.headers[name]
 }
 
 func bridgeMessageForTest(subject string, data []byte) *portableBridgeMessageTest {

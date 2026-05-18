@@ -1,7 +1,7 @@
 "use client";
 
-import type * as React from "react";
 import { ArrowDownIcon, ArrowUpIcon, ChevronsUpDownIcon } from "lucide-react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -129,7 +129,9 @@ function TableCaption({ className, ...props }: React.ComponentProps<"caption">) 
   );
 }
 
+export type { TableSortDirection };
 export {
+  SortableTableHead,
   Table,
   TableBody,
   TableCaption,
@@ -138,6 +140,4 @@ export {
   TableHead,
   TableHeader,
   TableRow,
-  SortableTableHead,
 };
-export type { TableSortDirection };

@@ -3,6 +3,7 @@ import { devices, expect, type Page, test } from "@playwright/test";
 
 type OperationName =
   | "Viewer"
+  | "SelectProject"
   | "TraceSearch"
   | "TraceDetail"
   | "LogSearch"
@@ -220,6 +221,7 @@ const telemetryFacets = {
 
 const emptyPayloads: Record<OperationName, GraphQLPayload> = {
   Viewer: viewerPayload,
+  SelectProject: viewerPayload,
   TraceSearch: { data: { traces: { items: [], nextCursor: null } } },
   TraceDetail: { data: { trace: null } },
   LogSearch: { data: { logs: { items: [], nextCursor: null } } },
@@ -315,7 +317,7 @@ test("renders shell routes, development GraphQL UI link, and applies dark theme"
   await expect(page.getByRole("link", { name: /graphql ui/i })).toHaveAttribute("href", "/graphql");
 
   await page.getByRole("link", { name: /^logs$/i }).click();
-  await expect(page.getByRole("heading", { name: /log search/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^logs$/i })).toBeVisible();
 
   await page.getByRole("button", { name: /toggle light and dark mode/i }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
@@ -337,13 +339,13 @@ test("renders project selection and project setup shell modes", async ({ page })
   await expect(page.getByRole("dialog", { name: /add project/i })).toBeVisible();
 
   await page.goto(`/projects/${projectId}`);
-  await expect(page.getByRole("heading", { name: /project setup/i })).toBeVisible();
+  await expect(page).toHaveURL(/\/traces$/);
   await expect(page.getByRole("link", { name: /^live$/i })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: /open live traces/i })).toHaveAttribute(
-    "href",
-    "/traces?mode=live",
-  );
   await expect(page.getByRole("link", { name: /^traces$/i })).toBeVisible();
+
+  await page.goto(`/projects/${projectId}/settings/ingest`);
+  await expect(page.getByRole("heading", { name: "API Keys", exact: true })).toBeVisible();
+  await expect(page.getByText(/stored credential secrets are never displayed/i)).toBeVisible();
   assertNoConsoleErrors();
 });
 
@@ -367,14 +369,14 @@ test.describe("/traces", () => {
     await mockGraphQL(page, (operationName) => emptyPayloads[operationName]);
 
     await page.goto("/traces");
-    await expect(page.getByText(/no telemetry ingested yet/i)).toBeVisible();
+    await expect(page.getByText(/no traces for this project yet/i)).toBeVisible();
   });
 
   test("shows filtered empty state", async ({ page }) => {
     await mockGraphQL(page, (operationName) => emptyPayloads[operationName]);
 
     await page.goto("/traces?service=missing");
-    await expect(page.getByText(/no results match these filters/i)).toBeVisible();
+    await expect(page.getByText(/no traces match these filters/i)).toBeVisible();
   });
 
   test("shows error state and retry affordance", async ({ page }) => {
@@ -471,7 +473,7 @@ test.describe("/traces/:traceId", () => {
     await page.getByRole("tab", { name: /^links$/i }).click();
     await expect(page.getByText("trace-linked-001")).toBeVisible();
     await expect(page.getByRole("heading", { name: /correlated logs/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /checkout completed/i })).toBeVisible();
+    await expect(page.getByRole("cell", { name: /checkout completed/i })).toBeVisible();
   });
 });
 
@@ -495,14 +497,14 @@ test.describe("/logs", () => {
     await mockGraphQL(page, (operationName) => emptyPayloads[operationName]);
 
     await page.goto("/logs");
-    await expect(page.getByText(/no telemetry ingested yet/i)).toBeVisible();
+    await expect(page.getByText(/no logs for this project yet/i)).toBeVisible();
   });
 
   test("shows filtered empty state", async ({ page }) => {
     await mockGraphQL(page, (operationName) => emptyPayloads[operationName]);
 
     await page.goto("/logs?service=missing");
-    await expect(page.getByText(/no results match these filters/i)).toBeVisible();
+    await expect(page.getByText(/no logs match these filters/i)).toBeVisible();
   });
 
   test("shows error state and retry affordance", async ({ page }) => {

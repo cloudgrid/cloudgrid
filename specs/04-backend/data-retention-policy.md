@@ -77,16 +77,22 @@ Soft delete marks eligible records with `deletedAt`, `deletedByRetentionPolicyId
 
 Retention decisions use record event time when available and persisted time otherwise. A trace is eligible when its root trace end time is older than the cutoff. Logs and metrics are eligible by their timestamp. AI eval and dataset records are eligible by completed/persisted time according to their class.
 
-## Required Contracts Before Implementation
+## Implementation Status
 
-Implementation requires:
+Implemented:
 
 - GraphQL `RetentionPolicy`, `RetentionRule`, `retentionPolicy(projectId)`, and `updateRetentionPolicy` contracts;
 - control-plane message bridge subjects for get/update policy;
-- storage-maintenance command subject `storage_maintenance.retention.execute_batch` for executing one project/data-class retention batch;
-- SurrealDB schema for `retention_policy` and maintenance audit rows;
+- SurrealDB schema and control-plane storage for `retention_policy`;
+- BFF bridge/resolver validation and project settings UI for policy read/update.
+
+Remaining before retention deletes telemetry:
+
+- storage-maintenance execution service for `storage_maintenance.retention.execute_batch`;
+- maintenance audit records;
 - structured maintenance logs with project, data class, deleted count, soft-deleted count, duration, and terminal error;
-- docs explaining hard delete, soft delete, local defaults, and production defaults.
+- hard-delete and soft-delete storage execution against isolated fixtures;
+- docs that clearly separate configured policy from executed deletion.
 
 `storage_maintenance.retention.execute_batch` accepts `projectId`, `dataClass`, `requestedAt`, optional `dryRun`, and optional `limit`. It returns `projectId`, `dataClass`, `policyVersion`, `dryRun`, `matchedCount`, `hardDeletedCount`, `softDeletedCount`, `finalDeletedCount`, `startedAt`, `completedAt`, and optional `error`.
 

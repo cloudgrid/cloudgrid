@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/selfobs"
 	"github.com/nats-io/nats.go"
 )
 
@@ -42,14 +43,26 @@ func (bridge *NATSMessageBridge) Close() {
 }
 
 type JetStreamPublisher struct {
-	js nats.JetStreamContext
+	js interface {
+		PublishMsg(m *nats.Msg, opts ...nats.PubOpt) (*nats.PubAck, error)
+	}
 }
 
-func NewJetStreamPublisher(js nats.JetStreamContext) JetStreamPublisher {
+func NewJetStreamPublisher(js interface {
+	PublishMsg(m *nats.Msg, opts ...nats.PubOpt) (*nats.PubAck, error)
+}) JetStreamPublisher {
 	return JetStreamPublisher{js: js}
 }
 
 func (publisher JetStreamPublisher) Publish(ctx context.Context, subject string, data []byte) error {
-	_, err := publisher.js.Publish(subject, data, nats.Context(ctx))
+	message := &nats.Msg{Subject: subject, Data: data}
+	if traceContext, ok := selfobs.TraceContextFromContext(ctx); ok {
+		message.Header = nats.Header{}
+		message.Header.Set(selfobs.TraceParentHeader, selfobs.FormatTraceParent(traceContext))
+		if traceContext.TraceState != "" {
+			message.Header.Set(selfobs.TraceStateHeader, traceContext.TraceState)
+		}
+	}
+	_, err := publisher.js.PublishMsg(message, nats.Context(ctx))
 	return err
 }

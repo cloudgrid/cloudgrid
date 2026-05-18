@@ -76,13 +76,13 @@ NATS response contracts must include every field needed by GraphQL clients so th
 
 `Subscription.liveTraces(input: LiveTraceInput)` streams trace-level updates through the BFF. `LiveTraceInput` intentionally mirrors the concise filter names from `TraceSearchInput` and omits pagination cursor, `to`, and sort:
 
-- `from` is a lower bound for the live window. If omitted, storage-read uses the subscription start time for new events and may send no historical snapshot.
+- `from` is an optional lower bound applied to trace `startedAt`. If omitted, storage-read does not add a synthetic `startedAt` lower bound; live delivery is already limited to newly persisted trace notifications and does not replay historical notifications.
 - `limit` bounds the initial snapshot and the in-memory per-subscription emitted-trace set. Default is 100 and maximum is 500.
 - Sort order is always `startedAt desc, id asc`.
 - `to` is not supported because live subscriptions are open-ended. To inspect a closed time range, use `Query.traces`.
 - Cursor pagination is not supported on live subscriptions. Use `Query.traces` for historical paging.
 
-Changing live filters from the frontend starts a new GraphQL subscription operation on the existing GraphQL WebSocket connection when supported by the client library. The UI may preserve already received trace summaries in a local bounded buffer across operation restarts, but server-visible filtering for newly delivered live events is always performed by storage-read.
+Changing live filters from the frontend starts a new GraphQL subscription operation on the existing GraphQL WebSocket connection when supported by the client library. The BFF must cancel the previous operation immediately and send `telemetry.traces.live.stop` without waiting for the next heartbeat or data event. The UI may preserve already received trace summaries in a local bounded buffer across operation restarts, but server-visible filtering for newly delivered live events is always performed by storage-read.
 
 Storage-write emits `TracePersistedNotification` only after persistence succeeds. Storage-read consumes those notifications, uses the notification trace IDs as a narrow candidate set, and reuses the trace search query builder or an equivalent shared helper to fetch matching `TraceSummary` records. Storage-read must not emit events based only on notification hints.
 
@@ -97,7 +97,7 @@ Storage-read maintains per-subscription state:
 - Do not add a generic query DSL, KQL parser, SQL passthrough, or frontend-defined aggregation language.
 - Do not add bespoke fields for one frontend component when an existing GraphQL view model can express the behavior.
 - Do not fetch broad raw span or log sets into the BFF or frontend to compute filters, counts, facets, or trace structure.
-- Do not let the BFF consume `TELEMETRY_INGEST`, `telemetry.ingest.*`, or `telemetry.persisted.traces` streams for live views.
+- Do not let the BFF consume `TELEMETRY_INGEST`, `telemetry.ingest.*`, or subscribe to `telemetry.persisted.traces` for live views.
 - Do not use SurrealDB live query handles or SurrealQL strings in the BFF. If a storage adapter later uses database-native live queries, the handles stay inside storage-read adapters.
 - Do not optimize by duplicating denormalized projections until current SurrealDB query tests show the read path cannot meet NFR targets.
 

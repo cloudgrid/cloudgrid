@@ -116,11 +116,15 @@ func (r *Runner) StartOfflineExperiment(ctx context.Context, request StartExperi
 	if err != nil {
 		return StartExperimentResult{}, err
 	}
+	solverRef := request.SolverRef
+	if len(solverRef) == 0 {
+		solverRef = manifest.SolverRef
+	}
 
 	run := ports.ExperimentRun{
 		ID:           candidateRunID,
 		ExperimentID: experiment.ID,
-		SolverRef:    request.SolverRef,
+		SolverRef:    solverRef,
 		Status:       ports.ExperimentRunStatusRunning,
 		StartedAt:    r.now(),
 		Summary:      map[string]any{"totalItems": len(items), "completedItems": 0},
@@ -146,7 +150,7 @@ func (r *Runner) StartOfflineExperiment(ctx context.Context, request StartExperi
 			ExperimentRunID: run.ID,
 			DatasetItemID:   item.ID,
 			Input:           item.Input,
-			SolverRef:       request.SolverRef,
+			SolverRef:       solverRef,
 			TraceContext:    request.TraceContext,
 		})
 		if err != nil {

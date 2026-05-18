@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"reflect"
 	"time"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
@@ -82,9 +83,15 @@ func handleTraceSearch(store ports.TelemetryReadStore, logger *slog.Logger) brid
 			logHandlerCompletion(logger, SubjectTraceSearch, response.RequestID, false, start, response.Error)
 			return
 		}
+		if err := validateTelemetryRead(request.AuthContext); err != nil {
+			response := contracts.TraceSearchResponse{RequestID: request.RequestID, OK: false, Error: ptr(bridgeErrorFromError(err))}
+			respond(msg, response)
+			logHandlerCompletion(logger, SubjectTraceSearch, response.RequestID, false, start, response.Error)
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 		defer cancel()
-		data, err := store.SearchTraces(ctx, request.Query)
+		data, err := store.SearchTraces(ctx, request.Query, request.AuthContext)
 		if err != nil {
 			response := contracts.TraceSearchResponse{RequestID: request.RequestID, OK: false, Error: ptr(bridgeErrorFromError(err))}
 			respond(msg, response)
@@ -111,9 +118,15 @@ func handleTraceGet(store ports.TelemetryReadStore, logger *slog.Logger) bridgeM
 			logHandlerCompletion(logger, SubjectTraceGet, response.RequestID, false, start, response.Error)
 			return
 		}
+		if err := validateTelemetryRead(request.AuthContext); err != nil {
+			response := contracts.TraceDetailResponse{RequestID: request.RequestID, OK: false, Error: ptr(bridgeErrorFromError(err))}
+			respond(msg, response)
+			logHandlerCompletion(logger, SubjectTraceGet, response.RequestID, false, start, response.Error)
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 		defer cancel()
-		data, err := store.GetTraceDetail(ctx, request.TraceID, request.Query)
+		data, err := store.GetTraceDetail(ctx, request.TraceID, request.Query, request.AuthContext)
 		if err != nil {
 			response := contracts.TraceDetailResponse{RequestID: request.RequestID, OK: false, Error: ptr(bridgeErrorFromError(err))}
 			respond(msg, response)
@@ -140,9 +153,15 @@ func handleLogSearch(store ports.TelemetryReadStore, logger *slog.Logger) bridge
 			logHandlerCompletion(logger, SubjectLogSearch, response.RequestID, false, start, response.Error)
 			return
 		}
+		if err := validateTelemetryRead(request.AuthContext); err != nil {
+			response := contracts.LogSearchResponse{RequestID: request.RequestID, OK: false, Error: ptr(bridgeErrorFromError(err))}
+			respond(msg, response)
+			logHandlerCompletion(logger, SubjectLogSearch, response.RequestID, false, start, response.Error)
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 		defer cancel()
-		data, err := store.SearchLogs(ctx, request.Query)
+		data, err := store.SearchLogs(ctx, request.Query, request.AuthContext)
 		if err != nil {
 			response := contracts.LogSearchResponse{RequestID: request.RequestID, OK: false, Error: ptr(bridgeErrorFromError(err))}
 			respond(msg, response)
@@ -169,9 +188,15 @@ func handleTelemetryFacets(store ports.TelemetryReadStore, logger *slog.Logger) 
 			logHandlerCompletion(logger, SubjectTelemetryFacets, response.RequestID, false, start, response.Error)
 			return
 		}
+		if err := validateTelemetryRead(request.AuthContext); err != nil {
+			response := contracts.TelemetryFacetResponse{RequestID: request.RequestID, OK: false, Error: ptr(bridgeErrorFromError(err))}
+			respond(msg, response)
+			logHandlerCompletion(logger, SubjectTelemetryFacets, response.RequestID, false, start, response.Error)
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 		defer cancel()
-		data, err := store.GetTelemetryFacets(ctx, request.Query)
+		data, err := store.GetTelemetryFacets(ctx, request.Query, request.AuthContext)
 		if err != nil {
 			response := contracts.TelemetryFacetResponse{RequestID: request.RequestID, OK: false, Error: ptr(bridgeErrorFromError(err))}
 			respond(msg, response)
@@ -406,9 +431,36 @@ func logHandlerCompletion(logger *slog.Logger, subject string, requestID string,
 func respond(msg BridgeMessage, response any) {
 	encoded, err := json.Marshal(response)
 	if err != nil {
-		return
+		bridgeError := contracts.BridgeError{
+			ID:        "ERR-013",
+			Code:      "MESSAGE_BRIDGE_UNAVAILABLE",
+			Message:   "Message bridge returned an invalid response",
+			Retryable: true,
+		}
+		encoded, err = ErrorResponseJSON(responseRequestID(response), bridgeError)
+		if err != nil {
+			return
+		}
 	}
 	_ = msg.Respond(encoded)
+}
+
+func responseRequestID(response any) string {
+	value := reflect.ValueOf(response)
+	if value.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			return ""
+		}
+		value = value.Elem()
+	}
+	if value.Kind() != reflect.Struct {
+		return ""
+	}
+	field := value.FieldByName("RequestID")
+	if !field.IsValid() || field.Kind() != reflect.String {
+		return ""
+	}
+	return field.String()
 }
 
 func ErrorResponseJSON(requestID string, err contracts.BridgeError) ([]byte, error) {

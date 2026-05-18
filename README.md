@@ -26,7 +26,7 @@ Local mode is configured with `CLOUDGRID_DEPLOYMENT_MODE=local` and
 `CLOUDGRID_AUTH_MODE=local`. Deployed mode uses
 `CLOUDGRID_DEPLOYMENT_MODE=deployed`, `CLOUDGRID_AUTH_MODE=sso`,
 `CLOUDGRID_AUTH_PROVIDERS`, and provider-specific GitHub, Google, or Azure Entra
-ID OAuth/OIDC settings. See [Operations](./docs/03-operations/README.md#deployed-sso-configuration).
+ID OAuth/OIDC settings. See [SSO configuration](./docs/configuration/deployed/sso/README.md).
 
 ## Source Of Truth
 

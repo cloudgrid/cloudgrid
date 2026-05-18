@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -44,6 +45,32 @@ func TestAiEvalQueryHandlerRoutesDeclaredQuerySubjects(t *testing.T) {
 	}
 	if len(response.Data["items"].([]any)) != 1 {
 		t.Fatalf("response data = %#v, want GraphQL-ready items", response.Data)
+	}
+}
+
+func TestAiEvalQueryHandlerReturnsBridgeErrorWhenResponseCannotBeEncoded(t *testing.T) {
+	store := &aiEvalStoreForTest{
+		responses: map[string]map[string]any{
+			SubjectEvalQualityOverview: {"value": math.Inf(1)},
+		},
+	}
+	request := contracts.EvalQueryRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-unencodable-response"},
+		Input:          map[string]any{"projectId": "default"},
+	}
+	message := bridgeMessageForTest(SubjectEvalQualityOverview, mustMarshalNATSHandlerTest(t, request))
+
+	handleAiEvalQuery(store, nil)(message)
+
+	var response contracts.EvalQueryResponse
+	if err := json.Unmarshal(message.response, &response); err != nil {
+		t.Fatalf("response is not eval query JSON: %v", err)
+	}
+	if response.OK || response.RequestID != "req-unencodable-response" {
+		t.Fatalf("response = %#v, want failed request req-unencodable-response", response)
+	}
+	if response.Error == nil || response.Error.ID != "ERR-013" {
+		t.Fatalf("response error = %#v, want ERR-013", response.Error)
 	}
 }
 
@@ -143,6 +170,150 @@ func TestOnlinePolicyMatchesResolveHandlerRoutesTypedRequest(t *testing.T) {
 	}
 	if len(response.Data.Matches) != 1 || response.Data.Matches[0].PolicyID != "policy-1" {
 		t.Fatalf("response matches = %#v", response.Data.Matches)
+	}
+}
+
+func TestAiEvalMutationQueryHandlerRoutesDatasetExportStart(t *testing.T) {
+	store := &aiEvalStoreForTest{
+		responses: map[string]map[string]any{
+			SubjectEvalDatasetExportStart: {"transferId": "export-1", "status": "ready"},
+		},
+	}
+	request := contracts.EvalMutationRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-export"},
+		Input:          map[string]any{"datasetId": "dataset-1", "format": "jsonl"},
+	}
+	message := bridgeMessageForTest(SubjectEvalDatasetExportStart, mustMarshalNATSHandlerTest(t, request))
+
+	handleAiEvalMutationQuery(store, nil)(message)
+
+	if len(store.calls) != 1 || store.calls[0].subject != SubjectEvalDatasetExportStart {
+		t.Fatalf("calls = %#v, want dataset export start", store.calls)
+	}
+	var response contracts.EvalMutationResponse
+	if err := json.Unmarshal(message.response, &response); err != nil {
+		t.Fatalf("response is not mutation JSON: %v", err)
+	}
+	if !response.OK || response.RequestID != "req-export" || response.Data["transferId"] != "export-1" {
+		t.Fatalf("response = %#v, want export transfer data", response)
+	}
+}
+
+func TestAiEvalMutationQueryAndManifestHandlersReturnBridgeErrors(t *testing.T) {
+	t.Run("invalid mutation json", func(t *testing.T) {
+		message := bridgeMessageForTest(SubjectEvalDatasetExportStart, []byte("{"))
+
+		handleAiEvalMutationQuery(&aiEvalStoreForTest{}, nil)(message)
+
+		var response contracts.EvalMutationResponse
+		if err := json.Unmarshal(message.response, &response); err != nil {
+			t.Fatalf("response is not mutation JSON: %v", err)
+		}
+		if response.OK || response.Error == nil || response.Error.ID != "ERR-001" {
+			t.Fatalf("response = %#v, want validation error", response)
+		}
+	})
+
+	t.Run("mutation store failure", func(t *testing.T) {
+		message := bridgeMessageForTest(SubjectEvalDatasetExportStart, mustMarshalNATSHandlerTest(t, contracts.EvalMutationRequest{
+			BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-export-fail"},
+			Input:          map[string]any{"datasetId": "dataset-1"},
+		}))
+
+		handleAiEvalMutationQuery(&aiEvalStoreForTest{err: errors.New("ERR-006 STORAGE_UNAVAILABLE: down")}, nil)(message)
+
+		var response contracts.EvalMutationResponse
+		if err := json.Unmarshal(message.response, &response); err != nil {
+			t.Fatalf("response is not mutation JSON: %v", err)
+		}
+		if response.OK || response.RequestID != "req-export-fail" || response.Error == nil || response.Error.ID != "ERR-006" {
+			t.Fatalf("response = %#v, want storage error", response)
+		}
+	})
+
+	t.Run("invalid manifest json", func(t *testing.T) {
+		message := bridgeMessageForTest(SubjectEvalManifestResolve, []byte("{"))
+
+		handleExperimentManifestResolve(&aiEvalStoreForTest{}, nil)(message)
+
+		var response contracts.ExperimentManifestResolveResponse
+		if err := json.Unmarshal(message.response, &response); err != nil {
+			t.Fatalf("response is not manifest JSON: %v", err)
+		}
+		if response.OK || response.Error == nil || response.Error.ID != "ERR-001" {
+			t.Fatalf("response = %#v, want validation error", response)
+		}
+	})
+}
+
+func TestExperimentManifestResolveHandlerRoutesTypedRequest(t *testing.T) {
+	store := &aiEvalStoreForTest{}
+	request := contracts.ExperimentManifestResolveRequest{
+		BridgeEnvelope:  contracts.BridgeEnvelope{RequestID: "req-manifest"},
+		ExperimentRunID: "run-1",
+		ExperimentID:    "experiment-1",
+		SplitSelector:   map[string]any{"splits": []any{"validation"}},
+	}
+	message := bridgeMessageForTest(SubjectEvalManifestResolve, mustMarshalNATSHandlerTest(t, request))
+
+	handleExperimentManifestResolve(store, nil)(message)
+
+	var response contracts.ExperimentManifestResolveResponse
+	if err := json.Unmarshal(message.response, &response); err != nil {
+		t.Fatalf("response is not manifest JSON: %v", err)
+	}
+	if !response.OK || response.RequestID != "req-manifest" || response.Data["manifest"] == nil {
+		t.Fatalf("response = %#v, want manifest", response)
+	}
+	manifest := response.Data["manifest"].(map[string]any)
+	if manifest["digest"] != "digest-for-run-1" {
+		t.Fatalf("manifest = %#v", manifest)
+	}
+}
+
+func TestLiveHandlersRejectInvalidJSONAndValidationFailures(t *testing.T) {
+	registry := NewEvalLiveRegistry(&aiEvalStoreForTest{}, &evalLivePublisherForTest{}, EvalLiveOptions{MaxSubscriptions: 1})
+
+	startInvalid := bridgeMessageForTest(SubjectEvalLiveStart, []byte("{"))
+	handleEvalLiveStart(registry, nil)(startInvalid)
+	var startResponse contracts.EvalLiveStartResponse
+	if err := json.Unmarshal(startInvalid.response, &startResponse); err != nil {
+		t.Fatalf("start response JSON: %v", err)
+	}
+	if startResponse.OK || startResponse.Error == nil || startResponse.Error.ID != "ERR-001" {
+		t.Fatalf("start response = %#v, want validation error", startResponse)
+	}
+
+	startMissingFields := bridgeMessageForTest(SubjectEvalLiveStart, mustMarshalNATSHandlerTest(t, contracts.EvalLiveStartRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-live-invalid"},
+	}))
+	handleEvalLiveStart(registry, nil)(startMissingFields)
+	if err := json.Unmarshal(startMissingFields.response, &startResponse); err != nil {
+		t.Fatalf("start validation response JSON: %v", err)
+	}
+	if startResponse.OK || startResponse.RequestID != "req-live-invalid" || startResponse.Error == nil {
+		t.Fatalf("start validation response = %#v", startResponse)
+	}
+
+	stopInvalid := bridgeMessageForTest(SubjectEvalLiveStop, []byte("{"))
+	handleEvalLiveStop(registry, nil)(stopInvalid)
+	var stopResponse contracts.EvalLiveStopResponse
+	if err := json.Unmarshal(stopInvalid.response, &stopResponse); err != nil {
+		t.Fatalf("stop response JSON: %v", err)
+	}
+	if stopResponse.OK || stopResponse.Error == nil || stopResponse.Error.ID != "ERR-001" {
+		t.Fatalf("stop response = %#v, want validation error", stopResponse)
+	}
+
+	stopMissing := bridgeMessageForTest(SubjectEvalLiveStop, mustMarshalNATSHandlerTest(t, contracts.EvalLiveStopRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-stop-missing"},
+	}))
+	handleEvalLiveStop(registry, nil)(stopMissing)
+	if err := json.Unmarshal(stopMissing.response, &stopResponse); err != nil {
+		t.Fatalf("stop validation response JSON: %v", err)
+	}
+	if stopResponse.OK || stopResponse.RequestID != "req-stop-missing" || stopResponse.Error == nil {
+		t.Fatalf("stop validation response = %#v", stopResponse)
 	}
 }
 

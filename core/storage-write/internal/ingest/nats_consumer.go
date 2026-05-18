@@ -8,21 +8,35 @@ import (
 	"time"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
+	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/selfobs"
 	"github.com/cloudgrid-dev/cloudgrid/core/storage-write/internal/ports"
 	"github.com/nats-io/nats.go"
 )
 
 type PullSubscriber interface {
-	PullSubscribe(subject string, durable string, opts ...nats.SubOpt) (*nats.Subscription, error)
+	PullSubscribe(subject string, durable string, opts ...nats.SubOpt) (PullSubscription, error)
+}
+
+type PullSubscriberJetStream interface {
+	PullSubscriber
 	Publish(subject string, data []byte, opts ...nats.PubOpt) (*nats.PubAck, error)
+}
+
+type PullSubscription interface {
+	Fetch(batch int, opts ...nats.PullOpt) ([]*nats.Msg, error)
+}
+
+type CorePublisher interface {
+	Publish(subject string, data []byte) error
 }
 
 func RegisterEvalMutationResponders(nc interface {
 	Subscribe(subject string, cb nats.MsgHandler) (*nats.Subscription, error)
+	Publish(subject string, data []byte) error
 }, js interface {
 	Publish(subject string, data []byte, opts ...nats.PubOpt) (*nats.PubAck, error)
 }, store ports.AIWriteStore, logger *slog.Logger) error {
-	publisher := natsAIEventPublisher{js: js}
+	publisher := natsAIEventPublisher{nc: nc, js: js}
 	for _, subject := range []string{
 		EvalDatasetCreateSubject,
 		EvalDatasetItemsAppendSubject,
@@ -44,13 +58,20 @@ func RegisterEvalMutationResponders(nc interface {
 	return nil
 }
 
-func RunConsumer(ctx context.Context, js PullSubscriber, store ports.TelemetryWriteStore, logger *slog.Logger) error {
+func RunConsumer(ctx context.Context, js PullSubscriberJetStream, nc CorePublisher, notificationPublisher ports.TraceNotificationPublisher, store ports.TelemetryWriteStore, logger *slog.Logger) error {
+	return RunConsumerWithMetrics(ctx, js, nc, notificationPublisher, store, logger, nil)
+}
+
+func RunConsumerWithMetrics(ctx context.Context, js PullSubscriberJetStream, nc CorePublisher, notificationPublisher ports.TraceNotificationPublisher, store ports.TelemetryWriteStore, logger *slog.Logger, recorder MetricsRecorder) error {
+	return RunConsumerWithSelfObservability(ctx, js, nc, notificationPublisher, store, logger, recorder, nil)
+}
+
+func RunConsumerWithSelfObservability(ctx context.Context, js PullSubscriberJetStream, nc CorePublisher, notificationPublisher ports.TraceNotificationPublisher, store ports.TelemetryWriteStore, logger *slog.Logger, recorder MetricsRecorder, traceLogRecorder TraceLogRecorder) error {
 	sub, err := js.PullSubscribe("telemetry.ingest.*", ConsumerName, nats.BindStream(StreamName), nats.ManualAck())
 	if err != nil {
 		return err
 	}
-	publisher := natsTraceNotificationPublisher{js: js}
-	aiPublisher := natsAIEventPublisher{js: js}
+	aiPublisher := natsAIEventPublisher{nc: nc, js: js}
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -73,27 +94,48 @@ func RunConsumer(ctx context.Context, js PullSubscriber, store ports.TelemetryWr
 					continue
 				}
 			}
-			HandleMessage(ctx, wrapped, store, publisher, logger, time.Now)
+			HandleMessageWithSelfObservability(ctx, wrapped, store, notificationPublisher, logger, time.Now, recorder, traceLogRecorder)
 		}
 	}
 }
 
 type natsTraceNotificationPublisher struct {
-	js interface {
-		Publish(subject string, data []byte, opts ...nats.PubOpt) (*nats.PubAck, error)
+	nc interface {
+		Publish(subject string, data []byte) error
 	}
 }
 
-func (publisher natsTraceNotificationPublisher) PublishTracePersisted(_ context.Context, notification contracts.TracePersistedNotification) error {
+func NewTraceNotificationPublisher(nc interface {
+	Publish(subject string, data []byte) error
+}) ports.TraceNotificationPublisher {
+	return natsTraceNotificationPublisher{nc: nc}
+}
+
+func (publisher natsTraceNotificationPublisher) PublishTracePersisted(ctx context.Context, notification contracts.TracePersistedNotification) error {
 	data, err := json.Marshal(notification)
 	if err != nil {
 		return err
 	}
-	_, err = publisher.js.Publish(PersistedTraceSubject, data)
-	return err
+	if msgPublisher, ok := publisher.nc.(interface {
+		PublishMsg(message *nats.Msg) error
+	}); ok {
+		message := &nats.Msg{Subject: PersistedTraceSubject, Data: data}
+		if traceContext, ok := selfobs.TraceContextFromContext(ctx); ok {
+			message.Header = nats.Header{}
+			message.Header.Set(selfobs.TraceParentHeader, selfobs.FormatTraceParent(traceContext))
+			if traceContext.TraceState != "" {
+				message.Header.Set(selfobs.TraceStateHeader, traceContext.TraceState)
+			}
+		}
+		return msgPublisher.PublishMsg(message)
+	}
+	return publisher.nc.Publish(PersistedTraceSubject, data)
 }
 
 type natsAIEventPublisher struct {
+	nc interface {
+		Publish(subject string, data []byte) error
+	}
 	js interface {
 		Publish(subject string, data []byte, opts ...nats.PubOpt) (*nats.PubAck, error)
 	}
@@ -104,6 +146,9 @@ func (publisher natsAIEventPublisher) PublishAIProjectionPersisted(_ context.Con
 	if err != nil {
 		return err
 	}
+	if publisher.nc != nil {
+		return publisher.nc.Publish(AiProjectionPersistedSubject, data)
+	}
 	_, err = publisher.js.Publish(AiProjectionPersistedSubject, data)
 	return err
 }
@@ -112,6 +157,12 @@ func (publisher natsAIEventPublisher) PublishExperimentProgress(_ context.Contex
 	data, err := json.Marshal(notification)
 	if err != nil {
 		return err
+	}
+	if publisher.nc != nil {
+		return publisher.nc.Publish(EvalExperimentProgressSubject, data)
+	}
+	if publisher.js == nil {
+		return nil
 	}
 	_, err = publisher.js.Publish(EvalExperimentProgressSubject, data)
 	return err
@@ -135,6 +186,10 @@ func (msg natsMessage) Attempt() int {
 		return 1
 	}
 	return int(metadata.NumDelivered)
+}
+
+func (msg natsMessage) Header(name string) string {
+	return msg.msg.Header.Get(name)
 }
 
 func (msg natsMessage) Ack() error {

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/health"
+	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/selfobs"
 	storage "github.com/cloudgrid-dev/cloudgrid/core/storage-read/internal"
 	"github.com/cloudgrid-dev/cloudgrid/core/storage-read/internal/ports"
 )
@@ -52,6 +53,30 @@ func run() int {
 		logError(logger, "schema_readiness_failed", err, "ERR-006")
 		return 1
 	}
+	metricsExporter, err := storageReadSelfObservabilityMetricsExporter(cfg, logger)
+	if err != nil {
+		logError(logger, "self_observability_config_invalid", err, "ERR-009")
+		return 1
+	}
+	if metricsExporter != nil {
+		defer func() {
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer shutdownCancel()
+			_ = metricsExporter.Shutdown(shutdownCtx)
+		}()
+	}
+	traceLogExporter, err := storageReadSelfObservabilityTraceLogExporter(cfg, logger)
+	if err != nil {
+		logError(logger, "self_observability_config_invalid", err, "ERR-009")
+		return 1
+	}
+	if traceLogExporter != nil {
+		defer func() {
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer shutdownCancel()
+			_ = traceLogExporter.Shutdown(shutdownCtx)
+		}()
+	}
 
 	nc, err := storage.ConnectNATS(cfg.NATSURL)
 	if err != nil {
@@ -60,7 +85,11 @@ func run() int {
 	}
 	defer nc.Close()
 
-	if _, err := storage.SubscribeTelemetryHandlers(nc, adapter.Store, logger); err != nil {
+	var recorder storage.MetricsRecorder
+	if metricsExporter != nil {
+		recorder = storage.NewOTLPMetricsRecorder(metricsExporter)
+	}
+	if _, err := storage.SubscribeTelemetryHandlersWithSelfObservability(nc, adapter.Store, logger, recorder, traceLogExporter); err != nil {
 		logError(logger, "message_bridge_subscribe_failed", err, "ERR-013")
 		return 1
 	}
@@ -136,6 +165,44 @@ func run() int {
 		)
 	}
 	return 0
+}
+
+func storageReadSelfObservabilityMetricsExporter(cfg storage.Config, logger *slog.Logger) (*selfobs.OTLPHTTPMetricsExporter, error) {
+	self := cfg.SelfObservability
+	if !self.Enabled || !self.MetricsEnabled {
+		return nil, nil
+	}
+	return selfobs.NewOTLPHTTPMetricsExporter(selfobs.MetricsExporterConfig{
+		Enabled:               true,
+		Endpoint:              self.OTLPEndpoint,
+		BearerToken:           self.OTLPBearerToken,
+		ExportIntervalSeconds: self.ExportIntervalSeconds,
+		ServiceName:           "cloudgrid.storage_read",
+		DeploymentMode:        cfg.DeploymentMode,
+		CompanyID:             self.CompanyID,
+		ProjectID:             self.ProjectID,
+		Logger:                logger,
+	})
+}
+
+func storageReadSelfObservabilityTraceLogExporter(cfg storage.Config, logger *slog.Logger) (*storage.OTLPTraceLogExporter, error) {
+	self := cfg.SelfObservability
+	if !self.Enabled || (!self.TracesEnabled && !self.LogsEnabled) {
+		return nil, nil
+	}
+	return storage.NewOTLPTraceLogExporter(storage.TraceLogExporterConfig{
+		Enabled:               true,
+		Endpoint:              self.OTLPEndpoint,
+		BearerToken:           self.OTLPBearerToken,
+		ExportIntervalSeconds: self.ExportIntervalSeconds,
+		ServiceName:           "cloudgrid.storage_read",
+		DeploymentMode:        cfg.DeploymentMode,
+		CompanyID:             self.CompanyID,
+		ProjectID:             self.ProjectID,
+		TracesEnabled:         self.TracesEnabled,
+		LogsEnabled:           self.LogsEnabled,
+		Logger:                logger,
+	})
 }
 
 type telemetryReadAdapter struct {

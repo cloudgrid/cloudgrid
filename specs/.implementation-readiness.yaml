@@ -1,18 +1,25 @@
-source: codex-final-mvp-closure
+source: implementation-alignment-pass
 status: implementation_ready
-updated: 2026-05-11
+updated: 2026-05-18
 notes:
   - Current CloudGrid specs and contracts are sufficient for MVP closure implementation.
   - Formal implementation-planner gate file specs/.readiness-report.yaml exists and records the current verification state.
   - Auth, control-plane, frontend login/company/project management, and SurrealDB tenant/project database separation have been implemented in the current codebase.
+  - OTLP metrics ingest/query/persistence, OTLP gRPC ingest on 4317, project membership, project retention policy CRUD, and alert rule/silence/history CRUD are now implemented surfaces, not deferred waves.
   - Production-scale performance work now has explicit implementation constraints in specs/06-nfr/performance-and-scaling.md.
-  - Metrics, project-level retention, alerting, gRPC OTLP, project membership, production manifests, and log-ingest extraction are specified or deferred implementation waves, not open product-decision gaps.
+  - Remaining production gaps are specified follow-on waves, not open product-decision gaps.
 blocking_gaps: []
+implemented_surfaces:
+  - metrics ingest, storage-write persistence, storage-read metric names/series/rich-series query, BFF GraphQL resolvers, and frontend metric explorer/dashboard widget surfaces
+  - grpc otlp ingest on standard port 4317 for traces, logs, and metrics
+  - project membership contracts, control-plane storage/service/NATS handlers, BFF GraphQL bridge, and project settings UI
+  - project-level retention policy contracts, control-plane storage/service/NATS handlers, BFF GraphQL bridge, and project settings UI
+  - project-scoped alert rule, alert silence, and alert history contracts plus control-plane storage/service/NATS handlers, BFF GraphQL bridge, and alert management UI
+  - organization invitations and invitation email delivery contracts/control-plane/BFF/frontend/docs
+  - live trace subscriptions through BFF GraphQL, storage-read live sessions, and storage-write post-persist notifications
 explicit_deferrals:
-  - metrics ingest implementation
-  - grpc otlp ingest implementation on standard port 4317
   - production-scale backpressure and benchmark implementation
-  - project-level retention policy and storage-maintenance worker implementation
-  - project-scoped alerting implementation
-  - project membership implementation
+  - storage-maintenance retention deletion worker and retention audit execution
+  - alert evaluator scheduling, rule execution, state transitions, and notification dispatch adapters
   - production deployment manifests
+  - production multi-tenant auth hardening beyond local/default project isolation

@@ -89,7 +89,7 @@ func (service *RunnerService) handleExperimentStart() Handler {
 			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("experimentId is required")))
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+		ctx, cancel := context.WithTimeout(contextWithAuth(request.AuthContext), defaultRequestTimeout)
 		defer cancel()
 		result, err := service.runner.StartOfflineExperiment(ctx, orchestrator.StartExperimentRequest{
 			RequestID:    request.RequestID,
@@ -121,7 +121,7 @@ func (service *RunnerService) handleExperimentCancel() Handler {
 			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("experimentRunId is required")))
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+		ctx, cancel := context.WithTimeout(contextWithAuth(request.AuthContext), defaultRequestTimeout)
 		defer cancel()
 		result, err := service.runner.CancelExperimentRun(ctx, orchestrator.CancelExperimentRequest{
 			RequestID:       request.RequestID,
@@ -167,7 +167,7 @@ func (service *RunnerService) handleOptimizationStart() Handler {
 			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("basePromptVersionId is required")))
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+		ctx, cancel := context.WithTimeout(contextWithAuth(request.AuthContext), defaultRequestTimeout)
 		defer cancel()
 		result, err := service.runner.StartOptimization(ctx, orchestrator.StartOptimizationRequest{
 			RequestID:           request.RequestID,

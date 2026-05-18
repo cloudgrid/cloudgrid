@@ -243,6 +243,8 @@ func TestBuildTraceDetailQueryUsesTraceIDAndReadOnlyStatements(t *testing.T) {
 	}
 
 	assertContains(t, stmt.SQL, "SELECT traceId AS id")
+	assertContains(t, stmt.SQL, "startedAtUnixNano")
+	assertContains(t, stmt.SQL, "durationNano")
 	assertContains(t, stmt.SQL, "FROM trace")
 	assertContains(t, stmt.SQL, "traceId = $traceId")
 	assertContains(t, stmt.SQL, "tenantId = $tenantId")

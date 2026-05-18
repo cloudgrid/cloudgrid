@@ -3,7 +3,27 @@ export const DEPLOYMENT_MODES = ["local", "deployed"] as const;
 export const AUTH_MODES = ["local", "sso"] as const;
 export const AUTH_PROVIDERS = ["github", "google", "azure"] as const;
 export const COMPANY_ROLES = ["admin", "user"] as const;
-export const ORGANIZATION_INVITATION_STATUSES = ["pending", "accepted", "revoked", "expired"] as const;
+export const ORGANIZATION_INVITATION_STATUSES = [
+  "pending",
+  "accepted",
+  "revoked",
+  "expired",
+] as const;
+export const INVITATION_DELIVERY_STATUSES = [
+  "not_configured",
+  "pending",
+  "sent",
+  "failed_retryable",
+  "failed_terminal",
+  "suppressed",
+] as const;
+export const INVITATION_PROJECT_GRANT_STATUSES = [
+  "pending",
+  "applied",
+  "revoked",
+  "failed",
+] as const;
+export const PROJECT_INVITATION_OUTCOMES = ["invitation_pending", "membership_created"] as const;
 export const PROJECT_ROLES = ["viewer", "editor", "admin"] as const;
 export const PROJECT_MEMBER_SOURCES = ["direct", "company_admin", "local_personal"] as const;
 export const PROJECT_STATUSES = ["active", "read_only", "disabled"] as const;
@@ -44,7 +64,9 @@ export const CONTROL_PLANE_SUBJECTS = [
   "control.members.remove",
   "control.invitations.list",
   "control.invitations.create",
+  "control.invitations.resend",
   "control.invitations.revoke",
+  "control.project_invitations.create",
   "control.ingest_credentials.list",
   "control.ingest_credentials.create",
   "control.ingest_credentials.revoke",
@@ -114,7 +136,7 @@ export const AI_EVAL_SUBJECTS = [
   "annotation.item.update",
 ] as const;
 export const CONTRACT_GENERATION_TARGETS = [
-  "apps/packages/ui-contracts/src/index.ts",
-  "core/go-contracts/contracts.go",
+  "apps/packages/ui-contracts/src/generated.ts",
+  "core/go-contracts/generated_contracts.go",
   "specs/03-contracts/messages/message-bridge.asyncapi.yaml",
 ] as const;

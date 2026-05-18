@@ -1,0 +1,72 @@
+mutation CreateDataset($input: CreateDatasetInput!) {
+  createDataset(input: $input) {
+    id
+    name
+    version
+  }
+}
+
+mutation PrepareDatasetImport($input: PrepareDatasetImportInput!) {
+  prepareDatasetImport(input: $input) {
+    id
+    datasetId
+    status
+    totalRows
+    validRows
+    errorRows
+    warnings
+  }
+}
+
+mutation CommitDatasetImport($input: CommitDatasetImportInput!) {
+  commitDatasetImport(input: $input) {
+    id
+    datasetId
+    status
+    validRows
+    errorRows
+  }
+}
+
+mutation StartDatasetExport($input: StartDatasetExportInput!) {
+  startDatasetExport(input: $input) {
+    id
+    datasetId
+    status
+    format
+    downloadUrl
+  }
+}
+
+mutation CreateScorer($input: CreateScorerInput!) {
+  createScorer(input: $input) {
+    id
+    name
+    kind
+    version
+  }
+}
+
+mutation StartExperimentRun($input: StartExperimentRunInput!) {
+  startExperimentRun(input: $input) {
+    id
+    experimentId
+    status
+    startedAt
+  }
+}
+
+query ProjectAiSettings($projectId: ID!) {
+  projectAiSettings(projectId: $projectId) {
+    projectId
+    enabled
+    version
+    effective {
+      warnings
+      deterministicOnly
+      missingProviderProfiles
+      disabledProviderProfiles
+      budgetExhausted
+    }
+  }
+}

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/health"
+	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/selfobs"
 	"github.com/cloudgrid-dev/cloudgrid/core/otlp-collector/internal/collector"
 	"google.golang.org/grpc"
 )
@@ -40,6 +41,32 @@ func run() int {
 	if err != nil {
 		logStartupError(logger, "grpc_config_invalid", "ERR-009", "CONFIG_INVALID", err.Error())
 		return 1
+	}
+	metricsExporter, err := collectorSelfObservabilityMetricsExporter(os.Getenv, logger)
+	if err != nil {
+		logStartupError(logger, "self_observability_config_invalid", "ERR-009", "CONFIG_INVALID", err.Error())
+		return 1
+	}
+	if metricsExporter != nil {
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			_ = metricsExporter.Shutdown(shutdownCtx)
+		}()
+		handlerOptions.MetricsRecorder = collector.NewOTLPIngestMetricsRecorder(metricsExporter)
+	}
+	signalExporter, err := collectorSelfObservabilitySignalExporter(os.Getenv, logger)
+	if err != nil {
+		logStartupError(logger, "self_observability_config_invalid", "ERR-009", "CONFIG_INVALID", err.Error())
+		return 1
+	}
+	if signalExporter != nil {
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			_ = signalExporter.Shutdown(shutdownCtx)
+		}()
+		handlerOptions.SelfObservability = signalExporter
 	}
 
 	bridge, err := collector.ConnectNATSMessageBridge(natsURL, startupTimeout)
@@ -142,6 +169,52 @@ func run() int {
 	return 0
 }
 
+func collectorSelfObservabilityMetricsExporter(getenv func(string) string, logger *slog.Logger) (*selfobs.OTLPHTTPMetricsExporter, error) {
+	config, err := collector.ResolveSelfObservabilityConfig(getenv)
+	if err != nil {
+		return nil, err
+	}
+	if !config.Enabled || !config.MetricsEnabled {
+		return nil, nil
+	}
+	deploymentMode := envOr(getenv, "CLOUDGRID_DEPLOYMENT_MODE", collector.DeploymentModeLocal)
+	return selfobs.NewOTLPHTTPMetricsExporter(selfobs.MetricsExporterConfig{
+		Enabled:               true,
+		Endpoint:              config.OTLPEndpoint,
+		BearerToken:           config.OTLPBearerToken,
+		ExportIntervalSeconds: config.ExportIntervalSeconds,
+		ServiceName:           "cloudgrid.otlp_collector",
+		DeploymentMode:        deploymentMode,
+		CompanyID:             config.CompanyID,
+		ProjectID:             config.ProjectID,
+		Logger:                logger,
+	})
+}
+
+func collectorSelfObservabilitySignalExporter(getenv func(string) string, logger *slog.Logger) (*collector.SelfObservabilitySignalExporter, error) {
+	config, err := collector.ResolveSelfObservabilityConfig(getenv)
+	if err != nil {
+		return nil, err
+	}
+	if !config.Enabled || (!config.TracesEnabled && !config.LogsEnabled) {
+		return nil, nil
+	}
+	deploymentMode := envOr(getenv, "CLOUDGRID_DEPLOYMENT_MODE", collector.DeploymentModeLocal)
+	return collector.NewSelfObservabilitySignalExporter(collector.SelfObservabilitySignalExporterConfig{
+		Enabled:               true,
+		Endpoint:              config.OTLPEndpoint,
+		BearerToken:           config.OTLPBearerToken,
+		ExportIntervalSeconds: config.ExportIntervalSeconds,
+		ServiceName:           "cloudgrid.otlp_collector",
+		DeploymentMode:        deploymentMode,
+		CompanyID:             config.CompanyID,
+		ProjectID:             config.ProjectID,
+		TracesEnabled:         config.TracesEnabled,
+		LogsEnabled:           config.LogsEnabled,
+		Logger:                logger,
+	})
+}
+
 type serverError struct {
 	kind string
 	err  error
@@ -188,6 +261,9 @@ func buildHandlerOptionsFromEnv(ctx context.Context, getenv func(string) string,
 	if deploymentMode == collector.DeploymentModeDeployed && authMode != collector.AuthModeSSO {
 		return collector.HandlerOptions{}, fmt.Errorf("CLOUDGRID_DEPLOYMENT_MODE=deployed requires CLOUDGRID_AUTH_MODE=sso")
 	}
+	if _, err := collector.ResolveSelfObservabilityConfig(getenv); err != nil {
+		return collector.HandlerOptions{}, err
+	}
 
 	options := collector.HandlerOptions{
 		DeploymentMode: deploymentMode,
@@ -200,6 +276,9 @@ func buildHandlerOptionsFromEnv(ctx context.Context, getenv func(string) string,
 	options.MaxRequestBytes = maxRequestBytes
 	if deploymentMode == collector.DeploymentModeLocal && authMode == collector.AuthModeLocal {
 		options.LocalProjectID = getenv("CLOUDGRID_OTLP_LOCAL_PROJECT_ID")
+		if strings.TrimSpace(options.LocalProjectID) == "" {
+			options.LocalProjectID = "default"
+		}
 		tokens, err := localProjectTokensFromEnv(getenv("CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS"))
 		if err != nil {
 			return collector.HandlerOptions{}, err

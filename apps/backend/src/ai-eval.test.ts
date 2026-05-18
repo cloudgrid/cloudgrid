@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { createLogger } from "@cloudgrid/runtime";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { createLogger } from "@cloudgrid/runtime";
 import type {
   AgentRun,
   AiQualityOverview,
@@ -18,9 +18,9 @@ import type {
 } from "@cloudgrid/ui-contracts";
 import { parse, subscribe } from "graphql";
 import {
-  MessageBridgeCloudGridBridge,
   type BridgeMessage,
   type EphemeralPubSub,
+  MessageBridgeCloudGridBridge,
   type RequestReplyClient,
 } from "./bridge";
 import { createAppWithBridge, createCloudGridSchema } from "./graphql";
@@ -47,6 +47,45 @@ describe("AI-eval bridge", () => {
         input: { agentName: "support", limit: 10 },
       },
     });
+  });
+
+  test("unwraps singular AI-eval reads from search-result bridge replies", async () => {
+    const requests: Array<{ subject: string; payload: Record<string, unknown> }> = [];
+    const bridge = new MessageBridgeCloudGridBridge(
+      requestReply((subject, payload) => {
+        requests.push({ subject, payload });
+        if (subject === "eval.agent_runs.search") {
+          return { items: [agentRun()], nextCursor: null };
+        }
+        if (subject === "eval.dataset.search") {
+          return { items: [dataset()], nextCursor: null };
+        }
+        return { items: [experimentRun()], nextCursor: null };
+      }),
+      2000,
+      createLogger("bff"),
+    );
+
+    await expect(bridge.agentRun("agent-run-1")).resolves.toMatchObject({ id: "agent-run-1" });
+    await expect(bridge.dataset("dataset-1")).resolves.toMatchObject({ id: "dataset-1" });
+    await expect(bridge.experimentRun("experiment-run-1")).resolves.toMatchObject({
+      id: "experiment-run-1",
+    });
+
+    expect(requests).toEqual([
+      {
+        subject: "eval.agent_runs.search",
+        payload: expect.objectContaining({ input: { id: "agent-run-1" } }),
+      },
+      {
+        subject: "eval.dataset.search",
+        payload: expect.objectContaining({ input: { id: "dataset-1" } }),
+      },
+      {
+        subject: "eval.experiment.search",
+        payload: expect.objectContaining({ input: { experimentRunId: "experiment-run-1" } }),
+      },
+    ]);
   });
 
   test("rejects invalid AI-eval bridge replies before GraphQL mapping", async () => {
@@ -470,7 +509,7 @@ describe("AI-eval dataset transfer HTTP endpoints", () => {
         sizeBytes: 12,
         sha256: "sha",
         createdAt: new Date("2026-05-16T10:00:00Z").toISOString(),
-        expiresAt: new Date("2026-05-17T10:00:00Z").toISOString(),
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
       }),
     );
     writeFileSync(join(transferDir, "exports", artifact), '{"a":1}\n');

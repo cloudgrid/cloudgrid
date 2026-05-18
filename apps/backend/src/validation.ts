@@ -19,6 +19,7 @@ import type {
   EvalResultSearchInput,
   ExperimentSearchInput,
   InviteOrganizationMemberInput,
+  InviteProjectMemberInput,
   LiveExperimentRunInput,
   LiveTraceInput,
   LogSearchInput,
@@ -826,6 +827,11 @@ const inviteOrganizationMemberInputSchema = z.object({
   organizationId: z.string().min(1),
   email: z.string().trim().email(),
 });
+const inviteProjectMemberInputSchema = z.object({
+  projectId: z.string().min(1),
+  email: z.string().trim().email(),
+  role: projectRoleSchema,
+});
 const removeOrganizationMemberInputSchema = z.object({
   organizationId: z.string().min(1),
   userId: z.string().min(1),
@@ -1134,7 +1140,7 @@ export function validateMetricSeriesInput(input: MetricSeriesInput): MetricSerie
 export function validateRichMetricSeriesInput(input: RichMetricSeriesInput): RichMetricSeriesInput {
   return validateAiInput<RichMetricSeriesInput>(
     richMetricSeriesInputSchema,
-    input,
+    compactDashboardMetricQueryInput(input),
     "Rich metric series input",
   );
 }
@@ -1150,7 +1156,7 @@ export function validateDashboardListInput(input: DashboardListInput): Dashboard
 export function validateSaveDashboardInput(input: SaveDashboardInput): SaveDashboardInput {
   return validateAiInput<SaveDashboardInput>(
     saveDashboardInputSchema,
-    input,
+    compactDashboardSaveInput(input),
     "Save dashboard input",
   );
 }
@@ -1465,6 +1471,20 @@ export function validateInviteOrganizationMemberInput(
   }
 }
 
+export function validateInviteProjectMemberInput(
+  input: InviteProjectMemberInput,
+): InviteProjectMemberInput {
+  try {
+    return parseWithZod(
+      inviteProjectMemberInputSchema,
+      compactInput(input as unknown as Record<string, unknown>),
+      "invite project member input",
+    ) as InviteProjectMemberInput;
+  } catch {
+    throw validationGraphQLError("Invite project member input failed validation");
+  }
+}
+
 export function validateRemoveOrganizationMemberInput(
   input: RemoveOrganizationMemberInput,
 ): RemoveOrganizationMemberInput {
@@ -1543,6 +1563,28 @@ function validateAiInput<T>(schema: z.ZodTypeAny, input: unknown, label: string)
   } catch {
     throw validationGraphQLError(`${label} failed validation`);
   }
+}
+
+function compactDashboardSaveInput(input: SaveDashboardInput): SaveDashboardInput {
+  return compactNullableDashboardValue(input) as SaveDashboardInput;
+}
+
+function compactDashboardMetricQueryInput(input: RichMetricSeriesInput): RichMetricSeriesInput {
+  return compactNullableDashboardValue(input) as RichMetricSeriesInput;
+}
+
+function compactNullableDashboardValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(compactNullableDashboardValue);
+  }
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const entries = Object.entries(value)
+    .map(([key, item]) => [key, compactNullableDashboardValue(item)] as const)
+    .filter(([, item]) => item !== null && item !== undefined && item !== "");
+  return Object.fromEntries(entries);
 }
 
 function validationGraphQLError(message: string) {

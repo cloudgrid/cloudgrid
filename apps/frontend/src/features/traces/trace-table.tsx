@@ -3,13 +3,13 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { CopyButton } from "../../components/copy-button";
 import { Badge } from "../../components/ui/badge";
 import {
+  SortableTableHead,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-  SortableTableHead,
   type TableSortDirection,
 } from "../../components/ui/table";
 import { formatDateTime, formatDuration, statusVariant } from "../../lib/format";

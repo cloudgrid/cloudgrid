@@ -200,6 +200,39 @@ func TestNATSAdaptersUseApprovedBoundarySubjects(t *testing.T) {
 	}
 }
 
+func TestNATSAdaptersPropagateAuthContext(t *testing.T) {
+	requester := &recordingRequester{
+		responses: map[string]any{
+			SubjectExperimentSearch: contracts.EvalQueryResponse{
+				RequestID: "req",
+				OK:        true,
+				Data:      map[string]any{"items": []any{}},
+			},
+			SubjectResultsPersist: contracts.EvalMutationResponse{
+				RequestID: "req",
+				OK:        true,
+				Data:      map[string]any{},
+			},
+		},
+	}
+	ctx := contextWithAuth(&contracts.AuthContext{ProjectID: stringPtr("project-1")})
+	reader := NATSStorageReader{Requester: requester}
+	writer := NATSStorageWriter{Requester: requester}
+
+	_, _ = reader.SearchExperiments(ctx, "experiment-1")
+	_ = writer.PersistExperimentRun(ctx, ports.ExperimentRun{ID: "run-1", ExperimentID: "experiment-1"})
+
+	if requester.requestPayloads[0]["input"].(map[string]any)["id"] != "experiment-1" {
+		t.Fatalf("experiment lookup payload = %#v, want public id filter", requester.requestPayloads[0])
+	}
+	for _, payload := range requester.requestPayloads {
+		envelope, ok := payload["authContext"].(map[string]any)
+		if !ok || envelope["projectId"] != "project-1" {
+			t.Fatalf("request payload did not propagate auth context: %#v", payload)
+		}
+	}
+}
+
 func TestHarnessHTTPAdapterCallsHarnessOnlyWithTraceContext(t *testing.T) {
 	var gotPath string
 	var gotTraceparent string
@@ -346,6 +379,7 @@ func (publisher *runtimePublisher) PublishExperimentProgress(_ context.Context, 
 type recordingRequester struct {
 	responses       map[string]any
 	requestSubjects []string
+	requestPayloads []map[string]any
 	publishSubjects []string
 }
 
@@ -353,16 +387,21 @@ func (requester *recordingRequester) RequestWithContext(_ context.Context, subje
 	if len(bytes.TrimSpace(data)) == 0 {
 		return nil, errors.New("empty request")
 	}
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return nil, err
+	}
+	requester.requestPayloads = append(requester.requestPayloads, payload)
 	requester.requestSubjects = append(requester.requestSubjects, subject)
 	response, ok := requester.responses[subject]
 	if !ok {
 		return nil, errors.New("missing response")
 	}
-	payload, err := json.Marshal(response)
+	responseData, err := json.Marshal(response)
 	if err != nil {
 		return nil, err
 	}
-	return &Message{Data: payload}, nil
+	return &Message{Data: responseData}, nil
 }
 
 func (requester *recordingRequester) Publish(subject string, data []byte) error {

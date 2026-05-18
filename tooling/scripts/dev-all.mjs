@@ -4,6 +4,9 @@ import { spawn } from "bun";
 
 const env = process.env;
 const frontendPort = env.CLOUDGRID_FRONTEND_DEV_PORT || "5173";
+const aiEvalEnabled = env.CLOUDGRID_AI_EVAL_ENABLED !== "false";
+const aiEvalHarnessURL = env.CLOUDGRID_AI_EVAL_HARNESS_URL || "http://127.0.0.1:8090";
+const aiEvalHarnessPort = new URL(aiEvalHarnessURL).port || "8090";
 
 const requiredPorts = [
   ["backend", env.CLOUDGRID_BFF_PORT || "3000", "CLOUDGRID_BFF_PORT"],
@@ -24,6 +27,16 @@ const requiredPorts = [
     env.CLOUDGRID_CONTROL_PLANE_HEALTH_PORT || "8084",
     "CLOUDGRID_CONTROL_PLANE_HEALTH_PORT",
   ],
+  ...(aiEvalEnabled
+    ? [
+        [
+          "ai-eval-runner health",
+          env.CLOUDGRID_AI_EVAL_RUNNER_HEALTH_PORT || "8085",
+          "CLOUDGRID_AI_EVAL_RUNNER_HEALTH_PORT",
+        ],
+        ["ai-eval harness", aiEvalHarnessPort, "CLOUDGRID_AI_EVAL_HARNESS_URL"],
+      ]
+    : []),
 ];
 
 const processes = [];
@@ -65,6 +78,23 @@ await startService(
   ["go", "run", "./core/control-plane/cmd/control-plane"],
   `http://127.0.0.1:${env.CLOUDGRID_CONTROL_PLANE_HEALTH_PORT || "8084"}/readyz`,
 );
+if (aiEvalEnabled) {
+  await startService(
+    "ai-eval-harness",
+    ["bun", "tooling/scripts/ai-eval-dev-harness.mjs"],
+    `${aiEvalHarnessURL.replace(/\/$/, "")}/readyz`,
+    { CLOUDGRID_AI_EVAL_HARNESS_URL: aiEvalHarnessURL },
+  );
+  await startService(
+    "ai-eval-runner",
+    ["go", "run", "./core/ai-eval-runner/cmd/ai-eval-runner"],
+    `http://127.0.0.1:${env.CLOUDGRID_AI_EVAL_RUNNER_HEALTH_PORT || "8085"}/readyz`,
+    {
+      CLOUDGRID_AI_EVAL_ENABLED: "true",
+      CLOUDGRID_AI_EVAL_HARNESS_URL: aiEvalHarnessURL,
+    },
+  );
+}
 await startService(
   "backend",
   ["bun", "run", "--cwd", "apps/backend", "dev"],
@@ -94,10 +124,10 @@ process.on("SIGTERM", () => stopAll(0));
 
 await Promise.all(processes.map(([, proc]) => proc.exited));
 
-async function startService(name, command, readyURL) {
+async function startService(name, command, readyURL, extraEnv = {}) {
   const proc = spawn(command, {
     cwd: process.cwd(),
-    env: process.env,
+    env: { ...process.env, ...extraEnv },
     stdout: "pipe",
     stderr: "pipe",
   });

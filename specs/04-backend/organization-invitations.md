@@ -22,7 +22,10 @@ the local-only `Personal` company.
 
 Project-specific access is still governed by
 [Project membership and roles](./project-membership.md). A company invitation
-does not create direct project membership rows.
+may carry pending project grants only as defined by
+[Invitation email delivery and project onboarding](./invitation-email-delivery.md).
+Those grants create direct project membership rows only after the invited person
+signs in with a matching verified SSO email.
 
 ## Entity
 
@@ -40,6 +43,10 @@ Fields:
 - `acceptedByUserId`: set when the invite is accepted.
 - `createdAt`, `updatedAt`.
 - `acceptedAt`, `revokedAt`, `expiresAt`.
+- `deliveryStatus`, `lastDeliveryAttemptAt`, `lastDeliveryErrorCode`, and
+  `lastEmailDeliveryId` as defined by the invitation email delivery spec.
+- `projectGrants`: pending, applied, revoked, or failed project grants attached
+  by project invitation flows.
 
 Uniqueness:
 
@@ -84,8 +91,13 @@ Revoking an invitation:
 - must fail with `ERR-016` for accepted invitations because accepted membership
   must be removed through `removeOrganizationMember`.
 
-There is no admin-selected invite role in v1. Admin promotion is available only
-after the invited person signs in and becomes an active organization member.
+There is no admin-selected company invite role in v1. Organization invitations
+always create company role `user`. Admin promotion is available only after the
+invited person signs in and becomes an active organization member.
+
+When an invitation includes project grants, grant role validation follows
+[Project membership and roles](./project-membership.md). Project grants do not
+grant any access while the invitation is pending.
 
 ## SSO Acceptance
 
@@ -107,7 +119,8 @@ Control-plane `GetViewer` bootstrap behavior in deployed SSO mode:
    verified provider email.
 6. If a matching invitation exists, create a company membership with role
    `user`, mark the invitation `accepted`, set `acceptedByUserId` and
-   `acceptedAt`, and return the viewer with company access.
+   `acceptedAt`, apply pending project grants in the same organization, and
+   return the viewer with company/project access.
 7. If no matching invitation exists, return a viewer with no organizations.
 
 An invitation must not be accepted when the provider email is missing or
@@ -134,6 +147,18 @@ Company member management surfaces need both active members and invitations.
 `OrganizationMember` represents active members only. Pending invitations are
 not members and cannot be promoted, demoted, selected for project membership, or
 used for telemetry access.
+
+Project-member management surfaces may show pending project invitations
+separately from active `ProjectMember` rows. Pending project grants must not be
+reported as active project members.
+
+## Email Delivery
+
+Invitation email delivery is required for deployed onboarding unless explicitly
+disabled for private operator testing. Delivery behavior, SMTP configuration,
+outbox retry, resend, project invite email content, and delivery status fields
+are defined in
+[Invitation email delivery and project onboarding](./invitation-email-delivery.md).
 
 ## SSO Deprovisioning
 
@@ -175,6 +200,8 @@ Required default tests:
 - duplicate pending invitation for the same normalized email fails;
 - invitation for an existing active member fails;
 - invited SSO user with verified matching email becomes a `user`;
+- invited SSO user with pending project grants receives those project
+  memberships after acceptance;
 - invited SSO user is not made `admin`;
 - SSO user without a matching invitation gets no organization membership;
 - unverified or missing provider email does not accept an invitation;

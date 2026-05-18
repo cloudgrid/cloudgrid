@@ -1,0 +1,47 @@
+{
+  "name": "Project overview",
+  "description": "Starter dashboard for request volume, errors, recent traces, and recent logs.",
+  "tags": ["starter", "observability"],
+  "visibility": "project",
+  "defaultTimeWindow": "PT1H",
+  "widgets": [
+    {
+      "id": "requests",
+      "title": "Request rate",
+      "kind": "metric_timeseries",
+      "layout": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "metric": {
+        "metricName": "http.server.request.duration",
+        "aggregation": "count",
+        "groupBy": ["service.name"],
+        "timeWindow": "PT1H",
+        "interval": "PT1M",
+        "visualization": "line",
+        "legend": true,
+        "maxSeries": 10
+      }
+    },
+    {
+      "id": "errors",
+      "title": "Error traces",
+      "kind": "trace_table",
+      "layout": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "traces": {
+        "status": "error",
+        "timeWindow": "PT1H",
+        "limit": 20
+      }
+    },
+    {
+      "id": "logs",
+      "title": "Recent warning logs",
+      "kind": "log_table",
+      "layout": { "x": 0, "y": 4, "w": 12, "h": 4 },
+      "logs": {
+        "severity": "warn",
+        "timeWindow": "PT1H",
+        "limit": 50
+      }
+    }
+  ]
+}

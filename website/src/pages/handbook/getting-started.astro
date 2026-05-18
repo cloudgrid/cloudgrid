@@ -1,88 +1,21 @@
 ---
-import Layout from "../../layouts/Layout.astro";
-import Section from "../../components/Section.astro";
-import PageHeader from "../../components/PageHeader.astro";
-import MockFrame from "../../components/visuals/MockFrame.astro";
+import { render } from "astro:content";
+import HandbookLayout from "../../components/handbook/HandbookLayout.astro";
+import { findHandbookEntry } from "../../lib/handbook";
+
+const entry = await findHandbookEntry("getting-started");
+if (!entry) throw new Error("handbook/getting-started.md is missing");
+const { Content, headings } = await render(entry);
 ---
 
-<Layout title="Getting started — CloudGrid Handbook">
-  <Section size="lg">
-    <PageHeader
-      eyebrow="Handbook · Getting started"
-      accent="emerald"
-      title="Run CloudGrid in one command."
-      description="The all-in-one image runs the OTLP collector, NATS, SurrealDB, storage services, BFF, and UI. Point an OTel SDK at port 4318 and refresh the UI on port 3000."
-    />
-  </Section>
-
-  <Section tone="recessed">
-    <div class="grid lg:grid-cols-2 gap-6 reveal">
-      <MockFrame title="docker-compose.yaml">
-        <div class="p-5 code-surface">
-          <pre class="code-block"><code><span style="color:#a78bfa">services</span>:
-  <span style="color:#60a5fa">cloudgrid</span>:
-    <span style="color:#a78bfa">image</span>: <span style="color:#86efac">cloudgrid/all-in-one:latest</span>
-    <span style="color:#a78bfa">ports</span>:
-      - <span style="color:#fbbf24">"4318:4318"</span>   <span style="color:#64748b"># OTLP HTTP ingest</span>
-      - <span style="color:#fbbf24">"3000:3000"</span>   <span style="color:#64748b"># UI + GraphQL</span>
-    <span style="color:#a78bfa">environment</span>:
-      <span style="color:#60a5fa">CLOUDGRID_DEPLOYMENT_MODE</span>: <span style="color:#86efac">local</span>
-      <span style="color:#60a5fa">CLOUDGRID_AUTH_MODE</span>: <span style="color:#86efac">local</span></code></pre>
-        </div>
-      </MockFrame>
-
-      <MockFrame title="$ start">
-        <div class="p-5 code-surface text-sm">
-          <pre class="code-block"><code><span style="color:#86efac">$</span> docker compose up
-<span style="color:#64748b">✓ NATS JetStream ready on :4222</span>
-<span style="color:#64748b">✓ SurrealDB ready on :8000</span>
-<span style="color:#64748b">✓ storage-write subscribed</span>
-<span style="color:#64748b">✓ storage-read subscribed</span>
-<span style="color:#64748b">✓ otlp-collector listening on :4318</span>
-<span style="color:#64748b">✓ BFF + UI listening on :3000</span>
-
-<span style="color:#86efac">$</span> open http://localhost:3000</code></pre>
-        </div>
-      </MockFrame>
-    </div>
-  </Section>
-
-  <Section>
-    <div class="prose-handbook">
-      <h2>Send your first trace</h2>
-      <p>
-        Any OpenTelemetry SDK works. Point its OTLP HTTP exporter at
-        <code>http://localhost:4318</code>. Within three seconds, the trace appears in
-        <code>/traces</code>.
-      </p>
-
-      <h3>Example: TypeScript</h3>
-      <p>
-        Use the standard <code>@opentelemetry/sdk-trace-node</code> with the
-        <code>@opentelemetry/exporter-trace-otlp-http</code> exporter. No CloudGrid SDK exists,
-        and that is intentional — your existing OTel pipeline is the SDK.
-      </p>
-
-      <h3>Example: Go</h3>
-      <p>
-        Use <code>go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp</code>. Same
-        endpoint, same wire format.
-      </p>
-
-      <h2>What now</h2>
-      <ul>
-        <li>Explore the UI at <code>http://localhost:3000</code> — the Personal project is created automatically in local mode.</li>
-        <li>Read the <a href="/handbook/architecture">Architecture page</a> to understand the message bridge.</li>
-        <li>Read the <a href="/handbook/deployment">Deployment page</a> when you're ready to move beyond a laptop.</li>
-        <li>Read the <a href="/handbook/configuration">Configuration page</a> for SSO and project setup.</li>
-      </ul>
-
-      <h2>What CloudGrid accepts</h2>
-      <p>
-        OTLP HTTP on <code>4318</code> and OTLP/gRPC on <code>4317</code> for traces, logs,
-        and metrics. JSON and protobuf encodings. No CloudGrid-specific SDK exists, and that
-        is intentional — your existing OpenTelemetry pipeline is the SDK.
-      </p>
-    </div>
-  </Section>
-</Layout>
+<HandbookLayout
+  title={entry.data.title}
+  description={entry.data.description}
+  eyebrow={entry.data.eyebrow}
+  accent={entry.data.accent}
+  updated={entry.data.updated}
+  headings={headings}
+  currentSlug="/handbook/getting-started"
+>
+  <Content />
+</HandbookLayout>

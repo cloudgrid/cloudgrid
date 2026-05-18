@@ -222,7 +222,7 @@ Depends on: FEUX-01, FEUX-02.
 Read scope:
 
 - `specs/05-frontend/traces-and-metrics-ux-concept.md`
-- `apps/frontend/public/concepts/traces-metrics-ux.html`
+- `plans/frontend-ux-concepts/traces-metrics-ux.html`
 - `apps/frontend/src/routes/trace-detail-route.tsx`
 - `apps/frontend/src/features/traces/`
 
@@ -270,7 +270,7 @@ Depends on: FEUX-01, FEUX-02.
 Read scope:
 
 - `specs/05-frontend/logs-metrics-dashboards-ux-concept.md`
-- `apps/frontend/public/concepts/logs-metrics-dashboards-ux.html`
+- `plans/frontend-ux-concepts/logs-metrics-dashboards-ux.html`
 - `apps/frontend/src/routes/logs-route.tsx`
 - `apps/frontend/src/features/logs/`
 

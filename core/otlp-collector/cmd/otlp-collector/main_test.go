@@ -7,13 +7,16 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cloudgrid-dev/cloudgrid/core/otlp-collector/internal/collector"
+	"google.golang.org/grpc"
 )
 
 func TestEnvOrDefaultUsesFallbackForMissingAndEmptyValues(t *testing.T) {
@@ -28,6 +31,89 @@ func TestEnvOrDefaultUsesFallbackForMissingAndEmptyValues(t *testing.T) {
 	t.Setenv("CLOUDGRID_TEST_VALUE", "configured")
 	if got := envOrDefault("CLOUDGRID_TEST_VALUE", "fallback"); got != "configured" {
 		t.Fatalf("envOrDefault(configured) = %q, want configured", got)
+	}
+}
+
+func TestCollectorSelfObservabilitySignalExporterPostsTracesAndLogs(t *testing.T) {
+	requests := map[string]map[string]any{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer service-token" {
+			t.Fatalf("authorization = %q, want bearer", r.Header.Get("Authorization"))
+		}
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		requests[r.URL.Path] = payload
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	env := map[string]string{
+		"CLOUDGRID_DEPLOYMENT_MODE":                      "local",
+		"CLOUDGRID_SELF_OBSERVABILITY_ENABLED":           "true",
+		"CLOUDGRID_SELF_OBSERVABILITY_TRACES_ENABLED":    "true",
+		"CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED":      "true",
+		"CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID":        "cloudgrid-system",
+		"CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID":        "local",
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT":     server.URL,
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN": "service-token",
+	}
+	exporter, err := collectorSelfObservabilitySignalExporter(func(name string) string { return env[name] }, collector.NewDiscardLogger())
+	if err != nil {
+		t.Fatalf("collectorSelfObservabilitySignalExporter() error = %v", err)
+	}
+	exporter.RecordSpan(collector.SelfObservabilitySpan{Name: "otlp.http /v1/traces", StartTime: time.Unix(1, 0), EndTime: time.Unix(1, 1)})
+	exporter.RecordLog(collector.SelfObservabilityLog{Body: "collector request failed", Timestamp: time.Unix(1, 2), Attributes: map[string]string{"event": "request_failed"}})
+
+	if err := exporter.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+
+	if !payloadHasResourceAttribute(requests["/v1/traces"], "service.name", "cloudgrid.otlp_collector") ||
+		!payloadHasResourceAttribute(requests["/v1/logs"], "service.name", "cloudgrid.otlp_collector") {
+		t.Fatalf("payloads missing collector resource attrs: %#v", requests)
+	}
+}
+
+func TestCollectorSelfObservabilityExportersRespectDisabledSignals(t *testing.T) {
+	env := map[string]string{
+		"CLOUDGRID_DEPLOYMENT_MODE":                    "local",
+		"CLOUDGRID_SELF_OBSERVABILITY_ENABLED":         "true",
+		"CLOUDGRID_SELF_OBSERVABILITY_TRACES_ENABLED":  "false",
+		"CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED":    "false",
+		"CLOUDGRID_SELF_OBSERVABILITY_METRICS_ENABLED": "false",
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT":   "http://127.0.0.1:4318",
+	}
+
+	metricsExporter, err := collectorSelfObservabilityMetricsExporter(func(name string) string { return env[name] }, collector.NewDiscardLogger())
+	if err != nil {
+		t.Fatalf("collectorSelfObservabilityMetricsExporter() error = %v", err)
+	}
+	if metricsExporter != nil {
+		t.Fatal("metrics exporter is non-nil with metrics disabled")
+	}
+	signalExporter, err := collectorSelfObservabilitySignalExporter(func(name string) string { return env[name] }, collector.NewDiscardLogger())
+	if err != nil {
+		t.Fatalf("collectorSelfObservabilitySignalExporter() error = %v", err)
+	}
+	if signalExporter != nil {
+		t.Fatal("signal exporter is non-nil with traces and logs disabled")
+	}
+}
+
+func TestCollectorSelfObservabilityExportersRejectInvalidEndpoint(t *testing.T) {
+	env := map[string]string{
+		"CLOUDGRID_DEPLOYMENT_MODE":                    "local",
+		"CLOUDGRID_SELF_OBSERVABILITY_ENABLED":         "true",
+		"CLOUDGRID_SELF_OBSERVABILITY_METRICS_ENABLED": "true",
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT":   "localhost:4318",
+	}
+
+	if _, err := collectorSelfObservabilityMetricsExporter(func(name string) string { return env[name] }, collector.NewDiscardLogger()); err == nil || !strings.Contains(err.Error(), "ERR-009") {
+		t.Fatalf("metrics exporter error = %v, want config validation", err)
+	}
+	if _, err := collectorSelfObservabilitySignalExporter(func(name string) string { return env[name] }, collector.NewDiscardLogger()); err == nil || !strings.Contains(err.Error(), "ERR-009") {
+		t.Fatalf("signal exporter error = %v, want config validation", err)
 	}
 }
 
@@ -75,6 +161,44 @@ func TestBuildGRPCOptionsFromEnvRejectsInvalidCompression(t *testing.T) {
 	}
 }
 
+func TestExpectedServerStopClassifiesGracefulAndUnexpectedStops(t *testing.T) {
+	if !expectedServerStop(nil) || !expectedServerStop(http.ErrServerClosed) || !expectedServerStop(grpc.ErrServerStopped) {
+		t.Fatal("expectedServerStop did not accept graceful HTTP/gRPC shutdown errors")
+	}
+	if expectedServerStop(errors.New("listener failed")) {
+		t.Fatal("expectedServerStop accepted unexpected listener failure")
+	}
+}
+
+func TestGracefulStopGRPCReturnsWhenServerStops(t *testing.T) {
+	server := grpc.NewServer()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	done := make(chan struct{})
+
+	go func() {
+		gracefulStopGRPC(ctx, server)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("gracefulStopGRPC did not return for an idle server")
+	}
+}
+
+func TestBuildGRPCOptionsRejectsOutOfRangeMessageLimit(t *testing.T) {
+	env := map[string]string{
+		"CLOUDGRID_OTLP_GRPC_MAX_MESSAGE_BYTES": "1",
+	}
+
+	_, err := buildGRPCOptionsFromEnv(func(name string) string { return env[name] }, 4*1024*1024)
+	if err == nil || !strings.Contains(err.Error(), "CLOUDGRID_OTLP_GRPC_MAX_MESSAGE_BYTES") {
+		t.Fatalf("error = %v, want message size validation", err)
+	}
+}
+
 func TestRunReturnsFailureWhenNATSURLIsInvalid(t *testing.T) {
 	t.Setenv("CLOUDGRID_NATS_URL", "://not-a-url")
 
@@ -116,6 +240,9 @@ func TestBuildHandlerOptionsDefaultsToLocalWithoutExternalProvider(t *testing.T)
 	}
 	if options.TokenValidator != nil || options.ProjectCache != nil {
 		t.Fatalf("options = %#v, want no deployed auth dependencies", options)
+	}
+	if options.LocalProjectID != "default" {
+		t.Fatalf("LocalProjectID = %q, want default anonymous local project", options.LocalProjectID)
 	}
 }
 
@@ -203,4 +330,23 @@ func TestBuildHandlerOptionsRejectsMismatchedDeploymentAndAuthMode(t *testing.T)
 
 func base64URL(data []byte) string {
 	return base64.RawURLEncoding.EncodeToString(data)
+}
+
+func payloadHasResourceAttribute(payload map[string]any, key string, value string) bool {
+	for _, topKey := range []string{"resourceSpans", "resourceLogs"} {
+		resources, _ := payload[topKey].([]any)
+		for _, item := range resources {
+			resourceItem, _ := item.(map[string]any)
+			resource, _ := resourceItem["resource"].(map[string]any)
+			attributes, _ := resource["attributes"].([]any)
+			for _, attributeItem := range attributes {
+				attribute, _ := attributeItem.(map[string]any)
+				valueMap, _ := attribute["value"].(map[string]any)
+				if attribute["key"] == key && valueMap["stringValue"] == value {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

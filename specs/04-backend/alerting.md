@@ -136,16 +136,22 @@ Reading alert rules and history requires selected-project read access.
 
 Creating, updating, deleting, silencing, or enabling alert rules requires project `admin` or company `admin`.
 
-## Required Contracts Before Implementation
+## Implementation Status
 
-Implementation requires:
+Implemented:
 
 - GraphQL alert rule, alert history, alert event, silence, and mutation contracts;
-- control-plane message bridge subjects for rule CRUD, silence CRUD, and history reads;
-- evaluator message bridge subjects for schedule ticks, rule execution, and notification dispatch;
-- SurrealDB schema for `alert_rule`, `alert_instance`, `alert_event`, `alert_silence`, and `notification_delivery`;
-- error mappings for invalid rule config, unsupported query, notification adapter failure, and evaluator timeout;
-- frontend UX spec for project alerting list, rule editor, history, and trace/log/metric pivots.
+- control-plane message bridge subjects for rule CRUD, silence CRUD, history reads, and history record writes;
+- SurrealDB schema for `alert_rule`, `alert_event`, and `alert_silence`;
+- BFF bridge/resolver validation and project alert management UI.
+
+Remaining before alerting is production-executing:
+
+- alert evaluator service for schedule ticks, rule execution, state transitions, and notification dispatch;
+- storage-read-backed evaluator queries with project isolation tests;
+- notification delivery adapters and retry/terminal delivery handling;
+- dashboard alert widgets and alert evidence widgets, if those surfaces are added;
+- implementation of evaluator timeout and notification failure errors in the executing service.
 
 Alerting-specific errors:
 

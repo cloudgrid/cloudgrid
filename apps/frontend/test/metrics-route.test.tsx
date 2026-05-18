@@ -41,9 +41,15 @@ describe("metrics route helpers", () => {
     expect(routeSource).not.toContain("h-[calc(100vh-5.5rem)]");
     expect(routeSource).not.toContain("Dashboard");
     expect(routeSource).toContain('t("metrics.title")');
-    expect(routeSource).toContain("RouteBreadcrumb");
+    expect(routeSource).not.toContain("RouteBreadcrumb");
     expect(routeSource).toContain("MetricTimeRangePopover");
+    expect(routeSource).toContain("withMetricDescriptorDefaults");
+    expect(routeSource).toContain("defaultMetricAggregation");
     expect(routeSource).not.toContain('aria-label={t("actions.copyUrl")}');
+    expect(routeSource).toContain('params.set("metric"');
+    expect(explorerSource).toContain("TelemetryChart");
+    expect(explorerSource).toContain("SelectTrigger");
+    expect(explorerSource).not.toContain("aria-pressed={active}");
     expect(explorerSource).toContain('t("metrics.inspector.descriptor")');
   });
 

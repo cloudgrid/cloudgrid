@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import type { AlertEvent, AlertRule, AlertSilence, Project, Viewer } from "@cloudgrid/ui-contracts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { AppSessionProvider } from "../src/providers/app-session-provider";
@@ -156,10 +156,7 @@ describe("alerts route", () => {
 
   test("renders empty alert rule state with create sheet controls", () => {
     const markup = alertsMarkup({ path: "/alerts?new=1", rules: [] });
-    const source = [
-      "../src/routes/alerts-route.tsx",
-      "../src/features/alerts/alert-editor.tsx",
-    ]
+    const source = ["../src/routes/alerts-route.tsx", "../src/features/alerts/alert-editor.tsx"]
       .map((path) => readFileSync(new URL(path, import.meta.url), "utf8"))
       .join("\n");
 
@@ -176,21 +173,18 @@ describe("alerts route", () => {
   });
 
   test("keeps alert filters URL-backed and aligned to alertRules input", () => {
-    const source = [
-      "../src/routes/alerts-route.tsx",
-      "../src/features/alerts/url-state.ts",
-    ]
+    const source = ["../src/routes/alerts-route.tsx", "../src/features/alerts/url-state.ts"]
       .map((path) => readFileSync(new URL(path, import.meta.url), "utf8"))
       .join("\n");
 
     expect(source).toContain("readAlertRuleSearchInput");
     expect(source).toContain("writeAlertRuleFilter");
-    expect(source).toContain("searchParams.get(\"search\")");
-    expect(source).toContain("searchParams.get(\"status\")");
-    expect(source).toContain("searchParams.get(\"severity\")");
-    expect(source).toContain("searchParams.get(\"signal\")");
-    expect(source).toContain("searchParams.get(\"enabled\")");
-    expect(source).toContain("searchParams.get(\"sort\")");
+    expect(source).toContain('searchParams.get("search")');
+    expect(source).toContain('searchParams.get("status")');
+    expect(source).toContain('searchParams.get("severity")');
+    expect(source).toContain('searchParams.get("signal")');
+    expect(source).toContain('searchParams.get("enabled")');
+    expect(source).toContain('searchParams.get("sort")');
     expect(source).toContain("getAlertRules(projectId, alertRuleInput)");
   });
 

@@ -14,6 +14,7 @@ import type {
   ExperimentRun,
   ExperimentRunEvent,
   InviteOrganizationMemberInput,
+  InviteProjectMemberInput,
   LiveTraceEvent,
   LiveTraceInput,
   LogSearchInput,
@@ -22,6 +23,7 @@ import type {
   OrganizationMember,
   Project,
   ProjectAiSettings,
+  ProjectInvitationResult,
   ProjectListInput,
   ProjectMember,
   ProjectRole,
@@ -115,6 +117,31 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
       _authContext: NormalizedAuthContext,
     ) {
       return invitation({ organizationId: input.organizationId, email: input.email });
+    },
+    async inviteProjectMember(
+      input: InviteProjectMemberInput,
+      _authContext: NormalizedAuthContext,
+    ): Promise<ProjectInvitationResult> {
+      return {
+        outcome: "invitation_pending",
+        invitation: invitation({
+          email: input.email,
+          projectGrants: [
+            {
+              projectId: input.projectId,
+              role: input.role,
+              status: "pending",
+              createdAt: "2026-05-16T09:00:00.000Z",
+              createdByUserId: "admin-1",
+              appliedAt: null,
+            },
+          ],
+        }),
+        projectMember: null,
+      };
+    },
+    async resendOrganizationInvitation(id: string, _authContext: NormalizedAuthContext) {
+      return invitation({ id, deliveryStatus: "pending" });
     },
     async revokeOrganizationInvitation(_id: string, _authContext: NormalizedAuthContext) {
       return invitation({ status: "revoked", revokedAt: "2026-05-16T10:00:00.000Z" });
@@ -533,6 +560,11 @@ export function invitation(
     email: "ada@example.test",
     role: "user",
     status: "pending",
+    deliveryStatus: "suppressed",
+    lastDeliveryAttemptAt: null,
+    lastDeliveryErrorCode: null,
+    lastEmailDeliveryId: null,
+    projectGrants: [],
     invitedByUserId: "admin-1",
     acceptedByUserId: null,
     createdAt: "2026-05-16T09:00:00.000Z",
@@ -799,7 +831,10 @@ function traceDetail(): TraceDetail {
       id: "trace-1",
       serviceName: "api",
       startedAt: "2026-05-08T10:00:00.000Z",
+      startedAtUnixNano: "1778234400000000000",
       endedAt: "2026-05-08T10:00:01.000Z",
+      endedAtUnixNano: "1778234401000000000",
+      durationNano: "1000000000",
       durationMs: 1000,
       rootSpanId: "span-1",
       status: "error",

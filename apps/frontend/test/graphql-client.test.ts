@@ -557,6 +557,232 @@ describe("GraphQL client", () => {
       after: null,
     });
   });
+
+  test("calls AI Eval workspace operations with schema operation names", async () => {
+    const operationNames: string[] = [];
+    globalThis.fetch = async (_input, init) => {
+      const requestBody = JSON.parse(String(init?.body));
+      operationNames.push(requestBody.operationName);
+      const importJob = {
+        id: "import-1",
+        datasetId: "dataset-1",
+        status: "preview_ready",
+        format: "jsonl",
+        sourceFiles: [],
+        mapping: {},
+        defaults: {},
+        previewRows: [],
+        totalRows: 0,
+        validRows: 0,
+        errorRows: 0,
+        warnings: [],
+        createdAt: "2026-05-17T08:00:00.000Z",
+        expiresAt: "2026-05-17T09:00:00.000Z",
+        committedDatasetVersion: null,
+      };
+      const exportJob = {
+        id: "export-1",
+        datasetId: "dataset-1",
+        datasetVersion: 1,
+        status: "ready",
+        format: "jsonl",
+        rowCount: 0,
+        sizeBytes: null,
+        sha256: null,
+        downloadUrl: "/api/ai-eval/dataset-exports/export-1/download",
+        createdAt: "2026-05-17T08:00:00.000Z",
+        expiresAt: "2026-05-17T09:00:00.000Z",
+      };
+      const dataset = {
+        id: "dataset-1",
+        name: "Regression",
+        description: null,
+        version: 1,
+        createdAt: "2026-05-17T08:00:00.000Z",
+        itemCount: 0,
+        reviewedItemCount: 0,
+        splitCounts: {},
+        health: {
+          status: "ready",
+          reviewedItemCount: 0,
+          totalItemCount: 0,
+          splitCounts: {},
+          duplicateCandidateCount: 0,
+          leakageWarningCount: 0,
+          missingExpectedCount: 0,
+          schemaIssueCount: 0,
+          smallDataset: true,
+          warnings: [],
+        },
+        tags: [],
+        items: { items: [], nextCursor: null },
+      };
+      const scorer = {
+        id: "scorer-1",
+        name: "Contains answer",
+        kind: "deterministic",
+        definition: { type: "contains" },
+        judgeModelRef: null,
+        version: 1,
+      };
+      const experimentRun = {
+        id: "run-1",
+        experimentId: "experiment-1",
+        solverRef: { kind: "local" },
+        manifest: null,
+        baselineRunId: null,
+        status: "queued",
+        startedAt: "2026-05-17T08:00:00.000Z",
+        endedAt: null,
+        summary: {},
+        itemRuns: { items: [], nextCursor: null },
+      };
+      const experiment = {
+        id: "experiment-1",
+        name: "Baseline",
+        datasetId: "dataset-1",
+        datasetVersion: 1,
+        scorerIds: ["scorer-1"],
+        splitSelector: { splits: ["validation"], reviewedOnly: false, includeSynthetic: false },
+        baselineRef: null,
+        promptVersionRefs: [],
+        skillSnapshotRefs: [],
+        toolSnapshotRefs: [],
+        providerProfileRefs: [],
+        createdAt: "2026-05-17T08:00:00.000Z",
+        tags: [],
+        runs: { items: [experimentRun], nextCursor: null },
+      };
+      const dataByOperation: Record<string, unknown> = {
+        AiQualityOverview: {
+          aiQualityOverview: {
+            projectId: "project-1",
+            from: null,
+            to: null,
+            summary: {},
+            warnings: [],
+            segments: [],
+          },
+        },
+        CreateDataset: { createDataset: dataset },
+        AppendDatasetItems: {
+          appendDatasetItems: {
+            ...dataset,
+            itemCount: 1,
+            reviewedItemCount: 1,
+            items: {
+              items: [
+                {
+                  id: "item-1",
+                  datasetId: "dataset-1",
+                  version: 2,
+                  input: { prompt: "Check answer" },
+                  expected: { answer: "42" },
+                  metadata: {},
+                  sourceTraceId: null,
+                  sourceSpanId: null,
+                  split: "validation",
+                  reviewStatus: "reviewed",
+                  synthetic: false,
+                  duplicateOfItemId: null,
+                  leakageWarnings: [],
+                },
+              ],
+              nextCursor: null,
+            },
+          },
+        },
+        CreateScorer: { createScorer: scorer },
+        CreateExperiment: { createExperiment: experiment },
+        StartExperimentRun: { startExperimentRun: experimentRun },
+        PrepareDatasetImport: { prepareDatasetImport: importJob },
+        CommitDatasetImport: { commitDatasetImport: importJob },
+        StartDatasetExport: { startDatasetExport: exportJob },
+        DatasetExport: { datasetExport: exportJob },
+      };
+      return new Response(JSON.stringify({ data: dataByOperation[requestBody.operationName] }), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      });
+    };
+
+    const client = createTelemetryGraphQLClient("/graphql");
+
+    await expect(client.getAiQualityOverview({ projectId: "project-1" })).resolves.toMatchObject({
+      projectId: "project-1",
+    });
+    await expect(client.createDataset({ name: "Regression" })).resolves.toMatchObject({
+      id: "dataset-1",
+    });
+    await expect(
+      client.appendDatasetItems({
+        datasetId: "dataset-1",
+        items: [
+          {
+            input: { prompt: "Check answer" },
+            expected: { answer: "42" },
+            metadata: {},
+            split: "validation",
+            reviewStatus: "reviewed",
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({ id: "dataset-1", itemCount: 1 });
+    await expect(
+      client.createScorer({
+        name: "Contains answer",
+        kind: "deterministic",
+        definition: { type: "contains" },
+      }),
+    ).resolves.toMatchObject({ id: "scorer-1" });
+    await expect(
+      client.createExperiment({
+        name: "Baseline",
+        datasetId: "dataset-1",
+        datasetVersion: 1,
+        scorerIds: ["scorer-1"],
+        solverRef: { kind: "local" },
+      }),
+    ).resolves.toMatchObject({ id: "experiment-1" });
+    await expect(
+      client.startExperimentRun({ experimentId: "experiment-1" }),
+    ).resolves.toMatchObject({
+      id: "run-1",
+    });
+    await expect(
+      client.prepareDatasetImport({
+        datasetId: "dataset-1",
+        uploadId: "upload-1",
+        format: "jsonl",
+        mapping: {
+          input: [{ targetPath: "prompt", source: { jsonPath: "$.prompt" } }],
+        },
+      }),
+    ).resolves.toMatchObject({ id: "import-1" });
+    await expect(
+      client.commitDatasetImport({
+        importId: "import-1",
+        expectedDatasetVersion: 1,
+        mode: "valid_rows_only",
+      }),
+    ).resolves.toMatchObject({ id: "import-1" });
+    await expect(
+      client.startDatasetExport({ datasetId: "dataset-1", format: "jsonl" }),
+    ).resolves.toMatchObject({ id: "export-1" });
+    await expect(client.getDatasetExport("export-1")).resolves.toMatchObject({ id: "export-1" });
+    expect(operationNames).toEqual([
+      "AiQualityOverview",
+      "CreateDataset",
+      "AppendDatasetItems",
+      "CreateScorer",
+      "CreateExperiment",
+      "StartExperimentRun",
+      "PrepareDatasetImport",
+      "CommitDatasetImport",
+      "StartDatasetExport",
+      "DatasetExport",
+    ]);
+  });
 });
 
 function nowIso() {

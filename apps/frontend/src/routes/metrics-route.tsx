@@ -10,7 +10,6 @@ import { RefreshCw, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ErrorPanel, LoadingRows } from "../components/query-state";
-import { RouteBreadcrumb } from "../components/route-breadcrumb";
 import { Button } from "../components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
 import { Input } from "../components/ui/input";
@@ -129,15 +128,32 @@ export function MetricsRoute() {
     () => namesQuery.data?.items.find((metric) => metric.name === state.metricName) ?? null,
     [namesQuery.data, state.metricName],
   );
-  const sanitizedGroupBy = sanitizeMetricGroupBy(state.groupBy, selectedMetric);
+  const effectiveState = selectedMetric
+    ? withMetricDescriptorDefaults(state, selectedMetric, {
+        hasAggregation: searchParams.has("aggregation"),
+        hasFrom: searchParams.has("from"),
+        hasTo: searchParams.has("to"),
+      })
+    : state;
+  const sanitizedGroupBy = sanitizeMetricGroupBy(effectiveState.groupBy, selectedMetric);
   const seriesInput = selectedMetric
-    ? buildMetricSeriesInput(selectedMetric, { ...state, groupBy: sanitizedGroupBy })
+    ? buildMetricSeriesInput(selectedMetric, { ...effectiveState, groupBy: sanitizedGroupBy })
     : null;
   const seriesQuery = useQuery({
     enabled: Boolean(seriesInput),
     queryKey: seriesInput ? queryKeys.metricSeries(seriesInput) : ["MetricSeries", "idle"],
     queryFn: () => telemetryClient.getMetricSeries(seriesInput as MetricSeriesInput),
   });
+
+  useEffect(() => {
+    if (state.metricName || !namesQuery.data?.items[0]) {
+      return;
+    }
+    setSearchParams((params) => {
+      params.set("metric", namesQuery.data.items[0]?.name ?? "");
+      return params;
+    });
+  }, [namesQuery.data, setSearchParams, state.metricName]);
 
   const setParam = (key: string, value: string | null) => {
     setSearchParams((params) => {
@@ -177,22 +193,19 @@ export function MetricsRoute() {
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
-      <header className="flex shrink-0 flex-wrap items-end justify-between gap-3 border-b pb-3">
-        <div className="min-w-0 space-y-2">
-          <RouteBreadcrumb
-            backLabel={t("actions.back")}
-            backTo="/projects"
-            items={[
-              { label: t("nav.projects"), to: "/projects" },
-              { label: viewer?.selectedProject?.name ?? t("projects.select"), to: "/projects" },
-              { label: t("metrics.title") },
-            ]}
-          />
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b pb-2">
+        <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-normal">{t("metrics.title")}</h1>
-          <p className="text-sm text-muted-foreground">{t("metrics.description")}</p>
+          {state.metricName ? (
+            <p className="truncate text-sm text-muted-foreground">{state.metricName}</p>
+          ) : null}
         </div>
         <div className="flex items-end gap-2">
-          <MetricTimeRangePopover from={state.from} onChange={setParam} to={state.to} />
+          <MetricTimeRangePopover
+            from={effectiveState.from}
+            onChange={setParam}
+            to={effectiveState.to}
+          />
           <Button
             aria-label={t("metrics.refresh")}
             onClick={() => {
@@ -208,8 +221,8 @@ export function MetricsRoute() {
         </div>
       </header>
 
-      <div className="shrink-0 rounded-md border bg-background p-3">
-        <FieldGroup className="grid gap-3 lg:grid-cols-[1.4fr_1fr]">
+      <div className="shrink-0 border-b pb-2">
+        <FieldGroup className="grid gap-2 lg:grid-cols-[1.4fr_1fr]">
           <MetricSearchField
             metricSearch={metricSearch}
             onChange={(value) => {
@@ -259,7 +272,7 @@ export function MetricsRoute() {
             descriptor={selectedMetric}
             onChange={setParam}
             onGroupByChange={setGroupBy}
-            state={{ ...state, groupBy: sanitizedGroupBy }}
+            state={{ ...effectiveState, groupBy: sanitizedGroupBy }}
           />
           <section className="min-h-0 flex-1 overflow-auto border bg-background">
             {!state.metricName ? (
@@ -345,6 +358,47 @@ function createDefaultTimeRange(): TimeRange {
     from: from.toISOString(),
     to: to.toISOString(),
   };
+}
+
+function withMetricDescriptorDefaults(
+  state: MetricQueryState,
+  descriptor: MetricDescriptor,
+  explicit: { hasAggregation: boolean; hasFrom: boolean; hasTo: boolean },
+): MetricQueryState {
+  const observedRange = createObservedMetricRange(descriptor);
+  return {
+    ...state,
+    aggregation: explicit.hasAggregation ? state.aggregation : defaultMetricAggregation(descriptor),
+    from: explicit.hasFrom ? state.from : observedRange.from,
+    to: explicit.hasTo ? state.to : observedRange.to,
+  };
+}
+
+function createObservedMetricRange(descriptor: MetricDescriptor): TimeRange {
+  const firstSeenAt = Date.parse(descriptor.firstSeenAt);
+  const lastSeenAt = Date.parse(descriptor.lastSeenAt);
+  if (!Number.isFinite(firstSeenAt) || !Number.isFinite(lastSeenAt)) {
+    return createDefaultTimeRange();
+  }
+  const paddingMs = 10 * 60 * 1000;
+  return {
+    from: new Date(Math.min(firstSeenAt, lastSeenAt) - paddingMs).toISOString(),
+    to: new Date(Math.max(firstSeenAt, lastSeenAt) + paddingMs).toISOString(),
+  };
+}
+
+function defaultMetricAggregation(descriptor: Pick<MetricDescriptor, "kind">): MetricAggregation {
+  if (descriptor.kind === "sum") {
+    return "sum";
+  }
+  if (
+    descriptor.kind === "histogram" ||
+    descriptor.kind === "exponential_histogram" ||
+    descriptor.kind === "summary"
+  ) {
+    return "p95";
+  }
+  return "avg";
 }
 
 function stringOrNull(value: string | null) {

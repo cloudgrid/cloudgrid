@@ -137,7 +137,10 @@ func (registry *LiveTraceRegistry) HandleTracePersisted(ctx context.Context, not
 
 	subscriptions := registry.snapshotSubscriptions()
 	for _, subscription := range subscriptions {
-		items, err := registry.store.SearchLiveTraceCandidates(ctx, subscription.query, traceIDs)
+		if err := validateTelemetryRead(subscription.authContext); err != nil {
+			return err
+		}
+		items, err := registry.store.SearchLiveTraceCandidates(ctx, subscription.query, traceIDs, subscription.authContext)
 		if err != nil {
 			return err
 		}
@@ -253,9 +256,6 @@ func validateLiveQuery(query contracts.LiveTraceQuery) error {
 }
 
 func normalizeLiveQuery(query contracts.LiveTraceQuery, now time.Time) contracts.LiveTraceQuery {
-	if query.From == nil {
-		query.From = &now
-	}
 	if query.Limit == nil {
 		limit := defaultLiveLimit
 		query.Limit = &limit

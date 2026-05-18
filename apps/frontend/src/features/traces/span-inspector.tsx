@@ -48,9 +48,9 @@ import { AttributeEvidenceBrowser } from "./attribute-browser";
 import { SpanLinksTable } from "./span-links-table";
 import {
   type DetailTab,
-  type TraceDetailFilters,
   detailTabs,
   statuses,
+  type TraceDetailFilters,
   tabLabel,
 } from "./trace-detail-types";
 

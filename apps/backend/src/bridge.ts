@@ -53,6 +53,7 @@ import type {
   IngestCredential,
   IngestCredentialListResult,
   InviteOrganizationMemberInput,
+  InviteProjectMemberInput,
   LiveExperimentRunInput,
   LiveTraceEvent,
   LiveTraceInput,
@@ -68,6 +69,7 @@ import type {
   PrepareDatasetImportInput,
   Project,
   ProjectAiSettings,
+  ProjectInvitationResult,
   ProjectListInput,
   ProjectMember,
   ProjectRole,
@@ -110,6 +112,12 @@ import {
   NATSEphemeralPubSub,
   NATSRequestReplyClient,
 } from "./bridge/adapters/nats";
+import type {
+  SelfObservabilityLogRecorder,
+  SelfObservabilityTraceRecorder,
+  TraceContext,
+} from "./self-observability";
+import { createTraceContext, traceContextToTraceParent } from "./self-observability";
 
 const subjects = {
   viewerGet: "control.viewer.get",
@@ -118,7 +126,9 @@ const subjects = {
   membersList: "control.members.list",
   invitationsList: "control.invitations.list",
   invitationCreate: "control.invitations.create",
+  invitationResend: "control.invitations.resend",
   invitationRevoke: "control.invitations.revoke",
+  projectInvitationCreate: "control.project_invitations.create",
   projectsList: "control.projects.list",
   projectGet: "control.projects.get",
   projectCreate: "control.projects.create",
@@ -266,6 +276,14 @@ export interface ControlPlaneBridge {
   selectProject(id: string, authContext: NormalizedAuthContext): Promise<Viewer>;
   inviteOrganizationMember(
     input: InviteOrganizationMemberInput,
+    authContext: NormalizedAuthContext,
+  ): Promise<OrganizationInvitation>;
+  inviteProjectMember(
+    input: InviteProjectMemberInput,
+    authContext: NormalizedAuthContext,
+  ): Promise<ProjectInvitationResult>;
+  resendOrganizationInvitation(
+    id: string,
     authContext: NormalizedAuthContext,
   ): Promise<OrganizationInvitation>;
   revokeOrganizationInvitation(
@@ -470,7 +488,7 @@ export interface RequestReplyClient {
   request(
     subject: string,
     payload: Uint8Array,
-    options: { timeoutMs: number },
+    options: { timeoutMs: number; headers?: Record<string, string> },
   ): Promise<Uint8Array>;
 }
 
@@ -513,6 +531,35 @@ interface ProjectTelemetryOverviewItem {
 interface BridgeOptions {
   bffInstanceId?: string;
   subscriptionId?: () => string;
+  liveTraceWatchdogMs?: number;
+  metricsRecorder?: MessageBridgeMetricsRecorder;
+  traceRecorder?: SelfObservabilityTraceRecorder;
+  traceContextFactory?: () => TraceContext;
+  logRecorder?: SelfObservabilityLogRecorder;
+}
+
+export type MessageBridgeMetricRecord =
+  | {
+      metric: "cloudgrid.message_bridge.requests";
+      kind: "counter";
+      value: 1;
+      attributes: MessageBridgeMetricAttributes;
+    }
+  | {
+      metric: "cloudgrid.message_bridge.duration";
+      kind: "histogram";
+      value: number;
+      attributes: MessageBridgeMetricAttributes;
+    };
+
+export interface MessageBridgeMetricAttributes {
+  service: "cloudgrid.bff";
+  subject: string;
+  result: "success" | "error";
+}
+
+export interface MessageBridgeMetricsRecorder {
+  record(record: MessageBridgeMetricRecord): void;
 }
 
 export class MessageBridgeCloudGridBridge implements CloudGridBridge {
@@ -523,6 +570,11 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   #logger: CloudGridLogger;
   #bffInstanceId: string;
   #subscriptionId: () => string;
+  #liveTraceWatchdogMs: number | undefined;
+  #metricsRecorder: MessageBridgeMetricsRecorder | undefined;
+  #traceRecorder: SelfObservabilityTraceRecorder | undefined;
+  #traceContextFactory: () => TraceContext;
+  #logRecorder: SelfObservabilityLogRecorder | undefined;
 
   constructor(
     requestReply: RequestReplyClient,
@@ -536,7 +588,12 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     this.#timeoutMs = timeoutMs;
     this.#logger = logger;
     this.#bffInstanceId = options.bffInstanceId ?? crypto.randomUUID();
-    this.#subscriptionId = options.subscriptionId ?? crypto.randomUUID;
+    this.#subscriptionId = options.subscriptionId ?? (() => crypto.randomUUID());
+    this.#liveTraceWatchdogMs = options.liveTraceWatchdogMs;
+    this.#metricsRecorder = options.metricsRecorder;
+    this.#traceRecorder = options.traceRecorder;
+    this.#traceContextFactory = options.traceContextFactory ?? createTraceContext;
+    this.#logRecorder = options.logRecorder;
   }
 
   async viewer(authContext: NormalizedAuthContext): Promise<Viewer | null> {
@@ -658,6 +715,31 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
       },
     );
     return requiredData(data.invitation, "Invitation create returned an empty response");
+  }
+
+  async inviteProjectMember(
+    input: InviteProjectMemberInput,
+    authContext: NormalizedAuthContext,
+  ): Promise<ProjectInvitationResult> {
+    const data = await this.#request<ProjectInvitationResult>(subjects.projectInvitationCreate, {
+      ...envelope(authContext),
+      ...input,
+    });
+    return data;
+  }
+
+  async resendOrganizationInvitation(
+    id: string,
+    authContext: NormalizedAuthContext,
+  ): Promise<OrganizationInvitation> {
+    const data = await this.#request<{ invitation?: OrganizationInvitation }>(
+      subjects.invitationResend,
+      {
+        ...envelope(authContext),
+        invitationId: id,
+      },
+    );
+    return requiredData(data.invitation, "Invitation resend returned an empty response");
   }
 
   async revokeOrganizationInvitation(
@@ -862,11 +944,12 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   }
 
   async agentRun(id: string, authContext?: NormalizedAuthContext): Promise<AgentRun | null> {
-    return this.#requestParsed(
+    const result = await this.#requestParsed(
       subjects.agentRunSearch,
       { ...envelope(authContext), input: { id } },
-      typedAgentRunSchema.nullable(),
+      agentRunSearchResultSchema,
     );
+    return result.items[0] ?? null;
   }
 
   async datasets(
@@ -881,11 +964,12 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   }
 
   async dataset(id: string, authContext?: NormalizedAuthContext): Promise<Dataset | null> {
-    return this.#requestParsed(
+    const result = await this.#requestParsed(
       subjects.datasetSearch,
       { ...envelope(authContext), input: { id } },
-      typedDatasetSchema.nullable(),
+      datasetSearchResultSchema,
     );
+    return result.items[0] ?? null;
   }
 
   async datasetImport(
@@ -951,11 +1035,12 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     id: string,
     authContext?: NormalizedAuthContext,
   ): Promise<ExperimentRun | null> {
-    return this.#requestParsed(
+    const result = await this.#requestParsed(
       subjects.experimentSearch,
       { ...envelope(authContext), input: { experimentRunId: id } },
-      typedExperimentRunSchema.nullable(),
+      experimentRunSearchResultSchema,
     );
+    return result.items[0] ?? null;
   }
 
   async experimentRuns(
@@ -978,7 +1063,11 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
       subjects.experimentSearch,
       {
         ...envelope(authContext),
-        input: { experimentRunId, ...compactInput(input as Record<string, unknown>) },
+        input: {
+          experimentRunId,
+          itemRuns: true,
+          ...compactInput(input as Record<string, unknown>),
+        },
       },
       datasetItemRunSearchResultSchema,
     );
@@ -1423,7 +1512,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     return data.credential;
   }
 
-  async *subscribeLiveTraces(
+  subscribeLiveTraces(
     input: LiveTraceInput,
     authContext?: NormalizedAuthContext,
   ): AsyncIterableIterator<LiveTraceEvent> {
@@ -1438,28 +1527,51 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     const subscriptionId = this.#subscriptionId();
     const sinkSubject = `telemetry.traces.live.events.${this.#bffInstanceId}.${subscriptionId}`;
     const events = createAsyncQueue<LiveTraceEvent>();
-    const subscription = await this.#pubSub.subscribe(sinkSubject, (message) => {
-      events.push(parseLiveTraceEvent(decodeJson(message.data)));
-    });
-    let started = false;
-    try {
-      await this.#request<LiveTraceStartData>(subjects.liveTraceStart, {
-        ...envelope(authContext),
-        subscriptionId,
-        sinkSubject,
-        query: compactInput(input as Record<string, unknown>) as LiveTraceInput,
+    async function* run(this: MessageBridgeCloudGridBridge) {
+      const subscription = await this.#pubSub?.subscribe(sinkSubject, (message) => {
+        events.push(parseLiveTraceEvent(decodeJson(message.data)));
       });
-      started = true;
-      for await (const event of events) {
-        yield event;
+      if (!subscription) {
+        throw graphQLErrorFromBridge({
+          id: "ERR-013",
+          code: "MESSAGE_BRIDGE_UNAVAILABLE",
+          message: "Message bridge live trace adapter is unavailable",
+          retryable: true,
+        });
       }
-    } finally {
-      events.close();
-      await subscription[Symbol.asyncDispose]();
-      if (started) {
-        await this.#stopLiveTraces(subscriptionId);
+      let started = false;
+      try {
+        const startData = await this.#request<LiveTraceStartData>(subjects.liveTraceStart, {
+          ...envelope(authContext),
+          subscriptionId,
+          sinkSubject,
+          query: compactInput(input as Record<string, unknown>) as LiveTraceInput,
+        });
+        started = true;
+        const watchdogMs = this.#liveTraceWatchdogMs ?? liveTraceWatchdogMs(startData);
+        while (true) {
+          const result = await nextWithTimeout(events, watchdogMs, () =>
+            graphQLErrorFromBridge({
+              id: "ERR-014",
+              code: "MESSAGE_BRIDGE_TIMEOUT",
+              message: "Live trace subscription did not receive heartbeat or data before deadline",
+              retryable: true,
+            }),
+          );
+          if (result.done) {
+            break;
+          }
+          yield result.value;
+        }
+      } finally {
+        events.close();
+        await subscription[Symbol.asyncDispose]();
+        if (started) {
+          await this.#stopLiveTraces(subscriptionId);
+        }
       }
     }
+    return cancelableAsyncIterator(run.call(this), events);
   }
 
   async health(): Promise<"ok" | "unavailable"> {
@@ -1598,9 +1710,12 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     schema: z.ZodType<Data>,
   ): Promise<Data> {
     const data = await this.#request<unknown>(subject, payload);
-    try {
-      return parseWithZod(schema, data, `${subject} response`) as Data;
-    } catch {
+    const parsed = schema.safeParse(data);
+    if (!parsed.success) {
+      this.#logger.error("nats_response_validation_failed", {
+        operation_or_subject: subject,
+        issues: parsed.error.issues,
+      });
       throw graphQLErrorFromBridge({
         id: "ERR-013",
         code: "MESSAGE_BRIDGE_UNAVAILABLE",
@@ -1608,14 +1723,17 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
         retryable: true,
       });
     }
+    return parsed.data;
   }
 
   async #request<Data>(subject: string, payload: unknown): Promise<Data> {
     const start = performance.now();
     const requestId = requestIdFromPayload(payload);
+    const traceContext = this.#traceContextFactory();
     try {
       const data = await this.#requestReply.request(subject, encodeJson(payload), {
         timeoutMs: this.#timeoutMs,
+        headers: traceContextHeaders(traceContext),
       });
       const response = parseBridgeResponse<Data>(decodeJson(data));
       if (!response.ok) {
@@ -1625,6 +1743,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
           response.requestId || requestId,
           start,
           "error",
+          traceContext,
           response.error,
         );
         throw graphQLErrorFromBridge(response.error, response.requestId);
@@ -1636,10 +1755,18 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
           message: "Storage returned an empty response",
           retryable: true,
         } satisfies BridgeErrorLike;
-        this.#logRequest("error", subject, response.requestId || requestId, start, "error", error);
+        this.#logRequest(
+          "error",
+          subject,
+          response.requestId || requestId,
+          start,
+          "error",
+          traceContext,
+          error,
+        );
         throw graphQLErrorFromBridge(error, response.requestId || requestId);
       }
-      this.#logRequest("info", subject, response.requestId || requestId, start, "ok");
+      this.#logRequest("info", subject, response.requestId || requestId, start, "ok", traceContext);
       return response.data;
     } catch (error) {
       if (error instanceof GraphQLError) {
@@ -1651,7 +1778,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
         message: "Message bridge request timed out",
         retryable: true,
       } satisfies BridgeErrorLike;
-      this.#logRequest("error", subject, requestId, start, "error", bridgeError);
+      this.#logRequest("error", subject, requestId, start, "error", traceContext, bridgeError);
       throw graphQLErrorFromBridge(bridgeError, requestId);
     }
   }
@@ -1662,16 +1789,87 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     requestId: string,
     start: number,
     status: "ok" | "error",
+    traceContext: TraceContext,
     error?: BridgeErrorLike,
   ) {
+    const durationMs = elapsedMilliseconds(start);
+    const subjectLabel = boundedMetricSubject(subject);
+    const result = status === "ok" ? "success" : "error";
+    this.#traceRecorder?.recordSpan({
+      name: "nats.request",
+      traceId: traceContext.traceId,
+      spanId: traceContext.spanId,
+      ...(traceContext.parentSpanId ? { parentSpanId: traceContext.parentSpanId } : {}),
+      ...(traceContext.traceState ? { traceState: traceContext.traceState } : {}),
+      result,
+      durationSeconds: durationMs / 1000,
+      attributes: {
+        "cloudgrid.request_id": requestId,
+        "messaging.system": "nats",
+        "messaging.destination.name": subjectLabel,
+        "rpc.method": subjectLabel,
+      },
+    });
+    if (error) {
+      this.#logRecorder?.recordLog({
+        event: "message_bridge_request_failed",
+        severity: "WARN",
+        attributes: {
+          "messaging.system": "nats",
+          "messaging.destination.name": subjectLabel,
+          "rpc.method": subjectLabel,
+          "error.id": error.id,
+          "error.code": error.code,
+        },
+      });
+    }
+    this.#recordMessageBridgeMetrics(subject, status, durationMs / 1000);
     this.#logger[level]("nats_request_completed", {
       request_id: requestId,
       operation_or_subject: subject,
       status,
-      duration_ms: elapsedMilliseconds(start),
+      duration_ms: durationMs,
       ...(error ? { error_id: error.id, error_code: error.code } : {}),
     });
   }
+
+  #recordMessageBridgeMetrics(subject: string, status: "ok" | "error", durationSeconds: number) {
+    if (!this.#metricsRecorder) {
+      return;
+    }
+    const attributes = {
+      service: "cloudgrid.bff",
+      subject: boundedMetricSubject(subject),
+      result: status === "ok" ? "success" : "error",
+    } satisfies MessageBridgeMetricAttributes;
+    try {
+      this.#metricsRecorder.record({
+        metric: "cloudgrid.message_bridge.requests",
+        kind: "counter",
+        value: 1,
+        attributes,
+      });
+      this.#metricsRecorder.record({
+        metric: "cloudgrid.message_bridge.duration",
+        kind: "histogram",
+        value: durationSeconds,
+        attributes,
+      });
+    } catch {
+      // Self-observability must not affect user-facing message bridge behavior.
+    }
+  }
+}
+
+function traceContextHeaders(context: TraceContext): Record<string, string> {
+  return {
+    traceparent: traceContextToTraceParent(context),
+    ...(context.traceState ? { tracestate: context.traceState } : {}),
+  };
+}
+
+function boundedMetricSubject(subject: string): string {
+  return /^[a-z][a-z0-9_.]{0,127}$/.test(subject) ? subject : "unknown";
 }
 
 export class NATSTelemetryQueryBridge extends MessageBridgeCloudGridBridge {
@@ -1695,9 +1893,10 @@ export async function createNATSTelemetryQueryBridge(
   servers: string,
   timeoutMs: number,
   logger: CloudGridLogger,
+  options: BridgeOptions & { pubSub?: EphemeralPubSub; lifecycle?: MessageBridgeLifecycle } = {},
 ): Promise<NATSTelemetryQueryBridge> {
   const connection = await connectNATS({ servers, name: "cloudgrid-bff" });
-  return new NATSTelemetryQueryBridge(connection, timeoutMs, logger);
+  return new NATSTelemetryQueryBridge(connection, timeoutMs, logger, options);
 }
 
 export function graphQLErrorFromBridge(error?: BridgeErrorLike, requestId?: string) {
@@ -1728,6 +1927,14 @@ export function compactInput<T extends Record<string, unknown>>(input: T): T {
       ([, value]) => value !== null && value !== undefined && value !== "",
     ),
   ) as T;
+}
+
+function compactNullish(value: object) {
+  return Object.fromEntries(
+    Object.entries(value).filter(
+      ([, entryValue]) => entryValue !== null && entryValue !== undefined,
+    ),
+  );
 }
 
 export function elapsedMilliseconds(start: number): number {
@@ -1838,6 +2045,7 @@ const cloudGridErrorIdSchema = z.enum([
   "ERR-019",
   "ERR-020",
   "ERR-021",
+  "ERR-022",
 ]);
 
 const bridgeErrorSchema = z.object({
@@ -2175,32 +2383,79 @@ const datasetExportJobSchema = z.object({
   expiresAt: dateTimeSchema,
 });
 
-const datasetHealthSchema = z.object({
-  status: datasetHealthStatusSchema,
-  reviewedItemCount: z.number().int(),
-  totalItemCount: z.number().int(),
-  splitCounts: z.unknown(),
-  duplicateCandidateCount: z.number().int(),
-  leakageWarningCount: z.number().int(),
-  missingExpectedCount: z.number().int(),
-  schemaIssueCount: z.number().int(),
-  smallDataset: z.boolean(),
-  warnings: z.array(z.string()),
-});
+const datasetHealthSchema = z.preprocess(
+  (value) => ({
+    ...defaultDatasetHealth(),
+    ...(value && typeof value === "object" ? compactNullish(value) : {}),
+  }),
+  z.object({
+    status: datasetHealthStatusSchema,
+    reviewedItemCount: z.number().int(),
+    totalItemCount: z.number().int(),
+    splitCounts: z.unknown(),
+    duplicateCandidateCount: z.number().int(),
+    leakageWarningCount: z.number().int(),
+    missingExpectedCount: z.number().int(),
+    schemaIssueCount: z.number().int(),
+    smallDataset: z.boolean(),
+    warnings: z.array(z.string()),
+  }),
+);
 
-const datasetSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  description: z.string().optional().nullable(),
-  version: z.number().int(),
-  createdAt: dateTimeSchema,
-  itemCount: z.number().int(),
-  reviewedItemCount: z.number().int(),
-  splitCounts: z.unknown(),
-  health: datasetHealthSchema,
-  tags: z.array(z.string()),
-  items: z.unknown().optional(),
-});
+function defaultDatasetHealth() {
+  return {
+    status: "needs_review",
+    reviewedItemCount: 0,
+    totalItemCount: 0,
+    splitCounts: {},
+    duplicateCandidateCount: 0,
+    leakageWarningCount: 0,
+    missingExpectedCount: 0,
+    schemaIssueCount: 0,
+    smallDataset: true,
+    warnings: [],
+  };
+}
+
+const datasetSchema = z.preprocess(
+  (value) => {
+    const dataset = value && typeof value === "object" ? compactNullish(value) : {};
+    const itemCount = typeof dataset.itemCount === "number" ? dataset.itemCount : 0;
+    const reviewedItemCount =
+      typeof dataset.reviewedItemCount === "number" ? dataset.reviewedItemCount : 0;
+    const splitCounts =
+      dataset.splitCounts && typeof dataset.splitCounts === "object" ? dataset.splitCounts : {};
+    return {
+      ...dataset,
+      itemCount,
+      reviewedItemCount,
+      splitCounts,
+      health: {
+        ...defaultDatasetHealth(),
+        totalItemCount: itemCount,
+        reviewedItemCount,
+        splitCounts,
+        ...(dataset.health && typeof dataset.health === "object"
+          ? compactNullish(dataset.health)
+          : {}),
+      },
+      tags: Array.isArray(dataset.tags) ? dataset.tags : [],
+    };
+  },
+  z.object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    description: z.string().optional().nullable(),
+    version: z.number().int(),
+    createdAt: dateTimeSchema,
+    itemCount: z.number().int(),
+    reviewedItemCount: z.number().int(),
+    splitCounts: z.unknown(),
+    health: datasetHealthSchema,
+    tags: z.array(z.string()),
+    items: z.unknown().optional(),
+  }),
+);
 
 const scorerSchema = z.object({
   id: z.string().min(1),
@@ -2218,22 +2473,51 @@ const datasetSplitSelectorSchema = z.object({
   includeSynthetic: z.boolean(),
 });
 
-const experimentSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  datasetId: z.string().min(1),
-  datasetVersion: z.number().int(),
-  splitSelector: datasetSplitSelectorSchema,
-  scorerIds: z.array(z.string().min(1)),
-  baselineRef: z.unknown().optional().nullable(),
-  promptVersionRefs: z.array(z.string()),
-  skillSnapshotRefs: z.array(z.string()),
-  toolSnapshotRefs: z.array(z.string()),
-  providerProfileRefs: z.array(z.string()),
-  createdAt: dateTimeSchema,
-  tags: z.array(z.string()),
-  runs: z.unknown().optional(),
-});
+const experimentSchema = z.preprocess(
+  (value) => {
+    const experiment = value && typeof value === "object" ? compactNullish(value) : {};
+    return {
+      ...experiment,
+      splitSelector: {
+        splits: ["validation"],
+        reviewedOnly: true,
+        includeSynthetic: false,
+        ...(experiment.splitSelector && typeof experiment.splitSelector === "object"
+          ? compactNullish(experiment.splitSelector)
+          : {}),
+      },
+      promptVersionRefs: Array.isArray(experiment.promptVersionRefs)
+        ? experiment.promptVersionRefs
+        : [],
+      skillSnapshotRefs: Array.isArray(experiment.skillSnapshotRefs)
+        ? experiment.skillSnapshotRefs
+        : [],
+      toolSnapshotRefs: Array.isArray(experiment.toolSnapshotRefs)
+        ? experiment.toolSnapshotRefs
+        : [],
+      providerProfileRefs: Array.isArray(experiment.providerProfileRefs)
+        ? experiment.providerProfileRefs
+        : [],
+      tags: Array.isArray(experiment.tags) ? experiment.tags : [],
+    };
+  },
+  z.object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    datasetId: z.string().min(1),
+    datasetVersion: z.number().int(),
+    splitSelector: datasetSplitSelectorSchema,
+    scorerIds: z.array(z.string().min(1)),
+    baselineRef: z.unknown().optional().nullable(),
+    promptVersionRefs: z.array(z.string()),
+    skillSnapshotRefs: z.array(z.string()),
+    toolSnapshotRefs: z.array(z.string()),
+    providerProfileRefs: z.array(z.string()),
+    createdAt: dateTimeSchema,
+    tags: z.array(z.string()),
+    runs: z.unknown().optional(),
+  }),
+);
 
 const datasetItemRunSchema = z.object({
   id: z.string().min(1),
@@ -2411,14 +2695,14 @@ const dashboardThresholdSchema = z.object({
 const dashboardMetricWidgetSchema = z.object({
   metricName: z.string().min(1),
   aggregation: metricAggregationSchema,
-  groupBy: z.array(z.string()),
-  filters: z.array(attributeFilterSchema),
+  groupBy: z.array(z.string()).default([]),
+  filters: z.array(attributeFilterSchema).default([]),
   timeWindow: z.string().min(1),
   interval: z.string().optional().nullable(),
   visualization: metricChartTypeSchema,
   legend: z.boolean(),
   maxSeries: z.number().int().min(1).max(50),
-  thresholds: z.array(dashboardThresholdSchema),
+  thresholds: z.array(dashboardThresholdSchema).default([]),
 });
 const dashboardMetricFormulaExpressionSchema: z.ZodTypeAny = z.lazy(() =>
   z.object({
@@ -2441,7 +2725,7 @@ const dashboardMetricFormulaExpressionSchema: z.ZodTypeAny = z.lazy(() =>
       ])
       .optional()
       .nullable(),
-    arguments: z.array(dashboardMetricFormulaExpressionSchema),
+    arguments: z.array(dashboardMetricFormulaExpressionSchema).default([]),
   }),
 );
 const dashboardMetricQuerySchema = z.object({
@@ -2453,34 +2737,38 @@ const dashboardMetricQuerySchema = z.object({
       label: z.string().min(1),
       metricName: z.string().min(1),
       aggregation: metricAggregationSchema,
-      groupBy: z.array(z.string()),
-      filters: z.array(attributeFilterSchema),
+      groupBy: z.array(z.string()).default([]),
+      filters: z.array(attributeFilterSchema).default([]),
       maxSeries: z.number().int().min(1).max(50),
     }),
   ),
-  formulas: z.array(
-    z.object({
-      id: z.string().min(1),
-      label: z.string().min(1),
-      expression: dashboardMetricFormulaExpressionSchema,
-      unit: z.string().optional().nullable(),
-    }),
-  ),
-  displaySeries: z.array(
-    z.object({
-      id: z.string().min(1),
-      label: z.string().min(1),
-      sourceId: z.string().min(1),
-      visible: z.boolean(),
-    }),
-  ),
+  formulas: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        label: z.string().min(1),
+        expression: dashboardMetricFormulaExpressionSchema,
+        unit: z.string().optional().nullable(),
+      }),
+    )
+    .default([]),
+  displaySeries: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        label: z.string().min(1),
+        sourceId: z.string().min(1),
+        visible: z.boolean(),
+      }),
+    )
+    .default([]),
 });
 const dashboardRichMetricWidgetSchema = z.object({
   query: dashboardMetricQuerySchema,
   visualization: metricChartTypeSchema,
   legend: z.boolean(),
   maxSeries: z.number().int().min(1).max(50),
-  thresholds: z.array(dashboardThresholdSchema),
+  thresholds: z.array(dashboardThresholdSchema).default([]),
 });
 const dashboardLogWidgetSchema = z.object({
   service: z.string().optional().nullable(),
@@ -2584,7 +2872,6 @@ const ingestCredentialRevokeResponseSchema = z.object({
   credential: ingestCredentialSchema,
 }) as unknown as z.ZodType<{ credential: IngestCredential }>;
 
-const typedAgentRunSchema = agentRunSchema as unknown as z.ZodType<AgentRun>;
 const typedDatasetSchema = datasetSchema as unknown as z.ZodType<Dataset>;
 const typedDatasetImportJobSchema =
   datasetImportJobSchema as unknown as z.ZodType<DatasetImportJob>;
@@ -2757,4 +3044,46 @@ function createAsyncQueue<T>(): AsyncIterableIterator<T> & {
       return this;
     },
   };
+}
+
+function cancelableAsyncIterator<T>(
+  iterator: AsyncIterableIterator<T>,
+  queue: { close(): void },
+): AsyncIterableIterator<T> {
+  return {
+    next() {
+      return iterator.next();
+    },
+    return(value?: unknown) {
+      queue.close();
+      return iterator.return?.(value) ?? Promise.resolve({ value: undefined, done: true });
+    },
+    throw(error?: unknown) {
+      queue.close();
+      return iterator.throw?.(error) ?? Promise.reject(error);
+    },
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+  };
+}
+
+function liveTraceWatchdogMs(startData: LiveTraceStartData): number {
+  return startData.heartbeatIntervalMs > 30_000 ? startData.heartbeatIntervalMs * 3 : 45_000;
+}
+
+function nextWithTimeout<T>(
+  iterator: AsyncIterator<T>,
+  timeoutMs: number,
+  timeoutError: () => Error,
+): Promise<IteratorResult<T>> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<IteratorResult<T>>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(timeoutError()), timeoutMs);
+  });
+  return Promise.race([iterator.next(), timeoutPromise]).finally(() => {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  });
 }

@@ -123,6 +123,9 @@ func TestBuildPersistQueryUsesParameterizedIdempotentUpserts(t *testing.T) {
 	if traceRecord["startedAt"] != startedAt.UTC() {
 		t.Fatalf("startedAt = %#v", traceRecord["startedAt"])
 	}
+	if traceRecord["startedAtUnixNano"] != "1778227200000000000" || traceRecord["endedAtUnixNano"] != "1778227201500000000" || traceRecord["durationNano"] != "1500000000" {
+		t.Fatalf("trace nanosecond fields = %#v", traceRecord)
+	}
 	if traceRecord["spanCount"] != 1 {
 		t.Fatalf("spanCount = %#v", traceRecord["spanCount"])
 	}
@@ -856,6 +859,9 @@ func TestBuildAIProjectionPersistQueryUsesCanonicalProjectionTable(t *testing.T)
 	if record["traceId"] != "trace-1" || record["spanId"] != "span-1" || record["rootSpanId"] != "span-1" {
 		t.Fatalf("projection record = %#v", record)
 	}
+	if _, ok := record["id"]; ok {
+		t.Fatalf("projection record persisted GraphQL id inside SurrealDB content: %#v", record)
+	}
 	if record["tenantId"] != "tenant_1" || record["projectId"] != "project_1" {
 		t.Fatalf("projection record missing ownership: %#v", record)
 	}
@@ -909,8 +915,11 @@ func TestBuildEvalMutationPersistQueryUsesSubjectTable(t *testing.T) {
 	if record["name"] != "golden answers" || record["version"] != 1 || record["itemCount"] != 0 {
 		t.Fatalf("record = %#v", record)
 	}
-	if data["id"] != record["id"] {
-		t.Fatalf("data = %#v record = %#v", data, record)
+	if _, ok := record["id"]; ok {
+		t.Fatalf("record persisted GraphQL id inside SurrealDB content: %#v", record)
+	}
+	if data["id"] != vars["record_id"] {
+		t.Fatalf("data = %#v record_id = %#v", data, vars["record_id"])
 	}
 }
 
@@ -979,12 +988,29 @@ func TestBuildEvalMutationPersistQuerySupportsDatasetAppendPromoteAndPromptPromo
 			if !strings.Contains(sql, "UPSERT type::record('"+tt.wantTable+"'") {
 				t.Fatalf("query = %s, want table %s", sql, tt.wantTable)
 			}
-			record := vars["record"].(map[string]any)
-			if tt.wantID != "" && record["id"] != tt.wantID {
-				t.Fatalf("record id = %#v, want %q", record["id"], tt.wantID)
+			if tt.subject == "eval.dataset.items.append" {
+				for _, want := range []string{
+					"UPDATE type::record('ai_dataset', $dataset_id)",
+					"itemCount = (SELECT count() AS count FROM ai_dataset_item",
+					"datasetId = $dataset_id",
+				} {
+					if !strings.Contains(sql, want) {
+						t.Fatalf("query = %s, missing %q", sql, want)
+					}
+				}
+				if vars["dataset_id"] != "dataset-1" || vars["dataset_version"] != 2 {
+					t.Fatalf("dataset vars = %#v", vars)
+				}
 			}
-			if data["id"] != record["id"] {
-				t.Fatalf("data = %#v record = %#v", data, record)
+			record := vars["record"].(map[string]any)
+			if _, ok := record["id"]; ok {
+				t.Fatalf("record persisted GraphQL id inside SurrealDB content: %#v", record)
+			}
+			if tt.wantID != "" && vars["record_id"] != tt.wantID {
+				t.Fatalf("record id = %#v, want %q", vars["record_id"], tt.wantID)
+			}
+			if data["id"] != vars["record_id"] {
+				t.Fatalf("data = %#v record_id = %#v", data, vars["record_id"])
 			}
 		})
 	}
@@ -1017,11 +1043,92 @@ func TestBuildEvalMutationPersistQuerySupportsOnlineEvalResultWithoutExperimentR
 		t.Fatalf("query = %s, want ai_eval_result table", sql)
 	}
 	record := vars["record"].(map[string]any)
-	if record["id"] != "result-online-1" || record["targetKind"] != "agentRun" || record["experimentRunId"] != nil {
+	if _, ok := record["id"]; ok {
+		t.Fatalf("record persisted GraphQL id inside SurrealDB content: %#v", record)
+	}
+	if vars["record_id"] != "result-online-1" || record["targetKind"] != "agentRun" {
 		t.Fatalf("record = %#v, want online eval result without experimentRunId", record)
+	}
+	if _, ok := record["experimentRunId"]; ok {
+		t.Fatalf("record = %#v, want omitted experimentRunId for online result", record)
 	}
 	if data["id"] != "result-online-1" {
 		t.Fatalf("data = %#v, want online eval result data", data)
+	}
+}
+
+func TestBuildEvalMutationPersistQueryPersistsDatasetItemRunRecords(t *testing.T) {
+	occurredAt := time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC)
+	request := contracts.EvalMutationRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-item-run-1", IssuedAt: occurredAt},
+		Input: map[string]any{
+			"experimentRunId": "run-1",
+			"itemRuns": []any{map[string]any{
+				"id":            "item-run-1",
+				"datasetItemId": "item-1",
+				"harnessRunId":  "harness-run-1",
+				"output":        map[string]any{"answer": "ok"},
+				"latencyMs":     12,
+			}},
+		},
+	}
+
+	sql, vars, data, err := BuildEvalMutationPersistQuery("eval.results.persist", request, occurredAt)
+	if err != nil {
+		t.Fatalf("BuildEvalMutationPersistQuery() error = %v", err)
+	}
+	if !strings.Contains(sql, "UPSERT type::record('ai_dataset_item_run'") {
+		t.Fatalf("query = %s, want ai_dataset_item_run table", sql)
+	}
+	record := vars["record"].(map[string]any)
+	if vars["record_id"] != "item-run-1" || record["experimentRunId"] != "run-1" || record["datasetItemId"] != "item-1" || record["latencyMs"] != 12 {
+		t.Fatalf("record = %#v record_id = %#v, want dataset item run", record, vars["record_id"])
+	}
+	if _, ok := record["itemRuns"]; ok {
+		t.Fatalf("record = %#v, want flattened dataset item run", record)
+	}
+	if data["id"] != "item-run-1" {
+		t.Fatalf("data = %#v, want item run response data", data)
+	}
+}
+
+func TestBuildEvalMutationPersistQuerySupportsExperimentRunResult(t *testing.T) {
+	occurredAt := time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC)
+	request := contracts.EvalMutationRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-run-1", IssuedAt: occurredAt},
+		Input: map[string]any{
+			"experimentRunId": "run-1",
+			"results": []any{map[string]any{
+				"id":           "run-1",
+				"experimentId": "experiment-1",
+				"solverRef":    map[string]any{"kind": "local"},
+				"status":       "running",
+				"startedAt":    occurredAt.Add(123456789 * time.Nanosecond).Format(time.RFC3339Nano),
+				"endedAt":      "",
+				"summary":      map[string]any{"totalItems": 0},
+			}},
+		},
+	}
+
+	sql, vars, data, err := BuildEvalMutationPersistQuery("eval.results.persist", request, occurredAt)
+	if err != nil {
+		t.Fatalf("BuildEvalMutationPersistQuery() error = %v", err)
+	}
+	if !strings.Contains(sql, "UPSERT type::record('ai_experiment_run'") {
+		t.Fatalf("query = %s, want ai_experiment_run table", sql)
+	}
+	record := vars["record"].(map[string]any)
+	if vars["record_id"] != "run-1" || record["experimentId"] != "experiment-1" || record["status"] != "running" {
+		t.Fatalf("record = %#v, want experiment run status", record)
+	}
+	if _, ok := record["startedAt"].(time.Time); !ok {
+		t.Fatalf("startedAt = %#v, want parsed time.Time", record["startedAt"])
+	}
+	if _, ok := record["endedAt"]; ok {
+		t.Fatalf("record = %#v, want omitted optional endedAt", record)
+	}
+	if data["id"] != "run-1" {
+		t.Fatalf("data = %#v, want run response data", data)
 	}
 }
 

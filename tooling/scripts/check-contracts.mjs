@@ -2,6 +2,7 @@
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   buildSchema,
   isInputObjectType,
@@ -66,6 +67,8 @@ const graphqlSchemaSource = read("specs/03-contracts/graphql/public-schema.graph
 parseGraphQL(graphqlSchemaSource);
 const graphqlSchema = buildSchema(graphqlSchemaSource);
 validateFrontendGraphQLOperations(graphqlSchema);
+validateFrontendGraphQLOperationOwnership();
+await validatePublicApiScenarioCoverage();
 
 const asyncApi = parseYaml(read("specs/03-contracts/messages/message-bridge.asyncapi.yaml"));
 if (asyncApi?.asyncapi !== "3.0.0") {
@@ -277,6 +280,7 @@ for (const id of [
   "ERR-019",
   "ERR-020",
   "ERR-021",
+  "ERR-022",
 ]) {
   if (!errors.errors?.[id]?.code || errors.errors[id].retryable === undefined) {
     throw new Error(`errors.yaml is missing ${id}`);
@@ -538,7 +542,7 @@ function validateSchemaRefs(value, location, schemaNames) {
 }
 
 function validateFrontendGraphQLOperations(schema) {
-  const source = read("apps/frontend/src/lib/graphql-client.ts");
+  const source = read("apps/packages/public-api-client/src/index.ts");
   const templates = extractTemplateLiteralExports(source);
   const operations = new Map(
     [...templates.entries()]
@@ -558,6 +562,49 @@ function validateFrontendGraphQLOperations(schema) {
           .join("; ")}`,
       );
     }
+  }
+}
+
+function validateFrontendGraphQLOperationOwnership() {
+  const allowedFiles = new Set(["apps/frontend/src/lib/graphql-client.ts"]);
+  const operationPattern = /\b(query|mutation|subscription)\s+[A-Z][A-Za-z0-9_]*\s*(?:\(|\{)/;
+  const graphqlFetchPattern = /fetch\s*\([^)]*(?:VITE_CLOUDGRID_GRAPHQL_URL|["']\/graphql["'])/;
+  for (const file of sourceFiles("apps/frontend/src", [".ts", ".tsx"])) {
+    if (allowedFiles.has(file)) {
+      continue;
+    }
+    const source = read(file);
+    if (operationPattern.test(source) || graphqlFetchPattern.test(source)) {
+      throw new Error(
+        `${file} must not define GraphQL operations or call /graphql directly; use @cloudgrid/public-api-client through the frontend client wrapper`,
+      );
+    }
+  }
+}
+
+async function validatePublicApiScenarioCoverage() {
+  const [
+    { publicGraphQLOperationNames },
+    { integrationScenarios, uncoveredPublicGraphQLOperationNames },
+  ] = await Promise.all([
+    import(pathToFileURL(join(root, "apps/packages/public-api-client/src/index.ts")).href),
+    import(pathToFileURL(join(root, "apps/packages/integration-scenarios/src/index.ts")).href),
+  ]);
+  const knownOperationNames = new Set(publicGraphQLOperationNames);
+  const claimedOperationNames = integrationScenarios.flatMap((scenario) => scenario.covers);
+  const unknown = claimedOperationNames.filter(
+    (operationName) => !knownOperationNames.has(operationName),
+  );
+  if (unknown.length > 0) {
+    throw new Error(
+      `integration scenarios reference unknown public GraphQL operations: ${[...new Set(unknown)].join(", ")}`,
+    );
+  }
+  const uncovered = uncoveredPublicGraphQLOperationNames(publicGraphQLOperationNames);
+  if (uncovered.length > 0) {
+    throw new Error(
+      `public GraphQL operations missing integration scenario coverage: ${uncovered.join(", ")}`,
+    );
   }
 }
 
@@ -683,6 +730,24 @@ function goFiles(dir) {
   return readdirSync(absolute)
     .filter((entry) => entry.endsWith(".go"))
     .map((entry) => `${dir}/${entry}`);
+}
+
+function sourceFiles(dir, extensions) {
+  const absolute = join(root, dir);
+  if (!statSync(absolute, { throwIfNoEntry: false })?.isDirectory()) {
+    return [];
+  }
+  return readdirSync(absolute).flatMap((entry) => {
+    const relative = `${dir}/${entry}`;
+    const fullPath = join(root, relative);
+    const stat = statSync(fullPath, { throwIfNoEntry: false });
+    if (stat?.isDirectory()) {
+      return sourceFiles(relative, extensions);
+    }
+    return stat?.isFile() && extensions.some((extension) => relative.endsWith(extension))
+      ? [relative]
+      : [];
+  });
 }
 
 function goStructBody(source, name) {

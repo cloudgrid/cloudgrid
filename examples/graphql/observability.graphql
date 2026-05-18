@@ -1,0 +1,82 @@
+query SearchTraces($input: TraceSearchInput!) {
+  traces(input: $input) {
+    items {
+      id
+      operationName
+      serviceName
+      status
+      startedAt
+      durationMs
+    }
+    nextCursor
+  }
+}
+
+query SearchLogs($input: LogSearchInput!) {
+  logs(input: $input) {
+    items {
+      id
+      timestamp
+      severityText
+      serviceName
+      traceId
+      spanId
+      body
+    }
+    nextCursor
+  }
+}
+
+query QueryMetricSeries($input: MetricSeriesInput!) {
+  metricSeries(input: $input) {
+    series {
+      labels
+      points {
+        timestamp
+        value
+      }
+    }
+    warnings {
+      code
+      message
+      field
+    }
+  }
+}
+
+subscription ReceiveLiveTraces($input: LiveTraceInput!) {
+  liveTraces(input: $input) {
+    type
+    trace {
+      id
+      operationName
+      serviceName
+      status
+      startedAt
+    }
+  }
+}
+
+mutation UpdateRetentionPolicy($input: UpdateRetentionPolicyInput!) {
+  updateRetentionPolicy(input: $input) {
+    projectId
+    version
+    rules {
+      dataClass
+      mode
+      retentionDays
+      softDeleteDays
+    }
+  }
+}
+
+mutation CreateAlertRule($input: CreateAlertRuleInput!) {
+  createAlertRule(input: $input) {
+    id
+    name
+    enabled
+    kind
+    severity
+    version
+  }
+}

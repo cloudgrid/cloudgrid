@@ -12,11 +12,15 @@ export interface TraceTreeIndexes {
   siblingIndexById: Map<string, number>;
   traceStartedAtMs: number;
   traceDurationMs: number;
+  traceStartedAtNano: bigint | null;
+  traceDurationNano: bigint | null;
 }
 
 export interface BuildTraceTreeIndexesInput {
   spans: Span[];
   traceStartedAt: string;
+  traceStartedAtUnixNano?: string | null | undefined;
+  traceDurationNano?: string | null | undefined;
   traceDurationMs?: number | null | undefined;
   rootSpanIds?: readonly string[] | undefined;
   orphanSpanIds?: readonly string[] | undefined;
@@ -68,6 +72,25 @@ function safeTime(value: string) {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
+function safeUnixNano(value?: string | null) {
+  if (!value || !/^[0-9]+$/.test(value)) {
+    return null;
+  }
+  try {
+    return BigInt(value);
+  } catch {
+    return null;
+  }
+}
+
+function spanStartedAtNano(span: Span) {
+  return safeUnixNano(span.startedAtUnixNano);
+}
+
+function spanDurationNano(span: Span) {
+  return safeUnixNano(span.durationNano);
+}
+
 function clampPercent(value: number) {
   if (!Number.isFinite(value)) {
     return 0;
@@ -83,6 +106,15 @@ function stableCompareSpans(
 ) {
   const left = spansById.get(leftId);
   const right = spansById.get(rightId);
+  const leftStartedAtNano = left ? spanStartedAtNano(left) : null;
+  const rightStartedAtNano = right ? spanStartedAtNano(right) : null;
+  if (
+    leftStartedAtNano !== null &&
+    rightStartedAtNano !== null &&
+    leftStartedAtNano !== rightStartedAtNano
+  ) {
+    return leftStartedAtNano < rightStartedAtNano ? -1 : 1;
+  }
   const leftStartedAt = left ? safeTime(left.startedAt) : 0;
   const rightStartedAt = right ? safeTime(right.startedAt) : 0;
   const startedDelta = leftStartedAt - rightStartedAt;
@@ -119,6 +151,8 @@ function uniqueExistingIds(ids: Iterable<string>, spansById: Map<string, Span>) 
 export function buildTraceTreeIndexes({
   spans,
   traceStartedAt,
+  traceStartedAtUnixNano,
+  traceDurationNano,
   traceDurationMs,
   rootSpanIds,
   orphanSpanIds,
@@ -184,6 +218,9 @@ export function buildTraceTreeIndexes({
     childrenByParentId.set(MISSING_PARENT_GROUP_ID, sortedMissingParentSpanIds);
   }
 
+  const parsedTraceStartedAtNano = safeUnixNano(traceStartedAtUnixNano);
+  const parsedTraceDurationNano = safeUnixNano(traceDurationNano);
+
   return {
     spansById,
     childrenByParentId,
@@ -192,6 +229,9 @@ export function buildTraceTreeIndexes({
     siblingIndexById,
     traceStartedAtMs: safeTime(traceStartedAt),
     traceDurationMs: traceDurationMs && traceDurationMs > 0 ? traceDurationMs : 0,
+    traceStartedAtNano: parsedTraceStartedAtNano,
+    traceDurationNano:
+      parsedTraceDurationNano && parsedTraceDurationNano > 0n ? parsedTraceDurationNano : null,
   };
 }
 
@@ -278,6 +318,17 @@ export function buildInitialExpandedSpanIds({
 }
 
 export function getSpanStartOffsetPercent(indexes: TraceTreeIndexes, span: Span) {
+  const startNano = spanStartedAtNano(span);
+  if (
+    indexes.traceStartedAtNano !== null &&
+    indexes.traceDurationNano !== null &&
+    startNano !== null
+  ) {
+    const offsetNano =
+      startNano > indexes.traceStartedAtNano ? startNano - indexes.traceStartedAtNano : 0n;
+    return clampPercent((Number(offsetNano) / Number(indexes.traceDurationNano)) * 100);
+  }
+
   if (indexes.traceDurationMs <= 0) {
     return 0;
   }
@@ -287,6 +338,14 @@ export function getSpanStartOffsetPercent(indexes: TraceTreeIndexes, span: Span)
 }
 
 export function getSpanDurationPercent(indexes: TraceTreeIndexes, span: Span) {
+  const durationNano = spanDurationNano(span);
+  if (indexes.traceDurationNano !== null && durationNano !== null) {
+    return Math.max(
+      minimumDurationPercent,
+      clampPercent((Number(durationNano) / Number(indexes.traceDurationNano)) * 100),
+    );
+  }
+
   if (indexes.traceDurationMs <= 0) {
     return minimumDurationPercent;
   }

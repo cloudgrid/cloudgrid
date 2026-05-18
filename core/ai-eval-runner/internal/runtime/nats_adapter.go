@@ -64,6 +64,23 @@ type NATSRequester struct {
 	Timeout time.Duration
 }
 
+type authContextKey struct{}
+
+func contextWithAuth(authContext *contracts.AuthContext) context.Context {
+	if authContext == nil {
+		return context.Background()
+	}
+	return context.WithValue(context.Background(), authContextKey{}, authContext)
+}
+
+func runnerEnvelope(ctx context.Context, requestID string) contracts.BridgeEnvelope {
+	envelope := contracts.BridgeEnvelope{RequestID: requestID, IssuedAt: time.Now().UTC()}
+	if authContext, ok := ctx.Value(authContextKey{}).(*contracts.AuthContext); ok {
+		envelope.AuthContext = authContext
+	}
+	return envelope
+}
+
 func (requester NATSRequester) RequestWithContext(ctx context.Context, subject string, data []byte) (*Message, error) {
 	msg, err := requester.Conn.RequestWithContext(ctx, subject, data)
 	if err != nil {
@@ -85,7 +102,7 @@ type NATSStorageReader struct {
 }
 
 func (reader NATSStorageReader) SearchExperiments(ctx context.Context, experimentID string) ([]ports.Experiment, error) {
-	data, err := reader.evalQuery(ctx, SubjectExperimentSearch, map[string]any{"experimentId": experimentID})
+	data, err := reader.evalQuery(ctx, SubjectExperimentSearch, map[string]any{"id": experimentID})
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +162,7 @@ func (reader NATSStorageReader) SearchScorers(ctx context.Context, scorerIDs []s
 
 func (reader NATSStorageReader) ResolveManifest(ctx context.Context, request ports.ManifestResolveRequest) (ports.ExperimentManifest, error) {
 	resolveRequest := contracts.ExperimentManifestResolveRequest{
-		BridgeEnvelope:  contracts.BridgeEnvelope{RequestID: request.ExperimentRunID + ":manifest", IssuedAt: time.Now().UTC()},
+		BridgeEnvelope:  runnerEnvelope(ctx, request.ExperimentRunID+":manifest"),
 		ExperimentRunID: request.ExperimentRunID,
 		ExperimentID:    request.ExperimentID,
 		SplitSelector:   splitSelectorMap(request.SplitSelector),
@@ -247,7 +264,7 @@ func (reader NATSStorageReader) ResolveOnlinePolicyMatches(ctx context.Context, 
 
 func (reader NATSStorageReader) evalQuery(ctx context.Context, subject string, input map[string]any) (map[string]any, error) {
 	request := contracts.EvalQueryRequest{
-		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: subject + ":runner", IssuedAt: time.Now().UTC()},
+		BridgeEnvelope: runnerEnvelope(ctx, subject+":runner"),
 		Input:          input,
 	}
 	responseData, err := requestJSON(ctx, reader.Requester, reader.timeout(), subject, request)
@@ -278,7 +295,7 @@ type NATSControlPlane struct {
 
 func (control NATSControlPlane) GetProjectAISettings(ctx context.Context, projectID string) (ports.ProjectAISettings, error) {
 	request := contracts.ProjectAiSettingsGetRequest{
-		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: projectID + ":ai-settings", IssuedAt: time.Now().UTC()},
+		BridgeEnvelope: runnerEnvelope(ctx, projectID+":ai-settings"),
 		ProjectID:      projectID,
 	}
 	responseData, err := requestJSON(ctx, control.Requester, control.timeout(), SubjectControlAISettingsGet, request)
@@ -363,7 +380,7 @@ func (writer NATSStorageWriter) UpdateExperimentProgress(ctx context.Context, pr
 
 func (writer NATSStorageWriter) evalMutation(ctx context.Context, subject string, input map[string]any) (map[string]any, error) {
 	request := contracts.EvalMutationRequest{
-		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: subject + ":runner", IssuedAt: time.Now().UTC()},
+		BridgeEnvelope: runnerEnvelope(ctx, subject+":runner"),
 		Input:          input,
 	}
 	responseData, err := requestJSON(ctx, writer.Requester, writer.timeout(), subject, request)

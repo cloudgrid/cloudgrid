@@ -23,7 +23,12 @@ export type CloudGridErrorId =
   | "ERR-014"
   | "ERR-015"
   | "ERR-016"
-  | "ERR-017";
+  | "ERR-017"
+  | "ERR-018"
+  | "ERR-019"
+  | "ERR-020"
+  | "ERR-021"
+  | "ERR-022";
 
 export interface ProblemDetails {
   type: string;
@@ -146,6 +151,36 @@ const errorTaxonomy: Record<CloudGridErrorId, ErrorTaxonomyEntry> = {
     status: 429,
     retryable: true,
     detail: "Too many live telemetry subscriptions are open",
+  },
+  "ERR-018": {
+    code: "ALERT_RULE_INVALID",
+    status: 400,
+    retryable: false,
+    detail: "Alert rule configuration is invalid",
+  },
+  "ERR-019": {
+    code: "ALERT_QUERY_UNSUPPORTED",
+    status: 400,
+    retryable: false,
+    detail: "Alert query is unsupported",
+  },
+  "ERR-020": {
+    code: "ALERT_NOTIFICATION_FAILED",
+    status: 503,
+    retryable: true,
+    detail: "Alert notification delivery failed",
+  },
+  "ERR-021": {
+    code: "ALERT_EVALUATOR_TIMEOUT",
+    status: 504,
+    retryable: true,
+    detail: "Alert evaluator exceeded deadline",
+  },
+  "ERR-022": {
+    code: "INVITATION_EMAIL_DELIVERY_FAILED",
+    status: 503,
+    retryable: true,
+    detail: "Invitation email delivery failed",
   },
 };
 

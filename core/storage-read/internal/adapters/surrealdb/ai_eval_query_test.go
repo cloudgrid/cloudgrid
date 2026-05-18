@@ -3,6 +3,7 @@
 package surrealdb
 
 import (
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -89,6 +90,77 @@ func TestBuildDatasetHealthQueriesComputeStorageReadHealth(t *testing.T) {
 	}
 }
 
+func TestShapeAiQualityOverviewNormalizesAggregateValues(t *testing.T) {
+	summary := shapeAiQualitySummary(map[string]any{
+		"runCount":      uint64(3),
+		"meanLatencyMs": math.NaN(),
+		"costUsd":       struct{}{},
+	})
+	if summary["runCount"] != 3 || summary["meanLatencyMs"] != float64(0) || summary["costUsd"] != float64(0) {
+		t.Fatalf("summary = %#v, want normalized JSON-safe aggregate values", summary)
+	}
+
+	segments := shapeAiQualitySegments([]map[string]any{{
+		"agentName":       "checkout-agent",
+		"environment":     "dev",
+		"service":         "checkout",
+		"route":           "/checkout",
+		"runCount":        uint64(2),
+		"scoredRunCount":  uint64(1),
+		"p50LatencyMs":    "12.5",
+		"p95LatencyMs":    struct{}{},
+		"costUsd":         "0.25",
+		"regressionCount": uint64(0),
+	}})
+	if len(segments) != 1 {
+		t.Fatalf("segments = %#v, want one segment", segments)
+	}
+	segment := segments[0]
+	if segment["runCount"] != 2 || segment["scoredRunCount"] != 1 || segment["p50LatencyMs"] != 12.5 || segment["p95LatencyMs"] != float64(0) || segment["costUsd"] != 0.25 {
+		t.Fatalf("segment = %#v, want normalized JSON-safe values", segment)
+	}
+	if _, ok := segment["agentName"]; ok {
+		t.Fatalf("segment = %#v, want raw grouping fields removed", segment)
+	}
+}
+
+func TestBuildDatasetListCountsQueryBatchesDatasetCounts(t *testing.T) {
+	stmt, err := BuildDatasetListCountsQuery([]string{"dataset-1", "dataset-2"})
+	if err != nil {
+		t.Fatalf("BuildDatasetListCountsQuery returned error: %v", err)
+	}
+
+	for _, want := range []string{
+		"FROM ai_dataset_item",
+		"datasetId IN $datasetIds",
+		"GROUP BY datasetId",
+		"count() AS itemCount",
+		"reviewedItemCount",
+	} {
+		if !strings.Contains(stmt.SQL, want) {
+			t.Fatalf("SQL = %s, missing %q", stmt.SQL, want)
+		}
+	}
+}
+
+func TestBuildDatasetExportItemsQuerySelectsOrderField(t *testing.T) {
+	stmt, err := BuildDatasetExportItemsQuery(map[string]any{"datasetId": "dataset-1"})
+	if err != nil {
+		t.Fatalf("BuildDatasetExportItemsQuery returned error: %v", err)
+	}
+
+	for _, want := range []string{
+		"SELECT id, input, expected",
+		"FROM ai_dataset_item",
+		"datasetId = $datasetId",
+		"ORDER BY id ASC",
+	} {
+		if !strings.Contains(stmt.SQL, want) {
+			t.Fatalf("SQL = %s, missing %q", stmt.SQL, want)
+		}
+	}
+}
+
 func TestBuildAiQualityOverviewQueriesAggregateByProjectSegments(t *testing.T) {
 	stmts, err := BuildAiQualityOverviewQueries(map[string]any{
 		"projectId":   "default",
@@ -104,6 +176,7 @@ func TestBuildAiQualityOverviewQueriesAggregateByProjectSegments(t *testing.T) {
 	segments := stmts["segments"].SQL
 	for _, want := range []string{
 		"FROM ai_agent_run",
+		"agent.name AS agentName",
 		"agent.name = $agentName",
 		"metadata.environment = $environment",
 		"metadata.service = $service",
@@ -113,6 +186,115 @@ func TestBuildAiQualityOverviewQueriesAggregateByProjectSegments(t *testing.T) {
 		if !strings.Contains(segments, want) {
 			t.Fatalf("segments SQL = %s, missing %q", segments, want)
 		}
+	}
+	if strings.Contains(segments, "string::join") || strings.Contains(segments, "dimensions") {
+		t.Fatalf("segments SQL = %s, want Go-shaped key and dimensions after grouped query", segments)
+	}
+}
+
+func TestShapeAiQualitySegmentsNormalizesSurrealAggregateRows(t *testing.T) {
+	segments := shapeAiQualitySegments([]map[string]any{{
+		"agentName":       "checkout-agent",
+		"environment":     nil,
+		"service":         nil,
+		"route":           nil,
+		"runCount":        uint64(1),
+		"scoredRunCount":  uint64(1),
+		"p50LatencyMs":    float64(5000),
+		"p95LatencyMs":    uint64(5000),
+		"costUsd":         uint64(0),
+		"regressionCount": []any{uint64(0)},
+	}})
+
+	segment := segments[0]
+	if segment["key"] != "checkout-agent:::" || segment["label"] != "checkout-agent" {
+		t.Fatalf("segment identity = %#v, want stable fallback dimensions", segment)
+	}
+	if segment["runCount"] != 1 || segment["scoredRunCount"] != 1 || segment["regressionCount"] != 0 {
+		t.Fatalf("segment counts = %#v, want normalized ints", segment)
+	}
+	if segment["p50LatencyMs"] != float64(5000) || segment["p95LatencyMs"] != float64(5000) || segment["costUsd"] != float64(0) {
+		t.Fatalf("segment metrics = %#v, want normalized numbers", segment)
+	}
+}
+
+func TestBuildAiEvalQueryRoutesExperimentRunLookupsToRunTable(t *testing.T) {
+	byRunID, err := BuildAiEvalQuery(storage.SubjectEvalExperimentSearch, map[string]any{
+		"experimentRunId": "experiment-run-1",
+	})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery by run id returned error: %v", err)
+	}
+	if !strings.Contains(byRunID.SQL, "FROM ai_experiment_run") || !strings.Contains(byRunID.SQL, "record::id(id) = $experimentRunId") {
+		t.Fatalf("SQL = %s, want experiment run id lookup on run table", byRunID.SQL)
+	}
+
+	byExperimentID, err := BuildAiEvalQuery(storage.SubjectEvalExperimentSearch, map[string]any{
+		"experimentId": "experiment-1",
+	})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery by experiment id returned error: %v", err)
+	}
+	if !strings.Contains(byExperimentID.SQL, "FROM ai_experiment_run") || !strings.Contains(byExperimentID.SQL, "experimentId = $experimentId") {
+		t.Fatalf("SQL = %s, want experiment runs for experiment id", byExperimentID.SQL)
+	}
+
+	itemRuns, err := BuildAiEvalQuery(storage.SubjectEvalExperimentSearch, map[string]any{
+		"experimentRunId": "experiment-run-1",
+		"itemRuns":        true,
+	})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery item runs returned error: %v", err)
+	}
+	if !strings.Contains(itemRuns.SQL, "FROM ai_dataset_item_run") || !strings.Contains(itemRuns.SQL, "experimentRunId = $experimentRunId") {
+		t.Fatalf("SQL = %s, want dataset item runs for experiment run id", itemRuns.SQL)
+	}
+}
+
+func TestShapeAiEvalItemsReturnsGraphQLReadyRows(t *testing.T) {
+	items := shapeAiEvalItems(storage.SubjectEvalDatasetSearch, map[string]any{}, []map[string]any{{
+		"id":                "dataset-1",
+		"name":              "Regression",
+		"createdAt":         "2026-05-12T10:00:00Z",
+		"version":           uint64(2),
+		"itemCount":         uint64(1),
+		"reviewedItemCount": uint64(1),
+	}})
+	dataset := items[0]
+	if dataset["version"] != 2 || dataset["itemCount"] != 1 || dataset["reviewedItemCount"] != 1 {
+		t.Fatalf("dataset row = %#v, want SurrealDB unsigned counts normalized", dataset)
+	}
+	health, ok := dataset["health"].(map[string]any)
+	if !ok || health["status"] != "needs_review" || health["totalItemCount"] != 1 || health["reviewedItemCount"] != 1 {
+		t.Fatalf("dataset health = %#v, want GraphQL health", dataset["health"])
+	}
+	if tags, ok := dataset["tags"].([]string); !ok || len(tags) != 0 {
+		t.Fatalf("dataset tags = %#v, want empty string slice", dataset["tags"])
+	}
+
+	datasetItems := shapeAiEvalItems(storage.SubjectEvalDatasetSearch, map[string]any{"datasetId": "dataset-1"}, []map[string]any{{
+		"id":        "item-1",
+		"datasetId": "dataset-1",
+		"input":     map[string]any{"prompt": "hi"},
+	}})
+	item := datasetItems[0]
+	if item["version"] != 1 || item["split"] != "dev" || item["reviewStatus"] != "unreviewed" {
+		t.Fatalf("dataset item = %#v, want defaulted item fields", item)
+	}
+	if warnings, ok := item["leakageWarnings"].([]string); !ok || len(warnings) != 0 {
+		t.Fatalf("leakage warnings = %#v, want empty string slice", item["leakageWarnings"])
+	}
+
+	agentRuns := shapeAiEvalItems(storage.SubjectEvalAgentRunsSearch, map[string]any{}, []map[string]any{{
+		"id":        "agent-run-1",
+		"traceId":   "trace-1",
+		"spanId":    "span-1",
+		"startedAt": "2026-05-12T10:00:00Z",
+	}})
+	agentRun := agentRuns[0]
+	agent, ok := agentRun["agent"].(map[string]any)
+	if !ok || agent["name"] != "unknown" || agentRun["rootSpanId"] != "span-1" || agentRun["status"] != "unset" {
+		t.Fatalf("agent run = %#v, want GraphQL-ready defaults", agentRun)
 	}
 }
 
@@ -140,7 +322,13 @@ func TestBuildExperimentManifestResolveQueriesResolveImmutableInputs(t *testing.
 	if !strings.Contains(stmts["datasetItems"].SQL, "split IN $splits") || !strings.Contains(stmts["datasetItems"].SQL, "reviewStatus = 'reviewed'") {
 		t.Fatalf("dataset item SQL = %s, want resolved reviewed split item query", stmts["datasetItems"].SQL)
 	}
-	if !strings.Contains(stmts["scorers"].SQL, "id IN $scorerIds") {
+	if !strings.Contains(stmts["run"].SQL, "record::id(id) = $experimentRunId") {
+		t.Fatalf("run SQL = %s, want record id lookup", stmts["run"].SQL)
+	}
+	if !strings.Contains(stmts["experiment"].SQL, "record::id(id) = $experimentId") {
+		t.Fatalf("experiment SQL = %s, want record id lookup", stmts["experiment"].SQL)
+	}
+	if !strings.Contains(stmts["scorers"].SQL, "record::id(id) IN $scorerIds") {
 		t.Fatalf("scorer SQL = %s, want versioned scorer lookup", stmts["scorers"].SQL)
 	}
 }
@@ -215,6 +403,155 @@ func TestBuildAiEvalQueryRejectsMutationSubjects(t *testing.T) {
 	}
 }
 
+func TestAiEvalQueryBuildersValidateLimitsAndRequiredInputs(t *testing.T) {
+	invalidLimits := []any{0, int64(201), float64(250), "many"}
+	for _, limit := range invalidLimits {
+		if _, err := BuildAiEvalQuery(storage.SubjectEvalDatasetSearch, map[string]any{"limit": limit}); err == nil {
+			t.Fatalf("BuildAiEvalQuery(limit=%#v) returned nil error", limit)
+		}
+	}
+	for _, build := range []struct {
+		name string
+		fn   func() error
+	}{
+		{name: "dataset health", fn: func() error { _, err := BuildDatasetHealthQueries(map[string]any{}); return err }},
+		{name: "dataset export", fn: func() error { _, err := BuildDatasetExportItemsQuery(map[string]any{}); return err }},
+		{name: "quality overview", fn: func() error { _, err := BuildAiQualityOverviewQueries(map[string]any{}); return err }},
+		{name: "experiment event", fn: func() error { _, err := BuildExperimentRunEventQueries(" ", nil); return err }},
+		{name: "manifest resolve", fn: func() error {
+			_, err := BuildExperimentManifestResolveQueries(contracts.ExperimentManifestResolveRequest{ExperimentRunID: "run-1"})
+			return err
+		}},
+		{name: "online policy project", fn: func() error {
+			_, err := BuildOnlinePolicyMatchesResolveQueries(contracts.OnlinePolicyMatchesResolveRequest{TraceID: "trace-1", ProjectionIDs: []string{"p1"}})
+			return err
+		}},
+		{name: "online policy trace", fn: func() error {
+			_, err := BuildOnlinePolicyMatchesResolveQueries(contracts.OnlinePolicyMatchesResolveRequest{ProjectID: "project-1", ProjectionIDs: []string{"p1"}})
+			return err
+		}},
+		{name: "online policy projections", fn: func() error {
+			_, err := BuildOnlinePolicyMatchesResolveQueries(contracts.OnlinePolicyMatchesResolveRequest{ProjectID: "project-1", TraceID: "trace-1"})
+			return err
+		}},
+	} {
+		t.Run(build.name, func(t *testing.T) {
+			if err := build.fn(); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}
+
+func TestAiEvalQueryBuildersCoverDatasetScorerResultsAndQualityFilters(t *testing.T) {
+	datasetList, err := BuildAiEvalQuery(storage.SubjectEvalDatasetSearch, map[string]any{"tag": "release", "query": "checkout"})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery(dataset list) error = %v", err)
+	}
+	for _, want := range []string{"FROM ai_dataset", "tags = $tag", "string::lowercase(record::id(id)) CONTAINS $query", "string::lowercase(name) CONTAINS $query"} {
+		if !strings.Contains(datasetList.SQL, want) {
+			t.Fatalf("dataset list SQL = %s, missing %q", datasetList.SQL, want)
+		}
+	}
+
+	datasetItems, err := BuildAiEvalQuery(storage.SubjectEvalDatasetSearch, map[string]any{"datasetId": "dataset-1"})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery(dataset items) error = %v", err)
+	}
+	if !strings.Contains(datasetItems.SQL, "FROM ai_dataset_item") || !strings.Contains(datasetItems.SQL, "datasetId = $datasetId") {
+		t.Fatalf("dataset items SQL = %s", datasetItems.SQL)
+	}
+
+	scorers, err := BuildAiEvalQuery(storage.SubjectEvalScorerSearch, map[string]any{"kind": "deterministic", "query": "exact"})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery(scorers) error = %v", err)
+	}
+	if !strings.Contains(scorers.SQL, "FROM ai_scorer") || !strings.Contains(scorers.SQL, "kind = $kind") || !strings.Contains(scorers.SQL, "string::lowercase(name) CONTAINS $query") {
+		t.Fatalf("scorer SQL = %s", scorers.SQL)
+	}
+
+	results, err := BuildAiEvalQuery(storage.SubjectEvalResultsSearch, map[string]any{
+		"scorerId":        "scorer-1",
+		"experimentRunId": "run-1",
+		"targetKind":      "dataset_item_run",
+		"targetId":        "item-run-1",
+		"passed":          false,
+	})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery(results) error = %v", err)
+	}
+	for _, want := range []string{"FROM ai_eval_result", "scorerId = $scorerId", "experimentRunId = $experimentRunId", "targetKind = $targetKind", "targetId = $targetId", "passed = $passed"} {
+		if !strings.Contains(results.SQL, want) {
+			t.Fatalf("results SQL = %s, missing %q", results.SQL, want)
+		}
+	}
+
+	from := time.Date(2026, 5, 16, 8, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	to := time.Date(2026, 5, 16, 9, 0, 0, 0, time.UTC)
+	quality, err := BuildAiQualityOverviewQueries(map[string]any{"projectId": "project-1", "from": from, "to": to})
+	if err != nil {
+		t.Fatalf("BuildAiQualityOverviewQueries(filters) error = %v", err)
+	}
+	if !strings.Contains(quality["summary"].SQL, "startedAt >= $from") || !strings.Contains(quality["summary"].SQL, "startedAt <= $to") {
+		t.Fatalf("quality summary SQL = %s", quality["summary"].SQL)
+	}
+}
+
+func TestAiEvalHelperConversionsCoverSurrealDBScalarShapes(t *testing.T) {
+	if numericValue(int8(1)) != 1 || numericValue(int16(2)) != 2 || numericValue(int32(3)) != 3 || numericValue(uint8(4)) != 4 || numericValue(uint16(5)) != 5 || numericValue(uint32(6)) != 6 || numericValue("7.5") != 7.5 {
+		t.Fatal("numericValue did not normalize numeric scalar variants")
+	}
+	if numericValue(math.Inf(1)) != 0 || numericValue("not-number") != 0 {
+		t.Fatal("numericValue did not reject non-finite or non-numeric values")
+	}
+	if intValueFromAny(int8(1)) != 1 || intValueFromAny(int16(2)) != 2 || intValueFromAny(int32(3)) != 3 || intValueFromAny(float32(4)) != 4 {
+		t.Fatal("intValueFromAny did not normalize scalar variants")
+	}
+	if stringsFromAny([]any{" a ", "", 12, "b"})[0] != "a" {
+		t.Fatal("stringsFromAny did not trim/filter values")
+	}
+	if values := stringSlice([]any{"x", "", 1, "y"}); len(values) != 2 || values[1] != "y" {
+		t.Fatalf("stringSlice = %#v", values)
+	}
+	if maxIntValue(1, 2) != 2 || maxIntValue(3, 2) != 3 || defaultAny(nil, "fallback") != "fallback" || boolFromAny("true") {
+		t.Fatal("small helper defaults did not behave as expected")
+	}
+	if value, ok := timeInput(map[string]any{"from": time.Date(2026, 5, 16, 8, 0, 0, 0, time.FixedZone("test", 3600))}, "from"); !ok || value.Location() != time.UTC {
+		t.Fatalf("timeInput(time) = %v %v", value, ok)
+	}
+	if _, ok := timeInput(map[string]any{"from": "not-time"}, "from"); ok {
+		t.Fatal("timeInput accepted invalid time string")
+	}
+}
+
+func TestDatasetHealthWarningsAndStatusCoverAllHealthBranches(t *testing.T) {
+	health := map[string]any{
+		"reviewedItemCount":       5,
+		"duplicateCandidateCount": 2,
+		"leakageWarningCount":     1,
+		"missingExpectedCount":    3,
+	}
+	warnings := datasetHealthWarnings(health)
+	if strings.Join(warnings, ",") != "small_dataset,duplicate_candidates,split_leakage,missing_expected" {
+		t.Fatalf("warnings = %#v", warnings)
+	}
+
+	for _, item := range []struct {
+		health map[string]any
+		want   string
+	}{
+		{map[string]any{"leakageWarningCount": 1}, "leakage_warning"},
+		{map[string]any{"schemaIssueCount": 1}, "invalid"},
+		{map[string]any{"missingExpectedCount": 1}, "needs_review"},
+		{map[string]any{"smallDataset": true}, "needs_review"},
+		{map[string]any{}, "ready"},
+	} {
+		if got := datasetHealthStatusFromCounts(item.health); got != item.want {
+			t.Fatalf("status = %q, want %q for %#v", got, item.want, item.health)
+		}
+	}
+}
+
 func TestBuildExperimentRunEventQueriesUseRunAndItemRunIDs(t *testing.T) {
 	itemRunID := "item-run-1"
 	stmts, err := BuildExperimentRunEventQueries("experiment-run-1", &itemRunID)
@@ -222,10 +559,161 @@ func TestBuildExperimentRunEventQueriesUseRunAndItemRunIDs(t *testing.T) {
 		t.Fatalf("BuildExperimentRunEventQueries returned error: %v", err)
 	}
 
-	if !strings.Contains(stmts["run"].SQL, "FROM ai_experiment_run") || stmts["run"].Params["experimentRunId"] != "experiment-run-1" {
+	if !strings.Contains(stmts["run"].SQL, "FROM ai_experiment_run") || !strings.Contains(stmts["run"].SQL, "record::id(id) = $experimentRunId") || stmts["run"].Params["experimentRunId"] != "experiment-run-1" {
 		t.Fatalf("run query = %#v, want experiment run lookup", stmts["run"])
 	}
-	if !strings.Contains(stmts["itemRun"].SQL, "FROM ai_dataset_item_run") || stmts["itemRun"].Params["datasetItemRunId"] != itemRunID {
+	if !strings.Contains(stmts["itemRun"].SQL, "FROM ai_dataset_item_run") || !strings.Contains(stmts["itemRun"].SQL, "record::id(id) = $datasetItemRunId") || stmts["itemRun"].Params["datasetItemRunId"] != itemRunID {
 		t.Fatalf("item run query = %#v, want dataset item run lookup", stmts["itemRun"])
+	}
+}
+
+func TestShapeAiEvalItemsCoversAllGraphQLRows(t *testing.T) {
+	now := time.Date(2026, 5, 18, 11, 0, 0, 0, time.UTC).Format(time.RFC3339)
+
+	scorers := shapeAiEvalItems(storage.SubjectEvalScorerSearch, map[string]any{}, []map[string]any{{
+		"recordId": "scorer-1",
+		"name":     "Exact match",
+		"kind":     "deterministic",
+	}})
+	if scorers[0]["id"] != "scorer-1" || scorers[0]["version"] != 1 {
+		t.Fatalf("scorer row = %#v", scorers[0])
+	}
+	if definition, ok := scorers[0]["definition"].(map[string]any); !ok || len(definition) != 0 {
+		t.Fatalf("scorer definition = %#v, want empty object", scorers[0]["definition"])
+	}
+
+	experiments := shapeAiEvalItems(storage.SubjectEvalExperimentSearch, map[string]any{}, []map[string]any{{
+		"id":                  "experiment-1",
+		"datasetId":           "dataset-1",
+		"datasetVersion":      uint64(0),
+		"splitSelector":       map[string]any{"splits": []any{"dev", "validation"}, "reviewedOnly": true},
+		"scorerIds":           []any{"scorer-1"},
+		"promptVersionRefs":   []any{"prompt-1"},
+		"skillSnapshotRefs":   []any{"skill-1"},
+		"toolSnapshotRefs":    []any{"tool-1"},
+		"providerProfileRefs": []any{"provider-1"},
+		"tags":                []any{"smoke"},
+	}})
+	if experiments[0]["datasetVersion"] != 1 {
+		t.Fatalf("experiment row = %#v, want minimum dataset version", experiments[0])
+	}
+	if selector := experiments[0]["splitSelector"].(map[string]any); selector["reviewedOnly"] != true {
+		t.Fatalf("split selector = %#v", selector)
+	}
+
+	runs := shapeAiEvalItems(storage.SubjectEvalExperimentSearch, map[string]any{"experimentId": "experiment-1"}, []map[string]any{{
+		"id": "run-1",
+	}})
+	if runs[0]["status"] != "queued" || runs[0]["startedAt"] == nil {
+		t.Fatalf("run row = %#v, want defaults", runs[0])
+	}
+	if _, ok := runs[0]["solverRef"].(map[string]any); !ok {
+		t.Fatalf("solverRef = %#v, want object", runs[0]["solverRef"])
+	}
+
+	itemRuns := shapeAiEvalItems(storage.SubjectEvalExperimentSearch, map[string]any{"experimentRunId": "run-1", "itemRuns": true}, []map[string]any{{
+		"id":        "item-run-1",
+		"latencyMs": "12.5",
+	}})
+	if itemRuns[0]["latencyMs"] != 12.5 {
+		t.Fatalf("item run row = %#v", itemRuns[0])
+	}
+	if _, ok := itemRuns[0]["output"].(map[string]any); !ok {
+		t.Fatalf("output = %#v, want object", itemRuns[0]["output"])
+	}
+
+	results := shapeAiEvalItems(storage.SubjectEvalResultsSearch, map[string]any{}, []map[string]any{{"id": "result-1"}})
+	if results[0]["producedAt"] == nil {
+		t.Fatalf("result row = %#v, want producedAt fallback", results[0])
+	}
+
+	queue := shapeAiEvalItems(storage.SubjectAnnotationQueueSearch, map[string]any{}, []map[string]any{{"id": "annotation-1", "createdAt": now}})
+	if queue[0]["status"] != "open" || queue[0]["createdAt"] != now {
+		t.Fatalf("annotation queue row = %#v", queue[0])
+	}
+}
+
+func TestOnlinePolicyHelpersNormalizeRowsAndFilters(t *testing.T) {
+	attributes := []any{
+		map[string]any{"key": "tier", "operator": "in", "value": []any{"gold", "silver"}},
+		map[string]any{"key": "env", "operator": "neq", "value": "dev"},
+		map[string]any{"key": "", "operator": "eq", "value": "ignored"},
+	}
+	target := onlinePolicyTargetFromMap(map[string]any{
+		"agentName":   "checkout-agent",
+		"routePrefix": "/checkout",
+		"attributes":  attributes,
+	})
+	if target.AgentName == nil || *target.AgentName != "checkout-agent" || len(target.Attributes) != 2 {
+		t.Fatalf("target = %#v, want normalized filters", target)
+	}
+	if isEmptyOnlineTarget(target) {
+		t.Fatal("target with agentName and attributes should not be empty")
+	}
+	if !isEmptyOnlineTarget(contracts.OnlinePolicyTarget{}) {
+		t.Fatal("zero target should be empty")
+	}
+
+	route := "/checkout/submit"
+	projection := onlineProjectionFromRow(map[string]any{
+		"id":             "projection-1",
+		"kind":           string(contracts.AiProjectionKindAgentRun),
+		"agentName":      "checkout-agent",
+		"route":          route,
+		"safeAttributes": map[string]any{"tier": "gold", "env": "prod", "message": "hello world"},
+	}, contracts.OnlinePolicyMatchesResolveRequest{ProjectID: "project-1", TraceID: "trace-1"})
+	if projection.ProjectID != "project-1" || projection.TraceID != "trace-1" || projection.ProjectionID != "projection-1" {
+		t.Fatalf("projection = %#v", projection)
+	}
+	if !onlinePolicyTargetMatchesProjection(target, projection) {
+		t.Fatalf("target should match projection: target=%#v projection=%#v", target, projection)
+	}
+
+	for _, item := range []struct {
+		filter contracts.OnlinePolicyAttributeFilter
+		want   bool
+	}{
+		{contracts.OnlinePolicyAttributeFilter{Key: "message", Operator: contracts.AttributeFilterOperator("contains"), Value: "world"}, true},
+		{contracts.OnlinePolicyAttributeFilter{Key: "tier", Operator: contracts.AttributeFilterOperator("not_in"), Value: []any{"bronze"}}, true},
+		{contracts.OnlinePolicyAttributeFilter{Key: "missing", Operator: contracts.AttributeFilterOperator("exists")}, false},
+		{contracts.OnlinePolicyAttributeFilter{Key: "tier", Operator: contracts.AttributeFilterOperator("unknown"), Value: "gold"}, false},
+	} {
+		if got := onlineAttributeFilterMatches(projection.SafeAttributes, item.filter); got != item.want {
+			t.Fatalf("filter %#v got %v want %v", item.filter, got, item.want)
+		}
+	}
+}
+
+func TestBuildExperimentManifestProducesStableDigest(t *testing.T) {
+	manifest := buildExperimentManifest(contracts.ExperimentManifestResolveRequest{
+		ExperimentRunID: "run-1",
+		ExperimentID:    "experiment-1",
+		SplitSelector: map[string]any{
+			"splits":           []any{"validation"},
+			"reviewedOnly":     true,
+			"includeSynthetic": false,
+		},
+	}, map[string]any{
+		"datasetId":           "dataset-1",
+		"datasetVersion":      2,
+		"baselineRef":         map[string]any{"id": "baseline"},
+		"solverRef":           map[string]any{"id": "solver"},
+		"promptVersionRefs":   []any{"prompt-1"},
+		"skillSnapshotRefs":   []any{"skill-1"},
+		"toolSnapshotRefs":    []any{"tool-1"},
+		"providerProfileRefs": []any{"provider-1"},
+	}, []map[string]any{{"id": "item-1"}, {"id": "item-2"}}, []map[string]any{{"id": "scorer-1", "version": 3}})
+
+	if manifest["schema"] != "cloudgrid.ai-eval.experiment-manifest.v1" || manifest["digest"] == "" {
+		t.Fatalf("manifest = %#v, want schema and digest", manifest)
+	}
+	if digest := manifestDigest(manifest); digest != manifest["digest"] {
+		t.Fatalf("digest = %s manifest digest = %s", digest, manifest["digest"])
+	}
+	if itemIDs := manifest["datasetItemIds"].([]string); len(itemIDs) != 2 || itemIDs[0] != "item-1" {
+		t.Fatalf("dataset item ids = %#v", itemIDs)
+	}
+	if scorerRefs := manifest["scorerRefs"].([]map[string]any); len(scorerRefs) != 1 || scorerRefs[0]["version"] != 3 {
+		t.Fatalf("scorer refs = %#v", scorerRefs)
 	}
 }

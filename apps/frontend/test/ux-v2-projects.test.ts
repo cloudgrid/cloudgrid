@@ -454,6 +454,19 @@ describe("UX v2 project models", () => {
     expect(source).toContain("<Dialog");
   });
 
+  test("exposes editable AI Eval provider, budget, and parallel execution settings", () => {
+    const source = readFileSync(
+      new URL("../src/routes/control-plane-routes.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain('name="defaultProviderProfileId"');
+    expect(source).toContain('name="budgetDailyUsd"');
+    expect(source).toContain('name="maxConcurrentExperimentItems"');
+    expect(source).toContain("maxConcurrency");
+    expect(source).toContain("Provider profiles");
+  });
+
   test("prevents the single local Personal user from being demoted or removed", () => {
     expect(
       canMutateOrganizationMember({

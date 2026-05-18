@@ -25,17 +25,17 @@ The checked source of truth is:
 - `specs/03-contracts/entities/*.schema.json`
 - `specs/03-contracts/errors.yaml`
 
-Manual generated outputs are allowed only while `tooling/scripts/check-contracts.mjs` verifies drift-sensitive symbols and cross-layer conformance. The checker must validate frontend GraphQL operation documents against the public GraphQL SDL, required GraphQL input fields against `apps/packages/ui-contracts/src/index.ts`, and AsyncAPI request required fields against Go request structs.
+Manual generated outputs are allowed only while `tooling/scripts/check-contracts.mjs` verifies drift-sensitive symbols and cross-layer conformance. The checker must validate `apps/packages/public-api-client` GraphQL operation documents against the public GraphQL SDL, ensure frontend routes do not define route-local GraphQL operations or direct `/graphql` calls outside the approved client wrapper, validate every public API client operation has `apps/packages/integration-scenarios` coverage metadata, validate required GraphQL input fields against `apps/packages/ui-contracts/src/generated.ts`, and validate AsyncAPI request required fields against Go request structs.
 
 ## Generated Outputs
 
 The generator must produce these files deterministically:
 
 - `specs/03-contracts/messages/message-bridge.asyncapi.yaml`
-- `apps/packages/ui-contracts/src/index.ts`
-- `core/go-contracts/contracts.go`
+- `apps/packages/ui-contracts/src/generated.ts`
+- `core/go-contracts/generated_contracts.go`
 
-The GraphQL SDL remains hand-authored until a GraphQL generator is explicitly specified. UI contract types may be generated from GraphQL SDL plus shared scalar mappings. Until full generation exists, every required GraphQL input field must be mirrored in `apps/packages/ui-contracts/src/index.ts` as a non-optional TypeScript field and covered by `bun run contracts:check`.
+The GraphQL SDL remains hand-authored until a GraphQL generator is explicitly specified. UI contract types may be generated from GraphQL SDL plus shared scalar mappings. Until full generation exists, every required GraphQL input field must be mirrored in `apps/packages/ui-contracts/src/generated.ts` as a non-optional TypeScript field and covered by `bun run contracts:check`.
 
 Every generated file must include a short header that names `apps/packages/definition` and the generator command. Once generation exists, implementation agents must not hand-edit generated outputs.
 
@@ -52,6 +52,8 @@ The command must be deterministic, must not access the network, and must fail if
 The check command is a hard drift gate. It must fail when:
 
 - a frontend GraphQL operation omits an argument required by `public-schema.graphql`,
+- a frontend route defines an inline GraphQL operation or calls `/graphql`
+  directly instead of using the shared frontend client,
 - `ui-contracts` omits a required GraphQL input field,
 - an AsyncAPI request schema requires a field that is missing from its Go request struct,
 - generated enum or subject metadata is stale.

@@ -4,13 +4,18 @@
   "title": "SpanEvent",
   "type": "object",
   "additionalProperties": false,
-  "required": ["name", "timestamp", "attributes"],
+  "required": ["name", "timestamp", "timestampUnixNano", "attributes"],
   "properties": {
     "name": { "type": "string", "description": "OpenTelemetry span event name." },
     "timestamp": {
       "type": "string",
       "format": "date-time",
       "description": "Event timestamp in UTC."
+    },
+    "timestampUnixNano": {
+      "type": "string",
+      "pattern": "^[0-9]+$",
+      "description": "Event timestamp as OpenTelemetry Unix nanoseconds."
     },
     "attributes": {
       "type": "object",

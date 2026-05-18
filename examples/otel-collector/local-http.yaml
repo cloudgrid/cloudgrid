@@ -1,0 +1,31 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  otlphttp/cloudgrid:
+    endpoint: http://localhost:4318
+    headers:
+      authorization: "Bearer ${env:CLOUDGRID_PROJECT_API_KEY}"
+
+processors:
+  batch: {}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/cloudgrid]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/cloudgrid]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/cloudgrid]

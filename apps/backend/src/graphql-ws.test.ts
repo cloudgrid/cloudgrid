@@ -11,8 +11,8 @@ import type {
   TraceSearchInput,
   TraceSearchResult,
 } from "@cloudgrid/ui-contracts";
-import { createGraphQLWebSocketHandler } from "./graphql-ws";
 import type { TelemetryQueryBridge } from "./bridge";
+import { createGraphQLWebSocketHandler } from "./graphql-ws";
 import { ssoAuthConfig } from "./test-helpers";
 
 describe("GraphQL WebSocket transport", () => {
@@ -32,6 +32,7 @@ describe("GraphQL WebSocket transport", () => {
                 id: "trace-1",
                 serviceName: "api",
                 startedAt: "2026-05-10T09:59:59.000Z",
+                startedAtUnixNano: "1778407199000000000",
                 attributes: {},
                 spanCount: 1,
                 errorSpanCount: 0,
@@ -214,6 +215,59 @@ describe("GraphQL WebSocket transport", () => {
       scopes: ["telemetry:read", "telemetry:live"],
     });
   });
+
+  test("sanitizes post-setup subscription stream failures", async () => {
+    const sent: unknown[] = [];
+    const handler = createGraphQLWebSocketHandler(
+      bridge({
+        subscribeLiveTraces(): AsyncIterableIterator<LiveTraceEvent> {
+          return failingLiveEvents(new Error("secret provider token leaked"));
+        },
+      }),
+      createLogger("bff"),
+    );
+    const socket = {
+      data: handler.open(),
+      send(payload: string) {
+        sent.push(JSON.parse(payload));
+      },
+      close() {},
+    };
+
+    handler.message(socket, JSON.stringify({ type: "connection_init" }));
+    handler.message(
+      socket,
+      JSON.stringify({
+        id: "op-1",
+        type: "subscribe",
+        payload: {
+          query: `
+            subscription Live {
+              liveTraces { type seq receivedAt }
+            }
+          `,
+        },
+      }),
+    );
+
+    await until(() => sent.length >= 2);
+
+    expect(sent[0]).toEqual({ type: "connection_ack" });
+    expect(sent[1]).toMatchObject({
+      id: "op-1",
+      type: "error",
+      payload: [
+        {
+          message: "Message bridge request timed out",
+          extensions: {
+            code: "MESSAGE_BRIDGE_TIMEOUT",
+            problem: { id: "ERR-014", retryable: true },
+          },
+        },
+      ],
+    });
+    expect(JSON.stringify(sent)).not.toContain("secret provider token leaked");
+  });
 });
 
 async function until(predicate: () => boolean) {
@@ -261,4 +315,21 @@ async function* liveEvents(events: LiveTraceEvent[]): AsyncIterableIterator<Live
   for (const event of events) {
     yield event;
   }
+}
+
+function failingLiveEvents(error: Error): AsyncIterableIterator<LiveTraceEvent> {
+  return {
+    async next(): Promise<IteratorResult<LiveTraceEvent>> {
+      throw error;
+    },
+    async return(): Promise<IteratorResult<LiveTraceEvent>> {
+      return { done: true, value: undefined };
+    },
+    async throw(thrown?: unknown): Promise<IteratorResult<LiveTraceEvent>> {
+      throw thrown ?? error;
+    },
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+  };
 }

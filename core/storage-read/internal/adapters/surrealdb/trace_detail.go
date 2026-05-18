@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
 )
@@ -17,6 +18,7 @@ const defaultRelatedLogLimit = 50
 var stackFrameLocationPattern = regexp.MustCompile(`(?:^|[ (])([^()\s]+?):([0-9]+)(?::([0-9]+))?\)?$`)
 
 func buildTraceDetailData(trace contracts.Trace, spans []contracts.Span, logs []contracts.LogEvent, query *contracts.TraceDetailQuery) contracts.TraceDetailData {
+	enrichTracePrecision(&trace)
 	spanIDs := map[string]bool{}
 	children := map[string][]int{}
 	for index := range spans {
@@ -35,6 +37,7 @@ func buildTraceDetailData(trace contracts.Trace, spans []contracts.Span, logs []
 	enriched := make([]contracts.Span, len(spans))
 	for index := range spans {
 		enriched[index] = spans[index]
+		enrichSpanPrecision(&enriched[index], trace)
 		enrichSpan(&enriched[index], spans, spanIDs, children, criticalSet)
 	}
 
@@ -80,6 +83,50 @@ func buildTraceDetailData(trace contracts.Trace, spans []contracts.Span, logs []
 		RelatedLogs:  relatedLogs(logs, query, matchSet),
 		Warnings:     warnings,
 	}
+}
+
+func enrichTracePrecision(trace *contracts.Trace) {
+	if trace.StartedAtUnixNano == "" {
+		trace.StartedAtUnixNano = strconv.FormatInt(trace.StartedAt.UTC().UnixNano(), 10)
+	}
+	if trace.EndedAt != nil && trace.EndedAtUnixNano == nil {
+		endedAtUnixNano := strconv.FormatInt(trace.EndedAt.UTC().UnixNano(), 10)
+		trace.EndedAtUnixNano = &endedAtUnixNano
+	}
+	if trace.DurationNano == nil && trace.EndedAt != nil {
+		durationNano := nonNegativeDurationNanoString(trace.StartedAt, *trace.EndedAt)
+		trace.DurationNano = &durationNano
+	}
+}
+
+func enrichSpanPrecision(span *contracts.Span, trace contracts.Trace) {
+	if span.StartedAtUnixNano == "" {
+		span.StartedAtUnixNano = strconv.FormatInt(span.StartedAt.UTC().UnixNano(), 10)
+	}
+	if span.EndedAtUnixNano == "" {
+		span.EndedAtUnixNano = strconv.FormatInt(span.EndedAt.UTC().UnixNano(), 10)
+	}
+	if span.DurationNano == "" {
+		span.DurationNano = nonNegativeDurationNanoString(span.StartedAt, span.EndedAt)
+	}
+	startOffset := span.StartedAt.Sub(trace.StartedAt)
+	if startOffset < 0 {
+		startOffset = 0
+	}
+	span.StartOffsetNano = strconv.FormatInt(startOffset.Nanoseconds(), 10)
+	for index := range span.Events {
+		if span.Events[index].TimestampUnixNano == "" {
+			span.Events[index].TimestampUnixNano = strconv.FormatInt(span.Events[index].Timestamp.UTC().UnixNano(), 10)
+		}
+	}
+}
+
+func nonNegativeDurationNanoString(start time.Time, end time.Time) string {
+	duration := end.Sub(start)
+	if duration < 0 {
+		duration = 0
+	}
+	return strconv.FormatInt(duration.Nanoseconds(), 10)
 }
 
 func deriveRootsAndOrphans(trace contracts.Trace, spans []contracts.Span, spanIDs map[string]bool) ([]string, []string, []contracts.TraceWarning) {

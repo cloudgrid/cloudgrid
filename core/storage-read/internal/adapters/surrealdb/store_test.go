@@ -17,19 +17,19 @@ func TestStoreMethodsMapNilDatabaseFailuresToStorageError(t *testing.T) {
 	now := time.Date(2026, 5, 8, 8, 0, 0, 0, time.UTC)
 	traceID := "trace-1"
 
-	if _, err := store.SearchTraces(ctx, contracts.TraceSearchQuery{}); !isStorageUnavailable(err) {
+	if _, err := store.SearchTraces(ctx, contracts.TraceSearchQuery{}, nil); !isStorageUnavailable(err) {
 		t.Fatalf("SearchTraces error = %v, want storage unavailable", err)
 	}
-	if _, err := store.SearchLiveTraceCandidates(ctx, contracts.LiveTraceQuery{}, []string{traceID}); !isStorageUnavailable(err) {
+	if _, err := store.SearchLiveTraceCandidates(ctx, contracts.LiveTraceQuery{}, []string{traceID}, nil); !isStorageUnavailable(err) {
 		t.Fatalf("SearchLiveTraceCandidates error = %v, want storage unavailable", err)
 	}
-	if _, err := store.GetTraceDetail(ctx, traceID, nil); !isStorageUnavailable(err) {
+	if _, err := store.GetTraceDetail(ctx, traceID, nil, nil); !isStorageUnavailable(err) {
 		t.Fatalf("GetTraceDetail error = %v, want storage unavailable", err)
 	}
-	if _, err := store.SearchLogs(ctx, contracts.LogSearchQuery{From: &now}); !isStorageUnavailable(err) {
+	if _, err := store.SearchLogs(ctx, contracts.LogSearchQuery{From: &now}, nil); !isStorageUnavailable(err) {
 		t.Fatalf("SearchLogs error = %v, want storage unavailable", err)
 	}
-	if _, err := store.GetTelemetryFacets(ctx, contracts.TelemetryFacetQuery{}); !isStorageUnavailable(err) {
+	if _, err := store.GetTelemetryFacets(ctx, contracts.TelemetryFacetQuery{}, nil); !isStorageUnavailable(err) {
 		t.Fatalf("GetTelemetryFacets error = %v, want storage unavailable", err)
 	}
 	if _, err := store.GetProjectTelemetryOverviews(ctx, contracts.ProjectTelemetryOverviewRequest{
@@ -43,21 +43,21 @@ func TestStoreMethodsReturnValidationErrorsBeforeDatabaseAccess(t *testing.T) {
 	ctx := context.Background()
 	store := Store{}
 
-	if _, err := store.SearchLiveTraceCandidates(ctx, contracts.LiveTraceQuery{}, []string{" "}); err == nil || !strings.Contains(err.Error(), "VALIDATION_FAILED") {
+	if _, err := store.SearchLiveTraceCandidates(ctx, contracts.LiveTraceQuery{}, []string{" "}, nil); err == nil || !strings.Contains(err.Error(), "VALIDATION_FAILED") {
 		t.Fatalf("SearchLiveTraceCandidates error = %v, want validation error", err)
 	}
-	if _, err := store.GetTraceDetail(ctx, " ", nil); err == nil || !strings.Contains(err.Error(), "VALIDATION_FAILED") {
+	if _, err := store.GetTraceDetail(ctx, " ", nil, nil); err == nil || !strings.Contains(err.Error(), "VALIDATION_FAILED") {
 		t.Fatalf("GetTraceDetail error = %v, want validation error", err)
 	}
 
 	badLimit := 501
-	if _, err := store.SearchTraces(ctx, contracts.TraceSearchQuery{Limit: &badLimit}); err == nil || !strings.Contains(err.Error(), "VALIDATION_FAILED") {
+	if _, err := store.SearchTraces(ctx, contracts.TraceSearchQuery{Limit: &badLimit}, nil); err == nil || !strings.Contains(err.Error(), "VALIDATION_FAILED") {
 		t.Fatalf("SearchTraces error = %v, want validation error", err)
 	}
-	if _, err := store.SearchLogs(ctx, contracts.LogSearchQuery{Limit: &badLimit}); err == nil || !strings.Contains(err.Error(), "VALIDATION_FAILED") {
+	if _, err := store.SearchLogs(ctx, contracts.LogSearchQuery{Limit: &badLimit}, nil); err == nil || !strings.Contains(err.Error(), "VALIDATION_FAILED") {
 		t.Fatalf("SearchLogs error = %v, want validation error", err)
 	}
-	if _, err := store.GetTelemetryFacets(ctx, contracts.TelemetryFacetQuery{Limit: &badLimit}); err == nil || !strings.Contains(err.Error(), "VALIDATION_FAILED") {
+	if _, err := store.GetTelemetryFacets(ctx, contracts.TelemetryFacetQuery{Limit: &badLimit}, nil); err == nil || !strings.Contains(err.Error(), "VALIDATION_FAILED") {
 		t.Fatalf("GetTelemetryFacets error = %v, want validation error", err)
 	}
 	if _, err := store.GetProjectTelemetryOverviews(ctx, contracts.ProjectTelemetryOverviewRequest{

@@ -28,6 +28,10 @@ function iso(ms: number) {
   return new Date(ms).toISOString();
 }
 
+function unixNano(ms: number) {
+  return `${BigInt(ms) * 1_000_000n}`;
+}
+
 function spanId(index: number) {
   return `span-${index.toString(16).padStart(16, "0")}`;
 }
@@ -45,7 +49,11 @@ function makeSpan(seed: SpanSeed): Span {
     kind: seed.index === 0 ? "SERVER" : seed.index % 3 === 0 ? "CLIENT" : "INTERNAL",
     serviceName,
     startedAt: iso(startedAtMs),
+    startedAtUnixNano: unixNano(startedAtMs),
     endedAt: iso(startedAtMs + seed.durationMs),
+    endedAtUnixNano: unixNano(startedAtMs + seed.durationMs),
+    startOffsetNano: unixNano(seed.offsetMs),
+    durationNano: unixNano(seed.durationMs),
     durationMs: seed.durationMs,
     status: seed.hasError ? "error" : "ok",
     attributes: {
@@ -65,6 +73,7 @@ function makeSpan(seed: SpanSeed): Span {
           {
             name: "exception",
             timestamp: iso(startedAtMs + Math.min(seed.durationMs, 25)),
+            timestampUnixNano: unixNano(startedAtMs + Math.min(seed.durationMs, 25)),
             attributes: { "exception.type": "FixtureError" },
           },
         ]
@@ -195,7 +204,10 @@ function finishTraceDetail({
       id: fixtureTraceId,
       serviceName: countedSpans[0]?.serviceName ?? "gateway",
       startedAt: iso(baseStartedAtMs),
+      startedAtUnixNano: unixNano(baseStartedAtMs),
       endedAt: iso(baseStartedAtMs + durationMs),
+      endedAtUnixNano: unixNano(baseStartedAtMs + durationMs),
+      durationNano: unixNano(durationMs),
       durationMs,
       rootSpanId: rootSpanIds[0] ?? null,
       status: countedSpans.some((span) => span.hasError) ? "error" : "ok",

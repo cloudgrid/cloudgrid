@@ -143,15 +143,15 @@ The control-plane NATS adapter implementation sends request/reply messages:
 
 ```go
 type TelemetryReadStore interface {
-  SearchTraces(ctx context.Context, query TraceSearchQuery) (TraceSearchResult, error)
-  GetTraceDetail(ctx context.Context, traceID string, query TraceDetailQuery) (*TraceDetail, error)
-  SearchLogs(ctx context.Context, query LogSearchQuery) (LogSearchResult, error)
-  SearchMetricNames(ctx context.Context, input MetricNameSearchInput) (MetricNameSearchResult, error)
-  QueryMetricSeries(ctx context.Context, input MetricSeriesInput) (MetricSeriesResult, error)
-  GetTelemetryFacets(ctx context.Context, query TelemetryFacetQuery) (TelemetryFacetResult, error)
+  SearchTraces(ctx context.Context, query TraceSearchQuery, authContext *AuthContext) (TraceSearchResult, error)
+  GetTraceDetail(ctx context.Context, traceID string, query TraceDetailQuery, authContext *AuthContext) (*TraceDetail, error)
+  SearchLogs(ctx context.Context, query LogSearchQuery, authContext *AuthContext) (LogSearchResult, error)
+  SearchMetricNames(ctx context.Context, input MetricNameSearchInput, authContext *AuthContext) (MetricNameSearchResult, error)
+  QueryMetricSeries(ctx context.Context, input MetricSeriesInput, authContext *AuthContext) (MetricSeriesResult, error)
+  GetTelemetryFacets(ctx context.Context, query TelemetryFacetQuery, authContext *AuthContext) (TelemetryFacetResult, error)
   StartLiveTraces(ctx context.Context, request LiveTraceStartRequest, sink LiveTraceSink) (LiveTraceStartData, error)
   StopLiveTraces(ctx context.Context, subscriptionID string) error
-  ResolveLiveTraceCandidates(ctx context.Context, traceIDs []string, query LiveTraceQuery) ([]LiveTraceEvent, error)
+  ResolveLiveTraceCandidates(ctx context.Context, traceIDs []string, query LiveTraceQuery, authContext *AuthContext) ([]LiveTraceEvent, error)
 }
 ```
 
@@ -192,6 +192,6 @@ type TelemetryWriteStore interface {
 
 No TypeScript BFF interface may expose SurrealDB record IDs, query builders, live queries, transactions, SurrealQL strings, or storage adapter constructors.
 
-No TypeScript BFF interface may expose JetStream consumer handles for telemetry ingest or persisted trace notifications. The only live telemetry event source visible to the BFF is a storage-read-owned ephemeral sink subject created for one GraphQL subscription operation.
+No TypeScript BFF interface may expose JetStream consumer handles for telemetry ingest, and the BFF must not subscribe to post-persist notification subjects. The only live telemetry event source visible to the BFF is a storage-read-owned ephemeral sink subject created for one GraphQL subscription operation.
 
 No service handler may take `*nats.Msg`, `nats.JetStreamContext`, `NatsConnection`, or equivalent transport-native types as a business dependency. Transport adapters convert native messages into the portable `Message` shape before invoking handlers.

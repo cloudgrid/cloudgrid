@@ -73,6 +73,79 @@ func TestNewTelemetryWriteAdapterRejectsUncompiledAdapterName(t *testing.T) {
 	}
 }
 
+func TestStorageWriteSelfObservabilityExporterHelpersRespectSignalConfiguration(t *testing.T) {
+	logger := newLogger(&bytes.Buffer{})
+	base := config.Config{
+		DeploymentMode: "local",
+		SelfObservability: config.SelfObservabilityConfig{
+			Enabled:               true,
+			ProjectID:             "cloudgrid-system",
+			CompanyID:             "local",
+			OTLPEndpoint:          "http://localhost:4318",
+			ExportIntervalSeconds: 300,
+		},
+	}
+
+	metrics, err := storageWriteSelfObservabilityMetricsExporter(base, logger)
+	if err != nil {
+		t.Fatalf("metrics helper error = %v", err)
+	}
+	if metrics != nil {
+		t.Fatal("metrics helper returned exporter when metrics signal is disabled")
+	}
+	tracesLogs, err := storageWriteSelfObservabilityTraceLogExporter(base, logger)
+	if err != nil {
+		t.Fatalf("trace/log helper error = %v", err)
+	}
+	if tracesLogs != nil {
+		t.Fatal("trace/log helper returned exporter when trace and log signals are disabled")
+	}
+
+	base.SelfObservability.MetricsEnabled = true
+	metrics, err = storageWriteSelfObservabilityMetricsExporter(base, logger)
+	if err != nil {
+		t.Fatalf("metrics helper with enabled metrics error = %v", err)
+	}
+	if metrics == nil {
+		t.Fatal("metrics helper returned nil when metrics signal is enabled")
+	}
+	_ = metrics.Shutdown(context.Background())
+
+	base.SelfObservability.MetricsEnabled = false
+	base.SelfObservability.LogsEnabled = true
+	tracesLogs, err = storageWriteSelfObservabilityTraceLogExporter(base, logger)
+	if err != nil {
+		t.Fatalf("trace/log helper with enabled logs error = %v", err)
+	}
+	if tracesLogs == nil {
+		t.Fatal("trace/log helper returned nil when logs are enabled")
+	}
+	_ = tracesLogs.Shutdown(context.Background())
+}
+
+func TestStorageWriteSelfObservabilityExporterHelpersRejectInvalidEndpointWhenEnabled(t *testing.T) {
+	logger := newLogger(&bytes.Buffer{})
+	cfg := config.Config{
+		DeploymentMode: "local",
+		SelfObservability: config.SelfObservabilityConfig{
+			Enabled:               true,
+			ProjectID:             "cloudgrid-system",
+			CompanyID:             "local",
+			OTLPEndpoint:          "://bad",
+			ExportIntervalSeconds: 300,
+			MetricsEnabled:        true,
+			LogsEnabled:           true,
+		},
+	}
+
+	if _, err := storageWriteSelfObservabilityMetricsExporter(cfg, logger); err == nil {
+		t.Fatal("metrics helper error = nil for invalid endpoint")
+	}
+	if _, err := storageWriteSelfObservabilityTraceLogExporter(cfg, logger); err == nil {
+		t.Fatal("trace/log helper error = nil for invalid endpoint")
+	}
+}
+
 func TestLogErrorMapsErrorTaxonomyAndSanitizesProviderError(t *testing.T) {
 	var out bytes.Buffer
 	logger := newLogger(&out)

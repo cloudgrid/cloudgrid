@@ -1,0 +1,24 @@
+bff:
+  replicas: 2
+
+otlpCollector:
+  replicas: 2
+
+storageRead:
+  replicas: 1
+
+storageWrite:
+  replicas: 1
+
+controlPlane:
+  replicas: 1
+
+nats:
+  bundled:
+    enabled: true
+
+surrealdb:
+  bundled:
+    enabled: true
+    username: cloudgrid
+    password: cloudgrid-evaluation-only

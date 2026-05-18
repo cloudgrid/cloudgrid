@@ -266,6 +266,11 @@ const en = {
   "projects.settings.userId": "User ID",
   "projects.settings.userIdPlaceholder": "user id",
   "projects.settings.saveMember": "Save member",
+  "projects.settings.memberEmail": "Email",
+  "projects.settings.memberEmailPlaceholder": "member@example.com",
+  "projects.settings.inviteMember": "Invite member",
+  "projects.settings.memberAdded": "Project membership was updated.",
+  "projects.settings.memberInvited": "Invitation created. Access is granted after SSO sign-in.",
   "projects.settings.removeMember": "Remove member",
   "projects.settings.localPersonalAdmin": "Local Personal admin",
   "projects.settings.localPersonalRestriction":

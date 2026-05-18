@@ -159,11 +159,7 @@
             {
               "type": "array",
               "items": {
-                "oneOf": [
-                  { "type": "string" },
-                  { "type": "number" },
-                  { "type": "boolean" }
-                ]
+                "oneOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }]
               }
             }
           ]
@@ -211,7 +207,11 @@
     "datasetDefaults": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["splitAllocation", "smallDatasetReviewedThreshold", "requireReviewForRegression"],
+      "required": [
+        "splitAllocation",
+        "smallDatasetReviewedThreshold",
+        "requireReviewForRegression"
+      ],
       "properties": {
         "splitAllocation": { "type": "object", "additionalProperties": true },
         "smallDatasetReviewedThreshold": { "type": "integer", "minimum": 1, "default": 30 },

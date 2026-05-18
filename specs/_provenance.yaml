@@ -99,6 +99,8 @@ TEC-BE-024:
   default: from-user
   facts:
     raw_provider_secrets_out_of_cloudgrid_v1: inferred-from-boundaries
+TEC-BE-027:
+  default: user-directed
 TEC-FE-008:
   default: from-user
   facts:

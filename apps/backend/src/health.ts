@@ -1,5 +1,5 @@
-import type { Context } from "hono";
 import { problemFromBridgeError } from "@cloudgrid/runtime";
+import type { Context } from "hono";
 import type { TelemetryQueryBridge } from "./bridge";
 
 export async function healthResponse(context: Context, bridge: TelemetryQueryBridge) {

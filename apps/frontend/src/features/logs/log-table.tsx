@@ -13,13 +13,13 @@ import {
   CollapsibleTrigger,
 } from "../../components/ui/collapsible";
 import {
+  SortableTableHead,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-  SortableTableHead,
   type TableSortDirection,
 } from "../../components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";

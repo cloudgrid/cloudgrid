@@ -1,9 +1,9 @@
 import type { HighlighterCore, TokensResult } from "@shikijs/types";
 import { useEffect, useMemo, useState } from "react";
-import { CopyButton } from "./copy-button";
 import { t } from "../lib/i18n";
 import { cn } from "../lib/utils";
 import { useTheme } from "../providers/theme-provider";
+import { CopyButton } from "./copy-button";
 
 type CodeLanguage = "bash" | "json" | "log" | "yaml";
 type CodeTheme = "github-dark-default" | "github-light-default";

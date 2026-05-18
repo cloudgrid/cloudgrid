@@ -1,0 +1,129 @@
+{{- if .Values.nats.bundled.enabled }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "cloudgrid.fullname" . }}-nats
+  labels:
+    {{- include "cloudgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+spec:
+  serviceName: {{ include "cloudgrid.fullname" . }}-nats
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: nats
+  template:
+    metadata:
+      labels:
+        {{- include "cloudgrid.labels" . | nindent 8 }}
+        app.kubernetes.io/component: nats
+    spec:
+      containers:
+        - name: nats
+          image: {{ include "cloudgrid.image" (dict "root" . "image" .Values.nats.bundled.image) | quote }}
+          imagePullPolicy: {{ .Values.nats.bundled.image.pullPolicy }}
+          args: ["--jetstream", "--store_dir=/data"]
+          ports:
+            - name: nats
+              containerPort: 4222
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.nats.bundled.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cloudgrid.fullname" . }}-nats
+  labels:
+    {{- include "cloudgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: nats
+  ports:
+    - name: nats
+      port: {{ .Values.nats.service.port }}
+      targetPort: nats
+{{- end }}
+{{- if .Values.surrealdb.bundled.enabled }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "cloudgrid.fullname" . }}-surrealdb
+  labels:
+    {{- include "cloudgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/component: surrealdb
+spec:
+  serviceName: {{ include "cloudgrid.fullname" . }}-surrealdb
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: surrealdb
+  template:
+    metadata:
+      labels:
+        {{- include "cloudgrid.labels" . | nindent 8 }}
+        app.kubernetes.io/component: surrealdb
+    spec:
+      containers:
+        - name: surrealdb
+          image: {{ include "cloudgrid.image" (dict "root" . "image" .Values.surrealdb.bundled.image) | quote }}
+          imagePullPolicy: {{ .Values.surrealdb.bundled.image.pullPolicy }}
+          args: ["start", "--bind", "0.0.0.0:8000", "surrealkv:/data/cloudgrid.db"]
+          env:
+            - name: SURREAL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cloudgrid.surrealdbSecretName" . }}
+                  key: {{ .Values.surrealdb.external.usernameKey }}
+            - name: SURREAL_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cloudgrid.surrealdbSecretName" . }}
+                  key: {{ .Values.surrealdb.external.passwordKey }}
+          ports:
+            - name: http
+              containerPort: 8000
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.surrealdb.bundled.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cloudgrid.fullname" . }}-surrealdb
+  labels:
+    {{- include "cloudgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/component: surrealdb
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: surrealdb
+  ports:
+    - name: http
+      port: {{ .Values.surrealdb.service.port }}
+      targetPort: http
+{{- end }}

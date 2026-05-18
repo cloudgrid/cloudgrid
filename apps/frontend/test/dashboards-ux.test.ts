@@ -37,12 +37,12 @@ describe("dashboards UX migration", () => {
     expect(routeSource).not.toContain("WidgetCreateActions");
     expect(routeSource).toContain("../components/ui/popover");
     expect(routeSource).toContain('t("dashboards.widget.add")');
-    expect(routeSource).toContain("RouteBreadcrumb");
+    expect(routeSource).not.toContain("RouteBreadcrumb");
     expect(routeSource).toContain('t("dashboards.editor.data")');
     expect(routeSource).toContain('t("dashboards.editor.display")');
     expect(routeSource).toContain('t("dashboards.editor.thresholds")');
-    expect(routeSource).toContain('t("dashboards.descriptionField")');
-    expect(routeSource).toContain("updateDashboardDraft");
+    expect(routeSource).toContain('t("dashboards.name")');
+    expect(routeSource).toContain("editableDashboardDraft");
     expect(routeSource).toContain('"metric_timeseries"');
     expect(routeSource).toContain('"metric_stat"');
     expect(routeSource).toContain('"metric_table"');
@@ -66,6 +66,7 @@ describe("dashboards UX migration", () => {
   test("renders typed dashboard widget data instead of metric-only summaries", () => {
     expect(routeSource).toContain("TelemetryChart");
     expect(routeSource).toContain("buildMetricChartData");
+    expect(routeSource).toContain("entries.length === 1");
     expect(routeSource).toContain('visualization === "pie"');
     expect(routeSource).toContain("metricChartTypes.map");
     expect(routeSource).toContain("LogWidgetPreview");
@@ -103,6 +104,10 @@ describe("dashboards UX migration", () => {
     expect(routeSource).toContain('aria-label="Move widget"');
     expect(routeSource).toContain('aria-label="Resize widget"');
     expect(routeSource).toContain("data-dashboard-canvas");
+    expect(routeSource).toContain("dashboardObservedMetricRange");
+    expect(routeSource).toContain("metricNamesForDashboardWidgets");
+    expect(routeSource).toContain("formatDateInput");
+    expect(routeSource).toContain("withDatePart");
     expect(routeSource).toContain("data-dashboard-widget-selected");
     expect(routeSource).not.toContain("GRID_POINTER_CELL_WIDTH");
     expect(routeSource).toContain("data-resize-handle");

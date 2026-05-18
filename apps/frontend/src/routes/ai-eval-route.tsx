@@ -1,12 +1,10 @@
 import type {
-  AgentRun,
-  AgentRunSearchInput,
   AiQualityOverview,
   AiQualityOverviewInput,
-  AnnotationQueueItem,
-  AnnotationQueueResult,
-  AnnotationQueueSearchInput,
-  CommitDatasetImportInput,
+  AppendDatasetItemsInput,
+  CreateDatasetInput,
+  CreateExperimentInput,
+  CreateScorerInput,
   Dataset,
   DatasetExportFormat,
   DatasetExportJob,
@@ -15,39 +13,31 @@ import type {
   DatasetImportFormat,
   DatasetImportJob,
   DatasetImportScalarMappingInput,
+  DatasetItemInput,
   DatasetReviewStatus,
-  DatasetSearchInput,
-  DatasetSearchResult,
   DatasetSplit,
   Experiment,
   ExperimentRun,
   ExperimentSearchInput,
-  ExperimentSearchResult,
-  GraphQLResponse,
   JSONValue,
   PrepareDatasetImportInput,
   ProjectAiSettings,
   Scorer,
-  StartDatasetExportInput,
+  ScorerKind,
+  StartExperimentRunInput,
 } from "@cloudgrid/ui-contracts";
 import { type UseQueryResult, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowRight,
-  Bot,
+  AlertCircle,
+  ArrowLeft,
   CheckCircle2,
   Database,
   Download,
-  ExternalLink,
   FileText,
   FlaskConical,
-  FolderOpen,
   Gauge,
-  MessageSquareText,
-  PanelRightOpen,
-  PencilLine,
   Plus,
   Settings,
-  Sparkles,
   Trash2,
   Trophy,
   Upload,
@@ -56,7 +46,6 @@ import {
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { CodeBlock } from "../components/code-block";
 import { EmptyState, ErrorPanel, LoadingRows } from "../components/query-state";
 import { SearchInput } from "../components/search-input";
 import { Badge } from "../components/ui/badge";
@@ -83,15 +72,6 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "../components/ui/sheet";
-import {
   Table,
   TableBody,
   TableCell,
@@ -100,9 +80,8 @@ import {
   TableRow,
 } from "../components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Textarea } from "../components/ui/textarea";
 import {
-  agentRunTimelineRows,
-  aiEvalOverviewModel,
   experimentScoreboardRows,
   itemRunScoreSummary,
   jsonPreview,
@@ -115,31 +94,30 @@ export const aiEvalEnabled =
   import.meta.env.CLOUDGRID_AI_EVAL_ENABLED !== "false" &&
   import.meta.env.VITE_CLOUDGRID_AI_EVAL_ENABLED !== "false";
 
-type AiEvalTab =
-  | "overview"
-  | "runs"
-  | "datasets"
-  | "scorers"
-  | "experiments"
-  | "optimizations"
-  | "production"
-  | "annotations";
+type AiEvalTab = "datasets" | "scorers" | "experiments" | "production";
+type ExpectedAnswerMode = "text" | "json";
+type ExpectedJsonFieldType = "text" | "number" | "boolean";
+type ExpectedJsonField = {
+  id: string;
+  name: string;
+  type: ExpectedJsonFieldType;
+  value: string;
+};
+type ScorerExpectedValueType = "text" | "number" | "boolean" | "json";
 
 export function AiEvalRoute() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = readTab(searchParams.get("tab"));
   const query = searchParams.get("query") ?? "";
   const status = searchParams.get("status") ?? "";
-  const selectedRunId = searchParams.get("run");
+  const workflow = searchParams.get("workflow");
   const selectedDatasetId = searchParams.get("dataset");
   const selectedScorerId = searchParams.get("scorer");
   const selectedExperimentId = searchParams.get("experiment");
-  const selectedAnnotationId = searchParams.get("annotation");
-  const client = useTelemetryClient();
-  const { viewer } = useAppSession();
+  const telemetryClient = useTelemetryClient();
+  const { client: controlClient, viewer } = useAppSession();
   const selectedProject = viewer?.selectedProject ?? null;
   const projectId = selectedProject?.id ?? "";
-  const [inspectorOpen, setInspectorOpen] = useState(false);
 
   const setParam = (key: string, value: string) => {
     const next = new URLSearchParams(searchParams);
@@ -152,46 +130,39 @@ export function AiEvalRoute() {
       next.delete("cursor");
     }
     if (key === "tab") {
-      next.delete("run");
       next.delete("dataset");
       next.delete("scorer");
       next.delete("experiment");
-      next.delete("annotation");
+      next.delete("workflow");
     }
     setSearchParams(next);
   };
-  const setSelected = (
-    key: "run" | "dataset" | "scorer" | "experiment" | "annotation",
-    value: string,
-  ) => {
+  const setSelected = (key: "dataset" | "scorer" | "experiment", value: string) => {
     const next = new URLSearchParams(searchParams);
-    next.set(key, value);
+    if (value) {
+      next.set(key, value);
+    } else {
+      next.delete(key);
+    }
     setSearchParams(next);
-    setInspectorOpen(true);
+  };
+  const setDatasetImportWorkflow = (datasetId: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", "datasets");
+    next.set("dataset", datasetId);
+    next.set("workflow", "dataset-import");
+    setSearchParams(next);
+  };
+  const clearWorkflow = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("workflow");
+    setSearchParams(next);
   };
 
-  const agentRunInput = useMemo<AgentRunSearchInput>(
-    () => ({
-      query: query || null,
-      status: readAgentRunStatus(status),
-      limit: 25,
-      cursor: searchParams.get("cursor"),
-    }),
-    [query, searchParams, status],
-  );
   const experimentInput = useMemo<ExperimentSearchInput>(
     () => ({
       query: query || null,
       status: readExperimentStatus(status),
-      limit: 25,
-      cursor: searchParams.get("cursor"),
-    }),
-    [query, searchParams, status],
-  );
-  const annotationInput = useMemo<AnnotationQueueSearchInput>(
-    () => ({
-      status: readAnnotationStatus(status),
-      reason: query || null,
       limit: 25,
       cursor: searchParams.get("cursor"),
     }),
@@ -207,49 +178,33 @@ export function AiEvalRoute() {
 
   const shouldQueryAiEval = aiEvalEnabled && Boolean(projectId);
 
-  const agentRunsQuery = useQuery({
-    enabled: shouldQueryAiEval && tab === "runs",
-    queryKey: ["AgentRuns", agentRunInput],
-    queryFn: () => client.searchAgentRuns(agentRunInput),
-  });
   const datasetsQuery = useQuery({
-    enabled: shouldQueryAiEval && (tab === "overview" || tab === "datasets"),
+    enabled: shouldQueryAiEval && (tab === "datasets" || tab === "experiments"),
     queryKey: ["Datasets", { query: query || null }],
-    queryFn: () => fetchDatasets({ query: query || null, limit: 25 }),
+    queryFn: () => telemetryClient.searchDatasets({ query: query || null, limit: 25 }),
   });
   const scorersQuery = useQuery({
-    enabled: shouldQueryAiEval && tab === "scorers",
+    enabled: shouldQueryAiEval && (tab === "scorers" || tab === "experiments"),
     queryKey: ["Scorers", { query: query || null }],
-    queryFn: () => client.searchScorers({ query: query || null, limit: 25 }),
+    queryFn: () => telemetryClient.searchScorers({ query: query || null, limit: 25 }),
   });
   const experimentsQuery = useQuery({
-    enabled: shouldQueryAiEval && (tab === "experiments" || tab === "optimizations"),
+    enabled: shouldQueryAiEval && tab === "experiments",
     queryKey: ["Experiments", experimentInput],
-    queryFn: () => fetchExperiments(experimentInput),
-  });
-  const annotationsQuery = useQuery({
-    enabled: shouldQueryAiEval && (tab === "overview" || tab === "annotations"),
-    queryKey: ["AnnotationQueue", annotationInput],
-    queryFn: () => fetchAnnotationQueue(annotationInput),
+    queryFn: () => telemetryClient.searchExperiments(experimentInput),
   });
   const qualityQuery = useQuery({
-    enabled: shouldQueryAiEval && (tab === "overview" || tab === "production"),
+    enabled: shouldQueryAiEval && tab === "production",
     queryKey: ["AiQualityOverview", qualityInput],
-    queryFn: () => fetchAiQualityOverview(qualityInput),
+    queryFn: () => telemetryClient.getAiQualityOverview(qualityInput),
   });
   const settingsQuery = useQuery({
-    enabled: shouldQueryAiEval && (tab === "overview" || tab === "production"),
+    enabled: shouldQueryAiEval && tab === "production",
     queryKey: ["ProjectAiSettings", projectId],
-    queryFn: () => fetchProjectAiSettings(projectId),
+    queryFn: () => controlClient.getProjectAiSettings(projectId),
   });
-  const selectedRun =
-    agentRunsQuery.data?.items.find((run) => run.id === selectedRunId) ??
-    agentRunsQuery.data?.items[0] ??
-    null;
   const selectedDataset =
-    datasetsQuery.data?.items.find((dataset) => dataset.id === selectedDatasetId) ??
-    datasetsQuery.data?.items[0] ??
-    null;
+    datasetsQuery.data?.items.find((dataset) => dataset.id === selectedDatasetId) ?? null;
   const selectedScorer =
     scorersQuery.data?.items.find((scorer) => scorer.id === selectedScorerId) ??
     scorersQuery.data?.items[0] ??
@@ -257,10 +212,6 @@ export function AiEvalRoute() {
   const selectedExperiment =
     experimentsQuery.data?.items.find((experiment) => experiment.id === selectedExperimentId) ??
     experimentsQuery.data?.items[0] ??
-    null;
-  const selectedAnnotation =
-    annotationsQuery.data?.items.find((annotation) => annotation.id === selectedAnnotationId) ??
-    annotationsQuery.data?.items[0] ??
     null;
 
   if (!aiEvalEnabled) {
@@ -280,17 +231,27 @@ export function AiEvalRoute() {
     <section className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
       <div className="shrink-0">
         <h1 className="text-xl font-semibold tracking-normal">{t("aiEval.title")}</h1>
-        <p className="text-sm text-muted-foreground">{t("aiEval.description")}</p>
+        <p className="text-sm text-muted-foreground">
+          Build datasets, define scorers, run experiments, and monitor production quality.
+        </p>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <SearchInput
-          aria-label={t("filters.query")}
-          className="max-w-80"
-          onChange={(event) => setParam("query", event.target.value)}
-          placeholder={t("aiEval.searchPlaceholder")}
-          value={query}
-        />
-        {(tab === "runs" || tab === "experiments" || tab === "annotations") && (
+        {tab !== "production" ? (
+          <SearchInput
+            aria-label={t("filters.query")}
+            className="max-w-72"
+            onChange={(event) => setParam("query", event.target.value)}
+            placeholder={
+              tab === "datasets"
+                ? "Search datasets"
+                : tab === "scorers"
+                  ? "Search scorers"
+                  : "Search experiments"
+            }
+            value={query}
+          />
+        ) : null}
+        {tab === "experiments" && (
           <Select
             aria-label={t("filters.status")}
             onValueChange={(value) => setParam("status", value === "all" ? "" : value)}
@@ -302,12 +263,7 @@ export function AiEvalRoute() {
             <SelectContent>
               <SelectGroup>
                 <SelectItem value="all">{t("filters.allStatuses")}</SelectItem>
-                {(tab === "annotations"
-                  ? ["open", "in_review", "resolved", "dismissed"]
-                  : tab === "runs"
-                    ? ["ok", "error", "unset", "cancelled"]
-                    : ["queued", "running", "failed", "finished"]
-                ).map((candidate) => (
+                {["queued", "running", "failed", "finished"].map((candidate) => (
                   <SelectItem key={candidate} value={candidate}>
                     {aiEvalStatusLabel(candidate)}
                   </SelectItem>
@@ -317,21 +273,14 @@ export function AiEvalRoute() {
           </Select>
         )}
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-[220px_minmax(0,1fr)] overflow-hidden border xl:grid-cols-[220px_minmax(0,1fr)_360px]">
+      <AiEvalWorkflowStrip activeTab={tab} onSelect={(value) => setParam("tab", value)} />
+      <div className="grid min-h-0 flex-1 grid-cols-[220px_minmax(0,1fr)] overflow-hidden border">
         <Tabs className="contents" onValueChange={(value) => setParam("tab", value)} value={tab}>
           <aside
             className="min-h-0 overflow-auto border-r bg-background p-3"
             data-ai-eval-left-rail="true"
           >
             <TabsList className="grid h-auto gap-1 bg-transparent p-0" variant="line">
-              <TabsTrigger className="justify-start" value="overview">
-                <Gauge />
-                Overview
-              </TabsTrigger>
-              <TabsTrigger className="justify-start" value="runs">
-                <Bot />
-                {t("aiEval.runs")}
-              </TabsTrigger>
               <TabsTrigger className="justify-start" value="datasets">
                 <Database />
                 {t("aiEval.datasets")}
@@ -344,79 +293,29 @@ export function AiEvalRoute() {
                 <Trophy />
                 {t("aiEval.experiments")}
               </TabsTrigger>
-              <TabsTrigger className="justify-start" value="optimizations">
-                <Sparkles />
-                Optimizations
-              </TabsTrigger>
               <TabsTrigger className="justify-start" value="production">
                 <Gauge />
-                Production
+                Production quality
               </TabsTrigger>
-              <TabsTrigger className="justify-start" value="annotations">
-                <PencilLine />
-                {t("aiEval.annotations")}
-              </TabsTrigger>
-              {selectedProject ? (
-                <Button asChild className="mt-3 justify-start" variant="ghost">
-                  <Link to={`/projects/${encodeURIComponent(selectedProject.id)}/settings/ai-eval`}>
-                    <Settings data-icon="inline-start" />
-                    Settings
-                  </Link>
-                </Button>
-              ) : null}
             </TabsList>
           </aside>
           <main className="min-h-0 overflow-auto p-3" data-ai-eval-main-workspace="true">
-            <div className="mb-3 flex justify-end xl:hidden">
-              <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
-                <SheetTrigger asChild>
-                  <Button type="button" variant="outline">
-                    <PanelRightOpen data-icon="inline-start" />
-                    {t("aiEval.inspector")}
-                  </Button>
-                </SheetTrigger>
-                <SheetContent className="flex flex-col gap-0 p-0" side="right">
-                  <SheetHeader className="border-b px-4 py-3">
-                    <SheetTitle>{t("aiEval.inspector")}</SheetTitle>
-                  </SheetHeader>
-                  <div className="min-h-0 flex-1 overflow-auto p-4">
-                    <AiEvalInspector
-                      annotation={selectedAnnotation}
-                      dataset={selectedDataset}
-                      experiment={selectedExperiment}
-                      run={selectedRun}
-                      scorer={selectedScorer}
-                      settings={settingsQuery.data ?? null}
-                      tab={tab}
-                    />
-                  </div>
-                </SheetContent>
-              </Sheet>
-            </div>
-            <TabsContent className="m-0 min-h-0" value="overview">
-              <OverviewView
-                annotationsQuery={annotationsQuery}
-                datasetsQuery={datasetsQuery}
-                qualityQuery={qualityQuery}
-                selectedProjectId={projectId}
-                settingsQuery={settingsQuery}
-              />
-            </TabsContent>
-            <TabsContent className="m-0 min-h-0" value="runs">
-              <AgentRunsView
-                onNext={(cursor) => setParam("cursor", cursor)}
-                onSelect={(id) => setSelected("run", id)}
-                query={agentRunsQuery}
-                selectedId={selectedRun?.id ?? null}
-              />
-            </TabsContent>
             <TabsContent className="m-0 min-h-0" value="datasets">
-              <DatasetsView
-                onSelect={(id) => setSelected("dataset", id)}
-                projectId={projectId}
-                query={datasetsQuery}
-                selectedId={selectedDataset?.id ?? null}
-              />
+              {workflow === "dataset-import" && selectedDataset ? (
+                <DatasetImportWorkflow
+                  dataset={selectedDataset}
+                  onBack={clearWorkflow}
+                  onImported={() => void datasetsQuery.refetch()}
+                  projectId={projectId}
+                />
+              ) : (
+                <DatasetsView
+                  onImport={setDatasetImportWorkflow}
+                  onSelect={(id) => setSelected("dataset", id)}
+                  query={datasetsQuery}
+                  selectedId={selectedDataset?.id ?? null}
+                />
+              )}
             </TabsContent>
             <TabsContent className="m-0 min-h-0" value="scorers">
               <ScorersView
@@ -427,13 +326,17 @@ export function AiEvalRoute() {
             </TabsContent>
             <TabsContent className="m-0 min-h-0" value="experiments">
               <ExperimentsView
+                datasets={datasetsQuery.data?.items ?? []}
+                onChanged={() => {
+                  void experimentsQuery.refetch();
+                  void datasetsQuery.refetch();
+                  void scorersQuery.refetch();
+                }}
                 onSelect={(id) => setSelected("experiment", id)}
                 query={experimentsQuery}
+                scorers={scorersQuery.data?.items ?? []}
                 selectedId={selectedExperiment?.id ?? null}
               />
-            </TabsContent>
-            <TabsContent className="m-0 min-h-0" value="optimizations">
-              <OptimizationsView query={experimentsQuery} />
             </TabsContent>
             <TabsContent className="m-0 min-h-0" value="production">
               <ProductionView
@@ -442,28 +345,7 @@ export function AiEvalRoute() {
                 settingsQuery={settingsQuery}
               />
             </TabsContent>
-            <TabsContent className="m-0 min-h-0" value="annotations">
-              <AnnotationQueueView
-                onSelect={(id) => setSelected("annotation", id)}
-                query={annotationsQuery}
-                selectedId={selectedAnnotation?.id ?? null}
-              />
-            </TabsContent>
           </main>
-          <aside
-            className="hidden min-h-0 overflow-auto border-l bg-background p-3 xl:block"
-            data-ai-eval-right-inspector="true"
-          >
-            <AiEvalInspector
-              annotation={selectedAnnotation}
-              dataset={selectedDataset}
-              experiment={selectedExperiment}
-              run={selectedRun}
-              scorer={selectedScorer}
-              settings={settingsQuery.data ?? null}
-              tab={tab}
-            />
-          </aside>
         </Tabs>
       </div>
     </section>
@@ -472,359 +354,608 @@ export function AiEvalRoute() {
 
 type QueryResult<T> = UseQueryResult<T, Error>;
 
-function OverviewView({
-  annotationsQuery,
-  datasetsQuery,
-  qualityQuery,
-  selectedProjectId,
-  settingsQuery,
-}: {
-  annotationsQuery: QueryResult<
-    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchAnnotationQueue"]>>
-  >;
-  datasetsQuery: QueryResult<
-    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchDatasets"]>>
-  >;
-  qualityQuery: QueryResult<AiQualityOverview>;
-  selectedProjectId: string;
-  settingsQuery: QueryResult<ProjectAiSettings>;
-}) {
-  const isLoading =
-    annotationsQuery.isLoading ||
-    datasetsQuery.isLoading ||
-    qualityQuery.isLoading ||
-    settingsQuery.isLoading;
-  const error =
-    annotationsQuery.error ?? datasetsQuery.error ?? qualityQuery.error ?? settingsQuery.error;
-
-  if (isLoading) {
-    return <LoadingRows />;
-  }
-  if (error) {
-    return (
-      <ErrorPanel
-        error={error}
-        onRetry={() => {
-          void annotationsQuery.refetch();
-          void datasetsQuery.refetch();
-          void qualityQuery.refetch();
-          void settingsQuery.refetch();
-        }}
-      />
-    );
-  }
-
-  const overview = aiEvalOverviewModel({
-    annotationsOpen: annotationsQuery.data?.items.length ?? 0,
-    datasets: datasetsQuery.data?.items ?? [],
-    quality: qualityQuery.data,
-    settings: settingsQuery.data,
-  });
-
-  return (
-    <div className="grid gap-4">
-      <section className="grid gap-3 border-b pb-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Production pass rate" value={formatPercent(overview.qualityPassRate)} />
-        <Metric label="Mean score" value={formatNumber(overview.qualityMeanScore)} />
-        <Metric label="Annotation backlog" value={overview.annotationBacklog} />
-        <Metric
-          label="Budget today"
-          value={`${formatUsd(overview.budgetSpentTodayUsd)} / ${formatUsd(overview.budgetDailyUsd)}`}
-        />
-      </section>
-      <section className="grid gap-3 border-b pb-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Datasets" value={overview.datasetCount} />
-        <Metric label="Datasets needing attention" value={overview.unhealthyDatasetCount} />
-        <Metric label="Active production policies" value={overview.activePolicyCount} />
-        <Metric label="Regressions" value={overview.qualityRegressionCount} />
-      </section>
-      {overview.warnings.length > 0 ? (
-        <section className="grid gap-2 border-b pb-4">
-          <h2 className="text-sm font-medium">Missing setup warnings</h2>
-          {overview.warnings.map((warning) => (
-            <div className="text-sm text-muted-foreground" key={warning}>
-              {warning}
-            </div>
-          ))}
-        </section>
-      ) : null}
-      <section className="grid gap-2">
-        <h2 className="text-sm font-medium">First-use setup</h2>
-        <SetupChecklistRow
-          actionHref="/traces"
-          actionLabel="Open traces"
-          label="Telemetry detected"
-          status={(qualityQuery.data?.segments.length ?? 0) > 0 ? "Ready" : "Needs data"}
-        />
-        <SetupChecklistRow
-          actionHref={`/projects/${encodeURIComponent(selectedProjectId)}/settings/ai-eval`}
-          actionLabel="Open settings"
-          label="Provider profile"
-          status={(settingsQuery.data?.providerProfiles.length ?? 0) > 0 ? "Ready" : "Missing"}
-        />
-        <SetupChecklistRow
-          actionHref="?tab=datasets"
-          actionLabel="Open datasets"
-          label="Dataset"
-          status={overview.datasetCount > 0 ? "Ready" : "Missing"}
-        />
-        <SetupChecklistRow
-          actionHref="?tab=scorers"
-          actionLabel="Open scorers"
-          label="Scorer"
-          status="Use templates"
-        />
-        <SetupChecklistRow
-          actionHref="?tab=experiments"
-          actionLabel="Open experiments"
-          label="Baseline experiment"
-          status="Required before promotion"
-        />
-        <SetupChecklistRow
-          actionHref="?tab=production"
-          actionLabel="Open production"
-          label="Production policy"
-          status={overview.activePolicyCount > 0 ? "Ready" : "Optional"}
-        />
-      </section>
-    </div>
-  );
-}
-
-function SetupChecklistRow({
-  actionHref,
-  actionLabel,
-  label,
-  status,
-}: {
-  actionHref: string;
-  actionLabel: string;
+const aiEvalWorkflowSteps: Array<{
+  tab: AiEvalTab;
   label: string;
-  status: string;
-}) {
-  return (
-    <div className="grid gap-2 border-b py-3 text-sm last:border-b-0 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-center">
-      <span className="font-medium">{label}</span>
-      <Badge variant="outline">{status}</Badge>
-      <Button asChild size="sm" variant="outline">
-        <Link to={actionHref}>{actionLabel}</Link>
-      </Button>
-    </div>
-  );
-}
+  description: string;
+}> = [
+  {
+    tab: "datasets",
+    label: "Curate datasets",
+    description: "Create, import, review, and export examples.",
+  },
+  {
+    tab: "scorers",
+    label: "Define scorers",
+    description: "Register deterministic or judge-based checks.",
+  },
+  {
+    tab: "experiments",
+    label: "Run evaluations",
+    description: "Create experiments and execute evaluation runs.",
+  },
+  {
+    tab: "production",
+    label: "Monitor quality",
+    description: "Track online policy results and regressions.",
+  },
+];
 
-function AgentRunsView({
-  query,
-  onNext,
+function AiEvalWorkflowStrip({
+  activeTab,
   onSelect,
-  selectedId,
 }: {
-  query: QueryResult<Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchAgentRuns"]>>>;
-  onNext: (cursor: string) => void;
-  onSelect: (id: string) => void;
-  selectedId: string | null;
+  activeTab: AiEvalTab;
+  onSelect: (tab: AiEvalTab) => void;
 }) {
   return (
-    <QueryFrame query={query}>
-      {query.data && query.data.items.length > 0 ? (
-        <div className="min-h-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("aiEval.agent")}</TableHead>
-                <TableHead>{t("filters.status")}</TableHead>
-                <TableHead>{t("traceDetail.duration")}</TableHead>
-                <TableHead>{t("traceDetail.traceStructure")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {query.data.items.map((run) => (
-                <TableRow
-                  aria-selected={run.id === selectedId}
-                  key={run.id}
-                  onClick={() => onSelect(run.id)}
-                >
-                  <TableCell>{run.agent.name}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={run.status} />
-                  </TableCell>
-                  <TableCell>{formatMs(run.durationMs)}</TableCell>
-                  <TableCell>
-                    <Link
-                      className="text-primary underline-offset-4 hover:underline"
-                      to={`/traces/${run.traceId}`}
-                    >
-                      {run.traceId.slice(0, 12)}
-                    </Link>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {query.data.nextCursor ? (
-            <Button onClick={() => onNext(query.data.nextCursor ?? "")} variant="outline">
-              <ArrowRight data-icon="inline-start" />
-              {t("actions.nextPage")}
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-    </QueryFrame>
-  );
-}
-
-function AgentRunDetail({ run }: { run: AgentRun }) {
-  const timelineRows = agentRunTimelineRows(run);
-  return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <section className="border-b pb-3">
-        <h2 className="flex items-center gap-2 text-base font-semibold">
-          <Bot />
-          {run.agent.name}
-        </h2>
-        <div className="mt-3 grid gap-3 text-sm">
-          <Metric label={t("aiEval.tokens")} value={run.tokenTotals?.total ?? t("value.none")} />
-          <Metric label={t("aiEval.cost")} value={formatMoney(run.costEstimate)} />
-          <Metric label={t("traceDetail.duration")} value={formatMs(run.durationMs)} />
-        </div>
-      </section>
-      <section className="grid gap-4">
-        <div>
-          <h2 className="mb-2 text-sm font-medium">{t("aiEval.timeline")}</h2>
-          <div className="flex flex-col gap-2">
-            {timelineRows.map((row) => (
-              <div className="border-b bg-background py-3 text-sm last:border-b-0" key={row.id}>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium">{row.label}</span>
-                  <Badge variant="outline">{row.kind}</Badge>
-                </div>
-                <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
-                  <span>{row.spanId}</span>
-                  <span>
-                    {formatMs(row.latencyMs)}
-                    {row.tokenTotal ? ` · ${row.tokenTotal} ${t("aiEval.tokens")}` : ""}
-                  </span>
-                  <span>{row.details}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div>
-          <h2 className="mb-2 text-sm font-medium">{t("aiEval.transcript")}</h2>
-          <div className="flex flex-col gap-2">
-            {run.transcript.map((message) => (
-              <div
-                className="border-b bg-background py-3 text-sm last:border-b-0"
-                key={`${message.spanId}-${message.timestamp ?? message.role}-${message.contentDigest ?? jsonPreview(message.content, 24)}`}
-              >
-                <div className="flex items-center gap-2">
-                  <MessageSquareText className="size-4" />
-                  <span className="font-medium">{message.role}</span>
-                  <span className="text-xs text-muted-foreground">{message.timestamp}</span>
-                </div>
-                <p className="mt-2 break-words text-muted-foreground">
-                  {message.contentDigest ?? jsonPreview(message.content, 240)}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+    <div className="grid shrink-0 gap-2 border bg-background p-2 xl:grid-cols-4">
+      {aiEvalWorkflowSteps.map((step, index) => (
+        <Button
+          className="grid h-auto min-h-16 justify-start gap-1 rounded-none border-l px-3 py-2 text-left text-sm first:border-l-0 hover:bg-muted/40 data-[active=true]:bg-muted"
+          data-active={activeTab === step.tab}
+          key={step.tab}
+          onClick={() => onSelect(step.tab)}
+          type="button"
+          variant="ghost"
+        >
+          <CheckCircle2 className="sr-only" aria-hidden />
+          <span className="font-medium">
+            {index + 1}. {step.label}
+          </span>
+          <span className="text-xs text-muted-foreground">{step.description}</span>
+        </Button>
+      ))}
     </div>
   );
 }
 
 function DatasetsView({
   query,
+  onImport,
   onSelect,
-  projectId,
   selectedId,
 }: {
   query: QueryResult<Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchDatasets"]>>>;
+  onImport: (datasetId: string) => void;
   onSelect: (id: string) => void;
-  projectId: string;
   selectedId: string | null;
 }) {
-  const selected =
-    query.data?.items.find((dataset) => dataset.id === selectedId) ?? query.data?.items[0];
+  const selected = query.data?.items.find((dataset) => dataset.id === selectedId) ?? null;
+  const onCreated = (dataset: Dataset) => {
+    onSelect(dataset.id);
+    void query.refetch();
+  };
+
+  if (query.isLoading) {
+    return <LoadingRows />;
+  }
+  if (query.isError) {
+    return <ErrorPanel error={query.error} onRetry={() => void query.refetch()} />;
+  }
+
   return (
-    <QueryFrame query={query}>
-      {query.data && query.data.items.length > 0 ? (
-        <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("aiEval.dataset")}</TableHead>
-                <TableHead>{t("aiEval.version")}</TableHead>
-                <TableHead>{t("aiEval.items")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {query.data.items.map((dataset) => (
-                <TableRow
-                  aria-selected={dataset.id === selected?.id}
-                  key={dataset.id}
-                  onClick={() => onSelect(dataset.id)}
-                >
-                  <TableCell>{dataset.name}</TableCell>
-                  <TableCell>{dataset.version}</TableCell>
-                  <TableCell>{dataset.itemCount}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {selected ? (
-            <DatasetItems
-              dataset={selected}
-              onImported={() => void query.refetch()}
-              projectId={projectId}
-            />
-          ) : null}
+    <div className="flex min-h-0 flex-col gap-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b pb-3">
+        <div>
+          <h2 className="text-sm font-medium">{selected ? selected.name : "Datasets"}</h2>
+          <p className="text-sm text-muted-foreground">
+            {selected
+              ? "Manage rows, imports, exports, answer shape, and review state for this dataset."
+              : "Create and select versioned example sets for scorer calibration and experiment runs."}
+          </p>
         </div>
-      ) : null}
-    </QueryFrame>
+        <div className="flex flex-wrap items-center gap-2">
+          {selected ? (
+            <Button onClick={() => onSelect("")} size="sm" type="button" variant="outline">
+              <ArrowLeft data-icon="inline-start" />
+              All datasets
+            </Button>
+          ) : null}
+          <CreateDatasetDialog onCreated={onCreated} />
+        </div>
+      </div>
+      {query.data && query.data.items.length > 0 ? (
+        selected ? (
+          <DatasetItems dataset={selected} onImport={() => onImport(selected.id)} />
+        ) : (
+          <div className="min-h-0 overflow-auto border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("aiEval.dataset")}</TableHead>
+                  <TableHead>{t("aiEval.version")}</TableHead>
+                  <TableHead>{t("aiEval.items")}</TableHead>
+                  <TableHead>Reviewed</TableHead>
+                  <TableHead>Health</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {query.data.items.map((dataset) => (
+                  <TableRow key={dataset.id} onClick={() => onSelect(dataset.id)}>
+                    <TableCell>{dataset.name}</TableCell>
+                    <TableCell>{dataset.version}</TableCell>
+                    <TableCell>{dataset.itemCount}</TableCell>
+                    <TableCell>{dataset.reviewedItemCount}</TableCell>
+                    <TableCell>{dataset.health.status}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )
+      ) : (
+        <EmptyState
+          description="Create a dataset first, then import JSONL, JSON, CSV, or ZIP examples for evaluation runs."
+          filtered={false}
+          primaryAction={<CreateDatasetDialog onCreated={onCreated} triggerVariant="default" />}
+          title="No datasets yet"
+        />
+      )}
+    </div>
   );
 }
 
-function DatasetItems({
-  dataset,
-  onImported,
-  projectId,
+function CreateDatasetDialog({
+  onCreated,
+  triggerVariant = "outline",
 }: {
-  dataset: Dataset;
-  onImported: () => void;
-  projectId: string;
+  onCreated: (dataset: Dataset) => void;
+  triggerVariant?: "default" | "outline";
 }) {
+  const telemetryClient = useTelemetryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [tags, setTags] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const mutation = useMutation({
+    mutationFn: () => {
+      const input: CreateDatasetInput = {
+        name: name.trim(),
+        description: description.trim() || null,
+        tags: tags
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+      };
+      return telemetryClient.createDataset(input);
+    },
+    onSuccess(dataset) {
+      onCreated(dataset);
+      setOpen(false);
+      setName("");
+      setDescription("");
+      setTags("");
+    },
+  });
+
   return (
-    <section>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" type="button" variant={triggerVariant}>
+          <Plus data-icon="inline-start" />
+          Create dataset
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create dataset</DialogTitle>
+          <DialogDescription>
+            Datasets hold versioned examples used by experiments and exports.
+          </DialogDescription>
+        </DialogHeader>
+        <FieldGroup>
+          <Field>
+            <FieldLabel>Name</FieldLabel>
+            <Input onChange={(event) => setName(event.target.value)} value={name} />
+          </Field>
+          <Field>
+            <FieldLabel>Description</FieldLabel>
+            <Input onChange={(event) => setDescription(event.target.value)} value={description} />
+          </Field>
+          <Field>
+            <FieldLabel>Tags</FieldLabel>
+            <Input
+              onChange={(event) => setTags(event.target.value)}
+              placeholder="baseline, checkout"
+              value={tags}
+            />
+          </Field>
+          {(localError ?? mutation.error?.message) ? (
+            <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {localError ?? mutation.error?.message}
+            </div>
+          ) : null}
+        </FieldGroup>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">
+              <XCircle data-icon="inline-start" />
+              Cancel
+            </Button>
+          </DialogClose>
+          <Button
+            disabled={mutation.isPending}
+            onClick={() => {
+              setLocalError(null);
+              if (!name.trim()) {
+                setLocalError("Name is required.");
+                return;
+              }
+              void mutation.mutateAsync();
+            }}
+            type="button"
+          >
+            <Plus data-icon="inline-start" />
+            {mutation.isPending ? "Creating..." : "Create dataset"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DatasetItems({ dataset, onImport }: { dataset: Dataset; onImport: () => void }) {
+  const items = dataset.items?.items ?? [];
+
+  return (
+    <section className="min-h-0" data-ai-eval-dataset-workbench="true">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-medium">{dataset.name}</h2>
+        <div>
+          <h2 className="text-sm font-medium">{dataset.name}</h2>
+          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span>v{dataset.version}</span>
+            <span>{dataset.itemCount} items</span>
+            <span>{dataset.reviewedItemCount} reviewed</span>
+            <span>{dataset.health.status}</span>
+          </div>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
-          <DatasetImportSheet dataset={dataset} onImported={onImported} projectId={projectId} />
+          <Button onClick={onImport} size="sm" type="button" variant="outline">
+            <Upload data-icon="inline-start" />
+            Import
+          </Button>
           <DatasetExportDialog dataset={dataset} />
         </div>
+      </div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-y py-2">
+        <p className="text-sm text-muted-foreground">
+          Review rows here before using them in experiments.
+        </p>
+        <AddDatasetRowDialog dataset={dataset} />
       </div>
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead>Split</TableHead>
+            <TableHead>Review</TableHead>
             <TableHead>{t("aiEval.input")}</TableHead>
             <TableHead>{t("aiEval.expected")}</TableHead>
             <TableHead>{t("aiEval.source")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {(dataset.items?.items ?? []).map((item) => (
+          {items.map((item) => (
             <TableRow key={item.id}>
+              <TableCell>{item.split}</TableCell>
+              <TableCell>{item.reviewStatus}</TableCell>
               <TableCell className="max-w-72 truncate">{jsonPreview(item.input)}</TableCell>
               <TableCell className="max-w-72 truncate">{jsonPreview(item.expected)}</TableCell>
-              <TableCell>{item.sourceTraceId ?? t("value.none")}</TableCell>
+              <TableCell>
+                {item.sourceTraceId ? (
+                  <Link
+                    className="text-primary underline-offset-4 hover:underline"
+                    to={`/traces/${item.sourceTraceId}`}
+                  >
+                    {item.sourceSpanId
+                      ? `${item.sourceTraceId.slice(0, 10)} / ${item.sourceSpanId.slice(0, 10)}`
+                      : item.sourceTraceId.slice(0, 12)}
+                  </Link>
+                ) : (
+                  t("value.none")
+                )}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
+      {items.length === 0 ? (
+        <div className="mt-3 border border-dashed p-6 text-center">
+          <h3 className="text-sm font-medium">No rows in this dataset version</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Import examples to create a reviewed dataset version for experiments.
+          </p>
+          <Button className="mt-3" onClick={onImport} type="button">
+            <Upload data-icon="inline-start" />
+            Import rows
+          </Button>
+        </div>
+      ) : null}
     </section>
   );
+}
+
+function AddDatasetRowDialog({ dataset }: { dataset: Dataset }) {
+  const telemetryClient = useTelemetryClient();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [inputText, setInputText] = useState("");
+  const [expectedText, setExpectedText] = useState("");
+  const [expectedMode, setExpectedMode] = useState<ExpectedAnswerMode>("text");
+  const [expectedJsonFields, setExpectedJsonFields] = useState<ExpectedJsonField[]>([
+    { id: "answer", name: "answer", type: "text", value: "" },
+  ]);
+  const [split, setSplit] = useState<DatasetSplit>("dev");
+  const [reviewStatus, setReviewStatus] = useState<DatasetReviewStatus>("unreviewed");
+  const [sourceTraceId, setSourceTraceId] = useState("");
+  const [sourceSpanId, setSourceSpanId] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const mutation = useMutation({
+    mutationFn: () => {
+      const item: DatasetItemInput = {
+        input: { prompt: inputText.trim() },
+        expected:
+          expectedMode === "json"
+            ? buildExpectedJsonValue(expectedJsonFields)
+            : expectedText.trim()
+              ? { answer: expectedText.trim() }
+              : null,
+        metadata: {},
+        sourceTraceId: sourceTraceId.trim() || null,
+        sourceSpanId: sourceSpanId.trim() || null,
+        split,
+        reviewStatus,
+      };
+      const input: AppendDatasetItemsInput = { datasetId: dataset.id, items: [item] };
+      return telemetryClient.appendDatasetItems(input);
+    },
+    onSuccess() {
+      setOpen(false);
+      setInputText("");
+      setExpectedText("");
+      setExpectedMode("text");
+      setExpectedJsonFields([{ id: "answer", name: "answer", type: "text", value: "" }]);
+      setSourceTraceId("");
+      setSourceSpanId("");
+      void queryClient.invalidateQueries({ queryKey: ["Datasets"] });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" type="button" variant="outline">
+          <Plus data-icon="inline-start" />
+          Add row
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add dataset row</DialogTitle>
+          <DialogDescription>
+            Add one reviewed example to the next dataset version.
+          </DialogDescription>
+        </DialogHeader>
+        <FieldGroup>
+          <Field>
+            <FieldLabel>Input prompt</FieldLabel>
+            <Textarea
+              onChange={(event) => setInputText(event.target.value)}
+              placeholder="Question, user request, or evaluation input"
+              value={inputText}
+            />
+          </Field>
+          <Field>
+            <FieldLabel>Expected answer format</FieldLabel>
+            <Select
+              onValueChange={(value) => setExpectedMode(value as ExpectedAnswerMode)}
+              value={expectedMode}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="text">Text answer</SelectItem>
+                <SelectItem value="json">JSON fields</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          {expectedMode === "text" ? (
+            <Field>
+              <FieldLabel>Expected answer</FieldLabel>
+              <Textarea
+                onChange={(event) => setExpectedText(event.target.value)}
+                placeholder="Expected output or acceptance target"
+                value={expectedText}
+              />
+            </Field>
+          ) : (
+            <ExpectedJsonFieldsEditor
+              fields={expectedJsonFields}
+              onChange={setExpectedJsonFields}
+            />
+          )}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldLabel>Split</FieldLabel>
+              <Select onValueChange={(value) => setSplit(value as DatasetSplit)} value={split}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {datasetSplits.map((candidate) => (
+                    <SelectItem key={candidate} value={candidate}>
+                      {candidate}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Review status</FieldLabel>
+              <Select
+                onValueChange={(value) => setReviewStatus(value as DatasetReviewStatus)}
+                value={reviewStatus}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {datasetReviewStatuses.map((candidate) => (
+                    <SelectItem key={candidate} value={candidate}>
+                      {candidate}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldLabel>Source trace</FieldLabel>
+              <Input
+                onChange={(event) => setSourceTraceId(event.target.value)}
+                value={sourceTraceId}
+              />
+            </Field>
+            <Field>
+              <FieldLabel>Source span</FieldLabel>
+              <Input
+                onChange={(event) => setSourceSpanId(event.target.value)}
+                value={sourceSpanId}
+              />
+            </Field>
+          </div>
+          {(localError ?? mutation.error?.message) ? (
+            <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {localError ?? mutation.error?.message}
+            </div>
+          ) : null}
+        </FieldGroup>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">
+              <XCircle data-icon="inline-start" />
+              Cancel
+            </Button>
+          </DialogClose>
+          <Button
+            disabled={mutation.isPending}
+            onClick={() => {
+              setLocalError(null);
+              if (!inputText.trim()) {
+                setLocalError("Input prompt is required.");
+                return;
+              }
+              void mutation.mutateAsync();
+            }}
+            type="button"
+          >
+            <Plus data-icon="inline-start" />
+            {mutation.isPending ? "Adding..." : "Add row"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ExpectedJsonFieldsEditor({
+  fields,
+  onChange,
+}: {
+  fields: ExpectedJsonField[];
+  onChange: (fields: ExpectedJsonField[]) => void;
+}) {
+  const update = (id: string, patch: Partial<ExpectedJsonField>) => {
+    onChange(fields.map((field) => (field.id === id ? { ...field, ...patch } : field)));
+  };
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <FieldLabel>Expected JSON shape</FieldLabel>
+        <Button
+          onClick={() =>
+            onChange([...fields, { id: `field-${Date.now()}`, name: "", type: "text", value: "" }])
+          }
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <Plus data-icon="inline-start" />
+          Add field
+        </Button>
+      </div>
+      <div className="grid gap-2">
+        {fields.map((field) => (
+          <div
+            className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_9rem_minmax(0,1fr)_auto]"
+            key={field.id}
+          >
+            <Input
+              aria-label="JSON field name"
+              onChange={(event) => update(field.id, { name: event.target.value })}
+              placeholder="answer"
+              value={field.name}
+            />
+            <Select
+              onValueChange={(value) => update(field.id, { type: value as ExpectedJsonFieldType })}
+              value={field.type}
+            >
+              <SelectTrigger aria-label="JSON field type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="text">Text</SelectItem>
+                <SelectItem value="number">Number</SelectItem>
+                <SelectItem value="boolean">Boolean</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input
+              aria-label="JSON field value"
+              onChange={(event) => update(field.id, { value: event.target.value })}
+              placeholder={
+                field.type === "boolean" ? "true" : field.type === "number" ? "1" : "value"
+              }
+              value={field.value}
+            />
+            <Button
+              aria-label="Remove expected JSON field"
+              disabled={fields.length === 1}
+              onClick={() => onChange(fields.filter((candidate) => candidate.id !== field.id))}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              <Trash2 />
+            </Button>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Define the output fields this dataset expects. Scorers can target these paths later.
+      </p>
+    </div>
+  );
+}
+
+function buildExpectedJsonValue(fields: ExpectedJsonField[]) {
+  const entries = fields
+    .map((field) => [field.name.trim(), coerceExpectedFieldValue(field)] as const)
+    .filter(([name]) => Boolean(name));
+  return entries.length ? Object.fromEntries(entries) : null;
+}
+
+function coerceExpectedFieldValue(field: ExpectedJsonField) {
+  if (field.type === "number") {
+    const parsed = Number(field.value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (field.type === "boolean") {
+    return field.value === "true";
+  }
+  return field.value;
 }
 
 type DatasetImportUploadResponse = {
@@ -867,26 +998,85 @@ const datasetSplits: DatasetSplit[] = [
 ];
 const datasetReviewStatuses: DatasetReviewStatus[] = ["unreviewed", "reviewed", "rejected"];
 const mappingSourceKinds: MappingSourceKind[] = ["column", "jsonPath", "constant", "defaultValue"];
+type ScorerTemplateId = "contains" | "exact" | "json_schema" | "semantic" | "llm_judge";
 
-function DatasetImportSheet({
+const scorerTemplates: Array<{
+  id: ScorerTemplateId;
+  label: string;
+  kind: ScorerKind;
+  description: string;
+}> = [
+  {
+    id: "contains",
+    label: "Contains text",
+    kind: "deterministic",
+    description: "Passes when a field contains required text.",
+  },
+  {
+    id: "exact",
+    label: "Exact match",
+    kind: "deterministic",
+    description: "Passes when a field equals the expected value.",
+  },
+  {
+    id: "json_schema",
+    label: "JSON schema",
+    kind: "schema_json",
+    description: "Validates structured output against a named schema.",
+  },
+  {
+    id: "semantic",
+    label: "Semantic similarity",
+    kind: "semantic",
+    description: "Offline scorer for meaning-level answer similarity.",
+  },
+  {
+    id: "llm_judge",
+    label: "LLM judge rubric",
+    kind: "llm_judge",
+    description: "Uses a judge rubric and provider alias for offline evaluation.",
+  },
+];
+const defaultScorerTemplate = scorerTemplates[0] ?? {
+  id: "contains" as const,
+  label: "Contains text",
+  kind: "deterministic" as const,
+  description: "Passes when a field contains required text.",
+};
+const scorerMatchFields = [
+  { value: "expected.answer", label: "Expected answer", valueType: "text" },
+  { value: "output.answer", label: "Model JSON field: answer", valueType: "text/json" },
+  { value: "output.text", label: "Model text output", valueType: "text" },
+  { value: "output.score", label: "Model JSON field: score", valueType: "number" },
+  { value: "output.passed", label: "Model JSON field: passed", valueType: "boolean" },
+] as const;
+
+function DatasetImportWorkflow({
   dataset,
+  onBack,
   onImported,
   projectId,
 }: {
   dataset: Dataset;
+  onBack: () => void;
   onImported: () => void;
   projectId: string;
 }) {
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const telemetryClient = useTelemetryClient();
   const [file, setFile] = useState<File | null>(null);
-  const [format, setFormat] = useState<DatasetImportFormat>("jsonl");
+  const [format, setFormat] = useState<DatasetImportFormat>("csv");
+  const [preset, setPreset] = useState<"csvPromptAnswer" | "jsonlMessages" | "custom">(
+    "csvPromptAnswer",
+  );
   const [upload, setUpload] = useState<DatasetImportUploadResponse | null>(null);
   const [includedFiles, setIncludedFiles] = useState<string[]>([]);
   const [inputMappings, setInputMappings] = useState<FieldMappingDraft[]>([
-    mappingDraft("input", "prompt"),
+    mappingDraft("input", "prompt", "prompt"),
   ]);
-  const [expectedMappings, setExpectedMappings] = useState<FieldMappingDraft[]>([]);
+  const [expectedMappings, setExpectedMappings] = useState<FieldMappingDraft[]>([
+    mappingDraft("expected", "answer", "answer"),
+  ]);
   const [metadataMappings, setMetadataMappings] = useState<FieldMappingDraft[]>([]);
   const [sourceTraceId, setSourceTraceId] = useState<ScalarMappingDraft>(emptyScalarMapping());
   const [sourceSpanId, setSourceSpanId] = useState<ScalarMappingDraft>(emptyScalarMapping());
@@ -922,7 +1112,7 @@ function DatasetImportSheet({
   });
   const prepareMutation = useMutation({
     mutationFn: () =>
-      prepareDatasetImport(
+      telemetryClient.prepareDatasetImport(
         buildPrepareDatasetImportInput({
           allowPartialCommit,
           dataset,
@@ -950,7 +1140,7 @@ function DatasetImportSheet({
       if (!previewJob) {
         throw new Error("Preview the import before committing.");
       }
-      return commitDatasetImport({
+      return telemetryClient.commitDatasetImport({
         importId: previewJob.id,
         expectedDatasetVersion: dataset.version,
         mode,
@@ -987,213 +1177,269 @@ function DatasetImportSheet({
     }
   };
 
+  const applyPreset = (nextPreset: typeof preset) => {
+    setPreset(nextPreset);
+    if (nextPreset === "csvPromptAnswer") {
+      setFormat("csv");
+      setInputMappings([mappingDraft("input", "prompt", "prompt")]);
+      setExpectedMappings([mappingDraft("expected", "answer", "answer")]);
+    }
+    if (nextPreset === "jsonlMessages") {
+      setFormat("jsonl");
+      setInputMappings([mappingDraft("input", "messages", "$.messages")]);
+      setExpectedMappings([mappingDraft("expected", "answer", "$.expected")]);
+    }
+  };
+
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <Button size="sm" type="button" variant="outline">
-          <Upload data-icon="inline-start" />
-          Import
-        </Button>
-      </SheetTrigger>
-      <SheetContent className="w-full gap-0 p-0 sm:max-w-xl" side="right">
-        <SheetHeader className="border-b px-4 py-3">
-          <SheetTitle>Import dataset items</SheetTitle>
-          <SheetDescription>
-            Upload JSONL, JSON array, CSV, or ZIP bytes, then preview backend validation before
-            commit.
-          </SheetDescription>
-        </SheetHeader>
-        <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
-          <div className="grid gap-5">
-            <section className="grid gap-3 border-b pb-4">
-              <h3 className="text-sm font-medium">1. Upload file</h3>
-              <FieldGroup>
-                <Field>
-                  <FieldLabel htmlFor="dataset-import-file">File</FieldLabel>
-                  <Input
-                    accept=".jsonl,.json,.csv,.zip"
-                    id="dataset-import-file"
-                    onChange={(event) => {
-                      setFile(event.target.files?.[0] ?? null);
-                      setUpload(null);
-                      setPreviewJob(null);
-                      setCommittedJob(null);
-                    }}
-                    type="file"
-                  />
-                </Field>
-                <Field>
-                  <FieldLabel>Format</FieldLabel>
-                  <Select
-                    onValueChange={(value) => setFormat(value as DatasetImportFormat)}
-                    value={format}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {datasetImportFormats.map((candidate) => (
-                        <SelectItem key={candidate} value={candidate}>
-                          {datasetImportFormatLabel(candidate)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Button
-                  disabled={!file || uploadMutation.isPending}
-                  onClick={() => void uploadMutation.mutateAsync()}
-                  type="button"
-                  variant="secondary"
-                >
-                  <Upload data-icon="inline-start" />
-                  {uploadMutation.isPending ? "Uploading..." : "Stage upload"}
-                </Button>
-              </FieldGroup>
-              {upload ? (
-                <div className="grid gap-1 text-sm text-muted-foreground">
-                  <span>
-                    {upload.filename} · {formatBytes(upload.sizeBytes)} · expires {upload.expiresAt}
-                  </span>
-                  <span className="break-all">SHA-256 {upload.sha256}</span>
-                </div>
-              ) : null}
-              {(upload?.containedFiles?.length ?? 0) > 0 ? (
-                <SourceFileSelector
-                  containedFiles={upload?.containedFiles ?? []}
-                  includedFiles={includedFiles}
-                  onChange={setIncludedFiles}
-                />
-              ) : null}
-            </section>
-            <section className="grid gap-4 border-b pb-4">
-              <div>
-                <h3 className="text-sm font-medium">2. Map fields</h3>
-                <p className="text-sm text-muted-foreground">
-                  Use explicit columns, JSON paths, constants, or defaults. Row parsing and
-                  validation happen in CloudGrid after preview.
-                </p>
-              </div>
-              <FieldMappingGroup
-                label="Input"
-                mappings={inputMappings}
-                onChange={setInputMappings}
-                targetPrefix="input"
-              />
-              <FieldMappingGroup
-                label="Expected"
-                mappings={expectedMappings}
-                onChange={setExpectedMappings}
-                targetPrefix="expected"
-              />
-              <FieldMappingGroup
-                label="Metadata"
-                mappings={metadataMappings}
-                onChange={setMetadataMappings}
-                targetPrefix="metadata"
-              />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <ScalarMappingControl
-                  label="sourceTraceId"
-                  onChange={setSourceTraceId}
-                  value={sourceTraceId}
-                />
-                <ScalarMappingControl
-                  label="sourceSpanId"
-                  onChange={setSourceSpanId}
-                  value={sourceSpanId}
-                />
-                <ScalarMappingControl
-                  label="split"
-                  onChange={setSplitMapping}
-                  value={splitMapping}
-                />
-                <ScalarMappingControl
-                  label="reviewStatus"
-                  onChange={setReviewStatusMapping}
-                  value={reviewStatusMapping}
-                />
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field>
-                  <FieldLabel>Default split</FieldLabel>
-                  <Select
-                    onValueChange={(value) => setDefaultSplit(value as DatasetSplit)}
-                    value={defaultSplit}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {datasetSplits.map((candidate) => (
-                        <SelectItem key={candidate} value={candidate}>
-                          {candidate}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field>
-                  <FieldLabel>Default review status</FieldLabel>
-                  <Select
-                    onValueChange={(value) => setDefaultReviewStatus(value as DatasetReviewStatus)}
-                    value={defaultReviewStatus}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {datasetReviewStatuses.map((candidate) => (
-                        <SelectItem key={candidate} value={candidate}>
-                          {candidate}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              </div>
-              <div className="flex items-start gap-2 text-sm">
-                <Checkbox
-                  id="dataset-import-partial-commit"
-                  checked={allowPartialCommit}
-                  onCheckedChange={(checked) => setAllowPartialCommit(checked === true)}
-                />
-                <label htmlFor="dataset-import-partial-commit">
-                  Allow partial commit of valid rows when preview reports row errors.
-                  <span className="block text-muted-foreground">
-                    Uses commit mode <code>valid_rows_only</code>; otherwise commit uses{" "}
-                    <code>reject_if_any_error</code>.
-                  </span>
-                </label>
-              </div>
+    <div className="flex min-h-0 flex-col gap-4" data-ai-eval-dataset-import-workflow="true">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3">
+        <div>
+          <Button className="mb-2" onClick={onBack} size="sm" type="button" variant="ghost">
+            <ArrowLeft data-icon="inline-start" />
+            Back to dataset
+          </Button>
+          <h2 className="text-sm font-medium">Import dataset rows</h2>
+          <p className="text-sm text-muted-foreground">
+            Stage a file, map source fields, preview backend validation, then commit a new version
+            of {dataset.name}.
+          </p>
+        </div>
+        <div className="grid min-w-40 gap-1 text-xs text-muted-foreground">
+          <span>Dataset v{dataset.version}</span>
+          <span>{dataset.itemCount} current items</span>
+        </div>
+      </div>
+      <div className="grid gap-5">
+        <section className="grid gap-3 border-b pb-4">
+          <h3 className="text-sm font-medium">1. Choose import shape</h3>
+          <div className="grid gap-2 md:grid-cols-3">
+            {[
+              {
+                id: "csvPromptAnswer" as const,
+                label: "CSV prompt/answer",
+                description: "Columns named prompt and answer.",
+              },
+              {
+                id: "jsonlMessages" as const,
+                label: "JSONL messages",
+                description: "Each line has messages and expected.",
+              },
+              {
+                id: "custom" as const,
+                label: "Custom mapping",
+                description: "Pick columns, JSON paths, constants, or defaults.",
+              },
+            ].map((candidate) => (
               <Button
-                disabled={!upload || prepareMutation.isPending}
-                onClick={onPrepare}
+                className="h-auto justify-start rounded-none border p-3 text-left text-sm hover:bg-muted/40 data-[active=true]:bg-muted"
+                data-active={preset === candidate.id}
+                key={candidate.id}
+                onClick={() => applyPreset(candidate.id)}
                 type="button"
-                variant="secondary"
+                variant="ghost"
               >
-                <FileText data-icon="inline-start" />
-                {prepareMutation.isPending ? "Previewing..." : "Preview import"}
+                <CheckCircle2 className="sr-only" aria-hidden />
+                <span className="block font-medium">{candidate.label}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {candidate.description}
+                </span>
               </Button>
-            </section>
-            <DatasetImportPreview job={previewJob} sourceFiles={sourceFiles} />
-            {committedJob?.committedDatasetVersion ? (
-              <section className="grid gap-2 border-b pb-4 text-sm">
-                <h3 className="font-medium">Committed</h3>
-                <p className="text-muted-foreground">
-                  Dataset version {committedJob.committedDatasetVersion} was created from import{" "}
-                  {committedJob.id}.
-                </p>
-              </section>
-            ) : null}
-            {error ? (
-              <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
-              </div>
+            ))}
+          </div>
+        </section>
+        <section className="grid gap-3 border-b pb-4">
+          <h3 className="text-sm font-medium">2. Upload file</h3>
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_14rem]">
+            <Field>
+              <FieldLabel htmlFor="dataset-import-file">File</FieldLabel>
+              <Input
+                accept=".jsonl,.json,.csv,.zip"
+                id="dataset-import-file"
+                onChange={(event) => {
+                  setFile(event.target.files?.[0] ?? null);
+                  setUpload(null);
+                  setPreviewJob(null);
+                  setCommittedJob(null);
+                }}
+                type="file"
+              />
+            </Field>
+            <Field>
+              <FieldLabel>Format</FieldLabel>
+              <Select
+                onValueChange={(value) => setFormat(value as DatasetImportFormat)}
+                value={format}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {datasetImportFormats.map((candidate) => (
+                    <SelectItem key={candidate} value={candidate}>
+                      {datasetImportFormatLabel(candidate)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              disabled={!file || uploadMutation.isPending}
+              onClick={() => void uploadMutation.mutateAsync()}
+              type="button"
+              variant="secondary"
+            >
+              <Upload data-icon="inline-start" />
+              {uploadMutation.isPending ? "Uploading..." : "Stage upload"}
+            </Button>
+            {!file ? (
+              <span className="text-xs text-muted-foreground">Choose a file before staging.</span>
             ) : null}
           </div>
-        </div>
-        <SheetFooter className="border-t px-4 py-3">
+          {upload ? (
+            <div className="grid gap-1 text-sm text-muted-foreground">
+              <span>
+                {upload.filename} · {formatBytes(upload.sizeBytes)} · expires {upload.expiresAt}
+              </span>
+              <span className="break-all">SHA-256 {upload.sha256}</span>
+            </div>
+          ) : null}
+          {(upload?.containedFiles?.length ?? 0) > 0 ? (
+            <SourceFileSelector
+              containedFiles={upload?.containedFiles ?? []}
+              includedFiles={includedFiles}
+              onChange={setIncludedFiles}
+            />
+          ) : null}
+        </section>
+        <section className="grid gap-4 border-b pb-4">
+          <div>
+            <h3 className="text-sm font-medium">3. Map fields</h3>
+            <p className="text-sm text-muted-foreground">
+              Use columns, JSON paths, constants, or defaults. Parsing and validation happen after
+              preview, not in the browser.
+            </p>
+          </div>
+          <FieldMappingGroup
+            label="Input"
+            mappings={inputMappings}
+            onChange={setInputMappings}
+            targetPrefix="input"
+          />
+          <FieldMappingGroup
+            label="Expected"
+            mappings={expectedMappings}
+            onChange={setExpectedMappings}
+            targetPrefix="expected"
+          />
+          <FieldMappingGroup
+            label="Metadata"
+            mappings={metadataMappings}
+            onChange={setMetadataMappings}
+            targetPrefix="metadata"
+          />
+          <div className="grid gap-3 md:grid-cols-4">
+            <ScalarMappingControl
+              label="sourceTraceId"
+              onChange={setSourceTraceId}
+              value={sourceTraceId}
+            />
+            <ScalarMappingControl
+              label="sourceSpanId"
+              onChange={setSourceSpanId}
+              value={sourceSpanId}
+            />
+            <ScalarMappingControl label="split" onChange={setSplitMapping} value={splitMapping} />
+            <ScalarMappingControl
+              label="reviewStatus"
+              onChange={setReviewStatusMapping}
+              value={reviewStatusMapping}
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldLabel>Default split</FieldLabel>
+              <Select
+                onValueChange={(value) => setDefaultSplit(value as DatasetSplit)}
+                value={defaultSplit}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {datasetSplits.map((candidate) => (
+                    <SelectItem key={candidate} value={candidate}>
+                      {candidate}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Default review status</FieldLabel>
+              <Select
+                onValueChange={(value) => setDefaultReviewStatus(value as DatasetReviewStatus)}
+                value={defaultReviewStatus}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {datasetReviewStatuses.map((candidate) => (
+                    <SelectItem key={candidate} value={candidate}>
+                      {candidate}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+          <div className="flex items-start gap-2 text-sm">
+            <Checkbox
+              id="dataset-import-partial-commit"
+              checked={allowPartialCommit}
+              onCheckedChange={(checked) => setAllowPartialCommit(checked === true)}
+            />
+            <label htmlFor="dataset-import-partial-commit">
+              Commit valid rows even when the preview reports row errors.
+              <span className="block text-muted-foreground">
+                Leave off to reject the import if any row fails validation.
+              </span>
+            </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              disabled={!upload || prepareMutation.isPending}
+              onClick={onPrepare}
+              type="button"
+              variant="secondary"
+            >
+              <FileText data-icon="inline-start" />
+              {prepareMutation.isPending ? "Previewing..." : "Preview import"}
+            </Button>
+            {!upload ? (
+              <span className="text-xs text-muted-foreground">Stage an upload before preview.</span>
+            ) : null}
+          </div>
+        </section>
+        <DatasetImportPreview job={previewJob} sourceFiles={sourceFiles} />
+        {committedJob?.committedDatasetVersion ? (
+          <section className="grid gap-2 border-b pb-4 text-sm">
+            <h3 className="font-medium">Committed</h3>
+            <p className="text-muted-foreground">
+              Dataset version {committedJob.committedDatasetVersion} was created from import{" "}
+              {committedJob.id}.
+            </p>
+          </section>
+        ) : null}
+        {error ? (
+          <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </div>
+        ) : null}
+        <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
           <Dialog>
             <DialogTrigger asChild>
               <Button disabled={!canCommit || commitMutation.isPending} type="button">
@@ -1216,17 +1462,21 @@ function DatasetImportSheet({
               </div>
               <DialogFooter>
                 <DialogClose asChild>
-                  <Button variant="outline">Cancel</Button>
+                  <Button variant="outline">
+                    <XCircle data-icon="inline-start" />
+                    Cancel
+                  </Button>
                 </DialogClose>
                 <Button onClick={() => void commitMutation.mutateAsync(commitMode)} type="button">
+                  <CheckCircle2 data-icon="inline-start" />
                   Commit import
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1433,7 +1683,7 @@ function DatasetImportPreview({
   if (!job) {
     return (
       <section className="grid gap-2 border-b pb-4 text-sm text-muted-foreground">
-        <h3 className="font-medium text-foreground">3. Preview rows</h3>
+        <h3 className="font-medium text-foreground">4. Preview rows</h3>
         <p>Preview uses the GraphQL import contract and returns normalized sample rows.</p>
       </section>
     );
@@ -1441,7 +1691,7 @@ function DatasetImportPreview({
 
   return (
     <section className="grid gap-3 border-b pb-4">
-      <h3 className="text-sm font-medium">3. Preview rows</h3>
+      <h3 className="text-sm font-medium">4. Preview rows</h3>
       <div className="grid gap-3 text-sm sm:grid-cols-4">
         <Metric label="Total rows" value={job.totalRows} />
         <Metric label="Valid rows" value={job.validRows} />
@@ -1508,6 +1758,7 @@ function DatasetImportPreview({
 }
 
 function DatasetExportDialog({ dataset }: { dataset: Dataset }) {
+  const telemetryClient = useTelemetryClient();
   const [open, setOpen] = useState(false);
   const [format, setFormat] = useState<DatasetExportFormat>("jsonl");
   const [split, setSplit] = useState<DatasetSplit | "all">("all");
@@ -1519,7 +1770,7 @@ function DatasetExportDialog({ dataset }: { dataset: Dataset }) {
 
   const exportMutation = useMutation({
     mutationFn: () =>
-      startDatasetExport({
+      telemetryClient.startDatasetExport({
         datasetId: dataset.id,
         format,
         split: split === "all" ? null : split,
@@ -1538,7 +1789,13 @@ function DatasetExportDialog({ dataset }: { dataset: Dataset }) {
   const exportJobQuery = useQuery({
     enabled: open && job?.status === "queued",
     queryKey: ["DatasetExport", job?.id],
-    queryFn: () => fetchDatasetExport(job?.id ?? ""),
+    queryFn: async () => {
+      const nextJob = await telemetryClient.getDatasetExport(job?.id ?? "");
+      if (!nextJob) {
+        throw new Error("Dataset export job was not found.");
+      }
+      return nextJob;
+    },
     refetchInterval: 2000,
   });
 
@@ -1668,7 +1925,10 @@ function DatasetExportDialog({ dataset }: { dataset: Dataset }) {
         </FieldGroup>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">Close</Button>
+            <Button variant="outline">
+              <XCircle data-icon="inline-start" />
+              Close
+            </Button>
           </DialogClose>
           {job?.status === "ready" && job.downloadUrl ? (
             <Button
@@ -1716,8 +1976,29 @@ function ScorersView({
   onSelect: (id: string) => void;
   selectedId: string | null;
 }) {
+  const onCreated = (scorer: Scorer) => {
+    onSelect(scorer.id);
+    void query.refetch();
+  };
+
+  if (query.isLoading) {
+    return <LoadingRows />;
+  }
+  if (query.isError) {
+    return <ErrorPanel error={query.error} onRetry={() => void query.refetch()} />;
+  }
+
   return (
-    <QueryFrame query={query}>
+    <div className="flex min-h-0 flex-col gap-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b pb-3">
+        <div>
+          <h2 className="text-sm font-medium">Scorer registry</h2>
+          <p className="text-sm text-muted-foreground">
+            Create scorer definitions that experiments use to evaluate dataset items.
+          </p>
+        </div>
+        <CreateScorerDialog onCreated={onCreated} />
+      </div>
       {query.data && query.data.items.length > 0 ? (
         <Table>
           <TableHeader>
@@ -1725,7 +2006,7 @@ function ScorersView({
               <TableHead>{t("aiEval.scorer")}</TableHead>
               <TableHead>{t("aiEval.kind")}</TableHead>
               <TableHead>{t("aiEval.version")}</TableHead>
-              <TableHead>{t("aiEval.definition")}</TableHead>
+              <TableHead>Rule</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1741,41 +2022,324 @@ function ScorersView({
                 </TableCell>
                 <TableCell>{scorer.version}</TableCell>
                 <TableCell className="max-w-xl truncate">
-                  {jsonPreview(scorer.definition, 160)}
+                  {describeScorerDefinition(scorer)}
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
-      ) : null}
-    </QueryFrame>
+      ) : (
+        <EmptyState
+          description="Create at least one scorer before running an experiment."
+          filtered={false}
+          primaryAction={<CreateScorerDialog onCreated={onCreated} triggerVariant="default" />}
+          title="No scorers yet"
+        />
+      )}
+    </div>
+  );
+}
+
+function CreateScorerDialog({
+  onCreated,
+  triggerVariant = "outline",
+}: {
+  onCreated: (scorer: Scorer) => void;
+  triggerVariant?: "default" | "outline";
+}) {
+  const telemetryClient = useTelemetryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [template, setTemplate] = useState<ScorerTemplateId>("contains");
+  const [matchField, setMatchField] = useState("output.answer");
+  const [expectedValueType, setExpectedValueType] = useState<ScorerExpectedValueType>("text");
+  const [expectedValue, setExpectedValue] = useState("ok");
+  const [threshold, setThreshold] = useState("0.8");
+  const [schemaName, setSchemaName] = useState("expected_answer");
+  const [rubric, setRubric] = useState("Answer is correct, complete, and grounded.");
+  const [providerAlias, setProviderAlias] = useState("default-judge");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const selectedTemplate =
+    scorerTemplates.find((candidate) => candidate.id === template) ?? defaultScorerTemplate;
+  const mutation = useMutation({
+    mutationFn: () => {
+      const input: CreateScorerInput = {
+        name: name.trim(),
+        kind: selectedTemplate.kind,
+        definition: buildScorerDefinition({
+          expectedValue,
+          expectedValueType,
+          matchField,
+          providerAlias,
+          rubric,
+          schemaName,
+          template,
+          threshold,
+        }),
+      };
+      return telemetryClient.createScorer(input);
+    },
+    onSuccess(scorer) {
+      onCreated(scorer);
+      setOpen(false);
+      setName("");
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" type="button" variant={triggerVariant}>
+          <Plus data-icon="inline-start" />
+          Create scorer
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create scorer</DialogTitle>
+          <DialogDescription>
+            A scorer evaluates each experiment item and returns structured results.
+          </DialogDescription>
+        </DialogHeader>
+        <FieldGroup>
+          <Field>
+            <FieldLabel>Name</FieldLabel>
+            <Input onChange={(event) => setName(event.target.value)} value={name} />
+          </Field>
+          <Field>
+            <FieldLabel>Scorer template</FieldLabel>
+            <Select
+              onValueChange={(value) => setTemplate(value as ScorerTemplateId)}
+              value={template}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {scorerTemplates.map((candidate) => (
+                  <SelectItem key={candidate.id} value={candidate.id}>
+                    {candidate.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">{selectedTemplate.description}</p>
+          </Field>
+          {(template === "contains" || template === "exact" || template === "semantic") && (
+            <div className="grid gap-3">
+              <Field>
+                <FieldLabel>Match field</FieldLabel>
+                <Select onValueChange={(value) => setMatchField(value)} value={matchField}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {scorerMatchFields.map((field) => (
+                      <SelectItem key={field.value} value={field.value}>
+                        {field.label} ({field.valueType})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Select a known field from the expected answer or model output shape.
+                </p>
+              </Field>
+              <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+                <Field>
+                  <FieldLabel>Value type</FieldLabel>
+                  <Select
+                    onValueChange={(value) =>
+                      setExpectedValueType(value as ScorerExpectedValueType)
+                    }
+                    value={expectedValueType}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="text">Text</SelectItem>
+                      <SelectItem value="number">Number</SelectItem>
+                      <SelectItem value="boolean">Boolean</SelectItem>
+                      <SelectItem value="json">JSON</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel>Expected value</FieldLabel>
+                  <Input
+                    onChange={(event) => setExpectedValue(event.target.value)}
+                    placeholder={
+                      expectedValueType === "boolean"
+                        ? "true"
+                        : expectedValueType === "number"
+                          ? "1"
+                          : expectedValueType === "json"
+                            ? '{"answer":"ok"}'
+                            : "Expected answer or phrase"
+                    }
+                    value={expectedValue}
+                  />
+                </Field>
+              </div>
+            </div>
+          )}
+          {template === "semantic" ? (
+            <Field>
+              <FieldLabel>Pass threshold</FieldLabel>
+              <Input onChange={(event) => setThreshold(event.target.value)} value={threshold} />
+            </Field>
+          ) : null}
+          {template === "json_schema" ? (
+            <Field>
+              <FieldLabel>Schema reference</FieldLabel>
+              <Input onChange={(event) => setSchemaName(event.target.value)} value={schemaName} />
+            </Field>
+          ) : null}
+          {template === "llm_judge" ? (
+            <div className="grid gap-3">
+              <Field>
+                <FieldLabel>Judge provider alias</FieldLabel>
+                <Input
+                  onChange={(event) => setProviderAlias(event.target.value)}
+                  value={providerAlias}
+                />
+              </Field>
+              <Field>
+                <FieldLabel>Rubric</FieldLabel>
+                <Input onChange={(event) => setRubric(event.target.value)} value={rubric} />
+              </Field>
+              <div className="flex gap-2 border px-3 py-2 text-sm text-muted-foreground">
+                <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                LLM judge scorers are offline-only in v1 production policy setup.
+              </div>
+            </div>
+          ) : null}
+          {(localError ?? mutation.error?.message) ? (
+            <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {localError ?? mutation.error?.message}
+            </div>
+          ) : null}
+        </FieldGroup>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">
+              <XCircle data-icon="inline-start" />
+              Cancel
+            </Button>
+          </DialogClose>
+          <Button
+            disabled={mutation.isPending}
+            onClick={() => {
+              setLocalError(null);
+              if (!name.trim()) {
+                setLocalError("Name is required.");
+                return;
+              }
+              if (
+                !buildScorerDefinition({
+                  expectedValue,
+                  expectedValueType,
+                  matchField,
+                  providerAlias,
+                  rubric,
+                  schemaName,
+                  template,
+                  threshold,
+                })
+              ) {
+                setLocalError("Complete the required scorer fields.");
+                return;
+              }
+              void mutation.mutateAsync();
+            }}
+            type="button"
+          >
+            <Plus data-icon="inline-start" />
+            {mutation.isPending ? "Creating..." : "Create scorer"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 function ExperimentsView({
+  datasets,
+  onChanged,
   query,
   onSelect,
+  scorers,
   selectedId,
 }: {
+  datasets: Dataset[];
+  onChanged: () => void;
   query: QueryResult<
     Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchExperiments"]>>
   >;
   onSelect: (id: string) => void;
+  scorers: Scorer[];
   selectedId: string | null;
 }) {
   const runs = query.data?.items.flatMap((experiment) => experiment.runs?.items ?? []) ?? [];
   const rows = experimentScoreboardRows(runs);
+  const onCreated = (experiment: Experiment) => {
+    onSelect(experiment.id);
+    onChanged();
+  };
+  const onRunStarted = () => {
+    onChanged();
+  };
+
+  if (query.isLoading) {
+    return <LoadingRows />;
+  }
+  if (query.isError) {
+    return <ErrorPanel error={query.error} onRetry={() => void query.refetch()} />;
+  }
+
   return (
-    <QueryFrame query={query}>
+    <div className="flex min-h-0 flex-col gap-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b pb-3">
+        <div>
+          <h2 className="text-sm font-medium">Evaluation experiments</h2>
+          <p className="text-sm text-muted-foreground">
+            Pair a dataset version with scorers, then run an evaluation and compare results.
+          </p>
+        </div>
+        <CreateExperimentDialog datasets={datasets} onCreated={onCreated} scorers={scorers} />
+      </div>
+      {datasets.length === 0 || scorers.length === 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border px-3 py-2 text-sm">
+          <div className="flex gap-2 text-muted-foreground">
+            <AlertCircle className="mt-0.5 size-4 shrink-0" />
+            Create one dataset and one scorer before experiments can run.
+          </div>
+          <div className="flex gap-2">
+            {datasets.length === 0 ? (
+              <Button size="sm" type="button" variant="outline" asChild>
+                <Link to="?tab=datasets">Create dataset</Link>
+              </Button>
+            ) : null}
+            {scorers.length === 0 ? (
+              <Button size="sm" type="button" variant="outline" asChild>
+                <Link to="?tab=scorers">Create scorer</Link>
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       {query.data && query.data.items.length > 0 ? (
-        <div className="flex flex-col gap-4">
+        <div className="flex min-h-0 flex-col gap-4 overflow-auto">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>{t("aiEval.experiment")}</TableHead>
                 <TableHead>{t("aiEval.dataset")}</TableHead>
                 <TableHead>{t("aiEval.scorers")}</TableHead>
+                <TableHead>Runs</TableHead>
                 <TableHead>{t("aiEval.tags")}</TableHead>
+                <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1790,15 +2354,278 @@ function ExperimentsView({
                     {experiment.datasetId}@{experiment.datasetVersion}
                   </TableCell>
                   <TableCell>{experiment.scorerIds.length}</TableCell>
+                  <TableCell>{experiment.runs?.items.length ?? 0}</TableCell>
                   <TableCell>{experiment.tags.join(", ") || t("value.none")}</TableCell>
+                  <TableCell className="text-right">
+                    <StartExperimentRunButton
+                      experiment={experiment}
+                      onStarted={onRunStarted}
+                      size="sm"
+                      variant="outline"
+                    />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
           <Scoreboard rows={rows} runs={runs} />
         </div>
-      ) : null}
-    </QueryFrame>
+      ) : (
+        <EmptyState
+          description="Create a dataset and scorer first, then define an experiment and run it."
+          filtered={false}
+          primaryAction={
+            <CreateExperimentDialog
+              datasets={datasets}
+              onCreated={onCreated}
+              scorers={scorers}
+              triggerVariant="default"
+            />
+          }
+          title="No experiments yet"
+        />
+      )}
+    </div>
+  );
+}
+
+function CreateExperimentDialog({
+  datasets,
+  onCreated,
+  scorers,
+  triggerVariant = "outline",
+}: {
+  datasets: Dataset[];
+  onCreated: (experiment: Experiment) => void;
+  scorers: Scorer[];
+  triggerVariant?: "default" | "outline";
+}) {
+  const telemetryClient = useTelemetryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [datasetId, setDatasetId] = useState(datasets[0]?.id ?? "");
+  const [scorerId, setScorerId] = useState(scorers[0]?.id ?? "");
+  const [split, setSplit] = useState<DatasetSplit>("validation");
+  const [solverKind, setSolverKind] = useState("local");
+  const [solverName, setSolverName] = useState("current-agent");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const selectedDataset = datasets.find((dataset) => dataset.id === datasetId) ?? datasets[0];
+  const disabledReason =
+    datasets.length === 0
+      ? "Create or import a dataset before creating an experiment."
+      : scorers.length === 0
+        ? "Create a scorer before creating an experiment."
+        : null;
+
+  useEffect(() => {
+    if (!datasetId && datasets[0]?.id) {
+      setDatasetId(datasets[0].id);
+    }
+    if (!scorerId && scorers[0]?.id) {
+      setScorerId(scorers[0].id);
+    }
+  }, [datasetId, datasets, scorerId, scorers]);
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      if (!selectedDataset) {
+        throw new Error("Create a dataset before creating an experiment.");
+      }
+      const input: CreateExperimentInput = {
+        name: name.trim(),
+        datasetId: selectedDataset.id,
+        datasetVersion: selectedDataset.version,
+        splitSelector: { splits: [split], reviewedOnly: false, includeSynthetic: false },
+        scorerIds: [scorerId],
+        solverRef: { kind: solverKind, name: solverName } satisfies JSONValue,
+        tags: [],
+      };
+      return telemetryClient.createExperiment(input);
+    },
+    onSuccess(experiment) {
+      onCreated(experiment);
+      setOpen(false);
+      setName("");
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button disabled={Boolean(disabledReason)} size="sm" type="button" variant={triggerVariant}>
+          <Plus data-icon="inline-start" />
+          Create experiment
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create experiment</DialogTitle>
+          <DialogDescription>
+            Select the dataset version, scorer, and solver reference used by the evaluation run.
+          </DialogDescription>
+        </DialogHeader>
+        <FieldGroup>
+          <Field>
+            <FieldLabel>Name</FieldLabel>
+            <Input onChange={(event) => setName(event.target.value)} value={name} />
+          </Field>
+          <Field>
+            <FieldLabel>Dataset</FieldLabel>
+            <Select onValueChange={setDatasetId} value={datasetId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select dataset" />
+              </SelectTrigger>
+              <SelectContent>
+                {datasets.map((dataset) => (
+                  <SelectItem key={dataset.id} value={dataset.id}>
+                    {dataset.name} v{dataset.version}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel>Scorer</FieldLabel>
+            <Select onValueChange={setScorerId} value={scorerId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select scorer" />
+              </SelectTrigger>
+              <SelectContent>
+                {scorers.map((scorer) => (
+                  <SelectItem key={scorer.id} value={scorer.id}>
+                    {scorer.name} v{scorer.version}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel>Evaluation split</FieldLabel>
+            <Select onValueChange={(value) => setSplit(value as DatasetSplit)} value={split}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {datasetSplits.map((candidate) => (
+                  <SelectItem key={candidate} value={candidate}>
+                    {candidate}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel>Solver kind</FieldLabel>
+            <Select onValueChange={setSolverKind} value={solverKind}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="local">Local runner</SelectItem>
+                <SelectItem value="provider">Provider profile</SelectItem>
+                <SelectItem value="prompt_version">Prompt version</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel>Solver name</FieldLabel>
+            <Input
+              onChange={(event) => setSolverName(event.target.value)}
+              placeholder="current-agent"
+              value={solverName}
+            />
+          </Field>
+          {disabledReason ? (
+            <div className="flex gap-2 border px-3 py-2 text-sm text-muted-foreground">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" />
+              {disabledReason}
+            </div>
+          ) : null}
+          {(localError ?? mutation.error?.message) ? (
+            <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {localError ?? mutation.error?.message}
+            </div>
+          ) : null}
+        </FieldGroup>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">
+              <XCircle data-icon="inline-start" />
+              Cancel
+            </Button>
+          </DialogClose>
+          <Button
+            disabled={mutation.isPending || datasets.length === 0 || scorers.length === 0}
+            onClick={() => {
+              setLocalError(null);
+              if (!name.trim()) {
+                setLocalError("Name is required.");
+                return;
+              }
+              if (!datasetId || !scorerId) {
+                setLocalError("Select a dataset and scorer.");
+                return;
+              }
+              if (!solverName.trim()) {
+                setLocalError("Solver name is required.");
+                return;
+              }
+              void mutation.mutateAsync();
+            }}
+            type="button"
+          >
+            <Plus data-icon="inline-start" />
+            {mutation.isPending ? "Creating..." : "Create experiment"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function StartExperimentRunButton({
+  experiment,
+  onStarted,
+  size = "sm",
+  variant = "default",
+}: {
+  experiment: Experiment;
+  onStarted: () => void;
+  size?: "sm" | "default";
+  variant?: "default" | "outline";
+}) {
+  const telemetryClient = useTelemetryClient();
+  const [localError, setLocalError] = useState<string | null>(null);
+  const mutation = useMutation({
+    mutationFn: () => {
+      const input: StartExperimentRunInput = { experimentId: experiment.id };
+      return telemetryClient.startExperimentRun(input);
+    },
+    onSuccess() {
+      onStarted();
+    },
+  });
+
+  return (
+    <div className="inline-flex flex-col items-end gap-1">
+      <Button
+        disabled={mutation.isPending}
+        onClick={(event) => {
+          event.stopPropagation();
+          setLocalError(null);
+          void mutation.mutateAsync().catch((caught) => {
+            setLocalError(caught instanceof Error ? caught.message : "Experiment run failed.");
+          });
+        }}
+        size={size}
+        type="button"
+        variant={variant}
+      >
+        <FlaskConical data-icon="inline-start" />
+        {mutation.isPending ? "Starting..." : "Run evaluation"}
+      </Button>
+      {localError ? <span className="max-w-48 text-xs text-destructive">{localError}</span> : null}
+    </div>
   );
 }
 
@@ -1872,61 +2699,6 @@ function Scoreboard({
   );
 }
 
-function OptimizationsView({
-  query,
-}: {
-  query: QueryResult<
-    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchExperiments"]>>
-  >;
-}) {
-  const runs = query.data?.items.flatMap((experiment) =>
-    (experiment.runs?.items ?? []).map((run) => ({ experiment, run })),
-  );
-
-  return (
-    <QueryFrame query={query}>
-      {query.data && query.data.items.length > 0 ? (
-        <div className="grid gap-4">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Candidate</TableHead>
-                <TableHead>{t("aiEval.experiment")}</TableHead>
-                <TableHead>{t("filters.status")}</TableHead>
-                <TableHead>{t("aiEval.dataset")}</TableHead>
-                <TableHead>Budget</TableHead>
-                <TableHead>Promotion gate</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(runs ?? []).map(({ experiment, run }) => (
-                <TableRow key={run.id}>
-                  <TableCell className="max-w-72 truncate">
-                    {jsonPreview(run.solverRef, 120)}
-                  </TableCell>
-                  <TableCell>{experiment.name}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={run.status} />
-                  </TableCell>
-                  <TableCell>
-                    {experiment.datasetId}@{experiment.datasetVersion}
-                  </TableCell>
-                  <TableCell className="max-w-56 truncate">
-                    {jsonPreview(run.manifest?.budget, 96) || t("value.none")}
-                  </TableCell>
-                  <TableCell className="max-w-72 truncate">
-                    {jsonPreview(run.summary, 120)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      ) : null}
-    </QueryFrame>
-  );
-}
-
 function ProductionView({
   qualityQuery,
   selectedProjectId,
@@ -1966,289 +2738,90 @@ function ProductionView({
             </Link>
           </Button>
         </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Policy</TableHead>
-              <TableHead>{t("filters.status")}</TableHead>
-              <TableHead>Sample rate</TableHead>
-              <TableHead>{t("aiEval.scorers")}</TableHead>
-              <TableHead>Budget</TableHead>
-              <TableHead>Target</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(settingsQuery.data?.onlinePolicies ?? []).map((policy) => (
-              <TableRow key={policy.id}>
-                <TableCell>{policy.name}</TableCell>
-                <TableCell>
-                  <StatusBadge status={policy.enabled ? "enabled" : "disabled"} />
-                </TableCell>
-                <TableCell>{formatPercent(policy.sampleRate)}</TableCell>
-                <TableCell>{policy.scorerIds.length}</TableCell>
-                <TableCell>{policy.maxDailyRuns ?? t("value.none")}</TableCell>
-                <TableCell className="max-w-80 truncate">
-                  {jsonPreview(policy.target, 140)}
-                </TableCell>
+        {(settingsQuery.data?.onlinePolicies ?? []).length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Policy</TableHead>
+                <TableHead>{t("filters.status")}</TableHead>
+                <TableHead>Sample rate</TableHead>
+                <TableHead>{t("aiEval.scorers")}</TableHead>
+                <TableHead>Budget</TableHead>
+                <TableHead>Target</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {(settingsQuery.data?.onlinePolicies ?? []).map((policy) => (
+                <TableRow key={policy.id}>
+                  <TableCell>{policy.name}</TableCell>
+                  <TableCell>
+                    <StatusBadge status={policy.enabled ? "enabled" : "disabled"} />
+                  </TableCell>
+                  <TableCell>{formatPercent(policy.sampleRate)}</TableCell>
+                  <TableCell>{policy.scorerIds.length}</TableCell>
+                  <TableCell>{policy.maxDailyRuns ?? t("value.none")}</TableCell>
+                  <TableCell className="max-w-80 truncate">
+                    {describePolicyTarget(policy.target)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <div className="border border-dashed p-6 text-sm">
+            <h3 className="font-medium">Production scoring is not configured</h3>
+            <p className="mt-1 text-muted-foreground">
+              Create an online policy in Project Settings when you are ready to sample production
+              traffic with deterministic scorers.
+            </p>
+            <Button asChild className="mt-3" size="sm" variant="outline">
+              <Link to={`/projects/${encodeURIComponent(selectedProjectId)}/settings/ai-eval`}>
+                <Settings data-icon="inline-start" />
+                Configure policy
+              </Link>
+            </Button>
+          </div>
+        )}
       </section>
       <section>
         <h2 className="mb-2 text-sm font-medium">Quality trend segments</h2>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Segment</TableHead>
-              <TableHead>Runs</TableHead>
-              <TableHead>Scored</TableHead>
-              <TableHead>{t("aiEval.passRate")}</TableHead>
-              <TableHead>{t("aiEval.meanScore")}</TableHead>
-              <TableHead>p95 latency</TableHead>
-              <TableHead>{t("aiEval.cost")}</TableHead>
-              <TableHead>{t("aiEval.regression")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {(qualityQuery.data?.segments ?? []).map((segment) => (
-              <TableRow key={segment.key}>
-                <TableCell>{segment.label}</TableCell>
-                <TableCell>{segment.runCount}</TableCell>
-                <TableCell>{segment.scoredRunCount}</TableCell>
-                <TableCell>{formatPercent(segment.passRate)}</TableCell>
-                <TableCell>{formatNumber(segment.meanScore)}</TableCell>
-                <TableCell>{formatMs(segment.p95LatencyMs)}</TableCell>
-                <TableCell>{formatUsd(segment.costUsd)}</TableCell>
-                <TableCell>{segment.regressionCount}</TableCell>
+        {(qualityQuery.data?.segments ?? []).length > 0 ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Segment</TableHead>
+                <TableHead>Runs</TableHead>
+                <TableHead>Scored</TableHead>
+                <TableHead>{t("aiEval.passRate")}</TableHead>
+                <TableHead>{t("aiEval.meanScore")}</TableHead>
+                <TableHead>p95 latency</TableHead>
+                <TableHead>{t("aiEval.cost")}</TableHead>
+                <TableHead>{t("aiEval.regression")}</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {(qualityQuery.data?.segments ?? []).map((segment) => (
+                <TableRow key={segment.key}>
+                  <TableCell>{segment.label}</TableCell>
+                  <TableCell>{segment.runCount}</TableCell>
+                  <TableCell>{segment.scoredRunCount}</TableCell>
+                  <TableCell>{formatPercent(segment.passRate)}</TableCell>
+                  <TableCell>{formatNumber(segment.meanScore)}</TableCell>
+                  <TableCell>{formatMs(segment.p95LatencyMs)}</TableCell>
+                  <TableCell>{formatUsd(segment.costUsd)}</TableCell>
+                  <TableCell>{segment.regressionCount}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <div className="border border-dashed p-6 text-sm text-muted-foreground">
+            No online scoring results yet. Quality trends appear after enabled policies score
+            production traffic.
+          </div>
+        )}
       </section>
     </div>
-  );
-}
-
-function AnnotationQueueView({
-  query,
-  onSelect,
-  selectedId,
-}: {
-  query: QueryResult<
-    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchAnnotationQueue"]>>
-  >;
-  onSelect: (id: string) => void;
-  selectedId: string | null;
-}) {
-  return (
-    <QueryFrame query={query}>
-      {query.data && query.data.items.length > 0 ? (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("aiEval.reason")}</TableHead>
-              <TableHead>{t("filters.status")}</TableHead>
-              <TableHead>{t("aiEval.assignee")}</TableHead>
-              <TableHead>{t("filters.traceId")}</TableHead>
-              <TableHead>{t("filters.spanId")}</TableHead>
-              <TableHead>{t("aiEval.created")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {query.data.items.map((item) => (
-              <TableRow
-                aria-selected={item.id === selectedId}
-                key={item.id}
-                onClick={() => onSelect(item.id)}
-              >
-                <TableCell>{item.reason}</TableCell>
-                <TableCell>
-                  <StatusBadge status={item.status} />
-                </TableCell>
-                <TableCell>{item.assignedTo ?? t("value.none")}</TableCell>
-                <TableCell>
-                  <Link
-                    className="text-primary underline-offset-4 hover:underline"
-                    to={`/traces/${item.targetTraceId}`}
-                  >
-                    {item.targetTraceId}
-                  </Link>
-                </TableCell>
-                <TableCell>{item.targetSpanId ?? t("value.none")}</TableCell>
-                <TableCell>{item.createdAt}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      ) : null}
-    </QueryFrame>
-  );
-}
-
-function AiEvalInspector({
-  annotation,
-  dataset,
-  experiment,
-  run,
-  scorer,
-  settings,
-  tab,
-}: {
-  annotation: AnnotationQueueItem | null;
-  dataset: Dataset | null;
-  experiment: Experiment | null;
-  run: AgentRun | null;
-  scorer: Scorer | null;
-  settings: ProjectAiSettings | null;
-  tab: AiEvalTab;
-}) {
-  if (tab === "overview") {
-    return settings ? <SettingsInspector settings={settings} /> : <InspectorEmpty />;
-  }
-  if (tab === "runs") {
-    return run ? <AgentRunDetail run={run} /> : <InspectorEmpty />;
-  }
-  if (tab === "datasets") {
-    return dataset ? <DatasetInspector dataset={dataset} /> : <InspectorEmpty />;
-  }
-  if (tab === "scorers") {
-    return scorer ? <ScorerInspector scorer={scorer} /> : <InspectorEmpty />;
-  }
-  if (tab === "experiments") {
-    return experiment ? <ExperimentInspector experiment={experiment} /> : <InspectorEmpty />;
-  }
-  if (tab === "optimizations") {
-    return experiment ? <ExperimentInspector experiment={experiment} /> : <InspectorEmpty />;
-  }
-  if (tab === "production") {
-    return settings ? <SettingsInspector settings={settings} /> : <InspectorEmpty />;
-  }
-  return annotation ? <AnnotationInspector annotation={annotation} /> : <InspectorEmpty />;
-}
-
-function InspectorEmpty() {
-  return <p className="text-sm text-muted-foreground">{t("aiEval.selectRow")}</p>;
-}
-
-function DatasetInspector({ dataset }: { dataset: Dataset }) {
-  return (
-    <section className="grid gap-3 text-sm">
-      <h2 className="font-semibold">{dataset.name}</h2>
-      <Metric label={t("aiEval.version")} value={dataset.version} />
-      <Metric label={t("aiEval.items")} value={dataset.itemCount} />
-      <Metric label="Reviewed" value={dataset.reviewedItemCount} />
-      <Metric label="Health" value={dataset.health.status} />
-      <Metric label="Duplicate candidates" value={dataset.health.duplicateCandidateCount} />
-      <Metric label="Leakage warnings" value={dataset.health.leakageWarningCount} />
-    </section>
-  );
-}
-
-function ScorerInspector({ scorer }: { scorer: Scorer }) {
-  return (
-    <section className="grid gap-3 text-sm">
-      <h2 className="font-semibold">{scorer.name}</h2>
-      <Metric label={t("aiEval.kind")} value={scorer.kind} />
-      <Metric label={t("aiEval.version")} value={scorer.version} />
-      <CodeBlock
-        code={JSON.stringify(scorer.definition, null, 2)}
-        language="json"
-        maxHeightClassName="max-h-56"
-        title={t("aiEval.definition")}
-      />
-    </section>
-  );
-}
-
-function ExperimentInspector({ experiment }: { experiment: Experiment }) {
-  return (
-    <section className="grid gap-3 text-sm">
-      <h2 className="font-semibold">{experiment.name}</h2>
-      <Metric
-        label={t("aiEval.dataset")}
-        value={
-          experiment.datasetId
-            ? `${experiment.datasetId}@${experiment.datasetVersion}`
-            : t("value.none")
-        }
-      />
-      <Metric label={t("aiEval.tags")} value={experiment.tags.join(", ") || t("value.none")} />
-    </section>
-  );
-}
-
-function AnnotationInspector({ annotation }: { annotation: AnnotationQueueItem }) {
-  return (
-    <section className="grid gap-3 text-sm">
-      <h2 className="font-semibold">{annotation.reason}</h2>
-      <Metric label={t("filters.status")} value={annotation.status} />
-      <Metric label={t("aiEval.assignee")} value={annotation.assignedTo ?? t("value.none")} />
-      <Metric label={t("aiEval.scorer")} value={annotation.scorerId ?? t("value.none")} />
-      <Metric label={t("aiEval.meanScore")} value={formatNumber(annotation.score)} />
-      <Button asChild variant="outline">
-        <Link to={`/traces/${annotation.targetTraceId}`}>
-          <ExternalLink data-icon="inline-start" />
-          {t("traceDetail.traceStructure")}
-        </Link>
-      </Button>
-    </section>
-  );
-}
-
-function SettingsInspector({ settings }: { settings: ProjectAiSettings }) {
-  return (
-    <section className="grid gap-3 text-sm">
-      <h2 className="font-semibold">Project AI Eval settings</h2>
-      <Metric label={t("filters.status")} value={settings.enabled ? "Enabled" : "Disabled"} />
-      <Metric label="Provider profiles" value={settings.providerProfiles.length} />
-      <Metric label="Model aliases" value={settings.modelAliases.length} />
-      <Metric label="Online policies" value={settings.onlinePolicies.length} />
-      <Metric
-        label="Daily budget"
-        value={`${formatUsd(settings.budget.spentTodayUsd)} / ${formatUsd(settings.budget.dailyUsd)}`}
-      />
-      <Metric
-        label="Deterministic only"
-        value={settings.effective.deterministicOnly ? "Yes" : "No"}
-      />
-    </section>
-  );
-}
-
-function QueryFrame<T>({ query, children }: { query: QueryResult<T>; children: ReactNode }) {
-  if (query.isLoading) {
-    return <LoadingRows />;
-  }
-  if (query.isError) {
-    return <ErrorPanel error={query.error} onRetry={() => void query.refetch()} />;
-  }
-  if (query.isSuccess && hasNoItems(query.data)) {
-    return (
-      <EmptyState
-        filtered
-        primaryAction={
-          <Button asChild>
-            <Link to="/projects">
-              <FolderOpen data-icon="inline-start" />
-              {t("projects.checklist.aiEval.action")}
-            </Link>
-          </Button>
-        }
-      />
-    );
-  }
-  return children;
-}
-
-function hasNoItems(value: unknown) {
-  return (
-    Boolean(value) &&
-    typeof value === "object" &&
-    value !== null &&
-    "items" in value &&
-    Array.isArray(value.items) &&
-    value.items.length === 0
   );
 }
 
@@ -2271,24 +2844,14 @@ function Metric({ label, value }: { label: string; value: ReactNode }) {
 
 function readTab(value: string | null): AiEvalTab {
   if (
-    value === "overview" ||
     value === "datasets" ||
     value === "scorers" ||
     value === "experiments" ||
-    value === "optimizations" ||
-    value === "production" ||
-    value === "annotations"
+    value === "production"
   ) {
     return value;
   }
-  return "overview";
-}
-
-function readAgentRunStatus(value: string | null) {
-  if (value === "ok" || value === "error" || value === "unset" || value === "cancelled") {
-    return value;
-  }
-  return null;
+  return "datasets";
 }
 
 function readExperimentStatus(value: string | null) {
@@ -2299,13 +2862,6 @@ function readExperimentStatus(value: string | null) {
     value === "failed" ||
     value === "finished"
   ) {
-    return value;
-  }
-  return null;
-}
-
-function readAnnotationStatus(value: string | null) {
-  if (value === "open" || value === "in_review" || value === "resolved" || value === "dismissed") {
     return value;
   }
   return null;
@@ -2350,10 +2906,6 @@ function formatMs(value?: number | null) {
   return typeof value === "number" ? `${Math.round(value)} ms` : "–";
 }
 
-function formatMoney(value: { amount: number; currency: string } | null | undefined) {
-  return value ? `${value.amount.toFixed(4)} ${value.currency}` : "–";
-}
-
 function formatPercent(value?: number | null) {
   return typeof value === "number" ? `${(value * 100).toFixed(1)}%` : "–";
 }
@@ -2379,12 +2931,16 @@ function formatBytes(value?: number | null) {
   return `${(value / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
-function mappingDraft(targetPrefix: "input" | "expected" | "metadata", targetPath: string) {
+function mappingDraft(
+  targetPrefix: "input" | "expected" | "metadata",
+  targetPath: string,
+  sourceValue = "",
+) {
   return {
     id: `${targetPrefix}-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`,
     targetPath,
     sourceKind: "column" as const,
-    sourceValue: "",
+    sourceValue,
   };
 }
 
@@ -2521,45 +3077,6 @@ async function uploadDatasetImportFile(projectId: string, file: File) {
   return (await response.json()) as DatasetImportUploadResponse;
 }
 
-async function prepareDatasetImport(input: PrepareDatasetImportInput): Promise<DatasetImportJob> {
-  const data = await requestAiEvalGraphQL<{ prepareDatasetImport: DatasetImportJob }>(
-    "PrepareDatasetImport",
-    prepareDatasetImportOperation,
-    { input },
-  );
-  return data.prepareDatasetImport;
-}
-
-async function commitDatasetImport(input: CommitDatasetImportInput): Promise<DatasetImportJob> {
-  const data = await requestAiEvalGraphQL<{ commitDatasetImport: DatasetImportJob }>(
-    "CommitDatasetImport",
-    commitDatasetImportOperation,
-    { input },
-  );
-  return data.commitDatasetImport;
-}
-
-async function startDatasetExport(input: StartDatasetExportInput): Promise<DatasetExportJob> {
-  const data = await requestAiEvalGraphQL<{ startDatasetExport: DatasetExportJob }>(
-    "StartDatasetExport",
-    startDatasetExportOperation,
-    { input },
-  );
-  return data.startDatasetExport;
-}
-
-async function fetchDatasetExport(id: string): Promise<DatasetExportJob> {
-  const data = await requestAiEvalGraphQL<{ datasetExport: DatasetExportJob | null }>(
-    "DatasetExport",
-    datasetExportOperation,
-    { id },
-  );
-  if (!data.datasetExport) {
-    throw new Error("Dataset export job was not found.");
-  }
-  return data.datasetExport;
-}
-
 function downloadSameOriginExport(job: DatasetExportJob) {
   if (!job.downloadUrl) {
     throw new Error("Dataset export is not ready for download.");
@@ -2585,430 +3102,105 @@ function datasetExportFormatLabel(format: DatasetExportFormat) {
   return format.toUpperCase();
 }
 
-async function fetchAiQualityOverview(input: AiQualityOverviewInput): Promise<AiQualityOverview> {
-  const data = await requestAiEvalGraphQL<{ aiQualityOverview: AiQualityOverview }>(
-    "AiQualityOverview",
-    aiQualityOverviewOperation,
-    { input },
-  );
-  return data.aiQualityOverview;
+function buildScorerDefinition({
+  expectedValue,
+  expectedValueType,
+  matchField,
+  providerAlias,
+  rubric,
+  schemaName,
+  template,
+  threshold,
+}: {
+  expectedValue: string;
+  expectedValueType: ScorerExpectedValueType;
+  matchField: string;
+  providerAlias: string;
+  rubric: string;
+  schemaName: string;
+  template: ScorerTemplateId;
+  threshold: string;
+}): JSONValue {
+  const expected = coerceScorerExpectedValue(expectedValue, expectedValueType);
+  if (template === "exact") {
+    return { type: "exact_match", field: matchField.trim(), expected };
+  }
+  if (template === "json_schema") {
+    return { type: "json_schema", schemaRef: schemaName.trim() };
+  }
+  if (template === "semantic") {
+    return {
+      type: "semantic_similarity",
+      field: matchField.trim(),
+      expected,
+      threshold: Number.parseFloat(threshold) || 0.8,
+    };
+  }
+  if (template === "llm_judge") {
+    return {
+      type: "llm_judge",
+      providerAlias: providerAlias.trim(),
+      rubric: rubric.trim(),
+    };
+  }
+  return { type: "contains", field: matchField.trim(), expected };
 }
 
-async function fetchDatasets(input: DatasetSearchInput): Promise<DatasetSearchResult> {
-  const data = await requestAiEvalGraphQL<{ datasets: DatasetSearchResult }>(
-    "Datasets",
-    datasetsOperation,
-    {
-      input,
-    },
-  );
-  return data.datasets;
+function coerceScorerExpectedValue(value: string, valueType: ScorerExpectedValueType): JSONValue {
+  if (valueType === "number") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (valueType === "boolean") {
+    return value === "true";
+  }
+  if (valueType === "json") {
+    try {
+      return JSON.parse(value) as JSONValue;
+    } catch {
+      return value;
+    }
+  }
+  return value;
 }
 
-async function fetchExperiments(input: ExperimentSearchInput): Promise<ExperimentSearchResult> {
-  const data = await requestAiEvalGraphQL<{ experiments: ExperimentSearchResult }>(
-    "Experiments",
-    experimentsOperation,
-    { input },
-  );
-  return data.experiments;
+function describeScorerDefinition(scorer: Scorer) {
+  const definition = scorer.definition;
+  if (!definition || typeof definition !== "object" || Array.isArray(definition)) {
+    return scorer.kind;
+  }
+  const record = definition as Record<string, unknown>;
+  if (record.type === "contains") {
+    return `${String(record.field ?? "field")} contains ${String(record.expected ?? "value")}`;
+  }
+  if (record.type === "exact_match") {
+    return `${String(record.field ?? "field")} equals ${String(record.expected ?? "value")}`;
+  }
+  if (record.type === "json_schema") {
+    return `Schema ${String(record.schemaRef ?? "configured")}`;
+  }
+  if (record.type === "semantic_similarity") {
+    return `Semantic match at ${String(record.threshold ?? "threshold")}`;
+  }
+  if (record.type === "llm_judge") {
+    return `Judge rubric via ${String(record.providerAlias ?? "provider")}`;
+  }
+  return scorer.kind;
 }
 
-async function fetchAnnotationQueue(
-  input: AnnotationQueueSearchInput,
-): Promise<AnnotationQueueResult> {
-  const data = await requestAiEvalGraphQL<{ annotationQueue: AnnotationQueueResult }>(
-    "AnnotationQueue",
-    annotationQueueOperation,
-    { input },
-  );
-  return data.annotationQueue;
+function describePolicyTarget(target: JSONValue) {
+  if (!target || typeof target !== "object" || Array.isArray(target)) {
+    return "Configured target";
+  }
+  const record = target as Record<string, unknown>;
+  const parts = [
+    record.serviceName,
+    record.route,
+    record.environment,
+    record.model,
+    record.promptVersion,
+  ]
+    .filter((part): part is string => typeof part === "string" && part.length > 0)
+    .slice(0, 3);
+  return parts.length > 0 ? parts.join(" / ") : "Configured target";
 }
-
-async function fetchProjectAiSettings(projectId: string): Promise<ProjectAiSettings> {
-  const data = await requestAiEvalGraphQL<{ projectAiSettings: ProjectAiSettings }>(
-    "ProjectAiSettings",
-    projectAiSettingsOperation,
-    { projectId },
-  );
-  return data.projectAiSettings;
-}
-
-async function requestAiEvalGraphQL<Data>(
-  operationName: string,
-  query: string,
-  variables: Record<string, unknown>,
-): Promise<Data> {
-  const response = await fetch(import.meta.env.VITE_CLOUDGRID_GRAPHQL_URL || "/graphql", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ operationName, query, variables }),
-  });
-  if (!response.ok) {
-    throw new Error(`GraphQL ${operationName} failed with HTTP ${response.status}`);
-  }
-  const payload = (await response.json()) as GraphQLResponse<Data>;
-  if (payload.errors?.length) {
-    throw new Error(payload.errors.map((error) => error.message).join("; "));
-  }
-  if (!payload.data) {
-    throw new Error(`GraphQL ${operationName} returned no data`);
-  }
-  return payload.data;
-}
-
-const projectAiSettingsOperation = `
-  query ProjectAiSettings($projectId: ID!) {
-    projectAiSettings(projectId: $projectId) {
-      projectId
-      enabled
-      providerProfiles {
-        id
-        label
-        providerKind
-        disabledAt
-      }
-      modelAliases {
-        id
-        name
-        providerProfileId
-        model
-        purpose
-      }
-      onlinePolicies {
-        id
-        enabled
-        name
-        target
-        scorerIds
-        sampleRate
-        maxDailyRuns
-        updatedAt
-        updatedByUserId
-      }
-      budget {
-        dailyUsd
-        perRunUsd
-        deterministicOnly
-        spentTodayUsd
-      }
-      sampling {
-        defaultOnlineSampleRate
-        maxOnlineSampleRate
-        maxConcurrentExperimentItems
-        maxConcurrentOptimizationCandidates
-      }
-      datasetDefaults {
-        splitAllocation
-        smallDatasetReviewedThreshold
-        requireReviewForRegression
-      }
-      effective {
-        warnings
-        deterministicOnly
-        missingProviderProfiles
-        disabledProviderProfiles
-        budgetExhausted
-      }
-      version
-      updatedAt
-      updatedByUserId
-    }
-  }
-`;
-
-const datasetItemFields = `
-  id
-  datasetId
-  version
-  input
-  expected
-  metadata
-  sourceTraceId
-  sourceSpanId
-  split
-  reviewStatus
-  synthetic
-  duplicateOfItemId
-  leakageWarnings
-`;
-
-const evalResultFields = `
-  id
-  scorerId
-  scorerVersion
-  targetKind
-  targetId
-  experimentRunId
-  score
-  passed
-  evidence
-  judgeRunRef
-  producedAt
-`;
-
-const datasetItemRunFields = `
-  id
-  experimentRunId
-  datasetItemId
-  harnessRunId
-  output
-  latencyMs
-  tokenTotals {
-    input
-    output
-    total
-  }
-  evalResults {
-    ${evalResultFields}
-  }
-`;
-
-const experimentRunFields = `
-  id
-  experimentId
-  solverRef
-  manifest {
-    digest
-    datasetId
-    datasetVersion
-    splitSelector {
-      splits
-      reviewedOnly
-      includeSynthetic
-    }
-    scorerRefs {
-      id
-      version
-    }
-    baselineRef
-    solverRef
-    promptVersionRefs
-    skillSnapshotRefs
-    toolSnapshotRefs
-    providerProfileRefs
-    budget
-    concurrency
-    createdAt
-  }
-  baselineRunId
-  status
-  startedAt
-  endedAt
-  summary
-  itemRuns {
-    items {
-      ${datasetItemRunFields}
-    }
-    nextCursor
-  }
-`;
-
-const datasetsOperation = `
-  query Datasets($input: DatasetSearchInput) {
-    datasets(input: $input) {
-      items {
-        id
-        name
-        description
-        version
-        createdAt
-        itemCount
-        reviewedItemCount
-        splitCounts
-        health {
-          status
-          reviewedItemCount
-          totalItemCount
-          splitCounts
-          duplicateCandidateCount
-          leakageWarningCount
-          missingExpectedCount
-          schemaIssueCount
-          smallDataset
-          warnings
-        }
-        tags
-        items {
-          items {
-            ${datasetItemFields}
-          }
-          nextCursor
-        }
-      }
-      nextCursor
-    }
-  }
-`;
-
-const datasetImportJobFields = `
-  id
-  datasetId
-  status
-  format
-  sourceFiles {
-    path
-    format
-    sizeBytes
-    rowCount
-    sha256
-  }
-  mapping
-  defaults
-  previewRows {
-    rowNumber
-    filePath
-    item {
-      input
-      expected
-      metadata
-      sourceTraceId
-      sourceSpanId
-      split
-      reviewStatus
-      synthetic
-    }
-    errors {
-      code
-      message
-      path
-    }
-    warnings {
-      code
-      message
-      path
-    }
-  }
-  totalRows
-  validRows
-  errorRows
-  warnings
-  createdAt
-  expiresAt
-  committedDatasetVersion
-`;
-
-const datasetExportJobFields = `
-  id
-  datasetId
-  datasetVersion
-  status
-  format
-  rowCount
-  sizeBytes
-  sha256
-  downloadUrl
-  createdAt
-  expiresAt
-`;
-
-const prepareDatasetImportOperation = `
-  mutation PrepareDatasetImport($input: PrepareDatasetImportInput!) {
-    prepareDatasetImport(input: $input) {
-      ${datasetImportJobFields}
-    }
-  }
-`;
-
-const commitDatasetImportOperation = `
-  mutation CommitDatasetImport($input: CommitDatasetImportInput!) {
-    commitDatasetImport(input: $input) {
-      ${datasetImportJobFields}
-    }
-  }
-`;
-
-const startDatasetExportOperation = `
-  mutation StartDatasetExport($input: StartDatasetExportInput!) {
-    startDatasetExport(input: $input) {
-      ${datasetExportJobFields}
-    }
-  }
-`;
-
-const datasetExportOperation = `
-  query DatasetExport($id: ID!) {
-    datasetExport(id: $id) {
-      ${datasetExportJobFields}
-    }
-  }
-`;
-
-const experimentsOperation = `
-  query Experiments($input: ExperimentSearchInput) {
-    experiments(input: $input) {
-      items {
-        id
-        name
-        datasetId
-        datasetVersion
-        splitSelector {
-          splits
-          reviewedOnly
-          includeSynthetic
-        }
-        scorerIds
-        baselineRef
-        promptVersionRefs
-        skillSnapshotRefs
-        toolSnapshotRefs
-        providerProfileRefs
-        createdAt
-        tags
-        runs {
-          items {
-            ${experimentRunFields}
-          }
-          nextCursor
-        }
-      }
-      nextCursor
-    }
-  }
-`;
-
-const annotationQueueOperation = `
-  query AnnotationQueue($input: AnnotationQueueSearchInput) {
-    annotationQueue(input: $input) {
-      items {
-        id
-        targetTraceId
-        targetSpanId
-        reason
-        assignedTo
-        status
-        createdAt
-        resolvedDatasetItemId
-        scorerId
-        score
-        evidence
-      }
-      nextCursor
-    }
-  }
-`;
-
-const aiQualityOverviewOperation = `
-  query AiQualityOverview($input: AiQualityOverviewInput!) {
-    aiQualityOverview(input: $input) {
-      projectId
-      from
-      to
-      summary
-      warnings
-      segments {
-        key
-        label
-        dimensions
-        runCount
-        scoredRunCount
-        passRate
-        meanScore
-        p50LatencyMs
-        p95LatencyMs
-        costUsd
-        regressionCount
-      }
-    }
-  }
-`;

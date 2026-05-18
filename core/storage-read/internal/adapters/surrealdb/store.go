@@ -61,8 +61,8 @@ func (store Store) GetProjectTelemetryOverviews(ctx context.Context, request con
 	return contracts.ProjectTelemetryOverviewData{Items: items}, nil
 }
 
-func (store Store) SearchTraces(ctx context.Context, query contracts.TraceSearchQuery) (contracts.TraceSearchData, error) {
-	stmt, err := BuildTraceSearchQuery(query)
+func (store Store) SearchTraces(ctx context.Context, query contracts.TraceSearchQuery, authContext *contracts.AuthContext) (contracts.TraceSearchData, error) {
+	stmt, err := BuildTraceSearchQuery(query, authContext)
 	if err != nil {
 		return contracts.TraceSearchData{}, err
 	}
@@ -76,8 +76,8 @@ func (store Store) SearchTraces(ctx context.Context, query contracts.TraceSearch
 	return contracts.TraceSearchData{Items: items}, nil
 }
 
-func (store Store) SearchLiveTraceCandidates(ctx context.Context, query contracts.LiveTraceQuery, traceIDs []string) ([]contracts.TraceSummary, error) {
-	stmt, err := BuildLiveTraceCandidatesQuery(query, traceIDs)
+func (store Store) SearchLiveTraceCandidates(ctx context.Context, query contracts.LiveTraceQuery, traceIDs []string, authContext *contracts.AuthContext) ([]contracts.TraceSummary, error) {
+	stmt, err := BuildLiveTraceCandidatesQuery(query, traceIDs, authContext)
 	if err != nil {
 		return nil, err
 	}
@@ -91,8 +91,8 @@ func (store Store) SearchLiveTraceCandidates(ctx context.Context, query contract
 	return items, nil
 }
 
-func (store Store) GetTraceDetail(ctx context.Context, traceID string, query *contracts.TraceDetailQuery) (*contracts.TraceDetailData, error) {
-	traceStmt, err := BuildTraceByIDQuery(traceID)
+func (store Store) GetTraceDetail(ctx context.Context, traceID string, query *contracts.TraceDetailQuery, authContext *contracts.AuthContext) (*contracts.TraceDetailData, error) {
+	traceStmt, err := BuildTraceByIDQuery(traceID, authContext)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func (store Store) GetTraceDetail(ctx context.Context, traceID string, query *co
 		return nil, fmt.Errorf("ERR-004 TRACE_NOT_FOUND: Trace was not found")
 	}
 
-	spansStmt, err := BuildSpansByTraceIDQuery(traceID)
+	spansStmt, err := BuildSpansByTraceIDQuery(traceID, authContext)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +114,7 @@ func (store Store) GetTraceDetail(ctx context.Context, traceID string, query *co
 	}
 	normalizeSpans(spans)
 
-	logsStmt, err := BuildLogsForTraceDetailQuery(traces[0], spans)
+	logsStmt, err := BuildLogsForTraceDetailQuery(traces[0], spans, authContext)
 	if err != nil {
 		return nil, err
 	}
@@ -128,8 +128,8 @@ func (store Store) GetTraceDetail(ctx context.Context, traceID string, query *co
 	return &data, nil
 }
 
-func (store Store) SearchLogs(ctx context.Context, query contracts.LogSearchQuery) (contracts.LogSearchData, error) {
-	stmt, err := BuildLogSearchQuery(query)
+func (store Store) SearchLogs(ctx context.Context, query contracts.LogSearchQuery, authContext *contracts.AuthContext) (contracts.LogSearchData, error) {
+	stmt, err := BuildLogSearchQuery(query, authContext)
 	if err != nil {
 		return contracts.LogSearchData{}, err
 	}
@@ -141,8 +141,8 @@ func (store Store) SearchLogs(ctx context.Context, query contracts.LogSearchQuer
 	return contracts.LogSearchData{Items: items}, nil
 }
 
-func (store Store) GetTelemetryFacets(ctx context.Context, query contracts.TelemetryFacetQuery) (contracts.TelemetryFacetData, error) {
-	stmts, err := BuildFacetQueries(query)
+func (store Store) GetTelemetryFacets(ctx context.Context, query contracts.TelemetryFacetQuery, authContext *contracts.AuthContext) (contracts.TelemetryFacetData, error) {
+	stmts, err := BuildFacetQueries(query, authContext)
 	if err != nil {
 		return contracts.TelemetryFacetData{}, err
 	}
@@ -433,9 +433,15 @@ func optionalFloat(value any) *float64 {
 	case nil:
 		return nil
 	case float64:
+		if finiteNumber(typed) != typed {
+			return nil
+		}
 		return &typed
 	case float32:
 		out := float64(typed)
+		if finiteNumber(out) != out {
+			return nil
+		}
 		return &out
 	case int:
 		out := float64(typed)

@@ -1,0 +1,40 @@
+{{- $root := . -}}
+{{- range $name, $svc := dict "cloudgrid-bff" .Values.bff "cloudgrid-otlp-collector" .Values.otlpCollector }}
+{{- if $svc.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "cloudgrid.fullname" $root }}-{{ trimPrefix "cloudgrid-" $name }}
+  labels:
+    {{- include "cloudgrid.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+  {{- with $svc.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if $svc.ingress.className }}
+  ingressClassName: {{ $svc.ingress.className }}
+  {{- end }}
+  {{- with $svc.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range $host := $svc.ingress.hosts }}
+    - host: {{ $host.host | quote }}
+      http:
+        paths:
+          {{- range $path := $host.paths }}
+          - path: {{ $path.path }}
+            pathType: {{ default "Prefix" $path.pathType }}
+            backend:
+              service:
+                name: {{ include "cloudgrid.fullname" $root }}-{{ trimPrefix "cloudgrid-" $name }}
+                port:
+                  name: http
+          {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}

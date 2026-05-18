@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -437,6 +438,7 @@ func BuildAIProjectionPersistQuery(command contracts.PersistAiProjectionCommand,
 	}
 
 	record := cloneMap(command.Projection)
+	delete(record, "id")
 	record["traceId"] = command.TraceID
 	record["spanId"] = command.SpanID
 	record["kind"] = string(command.Kind)
@@ -494,13 +496,28 @@ func BuildEvalMutationPersistQuery(subject string, request contracts.EvalMutatio
 		return "", nil, nil, err
 	}
 	record := cloneMap(data)
+	recordID := record["id"]
+	delete(record, "id")
 	normalizeRecordDateStrings(record)
 	addOwnership(record, target)
 
 	sql := fmt.Sprintf("BEGIN TRANSACTION;\nUPSERT type::record('%s', $record_id) CONTENT $record;\nCOMMIT TRANSACTION;", table)
 	vars := map[string]any{
-		"record_id": record["id"],
+		"record_id": recordID,
 		"record":    record,
+	}
+	if subject == "eval.dataset.items.append" {
+		datasetID := mapStringValue(request.Input, "datasetId")
+		version := mapIntValue(request.Input, "version")
+		sql = fmt.Sprintf(
+			"BEGIN TRANSACTION;\nUPSERT type::record('%s', $record_id) CONTENT $record;\nUPDATE type::record('ai_dataset', $dataset_id) SET version = $dataset_version, itemCount = (SELECT count() AS count FROM ai_dataset_item WHERE tenantId = $tenant_id AND companyId = $company_id AND projectId = $project_id AND datasetId = $dataset_id GROUP ALL)[0].count;\nCOMMIT TRANSACTION;",
+			table,
+		)
+		vars["dataset_id"] = datasetID
+		vars["dataset_version"] = version
+		vars["tenant_id"] = target.TenantID
+		vars["company_id"] = target.CompanyID
+		vars["project_id"] = target.ProjectID
 	}
 	return sql, vars, data, nil
 }
@@ -631,24 +648,37 @@ func evalMutationRecord(subject string, request contracts.EvalMutationRequest, o
 			if id == "" {
 				return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: eval result id is required")
 			}
+			if mapStringValue(result, "experimentId") != "" && mapStringValue(result, "status") != "" && mapStringValue(result, "scorerId") == "" {
+				record := cloneMap(result)
+				record["id"] = id
+				return "ai_experiment_run", record, nil
+			}
 			record := cloneMap(result)
 			if experimentRunID != "" {
 				record["experimentRunId"] = experimentRunID
 			} else if mapStringValue(record, "experimentRunId") == "" {
-				record["experimentRunId"] = nil
+				delete(record, "experimentRunId")
 			}
 			return "ai_eval_result", record, nil
 		}
 		if experimentRunID == "" {
 			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: experimentRunId is required")
 		}
-		return "ai_dataset_item_run", map[string]any{
-			"id":              stableRecordID("eval-results", request.RequestID, experimentRunID),
-			"experimentRunId": experimentRunID,
-			"itemRuns":        itemRuns,
-			"results":         results,
-			"persistedAt":     occurredAt.UTC(),
-		}, nil
+		itemRun := firstObject(itemRuns)
+		if len(itemRun) == 0 {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: itemRuns is required")
+		}
+		id := mapStringValue(itemRun, "id")
+		if id == "" {
+			id = stableRecordID("dataset-item-run", request.RequestID, experimentRunID)
+		}
+		record := cloneMap(itemRun)
+		record["id"] = id
+		if mapStringValue(record, "experimentRunId") == "" {
+			record["experimentRunId"] = experimentRunID
+		}
+		record["persistedAt"] = occurredAt.UTC()
+		return "ai_dataset_item_run", record, nil
 	case "eval.prompt_version.promote":
 		id := mapStringValue(request.Input, "promptVersionId")
 		tag := mapStringValue(request.Input, "tag")
@@ -931,16 +961,22 @@ type serviceRecord struct {
 
 func traceRecord(trace contracts.Trace, spanCount int, errorSpanCount int, logCount int, serviceCount int, target TelemetryTarget) map[string]any {
 	record := map[string]any{
-		"traceId":        trace.ID,
-		"startedAt":      trace.StartedAt.UTC(),
-		"attributes":     nonNilAttributes(trace.Attributes),
-		"spanCount":      spanCount,
-		"errorSpanCount": errorSpanCount,
-		"logCount":       logCount,
-		"serviceCount":   serviceCount,
+		"traceId":           trace.ID,
+		"startedAt":         trace.StartedAt.UTC(),
+		"startedAtUnixNano": unixNanoString(trace.StartedAt),
+		"attributes":        nonNilAttributes(trace.Attributes),
+		"spanCount":         spanCount,
+		"errorSpanCount":    errorSpanCount,
+		"logCount":          logCount,
+		"serviceCount":      serviceCount,
 	}
 	putStringPtr(record, "serviceName", trace.ServiceName)
-	putTimePtr(record, "endedAt", trace.EndedAt)
+	if trace.EndedAt != nil {
+		endedAtNano := unixNanoString(*trace.EndedAt)
+		record["endedAt"] = trace.EndedAt.UTC()
+		record["endedAtUnixNano"] = endedAtNano
+		record["durationNano"] = durationNanoString(trace.StartedAt, *trace.EndedAt)
+	}
 	putFloatPtr(record, "durationMs", trace.DurationMs)
 	putStringPtr(record, "rootSpanId", trace.RootSpanID)
 	putStatusPtr(record, "status", trace.Status)
@@ -950,15 +986,18 @@ func traceRecord(trace contracts.Trace, spanCount int, errorSpanCount int, logCo
 
 func spanRecord(span contracts.Span, target TelemetryTarget) map[string]any {
 	record := map[string]any{
-		"spanId":     span.ID,
-		"traceId":    span.TraceID,
-		"name":       span.Name,
-		"startedAt":  span.StartedAt.UTC(),
-		"endedAt":    span.EndedAt.UTC(),
-		"durationMs": span.DurationMs,
-		"attributes": nonNilAttributes(span.Attributes),
-		"events":     spanEvents(span.Events),
-		"links":      spanLinks(span.Links),
+		"spanId":            span.ID,
+		"traceId":           span.TraceID,
+		"name":              span.Name,
+		"startedAt":         span.StartedAt.UTC(),
+		"startedAtUnixNano": unixNanoString(span.StartedAt),
+		"endedAt":           span.EndedAt.UTC(),
+		"endedAtUnixNano":   unixNanoString(span.EndedAt),
+		"durationNano":      durationNanoString(span.StartedAt, span.EndedAt),
+		"durationMs":        span.DurationMs,
+		"attributes":        nonNilAttributes(span.Attributes),
+		"events":            spanEvents(span.Events),
+		"links":             spanLinks(span.Links),
 	}
 	putStringPtr(record, "parentSpanId", span.ParentSpanID)
 	putStringPtr(record, "kind", span.Kind)
@@ -994,12 +1033,25 @@ func spanEvents(events []contracts.SpanEvent) []map[string]any {
 	out := make([]map[string]any, 0, len(events))
 	for _, event := range events {
 		out = append(out, map[string]any{
-			"name":       event.Name,
-			"timestamp":  event.Timestamp.UTC(),
-			"attributes": nonNilAttributes(event.Attributes),
+			"name":              event.Name,
+			"timestamp":         event.Timestamp.UTC(),
+			"timestampUnixNano": unixNanoString(event.Timestamp),
+			"attributes":        nonNilAttributes(event.Attributes),
 		})
 	}
 	return out
+}
+
+func unixNanoString(value time.Time) string {
+	return strconv.FormatInt(value.UTC().UnixNano(), 10)
+}
+
+func durationNanoString(start time.Time, end time.Time) string {
+	duration := end.Sub(start)
+	if duration < 0 {
+		duration = 0
+	}
+	return strconv.FormatInt(duration.Nanoseconds(), 10)
 }
 
 func spanLinks(links []contracts.SpanLink) []map[string]any {
@@ -1125,10 +1177,15 @@ func cloneMap(input map[string]any) map[string]any {
 func normalizeRecordDateStrings(record map[string]any) {
 	for _, key := range []string{"startedAt", "endedAt", "createdAt", "producedAt", "persistedAt"} {
 		value, ok := record[key].(string)
-		if !ok || strings.TrimSpace(value) == "" {
+		if !ok {
 			continue
 		}
-		parsed, err := time.Parse(time.RFC3339, value)
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			delete(record, key)
+			continue
+		}
+		parsed, err := time.Parse(time.RFC3339Nano, trimmed)
 		if err != nil {
 			continue
 		}

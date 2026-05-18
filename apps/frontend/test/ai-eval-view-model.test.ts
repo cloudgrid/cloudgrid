@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { DatasetItemRun, ExperimentRun } from "@cloudgrid/ui-contracts";
 import {
-  aiEvalOverviewModel,
   agentRunTimelineRows,
+  aiEvalOverviewModel,
   experimentScoreboardRows,
   jsonPreview,
 } from "../src/features/ai-eval/view-model";

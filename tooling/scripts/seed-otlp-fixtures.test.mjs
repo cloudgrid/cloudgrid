@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildFixtureRequests,
+  createSeedRunContext,
   generatedFixture,
   parseSeedArgs,
   responseErrorMessage,
+  runSeed,
 } from "./seed-otlp-fixtures.mjs";
 
 describe("seed OTLP fixtures script", () => {
@@ -66,6 +68,42 @@ describe("seed OTLP fixtures script", () => {
     });
   });
 
+  test("uses local OTLP token environment variables in documented precedence", () => {
+    expect(
+      parseSeedArgs([], {
+        CLOUDGRID_OTLP_BEARER_TOKEN: "bearer-token",
+        CLOUDGRID_OTLP_TOKEN: "legacy-token",
+        CLOUDGRID_PROJECT_API_KEY: "project-api-key",
+      }).token,
+    ).toBe("bearer-token");
+    expect(
+      parseSeedArgs([], {
+        CLOUDGRID_OTLP_TOKEN: "legacy-token",
+        CLOUDGRID_PROJECT_API_KEY: "project-api-key",
+      }).token,
+    ).toBe("legacy-token");
+    expect(parseSeedArgs([], { CLOUDGRID_PROJECT_API_KEY: "project-api-key" }).token).toBe(
+      "project-api-key",
+    );
+  });
+
+  test("parses continuous ingest options and rejects static fixture sets", () => {
+    const options = parseSeedArgs(["--continuous", "--interval-ms", "1000", "--max-batches", "2"]);
+
+    expect(options).toMatchObject({
+      continuous: true,
+      intervalMs: 1000,
+      maxBatches: 2,
+      fixtureSet: "generated",
+    });
+    expect(() => parseSeedArgs(["--continuous", "--fixture-set", "contracts"])).toThrow(
+      "--continuous only supports --fixture-set generated",
+    );
+    expect(() => parseSeedArgs(["--interval-ms", "0"])).toThrow(
+      "--interval-ms must be a positive integer",
+    );
+  });
+
   test("reports collector failures with method, URL, status, and body", async () => {
     const message = await responseErrorMessage({
       method: "POST",
@@ -83,9 +121,11 @@ describe("seed OTLP fixtures script", () => {
   });
 
   test("generates rich development telemetry with larger traces, logs, and metrics", () => {
-    const traces = generatedFixture("rich-traces");
-    const logs = generatedFixture("rich-logs");
-    const metrics = generatedFixture("rich-metrics");
+    const nowMs = Date.UTC(2026, 4, 18, 12, 0, 0, 0);
+    const seedContext = createSeedRunContext(nowMs);
+    const traces = generatedFixture("rich-traces", seedContext);
+    const logs = generatedFixture("rich-logs", seedContext);
+    const metrics = generatedFixture("rich-metrics", seedContext);
     const spanCount = traces.resourceSpans.reduce(
       (sum, resourceSpan) =>
         sum +
@@ -110,6 +150,11 @@ describe("seed OTLP fixtures script", () => {
         .filter((value) => value && typeof value === "object" && "dataPoints" in value)
         .flatMap((value) => value.dataPoints.map((point) => Number(point.timeUnixNano) / 1e6)),
     );
+    const spanStartTimes = traces.resourceSpans.flatMap((resourceSpan) =>
+      resourceSpan.scopeSpans.flatMap((scopeSpan) =>
+        scopeSpan.spans.map((span) => Number(span.startTimeUnixNano) / 1e6),
+      ),
+    );
     const spansByTrace = new Map();
     for (const resourceSpan of traces.resourceSpans) {
       for (const scopeSpan of resourceSpan.scopeSpans) {
@@ -121,11 +166,13 @@ describe("seed OTLP fixtures script", () => {
       }
     }
 
-    expect(spanCount).toBeGreaterThanOrEqual(50);
-    expect(logCount).toBeGreaterThanOrEqual(15);
+    expect(spanCount).toBeGreaterThanOrEqual(1500);
+    expect(logCount).toBeGreaterThanOrEqual(450);
     expect(metricCount).toBeGreaterThanOrEqual(3);
-    expect(Math.max(...metricPointTimes)).toBeGreaterThan(Date.now() - 60 * 60 * 1000);
-    expect(Math.min(...metricPointTimes)).toBeLessThan(Date.now() + 60 * 1000);
+    expect(Math.min(...spanStartTimes)).toBe(Date.UTC(2026, 3, 18, 11, 59, 0, 0));
+    expect(Math.max(...spanStartTimes)).toBeLessThanOrEqual(nowMs);
+    expect(Math.min(...metricPointTimes)).toBe(Date.UTC(2026, 3, 18, 11, 59, 3, 0));
+    expect(Math.max(...metricPointTimes)).toBeLessThanOrEqual(nowMs);
     expect([...spansByTrace.keys()]).not.toContain("44444444444444444444444444444444");
     expect([...spansByTrace.keys()]).not.toContain("d4444444444444444444444444444444");
     for (const spans of spansByTrace.values()) {
@@ -147,5 +194,35 @@ describe("seed OTLP fixtures script", () => {
     );
     expect(logBodies.some((body) => body.includes("processed fixture step"))).toBe(false);
     expect(logBodies).toContain("Card authorization declined by issuer");
+  });
+
+  test("continuous mode posts fresh generated telemetry batches", async () => {
+    const decoder = new TextDecoder();
+    const postedTraceBodies = [];
+    const fetchImpl = async (_url, init) => {
+      if (init.headers["content-type"] === "application/json") {
+        const body = JSON.parse(decoder.decode(init.body));
+        if (body.resourceSpans) {
+          postedTraceBodies.push(body);
+        }
+      }
+      return { ok: true };
+    };
+
+    await runSeed(
+      {
+        ...parseSeedArgs(["--continuous", "--max-batches", "2", "--interval-ms", "1"]),
+        endpoint: "http://127.0.0.1:4318",
+      },
+      { fetchImpl, sleepImpl: async () => {}, log: () => {} },
+    );
+
+    expect(postedTraceBodies).toHaveLength(2);
+    const firstSpan = postedTraceBodies[0].resourceSpans[0].scopeSpans[0].spans[0];
+    const secondSpan = postedTraceBodies[1].resourceSpans[0].scopeSpans[0].spans[0];
+    expect(firstSpan.traceId).not.toBe(secondSpan.traceId);
+    expect(Number(secondSpan.startTimeUnixNano)).toBeGreaterThanOrEqual(
+      Number(firstSpan.startTimeUnixNano),
+    );
   });
 });

@@ -4,7 +4,7 @@ title: AI evaluation UX concept
 layer: frontend
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-16
+updated: 2026-05-17
 provenance: from-user
 depends_on: [TEC-FE-007, TEC-BE-024, TEC-BE-015, DSY-001]
 ---
@@ -30,16 +30,19 @@ feature is enabled by default and may be explicitly disabled with
 
 The app-wide 56px topbar remains the only app-wide navigation surface.
 
-Inside `/ai-eval`, use a route-local left rail with these sections:
+Inside `/ai-eval`, use a route-local left rail with only the user jobs that are
+owned by AI Eval:
 
-1. `Overview`
-2. `Runs`
-3. `Datasets`
-4. `Scorers`
-5. `Experiments`
-6. `Optimizations`
-7. `Production`
-8. `Annotations`
+1. `Datasets`
+2. `Scorers`
+3. `Experiments`
+4. `Production quality`
+
+Do not add `Overview`, `Runs`, `Agent runs`, `Annotations`, or `Optimizations`
+as route-local rail entries in v1. Production and experiment evidence must link
+to `/traces` when the user needs to inspect execution detail. Annotation work is
+surfaced from production quality or experiment result actions only when the
+approved mutation and queue contracts support the action.
 
 Project AI settings are not a primary AI Eval rail item. They live under the
 admin settings shell at `/projects/:projectId/settings/ai-eval` and are linked
@@ -47,18 +50,21 @@ from empty states and admin actions.
 
 ## Layout Rules
 
-- Route header, AI Eval rail, main workspace, and right inspector are
-  independent scroll containers.
+- Route header, AI Eval rail, and main workspace are independent scroll
+  containers.
 - Primary data surfaces are not wrapped in cards.
 - Use flat, border-led shadcn/Tailwind components.
-- Use tables for datasets, scorers, experiments, production policy lists, and
-  annotation queues.
-- Use a right inspector drawer for selected run, dataset item, scorer,
-  experiment, prompt candidate, policy, and annotation details.
-- On mobile, the AI Eval rail becomes a sheet and inspectors become bottom
-  sheets.
+- Use tables for datasets, dataset items, scorers, experiments, production
+  policy lists, and quality segments.
+- Do not render a permanent inspector that says "select a row" when no useful
+  detail is selected. Details live inline in the current workspace. If a future
+  detail surface needs an inspector, it opens only after a selection, is
+  resizable on desktop, becomes a sheet on mobile, and does not duplicate facts
+  already visible in the table.
 - Do not add hero sections, marketing copy, nested cards, decorative gradients,
   or dashboard-like global stats outside project context.
+- Do not show data that is not actionable in the current context. Repeated
+  values may appear once in the most useful place, not again in a side panel.
 
 ## First-Use Flow
 
@@ -67,58 +73,23 @@ It is not a landing page.
 
 Checklist rows:
 
-1. `Telemetry detected`: links to Traces when no AI spans exist.
-2. `Provider profile`: links to Project Settings / AI Eval.
-3. `Dataset`: creates a dataset or imports JSONL, JSON array, CSV, or ZIP
+1. `Dataset`: creates a dataset or imports JSONL, JSON array, CSV, or ZIP
    files.
-4. `Scorer`: creates a scorer from templates.
-5. `Baseline experiment`: starts a baseline run when dataset and scorer exist.
-6. `Production policy`: optional online scoring policy setup.
+2. `Scorer`: creates a scorer from templates.
+3. `Baseline experiment`: starts a baseline run when dataset and scorer exist.
+4. `Production policy`: optional online scoring policy setup in Project
+   Settings / AI Eval.
 
 Each row has one primary action and one status. The UI must not require users to
 understand NATS subjects, harness internals, trace IDs, scorer versions, or
 provider credential plumbing before their first deterministic eval.
 
-## Overview
+## Trace Evidence
 
-The overview summarizes the evaluation loop for the selected project:
-
-- latest production quality trend;
-- active baseline prompt/skill snapshot;
-- recent experiment comparisons;
-- dataset health;
-- annotation backlog;
-- budget use;
-- missing setup warnings.
-
-All summary values are GraphQL view models from storage-read or control-plane.
-The frontend does not compute scoreboards, dataset health, or budget state from
-raw rows.
-
-## Runs
-
-The Runs section shows observed agent runs and experiment-linked runs.
-
-Primary table columns:
-
-- start time;
-- agent;
-- status;
-- trace link;
-- duration;
-- token total;
-- cost estimate;
-- eval status;
-- experiment run;
-- annotation state.
-
-Selecting a row opens an inspector with:
-
-- transcript;
-- timeline of LLM/tool/retrieval calls;
-- eval results;
-- prompt/skill snapshot refs when present;
-- source trace and logs pivots.
+AI Eval does not duplicate Traces as an `Agent runs` page. Any production or
+experiment evidence row that needs execution inspection links to the existing
+Traces route with the right trace/span context. The AI Eval route only shows the
+evaluation assets and decisions around that evidence.
 
 ## Datasets
 
@@ -131,24 +102,31 @@ Primary workspace:
 - selected dataset item table with split, review status, input preview,
   expected preview, source trace/span, duplicate/leakage flags, and last result.
 
-Inspector:
+The dataset list and single-dataset workbench are separate route states. The
+Datasets section first shows a full-width dataset overview table. Selecting a
+dataset opens a dedicated dataset workbench that uses the available workspace
+width for row management, import/export, and review. The row editor must feel
+like a compact spreadsheet: visible columns for split, review status, input,
+expected output, source trace/span, and validation state. Users can create rows
+with structured controls, import bulk rows, and export datasets in v1. Product
+UI must not expose dead controls or internal implementation phrases such as
+`needs contract`.
 
-- full input and expected output;
-- metadata and schema validation issues;
-- source trace/span preview;
-- split assignment;
-- reviewer notes;
-- result history;
-- safe actions to move split, update expected output, mark reviewed, duplicate,
-  or remove from next version.
+Expected answers support two primary modes:
+
+- text answer: one text field stored under the canonical `answer` key;
+- JSON answer: users define expected output fields with name, type, and value
+  controls. Scorer creation can target known paths without asking users to
+  guess raw JSON paths.
 
 Dataset split colors must be stable and non-dominant. Split labels are text plus
 small swatches, not large badges.
 
 ### Dataset Import
 
-The dataset import experience is a compact side sheet launched from the Datasets
-workspace.
+Dataset import is a dedicated Datasets workflow view, reachable from the
+selected dataset toolbar and represented in the URL with route state. It must
+not be squeezed into a narrow side sheet.
 
 Flow:
 
@@ -166,7 +144,7 @@ Upload step:
 
 Mapping step:
 
-- uses form controls, not raw JSON editing, for common mappings;
+- uses form controls and presets, not raw JSON editing, for common mappings;
 - shows CSV columns or JSON path examples from previewable source fields;
 - maps into `input`, `expected`, `metadata`, source pointers, split, and review
   status;
@@ -213,9 +191,14 @@ The scorer editor uses progressive disclosure:
 4. thresholds;
 5. judge provider alias when needed.
 
-The UI must show scorer version and calibration state. It must not hide scorer
-definitions in opaque JSON for common templates; raw JSON is an advanced drawer
-section.
+The UI must show scorer version and calibration state. Common templates must be
+configured through form fields such as match field, expected value type,
+expected value, threshold, rubric text, and provider alias. Match field must be
+a selectable known path from expected/model output shapes, not a free-text
+input. Expected values support text, number, boolean, and JSON values. The
+primary create/edit path must not expose a raw JSON text field. A read-only
+technical definition preview may be available only when it helps debugging and
+does not become the main input surface.
 
 ## Experiments
 
@@ -246,9 +229,14 @@ Candidate promotion is always explicit. The UI must show why a candidate cannot
 be promoted: missing holdout, budget exceeded, quality regression, latency
 regression, cost regression, failed required scorer, or stale baseline.
 
+Experiment creation uses structured controls for solver kind/name, dataset
+version, split, and scorer selection. It must not require the user to author a
+solver JSON object.
+
 ## Optimizations
 
-Optimizations are experiment runs with optimizer manifests.
+Optimizations are experiment runs with optimizer manifests and are not a
+separate AI Eval rail entry until the contract is complete.
 
 Supported UX:
 

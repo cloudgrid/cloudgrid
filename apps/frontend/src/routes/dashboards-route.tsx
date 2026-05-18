@@ -4,6 +4,7 @@ import type {
   LogSearchInput,
   MetricAggregation,
   MetricChartType,
+  MetricDescriptor,
   MetricNameSearchInput,
   MetricSeriesInput,
   RichMetricSeriesInput,
@@ -36,7 +37,6 @@ import {
 import { type KeyboardEvent, type PointerEvent, type ReactNode, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ErrorPanel, LoadingRows } from "../components/query-state";
-import { RouteBreadcrumb } from "../components/route-breadcrumb";
 import { SearchInput } from "../components/search-input";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -95,7 +95,6 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
-import { Textarea } from "../components/ui/textarea";
 import {
   compactDashboardLayout,
   DASHBOARD_GRID_COLUMNS,
@@ -154,7 +153,7 @@ const metricAggregations: MetricAggregation[] = [
 ];
 
 export function DashboardsRoute() {
-  const { client, viewer } = useAppSession();
+  const { client } = useAppSession();
   const telemetryClient = useTelemetryClient();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -165,10 +164,6 @@ export function DashboardsRoute() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const dashboardId = searchParams.get("dashboard");
   const [fallbackRange] = useState(defaultDashboardRange);
-  const range = {
-    from: searchParams.get("from") ?? fallbackRange.from,
-    to: searchParams.get("to") ?? fallbackRange.to,
-  };
   const dashboardsQuery = useQuery({
     queryKey: queryKeys.dashboards({ includeBuiltins: true, query: query || null }),
     queryFn: () => client.getDashboards({ includeBuiltins: true, query: query || null }),
@@ -178,6 +173,37 @@ export function DashboardsRoute() {
     ? (dashboards.find((dashboard) => dashboard.id === dashboardId) ?? null)
     : null;
   const widgets = draft?.widgets ?? selectedDashboard?.widgets ?? [];
+  const dashboardMetricNames = metricNamesForDashboardWidgets(widgets);
+  const dashboardMetricDescriptorsQuery = useQuery({
+    enabled:
+      Boolean(selectedDashboard || draft) &&
+      dashboardMetricNames.length > 0 &&
+      (!searchParams.has("from") || !searchParams.has("to")),
+    queryKey: queryKeys.metricNames({
+      query: null,
+      service: null,
+      from: null,
+      to: null,
+      limit: 100,
+    }),
+    queryFn: () =>
+      telemetryClient.getMetricNames({
+        query: null,
+        service: null,
+        from: null,
+        to: null,
+        limit: 100,
+      }),
+  });
+  const observedRange = dashboardObservedMetricRange(
+    dashboardMetricDescriptorsQuery.data?.items.filter((descriptor) =>
+      dashboardMetricNames.includes(descriptor.name),
+    ) ?? [],
+  );
+  const range = {
+    from: searchParams.get("from") ?? observedRange?.from ?? fallbackRange.from,
+    to: searchParams.get("to") ?? observedRange?.to ?? fallbackRange.to,
+  };
   const inspectorWidget = widgets.find((widget) => widget.id === inspectorWidgetId) ?? null;
   const saveMutation = useMutation({
     mutationFn: client.saveDashboard,
@@ -341,19 +367,23 @@ export function DashboardsRoute() {
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
-      <header className="flex shrink-0 flex-wrap items-end justify-between gap-3 border-b pb-3">
-        <div className="min-w-0 space-y-2">
-          <RouteBreadcrumb
-            backLabel={t("actions.back")}
-            backTo="/projects"
-            items={[
-              { label: t("nav.projects"), to: "/projects" },
-              { label: viewer?.selectedProject?.name ?? t("projects.select"), to: "/projects" },
-              { label: t("dashboards.title") },
-            ]}
-          />
-          <h1 className="text-xl font-semibold tracking-normal">{t("dashboards.title")}</h1>
-          <p className="text-sm text-muted-foreground">{t("dashboards.description")}</p>
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b pb-2">
+        <div className="min-w-0">
+          {draft ? (
+            <Input
+              aria-label={t("dashboards.name")}
+              className="h-9 max-w-xl border-transparent px-0 text-xl font-semibold shadow-none focus-visible:border-input focus-visible:px-3"
+              onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+              value={draft.name}
+            />
+          ) : (
+            <h1 className="truncate text-xl font-semibold tracking-normal">
+              {selectedDashboard?.name ?? t("dashboards.title")}
+            </h1>
+          )}
+          {!selectedDashboard && !draft ? (
+            <p className="text-sm text-muted-foreground">{t("dashboards.description")}</p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <DashboardDateRangeControl onRangeChange={updateRange} range={range} />
@@ -424,12 +454,10 @@ export function DashboardsRoute() {
             ) : null}
             {selectedDashboard || draft ? (
               <DashboardCanvas
-                dashboard={selectedDashboard}
-                draft={draft}
                 onAddWidget={addWidget}
-                onDraftChange={setDraft}
                 onDuplicateWidget={duplicateWidget}
                 onEditWidget={openWidgetInspector}
+                isEditing={Boolean(draft)}
                 onMoveWidget={moveWidget}
                 onRemoveWidget={removeWidget}
                 onResizeWidget={resizeWidget}
@@ -737,6 +765,30 @@ function DashboardDateRangeControl({
           <Separator />
           <FieldGroup className="grid gap-3 sm:grid-cols-2">
             <Field>
+              <FieldLabel htmlFor="dashboard-range-from-date">Start date</FieldLabel>
+              <Input
+                id="dashboard-range-from-date"
+                onChange={(event) =>
+                  commitDates(withDatePart(fromDate, event.target.value), toDate)
+                }
+                type="date"
+                value={formatDateInput(fromDate)}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="dashboard-range-to-date">End date</FieldLabel>
+              <Input
+                id="dashboard-range-to-date"
+                onChange={(event) =>
+                  commitDates(fromDate, withDatePart(toDate, event.target.value))
+                }
+                type="date"
+                value={formatDateInput(toDate)}
+              />
+            </Field>
+          </FieldGroup>
+          <FieldGroup className="grid gap-3 sm:grid-cols-2">
+            <Field>
               <FieldLabel htmlFor="dashboard-range-from-time">{t("dashboards.from")}</FieldLabel>
               <Input
                 id="dashboard-range-from-time"
@@ -770,10 +822,8 @@ function DashboardDateRangeControl({
 }
 
 function DashboardCanvas({
-  dashboard,
-  draft,
+  isEditing,
   onAddWidget,
-  onDraftChange,
   onDuplicateWidget,
   onEditWidget,
   onMoveWidget,
@@ -784,10 +834,8 @@ function DashboardCanvas({
   telemetryClient,
   widgets,
 }: {
-  dashboard: Dashboard | null;
-  draft: SaveDashboardInput | null;
+  isEditing: boolean;
   onAddWidget: (kind: DashboardWidgetKind) => void;
-  onDraftChange: (draft: SaveDashboardInput | null) => void;
   onDuplicateWidget: (widgetId: string) => void;
   onEditWidget: (widgetId: string) => void;
   onMoveWidget: (widgetId: string, deltaX: number, deltaY: number) => void;
@@ -798,34 +846,9 @@ function DashboardCanvas({
   telemetryClient: ReturnType<typeof useTelemetryClient>;
   widgets: Array<DashboardWidget | SaveDashboardInput["widgets"][number]>;
 }) {
-  const editableDashboard = draft ?? dashboard;
-  const updateDashboardDraft = (patch: Partial<SaveDashboardInput>) => {
-    onDraftChange({
-      ...(draft ?? editableDashboardDraft(dashboard)),
-      ...patch,
-    });
-  };
-
   return (
     <div className="flex min-h-full flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="grid min-w-0 flex-1 gap-2">
-          <Input
-            aria-label={t("dashboards.name")}
-            className="h-10 border-transparent px-0 text-lg font-semibold shadow-none focus-visible:border-input focus-visible:px-3"
-            onChange={(event) => updateDashboardDraft({ name: event.target.value })}
-            value={editableDashboard?.name ?? t("dashboards.untitled")}
-          />
-          <Textarea
-            aria-label={t("dashboards.descriptionField")}
-            className="min-h-10 resize-none border-transparent px-0 py-1 text-sm text-muted-foreground shadow-none focus-visible:border-input focus-visible:px-3"
-            onChange={(event) =>
-              updateDashboardDraft({ description: stringOrNull(event.target.value) })
-            }
-            placeholder={t("dashboards.descriptionPlaceholder")}
-            value={editableDashboard?.description ?? ""}
-          />
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <AddWidgetButton onAddWidget={onAddWidget} />
       </div>
       {widgets.length === 0 ? (
@@ -842,7 +865,7 @@ function DashboardCanvas({
         >
           {widgets.map((widget) => (
             <DashboardWidgetFrame
-              isEditing={Boolean(draft)}
+              isEditing={isEditing}
               isSelected={selectedWidgetId === widget.id}
               key={widget.id}
               onDuplicate={() => onDuplicateWidget(widget.id)}
@@ -1433,6 +1456,13 @@ function latestMetricPoint(result: MetricSeriesResultData) {
 function seriesLabel(labels: JSONValue) {
   if (!labels || (typeof labels === "object" && Object.keys(labels).length === 0)) {
     return t("value.all");
+  }
+  if (typeof labels === "object" && !Array.isArray(labels)) {
+    const entries = Object.entries(labels);
+    if (entries.length === 1) {
+      return String(entries[0]?.[1] ?? t("value.none"));
+    }
+    return entries.map(([key, value]) => `${key}: ${String(value)}`).join(", ");
   }
   return jsonPreview(labels);
 }
@@ -3124,6 +3154,35 @@ function defaultDashboardRange() {
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
+function metricNamesForDashboardWidgets(
+  widgets: Array<DashboardWidget | SaveDashboardInput["widgets"][number]>,
+) {
+  return Array.from(
+    new Set(
+      widgets.flatMap((widget) => [
+        widget.metric?.metricName,
+        ...(widget.richMetric?.query.queries.map((query) => query.metricName) ?? []),
+      ]),
+    ),
+  ).filter((metricName): metricName is string => Boolean(metricName));
+}
+
+function dashboardObservedMetricRange(descriptors: MetricDescriptor[]) {
+  const timestamps = descriptors.flatMap((descriptor) => [
+    Date.parse(descriptor.firstSeenAt),
+    Date.parse(descriptor.lastSeenAt),
+  ]);
+  const validTimestamps = timestamps.filter(Number.isFinite);
+  if (validTimestamps.length === 0) {
+    return null;
+  }
+  const paddingMs = 10 * 60 * 1000;
+  return {
+    from: new Date(Math.min(...validTimestamps) - paddingMs).toISOString(),
+    to: new Date(Math.max(...validTimestamps) + paddingMs).toISOString(),
+  };
+}
+
 function parseDateValue(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? undefined : date;
@@ -3136,6 +3195,26 @@ function formatTimeInput(date: Date | undefined) {
   const hours = String(date.getHours()).padStart(2, "0");
   const minutes = String(date.getMinutes()).padStart(2, "0");
   return `${hours}:${minutes}`;
+}
+
+function formatDateInput(date: Date | undefined) {
+  if (!date) {
+    return "";
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+function withDatePart(date: Date | undefined, value: string) {
+  if (!date || !value) {
+    return date;
+  }
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) {
+    return date;
+  }
+  const next = new Date(date);
+  next.setFullYear(year, month - 1, day);
+  return next;
 }
 
 function withTime(date: Date, value: string) {

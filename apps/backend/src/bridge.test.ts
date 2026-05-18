@@ -2,9 +2,36 @@ import { describe, expect, test } from "bun:test";
 import { createLogger } from "@cloudgrid/runtime";
 import type { RetentionRuleInput } from "@cloudgrid/ui-contracts";
 import { JSONCodec, type NatsConnection } from "nats";
-import { NATSTelemetryQueryBridge } from "./bridge";
+import { MessageBridgeCloudGridBridge, NATSTelemetryQueryBridge } from "./bridge";
+import { NATSRequestReplyClient } from "./bridge/adapters/nats";
 
 describe("NATS telemetry query bridge", () => {
+  test("injects W3C trace context as NATS request headers", async () => {
+    const codec = JSONCodec<unknown>();
+    let traceparent = "";
+    let tracestate = "";
+    const connection = {
+      request: async (_subject: string, data: Uint8Array, options?: { headers?: Headers }) => {
+        traceparent = options?.headers?.get("traceparent") ?? "";
+        tracestate = options?.headers?.get("tracestate") ?? "";
+        const payload = codec.decode(data);
+        return { data: codec.encode(payload) };
+      },
+    } as unknown as NatsConnection;
+    const client = new NATSRequestReplyClient(connection);
+
+    await client.request("telemetry.traces.search", codec.encode({ requestId: "req-1" }), {
+      timeoutMs: 2000,
+      headers: {
+        traceparent: "00-11111111111111111111111111111111-2222222222222222-01",
+        tracestate: "vendor=value",
+      },
+    });
+
+    expect(traceparent).toBe("00-11111111111111111111111111111111-2222222222222222-01");
+    expect(tracestate).toBe("vendor=value");
+  });
+
   test("sends trace detail input as the telemetry.traces.get query", async () => {
     const codec = JSONCodec<unknown>();
     let subject = "";
@@ -85,7 +112,7 @@ describe("NATS telemetry query bridge", () => {
     const requests: Array<{ subject: string; payload: unknown }> = [];
     const connection = {
       request: async (requestedSubject: string, data: Uint8Array) => {
-        const payload = codec.decode(data);
+        const payload = codec.decode(data) as { subscriptionId?: string };
         requests.push({ subject: requestedSubject, payload });
         return {
           data: codec.encode({
@@ -265,6 +292,176 @@ describe("NATS telemetry query bridge", () => {
     expect(requests[4]?.payload).toMatchObject({ dashboardIds: ["dashboard-1"] });
   });
 
+  test("normalizes dashboard rich metric response arrays omitted by Go bridge JSON", async () => {
+    const codec = JSONCodec<unknown>();
+    const connection = {
+      request: async (_requestedSubject: string, data: Uint8Array) => {
+        const payload = codec.decode(data);
+        return {
+          data: codec.encode({
+            requestId: requestId(payload),
+            ok: true,
+            data: {
+              dashboard: {
+                ...dashboard(),
+                widgets: [
+                  {
+                    id: "widget-rich",
+                    title: "Latency comparison",
+                    kind: "metric_rich",
+                    layout: { x: 0, y: 0, w: 6, h: 4, minW: 3, minH: 2 },
+                    richMetric: {
+                      query: {
+                        timeWindow: "PT1H",
+                        interval: "PT1M",
+                        queries: [
+                          {
+                            id: "a",
+                            label: "Latency",
+                            metricName: "http.server.request.duration",
+                            aggregation: "p95",
+                            maxSeries: 20,
+                          },
+                        ],
+                      },
+                      visualization: "line",
+                      legend: true,
+                      maxSeries: 20,
+                    },
+                  },
+                ],
+              },
+            },
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+
+    const saved = await bridge.saveDashboard({
+      name: "Latency comparison",
+      widgets: [],
+    });
+
+    expect(saved.widgets[0]?.richMetric?.query.queries[0]?.groupBy).toEqual([]);
+    expect(saved.widgets[0]?.richMetric?.query.queries[0]?.filters).toEqual([]);
+    expect(saved.widgets[0]?.richMetric?.query.formulas).toEqual([]);
+    expect(saved.widgets[0]?.richMetric?.query.displaySeries).toEqual([]);
+    expect(saved.widgets[0]?.richMetric?.thresholds).toEqual([]);
+  });
+
+  test("normalizes lean dataset create responses to the public GraphQL dataset shape", async () => {
+    const codec = JSONCodec<unknown>();
+    let subject = "";
+    let payload: unknown;
+    const connection = {
+      request: async (requestedSubject: string, data: Uint8Array) => {
+        subject = requestedSubject;
+        payload = codec.decode(data);
+        return {
+          data: codec.encode({
+            requestId: requestId(payload),
+            ok: true,
+            data: {
+              id: "dataset-1",
+              name: "Regression",
+              description: null,
+              version: 1,
+              createdAt: "2026-05-17T10:00:00.000Z",
+              itemCount: 0,
+              health: null,
+              tags: null,
+            },
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+
+    const dataset = await bridge.createDataset({ name: "Regression", tags: ["nightly"] });
+
+    expect(subject).toBe("eval.dataset.create");
+    expect(payload).toMatchObject({
+      input: { name: "Regression", tags: ["nightly"] },
+    });
+    expect(dataset).toMatchObject({
+      id: "dataset-1",
+      name: "Regression",
+      itemCount: 0,
+      reviewedItemCount: 0,
+      splitCounts: {},
+      tags: [],
+      health: {
+        status: "needs_review",
+        reviewedItemCount: 0,
+        totalItemCount: 0,
+        splitCounts: {},
+        warnings: [],
+      },
+    });
+  });
+
+  test("normalizes lean experiment create responses to the public GraphQL experiment shape", async () => {
+    const codec = JSONCodec<unknown>();
+    let subject = "";
+    let payload: unknown;
+    const connection = {
+      request: async (requestedSubject: string, data: Uint8Array) => {
+        subject = requestedSubject;
+        payload = codec.decode(data);
+        return {
+          data: codec.encode({
+            requestId: requestId(payload),
+            ok: true,
+            data: {
+              id: "experiment-1",
+              name: "Regression",
+              datasetId: "dataset-1",
+              datasetVersion: 1,
+              scorerIds: ["scorer-1"],
+              createdAt: "2026-05-17T10:00:00.000Z",
+              tags: null,
+            },
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+
+    const experiment = await bridge.createExperiment({
+      name: "Regression",
+      datasetId: "dataset-1",
+      datasetVersion: 1,
+      scorerIds: ["scorer-1"],
+      solverRef: { kind: "integration" },
+    });
+
+    expect(subject).toBe("eval.experiment.create");
+    expect(payload).toMatchObject({
+      input: {
+        name: "Regression",
+        datasetId: "dataset-1",
+        scorerIds: ["scorer-1"],
+      },
+    });
+    expect(experiment).toMatchObject({
+      id: "experiment-1",
+      splitSelector: {
+        splits: ["validation"],
+        reviewedOnly: true,
+        includeSynthetic: false,
+      },
+      promptVersionRefs: [],
+      skillSnapshotRefs: [],
+      toolSnapshotRefs: [],
+      providerProfileRefs: [],
+      tags: [],
+    });
+  });
+
   test("sends project membership, retention, and alerting requests to control-plane subjects", async () => {
     const codec = JSONCodec<unknown>();
     const requests: Array<{ subject: string; payload: unknown }> = [];
@@ -386,6 +583,14 @@ describe("NATS telemetry query bridge", () => {
       { organizationId: "org-1", email: "ada@example.test" },
       { mode: "authenticated", authMode: "sso" },
     );
+    await bridge.inviteProjectMember(
+      { projectId: "project-1", email: "grace@example.test", role: "editor" },
+      { mode: "authenticated", authMode: "sso" },
+    );
+    await bridge.resendOrganizationInvitation("invite-1", {
+      mode: "authenticated",
+      authMode: "sso",
+    });
     await bridge.revokeOrganizationInvitation("invite-1", {
       mode: "authenticated",
       authMode: "sso",
@@ -395,6 +600,8 @@ describe("NATS telemetry query bridge", () => {
       "control.members.list",
       "control.invitations.list",
       "control.invitations.create",
+      "control.project_invitations.create",
+      "control.invitations.resend",
       "control.invitations.revoke",
     ]);
     expect(requests[0]?.payload).toMatchObject({
@@ -410,7 +617,13 @@ describe("NATS telemetry query bridge", () => {
       organizationId: "org-1",
       email: "ada@example.test",
     });
-    expect(requests[3]?.payload).toMatchObject({ invitationId: "invite-1" });
+    expect(requests[3]?.payload).toMatchObject({
+      projectId: "project-1",
+      email: "grace@example.test",
+      role: "editor",
+    });
+    expect(requests[4]?.payload).toMatchObject({ invitationId: "invite-1" });
+    expect(requests[5]?.payload).toMatchObject({ invitationId: "invite-1" });
   });
 
   test("starts live traces through storage-read and stops on iterator return", async () => {
@@ -496,6 +709,163 @@ describe("NATS telemetry query bridge", () => {
       "telemetry.traces.live.stop",
     ]);
   });
+
+  test("closes live trace subscriptions when no sink event arrives before the watchdog deadline", async () => {
+    const codec = JSONCodec<unknown>();
+    const requestedSubjects: string[] = [];
+    const requestReply = {
+      async request(subject: string, data: Uint8Array) {
+        requestedSubjects.push(subject);
+        const payload = codec.decode(data) as { subscriptionId?: string };
+        return codec.encode({
+          requestId: requestId(payload),
+          ok: true,
+          data:
+            subject === "telemetry.traces.live.start"
+              ? { subscriptionId: "sub-1", heartbeatIntervalMs: 15_000 }
+              : { subscriptionId: "sub-1" },
+        });
+      },
+    };
+    const pubSub = {
+      async subscribe() {
+        return {
+          async [Symbol.asyncDispose]() {},
+        };
+      },
+      async publish() {},
+    };
+    const bridge = new MessageBridgeCloudGridBridge(requestReply, 2000, createLogger("bff"), {
+      pubSub,
+      bffInstanceId: "bff-test",
+      subscriptionId: () => "sub-1",
+      liveTraceWatchdogMs: 10,
+    });
+
+    const iterator = bridge.subscribeLiveTraces({ service: "api", limit: 10 });
+    const result = await Promise.race([
+      iterator.next().then(
+        () => "resolved",
+        (error) => error,
+      ),
+      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 80)),
+    ]);
+    if (result !== "timeout") {
+      await iterator.return?.();
+    }
+
+    expect(result).not.toBe("timeout");
+    expect(result).toBeInstanceOf(Error);
+    expect(requestedSubjects).toEqual([
+      "telemetry.traces.live.start",
+      "telemetry.traces.live.stop",
+    ]);
+  });
+
+  test("cancels live trace subscriptions immediately while waiting for sink events", async () => {
+    const codec = JSONCodec<unknown>();
+    const requestedSubjects: string[] = [];
+    const requestReply = {
+      async request(subject: string, data: Uint8Array) {
+        requestedSubjects.push(subject);
+        const payload = codec.decode(data) as { subscriptionId?: string };
+        return codec.encode({
+          requestId: requestId(payload),
+          ok: true,
+          data:
+            subject === "telemetry.traces.live.start"
+              ? { subscriptionId: "sub-1", heartbeatIntervalMs: 15_000 }
+              : { subscriptionId: "sub-1" },
+        });
+      },
+    };
+    const pubSub = {
+      async subscribe() {
+        return {
+          async [Symbol.asyncDispose]() {},
+        };
+      },
+      async publish() {},
+    };
+    const bridge = new MessageBridgeCloudGridBridge(requestReply, 2000, createLogger("bff"), {
+      pubSub,
+      bffInstanceId: "bff-test",
+      subscriptionId: () => "sub-1",
+      liveTraceWatchdogMs: 10_000,
+    });
+
+    const iterator = bridge.subscribeLiveTraces({ service: "api", limit: 10 });
+    const pending = iterator.next();
+    await waitUntil(() => requestedSubjects.includes("telemetry.traces.live.start"), 80);
+
+    const result = await Promise.race([
+      iterator.return?.().then(() => "cancelled"),
+      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 80)),
+    ]);
+    await pending;
+
+    expect(result).toBe("cancelled");
+    expect(requestedSubjects).toEqual([
+      "telemetry.traces.live.start",
+      "telemetry.traces.live.stop",
+    ]);
+  });
+
+  test("uses the default crypto subscription id generator without binding errors", async () => {
+    const codec = JSONCodec<unknown>();
+    const requestedSubjects: string[] = [];
+    let sinkSubject = "";
+    const requestReply = {
+      async request(subject: string, data: Uint8Array) {
+        requestedSubjects.push(subject);
+        const payload = codec.decode(data) as { subscriptionId?: string };
+        return codec.encode({
+          requestId: requestId(payload),
+          ok: true,
+          data: { subscriptionId: payload.subscriptionId ?? "stopped", heartbeatIntervalMs: 15000 },
+        });
+      },
+    };
+    const pubSub = {
+      async subscribe(
+        subject: string,
+        onMessage: (message: { subject: string; data: Uint8Array }) => void,
+      ) {
+        sinkSubject = subject;
+        queueMicrotask(() =>
+          onMessage({
+            subject,
+            data: codec.encode({
+              type: "heartbeat",
+              seq: 1,
+              receivedAt: "2026-05-17T10:00:00.000Z",
+              trace: null,
+            }),
+          }),
+        );
+        return {
+          async [Symbol.asyncDispose]() {},
+        };
+      },
+      async publish() {},
+    };
+    const bridge = new MessageBridgeCloudGridBridge(requestReply, 2000, createLogger("bff"), {
+      pubSub,
+      bffInstanceId: "bff-test",
+      liveTraceWatchdogMs: 1000,
+    });
+
+    const iterator = bridge.subscribeLiveTraces({ service: "api", limit: 10 });
+    const first = await iterator.next();
+    await iterator.return?.();
+
+    expect(first.value).toMatchObject({ type: "heartbeat", seq: 1 });
+    expect(sinkSubject).toMatch(/^telemetry\.traces\.live\.events\.bff-test\.[0-9a-f-]+$/);
+    expect(requestedSubjects).toEqual([
+      "telemetry.traces.live.start",
+      "telemetry.traces.live.stop",
+    ]);
+  });
 });
 
 function requestId(payload: unknown): string {
@@ -508,6 +878,17 @@ function requestId(payload: unknown): string {
     return payload.requestId;
   }
   return "request-1";
+}
+
+async function waitUntil(predicate: () => boolean, timeoutMs: number) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  throw new Error("condition was not met before timeout");
 }
 
 function traceDetail() {
@@ -582,8 +963,27 @@ function controlResponseFor(subject: string) {
     case "control.invitations.list":
       return { items: [organizationInvitation()] };
     case "control.invitations.create":
+    case "control.invitations.resend":
     case "control.invitations.revoke":
       return { invitation: organizationInvitation() };
+    case "control.project_invitations.create":
+      return {
+        outcome: "invitation_pending",
+        invitation: organizationInvitation({
+          email: "grace@example.test",
+          projectGrants: [
+            {
+              projectId: "project-1",
+              role: "editor",
+              status: "pending",
+              createdAt: "2026-05-16T09:00:00.000Z",
+              createdByUserId: "admin-1",
+              appliedAt: null,
+            },
+          ],
+        }),
+        projectMember: null,
+      };
     case "control.retention.get":
     case "control.retention.update":
       return { policy: retentionPolicy() };
@@ -613,6 +1013,11 @@ function organizationInvitation(overrides: Record<string, unknown> = {}) {
     email: "ada@example.test",
     role: "user",
     status: "pending",
+    deliveryStatus: "suppressed",
+    lastDeliveryAttemptAt: null,
+    lastDeliveryErrorCode: null,
+    lastEmailDeliveryId: null,
+    projectGrants: [],
     invitedByUserId: "admin-1",
     acceptedByUserId: null,
     createdAt: "2026-05-16T09:00:00.000Z",

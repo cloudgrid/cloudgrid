@@ -1,0 +1,65 @@
+---
+/**
+ * Dynamic catch-all route for the handbook.
+ *
+ * Renders every entry in the `handbook` content collection at
+ * `/handbook/<path>`. Nested folder paths are preserved (e.g.
+ * `architecture/services.md` → `/handbook/architecture/services`). Both
+ * id-conventions for "folder index" pages are tolerated — Astro's glob
+ * loader may expose them as either `<folder>/index` or just `<folder>`.
+ */
+import { getCollection, render, type CollectionEntry } from "astro:content";
+import HandbookLayout from "../../components/handbook/HandbookLayout.astro";
+
+export async function getStaticPaths() {
+  // Slugs that have a dedicated static page in /pages/handbook/. The dynamic
+  // route skips them to avoid duplicate-route errors at build time.
+  const SHIM_SLUGS = new Set<string>([
+    "", // handled by index.astro
+    "getting-started",
+    "architecture",
+    "deployment",
+    "configuration",
+    "adapters",
+  ]);
+
+  // Locally scoped so Astro's getStaticPaths sandbox can see it.
+  const entryToSlug = (id: string): string => {
+    if (id === "" || id === "index") return "";
+    if (id.endsWith("/index")) return id.slice(0, -"/index".length);
+    return id;
+  };
+
+  const entries = await getCollection("handbook");
+  const seen = new Set<string>();
+  const out: { params: { slug: string }; props: { entry: CollectionEntry<"handbook"> } }[] = [];
+  for (const entry of entries) {
+    const slug = entryToSlug(entry.id);
+    if (SHIM_SLUGS.has(slug)) continue;
+    if (seen.has(slug)) continue;
+    seen.add(slug);
+    out.push({ params: { slug }, props: { entry } });
+  }
+  return out;
+}
+
+interface Props {
+  entry: CollectionEntry<"handbook">;
+}
+const { entry } = Astro.props;
+const { Content, headings } = await render(entry);
+
+const currentSlug = new URL(Astro.url).pathname.replace(/\/$/, "") || "/handbook";
+---
+
+<HandbookLayout
+  title={entry.data.title}
+  description={entry.data.description}
+  eyebrow={entry.data.eyebrow}
+  accent={entry.data.accent}
+  updated={entry.data.updated}
+  headings={headings}
+  currentSlug={currentSlug}
+>
+  <Content />
+</HandbookLayout>

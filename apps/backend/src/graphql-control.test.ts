@@ -6,10 +6,12 @@ import type {
   AlertSilence,
   CreateAlertRuleInput,
   CreateAlertSilenceInput,
-  InviteOrganizationMemberInput,
-  OrganizationInvitation,
   CreateProjectInput,
+  InviteOrganizationMemberInput,
+  InviteProjectMemberInput,
+  OrganizationInvitation,
   ProjectListInput,
+  ProjectInvitationResult,
   ProjectMember,
   ProjectRole,
   RemoveOrganizationMemberInput,
@@ -164,6 +166,33 @@ describe("BFF GraphQL control-plane resolvers", () => {
           calls.push(`invite:${input.organizationId}:${input.email}`);
           return invitation({ email: input.email });
         },
+        async inviteProjectMember(
+          input: InviteProjectMemberInput,
+          _authContext: NormalizedAuthContext,
+        ): Promise<ProjectInvitationResult> {
+          calls.push(`projectInvite:${input.projectId}:${input.email}:${input.role}`);
+          return {
+            outcome: "invitation_pending",
+            invitation: invitation({
+              email: input.email,
+              projectGrants: [
+                {
+                  projectId: input.projectId,
+                  role: input.role,
+                  status: "pending",
+                  createdAt: "2026-05-16T10:00:00.000Z",
+                  createdByUserId: "admin-1",
+                  appliedAt: null,
+                },
+              ],
+            }),
+            projectMember: null,
+          };
+        },
+        async resendOrganizationInvitation(id: string, _authContext: NormalizedAuthContext) {
+          calls.push(`resend:${id}`);
+          return invitation({ id, deliveryStatus: "pending" });
+        },
         async revokeOrganizationInvitation(id: string, _authContext: NormalizedAuthContext) {
           calls.push(`revoke:${id}`);
           return invitation({ id, status: "revoked", revokedAt: "2026-05-16T10:00:00.000Z" });
@@ -195,6 +224,23 @@ describe("BFF GraphQL control-plane resolvers", () => {
               email
               status
               role
+              deliveryStatus
+              projectGrants { projectId role status appliedAt }
+            }
+            inviteProjectMember(input: { projectId: "project-1", email: "Grace@Example.Test", role: editor }) {
+              outcome
+              invitation {
+                email
+                projectGrants { projectId role status }
+              }
+              projectMember {
+                userId
+                role
+              }
+            }
+            resendOrganizationInvitation(id: "invite-1") {
+              id
+              deliveryStatus
             }
             revokeOrganizationInvitation(id: "invite-1") {
               id
@@ -214,12 +260,26 @@ describe("BFF GraphQL control-plane resolvers", () => {
       "members:org-1",
       "invitations:org-1",
       "invite:org-1:Ada@Example.Test",
+      "projectInvite:project-1:Grace@Example.Test:editor",
+      "resend:invite-1",
       "revoke:invite-1",
     ]);
     expect(mutationBody.data.inviteOrganizationMember).toMatchObject({
       email: "Ada@Example.Test",
       status: "pending",
       role: "user",
+    });
+    expect(mutationBody.data.inviteProjectMember).toMatchObject({
+      outcome: "invitation_pending",
+      invitation: {
+        email: "Grace@Example.Test",
+        projectGrants: [{ projectId: "project-1", role: "editor", status: "pending" }],
+      },
+      projectMember: null,
+    });
+    expect(mutationBody.data.resendOrganizationInvitation).toMatchObject({
+      id: "invite-1",
+      deliveryStatus: "pending",
     });
     expect(mutationBody.data.revokeOrganizationInvitation).toMatchObject({
       id: "invite-1",

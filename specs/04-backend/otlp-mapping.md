@@ -26,6 +26,21 @@ OTLP exporters target projects through standard HTTP authorization metadata:
 - Local multi-project mode: `Authorization: Bearer <local-project-token>` where the collector maps the opaque bearer token to one local project.
 - Local single-project mode: the collector may use `CLOUDGRID_OTLP_LOCAL_PROJECT_ID`, or `default` when unset.
 
+Routing precedence is:
+
+1. Deployed bearer JWT claims when `CLOUDGRID_DEPLOYMENT_MODE=deployed`.
+2. Local bearer token map when `CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS` is
+   configured.
+3. Local single-project `CLOUDGRID_OTLP_LOCAL_PROJECT_ID` when no token map is
+   configured.
+4. Local fallback `default` when no token map and no local project ID are
+   configured.
+
+CloudGrid self-observability does not change local application-ingest fallback.
+Ordinary unauthenticated local OTLP must not silently route to
+`cloudgrid-system`. Self-observability reaches `cloudgrid-system` through the
+same bearer-token map as any other local multi-project ingest caller.
+
 This keeps OpenTelemetry spans portable and prevents one workload from spoofing another project by setting a mutable telemetry attribute.
 
 ## Attribute Mapping
@@ -43,6 +58,21 @@ Trace records are derived from spans grouped by trace ID:
 - `durationMs`: end minus start.
 - `rootSpanId`: span without parent span ID when exactly one exists; otherwise earliest span ID.
 - `status`: `error` if any span status is error, else `ok` if any span status is ok, else `unset`.
+
+Timestamp precision rules:
+
+- The collector must preserve OTLP `startTimeUnixNano`, `endTimeUnixNano`, span
+  event `timeUnixNano`, log `timeUnixNano`, and log `observedTimeUnixNano`
+  with nanosecond precision internally.
+- Storage may persist timestamps as native datetime values, but read contracts
+  used for trace waterfall layout must expose enough precision to distinguish
+  spans that start within the same second.
+- JSON/GraphQL fields that expose raw nanoseconds use decimal strings, not JSON
+  numbers, to avoid JavaScript integer precision loss.
+- `startedAt`, `endedAt`, and event/log timestamp ISO strings must be emitted
+  with millisecond-or-better precision whenever the source timestamp contains
+  sub-second precision. Truncating trace detail timestamps to whole seconds is
+  invalid.
 
 ## Span Event And Link Derivation
 

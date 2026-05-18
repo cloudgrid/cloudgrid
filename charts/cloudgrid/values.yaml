@@ -1,0 +1,313 @@
+global:
+  imageRegistry: ghcr.io/cloudgrid-dev
+  imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  capabilities:
+    drop:
+      - ALL
+
+deploymentMode: deployed
+authMode: sso
+
+session:
+  existingSecret: cloudgrid-session
+  secretKey: CLOUDGRID_SESSION_SECRET
+
+nats:
+  bundled:
+    enabled: false
+    image:
+      repository: nats
+      tag: "2.12.2-alpine"
+      digest: ""
+      pullPolicy: IfNotPresent
+    persistence:
+      enabled: true
+      size: 8Gi
+  external:
+    url: nats://nats.private:4222
+  service:
+    type: ClusterIP
+    port: 4222
+
+surrealdb:
+  bundled:
+    enabled: false
+    image:
+      repository: surrealdb/surrealdb
+      tag: "v2.3.10"
+      digest: ""
+      pullPolicy: IfNotPresent
+    username: ""
+    password: ""
+    persistence:
+      enabled: true
+      size: 20Gi
+  external:
+    url: http://surrealdb.private:8000/rpc
+    existingSecret: cloudgrid-surrealdb
+    usernameKey: CLOUDGRID_SURREALDB_USERNAME
+    passwordKey: CLOUDGRID_SURREALDB_PASSWORD
+  namespace: observability
+  database: dev
+  service:
+    type: ClusterIP
+    port: 8000
+
+bff:
+  replicas: 2
+  image:
+    repository: cloudgrid-bff
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  env:
+    CLOUDGRID_BFF_PORT: "3000"
+    CLOUDGRID_GRAPHQL_UI: "false"
+  service:
+    type: ClusterIP
+    port: 3000
+    annotations: {}
+    labels: {}
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts: []
+    tls: []
+  resources: {}
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  priorityClassName: ""
+
+otlpCollector:
+  replicas: 2
+  image:
+    repository: cloudgrid-otlp-collector
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  env:
+    CLOUDGRID_OTLP_PORT: "4318"
+    CLOUDGRID_OTLP_GRPC_ADDR: "0.0.0.0:4317"
+  service:
+    type: ClusterIP
+    otlpHttpPort: 4318
+    otlpGrpcPort: 4317
+    annotations: {}
+    labels: {}
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts: []
+    tls: []
+  resources: {}
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  priorityClassName: ""
+
+storageRead:
+  replicas: 2
+  image:
+    repository: cloudgrid-storage-read
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  env:
+    CLOUDGRID_STORAGE_READ_HEALTH_PORT: "8081"
+  surrealdbSecret:
+    enabled: true
+  service:
+    type: ClusterIP
+    port: 8081
+    annotations: {}
+    labels: {}
+  resources: {}
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  priorityClassName: ""
+
+storageWrite:
+  replicas: 1
+  image:
+    repository: cloudgrid-storage-write
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  env:
+    CLOUDGRID_STORAGE_WRITE_HEALTH_PORT: "8082"
+    CLOUDGRID_STORAGE_WRITE_CONSUMER_MODE: pull
+  surrealdbSecret:
+    enabled: true
+  service:
+    type: ClusterIP
+    port: 8082
+    annotations: {}
+    labels: {}
+  resources: {}
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  priorityClassName: ""
+
+controlPlane:
+  replicas: 2
+  image:
+    repository: cloudgrid-control-plane
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  env:
+    CLOUDGRID_CONTROL_PLANE_HEALTH_PORT: "8084"
+  surrealdbSecret:
+    enabled: true
+  service:
+    type: ClusterIP
+    port: 8084
+    annotations: {}
+    labels: {}
+  resources: {}
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  priorityClassName: ""
+
+aiEvalRunner:
+  enabled: false
+  replicas: 1
+  image:
+    repository: cloudgrid-ai-eval-runner
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  env:
+    CLOUDGRID_AI_EVAL_ENABLED: "true"
+    CLOUDGRID_AI_EVAL_RUNNER_HEALTH_PORT: "8085"
+  service:
+    type: ClusterIP
+    port: 8085
+    annotations: {}
+    labels: {}
+  resources: {}
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  priorityClassName: ""
+
+alertEvaluator:
+  enabled: false
+  replicas: 1
+  image:
+    repository: cloudgrid-alert-evaluator
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  env:
+    CLOUDGRID_ALERT_EVALUATOR_HEALTH_PORT: "8086"
+  service:
+    type: ClusterIP
+    port: 8086
+    annotations: {}
+    labels: {}
+  resources: {}
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  priorityClassName: ""
+
+storageMaintenance:
+  enabled: false
+  replicas: 1
+  image:
+    repository: cloudgrid-storage-maintenance
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  env:
+    CLOUDGRID_STORAGE_MAINTENANCE_HEALTH_PORT: "8087"
+  surrealdbSecret:
+    enabled: true
+  service:
+    type: ClusterIP
+    port: 8087
+    annotations: {}
+    labels: {}
+  resources: {}
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 70
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  priorityClassName: ""

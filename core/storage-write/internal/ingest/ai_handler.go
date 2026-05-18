@@ -91,11 +91,15 @@ func HandleEvalMutationMessage(ctx context.Context, msg RequestMessage, store po
 		respondEvalMutation(ctx, msg, response, logger)
 		return
 	}
-	response := HandleEvalMutationRequest(ctx, msg.Subject(), request, store, publisher, now)
+	response := HandleEvalMutationRequestWithLogger(ctx, msg.Subject(), request, store, publisher, logger, now)
 	respondEvalMutation(ctx, msg, response, logger)
 }
 
 func HandleEvalMutationRequest(ctx context.Context, subject string, request contracts.EvalMutationRequest, store ports.AIWriteStore, publisher ports.AIEventPublisher, now func() time.Time) contracts.EvalMutationResponse {
+	return HandleEvalMutationRequestWithLogger(ctx, subject, request, store, publisher, nil, now)
+}
+
+func HandleEvalMutationRequestWithLogger(ctx context.Context, subject string, request contracts.EvalMutationRequest, store ports.AIWriteStore, publisher ports.AIEventPublisher, logger *slog.Logger, now func() time.Time) contracts.EvalMutationResponse {
 	if err := validateEvalMutationRequest(subject, request); err != nil {
 		return evalMutationErrorResponse(request.RequestID, validationBridgeError(err.Error()))
 	}
@@ -114,6 +118,7 @@ func HandleEvalMutationRequest(ctx context.Context, subject string, request cont
 		}
 		for _, appendRequest := range appendRequests {
 			if _, err := store.PersistEvalMutation(ctx, EvalDatasetItemsAppendSubject, appendRequest, now()); err != nil {
+				logEvalMutationStorageError(ctx, logger, EvalDatasetItemsAppendSubject, appendRequest.RequestID, err)
 				return evalMutationErrorResponse(request.RequestID, storageBridgeError())
 			}
 		}
@@ -127,6 +132,7 @@ func HandleEvalMutationRequest(ctx context.Context, subject string, request cont
 	occurredAt := now()
 	data, err := store.PersistEvalMutation(ctx, subject, request, occurredAt)
 	if err != nil {
+		logEvalMutationStorageError(ctx, logger, subject, request.RequestID, err)
 		return evalMutationErrorResponse(request.RequestID, storageBridgeError())
 	}
 
@@ -139,6 +145,13 @@ func HandleEvalMutationRequest(ctx context.Context, subject string, request cont
 		OK:        true,
 		Data:      data,
 	}
+}
+
+func logEvalMutationStorageError(ctx context.Context, logger *slog.Logger, subject string, requestID string, err error) {
+	if logger == nil || err == nil {
+		return
+	}
+	logger.ErrorContext(ctx, "eval mutation storage failed", "service", storageWriteService, "event", "eval_mutation_storage_failed", "request_id", requestID, "operation_or_subject", subject, "error", err.Error(), "error_id", storageErrorID, "error_code", storageErrorCode)
 }
 
 func BuildEvalMutationRecord(subject string, request contracts.EvalMutationRequest, now time.Time) (map[string]any, error) {

@@ -44,6 +44,7 @@ import { SearchInput } from "../components/search-input";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
 import {
   Dialog,
   DialogClose,
@@ -53,6 +54,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog";
+import { Field, FieldLabel } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import {
@@ -1341,7 +1343,7 @@ function ProjectAiEvalSettings({
     }
     const form = new FormData(event.currentTarget);
     setSaved(false);
-    updateMutation.mutate(toProjectAiSettingsInput(settings, form.get("enabled") === "on"));
+    updateMutation.mutate(toProjectAiSettingsInput(settings, form.get("enabled") === "on", form));
   }
 
   return (
@@ -1367,12 +1369,10 @@ function ProjectAiEvalSettings({
           </span>
           <div className="grid gap-3">
             <Label className="flex items-center gap-2 text-sm font-medium">
-              <input
-                className="size-4 accent-primary"
+              <Checkbox
                 defaultChecked={settingsQuery.data?.enabled ?? false}
                 disabled={!settingsQuery.data || updateMutation.isPending}
                 name="enabled"
-                type="checkbox"
               />
               {t("projects.settings.aiEvalEnabled")}
             </Label>
@@ -1418,6 +1418,117 @@ function ProjectAiEvalSettings({
             }
           />
         </div>
+
+        {settingsQuery.data ? (
+          <div className="grid gap-5 border-y py-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="ai-eval-default-provider">Default provider</FieldLabel>
+                <Input
+                  defaultValue={settingsQuery.data.defaultProviderProfileId ?? ""}
+                  id="ai-eval-default-provider"
+                  name="defaultProviderProfileId"
+                  placeholder="provider profile id"
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="ai-eval-default-judge">Default judge</FieldLabel>
+                <Input
+                  defaultValue={settingsQuery.data.defaultJudgeProfileId ?? ""}
+                  id="ai-eval-default-judge"
+                  name="defaultJudgeProfileId"
+                  placeholder="judge provider profile id"
+                />
+              </Field>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field>
+                <FieldLabel htmlFor="ai-eval-daily-budget">Daily budget USD</FieldLabel>
+                <Input
+                  defaultValue={settingsQuery.data.budget.dailyUsd}
+                  id="ai-eval-daily-budget"
+                  min="0"
+                  name="budgetDailyUsd"
+                  step="0.01"
+                  type="number"
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="ai-eval-per-run-budget">Per-run budget USD</FieldLabel>
+                <Input
+                  defaultValue={settingsQuery.data.budget.perRunUsd ?? ""}
+                  id="ai-eval-per-run-budget"
+                  min="0"
+                  name="budgetPerRunUsd"
+                  step="0.01"
+                  type="number"
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="ai-eval-max-items">Max parallel eval items</FieldLabel>
+                <Input
+                  defaultValue={settingsQuery.data.sampling.maxConcurrentExperimentItems}
+                  id="ai-eval-max-items"
+                  min="1"
+                  name="maxConcurrentExperimentItems"
+                  step="1"
+                  type="number"
+                />
+              </Field>
+            </div>
+            <div className="grid gap-2">
+              <h3 className="text-sm font-medium">Provider profiles</h3>
+              {settingsQuery.data.providerProfiles.length > 0 ? (
+                <div className="grid gap-2">
+                  {settingsQuery.data.providerProfiles.map((profile) => (
+                    <div
+                      className="grid gap-2 border px-3 py-2 sm:grid-cols-[minmax(0,1fr)_8rem_9rem]"
+                      key={profile.id}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{profile.label}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {profile.providerKind} · {profile.id}
+                        </p>
+                      </div>
+                      <Field>
+                        <FieldLabel htmlFor={`provider-timeout-${profile.id}`}>
+                          Timeout ms
+                        </FieldLabel>
+                        <Input
+                          defaultValue={profile.timeoutMs}
+                          id={`provider-timeout-${profile.id}`}
+                          min="1000"
+                          name={`provider.${profile.id}.timeoutMs`}
+                          step="1000"
+                          type="number"
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor={`provider-concurrency-${profile.id}`}>
+                          Max parallel
+                        </FieldLabel>
+                        <Input
+                          defaultValue={profile.maxConcurrency ?? ""}
+                          id={`provider-concurrency-${profile.id}`}
+                          min="1"
+                          name={`provider.${profile.id}.maxConcurrency`}
+                          step="1"
+                          type="number"
+                        />
+                      </Field>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="border border-dashed px-3 py-2 text-sm text-muted-foreground">
+                  No provider profile exists yet. Add provider profiles through this settings
+                  contract before enabling judge or optimizer flows.
+                </p>
+              )}
+            </div>
+          </div>
+        ) : null}
 
         {settingsQuery.data?.effective.warnings.length ? (
           <Alert>
@@ -1650,16 +1761,33 @@ function ProjectMembersSettings({
   project: Project;
 }) {
   const queryClient = useQueryClient();
-  const [userId, setUserId] = useState("");
+  const [email, setEmail] = useState("");
+  const [inviteOutcome, setInviteOutcome] = useState<string | null>(null);
   const [role, setRole] = useState<ProjectRole>("viewer");
   const membersQuery = useQuery({
     queryKey: queryKeys.projectMembers(project.id),
     queryFn: () => client.getProjectMembers(project.id),
   });
+  const inviteMutation = useMutation({
+    mutationFn: client.inviteProjectMember,
+    async onSuccess(result) {
+      setEmail("");
+      setInviteOutcome(
+        result.outcome === "membership_created"
+          ? t("projects.settings.memberAdded")
+          : t("projects.settings.memberInvited"),
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.projectMembers(project.id) }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.organizationInvitations(project.organizationId),
+        }),
+      ]);
+    },
+  });
   const updateMutation = useMutation({
     mutationFn: client.updateProjectMember,
     async onSuccess() {
-      setUserId("");
       await queryClient.invalidateQueries({ queryKey: queryKeys.projectMembers(project.id) });
     },
   });
@@ -1673,11 +1801,12 @@ function ProjectMembersSettings({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const trimmedUserId = userId.trim();
-    if (!trimmedUserId) {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!isLikelyEmail(trimmedEmail)) {
       return;
     }
-    updateMutation.mutate({ projectId: project.id, userId: trimmedUserId, role });
+    setInviteOutcome(null);
+    inviteMutation.mutate({ projectId: project.id, email: trimmedEmail, role });
   }
 
   const hasLocalPersonalMember = membersQuery.data?.some(
@@ -1699,12 +1828,13 @@ function ProjectMembersSettings({
           onSubmit={submit}
         >
           <div className="grid gap-1">
-            <Label htmlFor="project-member-user-id">{t("projects.settings.userId")}</Label>
+            <Label htmlFor="project-member-email">{t("projects.settings.memberEmail")}</Label>
             <Input
-              id="project-member-user-id"
-              onChange={(event) => setUserId(event.currentTarget.value)}
-              placeholder={t("projects.settings.userIdPlaceholder")}
-              value={userId}
+              id="project-member-email"
+              onChange={(event) => setEmail(event.currentTarget.value)}
+              placeholder={t("projects.settings.memberEmailPlaceholder")}
+              type="email"
+              value={email}
             />
           </div>
           <div className="grid gap-1">
@@ -1726,18 +1856,19 @@ function ProjectMembersSettings({
           </div>
           <Button
             className="self-end"
-            disabled={!userId.trim() || updateMutation.isPending}
+            disabled={!isLikelyEmail(email.trim()) || inviteMutation.isPending}
             type="submit"
           >
-            <Save data-icon="inline-start" />
-            {t("projects.settings.saveMember")}
+            <Plus data-icon="inline-start" />
+            {t("projects.settings.inviteMember")}
           </Button>
         </form>
       ) : null}
+      {inviteOutcome ? <p className="text-sm text-muted-foreground">{inviteOutcome}</p> : null}
       {membersQuery.isError ? (
         <p className="text-sm text-destructive">{t("projects.settings.membersLoadError")}</p>
       ) : null}
-      {updateMutation.isError || removeMutation.isError ? (
+      {inviteMutation.isError || updateMutation.isError || removeMutation.isError ? (
         <p className="text-sm text-destructive">{t("projects.settings.membersError")}</p>
       ) : null}
       <div className="min-h-0 overflow-auto border">
@@ -2280,6 +2411,10 @@ function ProjectSettingsBreadcrumb({
 const projectRoles: ProjectRole[] = ["viewer", "editor", "admin"];
 const retentionModes: RetentionMode[] = ["retain", "delete", "soft_delete_then_delete"];
 
+function isLikelyEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 function RoleBadge({ role }: { role: "admin" | "user" | "viewer" | "editor" }) {
   return <Badge variant={role === "admin" ? "default" : "secondary"}>{role}</Badge>;
 }
@@ -2396,15 +2531,24 @@ function numberField(value: FormDataEntryValue | null) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function stringField(value: FormDataEntryValue | null) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 function toProjectAiSettingsInput(
   settings: ProjectAiSettings,
   enabled: boolean,
+  form: FormData,
 ): UpdateProjectAiSettingsInput {
   return {
     projectId: settings.projectId,
     enabled,
-    defaultProviderProfileId: settings.defaultProviderProfileId ?? null,
-    defaultJudgeProfileId: settings.defaultJudgeProfileId ?? null,
+    defaultProviderProfileId:
+      stringField(form.get("defaultProviderProfileId")) ??
+      settings.defaultProviderProfileId ??
+      null,
+    defaultJudgeProfileId:
+      stringField(form.get("defaultJudgeProfileId")) ?? settings.defaultJudgeProfileId ?? null,
     defaultOptimizerProfileId: settings.defaultOptimizerProfileId ?? null,
     defaultEmbeddingProfileId: settings.defaultEmbeddingProfileId ?? null,
     providerProfiles: settings.providerProfiles.map((profile) => ({
@@ -2414,8 +2558,11 @@ function toProjectAiSettingsInput(
       baseUrl: profile.baseUrl ?? null,
       credentialRef: profile.credentialRef ?? null,
       models: profile.models,
-      timeoutMs: profile.timeoutMs,
-      maxConcurrency: profile.maxConcurrency ?? null,
+      timeoutMs: numberField(form.get(`provider.${profile.id}.timeoutMs`)) ?? profile.timeoutMs,
+      maxConcurrency:
+        numberField(form.get(`provider.${profile.id}.maxConcurrency`)) ??
+        profile.maxConcurrency ??
+        null,
       disabled: Boolean(profile.disabledAt),
     })),
     modelAliases: settings.modelAliases.map((alias) => ({
@@ -2442,11 +2589,16 @@ function toProjectAiSettingsInput(
       })),
     })),
     budget: {
-      dailyUsd: settings.budget.dailyUsd,
-      perRunUsd: settings.budget.perRunUsd ?? null,
+      dailyUsd: numberField(form.get("budgetDailyUsd")) ?? settings.budget.dailyUsd,
+      perRunUsd: numberField(form.get("budgetPerRunUsd")) ?? settings.budget.perRunUsd ?? null,
       deterministicOnly: settings.budget.deterministicOnly,
     },
-    sampling: settings.sampling,
+    sampling: {
+      ...settings.sampling,
+      maxConcurrentExperimentItems:
+        numberField(form.get("maxConcurrentExperimentItems")) ??
+        settings.sampling.maxConcurrentExperimentItems,
+    },
     datasetDefaults: settings.datasetDefaults,
     expectedVersion: settings.version,
   };

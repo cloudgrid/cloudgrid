@@ -1,0 +1,101 @@
+{{- $root := . -}}
+{{- $services := dict
+  "cloudgrid-bff" (dict "values" .Values.bff "port" 3000 "probe" "/readyz" "surrealdb" false "enabled" true "extraEnv" (list (dict "name" "CLOUDGRID_SESSION_SECRET" "secretName" .Values.session.existingSecret "secretKey" .Values.session.secretKey)))
+  "cloudgrid-otlp-collector" (dict "values" .Values.otlpCollector "port" 4318 "grpcPort" 4317 "probe" "/readyz" "surrealdb" false "enabled" true)
+  "cloudgrid-storage-read" (dict "values" .Values.storageRead "port" 8081 "probe" "/readyz" "surrealdb" true "enabled" true)
+  "cloudgrid-storage-write" (dict "values" .Values.storageWrite "port" 8082 "probe" "/readyz" "surrealdb" true "enabled" true)
+  "cloudgrid-control-plane" (dict "values" .Values.controlPlane "port" 8084 "probe" "/readyz" "surrealdb" true "enabled" true)
+  "cloudgrid-ai-eval-runner" (dict "values" .Values.aiEvalRunner "port" 8085 "probe" "/readyz" "surrealdb" false "enabled" .Values.aiEvalRunner.enabled)
+  "cloudgrid-alert-evaluator" (dict "values" .Values.alertEvaluator "port" 8086 "probe" "/readyz" "surrealdb" false "enabled" .Values.alertEvaluator.enabled)
+  "cloudgrid-storage-maintenance" (dict "values" .Values.storageMaintenance "port" 8087 "probe" "/readyz" "surrealdb" true "enabled" .Values.storageMaintenance.enabled)
+-}}
+{{- range $name, $service := $services }}
+{{- $svc := $service.values }}
+{{- if $service.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cloudgrid.fullname" $root }}-{{ trimPrefix "cloudgrid-" $name }}
+  labels:
+    {{- include "cloudgrid.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  replicas: {{ $svc.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $root.Release.Name }}
+      app.kubernetes.io/component: {{ $name }}
+  template:
+    metadata:
+      labels:
+        {{- include "cloudgrid.labels" $root | nindent 8 }}
+        app.kubernetes.io/component: {{ $name }}
+    spec:
+      serviceAccountName: {{ include "cloudgrid.serviceAccountName" $root }}
+      {{- with $root.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $root.Values.podSecurityContext | nindent 8 }}
+      {{- with $svc.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if $svc.priorityClassName }}
+      priorityClassName: {{ $svc.priorityClassName }}
+      {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "cloudgrid.image" (dict "root" $root "image" $svc.image) | quote }}
+          imagePullPolicy: {{ $svc.image.pullPolicy }}
+          securityContext:
+            {{- toYaml $root.Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ $service.port }}
+            {{- if $service.grpcPort }}
+            - name: grpc
+              containerPort: {{ $service.grpcPort }}
+            {{- end }}
+          env:
+            {{- include "cloudgrid.env.common" $root | nindent 12 }}
+            {{- range $key, $value := $svc.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- if $service.surrealdb }}
+            {{- include "cloudgrid.env.surrealdb" $root | nindent 12 }}
+            {{- end }}
+            {{- range $env := $service.extraEnv }}
+            - name: {{ $env.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $env.secretName }}
+                  key: {{ $env.secretKey }}
+            {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http
+          readinessProbe:
+            httpGet:
+              path: {{ $service.probe }}
+              port: http
+          resources:
+            {{- toYaml $svc.resources | nindent 12 }}
+{{- end }}
+{{- end }}

@@ -8,9 +8,7 @@ interface Props {
 const { id, tone = "default", size = "md", class: className = "" } = Astro.props;
 
 const padding =
-  size === "sm" ? "py-14 sm:py-20" :
-  size === "lg" ? "py-24 sm:py-32" :
-  "py-20 sm:py-24";
+  size === "sm" ? "py-14 sm:py-20" : size === "lg" ? "py-24 sm:py-32" : "py-20 sm:py-24";
 
 const bg =
   tone === "recessed"

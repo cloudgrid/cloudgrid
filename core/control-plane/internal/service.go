@@ -15,22 +15,35 @@ import (
 )
 
 const (
-	LocalCompanyID = "local"
-	LocalProjectID = "default"
-	localUserID    = "local-user"
+	LocalCompanyID                  = "local"
+	LocalProjectID                  = "default"
+	LocalSelfObservabilityProjectID = "cloudgrid-system"
+	localUserID                     = "local-user"
 )
 
 type Service struct {
-	store         ports.ControlStore
-	now           func() time.Time
-	statusChanges []contracts.ProjectStatusChangedNotification
+	store           ports.ControlStore
+	now             func() time.Time
+	statusChanges   []contracts.ProjectStatusChangedNotification
+	invitationEmail InvitationEmailConfig
+	emailTransport  InvitationEmailTransport
 }
 
 func NewService(store ports.ControlStore, now func() time.Time) *Service {
+	return NewServiceWithOptions(store, now, ServiceOptions{})
+}
+
+func NewServiceWithOptions(store ports.ControlStore, now func() time.Time, options ServiceOptions) *Service {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{store: store, now: now}
+	config := options.InvitationEmail.normalized()
+	return &Service{
+		store:           store,
+		now:             now,
+		invitationEmail: config,
+		emailTransport:  options.EmailTransport,
+	}
 }
 
 func (service *Service) GetViewer(ctx context.Context, envelope contracts.BridgeEnvelope) (contracts.Viewer, error) {
@@ -145,6 +158,9 @@ func (service *Service) UpdateProject(ctx context.Context, request contracts.Pro
 	}
 	if err := service.requireAdmin(ctx, request.BridgeEnvelope, project.OrganizationID); err != nil {
 		return contracts.Project{}, err
+	}
+	if isLocalSelfObservabilityProject(project) && isSelfObservabilityProjectChange(project, request) {
+		return contracts.Project{}, forbiddenError("local self-observability project is fixed")
 	}
 	if request.Name != nil && strings.TrimSpace(*request.Name) != "" {
 		project.Name = strings.TrimSpace(*request.Name)
@@ -279,10 +295,55 @@ func (service *Service) CreateInvitation(ctx context.Context, request contracts.
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
-	if err := service.store.PutInvitation(ctx, record); err != nil {
+	delivery, err := service.prepareInvitationEmailDelivery(ctx, &record, ports.EmailDeliveryKindOrganizationInvitation, nil, nil)
+	if err != nil {
+		return contracts.OrganizationInvitation{}, err
+	}
+	if err := service.store.PutInvitationAndEmailDelivery(ctx, record, delivery); err != nil {
 		return contracts.OrganizationInvitation{}, storageError()
 	}
 	return contractInvitation(record), nil
+}
+
+func (service *Service) ResendInvitation(ctx context.Context, request contracts.InvitationResendRequest) (contracts.OrganizationInvitation, error) {
+	if strings.TrimSpace(request.InvitationID) == "" {
+		return contracts.OrganizationInvitation{}, validationError("invitationId is required")
+	}
+	invitation, ok, err := service.store.GetInvitation(ctx, request.InvitationID)
+	if err != nil {
+		return contracts.OrganizationInvitation{}, storageError()
+	}
+	if !ok {
+		return contracts.OrganizationInvitation{}, forbiddenError("invitation is not accessible")
+	}
+	if err := service.bootstrapViewer(ctx, request.BridgeEnvelope); err != nil {
+		return contracts.OrganizationInvitation{}, err
+	}
+	if err := service.requireAdmin(ctx, request.BridgeEnvelope, invitation.OrganizationID); err != nil {
+		return contracts.OrganizationInvitation{}, err
+	}
+	if invitation.Status != contracts.OrganizationInvitationStatusPending {
+		return contracts.OrganizationInvitation{}, forbiddenError("only pending invitations can be resent")
+	}
+	kind := ports.EmailDeliveryKindOrganizationInvitation
+	var projectID *string
+	if len(invitation.ProjectGrants) > 0 {
+		kind = ports.EmailDeliveryKindProjectAccess
+		for _, grant := range invitation.ProjectGrants {
+			if grant.Status == contracts.InvitationProjectGrantStatusPending {
+				projectID = &grant.ProjectID
+				break
+			}
+		}
+	}
+	delivery, err := service.prepareInvitationEmailDelivery(ctx, &invitation, kind, projectID, nil)
+	if err != nil {
+		return contracts.OrganizationInvitation{}, err
+	}
+	if err := service.store.PutInvitationAndEmailDelivery(ctx, invitation, delivery); err != nil {
+		return contracts.OrganizationInvitation{}, storageError()
+	}
+	return contractInvitation(invitation), nil
 }
 
 func (service *Service) RevokeInvitation(ctx context.Context, request contracts.InvitationRevokeRequest) (contracts.OrganizationInvitation, error) {
@@ -308,6 +369,11 @@ func (service *Service) RevokeInvitation(ctx context.Context, request contracts.
 		invitation.Status = contracts.OrganizationInvitationStatusRevoked
 		invitation.RevokedAt = &now
 		invitation.UpdatedAt = now
+		for index := range invitation.ProjectGrants {
+			if invitation.ProjectGrants[index].Status == contracts.InvitationProjectGrantStatusPending {
+				invitation.ProjectGrants[index].Status = contracts.InvitationProjectGrantStatusRevoked
+			}
+		}
 		if err := service.store.PutInvitation(ctx, invitation); err != nil {
 			return contracts.OrganizationInvitation{}, storageError()
 		}
@@ -484,6 +550,81 @@ func (service *Service) UpdateProjectMember(ctx context.Context, request contrac
 	return service.contractProjectMember(ctx, current, contracts.ProjectMemberSourceDirect)
 }
 
+func (service *Service) CreateProjectInvitation(ctx context.Context, request contracts.ProjectInvitationCreateRequest) (contracts.ProjectInvitationData, error) {
+	if strings.TrimSpace(request.ProjectID) == "" {
+		return contracts.ProjectInvitationData{}, validationError("projectId is required")
+	}
+	email, err := normalizeEmail(request.Email)
+	if err != nil {
+		return contracts.ProjectInvitationData{}, err
+	}
+	if err := validateProjectRole(request.Role); err != nil {
+		return contracts.ProjectInvitationData{}, err
+	}
+	project, err := service.requireProjectAdmin(ctx, request.BridgeEnvelope, request.ProjectID)
+	if err != nil {
+		return contracts.ProjectInvitationData{}, err
+	}
+	membership, user, ok, err := service.findActiveMemberByEmail(ctx, project.OrganizationID, email)
+	if err != nil {
+		return contracts.ProjectInvitationData{}, err
+	}
+	if ok {
+		member, err := service.createOrUpdateProjectMemberForActiveUser(ctx, request.BridgeEnvelope, project, membership, user, request.Role)
+		if err != nil {
+			return contracts.ProjectInvitationData{}, err
+		}
+		return contracts.ProjectInvitationData{
+			Outcome:       contracts.ProjectInvitationOutcomeMembershipCreated,
+			ProjectMember: &member,
+		}, nil
+	}
+
+	invitation, created, err := service.pendingInvitationForProjectGrant(ctx, project, email, principalID(request.BridgeEnvelope))
+	if err != nil {
+		return contracts.ProjectInvitationData{}, err
+	}
+	now := service.now().UTC()
+	grantUpdated := false
+	for index := range invitation.ProjectGrants {
+		grant := &invitation.ProjectGrants[index]
+		if grant.ProjectID != project.ID {
+			continue
+		}
+		if grant.Status == contracts.InvitationProjectGrantStatusPending {
+			grant.Role = request.Role
+			grant.CreatedAt = now
+			grant.CreatedByUserID = principalID(request.BridgeEnvelope)
+			grantUpdated = true
+			break
+		}
+	}
+	if !grantUpdated {
+		invitation.ProjectGrants = append(invitation.ProjectGrants, contracts.InvitationProjectGrant{
+			ProjectID:       project.ID,
+			Role:            request.Role,
+			Status:          contracts.InvitationProjectGrantStatusPending,
+			CreatedAt:       now,
+			CreatedByUserID: principalID(request.BridgeEnvelope),
+		})
+	}
+	if !created {
+		invitation.UpdatedAt = now
+	}
+	delivery, err := service.prepareInvitationEmailDelivery(ctx, &invitation, ports.EmailDeliveryKindProjectAccess, &project.ID, nil)
+	if err != nil {
+		return contracts.ProjectInvitationData{}, err
+	}
+	if err := service.store.PutInvitationAndEmailDelivery(ctx, invitation, delivery); err != nil {
+		return contracts.ProjectInvitationData{}, storageError()
+	}
+	contract := contractInvitation(invitation)
+	return contracts.ProjectInvitationData{
+		Outcome:    contracts.ProjectInvitationOutcomeInvitationPending,
+		Invitation: &contract,
+	}, nil
+}
+
 func (service *Service) RemoveProjectMember(ctx context.Context, request contracts.ProjectMemberRemoveRequest) (bool, error) {
 	if strings.TrimSpace(request.ProjectID) == "" || strings.TrimSpace(request.UserID) == "" {
 		return false, validationError("projectId and userId are required")
@@ -566,6 +707,53 @@ func (service *Service) UpdateRetentionPolicy(ctx context.Context, request contr
 		return contracts.RetentionPolicy{}, storageError()
 	}
 	return contractRetentionPolicy(updated), nil
+}
+
+func (service *Service) GetProjectAiSettings(ctx context.Context, request contracts.ProjectAiSettingsGetRequest) (map[string]any, error) {
+	project, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, request.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	return service.projectAiSettings(ctx, project.ID, principalID(request.BridgeEnvelope))
+}
+
+func (service *Service) UpdateProjectAiSettings(ctx context.Context, request contracts.ProjectAiSettingsUpdateRequest) (map[string]any, error) {
+	projectID, ok := stringFromMap(request.Input, "projectId")
+	if !ok {
+		return nil, validationError("projectId is required")
+	}
+	project, err := service.requireProjectAdmin(ctx, request.BridgeEnvelope, projectID)
+	if err != nil {
+		return nil, err
+	}
+	current, err := service.projectAiSettingsRecord(ctx, project.ID, principalID(request.BridgeEnvelope))
+	if err != nil {
+		return nil, err
+	}
+	expectedVersion := request.ExpectedVersion
+	if expectedVersion == nil {
+		if value, ok := intFromMap(request.Input, "expectedVersion"); ok {
+			expectedVersion = &value
+		}
+	}
+	if expectedVersion == nil || *expectedVersion != current.Version {
+		return nil, forbiddenError("project AI settings version is stale")
+	}
+	updated, err := normalizeProjectAiSettingsInput(request.Input, project.ID, service.now().UTC(), principalID(request.BridgeEnvelope), current.Version+1)
+	if err != nil {
+		return nil, err
+	}
+	record := ports.ProjectAiSettingsRecord{
+		ProjectID:       project.ID,
+		Settings:        updated,
+		UpdatedAt:       service.now().UTC(),
+		UpdatedByUserID: principalID(request.BridgeEnvelope),
+		Version:         current.Version + 1,
+	}
+	if err := service.store.PutProjectAiSettings(ctx, record); err != nil {
+		return nil, storageError()
+	}
+	return cloneAnyMap(updated), nil
 }
 
 func (service *Service) ListAlertRules(ctx context.Context, request contracts.AlertRuleListRequest) ([]contracts.AlertRule, error) {
@@ -1453,10 +1641,8 @@ func (service *Service) bootstrapViewer(ctx context.Context, envelope contracts.
 		}
 	}
 	if organizationID == LocalCompanyID {
-		if _, ok, err := service.store.GetProject(ctx, LocalProjectID); err != nil {
-			return storageError()
-		} else if !ok {
-			if err := service.store.PutProject(ctx, ports.ProjectRecord{
+		localProjects := []ports.ProjectRecord{
+			{
 				ID:             LocalProjectID,
 				OrganizationID: LocalCompanyID,
 				Name:           "Default project",
@@ -1465,8 +1651,25 @@ func (service *Service) bootstrapViewer(ctx context.Context, envelope contracts.
 				ChangedAt:      now,
 				CreatedAt:      now,
 				UpdatedAt:      now,
-			}); err != nil {
+			},
+			{
+				ID:             LocalSelfObservabilityProjectID,
+				OrganizationID: LocalCompanyID,
+				Name:           "CloudGrid",
+				Slug:           LocalSelfObservabilityProjectID,
+				Status:         contracts.ProjectStatusActive,
+				ChangedAt:      now,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			},
+		}
+		for _, project := range localProjects {
+			if _, ok, err := service.store.GetProject(ctx, project.ID); err != nil {
 				return storageError()
+			} else if !ok {
+				if err := service.store.PutProject(ctx, project); err != nil {
+					return storageError()
+				}
 			}
 		}
 	}
@@ -1522,12 +1725,53 @@ func (service *Service) acceptMatchingInvitation(ctx context.Context, envelope c
 	}); err != nil {
 		return storageError()
 	}
+	if err := service.applyInvitationProjectGrants(ctx, &invitation, userID, now); err != nil {
+		return err
+	}
 	invitation.Status = contracts.OrganizationInvitationStatusAccepted
 	invitation.AcceptedByUserID = &userID
 	invitation.AcceptedAt = &now
 	invitation.UpdatedAt = now
 	if err := service.store.PutInvitation(ctx, invitation); err != nil {
 		return storageError()
+	}
+	return nil
+}
+
+func (service *Service) applyInvitationProjectGrants(ctx context.Context, invitation *ports.InvitationRecord, userID string, now time.Time) error {
+	for index := range invitation.ProjectGrants {
+		grant := &invitation.ProjectGrants[index]
+		if grant.Status != contracts.InvitationProjectGrantStatusPending {
+			continue
+		}
+		project, ok, err := service.store.GetProject(ctx, grant.ProjectID)
+		if err != nil {
+			return storageError()
+		}
+		if !ok || project.OrganizationID != invitation.OrganizationID || project.Status == contracts.ProjectStatusDisabled {
+			grant.Status = contracts.InvitationProjectGrantStatusFailed
+			continue
+		}
+		member, ok, err := service.store.GetProjectMember(ctx, grant.ProjectID, userID)
+		if err != nil {
+			return storageError()
+		}
+		if !ok {
+			member = ports.ProjectMemberRecord{
+				ProjectID:       grant.ProjectID,
+				UserID:          userID,
+				CreatedAt:       now,
+				CreatedByUserID: grant.CreatedByUserID,
+			}
+		}
+		member.Role = grant.Role
+		member.UpdatedAt = now
+		member.UpdatedByUserID = grant.CreatedByUserID
+		if err := service.store.PutProjectMember(ctx, member); err != nil {
+			return storageError()
+		}
+		grant.Status = contracts.InvitationProjectGrantStatusApplied
+		grant.AppliedAt = &now
 	}
 	return nil
 }
@@ -1833,24 +2077,88 @@ func normalizeEmail(value string) (string, error) {
 }
 
 func (service *Service) requireEmailNotActiveMember(ctx context.Context, organizationID string, email string) error {
+	if _, _, ok, err := service.findActiveMemberByEmail(ctx, organizationID, email); err != nil {
+		return err
+	} else if ok {
+		return validationError("email already belongs to an active member")
+	}
+	return nil
+}
+
+func (service *Service) findActiveMemberByEmail(ctx context.Context, organizationID string, email string) (ports.MembershipRecord, ports.UserRecord, bool, error) {
 	memberships, err := service.store.ListMemberships(ctx, organizationID)
 	if err != nil {
-		return storageError()
+		return ports.MembershipRecord{}, ports.UserRecord{}, false, storageError()
 	}
 	for _, membership := range memberships {
 		user, ok, err := service.store.GetUser(ctx, membership.UserID)
 		if err != nil {
-			return storageError()
+			return ports.MembershipRecord{}, ports.UserRecord{}, false, storageError()
 		}
 		if !ok || user.Email == nil {
 			continue
 		}
 		memberEmail, err := normalizeEmail(*user.Email)
 		if err == nil && memberEmail == email {
-			return validationError("email already belongs to an active member")
+			return membership, user, true, nil
 		}
 	}
-	return nil
+	return ports.MembershipRecord{}, ports.UserRecord{}, false, nil
+}
+
+func (service *Service) createOrUpdateProjectMemberForActiveUser(ctx context.Context, envelope contracts.BridgeEnvelope, project ports.ProjectRecord, membership ports.MembershipRecord, user ports.UserRecord, role contracts.ProjectRole) (contracts.ProjectMember, error) {
+	if membership.Role == contracts.CompanyRoleAdmin {
+		return service.impliedProjectMember(ctx, project.ID, membership, contracts.ProjectMemberSourceCompanyAdmin)
+	}
+	current, ok, err := service.store.GetProjectMember(ctx, project.ID, membership.UserID)
+	if err != nil {
+		return contracts.ProjectMember{}, storageError()
+	}
+	if ok && current.Role == contracts.ProjectRoleAdmin && role != contracts.ProjectRoleAdmin {
+		if err := service.requireAnotherProjectAdminOrCompanyAdmin(ctx, project, membership.UserID); err != nil {
+			return contracts.ProjectMember{}, err
+		}
+	}
+	now := service.now().UTC()
+	actor := principalID(envelope)
+	if !ok {
+		current = ports.ProjectMemberRecord{
+			ProjectID:       project.ID,
+			UserID:          membership.UserID,
+			CreatedAt:       now,
+			CreatedByUserID: actor,
+		}
+	}
+	current.Role = role
+	current.UpdatedAt = now
+	current.UpdatedByUserID = actor
+	if err := service.store.PutProjectMember(ctx, current); err != nil {
+		return contracts.ProjectMember{}, storageError()
+	}
+	return service.contractProjectMember(ctx, current, contracts.ProjectMemberSourceDirect)
+}
+
+func (service *Service) pendingInvitationForProjectGrant(ctx context.Context, project ports.ProjectRecord, email string, actor string) (ports.InvitationRecord, bool, error) {
+	if invitation, ok, err := service.store.GetPendingInvitationByEmail(ctx, project.OrganizationID, email); err != nil {
+		return ports.InvitationRecord{}, false, storageError()
+	} else if ok {
+		return invitation, false, nil
+	}
+	existing, err := service.store.ListInvitations(ctx, project.OrganizationID)
+	if err != nil {
+		return ports.InvitationRecord{}, false, storageError()
+	}
+	now := service.now().UTC()
+	return ports.InvitationRecord{
+		ID:              fmt.Sprintf("invitation-%s-%d", normalizeID(project.OrganizationID), len(existing)+1),
+		OrganizationID:  project.OrganizationID,
+		Email:           email,
+		Role:            contracts.CompanyRoleUser,
+		Status:          contracts.OrganizationInvitationStatusPending,
+		InvitedByUserID: actor,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}, true, nil
 }
 
 func optionalStringPtr(value string) *string {
@@ -1873,19 +2181,32 @@ func contractUser(user ports.UserRecord) contracts.User {
 }
 
 func contractInvitation(invitation ports.InvitationRecord) contracts.OrganizationInvitation {
+	deliveryStatus := invitation.DeliveryStatus
+	if deliveryStatus == "" {
+		deliveryStatus = contracts.InvitationDeliveryStatusSuppressed
+	}
+	projectGrants := append([]contracts.InvitationProjectGrant{}, invitation.ProjectGrants...)
+	if projectGrants == nil {
+		projectGrants = []contracts.InvitationProjectGrant{}
+	}
 	return contracts.OrganizationInvitation{
-		ID:               invitation.ID,
-		OrganizationID:   invitation.OrganizationID,
-		Email:            invitation.Email,
-		Role:             invitation.Role,
-		Status:           invitation.Status,
-		InvitedByUserID:  invitation.InvitedByUserID,
-		AcceptedByUserID: invitation.AcceptedByUserID,
-		CreatedAt:        invitation.CreatedAt,
-		UpdatedAt:        invitation.UpdatedAt,
-		AcceptedAt:       invitation.AcceptedAt,
-		RevokedAt:        invitation.RevokedAt,
-		ExpiresAt:        invitation.ExpiresAt,
+		ID:                    invitation.ID,
+		OrganizationID:        invitation.OrganizationID,
+		Email:                 invitation.Email,
+		Role:                  invitation.Role,
+		Status:                invitation.Status,
+		DeliveryStatus:        deliveryStatus,
+		LastDeliveryAttemptAt: invitation.LastDeliveryAttemptAt,
+		LastDeliveryErrorCode: invitation.LastDeliveryErrorCode,
+		LastEmailDeliveryID:   invitation.LastEmailDeliveryID,
+		ProjectGrants:         projectGrants,
+		InvitedByUserID:       invitation.InvitedByUserID,
+		AcceptedByUserID:      invitation.AcceptedByUserID,
+		CreatedAt:             invitation.CreatedAt,
+		UpdatedAt:             invitation.UpdatedAt,
+		AcceptedAt:            invitation.AcceptedAt,
+		RevokedAt:             invitation.RevokedAt,
+		ExpiresAt:             invitation.ExpiresAt,
 	}
 }
 
@@ -2079,6 +2400,231 @@ func (service *Service) retentionPolicyRecord(ctx context.Context, projectID str
 		return ports.RetentionPolicyRecord{}, storageError()
 	}
 	return record, nil
+}
+
+func (service *Service) projectAiSettings(ctx context.Context, projectID string, actor string) (map[string]any, error) {
+	record, err := service.projectAiSettingsRecord(ctx, projectID, actor)
+	if err != nil {
+		return nil, err
+	}
+	return cloneAnyMap(record.Settings), nil
+}
+
+func (service *Service) projectAiSettingsRecord(ctx context.Context, projectID string, actor string) (ports.ProjectAiSettingsRecord, error) {
+	record, ok, err := service.store.GetProjectAiSettings(ctx, projectID)
+	if err != nil {
+		return ports.ProjectAiSettingsRecord{}, storageError()
+	}
+	if ok {
+		return record, nil
+	}
+	now := service.now().UTC()
+	settings := defaultProjectAiSettings(projectID, now, actor, 1)
+	record = ports.ProjectAiSettingsRecord{
+		ProjectID:       projectID,
+		Settings:        settings,
+		UpdatedAt:       now,
+		UpdatedByUserID: actor,
+		Version:         1,
+	}
+	if err := service.store.PutProjectAiSettings(ctx, record); err != nil {
+		return ports.ProjectAiSettingsRecord{}, storageError()
+	}
+	return record, nil
+}
+
+func defaultProjectAiSettings(projectID string, now time.Time, actor string, version int) map[string]any {
+	return map[string]any{
+		"projectId":                 projectID,
+		"enabled":                   false,
+		"defaultProviderProfileId":  nil,
+		"defaultJudgeProfileId":     nil,
+		"defaultOptimizerProfileId": nil,
+		"defaultEmbeddingProfileId": nil,
+		"providerProfiles":          []any{},
+		"modelAliases":              []any{},
+		"onlinePolicies":            []any{},
+		"budget": map[string]any{
+			"dailyUsd":          0,
+			"perRunUsd":         nil,
+			"deterministicOnly": true,
+			"spentTodayUsd":     0,
+		},
+		"sampling": map[string]any{
+			"defaultOnlineSampleRate":             0,
+			"maxOnlineSampleRate":                 1,
+			"maxConcurrentExperimentItems":        4,
+			"maxConcurrentOptimizationCandidates": 2,
+		},
+		"datasetDefaults": map[string]any{
+			"splitAllocation": map[string]any{
+				"dev":          0.20,
+				"optimization": 0.40,
+				"validation":   0.20,
+				"regression":   0.15,
+				"holdout":      0.05,
+			},
+			"smallDatasetReviewedThreshold": 30,
+			"requireReviewForRegression":    true,
+		},
+		"effective": map[string]any{
+			"warnings":                 []any{},
+			"deterministicOnly":        true,
+			"missingProviderProfiles":  []any{},
+			"disabledProviderProfiles": []any{},
+			"budgetExhausted":          false,
+		},
+		"version":         version,
+		"updatedAt":       now,
+		"updatedByUserId": actor,
+	}
+}
+
+func normalizeProjectAiSettingsInput(input map[string]any, projectID string, now time.Time, actor string, version int) (map[string]any, error) {
+	if containsSecretLookingKey(input) {
+		return nil, validationError("project AI settings must not contain raw secret-looking fields")
+	}
+	settings := defaultProjectAiSettings(projectID, now, actor, version)
+	settings["enabled"] = boolFromMap(input, "enabled")
+	copyOptionalStringSetting(settings, input, "defaultProviderProfileId")
+	copyOptionalStringSetting(settings, input, "defaultJudgeProfileId")
+	copyOptionalStringSetting(settings, input, "defaultOptimizerProfileId")
+	copyOptionalStringSetting(settings, input, "defaultEmbeddingProfileId")
+	settings["providerProfiles"] = normalizeProviderProfiles(anySliceFromMap(input, "providerProfiles"), projectID, now)
+	settings["modelAliases"] = normalizeModelAliases(anySliceFromMap(input, "modelAliases"))
+	policies, err := normalizeOnlinePolicies(anySliceFromMap(input, "onlinePolicies"), now, actor)
+	if err != nil {
+		return nil, err
+	}
+	settings["onlinePolicies"] = policies
+	if budget, ok := mapFromMap(input, "budget"); ok {
+		settings["budget"] = map[string]any{
+			"dailyUsd":          numberFromMap(budget, "dailyUsd", 0),
+			"perRunUsd":         nullableNumberFromMap(budget, "perRunUsd"),
+			"deterministicOnly": boolFromMapDefault(budget, "deterministicOnly", false),
+			"spentTodayUsd":     0,
+		}
+	}
+	if sampling, ok := mapFromMap(input, "sampling"); ok {
+		settings["sampling"] = map[string]any{
+			"defaultOnlineSampleRate":             numberFromMap(sampling, "defaultOnlineSampleRate", 0),
+			"maxOnlineSampleRate":                 numberFromMap(sampling, "maxOnlineSampleRate", 1),
+			"maxConcurrentExperimentItems":        intNumberFromMap(sampling, "maxConcurrentExperimentItems", 4),
+			"maxConcurrentOptimizationCandidates": intNumberFromMap(sampling, "maxConcurrentOptimizationCandidates", 2),
+		}
+	}
+	if defaults, ok := mapFromMap(input, "datasetDefaults"); ok {
+		split, _ := mapFromMap(defaults, "splitAllocation")
+		settings["datasetDefaults"] = map[string]any{
+			"splitAllocation":               split,
+			"smallDatasetReviewedThreshold": intNumberFromMap(defaults, "smallDatasetReviewedThreshold", 30),
+			"requireReviewForRegression":    boolFromMapDefault(defaults, "requireReviewForRegression", true),
+		}
+	}
+	settings["effective"] = effectiveProjectAiSettings(settings)
+	return settings, nil
+}
+
+func normalizeProviderProfiles(items []any, projectID string, now time.Time) []any {
+	profiles := make([]any, 0, len(items))
+	for index, item := range items {
+		input, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := stringFromMap(input, "id")
+		if id == "" {
+			id = fmt.Sprintf("provider-%d", index+1)
+		}
+		profile := map[string]any{
+			"id":           id,
+			"projectId":    projectID,
+			"label":        stringFromMapDefault(input, "label", id),
+			"providerKind": stringFromMapDefault(input, "providerKind", "local_harness"),
+			"models":       valueOrDefault(input["models"], map[string]any{}),
+			"timeoutMs":    intNumberFromMap(input, "timeoutMs", 30000),
+		}
+		copyOptionalStringSetting(profile, input, "baseUrl")
+		copyOptionalStringSetting(profile, input, "credentialRef")
+		if value := nullableIntNumberFromMap(input, "maxConcurrency"); value != nil {
+			profile["maxConcurrency"] = value
+		}
+		if boolFromMapDefault(input, "disabled", false) {
+			profile["disabledAt"] = now
+		}
+		profiles = append(profiles, profile)
+	}
+	return profiles
+}
+
+func normalizeModelAliases(items []any) []any {
+	aliases := make([]any, 0, len(items))
+	for index, item := range items {
+		input, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := stringFromMap(input, "id")
+		if id == "" {
+			id = fmt.Sprintf("model-alias-%d", index+1)
+		}
+		aliases = append(aliases, map[string]any{
+			"id":                id,
+			"name":              stringFromMapDefault(input, "name", id),
+			"providerProfileId": stringFromMapDefault(input, "providerProfileId", ""),
+			"model":             stringFromMapDefault(input, "model", ""),
+			"purpose":           stringFromMapDefault(input, "purpose", "default"),
+			"parameters":        valueOrDefault(input["parameters"], map[string]any{}),
+		})
+	}
+	return aliases
+}
+
+func normalizeOnlinePolicies(items []any, now time.Time, actor string) ([]any, error) {
+	policies := make([]any, 0, len(items))
+	for index, item := range items {
+		input, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		target, _ := mapFromMap(input, "target")
+		if boolFromMapDefault(input, "enabled", false) && len(target) == 0 {
+			return nil, validationError("enabled online policies require a target")
+		}
+		id, _ := stringFromMap(input, "id")
+		if id == "" {
+			id = fmt.Sprintf("online-policy-%d", index+1)
+		}
+		policies = append(policies, map[string]any{
+			"id":              id,
+			"enabled":         boolFromMapDefault(input, "enabled", false),
+			"name":            stringFromMapDefault(input, "name", id),
+			"target":          target,
+			"scorerIds":       stringSliceFromAny(input["scorerIds"]),
+			"sampleRate":      numberFromMap(input, "sampleRate", 0),
+			"maxDailyRuns":    nullableIntNumberFromMap(input, "maxDailyRuns"),
+			"annotationRules": anySliceFromMap(input, "annotationRules"),
+			"updatedAt":       now,
+			"updatedByUserId": actor,
+		})
+	}
+	return policies, nil
+}
+
+func effectiveProjectAiSettings(settings map[string]any) map[string]any {
+	budget, _ := settings["budget"].(map[string]any)
+	deterministicOnly := boolFromMapDefault(budget, "deterministicOnly", false)
+	warnings := []any{}
+	if profiles := anySlice(settings["providerProfiles"]); len(profiles) == 0 && !deterministicOnly {
+		warnings = append(warnings, "No provider profiles configured.")
+	}
+	return map[string]any{
+		"warnings":                 warnings,
+		"deterministicOnly":        deterministicOnly,
+		"missingProviderProfiles":  []any{},
+		"disabledProviderProfiles": []any{},
+		"budgetExhausted":          numberFromMap(budget, "dailyUsd", 0) <= numberFromMap(budget, "spentTodayUsd", 0),
+	}
 }
 
 func defaultRetentionRuleRecords(now time.Time, actor string) []ports.RetentionRuleRecord {
@@ -2714,7 +3260,7 @@ func builtinDashboards(project ports.ProjectRecord, now time.Time) []Dashboard {
 					X: 0, Y: 0, W: 6, H: 4, MinW: 3, MinH: 2,
 				},
 				Metric: &DashboardMetricWidgetInput{
-					MetricName:    "http.server.duration",
+					MetricName:    "http.server.request.duration",
 					Aggregation:   contracts.MetricAggregationP95,
 					GroupBy:       []string{"service.name"},
 					Filters:       []contracts.AttributeFilter{},
@@ -2748,7 +3294,7 @@ func builtinDashboards(project ports.ProjectRecord, now time.Time) []Dashboard {
 				Metric: &DashboardMetricWidgetInput{
 					MetricName:    "gen_ai.client.token.usage",
 					Aggregation:   contracts.MetricAggregationSum,
-					GroupBy:       []string{"gen_ai.system"},
+					GroupBy:       []string{"gen_ai.token.type"},
 					Filters:       []contracts.AttributeFilter{},
 					TimeWindow:    ptr("PT1H"),
 					Visualization: contracts.MetricChartTypeBar,
@@ -3011,6 +3557,20 @@ func isLocalPersonalProject(projectID string, organizationID string, userID stri
 	return projectID == LocalProjectID && organizationID == LocalCompanyID && userID == localUserID
 }
 
+func isLocalSelfObservabilityProject(project ports.ProjectRecord) bool {
+	return project.ID == LocalSelfObservabilityProjectID && project.OrganizationID == LocalCompanyID
+}
+
+func isSelfObservabilityProjectChange(project ports.ProjectRecord, request contracts.ProjectUpdateRequest) bool {
+	if request.Name != nil {
+		name := strings.TrimSpace(*request.Name)
+		if name != "" && name != project.Name {
+			return true
+		}
+	}
+	return request.Status != nil && *request.Status != project.Status
+}
+
 func sortProjectMembers(items []contracts.ProjectMember) {
 	sort.Slice(items, func(i, j int) bool {
 		if sourceRank(items[i].Source) != sourceRank(items[j].Source) {
@@ -3139,6 +3699,147 @@ func cloneAnyMap(input map[string]any) map[string]any {
 		output[key] = value
 	}
 	return output
+}
+
+func stringFromMap(input map[string]any, key string) (string, bool) {
+	value, ok := input[key].(string)
+	if !ok {
+		return "", false
+	}
+	value = strings.TrimSpace(value)
+	return value, value != ""
+}
+
+func stringFromMapDefault(input map[string]any, key string, fallback string) string {
+	if value, ok := stringFromMap(input, key); ok {
+		return value
+	}
+	return fallback
+}
+
+func boolFromMap(input map[string]any, key string) bool {
+	return boolFromMapDefault(input, key, false)
+}
+
+func boolFromMapDefault(input map[string]any, key string, fallback bool) bool {
+	value, ok := input[key].(bool)
+	if !ok {
+		return fallback
+	}
+	return value
+}
+
+func mapFromMap(input map[string]any, key string) (map[string]any, bool) {
+	value, ok := input[key].(map[string]any)
+	if !ok {
+		return map[string]any{}, false
+	}
+	return value, true
+}
+
+func anySliceFromMap(input map[string]any, key string) []any {
+	return anySlice(input[key])
+}
+
+func anySlice(input any) []any {
+	if values, ok := input.([]any); ok {
+		return values
+	}
+	return []any{}
+}
+
+func stringSliceFromAny(input any) []string {
+	values, ok := input.([]any)
+	if !ok {
+		return []string{}
+	}
+	output := make([]string, 0, len(values))
+	for _, value := range values {
+		if text, ok := value.(string); ok && strings.TrimSpace(text) != "" {
+			output = append(output, strings.TrimSpace(text))
+		}
+	}
+	return output
+}
+
+func valueOrDefault(value any, fallback any) any {
+	if value == nil {
+		return fallback
+	}
+	return value
+}
+
+func numberFromMap(input map[string]any, key string, fallback float64) float64 {
+	if value, ok := numericValue(input[key]); ok {
+		return value
+	}
+	return fallback
+}
+
+func nullableNumberFromMap(input map[string]any, key string) any {
+	if value, ok := numericValue(input[key]); ok {
+		return value
+	}
+	return nil
+}
+
+func intNumberFromMap(input map[string]any, key string, fallback int) int {
+	if value, ok := numericValue(input[key]); ok {
+		return int(value)
+	}
+	return fallback
+}
+
+func nullableIntNumberFromMap(input map[string]any, key string) any {
+	if value, ok := numericValue(input[key]); ok {
+		return int(value)
+	}
+	return nil
+}
+
+func intFromMap(input map[string]any, key string) (int, bool) {
+	if value, ok := numericValue(input[key]); ok {
+		return int(value), true
+	}
+	return 0, false
+}
+
+func copyOptionalStringSetting(output map[string]any, input map[string]any, key string) {
+	if value, ok := stringFromMap(input, key); ok {
+		output[key] = value
+		return
+	}
+	if _, exists := input[key]; exists {
+		output[key] = nil
+	}
+}
+
+func containsSecretLookingKey(value any) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, nested := range typed {
+			normalized := strings.ToLower(strings.ReplaceAll(key, "-", "_"))
+			if strings.Contains(normalized, "authorization") ||
+				strings.Contains(normalized, "cookie") ||
+				strings.Contains(normalized, "x_api_key") ||
+				strings.Contains(normalized, "api_key") ||
+				strings.Contains(normalized, "token") ||
+				strings.Contains(normalized, "secret") ||
+				strings.Contains(normalized, "password") {
+				return true
+			}
+			if containsSecretLookingKey(nested) {
+				return true
+			}
+		}
+	case []any:
+		for _, nested := range typed {
+			if containsSecretLookingKey(nested) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func defaultOrganizationName(organizationID string) string {

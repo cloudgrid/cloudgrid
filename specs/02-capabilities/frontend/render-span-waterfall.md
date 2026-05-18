@@ -44,3 +44,12 @@ acceptance_criteria:
 # Render Span Waterfall
 
 The waterfall must not require a charting dependency in MVP. CSS grid or absolutely positioned bars are sufficient. Virtualization is required when a trace has more than 500 spans.
+
+Waterfall layout must use the highest precision timestamp fields exposed by the
+trace detail contract. If `startedAtUnixNano`, `endedAtUnixNano`,
+`startOffsetNano`, or `durationNano` are present, the UI must derive row offsets
+and bar widths from those decimal-string nanosecond fields instead of from
+JavaScript `Date` parsing of ISO strings. Falling back to ISO strings is allowed
+only when raw nanosecond fields are absent. Distinct spans that start within the
+same wall-clock second must render at distinct offsets when their source OTLP
+timestamps differ.

@@ -173,6 +173,18 @@ Copy behavior:
 
 The user opens `/metrics` to discover which metrics exist in the project, inspect descriptors, query a metric, group or filter by attributes, and view returned series/exemplars without building a saved dashboard.
 
+The route header is compact: title, selected metric name when present, time
+range, refresh, and filter actions. Do not repeat breadcrumbs, long
+descriptions, or duplicate search controls when the selected project context is
+already visible in the app shell. When metrics exist and no metric is selected,
+the first metric is selected automatically so the route shows a working query
+surface immediately. Unless the user explicitly chooses otherwise, the initial
+query uses an aggregation valid for the metric descriptor kind and an observed
+descriptor time range padded enough to include seeded/local development data.
+Group-by selection uses the same dropdown/select control pattern as the other
+query controls. It must not appear as an unrelated freeform chip list in the
+header controls.
+
 ### Desktop Layout
 
 ```text
@@ -277,6 +289,17 @@ Exemplars tab:
 The user opens `/dashboards` to view reusable project dashboards, create or edit dashboards, arrange widgets, and combine metric charts with log, trace, and live trace widgets.
 
 Dashboard persistence uses first-class `Dashboard` and `DashboardWidget` contracts. Implementation must remove metric-view compatibility surfaces instead of aliasing them. Saved widgets must map to typed GraphQL dashboard widget inputs and must never store executable code, raw queries, or arbitrary JSON configuration.
+
+The dashboard route header is compact. In builder mode, the selected dashboard
+name is the route headline and must not be duplicated again inside the canvas.
+Time range, refresh, create/add, duplicate, save, and destructive actions live
+in one compact toolbar. If no dashboard time range is explicitly selected,
+metric widgets use the observed range of their own metric descriptors so
+built-in dashboards render charts immediately in local development and tests.
+The time range picker must allow explicit independent start and end dates and
+times. Metric chart legends must use readable labels such as `gateway` or
+`service.name: gateway`, not raw JSON snippets such as
+`{"service.name":"gateway"}`.
 
 The route has two modes:
 
@@ -395,7 +418,7 @@ Widget rules:
 - live widgets display a bounded rolling table and do not persist live events;
 - unsupported widget kinds are not shown in production UI.
 - the builder exposes one primary `Add widget` action; widget type choices live in the add-widget popover, not as a permanent button column.
-- dashboard name and description are edited in place in the dashboard canvas header. Editing an existing or built-in dashboard creates an explicit dirty draft.
+- dashboard name and description are edited from the route header/editor surfaces, not duplicated inside the dashboard canvas. Editing an existing or built-in dashboard creates an explicit dirty draft.
 
 Drag and resize behavior:
 
@@ -441,13 +464,13 @@ Log and trace widget editor groups:
 
 - Data: filter fields, search, sort, limit, and columns;
 - Display: title, compact column set, row density, and empty-state copy;
-- Thresholds: unavailable and hidden for log/trace widgets until alert contracts exist.
+- Thresholds: unavailable and hidden for log/trace widgets until dashboard alert widget contracts and evaluator-backed alert evidence exist.
 
 Live trace widget editor groups:
 
 - Data: live trace filters and row limit;
 - Display: title, columns, stream status, and pause/resume presentation;
-- Thresholds: unavailable and hidden until alert contracts exist.
+- Thresholds: unavailable and hidden until dashboard alert widget contracts and evaluator-backed alert evidence exist.
 
 Dirty behavior:
 
@@ -588,4 +611,4 @@ Alerts:
 - `/dashboards` renders saved/built-in dashboards based on `Query.dashboards`, with dashboard rail, widget grid, inspector/editor, and pin/star affordances backed by dashboard pin mutations.
 - The project sidebar supports pinned dashboard shortcuts and a collapsible `Dashboards` child list backed by `DashboardListResult.pinnedDashboardIds` and visible dashboard data.
 - Live trace receiving remains a mode inside `/traces`, not a dashboard or logs route.
-- `/alerts` renders project-scoped alert rules, history, silences, editor, and trace/log/metric pivots after contracts from `04-backend/alerting.md` are generated. Dashboards may show alert evidence only through typed alert widgets or alert-history widgets specified after `04-backend/alerting.md`; generic dashboard thresholds are not alert rules.
+- `/alerts` renders project-scoped alert rules, history, silences, editor, and trace/log/metric pivots through the generated alert contracts. Dashboards may show alert evidence only through typed alert widgets or alert-history widgets specified after `04-backend/alerting.md`; generic dashboard thresholds are not alert rules.
