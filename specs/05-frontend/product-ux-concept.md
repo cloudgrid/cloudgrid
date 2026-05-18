@@ -776,14 +776,17 @@ backend ownership must exist before a route claims the behavior as enforcing.
   revocation, and last-used metadata are implemented as project-scoped ingest
   credential management. Stored secrets are never displayed after creation.
 - Data retention policy: Project Settings renders and mutates project-level
-  retention policies through generated contracts. Actual deletion execution is
-  still owned by the future storage-maintenance worker from
-  `04-backend/data-retention-policy.md`; the UI must not imply that retention
-  has deleted telemetry until that worker ships.
+  retention policies through generated contracts. Storage-maintenance owns
+  batch execution and scheduling; the remaining production gap is the SurrealDB
+  retention adapter plus storage-read soft-delete filtering described in
+  `04-backend/data-retention-policy.md`. The UI must not imply that a saved
+  policy has deleted telemetry until that production adapter is enabled.
 - Alerting: Project-scoped alert rule, silence, and history management is
-  implemented through generated contracts. Rule scheduling/evaluation,
-  notification dispatch, and dashboard alert widgets remain disabled until the
-  evaluator and dashboard alert widget contracts are implemented.
+  implemented through generated contracts. The evaluator domain logic, runtime
+  handlers, and optional project-ID scheduler are implemented. Automatic project
+  discovery, non-core notification adapters, and dashboard alert/evidence
+  widgets remain unavailable until their backend and frontend contracts are
+  specified.
 - Full OTLP protocol compatibility: setup snippets may describe OTLP/HTTP
   JSON/protobuf on `4318` and OTLP/gRPC protobuf on `4317` for traces, logs, and
   metrics when the collector is used with the current implementation.

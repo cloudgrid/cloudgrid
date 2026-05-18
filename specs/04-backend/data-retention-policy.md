@@ -145,17 +145,125 @@ Retry policy:
 ## Production Storage Adapter Contract
 
 The production SurrealDB adapter implements the same `RetentionStore` port used
-by the direct executor. It must:
+by the direct executor. It is a storage-maintenance adapter; it must not live in
+the BFF, frontend, collector, storage-read, or storage-write packages.
 
-- load the effective control-plane retention policy through the private
-  control-plane bridge or a storage-maintenance-local control-plane adapter;
-- execute deletes only inside the selected tenant/company/project partition;
-- implement class-specific dependency order for hard deletes;
-- mark soft-deleted rows with `deletedAt`, `deletedByRetentionPolicyId`, and
-  `finalDeleteAfter` where the target table supports soft deletion;
-- hide soft-deleted telemetry from storage-read normal queries before final
-  deletion ships to production;
-- record one audit row per attempted batch after executor completion.
+### Policy Resolution
+
+The adapter must load the effective policy from the existing control-plane
+`retention_policy` table by `projectId`. It must not duplicate policy state in
+storage-maintenance. If no policy exists for the requested project/data class,
+the executor returns the existing terminal missing-policy response.
+
+The adapter maps the requested `RetentionDataClass` to one rule in the loaded
+policy and copies these fields into the executor model:
+
+- `projectId`;
+- `dataClass`;
+- `mode`;
+- `retentionDays`;
+- `softDeleteDays`;
+- `version`;
+- `policyId`, derived as `retention_policy:{projectId}:{dataClass}:v{version}`
+  unless a future control-plane contract adds a stored per-rule ID;
+- `updatedAt`;
+- `updatedByUserId`.
+
+### Adapter Tables
+
+The SurrealDB schema owned by storage-maintenance must add these tables:
+
+| Table | Purpose | Required fields |
+| --- | --- | --- |
+| `retention_lease` | One scheduler lease per project/data class. | `key`, `projectId`, `dataClass`, `ownerId`, `acquiredAt`, `expiresAt`, `lastCompletedAt`, `lastErrorCode`, `lastErrorAt` |
+| `retention_audit` | One audit row per attempted batch after executor completion. | `id`, `projectId`, `dataClass`, `policyVersion`, `dryRun`, `matchedCount`, `hardDeletedCount`, `softDeletedCount`, `finalDeletedCount`, `startedAt`, `completedAt`, `errorId`, `errorCode` |
+
+Indexes:
+
+- `retention_lease_key` unique on `key`;
+- `retention_audit_project_completedAt` on `projectId, completedAt`;
+- `retention_audit_project_dataClass_completedAt` on `projectId, dataClass, completedAt`.
+
+Lease acquisition must be atomic. The adapter may implement that with one
+SurrealDB transaction or with an equivalent compare-and-set query that only
+updates `retention_lease` when no row exists or `expiresAt <= $now`. It must
+return `false` when another owner still holds a non-expired lease.
+
+### Data-Class Mapping
+
+The production adapter must use this table mapping and eligibility field:
+
+| Data class | Tables | Eligibility time |
+| --- | --- | --- |
+| `TRACES` | `trace`, `span` | `trace.endedAt` when present, otherwise `trace.startedAt` |
+| `LOGS` | `log_event` | `log_event.timestamp` |
+| `METRICS` | `metric_descriptor`, `metric_point`, `metric_ingest_cardinality` | `metric_point.timestamp`, `metric_descriptor.lastSeenAt`, `metric_ingest_cardinality.windowStart` |
+| `AI_EVALS` | `ai_agent_run`, `ai_llm_call`, `ai_tool_call`, `ai_retrieval_event`, `ai_eval_result`, `ai_experiment`, `ai_experiment_run`, `ai_dataset_item_run`, `ai_prompt_version`, `ai_annotation_queue_item` | `endedAt`, `producedAt`, `persistedAt`, then `createdAt` fallback in that order when fields exist on the row |
+| `DATASETS` | `ai_dataset`, `ai_dataset_item` | `updatedAt` when present, otherwise `createdAt` |
+| `SCORERS` | `ai_scorer` | `updatedAt` when present, otherwise `createdAt` |
+| `DASHBOARD_HISTORY` | No production table in this wave. | Zero-count no-op until a dashboard-history table contract exists. |
+| `INGEST_CREDENTIAL_AUDIT` | `ingest_command` | `ingest_command.completedAt` |
+
+`DASHBOARD_HISTORY` must return a successful zero-count batch while no
+dashboard-history table exists. It must not delete current dashboard
+definitions.
+
+### Deletion Order
+
+Hard delete must execute from dependent tables to parent tables:
+
+- `TRACES`: select eligible `traceId` values from `trace` inside the selected
+  project; delete `span` rows for those trace IDs; delete `log_event` rows for
+  those trace IDs only when the log itself is also older than the cutoff; delete
+  the selected `trace` rows last.
+- `LOGS`: delete eligible `log_event` rows by project and timestamp.
+- `METRICS`: delete eligible `metric_point` rows first; then delete
+  `metric_ingest_cardinality` rows; then delete `metric_descriptor` rows whose
+  `lastSeenAt` is older than the cutoff.
+- `AI_EVALS`: delete child/detail rows before parent run or experiment rows:
+  `ai_llm_call`, `ai_tool_call`, `ai_retrieval_event`,
+  `ai_dataset_item_run`, `ai_eval_result`, `ai_annotation_queue_item`,
+  `ai_prompt_version`, `ai_experiment_run`, `ai_experiment`, and
+  `ai_agent_run`.
+- `DATASETS`: delete `ai_dataset_item` rows before `ai_dataset` rows.
+- `SCORERS`: delete `ai_scorer` rows.
+- `INGEST_CREDENTIAL_AUDIT`: delete eligible `ingest_command` rows only; active
+  ingest credential metadata stays in control-plane.
+
+Every query must include `projectId = $projectId`. If `tenantId` or `companyId`
+exists on a target table, the query must also constrain it from the resolved
+project ownership context. The adapter must never derive project ownership from
+frontend input.
+
+### Soft Delete
+
+Before production soft-delete execution is enabled, every table that can be
+soft-deleted must declare these nullable fields in its SurrealDB schema:
+
+- `deletedAt`;
+- `deletedByRetentionPolicyId`;
+- `finalDeleteAfter`.
+
+Soft delete updates eligible rows with those fields and does not remove them.
+Final deletion removes rows where `finalDeleteAfter <= requestedAt` before
+marking new rows in the same batch. Storage-read normal GraphQL queries must add
+`deletedAt = NONE` filters for every soft-delete-capable table before the
+scheduler can be enabled in production.
+
+If a table does not yet have those fields, the adapter must reject
+`soft_delete_then_delete` for that data class with terminal `ERR-001` rather
+than silently hard deleting.
+
+### Batch Limits And Counts
+
+`limit` applies to matched root records for the requested data class. Dependent
+deletes required to keep referential consistency may exceed the root limit but
+must remain inside the selected project partition. `matchedCount` reports root
+records selected for action. Delete counts report affected rows in all tables.
+
+`dryRun=true` must perform the same eligibility selection and count calculation
+without mutating target tables, leases, or audit rows beyond the normal audit
+record for the attempted dry run.
 
 Adapter tests must run by default against isolated in-memory fixtures. Real
 SurrealDB adapter tests are opt-in with:
@@ -163,6 +271,18 @@ SurrealDB adapter tests are opt-in with:
 ```sh
 CLOUDGRID_ENABLE_SURREALDB_RETENTION_TESTS=true
 ```
+
+Opt-in SurrealDB tests must create an isolated database, seed at least one
+eligible and one ineligible record for every executable data class, run one
+batch per mode, and assert:
+
+- no record outside the selected project is deleted or soft-deleted;
+- dependency order leaves no orphaned child rows for hard deletes;
+- soft-deleted rows are hidden by storage-read normal query builders;
+- final delete removes only rows whose `finalDeleteAfter <= requestedAt`;
+- dry runs return counts without mutating data;
+- leases block concurrent acquisition and can be reacquired after expiry;
+- audit rows are written once per attempted batch.
 
 Default root verification must not require the scheduler, real SurrealDB
 retention deletion, or production credentials.
