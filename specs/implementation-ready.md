@@ -1,0 +1,416 @@
+---
+id: IDX-002
+title: Implementation-ready feature and improvement index
+layer: foundation
+status: draft
+owner: sebastian.wessel@egg-ai.com
+updated: 2026-05-18
+provenance: user-directed
+---
+
+# Implementation-Ready Feature And Improvement Index
+
+This index lists work that is specified enough for agents to implement without
+inventing product behavior. Each item points to the source specs that own the
+contract, expected write scope, acceptance evidence, and verification gates.
+
+Implementation agents must still read the linked source specs before editing
+code. If an implementation detail is missing from the linked specs, update the
+source spec first instead of expanding behavior locally.
+
+## IR-001: Production SurrealDB Retention Adapter
+
+Goal: enable storage-maintenance to execute retention deletion against the real
+SurrealDB telemetry schema while preserving project isolation.
+
+Source specs:
+
+- [Project data retention policy](./04-backend/data-retention-policy.md)
+- [Data retention NFR](./06-nfr/data-retention-local.md)
+- [SurrealDB persistence](./04-backend/surrealdb-persistence.md)
+- [Telemetry query semantics](./04-backend/telemetry-query-semantics.md)
+
+Write scope:
+
+- `core/storage-maintenance`
+- `core/storage-read/internal/adapters/surrealdb`
+- storage-maintenance SurrealDB schema/readiness files
+- docs and website retention pages
+
+Required implementation:
+
+- SurrealDB-backed `RetentionStore`, `AuditStore`, and `LeaseStore`.
+- `retention_lease` and `retention_audit` schema and readiness checks.
+- Data-class table mapping, deletion order, soft-delete fields, final-delete
+  behavior, dry-run counts, and batch limit semantics exactly as specified.
+- Storage-read `deletedAt = NONE` filters for every soft-delete-capable table.
+- Opt-in SurrealDB integration tests behind
+  `CLOUDGRID_ENABLE_SURREALDB_RETENTION_TESTS=true`.
+
+Acceptance:
+
+- hard delete removes dependent rows without crossing project boundaries;
+- soft delete hides rows from normal GraphQL/storage-read queries;
+- final delete removes only due soft-deleted rows;
+- dry run returns counts without mutating target data;
+- leases block concurrent execution and are reacquired after expiry;
+- one audit row is written for every attempted batch.
+
+Verification:
+
+```sh
+go test ./core/storage-maintenance/...
+go test -tags surrealdb ./core/storage-read/... ./core/storage-maintenance/...
+bun run contracts:check
+```
+
+## IR-002: Production Alert Execution Completion
+
+Goal: make alerting production-executing by replacing explicit project-ID-only
+scheduling with service project discovery and adding production notification and
+dashboard alert surfaces.
+
+Source specs:
+
+- [Project alerting](./04-backend/alerting.md)
+- [Control plane and project management](./04-backend/control-plane.md)
+- [Dashboard widgets](./05-frontend/dashboard-widgets.md)
+- [Logs, metrics explorer, and dashboards UX concept](./05-frontend/logs-metrics-dashboards-ux-concept.md)
+
+Write scope:
+
+- `core/alert-evaluator`
+- `core/control-plane`
+- `apps/backend`
+- `apps/frontend`
+- `apps/packages/definition`
+- `apps/packages/ui-contracts`
+- `core/go-contracts`
+- docs and website alerting/dashboard pages
+
+Required implementation:
+
+- `control.projects.list_for_service` private message bridge subject.
+- Alert evaluator project discovery mode controlled by
+  `CLOUDGRID_ALERT_EVALUATOR_PROJECT_DISCOVERY_ENABLED`.
+- Email notification adapter using deployed SMTP runtime.
+- Webhook notification adapter with HTTPS-only URL validation,
+  HMAC-SHA256 signing, timeout, retry/terminal status mapping, and redaction.
+- Adapter catalog validation for `notificationAdapterIds`.
+- Typed dashboard alert widgets: `alert_status`, `alert_history`, and
+  `alert_evidence`.
+- `Query.alertSummary(projectId, input)` only if aggregate dashboard counts are
+  required.
+
+Acceptance:
+
+- scheduler rejects startup when no project source is configured;
+- discovery pages active projects through control-plane with service auth;
+- email adapter maps transient and terminal failures correctly;
+- webhook adapter signs canonical JSON and redacts secrets and query strings;
+- dashboard alert widgets read backend view models only and never mutate rules.
+
+Verification:
+
+```sh
+bun run contracts:check
+bun run typecheck
+bun run test
+go test -tags surrealdb ./core/control-plane/... ./core/alert-evaluator/...
+bun run smoke:frontend
+```
+
+## IR-003: Production Auth Hardening
+
+Goal: complete deployed-mode authorization enforcement across BFF, collector,
+storage-read, storage-write, and control-plane boundaries.
+
+Source specs:
+
+- [Authentication and authorization model](./04-backend/authentication-authorization.md)
+- [Organization invitations and SSO membership lifecycle](./04-backend/organization-invitations.md)
+- [Project membership and roles](./04-backend/project-membership.md)
+- [Error taxonomy](./03-contracts/errors.yaml)
+
+Write scope:
+
+- `apps/backend`
+- `apps/packages/runtime`
+- `core/otlp-collector`
+- `core/storage-read`
+- `core/storage-write`
+- `core/control-plane`
+- docs and website security/configuration pages
+
+Required implementation:
+
+- BFF session validation for GraphQL HTTP, GraphQL WebSocket, and protected app
+  shell routes.
+- Company/project membership checks for queries and mutations.
+- Project/company admin enforcement and final-admin safeguards.
+- Collector deployed bearer validation and local opaque project-token routing.
+- Storage-read enforcement of normalized read/live auth context.
+- Storage-write persistence of authorized tenant/company/project routing.
+- Sanitized `ERR-015` and `ERR-016` behavior with no provider token leakage.
+
+Acceptance:
+
+- deployed mode fails closed for missing, invalid, expired, or insufficient
+  credentials;
+- local mode still supports documented anonymous defaults and local project
+  token routing;
+- project and company access cannot be inferred from request body, URL, OTLP
+  attributes, or frontend state;
+- final-admin protection applies to organization and project membership changes.
+
+Verification:
+
+```sh
+bun run typecheck
+bun run test
+bun run contracts:check
+go test -tags surrealdb ./core/otlp-collector/... ./core/storage-read/... ./core/storage-write/... ./core/control-plane/...
+```
+
+## IR-004: Production Benchmark Evidence
+
+Goal: produce recorded benchmark evidence for a concrete deployment before that
+environment is declared production-ready.
+
+Source specs:
+
+- [Performance and scaling](./06-nfr/performance-and-scaling.md)
+- [Release, CI/CD, and distribution](./06-nfr/release-distribution.md)
+- [Production readiness docs](../docs/operations/production-readiness.md)
+
+Write scope:
+
+- `tooling/scripts`
+- `.github/workflows`
+- `tmp/benchmarks` generated artifacts when intentionally recorded
+- docs and website production-readiness pages
+
+Required implementation:
+
+- Run `bench:production`, `bench:production:read`, or
+  `bench:production:ingest` against a real NATS and SurrealDB deployment.
+- Use `CLOUDGRID_BENCH_DEPLOYMENT_PROFILE=production-like`.
+- Use `CLOUDGRID_BENCH_REQUIRED=true` when benchmark failure must fail the job.
+- Publish or attach JSON benchmark results with environment identity, image tag,
+  deployment profile, thresholds, and pass/fail status.
+
+Acceptance:
+
+- benchmark result JSON exists for the deployment being promoted;
+- thresholds are visible in the result and failure status fails the job when
+  required;
+- docs identify the exact result used to declare the environment ready.
+
+Verification:
+
+```sh
+bun run bench:production
+bun run bench:production:read
+bun run bench:production:ingest
+bun test tooling/scripts/bench.test.mjs
+```
+
+## IR-005: AI Provider Settings And Project AI Chat Contract Wave
+
+Goal: move AI provider settings and project AI Chat from prose scope into
+machine-readable contracts and generated outputs.
+
+Source specs:
+
+- [Project and company AI provider settings](./04-backend/ai-provider-settings.md)
+- [AI Chat runtime](./04-backend/ai-chat.md)
+- [AI provider settings resolution flow](./02-flows/ai-platform/provider-settings-resolution.md)
+- [AI Chat run flow](./02-flows/ai-chat/chat-run.md)
+- [AI Chat action approval flow](./02-flows/ai-chat/action-approval.md)
+- [AI Chat conversation compaction flow](./02-flows/ai-chat/conversation-compaction.md)
+
+Write scope:
+
+- `apps/packages/definition`
+- `specs/03-contracts/graphql/public-schema.graphql`
+- `specs/03-contracts/messages/message-bridge.asyncapi.yaml`
+- `specs/03-contracts/entities`
+- `apps/packages/ui-contracts`
+- `core/go-contracts`
+- contract-generation tests
+
+Required implementation:
+
+- GraphQL operations for provider settings, chat history, stream setup,
+  artifacts, action approvals, and compaction.
+- AsyncAPI subjects for private control-plane and runtime bridge calls.
+- JSON Schemas for chat stream request/event envelopes, provider settings, and
+  approval records.
+- Generated TypeScript and Go contract outputs.
+- Drift tests proving generated contracts match source definitions.
+
+Acceptance:
+
+- contract generation is deterministic;
+- all new GraphQL operations validate against the SDL;
+- AsyncAPI request fields match generated Go structs;
+- no runtime implementation is added before the contract wave passes.
+
+Verification:
+
+```sh
+bun run contracts:check
+bun test tooling/scripts/generate-contracts.test.ts
+bun run typecheck
+```
+
+## IR-006: Project AI Chat Runtime And UI
+
+Goal: implement the approved Project AI Chat runtime and UI after IR-005 lands.
+
+Source specs:
+
+- [AI Chat domain](./01-domains/ai-chat.md)
+- [AI Chat runtime](./04-backend/ai-chat.md)
+- [AI Chat views](./05-frontend/ai-chat-views.md)
+- [AI Chat run flow](./02-flows/ai-chat/chat-run.md)
+- [AI Chat action approval flow](./02-flows/ai-chat/action-approval.md)
+- [AI Chat conversation compaction flow](./02-flows/ai-chat/conversation-compaction.md)
+
+Write scope:
+
+- `apps/backend`
+- `apps/frontend`
+- `core/control-plane`
+- `core/storage-read`
+- `core/storage-write`
+- generated contract packages from IR-005
+- docs and website AI Chat pages
+
+Required implementation:
+
+- Company/provider resolution and redacted effective provider inspection.
+- Per-user, project-scoped chat history.
+- Streaming run lifecycle with ordered events, duplicate submit behavior, abort,
+  terminal events, and sanitized errors.
+- JSON-render artifact validation and rendering.
+- Explicit approval flow for risky actions.
+- Conversation compaction using specified trigger and persistence rules.
+
+Acceptance:
+
+- frontend never receives raw provider credentials;
+- one chat run cannot query across projects;
+- destructive actions require explicit approval;
+- stream events are ordered, terminal, and replay-safe according to contracts;
+- generated UI contracts are the only frontend data source.
+
+Verification:
+
+```sh
+bun run contracts:check
+bun run typecheck
+bun run test
+go test -tags surrealdb ./core/control-plane/... ./core/storage-read/... ./core/storage-write/...
+bun run smoke:frontend
+```
+
+## IR-007: Log Ingestion Boundary Extraction
+
+Goal: split log-specific ingestion controls into `core/log-ingest` only when
+that service is implemented as a dedicated backend ingestion wave.
+
+Source specs:
+
+- [Log ingestion boundary](./04-backend/log-ingestion-boundary.md)
+- [Service architecture](./04-backend/backend-architecture.md)
+- [OTLP mapping](./04-backend/otlp-mapping.md)
+- [Message bridge AsyncAPI contract](./03-contracts/messages/message-bridge.asyncapi.yaml)
+
+Write scope:
+
+- `core/log-ingest`
+- `core/otlp-collector`
+- message bridge contracts only if ownership boundaries change
+- docs and deployment manifests
+
+Required implementation:
+
+- Preserve public OTLP `/v1/logs` compatibility.
+- Preserve private `telemetry.ingest.logs` subject semantics.
+- Move only log-specific validation, redaction, parsing policy, rate limits, and
+  tenant/project routing.
+- Keep collector trace and metric ingestion behavior unchanged.
+
+Acceptance:
+
+- existing OTLP log senders continue to work;
+- storage-write receives the same durable log command contract;
+- trace and metric ingestion tests remain unchanged;
+- no public REST telemetry read endpoint is introduced.
+
+Verification:
+
+```sh
+bun run contracts:check
+go test -tags surrealdb ./core/otlp-collector/... ./core/log-ingest/... ./core/storage-write/...
+bun run test
+```
+
+## IR-008: Production Release And Deployment Documentation
+
+Goal: complete the operator-facing release documentation required before public
+release.
+
+Source specs:
+
+- [Release, CI/CD, and distribution](./06-nfr/release-distribution.md)
+- [Performance and scaling](./06-nfr/performance-and-scaling.md)
+- [Kubernetes handbook](../docs/configuration/deployed/kubernetes.md)
+- [Production readiness docs](../docs/operations/production-readiness.md)
+
+Write scope:
+
+- `docs`
+- `website/src/content/handbook`
+- `.github/workflows` only when documentation needs workflow output paths
+- release validation scripts only when docs reference generated artifact names
+
+Required implementation:
+
+- Enterprise Helm install guide.
+- External NATS and SurrealDB configuration guide.
+- Image customization and custom base image guide.
+- Air-gapped or private-registry mirroring guide.
+- Upgrade and rollback guide.
+- Release artifact verification guide using signatures, checksums, SBOMs, and
+  image digests.
+- Sizing guide aligned with benchmark profiles and scaling variables.
+
+Acceptance:
+
+- public docs keep local evaluation simple and production hardening explicit;
+- production examples do not recommend default SurrealDB credentials, plaintext
+  public endpoints, local auth, or mutable image tags;
+- release verification docs name the exact artifacts produced by the release
+  workflow;
+- website handbook and repository docs stay aligned.
+
+Verification:
+
+```sh
+bun run lint
+bun run smoke:frontend
+git diff --check
+```
+
+## Cross-Cutting Rules
+
+- Update source specs before implementation when a required behavior is absent.
+- Do not add GraphQL fields, NATS subjects, SurrealDB fields, route modes,
+  error codes, env vars, or retry behavior outside the linked specs.
+- For contract changes, run `bun run contracts:check`.
+- For frontend UX changes, follow
+  [Enterprise product UX concept](./05-frontend/product-ux-concept.md).
+- For deployment or release changes, update docs and website handbook pages in
+  the same branch.

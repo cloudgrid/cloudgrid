@@ -22,6 +22,7 @@ This directory is the implementation specification for the MVP. The original sin
 - [Glossary](./glossary.md)
 - [Registry](./_registry.yaml)
 - [Provenance](./_provenance.yaml)
+- [Implementation-ready feature and improvement index](./implementation-ready.md)
 
 ## Domains
 
