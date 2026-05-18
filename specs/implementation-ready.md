@@ -35,7 +35,7 @@ Write scope:
 - `core/storage-maintenance`
 - `core/storage-read/internal/adapters/surrealdb`
 - storage-maintenance SurrealDB schema/readiness files
-- docs and website retention pages
+- website retention pages
 
 Required implementation:
 
@@ -86,7 +86,7 @@ Write scope:
 - `apps/packages/definition`
 - `apps/packages/ui-contracts`
 - `core/go-contracts`
-- docs and website alerting/dashboard pages
+- website alerting/dashboard pages
 
 Required implementation:
 
@@ -140,7 +140,7 @@ Write scope:
 - `core/storage-read`
 - `core/storage-write`
 - `core/control-plane`
-- docs and website security/configuration pages
+- website security/configuration pages
 
 Required implementation:
 
@@ -188,7 +188,7 @@ Write scope:
 - `tooling/scripts`
 - `.github/workflows`
 - `tmp/benchmarks` generated artifacts when intentionally recorded
-- docs and website production-readiness pages
+- website production-readiness pages
 
 Required implementation:
 
@@ -285,7 +285,7 @@ Write scope:
 - `core/storage-read`
 - `core/storage-write`
 - generated contract packages from IR-005
-- docs and website AI Chat pages
+- website AI Chat pages
 
 Required implementation:
 
@@ -404,6 +404,67 @@ bun run smoke:frontend
 git diff --check
 ```
 
+## IR-009: CloudGrid Self-Observability Logs Completion
+
+Goal: make CloudGrid's own service logs visible in the normal project-scoped
+Logs UI through the same OTLP ingest path used for application logs.
+
+Source specs:
+
+- [CloudGrid self-observability](./04-backend/self-observability.md)
+- [Log ingestion boundary](./04-backend/log-ingestion-boundary.md)
+- [Telemetry query semantics](./04-backend/telemetry-query-semantics.md)
+- [Logs, metrics explorer, and dashboards UX concept](./05-frontend/logs-metrics-dashboards-ux-concept.md)
+
+Write scope:
+
+- `apps/backend`
+- `apps/packages/runtime`
+- `core/go-runtime`
+- `core/otlp-collector`
+- `core/control-plane`
+- `core/storage-read`
+- `core/storage-write`
+- `core/ai-eval-runner`
+- website self-observability/logging pages
+
+Required implementation:
+
+- OTLP log exporters for all self-observability-covered services.
+- Bounded log record queues, interval flush, shutdown flush, and full-buffer
+  drop behavior.
+- BFF, collector, control-plane, storage-read, storage-write, and AI-eval
+  runner lifecycle/error event recording as specified.
+- Trace/span correlation for log records when a current span context exists.
+- Sanitization for GraphQL documents, OTLP bodies, credentials, provider
+  secrets, SurrealDB/NATS secrets, local project tokens, emails, and arbitrary
+  request bodies.
+- Exporter failure rate limiting and recursion protection.
+- Documentation showing operators how to inspect CloudGrid logs in the
+  `cloudgrid-system` project or configured deployed self-observability project.
+
+Acceptance:
+
+- selecting the self-observability project shows CloudGrid service logs in the
+  normal Logs route;
+- service logs carry bounded service, event, operation, request, and CloudGrid
+  error attributes;
+- log rows pivot to CloudGrid traces when trace/span IDs are present;
+- disabling `CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED` stops OTLP log export
+  without disabling stdout/stderr process logs;
+- exporter failures never fail readiness, request handling, message
+  acknowledgement, or shutdown;
+- tests prove forbidden values are not present in exported log payloads.
+
+Verification:
+
+```sh
+bun run typecheck
+bun run test
+go test -tags surrealdb ./core/go-runtime/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/...
+bun run smoke:frontend
+```
+
 ## Cross-Cutting Rules
 
 - Update source specs before implementation when a required behavior is absent.
@@ -412,5 +473,5 @@ git diff --check
 - For contract changes, run `bun run contracts:check`.
 - For frontend UX changes, follow
   [Enterprise product UX concept](./05-frontend/product-ux-concept.md).
-- For deployment or release changes, update docs and website handbook pages in
+- For deployment or release changes, update website handbook pages in
   the same branch.
