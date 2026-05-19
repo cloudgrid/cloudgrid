@@ -11,12 +11,16 @@ import {
 import type {
   AgentRunSearchInput,
   AiQualityOverviewInput,
+  AiChatHistoryInput,
+  AlertSummaryInput,
   AlertRuleSearchInput,
   AnnotationQueueSearchInput,
   AppendDatasetItemsInput,
+  ApproveAiChatActionInput,
   CommitDatasetImportInput,
   CreateAlertRuleInput,
   CreateAlertSilenceInput,
+  CreateAiChatConversationInput,
   CreateDatasetInput,
   CreateExperimentInput,
   CreateIngestCredentialInput,
@@ -54,8 +58,10 @@ import type {
   TelemetryFacetInput,
   TraceDetailInput,
   TraceSearchInput,
+  UpdateCompanyAiProviderSettingsInput,
   UpdateAlertRuleInput,
   UpdateOrganizationMemberInput,
+  UpdateProjectAiProviderSettingsInput,
   UpdateProjectAiSettingsInput,
   UpdateProjectInput,
   UpdateRetentionPolicyInput,
@@ -80,6 +86,7 @@ import {
   type NormalizedAuthContext,
   requireScopes,
 } from "./auth";
+import { attachAiChatStreamRoutes, type AiChatHarnessPort } from "./ai-chat-stream";
 import {
   type AiEvalBridge,
   type ControlPlaneBridge,
@@ -106,12 +113,16 @@ import { attachStaticRoutes } from "./static";
 import {
   validateAgentRunSearchInput,
   validateAiQualityOverviewInput,
+  validateAiChatHistoryInput,
   validateAlertRuleSearchInput,
+  validateAlertSummaryInput,
   validateAnnotationQueueSearchInput,
   validateAppendDatasetItemsInput,
+  validateApproveAiChatActionInput,
   validateCommitDatasetImportInput,
   validateCreateAlertRuleInput,
   validateCreateAlertSilenceInput,
+  validateCreateAiChatConversationInput,
   validateCreateDatasetInput,
   validateCreateExperimentInput,
   validateCreateIngestCredentialInput,
@@ -149,8 +160,10 @@ import {
   validateTraceDetailInput,
   validateTraceId,
   validateTraceSearchInput,
+  validateUpdateCompanyAiProviderSettingsInput,
   validateUpdateAlertRuleInput,
   validateUpdateOrganizationMemberInput,
+  validateUpdateProjectAiProviderSettingsInput,
   validateUpdateProjectAiSettingsInput,
   validateUpdateProjectInput,
   validateUpdateRetentionPolicyInput,
@@ -184,6 +197,7 @@ interface CreateAppOptions {
   metricsRecorder?: GraphQLMetricsRecorder;
   traceRecorder?: SelfObservabilityTraceRecorder;
   logRecorder?: SelfObservabilityLogRecorder;
+  aiChatHarness?: AiChatHarnessPort;
 }
 
 const JSONScalar = new GraphQLScalarType({
@@ -261,6 +275,7 @@ export function createAppWithBridge(
   attachDatasetTransferRoutes(app, {
     datasetTransferDir: config.datasetTransferDir ?? ".cloudgrid/dataset-transfer",
   });
+  attachAiChatStreamRoutes(app, { harness: config.aiChatHarness });
 
   type YogaContext = CloudGridYogaContext;
 
@@ -295,10 +310,14 @@ export function createAppWithBridge(
     );
   });
 
-  attachStaticRoutes(app, {
-    frontendServeStatic: config.frontendServeStatic ?? false,
-    frontendStaticDir: config.frontendStaticDir ?? "./apps/backend/public",
-  });
+  attachStaticRoutes(
+    app,
+    {
+      frontendServeStatic: config.frontendServeStatic ?? false,
+      frontendStaticDir: config.frontendStaticDir ?? "./apps/backend/public",
+    },
+    auth,
+  );
 
   return { app, bridge, auth };
 }
@@ -722,6 +741,18 @@ export function createCloudGridSchema() {
               await authContext(context),
             ),
           ),
+        alertSummary: async (
+          _parent,
+          args: { projectId: string; input?: AlertSummaryInput | null },
+          context,
+        ) =>
+          logGraphQLOperation(context, "alertSummary", async () =>
+            requireControlBridge(context).alertSummary(
+              validateId(args.projectId, "project id"),
+              validateAlertSummaryInput(args.input ?? {}),
+              await authContext(context),
+            ),
+          ),
         alertSilences: async (
           _parent,
           args: { projectId: string; ruleId?: string | null },
@@ -822,6 +853,34 @@ export function createCloudGridSchema() {
           logGraphQLOperation(context, "projectAiSettings", async () =>
             requireAiEvalBridge(context).projectAiSettings(
               validateId(args.projectId, "project id"),
+              await authContext(context),
+            ),
+          ),
+        projectAiProviderSettings: async (_parent, args: { projectId: string }, context) =>
+          logGraphQLOperation(context, "projectAiProviderSettings", async () =>
+            requireAiChatControlBridge(context).projectAiProviderSettings(
+              validateId(args.projectId, "project id"),
+              await authContext(context),
+            ),
+          ),
+        companyAiProviderSettings: async (_parent, args: { companyId: string }, context) =>
+          logGraphQLOperation(context, "companyAiProviderSettings", async () =>
+            requireAiChatControlBridge(context).companyAiProviderSettings(
+              validateId(args.companyId, "company id"),
+              await authContext(context),
+            ),
+          ),
+        aiChatHistory: async (_parent, args: { input: AiChatHistoryInput }, context) =>
+          logGraphQLOperation(context, "aiChatHistory", async () =>
+            requireAiChatControlBridge(context).aiChatHistory(
+              validateAiChatHistoryInput(args.input),
+              await authContext(context),
+            ),
+          ),
+        aiChatConversation: async (_parent, args: { id: string }, context) =>
+          logGraphQLOperation(context, "aiChatConversation", async () =>
+            requireAiChatControlBridge(context).aiChatConversation(
+              validateId(args.id, "AI Chat conversation id"),
               await authContext(context),
             ),
           ),
@@ -1149,6 +1208,53 @@ export function createCloudGridSchema() {
               await authContext(context),
             ),
           ),
+        updateProjectAiProviderSettings: async (
+          _parent,
+          args: { input: UpdateProjectAiProviderSettingsInput },
+          context,
+        ) =>
+          logGraphQLOperation(context, "updateProjectAiProviderSettings", async () =>
+            requireAiChatControlBridge(context).updateProjectAiProviderSettings(
+              validateUpdateProjectAiProviderSettingsInput(args.input),
+              await authContext(context),
+            ),
+          ),
+        updateCompanyAiProviderSettings: async (
+          _parent,
+          args: { input: UpdateCompanyAiProviderSettingsInput },
+          context,
+        ) =>
+          logGraphQLOperation(context, "updateCompanyAiProviderSettings", async () =>
+            requireAiChatControlBridge(context).updateCompanyAiProviderSettings(
+              validateUpdateCompanyAiProviderSettingsInput(args.input),
+              await authContext(context),
+            ),
+          ),
+        createAiChatConversation: async (
+          _parent,
+          args: { input: CreateAiChatConversationInput },
+          context,
+        ) =>
+          logGraphQLOperation(context, "createAiChatConversation", async () =>
+            requireAiChatControlBridge(context).createAiChatConversation(
+              validateCreateAiChatConversationInput(args.input),
+              await authContext(context),
+            ),
+          ),
+        archiveAiChatConversation: async (_parent, args: { id: string }, context) =>
+          logGraphQLOperation(context, "archiveAiChatConversation", async () =>
+            requireAiChatControlBridge(context).archiveAiChatConversation(
+              validateId(args.id, "AI Chat conversation id"),
+              await authContext(context),
+            ),
+          ),
+        approveAiChatAction: async (_parent, args: { input: ApproveAiChatActionInput }, context) =>
+          logGraphQLOperation(context, "approveAiChatAction", async () =>
+            requireAiChatControlBridge(context).approveAiChatAction(
+              validateApproveAiChatActionInput(args.input),
+              await authContext(context),
+            ),
+          ),
       },
       Dataset: {
         items: async (parent: Dataset, args: { input?: DatasetItemSearchInput }, context) =>
@@ -1237,6 +1343,24 @@ function requireControlBridge(context: CloudGridYogaContext): ControlPlaneBridge
     !bridge.deleteDashboard ||
     !bridge.setDashboardPinned ||
     !bridge.reorderDashboardPins
+  ) {
+    throw authGraphQLError("ERR-016");
+  }
+  return bridge as ControlPlaneBridge;
+}
+
+function requireAiChatControlBridge(context: CloudGridYogaContext): ControlPlaneBridge {
+  const bridge = context.hono.get("bridge");
+  if (
+    !bridge.projectAiProviderSettings ||
+    !bridge.updateProjectAiProviderSettings ||
+    !bridge.companyAiProviderSettings ||
+    !bridge.updateCompanyAiProviderSettings ||
+    !bridge.aiChatHistory ||
+    !bridge.aiChatConversation ||
+    !bridge.createAiChatConversation ||
+    !bridge.archiveAiChatConversation ||
+    !bridge.approveAiChatAction
   ) {
     throw authGraphQLError("ERR-016");
   }

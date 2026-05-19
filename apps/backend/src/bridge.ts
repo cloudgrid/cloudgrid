@@ -10,19 +10,31 @@ import type {
   AgentRun,
   AgentRunSearchInput,
   AgentRunSearchResult,
+  AiChatActionProposal,
+  AiChatConversation,
+  AiChatHistory,
+  AiChatHistoryInput,
+  AiChatMessagePart,
+  AiChatRun,
+  AiChatRunStatus,
   AiQualityOverview,
   AiQualityOverviewInput,
+  CompanyAiProviderSettings,
   AlertEventConnection,
   AlertRule,
   AlertRuleSearchInput,
   AlertSilence,
+  AlertSummary,
+  AlertSummaryInput,
   AnnotationQueueItem,
   AnnotationQueueResult,
   AnnotationQueueSearchInput,
   AppendDatasetItemsInput,
+  ApproveAiChatActionInput,
   CommitDatasetImportInput,
   CreateAlertRuleInput,
   CreateAlertSilenceInput,
+  CreateAiChatConversationInput,
   CreateDatasetInput,
   CreatedIngestCredential,
   CreateExperimentInput,
@@ -68,6 +80,7 @@ import type {
   OrganizationMember,
   PrepareDatasetImportInput,
   Project,
+  ProjectAiProviderSettings,
   ProjectAiSettings,
   ProjectInvitationResult,
   ProjectListInput,
@@ -97,8 +110,10 @@ import type {
   TraceDetailInput,
   TraceSearchInput,
   TraceSearchResult,
+  UpdateCompanyAiProviderSettingsInput,
   UpdateAlertRuleInput,
   UpdateOrganizationMemberInput,
+  UpdateProjectAiProviderSettingsInput,
   UpdateProjectAiSettingsInput,
   UpdateProjectInput,
   UpdateRetentionPolicyInput,
@@ -149,6 +164,7 @@ const subjects = {
   alertSilencesCreate: "control.alert_silences.create",
   alertSilencesDelete: "control.alert_silences.delete",
   alertHistoryList: "control.alert_history.list",
+  alertSummaryGet: "control.alert_summary.get",
   ingestCredentialsList: "control.ingest_credentials.list",
   ingestCredentialsCreate: "control.ingest_credentials.create",
   ingestCredentialsRevoke: "control.ingest_credentials.revoke",
@@ -191,6 +207,22 @@ const subjects = {
   promptVersionPromote: "eval.prompt_version.promote",
   projectAiSettingsGet: "control.ai_settings.get",
   projectAiSettingsUpdate: "control.ai_settings.update",
+  projectAiProviderSettingsGet: "control.ai_providers.project.get",
+  projectAiProviderSettingsUpdate: "control.ai_providers.project.update",
+  companyAiProviderSettingsGet: "control.ai_providers.company.get",
+  companyAiProviderSettingsUpdate: "control.ai_providers.company.update",
+  aiChatHistory: "control.ai_chat.history",
+  aiChatConversationGet: "control.ai_chat.conversation.get",
+  aiChatConversationCreate: "control.ai_chat.conversation.create",
+  aiChatConversationArchive: "control.ai_chat.conversation.archive",
+  aiChatMessageAppend: "control.ai_chat.message.append",
+  aiChatRunCreate: "control.ai_chat.run.create",
+  aiChatRunUpdate: "control.ai_chat.run.update",
+  aiChatRunFinalize: "control.ai_chat.run.finalize",
+  aiChatActionPropose: "control.ai_chat.action.propose",
+  aiChatActionApprove: "control.ai_chat.action.approve",
+  aiChatActionFinish: "control.ai_chat.action.finish",
+  aiChatCompactionSave: "control.ai_chat.compaction.save",
   aiQualityOverview: "eval.quality.overview",
 } as const;
 
@@ -346,6 +378,11 @@ export interface ControlPlaneBridge {
     after?: string | null,
     authContext?: NormalizedAuthContext,
   ): Promise<AlertEventConnection>;
+  alertSummary(
+    projectId: string,
+    input?: AlertSummaryInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AlertSummary>;
   ingestCredentials(
     projectId: string,
     authContext?: NormalizedAuthContext,
@@ -372,6 +409,125 @@ export interface ControlPlaneBridge {
     input: ReorderDashboardPinsInput,
     authContext?: NormalizedAuthContext,
   ): Promise<DashboardPreferences>;
+  projectAiProviderSettings(
+    projectId: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<ProjectAiProviderSettings>;
+  updateProjectAiProviderSettings(
+    input: UpdateProjectAiProviderSettingsInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<ProjectAiProviderSettings>;
+  companyAiProviderSettings(
+    companyId: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<CompanyAiProviderSettings>;
+  updateCompanyAiProviderSettings(
+    input: UpdateCompanyAiProviderSettingsInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<CompanyAiProviderSettings>;
+  aiChatHistory(
+    input: AiChatHistoryInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AiChatHistory>;
+  aiChatConversation(
+    id: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AiChatConversation | null>;
+  createAiChatConversation(
+    input: CreateAiChatConversationInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AiChatConversation>;
+  archiveAiChatConversation(
+    id: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AiChatConversation>;
+  approveAiChatAction(
+    input: ApproveAiChatActionInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AiChatActionProposal>;
+  aiChatAppendMessage(
+    input: AiChatAppendMessageInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<void>;
+  aiChatCreateRun(
+    input: AiChatCreateRunInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AiChatRun>;
+  aiChatUpdateRun(
+    input: AiChatUpdateRunInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AiChatRun>;
+  aiChatFinalizeRun(
+    input: AiChatFinalizeRunInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AiChatRun>;
+  aiChatProposeAction(
+    input: AiChatProposeActionInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AiChatActionProposal>;
+  aiChatFinishAction(
+    input: AiChatFinishActionInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<void>;
+  aiChatSaveCompaction(
+    input: AiChatSaveCompactionInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<void>;
+}
+
+export interface AiChatAppendMessageInput {
+  conversationId: string;
+  runId: string;
+  role: "user" | "assistant" | "tool" | "system";
+  parts: AiChatMessagePart[];
+}
+
+export interface AiChatCreateRunInput {
+  conversationId: string;
+  projectId: string;
+  userId: string;
+  userMessageClientId: string;
+  idempotencyKey: string;
+  providerKind: string;
+  providerProfileId: string;
+  model: string;
+  traceId?: string;
+}
+
+export interface AiChatUpdateRunInput {
+  runId: string;
+  status: AiChatRunStatus;
+  toolCallCount?: number;
+  sandboxScriptCount?: number;
+  artifactCount?: number;
+  inputTokenCount?: number;
+  outputTokenCount?: number;
+  estimatedCostUsd?: number;
+  error?: string;
+}
+
+export interface AiChatFinalizeRunInput extends AiChatUpdateRunInput {}
+
+export interface AiChatProposeActionInput {
+  conversationId: string;
+  runId: string;
+  title: string;
+  risk: string;
+  operation: string;
+  preview: Record<string, unknown>;
+}
+
+export interface AiChatFinishActionInput {
+  actionId: string;
+  status: string;
+  result?: Record<string, unknown>;
+}
+
+export interface AiChatSaveCompactionInput {
+  conversationId: string;
+  summary: string;
+  coveredMessageIds: string[];
+  tokenCount: number;
 }
 
 export interface AiEvalBridge {
@@ -932,6 +1088,19 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     return requiredData(data.connection, "Alert history list returned an empty response");
   }
 
+  async alertSummary(
+    projectId: string,
+    input: AlertSummaryInput = {},
+    authContext?: NormalizedAuthContext,
+  ): Promise<AlertSummary> {
+    const data = await this.#request<{ summary?: AlertSummary }>(subjects.alertSummaryGet, {
+      ...envelope(authContext),
+      projectId,
+      input: compactInput(input as Record<string, unknown>) as AlertSummaryInput,
+    });
+    return requiredData(data.summary, "Alert summary returned an empty response");
+  }
+
   async agentRuns(
     input: AgentRunSearchInput,
     authContext?: NormalizedAuthContext,
@@ -1105,6 +1274,197 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
       projectAiSettingsResponseSchema,
     );
     return data.settings;
+  }
+
+  async projectAiProviderSettings(
+    projectId: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<ProjectAiProviderSettings> {
+    const data = await this.#request<{ settings?: ProjectAiProviderSettings }>(
+      subjects.projectAiProviderSettingsGet,
+      { ...envelope(authContext), projectId },
+    );
+    return requiredData(
+      data.settings,
+      "Project AI provider settings get returned an empty response",
+    );
+  }
+
+  async updateProjectAiProviderSettings(
+    input: UpdateProjectAiProviderSettingsInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<ProjectAiProviderSettings> {
+    const data = await this.#request<{ settings?: ProjectAiProviderSettings }>(
+      subjects.projectAiProviderSettingsUpdate,
+      { ...envelope(authContext), input, expectedVersion: input.expectedVersion },
+    );
+    return requiredData(
+      data.settings,
+      "Project AI provider settings update returned an empty response",
+    );
+  }
+
+  async companyAiProviderSettings(
+    companyId: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<CompanyAiProviderSettings> {
+    const data = await this.#request<{ settings?: CompanyAiProviderSettings }>(
+      subjects.companyAiProviderSettingsGet,
+      { ...envelope(authContext), companyId },
+    );
+    return requiredData(
+      data.settings,
+      "Company AI provider settings get returned an empty response",
+    );
+  }
+
+  async updateCompanyAiProviderSettings(
+    input: UpdateCompanyAiProviderSettingsInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<CompanyAiProviderSettings> {
+    const data = await this.#request<{ settings?: CompanyAiProviderSettings }>(
+      subjects.companyAiProviderSettingsUpdate,
+      { ...envelope(authContext), input, expectedVersion: input.expectedVersion },
+    );
+    return requiredData(
+      data.settings,
+      "Company AI provider settings update returned an empty response",
+    );
+  }
+
+  async aiChatHistory(
+    input: AiChatHistoryInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AiChatHistory> {
+    const data = await this.#request<{ history?: AiChatHistory }>(subjects.aiChatHistory, {
+      ...envelope(authContext),
+      input: compactInput(input as unknown as Record<string, unknown>),
+    });
+    return requiredData(data.history, "AI Chat history returned an empty response");
+  }
+
+  async aiChatConversation(
+    id: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AiChatConversation | null> {
+    const data = await this.#request<{ conversation?: AiChatConversation | null }>(
+      subjects.aiChatConversationGet,
+      { ...envelope(authContext), conversationId: id },
+    );
+    return data.conversation ?? null;
+  }
+
+  async createAiChatConversation(
+    input: CreateAiChatConversationInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AiChatConversation> {
+    const data = await this.#request<{ conversation?: AiChatConversation }>(
+      subjects.aiChatConversationCreate,
+      { ...envelope(authContext), input },
+    );
+    return requiredData(
+      data.conversation,
+      "AI Chat conversation create returned an empty response",
+    );
+  }
+
+  async archiveAiChatConversation(
+    id: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AiChatConversation> {
+    const data = await this.#request<{ conversation?: AiChatConversation }>(
+      subjects.aiChatConversationArchive,
+      { ...envelope(authContext), conversationId: id },
+    );
+    return requiredData(
+      data.conversation,
+      "AI Chat conversation archive returned an empty response",
+    );
+  }
+
+  async approveAiChatAction(
+    input: ApproveAiChatActionInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AiChatActionProposal> {
+    const data = await this.#request<{ action?: AiChatActionProposal }>(
+      subjects.aiChatActionApprove,
+      { ...envelope(authContext), input, expectedVersion: input.expectedVersion },
+    );
+    return requiredData(data.action, "AI Chat action approval returned an empty response");
+  }
+
+  async aiChatAppendMessage(
+    input: AiChatAppendMessageInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<void> {
+    await this.#request<Record<string, unknown>>(subjects.aiChatMessageAppend, {
+      ...envelope(authContext),
+      ...input,
+    });
+  }
+
+  async aiChatCreateRun(
+    input: AiChatCreateRunInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AiChatRun> {
+    const data = await this.#request<{ run?: AiChatRun }>(subjects.aiChatRunCreate, {
+      ...envelope(authContext),
+      ...input,
+    });
+    return requiredData(data.run, "AI Chat run create returned an empty response");
+  }
+
+  async aiChatUpdateRun(
+    input: AiChatUpdateRunInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AiChatRun> {
+    const data = await this.#request<{ run?: AiChatRun }>(subjects.aiChatRunUpdate, {
+      ...envelope(authContext),
+      ...compactInput(input as unknown as Record<string, unknown>),
+    });
+    return requiredData(data.run, "AI Chat run update returned an empty response");
+  }
+
+  async aiChatFinalizeRun(
+    input: AiChatFinalizeRunInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AiChatRun> {
+    const data = await this.#request<{ run?: AiChatRun }>(subjects.aiChatRunFinalize, {
+      ...envelope(authContext),
+      ...compactInput(input as unknown as Record<string, unknown>),
+    });
+    return requiredData(data.run, "AI Chat run finalize returned an empty response");
+  }
+
+  async aiChatProposeAction(
+    input: AiChatProposeActionInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<AiChatActionProposal> {
+    const data = await this.#request<{ action?: AiChatActionProposal }>(
+      subjects.aiChatActionPropose,
+      { ...envelope(authContext), ...input },
+    );
+    return requiredData(data.action, "AI Chat action proposal returned an empty response");
+  }
+
+  async aiChatFinishAction(
+    input: AiChatFinishActionInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<void> {
+    await this.#request<Record<string, unknown>>(subjects.aiChatActionFinish, {
+      ...envelope(authContext),
+      ...input,
+    });
+  }
+
+  async aiChatSaveCompaction(
+    input: AiChatSaveCompactionInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<void> {
+    await this.#request<Record<string, unknown>>(subjects.aiChatCompactionSave, {
+      ...envelope(authContext),
+      ...input,
+    });
   }
 
   async aiQualityOverview(
@@ -2137,6 +2497,9 @@ const dashboardWidgetKindSchema = z.enum([
   "log_table",
   "trace_table",
   "live_trace_table",
+  "alert_status",
+  "alert_history",
+  "alert_evidence",
 ]);
 const dashboardThresholdSeveritySchema = z.enum(["info", "warning", "error"]);
 const dashboardLogColumnSchema = z.enum([
@@ -2805,6 +3168,17 @@ const dashboardLiveTraceWidgetSchema = z.object({
   attributes: z.array(attributeFilterSchema),
   limit: z.number().int().min(1).max(200),
 });
+const alertSeveritySchema = z.enum(["INFO", "WARNING", "ERROR", "CRITICAL"]);
+const alertStateSchema = z.enum(["OK", "PENDING", "FIRING", "RESOLVED", "SILENCED", "ERROR"]);
+const alertSignalSchema = z.enum(["METRIC", "LOG", "TRACE"]);
+const dashboardAlertWidgetSchema = z.object({
+  ruleIds: z.array(z.string()),
+  states: z.array(alertStateSchema),
+  severities: z.array(alertSeveritySchema),
+  signals: z.array(alertSignalSchema),
+  timeWindow: z.string().min(1),
+  limit: z.number().int().min(1).max(100),
+});
 const dashboardWidgetSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
@@ -2816,6 +3190,7 @@ const dashboardWidgetSchema = z.object({
   logs: dashboardLogWidgetSchema.optional().nullable(),
   traces: dashboardTraceWidgetSchema.optional().nullable(),
   liveTraces: dashboardLiveTraceWidgetSchema.optional().nullable(),
+  alert: dashboardAlertWidgetSchema.optional().nullable(),
 });
 const dashboardSchema = z.object({
   id: z.string().min(1),

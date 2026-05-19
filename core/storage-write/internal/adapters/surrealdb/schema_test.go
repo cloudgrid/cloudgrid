@@ -137,6 +137,22 @@ func TestStatementsDefineTraceSummaryCountFields(t *testing.T) {
 	}
 }
 
+func TestStatementsDefineRetentionSoftDeleteFields(t *testing.T) {
+	got := strings.Join(Statements(), "\n")
+
+	for _, table := range []string{"trace", "span", "log_event", "metric_descriptor", "metric_point", "metric_ingest_cardinality", "ingest_command", "ai_agent_run", "ai_llm_call", "ai_tool_call", "ai_retrieval_event", "ai_dataset", "ai_dataset_item", "ai_scorer", "ai_eval_result", "ai_experiment", "ai_experiment_run", "ai_dataset_item_run", "ai_prompt_version", "ai_annotation_queue_item"} {
+		for _, want := range []string{
+			"DEFINE FIELD IF NOT EXISTS deletedAt ON " + table + " TYPE option<datetime>",
+			"DEFINE FIELD IF NOT EXISTS deletedByRetentionPolicyId ON " + table + " TYPE option<string>",
+			"DEFINE FIELD IF NOT EXISTS finalDeleteAfter ON " + table + " TYPE option<datetime>",
+		} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("schema missing %q in:\n%s", want, got)
+			}
+		}
+	}
+}
+
 func TestStatementsUseFlexibleFieldsOnlyWhereSchemaAllowsOpenData(t *testing.T) {
 	got := strings.Join(Statements(), "\n")
 

@@ -261,15 +261,24 @@ Implemented:
 - alert evaluator process wiring for NATS request/reply handlers and NATS-backed control-plane/storage-read ports used by explicit project/rule evaluation requests;
 - service-scoped control-plane access for the private alert evaluator scope, constrained to the requested project;
 - optional periodic scheduler loop driven by `CLOUDGRID_ALERT_EVALUATOR_PROJECT_IDS` and `CLOUDGRID_ALERT_EVALUATOR_INTERVAL_SECONDS`;
+- service project discovery through `control.projects.list_for_service` when
+  `CLOUDGRID_ALERT_EVALUATOR_PROJECT_DISCOVERY_ENABLED=true`;
+- email and webhook notification adapters with deployment-time adapter catalog
+  validation, SMTP recipient checks, HTTPS-only webhook URLs, HMAC-SHA256
+  signing, timeout/status mapping, and redaction;
+- typed dashboard alert widgets for `alert_status`, `alert_history`, and
+  `alert_evidence`, backed by `Query.alertSummary(projectId,input)` and alert
+  history reads;
 - evaluator timeout and notification terminal-failure errors mapped to `ERR-021` and `ERR-020`;
 - narrow Go tests for rule validation, project isolation at the evaluator port boundary, state transitions, retryable/terminal notification statuses, runtime subjects, NATS-backed port request shapes, service-scoped control-plane access, and evaluator timeout handling;
 - alert evaluator binary health/readiness endpoint.
 
 Production execution package status:
 
-- project enumeration subject is specified above and not yet implemented;
-- email and webhook adapter runtime is specified above and not yet implemented;
-- dashboard alert widgets are specified above and not yet implemented.
+- implemented for repository-local contract, BFF/frontend, control-plane, and
+  alert-evaluator boundaries;
+- each deployment still has to provide its own SMTP/webhook environment values
+  and choose the enabled adapter catalog.
 
 Alerting-specific errors:
 

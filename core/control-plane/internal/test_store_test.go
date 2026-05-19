@@ -22,6 +22,7 @@ type DashboardPinRecord = ports.DashboardPinRecord
 type ProjectMemberRecord = ports.ProjectMemberRecord
 type RetentionPolicyRecord = ports.RetentionPolicyRecord
 type ProjectAiSettingsRecord = ports.ProjectAiSettingsRecord
+type AiChatRunRecord = ports.AiChatRunRecord
 type AlertRuleRecord = ports.AlertRuleRecord
 type AlertSilenceRecord = ports.AlertSilenceRecord
 type AlertEventRecord = ports.AlertEventRecord
@@ -40,6 +41,7 @@ type testStore struct {
 	emailDeliveries   map[string]ports.EmailDeliveryRecord
 	retentionPolicies map[string]ports.RetentionPolicyRecord
 	projectAiSettings map[string]ports.ProjectAiSettingsRecord
+	aiChatRuns        map[string]ports.AiChatRunRecord
 	alertRules        map[string]ports.AlertRuleRecord
 	alertSilences     map[string]ports.AlertSilenceRecord
 	alertEvents       map[string]ports.AlertEventRecord
@@ -59,6 +61,7 @@ func newTestStore() *testStore {
 		emailDeliveries:   map[string]ports.EmailDeliveryRecord{},
 		retentionPolicies: map[string]ports.RetentionPolicyRecord{},
 		projectAiSettings: map[string]ports.ProjectAiSettingsRecord{},
+		aiChatRuns:        map[string]ports.AiChatRunRecord{},
 		alertRules:        map[string]ports.AlertRuleRecord{},
 		alertSilences:     map[string]ports.AlertSilenceRecord{},
 		alertEvents:       map[string]ports.AlertEventRecord{},
@@ -483,6 +486,46 @@ func (store *testStore) PutProjectAiSettings(_ context.Context, settings ports.P
 	defer store.mu.Unlock()
 	settings.Settings = cloneMap(settings.Settings)
 	store.projectAiSettings[settings.ProjectID] = settings
+	return nil
+}
+
+func (store *testStore) GetAiChatRun(_ context.Context, runID string) (ports.AiChatRunRecord, bool, error) {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	run, ok := store.aiChatRuns[runID]
+	return run, ok, nil
+}
+
+func (store *testStore) GetAiChatRunByIdempotency(_ context.Context, conversationID string, userMessageClientID string, idempotencyKey string) (ports.AiChatRunRecord, bool, error) {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	for _, run := range store.aiChatRuns {
+		if run.ConversationID == conversationID && run.UserMessageClientID == userMessageClientID && run.IdempotencyKey == idempotencyKey {
+			return run, true, nil
+		}
+	}
+	return ports.AiChatRunRecord{}, false, nil
+}
+
+func (store *testStore) ListActiveAiChatRunsForConversation(_ context.Context, conversationID string) ([]ports.AiChatRunRecord, error) {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	items := []ports.AiChatRunRecord{}
+	for _, run := range store.aiChatRuns {
+		if run.ConversationID == conversationID && isActiveAiChatRunStatus(run.Status) {
+			items = append(items, run)
+		}
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].StartedAt.Before(items[j].StartedAt)
+	})
+	return items, nil
+}
+
+func (store *testStore) PutAiChatRun(_ context.Context, run ports.AiChatRunRecord) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.aiChatRuns[run.ID] = run
 	return nil
 }
 

@@ -15,6 +15,7 @@ import (
 	"github.com/cloudgrid-dev/cloudgrid/core/ai-eval-runner/internal/orchestrator"
 	"github.com/cloudgrid-dev/cloudgrid/core/ai-eval-runner/internal/ports"
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
+	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/selfobs"
 )
 
 const (
@@ -55,23 +56,39 @@ type Message struct {
 }
 
 type RunnerService struct {
-	runner *orchestrator.Runner
-	logger *slog.Logger
+	runner            *orchestrator.Runner
+	logger            *slog.Logger
+	selfObservability selfobs.TraceLogRecorder
 }
 
 type Handler func(BridgeMessage)
 
+type RunnerServiceOptions struct {
+	SelfObservability selfobs.TraceLogRecorder
+}
+
 func NewRunnerService(runner *orchestrator.Runner, logger *slog.Logger) *RunnerService {
-	return &RunnerService{runner: runner, logger: logger}
+	return NewRunnerServiceWithOptions(runner, logger, RunnerServiceOptions{})
+}
+
+func NewRunnerServiceWithOptions(runner *orchestrator.Runner, logger *slog.Logger, options RunnerServiceOptions) *RunnerService {
+	return &RunnerService{runner: runner, logger: logger, selfObservability: options.SelfObservability}
 }
 
 func (service *RunnerService) SubjectHandlers() map[string]Handler {
-	return map[string]Handler{
+	handlers := map[string]Handler{
 		SubjectExperimentStart:      service.handleExperimentStart(),
 		SubjectExperimentCancel:     service.handleExperimentCancel(),
 		SubjectOptimizationStart:    service.handleOptimizationStart(),
 		SubjectPersistedProjections: service.handlePersistedProjections(),
 	}
+	if service.selfObservability == nil {
+		return handlers
+	}
+	for subject, handler := range handlers {
+		handlers[subject] = withRunnerSelfObservability(subject, service.selfObservability, handler)
+	}
+	return handlers
 }
 
 func (service *RunnerService) handleExperimentStart() Handler {
@@ -329,6 +346,133 @@ func logAdapterWarning(logger *slog.Logger, message string, err error) {
 		return
 	}
 	logger.Warn(message, "service", "ai-eval-runner", "error", err)
+}
+
+type observedRunnerMessage struct {
+	BridgeMessage
+	response []byte
+}
+
+func (message *observedRunnerMessage) Respond(response []byte) error {
+	message.response = append([]byte(nil), response...)
+	return message.BridgeMessage.Respond(response)
+}
+
+func withRunnerSelfObservability(subject string, recorder selfobs.TraceLogRecorder, handler Handler) Handler {
+	return func(msg BridgeMessage) {
+		start := time.Now().UTC()
+		observed := &observedRunnerMessage{BridgeMessage: msg}
+		handler(observed)
+		requestID, ok, bridgeError := runnerResponseObservabilityFields(observed.response)
+		if requestID == "" {
+			requestID = requestIDFromPayload(msg.Data())
+		}
+		result := "success"
+		if !ok {
+			result = "error"
+		}
+		traceContext := selfobs.NewRootTraceContext()
+		if headers, ok := msg.(interface{ Header(string) string }); ok {
+			if parent, ok := selfobs.TraceContextFromHeaders(headers); ok {
+				traceContext = selfobs.NewChildTraceContext(parent)
+			}
+		}
+		operation := boundedRunnerOperation(subject)
+		recorder.RecordSpan(selfobs.SpanEvent{
+			Name:         "ai-eval-runner nats handler",
+			TraceID:      traceContext.TraceID,
+			SpanID:       traceContext.SpanID,
+			ParentSpanID: traceContext.ParentSpanID,
+			TraceState:   traceContext.TraceState,
+			StartTime:    start,
+			EndTime:      time.Now().UTC(),
+			Result:       result,
+			Attributes: map[string]string{
+				"messaging.system":           "nats",
+				"messaging.destination.name": boundedRunnerSubject(subject),
+				"cloudgrid.request_id":       requestID,
+				"cloudgrid.operation":        operation,
+			},
+		})
+		if bridgeError != nil {
+			recorder.RecordLog(selfobs.LogEvent{
+				Timestamp:    time.Now().UTC(),
+				SeverityText: "WARN",
+				TraceID:      traceContext.TraceID,
+				SpanID:       traceContext.SpanID,
+				Message:      "AI evaluation runner handler failed",
+				Attributes: map[string]string{
+					"event":                "ai_eval_runner_failed",
+					"cloudgrid.request_id": requestID,
+					"error_id":             boundedRunnerErrorID(bridgeError.ID),
+					"error_code":           boundedRunnerErrorCode(bridgeError.Code),
+					"operation":            operation,
+				},
+			})
+		}
+	}
+}
+
+func runnerResponseObservabilityFields(payload []byte) (string, bool, *contracts.BridgeError) {
+	var response struct {
+		RequestID string                 `json:"requestId"`
+		OK        bool                   `json:"ok"`
+		Error     *contracts.BridgeError `json:"error,omitempty"`
+	}
+	if len(payload) == 0 || json.Unmarshal(payload, &response) != nil {
+		return "", true, nil
+	}
+	return response.RequestID, response.OK, response.Error
+}
+
+func requestIDFromPayload(payload []byte) string {
+	var value struct {
+		RequestID string `json:"requestId"`
+	}
+	_ = json.Unmarshal(payload, &value)
+	return value.RequestID
+}
+
+func boundedRunnerSubject(subject string) string {
+	switch subject {
+	case SubjectExperimentStart, SubjectExperimentCancel, SubjectOptimizationStart, SubjectPersistedProjections:
+		return subject
+	default:
+		return "unknown"
+	}
+}
+
+func boundedRunnerOperation(subject string) string {
+	switch subject {
+	case SubjectExperimentStart:
+		return "experiment_start"
+	case SubjectExperimentCancel:
+		return "experiment_cancel"
+	case SubjectOptimizationStart:
+		return "optimization_start"
+	case SubjectPersistedProjections:
+		return "persisted_projections"
+	default:
+		return "unknown"
+	}
+}
+
+func boundedRunnerErrorID(id string) string {
+	switch id {
+	case "ERR-001", "ERR-006", "ERR-013", "ERR-AIE":
+		return id
+	default:
+		return "ERR-006"
+	}
+}
+
+func boundedRunnerErrorCode(code string) string {
+	switch code {
+	case "VALIDATION_FAILED", "STORAGE_UNAVAILABLE", "MESSAGE_BRIDGE_UNAVAILABLE", "AI_EVAL_RUNNER_REJECTED":
+		return code
+	default:
+		return "STORAGE_UNAVAILABLE"
+	}
 }
 
 func marshalJSON(value any) ([]byte, error) {

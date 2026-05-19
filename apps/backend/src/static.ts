@@ -3,17 +3,31 @@ import type { Env, Hono } from "hono";
 import type { RuntimeConfig } from "./config";
 
 type StaticConfig = Pick<RuntimeConfig, "frontendServeStatic" | "frontendStaticDir">;
+type StaticAuth = {
+  authenticateRequest(request: Request): Promise<unknown>;
+};
 
-export function attachStaticRoutes<E extends Env>(app: Hono<E>, config: StaticConfig) {
+export function attachStaticRoutes<E extends Env>(
+  app: Hono<E>,
+  config: StaticConfig,
+  auth?: StaticAuth,
+) {
   if (!config.frontendServeStatic) {
     return;
   }
 
   app.get("/assets/*", (context) => serveStaticPath(context.req.url, config, false));
-  app.get("*", (context) => {
+  app.get("*", async (context) => {
     const pathname = new URL(context.req.url).pathname;
     if (isReservedPath(pathname)) {
       return context.notFound();
+    }
+    if (auth) {
+      try {
+        await auth.authenticateRequest(context.req.raw);
+      } catch {
+        return Response.redirect(loginUrl(context.req.url), 302);
+      }
     }
     return serveStaticPath(context.req.url, config, true);
   });
@@ -53,6 +67,13 @@ function isReservedPath(pathname: string): boolean {
     pathname === "/readyz" ||
     pathname.startsWith("/api/")
   );
+}
+
+function loginUrl(rawUrl: string): URL {
+  const url = new URL(rawUrl);
+  const login = new URL("/auth/login", url.origin);
+  login.searchParams.set("returnTo", `${url.pathname}${url.search}`);
+  return login;
 }
 
 function isInside(root: string, filePath: string): boolean {

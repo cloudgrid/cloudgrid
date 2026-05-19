@@ -14,13 +14,14 @@ import (
 )
 
 const (
-	SubjectControlAlertRulesList     = "control.alert_rules.list"
-	SubjectControlAlertSilencesList  = "control.alert_silences.list"
-	SubjectControlAlertHistoryList   = "control.alert_history.list"
-	SubjectControlAlertHistoryRecord = "control.alert_history.record"
-	SubjectStorageMetricQuery        = "telemetry.metrics.query"
-	SubjectStorageLogSearch          = "telemetry.logs.search"
-	SubjectStorageTraceSearch        = "telemetry.traces.search"
+	SubjectControlAlertRulesList         = "control.alert_rules.list"
+	SubjectControlAlertSilencesList      = "control.alert_silences.list"
+	SubjectControlAlertHistoryList       = "control.alert_history.list"
+	SubjectControlAlertHistoryRecord     = "control.alert_history.record"
+	SubjectControlProjectsListForService = "control.projects.list_for_service"
+	SubjectStorageMetricQuery            = "telemetry.metrics.query"
+	SubjectStorageLogSearch              = "telemetry.logs.search"
+	SubjectStorageTraceSearch            = "telemetry.traces.search"
 )
 
 type Requester interface {
@@ -31,6 +32,7 @@ type NATSControlPlanePort struct {
 	requester  Requester
 	timeout    time.Duration
 	projectIDs []string
+	discovery  bool
 }
 
 type NATSStorageReadPort struct {
@@ -46,17 +48,29 @@ func NewNATSControlPlanePortForProjects(requester Requester, timeout time.Durati
 	return &NATSControlPlanePort{requester: requester, timeout: defaultTimeout(timeout), projectIDs: normalizedProjectIDs(projectIDs)}
 }
 
+func NewNATSControlPlanePortWithDiscovery(requester Requester, timeout time.Duration) *NATSControlPlanePort {
+	return &NATSControlPlanePort{requester: requester, timeout: defaultTimeout(timeout), discovery: true}
+}
+
 func NewNATSStorageReadPort(requester Requester, timeout time.Duration) *NATSStorageReadPort {
 	return &NATSStorageReadPort{requester: requester, timeout: defaultTimeout(timeout)}
 }
 
 func (port *NATSControlPlanePort) ListEnabledAlertRules(ctx context.Context) ([]contracts.AlertRule, error) {
-	if len(port.projectIDs) == 0 {
+	projectIDs := port.projectIDs
+	if port.discovery {
+		projects, err := port.discoverProjects(ctx)
+		if err != nil {
+			return nil, err
+		}
+		projectIDs = projects
+	}
+	if len(projectIDs) == 0 {
 		return nil, evaluator.CodedError{ID: "ERR-019", Code: "ALERT_QUERY_UNSUPPORTED", Message: "scheduled alert ticks require configured project IDs", Retryable: false}
 	}
 	rules := []contracts.AlertRule{}
 	enabled := true
-	for _, projectID := range port.projectIDs {
+	for _, projectID := range projectIDs {
 		response, err := requestJSON[contracts.AlertRuleListResponse](ctx, port.requester, port.timeout, SubjectControlAlertRulesList, contracts.AlertRuleListRequest{
 			BridgeEnvelope: controlPlaneEnvelope(projectID, "alert-rule-list"),
 			ProjectID:      projectID,
@@ -69,12 +83,44 @@ func (port *NATSControlPlanePort) ListEnabledAlertRules(ctx context.Context) ([]
 			return nil, bridgeResponseError(response.Error, "alert rule list failed")
 		}
 		for _, rule := range response.Data.Items {
-			if rule.Enabled {
+			if rule.Enabled && rule.ProjectID == projectID {
 				rules = append(rules, rule)
 			}
 		}
 	}
 	return rules, nil
+}
+
+func (port *NATSControlPlanePort) discoverProjects(ctx context.Context) ([]string, error) {
+	status := contracts.ProjectStatusActive
+	limit := 100
+	var cursor *string
+	projectIDs := []string{}
+	for {
+		response, err := requestJSON[contracts.ProjectListForServiceResponse](ctx, port.requester, port.timeout, SubjectControlProjectsListForService, contracts.ProjectListForServiceRequest{
+			BridgeEnvelope: serviceControlPlaneEnvelope("project-discovery"),
+			ServiceScope:   contracts.ServiceProjectScopeAlertEvaluator,
+			Status:         &status,
+			Cursor:         cursor,
+			Limit:          &limit,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if !response.OK || response.Data == nil {
+			return nil, bridgeResponseError(response.Error, "project discovery failed")
+		}
+		for _, item := range response.Data.Items {
+			if item.Status == contracts.ProjectStatusActive {
+				projectIDs = append(projectIDs, item.ProjectID)
+			}
+		}
+		if response.Data.NextCursor == nil || strings.TrimSpace(*response.Data.NextCursor) == "" {
+			break
+		}
+		cursor = response.Data.NextCursor
+	}
+	return normalizedProjectIDs(projectIDs), nil
 }
 
 func (port *NATSControlPlanePort) GetAlertRule(ctx context.Context, projectID string, ruleID string) (contracts.AlertRule, error) {
@@ -232,6 +278,22 @@ func controlPlaneEnvelope(projectID string, requestID string) contracts.BridgeEn
 			Mode:        "service",
 			PrincipalID: ptr("cloudgrid-alert-evaluator"),
 			ProjectID:   &projectID,
+			Scopes:      []string{"cloudgrid:alert-evaluator"},
+			ReadAllowed: &readAllowed,
+			CheckedAt:   &now,
+		},
+	}
+}
+
+func serviceControlPlaneEnvelope(requestID string) contracts.BridgeEnvelope {
+	readAllowed := true
+	now := time.Now().UTC()
+	return contracts.BridgeEnvelope{
+		RequestID: requestID,
+		IssuedAt:  now,
+		AuthContext: &contracts.AuthContext{
+			Mode:        "service",
+			PrincipalID: ptr("cloudgrid-alert-evaluator"),
 			Scopes:      []string{"cloudgrid:alert-evaluator"},
 			ReadAllowed: &readAllowed,
 			CheckedAt:   &now,

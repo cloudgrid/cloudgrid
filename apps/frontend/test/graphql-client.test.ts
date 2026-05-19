@@ -458,6 +458,14 @@ describe("GraphQL client", () => {
             pageInfo: { hasNextPage: false, endCursor: null },
           },
         },
+        AlertSummary: {
+          alertSummary: {
+            totalCount: 1,
+            byState: [{ state: "FIRING", count: 1 }],
+            bySeverity: [{ severity: "ERROR", count: 1 }],
+            bySignal: [{ signal: "TRACE", count: 1 }],
+          },
+        },
         AlertSilences: { alertSilences: [silence] },
         CreateAlertRule: { createAlertRule: rule },
         UpdateAlertRule: { updateAlertRule: rule },
@@ -497,6 +505,13 @@ describe("GraphQL client", () => {
     await expect(
       client.getAlertHistory({ projectId: "project-1", ruleId: "rule-1" }),
     ).resolves.toMatchObject({ items: [{ id: "event-1", state: "FIRING" }] });
+    await expect(
+      client.getAlertSummary("project-1", {
+        states: ["FIRING"],
+        severities: ["ERROR"],
+        signals: ["TRACE"],
+      }),
+    ).resolves.toMatchObject({ totalCount: 1, byState: [{ state: "FIRING", count: 1 }] });
     await expect(
       client.getAlertSilences({ projectId: "project-1", ruleId: "rule-1" }),
     ).resolves.toEqual([expect.objectContaining({ id: "silence-1", active: true })]);
@@ -538,6 +553,7 @@ describe("GraphQL client", () => {
       "UpdateRetentionPolicy",
       "AlertRules",
       "AlertHistory",
+      "AlertSummary",
       "AlertSilences",
       "CreateAlertRule",
       "UpdateAlertRule",
@@ -555,6 +571,14 @@ describe("GraphQL client", () => {
       ruleId: "rule-1",
       first: 50,
       after: null,
+    });
+    expect(variablesByOperation.AlertSummary).toEqual({
+      projectId: "project-1",
+      input: {
+        states: ["FIRING"],
+        severities: ["ERROR"],
+        signals: ["TRACE"],
+      },
     });
   });
 

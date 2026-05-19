@@ -1,14 +1,95 @@
-source: implementation-alignment-pass
+source: implementation-ready-completion-pass
 status: implementation_ready
-updated: 2026-05-18
+updated: 2026-05-19
 notes:
   - Current CloudGrid specs and contracts are sufficient for MVP closure implementation.
   - Formal implementation-planner gate file specs/.readiness-report.yaml exists and records the current verification state.
   - Auth, control-plane, frontend login/company/project management, and SurrealDB tenant/project database separation have been implemented in the current codebase.
   - OTLP metrics ingest/query/persistence, OTLP gRPC ingest on 4317, project membership, project retention policy CRUD, and alert rule/silence/history CRUD are now implemented surfaces, not deferred waves.
   - Production-scale performance work now has explicit implementation constraints in specs/06-nfr/performance-and-scaling.md.
-  - Remaining production gaps are specified follow-on waves, not open product-decision gaps.
+  - Remaining production gaps are specified implementation requirements, not open product-decision gaps.
+  - Per-item completion status is tracked in specs/implementation-ready.md.
 blocking_gaps: []
+implementation_ready_status:
+  IR-001:
+    status: partial
+    evidence:
+      - SurrealDB retention adapter/query/schema/readiness groundwork exists.
+      - SurrealDB retention adapter is wired into storage-maintenance startup for surrealdb builds.
+      - Storage-read soft-delete filters and storage-write soft-delete fields exist.
+      - go test ./core/storage-maintenance/... passes.
+      - go test -tags surrealdb ./core/storage-maintenance/... passes.
+    remaining:
+      - Complete opt-in live SurrealDB tests for every executable data class, soft delete/final delete, dry-run mutation checks, and lease contention/reacquire.
+  IR-002:
+    status: complete
+    evidence:
+      - control.projects.list_for_service exists.
+      - Alert evaluator project discovery and startup source validation exist.
+      - Webhook/email notification dispatch adapters and catalog validation exist.
+      - Typed alert dashboard widget contracts exist for alert_status, alert_history, and alert_evidence.
+      - Query.alertSummary(projectId, input), public API operation metadata, and integration scenario coverage exist.
+      - Dashboard UI can render alert status, history, and evidence widgets from backend view models.
+      - bun run contracts:check passes.
+      - bun run typecheck passes.
+      - Targeted BFF/frontend alert tests pass.
+      - go test -tags surrealdb ./core/control-plane/... ./core/alert-evaluator/... passes.
+  IR-003:
+    status: complete
+    evidence:
+      - Collector local/deployed bearer routing and sanitized auth failures already exist.
+      - Control-plane final-admin safeguards already exist.
+      - Storage-read fails closed for SSO read/live scopes and tenant mismatch.
+      - Storage-write rejects deployed ingest commands without collector-authorized tenant/company/project routing.
+      - BFF GraphQL HTTP, GraphQL WebSocket, and protected app shell routes have deployed-mode acceptance coverage.
+      - bun test apps/backend/src/static.test.ts apps/backend/src/auth.test.ts apps/backend/src/graphql-ws.test.ts passes.
+      - go test -tags surrealdb ./core/otlp-collector/... ./core/storage-read/... ./core/storage-write/... ./core/control-plane/... passes.
+  IR-004:
+    status: blocked-by-environment
+    evidence:
+      - Benchmark scripts and production sizing/release docs exist.
+      - Production benchmark JSON includes deployment profile, environment identity, image tag, thresholds, observed values, and pass/fail status.
+      - bun test tooling/scripts/bench.test.mjs passes.
+    remaining:
+      - Run production benchmark commands against the exact promoted deployment and persist JSON evidence.
+  IR-005:
+    status: complete
+    evidence:
+      - AI provider and AI Chat generated metadata, BFF bridge/resolvers, validation, integration scenario coverage, and contract checks are present.
+      - bun run contracts:check passes.
+  IR-006:
+    status: partial
+    evidence:
+      - AI Chat route, navigation, history/conversation reads, safe artifact preview, server-issued action approval UI, tests, and handbook docs exist.
+      - BFF SSE stream endpoint, ordered terminal stream events, abort cleanup, and public API stream client helper exist.
+      - Machine-readable durable run-state contracts exist for control.ai_chat.run.create, control.ai_chat.run.update, and control.ai_chat.run.finalize.
+      - Control-plane persists AI Chat run lifecycle and enforces idempotency/active-run rejection.
+      - Follow-up prompt streaming UI uses the public API client.
+      - bun run contracts:check passes.
+      - bun run typecheck passes.
+      - bun run --cwd apps/frontend test passes.
+      - go test -tags surrealdb ./core/control-plane/... passes.
+    remaining:
+      - Complete AI Elements/json-render component integration and richer company/project provider settings forms.
+  IR-007:
+    status: complete
+    evidence:
+      - No dedicated core/log-ingest service is specified for this wave.
+      - Collector POST /v1/logs compatibility and telemetry.ingest.logs semantics are preserved.
+  IR-008:
+    status: complete
+    evidence:
+      - Website handbook covers Helm install, external dependencies, image customization, private registry/air-gapped installs, release verification, upgrade/rollback, and sizing.
+      - bun run --cwd website build passes.
+  IR-009:
+    status: partial
+    evidence:
+      - Shared Go OTLP trace/log exporter supports per-signal toggles, bounded sanitized log records, trace/span IDs, severity numbers, observed timestamps, log scope naming, dropped-buffer metrics, and rate-limited exporter failure warnings.
+      - AI-eval runner wires exporter startup, NATS handler spans/failure logs, and shutdown flush.
+      - go test -tags surrealdb ./core/go-runtime/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/... passes.
+    remaining:
+      - Complete full-service log event coverage evidence across BFF, collector, control-plane, storage-read, storage-write, and AI-eval runner.
+      - Complete normal Logs UI inspection evidence for the self-observability project.
 implemented_surfaces:
   - metrics ingest, storage-write persistence, storage-read metric names/series/rich-series query, BFF GraphQL resolvers, and frontend metric explorer/dashboard widget surfaces
   - grpc otlp ingest on standard port 4317 for traces, logs, and metrics

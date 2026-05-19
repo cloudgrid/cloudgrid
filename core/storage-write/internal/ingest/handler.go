@@ -217,6 +217,9 @@ func validateCommand(command contracts.PersistTelemetryCommand, subject string) 
 	if command.IssuedAt.IsZero() {
 		return fmt.Errorf("%s %s: issuedAt is required", validationErrorID, validationErrorCode)
 	}
+	if err := validateAuthorizedIngestContext(command.AuthContext); err != nil {
+		return err
+	}
 	switch command.Source {
 	case "otlp-traces":
 		if subject != TraceSubject {
@@ -286,6 +289,9 @@ func validateMetricsCommand(command contracts.PersistMetricsCommand, subject str
 	if command.IssuedAt.IsZero() {
 		return fmt.Errorf("%s %s: issuedAt is required", validationErrorID, validationErrorCode)
 	}
+	if err := validateAuthorizedIngestContext(command.AuthContext); err != nil {
+		return err
+	}
 	if command.Source != "otlp-metrics" {
 		return fmt.Errorf("%s %s: source is invalid", validationErrorID, validationErrorCode)
 	}
@@ -312,6 +318,33 @@ func validateMetricsCommand(command contracts.PersistMetricsCommand, subject str
 		}
 	}
 	return nil
+}
+
+func validateAuthorizedIngestContext(auth *contracts.AuthContext) error {
+	if auth == nil {
+		return nil
+	}
+	authMode := strings.TrimSpace(ingestStringValue(auth.AuthMode))
+	if authMode == "" || authMode == "local" {
+		return nil
+	}
+	if authMode != "sso" {
+		return fmt.Errorf("%s %s: authMode is invalid", validationErrorID, validationErrorCode)
+	}
+	if auth.IngestAllowed == nil || !*auth.IngestAllowed ||
+		strings.TrimSpace(ingestStringValue(auth.TenantID)) == "" ||
+		strings.TrimSpace(ingestStringValue(auth.CompanyID)) == "" ||
+		strings.TrimSpace(ingestStringValue(auth.ProjectID)) == "" {
+		return fmt.Errorf("%s %s: authorized ingest authContext is required", validationErrorID, validationErrorCode)
+	}
+	return nil
+}
+
+func ingestStringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func recordPersistCommandMetrics(recorder MetricsRecorder, signal string, result string, duration time.Duration) {

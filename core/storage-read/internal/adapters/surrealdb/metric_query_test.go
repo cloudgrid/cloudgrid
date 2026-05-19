@@ -32,6 +32,7 @@ func TestBuildMetricNameSearchQueryFiltersAndOrdersDescriptors(t *testing.T) {
 
 	for _, want := range []string{
 		"FROM metric_descriptor",
+		"deletedAt = NONE",
 		"string::lowercase(metricName) CONTAINS $query",
 		"lastSeenAt >= $from",
 		"firstSeenAt <= $to",
@@ -77,6 +78,7 @@ func TestBuildMetricSeriesQueryValidatesDescriptorAndBuildsGroupedBuckets(t *tes
 
 	for _, want := range []string{
 		"FROM metric_point",
+		"deletedAt = NONE",
 		"time::floor(timestamp, ",
 		"metricName = $metricName",
 		"timestamp >= $from",

@@ -296,7 +296,7 @@ func (store Store) applyTraceSummaryCounts(ctx context.Context, items []contract
 	addOwnershipParams(params, target)
 
 	spanCounts, err := queryRows[traceCountRow](ctx, store.DB, QueryStatement{
-		SQL:    "SELECT traceId, count() AS count FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId IN $traceIds GROUP BY traceId;",
+		SQL:    "SELECT traceId, count() AS count FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND traceId IN $traceIds GROUP BY traceId;",
 		Params: params,
 	})
 	if err != nil {
@@ -309,7 +309,7 @@ func (store Store) applyTraceSummaryCounts(ctx context.Context, items []contract
 	}
 
 	errorCounts, err := queryRows[traceCountRow](ctx, store.DB, QueryStatement{
-		SQL:    "SELECT traceId, count() AS count FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId IN $traceIds AND status = 'error' GROUP BY traceId;",
+		SQL:    "SELECT traceId, count() AS count FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND traceId IN $traceIds AND status = 'error' GROUP BY traceId;",
 		Params: params,
 	})
 	if err != nil {
@@ -322,7 +322,7 @@ func (store Store) applyTraceSummaryCounts(ctx context.Context, items []contract
 	}
 
 	logCounts, err := queryRows[traceCountRow](ctx, store.DB, QueryStatement{
-		SQL:    "SELECT traceId, count() AS count FROM log_event WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId IN $traceIds GROUP BY traceId;",
+		SQL:    "SELECT traceId, count() AS count FROM log_event WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND traceId IN $traceIds GROUP BY traceId;",
 		Params: params,
 	})
 	if err != nil {
@@ -335,7 +335,7 @@ func (store Store) applyTraceSummaryCounts(ctx context.Context, items []contract
 	}
 
 	serviceRows, err := queryRows[traceServiceRow](ctx, store.DB, QueryStatement{
-		SQL:    "SELECT traceId, serviceName FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId IN $traceIds AND serviceName != NONE GROUP BY traceId, serviceName;",
+		SQL:    "SELECT traceId, serviceName FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND traceId IN $traceIds AND serviceName != NONE GROUP BY traceId, serviceName;",
 		Params: params,
 	})
 	if err != nil {

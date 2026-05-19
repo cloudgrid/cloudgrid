@@ -22,11 +22,16 @@ var requiredIndexes = map[string][]string{
 	"metric_ingest_cardinality": {"metricName, windowStart"},
 }
 
+var softDeleteTables = []string{"trace", "span", "log_event", "metric_descriptor", "metric_point", "metric_ingest_cardinality", "ingest_command"}
+
+var requiredSoftDeleteFields = []string{"deletedAt", "deletedByRetentionPolicyId", "finalDeleteAfter"}
+
 type DatabaseInfo struct {
 	Tables map[string]string `json:"tables"`
 }
 
 type TableInfo struct {
+	Fields  map[string]string `json:"fields"`
 	Indexes map[string]string `json:"indexes"`
 }
 
@@ -37,8 +42,14 @@ type SchemaIndexRef struct {
 
 type SchemaReadinessReport struct {
 	MissingTables   []string
+	MissingFields   []SchemaFieldRef
 	MissingIndexes  []SchemaIndexRef
 	BuildingIndexes []SchemaIndexRef
+}
+
+type SchemaFieldRef struct {
+	Table string
+	Field string
 }
 
 func CheckSchemaReadiness(dbInfo DatabaseInfo, tableInfo map[string]TableInfo) error {
@@ -49,6 +60,10 @@ func CheckSchemaReadiness(dbInfo DatabaseInfo, tableInfo map[string]TableInfo) e
 	if len(report.MissingIndexes) > 0 {
 		index := report.MissingIndexes[0]
 		return fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: required SurrealDB index %s.%s is missing", index.Table, index.Field)
+	}
+	if len(report.MissingFields) > 0 {
+		field := report.MissingFields[0]
+		return fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: required SurrealDB field %s.%s is missing", field.Table, field.Field)
 	}
 	if len(report.BuildingIndexes) > 0 {
 		index := report.BuildingIndexes[0]
@@ -84,6 +99,21 @@ func CheckSchemaReadinessReport(dbInfo DatabaseInfo, tableInfo map[string]TableI
 		}
 	}
 
+	for _, table := range softDeleteTables {
+		info, ok := tableInfo[table]
+		if !ok {
+			for _, field := range requiredSoftDeleteFields {
+				report.MissingFields = append(report.MissingFields, SchemaFieldRef{Table: table, Field: field})
+			}
+			continue
+		}
+		for _, field := range requiredSoftDeleteFields {
+			if _, ok := info.Fields[field]; !ok {
+				report.MissingFields = append(report.MissingFields, SchemaFieldRef{Table: table, Field: field})
+			}
+		}
+	}
+
 	return report
 }
 
@@ -101,8 +131,15 @@ func CheckReadiness(ctx context.Context, db *sdk.DB) error {
 		return fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: SurrealDB readiness check failed")
 	}
 
-	tableInfo := make(map[string]TableInfo, len(requiredIndexes))
+	tablesToInspect := map[string]bool{}
 	for table := range requiredIndexes {
+		tablesToInspect[table] = true
+	}
+	for _, table := range softDeleteTables {
+		tablesToInspect[table] = true
+	}
+	tableInfo := make(map[string]TableInfo, len(tablesToInspect))
+	for table := range tablesToInspect {
 		info, err := queryOne[TableInfo](ctx, db, fmt.Sprintf("INFO FOR TABLE %s;", table), nil)
 		if err != nil {
 			return fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: SurrealDB readiness check failed")

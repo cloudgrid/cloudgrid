@@ -6,6 +6,7 @@ import type {
   TelemetryFacetInput,
   TraceDetailInput,
   TraceSearchInput,
+  AlertSummaryInput,
 } from "@cloudgrid/ui-contracts";
 import type { DashboardListInput } from "./dashboard-contracts";
 
@@ -27,8 +28,11 @@ const projectScopedQueryKeyPrefixes = new Set([
   "RichMetricSeries",
   "Dashboards",
   "ProjectAiSettings",
+  "AiChatHistory",
+  "AiChatConversation",
   "AlertRules",
   "AlertHistory",
+  "AlertSummary",
   "AlertSilences",
 ]);
 
@@ -64,6 +68,8 @@ export const queryKeys = {
     first = 50,
     after: string | null = null,
   ) => ["AlertHistory", projectId, ruleId, first, after] as const,
+  alertSummary: (projectId: string, input: AlertSummaryInput) =>
+    ["AlertSummary", projectId, normalizeVariables({ ...input })] as const,
   alertSilences: (projectId: string, ruleId: string | null) =>
     ["AlertSilences", projectId, ruleId] as const,
 };

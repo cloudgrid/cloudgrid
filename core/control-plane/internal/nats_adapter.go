@@ -30,6 +30,7 @@ func SubscribeControlHandlersWithOptions(nc *nats.Conn, service *Service, logger
 		SubjectOrganizationsList:        handleOrganizationsList(service, logger),
 		SubjectOrganizationsGet:         handleOrganizationsGet(service, logger),
 		SubjectProjectsList:             handleProjectsList(service, logger),
+		SubjectProjectsListForService:   handleProjectsListForService(service, logger),
 		SubjectProjectsGet:              handleProjectsGet(service, logger),
 		SubjectProjectsCreate:           handleProjectsCreate(service, logger),
 		SubjectProjectsUpdate:           handleProjectsUpdate(service, publisher, logger),
@@ -53,6 +54,9 @@ func SubscribeControlHandlersWithOptions(nc *nats.Conn, service *Service, logger
 		SubjectDashboardPinsReorder:     handleDashboardPinsReorder(service, logger),
 		SubjectProjectAiSettingsGet:     handleProjectAiSettingsGet(service, logger),
 		SubjectProjectAiSettingsUpdate:  handleProjectAiSettingsUpdate(service, logger),
+		SubjectAiChatRunCreate:          handleAiChatRunCreate(service, logger),
+		SubjectAiChatRunUpdate:          handleAiChatRunUpdate(service, logger),
+		SubjectAiChatRunFinalize:        handleAiChatRunFinalize(service, logger),
 		SubjectProjectMembersList:       handleProjectMembersList(service, logger),
 		SubjectProjectMembersUpdate:     handleProjectMembersUpdate(service, logger),
 		SubjectProjectMembersRemove:     handleProjectMembersRemove(service, logger),
@@ -66,6 +70,7 @@ func SubscribeControlHandlersWithOptions(nc *nats.Conn, service *Service, logger
 		SubjectAlertSilencesCreate:      handleAlertSilencesCreate(service, logger),
 		SubjectAlertSilencesDelete:      handleAlertSilencesDelete(service, logger),
 		SubjectAlertHistoryList:         handleAlertHistoryList(service, logger),
+		SubjectAlertSummaryGet:          handleAlertSummaryGet(service, logger),
 		SubjectAlertHistoryRecord:       handleAlertHistoryRecord(service, logger),
 	}
 	subscriptions := make([]*nats.Subscription, 0, len(handlers))

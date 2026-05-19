@@ -28,7 +28,13 @@ export type CloudGridErrorId =
   | "ERR-019"
   | "ERR-020"
   | "ERR-021"
-  | "ERR-022";
+  | "ERR-022"
+  | "ERR-AIP-001"
+  | "ERR-AIC-001"
+  | "ERR-AIC-002"
+  | "ERR-AIC-003"
+  | "ERR-AIC-004"
+  | "ERR-AIC-005";
 
 export interface ProblemDetails {
   type: string;
@@ -181,6 +187,42 @@ const errorTaxonomy: Record<CloudGridErrorId, ErrorTaxonomyEntry> = {
     status: 503,
     retryable: true,
     detail: "Invitation email delivery failed",
+  },
+  "ERR-AIP-001": {
+    code: "AI_PROVIDER_CREDENTIAL_UNAVAILABLE",
+    status: 503,
+    retryable: true,
+    detail: "AI provider credential is unavailable",
+  },
+  "ERR-AIC-001": {
+    code: "AI_CHAT_PROVIDER_NOT_CONFIGURED",
+    status: 400,
+    retryable: false,
+    detail: "AI Chat provider is not configured for this company",
+  },
+  "ERR-AIC-002": {
+    code: "AI_CHAT_SANDBOX_DENIED",
+    status: 400,
+    retryable: false,
+    detail: "AI Chat sandbox operation is not allowed",
+  },
+  "ERR-AIC-003": {
+    code: "AI_CHAT_ACTION_NOT_APPROVABLE",
+    status: 409,
+    retryable: false,
+    detail: "AI Chat action proposal cannot be approved",
+  },
+  "ERR-AIC-004": {
+    code: "AI_CHAT_LIMIT_EXCEEDED",
+    status: 429,
+    retryable: true,
+    detail: "AI Chat limit exceeded",
+  },
+  "ERR-AIC-005": {
+    code: "AI_CHAT_RENDER_INVALID",
+    status: 400,
+    retryable: false,
+    detail: "AI Chat artifact render spec is invalid",
   },
 };
 

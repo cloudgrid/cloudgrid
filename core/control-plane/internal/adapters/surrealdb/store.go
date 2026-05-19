@@ -248,6 +248,22 @@ func (store *Store) PutProjectAiSettings(ctx context.Context, settings ports.Pro
 	return store.put(ctx, "project_ai_settings", settings.ProjectID, settings)
 }
 
+func (store *Store) GetAiChatRun(ctx context.Context, runID string) (ports.AiChatRunRecord, bool, error) {
+	return queryRecord[ports.AiChatRunRecord](ctx, store.client, "SELECT record::id(id) AS ID, * FROM type::record('ai_chat_run', $id) LIMIT 1;", map[string]any{"id": recordKey("ai_chat_run", runID)})
+}
+
+func (store *Store) GetAiChatRunByIdempotency(ctx context.Context, conversationID string, userMessageClientID string, idempotencyKey string) (ports.AiChatRunRecord, bool, error) {
+	return queryRecord[ports.AiChatRunRecord](ctx, store.client, "SELECT record::id(id) AS ID, * FROM ai_chat_run WHERE conversationId = $conversationId AND userMessageClientId = $userMessageClientId AND idempotencyKey = $idempotencyKey ORDER BY startedAt DESC LIMIT 1;", map[string]any{"conversationId": conversationID, "userMessageClientId": userMessageClientID, "idempotencyKey": idempotencyKey})
+}
+
+func (store *Store) ListActiveAiChatRunsForConversation(ctx context.Context, conversationID string) ([]ports.AiChatRunRecord, error) {
+	return queryRows[ports.AiChatRunRecord](ctx, store.client, QueryStatement{SQL: "SELECT record::id(id) AS ID, * FROM ai_chat_run WHERE conversationId = $conversationId AND status IN ['queued', 'streaming', 'awaiting_approval'] ORDER BY startedAt ASC;", Params: map[string]any{"conversationId": conversationID}})
+}
+
+func (store *Store) PutAiChatRun(ctx context.Context, run ports.AiChatRunRecord) error {
+	return store.put(ctx, "ai_chat_run", run.ID, run)
+}
+
 func (store *Store) GetAlertRule(ctx context.Context, id string) (ports.AlertRuleRecord, bool, error) {
 	return queryRecord[ports.AlertRuleRecord](ctx, store.client, "SELECT record::id(id) AS ID, * FROM type::record('alert_rule', $id) LIMIT 1;", map[string]any{"id": id})
 }

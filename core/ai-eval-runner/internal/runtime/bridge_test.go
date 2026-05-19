@@ -14,6 +14,7 @@ import (
 	"github.com/cloudgrid-dev/cloudgrid/core/ai-eval-runner/internal/orchestrator"
 	"github.com/cloudgrid-dev/cloudgrid/core/ai-eval-runner/internal/ports"
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
+	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/selfobs"
 )
 
 func TestSubjectHandlersExposeApprovedRunnerSubjects(t *testing.T) {
@@ -131,6 +132,35 @@ func TestPersistedProjectionHandlerValidatesNotificationWithoutHarnessCall(t *te
 	}
 	if len(harness.runRequests)+len(harness.scoreRequests)+len(harness.optimizeRequests) != 0 {
 		t.Fatalf("harness was called for projection notification")
+	}
+}
+
+func TestRunnerHandlerRecordsSelfObservabilityFailureLog(t *testing.T) {
+	recorder := &recordingTraceLogRecorder{}
+	runner := orchestrator.NewRunner(orchestrator.RunnerConfig{
+		StorageReader:     &runtimeReader{},
+		StorageWriter:     &runtimeWriter{},
+		HarnessAdapter:    &runtimeHarness{},
+		ProgressPublisher: &runtimePublisher{},
+		IDGenerator:       sequenceRuntimeIDs("run-1"),
+	})
+	msg := &runtimeMessage{
+		subject: SubjectExperimentStart,
+		data:    []byte(`{"requestId":"req-invalid","issuedAt":"2026-05-16T09:00:00Z","experimentId":"experiment-1","unexpected":true}`),
+	}
+
+	NewRunnerServiceWithOptions(runner, nil, RunnerServiceOptions{SelfObservability: recorder}).SubjectHandlers()[SubjectExperimentStart](msg)
+
+	if len(recorder.spans) != 1 || recorder.spans[0].Attributes["cloudgrid.operation"] != "experiment_start" {
+		t.Fatalf("spans = %#v", recorder.spans)
+	}
+	if len(recorder.logs) != 1 {
+		t.Fatalf("logs = %#v, want one failure log", recorder.logs)
+	}
+	if recorder.logs[0].Attributes["event"] != "ai_eval_runner_failed" ||
+		recorder.logs[0].Attributes["error_id"] != validationErrorID ||
+		recorder.logs[0].Attributes["cloudgrid.request_id"] != "req-invalid" {
+		t.Fatalf("failure log = %#v", recorder.logs[0])
 	}
 }
 
@@ -272,6 +302,13 @@ type runtimeMessage struct {
 	response []byte
 }
 
+func (message *runtimeMessage) Header(name string) string {
+	if name == selfobs.TraceParentHeader {
+		return "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+	}
+	return ""
+}
+
 func newRuntimeMessage(tSubject string, value any) *runtimeMessage {
 	data, err := json.Marshal(value)
 	if err != nil {
@@ -374,6 +411,37 @@ type runtimePublisher struct{}
 
 func (publisher *runtimePublisher) PublishExperimentProgress(_ context.Context, _ ports.ExperimentProgress) error {
 	return nil
+}
+
+type recordingTraceLogRecorder struct {
+	spans []selfobs.SpanEvent
+	logs  []selfobs.LogEvent
+}
+
+func (recorder *recordingTraceLogRecorder) RecordSpan(event selfobs.SpanEvent) {
+	event.Attributes = copyStringMap(event.Attributes)
+	recorder.spans = append(recorder.spans, event)
+}
+
+func (recorder *recordingTraceLogRecorder) RecordLog(event selfobs.LogEvent) {
+	event.Attributes = copyStringMap(event.Attributes)
+	recorder.logs = append(recorder.logs, event)
+}
+
+func (recorder *recordingTraceLogRecorder) Flush(context.Context) error {
+	return nil
+}
+
+func (recorder *recordingTraceLogRecorder) Shutdown(context.Context) error {
+	return nil
+}
+
+func copyStringMap(value map[string]string) map[string]string {
+	copied := make(map[string]string, len(value))
+	for key, item := range value {
+		copied[key] = item
+	}
+	return copied
 }
 
 type recordingRequester struct {

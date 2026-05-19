@@ -7,6 +7,7 @@ import (
 	"net/mail"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +28,7 @@ type Service struct {
 	statusChanges   []contracts.ProjectStatusChangedNotification
 	invitationEmail InvitationEmailConfig
 	emailTransport  InvitationEmailTransport
+	alertAdapters   map[string]struct{}
 }
 
 func NewService(store ports.ControlStore, now func() time.Time) *Service {
@@ -43,6 +45,7 @@ func NewServiceWithOptions(store ports.ControlStore, now func() time.Time, optio
 		now:             now,
 		invitationEmail: config,
 		emailTransport:  options.EmailTransport,
+		alertAdapters:   alertAdapterCatalog(options.AlertNotificationAdapters),
 	}
 }
 
@@ -113,6 +116,56 @@ func (service *Service) ListProjects(ctx context.Context, request contracts.Proj
 		}
 	}
 	return items, nil
+}
+
+func (service *Service) ListProjectsForService(ctx context.Context, request contracts.ProjectListForServiceRequest) (contracts.ProjectListForServiceData, error) {
+	if err := validateServiceProjectScope(request.ServiceScope); err != nil {
+		return contracts.ProjectListForServiceData{}, err
+	}
+	if !serviceScopedEnumerationAccess(request.BridgeEnvelope, request.ServiceScope) {
+		return contracts.ProjectListForServiceData{}, forbiddenError("service scope is not allowed to enumerate projects")
+	}
+	status := contracts.ProjectStatusActive
+	if request.Status != nil {
+		status = *request.Status
+	}
+	if err := validateProjectStatus(status); err != nil {
+		return contracts.ProjectListForServiceData{}, err
+	}
+	limit := 100
+	if request.Limit != nil {
+		limit = *request.Limit
+	}
+	if limit < 1 || limit > 500 {
+		return contracts.ProjectListForServiceData{}, validationError("limit must be between 1 and 500")
+	}
+	records, err := service.store.ListProjects(ctx, nil, &status)
+	if err != nil {
+		return contracts.ProjectListForServiceData{}, storageError()
+	}
+	sort.Slice(records, func(i, j int) bool {
+		return records[i].ID < records[j].ID
+	})
+	cursor := strings.TrimSpace(pointerString(request.Cursor))
+	items := make([]contracts.ServiceProject, 0, limit)
+	var nextCursor *string
+	for _, project := range records {
+		if cursor != "" && project.ID <= cursor {
+			continue
+		}
+		if len(items) == limit {
+			nextCursor = &items[len(items)-1].ProjectID
+			break
+		}
+		items = append(items, contracts.ServiceProject{
+			ProjectID: project.ID,
+			CompanyID: project.OrganizationID,
+			TenantID:  tenantIDForProject(project.OrganizationID),
+			Status:    project.Status,
+			ChangedAt: project.ChangedAt,
+		})
+	}
+	return contracts.ProjectListForServiceData{Items: items, NextCursor: nextCursor}, nil
 }
 
 func (service *Service) GetProject(ctx context.Context, request contracts.ProjectGetRequest) (*contracts.Project, error) {
@@ -935,6 +988,9 @@ func (service *Service) CreateAlertRule(ctx context.Context, request contracts.A
 		UpdatedByUserID:         actor,
 		Version:                 1,
 	}
+	if err := service.validateAlertAdapterIDs(record.NotificationAdapterIDs); err != nil {
+		return contracts.AlertRule{}, err
+	}
 	if err := service.store.PutAlertRule(ctx, record); err != nil {
 		return contracts.AlertRule{}, storageError()
 	}
@@ -987,6 +1043,9 @@ func (service *Service) UpdateAlertRule(ctx context.Context, request contracts.A
 		updated.NotificationAdapterIDs = normalizeStringList(request.Input.NotificationAdapterIDs)
 	}
 	if err := validateAlertRuleRecord(updated); err != nil {
+		return contracts.AlertRule{}, err
+	}
+	if err := service.validateAlertAdapterIDs(updated.NotificationAdapterIDs); err != nil {
 		return contracts.AlertRule{}, err
 	}
 	updated.UpdatedAt = service.now().UTC()
@@ -1106,6 +1165,151 @@ func (service *Service) ListAlertHistory(ctx context.Context, request contracts.
 		items = append(items, contractAlertEvent(record))
 	}
 	return contracts.AlertEventConnection{Items: items, PageInfo: contracts.AlertPageInfo{HasNextPage: hasNext, EndCursor: cursor}}, nil
+}
+
+func (service *Service) AlertSummary(ctx context.Context, request contracts.AlertSummaryRequest) (contracts.AlertSummary, error) {
+	project, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, request.ProjectID)
+	if err != nil {
+		return contracts.AlertSummary{}, err
+	}
+	input := request.Input
+	if input == nil {
+		input = &contracts.AlertSummaryInput{}
+	}
+	limit := 20
+	if input.Limit != nil {
+		limit = *input.Limit
+	}
+	if limit < 1 || limit > 100 {
+		return contracts.AlertSummary{}, validationError("alert summary limit must be between 1 and 100")
+	}
+	windowStart, err := service.alertSummaryWindowStart(input.TimeWindow)
+	if err != nil {
+		return contracts.AlertSummary{}, err
+	}
+	if err := validateAlertSummaryInput(*input); err != nil {
+		return contracts.AlertSummary{}, err
+	}
+	rules, err := service.store.ListAlertRules(ctx, project.ID)
+	if err != nil {
+		return contracts.AlertSummary{}, storageError()
+	}
+	ruleSignals := map[string]contracts.AlertSignal{}
+	for _, rule := range rules {
+		ruleSignals[rule.ID] = alertRuleSignal(rule.Kind)
+	}
+	records, _, _, err := service.store.ListAlertEvents(ctx, project.ID, nil, limit, nil)
+	if err != nil {
+		return contracts.AlertSummary{}, storageError()
+	}
+	summary := contracts.AlertSummary{
+		ByState:    []contracts.AlertStateCount{},
+		BySeverity: []contracts.AlertSeverityCount{},
+		BySignal:   []contracts.AlertSignalCount{},
+	}
+	stateCounts := map[contracts.AlertState]int{}
+	severityCounts := map[contracts.AlertSeverity]int{}
+	signalCounts := map[contracts.AlertSignal]int{}
+	for _, record := range records {
+		if windowStart != nil && record.CreatedAt.Before(*windowStart) {
+			continue
+		}
+		signal, ok := ruleSignals[record.RuleID]
+		if !ok {
+			continue
+		}
+		if !alertSummaryMatchesInput(record, signal, *input) {
+			continue
+		}
+		summary.TotalCount++
+		stateCounts[record.State]++
+		severityCounts[record.Severity]++
+		signalCounts[signal]++
+	}
+	for _, state := range []contracts.AlertState{contracts.AlertStateOK, contracts.AlertStatePending, contracts.AlertStateFiring, contracts.AlertStateResolved, contracts.AlertStateSilenced, contracts.AlertStateError} {
+		if count := stateCounts[state]; count > 0 {
+			summary.ByState = append(summary.ByState, contracts.AlertStateCount{State: state, Count: count})
+		}
+	}
+	for _, severity := range []contracts.AlertSeverity{contracts.AlertSeverityInfo, contracts.AlertSeverityWarning, contracts.AlertSeverityError, contracts.AlertSeverityCritical} {
+		if count := severityCounts[severity]; count > 0 {
+			summary.BySeverity = append(summary.BySeverity, contracts.AlertSeverityCount{Severity: severity, Count: count})
+		}
+	}
+	for _, signal := range []contracts.AlertSignal{contracts.AlertSignalMetric, contracts.AlertSignalLog, contracts.AlertSignalTrace} {
+		if count := signalCounts[signal]; count > 0 {
+			summary.BySignal = append(summary.BySignal, contracts.AlertSignalCount{Signal: signal, Count: count})
+		}
+	}
+	return summary, nil
+}
+
+func (service *Service) alertSummaryWindowStart(timeWindow *string) (*time.Time, error) {
+	if timeWindow == nil || strings.TrimSpace(*timeWindow) == "" {
+		start := service.now().UTC().Add(-time.Hour)
+		return &start, nil
+	}
+	duration, err := parseDashboardDuration(strings.TrimSpace(*timeWindow))
+	if err != nil {
+		return nil, validationError("alert summary timeWindow is invalid")
+	}
+	start := service.now().UTC().Add(-duration)
+	return &start, nil
+}
+
+func parseDashboardDuration(value string) (time.Duration, error) {
+	if strings.HasPrefix(value, "PT") {
+		rest := strings.TrimPrefix(value, "PT")
+		switch {
+		case strings.HasSuffix(rest, "H"):
+			hours, err := strconv.Atoi(strings.TrimSuffix(rest, "H"))
+			if err != nil || hours < 1 {
+				return 0, fmt.Errorf("invalid hours")
+			}
+			return time.Duration(hours) * time.Hour, nil
+		case strings.HasSuffix(rest, "M"):
+			minutes, err := strconv.Atoi(strings.TrimSuffix(rest, "M"))
+			if err != nil || minutes < 1 {
+				return 0, fmt.Errorf("invalid minutes")
+			}
+			return time.Duration(minutes) * time.Minute, nil
+		}
+	}
+	return time.ParseDuration(value)
+}
+
+func validateAlertSummaryInput(input contracts.AlertSummaryInput) error {
+	if len(input.RuleIDs) > 20 {
+		return validationError("alert summary ruleIds exceeds limit")
+	}
+	for _, ruleID := range input.RuleIDs {
+		if strings.TrimSpace(ruleID) == "" {
+			return validationError("alert summary ruleIds cannot be blank")
+		}
+	}
+	for _, state := range input.States {
+		if !isAlertState(state) {
+			return validationError("alert summary state is invalid")
+		}
+	}
+	for _, severity := range input.Severities {
+		if !isAlertSeverity(severity) {
+			return validationError("alert summary severity is invalid")
+		}
+	}
+	for _, signal := range input.Signals {
+		if !isAlertSignal(signal) {
+			return validationError("alert summary signal is invalid")
+		}
+	}
+	return nil
+}
+
+func alertSummaryMatchesInput(record ports.AlertEventRecord, signal contracts.AlertSignal, input contracts.AlertSummaryInput) bool {
+	return (len(input.RuleIDs) == 0 || slices.Contains(input.RuleIDs, record.RuleID)) &&
+		(len(input.States) == 0 || slices.Contains(input.States, record.State)) &&
+		(len(input.Severities) == 0 || slices.Contains(input.Severities, record.Severity)) &&
+		(len(input.Signals) == 0 || slices.Contains(input.Signals, signal))
 }
 
 func (service *Service) RecordAlertHistory(ctx context.Context, request contracts.AlertHistoryRecordRequest) (contracts.AlertEvent, error) {
@@ -1918,6 +2122,36 @@ func serviceScopedProjectAccess(envelope contracts.BridgeEnvelope, projectID str
 	return false
 }
 
+func serviceScopedEnumerationAccess(envelope contracts.BridgeEnvelope, scope contracts.ServiceProjectScope) bool {
+	auth := envelope.AuthContext
+	if auth == nil || auth.Mode != "service" {
+		return false
+	}
+	requiredScope := "cloudgrid:" + strings.ReplaceAll(string(scope), "_", "-")
+	for _, actualScope := range auth.Scopes {
+		if actualScope == requiredScope {
+			return true
+		}
+	}
+	return false
+}
+
+func validateServiceProjectScope(scope contracts.ServiceProjectScope) error {
+	switch scope {
+	case contracts.ServiceProjectScopeAlertEvaluator, contracts.ServiceProjectScopeStorageMaintenance:
+		return nil
+	default:
+		return validationError("serviceScope is invalid")
+	}
+}
+
+func tenantIDForProject(organizationID string) string {
+	if strings.TrimSpace(organizationID) == "" {
+		return LocalCompanyID
+	}
+	return strings.TrimSpace(organizationID)
+}
+
 func (service *Service) projectForViewer(ctx context.Context, userID string, projectID string) (contracts.Project, error) {
 	project, ok, err := service.store.GetProject(ctx, projectID)
 	if err != nil {
@@ -2689,6 +2923,7 @@ func dashboardWidgetsFromInput(inputs []DashboardWidgetInput) []DashboardWidget 
 			Logs:       normalizeDashboardLogWidget(input.Logs),
 			Traces:     normalizeDashboardTraceWidget(input.Traces),
 			LiveTraces: normalizeDashboardLiveTraceWidget(input.LiveTraces),
+			Alert:      normalizeDashboardAlertWidget(input.Alert),
 		})
 	}
 	return widgets
@@ -2838,6 +3073,27 @@ func normalizeDashboardLiveTraceWidget(input *DashboardLiveTraceWidgetInput) *Da
 	return &widget
 }
 
+func normalizeDashboardAlertWidget(input *DashboardAlertWidgetInput) *DashboardAlertWidgetInput {
+	if input == nil {
+		return nil
+	}
+	widget := *input
+	widget.RuleIDs = append([]string{}, widget.RuleIDs...)
+	widget.States = append([]contracts.AlertState{}, widget.States...)
+	widget.Severities = append([]contracts.AlertSeverity{}, widget.Severities...)
+	widget.Signals = append([]contracts.AlertSignal{}, widget.Signals...)
+	if widget.TimeWindow == nil {
+		widget.TimeWindow = ptr("PT1H")
+	} else {
+		timeWindow := strings.TrimSpace(*widget.TimeWindow)
+		widget.TimeWindow = &timeWindow
+	}
+	if widget.Limit == nil {
+		widget.Limit = ptr(20)
+	}
+	return &widget
+}
+
 func validateDashboardInput(input DashboardSaveInput) error {
 	if strings.TrimSpace(input.Name) == "" {
 		return validationError("dashboard name is required")
@@ -2917,6 +3173,9 @@ func validateDashboardWidgetKind(widget DashboardWidgetInput) error {
 	if widget.LiveTraces != nil {
 		configCount++
 	}
+	if widget.Alert != nil {
+		configCount++
+	}
 	switch widget.Kind {
 	case DashboardWidgetKindMetricTimeseries, DashboardWidgetKindMetricStat, DashboardWidgetKindMetricTable:
 		if configCount != 1 || widget.Metric == nil {
@@ -2943,6 +3202,11 @@ func validateDashboardWidgetKind(widget DashboardWidgetInput) error {
 			return validationError("live trace dashboard widgets require exactly one liveTraces config")
 		}
 		return validateDashboardLiveTraceWidget(*widget.LiveTraces)
+	case DashboardWidgetKindAlertStatus, DashboardWidgetKindAlertHistory, DashboardWidgetKindAlertEvidence:
+		if configCount != 1 || widget.Alert == nil {
+			return validationError("alert dashboard widgets require exactly one alert config")
+		}
+		return validateDashboardAlertWidget(*widget.Alert)
 	default:
 		return validationError("dashboard widget kind is invalid")
 	}
@@ -3176,6 +3440,42 @@ func validateDashboardLiveTraceWidget(traces DashboardLiveTraceWidgetInput) erro
 		return validationError("dashboard live trace duration bounds are invalid")
 	}
 	return validateAttributeFilters(traces.Attributes)
+}
+
+func validateDashboardAlertWidget(alert DashboardAlertWidgetInput) error {
+	if len(alert.RuleIDs) > 20 {
+		return validationError("dashboard alert widget exceeds rule limits")
+	}
+	if alert.Limit != nil && (*alert.Limit < 1 || *alert.Limit > 100) {
+		return validationError("dashboard alert widget limit is invalid")
+	}
+	if alert.TimeWindow != nil && strings.TrimSpace(*alert.TimeWindow) == "" {
+		return validationError("dashboard alert widget timeWindow cannot be blank")
+	}
+	for _, ruleID := range alert.RuleIDs {
+		if strings.TrimSpace(ruleID) == "" {
+			return validationError("dashboard alert widget ruleIds cannot be blank")
+		}
+		if containsSecretKey("ruleId", ruleID) {
+			return validationError("dashboard contains a secret-like key")
+		}
+	}
+	for _, state := range alert.States {
+		if !isAlertState(state) {
+			return validationError("dashboard alert widget state is invalid")
+		}
+	}
+	for _, severity := range alert.Severities {
+		if !isAlertSeverity(severity) {
+			return validationError("dashboard alert widget severity is invalid")
+		}
+	}
+	for _, signal := range alert.Signals {
+		if !isAlertSignal(signal) {
+			return validationError("dashboard alert widget signal is invalid")
+		}
+	}
+	return nil
 }
 
 func validateDashboardThreshold(threshold DashboardThresholdInput) error {
@@ -3546,6 +3846,33 @@ func alertRuleInvalid(reason string) error {
 	return codedError("ERR-018", "ALERT_RULE_INVALID", "Alert rule configuration is invalid", false, reason)
 }
 
+func alertAdapterCatalog(adapterIDs []string) map[string]struct{} {
+	if len(adapterIDs) == 0 {
+		adapterIDs = []string{"in_app"}
+	}
+	catalog := map[string]struct{}{}
+	for _, adapterID := range adapterIDs {
+		adapterID = strings.TrimSpace(adapterID)
+		if adapterID == "" {
+			continue
+		}
+		catalog[adapterID] = struct{}{}
+	}
+	return catalog
+}
+
+func (service *Service) validateAlertAdapterIDs(adapterIDs []string) error {
+	if len(adapterIDs) == 0 {
+		return nil
+	}
+	for _, adapterID := range normalizeStringList(adapterIDs) {
+		if _, ok := service.alertAdapters[adapterID]; !ok {
+			return alertRuleInvalid("notificationAdapterIds contains unknown adapter " + adapterID)
+		}
+	}
+	return nil
+}
+
 func validateRole(role contracts.CompanyRole) error {
 	switch role {
 	case contracts.CompanyRoleAdmin, contracts.CompanyRoleUser:
@@ -3681,6 +4008,14 @@ func isAlertState(value contracts.AlertState) bool {
 		contracts.AlertStateResolved,
 		contracts.AlertStateSilenced,
 		contracts.AlertStateError,
+	}, value)
+}
+
+func isAlertSignal(value contracts.AlertSignal) bool {
+	return slices.Contains([]contracts.AlertSignal{
+		contracts.AlertSignalMetric,
+		contracts.AlertSignalLog,
+		contracts.AlertSignalTrace,
 	}, value)
 }
 

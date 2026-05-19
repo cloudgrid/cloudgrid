@@ -43,6 +43,8 @@ func bridgeErrorFromError(err error) contracts.BridgeError {
 		return contracts.BridgeError{ID: "ERR-001", Code: "VALIDATION_FAILED", Message: message, Retryable: false}
 	case strings.HasPrefix(message, "ERR-004"):
 		return contracts.BridgeError{ID: "ERR-004", Code: "TRACE_NOT_FOUND", Message: "Trace was not found", Retryable: false}
+	case strings.HasPrefix(message, "ERR-016"):
+		return contracts.BridgeError{ID: "ERR-016", Code: "FORBIDDEN", Message: "The principal is not allowed to access this telemetry", Retryable: false}
 	default:
 		return contracts.BridgeError{ID: "ERR-006", Code: "STORAGE_UNAVAILABLE", Message: "Storage is unavailable", Retryable: true}
 	}

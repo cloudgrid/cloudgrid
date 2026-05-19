@@ -72,6 +72,8 @@ describe("benchmark harness", () => {
       env: {
         CLOUDGRID_ENABLE_BENCHMARKS: "true",
         CLOUDGRID_BENCH_DEPLOYMENT_PROFILE: "production-like",
+        CLOUDGRID_BENCH_ENVIRONMENT_ID: "prod-eu-1",
+        CLOUDGRID_BENCH_IMAGE_TAG: "v1.0.0-beta",
         CLOUDGRID_BENCH_GRAPHQL_URL: "https://cloudgrid.example/graphql",
         CLOUDGRID_BENCH_OTLP_TRACES_URL: "https://collector.example/v1/traces",
       },
@@ -81,9 +83,13 @@ describe("benchmark harness", () => {
 
     expect(result.profile).toBe("production");
     expect(result.deploymentProfile).toBe("production-like");
+    expect(result.environment).toBe("prod-eu-1");
+    expect(result.imageTag).toBe("v1.0.0-beta");
     expect(result.passed).toBe(true);
     const written = JSON.parse(await readFile(result.outputPath, "utf8"));
     expect(written.deploymentProfile).toBe("production-like");
+    expect(written.environment).toBe("prod-eu-1");
+    expect(written.imageTag).toBe("v1.0.0-beta");
     expect(written.targets.graphqlP99Ms).toBe(750);
     expect(written.targets.otlpPublishAckP99Ms).toBe(250);
   });
@@ -100,5 +106,33 @@ describe("benchmark harness", () => {
         },
       }),
     ).rejects.toThrow("production-like");
+  });
+
+  test("requires production benchmark release identity", async () => {
+    await expect(
+      runBenchmark({
+        profile: "production-ingest",
+        cwd: tempDir,
+        env: {
+          CLOUDGRID_ENABLE_BENCHMARKS: "true",
+          CLOUDGRID_BENCH_DEPLOYMENT_PROFILE: "production-like",
+          CLOUDGRID_BENCH_IMAGE_TAG: "v1.0.0-beta",
+          CLOUDGRID_BENCH_OTLP_TRACES_URL: "https://collector.example/v1/traces",
+        },
+      }),
+    ).rejects.toThrow("CLOUDGRID_BENCH_ENVIRONMENT_ID");
+
+    await expect(
+      runBenchmark({
+        profile: "production-ingest",
+        cwd: tempDir,
+        env: {
+          CLOUDGRID_ENABLE_BENCHMARKS: "true",
+          CLOUDGRID_BENCH_DEPLOYMENT_PROFILE: "production-like",
+          CLOUDGRID_BENCH_ENVIRONMENT_ID: "prod-eu-1",
+          CLOUDGRID_BENCH_OTLP_TRACES_URL: "https://collector.example/v1/traces",
+        },
+      }),
+    ).rejects.toThrow("CLOUDGRID_BENCH_IMAGE_TAG");
   });
 });

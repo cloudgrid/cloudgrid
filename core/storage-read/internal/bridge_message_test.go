@@ -2,6 +2,7 @@ package internal
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
@@ -35,6 +36,14 @@ func TestTraceGetHandlerAcceptsPortableBridgeMessage(t *testing.T) {
 	}
 	if !response.OK || response.RequestID != "req-portable" {
 		t.Fatalf("response = %#v, want ok req-portable", response)
+	}
+}
+
+func TestBridgeErrorFromErrorMapsForbidden(t *testing.T) {
+	bridgeErr := bridgeErrorFromError(errors.New("ERR-016 FORBIDDEN: tenant mismatch"))
+
+	if bridgeErr.ID != "ERR-016" || bridgeErr.Code != "FORBIDDEN" || bridgeErr.Retryable {
+		t.Fatalf("bridge error = %#v, want non-retryable ERR-016", bridgeErr)
 	}
 }
 

@@ -39,6 +39,8 @@ export async function runBenchmark({
   const startedAt = startedAtDate.toISOString();
   const requestCount = boundedRequestCount(env.CLOUDGRID_BENCH_REQUESTS);
   const deploymentProfile = deploymentProfileFor(normalizedProfile, env);
+  const environment = environmentIdentityFor(normalizedProfile, env);
+  const imageTag = imageTagFor(normalizedProfile, env);
   const observed = { errorRate: 0 };
   let failures = 0;
   let attempts = 0;
@@ -72,6 +74,8 @@ export async function runBenchmark({
   const result = {
     profile: normalizedProfile,
     deploymentProfile,
+    environment,
+    imageTag,
     startedAt,
     durationSeconds,
     targets,
@@ -112,6 +116,22 @@ function deploymentProfileFor(profile, env) {
       );
     }
     return "production-like";
+  }
+  return configured || "local";
+}
+
+function environmentIdentityFor(profile, env) {
+  const configured = env.CLOUDGRID_BENCH_ENVIRONMENT_ID?.trim();
+  if (profile.startsWith("production") && !configured) {
+    throw new Error("CLOUDGRID_BENCH_ENVIRONMENT_ID is required for production profiles");
+  }
+  return configured || "local";
+}
+
+function imageTagFor(profile, env) {
+  const configured = env.CLOUDGRID_BENCH_IMAGE_TAG?.trim();
+  if (profile.startsWith("production") && !configured) {
+    throw new Error("CLOUDGRID_BENCH_IMAGE_TAG is required for production profiles");
   }
   return configured || "local";
 }

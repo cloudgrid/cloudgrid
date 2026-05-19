@@ -65,6 +65,19 @@ func TestCheckSchemaReadinessReportsMetricIndexGaps(t *testing.T) {
 	}
 }
 
+func TestCheckSchemaReadinessReportsMissingSoftDeleteField(t *testing.T) {
+	tableInfo := completeTableInfo()
+	delete(tableInfo["trace"].Fields, "deletedAt")
+
+	err := CheckSchemaReadiness(completeDatabaseInfo(), tableInfo)
+	if err == nil {
+		t.Fatal("CheckSchemaReadiness returned nil error")
+	}
+	if !strings.Contains(err.Error(), "trace.deletedAt") {
+		t.Fatalf("error = %q, want missing trace.deletedAt field", err.Error())
+	}
+}
+
 func TestCheckSchemaReadinessSeparatesBuildingIndexes(t *testing.T) {
 	tableInfo := completeTableInfo()
 	tableInfo["metric_point"].Indexes["idx_metric_point_metricName_timestamp"] = "DEFINE INDEX idx_metric_point_metricName_timestamp ON metric_point FIELDS metricName, timestamp BUILDING"
@@ -101,18 +114,18 @@ func completeDatabaseInfo() DatabaseInfo {
 
 func completeTableInfo() map[string]TableInfo {
 	return map[string]TableInfo{
-		"trace": {Indexes: map[string]string{
+		"trace": {Fields: softDeleteFields(), Indexes: map[string]string{
 			"idx_trace_startedAt":                "DEFINE INDEX idx_trace_startedAt ON trace FIELDS startedAt",
 			"idx_trace_serviceName":              "DEFINE INDEX idx_trace_serviceName ON trace FIELDS serviceName",
 			"idx_trace_status":                   "DEFINE INDEX idx_trace_status ON trace FIELDS status",
 			"idx_trace_tenant_project_startedAt": "DEFINE INDEX idx_trace_tenant_project_startedAt ON trace FIELDS tenantId, projectId, startedAt",
 			"idx_trace_tenant_project_traceId":   "DEFINE INDEX idx_trace_tenant_project_traceId ON trace FIELDS tenantId, projectId, traceId",
 		}},
-		"span": {Indexes: map[string]string{
+		"span": {Fields: softDeleteFields(), Indexes: map[string]string{
 			"idx_span_traceId":      "DEFINE INDEX idx_span_traceId ON span FIELDS traceId",
 			"idx_span_parentSpanId": "DEFINE INDEX idx_span_parentSpanId ON span FIELDS parentSpanId",
 		}},
-		"log_event": {Indexes: map[string]string{
+		"log_event": {Fields: softDeleteFields(), Indexes: map[string]string{
 			"idx_log_event_timestamp":                  "DEFINE INDEX idx_log_event_timestamp ON log_event FIELDS timestamp",
 			"idx_log_event_serviceName":                "DEFINE INDEX idx_log_event_serviceName ON log_event FIELDS serviceName",
 			"idx_log_event_traceId":                    "DEFINE INDEX idx_log_event_traceId ON log_event FIELDS traceId",
@@ -121,20 +134,28 @@ func completeTableInfo() map[string]TableInfo {
 			"idx_log_event_tenant_project_timestamp":   "DEFINE INDEX idx_log_event_tenant_project_timestamp ON log_event FIELDS tenantId, projectId, timestamp",
 			"idx_log_event_tenant_project_serviceName": "DEFINE INDEX idx_log_event_tenant_project_serviceName ON log_event FIELDS tenantId, projectId, serviceName",
 		}},
-		"metric_descriptor": {Indexes: map[string]string{
+		"metric_descriptor": {Fields: softDeleteFields(), Indexes: map[string]string{
 			"idx_metric_descriptor_metricName": "DEFINE INDEX idx_metric_descriptor_metricName ON metric_descriptor FIELDS metricName",
 			"idx_metric_descriptor_lastSeenAt": "DEFINE INDEX idx_metric_descriptor_lastSeenAt ON metric_descriptor FIELDS lastSeenAt",
 		}},
-		"metric_point": {Indexes: map[string]string{
+		"metric_point": {Fields: softDeleteFields(), Indexes: map[string]string{
 			"idx_metric_point_metricName":            "DEFINE INDEX idx_metric_point_metricName ON metric_point FIELDS metricName",
 			"idx_metric_point_metricName_timestamp":  "DEFINE INDEX idx_metric_point_metricName_timestamp ON metric_point FIELDS metricName, timestamp",
 			"idx_metric_point_serviceName_timestamp": "DEFINE INDEX idx_metric_point_serviceName_timestamp ON metric_point FIELDS serviceName, timestamp",
 			"idx_metric_point_timestamp":             "DEFINE INDEX idx_metric_point_timestamp ON metric_point FIELDS timestamp",
 		}},
-		"metric_ingest_cardinality": {Indexes: map[string]string{
+		"metric_ingest_cardinality": {Fields: softDeleteFields(), Indexes: map[string]string{
 			"idx_metric_ingest_cardinality_metricName_windowStart": "DEFINE INDEX idx_metric_ingest_cardinality_metricName_windowStart ON metric_ingest_cardinality FIELDS metricName, windowStart",
 		}},
 		"service":        {Indexes: map[string]string{}},
-		"ingest_command": {Indexes: map[string]string{}},
+		"ingest_command": {Fields: softDeleteFields(), Indexes: map[string]string{}},
+	}
+}
+
+func softDeleteFields() map[string]string {
+	return map[string]string{
+		"deletedAt":                  "DEFINE FIELD deletedAt ON table TYPE option<datetime>",
+		"deletedByRetentionPolicyId": "DEFINE FIELD deletedByRetentionPolicyId ON table TYPE option<string>",
+		"finalDeleteAfter":           "DEFINE FIELD finalDeleteAfter ON table TYPE option<datetime>",
 	}
 }

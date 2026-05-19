@@ -243,6 +243,9 @@ Default behavior:
 - skip with a clear message unless `CLOUDGRID_ENABLE_BENCHMARKS=true`;
 - require explicit target URL variables;
 - production profiles require `CLOUDGRID_BENCH_DEPLOYMENT_PROFILE=production-like`;
+- production profiles require `CLOUDGRID_BENCH_ENVIRONMENT_ID` and
+  `CLOUDGRID_BENCH_IMAGE_TAG` so every result is tied to a specific promoted
+  environment and release image;
 - `CLOUDGRID_BENCH_REQUIRED=true` makes a failed benchmark exit non-zero;
 - write JSON results under `tmp/benchmarks/`;
 - never run from default unit test commands.
@@ -252,6 +255,9 @@ Acceptance output schema:
 ```json
 {
   "profile": "local-read",
+  "deploymentProfile": "local",
+  "environment": "local",
+  "imageTag": "local",
   "startedAt": "2026-05-11T00:00:00Z",
   "durationSeconds": 300,
   "targets": {

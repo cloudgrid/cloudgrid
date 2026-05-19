@@ -86,6 +86,13 @@ const (
 	ProjectStatusDisabled ProjectStatus = "disabled"
 )
 
+type ServiceProjectScope string
+
+const (
+	ServiceProjectScopeAlertEvaluator     ServiceProjectScope = "alert_evaluator"
+	ServiceProjectScopeStorageMaintenance ServiceProjectScope = "storage_maintenance"
+)
+
 type RetentionDataClass string
 
 const (
@@ -181,6 +188,9 @@ const (
 	DashboardWidgetKindLogTable         DashboardWidgetKind = "log_table"
 	DashboardWidgetKindTraceTable       DashboardWidgetKind = "trace_table"
 	DashboardWidgetKindLiveTraceTable   DashboardWidgetKind = "live_trace_table"
+	DashboardWidgetKindAlertStatus      DashboardWidgetKind = "alert_status"
+	DashboardWidgetKindAlertHistory     DashboardWidgetKind = "alert_history"
+	DashboardWidgetKindAlertEvidence    DashboardWidgetKind = "alert_evidence"
 )
 
 type DashboardMetricFormulaExpressionKind string
@@ -514,6 +524,7 @@ type DashboardWidgetInput struct {
 	Logs        *DashboardLogWidgetInput        `json:"logs,omitempty"`
 	Traces      *DashboardTraceWidgetInput      `json:"traces,omitempty"`
 	LiveTraces  *DashboardLiveTraceWidgetInput  `json:"liveTraces,omitempty"`
+	Alert       *DashboardAlertWidgetInput      `json:"alert,omitempty"`
 }
 
 type DashboardWidgetLayoutInput struct {
@@ -625,6 +636,15 @@ type DashboardLiveTraceWidgetInput struct {
 	MaxDurationMs *float64          `json:"maxDurationMs,omitempty"`
 	Attributes    []AttributeFilter `json:"attributes,omitempty"`
 	Limit         *int              `json:"limit,omitempty"`
+}
+
+type DashboardAlertWidgetInput struct {
+	RuleIDs    []string        `json:"ruleIds,omitempty"`
+	States     []AlertState    `json:"states,omitempty"`
+	Severities []AlertSeverity `json:"severities,omitempty"`
+	Signals    []AlertSignal   `json:"signals,omitempty"`
+	TimeWindow *string         `json:"timeWindow,omitempty"`
+	Limit      *int            `json:"limit,omitempty"`
 }
 
 type DashboardThresholdInput struct {
@@ -870,6 +890,16 @@ type DashboardWidget struct {
 	Logs        *DashboardLogWidget        `json:"logs,omitempty"`
 	Traces      *DashboardTraceWidget      `json:"traces,omitempty"`
 	LiveTraces  *DashboardLiveTraceWidget  `json:"liveTraces,omitempty"`
+	Alert       *DashboardAlertWidget      `json:"alert,omitempty"`
+}
+
+type DashboardAlertWidget struct {
+	RuleIDs    []string        `json:"ruleIds"`
+	States     []AlertState    `json:"states"`
+	Severities []AlertSeverity `json:"severities"`
+	Signals    []AlertSignal   `json:"signals"`
+	TimeWindow string          `json:"timeWindow"`
+	Limit      int             `json:"limit"`
 }
 
 type Dashboard struct {
@@ -1307,6 +1337,34 @@ type ProjectListResponse struct {
 	Error     *BridgeError     `json:"error,omitempty"`
 }
 
+type ProjectListForServiceRequest struct {
+	BridgeEnvelope
+	ServiceScope ServiceProjectScope `json:"serviceScope"`
+	Status       *ProjectStatus      `json:"status,omitempty"`
+	Cursor       *string             `json:"cursor,omitempty"`
+	Limit        *int                `json:"limit,omitempty"`
+}
+
+type ServiceProject struct {
+	ProjectID string        `json:"projectId"`
+	CompanyID string        `json:"companyId"`
+	TenantID  string        `json:"tenantId"`
+	Status    ProjectStatus `json:"status"`
+	ChangedAt time.Time     `json:"changedAt"`
+}
+
+type ProjectListForServiceData struct {
+	Items      []ServiceProject `json:"items"`
+	NextCursor *string          `json:"nextCursor,omitempty"`
+}
+
+type ProjectListForServiceResponse struct {
+	RequestID string                     `json:"requestId"`
+	OK        bool                       `json:"ok"`
+	Data      *ProjectListForServiceData `json:"data,omitempty"`
+	Error     *BridgeError               `json:"error,omitempty"`
+}
+
 type ProjectGetRequest struct {
 	BridgeEnvelope
 	ProjectID string `json:"projectId"`
@@ -1697,6 +1755,37 @@ type AlertEventConnection struct {
 	PageInfo AlertPageInfo `json:"pageInfo"`
 }
 
+type AlertSummaryInput struct {
+	RuleIDs    []string        `json:"ruleIds,omitempty"`
+	States     []AlertState    `json:"states,omitempty"`
+	Severities []AlertSeverity `json:"severities,omitempty"`
+	Signals    []AlertSignal   `json:"signals,omitempty"`
+	TimeWindow *string         `json:"timeWindow,omitempty"`
+	Limit      *int            `json:"limit,omitempty"`
+}
+
+type AlertStateCount struct {
+	State AlertState `json:"state"`
+	Count int        `json:"count"`
+}
+
+type AlertSeverityCount struct {
+	Severity AlertSeverity `json:"severity"`
+	Count    int           `json:"count"`
+}
+
+type AlertSignalCount struct {
+	Signal AlertSignal `json:"signal"`
+	Count  int         `json:"count"`
+}
+
+type AlertSummary struct {
+	TotalCount int                  `json:"totalCount"`
+	ByState    []AlertStateCount    `json:"byState"`
+	BySeverity []AlertSeverityCount `json:"bySeverity"`
+	BySignal   []AlertSignalCount   `json:"bySignal"`
+}
+
 type AlertRuleCreateInput struct {
 	ProjectID               string         `json:"projectId"`
 	Name                    string         `json:"name"`
@@ -1843,6 +1932,23 @@ type AlertHistoryListResponse struct {
 	OK        bool                  `json:"ok"`
 	Data      *AlertHistoryListData `json:"data,omitempty"`
 	Error     *BridgeError          `json:"error,omitempty"`
+}
+
+type AlertSummaryRequest struct {
+	BridgeEnvelope
+	ProjectID string             `json:"projectId"`
+	Input     *AlertSummaryInput `json:"input,omitempty"`
+}
+
+type AlertSummaryData struct {
+	Summary AlertSummary `json:"summary"`
+}
+
+type AlertSummaryResponse struct {
+	RequestID string            `json:"requestId"`
+	OK        bool              `json:"ok"`
+	Data      *AlertSummaryData `json:"data,omitempty"`
+	Error     *BridgeError      `json:"error,omitempty"`
 }
 
 type AlertHistoryRecordRequest struct {
@@ -2163,6 +2269,19 @@ const (
 	AiChatRunStatusCancelled        AiChatRunStatus = "cancelled"
 	AiChatRunStatusAwaitingApproval AiChatRunStatus = "awaiting_approval"
 )
+
+type AiChatRun struct {
+	ID                string           `json:"id"`
+	ConversationID    string           `json:"conversationId"`
+	Status            AiChatRunStatus  `json:"status"`
+	ProviderProfileID string           `json:"providerProfileId"`
+	Model             string           `json:"model"`
+	Artifacts         []map[string]any `json:"artifacts"`
+	ActionProposals   []map[string]any `json:"actionProposals"`
+	StartedAt         time.Time        `json:"startedAt"`
+	CompletedAt       *time.Time       `json:"completedAt,omitempty"`
+	Error             *string          `json:"error,omitempty"`
+}
 
 type AiChatActionRisk string
 
@@ -2497,6 +2616,56 @@ type AiChatMessageAppendRequest struct {
 	RunID          string           `json:"runId"`
 	Role           string           `json:"role"`
 	Parts          []map[string]any `json:"parts"`
+}
+
+type AiChatRunCreateRequest struct {
+	BridgeEnvelope
+	ConversationID      string  `json:"conversationId"`
+	ProjectID           string  `json:"projectId"`
+	UserID              string  `json:"userId"`
+	UserMessageClientID string  `json:"userMessageClientId"`
+	IdempotencyKey      string  `json:"idempotencyKey"`
+	ProviderKind        string  `json:"providerKind"`
+	ProviderProfileID   string  `json:"providerProfileId"`
+	Model               string  `json:"model"`
+	TraceID             *string `json:"traceId,omitempty"`
+}
+
+type AiChatRunUpdateRequest struct {
+	BridgeEnvelope
+	RunID              string          `json:"runId"`
+	Status             AiChatRunStatus `json:"status"`
+	ToolCallCount      *int            `json:"toolCallCount,omitempty"`
+	SandboxScriptCount *int            `json:"sandboxScriptCount,omitempty"`
+	ArtifactCount      *int            `json:"artifactCount,omitempty"`
+	InputTokenCount    *int            `json:"inputTokenCount,omitempty"`
+	OutputTokenCount   *int            `json:"outputTokenCount,omitempty"`
+	EstimatedCostUSD   *float64        `json:"estimatedCostUsd,omitempty"`
+	Error              *string         `json:"error,omitempty"`
+}
+
+type AiChatRunFinalizeRequest struct {
+	BridgeEnvelope
+	RunID              string          `json:"runId"`
+	Status             AiChatRunStatus `json:"status"`
+	ToolCallCount      *int            `json:"toolCallCount,omitempty"`
+	SandboxScriptCount *int            `json:"sandboxScriptCount,omitempty"`
+	ArtifactCount      *int            `json:"artifactCount,omitempty"`
+	InputTokenCount    *int            `json:"inputTokenCount,omitempty"`
+	OutputTokenCount   *int            `json:"outputTokenCount,omitempty"`
+	EstimatedCostUSD   *float64        `json:"estimatedCostUsd,omitempty"`
+	Error              *string         `json:"error,omitempty"`
+}
+
+type AiChatRunMutationData struct {
+	Run AiChatRun `json:"run"`
+}
+
+type AiChatRunMutationResponse struct {
+	RequestID string                 `json:"requestId"`
+	OK        bool                   `json:"ok"`
+	Data      *AiChatRunMutationData `json:"data,omitempty"`
+	Error     *BridgeError           `json:"error,omitempty"`
 }
 
 type AiChatActionProposeRequest struct {

@@ -9,7 +9,8 @@ type OperationName =
   | "LogSearch"
   | "TelemetryFacets"
   | "Dashboards"
-  | "IngestCredentials";
+  | "IngestCredentials"
+  | "CompanyAiProviderSettings";
 type GraphQLPayload = Record<string, unknown>;
 type GraphQLHandler = (operationName: OperationName) => GraphQLPayload | Promise<GraphQLPayload>;
 
@@ -219,6 +220,21 @@ const telemetryFacets = {
   attributeKeys: [{ value: "http.route", count: 4 }],
 };
 
+const companyAiProviderSettings = {
+  companyId: "local",
+  providerProfile: null,
+  chatModelAlias: null,
+  effective: {
+    warnings: [],
+    missingProviderProfiles: [],
+    disabledProviderProfiles: [],
+    missingChatProvider: true,
+  },
+  version: 1,
+  updatedAt: timestamp,
+  updatedByUserId: null,
+};
+
 const emptyPayloads: Record<OperationName, GraphQLPayload> = {
   Viewer: viewerPayload,
   SelectProject: viewerPayload,
@@ -228,6 +244,7 @@ const emptyPayloads: Record<OperationName, GraphQLPayload> = {
   TelemetryFacets: { data: { telemetryFacets } },
   Dashboards: { data: { dashboards: { items: [], pinnedDashboardIds: [] } } },
   IngestCredentials: { data: { ingestCredentials: { items: [] } } },
+  CompanyAiProviderSettings: { data: { companyAiProviderSettings } },
 };
 
 const populatedPayloads: Record<OperationName, GraphQLPayload> = {
@@ -271,7 +288,8 @@ async function mockGraphQL(page: Page, handler: GraphQLHandler) {
     }
     if (
       requestBody.operationName === "Dashboards" ||
-      requestBody.operationName === "IngestCredentials"
+      requestBody.operationName === "IngestCredentials" ||
+      requestBody.operationName === "CompanyAiProviderSettings"
     ) {
       await route.fulfill({
         contentType: "application/json",

@@ -3,6 +3,12 @@ import type {
   AgentRunQueryData,
   AgentRunSearchInput,
   AgentRunsQueryData,
+  AiChatActionProposal,
+  AiChatConversation,
+  AiChatConversationQueryData,
+  AiChatHistory,
+  AiChatHistoryInput,
+  AiChatHistoryQueryData,
   AiQualityOverview,
   AiQualityOverviewInput,
   AiQualityOverviewQueryData,
@@ -12,16 +18,25 @@ import type {
   AlertRulesQueryData,
   AlertSilence,
   AlertSilencesQueryData,
+  AlertSummary,
+  AlertSummaryInput,
+  AlertSummaryQueryData,
   AnnotationQueueQueryData,
   AnnotationQueueResult,
   AnnotationQueueSearchInput,
   AppendDatasetItemsInput,
   AppendDatasetItemsMutationData,
+  ApproveAiChatActionInput,
+  ApproveAiChatActionMutationData,
   CommitDatasetImportInput,
+  CompanyAiProviderSettings,
+  CompanyAiProviderSettingsQueryData,
   CreateAlertRuleInput,
   CreateAlertRuleMutationData,
   CreateAlertSilenceInput,
   CreateAlertSilenceMutationData,
+  CreateAiChatConversationInput,
+  CreateAiChatConversationMutationData,
   CreateDatasetInput,
   CreateDatasetMutationData,
   CreatedIngestCredential,
@@ -207,6 +222,15 @@ export interface ControlPlaneGraphQLClient {
   updateRetentionPolicy: (input: UpdateRetentionPolicyInput) => Promise<RetentionPolicy>;
   getProjectAiSettings: (projectId: string) => Promise<ProjectAiSettings>;
   updateProjectAiSettings: (input: UpdateProjectAiSettingsInput) => Promise<ProjectAiSettings>;
+  getCompanyAiProviderSettings: (companyId: string) => Promise<CompanyAiProviderSettings>;
+  getAiChatHistory: (input: AiChatHistoryInput) => Promise<AiChatHistory>;
+  getAiChatConversation: (id: string) => Promise<AiChatConversation | null>;
+  createAiChatConversation: (input: CreateAiChatConversationInput) => Promise<AiChatConversation>;
+  approveAiChatAction: (input: ApproveAiChatActionInput) => Promise<AiChatActionProposal>;
+  streamAiChatRun: (
+    input: AiChatStreamRequest,
+    options?: AiChatStreamOptions,
+  ) => AsyncIterable<AiChatStreamEvent>;
   getAlertRules: (projectId: string) => Promise<AlertRule[]>;
   getAlertHistory: (input: {
     projectId: string;
@@ -214,6 +238,7 @@ export interface ControlPlaneGraphQLClient {
     first?: number;
     after?: string | null;
   }) => Promise<AlertEventConnection>;
+  getAlertSummary: (projectId: string, input?: AlertSummaryInput) => Promise<AlertSummary>;
   getAlertSilences: (input: {
     projectId: string;
     ruleId?: string | null;
@@ -223,6 +248,45 @@ export interface ControlPlaneGraphQLClient {
   deleteAlertRule: (id: string) => Promise<boolean>;
   createAlertSilence: (input: CreateAlertSilenceInput) => Promise<AlertSilence>;
   deleteAlertSilence: (id: string) => Promise<boolean>;
+}
+
+export interface AiChatStreamOptions {
+  signal?: AbortSignal;
+}
+
+export interface AiChatStreamRequest {
+  conversationId: string;
+  projectId: string;
+  userMessageClientId: string;
+  idempotencyKey: string;
+  parts: AiChatStreamTextPart[];
+  timezone?: string;
+}
+
+export interface AiChatStreamTextPart {
+  type: "text";
+  text: string;
+}
+
+export interface AiChatStreamEvent {
+  type:
+    | "run.started"
+    | "message.created"
+    | "text.delta"
+    | "tool.started"
+    | "tool.completed"
+    | "artifact.created"
+    | "action.proposed"
+    | "compaction.started"
+    | "compaction.saved"
+    | "run.completed"
+    | "run.failed"
+    | "heartbeat";
+  conversationId: string;
+  runId: string;
+  sequence?: number | undefined;
+  createdAt: string;
+  payload: Record<string, unknown>;
 }
 
 export type LiveTraceConnectionState = "connecting" | "live" | "reconnecting" | "closed" | "error";
@@ -785,6 +849,54 @@ export function createControlPlaneGraphQLClient(endpoint = "/graphql"): ControlP
       );
       return data.updateProjectAiSettings;
     },
+    async getCompanyAiProviderSettings(companyId) {
+      const data = await requestGraphQL<CompanyAiProviderSettingsQueryData>(
+        endpoint,
+        "CompanyAiProviderSettings",
+        companyAiProviderSettingsOperation,
+        { companyId },
+      );
+      return data.companyAiProviderSettings;
+    },
+    async getAiChatHistory(input) {
+      const data = await requestGraphQL<AiChatHistoryQueryData>(
+        endpoint,
+        "AiChatHistory",
+        aiChatHistoryOperation,
+        { input },
+      );
+      return data.aiChatHistory;
+    },
+    async getAiChatConversation(id) {
+      const data = await requestGraphQL<AiChatConversationQueryData>(
+        endpoint,
+        "AiChatConversation",
+        aiChatConversationOperation,
+        { id },
+      );
+      return data.aiChatConversation ?? null;
+    },
+    async createAiChatConversation(input) {
+      const data = await requestGraphQL<CreateAiChatConversationMutationData>(
+        endpoint,
+        "CreateAiChatConversation",
+        createAiChatConversationOperation,
+        { input },
+      );
+      return data.createAiChatConversation;
+    },
+    async approveAiChatAction(input) {
+      const data = await requestGraphQL<ApproveAiChatActionMutationData>(
+        endpoint,
+        "ApproveAiChatAction",
+        approveAiChatActionOperation,
+        { input },
+      );
+      return data.approveAiChatAction;
+    },
+    streamAiChatRun(input, options) {
+      return streamAiChatRun(endpoint, input, options);
+    },
     async getAlertRules(projectId) {
       const data = await requestGraphQL<AlertRulesQueryData>(
         endpoint,
@@ -802,6 +914,15 @@ export function createControlPlaneGraphQLClient(endpoint = "/graphql"): ControlP
         { projectId, ruleId, first, after },
       );
       return data.alertHistory;
+    },
+    async getAlertSummary(projectId, input = {}) {
+      const data = await requestGraphQL<AlertSummaryQueryData>(
+        endpoint,
+        "AlertSummary",
+        alertSummaryOperation,
+        { projectId, input },
+      );
+      return data.alertSummary;
     },
     async getAlertSilences({ projectId, ruleId = null }) {
       const data = await requestGraphQL<AlertSilencesQueryData>(
@@ -1548,6 +1669,14 @@ const dashboardWidgetFields = `
     }
     limit
   }
+  alert {
+    ruleIds
+    states
+    severities
+    signals
+    timeWindow
+    limit
+  }
 `;
 
 const dashboardFields = `
@@ -1821,6 +1950,179 @@ export const updateProjectAiSettingsOperation = `
   }
 `;
 
+const aiProviderProfileFields = `
+  id
+  ownerScope
+  ownerId
+  label
+  providerKind
+  baseUrl
+  credentialRef
+  models
+  timeoutMs
+  maxConcurrency
+  disabledAt
+`;
+
+const aiModelAliasFields = `
+  id
+  name
+  providerProfileId
+  model
+  purpose
+  parameters {
+    temperature
+    topP
+    maxOutputTokens
+    reasoningEffort
+    extras
+  }
+`;
+
+const aiProviderEffectiveFields = `
+  warnings
+  missingProviderProfiles
+  disabledProviderProfiles
+  missingChatProvider
+`;
+
+const aiChatActionProposalFields = `
+  id
+  runId
+  conversationId
+  title
+  description
+  risk
+  status
+  operation
+  preview
+  result
+  requestedAt
+  decidedAt
+  decidedByUserId
+  version
+`;
+
+const aiChatConversationFields = `
+  id
+  companyId
+  projectId
+  userId
+  title
+  status
+  messages {
+    id
+    conversationId
+    role
+    parts {
+      type
+      text
+      json
+      artifactId
+      actionId
+    }
+    createdAt
+  }
+  latestRun {
+    id
+    conversationId
+    status
+    providerProfileId
+    model
+    artifacts {
+      id
+      runId
+      kind
+      label
+      mimeType
+      content
+      createdAt
+    }
+    actionProposals {
+      ${aiChatActionProposalFields}
+    }
+    startedAt
+    completedAt
+    error
+  }
+  compaction {
+    id
+    conversationId
+    summary
+    coveredMessageIds
+    tokenCount
+    createdAt
+  }
+  createdAt
+  updatedAt
+  lastMessageAt
+  version
+`;
+
+export const companyAiProviderSettingsOperation = `
+  query CompanyAiProviderSettings($companyId: ID!) {
+    companyAiProviderSettings(companyId: $companyId) {
+      companyId
+      providerProfile {
+        ${aiProviderProfileFields}
+      }
+      chatModelAlias {
+        ${aiModelAliasFields}
+      }
+      effective {
+        ${aiProviderEffectiveFields}
+      }
+      version
+      updatedAt
+      updatedByUserId
+    }
+  }
+`;
+
+export const aiChatHistoryOperation = `
+  query AiChatHistory($input: AiChatHistoryInput!) {
+    aiChatHistory(input: $input) {
+      companyId
+      userId
+      projectGroups {
+        projectId
+        projectName
+        conversations {
+          ${aiChatConversationFields}
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+`;
+
+export const aiChatConversationOperation = `
+  query AiChatConversation($id: ID!) {
+    aiChatConversation(id: $id) {
+      ${aiChatConversationFields}
+    }
+  }
+`;
+
+export const createAiChatConversationOperation = `
+  mutation CreateAiChatConversation($input: CreateAiChatConversationInput!) {
+    createAiChatConversation(input: $input) {
+      ${aiChatConversationFields}
+    }
+  }
+`;
+
+export const approveAiChatActionOperation = `
+  mutation ApproveAiChatAction($input: ApproveAiChatActionInput!) {
+    approveAiChatAction(input: $input) {
+      ${aiChatActionProposalFields}
+    }
+  }
+`;
+
 const alertRuleFields = `
   id
   projectId
@@ -1887,6 +2189,26 @@ export const alertHistoryOperation = `
       pageInfo {
         hasNextPage
         endCursor
+      }
+    }
+  }
+`;
+
+export const alertSummaryOperation = `
+  query AlertSummary($projectId: ID!, $input: AlertSummaryInput) {
+    alertSummary(projectId: $projectId, input: $input) {
+      totalCount
+      byState {
+        state
+        count
+      }
+      bySeverity {
+        severity
+        count
+      }
+      bySignal {
+        signal
+        count
       }
     }
   }
@@ -2545,7 +2867,7 @@ export interface PublicGraphQLOperationDescriptor {
   operationName: string;
   document: string;
   kind: PublicGraphQLOperationKind;
-  area: "control" | "telemetry" | "dashboard" | "settings" | "alerting" | "ai-eval";
+  area: "control" | "telemetry" | "dashboard" | "settings" | "alerting" | "ai-eval" | "ai-chat";
   requiresSelectedProject: boolean;
 }
 
@@ -2810,6 +3132,41 @@ export const publicGraphQLOperations = [
     requiresSelectedProject: true,
   },
   {
+    operationName: "CompanyAiProviderSettings",
+    document: companyAiProviderSettingsOperation,
+    kind: "query",
+    area: "ai-chat",
+    requiresSelectedProject: false,
+  },
+  {
+    operationName: "AiChatHistory",
+    document: aiChatHistoryOperation,
+    kind: "query",
+    area: "ai-chat",
+    requiresSelectedProject: true,
+  },
+  {
+    operationName: "AiChatConversation",
+    document: aiChatConversationOperation,
+    kind: "query",
+    area: "ai-chat",
+    requiresSelectedProject: true,
+  },
+  {
+    operationName: "CreateAiChatConversation",
+    document: createAiChatConversationOperation,
+    kind: "mutation",
+    area: "ai-chat",
+    requiresSelectedProject: true,
+  },
+  {
+    operationName: "ApproveAiChatAction",
+    document: approveAiChatActionOperation,
+    kind: "mutation",
+    area: "ai-chat",
+    requiresSelectedProject: true,
+  },
+  {
     operationName: "AlertRules",
     document: alertRulesOperation,
     kind: "query",
@@ -2819,6 +3176,13 @@ export const publicGraphQLOperations = [
   {
     operationName: "AlertHistory",
     document: alertHistoryOperation,
+    kind: "query",
+    area: "alerting",
+    requiresSelectedProject: true,
+  },
+  {
+    operationName: "AlertSummary",
+    document: alertSummaryOperation,
     kind: "query",
     area: "alerting",
     requiresSelectedProject: true,
@@ -3024,8 +3388,14 @@ export type SupportedGraphQLData =
   | ResendOrganizationInvitationMutationData
   | ProjectMembersQueryData
   | RetentionPolicyQueryData
+  | CompanyAiProviderSettingsQueryData
+  | AiChatHistoryQueryData
+  | AiChatConversationQueryData
+  | CreateAiChatConversationMutationData
+  | ApproveAiChatActionMutationData
   | AlertRulesQueryData
   | AlertHistoryQueryData
+  | AlertSummaryQueryData
   | AlertSilencesQueryData
   | LiveTraceSubscriptionData
   | AgentRunsQueryData
@@ -3067,6 +3437,28 @@ const cloudGridProblemSchema = z
     details: z.record(z.string(), jsonValueSchema).optional(),
   })
   .passthrough();
+
+const aiChatStreamEventSchema = z.object({
+  type: z.enum([
+    "run.started",
+    "message.created",
+    "text.delta",
+    "tool.started",
+    "tool.completed",
+    "artifact.created",
+    "action.proposed",
+    "compaction.started",
+    "compaction.saved",
+    "run.completed",
+    "run.failed",
+    "heartbeat",
+  ]),
+  conversationId: z.string(),
+  runId: z.string(),
+  sequence: z.number().int().optional(),
+  createdAt: z.string(),
+  payload: z.record(z.string(), z.unknown()),
+}) satisfies z.ZodType<AiChatStreamEvent>;
 
 const graphQLErrorSchema = z.object({
   message: z.string(),
@@ -3134,6 +3526,93 @@ async function requestGraphQL<Data>(
     throw new Error("GraphQL response did not include data");
   }
   return payload.data as Data;
+}
+
+async function* streamAiChatRun(
+  endpoint: string,
+  input: AiChatStreamRequest,
+  options: AiChatStreamOptions = {},
+): AsyncIterable<AiChatStreamEvent> {
+  const init: RequestInit = {
+    method: "POST",
+    headers: {
+      accept: "text/event-stream",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(input),
+  };
+  if (options.signal) {
+    init.signal = options.signal;
+  }
+  const response = await fetch(aiChatStreamEndpoint(endpoint), init);
+
+  if (!response.ok) {
+    const problem = await readProblem(response);
+    throw new CloudGridGraphQLError(
+      problem?.detail ?? `AI Chat stream failed with HTTP ${response.status}`,
+      problem,
+    );
+  }
+  if (!response.body) {
+    throw new Error("AI Chat stream response did not include a body");
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for await (const chunk of response.body) {
+    buffer += decoder.decode(chunk, { stream: true });
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+    for (const part of parts) {
+      const event = parseSseEvent(part);
+      if (event) {
+        yield event;
+      }
+    }
+  }
+  buffer += decoder.decode();
+  const event = parseSseEvent(buffer);
+  if (event) {
+    yield event;
+  }
+}
+
+function aiChatStreamEndpoint(endpoint: string) {
+  const base =
+    typeof window === "undefined"
+      ? "http://localhost"
+      : `${window.location.protocol}//${window.location.host}`;
+  const url = new URL(endpoint, base);
+  url.pathname = "/api/ai-chat/stream";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+function parseSseEvent(chunk: string): AiChatStreamEvent | null {
+  const data = chunk
+    .split("\n")
+    .filter((line) => line.startsWith("data: "))
+    .map((line) => line.slice("data: ".length))
+    .join("\n")
+    .trim();
+  if (!data) {
+    return null;
+  }
+  const parsed = aiChatStreamEventSchema.safeParse(JSON.parse(data));
+  if (!parsed.success) {
+    throw new Error("AI Chat stream event was invalid");
+  }
+  return parsed.data;
+}
+
+async function readProblem(response: Response) {
+  try {
+    const parsed = cloudGridProblemSchema.safeParse(await response.json());
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function graphqlWebSocketEndpoint(endpoint: string) {

@@ -21,6 +21,9 @@ const DEFAULT_WIDGET_LAYOUTS: Record<
   log_table: { w: 6, h: 4, minW: 4, minH: 3 },
   trace_table: { w: 6, h: 4, minW: 4, minH: 3 },
   live_trace_table: { w: 6, h: 4, minW: 4, minH: 3 },
+  alert_status: { w: 4, h: 3, minW: 3, minH: 2 },
+  alert_history: { w: 6, h: 4, minW: 4, minH: 3 },
+  alert_evidence: { w: 6, h: 3, minW: 4, minH: 2 },
 };
 
 type IndexedWidget = {

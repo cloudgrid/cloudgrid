@@ -60,8 +60,9 @@ type InvitationEmailTransport interface {
 }
 
 type ServiceOptions struct {
-	InvitationEmail InvitationEmailConfig
-	EmailTransport  InvitationEmailTransport
+	InvitationEmail           InvitationEmailConfig
+	EmailTransport            InvitationEmailTransport
+	AlertNotificationAdapters []string
 }
 
 type SMTPInvitationEmailTransport struct {

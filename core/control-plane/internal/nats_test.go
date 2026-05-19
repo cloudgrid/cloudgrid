@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -63,11 +64,15 @@ func TestControlSubjectsUseWaveOneContractNames(t *testing.T) {
 		SubjectDashboardPinsReorder,
 		SubjectProjectAiSettingsGet,
 		SubjectProjectAiSettingsUpdate,
+		SubjectAiChatRunCreate,
+		SubjectAiChatRunUpdate,
+		SubjectAiChatRunFinalize,
 		SubjectProjectMembersList,
 		SubjectProjectMembersUpdate,
 		SubjectProjectMembersRemove,
 		SubjectRetentionGet,
 		SubjectRetentionUpdate,
+		SubjectProjectsListForService,
 		SubjectAlertRulesList,
 		SubjectAlertRulesCreate,
 		SubjectAlertRulesUpdate,
@@ -76,6 +81,7 @@ func TestControlSubjectsUseWaveOneContractNames(t *testing.T) {
 		SubjectAlertSilencesCreate,
 		SubjectAlertSilencesDelete,
 		SubjectAlertHistoryList,
+		SubjectAlertSummaryGet,
 		SubjectAlertHistoryRecord,
 	} {
 		if _, ok := subjects[subject]; !ok {
@@ -130,6 +136,33 @@ func TestMemberAndInvitationNATSHandlersReturnContractShapes(t *testing.T) {
 	})
 	if _, ok := revokeResponse["data"].(map[string]any)["invitation"]; !ok {
 		t.Fatalf("invitation revoke response missing data.invitation: %#v", revokeResponse)
+	}
+}
+
+func TestProjectsListForServiceNATSHandlerReturnsServiceProjectShape(t *testing.T) {
+	service := NewService(newTestStore(), fixedNow)
+	if _, err := service.GetViewer(context.Background(), localEnvelope("req-bootstrap", "local-user", nil)); err != nil {
+		t.Fatalf("bootstrap viewer: %v", err)
+	}
+	limit := 1
+	response := invokeJSONHandler(t, handleProjectsListForService(service, nil), contracts.ProjectListForServiceRequest{
+		BridgeEnvelope: serviceEnvelopeForScope("req-service", "alert_evaluator"),
+		ServiceScope:   contracts.ServiceProjectScopeAlertEvaluator,
+		Limit:          &limit,
+	})
+	data := response["data"].(map[string]any)
+	items, ok := data["items"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("response items = %#v, want one service project item", data["items"])
+	}
+	item := items[0].(map[string]any)
+	for _, field := range []string{"projectId", "companyId", "tenantId", "status", "changedAt"} {
+		if _, ok := item[field]; !ok {
+			t.Fatalf("service project item missing %s: %#v", field, item)
+		}
+	}
+	if _, ok := data["nextCursor"]; !ok {
+		t.Fatalf("response missing nextCursor for limited first page: %#v", data)
 	}
 }
 

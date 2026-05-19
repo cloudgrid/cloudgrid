@@ -92,11 +92,14 @@ export const AI_CHAT_ARTIFACT_KINDS = [
 ] as const;
 export const AI_CHAT_STREAM_EVENT_TYPES = [
   "run.started",
-  "message.delta",
-  "message.completed",
+  "message.created",
+  "text.delta",
+  "tool.started",
+  "tool.completed",
   "artifact.created",
   "action.proposed",
-  "action.updated",
+  "compaction.started",
+  "compaction.saved",
   "run.completed",
   "run.failed",
   "heartbeat",
@@ -107,6 +110,7 @@ export const CONTROL_PLANE_SUBJECTS = [
   "control.organizations.list",
   "control.organizations.get",
   "control.projects.list",
+  "control.projects.list_for_service",
   "control.projects.get",
   "control.projects.create",
   "control.projects.update",
@@ -133,6 +137,9 @@ export const CONTROL_PLANE_SUBJECTS = [
   "control.ai_chat.conversation.create",
   "control.ai_chat.conversation.archive",
   "control.ai_chat.message.append",
+  "control.ai_chat.run.create",
+  "control.ai_chat.run.update",
+  "control.ai_chat.run.finalize",
   "control.ai_chat.action.propose",
   "control.ai_chat.action.approve",
   "control.ai_chat.action.finish",
@@ -157,6 +164,7 @@ export const CONTROL_PLANE_SUBJECTS = [
   "control.alert_silences.create",
   "control.alert_silences.delete",
   "control.alert_history.list",
+  "control.alert_summary.get",
   "control.alert_history.record",
 ] as const;
 

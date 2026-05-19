@@ -77,6 +77,43 @@ func TestNATSControlPlanePortListsEnabledRulesForConfiguredProjects(t *testing.T
 	}
 }
 
+func TestNATSControlPlanePortDiscoversProjectsBeforeListingEnabledRules(t *testing.T) {
+	now := time.Date(2026, 5, 18, 12, 0, 0, 0, time.UTC)
+	enabledRule := contracts.AlertRule{ID: "rule-enabled", ProjectID: "project-b", Name: "Enabled", Enabled: true, Kind: contracts.AlertRuleKindLogCount, Severity: contracts.AlertSeverityWarning, EvaluationWindowSeconds: 300, CreatedAt: now, UpdatedAt: now, UpdatedByUserID: "user-a", Version: 1}
+	nextCursor := "project-a"
+	requester := &fakeRequester{responses: map[string]any{
+		SubjectControlProjectsListForService: []any{
+			contracts.ProjectListForServiceResponse{RequestID: "project-discovery", OK: true, Data: &contracts.ProjectListForServiceData{
+				Items:      []contracts.ServiceProject{{ProjectID: "project-a", CompanyID: "company-a", TenantID: "company-a", Status: contracts.ProjectStatusActive, ChangedAt: now}},
+				NextCursor: &nextCursor,
+			}},
+			contracts.ProjectListForServiceResponse{RequestID: "project-discovery", OK: true, Data: &contracts.ProjectListForServiceData{
+				Items: []contracts.ServiceProject{{ProjectID: "project-b", CompanyID: "company-a", TenantID: "company-a", Status: contracts.ProjectStatusActive, ChangedAt: now}},
+			}},
+		},
+		SubjectControlAlertRulesList: contracts.AlertRuleListResponse{RequestID: "alert-rule-list", OK: true, Data: &contracts.AlertRuleListData{Items: []contracts.AlertRule{enabledRule}}},
+	}}
+	port := NewNATSControlPlanePortWithDiscovery(requester, time.Second)
+
+	rules, err := port.ListEnabledAlertRules(context.Background())
+	if err != nil {
+		t.Fatalf("ListEnabledAlertRules returned error: %v", err)
+	}
+	if len(rules) != 1 || rules[0].ProjectID != "project-b" {
+		t.Fatalf("rules = %#v, want enabled rule from discovered project", rules)
+	}
+	var discoveryRequest contracts.ProjectListForServiceRequest
+	if err := json.Unmarshal(requester.requestsBySubject(SubjectControlProjectsListForService)[0], &discoveryRequest); err != nil {
+		t.Fatalf("discovery request invalid JSON: %v", err)
+	}
+	if discoveryRequest.ServiceScope != contracts.ServiceProjectScopeAlertEvaluator || discoveryRequest.Status == nil || *discoveryRequest.Status != contracts.ProjectStatusActive {
+		t.Fatalf("discovery request = %#v, want alert_evaluator active", discoveryRequest)
+	}
+	if discoveryRequest.AuthContext == nil || len(discoveryRequest.AuthContext.Scopes) != 1 || discoveryRequest.AuthContext.Scopes[0] != "cloudgrid:alert-evaluator" {
+		t.Fatalf("discovery auth context = %#v, want service scope", discoveryRequest.AuthContext)
+	}
+}
+
 func TestNATSStorageReadPortQueriesProjectScopedStorageSubjects(t *testing.T) {
 	now := time.Date(2026, 5, 18, 12, 0, 0, 0, time.UTC)
 	requester := &fakeRequester{responses: map[string]any{
@@ -111,19 +148,41 @@ func TestNATSStorageReadPortQueriesProjectScopedStorageSubjects(t *testing.T) {
 }
 
 type fakeRequester struct {
-	responses map[string]any
-	requests  map[string][]byte
+	responses       map[string]any
+	requests        map[string][]byte
+	requestSequence map[string][][]byte
+	responseIndexes map[string]int
 }
 
 func (requester *fakeRequester) RequestWithContext(_ context.Context, subject string, data []byte) (*nats.Msg, error) {
 	if requester.requests == nil {
 		requester.requests = map[string][]byte{}
 	}
+	if requester.requestSequence == nil {
+		requester.requestSequence = map[string][][]byte{}
+	}
 	requester.requests[subject] = append([]byte(nil), data...)
+	requester.requestSequence[subject] = append(requester.requestSequence[subject], append([]byte(nil), data...))
 	response, ok := requester.responses[subject]
 	if !ok {
 		response = contracts.AlertRuleListResponse{RequestID: "missing", OK: false, Error: &contracts.BridgeError{ID: "ERR-019", Code: "ALERT_QUERY_UNSUPPORTED", Message: "missing fake response", Retryable: false}}
 	}
+	if sequence, ok := response.([]any); ok {
+		if requester.responseIndexes == nil {
+			requester.responseIndexes = map[string]int{}
+		}
+		index := requester.responseIndexes[subject]
+		if index < len(sequence) {
+			response = sequence[index]
+			requester.responseIndexes[subject] = index + 1
+		} else {
+			response = sequence[len(sequence)-1]
+		}
+	}
 	payload, _ := json.Marshal(response)
 	return &nats.Msg{Data: payload}, nil
+}
+
+func (requester *fakeRequester) requestsBySubject(subject string) [][]byte {
+	return requester.requestSequence[subject]
 }

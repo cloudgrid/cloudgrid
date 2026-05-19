@@ -14,6 +14,7 @@ const (
 	SubjectOrganizationsList        = "control.organizations.list"
 	SubjectOrganizationsGet         = "control.organizations.get"
 	SubjectProjectsList             = "control.projects.list"
+	SubjectProjectsListForService   = "control.projects.list_for_service"
 	SubjectProjectsGet              = "control.projects.get"
 	SubjectProjectsCreate           = "control.projects.create"
 	SubjectProjectsUpdate           = "control.projects.update"
@@ -38,6 +39,9 @@ const (
 	SubjectDashboardPinsReorder     = "control.dashboard_pins.reorder"
 	SubjectProjectAiSettingsGet     = "control.ai_settings.get"
 	SubjectProjectAiSettingsUpdate  = "control.ai_settings.update"
+	SubjectAiChatRunCreate          = "control.ai_chat.run.create"
+	SubjectAiChatRunUpdate          = "control.ai_chat.run.update"
+	SubjectAiChatRunFinalize        = "control.ai_chat.run.finalize"
 	SubjectProjectMembersList       = "control.project_members.list"
 	SubjectProjectMembersUpdate     = "control.project_members.update"
 	SubjectProjectMembersRemove     = "control.project_members.remove"
@@ -51,6 +55,7 @@ const (
 	SubjectAlertSilencesCreate      = "control.alert_silences.create"
 	SubjectAlertSilencesDelete      = "control.alert_silences.delete"
 	SubjectAlertHistoryList         = "control.alert_history.list"
+	SubjectAlertSummaryGet          = "control.alert_summary.get"
 	SubjectAlertHistoryRecord       = "control.alert_history.record"
 	controlPlaneService             = "control-plane"
 )
@@ -61,6 +66,7 @@ func ControlSubjects() map[string]struct{} {
 		SubjectOrganizationsList:        {},
 		SubjectOrganizationsGet:         {},
 		SubjectProjectsList:             {},
+		SubjectProjectsListForService:   {},
 		SubjectProjectsGet:              {},
 		SubjectProjectsCreate:           {},
 		SubjectProjectsUpdate:           {},
@@ -85,6 +91,9 @@ func ControlSubjects() map[string]struct{} {
 		SubjectDashboardPinsReorder:     {},
 		SubjectProjectAiSettingsGet:     {},
 		SubjectProjectAiSettingsUpdate:  {},
+		SubjectAiChatRunCreate:          {},
+		SubjectAiChatRunUpdate:          {},
+		SubjectAiChatRunFinalize:        {},
 		SubjectProjectMembersList:       {},
 		SubjectProjectMembersUpdate:     {},
 		SubjectProjectMembersRemove:     {},
@@ -98,6 +107,7 @@ func ControlSubjects() map[string]struct{} {
 		SubjectAlertSilencesCreate:      {},
 		SubjectAlertSilencesDelete:      {},
 		SubjectAlertHistoryList:         {},
+		SubjectAlertSummaryGet:          {},
 		SubjectAlertHistoryRecord:       {},
 	}
 }
@@ -150,6 +160,16 @@ func handleProjectsList(service *Service, logger *slog.Logger) bridgeMessageHand
 			return contracts.ProjectListResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
 		return contracts.ProjectListResponse{RequestID: request.RequestID, OK: true, Data: &contracts.ProjectListData{Items: items}}
+	})
+}
+
+func handleProjectsListForService(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.ProjectListForServiceRequest](SubjectProjectsListForService, logger, func(ctx context.Context, request contracts.ProjectListForServiceRequest) contracts.ProjectListForServiceResponse {
+		data, err := service.ListProjectsForService(ctx, request)
+		if err != nil {
+			return contracts.ProjectListForServiceResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.ProjectListForServiceResponse{RequestID: request.RequestID, OK: true, Data: &data}
 	})
 }
 
@@ -389,6 +409,36 @@ func handleProjectAiSettingsUpdate(service *Service, logger *slog.Logger) bridge
 	})
 }
 
+func handleAiChatRunCreate(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.AiChatRunCreateRequest](SubjectAiChatRunCreate, logger, func(ctx context.Context, request contracts.AiChatRunCreateRequest) contracts.AiChatRunMutationResponse {
+		run, err := service.CreateAiChatRun(ctx, request)
+		if err != nil {
+			return contracts.AiChatRunMutationResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.AiChatRunMutationResponse{RequestID: request.RequestID, OK: true, Data: &contracts.AiChatRunMutationData{Run: run}}
+	})
+}
+
+func handleAiChatRunUpdate(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.AiChatRunUpdateRequest](SubjectAiChatRunUpdate, logger, func(ctx context.Context, request contracts.AiChatRunUpdateRequest) contracts.AiChatRunMutationResponse {
+		run, err := service.UpdateAiChatRun(ctx, request)
+		if err != nil {
+			return contracts.AiChatRunMutationResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.AiChatRunMutationResponse{RequestID: request.RequestID, OK: true, Data: &contracts.AiChatRunMutationData{Run: run}}
+	})
+}
+
+func handleAiChatRunFinalize(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.AiChatRunFinalizeRequest](SubjectAiChatRunFinalize, logger, func(ctx context.Context, request contracts.AiChatRunFinalizeRequest) contracts.AiChatRunMutationResponse {
+		run, err := service.FinalizeAiChatRun(ctx, request)
+		if err != nil {
+			return contracts.AiChatRunMutationResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.AiChatRunMutationResponse{RequestID: request.RequestID, OK: true, Data: &contracts.AiChatRunMutationData{Run: run}}
+	})
+}
+
 func handleProjectMembersList(service *Service, logger *slog.Logger) bridgeMessageHandler {
 	return requestHandler[contracts.ProjectMemberListRequest](SubjectProjectMembersList, logger, func(ctx context.Context, request contracts.ProjectMemberListRequest) contracts.ProjectMemberListResponse {
 		items, err := service.ListProjectMembers(ctx, request)
@@ -516,6 +566,16 @@ func handleAlertHistoryList(service *Service, logger *slog.Logger) bridgeMessage
 			return contracts.AlertHistoryListResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
 		return contracts.AlertHistoryListResponse{RequestID: request.RequestID, OK: true, Data: &contracts.AlertHistoryListData{Connection: connection}}
+	})
+}
+
+func handleAlertSummaryGet(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.AlertSummaryRequest](SubjectAlertSummaryGet, logger, func(ctx context.Context, request contracts.AlertSummaryRequest) contracts.AlertSummaryResponse {
+		summary, err := service.AlertSummary(ctx, request)
+		if err != nil {
+			return contracts.AlertSummaryResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.AlertSummaryResponse{RequestID: request.RequestID, OK: true, Data: &contracts.AlertSummaryData{Summary: summary}}
 	})
 }
 

@@ -2,6 +2,8 @@ import type { DashboardTraceWidget, DashboardTraceWidgetInput } from "@cloudgrid
 
 export type {
   Dashboard,
+  DashboardAlertWidget,
+  DashboardAlertWidgetInput,
   DashboardListInput,
   DashboardListResult,
   DashboardLogColumn,

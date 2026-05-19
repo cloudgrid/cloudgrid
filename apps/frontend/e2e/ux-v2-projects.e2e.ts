@@ -83,6 +83,31 @@ async function mockViewer(page: Page, selectedProject: typeof project | null = n
       return;
     }
 
+    if (requestBody.operationName === "CompanyAiProviderSettings") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          data: {
+            companyAiProviderSettings: {
+              companyId: "local",
+              providerProfile: null,
+              chatModelAlias: null,
+              effective: {
+                warnings: [],
+                missingProviderProfiles: [],
+                disabledProviderProfiles: [],
+                missingChatProvider: true,
+              },
+              version: 1,
+              updatedAt: "2026-05-15T08:00:00.000Z",
+              updatedByUserId: null,
+            },
+          },
+        },
+      });
+      return;
+    }
+
     if (requestBody.operationName === "TraceSearch") {
       await route.fulfill({
         contentType: "application/json",

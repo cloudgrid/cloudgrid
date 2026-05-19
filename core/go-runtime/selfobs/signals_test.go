@@ -179,6 +179,148 @@ func TestOTLPTraceLogExporterDropsWhenBuffersAreFullAndAfterShutdown(t *testing.
 	}
 }
 
+func TestOTLPTraceLogExporterHonorsSignalToggles(t *testing.T) {
+	requests := map[string]int{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests[r.URL.Path]++
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+	exporter, err := NewOTLPTraceLogExporter(TraceLogExporterConfig{
+		Enabled:               true,
+		Endpoint:              server.URL,
+		ExportIntervalSeconds: 300,
+		ServiceName:           "cloudgrid.ai_eval_runner",
+		DeploymentMode:        "local",
+		CompanyID:             "local",
+		ProjectID:             "cloudgrid-system",
+		TracesEnabled:         true,
+		LogsEnabled:           false,
+	})
+	if err != nil {
+		t.Fatalf("NewOTLPTraceLogExporter() error = %v", err)
+	}
+	exporter.RecordSpan(SpanEvent{Name: "ai-eval-runner nats handler"})
+	exporter.RecordLog(LogEvent{Message: "disabled log"})
+
+	if err := exporter.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+
+	if requests["/v1/traces"] != 1 || requests["/v1/logs"] != 0 {
+		t.Fatalf("requests = %#v, want traces only", requests)
+	}
+}
+
+func TestOTLPTraceLogExporterSanitizesLogsAndAddsOTLPLogFields(t *testing.T) {
+	var logPayload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/logs" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&logPayload); err != nil {
+			t.Fatalf("decode log payload: %v", err)
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+	exporter, err := NewOTLPTraceLogExporter(TraceLogExporterConfig{
+		Enabled:               true,
+		Endpoint:              server.URL,
+		ExportIntervalSeconds: 300,
+		ServiceName:           "cloudgrid.storage_read",
+		DeploymentMode:        "local",
+		CompanyID:             "local",
+		ProjectID:             "cloudgrid-system",
+		Now: func() time.Time {
+			return time.Unix(20, 30).UTC()
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewOTLPTraceLogExporter() error = %v", err)
+	}
+	exporter.RecordLog(LogEvent{
+		Message:      strings.Repeat("x", 520) + " bearer service-token user@example.com query { viewer { email } }",
+		SeverityText: "ERROR",
+		Timestamp:    time.Unix(19, 0).UTC(),
+		TraceID:      "4bf92f3577b34da6a3ce929d0e0e4736",
+		SpanID:       "00f067aa0ba902b7",
+		Attributes: map[string]string{
+			"event":                      "storage_query_failed",
+			"error_id":                   "ERR-006",
+			"error_code":                 "STORAGE_UNAVAILABLE",
+			"operation":                  "trace_search",
+			"authorization":              "Bearer service-token",
+			"cloudgrid.project_id":       "tenant-project",
+			"graphql.document":           "query { viewer { email } }",
+			"messaging.destination.name": "telemetry.traces.search",
+		},
+	})
+
+	if err := exporter.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+
+	record := firstOTLPLogRecord(logPayload)
+	if record["traceId"] != "4bf92f3577b34da6a3ce929d0e0e4736" || record["spanId"] != "00f067aa0ba902b7" {
+		t.Fatalf("log trace/span = %q/%q", record["traceId"], record["spanId"])
+	}
+	if record["severityText"] != "ERROR" || record["severityNumber"] != float64(17) {
+		t.Fatalf("severity fields = %#v", record)
+	}
+	if record["observedTimeUnixNano"] == "" || record["timeUnixNano"] == "" {
+		t.Fatalf("log record missing observed/time fields: %#v", record)
+	}
+	scope := firstOTLPLogScope(logPayload)
+	if scope["name"] != "cloudgrid.self_observability.logs" {
+		t.Fatalf("scope name = %q", scope["name"])
+	}
+	body, _ := record["body"].(map[string]any)
+	bodyValue, _ := body["stringValue"].(string)
+	if len(bodyValue) > 512 {
+		t.Fatalf("body length = %d, want <= 512", len(bodyValue))
+	}
+	encoded, _ := json.Marshal(logPayload)
+	for _, forbidden := range []string{"service-token", "user@example.com", "query { viewer", "tenant-project", "graphql.document", "authorization"} {
+		if strings.Contains(string(encoded), forbidden) {
+			t.Fatalf("payload contains forbidden value/key %q: %s", forbidden, encoded)
+		}
+	}
+	if !hasOTLPAttribute(record["attributes"], "cloudgrid.event", "storage_query_failed") ||
+		!hasOTLPAttribute(record["attributes"], "cloudgrid.error_id", "ERR-006") ||
+		!hasOTLPAttribute(record["attributes"], "cloudgrid.error_code", "STORAGE_UNAVAILABLE") ||
+		!hasOTLPAttribute(record["attributes"], "cloudgrid.operation", "trace_search") {
+		t.Fatalf("log attributes missing sanitized CloudGrid fields: %#v", record["attributes"])
+	}
+}
+
+func TestOTLPTraceLogExporterRecordsDroppedLogMetricWhenBufferIsFull(t *testing.T) {
+	metrics := &recordingMetricsRecorder{}
+	exporter, err := NewOTLPTraceLogExporter(TraceLogExporterConfig{
+		Enabled:               true,
+		Endpoint:              "http://127.0.0.1:4318",
+		ExportIntervalSeconds: 300,
+		ServiceName:           "cloudgrid.storage_write",
+		DeploymentMode:        "local",
+		CompanyID:             "local",
+		ProjectID:             "cloudgrid-system",
+		MaxBuffer:             1,
+		MetricsRecorder:       metrics,
+	})
+	if err != nil {
+		t.Fatalf("NewOTLPTraceLogExporter() error = %v", err)
+	}
+	defer func() { _ = exporter.Shutdown(context.Background()) }()
+
+	exporter.RecordLog(LogEvent{Message: "first"})
+	exporter.RecordLog(LogEvent{Message: "dropped"})
+
+	if !metrics.has("cloudgrid.exporter.failures", map[string]string{"service": "cloudgrid.storage_write", "signal": "logs", "result": "dropped"}) {
+		t.Fatalf("metrics = %#v, want dropped log exporter failure metric", metrics.events)
+	}
+}
+
 func TestOTLPTraceLogExporterFailureIsNonFatalAndLogsBoundedWarning(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -216,6 +358,46 @@ func TestOTLPTraceLogExporterFailureIsNonFatalAndLogsBoundedWarning(t *testing.T
 		if strings.Contains(logLine, forbidden) {
 			t.Fatalf("failure log contains forbidden raw detail %q: %s", forbidden, logLine)
 		}
+	}
+}
+
+func TestOTLPTraceLogExporterRateLimitsFailureWarnings(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	current := time.Unix(30, 0).UTC()
+	var logs bytes.Buffer
+	exporter, err := NewOTLPTraceLogExporter(TraceLogExporterConfig{
+		Enabled:               true,
+		Endpoint:              server.URL,
+		ExportIntervalSeconds: 60,
+		ServiceName:           "cloudgrid.otlp_collector",
+		DeploymentMode:        "local",
+		CompanyID:             "local",
+		ProjectID:             "cloudgrid-system",
+		Logger:                slog.New(slog.NewJSONHandler(&logs, nil)),
+		Now: func() time.Time {
+			return current
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewOTLPTraceLogExporter() error = %v", err)
+	}
+	defer func() { _ = exporter.Shutdown(context.Background()) }()
+
+	exporter.RecordLog(LogEvent{Message: "first failure"})
+	_ = exporter.Flush(context.Background())
+	exporter.RecordLog(LogEvent{Message: "second failure"})
+	_ = exporter.Flush(context.Background())
+	if got := strings.Count(logs.String(), "\n"); got != 1 {
+		t.Fatalf("failure warnings before interval = %d, logs = %s", got, logs.String())
+	}
+	current = current.Add(61 * time.Second)
+	exporter.RecordLog(LogEvent{Message: "third failure"})
+	_ = exporter.Flush(context.Background())
+	if got := strings.Count(logs.String(), "\n"); got != 2 {
+		t.Fatalf("failure warnings after interval = %d, logs = %s", got, logs.String())
 	}
 }
 
@@ -282,6 +464,27 @@ func hasOTLPLogRecord(payload map[string]any, body string) bool {
 	return false
 }
 
+func firstOTLPLogRecord(payload map[string]any) map[string]any {
+	for _, resourceLog := range payloadMapItems(payload["resourceLogs"]) {
+		for _, scopeLog := range payloadMapItems(resourceLog["scopeLogs"]) {
+			for _, record := range payloadMapItems(scopeLog["logRecords"]) {
+				return record
+			}
+		}
+	}
+	return nil
+}
+
+func firstOTLPLogScope(payload map[string]any) map[string]any {
+	for _, resourceLog := range payloadMapItems(payload["resourceLogs"]) {
+		for _, scopeLog := range payloadMapItems(resourceLog["scopeLogs"]) {
+			scope, _ := scopeLog["scope"].(map[string]any)
+			return scope
+		}
+	}
+	return nil
+}
+
 func payloadMapItems(values ...any) []map[string]any {
 	var result []map[string]any
 	for _, value := range values {
@@ -294,4 +497,40 @@ func payloadMapItems(values ...any) []map[string]any {
 		}
 	}
 	return result
+}
+
+type recordingMetricsRecorder struct {
+	events []MetricEvent
+}
+
+func (recorder *recordingMetricsRecorder) RecordMetric(event MetricEvent) {
+	event.Attributes = copyLabels(event.Attributes)
+	recorder.events = append(recorder.events, event)
+}
+
+func (recorder *recordingMetricsRecorder) Flush(context.Context) error {
+	return nil
+}
+
+func (recorder *recordingMetricsRecorder) Shutdown(context.Context) error {
+	return nil
+}
+
+func (recorder *recordingMetricsRecorder) has(name string, attrs map[string]string) bool {
+	for _, event := range recorder.events {
+		if event.Name != name {
+			continue
+		}
+		matched := true
+		for key, value := range attrs {
+			if event.Attributes[key] != value {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
 }

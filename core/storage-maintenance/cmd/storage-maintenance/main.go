@@ -43,7 +43,12 @@ func run() int {
 	if cfg.RetentionScheduler.Enabled {
 		cfg.RetentionScheduler.OwnerID = fmt.Sprintf("storage-maintenance-%d", time.Now().UTC().UnixNano())
 	}
-	store := retention.NewFixtureStore()
+	store, storeCleanup, err := openRetentionStore(context.Background(), cfg)
+	if err != nil {
+		logError(logger, "startup_storage_unavailable", err, "ERR-006")
+		return 1
+	}
+	defer storeCleanup()
 	executor := retention.NewExecutor(store, logger, time.Now)
 	scheduler := retention.NewScheduler(executor, store, cfg.RetentionScheduler, time.Now)
 	if scheduler.Enabled() {
@@ -129,7 +134,17 @@ type config struct {
 	HealthHost         string
 	HealthPort         string
 	NATSURL            string
+	StorageAdapter     string
+	SurrealDB          surrealDBConfig
 	RetentionScheduler retention.SchedulerConfig
+}
+
+type surrealDBConfig struct {
+	URL       string
+	Namespace string
+	Database  string
+	Username  string
+	Password  string
 }
 
 func loadConfig(getenv func(string) string) (config, error) {
@@ -157,6 +172,17 @@ func loadConfig(getenv func(string) string) (config, error) {
 		HealthHost: valueOrDefault(getenv("CLOUDGRID_STORAGE_MAINTENANCE_HEALTH_HOST"), defaultHealthHost),
 		HealthPort: valueOrDefault(getenv("CLOUDGRID_STORAGE_MAINTENANCE_HEALTH_PORT"), defaultHealthPort),
 		NATSURL:    valueOrDefault(getenv("CLOUDGRID_NATS_URL"), defaultNATSURL),
+		StorageAdapter: valueOrDefault(
+			getenv("CLOUDGRID_STORAGE_ADAPTER"),
+			defaultStorageAdapter,
+		),
+		SurrealDB: surrealDBConfig{
+			URL:       valueOrDefault(getenv("CLOUDGRID_SURREALDB_URL"), "http://localhost:8000/rpc"),
+			Namespace: valueOrDefault(getenv("CLOUDGRID_SURREALDB_NAMESPACE"), "observability"),
+			Database:  valueOrDefault(getenv("CLOUDGRID_SURREALDB_DATABASE"), "dev"),
+			Username:  valueOrDefault(getenv("CLOUDGRID_SURREALDB_USERNAME"), "root"),
+			Password:  valueOrDefault(getenv("CLOUDGRID_SURREALDB_PASSWORD"), "root"),
+		},
 		RetentionScheduler: retention.SchedulerConfig{
 			Enabled:       schedulerEnabled,
 			ProjectIDs:    projectIDs,
@@ -240,6 +266,10 @@ func errorCodeForID(errorID string) string {
 	default:
 		return "RUNTIME_COMPOSITION_FAILED"
 	}
+}
+
+func errConfigInvalid(format string, args ...any) error {
+	return fmt.Errorf("ERR-009 CONFIG_INVALID: "+format, args...)
 }
 
 func valueOrDefault(value string, fallback string) string {
