@@ -174,6 +174,30 @@ type ProjectAiSettingsRecord struct {
 	Version         int
 }
 
+type AiChatRunRecord struct {
+	ID                  string
+	ConversationID      string
+	ProjectID           string
+	UserID              string
+	UserMessageClientID string
+	IdempotencyKey      string
+	ProviderKind        string
+	ProviderProfileID   string
+	Model               string
+	Status              contracts.AiChatRunStatus
+	TraceID             *string
+	ToolCallCount       int
+	SandboxScriptCount  int
+	ArtifactCount       int
+	InputTokenCount     int
+	OutputTokenCount    int
+	EstimatedCostUSD    *float64
+	Error               *string
+	StartedAt           time.Time
+	CompletedAt         *time.Time
+	UpdatedAt           time.Time
+}
+
 type RetentionRuleRecord struct {
 	DataClass       contracts.RetentionDataClass
 	Mode            contracts.RetentionMode
@@ -273,6 +297,10 @@ type ControlStore interface {
 	PutRetentionPolicy(ctx context.Context, policy RetentionPolicyRecord) error
 	GetProjectAiSettings(ctx context.Context, projectID string) (ProjectAiSettingsRecord, bool, error)
 	PutProjectAiSettings(ctx context.Context, settings ProjectAiSettingsRecord) error
+	GetAiChatRun(ctx context.Context, runID string) (AiChatRunRecord, bool, error)
+	GetAiChatRunByIdempotency(ctx context.Context, conversationID string, userMessageClientID string, idempotencyKey string) (AiChatRunRecord, bool, error)
+	ListActiveAiChatRunsForConversation(ctx context.Context, conversationID string) ([]AiChatRunRecord, error)
+	PutAiChatRun(ctx context.Context, run AiChatRunRecord) error
 	GetAlertRule(ctx context.Context, id string) (AlertRuleRecord, bool, error)
 	PutAlertRule(ctx context.Context, rule AlertRuleRecord) error
 	DeleteAlertRule(ctx context.Context, id string) error

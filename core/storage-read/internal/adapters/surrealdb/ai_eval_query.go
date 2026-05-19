@@ -620,7 +620,7 @@ func BuildOnlinePolicyMatchesResolveQueries(request contracts.OnlinePolicyMatche
 			SQL: strings.Join([]string{
 				"SELECT *",
 				"FROM project_ai_settings",
-				whereClause(append(ownershipConditions(), "projectId = $projectId", "enabled = true")),
+				whereClause(append(retentionVisibleConditions(), "projectId = $projectId", "enabled = true")),
 				"LIMIT 1;",
 			}, " "),
 			Params: cloneParams(params),
@@ -629,7 +629,7 @@ func BuildOnlinePolicyMatchesResolveQueries(request contracts.OnlinePolicyMatche
 			SQL: strings.Join([]string{
 				"SELECT id, projectId, traceId, rootSpanId AS spanId, 'agent_run' AS kind, agent.id AS agentId, agent.name AS agentName, metadata.environment AS environment, metadata.service AS serviceName, metadata.route AS route, metadata.model AS model, metadata.promptVersionId AS promptVersionId, metadata.experimentRunId AS experimentRunId, metadata.safeAttributes AS safeAttributes",
 				"FROM ai_agent_run",
-				whereClause(append(ownershipConditions(), "projectId = $projectId", "traceId = $traceId", "id IN $projectionIds")),
+				whereClause(append(retentionVisibleConditions(), "projectId = $projectId", "traceId = $traceId", "id IN $projectionIds")),
 				"ORDER BY id ASC LIMIT 200;",
 			}, " "),
 			Params: cloneParams(params),
@@ -638,7 +638,7 @@ func BuildOnlinePolicyMatchesResolveQueries(request contracts.OnlinePolicyMatche
 			SQL: strings.Join([]string{
 				"SELECT id, version, kind",
 				"FROM ai_scorer",
-				whereClause(append(ownershipConditions(), "projectId = $projectId", "kind = 'deterministic'")),
+				whereClause(append(retentionVisibleConditions(), "projectId = $projectId", "kind = 'deterministic'")),
 				"ORDER BY id ASC LIMIT 1000;",
 			}, " "),
 			Params: cloneParams(params),
@@ -662,7 +662,7 @@ func BuildAiEvalQuery(subject string, input map[string]any) (QueryStatement, err
 
 	params := map[string]any{"limit": limit}
 	addOwnershipParams(params, target)
-	conditions := ownershipConditions()
+	conditions := retentionVisibleConditions()
 	addRecordIDFilter(&conditions, params, input, "id")
 	switch subject {
 	case subjectEvalAgentRunsSearch:
@@ -734,7 +734,7 @@ func BuildDatasetHealthQueries(input map[string]any) (map[string]QueryStatement,
 	}
 	params := map[string]any{"datasetId": datasetID}
 	addOwnershipParams(params, target)
-	conditions := append(ownershipConditions(), "datasetId = $datasetId")
+	conditions := append(retentionVisibleConditions(), "datasetId = $datasetId")
 	return map[string]QueryStatement{
 		"summary": {
 			SQL: strings.Join([]string{
@@ -773,7 +773,7 @@ func BuildDatasetListCountsQuery(datasetIDs []string) (QueryStatement, error) {
 	}
 	params := map[string]any{"datasetIds": datasetIDs}
 	addOwnershipParams(params, target)
-	conditions := append(ownershipConditions(), "datasetId IN $datasetIds")
+	conditions := append(retentionVisibleConditions(), "datasetId IN $datasetIds")
 	return QueryStatement{
 		SQL: strings.Join([]string{
 			"SELECT datasetId, count() AS itemCount, math::sum(IF reviewStatus = 'reviewed' THEN 1 ELSE 0 END) AS reviewedItemCount",
@@ -796,7 +796,7 @@ func BuildDatasetExportItemsQuery(input map[string]any) (QueryStatement, error) 
 	}
 	params := map[string]any{"datasetId": datasetID}
 	addOwnershipParams(params, target)
-	conditions := append(ownershipConditions(), "datasetId = $datasetId")
+	conditions := append(retentionVisibleConditions(), "datasetId = $datasetId")
 	addStringFilter(&conditions, params, input, "split", "split")
 	addStringFilter(&conditions, params, input, "reviewStatus", "reviewStatus")
 	return QueryStatement{
@@ -822,7 +822,7 @@ func BuildAiQualityOverviewQueries(input map[string]any) (map[string]QueryStatem
 	target.ProjectID = projectID
 	params := map[string]any{}
 	addOwnershipParams(params, target)
-	conditions := ownershipConditions()
+	conditions := retentionVisibleConditions()
 	addStringFilter(&conditions, params, input, "agentName", "agent.name")
 	addStringFilter(&conditions, params, input, "environment", "metadata.environment")
 	addStringFilter(&conditions, params, input, "service", "metadata.service")
@@ -868,7 +868,7 @@ func BuildExperimentRunEventQueries(experimentRunID string, datasetItemRunID *st
 			SQL: strings.Join([]string{
 				"SELECT *",
 				"FROM ai_experiment_run",
-				whereClause(append(ownershipConditions(), "record::id(id) = $experimentRunId")),
+				whereClause(append(retentionVisibleConditions(), "record::id(id) = $experimentRunId")),
 				"LIMIT 1;",
 			}, " "),
 			Params: runParams,
@@ -882,7 +882,7 @@ func BuildExperimentRunEventQueries(experimentRunID string, datasetItemRunID *st
 			SQL: strings.Join([]string{
 				"SELECT *",
 				"FROM ai_dataset_item_run",
-				whereClause(append(ownershipConditions(), "record::id(id) = $datasetItemRunId")),
+				whereClause(append(retentionVisibleConditions(), "record::id(id) = $datasetItemRunId")),
 				"LIMIT 1;",
 			}, " "),
 			Params: itemParams,
@@ -918,7 +918,7 @@ func BuildExperimentManifestResolveQueries(request contracts.ExperimentManifestR
 			SQL: strings.Join([]string{
 				"SELECT *",
 				"FROM ai_experiment_run",
-				whereClause(append(ownershipConditions(), "record::id(id) = $experimentRunId")),
+				whereClause(append(retentionVisibleConditions(), "record::id(id) = $experimentRunId")),
 				"LIMIT 1;",
 			}, " "),
 			Params: cloneParams(params),
@@ -927,7 +927,7 @@ func BuildExperimentManifestResolveQueries(request contracts.ExperimentManifestR
 			SQL: strings.Join([]string{
 				"SELECT *",
 				"FROM ai_experiment",
-				whereClause(append(ownershipConditions(), "record::id(id) = $experimentId")),
+				whereClause(append(retentionVisibleConditions(), "record::id(id) = $experimentId")),
 				"LIMIT 1;",
 			}, " "),
 			Params: cloneParams(params),
@@ -936,7 +936,7 @@ func BuildExperimentManifestResolveQueries(request contracts.ExperimentManifestR
 			SQL: strings.Join([]string{
 				"SELECT id, datasetId, version, split, reviewStatus, synthetic",
 				"FROM ai_dataset_item",
-				whereClause(append(ownershipConditions(), "datasetId = $datasetId", "version = $datasetVersion", "split IN $splits", "reviewStatus = 'reviewed'")),
+				whereClause(append(retentionVisibleConditions(), "datasetId = $datasetId", "version = $datasetVersion", "split IN $splits", "reviewStatus = 'reviewed'")),
 				"ORDER BY id ASC LIMIT 10000;",
 			}, " "),
 			Params: itemParams,
@@ -945,7 +945,7 @@ func BuildExperimentManifestResolveQueries(request contracts.ExperimentManifestR
 			SQL: strings.Join([]string{
 				"SELECT id, version",
 				"FROM ai_scorer",
-				whereClause(append(ownershipConditions(), "record::id(id) IN $scorerIds")),
+				whereClause(append(retentionVisibleConditions(), "record::id(id) IN $scorerIds")),
 				"ORDER BY id ASC;",
 			}, " "),
 			Params: cloneParams(params),

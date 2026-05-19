@@ -77,6 +77,8 @@ describe("CloudGrid private boundary checks", () => {
       "core/storage-read/go.sum",
       "core/storage-write/go.mod",
       "core/storage-write/go.sum",
+      "core/storage-maintenance/go.mod",
+      "core/storage-maintenance/go.sum",
     ]);
     for (const file of sourceFiles(".", [".go", ".mod", ".sum"])) {
       const relativePath = relative(root, file);
@@ -88,7 +90,8 @@ describe("CloudGrid private boundary checks", () => {
         allowed.has(relativePath) ||
           relativePath.startsWith("core/control-plane/internal/adapters/surrealdb/") ||
           relativePath.startsWith("core/storage-read/internal/adapters/surrealdb/") ||
-          relativePath.startsWith("core/storage-write/internal/adapters/surrealdb/"),
+          relativePath.startsWith("core/storage-write/internal/adapters/surrealdb/") ||
+          relativePath.startsWith("core/storage-maintenance/internal/adapters/surrealdb/"),
         relativePath,
       ).toBe(true);
     }

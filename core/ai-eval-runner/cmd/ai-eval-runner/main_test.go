@@ -2,7 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -49,6 +52,66 @@ func TestLoadConfigReadsEnabledRunnerConfig(t *testing.T) {
 	}
 }
 
+func TestLoadConfigAppliesLocalSelfObservabilityDefaultsWhenEnabled(t *testing.T) {
+	env := map[string]string{
+		"CLOUDGRID_AI_EVAL_ENABLED":     "true",
+		"CLOUDGRID_AI_EVAL_HARNESS_URL": "http://harness.local",
+	}
+	cfg, err := loadConfig(func(name string) string { return env[name] })
+	if err != nil {
+		t.Fatalf("loadConfig() error = %v", err)
+	}
+	self := cfg.SelfObservability
+	if !self.Enabled || !self.TracesEnabled || !self.LogsEnabled {
+		t.Fatalf("self-observability toggles = %#v, want enabled traces/logs", self)
+	}
+	if self.CompanyID != "local" || self.ProjectID != "cloudgrid-system" || self.OTLPEndpoint != "http://localhost:4318" || self.ExportIntervalSeconds != 10 {
+		t.Fatalf("self-observability defaults = %#v", self)
+	}
+}
+
+func TestAIEvalSelfObservabilityExporterPostsLogs(t *testing.T) {
+	var logPayload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/logs" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer system-token" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&logPayload); err != nil {
+			t.Fatalf("decode log payload: %v", err)
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+	cfg := config{
+		Enabled: true,
+		SelfObservability: selfObservabilityConfig{
+			Enabled:               true,
+			CompanyID:             "local",
+			ProjectID:             "cloudgrid-system",
+			OTLPEndpoint:          server.URL,
+			OTLPBearerToken:       "system-token",
+			ExportIntervalSeconds: 300,
+			LogsEnabled:           true,
+		},
+	}
+	exporter, err := aiEvalSelfObservabilityTraceLogExporter(cfg, newLogger(&bytes.Buffer{}))
+	if err != nil {
+		t.Fatalf("aiEvalSelfObservabilityTraceLogExporter() error = %v", err)
+	}
+	exporter.RecordLog(selfObservabilityLogEvent("startup_ready", "AI evaluation runner ready", "INFO", map[string]string{"operation": "startup"}))
+	if err := exporter.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown() error = %v", err)
+	}
+	if !payloadHasLogResource(logPayload, "service.name", "cloudgrid.ai_eval_runner") ||
+		!payloadHasLogBody(logPayload, "AI evaluation runner ready") {
+		t.Fatalf("log payload = %#v", logPayload)
+	}
+}
+
 func TestNewLoggerEmitsKubernetesShape(t *testing.T) {
 	var out bytes.Buffer
 	logger := newLogger(&out)
@@ -69,4 +132,53 @@ func TestNewLoggerEmitsKubernetesShape(t *testing.T) {
 	if entry["level"] != "info" || entry["service"] != "ai-eval-runner" {
 		t.Fatalf("entry = %#v", entry)
 	}
+}
+
+func payloadHasLogResource(payload map[string]any, key string, value string) bool {
+	for _, resourceLog := range payloadItems(payload["resourceLogs"]) {
+		resource, _ := resourceLog["resource"].(map[string]any)
+		if payloadHasAttribute(resource["attributes"], key, value) {
+			return true
+		}
+	}
+	return false
+}
+
+func payloadHasLogBody(payload map[string]any, body string) bool {
+	for _, resourceLog := range payloadItems(payload["resourceLogs"]) {
+		for _, scopeLog := range payloadItems(resourceLog["scopeLogs"]) {
+			for _, record := range payloadItems(scopeLog["logRecords"]) {
+				bodyValue, _ := record["body"].(map[string]any)
+				if bodyValue["stringValue"] == body {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func payloadHasAttribute(attrs any, key string, value string) bool {
+	for _, attr := range payloadItems(attrs) {
+		if attr["key"] != key {
+			continue
+		}
+		valueMap, _ := attr["value"].(map[string]any)
+		if valueMap["stringValue"] == value {
+			return true
+		}
+	}
+	return false
+}
+
+func payloadItems(value any) []map[string]any {
+	items, _ := value.([]any)
+	result := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		mapped, _ := item.(map[string]any)
+		if mapped != nil {
+			result = append(result, mapped)
+		}
+	}
+	return result
 }

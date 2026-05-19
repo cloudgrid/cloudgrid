@@ -200,6 +200,57 @@ func TestTelemetryReadHandlersEnforceReadAuth(t *testing.T) {
 	}
 }
 
+func TestTelemetryReadHandlersFailClosedForSSOWithoutReadDecision(t *testing.T) {
+	request := contracts.TraceSearchRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{
+			RequestID: "req-missing-read",
+			AuthContext: &contracts.AuthContext{
+				AuthMode:  ptr("sso"),
+				TenantID:  ptr("tenant-1"),
+				CompanyID: ptr("company-1"),
+				ProjectID: ptr("project-1"),
+			},
+		},
+	}
+	message := bridgeMessageForTest(SubjectTraceSearch, mustMarshalNATSHandlerTest(t, request))
+
+	handleTraceSearch(&loggingReadStore{}, nil)(message)
+
+	var response contracts.TraceSearchResponse
+	if err := json.Unmarshal(message.response, &response); err != nil {
+		t.Fatalf("trace search response is not JSON: %v", err)
+	}
+	if response.OK || response.Error == nil || response.Error.ID != "ERR-016" {
+		t.Fatalf("trace search response = %#v, want fail-closed ERR-016", response)
+	}
+}
+
+func TestTelemetryReadHandlersAcceptSSOReadScopeWithoutReadAllowedFlag(t *testing.T) {
+	request := contracts.TraceSearchRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{
+			RequestID: "req-read-scope",
+			AuthContext: &contracts.AuthContext{
+				AuthMode:  ptr("sso"),
+				TenantID:  ptr("tenant-1"),
+				CompanyID: ptr("company-1"),
+				ProjectID: ptr("project-1"),
+				Scopes:    []string{"telemetry:read"},
+			},
+		},
+	}
+	message := bridgeMessageForTest(SubjectTraceSearch, mustMarshalNATSHandlerTest(t, request))
+
+	handleTraceSearch(&loggingReadStore{}, nil)(message)
+
+	var response contracts.TraceSearchResponse
+	if err := json.Unmarshal(message.response, &response); err != nil {
+		t.Fatalf("trace search response is not JSON: %v", err)
+	}
+	if !response.OK {
+		t.Fatalf("trace search response = %#v, want read scope accepted", response)
+	}
+}
+
 func TestReadHandlerRecordsBoundedRequestMetrics(t *testing.T) {
 	service := "api"
 	rawQuery := "secret-search-text"

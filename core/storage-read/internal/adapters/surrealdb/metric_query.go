@@ -49,8 +49,8 @@ func BuildMetricNameSearchQuery(input contracts.MetricNameSearchInput, authConte
 
 	params := map[string]any{"limit": limit}
 	addOwnershipParams(params, target)
-	conditions := ownershipConditions()
-	pointConditions := ownershipConditions()
+	conditions := retentionVisibleConditions()
+	pointConditions := retentionVisibleConditions()
 	if input.Query != nil && strings.TrimSpace(*input.Query) != "" {
 		conditions = append(conditions, "string::lowercase(metricName) CONTAINS $query")
 		params["query"] = strings.ToLower(strings.TrimSpace(*input.Query))
@@ -98,7 +98,7 @@ func BuildMetricDescriptorByNameQuery(metricName string, authContext ...*contrac
 		SQL: strings.Join([]string{
 			"SELECT metricName AS id, metricName AS name, description, unit, kind, aggregationTemporality, monotonic, attributeKeys, firstSeenAt, lastSeenAt",
 			"FROM metric_descriptor",
-			"WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND metricName = $metricName",
+			"WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND metricName = $metricName",
 			"LIMIT 1;",
 		}, " "),
 		Params: params,
@@ -130,7 +130,7 @@ func BuildMetricSeriesQuery(input contracts.MetricSeriesInput, descriptor contra
 		"intervalSeconds": int64(math.Ceil(interval.Seconds())),
 	}
 	addOwnershipParams(params, target)
-	conditions := append(ownershipConditions(), "metricName = $metricName", "timestamp >= $from", "timestamp <= $to")
+	conditions := append(retentionVisibleConditions(), "metricName = $metricName", "timestamp >= $from", "timestamp <= $to")
 	for index, filter := range input.Filters {
 		condition, err := attributeFilterCondition(filter, index, params)
 		if err != nil {

@@ -27,7 +27,7 @@ func ConfigureQueryLimits(maxPageSize int) {
 	}
 }
 
-const traceSummaryProjection = "traceId AS id, serviceName, (SELECT name, startedAt, spanId FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId = $parent.traceId AND parentSpanId = NONE ORDER BY startedAt ASC, spanId ASC LIMIT 1)[0].name AS operationName, startedAt, endedAt, durationMs, rootSpanId, status, attributes, spanCount, errorSpanCount, logCount, serviceCount"
+const traceSummaryProjection = "traceId AS id, serviceName, (SELECT name, startedAt, spanId FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND traceId = $parent.traceId AND parentSpanId = NONE ORDER BY startedAt ASC, spanId ASC LIMIT 1)[0].name AS operationName, startedAt, endedAt, durationMs, rootSpanId, status, attributes, spanCount, errorSpanCount, logCount, serviceCount"
 
 type QueryStatement struct {
 	SQL    string
@@ -39,15 +39,15 @@ func BuildProjectTelemetryOverviewQueries(target TelemetryTarget) map[string]Que
 	addOwnershipParams(params, target)
 	return map[string]QueryStatement{
 		"traces": {
-			SQL:    "SELECT count() AS count FROM trace WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId GROUP ALL;",
+			SQL:    "SELECT count() AS count FROM trace WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE GROUP ALL;",
 			Params: cloneParams(params),
 		},
 		"logs": {
-			SQL:    "SELECT count() AS count FROM log_event WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId GROUP ALL;",
+			SQL:    "SELECT count() AS count FROM log_event WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE GROUP ALL;",
 			Params: cloneParams(params),
 		},
 		"metrics": {
-			SQL:    "SELECT count() AS count FROM metric_descriptor WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId GROUP ALL;",
+			SQL:    "SELECT count() AS count FROM metric_descriptor WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE GROUP ALL;",
 			Params: cloneParams(params),
 		},
 		"services": {
@@ -76,7 +76,7 @@ func BuildTraceSearchQuery(query contracts.TraceSearchQuery, authContext ...*con
 
 	params := map[string]any{"limit": limit}
 	addOwnershipParams(params, target)
-	conditions := ownershipConditions()
+	conditions := retentionVisibleConditions()
 	if query.Service != nil {
 		conditions = append(conditions, participatingSpanServiceCondition())
 		params["service"] = *query.Service
@@ -131,7 +131,7 @@ func BuildLiveTraceCandidatesQuery(query contracts.LiveTraceQuery, traceIDs []st
 
 	params := map[string]any{"limit": limit, "traceIds": traceIDs}
 	addOwnershipParams(params, target)
-	conditions := append(ownershipConditions(), "traceId IN $traceIds")
+	conditions := append(retentionVisibleConditions(), "traceId IN $traceIds")
 	if query.Service != nil {
 		conditions = append(conditions, participatingSpanServiceCondition())
 		params["service"] = *query.Service
@@ -195,13 +195,13 @@ func BuildTraceDetailQuery(request contracts.TraceDetailRequest) (QueryStatement
 	}
 
 	sql := strings.Join([]string{
-		"LET $trace = SELECT traceId AS id, serviceName, startedAt, startedAtUnixNano, endedAt, endedAtUnixNano, durationNano, durationMs, rootSpanId, status, attributes FROM trace WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId = $traceId;",
-		"LET $spans = SELECT spanId AS id, traceId, parentSpanId, name, kind, serviceName, startedAt, startedAtUnixNano, endedAt, endedAtUnixNano, durationNano, durationMs, status, attributes, events, links FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId = $traceId ORDER BY startedAt ASC, spanId ASC;",
+		"LET $trace = SELECT traceId AS id, serviceName, startedAt, startedAtUnixNano, endedAt, endedAtUnixNano, durationNano, durationMs, rootSpanId, status, attributes FROM trace WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND traceId = $traceId;",
+		"LET $spans = SELECT spanId AS id, traceId, parentSpanId, name, kind, serviceName, startedAt, startedAtUnixNano, endedAt, endedAtUnixNano, durationNano, durationMs, status, attributes, events, links FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND traceId = $traceId ORDER BY startedAt ASC, spanId ASC;",
 		"LET $spanIds = $spans.map(|$span| $span.id);",
 		"LET $contextFrom = $trace[0].startedAt - 5s;",
 		"LET $contextTo = ($trace[0].endedAt ?? $trace[0].startedAt) + 5s;",
 		"SELECT logEventId AS id, traceId, spanId, serviceName, severityText, severityNumber, body, timestamp, observedTimestamp, attributes",
-		"FROM log_event WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND (traceId = $traceId OR spanId IN $spanIds OR (serviceName = $trace[0].serviceName AND timestamp >= $contextFrom AND timestamp <= $contextTo))",
+		"FROM log_event WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND (traceId = $traceId OR spanId IN $spanIds OR (serviceName = $trace[0].serviceName AND timestamp >= $contextFrom AND timestamp <= $contextTo))",
 		"ORDER BY timestamp ASC, logEventId ASC;",
 	}, " ")
 
@@ -228,7 +228,7 @@ func BuildTraceByIDQuery(traceID string, authContext ...*contracts.AuthContext) 
 		SQL: strings.Join([]string{
 			"SELECT traceId AS id, serviceName, startedAt, startedAtUnixNano, endedAt, endedAtUnixNano, durationNano, durationMs, rootSpanId, status, attributes",
 			"FROM trace",
-			"WHERE traceId = $traceId AND tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId",
+			"WHERE traceId = $traceId AND tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE",
 			"LIMIT 1;",
 		}, " "),
 		Params: params,
@@ -250,7 +250,7 @@ func BuildSpansByTraceIDQuery(traceID string, authContext ...*contracts.AuthCont
 		SQL: strings.Join([]string{
 			"SELECT spanId AS id, traceId, parentSpanId, name, kind, serviceName, startedAt, startedAtUnixNano, endedAt, endedAtUnixNano, durationNano, durationMs, status, attributes, events, links",
 			"FROM span",
-			"WHERE traceId = $traceId AND tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId",
+			"WHERE traceId = $traceId AND tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE",
 			"ORDER BY startedAt ASC, spanId ASC;",
 		}, " "),
 		Params: params,
@@ -289,7 +289,7 @@ func BuildLogsForTraceDetailQuery(trace contracts.Trace, spans []contracts.Span,
 		SQL: strings.Join([]string{
 			"SELECT logEventId AS id, traceId, spanId, serviceName, severityText, severityNumber, body, timestamp, observedTimestamp, attributes",
 			"FROM log_event",
-			"WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND (traceId = $traceId OR spanId IN $spanIds OR (serviceName IN $services AND timestamp >= $contextFrom AND timestamp <= $contextTo))",
+			"WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND (traceId = $traceId OR spanId IN $spanIds OR (serviceName IN $services AND timestamp >= $contextFrom AND timestamp <= $contextTo))",
 			"ORDER BY timestamp ASC, logEventId ASC;",
 		}, " "),
 		Params: withOwnershipParams(map[string]any{
@@ -380,7 +380,7 @@ func BuildFacetQueries(query contracts.TelemetryFacetQuery, authContext ...*cont
 }
 
 func facetSpanConditions(query contracts.TelemetryFacetQuery, params map[string]any, includeSearch bool) []string {
-	conditions := ownershipConditions()
+	conditions := retentionVisibleConditions()
 	if query.Service != nil {
 		conditions = append(conditions, "serviceName = $service")
 		params["service"] = *query.Service
@@ -401,7 +401,7 @@ func facetSpanConditions(query contracts.TelemetryFacetQuery, params map[string]
 }
 
 func facetLogConditions(query contracts.TelemetryFacetQuery, params map[string]any) []string {
-	conditions := ownershipConditions()
+	conditions := retentionVisibleConditions()
 	if query.Service != nil {
 		conditions = append(conditions, "serviceName = $service")
 		params["service"] = *query.Service
@@ -422,7 +422,7 @@ func facetLogConditions(query contracts.TelemetryFacetQuery, params map[string]a
 }
 
 func participatingSpanServiceCondition() string {
-	return "traceId IN (SELECT VALUE traceId FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND serviceName = $service)"
+	return "traceId IN (SELECT VALUE traceId FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND serviceName = $service)"
 }
 
 func cloneParams(params map[string]any) map[string]any {
@@ -436,6 +436,10 @@ func cloneParams(params map[string]any) map[string]any {
 func withOwnershipParams(params map[string]any, target TelemetryTarget) map[string]any {
 	addOwnershipParams(params, target)
 	return params
+}
+
+func retentionVisibleConditions() []string {
+	return append(ownershipConditions(), "deletedAt = NONE")
 }
 
 func firstAuthContext(values []*contracts.AuthContext) *contracts.AuthContext {
@@ -460,7 +464,7 @@ func BuildLogSearchQuery(query contracts.LogSearchQuery, authContext ...*contrac
 
 	params := map[string]any{"limit": limit}
 	addOwnershipParams(params, target)
-	conditions := ownershipConditions()
+	conditions := retentionVisibleConditions()
 	if query.Service != nil {
 		conditions = append(conditions, "serviceName = $service")
 		params["service"] = *query.Service

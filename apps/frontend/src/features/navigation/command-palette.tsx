@@ -7,6 +7,7 @@ import {
   FolderOpen,
   LayoutDashboard,
   LineChart,
+  Sparkles,
   TerminalSquare,
 } from "lucide-react";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
@@ -23,6 +24,7 @@ import {
 import { copyToClipboard } from "../../lib/feedback";
 import { t } from "../../lib/i18n";
 import { useAppSession } from "../../providers/app-session-provider";
+import { aiChatEnabled } from "../../routes/ai-chat-route";
 import { aiEvalEnabled } from "../../routes/ai-eval-route";
 
 const traceListFilterKeys = [
@@ -162,6 +164,13 @@ export function CommandPalette({
                 <span>{t("nav.dashboards")}</span>
                 <CommandShortcut>/dashboards</CommandShortcut>
               </CommandItem>
+              {aiChatEnabled ? (
+                <CommandItem onSelect={() => runAction(() => navigate("/ai-chat"))}>
+                  <Sparkles />
+                  <span>{t("nav.aiChat")}</span>
+                  <CommandShortcut>/ai-chat</CommandShortcut>
+                </CommandItem>
+              ) : null}
               {aiEvalEnabled ? (
                 <CommandItem onSelect={() => runAction(() => navigate("/ai-eval"))}>
                   <Bot />

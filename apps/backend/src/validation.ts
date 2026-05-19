@@ -1,13 +1,17 @@
 import { parseWithZod, z } from "@cloudgrid/runtime";
 import type {
   AgentRunSearchInput,
+  AiChatHistoryInput,
   AiQualityOverviewInput,
   AlertRuleSearchInput,
+  AlertSummaryInput,
   AnnotationQueueSearchInput,
   AppendDatasetItemsInput,
+  ApproveAiChatActionInput,
   CommitDatasetImportInput,
   CreateAlertRuleInput,
   CreateAlertSilenceInput,
+  CreateAiChatConversationInput,
   CreateDatasetInput,
   CreateExperimentInput,
   CreateIngestCredentialInput,
@@ -43,8 +47,10 @@ import type {
   TelemetryFacetInput,
   TraceDetailInput,
   TraceSearchInput,
+  UpdateCompanyAiProviderSettingsInput,
   UpdateAlertRuleInput,
   UpdateOrganizationMemberInput,
+  UpdateProjectAiProviderSettingsInput,
   UpdateProjectAiSettingsInput,
   UpdateProjectInput,
   UpdateRetentionPolicyInput,
@@ -186,6 +192,9 @@ const metricChartTypeSchema = z.enum([
   "histogram",
   "table",
 ]);
+const alertSeveritySchema = z.enum(["INFO", "WARNING", "ERROR", "CRITICAL"]);
+const alertStateSchema = z.enum(["OK", "PENDING", "FIRING", "RESOLVED", "SILENCED", "ERROR"]);
+const alertSignalSchema = z.enum(["METRIC", "LOG", "TRACE"]);
 const metricNameSearchInputSchema = withTimeRange(
   z.object({
     query: z.string().min(1).optional(),
@@ -217,6 +226,9 @@ const dashboardWidgetKindSchema = z.enum([
   "log_table",
   "trace_table",
   "live_trace_table",
+  "alert_status",
+  "alert_history",
+  "alert_evidence",
 ]);
 const dashboardThresholdSeveritySchema = z.enum(["info", "warning", "error"]);
 const dashboardLogColumnSchema = z.enum([
@@ -391,6 +403,14 @@ const dashboardLiveTraceWidgetInputSchema = withDurationRange(
   "minDurationMs",
   "maxDurationMs",
 );
+const dashboardAlertWidgetInputSchema = z.object({
+  ruleIds: z.array(z.string().min(1)).max(20).optional(),
+  states: z.array(alertStateSchema).optional(),
+  severities: z.array(alertSeveritySchema).optional(),
+  signals: z.array(alertSignalSchema).optional(),
+  timeWindow: z.string().min(1).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+});
 const dashboardWidgetInputSchema = z
   .object({
     id: z.string().min(1),
@@ -403,6 +423,7 @@ const dashboardWidgetInputSchema = z
     logs: dashboardLogWidgetInputSchema.optional().nullable(),
     traces: dashboardTraceWidgetInputSchema.optional().nullable(),
     liveTraces: dashboardLiveTraceWidgetInputSchema.optional().nullable(),
+    alert: dashboardAlertWidgetInputSchema.optional().nullable(),
   })
   .superRefine((input, context) => {
     const presentConfigs = [
@@ -411,17 +432,22 @@ const dashboardWidgetInputSchema = z
       input.logs ? "logs" : null,
       input.traces ? "traces" : null,
       input.liveTraces ? "liveTraces" : null,
+      input.alert ? "alert" : null,
     ].filter(Boolean);
     const expectedConfig =
-      input.kind === "log_table"
-        ? "logs"
-        : input.kind === "metric_rich"
-          ? "richMetric"
-          : input.kind === "trace_table"
-            ? "traces"
-            : input.kind === "live_trace_table"
-              ? "liveTraces"
-              : "metric";
+      input.kind === "alert_status" ||
+      input.kind === "alert_history" ||
+      input.kind === "alert_evidence"
+        ? "alert"
+        : input.kind === "log_table"
+          ? "logs"
+          : input.kind === "metric_rich"
+            ? "richMetric"
+            : input.kind === "trace_table"
+              ? "traces"
+              : input.kind === "live_trace_table"
+                ? "liveTraces"
+                : "metric";
     if (presentConfigs.length !== 1 || presentConfigs[0] !== expectedConfig) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -482,9 +508,6 @@ const alertRuleKindSchema = z.enum([
   "TRACE_LATENCY",
   "TRACE_ERROR",
 ]);
-const alertSeveritySchema = z.enum(["INFO", "WARNING", "ERROR", "CRITICAL"]);
-const alertStateSchema = z.enum(["OK", "PENDING", "FIRING", "RESOLVED", "SILENCED", "ERROR"]);
-const alertSignalSchema = z.enum(["METRIC", "LOG", "TRACE"]);
 const alertRuleSortSchema = z.enum([
   "updatedAt_desc",
   "updatedAt_asc",
@@ -533,6 +556,21 @@ const providerKindSchema = z.enum([
   "custom_harness",
 ]);
 const modelPurposeSchema = z.enum(["judge", "optimizer", "embedding", "replay", "default"]);
+const aiProviderKindSchema = z.enum([
+  "anthropic",
+  "openai",
+  "azure_foundry",
+  "aws_bedrock",
+  "openai_compatible",
+]);
+const aiModelPurposeSchema = z.enum([
+  "default",
+  "chat",
+  "judge",
+  "optimizer",
+  "embedding",
+  "replay",
+]);
 const aiSearchPageSchema = z.object({
   limit: z.number().int().min(1).max(200).optional(),
   cursor: z.string().min(1).optional(),
@@ -738,6 +776,76 @@ const aiQualityOverviewInputSchema = withTimeRange(
     limit: z.number().int().min(1).max(200).optional(),
   }),
 );
+const aiProviderParametersInputSchema = z
+  .object({
+    temperature: z.number().min(0).max(2).optional().nullable(),
+    topP: z.number().min(0).max(1).optional().nullable(),
+    maxOutputTokens: z.number().int().min(1).max(200_000).optional().nullable(),
+    reasoningEffort: z.string().min(1).optional().nullable(),
+    extras: z.unknown().optional(),
+  })
+  .optional()
+  .nullable();
+const aiProviderProfileInputSchema = z
+  .object({
+    id: z.string().min(1).optional().nullable(),
+    label: z.string().min(1),
+    providerKind: aiProviderKindSchema,
+    baseUrl: z.string().min(1).optional().nullable(),
+    credentialRef: z.string().min(1),
+    models: z.unknown(),
+    timeoutMs: z.number().int().min(1_000).max(300_000).optional().nullable(),
+    maxConcurrency: z.number().int().min(1).optional().nullable(),
+    disabled: z.boolean().optional().nullable(),
+  })
+  .superRefine((input, context) => {
+    if (containsSensitiveKey(input)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "AI provider settings must not include raw secret-bearing keys",
+        path: ["credentialRef"],
+      });
+    }
+  });
+const aiModelAliasInputSchema = z.object({
+  id: z.string().min(1).optional().nullable(),
+  name: z.string().min(1),
+  providerProfileId: z.string().min(1),
+  model: z.string().min(1),
+  purpose: aiModelPurposeSchema,
+  parameters: aiProviderParametersInputSchema,
+});
+const updateProjectAiProviderSettingsInputSchema = z.object({
+  projectId: z.string().min(1),
+  providerProfiles: z.array(aiProviderProfileInputSchema),
+  modelAliases: z.array(aiModelAliasInputSchema),
+  expectedVersion: z.number().int().min(1),
+});
+const updateCompanyAiProviderSettingsInputSchema = z.object({
+  companyId: z.string().min(1),
+  providerProfile: aiProviderProfileInputSchema,
+  chatModelAlias: aiModelAliasInputSchema,
+  expectedVersion: z.number().int().min(1),
+});
+const aiChatHistoryInputSchema = z.object({
+  companyId: z.string().min(1),
+  projectId: z.string().min(1).optional().nullable(),
+  includeArchived: z.boolean().optional().nullable(),
+  first: z.number().int().min(1).max(200).optional().nullable(),
+  after: z.string().min(1).optional().nullable(),
+});
+const createAiChatConversationInputSchema = z.object({
+  companyId: z.string().min(1),
+  projectId: z.string().min(1),
+  title: z.string().min(1).optional().nullable(),
+  firstUserMessage: z.string().min(1),
+});
+const approveAiChatActionInputSchema = z.object({
+  actionId: z.string().min(1),
+  approved: z.boolean(),
+  reason: z.string().min(1).optional().nullable(),
+  expectedVersion: z.number().int().min(1),
+});
 const annotationRuleInputSchema = z.object({
   reason: z.string().min(1),
   threshold: z.number().optional().nullable(),
@@ -881,6 +989,14 @@ const alertRuleSearchInputSchema = z.object({
   signal: alertSignalSchema.optional(),
   enabled: z.boolean().optional(),
   sort: alertRuleSortSchema.optional(),
+});
+const alertSummaryInputSchema = z.object({
+  ruleIds: z.array(z.string().min(1)).max(20).optional(),
+  states: z.array(alertStateSchema).optional(),
+  severities: z.array(alertSeveritySchema).optional(),
+  signals: z.array(alertSignalSchema).optional(),
+  timeWindow: z.string().min(1).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
 });
 const createAlertSilenceInputSchema = z
   .object({
@@ -1377,6 +1493,54 @@ export function validateUpdateProjectAiSettingsInput(
   );
 }
 
+export function validateUpdateProjectAiProviderSettingsInput(
+  input: UpdateProjectAiProviderSettingsInput,
+): UpdateProjectAiProviderSettingsInput {
+  return validateAiInput<UpdateProjectAiProviderSettingsInput>(
+    updateProjectAiProviderSettingsInputSchema,
+    input,
+    "Update project AI provider settings input",
+  );
+}
+
+export function validateUpdateCompanyAiProviderSettingsInput(
+  input: UpdateCompanyAiProviderSettingsInput,
+): UpdateCompanyAiProviderSettingsInput {
+  return validateAiInput<UpdateCompanyAiProviderSettingsInput>(
+    updateCompanyAiProviderSettingsInputSchema,
+    input,
+    "Update company AI provider settings input",
+  );
+}
+
+export function validateAiChatHistoryInput(input: AiChatHistoryInput): AiChatHistoryInput {
+  return validateAiInput<AiChatHistoryInput>(
+    aiChatHistoryInputSchema,
+    input,
+    "AI Chat history input",
+  );
+}
+
+export function validateCreateAiChatConversationInput(
+  input: CreateAiChatConversationInput,
+): CreateAiChatConversationInput {
+  return validateAiInput<CreateAiChatConversationInput>(
+    createAiChatConversationInputSchema,
+    input,
+    "Create AI Chat conversation input",
+  );
+}
+
+export function validateApproveAiChatActionInput(
+  input: ApproveAiChatActionInput,
+): ApproveAiChatActionInput {
+  return validateAiInput<ApproveAiChatActionInput>(
+    approveAiChatActionInputSchema,
+    input,
+    "Approve AI Chat action input",
+  );
+}
+
 export function validateTraceId(traceId: string): string {
   try {
     return parseWithZod(z.string().min(1), traceId, "trace id");
@@ -1541,6 +1705,10 @@ export function validateAlertRuleSearchInput(
     input,
     "Alert rule search input",
   );
+}
+
+export function validateAlertSummaryInput(input: AlertSummaryInput = {}): AlertSummaryInput {
+  return validateAiInput<AlertSummaryInput>(alertSummaryInputSchema, input, "Alert summary input");
 }
 
 export function validateCreateAlertSilenceInput(

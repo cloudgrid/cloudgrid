@@ -65,8 +65,9 @@ func run() int {
 		invitationEmailTransport = internal.NewSMTPInvitationEmailTransport(invitationEmailConfig)
 	}
 	service := internal.NewServiceWithOptions(store, time.Now, internal.ServiceOptions{
-		InvitationEmail: invitationEmailConfig,
-		EmailTransport:  invitationEmailTransport,
+		InvitationEmail:           invitationEmailConfig,
+		EmailTransport:            invitationEmailTransport,
+		AlertNotificationAdapters: splitCSV(os.Getenv("CLOUDGRID_ALERT_NOTIFICATION_ADAPTERS")),
 	})
 	stopInvitationEmailWorker := startInvitationEmailWorker(service, invitationEmailConfig, logger)
 	defer stopInvitationEmailWorker()
@@ -488,6 +489,17 @@ func valueOrDefault(value string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func splitCSV(value string) []string {
+	items := []string{}
+	for _, item := range strings.Split(value, ",") {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			items = append(items, item)
+		}
+	}
+	return items
 }
 
 type controlStoreReadiness func(context.Context) error

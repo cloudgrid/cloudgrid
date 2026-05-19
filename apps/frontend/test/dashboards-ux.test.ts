@@ -84,6 +84,20 @@ describe("dashboards UX migration", () => {
     expect(routeSource).toContain("updateLiveTraceWidget");
   });
 
+  test("supports alert dashboard widgets through typed contract fields", () => {
+    expect(routeSource).toContain('"alert_status"');
+    expect(routeSource).toContain('"alert_history"');
+    expect(routeSource).toContain('"alert_evidence"');
+    expect(routeSource).toContain("AlertStatusWidgetPreview");
+    expect(routeSource).toContain("AlertHistoryWidgetPreview");
+    expect(routeSource).toContain("AlertEvidenceWidgetPreview");
+    expect(routeSource).toContain("AlertWidgetEditor");
+    expect(routeSource).toContain("updateAlertWidget");
+    expect(routeSource).toContain("getAlertSummary");
+    expect(routeSource).toContain("queryKeys.alertSummary");
+    expect(routeSource).toContain("getAlertHistory");
+  });
+
   test("does not send null optional metric intervals from dashboard widgets", () => {
     expect(routeSource).toContain("...(metric.interval ? { interval: metric.interval } : {})");
     expect(routeSource).not.toContain("interval: metric.interval ?? null");

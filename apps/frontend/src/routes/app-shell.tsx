@@ -17,6 +17,7 @@ import {
   Moon,
   Search,
   Settings,
+  Sparkles,
   Sun,
   TerminalSquare,
   UserCircle,
@@ -41,6 +42,11 @@ import {
 } from "../components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
 import { CommandPalette } from "../features/navigation/command-palette";
+import { createAiChatGraphQLClient } from "../features/ai-chat/api";
+import {
+  aiChatProviderQueryKey,
+  isCompanyAiChatProviderConfigured,
+} from "../features/ai-chat/view-model";
 import { t } from "../lib/i18n";
 import { queryKeys } from "../lib/query-keys";
 import {
@@ -55,6 +61,7 @@ import { cn } from "../lib/utils";
 import { useAppSession } from "../providers/app-session-provider";
 import { useTheme } from "../providers/theme-provider";
 import { aiEvalEnabled } from "./ai-eval-route";
+import { aiChatEnabled } from "./ai-chat-route";
 
 const projectNavItems = [
   { to: "/traces", label: t("nav.traces"), icon: Activity },
@@ -63,12 +70,11 @@ const projectNavItems = [
   { to: "/dashboards", label: t("nav.dashboards"), icon: LayoutDashboard },
 ];
 
-const enabledNavItems = aiEvalEnabled
-  ? [...projectNavItems, { to: "/ai-eval", label: t("nav.aiEval"), icon: Bot }]
-  : projectNavItems;
-
 const showGraphQLUiLink =
   import.meta.env.DEV || import.meta.env.VITE_CLOUDGRID_GRAPHQL_UI === "true";
+const aiChatClient = createAiChatGraphQLClient(
+  import.meta.env.VITE_CLOUDGRID_GRAPHQL_URL || "/graphql",
+);
 
 function sidebarLinkClass({ isActive }: { isActive: boolean }) {
   return cn(
@@ -117,6 +123,16 @@ export function AppShell() {
     queryKey: queryKeys.dashboards({ includeBuiltins: true }),
     queryFn: () => client.getDashboards({ includeBuiltins: true }),
   });
+  const aiChatProviderQuery = useQuery({
+    enabled: aiChatEnabled && showProjectWorkspace && Boolean(selectedOrganization?.id),
+    queryKey: aiChatProviderQueryKey(selectedOrganization?.id ?? ""),
+    queryFn: () => aiChatClient.getCompanyAiProviderSettings(selectedOrganization?.id ?? ""),
+  });
+  const showAiChatNav =
+    aiChatEnabled &&
+    showProjectWorkspace &&
+    (selectedOrganization?.role === "admin" ||
+      isCompanyAiChatProviderConfigured(aiChatProviderQuery.data));
   const visibleDashboards = dashboardsQuery.data?.items ?? [];
   const pinnedDashboards = (dashboardsQuery.data?.pinnedDashboardIds ?? [])
     .map((dashboardId) => visibleDashboards.find((dashboard) => dashboard.id === dashboardId))
@@ -132,6 +148,7 @@ export function AppShell() {
           dashboardsExpanded,
           onDashboardsExpandedChange: setDashboardsExpanded,
           pinnedDashboards,
+          showAiChatNav,
         }
       : null;
 
@@ -510,13 +527,21 @@ function ProjectSidebarNav({
   onDashboardsExpandedChange,
   onNavigate,
   pinnedDashboards,
+  showAiChatNav,
 }: {
   customDashboards: Pick<Dashboard, "id" | "name">[];
   dashboardsExpanded: boolean;
   onDashboardsExpandedChange: (expanded: boolean) => void;
   onNavigate?: () => void;
   pinnedDashboards: Pick<Dashboard, "id" | "name">[];
+  showAiChatNav: boolean;
 }) {
+  const enabledNavItems = [
+    ...projectNavItems,
+    ...(showAiChatNav ? [{ to: "/ai-chat", label: t("nav.aiChat"), icon: Sparkles }] : []),
+    ...(aiEvalEnabled ? [{ to: "/ai-eval", label: t("nav.aiEval"), icon: Bot }] : []),
+  ];
+
   return (
     <div className="flex flex-col gap-1">
       {pinnedDashboards.length > 0 ? (

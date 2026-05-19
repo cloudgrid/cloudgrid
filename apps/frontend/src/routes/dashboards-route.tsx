@@ -1,4 +1,7 @@
 import type {
+  AlertEvent,
+  AlertSummary,
+  AlertSummaryInput,
   JSONValue,
   LiveTraceInput,
   LogSearchInput,
@@ -13,6 +16,7 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChart3,
+  Bell,
   CalendarDays,
   Check,
   ChevronsUpDown,
@@ -33,6 +37,8 @@ import {
   Table2,
   Trash2,
   X,
+  FileSearch,
+  History,
 } from "lucide-react";
 import { type KeyboardEvent, type PointerEvent, type ReactNode, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -909,12 +915,15 @@ function DashboardWidgetFrame({
   telemetryClient: ReturnType<typeof useTelemetryClient>;
   widget: DashboardWidget | SaveDashboardInput["widgets"][number];
 }) {
+  const { client, viewer } = useAppSession();
+  const projectId = viewer?.selectedProject?.id ?? null;
   const layout = widget.layout;
   const metric = widget.metric;
   const richMetric = widget.richMetric;
   const logs = widget.logs;
   const traces = widget.traces;
   const liveTraces = widget.liveTraces;
+  const alert = widget.alert;
   const pointerDrag = (event: PointerEvent<HTMLElement>, mode: "move" | "resize") => {
     if (!isEditing) {
       return;
@@ -1040,6 +1049,19 @@ function DashboardWidgetFrame({
         query: richMetric.query,
       }
     : null;
+  const alertSummaryInput: AlertSummaryInput | null =
+    alert && widget.kind === "alert_status"
+      ? {
+          ruleIds: alert.ruleIds ?? [],
+          states: alert.states ?? [],
+          severities: alert.severities ?? [],
+          signals: alert.signals ?? [],
+          timeWindow: alert.timeWindow ?? "PT1H",
+          limit: alert.limit ?? 20,
+        }
+      : null;
+  const alertHistoryRuleId = alert?.ruleIds?.[0] ?? null;
+  const alertHistoryLimit = alert?.limit ?? (widget.kind === "alert_evidence" ? 1 : 20);
   const metricQuery = useQuery({
     enabled: Boolean(metricInput),
     queryKey: metricInput
@@ -1063,6 +1085,27 @@ function DashboardWidgetFrame({
       ? queryKeys.richMetricSeries(richMetricInput)
       : ["RichMetricSeries", "dashboard-idle"],
     queryFn: () => telemetryClient.getRichMetricSeries(richMetricInput as RichMetricSeriesInput),
+  });
+  const alertSummaryQuery = useQuery({
+    enabled: Boolean(projectId && alertSummaryInput),
+    queryKey:
+      projectId && alertSummaryInput
+        ? queryKeys.alertSummary(projectId, alertSummaryInput)
+        : ["AlertSummary", "dashboard-idle"],
+    queryFn: () =>
+      client.getAlertSummary(projectId as string, alertSummaryInput as AlertSummaryInput),
+  });
+  const alertHistoryQuery = useQuery({
+    enabled: Boolean(projectId && alert && widget.kind !== "alert_status"),
+    queryKey: projectId
+      ? queryKeys.alertHistory(projectId, alertHistoryRuleId, alertHistoryLimit)
+      : ["AlertHistory", "dashboard-idle"],
+    queryFn: () =>
+      client.getAlertHistory({
+        projectId: projectId as string,
+        ruleId: alertHistoryRuleId,
+        first: alertHistoryLimit,
+      }),
   });
 
   return (
@@ -1184,7 +1227,43 @@ function DashboardWidgetFrame({
             ) : null}
           </QueryWidgetState>
         ) : null}
-        {!metric && !richMetric && !logs && !traces && !liveTraceInput ? (
+        {alert && widget.kind === "alert_status" ? (
+          <QueryWidgetState
+            error={alertSummaryQuery.error}
+            isError={alertSummaryQuery.isError}
+            isLoading={alertSummaryQuery.isLoading}
+            onRetry={() => void alertSummaryQuery.refetch()}
+          >
+            {alertSummaryQuery.isSuccess ? (
+              <AlertStatusWidgetPreview summary={alertSummaryQuery.data} />
+            ) : null}
+          </QueryWidgetState>
+        ) : null}
+        {alert && widget.kind === "alert_history" ? (
+          <QueryWidgetState
+            error={alertHistoryQuery.error}
+            isError={alertHistoryQuery.isError}
+            isLoading={alertHistoryQuery.isLoading}
+            onRetry={() => void alertHistoryQuery.refetch()}
+          >
+            {alertHistoryQuery.isSuccess ? (
+              <AlertHistoryWidgetPreview events={alertHistoryQuery.data.items} />
+            ) : null}
+          </QueryWidgetState>
+        ) : null}
+        {alert && widget.kind === "alert_evidence" ? (
+          <QueryWidgetState
+            error={alertHistoryQuery.error}
+            isError={alertHistoryQuery.isError}
+            isLoading={alertHistoryQuery.isLoading}
+            onRetry={() => void alertHistoryQuery.refetch()}
+          >
+            {alertHistoryQuery.isSuccess ? (
+              <AlertEvidenceWidgetPreview event={alertHistoryQuery.data.items[0] ?? null} />
+            ) : null}
+          </QueryWidgetState>
+        ) : null}
+        {!metric && !richMetric && !logs && !traces && !liveTraceInput && !alert ? (
           <WidgetSummary widget={widget} />
         ) : null}
       </div>
@@ -1293,6 +1372,124 @@ function getDashboardPointerCell(target: HTMLElement) {
       columnGap,
     height: DASHBOARD_GRID_ROW_HEIGHT + rowGap,
   };
+}
+
+function AlertStatusWidgetPreview({ summary }: { summary: AlertSummary }) {
+  return (
+    <div className="grid gap-3">
+      <div>
+        <div className="text-2xl font-semibold">{summary.totalCount}</div>
+        <div className="text-xs text-muted-foreground">matching alert events</div>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <AlertCountGroup
+          label="State"
+          rows={summary.byState.map((row) => [row.state, row.count])}
+        />
+        <AlertCountGroup
+          label="Severity"
+          rows={summary.bySeverity.map((row) => [row.severity, row.count])}
+        />
+        <AlertCountGroup
+          label="Signal"
+          rows={summary.bySignal.map((row) => [row.signal, row.count])}
+        />
+      </div>
+    </div>
+  );
+}
+
+function AlertCountGroup({ label, rows }: { label: string; rows: Array<[string, number]> }) {
+  return (
+    <div className="grid content-start gap-1 border p-2">
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      {rows.length > 0 ? (
+        rows.map(([name, count]) => (
+          <div className="flex items-center justify-between gap-2 text-sm" key={name}>
+            <span className="truncate">{name}</span>
+            <span className="font-mono">{count}</span>
+          </div>
+        ))
+      ) : (
+        <div className="text-sm text-muted-foreground">{t("dashboards.empty.noData")}</div>
+      )}
+    </div>
+  );
+}
+
+function AlertHistoryWidgetPreview({ events }: { events: AlertEvent[] }) {
+  if (events.length === 0) {
+    return <p className="text-sm text-muted-foreground">{t("dashboards.empty.noData")}</p>;
+  }
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Created</TableHead>
+          <TableHead>State</TableHead>
+          <TableHead>Severity</TableHead>
+          <TableHead>Summary</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {events.map((event) => (
+          <TableRow key={event.id}>
+            <TableCell className="whitespace-nowrap font-mono text-xs">
+              {formatDateTime(event.createdAt)}
+            </TableCell>
+            <TableCell>
+              <Badge variant={event.state === "FIRING" ? "destructive" : "secondary"}>
+                {event.state}
+              </Badge>
+            </TableCell>
+            <TableCell>{event.severity}</TableCell>
+            <TableCell className="max-w-[18rem] truncate">{event.summary}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+function AlertEvidenceWidgetPreview({ event }: { event: AlertEvent | null }) {
+  if (!event) {
+    return <p className="text-sm text-muted-foreground">{t("dashboards.empty.noData")}</p>;
+  }
+  return (
+    <div className="grid gap-3 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant={event.state === "FIRING" ? "destructive" : "secondary"}>
+          {event.state}
+        </Badge>
+        <Badge variant="outline">{event.severity}</Badge>
+      </div>
+      <p>{event.summary}</p>
+      <dl className="grid gap-2">
+        <SummaryRow label="Rule">
+          <a
+            className="text-primary underline-offset-4 hover:underline"
+            href={`/alerts?ruleId=${event.ruleId}`}
+          >
+            {event.ruleId}
+          </a>
+        </SummaryRow>
+        {event.evidenceTraceId ? (
+          <SummaryRow label="Trace">
+            <a
+              className="text-primary underline-offset-4 hover:underline"
+              href={`/traces/${event.evidenceTraceId}`}
+            >
+              {event.evidenceTraceId}
+            </a>
+          </SummaryRow>
+        ) : null}
+        {event.evidenceLogId ? <SummaryRow label="Log">{event.evidenceLogId}</SummaryRow> : null}
+        {event.evidenceMetricName ? (
+          <SummaryRow label="Metric">{event.evidenceMetricName}</SummaryRow>
+        ) : null}
+      </dl>
+    </div>
+  );
 }
 
 function MetricWidgetPreview({
@@ -1817,6 +2014,21 @@ function AddWidgetButton({ onAddWidget }: { onAddWidget: (kind: DashboardWidgetK
       <RefreshCw data-icon="inline-start" key="live_trace_table" />,
       t("dashboards.widget.liveTraceTable"),
     ],
+    [
+      "alert_status",
+      <Bell data-icon="inline-start" key="alert_status" />,
+      t("dashboards.widget.alertStatus"),
+    ],
+    [
+      "alert_history",
+      <History data-icon="inline-start" key="alert_history" />,
+      t("dashboards.widget.alertHistory"),
+    ],
+    [
+      "alert_evidence",
+      <FileSearch data-icon="inline-start" key="alert_evidence" />,
+      t("dashboards.widget.alertEvidence"),
+    ],
   ];
   return (
     <Popover onOpenChange={setOpen} open={open}>
@@ -1945,6 +2157,8 @@ function WidgetEditorGroups({
             onWidgetChange={onWidgetChange}
             widget={widget}
           />
+        ) : widget.alert ? (
+          <AlertWidgetEditor disabled={disabled} onWidgetChange={onWidgetChange} widget={widget} />
         ) : (
           <p className="text-sm text-muted-foreground">{t("dashboards.widget.noDataSource")}</p>
         )}
@@ -2004,6 +2218,8 @@ function WidgetEditorGroups({
                 </SelectContent>
               </Select>
             </Field>
+          ) : widget.alert ? (
+            <SummaryRow label={t("dashboards.editor.mode")}>{widget.kind}</SummaryRow>
           ) : (
             <SummaryRow label={t("dashboards.editor.mode")}>
               {t("dashboards.editor.compactTable")}
@@ -2017,6 +2233,10 @@ function WidgetEditorGroups({
       <EditorGroup title={t("dashboards.editor.thresholds")}>
         {widget.metric || widget.richMetric ? (
           <WidgetSummary widget={widget} />
+        ) : widget.alert ? (
+          <p className="text-sm text-muted-foreground">
+            {t("dashboards.editor.thresholdsUnavailable")}
+          </p>
         ) : (
           <p className="text-sm text-muted-foreground">
             {t("dashboards.editor.thresholdsUnavailable")}
@@ -2611,6 +2831,98 @@ function LiveTraceWidgetEditor({
   );
 }
 
+function AlertWidgetEditor({
+  disabled,
+  onWidgetChange,
+  widget,
+}: {
+  disabled: boolean;
+  onWidgetChange: (widget: DashboardWidgetInput) => void;
+  widget: DashboardWidgetInput;
+}) {
+  if (!widget.alert) {
+    return null;
+  }
+
+  return (
+    <FieldGroup>
+      <TextWidgetField
+        disabled={disabled}
+        id={`${widget.id}-alert-rule-ids`}
+        label="Rule IDs"
+        onChange={(value) =>
+          updateAlertWidget(widget, { ruleIds: csvToList(value) }, onWidgetChange)
+        }
+        placeholder="rule-1, rule-2"
+        value={(widget.alert.ruleIds ?? []).join(", ")}
+      />
+      <TextWidgetField
+        disabled={disabled}
+        id={`${widget.id}-alert-states`}
+        label="States"
+        onChange={(value) =>
+          updateAlertWidget(
+            widget,
+            { states: csvToList(value) as NonNullable<NonNullable<typeof widget.alert>["states"]> },
+            onWidgetChange,
+          )
+        }
+        placeholder="FIRING, RESOLVED"
+        value={(widget.alert.states ?? []).join(", ")}
+      />
+      <TextWidgetField
+        disabled={disabled}
+        id={`${widget.id}-alert-severities`}
+        label="Severities"
+        onChange={(value) =>
+          updateAlertWidget(
+            widget,
+            {
+              severities: csvToList(value) as NonNullable<
+                NonNullable<typeof widget.alert>["severities"]
+              >,
+            },
+            onWidgetChange,
+          )
+        }
+        placeholder="ERROR, CRITICAL"
+        value={(widget.alert.severities ?? []).join(", ")}
+      />
+      <TextWidgetField
+        disabled={disabled}
+        id={`${widget.id}-alert-signals`}
+        label="Signals"
+        onChange={(value) =>
+          updateAlertWidget(
+            widget,
+            {
+              signals: csvToList(value) as NonNullable<NonNullable<typeof widget.alert>["signals"]>,
+            },
+            onWidgetChange,
+          )
+        }
+        placeholder="METRIC, LOG, TRACE"
+        value={(widget.alert.signals ?? []).join(", ")}
+      />
+      <TextWidgetField
+        disabled={disabled}
+        id={`${widget.id}-alert-window`}
+        label="Time window"
+        onChange={(value) => updateAlertWidget(widget, { timeWindow: value }, onWidgetChange)}
+        placeholder="PT1H"
+        value={widget.alert.timeWindow}
+      />
+      <NumberWidgetField
+        disabled={disabled}
+        id={`${widget.id}-alert-limit`}
+        label="Limit"
+        onChange={(value) => updateAlertWidget(widget, { limit: value }, onWidgetChange)}
+        value={widget.alert.limit}
+      />
+    </FieldGroup>
+  );
+}
+
 function TextWidgetField({
   disabled,
   id,
@@ -2759,6 +3071,23 @@ function updateLiveTraceWidget(
   });
 }
 
+function updateAlertWidget(
+  widget: DashboardWidgetInput,
+  patch: Partial<NonNullable<DashboardWidgetInput["alert"]>>,
+  onWidgetChange: (widget: DashboardWidgetInput) => void,
+) {
+  if (!widget.alert) {
+    return;
+  }
+  onWidgetChange({
+    ...widget,
+    alert: {
+      ...widget.alert,
+      ...patch,
+    },
+  });
+}
+
 function WidgetSummary({
   widget,
 }: {
@@ -2789,6 +3118,11 @@ function WidgetSummary({
       {widget.liveTraces ? (
         <SummaryRow label={t("traces.mode.live")}>
           {widget.liveTraces.service ?? t("dashboards.stream")}
+        </SummaryRow>
+      ) : null}
+      {widget.alert ? (
+        <SummaryRow label={t("alerts.title")}>
+          {widget.alert.ruleIds?.join(", ") || widget.kind}
         </SummaryRow>
       ) : null}
     </dl>
@@ -2857,6 +3191,7 @@ function duplicateDashboardDraft(dashboard: Dashboard | null): SaveDashboardInpu
       logs: widget.logs ? { ...widget.logs } : null,
       traces: widget.traces ? { ...widget.traces } : null,
       liveTraces: widget.liveTraces ? { ...widget.liveTraces } : null,
+      alert: widget.alert ? { ...widget.alert } : null,
     })),
   };
 }
@@ -2947,20 +3282,32 @@ function appendWidget(draft: SaveDashboardInput, kind: DashboardWidgetKind): Sav
                   columns: ["started_at", "status", "service", "operation", "duration"],
                 },
               } satisfies DashboardWidgetInput)
-            : ({
-                ...base,
-                liveTraces: {
-                  query: null,
-                  service: null,
-                  operationName: null,
-                  spanName: null,
-                  status: null,
-                  minDurationMs: null,
-                  maxDurationMs: null,
-                  attributes: [],
-                  limit: 50,
-                },
-              } satisfies DashboardWidgetInput);
+            : kind === "live_trace_table"
+              ? ({
+                  ...base,
+                  liveTraces: {
+                    query: null,
+                    service: null,
+                    operationName: null,
+                    spanName: null,
+                    status: null,
+                    minDurationMs: null,
+                    maxDurationMs: null,
+                    attributes: [],
+                    limit: 50,
+                  },
+                } satisfies DashboardWidgetInput)
+              : ({
+                  ...base,
+                  alert: {
+                    ruleIds: [],
+                    states: [],
+                    severities: [],
+                    signals: [],
+                    timeWindow: "PT1H",
+                    limit: kind === "alert_evidence" ? 1 : 20,
+                  },
+                } satisfies DashboardWidgetInput);
   return {
     ...draft,
     widgets: compactDashboardLayout([...draft.widgets, widget]),
@@ -2981,6 +3328,12 @@ function widgetTitle(kind: DashboardWidgetKind) {
       return t("dashboards.widget.traceTable");
     case "live_trace_table":
       return t("dashboards.widget.liveTraceTable");
+    case "alert_status":
+      return t("dashboards.widget.alertStatus");
+    case "alert_history":
+      return t("dashboards.widget.alertHistory");
+    case "alert_evidence":
+      return t("dashboards.widget.alertEvidence");
     case "metric_timeseries":
       return t("dashboards.widget.metricChart");
   }
@@ -3005,6 +3358,7 @@ function toWidgetInput(widget: DashboardWidget | DashboardWidgetInput): Dashboar
     logs: widget.logs ? { ...widget.logs } : null,
     traces: widget.traces ? { ...widget.traces } : null,
     liveTraces: widget.liveTraces ? { ...widget.liveTraces } : null,
+    alert: widget.alert ? { ...widget.alert } : null,
   };
 }
 

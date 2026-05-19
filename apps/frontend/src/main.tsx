@@ -6,6 +6,7 @@ import { Toaster } from "./components/ui/sonner";
 import { AppSessionProvider } from "./providers/app-session-provider";
 import { TelemetryClientProvider } from "./providers/telemetry-client-provider";
 import { ThemeProvider } from "./providers/theme-provider";
+import { AiChatRoute, aiChatEnabled } from "./routes/ai-chat-route";
 import { AiEvalRoute, aiEvalEnabled } from "./routes/ai-eval-route";
 import { AlertsRoute } from "./routes/alerts-route";
 import { AppShell } from "./routes/app-shell";
@@ -98,6 +99,7 @@ function App() {
                       <Route element={<LogsRoute />} path="/logs" />
                       <Route element={<MetricsRoute />} path="/metrics" />
                       <Route element={<DashboardsRoute />} path="/dashboards" />
+                      {aiChatEnabled ? <Route element={<AiChatRoute />} path="/ai-chat" /> : null}
                       <Route element={<AlertsRoute />} path="/alerts" />
                       {aiEvalEnabled ? <Route element={<AiEvalRoute />} path="/ai-eval" /> : null}
                     </Route>

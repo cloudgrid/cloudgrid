@@ -1,23 +1,33 @@
 import { describe, expect, test } from "bun:test";
 import type {
+  AiChatActionProposal,
+  AiChatHistoryInput,
+  ApproveAiChatActionInput,
   AlertEventConnection,
   AlertRule,
   AlertRuleSearchInput,
+  AlertSummary,
+  AlertSummaryInput,
   AlertSilence,
+  CompanyAiProviderSettings,
   CreateAlertRuleInput,
   CreateAlertSilenceInput,
+  CreateAiChatConversationInput,
   CreateProjectInput,
   InviteOrganizationMemberInput,
   InviteProjectMemberInput,
   OrganizationInvitation,
+  ProjectAiProviderSettings,
   ProjectListInput,
   ProjectInvitationResult,
   ProjectMember,
   ProjectRole,
   RemoveOrganizationMemberInput,
   RetentionPolicy,
+  UpdateCompanyAiProviderSettingsInput,
   UpdateAlertRuleInput,
   UpdateOrganizationMemberInput,
+  UpdateProjectAiProviderSettingsInput,
   UpdateProjectInput,
   UpdateRetentionPolicyInput,
 } from "@cloudgrid/ui-contracts";
@@ -341,6 +351,16 @@ describe("BFF GraphQL control-plane resolvers", () => {
           calls.push(`alertHistory:${projectId}:${ruleId}:${first}:${after}`);
           return alertHistory(projectId, ruleId ?? "rule-1");
         },
+        async alertSummary(
+          projectId: string,
+          input: AlertSummaryInput,
+          _authContext: NormalizedAuthContext,
+        ) {
+          calls.push(
+            `alertSummary:${projectId}:${input.states?.join(",") ?? ""}:${input.severities?.join(",") ?? ""}:${input.signals?.join(",") ?? ""}`,
+          );
+          return alertSummary();
+        },
         async alertSilences(
           projectId: string,
           ruleId: string | null | undefined,
@@ -439,6 +459,12 @@ describe("BFF GraphQL control-plane resolvers", () => {
             retentionPolicy(projectId: "project-1") { version }
             alertRules(projectId: "project-1", input: { search: "errors", severity: ERROR, signal: TRACE, enabled: true, sort: severity_desc }) { id }
             alertHistory(projectId: "project-1", ruleId: "rule-1", first: 25, after: "cursor-1") { items { id } pageInfo { hasNextPage endCursor } }
+            alertSummary(projectId: "project-1", input: { states: [FIRING], severities: [ERROR], signals: [TRACE], timeWindow: "PT1H", limit: 20 }) {
+              totalCount
+              byState { state count }
+              bySeverity { severity count }
+              bySignal { signal count }
+            }
             alertSilences(projectId: "project-1", ruleId: "rule-1") { id }
           }
         `,
@@ -460,7 +486,168 @@ describe("BFF GraphQL control-plane resolvers", () => {
       "retentionPolicy:project-1",
       "alertRules:project-1:errors:severity_desc",
       "alertHistory:project-1:rule-1:25:cursor-1",
+      "alertSummary:project-1:FIRING:ERROR:TRACE",
       "alertSilences:project-1:rule-1",
+    ]);
+  });
+
+  test("routes AI provider settings and AI Chat contract resolvers through the control-plane bridge", async () => {
+    const calls: string[] = [];
+    const { app } = createAppWithBridge(
+      bridge({
+        async projectAiProviderSettings(projectId: string, _authContext: NormalizedAuthContext) {
+          calls.push(`projectAiProviderSettings:${projectId}`);
+          return projectAiProviderSettings(projectId);
+        },
+        async companyAiProviderSettings(companyId: string, _authContext: NormalizedAuthContext) {
+          calls.push(`companyAiProviderSettings:${companyId}`);
+          return companyAiProviderSettings(companyId);
+        },
+        async aiChatHistory(input: AiChatHistoryInput, _authContext: NormalizedAuthContext) {
+          calls.push(`aiChatHistory:${input.companyId}:${input.projectId}:${input.first}`);
+          return {
+            companyId: input.companyId,
+            userId: "user-local",
+            projectGroups: [
+              {
+                projectId: input.projectId ?? "project-1",
+                projectName: "Default",
+                conversations: [
+                  aiChatConversation(input.companyId, input.projectId ?? "project-1"),
+                ],
+              },
+            ],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          };
+        },
+        async aiChatConversation(id: string, _authContext: NormalizedAuthContext) {
+          calls.push(`aiChatConversation:${id}`);
+          return aiChatConversation("org-1", "project-1", id);
+        },
+        async updateProjectAiProviderSettings(
+          input: UpdateProjectAiProviderSettingsInput,
+          _authContext: NormalizedAuthContext,
+        ) {
+          calls.push(`updateProjectAiProviderSettings:${input.projectId}:${input.expectedVersion}`);
+          return projectAiProviderSettings(input.projectId, input.expectedVersion + 1);
+        },
+        async updateCompanyAiProviderSettings(
+          input: UpdateCompanyAiProviderSettingsInput,
+          _authContext: NormalizedAuthContext,
+        ) {
+          calls.push(`updateCompanyAiProviderSettings:${input.companyId}:${input.expectedVersion}`);
+          return companyAiProviderSettings(input.companyId, input.expectedVersion + 1);
+        },
+        async createAiChatConversation(
+          input: CreateAiChatConversationInput,
+          _authContext: NormalizedAuthContext,
+        ) {
+          calls.push(`createAiChatConversation:${input.companyId}:${input.projectId}`);
+          return aiChatConversation(input.companyId, input.projectId, "chat-created");
+        },
+        async archiveAiChatConversation(id: string, _authContext: NormalizedAuthContext) {
+          calls.push(`archiveAiChatConversation:${id}`);
+          return { ...aiChatConversation("org-1", "project-1", id), status: "archived" as const };
+        },
+        async approveAiChatAction(
+          input: ApproveAiChatActionInput,
+          _authContext: NormalizedAuthContext,
+        ) {
+          calls.push(`approveAiChatAction:${input.actionId}:${input.approved}`);
+          return aiChatActionProposal(input.actionId, input.approved ? "approved" : "rejected");
+        },
+      }),
+      { graphqlUI: false, auth: { mode: "local", sessionTtlSeconds: 28_800 } },
+    );
+
+    const mutationResponse = await app.request("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: `
+          mutation AiChatContracts {
+            updateProjectAiProviderSettings(input: {
+              projectId: "project-1",
+              expectedVersion: 1,
+              providerProfiles: [{
+                id: "profile-1",
+                label: "OpenAI",
+                providerKind: openai,
+                credentialRef: "env:OPENAI_API_KEY",
+                models: { chat: ["gpt-5-mini"] }
+              }],
+              modelAliases: [{
+                id: "alias-1",
+                name: "chat-default",
+                providerProfileId: "profile-1",
+                model: "gpt-5-mini",
+                purpose: chat
+              }]
+            }) { version providerProfiles { credentialRef } }
+            updateCompanyAiProviderSettings(input: {
+              companyId: "org-1",
+              expectedVersion: 1,
+              providerProfile: {
+                id: "company-profile-1",
+                label: "Company OpenAI",
+                providerKind: openai,
+                credentialRef: "env:OPENAI_API_KEY",
+                models: { chat: ["gpt-5-mini"] }
+              },
+              chatModelAlias: {
+                id: "company-chat",
+                name: "chat-default",
+                providerProfileId: "company-profile-1",
+                model: "gpt-5-mini",
+                purpose: chat
+              }
+            }) { version providerProfile { credentialRef } }
+            createAiChatConversation(input: {
+              companyId: "org-1",
+              projectId: "project-1",
+              firstUserMessage: "Investigate slow traces"
+            }) { id projectId messages { role parts { type text } } }
+            archiveAiChatConversation(id: "chat-1") { status }
+            approveAiChatAction(input: {
+              actionId: "action-1",
+              approved: true,
+              expectedVersion: 1
+            }) { id status }
+          }
+        `,
+      }),
+    });
+    const queryResponse = await app.request("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: `
+          query AiChatReads {
+            projectAiProviderSettings(projectId: "project-1") { version }
+            companyAiProviderSettings(companyId: "org-1") { version }
+            aiChatHistory(input: { companyId: "org-1", projectId: "project-1", first: 10 }) {
+              projectGroups { projectId conversations { id } }
+            }
+            aiChatConversation(id: "chat-1") { id projectId }
+          }
+        `,
+      }),
+    });
+    const mutationBody = await mutationResponse.json();
+    const queryBody = await queryResponse.json();
+
+    expect(mutationBody.errors).toBeUndefined();
+    expect(queryBody.errors).toBeUndefined();
+    expect(calls).toEqual([
+      "updateProjectAiProviderSettings:project-1:1",
+      "updateCompanyAiProviderSettings:org-1:1",
+      "createAiChatConversation:org-1:project-1",
+      "archiveAiChatConversation:chat-1",
+      "approveAiChatAction:action-1:true",
+      "projectAiProviderSettings:project-1",
+      "companyAiProviderSettings:org-1",
+      "aiChatHistory:org-1:project-1:10",
+      "aiChatConversation:chat-1",
     ]);
   });
 });
@@ -533,6 +720,115 @@ function alertRule(projectId: string, id = "rule-1", version = 1): AlertRule {
   };
 }
 
+function projectAiProviderSettings(projectId: string, version = 1): ProjectAiProviderSettings {
+  return {
+    projectId,
+    providerProfiles: [aiProviderProfile("profile-1", "project", projectId)],
+    modelAliases: [aiModelAlias("alias-1", "profile-1")],
+    effective: {
+      warnings: [],
+      missingProviderProfiles: [],
+      disabledProviderProfiles: [],
+      missingChatProvider: false,
+    },
+    version,
+    updatedAt: "2026-05-18T00:00:00.000Z",
+    updatedByUserId: "user-local",
+  };
+}
+
+function companyAiProviderSettings(companyId: string, version = 1): CompanyAiProviderSettings {
+  return {
+    companyId,
+    providerProfile: aiProviderProfile("company-profile-1", "company", companyId),
+    chatModelAlias: aiModelAlias("company-chat", "company-profile-1"),
+    effective: {
+      warnings: [],
+      missingProviderProfiles: [],
+      disabledProviderProfiles: [],
+      missingChatProvider: false,
+    },
+    version,
+    updatedAt: "2026-05-18T00:00:00.000Z",
+    updatedByUserId: "user-local",
+  };
+}
+
+function aiProviderProfile(id: string, ownerScope: string, ownerId: string) {
+  return {
+    id,
+    ownerScope,
+    ownerId,
+    label: "OpenAI",
+    providerKind: "openai" as const,
+    baseUrl: null,
+    credentialRef: "env:OPENAI_API_KEY",
+    models: { chat: ["gpt-5-mini"] },
+    timeoutMs: 30_000,
+    maxConcurrency: null,
+    disabledAt: null,
+  };
+}
+
+function aiModelAlias(id: string, providerProfileId: string) {
+  return {
+    id,
+    name: "chat-default",
+    providerProfileId,
+    model: "gpt-5-mini",
+    purpose: "chat" as const,
+    parameters: { extras: {} },
+  };
+}
+
+function aiChatConversation(companyId: string, projectId: string, id = "chat-1") {
+  return {
+    id,
+    companyId,
+    projectId,
+    userId: "user-local",
+    title: "Investigate slow traces",
+    status: "active" as const,
+    messages: [
+      {
+        id: "message-1",
+        conversationId: id,
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "Investigate slow traces" }],
+        createdAt: "2026-05-18T00:00:00.000Z",
+      },
+    ],
+    latestRun: null,
+    compaction: null,
+    createdAt: "2026-05-18T00:00:00.000Z",
+    updatedAt: "2026-05-18T00:00:00.000Z",
+    lastMessageAt: "2026-05-18T00:00:00.000Z",
+    version: 1,
+  };
+}
+
+function aiChatActionProposal(
+  id: string,
+  status: AiChatActionProposal["status"] = "proposed",
+): AiChatActionProposal {
+  return {
+    id,
+    runId: "run-1",
+    conversationId: "chat-1",
+    title: "Save dashboard",
+    description: "Create a saved dashboard",
+    risk: "medium",
+    status,
+    operation: "dashboard.save",
+    preview: { name: "Latency" },
+    result: null,
+    requestedAt: "2026-05-18T00:00:00.000Z",
+    decidedAt: status === "proposed" ? null : "2026-05-18T00:01:00.000Z",
+    decidedByUserId: status === "proposed" ? null : "user-local",
+    version: 2,
+  };
+}
+
 function alertHistory(projectId: string, ruleId: string): AlertEventConnection {
   return {
     items: [
@@ -555,6 +851,15 @@ function alertHistory(projectId: string, ruleId: string): AlertEventConnection {
       },
     ],
     pageInfo: { hasNextPage: false, endCursor: null },
+  };
+}
+
+function alertSummary(): AlertSummary {
+  return {
+    totalCount: 1,
+    byState: [{ state: "FIRING", count: 1 }],
+    bySeverity: [{ severity: "ERROR", count: 1 }],
+    bySignal: [{ signal: "TRACE", count: 1 }],
   };
 }
 

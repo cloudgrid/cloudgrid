@@ -107,8 +107,8 @@ func (registry *LiveTraceRegistry) Start(ctx context.Context, request contracts.
 	if err := validateLiveQuery(request.Query); err != nil {
 		return contracts.LiveTraceStartData{}, err
 	}
-	if request.AuthContext != nil && request.AuthContext.ReadAllowed != nil && !*request.AuthContext.ReadAllowed {
-		return contracts.LiveTraceStartData{}, bridgeError("ERR-016", "FORBIDDEN", "The principal is not allowed to access this telemetry", false)
+	if err := validateTelemetryLive(request.AuthContext); err != nil {
+		return contracts.LiveTraceStartData{}, err
 	}
 
 	now := registry.now().UTC()
@@ -156,7 +156,7 @@ func (registry *LiveTraceRegistry) HandleTracePersisted(ctx context.Context, not
 
 	subscriptions := registry.snapshotSubscriptions()
 	for _, subscription := range subscriptions {
-		if err := validateTelemetryRead(subscription.authContext); err != nil {
+		if err := validateTelemetryLive(subscription.authContext); err != nil {
 			return err
 		}
 		items, err := registry.store.SearchLiveTraceCandidates(ctx, subscription.query, traceIDs, subscription.authContext)

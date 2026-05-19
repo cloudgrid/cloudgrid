@@ -757,6 +757,95 @@ func TestValidateCommandRejectsInvalidTelemetryShapes(t *testing.T) {
 	}
 }
 
+func TestValidateCommandRejectsSSOCommandWithoutAuthorizedIngestContext(t *testing.T) {
+	authMode := "sso"
+	tenantID := "tenant_1"
+	companyID := "company_1"
+	projectID := "project_1"
+	allowed := false
+
+	tests := []struct {
+		name    string
+		command func() contracts.PersistTelemetryCommand
+	}{
+		{
+			name: "missing ingest allowed",
+			command: func() contracts.PersistTelemetryCommand {
+				command := validCommand()
+				command.AuthContext = &contracts.AuthContext{
+					AuthMode:  &authMode,
+					TenantID:  &tenantID,
+					CompanyID: &companyID,
+					ProjectID: &projectID,
+				}
+				return command
+			},
+		},
+		{
+			name: "explicitly denied",
+			command: func() contracts.PersistTelemetryCommand {
+				command := validCommand()
+				command.AuthContext = &contracts.AuthContext{
+					AuthMode:      &authMode,
+					TenantID:      &tenantID,
+					CompanyID:     &companyID,
+					ProjectID:     &projectID,
+					IngestAllowed: &allowed,
+				}
+				return command
+			},
+		},
+		{
+			name: "missing project routing",
+			command: func() contracts.PersistTelemetryCommand {
+				ingestAllowed := true
+				command := validCommand()
+				command.AuthContext = &contracts.AuthContext{
+					AuthMode:      &authMode,
+					TenantID:      &tenantID,
+					CompanyID:     &companyID,
+					IngestAllowed: &ingestAllowed,
+				}
+				return command
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateCommand(test.command(), TraceSubject)
+			if err == nil {
+				t.Fatal("validateCommand() error = nil")
+			}
+			if !strings.Contains(err.Error(), "authorized ingest authContext is required") {
+				t.Fatalf("validateCommand() error = %q, want authorized auth context failure", err.Error())
+			}
+		})
+	}
+}
+
+func TestValidateMetricsCommandRejectsSSOCommandWithoutAuthorizedIngestContext(t *testing.T) {
+	authMode := "sso"
+	tenantID := "tenant_1"
+	companyID := "company_1"
+	projectID := "project_1"
+	command := validMetricCommand()
+	command.AuthContext = &contracts.AuthContext{
+		AuthMode:  &authMode,
+		TenantID:  &tenantID,
+		CompanyID: &companyID,
+		ProjectID: &projectID,
+	}
+
+	err := validateMetricsCommand(command, MetricSubject)
+	if err == nil {
+		t.Fatal("validateMetricsCommand() error = nil")
+	}
+	if !strings.Contains(err.Error(), "authorized ingest authContext is required") {
+		t.Fatalf("validateMetricsCommand() error = %q, want authorized auth context failure", err.Error())
+	}
+}
+
 type fakeJetStreamManager struct {
 	streams             map[string]*nats.StreamConfig
 	consumerStream      string

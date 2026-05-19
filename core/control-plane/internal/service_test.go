@@ -1154,6 +1154,119 @@ func TestAlertRulesSilencesAndHistoryCRUD(t *testing.T) {
 	}
 }
 
+func TestAlertSummaryAggregatesEventsByStateSeverityAndSignal(t *testing.T) {
+	service := NewService(newTestStore(), fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-admin", "admin-1", nil)
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+
+	createRule := func(name string, kind contracts.AlertRuleKind, severity contracts.AlertSeverity) contracts.AlertRule {
+		t.Helper()
+		condition := map[string]any{"minCount": float64(1)}
+		if kind == contracts.AlertRuleKindMetricThreshold {
+			condition = map[string]any{"operator": "GT", "threshold": float64(90)}
+		}
+		rule, err := service.CreateAlertRule(ctx, contracts.AlertRuleCreateRequest{
+			BridgeEnvelope: admin,
+			Input: contracts.AlertRuleCreateInput{
+				ProjectID:               LocalProjectID,
+				Name:                    name,
+				Enabled:                 true,
+				Kind:                    kind,
+				Severity:                severity,
+				Query:                   map[string]any{"service": "api"},
+				Condition:               condition,
+				EvaluationWindowSeconds: 300,
+				PendingForSeconds:       0,
+				CooldownSeconds:         300,
+				NotificationAdapterIDs:  []string{"in_app"},
+			},
+		})
+		if err != nil {
+			t.Fatalf("CreateAlertRule(%s) returned error: %v", name, err)
+		}
+		return rule
+	}
+
+	metricRule := createRule("CPU high", contracts.AlertRuleKindMetricThreshold, contracts.AlertSeverityCritical)
+	traceRule := createRule("Trace errors", contracts.AlertRuleKindTraceError, contracts.AlertSeverityError)
+	logRule := createRule("Log warnings", contracts.AlertRuleKindLogMatch, contracts.AlertSeverityWarning)
+	events := []contracts.AlertEvent{
+		{
+			ID:               "event-metric",
+			ProjectID:        LocalProjectID,
+			RuleID:           metricRule.ID,
+			InstanceID:       "metric",
+			State:            contracts.AlertStateFiring,
+			Severity:         contracts.AlertSeverityCritical,
+			Summary:          "CPU high firing",
+			DeduplicationKey: "metric",
+			StartedAt:        fixedNow().Add(-10 * time.Minute),
+			CreatedAt:        fixedNow().Add(-10 * time.Minute),
+		},
+		{
+			ID:               "event-trace",
+			ProjectID:        LocalProjectID,
+			RuleID:           traceRule.ID,
+			InstanceID:       "trace",
+			State:            contracts.AlertStateFiring,
+			Severity:         contracts.AlertSeverityError,
+			Summary:          "Trace errors firing",
+			DeduplicationKey: "trace",
+			StartedAt:        fixedNow().Add(-5 * time.Minute),
+			CreatedAt:        fixedNow().Add(-5 * time.Minute),
+		},
+		{
+			ID:               "event-log",
+			ProjectID:        LocalProjectID,
+			RuleID:           logRule.ID,
+			InstanceID:       "log",
+			State:            contracts.AlertStateResolved,
+			Severity:         contracts.AlertSeverityWarning,
+			Summary:          "Log warning resolved",
+			DeduplicationKey: "log",
+			StartedAt:        fixedNow().Add(-2 * time.Hour),
+			CreatedAt:        fixedNow().Add(-2 * time.Hour),
+		},
+	}
+	for _, event := range events {
+		if _, err := service.RecordAlertHistory(ctx, contracts.AlertHistoryRecordRequest{BridgeEnvelope: admin, Event: event}); err != nil {
+			t.Fatalf("RecordAlertHistory(%s) returned error: %v", event.ID, err)
+		}
+	}
+
+	state := contracts.AlertStateFiring
+	signal := contracts.AlertSignalTrace
+	summary, err := service.AlertSummary(ctx, contracts.AlertSummaryRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      LocalProjectID,
+		Input: &contracts.AlertSummaryInput{
+			States:     []contracts.AlertState{state},
+			Signals:    []contracts.AlertSignal{signal},
+			TimeWindow: ptr("PT1H"),
+			Limit:      ptr(20),
+		},
+	})
+	if err != nil {
+		t.Fatalf("AlertSummary returned error: %v", err)
+	}
+
+	if summary.TotalCount != 1 {
+		t.Fatalf("summary total = %d, want 1: %#v", summary.TotalCount, summary)
+	}
+	if len(summary.ByState) != 1 || summary.ByState[0].State != contracts.AlertStateFiring || summary.ByState[0].Count != 1 {
+		t.Fatalf("summary by state = %#v, want FIRING 1", summary.ByState)
+	}
+	if len(summary.BySeverity) != 1 || summary.BySeverity[0].Severity != contracts.AlertSeverityError || summary.BySeverity[0].Count != 1 {
+		t.Fatalf("summary by severity = %#v, want ERROR 1", summary.BySeverity)
+	}
+	if len(summary.BySignal) != 1 || summary.BySignal[0].Signal != contracts.AlertSignalTrace || summary.BySignal[0].Count != 1 {
+		t.Fatalf("summary by signal = %#v, want TRACE 1", summary.BySignal)
+	}
+}
+
 func TestInternalServiceScopedProjectAccess(t *testing.T) {
 	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
@@ -1207,6 +1320,140 @@ func TestInternalServiceScopedProjectAccess(t *testing.T) {
 	serviceEnvelope.AuthContext.ProjectID = &foreignProjectID
 	if _, err := service.ListAlertRules(ctx, contracts.AlertRuleListRequest{BridgeEnvelope: serviceEnvelope, ProjectID: LocalProjectID}); !isForbidden(err) {
 		t.Fatalf("ListAlertRules with mismatched service project error = %v, want forbidden", err)
+	}
+}
+
+func TestListProjectsForServicePagesActiveProjectsWithServiceAuth(t *testing.T) {
+	service := NewService(newTestStore(), fixedNow)
+	ctx := context.Background()
+	readOnly := contracts.ProjectStatusReadOnly
+
+	if _, err := service.CreateProject(ctx, contracts.ProjectCreateRequest{
+		BridgeEnvelope: localEnvelope("req-create-a", "local-user", nil),
+		OrganizationID: LocalCompanyID,
+		Name:           "Alpha",
+		Slug:           "alpha",
+	}); err != nil {
+		t.Fatalf("CreateProject alpha returned error: %v", err)
+	}
+	readOnlyProject, err := service.CreateProject(ctx, contracts.ProjectCreateRequest{
+		BridgeEnvelope: localEnvelope("req-create-b", "local-user", nil),
+		OrganizationID: LocalCompanyID,
+		Name:           "Beta",
+		Slug:           "beta",
+	})
+	if err != nil {
+		t.Fatalf("CreateProject beta returned error: %v", err)
+	}
+	if _, err := service.UpdateProject(ctx, contracts.ProjectUpdateRequest{
+		BridgeEnvelope: localEnvelope("req-update", "local-user", nil),
+		ProjectID:      readOnlyProject.ID,
+		Status:         &readOnly,
+	}); err != nil {
+		t.Fatalf("UpdateProject beta returned error: %v", err)
+	}
+
+	limit := 2
+	response, err := service.ListProjectsForService(ctx, contracts.ProjectListForServiceRequest{
+		BridgeEnvelope: serviceEnvelopeForScope("req-service", "alert_evaluator"),
+		ServiceScope:   contracts.ServiceProjectScopeAlertEvaluator,
+		Limit:          &limit,
+	})
+	if err != nil {
+		t.Fatalf("ListProjectsForService returned error: %v", err)
+	}
+	if len(response.Items) != 2 {
+		t.Fatalf("items = %#v, want first page of two active projects", response.Items)
+	}
+	if response.Items[0].ProjectID != LocalSelfObservabilityProjectID || response.Items[1].ProjectID != LocalProjectID {
+		t.Fatalf("items order = %#v, want ordered by projectId", response.Items)
+	}
+	if response.NextCursor == nil || *response.NextCursor != LocalProjectID {
+		t.Fatalf("next cursor = %#v, want %q", response.NextCursor, LocalProjectID)
+	}
+	for _, item := range response.Items {
+		if item.CompanyID != LocalCompanyID || item.TenantID != LocalCompanyID || item.Status != contracts.ProjectStatusActive || item.ChangedAt.IsZero() {
+			t.Fatalf("service project item = %#v, want company/tenant/status/changedAt", item)
+		}
+	}
+
+	nextPage, err := service.ListProjectsForService(ctx, contracts.ProjectListForServiceRequest{
+		BridgeEnvelope: serviceEnvelopeForScope("req-service-next", "alert_evaluator"),
+		ServiceScope:   contracts.ServiceProjectScopeAlertEvaluator,
+		Cursor:         response.NextCursor,
+	})
+	if err != nil {
+		t.Fatalf("ListProjectsForService next page returned error: %v", err)
+	}
+	if len(nextPage.Items) != 1 || nextPage.Items[0].ProjectID != "project-alpha" || nextPage.NextCursor != nil {
+		t.Fatalf("next page = %#v cursor=%#v, want remaining active project", nextPage.Items, nextPage.NextCursor)
+	}
+}
+
+func TestListProjectsForServiceRejectsMismatchedServiceScope(t *testing.T) {
+	service := NewService(newTestStore(), fixedNow)
+
+	_, err := service.ListProjectsForService(context.Background(), contracts.ProjectListForServiceRequest{
+		BridgeEnvelope: serviceEnvelopeForScope("req-service", "storage_maintenance"),
+		ServiceScope:   contracts.ServiceProjectScopeAlertEvaluator,
+	})
+	if !isForbidden(err) {
+		t.Fatalf("ListProjectsForService error = %v, want forbidden for mismatched service scope", err)
+	}
+}
+
+func TestAlertRuleNotificationAdaptersMustExistInCatalog(t *testing.T) {
+	service := NewServiceWithOptions(newTestStore(), fixedNow, ServiceOptions{
+		AlertNotificationAdapters: []string{"in_app", "email"},
+	})
+	ctx := context.Background()
+
+	_, err := service.CreateAlertRule(ctx, contracts.AlertRuleCreateRequest{
+		BridgeEnvelope: localEnvelope("req-alert", "local-user", nil),
+		Input: contracts.AlertRuleCreateInput{
+			ProjectID:               LocalProjectID,
+			Name:                    "Unknown adapter",
+			Enabled:                 true,
+			Kind:                    contracts.AlertRuleKindLogCount,
+			Severity:                contracts.AlertSeverityWarning,
+			Query:                   map[string]any{"severity": "ERROR"},
+			Condition:               map[string]any{"operator": "GTE", "threshold": float64(1)},
+			EvaluationWindowSeconds: 300,
+			NotificationAdapterIDs:  []string{"in_app", "pagerduty"},
+		},
+	})
+	if !isAlertRuleInvalid(err) {
+		t.Fatalf("CreateAlertRule error = %v, want ERR-018 for unknown notification adapter", err)
+	}
+
+	rule, err := service.CreateAlertRule(ctx, contracts.AlertRuleCreateRequest{
+		BridgeEnvelope: localEnvelope("req-alert-valid", "local-user", nil),
+		Input: contracts.AlertRuleCreateInput{
+			ProjectID:               LocalProjectID,
+			Name:                    "Known adapter",
+			Enabled:                 true,
+			Kind:                    contracts.AlertRuleKindLogCount,
+			Severity:                contracts.AlertSeverityWarning,
+			Query:                   map[string]any{"severity": "ERROR"},
+			Condition:               map[string]any{"operator": "GTE", "threshold": float64(1)},
+			EvaluationWindowSeconds: 300,
+			NotificationAdapterIDs:  []string{"email"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateAlertRule valid adapter returned error: %v", err)
+	}
+	unknownAdapters := []string{"email", "pagerduty"}
+	_, err = service.UpdateAlertRule(ctx, contracts.AlertRuleUpdateRequest{
+		BridgeEnvelope: localEnvelope("req-alert-update", "local-user", nil),
+		Input: contracts.AlertRuleUpdateInput{
+			ID:                     rule.ID,
+			ExpectedVersion:        rule.Version,
+			NotificationAdapterIDs: unknownAdapters,
+		},
+	})
+	if !isAlertRuleInvalid(err) {
+		t.Fatalf("UpdateAlertRule error = %v, want ERR-018 for unknown notification adapter", err)
 	}
 }
 
@@ -2013,4 +2260,25 @@ func isForbidden(err error) bool {
 func isValidation(err error) bool {
 	var coded codedBridgeError
 	return errors.As(err, &coded) && coded.bridge.ID == "ERR-001"
+}
+
+func isAlertRuleInvalid(err error) bool {
+	var coded codedBridgeError
+	return errors.As(err, &coded) && coded.bridge.ID == "ERR-018"
+}
+
+func serviceEnvelopeForScope(requestID string, serviceScope string) contracts.BridgeEnvelope {
+	principalID := "cloudgrid-" + strings.ReplaceAll(serviceScope, "_", "-")
+	readAllowed := true
+	return contracts.BridgeEnvelope{
+		RequestID: requestID,
+		IssuedAt:  fixedNow(),
+		AuthContext: &contracts.AuthContext{
+			Mode:        "service",
+			PrincipalID: &principalID,
+			Scopes:      []string{"cloudgrid:" + strings.ReplaceAll(serviceScope, "_", "-")},
+			ReadAllowed: &readAllowed,
+			CheckedAt:   ptr(fixedNow()),
+		},
+	}
 }

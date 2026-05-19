@@ -1,12 +1,19 @@
 import type {
+  AiChatActionProposal,
+  AiChatHistoryInput,
+  AiChatRun,
+  AiChatRunStatus,
   AiQualityOverview,
   AiQualityOverviewInput,
   AlertEventConnection,
   AlertRule,
   AlertRuleSearchInput,
   AlertSilence,
+  ApproveAiChatActionInput,
+  CompanyAiProviderSettings,
   CreateAlertRuleInput,
   CreateAlertSilenceInput,
+  CreateAiChatConversationInput,
   CreateIngestCredentialInput,
   CreateProjectInput,
   DatasetExportJob,
@@ -22,6 +29,7 @@ import type {
   OrganizationInvitation,
   OrganizationMember,
   Project,
+  ProjectAiProviderSettings,
   ProjectAiSettings,
   ProjectInvitationResult,
   ProjectListInput,
@@ -34,8 +42,10 @@ import type {
   TraceDetail,
   TraceDetailInput,
   TraceSearchInput,
+  UpdateCompanyAiProviderSettingsInput,
   UpdateAlertRuleInput,
   UpdateOrganizationMemberInput,
+  UpdateProjectAiProviderSettingsInput,
   UpdateProjectAiSettingsInput,
   UpdateProjectInput,
   UpdateRetentionPolicyInput,
@@ -77,7 +87,7 @@ export function ssoAuthConfig() {
 }
 
 export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridge {
-  return {
+  const defaultBridge: CloudGridBridge = {
     async viewer(_authContext: NormalizedAuthContext) {
       return viewer();
     },
@@ -222,6 +232,14 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
       _authContext?: NormalizedAuthContext,
     ) {
       return alertHistory(projectId, ruleId ?? "rule-1");
+    },
+    async alertSummary(_projectId: string, _input = {}, _authContext?: NormalizedAuthContext) {
+      return {
+        totalCount: 1,
+        byState: [{ state: "FIRING", count: 1 }],
+        bySeverity: [{ severity: "ERROR", count: 1 }],
+        bySignal: [{ signal: "TRACE", count: 1 }],
+      };
     },
     async ingestCredentials(_projectId: string, _authContext?: NormalizedAuthContext) {
       return { items: [] };
@@ -401,6 +419,65 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
     async projectAiSettings(projectId: string) {
       return projectAiSettings(projectId);
     },
+    async projectAiProviderSettings(projectId: string) {
+      return projectAiProviderSettings(projectId);
+    },
+    async updateProjectAiProviderSettings(input: UpdateProjectAiProviderSettingsInput) {
+      return projectAiProviderSettings(input.projectId, input.expectedVersion + 1);
+    },
+    async companyAiProviderSettings(companyId: string) {
+      return companyAiProviderSettings(companyId);
+    },
+    async updateCompanyAiProviderSettings(input: UpdateCompanyAiProviderSettingsInput) {
+      return companyAiProviderSettings(input.companyId, input.expectedVersion + 1);
+    },
+    async aiChatHistory(input: AiChatHistoryInput) {
+      return {
+        companyId: input.companyId,
+        userId: "user-local",
+        projectGroups: [
+          {
+            projectId: input.projectId ?? "project-1",
+            projectName: "Default",
+            conversations: [aiChatConversation(input.companyId, input.projectId ?? "project-1")],
+          },
+        ],
+        pageInfo: { hasNextPage: false, endCursor: null },
+      };
+    },
+    async aiChatConversation(id: string) {
+      return aiChatConversation("org-1", "project-1", id);
+    },
+    async createAiChatConversation(input: CreateAiChatConversationInput) {
+      return aiChatConversation(input.companyId, input.projectId, "chat-created");
+    },
+    async archiveAiChatConversation(id: string) {
+      return { ...aiChatConversation("org-1", "project-1", id), status: "archived" as const };
+    },
+    async approveAiChatAction(input: ApproveAiChatActionInput) {
+      return aiChatActionProposal(input.actionId, input.approved ? "approved" : "rejected");
+    },
+    async aiChatAppendMessage() {},
+    async aiChatCreateRun(input) {
+      return aiChatRun(
+        input.conversationId,
+        "run-default",
+        "streaming",
+        input.providerProfileId,
+        input.model,
+      );
+    },
+    async aiChatUpdateRun(input) {
+      return aiChatRun("chat-1", input.runId, input.status);
+    },
+    async aiChatFinalizeRun(input) {
+      return aiChatRun("chat-1", input.runId, input.status);
+    },
+    async aiChatProposeAction() {
+      return aiChatActionProposal("action-1");
+    },
+    async aiChatFinishAction() {},
+    async aiChatSaveCompaction() {},
     async aiQualityOverview(input: AiQualityOverviewInput) {
       return aiQualityOverview(input.projectId);
     },
@@ -514,8 +591,8 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
       return "ok" as const;
     },
     async close() {},
-    ...overrides,
   };
+  return { ...defaultBridge, ...overrides };
 }
 
 export function viewer(): Viewer {
@@ -544,6 +621,139 @@ export function project(): Project {
     slug: "default",
     status: "active",
     telemetry: { traceCount: 0, logCount: 0, metricCount: 0, serviceCount: 0 },
+  };
+}
+
+function projectAiProviderSettings(projectId: string, version = 1): ProjectAiProviderSettings {
+  return {
+    projectId,
+    providerProfiles: [aiProviderProfile("profile-1", "project", projectId)],
+    modelAliases: [aiModelAlias("alias-1", "profile-1")],
+    effective: {
+      warnings: [],
+      missingProviderProfiles: [],
+      disabledProviderProfiles: [],
+      missingChatProvider: false,
+    },
+    version,
+    updatedAt: "2026-05-18T00:00:00.000Z",
+    updatedByUserId: "user-local",
+  };
+}
+
+function companyAiProviderSettings(companyId: string, version = 1): CompanyAiProviderSettings {
+  return {
+    companyId,
+    providerProfile: aiProviderProfile("company-profile-1", "company", companyId),
+    chatModelAlias: aiModelAlias("company-chat", "company-profile-1"),
+    effective: {
+      warnings: [],
+      missingProviderProfiles: [],
+      disabledProviderProfiles: [],
+      missingChatProvider: false,
+    },
+    version,
+    updatedAt: "2026-05-18T00:00:00.000Z",
+    updatedByUserId: "user-local",
+  };
+}
+
+function aiProviderProfile(id: string, ownerScope: string, ownerId: string) {
+  return {
+    id,
+    ownerScope,
+    ownerId,
+    label: "OpenAI",
+    providerKind: "openai" as const,
+    baseUrl: null,
+    credentialRef: "env:OPENAI_API_KEY",
+    models: { chat: ["gpt-5-mini"] },
+    timeoutMs: 30_000,
+    maxConcurrency: null,
+    disabledAt: null,
+  };
+}
+
+function aiModelAlias(id: string, providerProfileId: string) {
+  return {
+    id,
+    name: "chat-default",
+    providerProfileId,
+    model: "gpt-5-mini",
+    purpose: "chat" as const,
+    parameters: { extras: {} },
+  };
+}
+
+function aiChatConversation(companyId: string, projectId: string, id = "chat-1") {
+  return {
+    id,
+    companyId,
+    projectId,
+    userId: "user-local",
+    title: "Investigate slow traces",
+    status: "active" as const,
+    messages: [
+      {
+        id: "message-1",
+        conversationId: id,
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "Investigate slow traces" }],
+        createdAt: "2026-05-18T00:00:00.000Z",
+      },
+    ],
+    latestRun: null,
+    compaction: null,
+    createdAt: "2026-05-18T00:00:00.000Z",
+    updatedAt: "2026-05-18T00:00:00.000Z",
+    lastMessageAt: "2026-05-18T00:00:00.000Z",
+    version: 1,
+  };
+}
+
+function aiChatRun(
+  conversationId: string,
+  id = "run-1",
+  status: AiChatRunStatus = "streaming",
+  providerProfileId = "provider-1",
+  model = "gpt-5-mini",
+): AiChatRun {
+  return {
+    id,
+    conversationId,
+    status,
+    providerProfileId,
+    model,
+    artifacts: [],
+    actionProposals: [],
+    startedAt: "2026-05-18T00:00:00.000Z",
+    completedAt:
+      status === "completed" || status === "failed" || status === "cancelled"
+        ? "2026-05-18T00:00:01.000Z"
+        : null,
+    error: status === "failed" ? "AI Chat provider execution failed" : null,
+  };
+}
+
+function aiChatActionProposal(
+  id: string,
+  status: AiChatActionProposal["status"] = "proposed",
+): AiChatActionProposal {
+  return {
+    id,
+    runId: "run-1",
+    conversationId: "chat-1",
+    title: "Save dashboard",
+    description: "Create a saved dashboard",
+    risk: "medium",
+    status,
+    operation: "dashboard.save",
+    preview: { name: "Latency" },
+    result: null,
+    requestedAt: "2026-05-18T00:00:00.000Z",
+    decidedAt: status === "proposed" ? null : "2026-05-18T00:01:00.000Z",
+    decidedByUserId: status === "proposed" ? null : "user-local",
+    version: 2,
   };
 }
 

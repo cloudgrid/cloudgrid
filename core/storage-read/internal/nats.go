@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"reflect"
+	"strings"
 	"time"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
@@ -24,6 +25,10 @@ const (
 	SubjectLiveTraceStop            = "telemetry.traces.live.stop"
 	SubjectPersistedTraces          = "telemetry.persisted.traces"
 	storageReadService              = "storage-read"
+	authModeSSO                     = "sso"
+	authModeLocal                   = "local"
+	scopeTelemetryRead              = "telemetry:read"
+	scopeTelemetryLive              = "telemetry:live"
 )
 
 type BridgeMessage interface {
@@ -315,10 +320,59 @@ func handleRichMetricSeriesQuery(store ports.TelemetryReadStore, logger *slog.Lo
 }
 
 func validateTelemetryRead(auth *contracts.AuthContext) error {
-	if auth != nil && auth.ReadAllowed != nil && !*auth.ReadAllowed {
+	if auth == nil {
+		return nil
+	}
+	if auth.ReadAllowed != nil && !*auth.ReadAllowed {
+		return bridgeError("ERR-016", "FORBIDDEN", "The principal is not allowed to access this telemetry", false)
+	}
+	authMode := strings.TrimSpace(stringPtrValue(auth.AuthMode))
+	if authMode == "" || authMode == authModeLocal {
+		return nil
+	}
+	if authMode != authModeSSO {
+		return validationError("authMode is invalid")
+	}
+	if auth.ReadAllowed != nil && *auth.ReadAllowed {
+		return nil
+	}
+	if authHasScope(auth, scopeTelemetryRead) {
+		return nil
+	}
+	return bridgeError("ERR-016", "FORBIDDEN", "The principal is not allowed to access this telemetry", false)
+}
+
+func validateTelemetryLive(auth *contracts.AuthContext) error {
+	if err := validateTelemetryRead(auth); err != nil {
+		return err
+	}
+	if auth == nil {
+		return nil
+	}
+	authMode := strings.TrimSpace(stringPtrValue(auth.AuthMode))
+	if authMode == "" || authMode == authModeLocal {
+		return nil
+	}
+	if !authHasScope(auth, scopeTelemetryLive) {
 		return bridgeError("ERR-016", "FORBIDDEN", "The principal is not allowed to access this telemetry", false)
 	}
 	return nil
+}
+
+func authHasScope(auth *contracts.AuthContext, required string) bool {
+	for _, scope := range auth.Scopes {
+		if scope == required {
+			return true
+		}
+	}
+	return false
+}
+
+func stringPtrValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func handleLiveTraceStart(registry *LiveTraceRegistry, logger *slog.Logger) bridgeMessageHandler {

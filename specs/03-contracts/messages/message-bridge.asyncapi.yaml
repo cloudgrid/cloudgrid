@@ -351,6 +351,13 @@ channels:
         $ref: "#/components/messages/ProjectListRequest"
       ProjectListResponse:
         $ref: "#/components/messages/ProjectListResponse"
+  control.projects.list_for_service:
+    address: control.projects.list_for_service
+    messages:
+      ProjectListForServiceRequest:
+        $ref: "#/components/messages/ProjectListForServiceRequest"
+      ProjectListForServiceResponse:
+        $ref: "#/components/messages/ProjectListForServiceResponse"
   control.projects.get:
     address: control.projects.get
     messages:
@@ -526,6 +533,27 @@ channels:
         $ref: "#/components/messages/AiChatMessageAppendRequest"
       AiChatMessageAppendResponse:
         $ref: "#/components/messages/AiChatMessageAppendResponse"
+  control.ai_chat.run.create:
+    address: control.ai_chat.run.create
+    messages:
+      AiChatRunCreateRequest:
+        $ref: "#/components/messages/AiChatRunCreateRequest"
+      AiChatRunMutationResponse:
+        $ref: "#/components/messages/AiChatRunMutationResponse"
+  control.ai_chat.run.update:
+    address: control.ai_chat.run.update
+    messages:
+      AiChatRunUpdateRequest:
+        $ref: "#/components/messages/AiChatRunUpdateRequest"
+      AiChatRunMutationResponse:
+        $ref: "#/components/messages/AiChatRunMutationResponse"
+  control.ai_chat.run.finalize:
+    address: control.ai_chat.run.finalize
+    messages:
+      AiChatRunFinalizeRequest:
+        $ref: "#/components/messages/AiChatRunFinalizeRequest"
+      AiChatRunMutationResponse:
+        $ref: "#/components/messages/AiChatRunMutationResponse"
   control.ai_chat.action.propose:
     address: control.ai_chat.action.propose
     messages:
@@ -699,6 +727,13 @@ channels:
         $ref: "#/components/messages/AlertHistoryListRequest"
       AlertHistoryListResponse:
         $ref: "#/components/messages/AlertHistoryListResponse"
+  control.alert_summary.get:
+    address: control.alert_summary.get
+    messages:
+      AlertSummaryRequest:
+        $ref: "#/components/messages/AlertSummaryRequest"
+      AlertSummaryResponse:
+        $ref: "#/components/messages/AlertSummaryResponse"
   control.alert_history.record:
     address: control.alert_history.record
     messages:
@@ -1118,6 +1153,18 @@ operations:
       $ref: "#/channels/storage_maintenance.retention.execute_batch"
     messages:
       - $ref: "#/channels/storage_maintenance.retention.execute_batch/messages/RetentionExecuteBatchResponse"
+  requestProjectsForService:
+    action: send
+    channel:
+      $ref: "#/channels/control.projects.list_for_service"
+    messages:
+      - $ref: "#/channels/control.projects.list_for_service/messages/ProjectListForServiceRequest"
+  replyProjectsForService:
+    action: receive
+    channel:
+      $ref: "#/channels/control.projects.list_for_service"
+    messages:
+      - $ref: "#/channels/control.projects.list_for_service/messages/ProjectListForServiceResponse"
   requestAlertRules:
     action: send
     channel:
@@ -1208,6 +1255,18 @@ operations:
       $ref: "#/channels/control.alert_history.list"
     messages:
       - $ref: "#/channels/control.alert_history.list/messages/AlertHistoryListResponse"
+  requestAlertSummary:
+    action: send
+    channel:
+      $ref: "#/channels/control.alert_summary.get"
+    messages:
+      - $ref: "#/channels/control.alert_summary.get/messages/AlertSummaryRequest"
+  replyAlertSummary:
+    action: receive
+    channel:
+      $ref: "#/channels/control.alert_summary.get"
+    messages:
+      - $ref: "#/channels/control.alert_summary.get/messages/AlertSummaryResponse"
   recordAlertHistory:
     action: send
     channel:
@@ -1461,6 +1520,14 @@ components:
       name: ProjectListResponse
       payload:
         $ref: "#/components/schemas/ProjectListResponse"
+    ProjectListForServiceRequest:
+      name: ProjectListForServiceRequest
+      payload:
+        $ref: "#/components/schemas/ProjectListForServiceRequest"
+    ProjectListForServiceResponse:
+      name: ProjectListForServiceResponse
+      payload:
+        $ref: "#/components/schemas/ProjectListForServiceResponse"
     ProjectGetRequest:
       name: ProjectGetRequest
       payload:
@@ -1649,6 +1716,22 @@ components:
       name: AiChatMessageAppendResponse
       payload:
         $ref: "#/components/schemas/AiChatMessageAppendResponse"
+    AiChatRunCreateRequest:
+      name: AiChatRunCreateRequest
+      payload:
+        $ref: "#/components/schemas/AiChatRunCreateRequest"
+    AiChatRunUpdateRequest:
+      name: AiChatRunUpdateRequest
+      payload:
+        $ref: "#/components/schemas/AiChatRunUpdateRequest"
+    AiChatRunFinalizeRequest:
+      name: AiChatRunFinalizeRequest
+      payload:
+        $ref: "#/components/schemas/AiChatRunFinalizeRequest"
+    AiChatRunMutationResponse:
+      name: AiChatRunMutationResponse
+      payload:
+        $ref: "#/components/schemas/AiChatRunMutationResponse"
     AiChatActionProposeRequest:
       name: AiChatActionProposeRequest
       payload:
@@ -1833,6 +1916,14 @@ components:
       name: AlertHistoryListResponse
       payload:
         $ref: "#/components/schemas/AlertHistoryListResponse"
+    AlertSummaryRequest:
+      name: AlertSummaryRequest
+      payload:
+        $ref: "#/components/schemas/AlertSummaryRequest"
+    AlertSummaryResponse:
+      name: AlertSummaryResponse
+      payload:
+        $ref: "#/components/schemas/AlertSummaryResponse"
     AlertHistoryRecordRequest:
       name: AlertHistoryRecordRequest
       payload:
@@ -2407,6 +2498,9 @@ components:
     ProjectStatus:
       type: string
       enum: [active, read_only, disabled]
+    ServiceProjectScope:
+      type: string
+      enum: [alert_evaluator, storage_maintenance]
     User:
       type: object
       additionalProperties: false
@@ -2723,6 +2817,61 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/Project"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    ProjectListForServiceRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [serviceScope]
+          properties:
+            serviceScope:
+              $ref: "#/components/schemas/ServiceProjectScope"
+            status:
+              $ref: "#/components/schemas/ProjectStatus"
+            cursor:
+              type: string
+            limit:
+              type: integer
+              minimum: 1
+              maximum: 500
+    ServiceProject:
+      type: object
+      additionalProperties: false
+      required: [projectId, companyId, tenantId, status, changedAt]
+      properties:
+        projectId:
+          type: string
+        companyId:
+          type: string
+        tenantId:
+          type: string
+        status:
+          $ref: "#/components/schemas/ProjectStatus"
+        changedAt:
+          type: string
+          format: date-time
+    ProjectListForServiceResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [items]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/ServiceProject"
+            nextCursor:
+              type: string
         error:
           $ref: "#/components/schemas/BridgeError"
     ProjectGetRequest:
@@ -3555,6 +3704,96 @@ components:
             ruleId: { type: string }
             first: { type: integer, minimum: 1, maximum: 200, default: 50 }
             after: { type: string }
+    AlertSummaryInput:
+      type: object
+      additionalProperties: false
+      properties:
+        ruleIds:
+          type: array
+          maxItems: 20
+          items: { type: string }
+        states:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertState"
+        severities:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertSeverity"
+        signals:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertSignal"
+        timeWindow: { type: string, default: PT1H }
+        limit: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    AlertStateCount:
+      type: object
+      additionalProperties: false
+      required: [state, count]
+      properties:
+        state:
+          $ref: "#/components/schemas/AlertState"
+        count: { type: integer, minimum: 0 }
+    AlertSeverityCount:
+      type: object
+      additionalProperties: false
+      required: [severity, count]
+      properties:
+        severity:
+          $ref: "#/components/schemas/AlertSeverity"
+        count: { type: integer, minimum: 0 }
+    AlertSignalCount:
+      type: object
+      additionalProperties: false
+      required: [signal, count]
+      properties:
+        signal:
+          $ref: "#/components/schemas/AlertSignal"
+        count: { type: integer, minimum: 0 }
+    AlertSummary:
+      type: object
+      additionalProperties: false
+      required: [totalCount, byState, bySeverity, bySignal]
+      properties:
+        totalCount: { type: integer, minimum: 0 }
+        byState:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertStateCount"
+        bySeverity:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertSeverityCount"
+        bySignal:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertSignalCount"
+    AlertSummaryRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId]
+          properties:
+            projectId: { type: string }
+            input:
+              $ref: "#/components/schemas/AlertSummaryInput"
+    AlertSummaryResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId: { type: string }
+        ok: { type: boolean }
+        data:
+          type: object
+          additionalProperties: false
+          required: [summary]
+          properties:
+            summary:
+              $ref: "#/components/schemas/AlertSummary"
+        error:
+          $ref: "#/components/schemas/BridgeError"
     AlertHistoryListResponse:
       type: object
       additionalProperties: false
@@ -4083,6 +4322,122 @@ components:
           additionalProperties: true
         error:
           $ref: "#/components/schemas/BridgeError"
+    AiChatRunCreateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required:
+            [
+              conversationId,
+              projectId,
+              userId,
+              userMessageClientId,
+              idempotencyKey,
+              providerKind,
+              providerProfileId,
+              model,
+            ]
+          properties:
+            conversationId:
+              type: string
+            projectId:
+              type: string
+            userId:
+              type: string
+            userMessageClientId:
+              type: string
+            idempotencyKey:
+              type: string
+            providerKind:
+              type: string
+            providerProfileId:
+              type: string
+            model:
+              type: string
+            traceId:
+              type: string
+    AiChatRunUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [runId, status]
+          properties:
+            runId:
+              type: string
+            status:
+              type: string
+            toolCallCount:
+              type: integer
+              minimum: 0
+            sandboxScriptCount:
+              type: integer
+              minimum: 0
+            artifactCount:
+              type: integer
+              minimum: 0
+            inputTokenCount:
+              type: integer
+              minimum: 0
+            outputTokenCount:
+              type: integer
+              minimum: 0
+            estimatedCostUsd:
+              type: number
+              minimum: 0
+            error:
+              type: string
+    AiChatRunFinalizeRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [runId, status]
+          properties:
+            runId:
+              type: string
+            status:
+              type: string
+            toolCallCount:
+              type: integer
+              minimum: 0
+            sandboxScriptCount:
+              type: integer
+              minimum: 0
+            artifactCount:
+              type: integer
+              minimum: 0
+            inputTokenCount:
+              type: integer
+              minimum: 0
+            outputTokenCount:
+              type: integer
+              minimum: 0
+            estimatedCostUsd:
+              type: number
+              minimum: 0
+            error:
+              type: string
+    AiChatRunMutationResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [run]
+          properties:
+            run:
+              type: object
+              additionalProperties: true
+        error:
+          $ref: "#/components/schemas/BridgeError"
     AiChatActionProposeRequest:
       allOf:
         - $ref: "#/components/schemas/BridgeEnvelope"
@@ -4392,7 +4747,7 @@ components:
           type: string
         kind:
           type: string
-          enum: [metric_timeseries, metric_stat, metric_table, metric_rich, log_table, trace_table, live_trace_table]
+          enum: [metric_timeseries, metric_stat, metric_table, metric_rich, log_table, trace_table, live_trace_table, alert_status, alert_history, alert_evidence]
         layout:
           type: object
           additionalProperties: false
@@ -4414,6 +4769,8 @@ components:
           $ref: "#/components/schemas/DashboardTraceWidgetInput"
         liveTraces:
           $ref: "#/components/schemas/DashboardLiveTraceWidgetInput"
+        alert:
+          $ref: "#/components/schemas/DashboardAlertWidgetInput"
     DashboardMetricWidgetInput:
       type: object
       additionalProperties: false
@@ -4611,6 +4968,28 @@ components:
           items:
             $ref: "../entities/attribute-filter.schema.json"
         limit: { type: integer, minimum: 1, maximum: 200 }
+    DashboardAlertWidgetInput:
+      type: object
+      additionalProperties: false
+      properties:
+        ruleIds:
+          type: array
+          maxItems: 20
+          items: { type: string }
+        states:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertState"
+        severities:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertSeverity"
+        signals:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlertSignal"
+        timeWindow: { type: string }
+        limit: { type: integer, minimum: 1, maximum: 100 }
     DashboardThresholdInput:
       type: object
       additionalProperties: false

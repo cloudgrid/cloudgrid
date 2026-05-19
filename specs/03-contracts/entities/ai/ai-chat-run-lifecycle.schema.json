@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIC-008",
+  "title": "AiChatRunLifecycle",
+  "type": "object",
+  "additionalProperties": false,
+  "oneOf": [
+    { "$ref": "#/$defs/createRun" },
+    { "$ref": "#/$defs/updateRun" },
+    { "$ref": "#/$defs/finalizeRun" }
+  ],
+  "$defs": {
+    "runStatus": {
+      "type": "string",
+      "enum": ["queued", "streaming", "completed", "failed", "cancelled", "awaiting_approval"]
+    },
+    "createRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "conversationId",
+        "projectId",
+        "userId",
+        "userMessageClientId",
+        "idempotencyKey",
+        "providerKind",
+        "providerProfileId",
+        "model"
+      ],
+      "properties": {
+        "conversationId": { "type": "string", "minLength": 1 },
+        "projectId": { "type": "string", "minLength": 1 },
+        "userId": { "type": "string", "minLength": 1 },
+        "userMessageClientId": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "idempotencyKey": { "type": "string", "minLength": 16, "maxLength": 160 },
+        "providerKind": { "type": "string", "minLength": 1 },
+        "providerProfileId": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "traceId": { "type": "string" }
+      }
+    },
+    "updateRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "status"],
+      "properties": {
+        "runId": { "type": "string", "minLength": 1 },
+        "status": { "$ref": "#/$defs/runStatus" },
+        "toolCallCount": { "type": "integer", "minimum": 0 },
+        "sandboxScriptCount": { "type": "integer", "minimum": 0 },
+        "artifactCount": { "type": "integer", "minimum": 0 },
+        "inputTokenCount": { "type": "integer", "minimum": 0 },
+        "outputTokenCount": { "type": "integer", "minimum": 0 },
+        "estimatedCostUsd": { "type": "number", "minimum": 0 },
+        "error": { "type": "string" }
+      }
+    },
+    "finalizeRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "status"],
+      "properties": {
+        "runId": { "type": "string", "minLength": 1 },
+        "status": { "$ref": "#/$defs/runStatus" },
+        "toolCallCount": { "type": "integer", "minimum": 0 },
+        "sandboxScriptCount": { "type": "integer", "minimum": 0 },
+        "artifactCount": { "type": "integer", "minimum": 0 },
+        "inputTokenCount": { "type": "integer", "minimum": 0 },
+        "outputTokenCount": { "type": "integer", "minimum": 0 },
+        "estimatedCostUsd": { "type": "number", "minimum": 0 },
+        "error": { "type": "string" }
+      }
+    }
+  }
+}

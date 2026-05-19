@@ -108,6 +108,7 @@ export const integrationScenarios = [
     covers: [
       "AlertRules",
       "AlertHistory",
+      "AlertSummary",
       "AlertSilences",
       "CreateAlertRule",
       "UpdateAlertRule",
@@ -141,6 +142,19 @@ export const integrationScenarios = [
       "DatasetExport",
       "AiQualityOverview",
       "LiveExperimentRun",
+    ],
+  },
+  {
+    id: "ai-chat.workspace",
+    mode: "local-e2e",
+    description:
+      "Exercises AI Chat provider status, history, conversation creation, conversation reads, and action approval through the local GraphQL stack.",
+    covers: [
+      "CompanyAiProviderSettings",
+      "AiChatHistory",
+      "AiChatConversation",
+      "CreateAiChatConversation",
+      "ApproveAiChatAction",
     ],
   },
 ] as const satisfies readonly IntegrationScenario[];

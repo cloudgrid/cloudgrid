@@ -28,6 +28,7 @@ type Query {
   retentionPolicy(projectId: ID!): RetentionPolicy!
   alertRules(projectId: ID!, input: AlertRuleSearchInput): [AlertRule!]!
   alertHistory(projectId: ID!, ruleId: ID, first: Int = 50, after: String): AlertEventConnection!
+  alertSummary(projectId: ID!, input: AlertSummaryInput = {}): AlertSummary!
   alertSilences(projectId: ID!, ruleId: ID): [AlertSilence!]!
   agentRuns(input: AgentRunSearchInput = {}): AgentRunSearchResult!
   agentRun(id: ID!): AgentRun
@@ -320,6 +321,7 @@ input DashboardWidgetInput {
   logs: DashboardLogWidgetInput
   traces: DashboardTraceWidgetInput
   liveTraces: DashboardLiveTraceWidgetInput
+  alert: DashboardAlertWidgetInput
 }
 
 input DashboardWidgetLayoutInput {
@@ -437,6 +439,24 @@ input DashboardLiveTraceWidgetInput {
   maxDurationMs: Float
   attributes: [AttributeFilterInput!] = []
   limit: Int = 100
+}
+
+input DashboardAlertWidgetInput {
+  ruleIds: [ID!] = []
+  states: [AlertState!] = []
+  severities: [AlertSeverity!] = []
+  signals: [AlertSignal!] = []
+  timeWindow: String = "PT1H"
+  limit: Int = 20
+}
+
+input AlertSummaryInput {
+  ruleIds: [ID!] = []
+  states: [AlertState!] = []
+  severities: [AlertSeverity!] = []
+  signals: [AlertSignal!] = []
+  timeWindow: String = "PT1H"
+  limit: Int = 20
 }
 
 input DashboardThresholdInput {
@@ -919,6 +939,9 @@ enum DashboardWidgetKind {
   log_table
   trace_table
   live_trace_table
+  alert_status
+  alert_history
+  alert_evidence
 }
 
 enum DashboardMetricFormulaExpressionKind {
@@ -1486,6 +1509,28 @@ type AlertEventConnection {
   pageInfo: PageInfo!
 }
 
+type AlertSummary {
+  totalCount: Int!
+  byState: [AlertStateCount!]!
+  bySeverity: [AlertSeverityCount!]!
+  bySignal: [AlertSignalCount!]!
+}
+
+type AlertStateCount {
+  state: AlertState!
+  count: Int!
+}
+
+type AlertSeverityCount {
+  severity: AlertSeverity!
+  count: Int!
+}
+
+type AlertSignalCount {
+  signal: AlertSignal!
+  count: Int!
+}
+
 type Trace {
   id: ID!
   serviceName: String
@@ -1795,6 +1840,7 @@ type DashboardWidget {
   logs: DashboardLogWidget
   traces: DashboardTraceWidget
   liveTraces: DashboardLiveTraceWidget
+  alert: DashboardAlertWidget
 }
 
 type DashboardWidgetLayout {
@@ -1905,6 +1951,15 @@ type DashboardLiveTraceWidget {
   minDurationMs: Float
   maxDurationMs: Float
   attributes: [AttributeFilter!]!
+  limit: Int!
+}
+
+type DashboardAlertWidget {
+  ruleIds: [ID!]!
+  states: [AlertState!]!
+  severities: [AlertSeverity!]!
+  signals: [AlertSignal!]!
+  timeWindow: String!
   limit: Int!
 }
 

@@ -24,6 +24,9 @@ const (
 	DashboardWidgetKindLogTable         DashboardWidgetKind = "log_table"
 	DashboardWidgetKindTraceTable       DashboardWidgetKind = "trace_table"
 	DashboardWidgetKindLiveTraceTable   DashboardWidgetKind = "live_trace_table"
+	DashboardWidgetKindAlertStatus      DashboardWidgetKind = "alert_status"
+	DashboardWidgetKindAlertHistory     DashboardWidgetKind = "alert_history"
+	DashboardWidgetKindAlertEvidence    DashboardWidgetKind = "alert_evidence"
 )
 
 type DashboardThresholdSeverity string
@@ -73,6 +76,7 @@ type DashboardWidgetInput struct {
 	Logs        *DashboardLogWidgetInput        `json:"logs,omitempty"`
 	Traces      *DashboardTraceWidgetInput      `json:"traces,omitempty"`
 	LiveTraces  *DashboardLiveTraceWidgetInput  `json:"liveTraces,omitempty"`
+	Alert       *DashboardAlertWidgetInput      `json:"alert,omitempty"`
 }
 
 type DashboardMetricWidgetInput struct {
@@ -149,6 +153,15 @@ type DashboardLiveTraceWidgetInput struct {
 	Limit         *int                        `json:"limit,omitempty"`
 }
 
+type DashboardAlertWidgetInput struct {
+	RuleIDs    []string                  `json:"ruleIds,omitempty"`
+	States     []contracts.AlertState    `json:"states,omitempty"`
+	Severities []contracts.AlertSeverity `json:"severities,omitempty"`
+	Signals    []contracts.AlertSignal   `json:"signals,omitempty"`
+	TimeWindow *string                   `json:"timeWindow,omitempty"`
+	Limit      *int                      `json:"limit,omitempty"`
+}
+
 type DashboardThresholdInput struct {
 	Value    float64                    `json:"value"`
 	Severity DashboardThresholdSeverity `json:"severity"`
@@ -175,6 +188,7 @@ type DashboardWidget struct {
 	Logs        *DashboardLogWidgetInput        `json:"logs,omitempty"`
 	Traces      *DashboardTraceWidgetInput      `json:"traces,omitempty"`
 	LiveTraces  *DashboardLiveTraceWidgetInput  `json:"liveTraces,omitempty"`
+	Alert       *DashboardAlertWidgetInput      `json:"alert,omitempty"`
 }
 
 type Dashboard struct {

@@ -116,7 +116,10 @@ export type DashboardWidgetKind =
   | "metric_rich"
   | "log_table"
   | "trace_table"
-  | "live_trace_table";
+  | "live_trace_table"
+  | "alert_status"
+  | "alert_history"
+  | "alert_evidence";
 
 export type DashboardMetricFormulaExpressionKind =
   | "ref"
@@ -427,6 +430,7 @@ export interface DashboardWidgetInput {
   logs?: DashboardLogWidgetInput | null;
   traces?: DashboardTraceWidgetInput | null;
   liveTraces?: DashboardLiveTraceWidgetInput | null;
+  alert?: DashboardAlertWidgetInput | null;
 }
 
 export interface DashboardWidgetLayoutInput {
@@ -537,6 +541,15 @@ export interface DashboardLiveTraceWidgetInput {
   minDurationMs?: number | null;
   maxDurationMs?: number | null;
   attributes?: AttributeFilterInput[] | null;
+  limit?: number | null;
+}
+
+export interface DashboardAlertWidgetInput {
+  ruleIds?: string[] | null;
+  states?: AlertState[] | null;
+  severities?: AlertSeverity[] | null;
+  signals?: AlertSignal[] | null;
+  timeWindow?: string | null;
   limit?: number | null;
 }
 
@@ -1915,6 +1928,7 @@ export interface DashboardWidget {
   logs?: DashboardLogWidget | null;
   traces?: DashboardTraceWidget | null;
   liveTraces?: DashboardLiveTraceWidget | null;
+  alert?: DashboardAlertWidget | null;
 }
 
 export interface DashboardWidgetLayout {
@@ -2025,6 +2039,15 @@ export interface DashboardLiveTraceWidget {
   minDurationMs?: number | null;
   maxDurationMs?: number | null;
   attributes: AttributeFilterInput[];
+  limit: number;
+}
+
+export interface DashboardAlertWidget {
+  ruleIds: string[];
+  states: AlertState[];
+  severities: AlertSeverity[];
+  signals: AlertSignal[];
+  timeWindow: string;
   limit: number;
 }
 
@@ -2228,6 +2251,37 @@ export interface AlertEventConnection {
   pageInfo: PageInfo;
 }
 
+export interface AlertSummaryInput {
+  ruleIds?: string[] | null;
+  states?: AlertState[] | null;
+  severities?: AlertSeverity[] | null;
+  signals?: AlertSignal[] | null;
+  timeWindow?: string | null;
+  limit?: number | null;
+}
+
+export interface AlertStateCount {
+  state: AlertState;
+  count: number;
+}
+
+export interface AlertSeverityCount {
+  severity: AlertSeverity;
+  count: number;
+}
+
+export interface AlertSignalCount {
+  signal: AlertSignal;
+  count: number;
+}
+
+export interface AlertSummary {
+  totalCount: number;
+  byState: AlertStateCount[];
+  bySeverity: AlertSeverityCount[];
+  bySignal: AlertSignalCount[];
+}
+
 export interface GraphQLRequest<
   Variables extends Record<string, unknown> = Record<string, unknown>,
 > {
@@ -2327,6 +2381,10 @@ export interface AlertRulesQueryData {
 
 export interface AlertHistoryQueryData {
   alertHistory: AlertEventConnection;
+}
+
+export interface AlertSummaryQueryData {
+  alertSummary: AlertSummary;
 }
 
 export interface AlertSilencesQueryData {

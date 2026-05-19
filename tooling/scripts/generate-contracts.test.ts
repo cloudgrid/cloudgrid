@@ -55,6 +55,20 @@ describe("contract generation", () => {
     }
   });
 
+  test("AI Chat stream event metadata matches the stream schema", () => {
+    const schema = JSON.parse(
+      readFileSync(join(root, "specs/03-contracts/entities/ai/ai-chat-stream.schema.json"), "utf8"),
+    ) as {
+      $defs: {
+        streamEvent: {
+          properties: { type: { enum: string[] } };
+        };
+      };
+    };
+
+    expect(AI_CHAT_STREAM_EVENT_TYPES).toEqual(schema.$defs.streamEvent.properties.type.enum);
+  });
+
   test("public API GraphQL operations validate against the public schema", () => {
     const schema = buildSchema(
       readFileSync(join(root, "specs/03-contracts/graphql/public-schema.graphql"), "utf8"),

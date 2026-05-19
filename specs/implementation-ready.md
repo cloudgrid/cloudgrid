@@ -2,9 +2,9 @@
 id: IDX-002
 title: Implementation-ready feature and improvement index
 layer: foundation
-status: draft
+status: active
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-18
+updated: 2026-05-19
 provenance: user-directed
 ---
 
@@ -17,6 +17,30 @@ contract, expected write scope, acceptance evidence, and verification gates.
 Implementation agents must still read the linked source specs before editing
 code. If an implementation detail is missing from the linked specs, update the
 source spec first instead of expanding behavior locally.
+
+## Implementation Status
+
+Status values:
+
+- `complete`: required implementation and verification evidence are present.
+- `partial`: implementation has landed for part of the required scope, but the
+  listed acceptance evidence is not complete.
+- `blocked-by-environment`: repository code exists, but completion requires an
+  external deployment, release run, or benchmark target.
+- `not-started`: no implementation has landed for this index item in the
+  current completion pass.
+
+| Item | Status | Current evidence | Remaining implementation requirements |
+| --- | --- | --- | --- |
+| IR-001 | partial | SurrealDB retention client, startup wiring, query builders, schema/readiness, storage-read soft-delete filters, storage-write soft-delete fields, and opt-in adapter tests exist. `go test ./core/storage-maintenance/...` and `go test -tags surrealdb ./core/storage-maintenance/...` pass. | Complete live SurrealDB tests for every executable data class, cover soft delete/final delete, dry-run mutation checks, and lease contention/reacquire. |
+| IR-002 | complete | `control.projects.list_for_service`, alert evaluator discovery mode/startup validation, webhook/email dispatch adapters, notification adapter catalog validation, typed alert dashboard widgets, `Query.alertSummary(projectId,input)`, public API/integration scenario coverage, and dashboard UI rendering exist. `bun run contracts:check`, `bun run typecheck`, targeted BFF/frontend tests, and `go test -tags surrealdb ./core/control-plane/... ./core/alert-evaluator/...` pass. | None for the alert execution package. |
+| IR-003 | complete | Collector local/deployed bearer routing and sanitized auth failures exist; control-plane final-admin safeguards exist; storage-read fails closed for SSO read/live scopes and tenant mismatch; storage-write rejects deployed ingest commands without collector-authorized tenant/company/project routing; BFF GraphQL HTTP, WebSocket, and protected app shell coverage exists. `bun test apps/backend/src/static.test.ts apps/backend/src/auth.test.ts apps/backend/src/graphql-ws.test.ts` and `go test -tags surrealdb ./core/otlp-collector/... ./core/storage-read/... ./core/storage-write/... ./core/control-plane/...` pass. | None for deployed-mode auth hardening. |
+| IR-004 | blocked-by-environment | Benchmark commands, sizing/release docs, and benchmark JSON release identity fields exist. Production profiles require `CLOUDGRID_BENCH_DEPLOYMENT_PROFILE=production-like`, `CLOUDGRID_BENCH_ENVIRONMENT_ID`, and `CLOUDGRID_BENCH_IMAGE_TAG`. `bun test tooling/scripts/bench.test.mjs` passes. | Run production benchmark commands against the exact deployment being promoted and store the JSON evidence with release identity, thresholds, and pass/fail status. |
+| IR-005 | complete | AI provider and AI Chat generated metadata, BFF bridge/resolvers, validation, integration scenario coverage, and contract drift checks are present. `bun run contracts:check` passes. | None for the contract wave. Runtime/UI execution remains IR-006. |
+| IR-006 | partial | `/ai-chat` route, project navigation, provider status/history/conversation reads, safe artifact previews, server-issued action approval UI, BFF SSE stream endpoint, ordered terminal stream events, abort cleanup, public API stream client helper, follow-up prompt streaming UI, durable run create/update/finalize contracts, control-plane run idempotency, tests, and handbook docs are present. `bun run contracts:check`, `bun run typecheck`, targeted BFF/frontend tests, and `go test -tags surrealdb ./core/control-plane/...` pass. | Complete AI Elements/json-render component integration and richer provider settings forms for company/project configuration. |
+| IR-007 | complete | No dedicated `core/log-ingest` service is specified for this wave; the collector still serves `POST /v1/logs`, publishes `telemetry.ingest.logs`, and storage-write receives the existing durable log command contract. | None unless a future backend ingestion wave explicitly introduces `core/log-ingest`. |
+| IR-008 | complete | Website handbook now covers Helm install, external NATS/SurrealDB, image customization, private registry/air-gapped installs, release verification, upgrade/rollback, and sizing. `bun run --cwd website build` passes. | None for documentation scope. Environment-specific values and verified release assets are produced outside the docs pass. |
+| IR-009 | partial | Shared Go OTLP trace/log exporter now supports per-signal toggles, bounded sanitized log records, trace/span IDs, severity numbers, observed timestamps, log scope naming, dropped-buffer metrics, rate-limited exporter failure warnings, and sanitization tests. AI-eval runner now wires exporter startup, NATS handler spans/failure logs, and shutdown flush. `go test -tags surrealdb ./core/go-runtime/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/...` passes. | Complete full-service log event coverage evidence across BFF, collector, control-plane, storage-read, storage-write, and AI-eval runner, plus normal Logs UI inspection evidence for the self-observability project. |
 
 ## IR-001: Production SurrealDB Retention Adapter
 

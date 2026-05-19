@@ -510,6 +510,13 @@ describe("NATS telemetry query bridge", () => {
     });
     await bridge.deleteAlertSilence("silence-1");
     await bridge.alertHistory("project-1", "rule-1", 25, "cursor-1");
+    await bridge.alertSummary("project-1", {
+      states: ["FIRING"],
+      severities: ["ERROR"],
+      signals: ["TRACE"],
+      timeWindow: "PT1H",
+      limit: 20,
+    });
 
     expect(requests.map((request) => request.subject)).toEqual([
       "control.project_members.list",
@@ -525,6 +532,7 @@ describe("NATS telemetry query bridge", () => {
       "control.alert_silences.create",
       "control.alert_silences.delete",
       "control.alert_history.list",
+      "control.alert_summary.get",
     ]);
     expect(requests[0]?.payload).toMatchObject({ projectId: "project-1" });
     expect(requests[1]?.payload).toMatchObject({
@@ -549,6 +557,16 @@ describe("NATS telemetry query bridge", () => {
       ruleId: "rule-1",
       first: 25,
       after: "cursor-1",
+    });
+    expect(requests[13]?.payload).toMatchObject({
+      projectId: "project-1",
+      input: {
+        states: ["FIRING"],
+        severities: ["ERROR"],
+        signals: ["TRACE"],
+        timeWindow: "PT1H",
+        limit: 20,
+      },
     });
   });
 
@@ -1001,6 +1019,8 @@ function controlResponseFor(subject: string) {
       return { silence: alertSilence() };
     case "control.alert_history.list":
       return { connection: alertHistory() };
+    case "control.alert_summary.get":
+      return { summary: alertSummary() };
     default:
       throw new Error(`unexpected subject ${subject}`);
   }
@@ -1139,5 +1159,14 @@ function alertHistory() {
       },
     ],
     pageInfo: { hasNextPage: false, endCursor: null },
+  };
+}
+
+function alertSummary() {
+  return {
+    totalCount: 1,
+    byState: [{ state: "FIRING", count: 1 }],
+    bySeverity: [{ severity: "ERROR", count: 1 }],
+    bySignal: [{ signal: "TRACE", count: 1 }],
   };
 }

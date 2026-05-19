@@ -405,6 +405,38 @@ func TestLiveTraceStartRejectsDeniedReadAuthorization(t *testing.T) {
 	}
 }
 
+func TestLiveTraceStartRequiresLiveScopeForSSOAuthContext(t *testing.T) {
+	readAllowed := true
+	registry := NewLiveTraceRegistry(&liveTestStore{}, &liveTestPublisher{}, LiveTraceOptions{Now: fixedLiveNow})
+
+	_, err := registry.Start(context.Background(), contracts.LiveTraceStartRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{
+			RequestID: "req-live-sso",
+			AuthContext: &contracts.AuthContext{
+				AuthMode:    ptr("sso"),
+				TenantID:    ptr("tenant-1"),
+				CompanyID:   ptr("company-1"),
+				ProjectID:   ptr("project-1"),
+				Scopes:      []string{"telemetry:read"},
+				ReadAllowed: &readAllowed,
+			},
+		},
+		SubscriptionID: "sub-live-sso",
+		SinkSubject:    "telemetry.traces.live.events.bff-1.sub-live-sso",
+		Query:          contracts.LiveTraceQuery{},
+	})
+	if err == nil {
+		t.Fatal("Start() error = nil, want missing telemetry:live to fail closed")
+	}
+	var bridgeErr codedBridgeError
+	if !errors.As(err, &bridgeErr) || bridgeErr.bridge.ID != "ERR-016" {
+		t.Fatalf("Start() error = %v, want ERR-016", err)
+	}
+	if registry.Count() != 0 {
+		t.Fatalf("subscription count = %d, want rejected live auth not registered", registry.Count())
+	}
+}
+
 func TestLiveTraceStartRemovesSubscriptionWhenInitialHeartbeatPublishFails(t *testing.T) {
 	publisher := &liveTestPublisher{err: errors.New("publish failed")}
 	registry := NewLiveTraceRegistry(&liveTestStore{}, publisher, LiveTraceOptions{Now: fixedLiveNow})

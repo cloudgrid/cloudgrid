@@ -38,6 +38,14 @@ func ResolveProjectTelemetryTarget(target contracts.ProjectTelemetryOverviewTarg
 	if tenantID == "" {
 		tenantID = localTenantID
 	}
+	authMode := localAuthMode
+	if auth != nil && strings.TrimSpace(pointerString(auth.AuthMode)) == deployedAuthMode {
+		authMode = deployedAuthMode
+		authTenantID := strings.TrimSpace(pointerString(auth.TenantID))
+		if authTenantID != "" && tenantID != authTenantID {
+			return TelemetryTarget{}, fmt.Errorf("ERR-016 FORBIDDEN: tenant mismatch")
+		}
+	}
 	companyID := strings.TrimSpace(target.CompanyID)
 	projectID := strings.TrimSpace(target.ProjectID)
 	if companyID == "" {
@@ -54,10 +62,6 @@ func ResolveProjectTelemetryTarget(target contracts.ProjectTelemetryOverviewTarg
 	}
 	if err := validateTelemetryIdentifier("projectId", projectID); err != nil {
 		return TelemetryTarget{}, err
-	}
-	authMode := localAuthMode
-	if auth != nil && strings.TrimSpace(pointerString(auth.AuthMode)) == deployedAuthMode {
-		authMode = deployedAuthMode
 	}
 	return TelemetryTarget{
 		Namespace: "cg_tenant_" + tenantID,

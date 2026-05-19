@@ -22,7 +22,11 @@ func ConnectNATS(url string) (*nats.Conn, error) {
 }
 
 func SubscribeRunnerHandlers(nc *nats.Conn, runner *orchestrator.Runner, logger *slog.Logger) ([]*nats.Subscription, error) {
-	service := NewRunnerService(runner, logger)
+	return SubscribeRunnerHandlersWithOptions(nc, runner, logger, RunnerServiceOptions{})
+}
+
+func SubscribeRunnerHandlersWithOptions(nc *nats.Conn, runner *orchestrator.Runner, logger *slog.Logger, options RunnerServiceOptions) ([]*nats.Subscription, error) {
+	service := NewRunnerServiceWithOptions(runner, logger, options)
 	subscriptions := make([]*nats.Subscription, 0, len(service.SubjectHandlers()))
 	for subject, handler := range service.SubjectHandlers() {
 		subscription, err := nc.Subscribe(subject, adaptNATSHandler(handler))

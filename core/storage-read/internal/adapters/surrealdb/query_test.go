@@ -38,6 +38,7 @@ func TestBuildTraceSearchQueryUsesFiltersParametersAndDeterministicSort(t *testi
 	assertContains(t, stmt.SQL, "tenantId = $tenantId")
 	assertContains(t, stmt.SQL, "companyId = $companyId")
 	assertContains(t, stmt.SQL, "projectId = $projectId")
+	assertContains(t, stmt.SQL, "deletedAt = NONE")
 	assertContains(t, stmt.SQL, "serviceName = $service")
 	assertContains(t, stmt.SQL, "status = $status")
 	assertContains(t, stmt.SQL, "startedAt >= $from")
@@ -86,6 +87,9 @@ func TestBuildProjectTelemetryOverviewQueriesUseOwnershipAndReadOnlyStatements(t
 		assertContains(t, stmt.SQL, "tenantId = $tenantId")
 		assertContains(t, stmt.SQL, "companyId = $companyId")
 		assertContains(t, stmt.SQL, "projectId = $projectId")
+		if name != "lastIngest" && name != "services" {
+			assertContains(t, stmt.SQL, "deletedAt = NONE")
+		}
 		assertNoMutation(t, stmt.SQL)
 		if stmt.Params["tenantId"] != "tenant-1" || stmt.Params["companyId"] != "company-1" || stmt.Params["projectId"] != "project-1" {
 			t.Fatalf("%s params = %#v, want ownership params", name, stmt.Params)
@@ -115,6 +119,21 @@ func TestResolveProjectTelemetryTargetUsesExplicitProjectAndAuthTenant(t *testin
 	}
 	if target.TenantID != tenantID || target.CompanyID != "company-1" || target.ProjectID != "project-1" || target.AuthMode != deployedAuthMode {
 		t.Fatalf("target = %#v, want auth tenant and explicit company/project", target)
+	}
+}
+
+func TestResolveProjectTelemetryTargetRejectsTenantMismatchInSSOMode(t *testing.T) {
+	authMode := "sso"
+	tenantID := "tenant-1"
+	otherTenantID := "tenant-2"
+
+	_, err := ResolveProjectTelemetryTarget(contracts.ProjectTelemetryOverviewTarget{
+		TenantID:  &otherTenantID,
+		CompanyID: "company-1",
+		ProjectID: "project-1",
+	}, &contracts.AuthContext{AuthMode: &authMode, TenantID: &tenantID})
+	if err == nil || !strings.Contains(err.Error(), "ERR-016") {
+		t.Fatalf("ResolveProjectTelemetryTarget error = %v, want tenant mismatch ERR-016", err)
 	}
 }
 
@@ -249,6 +268,7 @@ func TestBuildTraceDetailQueryUsesTraceIDAndReadOnlyStatements(t *testing.T) {
 	assertContains(t, stmt.SQL, "traceId = $traceId")
 	assertContains(t, stmt.SQL, "tenantId = $tenantId")
 	assertContains(t, stmt.SQL, "projectId = $projectId")
+	assertContains(t, stmt.SQL, "deletedAt = NONE")
 	assertContains(t, stmt.SQL, "FROM span")
 	assertContains(t, stmt.SQL, "ORDER BY startedAt ASC, spanId ASC")
 	assertContains(t, stmt.SQL, "FROM log_event")

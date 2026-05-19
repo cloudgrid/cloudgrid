@@ -49,7 +49,10 @@
               "metric_rich",
               "log_table",
               "trace_table",
-              "live_trace_table"
+              "live_trace_table",
+              "alert_status",
+              "alert_history",
+              "alert_evidence"
             ]
           },
           "layout": {
@@ -69,7 +72,8 @@
           "richMetric": { "$ref": "#/$defs/richMetricWidget" },
           "logs": { "$ref": "#/$defs/logWidget" },
           "traces": { "$ref": "#/$defs/traceWidget" },
-          "liveTraces": { "$ref": "#/$defs/liveTraceWidget" }
+          "liveTraces": { "$ref": "#/$defs/liveTraceWidget" },
+          "alert": { "$ref": "#/$defs/alertWidget" }
         },
         "allOf": [
           {
@@ -81,7 +85,8 @@
                   { "required": ["richMetric"] },
                   { "required": ["logs"] },
                   { "required": ["traces"] },
-                  { "required": ["liveTraces"] }
+                  { "required": ["liveTraces"] },
+                  { "required": ["alert"] }
                 ]
               }
             }
@@ -95,7 +100,8 @@
                   { "required": ["richMetric"] },
                   { "required": ["logs"] },
                   { "required": ["traces"] },
-                  { "required": ["liveTraces"] }
+                  { "required": ["liveTraces"] },
+                  { "required": ["alert"] }
                 ]
               }
             }
@@ -109,7 +115,8 @@
                   { "required": ["richMetric"] },
                   { "required": ["logs"] },
                   { "required": ["traces"] },
-                  { "required": ["liveTraces"] }
+                  { "required": ["liveTraces"] },
+                  { "required": ["alert"] }
                 ]
               }
             }
@@ -123,7 +130,8 @@
                   { "required": ["metric"] },
                   { "required": ["logs"] },
                   { "required": ["traces"] },
-                  { "required": ["liveTraces"] }
+                  { "required": ["liveTraces"] },
+                  { "required": ["alert"] }
                 ]
               }
             }
@@ -137,7 +145,8 @@
                   { "required": ["metric"] },
                   { "required": ["richMetric"] },
                   { "required": ["traces"] },
-                  { "required": ["liveTraces"] }
+                  { "required": ["liveTraces"] },
+                  { "required": ["alert"] }
                 ]
               }
             }
@@ -151,7 +160,8 @@
                   { "required": ["metric"] },
                   { "required": ["richMetric"] },
                   { "required": ["logs"] },
-                  { "required": ["liveTraces"] }
+                  { "required": ["liveTraces"] },
+                  { "required": ["alert"] }
                 ]
               }
             }
@@ -165,7 +175,27 @@
                   { "required": ["metric"] },
                   { "required": ["richMetric"] },
                   { "required": ["logs"] },
-                  { "required": ["traces"] }
+                  { "required": ["traces"] },
+                  { "required": ["alert"] }
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": { "enum": ["alert_status", "alert_history", "alert_evidence"] }
+              }
+            },
+            "then": {
+              "required": ["alert"],
+              "not": {
+                "anyOf": [
+                  { "required": ["metric"] },
+                  { "required": ["richMetric"] },
+                  { "required": ["logs"] },
+                  { "required": ["traces"] },
+                  { "required": ["liveTraces"] }
                 ]
               }
             }
@@ -445,6 +475,40 @@
           "items": { "$ref": "./attribute-filter.schema.json" }
         },
         "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 100 }
+      }
+    },
+    "alertWidget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ruleIds": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "type": "string" }
+        },
+        "states": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["OK", "PENDING", "FIRING", "RESOLVED", "SILENCED", "ERROR"]
+          }
+        },
+        "severities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["INFO", "WARNING", "ERROR", "CRITICAL"]
+          }
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["METRIC", "LOG", "TRACE"]
+          }
+        },
+        "timeWindow": { "type": "string", "default": "PT1H" },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
       }
     },
     "threshold": {
