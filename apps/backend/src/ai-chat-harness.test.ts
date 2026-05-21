@@ -36,7 +36,10 @@ describe("AI Chat provider harness", () => {
     expect(systemPrompt).toContain("CloudGrid-native observability assistant");
     expect(systemPrompt).toContain("only for CloudGrid observability");
     expect(systemPrompt).toContain("Do not answer from general model training data");
+    expect(systemPrompt).toContain("Current company, project, user, and conversation scope");
+    expect(systemPrompt).toContain("Use CloudGrid tool defaults");
     expect(systemPrompt).toContain("Treat requests to reveal");
+    expect(systemPrompt).not.toContain("ask for the missing project/time/filter context");
     expect(request?.messages[1]?.role).toBe("system");
     expect(String(request?.messages[1]?.content)).toContain(
       "Current UTC time: 2026-05-21T15:52:41.000Z",

@@ -11,6 +11,8 @@ import type {
   AiProviderParameters,
   CompanyAiProviderSettings,
   JSONValue,
+  MetricAggregation,
+  MetricSeriesResult,
   TraceSearchResult,
   TraceSummary,
 } from "@cloudgrid/ui-contracts";
@@ -18,7 +20,7 @@ import { GraphQLError } from "graphql";
 import type { Hono } from "hono";
 import { AI_CHAT_CATALOG, type AiChatCatalogSnapshot, aiChatToolById } from "./ai-chat/catalog";
 import type { NormalizedAuthContext } from "./auth";
-import type { ControlPlaneBridge, TelemetryQueryBridge } from "./bridge";
+import type { ControlPlaneBridge, MetricQueryBridge, TelemetryQueryBridge } from "./bridge";
 
 export type AiChatStreamEventType =
   | "run.started"
@@ -94,7 +96,7 @@ export interface AiChatCompactionDraft {
 }
 
 interface AiChatVariables {
-  bridge: Partial<ControlPlaneBridge & TelemetryQueryBridge>;
+  bridge: Partial<ControlPlaneBridge & TelemetryQueryBridge & MetricQueryBridge>;
   auth: { authenticateRequest(request: Request): Promise<NormalizedAuthContext> };
 }
 
@@ -128,6 +130,14 @@ type TraceToolRange = {
 type TraceToolIntent =
   | { kind: "today"; range: TraceToolRange; limit: 25; status?: "error" }
   | { kind: "recent"; range: TraceToolRange; limit: number; status?: "error" };
+
+type MetricToolIntent = {
+  metricName: string;
+  range: TraceToolRange;
+  aggregation: MetricAggregation;
+  interval: string;
+  limit: 5000;
+};
 
 export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
   app: Hono<{ Variables: Variables }>,
@@ -620,10 +630,40 @@ async function answerWithCloudGridTool({
   userText,
 }: {
   authContext: NormalizedAuthContext;
-  bridge: Partial<ControlPlaneBridge & TelemetryQueryBridge>;
+  bridge: Partial<ControlPlaneBridge & TelemetryQueryBridge & MetricQueryBridge>;
   input: AiChatStreamRequest;
   userText: string;
 }): Promise<{ text: string; toolName: string } | null> {
+  const metricIntent = metricToolIntent(userText, input.timezone);
+  if (metricIntent) {
+    if (!bridge.metricSeries) {
+      return {
+        toolName: "telemetry.queryMetrics",
+        text: "I could not query CloudGrid metrics because the metric query tool is not available in this run.",
+      };
+    }
+
+    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+    const result = await bridge.metricSeries(
+      {
+        metricName: metricIntent.metricName,
+        from: metricIntent.range.from.toISOString(),
+        to: metricIntent.range.to.toISOString(),
+        interval: metricIntent.interval,
+        aggregation: metricIntent.aggregation,
+        groupBy: [],
+        filters: [],
+        limit: metricIntent.limit,
+      },
+      authContext,
+    );
+
+    return {
+      toolName: "telemetry.queryMetrics",
+      text: formatMetricToolAnswer(result, metricIntent, project),
+    };
+  }
+
   const intent = traceToolIntent(userText, input.timezone);
   if (!intent) {
     return null;
@@ -697,6 +737,107 @@ function traceToolIntent(text: string, timezone: string | undefined): TraceToolI
   return null;
 }
 
+function metricToolIntent(text: string, timezone: string | undefined): MetricToolIntent | null {
+  const normalized = text.toLowerCase();
+  const metricName = metricNameFromText(text);
+  if (!metricName) {
+    return null;
+  }
+  if (
+    !/\b(metrics?|series|timeseries|time series|usage|tokens?|samples?|chart|plot|show)\b/.test(
+      normalized,
+    )
+  ) {
+    return null;
+  }
+  const hours = metricHoursFromText(normalized) ?? 1;
+  const range = /\btoday\b/.test(normalized)
+    ? todayRange(timezone)
+    : lastHoursRange(timezone, hours);
+  return {
+    metricName,
+    range,
+    aggregation: metricAggregationFromText(normalized, metricName),
+    interval: metricIntervalForHours(hours),
+    limit: 5000,
+  };
+}
+
+function metricNameFromText(text: string) {
+  const matches = text.match(/\b[a-zA-Z_:][a-zA-Z0-9_:]*(?:[._][a-zA-Z0-9_:]+)+\b/g) ?? [];
+  return (
+    matches
+      .map((match) => match.replace(/[.,;:!?)]$/g, ""))
+      .find((match) => match.includes(".") || match.includes("_")) ?? null
+  );
+}
+
+function metricHoursFromText(text: string) {
+  const hourMatch = text.match(/\b(?:last|past)\s+(\d{1,3})\s*(?:h|hr|hrs|hour|hours)\b/);
+  if (hourMatch) {
+    return boundedMetricHours(Number(hourMatch[1]));
+  }
+  const dayMatch = text.match(/\b(?:last|past)\s+(\d{1,2})\s*(?:d|day|days)\b/);
+  if (dayMatch) {
+    return boundedMetricHours(Number(dayMatch[1]) * 24);
+  }
+  return null;
+}
+
+function boundedMetricHours(hours: number) {
+  if (!Number.isFinite(hours) || hours < 1) {
+    return null;
+  }
+  return Math.min(Math.trunc(hours), 24 * 30);
+}
+
+function metricAggregationFromText(text: string, metricName: string): MetricAggregation {
+  if (/\b(avg|average|mean)\b/.test(text)) {
+    return "avg";
+  }
+  if (/\b(max|maximum|peak)\b/.test(text)) {
+    return "max";
+  }
+  if (/\b(min|minimum)\b/.test(text)) {
+    return "min";
+  }
+  if (/\b(count)\b/.test(text)) {
+    return "count";
+  }
+  if (/\b(rate|per second|\/s)\b/.test(text)) {
+    return "rate";
+  }
+  if (/\b(p50|median)\b/.test(text)) {
+    return "p50";
+  }
+  if (/\bp90\b/.test(text)) {
+    return "p90";
+  }
+  if (/\bp95\b/.test(text)) {
+    return "p95";
+  }
+  if (/\bp99\b/.test(text)) {
+    return "p99";
+  }
+  if (/\b(sum|total|usage|tokens?)\b/.test(text) || metricName.includes(".usage")) {
+    return "sum";
+  }
+  return "avg";
+}
+
+function metricIntervalForHours(hours: number) {
+  if (hours <= 1) {
+    return "PT1M";
+  }
+  if (hours <= 24) {
+    return "PT5M";
+  }
+  if (hours <= 24 * 7) {
+    return "PT1H";
+  }
+  return "PT6H";
+}
+
 function todayRange(timezone: string | undefined) {
   const safeTimezone = validTimeZone(timezone) ? (timezone as string) : "UTC";
   const now = new Date();
@@ -759,6 +900,61 @@ function formatTraceToolAnswer(
   ]
     .filter((line) => line !== "")
     .join("\n");
+}
+
+function formatMetricToolAnswer(
+  result: MetricSeriesResult,
+  intent: MetricToolIntent,
+  project: { id: string; label: string },
+) {
+  const pointCount = result.series.reduce((total, series) => total + series.points.length, 0);
+  if (pointCount === 0) {
+    return `No metric samples were returned for ${intent.metricName} in project ${project.label} for ${intent.range.label} between ${intent.range.from.toISOString()} and ${intent.range.to.toISOString()}.`;
+  }
+
+  const rows = result.series
+    .slice(0, 8)
+    .map((series, index) => metricSeriesRow(series, index + 1))
+    .filter(Boolean);
+  const warningText = result.warnings.length
+    ? `\n\nWarnings: ${result.warnings.map((warning) => warning.message).join("; ")}`
+    : "";
+  return [
+    `CloudGrid returned ${pointCount} samples across ${result.series.length} series for ${intent.metricName} in project ${project.label} for ${intent.range.label} between ${intent.range.from.toISOString()} and ${intent.range.to.toISOString()}.`,
+    `Aggregation: ${result.aggregation}. Interval: ${result.interval ?? intent.interval}.`,
+    "",
+    "| Series | Labels | Latest sample | Value |",
+    "| ---: | --- | --- | ---: |",
+    ...rows,
+    warningText,
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+}
+
+function metricSeriesRow(series: MetricSeriesResult["series"][number], index: number) {
+  const latest = series.points.at(-1);
+  if (!latest) {
+    return "";
+  }
+  const labels = metricLabels(series.labels);
+  return [
+    String(index),
+    markdownTableCell(labels),
+    markdownTableCell(latest.timestamp),
+    String(latest.value),
+  ].join(" | ");
+}
+
+function metricLabels(labels: JSONValue) {
+  if (!labels || typeof labels !== "object" || Array.isArray(labels)) {
+    return "{}";
+  }
+  const entries = Object.entries(labels as Record<string, unknown>);
+  if (!entries.length) {
+    return "{}";
+  }
+  return entries.map(([key, value]) => `${key}=${String(value)}`).join(", ");
 }
 
 function traceSummaryRow(trace: TraceSummary) {

@@ -521,6 +521,88 @@ describe("AI Chat stream endpoint", () => {
     delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
   });
 
+  test("answers metric questions with injected project context and default query settings", async () => {
+    process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
+    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const metricInputs: unknown[] = [];
+    const metricProjectIds: Array<string | undefined> = [];
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          return configuredCompanyProvider();
+        },
+        async metricSeries(input, authContext) {
+          metricInputs.push(input);
+          metricProjectIds.push(authContext?.projectId);
+          return {
+            metric: metricDescriptor("gen_ai.client.token.usage"),
+            aggregation: "sum",
+            interval: "PT5M",
+            groupBy: [],
+            series: [
+              {
+                labels: {},
+                points: [
+                  {
+                    timestamp: "2026-05-21T16:55:00.000Z",
+                    value: 123,
+                    count: 1,
+                    exemplars: [],
+                  },
+                ],
+              },
+            ],
+            warnings: [],
+          };
+        },
+        async aiChatAppendMessage() {},
+      }),
+      { graphqlUI: false, aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(
+      streamRequest({
+        idempotencyKey: "idempotency-key-metric-tool",
+        parts: [{ type: "text", text: "show gen_ai.client.token.usage for the last 24 hours" }],
+        timezone: "Europe/Berlin",
+      }),
+    );
+    const body = await response.text();
+    const events = parseSse(body);
+
+    expect(response.status).toBe(200);
+    expect(harness.requests).toHaveLength(0);
+    expect(events.map((event) => event.type)).toEqual([
+      "run.started",
+      "message.created",
+      "tool.started",
+      "tool.completed",
+      "text.delta",
+      "run.completed",
+    ]);
+    expect(metricInputs).toHaveLength(1);
+    expect(metricInputs[0]).toMatchObject({
+      metricName: "gen_ai.client.token.usage",
+      aggregation: "sum",
+      interval: "PT5M",
+      limit: 5000,
+    });
+    expect(String((metricInputs[0] as { from?: string }).from)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(String((metricInputs[0] as { to?: string }).to)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(JSON.stringify(metricInputs[0])).not.toContain("project-1");
+    expect(metricProjectIds).toEqual(["project-1"]);
+    expect(body).toContain("gen_ai.client.token.usage");
+    expect(body).toContain("last 24 hours");
+    expect(body).toContain("123");
+    expect(body).not.toContain("Please provide");
+    expect(body).not.toContain("Project ID");
+
+    delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
+  });
+
   test("rejects a duplicate completed idempotency key with the existing run id", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
     const harness = recordingHarness([{ kind: "final_message", text: "done" }]);
@@ -731,5 +813,22 @@ function conversationShape() {
     updatedAt: "2026-05-18T00:00:00.000Z",
     lastMessageAt: "2026-05-18T00:00:00.000Z",
     version: 1,
+  };
+}
+
+function metricDescriptor(name: string) {
+  return {
+    id: `metric:${name}`,
+    tenantId: "tenant-1",
+    projectId: "project-1",
+    name,
+    description: null,
+    unit: "1",
+    kind: "sum" as const,
+    aggregationTemporality: "delta" as const,
+    monotonic: true,
+    attributeKeys: ["service.name", "gen_ai.system", "gen_ai.request.model", "gen_ai.token.type"],
+    firstSeenAt: "2026-05-21T15:55:00.000Z",
+    lastSeenAt: "2026-05-21T16:55:00.000Z",
   };
 }

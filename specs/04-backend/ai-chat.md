@@ -418,6 +418,16 @@ into every tool call. Model-supplied `companyId`, `projectId`, `userId`,
 tenant, or auth fields are ignored and treated as validation errors when
 present.
 
+Model-facing tool schemas must follow default-plus-optional-override design.
+The model must not be required or asked to provide company, project, user,
+conversation, tenant, or auth fields. Runtime scope comes from the current
+conversation/request context and is passed directly into BFF bridge calls as
+authorization context. For telemetry read tools, omitted optional inputs use
+CloudGrid defaults: current project, default time window, default limit, default
+aggregation or step, and no additional filters. The assistant asks the user only
+for a genuinely missing domain choice that cannot be inferred from the request,
+such as an absent metric name.
+
 ### Read Tool Limits
 
 | Tool | Backend path | Default window | Default limit | Hard limit |

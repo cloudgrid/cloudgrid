@@ -90,6 +90,15 @@ typed tool such as `analysis.summarizeTrace`, `analysis.summarizeLogs`, or
 tool by invoking the matching specialist workflow or by deterministic
 summarization, but the model never receives a free-form "call agent" primitive.
 
+Model-facing application tools must not expose company, project, user,
+conversation, tenant, or auth fields. Those values are injected by the BFF from
+the current authorized request and conversation into tool execution. Tool inputs
+use default-plus-optional-override semantics: missing telemetry windows, limits,
+metric aggregation or resolution, and filters resolve to the catalog defaults
+before the model can ask the user for context. Asking the user for a project ID
+inside AI Chat is a product bug unless the browser request itself has no current
+project and the run cannot start.
+
 The default construction path for the full AI graph is `defineHarness()` with
 models declared before tools, skills, agents, and workflows. Low-level model
 registry calls are allowed only inside a temporary adapter while the full
