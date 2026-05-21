@@ -1202,6 +1202,8 @@ describe("AI Chat stream endpoint", () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
     const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
     const calls: Array<{ method: string; input: unknown; projectId: string | undefined }> = [];
+    const appended: unknown[] = [];
+    const finalized: unknown[] = [];
     const { app } = createAppWithBridge(
       bridge({
         async aiChatConversation() {
@@ -1235,7 +1237,13 @@ describe("AI Chat stream endpoint", () => {
           calls.push({ method: "quality", input, projectId: authContext?.projectId });
           return qualityShape({ projectId: input.projectId });
         },
-        async aiChatAppendMessage() {},
+        async aiChatAppendMessage(input) {
+          appended.push(input);
+        },
+        async aiChatFinalizeRun(input) {
+          finalized.push(input);
+          return runShape({ id: input.runId, status: input.status });
+        },
       }),
       { graphqlUI: false, aiChatHarness: harness },
     );
@@ -1312,6 +1320,31 @@ describe("AI Chat stream endpoint", () => {
     expect(bodies.join("\n")).toContain("Exact answer");
     expect(bodies.join("\n")).toContain("Checkout baseline");
     expect(bodies.join("\n")).toContain("Production quality");
+    const events = bodies.flatMap(parseSse);
+    const artifactEvents = events.filter((event) => event.type === "artifact.created");
+    expect(artifactEvents).toHaveLength(4);
+    expect(
+      artifactEvents.map((event) => (event.payload as { renderer?: string }).renderer),
+    ).toEqual(["table", "table", "table", "status_summary"]);
+    expect(artifactEvents[0]?.payload).toMatchObject({
+      label: "AI Eval datasets",
+      renderSpec: {
+        renderer: "table",
+        title: "AI Eval datasets",
+        ariaLabel: "AI Eval datasets table",
+      },
+    });
+    expect(appended).toContainEqual(
+      expect.objectContaining({
+        role: "assistant",
+        parts: expect.arrayContaining([
+          expect.objectContaining({ type: "artifact", renderer: "table" }),
+        ]),
+      }),
+    );
+    expect(finalized).toEqual(
+      expect.arrayContaining([expect.objectContaining({ artifactCount: 1 })]),
+    );
 
     delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
   });

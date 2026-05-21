@@ -37,7 +37,12 @@ export function AiChatArtifactRenderer({
   }
 
   if (renderer === "key_value" || renderer === "status_summary") {
-    return <KeyValueSummary content={content} />;
+    return (
+      <div className="grid gap-3">
+        <KeyValueSummary content={content} />
+        {Array.isArray(content.rows) ? <JsonTable rows={content.rows} /> : null}
+      </div>
+    );
   }
 
   if (renderer === "log_list" && Array.isArray(content.items)) {

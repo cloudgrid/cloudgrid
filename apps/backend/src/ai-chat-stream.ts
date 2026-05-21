@@ -235,6 +235,18 @@ type LogToolIntent = {
   search?: string | null;
 };
 
+type CloudGridToolAnswer = {
+  text: string;
+  toolName: string;
+  artifacts?: PendingAiChatArtifact[];
+};
+
+type PendingAiChatArtifact = {
+  renderer: "table" | "status_summary";
+  label: string;
+  renderSpec: Record<string, unknown>;
+};
+
 export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
   app: Hono<{ Variables: Variables }>,
   options: AttachAiChatStreamOptions = {},
@@ -386,6 +398,23 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
             );
             assistantParts.push({ type: "text", text: toolAnswer.text });
             await emit("text.delta", { text: toolAnswer.text });
+            const artifacts = (toolAnswer.artifacts ?? []).map((artifact, index) => ({
+              ...artifact,
+              artifactId: artifactIdFor(runId, toolCallCount, index + 1),
+            }));
+            for (const artifact of artifacts) {
+              assistantParts.push({
+                type: "artifact",
+                artifactId: artifact.artifactId,
+                renderer: artifact.renderer,
+              });
+              await emit("artifact.created", {
+                artifactId: artifact.artifactId,
+                renderer: artifact.renderer,
+                label: artifact.label,
+                renderSpec: artifact.renderSpec,
+              });
+            }
             const finalParts = collapseTextParts(assistantParts);
             await bridge.aiChatAppendMessage(
               {
@@ -404,7 +433,7 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
                 outputTokenCount: 0,
                 toolCallCount,
                 sandboxScriptCount: 0,
-                artifactCount: 0,
+                artifactCount: artifacts.length,
               },
               authContext,
             );
@@ -729,7 +758,7 @@ async function answerWithCloudGridTool({
   bridge: Partial<ControlPlaneBridge & TelemetryQueryBridge & MetricQueryBridge & AiEvalBridge>;
   input: AiChatStreamRequest;
   userText: string;
-}): Promise<{ text: string; toolName: string } | null> {
+}): Promise<CloudGridToolAnswer | null> {
   const qualityIntent = aiQualityToolIntent(userText, input.timezone);
   if (qualityIntent) {
     if (!bridge.aiQualityOverview) {
@@ -755,6 +784,7 @@ async function answerWithCloudGridTool({
     return {
       toolName: "aiEval.qualityOverview",
       text: formatAiQualityToolAnswer(result, qualityIntent, project),
+      artifacts: [aiQualityArtifact(result)],
     };
   }
 
@@ -776,6 +806,7 @@ async function answerWithCloudGridTool({
     return {
       toolName: "aiEval.searchDatasets",
       text: formatDatasetToolAnswer(result, project),
+      artifacts: [datasetTableArtifact(result)],
     };
   }
 
@@ -797,6 +828,7 @@ async function answerWithCloudGridTool({
     return {
       toolName: "aiEval.searchScorers",
       text: formatScorerToolAnswer(result, project),
+      artifacts: [scorerTableArtifact(result)],
     };
   }
 
@@ -822,6 +854,7 @@ async function answerWithCloudGridTool({
     return {
       toolName: "aiEval.searchExperiments",
       text: formatExperimentToolAnswer(result, project),
+      artifacts: [experimentTableArtifact(result)],
     };
   }
 
@@ -1754,6 +1787,91 @@ function formatAiQualityToolAnswer(
   ].join("\n");
 }
 
+function datasetTableArtifact(result: DatasetSearchResult): PendingAiChatArtifact {
+  return tableArtifact(
+    "AI Eval datasets",
+    "AI Eval datasets table",
+    result.items.map((dataset) => ({
+      dataset: dataset.name,
+      version: dataset.version,
+      items: dataset.itemCount,
+      reviewed: dataset.reviewedItemCount,
+      health: dataset.health.status,
+      tags: dataset.tags.join(", "),
+    })),
+  );
+}
+
+function scorerTableArtifact(result: ScorerSearchResult): PendingAiChatArtifact {
+  return tableArtifact(
+    "AI Eval scorers",
+    "AI Eval scorers table",
+    result.items.map((scorer) => ({
+      scorer: scorer.name,
+      kind: scorer.kind,
+      version: scorer.version,
+    })),
+  );
+}
+
+function experimentTableArtifact(result: ExperimentSearchResult): PendingAiChatArtifact {
+  return tableArtifact(
+    "AI Eval experiments",
+    "AI Eval experiments table",
+    result.items.map((experiment) => ({
+      experiment: experiment.name,
+      dataset: `${experiment.datasetId}@${experiment.datasetVersion}`,
+      scorers: experiment.scorerIds.length,
+      runs: experiment.runs?.items.length ?? 0,
+      tags: experiment.tags.join(", "),
+    })),
+  );
+}
+
+function aiQualityArtifact(result: AiQualityOverview): PendingAiChatArtifact {
+  return {
+    renderer: "status_summary",
+    label: "AI Eval production quality",
+    renderSpec: {
+      renderer: "status_summary",
+      title: "AI Eval production quality",
+      ariaLabel: "AI Eval production quality summary",
+      values: {
+        projectId: result.projectId,
+        segments: result.segments.length,
+        warnings: result.warnings.length,
+      },
+      rows: result.segments.map((segment) => ({
+        segment: segment.label,
+        runs: segment.runCount,
+        scored: segment.scoredRunCount,
+        passRate: segment.passRate,
+        meanScore: segment.meanScore,
+        p95LatencyMs: segment.p95LatencyMs,
+        costUsd: segment.costUsd,
+        regressions: segment.regressionCount,
+      })),
+    },
+  };
+}
+
+function tableArtifact(
+  title: string,
+  ariaLabel: string,
+  rows: Array<Record<string, unknown>>,
+): PendingAiChatArtifact {
+  return {
+    renderer: "table",
+    label: title,
+    renderSpec: {
+      renderer: "table",
+      title,
+      ariaLabel,
+      rows,
+    },
+  };
+}
+
 function formatMetricToolAnswer(
   result: MetricSeriesResult,
   intent: MetricToolIntent,
@@ -2148,6 +2266,10 @@ function toolCallIdFor(toolCallCount: number) {
   return `tool-${toolCallCount}`;
 }
 
+function artifactIdFor(runId: string, toolIndex: number, artifactIndex: number) {
+  return `art_${runId.replace(/[^a-zA-Z0-9_-]/g, "_")}_${toolIndex}_${artifactIndex}`;
+}
+
 function safeToolStatusPayload(input: {
   toolCallId: string;
   toolName: string;
@@ -2167,11 +2289,25 @@ function safeToolStatusPayload(input: {
 }
 
 function collapseTextParts(parts: AiChatMessagePart[]) {
-  const text = parts
-    .map((part) => part.text ?? "")
-    .join("")
-    .trim();
-  return text ? [{ type: "text" as const, text }] : [];
+  const collapsed: AiChatMessagePart[] = [];
+  let textBuffer = "";
+  for (const part of parts) {
+    if (part.type === "text") {
+      textBuffer += part.text ?? "";
+      continue;
+    }
+    const text = textBuffer.trim();
+    if (text) {
+      collapsed.push({ type: "text", text });
+    }
+    textBuffer = "";
+    collapsed.push(part);
+  }
+  const text = textBuffer.trim();
+  if (text) {
+    collapsed.push({ type: "text", text });
+  }
+  return collapsed;
 }
 
 async function appendTerminalAssistantPart(

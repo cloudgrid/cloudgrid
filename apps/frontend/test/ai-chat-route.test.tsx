@@ -21,6 +21,7 @@ import {
   safeAiChatArtifactView,
   orderedAiChatProjectGroups,
 } from "../src/features/ai-chat/view-model";
+import { AiChatArtifactRenderer } from "../src/features/ai-chat/artifact-renderer";
 import { AppSessionProvider } from "../src/providers/app-session-provider";
 import { ThemeProvider } from "../src/providers/theme-provider";
 import { AiChatRoute } from "../src/routes/ai-chat-route";
@@ -485,6 +486,33 @@ describe("AI Chat route", () => {
     expect(routeSource).not.toContain("function ArtifactContent");
     expect(rendererSource).toContain("MetricSeriesExplorer");
     expect(rendererSource).toContain("TelemetryChart");
+  });
+
+  test("renders status summary artifact rows for rich AI Eval answers", () => {
+    const markup = renderToStaticMarkup(
+      <AiChatArtifactRenderer
+        renderer="status_summary"
+        content={{
+          renderer: "status_summary",
+          title: "AI Eval production quality",
+          ariaLabel: "AI Eval production quality summary",
+          values: { projectId: "project-1", segments: 1 },
+          rows: [
+            {
+              segment: "Production quality",
+              runs: 12,
+              passRate: 0.92,
+              regressions: 1,
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(markup).toContain("projectId");
+    expect(markup).toContain("Production quality");
+    expect(markup).toContain("passRate");
+    expect(markup).toContain("0.92");
   });
 
   test("renders mixed server-ordered message parts with safe tool status details", () => {
