@@ -6,6 +6,7 @@ import { spawn } from "bun";
 const processes = [];
 let stopping = false;
 const defaultReadyTimeoutMs = 60_000;
+const defaultShutdownGraceMs = 10_000;
 
 export async function main() {
   const env = mergedEnv(parseDotEnvFile(".env"), process.env);
@@ -139,6 +140,7 @@ export async function main() {
 async function startService(name, command, readyURL, extraEnv = {}) {
   const proc = spawn(command, {
     cwd: process.cwd(),
+    detached: true,
     env: { ...process.env, ...extraEnv },
     stdout: "pipe",
     stderr: "pipe",
@@ -182,11 +184,47 @@ async function stopAll(exitCode) {
     return;
   }
   stopping = true;
-  for (const [, proc] of processes) {
-    proc.kill("SIGTERM");
+  const shutdownGraceMs = devShutdownGraceMs(mergedEnv(parseDotEnvFile(".env"), process.env));
+  terminateProcesses("SIGTERM");
+  const settled = await waitForProcesses(shutdownGraceMs);
+  if (!settled) {
+    terminateProcesses("SIGKILL");
+    await Promise.allSettled(processes.map(([, proc]) => proc.exited));
   }
-  await Promise.allSettled(processes.map(([, proc]) => proc.exited));
   process.exit(exitCode);
+}
+
+function terminateProcesses(signal) {
+  for (const [name, proc] of processes) {
+    terminateProcessGroup(name, proc, signal);
+  }
+}
+
+function terminateProcessGroup(name, proc, signal) {
+  if (typeof proc.pid !== "number") {
+    proc.kill(signal);
+    return;
+  }
+  try {
+    process.kill(-proc.pid, signal);
+  } catch (error) {
+    if (error?.code === "ESRCH") {
+      return;
+    }
+    try {
+      proc.kill(signal);
+    } catch (fallbackError) {
+      if (fallbackError?.code !== "ESRCH") {
+        console.error(`[${name}] failed to send ${signal}: ${fallbackError}`);
+      }
+    }
+  }
+}
+
+async function waitForProcesses(timeoutMs) {
+  const timeout = Bun.sleep(timeoutMs).then(() => false);
+  const exited = Promise.allSettled(processes.map(([, proc]) => proc.exited)).then(() => true);
+  return Promise.race([exited, timeout]);
 }
 
 async function waitForReady(name, url, exitedCode, timeoutMs = defaultReadyTimeoutMs) {
@@ -215,6 +253,11 @@ async function waitForReady(name, url, exitedCode, timeoutMs = defaultReadyTimeo
 export function devReadyTimeoutMs(env) {
   const configured = Number(env.CLOUDGRID_DEV_READY_TIMEOUT_MS || "");
   return Number.isFinite(configured) && configured > 0 ? configured : defaultReadyTimeoutMs;
+}
+
+export function devShutdownGraceMs(env) {
+  const configured = Number(env.CLOUDGRID_DEV_SHUTDOWN_GRACE_MS || "");
+  return Number.isFinite(configured) && configured > 0 ? configured : defaultShutdownGraceMs;
 }
 
 async function readinessError(response) {

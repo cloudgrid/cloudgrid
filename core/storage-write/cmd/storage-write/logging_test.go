@@ -294,6 +294,8 @@ func TestStorageWriteRunWithRuntimeCoversStartupFailureBranches(t *testing.T) {
 }
 
 func TestStorageWriteRunWithRuntimeCoversGracefulSignalShutdown(t *testing.T) {
+	var output bytes.Buffer
+	drained := false
 	cfg := config.Config{
 		StorageAdapter: config.AdapterSurrealDB,
 		DeploymentMode: "local",
@@ -311,7 +313,7 @@ func TestStorageWriteRunWithRuntimeCoversGracefulSignalShutdown(t *testing.T) {
 		},
 	}
 	runtime := storageWriteRuntime{
-		output: bytes.NewBuffer(nil),
+		output: &output,
 		loadConfig: func() (config.Config, error) {
 			return cfg, nil
 		},
@@ -329,8 +331,11 @@ func TestStorageWriteRunWithRuntimeCoversGracefulSignalShutdown(t *testing.T) {
 					select {}
 				},
 				IsClosed: func() bool { return false },
-				Drain:    func() error { return nil },
-				Close:    func() {},
+				Drain: func() error {
+					drained = true
+					return nil
+				},
+				Close: func() {},
 			}, nil
 		},
 		listen: func(string, string) (net.Listener, error) {
@@ -345,6 +350,13 @@ func TestStorageWriteRunWithRuntimeCoversGracefulSignalShutdown(t *testing.T) {
 
 	if got := runWithRuntime(runtime); got != 0 {
 		t.Fatalf("runWithRuntime() = %d, want graceful shutdown", got)
+	}
+	if !drained {
+		t.Fatal("runWithRuntime() did not drain the message bridge")
+	}
+	logs := output.String()
+	if !strings.Contains(logs, `"event":"shutdown_started"`) || !strings.Contains(logs, `"event":"shutdown_completed"`) {
+		t.Fatalf("shutdown logs missing start or completion event: %s", logs)
 	}
 }
 

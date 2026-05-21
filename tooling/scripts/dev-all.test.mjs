@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   devReadyTimeoutMs,
+  devShutdownGraceMs,
   mergedEnv,
   natsPayloadReadinessMessage,
   parseDotEnv,
@@ -46,5 +47,11 @@ describe("dev-all helpers", () => {
     expect(devReadyTimeoutMs({})).toBe(60_000);
     expect(devReadyTimeoutMs({ CLOUDGRID_DEV_READY_TIMEOUT_MS: "90000" })).toBe(90_000);
     expect(devReadyTimeoutMs({ CLOUDGRID_DEV_READY_TIMEOUT_MS: "0" })).toBe(60_000);
+  });
+
+  test("shutdown grace gives services time to drain before force kill", () => {
+    expect(devShutdownGraceMs({})).toBe(10_000);
+    expect(devShutdownGraceMs({ CLOUDGRID_DEV_SHUTDOWN_GRACE_MS: "30000" })).toBe(30_000);
+    expect(devShutdownGraceMs({ CLOUDGRID_DEV_SHUTDOWN_GRACE_MS: "-1" })).toBe(10_000);
   });
 });

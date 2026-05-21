@@ -166,6 +166,11 @@ func runWithRuntime(runtime storageWriteRuntime) int {
 	case <-runCtx.Done():
 	}
 
+	logger.Info("storage write shutdown started",
+		"service", "storage-write",
+		"event", "shutdown_started",
+		"request_id", "",
+	)
 	probes.SetReady(false)
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
@@ -173,7 +178,10 @@ func runWithRuntime(runtime storageWriteRuntime) int {
 		logError(logger, "health_server_shutdown_failed", err, "", "ERR-010")
 		return 1
 	}
-	_ = bridge.Drain()
+	if err := bridge.Drain(); err != nil {
+		logError(logger, "message_bridge_drain_failed", err, "", "ERR-013")
+		return 1
+	}
 	logger.Info("storage write shutdown completed",
 		"service", "storage-write",
 		"event", "shutdown_completed",
