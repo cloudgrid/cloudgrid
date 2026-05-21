@@ -91,7 +91,7 @@ function SelectFilter({
   id: string;
   label: string;
   onChange: (value: string) => void;
-  options: string[];
+  options: readonly string[];
   value: string;
 }) {
   return (

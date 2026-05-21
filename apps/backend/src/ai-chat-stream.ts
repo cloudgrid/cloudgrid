@@ -9,6 +9,10 @@ import type {
   AiChatMessage,
   AiChatMessagePart,
   AiProviderParameters,
+  AlertEventConnection,
+  AlertRule,
+  AlertSeverity,
+  AlertSignal,
   CompanyAiProviderSettings,
   DashboardListResult,
   JSONValue,
@@ -23,6 +27,8 @@ import type {
 import {
   LOG_SEARCH_HARD_LIMIT,
   METRIC_SERIES_HARD_LIMIT,
+  buildAlertHistoryInput,
+  buildAlertRuleSearchInput,
   buildDashboardListInput,
   buildLogSearchInput,
   buildTelemetryFacetInput,
@@ -158,6 +164,17 @@ type TelemetryFacetToolIntent = {
 
 type DashboardListToolIntent = {
   query?: string | null;
+};
+
+type AlertListToolIntent = {
+  search?: string | null;
+  severity?: AlertSeverity | null;
+  signal?: AlertSignal | null;
+  enabled?: boolean | null;
+};
+
+type AlertHistoryToolIntent = {
+  ruleId?: string | null;
 };
 
 type MetricToolIntent = {
@@ -671,6 +688,58 @@ async function answerWithCloudGridTool({
   input: AiChatStreamRequest;
   userText: string;
 }): Promise<{ text: string; toolName: string } | null> {
+  const alertHistoryIntent = alertHistoryToolIntent(userText);
+  if (alertHistoryIntent) {
+    if (!bridge.alertHistory) {
+      return {
+        toolName: "alerts.history",
+        text: "I could not query CloudGrid alert history because the alert history tool is not available in this run.",
+      };
+    }
+
+    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+    const historyInput = buildAlertHistoryInput({ ruleId: alertHistoryIntent.ruleId ?? null });
+    const result = await bridge.alertHistory(
+      input.projectId,
+      historyInput.ruleId,
+      historyInput.first,
+      historyInput.after,
+      authContext,
+    );
+
+    return {
+      toolName: "alerts.history",
+      text: formatAlertHistoryToolAnswer(result, project),
+    };
+  }
+
+  const alertListIntent = alertListToolIntent(userText);
+  if (alertListIntent) {
+    if (!bridge.alertRules) {
+      return {
+        toolName: "alerts.list",
+        text: "I could not query CloudGrid alerts because the alert list tool is not available in this run.",
+      };
+    }
+
+    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+    const result = await bridge.alertRules(
+      input.projectId,
+      buildAlertRuleSearchInput({
+        search: alertListIntent.search ?? null,
+        severity: alertListIntent.severity ?? null,
+        signal: alertListIntent.signal ?? null,
+        enabled: alertListIntent.enabled ?? null,
+      }),
+      authContext,
+    );
+
+    return {
+      toolName: "alerts.list",
+      text: formatAlertListToolAnswer(result, project),
+    };
+  }
+
   const dashboardIntent = dashboardListToolIntent(userText);
   if (dashboardIntent) {
     if (!bridge.dashboards) {
@@ -917,6 +986,34 @@ function dashboardListToolIntent(text: string): DashboardListToolIntent | null {
   };
 }
 
+function alertHistoryToolIntent(text: string): AlertHistoryToolIntent | null {
+  const normalized = text.toLowerCase();
+  if (!/\balerts?\b/.test(normalized) || !/\b(history|events?|recent)\b/.test(normalized)) {
+    return null;
+  }
+  return { ruleId: alertRuleIdFromText(text) };
+}
+
+function alertListToolIntent(text: string): AlertListToolIntent | null {
+  const normalized = text.toLowerCase();
+  if (!/\balerts?\b/.test(normalized)) {
+    return null;
+  }
+  if (!/\b(list|show|find|search|which|active|firing|errors?|failures?)\b/.test(normalized)) {
+    return null;
+  }
+  return {
+    search: alertSearchFromText(text),
+    severity: alertSeverityFromText(normalized),
+    signal: alertSignalFromText(normalized),
+    enabled: /\b(disabled|inactive)\b/.test(normalized)
+      ? false
+      : /\b(enabled|active)\b/.test(normalized)
+        ? true
+        : null,
+  };
+}
+
 function metricToolIntent(text: string, timezone: string | undefined): MetricToolIntent | null {
   const normalized = text.toLowerCase();
   const metricName = metricNameFromText(text);
@@ -1001,6 +1098,38 @@ function dashboardSearchFromText(text: string) {
     /\b(?:for|matching|search|named)\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/,
   );
   return match?.[1]?.replace(/[.,;:!?)]$/g, "") ?? null;
+}
+
+function alertRuleIdFromText(text: string) {
+  const matches = text.match(/\brule-[a-zA-Z0-9_.:-]{3,128}\b/g) ?? [];
+  return matches.at(0)?.replace(/[.,;:!?)]$/g, "") ?? null;
+}
+
+function alertSearchFromText(text: string) {
+  const quoted = quotedSearchFromText(text);
+  if (quoted) {
+    return quoted;
+  }
+  const match = text.match(
+    /\b(?:for|matching|search|named)\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/,
+  );
+  const value = match?.[1]?.replace(/[.,;:!?)]$/g, "") ?? null;
+  return value?.startsWith("rule-") ? null : value;
+}
+
+function alertSeverityFromText(text: string): AlertSeverity | null {
+  if (/\bcritical\b/.test(text)) return "CRITICAL";
+  if (/\b(error|errors|errored|failed|failing|failure)\b/.test(text)) return "ERROR";
+  if (/\b(warn|warning|warnings)\b/.test(text)) return "WARNING";
+  if (/\b(info|information)\b/.test(text)) return "INFO";
+  return null;
+}
+
+function alertSignalFromText(text: string): AlertSignal | null {
+  if (/\btraces?\b/.test(text)) return "TRACE";
+  if (/\blogs?\b/.test(text)) return "LOG";
+  if (/\bmetrics?\b/.test(text)) return "METRIC";
+  return null;
 }
 
 function metricHoursFromText(text: string) {
@@ -1184,6 +1313,39 @@ function formatDashboardListToolAnswer(
   ].join("\n");
 }
 
+function formatAlertListToolAnswer(rules: AlertRule[], project: { id: string; label: string }) {
+  if (!rules.length) {
+    return `No alert rules were returned for project ${project.label}.`;
+  }
+
+  const noun = rules.length === 1 ? "alert rule" : "alert rules";
+  return [
+    `CloudGrid returned ${rules.length} ${noun} for project ${project.label}.`,
+    "",
+    "| Rule | Enabled | Severity | Signal | Kind | Updated |",
+    "| --- | --- | --- | --- | --- | --- |",
+    ...rules.map(alertRuleRow),
+  ].join("\n");
+}
+
+function formatAlertHistoryToolAnswer(
+  result: AlertEventConnection,
+  project: { id: string; label: string },
+) {
+  if (!result.items.length) {
+    return `No alert events were returned for project ${project.label}.`;
+  }
+
+  const noun = result.items.length === 1 ? "alert event" : "alert events";
+  return [
+    `CloudGrid returned ${result.items.length} ${noun} for project ${project.label}.`,
+    "",
+    "| Started | State | Severity | Summary | Evidence |",
+    "| --- | --- | --- | --- | --- |",
+    ...result.items.map(alertEventRow),
+  ].join("\n");
+}
+
 function formatMetricToolAnswer(
   result: MetricSeriesResult,
   intent: MetricToolIntent,
@@ -1277,6 +1439,46 @@ function dashboardRow(
     markdownTableCell(widgets),
     markdownTableCell(dashboard.tags.join(", ") || "-"),
   ].join(" | ");
+}
+
+function alertRuleRow(rule: AlertRule) {
+  return [
+    markdownTableCell(rule.name),
+    rule.enabled ? "yes" : "no",
+    markdownTableCell(rule.severity),
+    markdownTableCell(alertSignalFromKind(rule.kind)),
+    markdownTableCell(rule.kind),
+    markdownTableCell(rule.updatedAt),
+  ].join(" | ");
+}
+
+function alertEventRow(event: AlertEventConnection["items"][number]) {
+  return [
+    markdownTableCell(event.startedAt),
+    markdownTableCell(event.state),
+    markdownTableCell(event.severity),
+    markdownTableCell(event.summary),
+    markdownTableCell(alertEvidenceLink(event)),
+  ].join(" | ");
+}
+
+function alertSignalFromKind(kind: AlertRule["kind"]) {
+  if (kind.startsWith("TRACE_")) return "TRACE";
+  if (kind.startsWith("LOG_")) return "LOG";
+  return "METRIC";
+}
+
+function alertEvidenceLink(event: AlertEventConnection["items"][number]) {
+  if (event.evidenceTraceId && event.evidenceSpanId) {
+    return `/traces/${encodeURIComponent(event.evidenceTraceId)}?spanId=${encodeURIComponent(event.evidenceSpanId)}`;
+  }
+  if (event.evidenceTraceId) {
+    return `/traces/${encodeURIComponent(event.evidenceTraceId)}`;
+  }
+  if (event.evidenceLogId) {
+    return event.evidenceLogId;
+  }
+  return event.evidenceMetricName ?? "-";
 }
 
 function durationLabel(durationMs: number | null | undefined) {

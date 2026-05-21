@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type { AiChatRun, CompanyAiProviderSettings } from "@cloudgrid/ui-contracts";
+import type { ModelProvider, TextRequest, TextResponse, TextStreamChunk } from "@purista/harness";
+import type { AiChatRun, AlertRule, CompanyAiProviderSettings } from "@cloudgrid/ui-contracts";
 import { AI_CHAT_TOOLS } from "./ai-chat/catalog";
+import { createAiChatHarness } from "./ai-chat-harness";
 import type { AiChatHarnessEvent, AiChatHarnessPort } from "./ai-chat-stream";
 import { graphQLErrorFromBridge } from "./bridge";
 import { createAppWithBridge } from "./graphql";
@@ -126,6 +128,82 @@ describe("AI Chat stream endpoint", () => {
     expect(appended).toHaveLength(2);
 
     delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
+  });
+
+  test("streams through the provider harness with only the model provider stubbed", async () => {
+    process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
+    const provider = recordingProvider([
+      { kind: "delta", text: "CloudGrid " },
+      { kind: "delta", text: "status is available." },
+      {
+        kind: "finish",
+        usage: { inputTokens: 7, outputTokens: 4, totalTokens: 11 },
+        finishReason: "stop",
+      },
+    ]);
+    const harness = createAiChatHarness("provider", {
+      providerFactory: () => provider,
+    });
+    if (!harness) {
+      throw new Error("expected provider harness");
+    }
+    const appended: unknown[] = [];
+    const finalized: unknown[] = [];
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          return configuredCompanyProvider();
+        },
+        async aiChatAppendMessage(input) {
+          appended.push(input);
+        },
+        async aiChatFinalizeRun(input) {
+          finalized.push(input);
+          return runShape({ id: input.runId, status: input.status });
+        },
+      }),
+      { graphqlUI: false, aiChatHarness: harness },
+    );
+
+    try {
+      const response = await app.fetch(
+        streamRequest({
+          idempotencyKey: "idempotency-key-provider-harness",
+          parts: [{ type: "text", text: "Summarize CloudGrid observability status" }],
+        }),
+      );
+      const body = await response.text();
+      const events = parseSse(body);
+
+      expect(response.status).toBe(200);
+      expect(events.map((event) => event.type)).toEqual([
+        "run.started",
+        "message.created",
+        "text.delta",
+        "text.delta",
+        "run.completed",
+      ]);
+      expect(provider.textStreamRequests).toHaveLength(1);
+      expect(provider.textStreamRequests[0]?.model).toBe("gpt-5-mini");
+      expect(provider.textStreamRequests[0]?.messages[0]?.role).toBe("system");
+      expect(appended).toContainEqual(
+        expect.objectContaining({
+          role: "assistant",
+          parts: [{ type: "text", text: "CloudGrid status is available." }],
+        }),
+      );
+      expect(finalized.at(-1)).toMatchObject({
+        status: "completed",
+        inputTokenCount: 7,
+        outputTokenCount: 4,
+      });
+      expect(body).not.toContain("secret-provider-key");
+    } finally {
+      delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
+    }
   });
 
   test("resolves managed provider credentials at runtime without exposing the API key", async () => {
@@ -923,6 +1001,128 @@ describe("AI Chat stream endpoint", () => {
     delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
   });
 
+  test("answers alert list questions with injected project context and shared defaults", async () => {
+    process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
+    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const alertInputs: unknown[] = [];
+    const alertProjectIds: string[] = [];
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          return configuredCompanyProvider();
+        },
+        async alertRules(projectId, input) {
+          alertProjectIds.push(projectId);
+          alertInputs.push(input);
+          return [
+            alertRuleShape({
+              id: "rule-checkout-errors",
+              name: "Checkout trace errors",
+              severity: "ERROR",
+              kind: "TRACE_ERROR",
+            }),
+          ];
+        },
+        async aiChatAppendMessage() {},
+      }),
+      { graphqlUI: false, aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(
+      streamRequest({
+        idempotencyKey: "idempotency-key-alert-list-tool",
+        parts: [{ type: "text", text: "list error trace alerts for checkout" }],
+      }),
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(harness.requests).toHaveLength(0);
+    expect(alertProjectIds).toEqual(["project-1"]);
+    expect(alertInputs).toEqual([
+      {
+        search: "checkout",
+        status: null,
+        severity: "ERROR",
+        signal: "TRACE",
+        enabled: null,
+        sort: "updatedAt_desc",
+      },
+    ]);
+    expect(body).toContain("CloudGrid returned 1 alert rule");
+    expect(body).toContain("Checkout trace errors");
+    expect(body).toContain("TRACE_ERROR");
+    expect(body).not.toContain("Project ID");
+
+    delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
+  });
+
+  test("answers alert history questions with injected project context and shared defaults", async () => {
+    process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
+    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const historyInputs: unknown[] = [];
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          return configuredCompanyProvider();
+        },
+        async alertHistory(projectId, ruleId, first, after) {
+          historyInputs.push({ projectId, ruleId, first, after });
+          return {
+            items: [
+              {
+                id: "event-1",
+                projectId,
+                ruleId: ruleId ?? "rule-1",
+                instanceId: "instance-1",
+                state: "FIRING",
+                severity: "ERROR",
+                summary: "Checkout trace errors is firing",
+                deduplicationKey: "checkout:error",
+                startedAt: "2026-05-21T16:52:14.000Z",
+                endedAt: null,
+                createdAt: "2026-05-21T16:52:14.000Z",
+                evidenceTraceId: "trace-alert-1",
+                evidenceSpanId: "span-alert-1",
+                evidenceLogId: null,
+                evidenceMetricName: null,
+              },
+            ],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          };
+        },
+        async aiChatAppendMessage() {},
+      }),
+      { graphqlUI: false, aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(
+      streamRequest({
+        idempotencyKey: "idempotency-key-alert-history-tool",
+        parts: [{ type: "text", text: "show alert history for rule-checkout-errors" }],
+      }),
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(harness.requests).toHaveLength(0);
+    expect(historyInputs).toEqual([
+      { projectId: "project-1", ruleId: "rule-checkout-errors", first: 50, after: null },
+    ]);
+    expect(body).toContain("CloudGrid returned 1 alert event");
+    expect(body).toContain("Checkout trace errors is firing");
+    expect(body).toContain("/traces/trace-alert-1?spanId=span-alert-1");
+    expect(body).not.toContain("Project ID");
+
+    delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
+  });
+
   test("rejects a duplicate completed idempotency key with the existing run id", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
     const harness = recordingHarness([{ kind: "final_message", text: "done" }]);
@@ -1174,6 +1374,28 @@ function dashboardShape(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function alertRuleShape(overrides: Partial<AlertRule> = {}): AlertRule {
+  return {
+    id: "rule-1",
+    projectId: "project-1",
+    name: "Checkout trace errors",
+    enabled: true,
+    kind: "TRACE_ERROR",
+    severity: "ERROR",
+    query: { status: "error" },
+    condition: { minCount: 1 },
+    evaluationWindowSeconds: 300,
+    pendingForSeconds: 60,
+    cooldownSeconds: 300,
+    notificationAdapterIds: ["in_app"],
+    createdAt: "2026-05-14T08:00:00.000Z",
+    updatedAt: "2026-05-14T08:00:00.000Z",
+    updatedByUserId: "local-user",
+    version: 1,
+    ...overrides,
+  };
+}
+
 function dashboardWidgetShape(overrides: Record<string, unknown> = {}) {
   return {
     id: "widget-1",
@@ -1189,4 +1411,33 @@ function dashboardWidgetShape(overrides: Record<string, unknown> = {}) {
     alert: null,
     ...overrides,
   };
+}
+
+function recordingProvider(chunks: TextStreamChunk[]) {
+  const textStreamRequests: TextRequest[] = [];
+  const provider: ModelProvider & { textStreamRequests: TextRequest[] } = {
+    id: "recording",
+    genAiSystem: "recording",
+    textStreamRequests,
+    async text(request): Promise<TextResponse> {
+      textStreamRequests.push(request);
+      return {
+        content: chunks
+          .filter(
+            (chunk): chunk is Extract<TextStreamChunk, { kind: "delta" }> => chunk.kind === "delta",
+          )
+          .map((chunk) => chunk.text)
+          .join(""),
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        finishReason: "stop",
+      };
+    },
+    async *textStream(request) {
+      textStreamRequests.push(request);
+      for (const chunk of chunks) {
+        yield chunk;
+      }
+    },
+  };
+  return provider;
 }

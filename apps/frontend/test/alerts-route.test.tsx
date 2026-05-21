@@ -178,6 +178,10 @@ describe("alerts route", () => {
       .join("\n");
 
     expect(source).toContain("readAlertRuleSearchInput");
+    expect(source).toContain("buildAlertRuleSearchInput");
+    expect(source).toContain("ALERT_HISTORY_DEFAULT_FIRST");
+    expect(source).toContain("@cloudgrid/ui-contracts");
+    expect(source).not.toContain("const alertRuleSorts");
     expect(source).toContain("writeAlertRuleFilter");
     expect(source).toContain('searchParams.get("search")');
     expect(source).toContain('searchParams.get("status")');

@@ -1,4 +1,4 @@
-import type { AlertRule } from "@cloudgrid/ui-contracts";
+import { ALERT_HISTORY_DEFAULT_FIRST, type AlertRule } from "@cloudgrid/ui-contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, Plus, RefreshCw, X } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
@@ -43,8 +43,18 @@ export function AlertsRoute() {
   const selectedRule = rules.find((rule) => rule.id === selectedRuleId) ?? rules[0] ?? null;
   const historyQuery = useQuery({
     enabled: Boolean(projectId && selectedRule),
-    queryKey: queryKeys.alertHistory(projectId, selectedRule?.id ?? null),
-    queryFn: () => client.getAlertHistory({ projectId, ruleId: selectedRule?.id ?? null }),
+    queryKey: queryKeys.alertHistory(
+      projectId,
+      selectedRule?.id ?? null,
+      ALERT_HISTORY_DEFAULT_FIRST,
+      null,
+    ),
+    queryFn: () =>
+      client.getAlertHistory({
+        projectId,
+        ruleId: selectedRule?.id ?? null,
+        first: ALERT_HISTORY_DEFAULT_FIRST,
+      }),
   });
   const silencesQuery = useQuery({
     enabled: Boolean(projectId && selectedRule),
