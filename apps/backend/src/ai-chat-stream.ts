@@ -242,7 +242,7 @@ type CloudGridToolAnswer = {
 };
 
 type PendingAiChatArtifact = {
-  renderer: "table" | "status_summary";
+  renderer: "log_list" | "metric_timeseries" | "status_summary" | "table" | "trace_waterfall";
   label: string;
   renderSpec: Record<string, unknown>;
 };
@@ -883,6 +883,7 @@ async function answerWithCloudGridTool({
     return {
       toolName: "aiEval.searchAgentRuns",
       text: formatAgentRunToolAnswer(result, agentRunIntent, project),
+      artifacts: [agentRunTableArtifact(result)],
     };
   }
 
@@ -908,6 +909,7 @@ async function answerWithCloudGridTool({
     return {
       toolName: "alerts.history",
       text: formatAlertHistoryToolAnswer(result, project),
+      artifacts: [alertHistoryTableArtifact(result)],
     };
   }
 
@@ -935,6 +937,7 @@ async function answerWithCloudGridTool({
     return {
       toolName: "alerts.list",
       text: formatAlertListToolAnswer(result, project),
+      artifacts: [alertRuleTableArtifact(result)],
     };
   }
 
@@ -956,6 +959,7 @@ async function answerWithCloudGridTool({
     return {
       toolName: "dashboards.list",
       text: formatDashboardListToolAnswer(result, project),
+      artifacts: [dashboardTableArtifact(result)],
     };
   }
 
@@ -978,6 +982,7 @@ async function answerWithCloudGridTool({
     return {
       toolName: "telemetry.getTrace",
       text: formatTraceDetailToolAnswer(result, traceDetailIntent, project),
+      artifacts: result ? [traceWaterfallArtifact(result)] : [],
     };
   }
 
@@ -1004,6 +1009,7 @@ async function answerWithCloudGridTool({
     return {
       toolName: "telemetry.getFacets",
       text: formatTelemetryFacetToolAnswer(result, facetIntent, project),
+      artifacts: [facetTableArtifact(result)],
     };
   }
 
@@ -1034,6 +1040,7 @@ async function answerWithCloudGridTool({
     return {
       toolName: "telemetry.queryMetrics",
       text: formatMetricToolAnswer(result, metricIntent, project),
+      artifacts: [metricTimeseriesArtifact(result, metricIntent.metricName)],
     };
   }
 
@@ -1063,6 +1070,7 @@ async function answerWithCloudGridTool({
     return {
       toolName: "telemetry.searchLogs",
       text: formatLogToolAnswer(result, logIntent, project),
+      artifacts: [logListArtifact(result)],
     };
   }
 
@@ -1092,6 +1100,7 @@ async function answerWithCloudGridTool({
   return {
     toolName: "telemetry.searchTraces",
     text: formatTraceToolAnswer(result, intent, project),
+    artifacts: [traceSearchTableArtifact(result)],
   };
 }
 
@@ -1868,6 +1877,151 @@ function tableArtifact(
       title,
       ariaLabel,
       rows,
+    },
+  };
+}
+
+function agentRunTableArtifact(result: AgentRunSearchResult): PendingAiChatArtifact {
+  return tableArtifact(
+    "AI Eval agent runs",
+    "AI Eval agent runs table",
+    result.items.map((run) => ({
+      run: run.id,
+      trace: `/traces/${run.traceId}?spanId=${run.rootSpanId}`,
+      agent: run.agent.name ?? "-",
+      status: run.status,
+      startedAt: run.startedAt,
+      durationMs: run.durationMs ?? null,
+      tokens: run.tokenTotals?.total ?? null,
+      cost: run.costEstimate ? `${run.costEstimate.amount} ${run.costEstimate.currency}` : null,
+    })),
+  );
+}
+
+function alertHistoryTableArtifact(result: AlertEventConnection): PendingAiChatArtifact {
+  return tableArtifact(
+    "Alert history",
+    "Alert history table",
+    result.items.map((event) => ({
+      startedAt: event.startedAt,
+      state: event.state,
+      severity: event.severity,
+      summary: event.summary,
+      evidence: alertEvidenceLink(event),
+      ruleId: event.ruleId,
+    })),
+  );
+}
+
+function alertRuleTableArtifact(rules: AlertRule[]): PendingAiChatArtifact {
+  return tableArtifact(
+    "Alert rules",
+    "Alert rules table",
+    rules.map((rule) => ({
+      rule: rule.name,
+      enabled: rule.enabled,
+      severity: rule.severity,
+      signal: alertSignalFromKind(rule.kind),
+      kind: rule.kind,
+      updatedAt: rule.updatedAt,
+    })),
+  );
+}
+
+function dashboardTableArtifact(result: DashboardListResult): PendingAiChatArtifact {
+  return tableArtifact(
+    "Dashboards",
+    "Dashboards table",
+    result.items.map((dashboard) => ({
+      dashboard: dashboard.name,
+      link: `/dashboards?dashboard=${dashboard.id}`,
+      visibility: dashboard.visibility,
+      pinned: result.pinnedDashboardIds.includes(dashboard.id) || dashboard.pinned,
+      widgets: dashboard.widgets.map((widget) => widget.kind).join(", "),
+      tags: dashboard.tags.join(", "),
+    })),
+  );
+}
+
+function traceSearchTableArtifact(result: TraceSearchResult): PendingAiChatArtifact {
+  return tableArtifact(
+    "Traces",
+    "Trace search results table",
+    result.items.map((trace) => ({
+      trace: trace.id,
+      link: `/traces/${trace.id}`,
+      service: trace.serviceName ?? "-",
+      operation: trace.operationName ?? "-",
+      status: trace.status ?? "-",
+      startedAt: trace.startedAt,
+      durationMs: trace.durationMs ?? null,
+      spans: trace.spanCount,
+      errorSpans: trace.errorSpanCount,
+    })),
+  );
+}
+
+function traceWaterfallArtifact(result: TraceDetail): PendingAiChatArtifact {
+  return {
+    renderer: "trace_waterfall",
+    label: `Trace ${result.trace.id}`,
+    renderSpec: {
+      renderer: "trace_waterfall",
+      title: `Trace ${result.trace.id}`,
+      ariaLabel: `Trace ${result.trace.id} waterfall`,
+      trace: result.trace,
+      spans: result.spans,
+      structure: result.structure,
+      selectedSpan: result.selectedSpan ?? null,
+      warnings: result.warnings,
+    },
+  };
+}
+
+function facetTableArtifact(result: TelemetryFacetResult): PendingAiChatArtifact {
+  return tableArtifact("Telemetry facets", "Telemetry facets table", [
+    ...facetRows("service", result.services),
+    ...facetRows("operation", result.operations),
+    ...facetRows("spanName", result.spanNames),
+    ...facetRows("severity", result.severities),
+    ...facetRows("attributeKey", result.attributeKeys),
+  ]);
+}
+
+function facetRows(kind: string, values: TelemetryFacetResult["services"]) {
+  return values.map((facet) => ({
+    kind,
+    value: facet.value,
+    count: facet.count,
+  }));
+}
+
+function metricTimeseriesArtifact(
+  result: MetricSeriesResult,
+  requestedMetricName: string,
+): PendingAiChatArtifact {
+  return {
+    renderer: "metric_timeseries",
+    label: result.metric.name || requestedMetricName,
+    renderSpec: {
+      renderer: "metric_timeseries",
+      title: result.metric.name || requestedMetricName,
+      ariaLabel: `${result.metric.name || requestedMetricName} metric time series`,
+      result,
+    },
+  };
+}
+
+function logListArtifact(result: LogSearchResult): PendingAiChatArtifact {
+  return {
+    renderer: "log_list",
+    label: "Logs",
+    renderSpec: {
+      renderer: "log_list",
+      title: "Logs",
+      ariaLabel: "Log results",
+      items: result.items,
+      nextCursor: result.nextCursor ?? null,
     },
   };
 }

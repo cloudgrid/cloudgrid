@@ -491,7 +491,8 @@ describe("AI Chat stream endpoint", () => {
         timezone: "Europe/Berlin",
       }),
     );
-    const events = parseSse(await response.text());
+    const body = await response.text();
+    const events = parseSse(body);
 
     expect(response.status).toBe(200);
     expect(events.map((event) => event.type)).toEqual([
@@ -500,8 +501,10 @@ describe("AI Chat stream endpoint", () => {
       "tool.started",
       "tool.completed",
       "text.delta",
+      "artifact.created",
       "run.completed",
     ]);
+    expectArtifact(body, "table", "Traces");
     const toolEvents = events.filter(
       (event) => event.type === "tool.started" || event.type === "tool.completed",
     );
@@ -668,8 +671,10 @@ describe("AI Chat stream endpoint", () => {
       "tool.started",
       "tool.completed",
       "text.delta",
+      "artifact.created",
       "run.completed",
     ]);
+    expectArtifact(body, "metric_timeseries", "gen_ai.client.token.usage");
     expect(metricInputs).toHaveLength(1);
     expect(metricInputs[0]).toMatchObject({
       metricName: "gen_ai.client.token.usage",
@@ -740,6 +745,7 @@ describe("AI Chat stream endpoint", () => {
     const body = await response.text();
 
     expect(response.status).toBe(200);
+    expectArtifact(body, "log_list", "Logs");
     expect(harness.requests).toHaveLength(0);
     expect(logInputs).toHaveLength(1);
     expect(logInputs[0]).toMatchObject({
@@ -849,6 +855,7 @@ describe("AI Chat stream endpoint", () => {
     const body = await response.text();
 
     expect(response.status).toBe(200);
+    expectArtifact(body, "trace_waterfall", "Trace trace-detail-123");
     expect(harness.requests).toHaveLength(0);
     expect(traceDetailInputs).toEqual([
       {
@@ -917,6 +924,7 @@ describe("AI Chat stream endpoint", () => {
     const body = await response.text();
 
     expect(response.status).toBe(200);
+    expectArtifact(body, "table", "Telemetry facets");
     expect(harness.requests).toHaveLength(0);
     expect(facetInputs).toHaveLength(1);
     expect(facetInputs[0]).toMatchObject({
@@ -990,6 +998,7 @@ describe("AI Chat stream endpoint", () => {
     const body = await response.text();
 
     expect(response.status).toBe(200);
+    expectArtifact(body, "table", "Dashboards");
     expect(harness.requests).toHaveLength(0);
     expect(dashboardInputs).toEqual([
       {
@@ -1049,6 +1058,7 @@ describe("AI Chat stream endpoint", () => {
     const body = await response.text();
 
     expect(response.status).toBe(200);
+    expectArtifact(body, "table", "Alert rules");
     expect(harness.requests).toHaveLength(0);
     expect(alertProjectIds).toEqual(["project-1"]);
     expect(alertInputs).toEqual([
@@ -1120,6 +1130,7 @@ describe("AI Chat stream endpoint", () => {
     const body = await response.text();
 
     expect(response.status).toBe(200);
+    expectArtifact(body, "table", "Alert history");
     expect(harness.requests).toHaveLength(0);
     expect(historyInputs).toEqual([
       { projectId: "project-1", ruleId: "rule-checkout-errors", first: 50, after: null },
@@ -1176,6 +1187,7 @@ describe("AI Chat stream endpoint", () => {
     const body = await response.text();
 
     expect(response.status).toBe(200);
+    expectArtifact(body, "table", "AI Eval agent runs");
     expect(harness.requests).toHaveLength(0);
     expect(agentRunProjectIds).toEqual(["project-1"]);
     expect(agentRunInputs).toHaveLength(1);
@@ -1433,6 +1445,19 @@ function parseSse(body: string) {
         .join("\n");
       return JSON.parse(data) as { type: string; sequence: number; payload: unknown };
     });
+}
+
+function expectArtifact(body: string, renderer: string, label: string) {
+  const artifacts = parseSse(body).filter((event) => event.type === "artifact.created");
+  expect(artifacts).toContainEqual(
+    expect.objectContaining({
+      payload: expect.objectContaining({
+        renderer,
+        label,
+        renderSpec: expect.objectContaining({ renderer }),
+      }),
+    }),
+  );
 }
 
 function recordingHarness(events: AiChatHarnessEvent[]) {
