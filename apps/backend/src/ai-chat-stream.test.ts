@@ -2,9 +2,13 @@ import { describe, expect, test } from "bun:test";
 import type { ModelProvider, TextRequest, TextResponse, TextStreamChunk } from "@purista/harness";
 import type {
   AgentRun,
+  AiQualityOverview,
   AiChatRun,
   AlertRule,
   CompanyAiProviderSettings,
+  Dataset,
+  Experiment,
+  Scorer,
 } from "@cloudgrid/ui-contracts";
 import { AI_CHAT_TOOLS } from "./ai-chat/catalog";
 import { createAiChatHarness } from "./ai-chat-harness";
@@ -1194,6 +1198,124 @@ describe("AI Chat stream endpoint", () => {
     delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
   });
 
+  test("answers route-backed AI Eval questions with shared defaults", async () => {
+    process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
+    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const calls: Array<{ method: string; input: unknown; projectId: string | undefined }> = [];
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          return configuredCompanyProvider();
+        },
+        async datasets(input, authContext) {
+          calls.push({ method: "datasets", input, projectId: authContext?.projectId });
+          return {
+            items: [datasetShape({ id: "dataset-regression", name: "Regression" })],
+            nextCursor: null,
+          };
+        },
+        async scorers(input, authContext) {
+          calls.push({ method: "scorers", input, projectId: authContext?.projectId });
+          return {
+            items: [scorerShape({ id: "scorer-exact", name: "Exact answer" })],
+            nextCursor: null,
+          };
+        },
+        async experiments(input, authContext) {
+          calls.push({ method: "experiments", input, projectId: authContext?.projectId });
+          return {
+            items: [experimentShape({ id: "experiment-checkout", name: "Checkout baseline" })],
+            nextCursor: null,
+          };
+        },
+        async aiQualityOverview(input, authContext) {
+          calls.push({ method: "quality", input, projectId: authContext?.projectId });
+          return qualityShape({ projectId: input.projectId });
+        },
+        async aiChatAppendMessage() {},
+      }),
+      { graphqlUI: false, aiChatHarness: harness },
+    );
+
+    const datasetResponse = await app.fetch(
+      streamRequest({
+        idempotencyKey: "idempotency-key-ai-eval-datasets",
+        parts: [{ type: "text", text: "list AI Eval datasets for regression" }],
+      }),
+    );
+    const scorerResponse = await app.fetch(
+      streamRequest({
+        idempotencyKey: "idempotency-key-ai-eval-scorers",
+        parts: [{ type: "text", text: "show AI Eval scorers for exact" }],
+      }),
+    );
+    const experimentResponse = await app.fetch(
+      streamRequest({
+        idempotencyKey: "idempotency-key-ai-eval-experiments",
+        parts: [{ type: "text", text: "list running AI Eval experiments for checkout" }],
+      }),
+    );
+    const qualityResponse = await app.fetch(
+      streamRequest({
+        idempotencyKey: "idempotency-key-ai-eval-quality",
+        parts: [{ type: "text", text: "show AI Eval production quality for checkout" }],
+      }),
+    );
+
+    const bodies = await Promise.all([
+      datasetResponse.text(),
+      scorerResponse.text(),
+      experimentResponse.text(),
+      qualityResponse.text(),
+    ]);
+
+    expect([
+      datasetResponse.status,
+      scorerResponse.status,
+      experimentResponse.status,
+      qualityResponse.status,
+    ]).toEqual([200, 200, 200, 200]);
+    expect(harness.requests).toHaveLength(0);
+    expect(calls).toHaveLength(4);
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        method: "datasets",
+        projectId: "project-1",
+        input: expect.objectContaining({ query: "regression", limit: 50, cursor: null }),
+      }),
+    );
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        method: "scorers",
+        projectId: "project-1",
+        input: expect.objectContaining({ query: "exact", limit: 50, cursor: null }),
+      }),
+    );
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        method: "experiments",
+        projectId: "project-1",
+        input: expect.objectContaining({ query: "checkout", status: "running", limit: 50 }),
+      }),
+    );
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        method: "quality",
+        projectId: "project-1",
+        input: expect.objectContaining({ projectId: "project-1", service: "checkout", limit: 50 }),
+      }),
+    );
+    expect(bodies.join("\n")).toContain("Regression");
+    expect(bodies.join("\n")).toContain("Exact answer");
+    expect(bodies.join("\n")).toContain("Checkout baseline");
+    expect(bodies.join("\n")).toContain("Production quality");
+
+    delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
+  });
+
   test("rejects a duplicate completed idempotency key with the existing run id", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
     const harness = recordingHarness([{ kind: "final_message", text: "done" }]);
@@ -1484,6 +1606,92 @@ function agentRunShape(overrides: Partial<AgentRun> = {}): AgentRun {
     toolCalls: [],
     retrievalEvents: [],
     evalResults: [],
+    ...overrides,
+  };
+}
+
+function datasetShape(overrides: Partial<Dataset> = {}): Dataset {
+  return {
+    id: "dataset-1",
+    name: "Regression",
+    description: null,
+    version: 1,
+    createdAt: "2026-05-21T16:52:14.000Z",
+    itemCount: 10,
+    reviewedItemCount: 8,
+    splitCounts: { dev: 4, regression: 6 },
+    health: {
+      status: "ready",
+      reviewedItemCount: 8,
+      totalItemCount: 10,
+      splitCounts: { dev: 4, regression: 6 },
+      duplicateCandidateCount: 0,
+      leakageWarningCount: 0,
+      missingExpectedCount: 0,
+      schemaIssueCount: 0,
+      smallDataset: false,
+      warnings: [],
+    },
+    tags: ["checkout"],
+    ...overrides,
+  };
+}
+
+function scorerShape(overrides: Partial<Scorer> = {}): Scorer {
+  return {
+    id: "scorer-1",
+    name: "Exact answer",
+    kind: "deterministic",
+    definition: { type: "exact_match", field: "expected.answer" },
+    judgeModelRef: null,
+    version: 1,
+    calibration: null,
+    ...overrides,
+  };
+}
+
+function experimentShape(overrides: Partial<Experiment> = {}): Experiment {
+  return {
+    id: "experiment-1",
+    name: "Checkout baseline",
+    datasetId: "dataset-1",
+    datasetVersion: 1,
+    splitSelector: { splits: ["regression"], reviewedOnly: true, includeSynthetic: false },
+    scorerIds: ["scorer-1"],
+    baselineRef: null,
+    promptVersionRefs: [],
+    skillSnapshotRefs: [],
+    toolSnapshotRefs: [],
+    providerProfileRefs: [],
+    createdAt: "2026-05-21T16:52:14.000Z",
+    tags: ["checkout"],
+    runs: { items: [], nextCursor: null },
+    ...overrides,
+  };
+}
+
+function qualityShape(overrides: Partial<AiQualityOverview> = {}): AiQualityOverview {
+  return {
+    projectId: "project-1",
+    from: "2026-05-14T16:52:14.000Z",
+    to: "2026-05-21T16:52:14.000Z",
+    summary: { passRate: 0.92, meanScore: 0.87 },
+    segments: [
+      {
+        key: "service:checkout",
+        label: "Production quality",
+        dimensions: { service: "checkout" },
+        runCount: 12,
+        scoredRunCount: 10,
+        passRate: 0.92,
+        meanScore: 0.87,
+        p50LatencyMs: 120,
+        p95LatencyMs: 240,
+        costUsd: 0.42,
+        regressionCount: 1,
+      },
+    ],
+    warnings: [],
     ...overrides,
   };
 }

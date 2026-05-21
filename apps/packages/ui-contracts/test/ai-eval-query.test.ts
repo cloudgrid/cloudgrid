@@ -3,6 +3,10 @@ import {
   AI_EVAL_SEARCH_DEFAULT_LIMIT,
   AI_EVAL_SEARCH_HARD_LIMIT,
   buildAgentRunSearchInput,
+  buildAiQualityOverviewInput,
+  buildDatasetSearchInput,
+  buildExperimentSearchInput,
+  buildScorerSearchInput,
 } from "../src/ai-eval-query";
 
 describe("shared AI Eval query contracts", () => {
@@ -39,6 +43,56 @@ describe("shared AI Eval query contracts", () => {
       query: null,
       limit: AI_EVAL_SEARCH_DEFAULT_LIMIT,
       cursor: null,
+    });
+  });
+
+  test("builds AI Eval route search inputs with shared defaults", () => {
+    expect(buildDatasetSearchInput({ query: "regression", limit: 25 })).toEqual({
+      query: "regression",
+      tag: null,
+      split: null,
+      reviewStatus: null,
+      limit: 25,
+      cursor: null,
+    });
+    expect(buildScorerSearchInput({ kind: "deterministic", query: "exact", limit: 500 })).toEqual({
+      kind: "deterministic",
+      query: "exact",
+      limit: AI_EVAL_SEARCH_HARD_LIMIT,
+      cursor: null,
+    });
+    expect(buildExperimentSearchInput({ status: "running", query: "checkout" })).toEqual({
+      datasetId: null,
+      status: "running",
+      split: null,
+      baselineRunId: null,
+      query: "checkout",
+      limit: AI_EVAL_SEARCH_DEFAULT_LIMIT,
+      cursor: null,
+    });
+  });
+
+  test("builds production quality input with required project scope", () => {
+    expect(
+      buildAiQualityOverviewInput({
+        projectId: "project-1",
+        agentName: "support",
+        service: "checkout",
+        limit: 500,
+      }),
+    ).toEqual({
+      projectId: "project-1",
+      from: null,
+      to: null,
+      agentName: "support",
+      environment: null,
+      service: "checkout",
+      route: null,
+      toolName: null,
+      model: null,
+      policyId: null,
+      scorerId: null,
+      limit: AI_EVAL_SEARCH_HARD_LIMIT,
     });
   });
 });

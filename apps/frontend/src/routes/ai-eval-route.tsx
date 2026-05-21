@@ -1,6 +1,5 @@
 import type {
   AiQualityOverview,
-  AiQualityOverviewInput,
   AppendDatasetItemsInput,
   CreateDatasetInput,
   CreateExperimentInput,
@@ -18,13 +17,18 @@ import type {
   DatasetSplit,
   Experiment,
   ExperimentRun,
-  ExperimentSearchInput,
   JSONValue,
   PrepareDatasetImportInput,
   ProjectAiSettings,
   Scorer,
   ScorerKind,
   StartExperimentRunInput,
+} from "@cloudgrid/ui-contracts";
+import {
+  buildAiQualityOverviewInput,
+  buildDatasetSearchInput,
+  buildExperimentSearchInput,
+  buildScorerSearchInput,
 } from "@cloudgrid/ui-contracts";
 import { type UseQueryResult, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -159,20 +163,30 @@ export function AiEvalRoute() {
     setSearchParams(next);
   };
 
-  const experimentInput = useMemo<ExperimentSearchInput>(
-    () => ({
-      query: query || null,
-      status: readExperimentStatus(status),
-      limit: 25,
-      cursor: searchParams.get("cursor"),
-    }),
+  const datasetInput = useMemo(
+    () => buildDatasetSearchInput({ query: query || null, limit: 25 }),
+    [query],
+  );
+  const scorerInput = useMemo(
+    () => buildScorerSearchInput({ query: query || null, limit: 25 }),
+    [query],
+  );
+  const experimentInput = useMemo(
+    () =>
+      buildExperimentSearchInput({
+        query: query || null,
+        status,
+        limit: 25,
+        cursor: searchParams.get("cursor"),
+      }),
     [query, searchParams, status],
   );
-  const qualityInput = useMemo<AiQualityOverviewInput>(
-    () => ({
-      projectId,
-      limit: 25,
-    }),
+  const qualityInput = useMemo(
+    () =>
+      buildAiQualityOverviewInput({
+        projectId,
+        limit: 25,
+      }),
     [projectId],
   );
 
@@ -180,13 +194,13 @@ export function AiEvalRoute() {
 
   const datasetsQuery = useQuery({
     enabled: shouldQueryAiEval && (tab === "datasets" || tab === "experiments"),
-    queryKey: ["Datasets", { query: query || null }],
-    queryFn: () => telemetryClient.searchDatasets({ query: query || null, limit: 25 }),
+    queryKey: ["Datasets", datasetInput],
+    queryFn: () => telemetryClient.searchDatasets(datasetInput),
   });
   const scorersQuery = useQuery({
     enabled: shouldQueryAiEval && (tab === "scorers" || tab === "experiments"),
-    queryKey: ["Scorers", { query: query || null }],
-    queryFn: () => telemetryClient.searchScorers({ query: query || null, limit: 25 }),
+    queryKey: ["Scorers", scorerInput],
+    queryFn: () => telemetryClient.searchScorers(scorerInput),
   });
   const experimentsQuery = useQuery({
     enabled: shouldQueryAiEval && tab === "experiments",

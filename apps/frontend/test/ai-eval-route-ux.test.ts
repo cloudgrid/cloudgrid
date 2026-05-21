@@ -38,6 +38,14 @@ describe("AI Eval route UX migration", () => {
     expect(routeSource).not.toContain("localStorage");
   });
 
+  test("uses shared AI Eval query builders for route data inputs", () => {
+    expect(routeSource).toContain("buildDatasetSearchInput");
+    expect(routeSource).toContain("buildScorerSearchInput");
+    expect(routeSource).toContain("buildExperimentSearchInput");
+    expect(routeSource).toContain("buildAiQualityOverviewInput");
+    expect(routeSource).toContain("@cloudgrid/ui-contracts");
+  });
+
   test("wires dataset import through a dedicated workflow with staged upload, preview, and commit only", () => {
     expect(routeSource).toContain("DatasetImportWorkflow");
     expect(routeSource).toContain("data-ai-eval-dataset-import-workflow");

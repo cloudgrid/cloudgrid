@@ -11,29 +11,39 @@ import type {
   AiProviderParameters,
   AgentRunSearchResult,
   AgentRunStatus,
+  AiQualityOverview,
   AlertEventConnection,
   AlertRule,
   AlertSeverity,
   AlertSignal,
   CompanyAiProviderSettings,
   DashboardListResult,
+  DatasetSearchResult,
+  ExperimentRunStatus,
+  ExperimentSearchResult,
   JSONValue,
   LogSearchResult,
   MetricAggregation,
   MetricSeriesResult,
+  ScorerSearchResult,
   TelemetryFacetResult,
   TraceDetail,
   TraceSearchResult,
   TraceSummary,
 } from "@cloudgrid/ui-contracts";
 import {
+  AI_EVAL_SEARCH_DEFAULT_LIMIT,
   LOG_SEARCH_HARD_LIMIT,
   METRIC_SERIES_HARD_LIMIT,
   buildAgentRunSearchInput,
+  buildAiQualityOverviewInput,
   buildAlertHistoryInput,
   buildAlertRuleSearchInput,
+  buildDatasetSearchInput,
   buildDashboardListInput,
+  buildExperimentSearchInput,
   buildLogSearchInput,
+  buildScorerSearchInput,
   buildTelemetryFacetInput,
   buildTraceDetailInput,
   buildTraceSearchInput,
@@ -191,6 +201,22 @@ type AgentRunToolIntent = {
   status?: AgentRunStatus | null;
   agentName?: string | null;
   query?: string | null;
+};
+
+type AiEvalSearchToolIntent = {
+  query?: string | null;
+  limit: number;
+};
+
+type ExperimentToolIntent = AiEvalSearchToolIntent & {
+  status?: ExperimentRunStatus | null;
+};
+
+type AiQualityToolIntent = {
+  range: TraceToolRange;
+  service?: string | null;
+  agentName?: string | null;
+  limit: number;
 };
 
 type MetricToolIntent = {
@@ -704,6 +730,101 @@ async function answerWithCloudGridTool({
   input: AiChatStreamRequest;
   userText: string;
 }): Promise<{ text: string; toolName: string } | null> {
+  const qualityIntent = aiQualityToolIntent(userText, input.timezone);
+  if (qualityIntent) {
+    if (!bridge.aiQualityOverview) {
+      return {
+        toolName: "aiEval.qualityOverview",
+        text: "I could not query CloudGrid AI Eval production quality because the quality tool is not available in this run.",
+      };
+    }
+
+    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+    const result = await bridge.aiQualityOverview(
+      buildAiQualityOverviewInput({
+        projectId: input.projectId,
+        from: qualityIntent.range.from.toISOString(),
+        to: qualityIntent.range.to.toISOString(),
+        service: qualityIntent.service ?? null,
+        agentName: qualityIntent.agentName ?? null,
+        limit: qualityIntent.limit,
+      }),
+      authContext,
+    );
+
+    return {
+      toolName: "aiEval.qualityOverview",
+      text: formatAiQualityToolAnswer(result, qualityIntent, project),
+    };
+  }
+
+  const datasetIntent = aiEvalDatasetToolIntent(userText);
+  if (datasetIntent) {
+    if (!bridge.datasets) {
+      return {
+        toolName: "aiEval.searchDatasets",
+        text: "I could not query CloudGrid AI Eval datasets because the dataset search tool is not available in this run.",
+      };
+    }
+
+    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+    const result = await bridge.datasets(
+      buildDatasetSearchInput({ query: datasetIntent.query ?? null, limit: datasetIntent.limit }),
+      authContext,
+    );
+
+    return {
+      toolName: "aiEval.searchDatasets",
+      text: formatDatasetToolAnswer(result, project),
+    };
+  }
+
+  const scorerIntent = aiEvalScorerToolIntent(userText);
+  if (scorerIntent) {
+    if (!bridge.scorers) {
+      return {
+        toolName: "aiEval.searchScorers",
+        text: "I could not query CloudGrid AI Eval scorers because the scorer search tool is not available in this run.",
+      };
+    }
+
+    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+    const result = await bridge.scorers(
+      buildScorerSearchInput({ query: scorerIntent.query ?? null, limit: scorerIntent.limit }),
+      authContext,
+    );
+
+    return {
+      toolName: "aiEval.searchScorers",
+      text: formatScorerToolAnswer(result, project),
+    };
+  }
+
+  const experimentIntent = aiEvalExperimentToolIntent(userText);
+  if (experimentIntent) {
+    if (!bridge.experiments) {
+      return {
+        toolName: "aiEval.searchExperiments",
+        text: "I could not query CloudGrid AI Eval experiments because the experiment search tool is not available in this run.",
+      };
+    }
+
+    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+    const result = await bridge.experiments(
+      buildExperimentSearchInput({
+        query: experimentIntent.query ?? null,
+        status: experimentIntent.status ?? null,
+        limit: experimentIntent.limit,
+      }),
+      authContext,
+    );
+
+    return {
+      toolName: "aiEval.searchExperiments",
+      text: formatExperimentToolAnswer(result, project),
+    };
+  }
+
   const agentRunIntent = agentRunToolIntent(userText, input.timezone);
   if (agentRunIntent) {
     if (!bridge.agentRuns) {
@@ -1081,6 +1202,72 @@ function agentRunToolIntent(text: string, timezone: string | undefined): AgentRu
   };
 }
 
+function aiEvalDatasetToolIntent(text: string): AiEvalSearchToolIntent | null {
+  const normalized = text.toLowerCase();
+  if (
+    !/\b(ai eval|ai-eval|evaluation|eval)\b/.test(normalized) ||
+    !/\bdatasets?\b/.test(normalized)
+  ) {
+    return null;
+  }
+  if (!/\b(show|list|find|search|available)\b/.test(normalized)) {
+    return null;
+  }
+  return { query: aiEvalSearchFromText(text), limit: AI_EVAL_SEARCH_DEFAULT_LIMIT };
+}
+
+function aiEvalScorerToolIntent(text: string): AiEvalSearchToolIntent | null {
+  const normalized = text.toLowerCase();
+  if (
+    !/\b(ai eval|ai-eval|evaluation|eval)\b/.test(normalized) ||
+    !/\bscorers?\b/.test(normalized)
+  ) {
+    return null;
+  }
+  if (!/\b(show|list|find|search|available)\b/.test(normalized)) {
+    return null;
+  }
+  return { query: aiEvalSearchFromText(text), limit: AI_EVAL_SEARCH_DEFAULT_LIMIT };
+}
+
+function aiEvalExperimentToolIntent(text: string): ExperimentToolIntent | null {
+  const normalized = text.toLowerCase();
+  if (
+    !/\b(ai eval|ai-eval|evaluation|eval)\b/.test(normalized) ||
+    !/\bexperiments?\b/.test(normalized)
+  ) {
+    return null;
+  }
+  if (!/\b(show|list|find|search|available|running|queued|failed|finished)\b/.test(normalized)) {
+    return null;
+  }
+  return {
+    query: aiEvalSearchFromText(text),
+    status: experimentStatusFromText(normalized),
+    limit: AI_EVAL_SEARCH_DEFAULT_LIMIT,
+  };
+}
+
+function aiQualityToolIntent(
+  text: string,
+  timezone: string | undefined,
+): AiQualityToolIntent | null {
+  const normalized = text.toLowerCase();
+  if (!/\b(ai eval|ai-eval|evaluation|eval)\b/.test(normalized)) {
+    return null;
+  }
+  if (!/\b(production quality|quality|online scoring|policy results)\b/.test(normalized)) {
+    return null;
+  }
+  const hours = metricHoursFromText(normalized) ?? 24 * 7;
+  return {
+    range: /\btoday\b/.test(normalized) ? todayRange(timezone) : lastHoursRange(timezone, hours),
+    service: serviceFromAiEvalText(text),
+    agentName: agentNameFromText(text),
+    limit: AI_EVAL_SEARCH_DEFAULT_LIMIT,
+  };
+}
+
 function metricToolIntent(text: string, timezone: string | undefined): MetricToolIntent | null {
   const normalized = text.toLowerCase();
   const metricName = metricNameFromText(text);
@@ -1216,6 +1403,35 @@ function agentNameFromText(text: string) {
     return null;
   }
   return value;
+}
+
+function aiEvalSearchFromText(text: string) {
+  const quoted = quotedSearchFromText(text);
+  if (quoted) {
+    return quoted;
+  }
+  const match = text.match(
+    /\b(?:for|matching|search|named)\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/,
+  );
+  return match?.[1]?.replace(/[.,;:!?)]$/g, "") ?? null;
+}
+
+function serviceFromAiEvalText(text: string) {
+  const match = text.match(/\b(?:for|service)\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/);
+  const value = match?.[1]?.replace(/[.,;:!?)]$/g, "") ?? null;
+  if (!value || /^(quality|production|agent|runs?)$/i.test(value)) {
+    return null;
+  }
+  return value;
+}
+
+function experimentStatusFromText(text: string): ExperimentRunStatus | null {
+  if (/\brunning\b/.test(text)) return "running";
+  if (/\bqueued\b/.test(text)) return "queued";
+  if (/\b(cancelled|canceled)\b/.test(text)) return "cancelled";
+  if (/\bfailed\b/.test(text)) return "failed";
+  if (/\bfinished\b/.test(text)) return "finished";
+  return null;
 }
 
 function metricHoursFromText(text: string) {
@@ -1470,6 +1686,74 @@ function formatAgentRunToolAnswer(
     .join("\n");
 }
 
+function formatDatasetToolAnswer(
+  result: DatasetSearchResult,
+  project: { id: string; label: string },
+) {
+  if (!result.items.length) {
+    return `No AI Eval datasets were returned for project ${project.label}.`;
+  }
+  const noun = result.items.length === 1 ? "AI Eval dataset" : "AI Eval datasets";
+  return [
+    `CloudGrid returned ${result.items.length} ${noun} for project ${project.label}.`,
+    "",
+    "| Dataset | Version | Items | Reviewed | Health | Tags |",
+    "| --- | ---: | ---: | ---: | --- | --- |",
+    ...result.items.map(datasetRow),
+  ].join("\n");
+}
+
+function formatScorerToolAnswer(
+  result: ScorerSearchResult,
+  project: { id: string; label: string },
+) {
+  if (!result.items.length) {
+    return `No AI Eval scorers were returned for project ${project.label}.`;
+  }
+  const noun = result.items.length === 1 ? "AI Eval scorer" : "AI Eval scorers";
+  return [
+    `CloudGrid returned ${result.items.length} ${noun} for project ${project.label}.`,
+    "",
+    "| Scorer | Kind | Version |",
+    "| --- | --- | ---: |",
+    ...result.items.map(scorerRow),
+  ].join("\n");
+}
+
+function formatExperimentToolAnswer(
+  result: ExperimentSearchResult,
+  project: { id: string; label: string },
+) {
+  if (!result.items.length) {
+    return `No AI Eval experiments were returned for project ${project.label}.`;
+  }
+  const noun = result.items.length === 1 ? "AI Eval experiment" : "AI Eval experiments";
+  return [
+    `CloudGrid returned ${result.items.length} ${noun} for project ${project.label}.`,
+    "",
+    "| Experiment | Dataset | Scorers | Runs | Tags |",
+    "| --- | --- | ---: | ---: | --- |",
+    ...result.items.map(experimentRow),
+  ].join("\n");
+}
+
+function formatAiQualityToolAnswer(
+  result: AiQualityOverview,
+  intent: AiQualityToolIntent,
+  project: { id: string; label: string },
+) {
+  if (!result.segments.length) {
+    return `No AI Eval production quality segments were returned for ${intent.range.label} in project ${project.label}.`;
+  }
+  return [
+    `CloudGrid returned ${result.segments.length} AI Eval Production quality segment${result.segments.length === 1 ? "" : "s"} for ${intent.range.label} in project ${project.label}.`,
+    "",
+    "| Segment | Runs | Scored | Pass rate | Mean score | p95 latency | Cost | Regressions |",
+    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ...result.segments.map(qualitySegmentRow),
+  ].join("\n");
+}
+
 function formatMetricToolAnswer(
   result: MetricSeriesResult,
   intent: MetricToolIntent,
@@ -1620,6 +1904,52 @@ function agentRunRow(run: AgentRunSearchResult["items"][number]) {
     String(tokens),
     markdownTableCell(cost),
   ].join(" | ");
+}
+
+function datasetRow(dataset: DatasetSearchResult["items"][number]) {
+  return [
+    markdownTableCell(dataset.name),
+    String(dataset.version),
+    String(dataset.itemCount),
+    String(dataset.reviewedItemCount),
+    markdownTableCell(dataset.health.status),
+    markdownTableCell(dataset.tags.join(", ") || "-"),
+  ].join(" | ");
+}
+
+function scorerRow(scorer: ScorerSearchResult["items"][number]) {
+  return [
+    markdownTableCell(scorer.name),
+    markdownTableCell(scorer.kind),
+    String(scorer.version),
+  ].join(" | ");
+}
+
+function experimentRow(experiment: ExperimentSearchResult["items"][number]) {
+  return [
+    markdownTableCell(experiment.name),
+    markdownTableCell(`${experiment.datasetId}@${experiment.datasetVersion}`),
+    String(experiment.scorerIds.length),
+    String(experiment.runs?.items.length ?? 0),
+    markdownTableCell(experiment.tags.join(", ") || "-"),
+  ].join(" | ");
+}
+
+function qualitySegmentRow(segment: AiQualityOverview["segments"][number]) {
+  return [
+    markdownTableCell(segment.label),
+    String(segment.runCount),
+    String(segment.scoredRunCount),
+    formatRatio(segment.passRate),
+    formatRatio(segment.meanScore),
+    typeof segment.p95LatencyMs === "number" ? `${segment.p95LatencyMs.toFixed(1)} ms` : "-",
+    typeof segment.costUsd === "number" ? segment.costUsd.toFixed(4) : "-",
+    String(segment.regressionCount),
+  ].join(" | ");
+}
+
+function formatRatio(value: number | null | undefined) {
+  return typeof value === "number" ? value.toFixed(3) : "-";
 }
 
 function durationLabel(durationMs: number | null | undefined) {
