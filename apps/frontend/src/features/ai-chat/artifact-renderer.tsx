@@ -1,4 +1,10 @@
-import type { MetricChartType, MetricSeriesResult } from "@cloudgrid/ui-contracts";
+import type {
+  LogEvent,
+  MetricChartType,
+  MetricSeriesResult,
+  TraceDetail,
+} from "@cloudgrid/ui-contracts";
+import { useMemo, useState } from "react";
 import { CodeBlock } from "../../components/code-block";
 import {
   Table,
@@ -11,6 +17,7 @@ import {
 import { t } from "../../lib/i18n";
 import { MetricSeriesExplorer } from "../metrics/metric-explorer";
 import { TelemetryChart, type TelemetryChartDatum } from "../telemetry/telemetry-chart";
+import { TraceTreeWaterfall } from "../traces/trace-tree-waterfall";
 import type { ApprovedAiChatRenderer } from "./view-model";
 
 export function AiChatArtifactRenderer({
@@ -49,6 +56,13 @@ export function AiChatArtifactRenderer({
     return <JsonTable rows={content.items} />;
   }
 
+  if (renderer === "trace_waterfall") {
+    const detail = traceDetailFromContent(content);
+    if (detail) {
+      return <TraceWaterfallArtifact detail={detail} />;
+    }
+  }
+
   if (renderer === "json_tree") {
     return <JsonBlock content={content} />;
   }
@@ -67,6 +81,42 @@ export function AiChatArtifactRenderer({
   }
 
   return <JsonBlock content={content} />;
+}
+
+function TraceWaterfallArtifact({ detail }: { detail: TraceDetail }) {
+  const [selectedSpanId, setSelectedSpanId] = useState<string | null>(
+    detail.selectedSpan?.id ?? detail.trace.rootSpanId ?? detail.spans[0]?.id ?? null,
+  );
+  const matchedSpanIds = useMemo(
+    () => detail.spanMatches.map((match) => match.spanId),
+    [detail.spanMatches],
+  );
+  const exactLogSpanIds = useMemo(() => logSpanIds(detail.relatedLogs), [detail.relatedLogs]);
+
+  return (
+    <div className="h-[440px] min-h-80 overflow-hidden rounded-md border">
+      <TraceTreeWaterfall
+        ariaLabel="Trace tree waterfall"
+        className="h-full"
+        compact
+        criticalPathSpanIds={detail.structure.criticalPathSpanIds}
+        exactLogSpanIds={exactLogSpanIds}
+        filterVisibleSpanIds={detail.spans.map((span) => span.id)}
+        headerActions={null}
+        matchedSpanIds={matchedSpanIds}
+        onCollapseSelectedDescendant={setSelectedSpanId}
+        onSelectSpanId={setSelectedSpanId}
+        orphanSpanIds={detail.structure.orphanSpanIds}
+        rootSpanIds={detail.structure.rootSpanIds}
+        selectedSpanId={selectedSpanId}
+        spans={detail.spans}
+        traceDurationNano={detail.trace.durationNano ?? null}
+        traceDurationMs={detail.trace.durationMs ?? null}
+        traceStartedAt={detail.trace.startedAt}
+        traceStartedAtUnixNano={detail.trace.startedAtUnixNano}
+      />
+    </div>
+  );
 }
 
 function JsonTable({ rows: rawRows }: { rows: unknown[] }) {
@@ -130,6 +180,99 @@ function metricSeriesResultFromContent(content: Record<string, unknown>) {
     return null;
   }
   return candidate as unknown as MetricSeriesResult;
+}
+
+function traceDetailFromContent(content: Record<string, unknown>) {
+  const candidate = isRecord(content.data) ? content.data : null;
+  if (
+    !candidate ||
+    !isTraceRecord(candidate.trace) ||
+    !Array.isArray(candidate.spans) ||
+    !candidate.spans.every(isSpanRecord) ||
+    !isTraceStructureRecord(candidate.structure)
+  ) {
+    return null;
+  }
+
+  return {
+    trace: candidate.trace,
+    structure: candidate.structure,
+    spans: candidate.spans,
+    selectedSpan: isRecord(candidate.selectedSpan) ? candidate.selectedSpan : null,
+    spanMatches: Array.isArray(candidate.spanMatches) ? candidate.spanMatches : [],
+    logs: Array.isArray(candidate.logs) ? candidate.logs : [],
+    relatedLogs: Array.isArray(candidate.relatedLogs) ? candidate.relatedLogs : [],
+    warnings: Array.isArray(candidate.warnings) ? candidate.warnings : [],
+  } as unknown as TraceDetail;
+}
+
+function isTraceRecord(value: unknown) {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.startedAt === "string" &&
+    typeof value.startedAtUnixNano === "string" &&
+    isRecord(value.attributes)
+  );
+}
+
+function isTraceStructureRecord(value: unknown) {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.rootSpanIds) &&
+    value.rootSpanIds.every(isString) &&
+    Array.isArray(value.orphanSpanIds) &&
+    value.orphanSpanIds.every(isString) &&
+    Array.isArray(value.criticalPathSpanIds) &&
+    value.criticalPathSpanIds.every(isString)
+  );
+}
+
+function isSpanRecord(value: unknown) {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.traceId === "string" &&
+    (typeof value.parentSpanId === "string" ||
+      value.parentSpanId === null ||
+      value.parentSpanId === undefined) &&
+    typeof value.name === "string" &&
+    typeof value.startedAt === "string" &&
+    typeof value.startedAtUnixNano === "string" &&
+    typeof value.endedAt === "string" &&
+    typeof value.endedAtUnixNano === "string" &&
+    typeof value.startOffsetNano === "string" &&
+    typeof value.durationNano === "string" &&
+    typeof value.durationMs === "number" &&
+    isRecord(value.attributes) &&
+    typeof value.depth === "number" &&
+    typeof value.childCount === "number" &&
+    typeof value.hasError === "boolean" &&
+    typeof value.isCriticalPath === "boolean" &&
+    typeof value.isOrphan === "boolean" &&
+    typeof value.isServiceEntry === "boolean" &&
+    typeof value.exceptionCount === "number" &&
+    Array.isArray(value.events) &&
+    Array.isArray(value.links) &&
+    Array.isArray(value.exceptions)
+  );
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function logSpanIds(logs: LogEvent[]) {
+  return Array.from(
+    new Set(
+      logs.flatMap((log) => {
+        if (!log.spanId) {
+          return [];
+        }
+        return [log.spanId];
+      }),
+    ),
+  );
 }
 
 function chartTypeFromContent(content: Record<string, unknown>): MetricChartType {

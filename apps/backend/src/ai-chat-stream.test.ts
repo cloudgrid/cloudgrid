@@ -856,6 +856,20 @@ describe("AI Chat stream endpoint", () => {
 
     expect(response.status).toBe(200);
     expectArtifact(body, "trace_waterfall", "Trace trace-detail-123");
+    expect(parseSse(body)).toContainEqual(
+      expect.objectContaining({
+        type: "artifact.created",
+        payload: expect.objectContaining({
+          renderSpec: expect.objectContaining({
+            data: expect.objectContaining({
+              trace: expect.objectContaining({ id: "trace-detail-123" }),
+              spans: expect.any(Array),
+              structure: expect.any(Object),
+            }),
+          }),
+        }),
+      }),
+    );
     expect(harness.requests).toHaveLength(0);
     expect(traceDetailInputs).toEqual([
       {

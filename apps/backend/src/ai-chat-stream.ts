@@ -1969,11 +1969,16 @@ function traceWaterfallArtifact(result: TraceDetail): PendingAiChatArtifact {
       renderer: "trace_waterfall",
       title: `Trace ${result.trace.id}`,
       ariaLabel: `Trace ${result.trace.id} waterfall`,
-      trace: result.trace,
-      spans: result.spans,
-      structure: result.structure,
-      selectedSpan: result.selectedSpan ?? null,
-      warnings: result.warnings,
+      data: {
+        trace: result.trace,
+        spans: result.spans,
+        structure: result.structure,
+        selectedSpan: result.selectedSpan ?? null,
+        spanMatches: result.spanMatches,
+        logs: result.logs,
+        relatedLogs: result.relatedLogs,
+        warnings: result.warnings,
+      },
     },
   };
 }

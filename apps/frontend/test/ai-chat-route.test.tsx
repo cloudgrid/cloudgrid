@@ -22,6 +22,8 @@ import {
   orderedAiChatProjectGroups,
 } from "../src/features/ai-chat/view-model";
 import { AiChatArtifactRenderer } from "../src/features/ai-chat/artifact-renderer";
+import { buildBalancedTraceFixture } from "../src/features/traces/trace-fixtures";
+import { TooltipProvider } from "../src/components/ui/tooltip";
 import { AppSessionProvider } from "../src/providers/app-session-provider";
 import { ThemeProvider } from "../src/providers/theme-provider";
 import { AiChatRoute } from "../src/routes/ai-chat-route";
@@ -513,6 +515,58 @@ describe("AI Chat route", () => {
     expect(markup).toContain("Production quality");
     expect(markup).toContain("passRate");
     expect(markup).toContain("0.92");
+  });
+
+  test("renders trace waterfall artifacts through the shared trace tree", () => {
+    const detail = buildBalancedTraceFixture(6);
+    const markup = renderToStaticMarkup(
+      <ThemeProvider>
+        <TooltipProvider>
+          <AiChatArtifactRenderer
+            renderer="trace_waterfall"
+            content={{
+              renderer: "trace_waterfall",
+              title: `Trace ${detail.trace.id}`,
+              data: {
+                trace: detail.trace,
+                spans: detail.spans,
+                structure: detail.structure,
+                selectedSpan: detail.selectedSpan,
+                spanMatches: detail.spanMatches,
+                logs: detail.logs,
+                relatedLogs: detail.relatedLogs,
+                warnings: detail.warnings,
+              },
+            }}
+          />
+        </TooltipProvider>
+      </ThemeProvider>,
+    );
+
+    expect(markup).toContain('role="tree"');
+    expect(markup).toContain("Trace tree waterfall");
+    expect(markup).toContain("gateway.operation.0");
+    expect(markup).not.toContain("language-json");
+  });
+
+  test("falls back to inert JSON for malformed trace waterfall data", () => {
+    const markup = renderToStaticMarkup(
+      <ThemeProvider>
+        <TooltipProvider>
+          <AiChatArtifactRenderer
+            renderer="trace_waterfall"
+            content={{
+              renderer: "trace_waterfall",
+              title: "Malformed trace",
+              data: { trace: {}, spans: [{}], structure: {} },
+            }}
+          />
+        </TooltipProvider>
+      </ThemeProvider>,
+    );
+
+    expect(markup).not.toContain('role="tree"');
+    expect(markup).toContain("&quot;renderer&quot;: &quot;trace_waterfall&quot;");
   });
 
   test("renders mixed server-ordered message parts with safe tool status details", () => {
