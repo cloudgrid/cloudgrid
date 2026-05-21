@@ -155,6 +155,15 @@ invent CloudGrid data. Use a mounted skill for specialist reasoning that is
 likely to evolve independently, has examples, references renderer choices, or
 would otherwise make the system prompt bulky.
 
+CloudGrid-owned skills must follow the authoring rules in `skills/README.md`
+and the automated quality gate in `tooling/scripts/check-skills.mjs`. New or
+changed skills must be generated or revised with the local skill creator
+workflow, then checked with `bun run skills:check`. Skill authors must keep
+frontmatter names valid, descriptions specific enough for discovery, `SKILL.md`
+bodies under 500 lines, references one level from `SKILL.md`, and at least
+three real usage eval prompts with objective assertions in
+`skills/evals/evals.json`.
+
 ## Model Aliases And Provider Adapters
 
 The catalog must define model aliases instead of embedding provider/model

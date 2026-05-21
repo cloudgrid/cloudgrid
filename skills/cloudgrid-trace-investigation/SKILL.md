@@ -1,6 +1,6 @@
 ---
 name: cloudgrid-trace-investigation
-description: Use for CloudGrid trace investigation through AI Chat, frontend trace views, BFF GraphQL, or storage-read query paths. Guides agents to inspect latency, errors, service impact, span waterfalls, related logs, and CloudGrid-native evidence without bypassing architecture boundaries.
+description: Investigates CloudGrid traces through AI Chat, frontend trace views, BFF GraphQL, or storage-read query paths. Use when inspecting latency, errors, service impact, span waterfalls, related logs, or CloudGrid-native trace evidence without bypassing architecture boundaries.
 ---
 
 # CloudGrid Trace Investigation

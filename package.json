@@ -28,6 +28,7 @@
     "coverage:backend": "bun tooling/scripts/backend-coverage.mjs",
     "contracts:generate": "bun tooling/scripts/generate-contracts.mjs",
     "contracts:check": "bun tooling/scripts/check-contracts.mjs",
+    "skills:check": "bun tooling/scripts/check-skills.mjs",
     "bench:local": "bun tooling/scripts/bench.mjs local",
     "bench:read": "bun tooling/scripts/bench.mjs local-read",
     "bench:ingest": "bun tooling/scripts/bench.mjs local-ingest",
@@ -37,7 +38,7 @@
     "release:validate": "bun tooling/scripts/validate-release-artifacts.mjs",
     "integration:local": "bun --cwd apps/backend ../../tooling/scripts/integration-local.mjs",
     "eval:gate": "bun tooling/scripts/ai-eval-regression-gate.mjs",
-    "verify": "bun run format:check && bun run typecheck && bun run lint && bun run test && bun run contracts:check && bun run release:validate && bun run build && bun run go:test && bun run coverage:backend",
+    "verify": "bun run format:check && bun run typecheck && bun run lint && bun run test && bun run contracts:check && bun run skills:check && bun run release:validate && bun run build && bun run go:test && bun run coverage:backend",
     "verify:full": "bun run verify && bun run smoke:frontend && git diff --check"
   },
   "engines": {

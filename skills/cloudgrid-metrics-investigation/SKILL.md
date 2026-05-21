@@ -1,6 +1,6 @@
 ---
 name: cloudgrid-metrics-investigation
-description: Use for CloudGrid metric investigation through AI Chat, the metrics explorer, BFF GraphQL, storage-read metric query semantics, or dashboard metric evidence. Guides agents to compare series, aggregations, exemplars, and metric artifacts without frontend or BFF query shortcuts.
+description: Investigates CloudGrid metrics through AI Chat, the metrics explorer, BFF GraphQL, storage-read metric query semantics, or dashboard metric evidence. Use when comparing series, aggregations, exemplars, or metric artifacts without frontend or BFF query shortcuts.
 ---
 
 # CloudGrid Metrics Investigation

@@ -1,6 +1,6 @@
 ---
 name: cloudgrid-logs-investigation
-description: Use for CloudGrid log investigation through AI Chat, frontend log views, BFF GraphQL, or storage-read log query paths. Guides agents to inspect severity, correlation, error clusters, trace pivots, and CloudGrid-native evidence without bypassing architecture boundaries.
+description: Investigates CloudGrid logs through AI Chat, frontend log views, BFF GraphQL, or storage-read log query paths. Use when inspecting severity, correlation, error clusters, trace pivots, or CloudGrid-native log evidence without bypassing architecture boundaries.
 ---
 
 # CloudGrid Logs Investigation

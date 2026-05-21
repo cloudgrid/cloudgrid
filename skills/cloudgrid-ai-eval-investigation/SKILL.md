@@ -1,6 +1,6 @@
 ---
 name: cloudgrid-ai-eval-investigation
-description: Use for CloudGrid AI Eval investigation through AI Chat, AI Eval views, BFF GraphQL, storage-read query paths, or harness-adapter evidence. Guides agents to inspect runs, scorers, datasets, optimization, and regression evidence without leaking prompts or bypassing contracts.
+description: Investigates CloudGrid AI Eval through AI Chat, AI Eval views, BFF GraphQL, storage-read query paths, or harness-adapter evidence. Use when inspecting runs, scorers, datasets, optimization, or regression evidence without leaking prompts or bypassing contracts.
 ---
 
 # CloudGrid AI Eval Investigation

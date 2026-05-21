@@ -25,10 +25,17 @@ If the needed behavior is missing, update the relevant spec first.
 
 ## Authoring Rules
 
-- Keep each `SKILL.md` concise and task-oriented.
-- Put triggering context in the frontmatter `description`.
+- Follow Anthropic's agent skill authoring best practices: concise
+  `SKILL.md`, specific discovery metadata, progressive disclosure, concrete
+  examples, and real usage evaluations.
+- Keep each `SKILL.md` under 500 body lines and task-oriented.
+- Put triggering context in the frontmatter `description`; write it as
+  third-person discovery metadata and include `Use when`.
 - Keep detailed reference material one level away from `SKILL.md` when it grows.
-- Prefer checklists and validation loops for fragile workflows.
+- Prefer checklists, validation loops, and machine-checkable intermediate
+  outputs for fragile workflows.
 - Use exact repo commands, paths, and spec filenames.
+- Keep at least three real usage eval prompts in `skills/evals/evals.json`.
+- Run `bun run skills:check` before committing skill changes.
 - For docs-only skill changes, run formatting/text checks; for code or contract
   changes, run the verification command required by the touched surface.

@@ -5,31 +5,61 @@
       "id": 1,
       "prompt": "I want to run CloudGrid locally from the release bundle and send a test trace. Tell me the single supported path and what files or commands to inspect first.",
       "expected_output": "Uses cloudgrid-setup-configuration, points to deploy/compose/cloudgrid-local.sh and release compose docs, avoids mutable latest tags, and includes a verification step.",
-      "files": []
+      "files": [],
+      "assertions": [
+        "Mentions deploy/compose/cloudgrid-local.sh",
+        "Mentions release Compose or specs/06-nfr/release-distribution.md",
+        "Does not recommend mutable latest image tags",
+        "Includes a verification step"
+      ]
     },
     {
       "id": 2,
       "prompt": "We need GitHub SSO plus SMTP invites in deployed mode. Check what env vars are valid and explain the onboarding flow without inventing magic links.",
       "expected_output": "Uses cloudgrid-setup-configuration, reads runtime and invitation specs, explains SSO identity plus invite acceptance, and names only specified env vars.",
-      "files": []
+      "files": [],
+      "assertions": [
+        "Mentions specs/04-backend/runtime-configuration.md",
+        "Mentions specs/04-backend/organization-invitations.md or invitation-email-delivery.md",
+        "Does not invent undocumented environment variables",
+        "Does not invent magic-link behavior"
+      ]
     },
     {
       "id": 3,
       "prompt": "The storage-read service is returning too many metric rows. Update the query path so filtering and grouping happen in the database adapter.",
       "expected_output": "Uses cloudgrid-surrealdb or cloudgrid-extension-development, respects storage-read ownership, avoids BFF/frontend aggregation, and calls for focused Go tests.",
-      "files": []
+      "files": [],
+      "assertions": [
+        "Keeps query semantics in storage-read",
+        "Rejects BFF or frontend aggregation of telemetry records",
+        "Mentions SurrealDB adapter or storage-read database adapter",
+        "Requires focused Go tests"
+      ]
     },
     {
       "id": 4,
       "prompt": "Add a new dashboard widget backed by public GraphQL and make sure the frontend and integration scenarios don't drift.",
       "expected_output": "Uses cloudgrid-observability-ui and cloudgrid-extension-development, updates specs/contracts first if needed, uses public API client operations, and requires contracts:check.",
-      "files": []
+      "files": [],
+      "assertions": [
+        "Mentions specs before implementation for missing behavior",
+        "Mentions public GraphQL schema or generated UI contracts",
+        "Mentions public API client or integration scenarios",
+        "Requires bun run contracts:check"
+      ]
     },
     {
       "id": 5,
       "prompt": "Our release workflow failed while building Docker images. Review what should be produced for a release and what checks to run before we retry.",
       "expected_output": "Uses cloudgrid-operations-maintenance, follows release-distribution spec, checks image/artifact requirements, and uses release validation without adding long-lived registry secrets.",
-      "files": []
+      "files": [],
+      "assertions": [
+        "Mentions specs/06-nfr/release-distribution.md",
+        "Mentions release artifact or Docker image validation",
+        "Mentions bun run release:validate",
+        "Does not add long-lived registry secrets"
+      ]
     }
   ]
 }
