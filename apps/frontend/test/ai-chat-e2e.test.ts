@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import type { AiChatConversation, AiChatRun, TraceSearchResult } from "@cloudgrid/ui-contracts";
+import type {
+  AiChatConversation,
+  AiChatRun,
+  AiQualityOverview,
+  LogSearchResult,
+  MetricSeriesResult,
+  TraceSearchResult,
+} from "@cloudgrid/ui-contracts";
 import type { ModelProvider, TextRequest, TextResponse, TextStreamChunk } from "@purista/harness";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -174,6 +181,124 @@ describe("AI Chat end-to-end stream integration", () => {
       expect(markup).toContain("error");
     });
   });
+
+  test("streams metrics, logs, and AI Eval artifacts through shared frontend renderers", async () => {
+    await withProviderCredential(async () => {
+      const cases = [
+        {
+          name: "metrics",
+          prompt: "show gen_ai.client.token.usage metrics for the last hour",
+          expectedTool: "telemetry.queryMetrics",
+          expectedRenderer: "metric_timeseries",
+          expectedMarkup: ["gen_ai.client.token.usage", "input", "42"],
+          bridgeOverrides: {
+            async metricSeries() {
+              return metricSeriesResult();
+            },
+          },
+        },
+        {
+          name: "logs",
+          prompt: "show the latest error logs for checkout-api",
+          expectedTool: "telemetry.searchLogs",
+          expectedRenderer: "log_list",
+          expectedMarkup: ["storage is unavailable", "checkout-api", "ERROR"],
+          bridgeOverrides: {
+            async searchLogs() {
+              return logSearchResult();
+            },
+          },
+        },
+        {
+          name: "ai-eval-quality",
+          prompt: "show AI Eval production quality for checkout",
+          expectedTool: "aiEval.qualityOverview",
+          expectedRenderer: "status_summary",
+          expectedMarkup: ["Production quality", "0.92", "1"],
+          bridgeOverrides: {
+            async aiQualityOverview(input: { projectId: string }) {
+              return aiQualityOverview(input.projectId);
+            },
+          },
+        },
+      ];
+
+      for (const item of cases) {
+        const conversation = conversationFixture({ id: `chat-e2e-${item.name}` });
+        const { app } = createAppWithBridge(
+          bridge({
+            ...item.bridgeOverrides,
+            async aiChatConversation() {
+              return conversation;
+            },
+            async aiChatCreateRun(input) {
+              return runFixture({
+                id: `run-e2e-${item.name}`,
+                conversationId: input.conversationId,
+                providerProfileId: input.providerProfileId,
+                model: input.model,
+              });
+            },
+            async aiChatAppendMessage() {},
+            async aiChatFinalizeRun(input) {
+              return runFixture({
+                id: `run-e2e-${item.name}`,
+                conversationId: conversation.id,
+                status: input.status,
+              });
+            },
+          }),
+          { graphqlUI: false, aiChatHarness: createAiChatHarness("provider") ?? undefined },
+        );
+
+        const events = await withAppFetch(app, async () => {
+          const client = createControlPlaneGraphQLClient("https://cloudgrid.test/graphql");
+          const streamEvents = [];
+          for await (const event of client.streamAiChatRun({
+            conversationId: conversation.id,
+            projectId: conversation.projectId,
+            userMessageClientId: `client-message-e2e-${item.name}`,
+            idempotencyKey: `idempotency-key-e2e-${item.name}`,
+            parts: [{ type: "text", text: item.prompt }],
+            timezone: "Europe/Berlin",
+          })) {
+            streamEvents.push(event);
+          }
+          return streamEvents;
+        });
+
+        expect(events.find((event) => event.type === "tool.started")?.payload).toMatchObject({
+          status: "running",
+          toolName: item.expectedTool,
+        });
+        const view = events.reduce(
+          applyAiChatStreamEvent,
+          createAiChatStreamViewState({
+            conversationId: conversation.id,
+            userText: item.prompt,
+          }),
+        );
+        const artifact = view.artifacts.at(0);
+        expect(artifact).toBeDefined();
+        const safeView = safeAiChatArtifactView(artifact!);
+        expect(safeView.kind).toBe("json_render");
+        if (safeView.kind !== "json_render") {
+          throw new Error("expected json render artifact");
+        }
+        const markup = renderToStaticMarkup(
+          createElement(AiChatArtifactRenderer, {
+            content: safeView.content,
+            renderer: safeView.renderer,
+          }),
+        );
+
+        expect(safeView.renderer).toBe(item.expectedRenderer);
+        for (const expected of item.expectedMarkup) {
+          expect(markup).toContain(expected);
+        }
+      }
+    });
+  });
 });
 
 async function withProviderCredential(run: () => Promise<void>) {
@@ -301,4 +426,86 @@ function traceSearchResult(): TraceSearchResult {
     nextCursor: null,
     totalCount: 1,
   } as TraceSearchResult;
+}
+
+function metricSeriesResult(): MetricSeriesResult {
+  return {
+    metric: {
+      id: "metric:gen_ai.client.token.usage",
+      tenantId: "tenant-1",
+      projectId: "project-1",
+      name: "gen_ai.client.token.usage",
+      description: "Token usage by provider, model, and token type.",
+      unit: "1",
+      kind: "sum",
+      aggregationTemporality: "delta",
+      monotonic: true,
+      attributeKeys: ["gen_ai.token.type", "service.name"],
+      firstSeenAt: "2026-05-21T17:00:00.000Z",
+      lastSeenAt: "2026-05-21T18:00:00.000Z",
+    },
+    aggregation: "sum",
+    interval: "5m",
+    groupBy: [],
+    series: [
+      {
+        labels: { "gen_ai.token.type": "input", "service.name": "checkout-api" },
+        points: [
+          {
+            timestamp: "2026-05-21T17:55:00.000Z",
+            value: 42,
+            count: 1,
+            exemplars: [],
+          },
+        ],
+      },
+    ],
+    warnings: [],
+  };
+}
+
+function logSearchResult(): LogSearchResult {
+  return {
+    items: [
+      {
+        id: "log-e2e-storage",
+        traceId: "trace-e2e-failing",
+        spanId: "span-root",
+        serviceName: "checkout-api",
+        severityText: "ERROR",
+        severityNumber: 17,
+        body: "storage is unavailable",
+        timestamp: "2026-05-21T17:56:00.000Z",
+        observedTimestamp: "2026-05-21T17:56:00.000Z",
+        attributes: { error_code: "STORAGE_UNAVAILABLE" },
+        correlation: { trace: null, span: null },
+      },
+    ],
+    nextCursor: null,
+  };
+}
+
+function aiQualityOverview(projectId: string): AiQualityOverview {
+  return {
+    projectId,
+    from: "2026-05-20T18:00:00.000Z",
+    to: "2026-05-21T18:00:00.000Z",
+    summary: { passRate: 0.92, meanScore: 0.87 },
+    segments: [
+      {
+        key: "service:checkout",
+        label: "Production quality",
+        dimensions: { service: "checkout" },
+        runCount: 12,
+        scoredRunCount: 10,
+        passRate: 0.92,
+        meanScore: 0.87,
+        p50LatencyMs: 120,
+        p95LatencyMs: 240,
+        costUsd: 0.42,
+        regressionCount: 1,
+      },
+    ],
+    warnings: [],
+  };
 }

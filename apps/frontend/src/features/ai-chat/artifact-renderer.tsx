@@ -72,7 +72,7 @@ export function AiChatArtifactRenderer({
         ? content.items
         : null;
     if (items) {
-      return <JsonTable rows={items} />;
+      return <JsonTable rows={logArtifactRows(items)} />;
     }
   }
 
@@ -164,6 +164,17 @@ function JsonTable({ rows: rawRows }: { rows: unknown[] }) {
       </Table>
     </div>
   );
+}
+
+function logArtifactRows(items: unknown[]) {
+  return items.filter(isRecord).map((item) => ({
+    timestamp: item.timestamp,
+    severity: item.severityText ?? item.severityNumber,
+    service: item.serviceName,
+    trace: item.traceId,
+    span: item.spanId,
+    body: item.body,
+  }));
 }
 
 function KeyValueSummary({ content }: { content: Record<string, unknown> }) {
