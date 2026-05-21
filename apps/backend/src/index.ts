@@ -164,6 +164,12 @@ export function installClientDisconnectHandlers(
     }
     throw reason;
   });
+  process.on("uncaughtException", (error) => {
+    if (handleProcessClientDisconnect(error, logger)) {
+      return;
+    }
+    throw error;
+  });
 }
 
 export function handleProcessClientDisconnect(

@@ -114,7 +114,7 @@ describe("BFF server wiring", () => {
     expect(isClientDisconnectError(new Error("The connection was closed."))).toBe(false);
   });
 
-  test("process-level disconnect handler suppresses aborted client rejections only", () => {
+  test("process-level disconnect handler suppresses aborted client errors only", () => {
     const debugEvents: string[] = [];
     const logger = {
       debug(event: string) {

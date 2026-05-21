@@ -1228,12 +1228,15 @@ func validAIProjectionPersistCommand() contracts.PersistAiProjectionCommand {
 		SpanID:    "span-1",
 		Kind:      contracts.AiProjectionKindAgentRun,
 		Projection: map[string]any{
-			"id":         "agent-run-1",
-			"traceId":    "trace-1",
-			"rootSpanId": "span-1",
-			"agent":      map[string]any{"name": "support-agent"},
-			"startedAt":  time.Date(2026, 5, 8, 8, 0, 0, 0, time.UTC).Format(time.RFC3339),
-			"status":     "ok",
+			"id":             "agent-run-1",
+			"traceId":        "trace-1",
+			"rootSpanId":     "span-1",
+			"parentSpanId":   "parent-1",
+			"agent":          map[string]any{"name": "support-agent"},
+			"startedAt":      time.Date(2026, 5, 8, 8, 0, 0, 0, time.UTC).Format(time.RFC3339),
+			"status":         "ok",
+			"contentDigests": []string{"sha256:input", "sha256:output"},
+			"contentSources": []string{"attribute:gen_ai.input", "attribute:gen_ai.output"},
 		},
 	}
 }

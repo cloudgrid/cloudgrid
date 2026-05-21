@@ -115,6 +115,24 @@ func TestStatementsDefineAiEvalRelationshipFields(t *testing.T) {
 	}
 }
 
+func TestStatementsDefineAiProjectionExtractorFields(t *testing.T) {
+	got := strings.Join(Statements(), "\n")
+
+	for _, table := range []string{"ai_agent_run", "ai_llm_call", "ai_tool_call", "ai_retrieval_event"} {
+		for _, want := range []string{
+			"DEFINE FIELD IF NOT EXISTS parentSpanId ON " + table + " TYPE option<string>",
+			"DEFINE FIELD OVERWRITE contentDigests ON " + table + " TYPE option<array<string>>",
+			"DEFINE FIELD OVERWRITE contentSources ON " + table + " TYPE option<array<string>>",
+			"DEFINE FIELD OVERWRITE documentDigests ON " + table + " TYPE option<array<string>>",
+			"DEFINE FIELD OVERWRITE documentSources ON " + table + " TYPE option<array<string>>",
+		} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("schema missing %q in:\n%s", want, got)
+			}
+		}
+	}
+}
+
 func TestStatementsDefineIngestCommandFields(t *testing.T) {
 	got := strings.Join(Statements(), "\n")
 
