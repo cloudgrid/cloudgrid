@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildLogSearchInput,
   buildMetricSeriesInput,
+  createDefaultLogTimeRange,
+  defaultLogSort,
+  LOG_SEARCH_DEFAULT_LIMIT,
+  LOG_SEARCH_HARD_LIMIT,
   METRIC_SERIES_DEFAULT_LIMIT,
   METRIC_SERIES_HARD_LIMIT,
   createDefaultMetricTimeRange,
@@ -61,5 +66,38 @@ describe("shared telemetry query contracts", () => {
     expect(defaultMetricIntervalForHours(1)).toBe("PT1M");
     expect(defaultMetricIntervalForHours(24)).toBe("PT5M");
     expect(METRIC_SERIES_HARD_LIMIT).toBe(5000);
+  });
+
+  test("centralizes log search defaults for UI controls and AI tool calls", () => {
+    const range = createDefaultLogTimeRange(new Date("2026-05-21T17:00:00.000Z"));
+
+    expect(range).toEqual({
+      from: "2026-05-21T16:00:00.000Z",
+      to: "2026-05-21T17:00:00.000Z",
+    });
+    expect(defaultLogSort()).toBe("timestamp_desc");
+    expect(LOG_SEARCH_DEFAULT_LIMIT).toBe(50);
+    expect(LOG_SEARCH_HARD_LIMIT).toBe(200);
+    expect(
+      buildLogSearchInput({
+        from: range.from,
+        to: range.to,
+        service: "api",
+        search: "storage unavailable",
+        sort: "timestamp_desc",
+      }),
+    ).toEqual({
+      from: "2026-05-21T16:00:00.000Z",
+      to: "2026-05-21T17:00:00.000Z",
+      service: "api",
+      traceId: null,
+      spanId: null,
+      severity: null,
+      search: "storage unavailable",
+      attributes: null,
+      sort: "timestamp_desc",
+      cursor: null,
+      limit: LOG_SEARCH_DEFAULT_LIMIT,
+    });
   });
 });

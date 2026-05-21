@@ -1,11 +1,11 @@
 import type {
   LogSearchInput,
-  LogSort,
   TraceDetailInput,
   TraceSearchInput,
   TraceSort,
   TraceStatus,
 } from "@cloudgrid/ui-contracts";
+import { LOG_SEARCH_DEFAULT_LIMIT, logSortOrDefault } from "@cloudgrid/ui-contracts";
 import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -17,7 +17,6 @@ const traceSorts: TraceSort[] = [
   "duration_asc",
   "errorFirst",
 ];
-const logSorts: LogSort[] = ["timestamp_desc", "timestamp_asc", "severity_desc"];
 
 function valueOrNull(value: string | null) {
   return value && value.trim().length > 0 ? value : null;
@@ -47,10 +46,6 @@ function attributeFiltersOrNull(value: string | null) {
 
 function traceSortOrNull(value: string | null): TraceSort | null {
   return traceSorts.includes(value as TraceSort) ? (value as TraceSort) : null;
-}
-
-function logSortOrNull(value: string | null): LogSort | null {
-  return logSorts.includes(value as LogSort) ? (value as LogSort) : null;
 }
 
 export function useTraceFilters() {
@@ -209,9 +204,9 @@ export function useLogFilters() {
       to: valueOrNull(searchParams.get("to")),
       search: valueOrNull(searchParams.get("search")),
       attributes: attributeFiltersOrNull(searchParams.get("attributeKey")),
-      sort: logSortOrNull(searchParams.get("sort")),
+      sort: logSortOrDefault(searchParams.get("sort")),
       cursor: valueOrNull(searchParams.get("cursor")),
-      limit: 50,
+      limit: LOG_SEARCH_DEFAULT_LIMIT,
     }),
     [searchParams],
   );

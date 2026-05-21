@@ -444,7 +444,7 @@ explicitly record why it is not available to AI Chat.
 | --- | --- | --- | --- | --- |
 | `telemetry.searchTraces` | `Query.traces` / storage-read trace search | last 1 hour | 50 traces | 200 traces |
 | `telemetry.getTrace` | `Query.trace` / storage-read trace detail | not applicable | full trace detail | 5000 spans |
-| `telemetry.searchLogs` | `Query.logs` / storage-read log search | last 1 hour | 100 logs | 1000 logs |
+| `telemetry.searchLogs` | `Query.logs` / storage-read log search | last 1 hour, newest first | 50 logs | 200 logs |
 | `telemetry.queryMetrics` | `Query.metricSeries` or `Query.richMetricSeries` | last 1 hour | storage-read default step | 5000 points |
 | `telemetry.getFacets` | `Query.telemetryFacets` | last 1 hour | backend default | backend cap |
 | `dashboards.list` | `Query.dashboards` | not applicable | all visible dashboards | backend cap |

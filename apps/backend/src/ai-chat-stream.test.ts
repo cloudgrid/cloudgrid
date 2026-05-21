@@ -603,6 +603,77 @@ describe("AI Chat stream endpoint", () => {
     delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
   });
 
+  test("answers latest log questions with injected project context and default query settings", async () => {
+    process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
+    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const logInputs: unknown[] = [];
+    const logProjectIds: Array<string | undefined> = [];
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          return configuredCompanyProvider();
+        },
+        async searchLogs(input, authContext) {
+          logInputs.push(input);
+          logProjectIds.push(authContext?.projectId);
+          return {
+            items: [
+              {
+                id: "log-1",
+                traceId: "trace-log-1",
+                spanId: "span-log-1",
+                serviceName: "storage-write",
+                severityText: "error",
+                severityNumber: 17,
+                body: "storage is unavailable",
+                timestamp: "2026-05-21T16:52:14.000Z",
+                observedTimestamp: "2026-05-21T16:52:14.010Z",
+                attributes: { error_code: "STORAGE_UNAVAILABLE" },
+                correlation: "span",
+              },
+            ],
+            nextCursor: null,
+          };
+        },
+        async aiChatAppendMessage() {},
+      }),
+      { graphqlUI: false, aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(
+      streamRequest({
+        idempotencyKey: "idempotency-key-log-tool",
+        parts: [{ type: "text", text: "show the latest 10 error logs from storage-write" }],
+        timezone: "Europe/Berlin",
+      }),
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(harness.requests).toHaveLength(0);
+    expect(logInputs).toHaveLength(1);
+    expect(logInputs[0]).toMatchObject({
+      service: "storage-write",
+      severity: "error",
+      sort: "timestamp_desc",
+      limit: 10,
+    });
+    expect(String((logInputs[0] as { from?: string }).from)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(JSON.stringify(logInputs[0])).not.toContain("project-1");
+    expect(logProjectIds).toEqual(["project-1"]);
+    expect(body).toContain("CloudGrid returned 1 logs");
+    expect(body).toContain("storage-write");
+    expect(body).toContain("STORAGE_UNAVAILABLE");
+    expect(body).toContain("/traces/trace-log-1?spanId=span-log-1");
+    expect(body).not.toContain("Project ID");
+    expect(body).not.toContain("Please provide");
+
+    delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
+  });
+
   test("rejects a duplicate completed idempotency key with the existing run id", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
     const harness = recordingHarness([{ kind: "final_message", text: "done" }]);

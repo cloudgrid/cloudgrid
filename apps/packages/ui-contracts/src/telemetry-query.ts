@@ -1,5 +1,7 @@
 import type {
   AttributeFilterInput,
+  LogSearchInput,
+  LogSort,
   MetricAggregation,
   MetricChartType,
   MetricDescriptor,
@@ -44,6 +46,8 @@ export const METRIC_EXPLORER_CHART_TYPES = [
 
 export const METRIC_SERIES_DEFAULT_LIMIT = 1000;
 export const METRIC_SERIES_HARD_LIMIT = 5000;
+export const LOG_SEARCH_DEFAULT_LIMIT = 50;
+export const LOG_SEARCH_HARD_LIMIT = 200;
 
 export interface MetricTimeRange {
   from: string;
@@ -58,7 +62,33 @@ export interface MetricQueryDefaultsInput extends MetricTimeRange {
   limit?: number | null;
 }
 
+export interface LogTimeRange {
+  from: string;
+  to: string;
+}
+
+export interface LogSearchDefaultsInput extends LogTimeRange {
+  service?: string | null;
+  traceId?: string | null;
+  spanId?: string | null;
+  severity?: string | null;
+  search?: string | null;
+  attributes?: AttributeFilterInput[] | null;
+  sort?: LogSort | null;
+  cursor?: string | null;
+  limit?: number | null;
+}
+
 export function createDefaultMetricTimeRange(now = new Date()): MetricTimeRange {
+  const to = new Date(now);
+  const from = new Date(to.getTime() - 60 * 60 * 1000);
+  return {
+    from: from.toISOString(),
+    to: to.toISOString(),
+  };
+}
+
+export function createDefaultLogTimeRange(now = new Date()): LogTimeRange {
   const to = new Date(now);
   const from = new Date(to.getTime() - 60 * 60 * 1000);
   return {
@@ -137,6 +167,14 @@ export function metricChartTypeOrDefault(value: string | null): MetricChartType 
     : "line";
 }
 
+export function defaultLogSort(): LogSort {
+  return "timestamp_desc";
+}
+
+export function logSortOrDefault(value: string | null): LogSort {
+  return value === "timestamp_asc" || value === "severity_desc" ? value : defaultLogSort();
+}
+
 export function buildMetricSeriesInput(
   descriptor: Pick<MetricDescriptor, "name">,
   state: MetricQueryDefaultsInput,
@@ -153,5 +191,24 @@ export function buildMetricSeriesInput(
       METRIC_SERIES_HARD_LIMIT,
     ),
     ...(state.interval ? { interval: state.interval } : {}),
+  };
+}
+
+export function buildLogSearchInput(state: LogSearchDefaultsInput): LogSearchInput {
+  return {
+    service: state.service ?? null,
+    traceId: state.traceId ?? null,
+    spanId: state.spanId ?? null,
+    severity: state.severity ?? null,
+    from: state.from,
+    to: state.to,
+    search: state.search ?? null,
+    attributes: state.attributes ?? null,
+    sort: state.sort ?? defaultLogSort(),
+    cursor: state.cursor ?? null,
+    limit: Math.min(
+      Math.max(1, Math.trunc(state.limit ?? LOG_SEARCH_DEFAULT_LIMIT)),
+      LOG_SEARCH_HARD_LIMIT,
+    ),
   };
 }

@@ -16,6 +16,7 @@ const logFiltersSource = readFileSync(
   join(import.meta.dir, "../src/features/logs/log-filters.tsx"),
   "utf8",
 );
+const urlFiltersSource = readFileSync(join(import.meta.dir, "../src/lib/url-filters.ts"), "utf8");
 
 const log: LogEvent = {
   id: "log-1",
@@ -145,5 +146,14 @@ describe("logs UX migration", () => {
     expect(markup).toContain('aria-label="Copy attribute key service.name"');
     expect(markup).toContain('aria-label="Copy attribute value service.name"');
     expect(markup).toContain("Raw attributes");
+  });
+
+  test("uses shared log query defaults instead of route-local constants", () => {
+    expect(urlFiltersSource).toContain("@cloudgrid/ui-contracts");
+    expect(urlFiltersSource).toContain("LOG_SEARCH_DEFAULT_LIMIT");
+    expect(urlFiltersSource).toContain("logSortOrDefault");
+    expect(urlFiltersSource).not.toContain("const logSorts");
+    expect(urlFiltersSource).not.toContain("function logSortOrNull");
+    expect(logsRouteSource).toContain('sort={filters.sort ?? "timestamp_desc"}');
   });
 });

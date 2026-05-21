@@ -11,13 +11,16 @@ import type {
   AiProviderParameters,
   CompanyAiProviderSettings,
   JSONValue,
+  LogSearchResult,
   MetricAggregation,
   MetricSeriesResult,
   TraceSearchResult,
   TraceSummary,
 } from "@cloudgrid/ui-contracts";
 import {
+  LOG_SEARCH_HARD_LIMIT,
   METRIC_SERIES_HARD_LIMIT,
+  buildLogSearchInput,
   defaultMetricAggregationForMetricName,
   defaultMetricIntervalForHours,
 } from "@cloudgrid/ui-contracts";
@@ -142,6 +145,14 @@ type MetricToolIntent = {
   aggregation: MetricAggregation;
   interval: string;
   limit: 5000;
+};
+
+type LogToolIntent = {
+  range: TraceToolRange;
+  limit: number;
+  service?: string | null;
+  severity?: string | null;
+  search?: string | null;
 };
 
 export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
@@ -669,6 +680,35 @@ async function answerWithCloudGridTool({
     };
   }
 
+  const logIntent = logToolIntent(userText, input.timezone);
+  if (logIntent) {
+    if (!bridge.searchLogs) {
+      return {
+        toolName: "telemetry.searchLogs",
+        text: "I could not query CloudGrid logs because the log search tool is not available in this run.",
+      };
+    }
+
+    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+    const result = await bridge.searchLogs(
+      buildLogSearchInput({
+        from: logIntent.range.from.toISOString(),
+        to: logIntent.range.to.toISOString(),
+        service: logIntent.service ?? null,
+        severity: logIntent.severity ?? null,
+        search: logIntent.search ?? null,
+        sort: "timestamp_desc",
+        limit: logIntent.limit,
+      }),
+      authContext,
+    );
+
+    return {
+      toolName: "telemetry.searchLogs",
+      text: formatLogToolAnswer(result, logIntent, project),
+    };
+  }
+
   const intent = traceToolIntent(userText, input.timezone);
   if (!intent) {
     return null;
@@ -768,6 +808,27 @@ function metricToolIntent(text: string, timezone: string | undefined): MetricToo
   };
 }
 
+function logToolIntent(text: string, timezone: string | undefined): LogToolIntent | null {
+  const normalized = text.toLowerCase();
+  if (!/\blogs?\b/.test(normalized)) {
+    return null;
+  }
+  if (!/\b(show|list|find|search|latest|last|recent|newest|errors?|failures?)\b/.test(normalized)) {
+    return null;
+  }
+  const hours = metricHoursFromText(normalized) ?? 1;
+  const range = /\btoday\b/.test(normalized)
+    ? todayRange(timezone)
+    : lastHoursRange(timezone, hours);
+  return {
+    range,
+    limit: logLimitFromText(normalized) ?? 10,
+    severity: logSeverityFromText(normalized),
+    service: serviceFromLogText(text),
+    search: quotedSearchFromText(text),
+  };
+}
+
 function metricNameFromText(text: string) {
   const matches = text.match(/\b[a-zA-Z_:][a-zA-Z0-9_:]*(?:[._][a-zA-Z0-9_:]+)+\b/g) ?? [];
   return (
@@ -831,6 +892,36 @@ function traceLimitFromText(text: string) {
   return Math.min(limit, 25);
 }
 
+function logLimitFromText(text: string) {
+  const match = text.match(/\b(?:last|latest|recent|newest|show|list)\s+(\d{1,3})\b/);
+  if (!match) {
+    return null;
+  }
+  const limit = Number(match[1]);
+  if (!Number.isInteger(limit) || limit < 1) {
+    return null;
+  }
+  return Math.min(limit, LOG_SEARCH_HARD_LIMIT);
+}
+
+function logSeverityFromText(text: string) {
+  if (/\b(error|errors|errored|failed|failing|failure)\b/.test(text)) return "error";
+  if (/\b(warn|warning|warnings)\b/.test(text)) return "warn";
+  if (/\b(info|information)\b/.test(text)) return "info";
+  if (/\b(debug)\b/.test(text)) return "debug";
+  return null;
+}
+
+function serviceFromLogText(text: string) {
+  const match = text.match(/\b(?:from|for|service)\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/);
+  return match?.[1]?.replace(/[.,;:!?)]$/g, "") ?? null;
+}
+
+function quotedSearchFromText(text: string) {
+  const match = text.match(/["']([^"']{2,160})["']/);
+  return match?.[1]?.trim() ?? null;
+}
+
 function formatTraceToolAnswer(
   result: TraceSearchResult,
   intent: TraceToolIntent,
@@ -890,6 +981,31 @@ function formatMetricToolAnswer(
     .join("\n");
 }
 
+function formatLogToolAnswer(
+  result: LogSearchResult,
+  intent: LogToolIntent,
+  project: { id: string; label: string },
+) {
+  if (!result.items.length) {
+    return `No logs were returned for ${intent.range.label} in project ${project.label} between ${intent.range.from.toISOString()} and ${intent.range.to.toISOString()}.`;
+  }
+
+  const rows = result.items.slice(0, intent.limit).map(logEventRow);
+  const nextCursor = result.nextCursor
+    ? "\n\nMore logs are available for this range; open Logs with the same filters to continue paging."
+    : "";
+  return [
+    `CloudGrid returned ${result.items.length} logs for ${intent.range.label} in project ${project.label} between ${intent.range.from.toISOString()} and ${intent.range.to.toISOString()}.`,
+    "",
+    "| Time | Severity | Service | Trace | Body |",
+    "| --- | --- | --- | --- | --- |",
+    ...rows,
+    nextCursor,
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+}
+
 function metricSeriesRow(series: MetricSeriesResult["series"][number], index: number) {
   const latest = series.points.at(-1);
   if (!latest) {
@@ -913,6 +1029,39 @@ function metricLabels(labels: JSONValue) {
     return "{}";
   }
   return entries.map(([key, value]) => `${key}=${String(value)}`).join(", ");
+}
+
+function logEventRow(log: LogSearchResult["items"][number]) {
+  const trace =
+    log.traceId && log.spanId
+      ? `[${shortTraceId(log.traceId)}](/traces/${encodeURIComponent(log.traceId)}?spanId=${encodeURIComponent(log.spanId)})`
+      : log.traceId
+        ? `[${shortTraceId(log.traceId)}](/traces/${encodeURIComponent(log.traceId)})`
+        : "-";
+  return [
+    markdownTableCell(log.timestamp),
+    markdownTableCell(log.severityText ?? "-"),
+    markdownTableCell(log.serviceName ?? "-"),
+    markdownTableCell(trace),
+    markdownTableCell(logBodyPreview(log.body, log.attributes)),
+  ].join(" | ");
+}
+
+function logBodyPreview(body: JSONValue, attributes: JSONValue) {
+  const bodyText = typeof body === "string" ? body : JSON.stringify(body);
+  const attributeText = importantLogAttributes(attributes);
+  return attributeText ? `${bodyText} (${attributeText})` : bodyText;
+}
+
+function importantLogAttributes(attributes: JSONValue) {
+  if (!attributes || typeof attributes !== "object" || Array.isArray(attributes)) {
+    return "";
+  }
+  const record = attributes as Record<string, unknown>;
+  return ["error_code", "error.type", "exception.type"]
+    .map((key) => (record[key] ? `${key}=${String(record[key])}` : ""))
+    .filter(Boolean)
+    .join(", ");
 }
 
 function traceSummaryRow(trace: TraceSummary) {
