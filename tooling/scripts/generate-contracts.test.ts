@@ -129,11 +129,24 @@ describe("contract generation", () => {
     const dataRefFor = (renderer: string) =>
       schema.allOf.find((rule) => rule.if?.properties?.renderer?.const === renderer)?.then
         ?.properties?.data;
+    const renderers = JSON.parse(
+      readFileSync(
+        join(root, "specs/03-contracts/entities/ai/json-render-catalog.schema.json"),
+        "utf8",
+      ),
+    ).properties.renderer.enum as string[];
 
     expect(dataRefFor("table")).toEqual({ $ref: "#/$defs/tableData" });
+    expect(dataRefFor("key_value")).toEqual({ $ref: "#/$defs/keyValueData" });
     expect(dataRefFor("status_summary")).toEqual({ $ref: "#/$defs/statusSummaryData" });
     expect(dataRefFor("log_list")).toEqual({ $ref: "#/$defs/logListData" });
     expect(dataRefFor("metric_timeseries")).toEqual({ $ref: "#/$defs/metricSeriesData" });
+    expect(dataRefFor("metric_bar")).toEqual({ $ref: "#/$defs/metricBarData" });
+    expect(dataRefFor("json_tree")).toEqual({ $ref: "#/$defs/jsonTreeData" });
+    expect(dataRefFor("diff")).toEqual({ $ref: "#/$defs/diffData" });
+    expect(dataRefFor("mermaid")).toEqual({ $ref: "#/$defs/mermaidData" });
+    expect(dataRefFor("action_approval")).toEqual({ $ref: "#/$defs/actionApprovalData" });
+    expect(renderers.map(dataRefFor).every(Boolean)).toBe(true);
     expect(schema.$defs.tableData?.required).toEqual(["rows"]);
     expect(schema.$defs.tableData?.properties?.rows).toMatchObject({
       type: "array",

@@ -87,7 +87,7 @@ export function AiChatArtifactRenderer({
     return <JsonBlock content={content} />;
   }
 
-  if (renderer === "metric_bar" && Array.isArray(content.data)) {
+  if (renderer === "metric_bar" && hasMetricBarRows(content)) {
     return (
       <TelemetryChart
         chartClassName="h-72 min-h-72"
@@ -95,7 +95,7 @@ export function AiChatArtifactRenderer({
         emptyMessage={t("metrics.empty.noSeries.title")}
         kind="bar"
         series={chartSeriesFromContent(content)}
-        summary={stringValue(content.summary) ?? "CloudGrid metric artifact chart."}
+        summary={metricBarSummaryFromContent(content)}
       />
     );
   }
@@ -307,10 +307,17 @@ function chartTypeFromContent(content: Record<string, unknown>): MetricChartType
 }
 
 function chartSeriesFromContent(content: Record<string, unknown>) {
-  if (!Array.isArray(content.series)) {
-    return [{ key: "value", label: stringValue(content.label) ?? "Value" }];
+  const data = isRecord(content.data) ? content.data : null;
+  const seriesSource = Array.isArray(data?.series)
+    ? data.series
+    : Array.isArray(content.series)
+      ? content.series
+      : null;
+  const labelSource = data ?? content;
+  if (!seriesSource) {
+    return [{ key: "value", label: stringValue(labelSource.label) ?? "Value" }];
   }
-  return content.series.filter(isRecord).flatMap((series) => {
+  return seriesSource.filter(isRecord).flatMap((series) => {
     const key = stringValue(series.key);
     if (!key) {
       return [];
@@ -320,10 +327,16 @@ function chartSeriesFromContent(content: Record<string, unknown>) {
 }
 
 function chartDataFromContent(content: Record<string, unknown>): TelemetryChartDatum[] {
-  if (!Array.isArray(content.data)) {
+  const data = isRecord(content.data) ? content.data : null;
+  const rows = Array.isArray(data?.data)
+    ? data.data
+    : Array.isArray(content.data)
+      ? content.data
+      : null;
+  if (!rows) {
     return [];
   }
-  return content.data.filter(isRecord).flatMap((row) => {
+  return rows.filter(isRecord).flatMap((row) => {
     const label = stringValue(row.label);
     if (!label) {
       return [];
@@ -339,6 +352,18 @@ function chartDataFromContent(content: Record<string, unknown>): TelemetryChartD
     }
     return [next];
   });
+}
+
+function hasMetricBarRows(content: Record<string, unknown>) {
+  const data = isRecord(content.data) ? content.data : null;
+  return Array.isArray(data?.data) || Array.isArray(content.data);
+}
+
+function metricBarSummaryFromContent(content: Record<string, unknown>) {
+  const data = isRecord(content.data) ? content.data : null;
+  return (
+    stringValue(data?.summary) ?? stringValue(content.summary) ?? "CloudGrid metric artifact chart."
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

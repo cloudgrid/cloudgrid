@@ -354,6 +354,12 @@ const tableRenderDataSchema = z
   })
   .strict();
 
+const keyValueRenderDataSchema = z
+  .object({
+    values: z.record(z.string(), z.unknown()),
+  })
+  .strict();
+
 const statusSummaryRenderDataSchema = z
   .object({
     values: z.record(z.string(), z.unknown()).optional(),
@@ -402,6 +408,49 @@ const metricSeriesRenderDataSchema = z
     }
   });
 
+const metricBarRenderDataSchema = z
+  .object({
+    data: z.array(z.record(z.string(), z.unknown())).max(AI_CHAT_CATALOG.budgets.chartPoints),
+    series: z
+      .array(
+        z
+          .object({
+            key: z.string().min(1),
+            label: z.string().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    summary: z.string().optional(),
+    label: z.string().optional(),
+  })
+  .strict();
+
+const jsonTreeRenderDataSchema = z.record(z.string(), z.unknown());
+
+const diffRenderDataSchema = z
+  .object({
+    before: z.string().max(20_000),
+    after: z.string().max(20_000),
+    language: z.string().max(40).optional(),
+  })
+  .strict();
+
+const mermaidRenderDataSchema = z
+  .object({
+    diagram: z.string().min(1).max(20_000),
+  })
+  .strict();
+
+const actionApprovalRenderDataSchema = z
+  .object({
+    actionProposalId: z.string().min(1),
+    risk: z.enum(["low", "medium", "high", "destructive"]),
+    actionKind: z.string().regex(/^[a-z]+\.[a-z_]+$/),
+    summary: z.string().max(1000).optional(),
+  })
+  .strict();
+
 const aiChatRenderSpecSchema = z
   .object({
     renderer: z.enum([
@@ -439,7 +488,7 @@ const aiChatRenderSpecSchema = z
         path: ["data"],
       });
     }
-    if (value.renderer === "trace_waterfall") {
+    if (value.renderer === "trace_waterfall" && value.data !== undefined) {
       const result = traceWaterfallDataSchema.safeParse(value.data);
       if (!result.success) {
         for (const issue of result.error.issues) {
@@ -449,12 +498,18 @@ const aiChatRenderSpecSchema = z
     }
     const rendererDataSchemas: Partial<Record<typeof value.renderer, z.ZodTypeAny>> = {
       table: tableRenderDataSchema,
+      key_value: keyValueRenderDataSchema,
       status_summary: statusSummaryRenderDataSchema,
       log_list: logListRenderDataSchema,
       metric_timeseries: metricSeriesRenderDataSchema,
+      metric_bar: metricBarRenderDataSchema,
+      json_tree: jsonTreeRenderDataSchema,
+      diff: diffRenderDataSchema,
+      mermaid: mermaidRenderDataSchema,
+      action_approval: actionApprovalRenderDataSchema,
     };
     const dataSchema = rendererDataSchemas[value.renderer];
-    if (dataSchema) {
+    if (dataSchema && value.data !== undefined) {
       const result = dataSchema.safeParse(value.data);
       if (!result.success) {
         for (const issue of result.error.issues) {

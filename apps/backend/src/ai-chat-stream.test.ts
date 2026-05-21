@@ -35,9 +35,15 @@ describe("AI Chat stream endpoint", () => {
 
     for (const renderSpec of [
       { ...base, renderer: "table", data: { rows: {} } },
+      { ...base, renderer: "key_value", data: [] },
       { ...base, renderer: "status_summary", data: [] },
       { ...base, renderer: "log_list", data: { items: {} } },
       { ...base, renderer: "metric_timeseries", data: { result: { series: [] } } },
+      { ...base, renderer: "metric_bar", data: { data: {} } },
+      { ...base, renderer: "json_tree", data: [] },
+      { ...base, renderer: "diff", data: { before: "a" } },
+      { ...base, renderer: "mermaid", data: { diagram: 42 } },
+      { ...base, renderer: "action_approval", data: { actionKind: "dashboard.save" } },
     ]) {
       expect(() => validateAiChatRenderSpec(renderSpec)).toThrow(
         "AI Chat render spec failed validation",

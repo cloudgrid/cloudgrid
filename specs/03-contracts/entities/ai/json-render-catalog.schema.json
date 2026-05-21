@@ -46,14 +46,7 @@
       "if": { "properties": { "renderer": { "const": "mermaid" } } },
       "then": {
         "properties": {
-          "data": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["diagram"],
-            "properties": {
-              "diagram": { "type": "string", "maxLength": 20000 }
-            }
-          }
+          "data": { "$ref": "#/$defs/mermaidData" }
         }
       }
     },
@@ -62,6 +55,14 @@
       "then": {
         "properties": {
           "data": { "$ref": "#/$defs/tableData" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "renderer": { "const": "key_value" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/keyValueData" }
         }
       }
     },
@@ -90,6 +91,14 @@
       }
     },
     {
+      "if": { "properties": { "renderer": { "const": "metric_bar" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/metricBarData" }
+        }
+      }
+    },
+    {
       "if": { "properties": { "renderer": { "const": "trace_waterfall" } } },
       "then": {
         "properties": {
@@ -98,20 +107,26 @@
       }
     },
     {
+      "if": { "properties": { "renderer": { "const": "json_tree" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/jsonTreeData" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "renderer": { "const": "diff" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/diffData" }
+        }
+      }
+    },
+    {
       "if": { "properties": { "renderer": { "const": "action_approval" } } },
       "then": {
         "properties": {
-          "data": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["actionProposalId", "risk", "actionKind"],
-            "properties": {
-              "actionProposalId": { "type": "string", "minLength": 1 },
-              "risk": { "type": "string", "enum": ["low", "medium", "high", "destructive"] },
-              "actionKind": { "type": "string", "pattern": "^[a-z]+\\.[a-z_]+$" },
-              "summary": { "type": "string", "maxLength": 1000 }
-            }
-          }
+          "data": { "$ref": "#/$defs/actionApprovalData" }
         }
       }
     }
@@ -131,6 +146,14 @@
           "maxItems": 500,
           "items": { "type": "object", "additionalProperties": true }
         }
+      }
+    },
+    "keyValueData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["values"],
+      "properties": {
+        "values": { "type": "object", "additionalProperties": true }
       }
     },
     "statusSummaryData": {
@@ -183,6 +206,65 @@
             }
           }
         }
+      }
+    },
+    "metricBarData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["data"],
+      "properties": {
+        "data": {
+          "type": "array",
+          "maxItems": 5000,
+          "items": { "type": "object", "additionalProperties": true }
+        },
+        "series": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key"],
+            "properties": {
+              "key": { "type": "string", "minLength": 1 },
+              "label": { "type": "string" }
+            }
+          }
+        },
+        "summary": { "type": "string" },
+        "label": { "type": "string" }
+      }
+    },
+    "jsonTreeData": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "diffData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["before", "after"],
+      "properties": {
+        "before": { "type": "string", "maxLength": 20000 },
+        "after": { "type": "string", "maxLength": 20000 },
+        "language": { "type": "string", "maxLength": 40 }
+      }
+    },
+    "mermaidData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["diagram"],
+      "properties": {
+        "diagram": { "type": "string", "minLength": 1, "maxLength": 20000 }
+      }
+    },
+    "actionApprovalData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionProposalId", "risk", "actionKind"],
+      "properties": {
+        "actionProposalId": { "type": "string", "minLength": 1 },
+        "risk": { "type": "string", "enum": ["low", "medium", "high", "destructive"] },
+        "actionKind": { "type": "string", "pattern": "^[a-z]+\\.[a-z_]+$" },
+        "summary": { "type": "string", "maxLength": 1000 }
       }
     },
     "trace": {
