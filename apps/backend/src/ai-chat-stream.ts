@@ -636,12 +636,12 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
           estimatedCostUsd: undefined as number | undefined,
         };
         let toolCallCount = 0;
+        const assistantMessageId = assistantMessageIdFor(runId);
         try {
           await emit("run.started", {
-            userMessageClientId: input.userMessageClientId,
-            provider: provider.publicSnapshot,
+            status: "streaming",
           });
-          await emit("message.created", { role: "user", parts: userParts });
+          await emit("message.created", { messageId: input.userMessageClientId, role: "user" });
 
           const toolAnswer = await answerWithCloudGridTool({
             authContext,
@@ -662,7 +662,7 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
               safeToolStatusPayload({
                 toolCallId,
                 toolName: toolAnswer.toolName,
-                status: "started",
+                status: "running",
               }),
             );
             await emit(
@@ -674,7 +674,7 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
               }),
             );
             assistantParts.push({ type: "text", text: toolAnswer.text });
-            await emit("text.delta", { text: toolAnswer.text });
+            await emit("text.delta", { messageId: assistantMessageId, text: toolAnswer.text });
             for (const artifact of artifacts) {
               assistantParts.push({
                 type: "artifact",
@@ -682,6 +682,7 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
                 renderer: artifact.renderer,
               });
               await emit("artifact.created", {
+                messageId: assistantMessageId,
                 artifactId: artifact.artifactId,
                 renderer: artifact.renderer,
                 label: artifact.label,
@@ -730,14 +731,14 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
             }
             if (event.kind === "text_delta") {
               assistantParts.push({ type: "text", text: event.text });
-              await emit("text.delta", { text: event.text });
+              await emit("text.delta", { messageId: assistantMessageId, text: event.text });
               continue;
             }
             if (event.kind === "final_message") {
               assistantParts.push({ type: "text", text: event.text });
               await emit("message.created", {
+                messageId: assistantMessageId,
                 role: "assistant",
-                parts: [{ type: "text", text: event.text }],
               });
               continue;
             }
@@ -758,7 +759,7 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
                 safeToolStatusPayload({
                   toolCallId,
                   toolName: event.name,
-                  status: "started",
+                  status: "running",
                 }),
               );
               await emit(
@@ -2718,10 +2719,14 @@ function artifactIdFor(runId: string, toolIndex: number, artifactIndex: number) 
   return `art_${runId.replace(/[^a-zA-Z0-9_-]/g, "_")}_${toolIndex}_${artifactIndex}`;
 }
 
+function assistantMessageIdFor(runId: string) {
+  return `msg_${runId.replace(/[^a-zA-Z0-9_-]/g, "_")}_assistant`;
+}
+
 function safeToolStatusPayload(input: {
   toolCallId: string;
   toolName: string;
-  status: "started" | "completed" | "failed";
+  status: "running" | "completed" | "failed";
   durationMs?: number;
   errorCode?: CloudGridErrorId;
 }) {

@@ -546,7 +546,7 @@ describe("AI Chat stream endpoint", () => {
         toolCallId: "tool-1",
         toolName: "telemetry.searchTraces",
         label: "Searching traces",
-        status: "started",
+        status: "running",
       },
       {
         toolCallId: "tool-1",
