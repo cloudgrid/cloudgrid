@@ -75,6 +75,44 @@ describe("contract generation", () => {
     expect(AI_CHAT_STREAM_EVENT_TYPES).toEqual(schema.$defs.streamEvent.properties.type.enum);
   });
 
+  test("AI Chat json-render catalog constrains trace waterfall data", () => {
+    const schema = JSON.parse(
+      readFileSync(
+        join(root, "specs/03-contracts/entities/ai/json-render-catalog.schema.json"),
+        "utf8",
+      ),
+    ) as {
+      allOf: Array<{
+        if?: { properties?: { renderer?: { const?: string } } };
+        then?: { properties?: { data?: unknown } };
+      }>;
+      $defs: Record<string, { required?: string[]; properties?: Record<string, unknown> }>;
+    };
+    const traceWaterfallRule = schema.allOf.find(
+      (rule) => rule.if?.properties?.renderer?.const === "trace_waterfall",
+    );
+
+    expect(traceWaterfallRule?.then?.properties?.data).toEqual({
+      $ref: "#/$defs/traceWaterfallData",
+    });
+    expect(schema.$defs.traceWaterfallData?.required).toEqual(["trace", "spans", "structure"]);
+    expect(schema.$defs.traceWaterfallData?.properties?.trace).toEqual({ $ref: "#/$defs/trace" });
+    expect(schema.$defs.traceWaterfallData?.properties?.spans).toMatchObject({
+      type: "array",
+      maxItems: 5000,
+      items: { $ref: "#/$defs/span" },
+    });
+    expect(schema.$defs.traceWaterfallData?.properties?.structure).toEqual({
+      $ref: "#/$defs/traceStructure",
+    });
+    expect(schema.$defs.span?.required).toEqual(
+      expect.arrayContaining(["id", "traceId", "links", "exceptions"]),
+    );
+    expect(schema.$defs.traceStructure?.required).toEqual(
+      expect.arrayContaining(["rootSpanIds", "orphanSpanIds", "criticalPathSpanIds"]),
+    );
+  });
+
   test("public API GraphQL operations validate against the public schema", () => {
     const schema = buildSchema(
       readFileSync(join(root, "specs/03-contracts/graphql/public-schema.graphql"), "utf8"),

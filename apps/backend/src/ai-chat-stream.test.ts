@@ -13,11 +13,23 @@ import type {
 import { AI_CHAT_TOOLS } from "./ai-chat/catalog";
 import { createAiChatHarness } from "./ai-chat-harness";
 import type { AiChatHarnessEvent, AiChatHarnessPort } from "./ai-chat-stream";
+import { validateAiChatRenderSpec } from "./ai-chat-stream";
 import { graphQLErrorFromBridge } from "./bridge";
 import { createAppWithBridge } from "./graphql";
 import { bridge } from "./test-helpers";
 
 describe("AI Chat stream endpoint", () => {
+  test("rejects malformed trace waterfall render specs before streaming", () => {
+    expect(() =>
+      validateAiChatRenderSpec({
+        renderer: "trace_waterfall",
+        title: "Malformed trace",
+        ariaLabel: "Malformed trace waterfall",
+        data: { trace: {}, spans: [{}], structure: {} },
+      }),
+    ).toThrow("AI Chat render spec failed validation");
+  });
+
   test("rejects a stream request whose project does not match the conversation", async () => {
     const harness = recordingHarness([{ kind: "text_delta", text: "nope" }]);
     const { app } = createAppWithBridge(
@@ -1358,6 +1370,7 @@ describe("AI Chat stream endpoint", () => {
         renderer: "table",
         title: "AI Eval datasets",
         ariaLabel: "AI Eval datasets table",
+        data: { rows: expect.any(Array) },
       },
     });
     expect(appended).toContainEqual(

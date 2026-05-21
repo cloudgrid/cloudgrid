@@ -39,21 +39,41 @@ export function AiChatArtifactRenderer({
     }
   }
 
-  if (renderer === "table" && Array.isArray(content.rows)) {
-    return <JsonTable rows={content.rows} />;
+  const data = isRecord(content.data) ? content.data : null;
+
+  if (renderer === "table") {
+    const rows = Array.isArray(data?.rows)
+      ? data.rows
+      : Array.isArray(content.rows)
+        ? content.rows
+        : null;
+    if (rows) {
+      return <JsonTable rows={rows} />;
+    }
   }
 
   if (renderer === "key_value" || renderer === "status_summary") {
     return (
       <div className="grid gap-3">
         <KeyValueSummary content={content} />
-        {Array.isArray(content.rows) ? <JsonTable rows={content.rows} /> : null}
+        {Array.isArray(data?.rows) ? (
+          <JsonTable rows={data.rows} />
+        ) : Array.isArray(content.rows) ? (
+          <JsonTable rows={content.rows} />
+        ) : null}
       </div>
     );
   }
 
-  if (renderer === "log_list" && Array.isArray(content.items)) {
-    return <JsonTable rows={content.items} />;
+  if (renderer === "log_list") {
+    const items = Array.isArray(data?.items)
+      ? data.items
+      : Array.isArray(content.items)
+        ? content.items
+        : null;
+    if (items) {
+      return <JsonTable rows={items} />;
+    }
   }
 
   if (renderer === "trace_waterfall") {
@@ -147,9 +167,8 @@ function JsonTable({ rows: rawRows }: { rows: unknown[] }) {
 }
 
 function KeyValueSummary({ content }: { content: Record<string, unknown> }) {
-  const entries = Object.entries(
-    content.values && isRecord(content.values) ? content.values : content,
-  )
+  const source = isRecord(content.data) ? content.data : content;
+  const entries = Object.entries(source.values && isRecord(source.values) ? source.values : source)
     .filter(([key]) => key !== "renderer")
     .slice(0, 20);
   return (
@@ -175,7 +194,12 @@ function JsonBlock({ content }: { content: Record<string, unknown> }) {
 }
 
 function metricSeriesResultFromContent(content: Record<string, unknown>) {
-  const candidate = isRecord(content.result) ? content.result : content;
+  const data = isRecord(content.data) ? content.data : null;
+  const candidate = isRecord(data?.result)
+    ? data.result
+    : isRecord(content.result)
+      ? content.result
+      : content;
   if (!isRecord(candidate.metric) || !Array.isArray(candidate.series)) {
     return null;
   }

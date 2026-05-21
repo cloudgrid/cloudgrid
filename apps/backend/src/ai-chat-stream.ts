@@ -247,6 +247,154 @@ type PendingAiChatArtifact = {
   renderSpec: Record<string, unknown>;
 };
 
+const jsonValueSchema: z.ZodType<JSONValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
+const renderRouteLinkSchema = z
+  .object({
+    label: z.string().min(1).max(120),
+    to: z
+      .string()
+      .regex(
+        /^\/(projects\/[^/]+\/)?(traces|logs|metrics|dashboards|ai-chat|ai-eval|settings)(\/.*)?$/,
+      ),
+  })
+  .strict();
+
+const traceRenderTraceSchema = z
+  .object({
+    id: z.string().min(1),
+    serviceName: z.string().nullable().optional(),
+    startedAt: z.string().min(1),
+    startedAtUnixNano: z.string().regex(/^[0-9]+$/),
+    endedAt: z.string().nullable().optional(),
+    endedAtUnixNano: z.string().nullable().optional(),
+    durationNano: z.string().nullable().optional(),
+    durationMs: z.number().nonnegative().nullable().optional(),
+    rootSpanId: z.string().nullable().optional(),
+    status: z.enum(["ok", "error", "unset"]).nullable().optional(),
+    attributes: z.record(z.string(), jsonValueSchema),
+  })
+  .strict();
+
+const traceRenderSpanSchema = z
+  .object({
+    id: z.string().min(1),
+    traceId: z.string().min(1),
+    parentSpanId: z.string().nullable().optional(),
+    name: z.string().min(1),
+    kind: z.string().nullable().optional(),
+    serviceName: z.string().nullable().optional(),
+    startedAt: z.string().min(1),
+    startedAtUnixNano: z.string().regex(/^[0-9]+$/),
+    endedAt: z.string().min(1),
+    endedAtUnixNano: z.string().regex(/^[0-9]+$/),
+    startOffsetNano: z.string().regex(/^[0-9]+$/),
+    durationNano: z.string().regex(/^[0-9]+$/),
+    durationMs: z.number().nonnegative(),
+    status: z.enum(["ok", "error", "unset"]).nullable().optional(),
+    attributes: z.record(z.string(), jsonValueSchema),
+    depth: z.number().int().nonnegative(),
+    childCount: z.number().int().nonnegative(),
+    hasError: z.boolean(),
+    isCriticalPath: z.boolean(),
+    isOrphan: z.boolean(),
+    isServiceEntry: z.boolean(),
+    exceptionCount: z.number().int().nonnegative(),
+    events: z.array(z.record(z.string(), z.unknown())),
+    links: z.array(z.record(z.string(), z.unknown())),
+    exceptions: z.array(z.record(z.string(), z.unknown())),
+  })
+  .strict();
+
+const traceRenderStructureSchema = z
+  .object({
+    rootSpanIds: z.array(z.string()),
+    orphanSpanIds: z.array(z.string()),
+    criticalPathSpanIds: z.array(z.string()),
+    maxDepth: z.number().int().nonnegative(),
+    serviceBreakdown: z.array(
+      z
+        .object({
+          serviceName: z.string(),
+          spanCount: z.number().int().nonnegative(),
+          errorSpanCount: z.number().int().nonnegative(),
+          durationMs: z.number().nonnegative(),
+          percentOfTraceDuration: z.number().nonnegative(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
+const traceWaterfallDataSchema = z
+  .object({
+    trace: traceRenderTraceSchema,
+    spans: z.array(traceRenderSpanSchema).max(AI_CHAT_CATALOG.budgets.traceWaterfallSpans),
+    structure: traceRenderStructureSchema,
+    selectedSpan: traceRenderSpanSchema.nullable().optional(),
+    spanMatches: z.array(z.record(z.string(), z.unknown())).optional(),
+    logs: z.array(z.record(z.string(), z.unknown())).optional(),
+    relatedLogs: z.array(z.record(z.string(), z.unknown())).optional(),
+    warnings: z.array(z.record(z.string(), z.unknown())).optional(),
+  })
+  .strict();
+
+const aiChatRenderSpecSchema = z
+  .object({
+    renderer: z.enum([
+      "metric_timeseries",
+      "metric_bar",
+      "table",
+      "key_value",
+      "trace_waterfall",
+      "log_list",
+      "mermaid",
+      "json_tree",
+      "diff",
+      "status_summary",
+      "action_approval",
+    ]),
+    title: z.string().min(1).max(160),
+    ariaLabel: z.string().min(1).max(240),
+    data: z.union([z.record(z.string(), z.unknown()), z.array(z.unknown())]).optional(),
+    dataRef: z
+      .string()
+      .regex(/^sandbox:\/\/run\/[^/]+\/(inputs|outputs)\//)
+      .optional(),
+    options: z.record(z.string(), z.unknown()).optional(),
+    routeLinks: z.array(renderRouteLinkSchema).max(20).optional(),
+    sourceToolCallIds: z.array(z.string()).optional(),
+    artifactIds: z.array(z.string()).optional(),
+    warnings: z.array(z.string().max(240)).max(10).optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (Boolean(value.data) === Boolean(value.dataRef)) {
+      context.addIssue({
+        code: "custom",
+        message: "render spec must define exactly one of data or dataRef",
+        path: ["data"],
+      });
+    }
+    if (value.renderer === "trace_waterfall") {
+      const result = traceWaterfallDataSchema.safeParse(value.data);
+      if (!result.success) {
+        for (const issue of result.error.issues) {
+          context.addIssue({ ...issue, path: ["data", ...issue.path] });
+        }
+      }
+    }
+  });
+
 export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
   app: Hono<{ Variables: Variables }>,
   options: AttachAiChatStreamOptions = {},
@@ -380,6 +528,11 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
           if (toolAnswer) {
             toolCallCount += 1;
             const toolCallId = toolCallIdFor(toolCallCount);
+            const artifacts = (toolAnswer.artifacts ?? []).map((artifact, index) => ({
+              ...artifact,
+              renderSpec: validateAiChatRenderSpec(artifact.renderSpec),
+              artifactId: artifactIdFor(runId, toolCallCount, index + 1),
+            }));
             await emit(
               "tool.started",
               safeToolStatusPayload({
@@ -398,10 +551,6 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
             );
             assistantParts.push({ type: "text", text: toolAnswer.text });
             await emit("text.delta", { text: toolAnswer.text });
-            const artifacts = (toolAnswer.artifacts ?? []).map((artifact, index) => ({
-              ...artifact,
-              artifactId: artifactIdFor(runId, toolCallCount, index + 1),
-            }));
             for (const artifact of artifacts) {
               assistantParts.push({
                 type: "artifact",
@@ -577,6 +726,18 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
       request.signal,
     );
   });
+}
+
+export function validateAiChatRenderSpec(renderSpec: Record<string, unknown>) {
+  const json = JSON.stringify(renderSpec);
+  if (json.length > AI_CHAT_CATALOG.budgets.renderSpecMaxBytes) {
+    throw renderSpecProblem("render spec exceeds the configured size limit");
+  }
+  const parsed = aiChatRenderSpecSchema.safeParse(renderSpec);
+  if (!parsed.success) {
+    throw renderSpecProblem("AI Chat render spec failed validation");
+  }
+  return parsed.data as Record<string, unknown>;
 }
 
 function isAiChatBridge(bridge: Partial<ControlPlaneBridge>): bridge is ControlPlaneBridge {
@@ -1845,21 +2006,23 @@ function aiQualityArtifact(result: AiQualityOverview): PendingAiChatArtifact {
       renderer: "status_summary",
       title: "AI Eval production quality",
       ariaLabel: "AI Eval production quality summary",
-      values: {
-        projectId: result.projectId,
-        segments: result.segments.length,
-        warnings: result.warnings.length,
+      data: {
+        values: {
+          projectId: result.projectId,
+          segments: result.segments.length,
+          warnings: result.warnings.length,
+        },
+        rows: result.segments.map((segment) => ({
+          segment: segment.label,
+          runs: segment.runCount,
+          scored: segment.scoredRunCount,
+          passRate: segment.passRate,
+          meanScore: segment.meanScore,
+          p95LatencyMs: segment.p95LatencyMs,
+          costUsd: segment.costUsd,
+          regressions: segment.regressionCount,
+        })),
       },
-      rows: result.segments.map((segment) => ({
-        segment: segment.label,
-        runs: segment.runCount,
-        scored: segment.scoredRunCount,
-        passRate: segment.passRate,
-        meanScore: segment.meanScore,
-        p95LatencyMs: segment.p95LatencyMs,
-        costUsd: segment.costUsd,
-        regressions: segment.regressionCount,
-      })),
     },
   };
 }
@@ -1876,7 +2039,7 @@ function tableArtifact(
       renderer: "table",
       title,
       ariaLabel,
-      rows,
+      data: { rows },
     },
   };
 }
@@ -2012,7 +2175,7 @@ function metricTimeseriesArtifact(
       renderer: "metric_timeseries",
       title: result.metric.name || requestedMetricName,
       ariaLabel: `${result.metric.name || requestedMetricName} metric time series`,
-      result,
+      data: { result },
     },
   };
 }
@@ -2025,8 +2188,10 @@ function logListArtifact(result: LogSearchResult): PendingAiChatArtifact {
       renderer: "log_list",
       title: "Logs",
       ariaLabel: "Log results",
-      items: result.items,
-      nextCursor: result.nextCursor ?? null,
+      data: {
+        items: result.items,
+        nextCursor: result.nextCursor ?? null,
+      },
     },
   };
 }
@@ -2494,6 +2659,10 @@ function providerFailure() {
       detail: "AI Chat provider execution failed",
     }),
   );
+}
+
+function renderSpecProblem(detail: string) {
+  return new AiChatStreamProblem(createProblemDetails({ id: "ERR-AIC-005", detail }));
 }
 
 function sanitizeProblem(problem: ProblemDetails) {
