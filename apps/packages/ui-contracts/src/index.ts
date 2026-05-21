@@ -245,10 +245,12 @@ export type AiChatMessageRole = "user" | "assistant" | "system" | "tool";
 
 export type AiChatMessagePartType =
   | "text"
-  | "json_render"
-  | "tool_call"
-  | "tool_result"
-  | "action_request";
+  | "artifact"
+  | "tool_status"
+  | "action_proposal"
+  | "approval_result"
+  | "error"
+  | "compaction_summary";
 
 export type AiChatArtifactKind = "json_render" | "data_file" | "script" | "script_output";
 
@@ -879,7 +881,8 @@ export interface CreateAiChatConversationInput {
 }
 
 export interface ApproveAiChatActionInput {
-  actionId: string;
+  actionProposalId: string;
+  idempotencyKey: string;
   approved: boolean;
   reason?: string | null;
   expectedVersion: number;
@@ -1694,29 +1697,48 @@ export interface AiChatMessagePart {
   text?: string | null;
   json?: JSONValue;
   artifactId?: string | null;
-  actionId?: string | null;
+  renderer?: string | null;
+  actionProposalId?: string | null;
+  toolCallId?: string | null;
+  toolName?: string | null;
+  label?: string | null;
+  status?: string | null;
+  problem?: JSONValue;
 }
 
 export interface AiChatRun {
   id: string;
   conversationId: string;
+  projectId: string;
+  userId: string;
   status: AiChatRunStatus;
-  providerProfileId: string;
+  providerKind: string;
+  providerProfileId?: string | null;
   model: string;
+  traceId?: string | null;
+  toolCallCount: number;
+  sandboxScriptCount: number;
+  artifactCount: number;
+  inputTokenCount?: number | null;
+  outputTokenCount?: number | null;
+  estimatedCostUsd?: number | null;
   artifacts: AiChatArtifact[];
   actionProposals: AiChatActionProposal[];
   startedAt: DateTime;
   completedAt?: DateTime | null;
-  error?: string | null;
+  problem?: JSONValue;
 }
 
 export interface AiChatArtifact {
   id: string;
+  conversationId: string;
   runId: string;
   kind: AiChatArtifactKind;
   label: string;
-  mimeType?: string | null;
-  content: JSONValue;
+  mediaType: string;
+  sizeBytes: number;
+  renderSpec?: JSONValue;
+  fileRef?: string | null;
   createdAt: DateTime;
 }
 
@@ -1728,21 +1750,26 @@ export interface AiChatActionProposal {
   description: string;
   risk: AiChatActionRisk;
   status: AiChatActionStatus;
-  operation: string;
-  preview: JSONValue;
+  actionKind: string;
+  graphqlMutation?: string | null;
+  inputPreview: JSONValue;
+  requiresApproval: boolean;
   result?: JSONValue;
   requestedAt: DateTime;
   decidedAt?: DateTime | null;
   decidedByUserId?: string | null;
+  expiresAt: DateTime;
   version: number;
 }
 
 export interface AiChatCompaction {
   id: string;
   conversationId: string;
+  sourceMessageCount: number;
   summary: string;
-  coveredMessageIds: string[];
-  tokenCount: number;
+  retainedMessageIds: string[];
+  artifactSummaries: string[];
+  pendingActionIds: string[];
   createdAt: DateTime;
 }
 

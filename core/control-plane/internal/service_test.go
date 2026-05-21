@@ -678,24 +678,29 @@ func TestAiChatConversationActionsAndCompactionPersistInControlPlane(t *testing.
 		t.Fatalf("message = %#v, want conversationId", message)
 	}
 	action, err := service.ProposeAiChatAction(ctx, contracts.AiChatActionProposeRequest{
-		BridgeEnvelope: admin,
-		ConversationID: conversationID,
-		RunID:          run.ID,
-		Title:          "Save dashboard",
-		Risk:           string(contracts.AiChatActionRiskMedium),
-		Operation:      "dashboard.save",
-		Preview:        map[string]any{"name": "Errors"},
+		BridgeEnvelope:   admin,
+		ConversationID:   conversationID,
+		RunID:            run.ID,
+		ProjectID:        LocalProjectID,
+		Title:            "Save dashboard",
+		Risk:             string(contracts.AiChatActionRiskMedium),
+		ActionKind:       "dashboard.save",
+		RequiresApproval: true,
+		IdempotencyKey:   "proposal-key",
+		ExpiresAt:        "2026-05-18T00:15:00Z",
+		InputPreview:     map[string]any{"name": "Errors"},
 	})
 	if err != nil {
 		t.Fatalf("ProposeAiChatAction returned error: %v", err)
 	}
 	actionID := action["id"].(string)
 	approved, err := service.ApproveAiChatAction(ctx, contracts.AiChatActionApproveRequest{
-		BridgeEnvelope:  admin,
-		ActionID:        actionID,
-		Approved:        true,
-		UserID:          localUserID,
-		ExpectedVersion: 1,
+		BridgeEnvelope:   admin,
+		ActionProposalID: actionID,
+		IdempotencyKey:   "approval-key",
+		Approved:         true,
+		UserID:           localUserID,
+		ExpectedVersion:  1,
 	})
 	if err != nil {
 		t.Fatalf("ApproveAiChatAction returned error: %v", err)
@@ -704,11 +709,13 @@ func TestAiChatConversationActionsAndCompactionPersistInControlPlane(t *testing.
 		t.Fatalf("approved action = %#v, want approved", approved)
 	}
 	compaction, err := service.SaveAiChatCompaction(ctx, contracts.AiChatCompactionSaveRequest{
-		BridgeEnvelope:    admin,
-		ConversationID:    conversationID,
-		Summary:           "Errors investigated.",
-		CoveredMessageIDs: []string{message["id"].(string)},
-		TokenCount:        42,
+		BridgeEnvelope:     admin,
+		ConversationID:     conversationID,
+		Summary:            "Errors investigated.",
+		RetainedMessageIDs: []string{message["id"].(string)},
+		SourceMessageCount: 1,
+		ArtifactSummaries:  []string{},
+		PendingActionIDs:   []string{},
 	})
 	if err != nil {
 		t.Fatalf("SaveAiChatCompaction returned error: %v", err)
@@ -884,13 +891,17 @@ func TestAiChatConversationMutationsRequireOwnerAndProjectAccess(t *testing.T) {
 		t.Fatalf("CreateAiChatRun returned error: %v", err)
 	}
 	action, err := service.ProposeAiChatAction(ctx, contracts.AiChatActionProposeRequest{
-		BridgeEnvelope: owner,
-		ConversationID: conversationID,
-		RunID:          run.ID,
-		Title:          "Persist view",
-		Risk:           string(contracts.AiChatActionRiskLow),
-		Operation:      "dashboard.save",
-		Preview:        map[string]any{"name": "Isolation"},
+		BridgeEnvelope:   owner,
+		ConversationID:   conversationID,
+		RunID:            run.ID,
+		ProjectID:        LocalProjectID,
+		Title:            "Persist view",
+		Risk:             string(contracts.AiChatActionRiskLow),
+		ActionKind:       "dashboard.save",
+		RequiresApproval: true,
+		IdempotencyKey:   "proposal-key",
+		ExpiresAt:        "2026-05-18T00:15:00Z",
+		InputPreview:     map[string]any{"name": "Isolation"},
 	})
 	if err != nil {
 		t.Fatalf("ProposeAiChatAction returned error: %v", err)
@@ -913,39 +924,46 @@ func TestAiChatConversationMutationsRequireOwnerAndProjectAccess(t *testing.T) {
 		t.Fatalf("AppendAiChatMessage by other user error = %v, want forbidden", err)
 	}
 	if _, err := service.ProposeAiChatAction(ctx, contracts.AiChatActionProposeRequest{
-		BridgeEnvelope: otherUser,
-		ConversationID: conversationID,
-		RunID:          run.ID,
-		Title:          "Cross-user proposal",
-		Risk:           string(contracts.AiChatActionRiskLow),
-		Operation:      "dashboard.save",
-		Preview:        map[string]any{"name": "Forbidden"},
+		BridgeEnvelope:   otherUser,
+		ConversationID:   conversationID,
+		RunID:            run.ID,
+		ProjectID:        LocalProjectID,
+		Title:            "Cross-user proposal",
+		Risk:             string(contracts.AiChatActionRiskLow),
+		ActionKind:       "dashboard.save",
+		RequiresApproval: true,
+		IdempotencyKey:   "proposal-key",
+		ExpiresAt:        "2026-05-18T00:15:00Z",
+		InputPreview:     map[string]any{"name": "Forbidden"},
 	}); !isForbidden(err) {
 		t.Fatalf("ProposeAiChatAction by other user error = %v, want forbidden", err)
 	}
 	if _, err := service.ApproveAiChatAction(ctx, contracts.AiChatActionApproveRequest{
-		BridgeEnvelope:  otherUser,
-		ActionID:        actionID,
-		Approved:        true,
-		UserID:          "user-2",
-		ExpectedVersion: 1,
+		BridgeEnvelope:   otherUser,
+		ActionProposalID: actionID,
+		IdempotencyKey:   "approval-key",
+		Approved:         true,
+		UserID:           "user-2",
+		ExpectedVersion:  1,
 	}); !isForbidden(err) {
 		t.Fatalf("ApproveAiChatAction by other user error = %v, want forbidden", err)
 	}
 	if _, err := service.FinishAiChatAction(ctx, contracts.AiChatActionFinishRequest{
-		BridgeEnvelope: otherUser,
-		ActionID:       actionID,
-		Status:         string(contracts.AiChatActionStatusSucceeded),
-		Result:         map[string]any{"ok": true},
+		BridgeEnvelope:   otherUser,
+		ActionProposalID: actionID,
+		Status:           string(contracts.AiChatActionStatusSucceeded),
+		Result:           map[string]any{"ok": true},
 	}); !isForbidden(err) {
 		t.Fatalf("FinishAiChatAction by other user error = %v, want forbidden", err)
 	}
 	if _, err := service.SaveAiChatCompaction(ctx, contracts.AiChatCompactionSaveRequest{
-		BridgeEnvelope:    otherUser,
-		ConversationID:    conversationID,
-		Summary:           "cross-user summary",
-		CoveredMessageIDs: []string{},
-		TokenCount:        1,
+		BridgeEnvelope:     otherUser,
+		ConversationID:     conversationID,
+		Summary:            "cross-user summary",
+		RetainedMessageIDs: []string{},
+		SourceMessageCount: 1,
+		ArtifactSummaries:  []string{},
+		PendingActionIDs:   []string{},
 	}); !isForbidden(err) {
 		t.Fatalf("SaveAiChatCompaction by other user error = %v, want forbidden", err)
 	}
@@ -994,39 +1012,46 @@ func TestAiChatConversationMutationsRequireOwnerAndProjectAccess(t *testing.T) {
 		t.Fatalf("AppendAiChatMessage after project access removal error = %v, want forbidden", err)
 	}
 	if _, err := service.ProposeAiChatAction(ctx, contracts.AiChatActionProposeRequest{
-		BridgeEnvelope: owner,
-		ConversationID: conversationID,
-		RunID:          run.ID,
-		Title:          "Lost-access proposal",
-		Risk:           string(contracts.AiChatActionRiskLow),
-		Operation:      "dashboard.save",
-		Preview:        map[string]any{"name": "Forbidden"},
+		BridgeEnvelope:   owner,
+		ConversationID:   conversationID,
+		RunID:            run.ID,
+		ProjectID:        LocalProjectID,
+		Title:            "Lost-access proposal",
+		Risk:             string(contracts.AiChatActionRiskLow),
+		ActionKind:       "dashboard.save",
+		RequiresApproval: true,
+		IdempotencyKey:   "proposal-key",
+		ExpiresAt:        "2026-05-18T00:15:00Z",
+		InputPreview:     map[string]any{"name": "Forbidden"},
 	}); !isForbidden(err) {
 		t.Fatalf("ProposeAiChatAction after project access removal error = %v, want forbidden", err)
 	}
 	if _, err := service.ApproveAiChatAction(ctx, contracts.AiChatActionApproveRequest{
-		BridgeEnvelope:  owner,
-		ActionID:        actionID,
-		Approved:        true,
-		UserID:          "user-1",
-		ExpectedVersion: 1,
+		BridgeEnvelope:   owner,
+		ActionProposalID: actionID,
+		IdempotencyKey:   "approval-key",
+		Approved:         true,
+		UserID:           "user-1",
+		ExpectedVersion:  1,
 	}); !isForbidden(err) {
 		t.Fatalf("ApproveAiChatAction after project access removal error = %v, want forbidden", err)
 	}
 	if _, err := service.FinishAiChatAction(ctx, contracts.AiChatActionFinishRequest{
-		BridgeEnvelope: owner,
-		ActionID:       actionID,
-		Status:         string(contracts.AiChatActionStatusSucceeded),
-		Result:         map[string]any{"ok": true},
+		BridgeEnvelope:   owner,
+		ActionProposalID: actionID,
+		Status:           string(contracts.AiChatActionStatusSucceeded),
+		Result:           map[string]any{"ok": true},
 	}); !isForbidden(err) {
 		t.Fatalf("FinishAiChatAction after project access removal error = %v, want forbidden", err)
 	}
 	if _, err := service.SaveAiChatCompaction(ctx, contracts.AiChatCompactionSaveRequest{
-		BridgeEnvelope:    owner,
-		ConversationID:    conversationID,
-		Summary:           "lost-access summary",
-		CoveredMessageIDs: []string{},
-		TokenCount:        1,
+		BridgeEnvelope:     owner,
+		ConversationID:     conversationID,
+		Summary:            "lost-access summary",
+		RetainedMessageIDs: []string{},
+		SourceMessageCount: 1,
+		ArtifactSummaries:  []string{},
+		PendingActionIDs:   []string{},
 	}); !isForbidden(err) {
 		t.Fatalf("SaveAiChatCompaction after project access removal error = %v, want forbidden", err)
 	}

@@ -1038,7 +1038,7 @@ function ConversationTranscript({
                           />
                         );
                       }
-                      if (part.type === "json_render") {
+                      if (part.type === "artifact") {
                         return (
                           <ArtifactPanel
                             artifact={aiChatArtifactById(conversation, part.artifactId ?? null)}
@@ -1046,13 +1046,13 @@ function ConversationTranscript({
                           />
                         );
                       }
-                      if (part.type === "action_request") {
+                      if (part.type === "action_proposal") {
                         return (
                           <ActionProposalPanel
                             disabled={approvalPending}
                             key={key}
                             onApprove={onApprove}
-                            proposal={aiChatActionById(conversation, part.actionId ?? null)}
+                            proposal={aiChatActionById(conversation, part.actionProposalId ?? null)}
                           />
                         );
                       }
@@ -1130,7 +1130,7 @@ function ConversationStatusBadges({
       ) : null}
       {streaming ? <Badge variant="secondary">{t("aiChat.streaming")}</Badge> : null}
       {run ? <Badge variant="secondary">{run.status}</Badge> : null}
-      {run?.error ? <Badge variant="destructive">{t("aiChat.runError")}</Badge> : null}
+      {run?.problem ? <Badge variant="destructive">{t("aiChat.runError")}</Badge> : null}
     </div>
   );
 }
@@ -1251,7 +1251,7 @@ function ActionProposalPanel({
         </Badge>
       </div>
       <CodeBlock
-        code={JSON.stringify(proposal.preview, null, 2)}
+        code={JSON.stringify(proposal.inputPreview, null, 2)}
         language="json"
         maxHeightClassName="max-h-48"
       />
@@ -1283,7 +1283,7 @@ function ActionProposalPanel({
                 <DialogDescription>{proposal.description}</DialogDescription>
               </DialogHeader>
               <CodeBlock
-                code={JSON.stringify(proposal.preview, null, 2)}
+                code={JSON.stringify(proposal.inputPreview, null, 2)}
                 language="json"
                 maxHeightClassName="max-h-72"
               />
@@ -1361,13 +1361,26 @@ function conversationWithLocalStream(
     latestRun: {
       id: streamState.runId ?? conversation.latestRun?.id ?? "local-streaming-run",
       conversationId: conversation.id,
+      projectId: conversation.projectId,
+      userId: conversation.userId,
       status: streamState.status === "completed" ? "completed" : streamState.status,
+      providerKind:
+        conversation.latestRun?.providerKind ??
+        providerSettings?.providerProfile?.providerKind ??
+        "configured",
       providerProfileId:
         conversation.latestRun?.providerProfileId ??
         providerSettings?.providerProfile?.id ??
         "provider",
       model:
         conversation.latestRun?.model ?? providerSettings?.chatModelAlias?.model ?? "configured",
+      traceId: conversation.latestRun?.traceId ?? null,
+      toolCallCount: conversation.latestRun?.toolCallCount ?? 0,
+      sandboxScriptCount: conversation.latestRun?.sandboxScriptCount ?? 0,
+      artifactCount: conversation.latestRun?.artifactCount ?? 0,
+      inputTokenCount: conversation.latestRun?.inputTokenCount ?? null,
+      outputTokenCount: conversation.latestRun?.outputTokenCount ?? null,
+      estimatedCostUsd: conversation.latestRun?.estimatedCostUsd ?? null,
       artifacts: conversation.latestRun?.artifacts ?? [],
       actionProposals: conversation.latestRun?.actionProposals ?? [],
       startedAt: conversation.latestRun?.startedAt ?? new Date().toISOString(),
@@ -1375,7 +1388,7 @@ function conversationWithLocalStream(
         streamState.status === "completed" || streamState.status === "failed"
           ? new Date().toISOString()
           : null,
-      error: streamState.error,
+      problem: streamState.error ? { detail: streamState.error } : null,
     },
     messages,
   };

@@ -461,7 +461,7 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
       return true;
     },
     async approveAiChatAction(input: ApproveAiChatActionInput) {
-      return aiChatActionProposal(input.actionId, input.approved ? "approved" : "rejected");
+      return aiChatActionProposal(input.actionProposalId, input.approved ? "approved" : "rejected");
     },
     async aiChatAppendMessage() {},
     async aiChatCreateRun(input) {
@@ -728,9 +728,19 @@ function aiChatRun(
   return {
     id,
     conversationId,
+    projectId: "project-1",
+    userId: "user-local",
     status,
+    providerKind: "openai",
     providerProfileId,
     model,
+    traceId: null,
+    toolCallCount: 0,
+    sandboxScriptCount: 0,
+    artifactCount: 0,
+    inputTokenCount: null,
+    outputTokenCount: null,
+    estimatedCostUsd: null,
     artifacts: [],
     actionProposals: [],
     startedAt: "2026-05-18T00:00:00.000Z",
@@ -738,7 +748,7 @@ function aiChatRun(
       status === "completed" || status === "failed" || status === "cancelled"
         ? "2026-05-18T00:00:01.000Z"
         : null,
-    error: status === "failed" ? "AI Chat provider execution failed" : null,
+    problem: status === "failed" ? { detail: "AI Chat provider execution failed" } : null,
   };
 }
 
@@ -754,12 +764,15 @@ function aiChatActionProposal(
     description: "Create a saved dashboard",
     risk: "medium",
     status,
-    operation: "dashboard.save",
-    preview: { name: "Latency" },
+    actionKind: "dashboard.save",
+    graphqlMutation: "saveDashboard",
+    inputPreview: { name: "Latency" },
+    requiresApproval: true,
     result: null,
     requestedAt: "2026-05-18T00:00:00.000Z",
     decidedAt: status === "proposed" ? null : "2026-05-18T00:01:00.000Z",
     decidedByUserId: status === "proposed" ? null : "user-local",
+    expiresAt: "2026-05-18T00:15:00.000Z",
     version: 2,
   };
 }

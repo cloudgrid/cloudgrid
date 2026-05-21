@@ -108,7 +108,8 @@ export function aiChatApprovalInput(
   reason: string | null = null,
 ): ApproveAiChatActionInput {
   return {
-    actionId: proposal.id,
+    actionProposalId: proposal.id,
+    idempotencyKey: `approve:${proposal.id}:${approved ? "approve" : "reject"}:${proposal.version}`,
     approved,
     expectedVersion: proposal.version,
     reason,
@@ -120,15 +121,15 @@ export function safeAiChatArtifactView(artifact: AiChatArtifact): SafeAiChatArti
     return { artifact, kind: "unsupported", reason: "kind" };
   }
 
-  if (!isJsonObject(artifact.content)) {
+  if (!isJsonObject(artifact.renderSpec)) {
     return { artifact, kind: "unsupported", reason: "shape" };
   }
 
   const renderer =
-    stringValue(artifact.content.renderer) ??
-    stringValue(artifact.content.rendererKey) ??
-    stringValue(artifact.content.catalogKey) ??
-    stringValue(artifact.content.type);
+    stringValue(artifact.renderSpec.renderer) ??
+    stringValue(artifact.renderSpec.rendererKey) ??
+    stringValue(artifact.renderSpec.catalogKey) ??
+    stringValue(artifact.renderSpec.type);
 
   if (!renderer || !approvedRendererSet.has(renderer)) {
     return { artifact, kind: "unsupported", reason: "renderer" };
@@ -138,7 +139,7 @@ export function safeAiChatArtifactView(artifact: AiChatArtifact): SafeAiChatArti
     artifact,
     kind: "json_render",
     renderer: renderer as ApprovedAiChatRenderer,
-    content: artifact.content,
+    content: artifact.renderSpec,
   };
 }
 

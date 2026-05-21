@@ -86,12 +86,15 @@ const aiChatActionProposalFields = `
   description
   risk
   status
-  operation
-  preview
+  actionKind
+  graphqlMutation
+  inputPreview
+  requiresApproval
   result
   requestedAt
   decidedAt
   decidedByUserId
+  expiresAt
   version
 `;
 
@@ -111,23 +114,42 @@ const aiChatConversationFields = `
       text
       json
       artifactId
-      actionId
+      renderer
+      actionProposalId
+      toolCallId
+      toolName
+      label
+      status
+      problem
     }
     createdAt
   }
   latestRun {
     id
     conversationId
+    projectId
+    userId
     status
+    providerKind
     providerProfileId
     model
+    traceId
+    toolCallCount
+    sandboxScriptCount
+    artifactCount
+    inputTokenCount
+    outputTokenCount
+    estimatedCostUsd
     artifacts {
       id
+      conversationId
       runId
       kind
       label
-      mimeType
-      content
+      mediaType
+      sizeBytes
+      renderSpec
+      fileRef
       createdAt
     }
     actionProposals {
@@ -135,14 +157,16 @@ const aiChatConversationFields = `
     }
     startedAt
     completedAt
-    error
+    problem
   }
   compaction {
     id
     conversationId
+    sourceMessageCount
     summary
-    coveredMessageIds
-    tokenCount
+    retainedMessageIds
+    artifactSummaries
+    pendingActionIds
     createdAt
   }
   createdAt

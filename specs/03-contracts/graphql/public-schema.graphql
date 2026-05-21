@@ -786,7 +786,8 @@ input CreateAiChatConversationInput {
 }
 
 input ApproveAiChatActionInput {
-  actionId: ID!
+  actionProposalId: ID!
+  idempotencyKey: String!
   approved: Boolean!
   reason: String
   expectedVersion: Int!
@@ -1285,10 +1286,12 @@ enum AiChatMessageRole {
 
 enum AiChatMessagePartType {
   text
-  json_render
-  tool_call
-  tool_result
-  action_request
+  artifact
+  tool_status
+  action_proposal
+  approval_result
+  error
+  compaction_summary
 }
 
 enum AiChatArtifactKind {
@@ -2488,29 +2491,48 @@ type AiChatMessagePart {
   text: String
   json: JSON
   artifactId: ID
-  actionId: ID
+  renderer: String
+  actionProposalId: ID
+  toolCallId: ID
+  toolName: String
+  label: String
+  status: String
+  problem: JSON
 }
 
 type AiChatRun {
   id: ID!
   conversationId: ID!
+  projectId: ID!
+  userId: ID!
   status: AiChatRunStatus!
-  providerProfileId: ID!
+  providerKind: String!
+  providerProfileId: ID
   model: String!
+  traceId: String
+  toolCallCount: Int!
+  sandboxScriptCount: Int!
+  artifactCount: Int!
+  inputTokenCount: Int
+  outputTokenCount: Int
+  estimatedCostUsd: Float
   artifacts: [AiChatArtifact!]!
   actionProposals: [AiChatActionProposal!]!
   startedAt: DateTime!
   completedAt: DateTime
-  error: String
+  problem: JSON
 }
 
 type AiChatArtifact {
   id: ID!
+  conversationId: ID!
   runId: ID!
   kind: AiChatArtifactKind!
   label: String!
-  mimeType: String
-  content: JSON!
+  mediaType: String!
+  sizeBytes: Int!
+  renderSpec: JSON
+  fileRef: String
   createdAt: DateTime!
 }
 
@@ -2522,21 +2544,26 @@ type AiChatActionProposal {
   description: String!
   risk: AiChatActionRisk!
   status: AiChatActionStatus!
-  operation: String!
-  preview: JSON!
+  actionKind: String!
+  graphqlMutation: String
+  inputPreview: JSON!
+  requiresApproval: Boolean!
   result: JSON
   requestedAt: DateTime!
   decidedAt: DateTime
   decidedByUserId: ID
+  expiresAt: DateTime!
   version: Int!
 }
 
 type AiChatCompaction {
   id: ID!
   conversationId: ID!
+  sourceMessageCount: Int!
   summary: String!
-  coveredMessageIds: [ID!]!
-  tokenCount: Int!
+  retainedMessageIds: [ID!]!
+  artifactSummaries: [String!]!
+  pendingActionIds: [ID!]!
   createdAt: DateTime!
 }
 

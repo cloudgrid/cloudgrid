@@ -329,8 +329,7 @@ Fields:
 - `id`.
 - `conversationId`.
 - `runId`.
-- `kind`: `json_render`, `data_file`, `script`, `script_output`, or
-  `download`.
+- `kind`: `json_render`, `data_file`, `script`, or `script_output`.
 - `label`.
 - `mediaType`.
 - `sizeBytes`.

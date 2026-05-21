@@ -28,7 +28,7 @@ counters:
   REV: 7
   GLS: 1
   ARC: 1
-  TEC-BE: 29
+  TEC-BE: 31
   TEC-FE: 9
   FTR: 0
 
@@ -1010,6 +1010,12 @@ ids:
     file: specs/04-backend/ai-runtime-structure.md
     status: draft
     depends_on: [DOM-007, TEC-BE-005, TEC-BE-028, TEC-BE-029]
+    deprecated_by: null
+  TEC-BE-031:
+    slug: ai-chat-implementation-contract
+    file: specs/04-backend/ai-chat-implementation-contract.md
+    status: draft
+    depends_on: [TEC-BE-029, TEC-BE-030, TEC-FE-009]
     deprecated_by: null
   TEC-FE-009:
     slug: ai-chat-views

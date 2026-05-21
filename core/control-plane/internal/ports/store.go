@@ -253,6 +253,7 @@ type AiChatActionRecord struct {
 	Risk             contracts.AiChatActionRisk
 	Status           contracts.AiChatActionStatus
 	ActionKind       string
+	GraphQLMutation  *string
 	InputPreview     map[string]any
 	RequiresApproval bool
 	ApprovedByUserID *string

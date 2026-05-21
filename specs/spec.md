@@ -70,6 +70,7 @@ This directory is the implementation specification for the MVP. The original sin
 - [AI evaluation runner](./04-backend/ai-eval-runner.md)
 - [AI runtime structure](./04-backend/ai-runtime-structure.md)
 - [AI Chat runtime](./04-backend/ai-chat.md)
+- [AI Chat implementation contract](./04-backend/ai-chat-implementation-contract.md)
 - [AI evaluation query semantics](./04-backend/ai-eval-query-semantics.md)
 - [AI evaluation message contracts](./04-backend/ai-eval-message-contracts.md)
 - [Frontend application](./05-frontend/frontend-application.md)

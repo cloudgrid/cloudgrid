@@ -37,6 +37,50 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "conversationId", "runId", "sequence", "createdAt", "payload"],
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "run.started" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/runStartedPayload" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "message.created" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/messageCreatedPayload" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "text.delta" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/textDeltaPayload" } } }
+        },
+        {
+          "if": {
+            "properties": { "type": { "enum": ["tool.started", "tool.completed"] } }
+          },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/toolStatusPayload" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "artifact.created" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/artifactCreatedPayload" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "action.proposed" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/actionProposedPayload" } } }
+        },
+        {
+          "if": {
+            "properties": { "type": { "enum": ["compaction.started", "compaction.saved"] } }
+          },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/compactionPayload" } } }
+        },
+        {
+          "if": {
+            "properties": { "type": { "enum": ["run.completed", "run.failed"] } }
+          },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/runTerminalPayload" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "heartbeat" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/heartbeatPayload" } } }
+        }
+      ],
       "properties": {
         "type": {
           "type": "string",

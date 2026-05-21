@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { CompanyAiProviderSettings } from "@cloudgrid/ui-contracts";
+import type { AiChatRun, CompanyAiProviderSettings } from "@cloudgrid/ui-contracts";
 import type { AiChatHarnessEvent, AiChatHarnessPort } from "./ai-chat-stream";
 import { graphQLErrorFromBridge } from "./bridge";
 import { createAppWithBridge } from "./graphql";
@@ -210,18 +210,11 @@ describe("AI Chat stream endpoint", () => {
         },
         async aiChatAppendMessage() {},
         async aiChatFinalizeRun() {
-          return {
-            id: "run-1",
-            conversationId: "chat-1",
+          return runShape({
             status: "cancelled",
-            providerProfileId: "provider-1",
-            model: "gpt-5-mini",
-            artifacts: [],
-            actionProposals: [],
-            startedAt: "2026-05-18T00:00:00.000Z",
             completedAt: "2026-05-18T00:00:01.000Z",
-            error: "cancelled",
-          };
+            problem: { detail: "cancelled" },
+          });
         },
       }),
       { graphqlUI: false, aiChatHarness: harness },
@@ -261,33 +254,18 @@ describe("AI Chat stream endpoint", () => {
         },
         async aiChatCreateRun(input) {
           createdRuns.push(input);
-          return {
+          return runShape({
             id: "run-durable-1",
             conversationId: input.conversationId,
-            status: "streaming",
-            providerProfileId: "provider-1",
-            model: "gpt-5-mini",
-            artifacts: [],
-            actionProposals: [],
-            startedAt: "2026-05-18T00:00:00.000Z",
-            completedAt: null,
-            error: null,
-          };
+          });
         },
         async aiChatFinalizeRun(input) {
           finalizedRuns.push(input);
-          return {
+          return runShape({
             id: input.runId,
-            conversationId: "chat-1",
             status: input.status,
-            providerProfileId: "provider-1",
-            model: "gpt-5-mini",
-            artifacts: [],
-            actionProposals: [],
-            startedAt: "2026-05-18T00:00:00.000Z",
             completedAt: "2026-05-18T00:00:01.000Z",
-            error: null,
-          };
+          });
         },
         async aiChatAppendMessage(input) {
           appended.push(input);
@@ -466,33 +444,20 @@ describe("AI Chat stream endpoint", () => {
               details: { runId: "run_durable_duplicate", status: "completed" },
             });
           }
-          return {
+          return runShape({
             id: "run_durable_duplicate",
             conversationId: input.conversationId,
-            status: "streaming",
             providerProfileId: input.providerProfileId,
             model: input.model,
-            artifacts: [],
-            actionProposals: [],
-            startedAt: "2026-05-18T00:00:00.000Z",
-            completedAt: null,
-            error: null,
-          };
+          });
         },
         async aiChatFinalizeRun() {
           runStatus = "completed";
-          return {
+          return runShape({
             id: "run_durable_duplicate",
-            conversationId: "chat-1",
             status: "completed",
-            providerProfileId: "provider-1",
-            model: "gpt-5-mini",
-            artifacts: [],
-            actionProposals: [],
-            startedAt: "2026-05-18T00:00:00.000Z",
             completedAt: "2026-05-18T00:00:01.000Z",
-            error: null,
-          };
+          });
         },
         async aiChatAppendMessage() {},
       }),
@@ -617,6 +582,38 @@ function conversation(overrides: Partial<ReturnType<typeof conversationShape>> =
   return {
     ...conversationShape(),
     ...overrides,
+  };
+}
+
+function runShape(overrides: Partial<AiChatRun> = {}): AiChatRun {
+  return {
+    ...runBase(),
+    ...overrides,
+  };
+}
+
+function runBase(): AiChatRun {
+  return {
+    id: "run-1",
+    conversationId: "chat-1",
+    projectId: "project-1",
+    userId: "local-user",
+    status: "streaming" as const,
+    providerKind: "openai",
+    providerProfileId: "provider-1",
+    model: "gpt-5-mini",
+    traceId: null,
+    toolCallCount: 0,
+    sandboxScriptCount: 0,
+    artifactCount: 0,
+    inputTokenCount: null,
+    outputTokenCount: null,
+    estimatedCostUsd: null,
+    artifacts: [],
+    actionProposals: [],
+    startedAt: "2026-05-18T00:00:00.000Z",
+    completedAt: null,
+    problem: null,
   };
 }
 

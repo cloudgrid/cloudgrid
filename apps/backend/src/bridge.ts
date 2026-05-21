@@ -426,23 +426,31 @@ export interface AiChatFinalizeRunInput extends AiChatUpdateRunInput {}
 export interface AiChatProposeActionInput {
   conversationId: string;
   runId: string;
+  projectId: string;
   title: string;
+  description?: string;
   risk: string;
-  operation: string;
-  preview: Record<string, unknown>;
+  actionKind: string;
+  graphqlMutation?: string;
+  inputPreview: Record<string, unknown>;
+  requiresApproval: boolean;
+  idempotencyKey: string;
+  expiresAt: string;
 }
 
 export interface AiChatFinishActionInput {
-  actionId: string;
+  actionProposalId: string;
   status: string;
   result?: Record<string, unknown>;
 }
 
 export interface AiChatSaveCompactionInput {
   conversationId: string;
+  sourceMessageCount: number;
   summary: string;
-  coveredMessageIds: string[];
-  tokenCount: number;
+  retainedMessageIds: string[];
+  artifactSummaries: string[];
+  pendingActionIds: string[];
 }
 
 export interface AiEvalBridge {
@@ -1349,7 +1357,8 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
       subjects.aiChatActionApprove,
       {
         ...envelope(authContext),
-        actionId: input.actionId,
+        actionProposalId: input.actionProposalId,
+        idempotencyKey: input.idempotencyKey,
         approved: input.approved,
         userId: authContext?.principalId ?? "",
         reason: input.reason,

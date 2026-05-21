@@ -222,11 +222,16 @@ The control-plane wave must add these subjects before implementation:
 - `control.ai_providers.project.update`
 - `control.ai_providers.company.get`
 - `control.ai_providers.company.update`
+- `control.ai_provider_secrets.resolve`
 - `control.ai_chat.history`
 - `control.ai_chat.conversation.get`
 - `control.ai_chat.conversation.create`
 - `control.ai_chat.conversation.archive`
+- `control.ai_chat.conversation.delete`
 - `control.ai_chat.message.append`
+- `control.ai_chat.run.create`
+- `control.ai_chat.run.update`
+- `control.ai_chat.run.finalize`
 - `control.ai_chat.action.propose`
 - `control.ai_chat.action.approve`
 - `control.ai_chat.action.finish`

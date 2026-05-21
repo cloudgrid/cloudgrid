@@ -593,8 +593,11 @@ describe("BFF GraphQL control-plane resolvers", () => {
           input: ApproveAiChatActionInput,
           _authContext: NormalizedAuthContext,
         ) {
-          calls.push(`approveAiChatAction:${input.actionId}:${input.approved}`);
-          return aiChatActionProposal(input.actionId, input.approved ? "approved" : "rejected");
+          calls.push(`approveAiChatAction:${input.actionProposalId}:${input.approved}`);
+          return aiChatActionProposal(
+            input.actionProposalId,
+            input.approved ? "approved" : "rejected",
+          );
         },
       }),
       { graphqlUI: false, auth: { mode: "local", sessionTtlSeconds: 28_800 } },
@@ -650,7 +653,8 @@ describe("BFF GraphQL control-plane resolvers", () => {
             archiveAiChatConversation(id: "chat-1") { status }
             deleteAiChatConversation(id: "chat-2")
             approveAiChatAction(input: {
-              actionId: "action-1",
+              actionProposalId: "action-1",
+              idempotencyKey: "approval-key-1",
               approved: true,
               expectedVersion: 1
             }) { id status }
@@ -862,12 +866,15 @@ function aiChatActionProposal(
     description: "Create a saved dashboard",
     risk: "medium",
     status,
-    operation: "dashboard.save",
-    preview: { name: "Latency" },
+    actionKind: "dashboard.save",
+    graphqlMutation: "saveDashboard",
+    inputPreview: { name: "Latency" },
+    requiresApproval: true,
     result: null,
     requestedAt: "2026-05-18T00:00:00.000Z",
     decidedAt: status === "proposed" ? null : "2026-05-18T00:01:00.000Z",
     decidedByUserId: status === "proposed" ? null : "user-local",
+    expiresAt: "2026-05-18T00:15:00.000Z",
     version: 2,
   };
 }

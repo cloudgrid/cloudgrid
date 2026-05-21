@@ -4241,6 +4241,59 @@ components:
                   type: string
         error:
           $ref: "#/components/schemas/BridgeError"
+    AiChatMessagePart:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum:
+            [
+              text,
+              artifact,
+              tool_status,
+              action_proposal,
+              approval_result,
+              error,
+              compaction_summary,
+            ]
+        text:
+          type: string
+        json:
+          type: object
+          additionalProperties: true
+        artifactId:
+          type: string
+        renderer:
+          type: string
+          enum:
+            [
+              metric_timeseries,
+              metric_bar,
+              table,
+              key_value,
+              trace_waterfall,
+              log_list,
+              mermaid,
+              json_tree,
+              diff,
+              status_summary,
+              action_approval,
+            ]
+        actionProposalId:
+          type: string
+        toolCallId:
+          type: string
+        toolName:
+          type: string
+        label:
+          type: string
+        status:
+          type: string
+        problem:
+          type: object
+          additionalProperties: true
     AiChatHistoryRequest:
       allOf:
         - $ref: "#/components/schemas/BridgeEnvelope"
@@ -4412,11 +4465,11 @@ components:
               type: string
             role:
               type: string
+              enum: [user, assistant, tool, system]
             parts:
               type: array
               items:
-                type: object
-                additionalProperties: true
+                $ref: "#/components/schemas/AiChatMessagePart"
     AiChatMessageAppendResponse:
       type: object
       additionalProperties: false
@@ -4552,21 +4605,48 @@ components:
         - $ref: "#/components/schemas/BridgeEnvelope"
         - type: object
           additionalProperties: false
-          required: [conversationId, runId, title, risk, operation, preview]
+          required:
+            [
+              conversationId,
+              runId,
+              projectId,
+              title,
+              risk,
+              actionKind,
+              inputPreview,
+              requiresApproval,
+              idempotencyKey,
+              expiresAt,
+            ]
           properties:
             conversationId:
               type: string
             runId:
               type: string
+            projectId:
+              type: string
             title:
+              type: string
+            description:
               type: string
             risk:
               type: string
-            operation:
+              enum: [low, medium, high, destructive]
+            actionKind:
               type: string
-            preview:
+              pattern: "^[a-z]+\\.[a-z_]+$"
+            graphqlMutation:
+              type: string
+            inputPreview:
               type: object
               additionalProperties: true
+            requiresApproval:
+              type: boolean
+            idempotencyKey:
+              type: string
+            expiresAt:
+              type: string
+              format: date-time
     AiChatActionProposeResponse:
       type: object
       additionalProperties: false
@@ -4586,9 +4666,11 @@ components:
         - $ref: "#/components/schemas/BridgeEnvelope"
         - type: object
           additionalProperties: false
-          required: [actionId, approved, userId, expectedVersion]
+          required: [actionProposalId, idempotencyKey, approved, userId, expectedVersion]
           properties:
-            actionId:
+            actionProposalId:
+              type: string
+            idempotencyKey:
               type: string
             approved:
               type: boolean
@@ -4618,12 +4700,13 @@ components:
         - $ref: "#/components/schemas/BridgeEnvelope"
         - type: object
           additionalProperties: false
-          required: [actionId, status]
+          required: [actionProposalId, status]
           properties:
-            actionId:
+            actionProposalId:
               type: string
             status:
               type: string
+              enum: [executing, succeeded, failed, expired]
             result:
               type: object
               additionalProperties: true
@@ -4646,18 +4729,35 @@ components:
         - $ref: "#/components/schemas/BridgeEnvelope"
         - type: object
           additionalProperties: false
-          required: [conversationId, summary, coveredMessageIds, tokenCount]
+          required:
+            [
+              conversationId,
+              sourceMessageCount,
+              summary,
+              retainedMessageIds,
+              artifactSummaries,
+              pendingActionIds,
+            ]
           properties:
             conversationId:
               type: string
+            sourceMessageCount:
+              type: integer
+              minimum: 1
             summary:
               type: string
-            coveredMessageIds:
+            retainedMessageIds:
               type: array
               items:
                 type: string
-            tokenCount:
-              type: integer
+            artifactSummaries:
+              type: array
+              items:
+                type: string
+            pendingActionIds:
+              type: array
+              items:
+                type: string
     AiChatCompactionSaveResponse:
       type: object
       additionalProperties: false

@@ -862,7 +862,8 @@ const createAiChatConversationInputSchema = z.object({
   firstUserMessage: z.string().min(1),
 });
 const approveAiChatActionInputSchema = z.object({
-  actionId: z.string().min(1),
+  actionProposalId: z.string().min(1),
+  idempotencyKey: z.string().min(1),
   approved: z.boolean(),
   reason: z.string().min(1).optional().nullable(),
   expectedVersion: z.number().int().min(1),

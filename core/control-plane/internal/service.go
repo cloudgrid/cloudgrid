@@ -1309,10 +1309,10 @@ func (service *Service) AppendAiChatMessage(ctx context.Context, request contrac
 }
 
 func (service *Service) ProposeAiChatAction(ctx context.Context, request contracts.AiChatActionProposeRequest) (map[string]any, error) {
-	if strings.TrimSpace(request.ConversationID) == "" || strings.TrimSpace(request.RunID) == "" || strings.TrimSpace(request.Title) == "" || strings.TrimSpace(request.Operation) == "" {
-		return nil, validationError("AI Chat action proposal requires conversation, run, title, and operation")
+	if strings.TrimSpace(request.ConversationID) == "" || strings.TrimSpace(request.RunID) == "" || strings.TrimSpace(request.ProjectID) == "" || strings.TrimSpace(request.Title) == "" || strings.TrimSpace(request.ActionKind) == "" || strings.TrimSpace(request.IdempotencyKey) == "" || strings.TrimSpace(request.ExpiresAt) == "" {
+		return nil, validationError("AI Chat action proposal requires conversation, run, project, title, action kind, idempotency key, and expiry")
 	}
-	if containsSecretLookingKey(request.Preview) {
+	if containsSecretLookingKey(request.InputPreview) {
 		return nil, validationError("AI Chat action proposal preview must not contain raw secret-looking fields")
 	}
 	conversation, err := service.requireAiChatConversationAccess(ctx, request.BridgeEnvelope, request.ConversationID)
@@ -1326,6 +1326,13 @@ func (service *Service) ProposeAiChatAction(ctx context.Context, request contrac
 	if run.ConversationID != conversation.ID {
 		return nil, validationError("AI Chat action run does not belong to conversation")
 	}
+	if run.ProjectID != request.ProjectID {
+		return nil, validationError("AI Chat action project does not match run project")
+	}
+	expiresAt, err := time.Parse(time.RFC3339, request.ExpiresAt)
+	if err != nil {
+		return nil, validationError("AI Chat action expiry must be an RFC3339 timestamp")
+	}
 	now := service.now().UTC()
 	action := ports.AiChatActionRecord{
 		ID:               fmt.Sprintf("action-%s-%d", normalizeID(request.RunID), now.UnixNano()),
@@ -1334,11 +1341,12 @@ func (service *Service) ProposeAiChatAction(ctx context.Context, request contrac
 		ProjectID:        run.ProjectID,
 		Risk:             contracts.AiChatActionRisk(request.Risk),
 		Status:           contracts.AiChatActionStatusProposed,
-		ActionKind:       request.Operation,
-		InputPreview:     cloneAnyMap(request.Preview),
-		RequiresApproval: true,
-		IdempotencyKey:   fmt.Sprintf("%s-%d", request.RunID, now.UnixNano()),
-		ExpiresAt:        now.Add(15 * time.Minute),
+		ActionKind:       request.ActionKind,
+		GraphQLMutation:  request.GraphQLMutation,
+		InputPreview:     cloneAnyMap(request.InputPreview),
+		RequiresApproval: request.RequiresApproval,
+		IdempotencyKey:   request.IdempotencyKey,
+		ExpiresAt:        expiresAt.UTC(),
 		CreatedAt:        now,
 		UpdatedAt:        now,
 		Version:          1,
@@ -1350,8 +1358,8 @@ func (service *Service) ProposeAiChatAction(ctx context.Context, request contrac
 }
 
 func (service *Service) ApproveAiChatAction(ctx context.Context, request contracts.AiChatActionApproveRequest) (map[string]any, error) {
-	if strings.TrimSpace(request.ActionID) == "" || strings.TrimSpace(request.UserID) == "" {
-		return nil, validationError("actionId and userId are required")
+	if strings.TrimSpace(request.ActionProposalID) == "" || strings.TrimSpace(request.IdempotencyKey) == "" || strings.TrimSpace(request.UserID) == "" {
+		return nil, validationError("actionProposalId, idempotencyKey, and userId are required")
 	}
 	if request.UserID != principalID(request.BridgeEnvelope) {
 		return nil, forbiddenError("AI Chat action approver must match the authenticated principal")
@@ -1359,7 +1367,7 @@ func (service *Service) ApproveAiChatAction(ctx context.Context, request contrac
 	if request.ExpectedVersion < 1 {
 		return nil, validationError("expectedVersion is required")
 	}
-	action, _, err := service.requireAiChatActionAccess(ctx, request.BridgeEnvelope, request.ActionID)
+	action, _, err := service.requireAiChatActionAccess(ctx, request.BridgeEnvelope, request.ActionProposalID)
 	if err != nil {
 		return nil, err
 	}
@@ -1383,13 +1391,13 @@ func (service *Service) ApproveAiChatAction(ctx context.Context, request contrac
 }
 
 func (service *Service) FinishAiChatAction(ctx context.Context, request contracts.AiChatActionFinishRequest) (map[string]any, error) {
-	if strings.TrimSpace(request.ActionID) == "" || strings.TrimSpace(request.Status) == "" {
-		return nil, validationError("actionId and status are required")
+	if strings.TrimSpace(request.ActionProposalID) == "" || strings.TrimSpace(request.Status) == "" {
+		return nil, validationError("actionProposalId and status are required")
 	}
 	if containsSecretLookingKey(request.Result) {
 		return nil, validationError("AI Chat action result must not contain raw secret-looking fields")
 	}
-	action, _, err := service.requireAiChatActionAccess(ctx, request.BridgeEnvelope, request.ActionID)
+	action, _, err := service.requireAiChatActionAccess(ctx, request.BridgeEnvelope, request.ActionProposalID)
 	if err != nil {
 		return nil, err
 	}
@@ -1405,8 +1413,8 @@ func (service *Service) FinishAiChatAction(ctx context.Context, request contract
 }
 
 func (service *Service) SaveAiChatCompaction(ctx context.Context, request contracts.AiChatCompactionSaveRequest) (map[string]any, error) {
-	if strings.TrimSpace(request.ConversationID) == "" || strings.TrimSpace(request.Summary) == "" || request.TokenCount < 0 {
-		return nil, validationError("AI Chat compaction requires conversation, summary, and non-negative token count")
+	if strings.TrimSpace(request.ConversationID) == "" || strings.TrimSpace(request.Summary) == "" || request.SourceMessageCount < 1 {
+		return nil, validationError("AI Chat compaction requires conversation, summary, and source message count")
 	}
 	conversation, err := service.requireAiChatConversationAccess(ctx, request.BridgeEnvelope, request.ConversationID)
 	if err != nil {
@@ -1416,12 +1424,12 @@ func (service *Service) SaveAiChatCompaction(ctx context.Context, request contra
 	compaction := ports.AiChatCompactionRecord{
 		ID:                 fmt.Sprintf("compaction-%s-%d", normalizeID(request.ConversationID), now.UnixNano()),
 		ConversationID:     conversation.ID,
-		SourceMessageCount: len(request.CoveredMessageIDs),
+		SourceMessageCount: request.SourceMessageCount,
 		Summary:            strings.TrimSpace(request.Summary),
-		RetainedMessageIDs: append([]string{}, request.CoveredMessageIDs...),
-		ArtifactSummaries:  []string{},
-		PendingActionIDs:   []string{},
-		TokenCount:         request.TokenCount,
+		RetainedMessageIDs: append([]string{}, request.RetainedMessageIDs...),
+		ArtifactSummaries:  append([]string{}, request.ArtifactSummaries...),
+		PendingActionIDs:   append([]string{}, request.PendingActionIDs...),
+		TokenCount:         0,
 		CreatedAt:          now,
 	}
 	if err := service.store.PutAiChatCompaction(ctx, compaction); err != nil {
@@ -5256,6 +5264,7 @@ func contractAiChatAction(action ports.AiChatActionRecord) map[string]any {
 		"risk":             string(action.Risk),
 		"status":           string(action.Status),
 		"actionKind":       action.ActionKind,
+		"graphqlMutation":  action.GraphQLMutation,
 		"inputPreview":     cloneAnyMap(action.InputPreview),
 		"requiresApproval": action.RequiresApproval,
 		"approvedByUserId": action.ApprovedByUserID,

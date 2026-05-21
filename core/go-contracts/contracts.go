@@ -2683,34 +2683,43 @@ type AiChatRunMutationResponse struct {
 
 type AiChatActionProposeRequest struct {
 	BridgeEnvelope
-	ConversationID string         `json:"conversationId"`
-	RunID          string         `json:"runId"`
-	Title          string         `json:"title"`
-	Risk           string         `json:"risk"`
-	Operation      string         `json:"operation"`
-	Preview        map[string]any `json:"preview"`
+	ConversationID   string         `json:"conversationId"`
+	RunID            string         `json:"runId"`
+	ProjectID        string         `json:"projectId"`
+	Title            string         `json:"title"`
+	Description      *string        `json:"description,omitempty"`
+	Risk             string         `json:"risk"`
+	ActionKind       string         `json:"actionKind"`
+	GraphQLMutation  *string        `json:"graphqlMutation,omitempty"`
+	InputPreview     map[string]any `json:"inputPreview"`
+	RequiresApproval bool           `json:"requiresApproval"`
+	IdempotencyKey   string         `json:"idempotencyKey"`
+	ExpiresAt        string         `json:"expiresAt"`
 }
 
 type AiChatActionApproveRequest struct {
 	BridgeEnvelope
-	ActionID        string  `json:"actionId"`
-	Approved        bool    `json:"approved"`
-	UserID          string  `json:"userId"`
-	Reason          *string `json:"reason,omitempty"`
-	ExpectedVersion int     `json:"expectedVersion"`
+	ActionProposalID string  `json:"actionProposalId"`
+	IdempotencyKey   string  `json:"idempotencyKey"`
+	Approved         bool    `json:"approved"`
+	UserID           string  `json:"userId"`
+	Reason           *string `json:"reason,omitempty"`
+	ExpectedVersion  int     `json:"expectedVersion"`
 }
 
 type AiChatActionFinishRequest struct {
 	BridgeEnvelope
-	ActionID string         `json:"actionId"`
-	Status   string         `json:"status"`
-	Result   map[string]any `json:"result,omitempty"`
+	ActionProposalID string         `json:"actionProposalId"`
+	Status           string         `json:"status"`
+	Result           map[string]any `json:"result,omitempty"`
 }
 
 type AiChatCompactionSaveRequest struct {
 	BridgeEnvelope
-	ConversationID    string   `json:"conversationId"`
-	Summary           string   `json:"summary"`
-	CoveredMessageIDs []string `json:"coveredMessageIds"`
-	TokenCount        int      `json:"tokenCount"`
+	ConversationID     string   `json:"conversationId"`
+	SourceMessageCount int      `json:"sourceMessageCount"`
+	Summary            string   `json:"summary"`
+	RetainedMessageIDs []string `json:"retainedMessageIds"`
+	ArtifactSummaries  []string `json:"artifactSummaries"`
+	PendingActionIDs   []string `json:"pendingActionIds"`
 }

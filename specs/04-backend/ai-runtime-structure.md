@@ -55,6 +55,10 @@ kinds, renderers, provider kinds, or model aliases outside this catalog. Test
 fakes may define local fixtures, but those fixtures must import or derive from
 the catalog where possible.
 
+The implementation-ready catalog, workflow, tool, renderer, sandbox, skill
+mounting, and action binding details are defined in
+`specs/04-backend/ai-chat-implementation-contract.md`.
+
 ## Harness Graph
 
 The AI Chat harness graph has one conversational workflow and bounded

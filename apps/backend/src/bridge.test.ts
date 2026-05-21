@@ -800,7 +800,12 @@ describe("NATS telemetry query bridge", () => {
     );
     await bridge.deleteAiChatConversation("chat-1", authContext);
     await bridge.approveAiChatAction(
-      { actionId: "action-1", approved: true, expectedVersion: 1 },
+      {
+        actionProposalId: "action-1",
+        idempotencyKey: "approval-key-1",
+        approved: true,
+        expectedVersion: 1,
+      },
       authContext,
     );
 
@@ -851,7 +856,8 @@ describe("NATS telemetry query bridge", () => {
     });
     expect(requests[5]?.payload).not.toHaveProperty("input");
     expect(requests[6]?.payload).toMatchObject({
-      actionId: "action-1",
+      actionProposalId: "action-1",
+      idempotencyKey: "approval-key-1",
       approved: true,
       userId: "user-1",
       expectedVersion: 1,

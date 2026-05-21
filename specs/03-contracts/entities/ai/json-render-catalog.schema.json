@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIC-008",
+  "title": "CloudGrid AI Chat JSON Render Catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["renderer", "title", "ariaLabel"],
+  "properties": {
+    "renderer": {
+      "type": "string",
+      "enum": [
+        "metric_timeseries",
+        "metric_bar",
+        "table",
+        "key_value",
+        "trace_waterfall",
+        "log_list",
+        "mermaid",
+        "json_tree",
+        "diff",
+        "status_summary",
+        "action_approval"
+      ]
+    },
+    "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "ariaLabel": { "type": "string", "minLength": 1, "maxLength": 240 },
+    "data": { "type": ["object", "array"] },
+    "dataRef": { "type": "string", "pattern": "^sandbox://run/[^/]+/(inputs|outputs)/" },
+    "options": { "type": "object", "additionalProperties": true },
+    "routeLinks": {
+      "type": "array",
+      "maxItems": 20,
+      "items": { "$ref": "#/$defs/routeLink" }
+    },
+    "sourceToolCallIds": { "type": "array", "items": { "type": "string" } },
+    "artifactIds": { "type": "array", "items": { "type": "string" } },
+    "warnings": {
+      "type": "array",
+      "maxItems": 10,
+      "items": { "type": "string", "maxLength": 240 }
+    }
+  },
+  "oneOf": [{ "required": ["data"] }, { "required": ["dataRef"] }],
+  "allOf": [
+    {
+      "if": { "properties": { "renderer": { "const": "mermaid" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["diagram"],
+            "properties": {
+              "diagram": { "type": "string", "maxLength": 20000 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "renderer": { "const": "action_approval" } } },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["actionProposalId", "risk", "actionKind"],
+            "properties": {
+              "actionProposalId": { "type": "string", "minLength": 1 },
+              "risk": { "type": "string", "enum": ["low", "medium", "high", "destructive"] },
+              "actionKind": { "type": "string", "pattern": "^[a-z]+\\.[a-z_]+$" },
+              "summary": { "type": "string", "maxLength": 1000 }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "routeLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "to"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "to": {
+          "type": "string",
+          "pattern": "^/(projects/[^/]+/)?(traces|logs|metrics|dashboards|ai-chat|ai-eval|settings)(/.*)?$"
+        }
+      }
+    }
+  }
+}
