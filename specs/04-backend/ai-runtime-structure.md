@@ -99,6 +99,15 @@ before the model can ask the user for context. Asking the user for a project ID
 inside AI Chat is a product bug unless the browser request itself has no current
 project and the run cannot start.
 
+Tool contract and default ownership is centralized. AI Chat telemetry tools use
+the same UI contract types and shared query builder helpers as regular
+frontend telemetry routes and dashboard widgets. The runtime catalog points to
+those helpers instead of duplicating default windows, limits, aggregation lists,
+chart type lists, or input shaping logic inside prompts, agents, route files, or
+tool adapters. Contract drift tests must fail when a regular UI capability is
+added or changed without either updating the AI tool binding or recording an
+explicit exclusion in this spec.
+
 The default construction path for the full AI graph is `defineHarness()` with
 models declared before tools, skills, agents, and workflows. Low-level model
 registry calls are allowed only inside a temporary adapter while the full
@@ -276,6 +285,8 @@ UI schemas are rejected with `ERR-AIC-005`.
 Specialist agents should produce renderer intents, not frontend components.
 Frontend rendering remains driven by the approved JSON-render catalog in
 `specs/04-backend/ai-chat.md` and the matching frontend contract tests.
+JSON-render keys map to shared frontend renderer components that reuse regular
+CloudGrid telemetry, dashboard, and AI Eval UI components where they exist.
 
 Renderer intents must be emitted through `render.emitJsonRender`; agents must
 not hand-write trusted `cloudgrid-json-render:<renderer>` fenced blocks in

@@ -174,6 +174,17 @@ to BFF-approved CloudGrid routes and approval/rejection of server-issued
 `AiChatActionProposal` IDs. Mermaid click directives, raw HTML, external
 scripts, iframe embeds, and external URLs are stripped before render.
 
+AI Chat artifact rendering is not a separate UI system. Each JSON-render key
+maps to a shared renderer component under the AI Chat feature boundary, and that
+component wraps the same regular CloudGrid components used by product routes
+when they exist: metric artifacts reuse the metric explorer chart/table
+components, trace artifacts reuse trace detail/waterfall components, log
+artifacts reuse log list/detail components, dashboard artifacts reuse dashboard
+widget components, and AI Eval artifacts reuse AI Eval table/diff components.
+Route-local chart/table/trace/log/dashboard render logic is a drift bug unless
+no regular component exists yet; in that case the renderer must be isolated in
+the shared artifact renderer and replaced when the regular component lands.
+
 Investigation answers should render CloudGrid evidence inline: trace
 waterfalls and trace tables for trace questions, metric charts for metric
 questions, log lists for log questions, status summaries for incident triage,

@@ -13,6 +13,7 @@ import type {
   RichMetricSeriesInput,
   TraceSearchInput,
 } from "@cloudgrid/ui-contracts";
+import { METRIC_AGGREGATIONS, METRIC_CHART_TYPES } from "@cloudgrid/ui-contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChart3,
@@ -131,32 +132,9 @@ import { useTelemetryClient } from "../providers/telemetry-client-provider";
 
 const EMPTY_METRIC_NAME = "gen_ai.client.token.usage";
 
-const metricChartTypes: MetricChartType[] = [
-  "line",
-  "area",
-  "bar",
-  "pie",
-  "donut",
-  "stat",
-  "radial",
-  "radar",
-  "heatmap",
-  "histogram",
-  "table",
-];
+const metricChartTypes: MetricChartType[] = [...METRIC_CHART_TYPES];
 
-const metricAggregations: MetricAggregation[] = [
-  "avg",
-  "sum",
-  "min",
-  "max",
-  "count",
-  "rate",
-  "p50",
-  "p90",
-  "p95",
-  "p99",
-];
+const metricAggregations: MetricAggregation[] = [...METRIC_AGGREGATIONS];
 
 export function DashboardsRoute() {
   const { client } = useAppSession();

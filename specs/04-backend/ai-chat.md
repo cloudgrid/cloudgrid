@@ -428,6 +428,16 @@ aggregation or step, and no additional filters. The assistant asks the user only
 for a genuinely missing domain choice that cannot be inferred from the request,
 such as an absent metric name.
 
+AI Chat tools must reuse the same typed contract inputs, validation helpers, and
+bridge methods as the regular UI. Shared telemetry defaults and query builders
+live in the UI contract package and are imported by frontend routes, AI Chat BFF
+tool adapters, dashboard widgets, and tests. Route-local or prompt-local copies
+of metric aggregation lists, chart type lists, default windows, default limits,
+metric-series input builders, trace/log/facet input builders, or renderer
+catalogs are drift bugs. If the UI gains a telemetry capability, the AI tool
+catalog must either expose the same capability through the shared contract or
+explicitly record why it is not available to AI Chat.
+
 ### Read Tool Limits
 
 | Tool | Backend path | Default window | Default limit | Hard limit |
@@ -499,8 +509,14 @@ inventing a second transcript format.
 
 Assistant artifacts use JSON-render specs from the approved CloudGrid
 json-render catalog. The assistant must not invent renderer keys or inline ad
-hoc chart/table schemas when an approved catalog renderer exists. The approved
-catalog keys are:
+hoc chart/table schemas when an approved catalog renderer exists. The frontend
+renderer implementation must be shared with, or wrap, the same components used
+by regular CloudGrid views. Metric artifacts use the metric explorer
+chart/table components; trace artifacts use the trace waterfall/tree
+components; log artifacts use the log list/detail components; dashboard
+artifacts use dashboard widget rendering components. The AI Chat route must not
+keep route-local chart, table, trace, log, or dashboard render logic when an
+equivalent regular UI component exists. The approved catalog keys are:
 
 - `metric_timeseries`
 - `metric_bar`

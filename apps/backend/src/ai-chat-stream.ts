@@ -16,6 +16,11 @@ import type {
   TraceSearchResult,
   TraceSummary,
 } from "@cloudgrid/ui-contracts";
+import {
+  METRIC_SERIES_HARD_LIMIT,
+  defaultMetricAggregationForMetricName,
+  defaultMetricIntervalForHours,
+} from "@cloudgrid/ui-contracts";
 import { GraphQLError } from "graphql";
 import type { Hono } from "hono";
 import { AI_CHAT_CATALOG, type AiChatCatalogSnapshot, aiChatToolById } from "./ai-chat/catalog";
@@ -757,9 +762,9 @@ function metricToolIntent(text: string, timezone: string | undefined): MetricToo
   return {
     metricName,
     range,
-    aggregation: metricAggregationFromText(normalized, metricName),
-    interval: metricIntervalForHours(hours),
-    limit: 5000,
+    aggregation: defaultMetricAggregationForMetricName(metricName, normalized),
+    interval: defaultMetricIntervalForHours(hours),
+    limit: METRIC_SERIES_HARD_LIMIT,
   };
 }
 
@@ -789,53 +794,6 @@ function boundedMetricHours(hours: number) {
     return null;
   }
   return Math.min(Math.trunc(hours), 24 * 30);
-}
-
-function metricAggregationFromText(text: string, metricName: string): MetricAggregation {
-  if (/\b(avg|average|mean)\b/.test(text)) {
-    return "avg";
-  }
-  if (/\b(max|maximum|peak)\b/.test(text)) {
-    return "max";
-  }
-  if (/\b(min|minimum)\b/.test(text)) {
-    return "min";
-  }
-  if (/\b(count)\b/.test(text)) {
-    return "count";
-  }
-  if (/\b(rate|per second|\/s)\b/.test(text)) {
-    return "rate";
-  }
-  if (/\b(p50|median)\b/.test(text)) {
-    return "p50";
-  }
-  if (/\bp90\b/.test(text)) {
-    return "p90";
-  }
-  if (/\bp95\b/.test(text)) {
-    return "p95";
-  }
-  if (/\bp99\b/.test(text)) {
-    return "p99";
-  }
-  if (/\b(sum|total|usage|tokens?)\b/.test(text) || metricName.includes(".usage")) {
-    return "sum";
-  }
-  return "avg";
-}
-
-function metricIntervalForHours(hours: number) {
-  if (hours <= 1) {
-    return "PT1M";
-  }
-  if (hours <= 24) {
-    return "PT5M";
-  }
-  if (hours <= 24 * 7) {
-    return "PT1H";
-  }
-  return "PT6H";
 }
 
 function todayRange(timezone: string | undefined) {

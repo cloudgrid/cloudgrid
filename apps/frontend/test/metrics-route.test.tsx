@@ -44,7 +44,9 @@ describe("metrics route helpers", () => {
     expect(routeSource).not.toContain("RouteBreadcrumb");
     expect(routeSource).toContain("MetricTimeRangePopover");
     expect(routeSource).toContain("withMetricDescriptorDefaults");
-    expect(routeSource).toContain("defaultMetricAggregation");
+    expect(routeSource).toContain("@cloudgrid/ui-contracts");
+    expect(routeSource).not.toContain("function defaultMetricAggregation");
+    expect(routeSource).not.toContain("function createDefaultTimeRange");
     expect(routeSource).not.toContain('aria-label={t("actions.copyUrl")}');
     expect(routeSource).toContain('params.set("metric"');
     expect(explorerSource).toContain("TelemetryChart");

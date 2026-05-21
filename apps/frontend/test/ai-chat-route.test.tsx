@@ -471,6 +471,22 @@ describe("AI Chat route", () => {
     ).toMatchObject({ kind: "unsupported" });
   });
 
+  test("renders json-render artifacts through the shared AI artifact renderer", () => {
+    const routeSource = readFileSync(
+      new URL("../src/routes/ai-chat-route.tsx", import.meta.url),
+      "utf8",
+    );
+    const rendererSource = readFileSync(
+      new URL("../src/features/ai-chat/artifact-renderer.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(routeSource).toContain("AiChatArtifactRenderer");
+    expect(routeSource).not.toContain("function ArtifactContent");
+    expect(rendererSource).toContain("MetricSeriesExplorer");
+    expect(rendererSource).toContain("TelemetryChart");
+  });
+
   test("renders mixed server-ordered message parts with safe tool status details", () => {
     const mixedConversation: AiChatConversation = {
       ...activeConversation,

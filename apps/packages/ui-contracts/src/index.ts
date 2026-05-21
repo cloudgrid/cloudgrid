@@ -7,6 +7,7 @@ export type JSONValue =
   | { [key: string]: JSONValue };
 
 export * from "./generated";
+export * from "./telemetry-query";
 
 export type DateTime = string;
 

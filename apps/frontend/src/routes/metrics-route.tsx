@@ -5,6 +5,14 @@ import type {
   MetricDescriptor,
   MetricSeriesInput,
 } from "@cloudgrid/ui-contracts";
+import {
+  buildMetricSeriesInput,
+  createDefaultMetricTimeRange,
+  createObservedMetricRange,
+  defaultMetricAggregation,
+  metricAggregationOrDefault,
+  metricChartTypeOrDefault,
+} from "@cloudgrid/ui-contracts";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -54,7 +62,7 @@ export function selectedMetricFromSearchParams(searchParams: URLSearchParams): s
 }
 
 export function defaultMetricQueryState(searchParams: URLSearchParams): MetricQueryState {
-  const range = createDefaultTimeRange();
+  const range = createDefaultMetricTimeRange();
   return {
     metricName: selectedMetricFromSearchParams(searchParams),
     from: searchParams.get("from") ?? range.from,
@@ -67,23 +75,8 @@ export function defaultMetricQueryState(searchParams: URLSearchParams): MetricQu
   };
 }
 
-export function buildMetricSeriesInput(
-  descriptor: Pick<MetricDescriptor, "name">,
-  state: Omit<MetricQueryState, "metricName" | "chartType">,
-): MetricSeriesInput {
-  return {
-    metricName: descriptor.name,
-    from: state.from,
-    to: state.to,
-    aggregation: state.aggregation,
-    groupBy: state.groupBy,
-    filters: state.filters,
-    limit: 1000,
-    ...(state.interval ? { interval: state.interval } : {}),
-  };
-}
-
 export { sanitizeMetricGroupBy };
+export { buildMetricSeriesInput } from "@cloudgrid/ui-contracts";
 
 export function metricRouteCachePredicate(queryKey: readonly unknown[]): boolean {
   return queryKey[0] === "MetricNames" || queryKey[0] === "MetricSeries";
@@ -366,15 +359,6 @@ function MetricTimeRangePopover({
   );
 }
 
-function createDefaultTimeRange(): TimeRange {
-  const to = new Date();
-  const from = new Date(to.getTime() - 60 * 60 * 1000);
-  return {
-    from: from.toISOString(),
-    to: to.toISOString(),
-  };
-}
-
 function withMetricDescriptorDefaults(
   state: MetricQueryState,
   descriptor: MetricDescriptor,
@@ -387,33 +371,6 @@ function withMetricDescriptorDefaults(
     from: explicit.hasFrom ? state.from : observedRange.from,
     to: explicit.hasTo ? state.to : observedRange.to,
   };
-}
-
-function createObservedMetricRange(descriptor: MetricDescriptor): TimeRange {
-  const firstSeenAt = Date.parse(descriptor.firstSeenAt);
-  const lastSeenAt = Date.parse(descriptor.lastSeenAt);
-  if (!Number.isFinite(firstSeenAt) || !Number.isFinite(lastSeenAt)) {
-    return createDefaultTimeRange();
-  }
-  const paddingMs = 10 * 60 * 1000;
-  return {
-    from: new Date(Math.min(firstSeenAt, lastSeenAt) - paddingMs).toISOString(),
-    to: new Date(Math.max(firstSeenAt, lastSeenAt) + paddingMs).toISOString(),
-  };
-}
-
-function defaultMetricAggregation(descriptor: Pick<MetricDescriptor, "kind">): MetricAggregation {
-  if (descriptor.kind === "sum") {
-    return "sum";
-  }
-  if (
-    descriptor.kind === "histogram" ||
-    descriptor.kind === "exponential_histogram" ||
-    descriptor.kind === "summary"
-  ) {
-    return "p95";
-  }
-  return "avg";
 }
 
 function stringOrNull(value: string | null) {
@@ -431,14 +388,4 @@ function splitCsv(value: string): string[] {
 function attributeFilters(searchParams: URLSearchParams): AttributeFilterInput[] {
   const key = stringOrNull(searchParams.get("filterKey"));
   return key ? [{ key, operator: "exists" }] : [];
-}
-
-function metricAggregationOrDefault(value: string | null): MetricAggregation {
-  return metricAggregations.includes(value as MetricAggregation)
-    ? (value as MetricAggregation)
-    : "avg";
-}
-
-function metricChartTypeOrDefault(value: string | null): MetricChartType {
-  return metricChartTypes.includes(value as MetricChartType) ? (value as MetricChartType) : "line";
 }

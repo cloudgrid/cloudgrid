@@ -83,15 +83,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "../components/ui/sheet";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../components/ui/table";
 import { createAiChatGraphQLClient } from "../features/ai-chat/api";
+import { AiChatArtifactRenderer } from "../features/ai-chat/artifact-renderer";
 import {
   applyAiChatStreamEvent,
   aiChatActionById,
@@ -1206,51 +1199,8 @@ function ArtifactPanel({ artifact }: { artifact: AiChatArtifact | null }) {
         </h3>
         <Badge variant="outline">{view.renderer}</Badge>
       </div>
-      <ArtifactContent content={view.content} renderer={view.renderer} />
+      <AiChatArtifactRenderer content={view.content} renderer={view.renderer} />
     </section>
-  );
-}
-
-function ArtifactContent({
-  content,
-  renderer,
-}: {
-  content: Record<string, unknown>;
-  renderer: string;
-}) {
-  if (renderer === "table" && Array.isArray(content.rows)) {
-    const rows = content.rows.filter(isRecord).slice(0, 10);
-    const columns = Array.from(new Set(rows.flatMap((row) => Object.keys(row)))).slice(0, 6);
-    return (
-      <div className="overflow-auto rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {columns.map((column) => (
-                <TableHead key={column}>{column}</TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row, rowIndex) => (
-              <TableRow key={rowIndex.toString()}>
-                {columns.map((column) => (
-                  <TableCell key={column}>{stringifyJsonValue(row[column])}</TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    );
-  }
-
-  return (
-    <CodeBlock
-      code={JSON.stringify(content, null, 2)}
-      language="json"
-      maxHeightClassName="max-h-80"
-    />
   );
 }
 

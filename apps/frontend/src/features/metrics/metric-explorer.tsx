@@ -7,6 +7,7 @@ import type {
   MetricSeries,
   MetricSeriesResult,
 } from "@cloudgrid/ui-contracts";
+import { METRIC_AGGREGATIONS, METRIC_EXPLORER_CHART_TYPES } from "@cloudgrid/ui-contracts";
 import { Activity, ClipboardCopy, ExternalLink, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
@@ -29,19 +30,8 @@ import { t } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { TelemetryChart, type TelemetryChartKind } from "../telemetry/telemetry-chart";
 
-export const metricAggregations: MetricAggregation[] = [
-  "avg",
-  "sum",
-  "min",
-  "max",
-  "count",
-  "rate",
-  "p50",
-  "p90",
-  "p95",
-  "p99",
-];
-export const metricChartTypes: MetricChartType[] = ["line", "area", "bar", "pie", "stat", "table"];
+export const metricAggregations: MetricAggregation[] = [...METRIC_AGGREGATIONS];
+export const metricChartTypes: MetricChartType[] = [...METRIC_EXPLORER_CHART_TYPES];
 
 export type MetricInspectorTab = "descriptor" | "attributes" | "series" | "exemplars";
 
