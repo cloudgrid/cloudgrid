@@ -10,6 +10,7 @@ import type {
   AiChatMessagePart,
   AiProviderParameters,
   CompanyAiProviderSettings,
+  DashboardListResult,
   JSONValue,
   LogSearchResult,
   MetricAggregation,
@@ -22,6 +23,7 @@ import type {
 import {
   LOG_SEARCH_HARD_LIMIT,
   METRIC_SERIES_HARD_LIMIT,
+  buildDashboardListInput,
   buildLogSearchInput,
   buildTelemetryFacetInput,
   buildTraceDetailInput,
@@ -152,6 +154,10 @@ type TelemetryFacetToolIntent = {
   range: TraceToolRange;
   search?: string | null;
   service?: string | null;
+};
+
+type DashboardListToolIntent = {
+  query?: string | null;
 };
 
 type MetricToolIntent = {
@@ -665,6 +671,27 @@ async function answerWithCloudGridTool({
   input: AiChatStreamRequest;
   userText: string;
 }): Promise<{ text: string; toolName: string } | null> {
+  const dashboardIntent = dashboardListToolIntent(userText);
+  if (dashboardIntent) {
+    if (!bridge.dashboards) {
+      return {
+        toolName: "dashboards.list",
+        text: "I could not query CloudGrid dashboards because the dashboard tool is not available in this run.",
+      };
+    }
+
+    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+    const result = await bridge.dashboards(
+      buildDashboardListInput({ query: dashboardIntent.query ?? null }),
+      authContext,
+    );
+
+    return {
+      toolName: "dashboards.list",
+      text: formatDashboardListToolAnswer(result, project),
+    };
+  }
+
   const traceDetailIntent = traceDetailToolIntent(userText);
   if (traceDetailIntent) {
     if (!bridge.getTraceDetail) {
@@ -877,6 +904,19 @@ function telemetryFacetToolIntent(
   };
 }
 
+function dashboardListToolIntent(text: string): DashboardListToolIntent | null {
+  const normalized = text.toLowerCase();
+  if (!/\bdashboards?\b/.test(normalized)) {
+    return null;
+  }
+  if (!/\b(list|show|find|search|which|available)\b/.test(normalized)) {
+    return null;
+  }
+  return {
+    query: dashboardSearchFromText(text),
+  };
+}
+
 function metricToolIntent(text: string, timezone: string | undefined): MetricToolIntent | null {
   const normalized = text.toLowerCase();
   const metricName = metricNameFromText(text);
@@ -949,6 +989,17 @@ function facetSearchFromText(text: string) {
     return quoted;
   }
   const match = text.match(/\b(?:for|matching|search)\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/);
+  return match?.[1]?.replace(/[.,;:!?)]$/g, "") ?? null;
+}
+
+function dashboardSearchFromText(text: string) {
+  const quoted = quotedSearchFromText(text);
+  if (quoted) {
+    return quoted;
+  }
+  const match = text.match(
+    /\b(?:for|matching|search|named)\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/,
+  );
   return match?.[1]?.replace(/[.,;:!?)]$/g, "") ?? null;
 }
 
@@ -1114,6 +1165,25 @@ function formatTelemetryFacetToolAnswer(
   ].join("\n");
 }
 
+function formatDashboardListToolAnswer(
+  result: DashboardListResult,
+  project: { id: string; label: string },
+) {
+  if (!result.items.length) {
+    return `No dashboards were returned for project ${project.label}.`;
+  }
+
+  const rows = result.items.map((dashboard) => dashboardRow(dashboard, result.pinnedDashboardIds));
+  const noun = result.items.length === 1 ? "dashboard" : "dashboards";
+  return [
+    `CloudGrid returned ${result.items.length} ${noun} for project ${project.label}.`,
+    "",
+    "| Dashboard | Visibility | Pinned | Widgets | Tags |",
+    "| --- | --- | --- | --- | --- |",
+    ...rows,
+  ].join("\n");
+}
+
 function formatMetricToolAnswer(
   result: MetricSeriesResult,
   intent: MetricToolIntent,
@@ -1191,6 +1261,22 @@ function facetSection(label: string, values: TelemetryFacetResult["services"]) {
     .slice(0, 8)
     .map((facet) => `${facet.value} (${facet.count})`)
     .join(", ")}`;
+}
+
+function dashboardRow(
+  dashboard: DashboardListResult["items"][number],
+  pinnedDashboardIds: string[],
+) {
+  const widgets = dashboard.widgets.map((widget) => widget.kind).join(", ") || "-";
+  return [
+    markdownTableCell(
+      `[${dashboard.name}](/dashboards?dashboard=${encodeURIComponent(dashboard.id)})`,
+    ),
+    markdownTableCell(dashboard.visibility),
+    pinnedDashboardIds.includes(dashboard.id) || dashboard.pinned ? "yes" : "no",
+    markdownTableCell(widgets),
+    markdownTableCell(dashboard.tags.join(", ") || "-"),
+  ].join(" | ");
 }
 
 function durationLabel(durationMs: number | null | undefined) {

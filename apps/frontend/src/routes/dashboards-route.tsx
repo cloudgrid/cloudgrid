@@ -13,7 +13,11 @@ import type {
   RichMetricSeriesInput,
   TraceSearchInput,
 } from "@cloudgrid/ui-contracts";
-import { METRIC_AGGREGATIONS, METRIC_CHART_TYPES } from "@cloudgrid/ui-contracts";
+import {
+  METRIC_AGGREGATIONS,
+  METRIC_CHART_TYPES,
+  buildDashboardListInput,
+} from "@cloudgrid/ui-contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChart3,
@@ -148,9 +152,10 @@ export function DashboardsRoute() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const dashboardId = searchParams.get("dashboard");
   const [fallbackRange] = useState(defaultDashboardRange);
+  const dashboardListInput = buildDashboardListInput({ query });
   const dashboardsQuery = useQuery({
-    queryKey: queryKeys.dashboards({ includeBuiltins: true, query: query || null }),
-    queryFn: () => client.getDashboards({ includeBuiltins: true, query: query || null }),
+    queryKey: queryKeys.dashboards(dashboardListInput),
+    queryFn: () => client.getDashboards(dashboardListInput),
   });
   const dashboards = dashboardsQuery.data?.items ?? [];
   const selectedDashboard = dashboardId

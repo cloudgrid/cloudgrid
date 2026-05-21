@@ -385,7 +385,6 @@ Allowed read tools:
 - `telemetry.queryMetrics`
 - `telemetry.getFacets`
 - `dashboards.list`
-- `dashboards.get`
 - `alerts.list`
 - `alerts.history`
 - `aiEval.searchAgentRuns`
@@ -447,7 +446,7 @@ explicitly record why it is not available to AI Chat.
 | `telemetry.searchLogs` | `Query.logs` / storage-read log search | last 1 hour, newest first | 50 logs | 200 logs |
 | `telemetry.queryMetrics` | `Query.metricSeries` or `Query.richMetricSeries` | last 1 hour | storage-read default step | 5000 points |
 | `telemetry.getFacets` | `Query.telemetryFacets` | last 1 hour | 25 values per facet family | 200 values per facet family |
-| `dashboards.list` | `Query.dashboards` | not applicable | all visible dashboards | backend cap |
+| `dashboards.list` | `Query.dashboards` | not applicable; built-in dashboards included by default | all visible dashboards matching optional filters | backend cap |
 | `alerts.list` | `Query.alertRules` | not applicable | all visible rules | backend cap |
 | `alerts.history` | `Query.alertHistory` | last 24 hours | 50 events | 200 events |
 | `aiEval.*` search tools | AI Eval GraphQL queries | last 7 days when time is supported | 50 rows | 200 rows |

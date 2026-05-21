@@ -27,7 +27,6 @@ describe("AI Chat runtime catalog", () => {
       "telemetry.queryMetrics",
       "telemetry.getFacets",
       "dashboards.list",
-      "dashboards.get",
       "alerts.list",
       "alerts.history",
       "aiEval.searchAgentRuns",

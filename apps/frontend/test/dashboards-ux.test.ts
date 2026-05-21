@@ -8,6 +8,12 @@ const routeSource = readFileSync(
 );
 
 describe("dashboards UX migration", () => {
+  test("uses shared dashboard list contract defaults", () => {
+    expect(routeSource).toContain("buildDashboardListInput");
+    expect(routeSource).toContain("@cloudgrid/ui-contracts");
+    expect(routeSource).not.toContain("getDashboards({ includeBuiltins: true");
+  });
+
   test("uses shadcn dialog confirmations and sheet-based widget editing", () => {
     expect(routeSource).not.toContain("window.confirm");
     expect(routeSource).toContain("../components/ui/sheet");

@@ -8,6 +8,7 @@ export type JSONValue =
 
 export * from "./generated";
 export * from "./telemetry-query";
+export * from "./dashboard-query";
 
 export type DateTime = string;
 

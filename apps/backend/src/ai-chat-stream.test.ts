@@ -847,6 +847,82 @@ describe("AI Chat stream endpoint", () => {
     delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
   });
 
+  test("answers dashboard list questions with injected project context and shared defaults", async () => {
+    process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
+    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const dashboardInputs: unknown[] = [];
+    const dashboardProjectIds: Array<string | undefined> = [];
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          return configuredCompanyProvider();
+        },
+        async dashboards(input, authContext) {
+          dashboardInputs.push(input);
+          dashboardProjectIds.push(authContext?.projectId);
+          return {
+            items: [
+              dashboardShape({
+                id: "dashboard-token-usage",
+                name: "GenAI token usage",
+                slug: "genai-token-usage",
+                tags: ["genai", "tokens"],
+                pinned: true,
+                widgets: [
+                  dashboardWidgetShape({
+                    id: "tokens",
+                    title: "Tokens",
+                    kind: "metric_timeseries",
+                  }),
+                  dashboardWidgetShape({
+                    id: "recent-logs",
+                    title: "Recent logs",
+                    kind: "log_table",
+                  }),
+                ],
+              }),
+            ],
+            pinnedDashboardIds: ["dashboard-token-usage"],
+          };
+        },
+        async aiChatAppendMessage() {},
+      }),
+      { graphqlUI: false, aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(
+      streamRequest({
+        idempotencyKey: "idempotency-key-dashboard-tool",
+        parts: [{ type: "text", text: "list dashboards for tokens" }],
+        timezone: "Europe/Berlin",
+      }),
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(harness.requests).toHaveLength(0);
+    expect(dashboardInputs).toEqual([
+      {
+        includeBuiltins: true,
+        query: "tokens",
+        tag: null,
+        visibility: null,
+        pinnedOnly: null,
+      },
+    ]);
+    expect(dashboardProjectIds).toEqual(["project-1"]);
+    expect(body).toContain("CloudGrid returned 1 dashboard");
+    expect(body).toContain("GenAI token usage");
+    expect(body).toContain("metric_timeseries");
+    expect(body).toContain("/dashboards?dashboard=dashboard-token-usage");
+    expect(body).not.toContain("Project ID");
+
+    delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
+  });
+
   test("rejects a duplicate completed idempotency key with the existing run id", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
     const harness = recordingHarness([{ kind: "final_message", text: "done" }]);
@@ -1074,5 +1150,43 @@ function metricDescriptor(name: string) {
     attributeKeys: ["service.name", "gen_ai.system", "gen_ai.request.model", "gen_ai.token.type"],
     firstSeenAt: "2026-05-21T15:55:00.000Z",
     lastSeenAt: "2026-05-21T16:55:00.000Z",
+  };
+}
+
+function dashboardShape(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "dashboard-1",
+    projectId: "project-1",
+    slug: "genai-token-usage",
+    name: "GenAI token usage",
+    description: "Token usage by provider, model, and token type.",
+    tags: ["genai"],
+    version: 1,
+    visibility: "personal" as const,
+    defaultTimeWindow: "PT1H",
+    pinned: false,
+    widgets: [],
+    createdAt: "2026-05-14T08:00:00.000Z",
+    updatedAt: "2026-05-14T08:00:00.000Z",
+    createdBy: "user-1",
+    updatedBy: null,
+    ...overrides,
+  };
+}
+
+function dashboardWidgetShape(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "widget-1",
+    title: "Widget",
+    description: null,
+    kind: "metric_timeseries" as const,
+    layout: { x: 0, y: 0, w: 6, h: 4, minW: 3, minH: 2 },
+    metric: null,
+    richMetric: null,
+    logs: null,
+    traces: null,
+    liveTraces: null,
+    alert: null,
+    ...overrides,
   };
 }

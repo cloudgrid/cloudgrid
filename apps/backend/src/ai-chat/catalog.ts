@@ -198,8 +198,8 @@ export const AI_CHAT_TOOLS = [
     "Searching logs",
     {
       defaultWindow: "PT1H",
-      defaultLimit: 100,
-      hardLimit: 1000,
+      defaultLimit: 50,
+      hardLimit: 200,
     },
   ),
   tool(
@@ -215,11 +215,10 @@ export const AI_CHAT_TOOLS = [
   ),
   tool("telemetry.getFacets", "storage-read", "Query.telemetryFacets", "Loading facets", {
     defaultWindow: "PT1H",
-    defaultLimit: "backend default",
-    hardLimit: "backend cap",
+    defaultLimit: 25,
+    hardLimit: 200,
   }),
   tool("dashboards.list", "control-plane", "Query.dashboards", "Loading dashboards"),
-  tool("dashboards.get", "control-plane", "Query.dashboard", "Loading dashboard"),
   tool("alerts.list", "control-plane", "Query.alertRules", "Loading alerts"),
   tool("alerts.history", "control-plane", "Query.alertHistory", "Loading alert history", {
     defaultWindow: "P1D",
