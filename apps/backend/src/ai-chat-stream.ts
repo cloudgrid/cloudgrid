@@ -119,6 +119,16 @@ const streamRequestSchema = z.object({
 
 type AiChatStreamRequest = z.infer<typeof streamRequestSchema>;
 
+type TraceToolRange = {
+  from: Date;
+  to: Date;
+  label: string;
+};
+
+type TraceToolIntent =
+  | { kind: "today"; range: TraceToolRange; limit: 25; status?: "error" }
+  | { kind: "recent"; range: TraceToolRange; limit: number; status?: "error" };
+
 export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
   app: Hono<{ Variables: Variables }>,
   options: AttachAiChatStreamOptions = {},
@@ -614,31 +624,32 @@ async function answerWithCloudGridTool({
   input: AiChatStreamRequest;
   userText: string;
 }): Promise<{ text: string; toolName: string } | null> {
-  if (!isTodayTraceQuestion(userText)) {
+  const intent = traceToolIntent(userText, input.timezone);
+  if (!intent) {
     return null;
   }
   if (!bridge.searchTraces) {
     return {
       toolName: "telemetry.searchTraces",
-      text: "I could not query CloudGrid traces for today because the trace search tool is not available in this run.",
+      text: "I could not query CloudGrid traces because the trace search tool is not available in this run.",
     };
   }
 
-  const range = todayRange(input.timezone);
   const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
   const result = await bridge.searchTraces(
     {
-      from: range.from.toISOString(),
-      to: range.to.toISOString(),
-      limit: 25,
+      from: intent.range.from.toISOString(),
+      to: intent.range.to.toISOString(),
+      limit: intent.limit,
       sort: "startedAt_desc",
+      ...(intent.status ? { status: intent.status } : {}),
     },
     authContext,
   );
 
   return {
     toolName: "telemetry.searchTraces",
-    text: formatTodayTracesAnswer(result, range, project),
+    text: formatTraceToolAnswer(result, intent, project),
   };
 }
 
@@ -664,11 +675,26 @@ async function aiChatSelectedProjectContext(
   return { id: projectId, label: projectId };
 }
 
-function isTodayTraceQuestion(text: string) {
+function traceToolIntent(text: string, timezone: string | undefined): TraceToolIntent | null {
   const normalized = text.toLowerCase();
-  return (
-    /\btraces?\b/.test(normalized) && (/\btoday\b/.test(normalized) || /\bheute\b/.test(normalized))
-  );
+  if (!/\btraces?\b/.test(normalized)) {
+    return null;
+  }
+  const status = /\b(failing|failed|failure|error|errors|errored)\b/.test(normalized)
+    ? "error"
+    : undefined;
+  if (/\btoday\b/.test(normalized) || /\bheute\b/.test(normalized)) {
+    return { kind: "today", range: todayRange(timezone), limit: 25, ...(status ? { status } : {}) };
+  }
+  if (status && /\b(last|latest|recent|newest)\b/.test(normalized)) {
+    return {
+      kind: "recent",
+      range: lastHoursRange(timezone, 24),
+      limit: traceLimitFromText(normalized) ?? 10,
+      status,
+    };
+  }
+  return null;
 }
 
 function todayRange(timezone: string | undefined) {
@@ -683,22 +709,47 @@ function todayRange(timezone: string | undefined) {
   };
 }
 
-function formatTodayTracesAnswer(
+function lastHoursRange(timezone: string | undefined, hours: number): TraceToolRange {
+  const safeTimezone = validTimeZone(timezone) ? (timezone as string) : "UTC";
+  const to = new Date();
+  const from = new Date(to.getTime() - hours * 60 * 60 * 1000);
+  return {
+    from,
+    to,
+    label: `last ${hours} hours (${safeTimezone})`,
+  };
+}
+
+function traceLimitFromText(text: string) {
+  const match = text.match(/\b(?:last|latest|recent|newest)\s+(\d{1,3})\b/);
+  if (!match) {
+    return null;
+  }
+  const limit = Number(match[1]);
+  if (!Number.isInteger(limit) || limit < 1) {
+    return null;
+  }
+  return Math.min(limit, 25);
+}
+
+function formatTraceToolAnswer(
   result: TraceSearchResult,
-  range: ReturnType<typeof todayRange>,
+  intent: TraceToolIntent,
   project: { id: string; label: string },
 ) {
   if (!result.items.length) {
-    return `No traces were returned for today in project ${project.label} (${range.label}) between ${range.from.toISOString()} and ${range.to.toISOString()}.`;
+    const qualifier = intent.status === "error" ? "failing " : "";
+    return `No ${qualifier}traces were returned for ${intent.range.label} in project ${project.label} between ${intent.range.from.toISOString()} and ${intent.range.to.toISOString()}.`;
   }
 
-  const rows = result.items.slice(0, 10).map(traceSummaryRow);
+  const rows = result.items.slice(0, intent.limit).map(traceSummaryRow);
   const errorCount = result.items.filter((trace) => trace.errorSpanCount > 0).length;
   const nextCursor = result.nextCursor
     ? "\n\nMore traces are available for this range; open Traces with the same time range to continue paging."
     : "";
+  const noun = intent.status === "error" ? "failing traces" : "traces";
   return [
-    `CloudGrid returned ${result.items.length} traces for today in project ${project.label} (${range.label}) between ${range.from.toISOString()} and ${range.to.toISOString()}.`,
+    `CloudGrid returned ${result.items.length} ${noun} for ${intent.range.label} in project ${project.label} between ${intent.range.from.toISOString()} and ${intent.range.to.toISOString()}.`,
     `Error traces in this result: ${errorCount}.`,
     "",
     "| Trace | Service | Operation | Started | Duration | Spans | Error spans |",

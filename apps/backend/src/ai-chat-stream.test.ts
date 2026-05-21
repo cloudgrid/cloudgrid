@@ -452,6 +452,75 @@ describe("AI Chat stream endpoint", () => {
     delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
   });
 
+  test("answers latest failing trace questions with current project defaults", async () => {
+    process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
+    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const traceInputs: unknown[] = [];
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          return configuredCompanyProvider();
+        },
+        async searchTraces(input) {
+          traceInputs.push(input);
+          return {
+            items: [
+              {
+                id: "trace-failing-1",
+                serviceName: "api",
+                operationName: "GET /broken",
+                startedAt: "2026-05-21T16:50:00.000Z",
+                startedAtUnixNano: "0",
+                endedAt: null,
+                endedAtUnixNano: null,
+                durationNano: "250000000",
+                durationMs: 250,
+                rootSpanId: "span-1",
+                status: "error",
+                attributes: {},
+                spanCount: 3,
+                errorSpanCount: 1,
+                logCount: 2,
+                serviceCount: 1,
+              },
+            ],
+            nextCursor: null,
+          };
+        },
+        async aiChatAppendMessage() {},
+      }),
+      { graphqlUI: false, aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(
+      streamRequest({
+        idempotencyKey: "idempotency-key-failing-traces",
+        parts: [{ type: "text", text: "what are the last 10 failing traces?" }],
+        timezone: "Europe/Berlin",
+      }),
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(harness.requests).toHaveLength(0);
+    expect(traceInputs).toHaveLength(1);
+    expect(traceInputs[0]).toMatchObject({
+      limit: 10,
+      sort: "startedAt_desc",
+      status: "error",
+    });
+    expect(String((traceInputs[0] as { from?: string }).from)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(body).toContain("failing traces");
+    expect(body).toContain("last 24 hours");
+    expect(body).toContain("/traces/trace-failing-1");
+    expect(body).not.toContain("Tell me the missing context");
+
+    delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
+  });
+
   test("rejects a duplicate completed idempotency key with the existing run id", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
     const harness = recordingHarness([{ kind: "final_message", text: "done" }]);

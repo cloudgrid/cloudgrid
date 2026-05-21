@@ -11,7 +11,7 @@ import (
 func TestStatementsDefineRequiredSchemafullNormalTables(t *testing.T) {
 	got := strings.Join(Statements(), "\n")
 
-	for _, table := range []string{"trace", "span", "log_event", "metric_descriptor", "metric_point", "metric_ingest_cardinality", "service", "ingest_command", "ai_agent_run", "ai_llm_call", "ai_tool_call", "ai_retrieval_event", "ai_dataset", "ai_dataset_item", "ai_scorer", "ai_eval_result", "ai_experiment", "ai_experiment_run", "ai_dataset_item_run", "ai_prompt_version", "ai_annotation_queue_item"} {
+	for _, table := range []string{"trace", "span", "log_event", "metric_descriptor", "metric_point", "metric_ingest_cardinality", "service", "ingest_command", "project_ai_settings", "ai_agent_run", "ai_llm_call", "ai_tool_call", "ai_retrieval_event", "ai_dataset", "ai_dataset_item", "ai_scorer", "ai_eval_result", "ai_experiment", "ai_experiment_run", "ai_dataset_item_run", "ai_prompt_version", "ai_annotation_queue_item"} {
 		want := "DEFINE TABLE IF NOT EXISTS " + table + " SCHEMAFULL TYPE NORMAL"
 		if !strings.Contains(got, want) {
 			t.Fatalf("schema missing %q in:\n%s", want, got)
@@ -72,7 +72,7 @@ func TestStatementsDefineRequiredIndexes(t *testing.T) {
 func TestStatementsDefineOwnershipMetadataFields(t *testing.T) {
 	got := strings.Join(Statements(), "\n")
 
-	for _, table := range []string{"trace", "span", "log_event", "metric_descriptor", "metric_point", "metric_ingest_cardinality", "service", "ingest_command", "ai_agent_run", "ai_llm_call", "ai_tool_call", "ai_retrieval_event", "ai_dataset", "ai_dataset_item", "ai_scorer", "ai_eval_result", "ai_experiment", "ai_experiment_run", "ai_dataset_item_run", "ai_prompt_version", "ai_annotation_queue_item"} {
+	for _, table := range []string{"trace", "span", "log_event", "metric_descriptor", "metric_point", "metric_ingest_cardinality", "service", "ingest_command", "project_ai_settings", "ai_agent_run", "ai_llm_call", "ai_tool_call", "ai_retrieval_event", "ai_dataset", "ai_dataset_item", "ai_scorer", "ai_eval_result", "ai_experiment", "ai_experiment_run", "ai_dataset_item_run", "ai_prompt_version", "ai_annotation_queue_item"} {
 		for _, field := range []string{"tenantId", "companyId", "projectId"} {
 			want := "DEFINE FIELD IF NOT EXISTS " + field + " ON " + table + " TYPE string"
 			if !strings.Contains(got, want) {
@@ -108,6 +108,22 @@ func TestStatementsDefineAiEvalRelationshipFields(t *testing.T) {
 		"DEFINE FIELD IF NOT EXISTS experimentId ON ai_experiment_run TYPE option<string>",
 		"DEFINE FIELD IF NOT EXISTS experimentRunId ON ai_dataset_item_run TYPE option<string>",
 		"DEFINE FIELD IF NOT EXISTS scorerId ON ai_eval_result TYPE option<string>",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("schema missing %q in:\n%s", want, got)
+		}
+	}
+}
+
+func TestStatementsDefineOnlinePolicyResolutionSettingsTable(t *testing.T) {
+	got := strings.Join(Statements(), "\n")
+
+	for _, want := range []string{
+		"DEFINE TABLE IF NOT EXISTS project_ai_settings SCHEMAFULL TYPE NORMAL",
+		"DEFINE FIELD IF NOT EXISTS enabled ON project_ai_settings TYPE bool",
+		"DEFINE FIELD OVERWRITE onlinePolicies ON project_ai_settings TYPE array<object>",
+		"DEFINE FIELD OVERWRITE onlinePolicies[*] ON project_ai_settings TYPE object FLEXIBLE",
+		"DEFINE INDEX IF NOT EXISTS idx_project_ai_settings_tenant_company_project ON project_ai_settings FIELDS tenantId, companyId, projectId UNIQUE",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("schema missing %q in:\n%s", want, got)
@@ -171,7 +187,7 @@ func TestStatementsDefineTraceSummaryCountFields(t *testing.T) {
 func TestStatementsDefineRetentionSoftDeleteFields(t *testing.T) {
 	got := strings.Join(Statements(), "\n")
 
-	for _, table := range []string{"trace", "span", "log_event", "metric_descriptor", "metric_point", "metric_ingest_cardinality", "ingest_command", "ai_agent_run", "ai_llm_call", "ai_tool_call", "ai_retrieval_event", "ai_dataset", "ai_dataset_item", "ai_scorer", "ai_eval_result", "ai_experiment", "ai_experiment_run", "ai_dataset_item_run", "ai_prompt_version", "ai_annotation_queue_item"} {
+	for _, table := range []string{"trace", "span", "log_event", "metric_descriptor", "metric_point", "metric_ingest_cardinality", "ingest_command", "project_ai_settings", "ai_agent_run", "ai_llm_call", "ai_tool_call", "ai_retrieval_event", "ai_dataset", "ai_dataset_item", "ai_scorer", "ai_eval_result", "ai_experiment", "ai_experiment_run", "ai_dataset_item_run", "ai_prompt_version", "ai_annotation_queue_item"} {
 		for _, want := range []string{
 			"DEFINE FIELD IF NOT EXISTS deletedAt ON " + table + " TYPE option<datetime>",
 			"DEFINE FIELD IF NOT EXISTS deletedByRetentionPolicyId ON " + table + " TYPE option<string>",

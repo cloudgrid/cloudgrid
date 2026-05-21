@@ -219,6 +219,18 @@ func Statements() []string {
 		"DEFINE FIELD IF NOT EXISTS finalDeleteAfter ON ingest_command TYPE option<datetime>",
 		"DEFINE INDEX IF NOT EXISTS idx_ingest_command_commandId ON ingest_command FIELDS commandId UNIQUE",
 		"DEFINE INDEX IF NOT EXISTS idx_ingest_command_completedAt ON ingest_command FIELDS completedAt",
+
+		"DEFINE TABLE IF NOT EXISTS project_ai_settings SCHEMAFULL TYPE NORMAL",
+		"DEFINE FIELD IF NOT EXISTS tenantId ON project_ai_settings TYPE string",
+		"DEFINE FIELD IF NOT EXISTS companyId ON project_ai_settings TYPE string",
+		"DEFINE FIELD IF NOT EXISTS projectId ON project_ai_settings TYPE string",
+		"DEFINE FIELD IF NOT EXISTS enabled ON project_ai_settings TYPE bool",
+		"DEFINE FIELD OVERWRITE onlinePolicies ON project_ai_settings TYPE array<object>",
+		"DEFINE FIELD OVERWRITE onlinePolicies[*] ON project_ai_settings TYPE object FLEXIBLE",
+		"DEFINE FIELD IF NOT EXISTS deletedAt ON project_ai_settings TYPE option<datetime>",
+		"DEFINE FIELD IF NOT EXISTS deletedByRetentionPolicyId ON project_ai_settings TYPE option<string>",
+		"DEFINE FIELD IF NOT EXISTS finalDeleteAfter ON project_ai_settings TYPE option<datetime>",
+		"DEFINE INDEX IF NOT EXISTS idx_project_ai_settings_tenant_company_project ON project_ai_settings FIELDS tenantId, companyId, projectId UNIQUE",
 	}
 
 	for _, table := range []string{
