@@ -1014,7 +1014,11 @@ func (service *Service) GetAiChatHistory(ctx context.Context, request contracts.
 		return nil, forbiddenError("viewer is not a member of company")
 	}
 	if request.ProjectID != nil && strings.TrimSpace(*request.ProjectID) != "" {
-		if _, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, strings.TrimSpace(*request.ProjectID)); err != nil {
+		selectedProjectID := strings.TrimSpace(*request.ProjectID)
+		if err := requireAiChatCurrentProject(request.BridgeEnvelope, selectedProjectID); err != nil {
+			return nil, err
+		}
+		if _, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, selectedProjectID); err != nil {
 			return nil, err
 		}
 	}
@@ -1095,6 +1099,9 @@ func (service *Service) GetAiChatConversation(ctx context.Context, request contr
 	if conversation.UserID != principalID(request.BridgeEnvelope) {
 		return nil, forbiddenError("AI Chat conversation user must match the authenticated principal")
 	}
+	if err := requireAiChatCurrentProject(request.BridgeEnvelope, conversation.ProjectID); err != nil {
+		return nil, err
+	}
 	if _, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, conversation.ProjectID); err != nil {
 		return nil, err
 	}
@@ -1118,6 +1125,9 @@ func (service *Service) requireAiChatConversationAccess(ctx context.Context, env
 	}
 	if conversation.UserID != principalID(envelope) {
 		return ports.AiChatConversationRecord{}, forbiddenError("AI Chat conversation user must match the authenticated principal")
+	}
+	if err := requireAiChatCurrentProject(envelope, conversation.ProjectID); err != nil {
+		return ports.AiChatConversationRecord{}, err
 	}
 	if _, err := service.requireProjectAccess(ctx, envelope, conversation.ProjectID); err != nil {
 		return ports.AiChatConversationRecord{}, err
@@ -1152,6 +1162,9 @@ func (service *Service) CreateAiChatConversation(ctx context.Context, request co
 	}
 	if request.UserID != principalID(request.BridgeEnvelope) {
 		return nil, forbiddenError("AI Chat conversation user must match the authenticated principal")
+	}
+	if err := requireAiChatCurrentProject(request.BridgeEnvelope, request.ProjectID); err != nil {
+		return nil, err
 	}
 	project, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, request.ProjectID)
 	if err != nil {
@@ -2768,6 +2781,14 @@ func serviceScopedProjectAccess(envelope contracts.BridgeEnvelope, projectID str
 		}
 	}
 	return false
+}
+
+func requireAiChatCurrentProject(envelope contracts.BridgeEnvelope, projectID string) error {
+	selectedProjectID := authContextProjectID(envelope)
+	if selectedProjectID != nil && *selectedProjectID != strings.TrimSpace(projectID) {
+		return forbiddenError("AI Chat project must match the current project")
+	}
+	return nil
 }
 
 func serviceScopedEnumerationAccess(envelope contracts.BridgeEnvelope, scope contracts.ServiceProjectScope) bool {

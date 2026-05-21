@@ -48,8 +48,8 @@ export function aiChatHistoryQueryKey(input: Pick<AiChatHistoryInput, "companyId
   return ["AiChatHistory", input.companyId, input.projectId ?? null, false, 50, null] as const;
 }
 
-export function aiChatConversationQueryKey(conversationId: string | null) {
-  return ["AiChatConversation", conversationId ?? ""] as const;
+export function aiChatConversationQueryKey(conversationId: string | null, projectId: string) {
+  return ["AiChatConversation", projectId, conversationId ?? ""] as const;
 }
 
 export function isCompanyAiChatProviderConfigured(

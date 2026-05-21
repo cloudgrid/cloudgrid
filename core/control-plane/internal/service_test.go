@@ -950,6 +950,31 @@ func TestAiChatConversationMutationsRequireOwnerAndProjectAccess(t *testing.T) {
 		t.Fatalf("SaveAiChatCompaction by other user error = %v, want forbidden", err)
 	}
 
+	mismatchedProjectID := "project-2"
+	ownerOtherProject := owner
+	ownerOtherProjectAuth := *owner.AuthContext
+	ownerOtherProjectAuth.ProjectID = &mismatchedProjectID
+	ownerOtherProject.AuthContext = &ownerOtherProjectAuth
+	if _, err := service.GetAiChatConversation(ctx, contracts.AiChatConversationGetRequest{
+		BridgeEnvelope: ownerOtherProject,
+		ConversationID: conversationID,
+	}); !isForbidden(err) {
+		t.Fatalf("GetAiChatConversation with mismatched current project error = %v, want forbidden", err)
+	}
+	if _, err := service.CreateAiChatRun(ctx, contracts.AiChatRunCreateRequest{
+		BridgeEnvelope:      ownerOtherProject,
+		ConversationID:      conversationID,
+		ProjectID:           LocalProjectID,
+		UserID:              "user-1",
+		UserMessageClientID: "client-message-2",
+		IdempotencyKey:      "isolation-run-2",
+		ProviderKind:        "openai",
+		ProviderProfileID:   "provider-1",
+		Model:               "gpt-4.1-mini",
+	}); !isForbidden(err) {
+		t.Fatalf("CreateAiChatRun with mismatched current project error = %v, want forbidden", err)
+	}
+
 	delete(store.projectMembers, projectMemberKey(LocalProjectID, "user-1"))
 	if _, err := service.ArchiveAiChatConversation(ctx, contracts.AiChatConversationArchiveRequest{
 		BridgeEnvelope:  owner,

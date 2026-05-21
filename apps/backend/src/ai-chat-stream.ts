@@ -127,7 +127,10 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
       return problemResponse("ERR-001", "AI Chat stream request is invalid");
     }
 
-    const authContext = await auth.authenticateRequest(request);
+    const authContext = aiChatProjectAuthContext(
+      await auth.authenticateRequest(request),
+      input.projectId,
+    );
     const conversation = await bridge.aiChatConversation(input.conversationId, authContext);
     if (!conversation) {
       return problemResponse("ERR-001", "AI Chat conversation was not found");
@@ -522,6 +525,16 @@ function conversationOwnedByCurrentUser(
     return conversation.userId === "local-user";
   }
   return Boolean(authContext.principalId && conversation.userId === authContext.principalId);
+}
+
+function aiChatProjectAuthContext(
+  authContext: NormalizedAuthContext,
+  projectId: string,
+): NormalizedAuthContext {
+  return {
+    ...authContext,
+    projectId,
+  };
 }
 
 function conversationAlreadyHasMessage(

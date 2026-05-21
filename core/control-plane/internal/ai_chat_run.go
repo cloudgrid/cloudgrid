@@ -26,6 +26,9 @@ func (service *Service) CreateAiChatRun(ctx context.Context, request contracts.A
 	if principal := principalID(request.BridgeEnvelope); principal != request.UserID {
 		return contracts.AiChatRun{}, forbiddenError("AI Chat run user must match the authenticated principal")
 	}
+	if err := requireAiChatCurrentProject(request.BridgeEnvelope, request.ProjectID); err != nil {
+		return contracts.AiChatRun{}, err
+	}
 	if _, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, request.ProjectID); err != nil {
 		return contracts.AiChatRun{}, err
 	}
@@ -149,6 +152,9 @@ func (service *Service) aiChatRunForMutation(ctx context.Context, envelope contr
 	}
 	if !ok {
 		return ports.AiChatRunRecord{}, notFoundError("AI Chat run")
+	}
+	if err := requireAiChatCurrentProject(envelope, run.ProjectID); err != nil {
+		return ports.AiChatRunRecord{}, err
 	}
 	if _, err := service.requireProjectAccess(ctx, envelope, run.ProjectID); err != nil {
 		return ports.AiChatRunRecord{}, err

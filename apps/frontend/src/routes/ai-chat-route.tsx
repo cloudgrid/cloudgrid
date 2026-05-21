@@ -174,7 +174,11 @@ export function AiChatRoute() {
     projectId,
   );
   const localConversationForRoute =
-    localConversation && conversationId === localConversation.id ? localConversation : null;
+    localConversation &&
+    conversationId === localConversation.id &&
+    localConversation.projectId === projectId
+      ? localConversation
+      : null;
   const hydratedLocalConversation = isHydratedAiChatConversation(localConversationForRoute)
     ? localConversationForRoute
     : null;
@@ -185,15 +189,16 @@ export function AiChatRoute() {
     conversationId && !hydratedHistoryConversation && !hydratedLocalConversation,
   );
   const conversationQuery = useQuery({
-    enabled: aiChatEnabled && shouldFetchConversation,
-    queryKey: aiChatConversationQueryKey(conversationId),
+    enabled: aiChatEnabled && Boolean(projectId) && shouldFetchConversation,
+    queryKey: aiChatConversationQueryKey(conversationId, projectId),
     queryFn: () => aiChatClient.getAiChatConversation(conversationId ?? ""),
   });
+  const fetchedConversation = conversationInSelectedProject(conversationQuery.data, projectId);
   const activeConversation =
     conversationId === null
       ? null
       : (hydratedLocalConversation ??
-        conversationQuery.data ??
+        fetchedConversation ??
         hydratedHistoryConversation ??
         conversationFromHistory ??
         null);
@@ -220,7 +225,10 @@ export function AiChatRoute() {
     onSuccess: async (conversation) => {
       setPrompt("");
       setLocalConversation(conversation);
-      queryClient.setQueryData(aiChatConversationQueryKey(conversation.id), conversation);
+      queryClient.setQueryData(
+        aiChatConversationQueryKey(conversation.id, projectId),
+        conversation,
+      );
       queryClient.setQueryData<AiChatHistory>(
         aiChatHistoryQueryKey({ companyId, projectId }),
         (current) => upsertConversationInHistory(current, conversation),
@@ -240,7 +248,7 @@ export function AiChatRoute() {
           queryKey: aiChatHistoryQueryKey({ companyId, projectId }),
         }),
         queryClient.invalidateQueries({
-          queryKey: aiChatConversationQueryKey(proposal.conversationId),
+          queryKey: aiChatConversationQueryKey(proposal.conversationId, projectId),
         }),
       ]);
     },
@@ -248,7 +256,7 @@ export function AiChatRoute() {
   const deleteConversation = useMutation({
     mutationFn: (id: string) => aiChatClient.deleteAiChatConversation(id),
     onSuccess: async (_deleted, id) => {
-      queryClient.removeQueries({ queryKey: aiChatConversationQueryKey(id) });
+      queryClient.removeQueries({ queryKey: aiChatConversationQueryKey(id, projectId) });
       queryClient.setQueryData<AiChatHistory>(
         aiChatHistoryQueryKey({ companyId, projectId }),
         (current) => removeConversationFromHistory(current, id),
@@ -363,13 +371,24 @@ export function AiChatRoute() {
     text: string,
     options: { skipUserMessageAppend?: boolean } = {},
   ) {
+    if (conversation.projectId !== projectId) {
+      setStreamState({
+        assistantText: "",
+        conversationId: conversation.id,
+        error: t("aiChat.runError"),
+        runId: null,
+        status: "failed",
+        userText: text,
+      });
+      return;
+    }
     const abort = new AbortController();
     let completed = false;
     setStreamAbort(abort);
     setPrompt("");
     setSearchParams({ conversation: conversation.id });
     setLocalConversation(conversation);
-    queryClient.setQueryData(aiChatConversationQueryKey(conversation.id), conversation);
+    queryClient.setQueryData(aiChatConversationQueryKey(conversation.id, projectId), conversation);
     setStreamState({
       assistantText: "",
       conversationId: conversation.id,
@@ -381,7 +400,7 @@ export function AiChatRoute() {
     try {
       const streamInput = {
         conversationId: conversation.id,
-        projectId: conversation.projectId,
+        projectId,
         userMessageClientId: crypto.randomUUID(),
         idempotencyKey: crypto.randomUUID(),
         parts: [{ type: "text" as const, text }],
@@ -448,13 +467,17 @@ export function AiChatRoute() {
       if (completed) {
         try {
           const refreshed = await aiChatClient.getAiChatConversation(conversation.id);
-          if (refreshed) {
-            refreshedConversation = refreshed;
-            setLocalConversation(refreshed);
-            queryClient.setQueryData(aiChatConversationQueryKey(conversation.id), refreshed);
+          const selectedRefreshed = conversationInSelectedProject(refreshed, projectId);
+          if (selectedRefreshed) {
+            refreshedConversation = selectedRefreshed;
+            setLocalConversation(selectedRefreshed);
+            queryClient.setQueryData(
+              aiChatConversationQueryKey(conversation.id, projectId),
+              selectedRefreshed,
+            );
             queryClient.setQueryData<AiChatHistory>(
               aiChatHistoryQueryKey({ companyId, projectId }),
-              (current) => upsertConversationInHistory(current, refreshed),
+              (current) => upsertConversationInHistory(current, selectedRefreshed),
             );
           }
         } catch {
@@ -466,7 +489,7 @@ export function AiChatRoute() {
           queryKey: aiChatHistoryQueryKey({ companyId, projectId }),
         }),
         queryClient.invalidateQueries({
-          queryKey: aiChatConversationQueryKey(conversation.id),
+          queryKey: aiChatConversationQueryKey(conversation.id, projectId),
         }),
       ]);
       if (completed && refreshedConversation) {
@@ -1415,6 +1438,13 @@ function isHydratedAiChatConversation(
   conversation: AiChatConversation | null | undefined,
 ): conversation is AiChatConversation {
   return Boolean(conversation && conversation.messages.length > 0);
+}
+
+function conversationInSelectedProject(
+  conversation: AiChatConversation | null | undefined,
+  projectId: string,
+): AiChatConversation | null {
+  return conversation?.projectId === projectId ? conversation : null;
 }
 
 function userMessageMatches(message: AiChatMessage, text: string) {

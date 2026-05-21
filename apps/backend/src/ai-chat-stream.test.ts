@@ -344,6 +344,7 @@ describe("AI Chat stream endpoint", () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
     const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
     const traceInputs: unknown[] = [];
+    const traceProjectIds: Array<string | undefined> = [];
     const appended: unknown[] = [];
     const { app } = createAppWithBridge(
       bridge({
@@ -373,8 +374,9 @@ describe("AI Chat stream endpoint", () => {
             },
           };
         },
-        async searchTraces(input) {
+        async searchTraces(input, authContext) {
           traceInputs.push(input);
+          traceProjectIds.push(authContext?.projectId);
           return {
             items: [
               {
@@ -427,6 +429,7 @@ describe("AI Chat stream endpoint", () => {
     expect(harness.requests).toHaveLength(0);
     expect(traceInputs).toHaveLength(1);
     expect(traceInputs[0]).toMatchObject({ limit: 25, sort: "startedAt_desc" });
+    expect(traceProjectIds).toEqual(["project-1"]);
     expect(JSON.stringify(events)).toContain("Default project (project-1)");
     expect(JSON.stringify(events)).toContain("checkout-api");
     expect(JSON.stringify(events)).toContain("/traces/trace-1234567890abcdef");

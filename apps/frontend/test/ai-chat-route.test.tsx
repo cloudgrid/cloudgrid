@@ -228,7 +228,7 @@ function aiChatMarkup({
   });
   queryClient.setQueryData(["Viewer"], sessionViewer);
   queryClient.setQueryData(aiChatProviderQueryKey("org-1"), provider);
-  queryClient.setQueryData(aiChatConversationQueryKey(conversation.id), conversation);
+  queryClient.setQueryData(aiChatConversationQueryKey(conversation.id, "project-1"), conversation);
   queryClient.setQueryData(aiChatHistoryQueryKey({ companyId: "org-1", projectId: "project-1" }), {
     ...historyData,
     projectGroups: [...historyData.projectGroups],
@@ -323,6 +323,17 @@ describe("AI Chat route", () => {
     expect(markup).toContain("Why did checkout latency spike?");
     expect(markup).toContain("<strong>p95</strong>");
     expect(markup).toContain("Latency summary");
+  });
+
+  test("does not render a direct-url conversation from another project", () => {
+    const markup = aiChatMarkup({
+      conversation: otherProjectConversation,
+      path: "/ai-chat?conversation=chat-billing",
+    });
+
+    expect(markup).not.toContain("Billing retry errors");
+    expect(markup).not.toContain("Why did checkout latency spike?");
+    expect(markup).toContain("No conversations yet");
   });
 
   test("shows distinct missing-provider states for company admins and non-admin users", () => {
