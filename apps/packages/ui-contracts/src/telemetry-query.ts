@@ -6,6 +6,11 @@ import type {
   MetricChartType,
   MetricDescriptor,
   MetricSeriesInput,
+  TelemetryFacetInput,
+  TraceDetailInput,
+  TraceSearchInput,
+  TraceSort,
+  TraceStatus,
 } from "./index";
 
 export const METRIC_AGGREGATIONS = [
@@ -48,6 +53,10 @@ export const METRIC_SERIES_DEFAULT_LIMIT = 1000;
 export const METRIC_SERIES_HARD_LIMIT = 5000;
 export const LOG_SEARCH_DEFAULT_LIMIT = 50;
 export const LOG_SEARCH_HARD_LIMIT = 200;
+export const TRACE_SEARCH_DEFAULT_LIMIT = 50;
+export const TRACE_SEARCH_HARD_LIMIT = 200;
+export const TRACE_FACET_DEFAULT_LIMIT = 25;
+export const TRACE_RELATED_LOG_DEFAULT_LIMIT = 50;
 
 export interface MetricTimeRange {
   from: string;
@@ -79,6 +88,45 @@ export interface LogSearchDefaultsInput extends LogTimeRange {
   limit?: number | null;
 }
 
+export interface TraceTimeRange {
+  from: string;
+  to: string;
+}
+
+export interface TraceSearchDefaultsInput extends TraceTimeRange {
+  service?: string | null;
+  query?: string | null;
+  operationName?: string | null;
+  spanName?: string | null;
+  status?: TraceStatus | null;
+  minDurationMs?: number | null;
+  maxDurationMs?: number | null;
+  attributes?: AttributeFilterInput[] | null;
+  sort?: TraceSort | null;
+  cursor?: string | null;
+  limit?: number | null;
+}
+
+export interface TraceDetailDefaultsInput {
+  selectedSpanId?: string | null;
+  spanQuery?: string | null;
+  spanService?: string | null;
+  spanName?: string | null;
+  spanStatus?: TraceStatus | null;
+  minSpanDurationMs?: number | null;
+  maxSpanDurationMs?: number | null;
+  attributes?: AttributeFilterInput[] | null;
+  showMatchesOnly?: boolean | null;
+  relatedLogLimit?: number | null;
+  logSearch?: string | null;
+}
+
+export interface TelemetryFacetDefaultsInput extends TraceTimeRange {
+  service?: string | null;
+  search?: string | null;
+  limit?: number | null;
+}
+
 export function createDefaultMetricTimeRange(now = new Date()): MetricTimeRange {
   const to = new Date(now);
   const from = new Date(to.getTime() - 60 * 60 * 1000);
@@ -89,6 +137,15 @@ export function createDefaultMetricTimeRange(now = new Date()): MetricTimeRange 
 }
 
 export function createDefaultLogTimeRange(now = new Date()): LogTimeRange {
+  const to = new Date(now);
+  const from = new Date(to.getTime() - 60 * 60 * 1000);
+  return {
+    from: from.toISOString(),
+    to: to.toISOString(),
+  };
+}
+
+export function createDefaultTraceTimeRange(now = new Date()): TraceTimeRange {
   const to = new Date(now);
   const from = new Date(to.getTime() - 60 * 60 * 1000);
   return {
@@ -175,6 +232,19 @@ export function logSortOrDefault(value: string | null): LogSort {
   return value === "timestamp_asc" || value === "severity_desc" ? value : defaultLogSort();
 }
 
+export function defaultTraceSort(): TraceSort {
+  return "startedAt_desc";
+}
+
+export function traceSortOrDefault(value: string | null): TraceSort {
+  return value === "startedAt_asc" ||
+    value === "duration_desc" ||
+    value === "duration_asc" ||
+    value === "errorFirst"
+    ? value
+    : defaultTraceSort();
+}
+
 export function buildMetricSeriesInput(
   descriptor: Pick<MetricDescriptor, "name">,
   state: MetricQueryDefaultsInput,
@@ -209,6 +279,59 @@ export function buildLogSearchInput(state: LogSearchDefaultsInput): LogSearchInp
     limit: Math.min(
       Math.max(1, Math.trunc(state.limit ?? LOG_SEARCH_DEFAULT_LIMIT)),
       LOG_SEARCH_HARD_LIMIT,
+    ),
+  };
+}
+
+export function buildTraceSearchInput(state: TraceSearchDefaultsInput): TraceSearchInput {
+  return {
+    service: state.service ?? null,
+    query: state.query ?? null,
+    operationName: state.operationName ?? null,
+    spanName: state.spanName ?? null,
+    from: state.from,
+    to: state.to,
+    status: state.status ?? null,
+    minDurationMs: state.minDurationMs ?? null,
+    maxDurationMs: state.maxDurationMs ?? null,
+    attributes: state.attributes ?? null,
+    sort: state.sort ?? defaultTraceSort(),
+    cursor: state.cursor ?? null,
+    limit: Math.min(
+      Math.max(1, Math.trunc(state.limit ?? TRACE_SEARCH_DEFAULT_LIMIT)),
+      TRACE_SEARCH_HARD_LIMIT,
+    ),
+  };
+}
+
+export function buildTraceDetailInput(state: TraceDetailDefaultsInput = {}): TraceDetailInput {
+  return {
+    selectedSpanId: state.selectedSpanId ?? null,
+    spanQuery: state.spanQuery ?? null,
+    spanService: state.spanService ?? null,
+    spanName: state.spanName ?? null,
+    spanStatus: state.spanStatus ?? null,
+    minSpanDurationMs: state.minSpanDurationMs ?? null,
+    maxSpanDurationMs: state.maxSpanDurationMs ?? null,
+    attributes: state.attributes ?? null,
+    showMatchesOnly: state.showMatchesOnly ?? false,
+    relatedLogLimit: Math.min(
+      Math.max(1, Math.trunc(state.relatedLogLimit ?? TRACE_RELATED_LOG_DEFAULT_LIMIT)),
+      LOG_SEARCH_HARD_LIMIT,
+    ),
+    logSearch: state.logSearch ?? null,
+  };
+}
+
+export function buildTelemetryFacetInput(state: TelemetryFacetDefaultsInput): TelemetryFacetInput {
+  return {
+    from: state.from,
+    to: state.to,
+    service: state.service ?? null,
+    search: state.search ?? null,
+    limit: Math.min(
+      Math.max(1, Math.trunc(state.limit ?? TRACE_FACET_DEFAULT_LIMIT)),
+      TRACE_SEARCH_HARD_LIMIT,
     ),
   };
 }

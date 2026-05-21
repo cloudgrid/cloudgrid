@@ -442,11 +442,11 @@ explicitly record why it is not available to AI Chat.
 
 | Tool | Backend path | Default window | Default limit | Hard limit |
 | --- | --- | --- | --- | --- |
-| `telemetry.searchTraces` | `Query.traces` / storage-read trace search | last 1 hour | 50 traces | 200 traces |
-| `telemetry.getTrace` | `Query.trace` / storage-read trace detail | not applicable | full trace detail | 5000 spans |
+| `telemetry.searchTraces` | `Query.traces` / storage-read trace search | last 1 hour, newest first | 50 traces | 200 traces |
+| `telemetry.getTrace` | `Query.trace` / storage-read trace detail | not applicable; related logs default to 50 | full trace detail | 5000 spans |
 | `telemetry.searchLogs` | `Query.logs` / storage-read log search | last 1 hour, newest first | 50 logs | 200 logs |
 | `telemetry.queryMetrics` | `Query.metricSeries` or `Query.richMetricSeries` | last 1 hour | storage-read default step | 5000 points |
-| `telemetry.getFacets` | `Query.telemetryFacets` | last 1 hour | backend default | backend cap |
+| `telemetry.getFacets` | `Query.telemetryFacets` | last 1 hour | 25 values per facet family | 200 values per facet family |
 | `dashboards.list` | `Query.dashboards` | not applicable | all visible dashboards | backend cap |
 | `alerts.list` | `Query.alertRules` | not applicable | all visible rules | backend cap |
 | `alerts.history` | `Query.alertHistory` | last 24 hours | 50 events | 200 events |

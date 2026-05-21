@@ -14,6 +14,8 @@ import type {
   LogSearchResult,
   MetricAggregation,
   MetricSeriesResult,
+  TelemetryFacetResult,
+  TraceDetail,
   TraceSearchResult,
   TraceSummary,
 } from "@cloudgrid/ui-contracts";
@@ -21,6 +23,9 @@ import {
   LOG_SEARCH_HARD_LIMIT,
   METRIC_SERIES_HARD_LIMIT,
   buildLogSearchInput,
+  buildTelemetryFacetInput,
+  buildTraceDetailInput,
+  buildTraceSearchInput,
   defaultMetricAggregationForMetricName,
   defaultMetricIntervalForHours,
 } from "@cloudgrid/ui-contracts";
@@ -138,6 +143,16 @@ type TraceToolRange = {
 type TraceToolIntent =
   | { kind: "today"; range: TraceToolRange; limit: 25; status?: "error" }
   | { kind: "recent"; range: TraceToolRange; limit: number; status?: "error" };
+
+type TraceDetailToolIntent = {
+  traceId: string;
+};
+
+type TelemetryFacetToolIntent = {
+  range: TraceToolRange;
+  search?: string | null;
+  service?: string | null;
+};
 
 type MetricToolIntent = {
   metricName: string;
@@ -650,6 +665,54 @@ async function answerWithCloudGridTool({
   input: AiChatStreamRequest;
   userText: string;
 }): Promise<{ text: string; toolName: string } | null> {
+  const traceDetailIntent = traceDetailToolIntent(userText);
+  if (traceDetailIntent) {
+    if (!bridge.getTraceDetail) {
+      return {
+        toolName: "telemetry.getTrace",
+        text: "I could not query CloudGrid trace detail because the trace detail tool is not available in this run.",
+      };
+    }
+
+    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+    const result = await bridge.getTraceDetail(
+      traceDetailIntent.traceId,
+      buildTraceDetailInput(),
+      authContext,
+    );
+
+    return {
+      toolName: "telemetry.getTrace",
+      text: formatTraceDetailToolAnswer(result, traceDetailIntent, project),
+    };
+  }
+
+  const facetIntent = telemetryFacetToolIntent(userText, input.timezone);
+  if (facetIntent) {
+    if (!bridge.telemetryFacets) {
+      return {
+        toolName: "telemetry.getFacets",
+        text: "I could not query CloudGrid telemetry facets because the facet tool is not available in this run.",
+      };
+    }
+
+    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+    const result = await bridge.telemetryFacets(
+      buildTelemetryFacetInput({
+        from: facetIntent.range.from.toISOString(),
+        to: facetIntent.range.to.toISOString(),
+        service: facetIntent.service ?? null,
+        search: facetIntent.search ?? null,
+      }),
+      authContext,
+    );
+
+    return {
+      toolName: "telemetry.getFacets",
+      text: formatTelemetryFacetToolAnswer(result, facetIntent, project),
+    };
+  }
+
   const metricIntent = metricToolIntent(userText, input.timezone);
   if (metricIntent) {
     if (!bridge.metricSeries) {
@@ -722,13 +785,13 @@ async function answerWithCloudGridTool({
 
   const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
   const result = await bridge.searchTraces(
-    {
+    buildTraceSearchInput({
       from: intent.range.from.toISOString(),
       to: intent.range.to.toISOString(),
       limit: intent.limit,
       sort: "startedAt_desc",
       ...(intent.status ? { status: intent.status } : {}),
-    },
+    }),
     authContext,
   );
 
@@ -780,6 +843,38 @@ function traceToolIntent(text: string, timezone: string | undefined): TraceToolI
     };
   }
   return null;
+}
+
+function traceDetailToolIntent(text: string): TraceDetailToolIntent | null {
+  const normalized = text.toLowerCase();
+  if (!/\b(trace|span|waterfall|critical path|detail|details|summarize)\b/.test(normalized)) {
+    return null;
+  }
+  const traceId = traceIdFromText(text);
+  return traceId ? { traceId } : null;
+}
+
+function telemetryFacetToolIntent(
+  text: string,
+  timezone: string | undefined,
+): TelemetryFacetToolIntent | null {
+  const normalized = text.toLowerCase();
+  if (!/\bfacets?\b/.test(normalized)) {
+    return null;
+  }
+  if (
+    !/\b(telemetry|trace|traces|log|logs|service|operation|attribute|severity)\b/.test(normalized)
+  ) {
+    return null;
+  }
+  const range = /\btoday\b/.test(normalized)
+    ? todayRange(timezone)
+    : lastHoursRange(timezone, metricHoursFromText(normalized) ?? 1);
+  return {
+    range,
+    service: serviceFromFacetText(text),
+    search: facetSearchFromText(text),
+  };
 }
 
 function metricToolIntent(text: string, timezone: string | undefined): MetricToolIntent | null {
@@ -836,6 +931,25 @@ function metricNameFromText(text: string) {
       .map((match) => match.replace(/[.,;:!?)]$/g, ""))
       .find((match) => match.includes(".") || match.includes("_")) ?? null
   );
+}
+
+function traceIdFromText(text: string) {
+  const matches = text.match(/\btrace-[a-zA-Z0-9_.:-]{3,128}\b/g) ?? [];
+  return matches.at(0)?.replace(/[.,;:!?)]$/g, "") ?? null;
+}
+
+function serviceFromFacetText(text: string) {
+  const match = text.match(/\bservice\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/);
+  return match?.[1]?.replace(/[.,;:!?)]$/g, "") ?? null;
+}
+
+function facetSearchFromText(text: string) {
+  const quoted = quotedSearchFromText(text);
+  if (quoted) {
+    return quoted;
+  }
+  const match = text.match(/\b(?:for|matching|search)\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/);
+  return match?.[1]?.replace(/[.,;:!?)]$/g, "") ?? null;
 }
 
 function metricHoursFromText(text: string) {
@@ -951,6 +1065,55 @@ function formatTraceToolAnswer(
     .join("\n");
 }
 
+function formatTraceDetailToolAnswer(
+  result: TraceDetail | null,
+  intent: TraceDetailToolIntent,
+  project: { id: string; label: string },
+) {
+  if (!result) {
+    return `Trace ${intent.traceId} was not found in project ${project.label}.`;
+  }
+
+  const rootSpan =
+    result.spans.find((span) => span.id === result.trace.rootSpanId) ?? result.spans.at(0) ?? null;
+  const errorSpanCount = result.spans.filter((span) => span.hasError).length;
+  const criticalPath = result.structure.criticalPathSpanIds.length;
+  const warnings = result.warnings.length
+    ? `\n\nWarnings: ${result.warnings.map((warning) => warning.message).join("; ")}`
+    : "";
+  return [
+    `Trace ${result.trace.id} in project ${project.label}: ${result.trace.status ?? "unset"} status, ${durationLabel(result.trace.durationMs)}, ${result.spans.length} spans, ${errorSpanCount} error spans, ${result.relatedLogs.length} related logs.`,
+    `Root service: ${result.trace.serviceName ?? rootSpan?.serviceName ?? "unknown"}. Root operation: ${rootSpan?.name ?? "unknown"}.`,
+    `Critical path spans: ${criticalPath}. Max depth: ${result.structure.maxDepth}.`,
+    `Open: /traces/${encodeURIComponent(result.trace.id)}`,
+    warnings,
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+}
+
+function formatTelemetryFacetToolAnswer(
+  result: TelemetryFacetResult,
+  intent: TelemetryFacetToolIntent,
+  project: { id: string; label: string },
+) {
+  const sections = [
+    facetSection("Services", result.services),
+    facetSection("Operations", result.operations),
+    facetSection("Span names", result.spanNames),
+    facetSection("Severities", result.severities),
+    facetSection("Attribute keys", result.attributeKeys),
+  ].filter(Boolean);
+  if (!sections.length) {
+    return `No telemetry facets were returned for ${intent.range.label} in project ${project.label}.`;
+  }
+  return [
+    `CloudGrid telemetry facets for ${intent.range.label} in project ${project.label} between ${intent.range.from.toISOString()} and ${intent.range.to.toISOString()}:`,
+    "",
+    ...sections,
+  ].join("\n");
+}
+
 function formatMetricToolAnswer(
   result: MetricSeriesResult,
   intent: MetricToolIntent,
@@ -1018,6 +1181,20 @@ function metricSeriesRow(series: MetricSeriesResult["series"][number], index: nu
     markdownTableCell(latest.timestamp),
     String(latest.value),
   ].join(" | ");
+}
+
+function facetSection(label: string, values: TelemetryFacetResult["services"]) {
+  if (!values.length) {
+    return "";
+  }
+  return `${label}: ${values
+    .slice(0, 8)
+    .map((facet) => `${facet.value} (${facet.count})`)
+    .join(", ")}`;
+}
+
+function durationLabel(durationMs: number | null | undefined) {
+  return typeof durationMs === "number" ? `${durationMs.toFixed(1)} ms` : "unknown duration";
 }
 
 function metricLabels(labels: JSONValue) {

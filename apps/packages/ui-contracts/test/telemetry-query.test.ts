@@ -2,8 +2,13 @@ import { describe, expect, test } from "bun:test";
 import {
   buildLogSearchInput,
   buildMetricSeriesInput,
+  buildTelemetryFacetInput,
+  buildTraceDetailInput,
+  buildTraceSearchInput,
   createDefaultLogTimeRange,
+  createDefaultTraceTimeRange,
   defaultLogSort,
+  defaultTraceSort,
   LOG_SEARCH_DEFAULT_LIMIT,
   LOG_SEARCH_HARD_LIMIT,
   METRIC_SERIES_DEFAULT_LIMIT,
@@ -12,6 +17,9 @@ import {
   defaultMetricAggregation,
   defaultMetricAggregationForMetricName,
   defaultMetricIntervalForHours,
+  TRACE_RELATED_LOG_DEFAULT_LIMIT,
+  TRACE_SEARCH_DEFAULT_LIMIT,
+  TRACE_SEARCH_HARD_LIMIT,
 } from "../src/telemetry-query";
 
 const descriptor = {
@@ -98,6 +106,64 @@ describe("shared telemetry query contracts", () => {
       sort: "timestamp_desc",
       cursor: null,
       limit: LOG_SEARCH_DEFAULT_LIMIT,
+    });
+  });
+
+  test("centralizes trace search, trace detail, and facet defaults", () => {
+    const range = createDefaultTraceTimeRange(new Date("2026-05-21T17:00:00.000Z"));
+
+    expect(range).toEqual({
+      from: "2026-05-21T16:00:00.000Z",
+      to: "2026-05-21T17:00:00.000Z",
+    });
+    expect(defaultTraceSort()).toBe("startedAt_desc");
+    expect(TRACE_SEARCH_DEFAULT_LIMIT).toBe(50);
+    expect(TRACE_SEARCH_HARD_LIMIT).toBe(200);
+    expect(TRACE_RELATED_LOG_DEFAULT_LIMIT).toBe(50);
+    expect(
+      buildTraceSearchInput({
+        from: range.from,
+        to: range.to,
+        service: "api",
+        status: "error",
+        limit: 500,
+      }),
+    ).toEqual({
+      from: "2026-05-21T16:00:00.000Z",
+      to: "2026-05-21T17:00:00.000Z",
+      service: "api",
+      query: null,
+      operationName: null,
+      spanName: null,
+      status: "error",
+      minDurationMs: null,
+      maxDurationMs: null,
+      attributes: null,
+      sort: "startedAt_desc",
+      cursor: null,
+      limit: TRACE_SEARCH_HARD_LIMIT,
+    });
+    expect(buildTraceDetailInput({ selectedSpanId: "span-1" })).toEqual({
+      selectedSpanId: "span-1",
+      spanQuery: null,
+      spanService: null,
+      spanName: null,
+      spanStatus: null,
+      minSpanDurationMs: null,
+      maxSpanDurationMs: null,
+      attributes: null,
+      showMatchesOnly: false,
+      relatedLogLimit: TRACE_RELATED_LOG_DEFAULT_LIMIT,
+      logSearch: null,
+    });
+    expect(
+      buildTelemetryFacetInput({ from: range.from, to: range.to, search: "checkout" }),
+    ).toEqual({
+      from: "2026-05-21T16:00:00.000Z",
+      to: "2026-05-21T17:00:00.000Z",
+      service: null,
+      search: "checkout",
+      limit: 25,
     });
   });
 });

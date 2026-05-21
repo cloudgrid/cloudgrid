@@ -674,6 +674,179 @@ describe("AI Chat stream endpoint", () => {
     delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
   });
 
+  test("answers trace detail questions through the trace detail tool with default filters", async () => {
+    process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
+    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const traceDetailInputs: unknown[] = [];
+    const traceProjectIds: Array<string | undefined> = [];
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          return configuredCompanyProvider();
+        },
+        async getTraceDetail(traceId, input, authContext) {
+          traceDetailInputs.push({ traceId, input });
+          traceProjectIds.push(authContext?.projectId);
+          return {
+            trace: {
+              id: traceId,
+              serviceName: "checkout-api",
+              startedAt: "2026-05-21T16:50:00.000Z",
+              startedAtUnixNano: "0",
+              endedAt: "2026-05-21T16:50:01.200Z",
+              endedAtUnixNano: "0",
+              durationNano: "1200000000",
+              durationMs: 1200,
+              rootSpanId: "span-root",
+              status: "error",
+              attributes: {},
+            },
+            structure: {
+              rootSpanIds: ["span-root"],
+              orphanSpanIds: [],
+              criticalPathSpanIds: ["span-root", "span-db"],
+              maxDepth: 2,
+              serviceBreakdown: [],
+            },
+            spans: [
+              {
+                id: "span-root",
+                traceId,
+                parentSpanId: null,
+                name: "POST /checkout",
+                kind: "server",
+                serviceName: "checkout-api",
+                startedAt: "2026-05-21T16:50:00.000Z",
+                startedAtUnixNano: "0",
+                endedAt: "2026-05-21T16:50:01.200Z",
+                endedAtUnixNano: "0",
+                startOffsetNano: "0",
+                durationNano: "1200000000",
+                durationMs: 1200,
+                status: "error",
+                attributes: {},
+                depth: 0,
+                childCount: 1,
+                hasError: true,
+                isCriticalPath: true,
+                isOrphan: false,
+                isServiceEntry: true,
+                exceptionCount: 1,
+                events: [],
+                links: [],
+                exceptions: [],
+              },
+            ],
+            selectedSpan: null,
+            spanMatches: [],
+            logs: [],
+            relatedLogs: [],
+            warnings: [],
+          };
+        },
+        async aiChatAppendMessage() {},
+      }),
+      { graphqlUI: false, aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(
+      streamRequest({
+        idempotencyKey: "idempotency-key-trace-detail-tool",
+        parts: [{ type: "text", text: "show trace trace-detail-123 and summarize it" }],
+        timezone: "Europe/Berlin",
+      }),
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(harness.requests).toHaveLength(0);
+    expect(traceDetailInputs).toEqual([
+      {
+        traceId: "trace-detail-123",
+        input: {
+          selectedSpanId: null,
+          spanQuery: null,
+          spanService: null,
+          spanName: null,
+          spanStatus: null,
+          minSpanDurationMs: null,
+          maxSpanDurationMs: null,
+          attributes: null,
+          showMatchesOnly: false,
+          relatedLogLimit: 50,
+          logSearch: null,
+        },
+      },
+    ]);
+    expect(traceProjectIds).toEqual(["project-1"]);
+    expect(body).toContain("Trace trace-detail-123");
+    expect(body).toContain("checkout-api");
+    expect(body).toContain("POST /checkout");
+    expect(body).toContain("/traces/trace-detail-123");
+    expect(body).not.toContain("Project ID");
+
+    delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
+  });
+
+  test("answers telemetry facet questions with injected project context and shared defaults", async () => {
+    process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
+    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const facetInputs: unknown[] = [];
+    const facetProjectIds: Array<string | undefined> = [];
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          return configuredCompanyProvider();
+        },
+        async telemetryFacets(input, authContext) {
+          facetInputs.push(input);
+          facetProjectIds.push(authContext?.projectId);
+          return {
+            services: [{ value: "checkout-api", count: 12 }],
+            operations: [{ value: "POST /checkout", count: 8 }],
+            spanNames: [{ value: "db.query", count: 5 }],
+            severities: [{ value: "error", count: 3 }],
+            attributeKeys: [{ value: "http.method", count: 9 }],
+          };
+        },
+        async aiChatAppendMessage() {},
+      }),
+      { graphqlUI: false, aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(
+      streamRequest({
+        idempotencyKey: "idempotency-key-facet-tool",
+        parts: [{ type: "text", text: "show telemetry facets for checkout today" }],
+        timezone: "Europe/Berlin",
+      }),
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(harness.requests).toHaveLength(0);
+    expect(facetInputs).toHaveLength(1);
+    expect(facetInputs[0]).toMatchObject({
+      search: "checkout",
+      service: null,
+      limit: 25,
+    });
+    expect(String((facetInputs[0] as { from?: string }).from)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(facetProjectIds).toEqual(["project-1"]);
+    expect(body).toContain("checkout-api");
+    expect(body).toContain("POST /checkout");
+    expect(body).toContain("http.method");
+    expect(body).not.toContain("Please provide");
+
+    delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
+  });
+
   test("rejects a duplicate completed idempotency key with the existing run id", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
     const harness = recordingHarness([{ kind: "final_message", text: "done" }]);

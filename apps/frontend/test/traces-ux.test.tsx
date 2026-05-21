@@ -39,6 +39,7 @@ const traceFiltersSource = readFileSync(
   join(import.meta.dir, "../src/features/traces/trace-filters.tsx"),
   "utf8",
 );
+const urlFiltersSource = readFileSync(join(import.meta.dir, "../src/lib/url-filters.ts"), "utf8");
 
 function traceTableMarkup() {
   return renderToStaticMarkup(
@@ -135,6 +136,16 @@ describe("traces UX migration", () => {
       traceFiltersSource.indexOf('id="trace-from"'),
     );
     expect(tracesRouteSource).toContain("RouteBreadcrumb");
+  });
+
+  test("uses shared trace query defaults instead of route-local constants", () => {
+    expect(urlFiltersSource).toContain("@cloudgrid/ui-contracts");
+    expect(urlFiltersSource).toContain("TRACE_SEARCH_DEFAULT_LIMIT");
+    expect(urlFiltersSource).toContain("TRACE_RELATED_LOG_DEFAULT_LIMIT");
+    expect(urlFiltersSource).toContain("traceSortOrDefault");
+    expect(urlFiltersSource).not.toContain("const traceSorts");
+    expect(urlFiltersSource).not.toContain("function traceSortOrNull");
+    expect(tracesRouteSource).toContain('sort={filters.sort ?? "startedAt_desc"}');
   });
 
   test("uses route-specific empty-state copy and working resizable panel constraints", () => {

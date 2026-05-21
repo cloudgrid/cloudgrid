@@ -2,22 +2,19 @@ import type {
   LogSearchInput,
   TraceDetailInput,
   TraceSearchInput,
-  TraceSort,
   TraceStatus,
 } from "@cloudgrid/ui-contracts";
-import { LOG_SEARCH_DEFAULT_LIMIT, logSortOrDefault } from "@cloudgrid/ui-contracts";
+import {
+  LOG_SEARCH_DEFAULT_LIMIT,
+  TRACE_RELATED_LOG_DEFAULT_LIMIT,
+  TRACE_SEARCH_DEFAULT_LIMIT,
+  logSortOrDefault,
+  traceSortOrDefault,
+} from "@cloudgrid/ui-contracts";
 import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 
 const traceStatuses: TraceStatus[] = ["ok", "error", "unset"];
-const traceSorts: TraceSort[] = [
-  "startedAt_desc",
-  "startedAt_asc",
-  "duration_desc",
-  "duration_asc",
-  "errorFirst",
-];
-
 function valueOrNull(value: string | null) {
   return value && value.trim().length > 0 ? value : null;
 }
@@ -44,10 +41,6 @@ function attributeFiltersOrNull(value: string | null) {
   return key ? [{ key, operator: "exists" as const }] : null;
 }
 
-function traceSortOrNull(value: string | null): TraceSort | null {
-  return traceSorts.includes(value as TraceSort) ? (value as TraceSort) : null;
-}
-
 export function useTraceFilters() {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -63,9 +56,9 @@ export function useTraceFilters() {
       minDurationMs: numberOrNull(searchParams.get("minDurationMs")),
       maxDurationMs: numberOrNull(searchParams.get("maxDurationMs")),
       attributes: attributeFiltersOrNull(searchParams.get("attributeKey")),
-      sort: traceSortOrNull(searchParams.get("sort")),
+      sort: traceSortOrDefault(searchParams.get("sort")),
       cursor: valueOrNull(searchParams.get("cursor")),
-      limit: 25,
+      limit: TRACE_SEARCH_DEFAULT_LIMIT,
     }),
     [searchParams],
   );
@@ -103,7 +96,7 @@ export function useTraceDetailFilters() {
       maxSpanDurationMs: numberOrNull(searchParams.get("maxSpanDurationMs")),
       attributes: attributeFiltersOrNull(searchParams.get("attributeKey")),
       showMatchesOnly: booleanOrFalse(searchParams.get("showMatchesOnly")),
-      relatedLogLimit: 50,
+      relatedLogLimit: TRACE_RELATED_LOG_DEFAULT_LIMIT,
       logSearch: valueOrNull(searchParams.get("logSearch")),
     }),
     [searchParams],
