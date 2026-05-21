@@ -1105,6 +1105,47 @@ func (service *Service) GetAiChatConversation(ctx context.Context, request contr
 	return contractAiChatConversation(conversation, messages), nil
 }
 
+func (service *Service) requireAiChatConversationAccess(ctx context.Context, envelope contracts.BridgeEnvelope, conversationID string) (ports.AiChatConversationRecord, error) {
+	if strings.TrimSpace(conversationID) == "" {
+		return ports.AiChatConversationRecord{}, validationError("conversationId is required")
+	}
+	conversation, ok, err := service.store.GetAiChatConversation(ctx, strings.TrimSpace(conversationID))
+	if err != nil {
+		return ports.AiChatConversationRecord{}, storageError()
+	}
+	if !ok {
+		return ports.AiChatConversationRecord{}, notFoundError("AI Chat conversation")
+	}
+	if conversation.UserID != principalID(envelope) {
+		return ports.AiChatConversationRecord{}, forbiddenError("AI Chat conversation user must match the authenticated principal")
+	}
+	if _, err := service.requireProjectAccess(ctx, envelope, conversation.ProjectID); err != nil {
+		return ports.AiChatConversationRecord{}, err
+	}
+	return conversation, nil
+}
+
+func (service *Service) requireAiChatActionAccess(ctx context.Context, envelope contracts.BridgeEnvelope, actionID string) (ports.AiChatActionRecord, ports.AiChatConversationRecord, error) {
+	if strings.TrimSpace(actionID) == "" {
+		return ports.AiChatActionRecord{}, ports.AiChatConversationRecord{}, validationError("actionId is required")
+	}
+	action, ok, err := service.store.GetAiChatAction(ctx, strings.TrimSpace(actionID))
+	if err != nil {
+		return ports.AiChatActionRecord{}, ports.AiChatConversationRecord{}, storageError()
+	}
+	if !ok {
+		return ports.AiChatActionRecord{}, ports.AiChatConversationRecord{}, notFoundError("AI Chat action")
+	}
+	conversation, err := service.requireAiChatConversationAccess(ctx, envelope, action.ConversationID)
+	if err != nil {
+		return ports.AiChatActionRecord{}, ports.AiChatConversationRecord{}, err
+	}
+	if action.ProjectID != conversation.ProjectID {
+		return ports.AiChatActionRecord{}, ports.AiChatConversationRecord{}, forbiddenError("AI Chat action project must match the conversation project")
+	}
+	return action, conversation, nil
+}
+
 func (service *Service) CreateAiChatConversation(ctx context.Context, request contracts.AiChatConversationCreateRequest) (map[string]any, error) {
 	if strings.TrimSpace(request.CompanyID) == "" || strings.TrimSpace(request.ProjectID) == "" || strings.TrimSpace(request.UserID) == "" || strings.TrimSpace(request.FirstUserMessage) == "" {
 		return nil, validationError("AI Chat conversation create requires company, project, user, and first message fields")
@@ -1166,12 +1207,9 @@ func (service *Service) ArchiveAiChatConversation(ctx context.Context, request c
 	if request.ExpectedVersion < 1 {
 		return nil, validationError("expectedVersion is required")
 	}
-	conversation, ok, err := service.store.GetAiChatConversation(ctx, strings.TrimSpace(request.ConversationID))
+	conversation, err := service.requireAiChatConversationAccess(ctx, request.BridgeEnvelope, request.ConversationID)
 	if err != nil {
-		return nil, storageError()
-	}
-	if !ok {
-		return nil, notFoundError("AI Chat conversation")
+		return nil, err
 	}
 	if conversation.UserID != request.UserID {
 		return nil, forbiddenError("AI Chat conversation user must match the conversation owner")
@@ -1226,21 +1264,22 @@ func (service *Service) AppendAiChatMessage(ctx context.Context, request contrac
 	if containsSecretLookingKey(map[string]any{"parts": mapsFromAnySlice(request.Parts)}) {
 		return nil, validationError("AI Chat message parts must not contain raw secret-looking fields")
 	}
-	conversation, ok, err := service.store.GetAiChatConversation(ctx, strings.TrimSpace(request.ConversationID))
+	conversation, err := service.requireAiChatConversationAccess(ctx, request.BridgeEnvelope, request.ConversationID)
 	if err != nil {
-		return nil, storageError()
+		return nil, err
 	}
-	if !ok {
-		return nil, notFoundError("AI Chat conversation")
+	run, err := service.aiChatRunForMutation(ctx, request.BridgeEnvelope, request.RunID)
+	if err != nil {
+		return nil, err
 	}
-	if conversation.UserID != principalID(request.BridgeEnvelope) {
-		return nil, forbiddenError("AI Chat message user must match the conversation owner")
+	if run.ConversationID != conversation.ID {
+		return nil, validationError("AI Chat message run does not belong to conversation")
 	}
 	now := service.now().UTC()
 	message := ports.AiChatMessageRecord{
 		ID:             fmt.Sprintf("msg-%s-%d", normalizeID(request.ConversationID), now.UnixNano()),
-		ConversationID: request.ConversationID,
-		RunID:          request.RunID,
+		ConversationID: conversation.ID,
+		RunID:          run.ID,
 		Role:           request.Role,
 		Parts:          cloneAnyMapSlice(request.Parts),
 		CreatedAt:      now,
@@ -1263,21 +1302,22 @@ func (service *Service) ProposeAiChatAction(ctx context.Context, request contrac
 	if containsSecretLookingKey(request.Preview) {
 		return nil, validationError("AI Chat action proposal preview must not contain raw secret-looking fields")
 	}
-	run, ok, err := service.store.GetAiChatRun(ctx, strings.TrimSpace(request.RunID))
+	conversation, err := service.requireAiChatConversationAccess(ctx, request.BridgeEnvelope, request.ConversationID)
 	if err != nil {
-		return nil, storageError()
+		return nil, err
 	}
-	if !ok {
-		return nil, notFoundError("AI Chat run")
+	run, err := service.aiChatRunForMutation(ctx, request.BridgeEnvelope, request.RunID)
+	if err != nil {
+		return nil, err
 	}
-	if run.ConversationID != request.ConversationID {
+	if run.ConversationID != conversation.ID {
 		return nil, validationError("AI Chat action run does not belong to conversation")
 	}
 	now := service.now().UTC()
 	action := ports.AiChatActionRecord{
 		ID:               fmt.Sprintf("action-%s-%d", normalizeID(request.RunID), now.UnixNano()),
-		ConversationID:   request.ConversationID,
-		RunID:            request.RunID,
+		ConversationID:   conversation.ID,
+		RunID:            run.ID,
 		ProjectID:        run.ProjectID,
 		Risk:             contracts.AiChatActionRisk(request.Risk),
 		Status:           contracts.AiChatActionStatusProposed,
@@ -1306,12 +1346,9 @@ func (service *Service) ApproveAiChatAction(ctx context.Context, request contrac
 	if request.ExpectedVersion < 1 {
 		return nil, validationError("expectedVersion is required")
 	}
-	action, ok, err := service.store.GetAiChatAction(ctx, strings.TrimSpace(request.ActionID))
+	action, _, err := service.requireAiChatActionAccess(ctx, request.BridgeEnvelope, request.ActionID)
 	if err != nil {
-		return nil, storageError()
-	}
-	if !ok {
-		return nil, notFoundError("AI Chat action")
+		return nil, err
 	}
 	if request.ExpectedVersion != action.Version {
 		return nil, forbiddenError("AI Chat action version is stale")
@@ -1339,12 +1376,9 @@ func (service *Service) FinishAiChatAction(ctx context.Context, request contract
 	if containsSecretLookingKey(request.Result) {
 		return nil, validationError("AI Chat action result must not contain raw secret-looking fields")
 	}
-	action, ok, err := service.store.GetAiChatAction(ctx, strings.TrimSpace(request.ActionID))
+	action, _, err := service.requireAiChatActionAccess(ctx, request.BridgeEnvelope, request.ActionID)
 	if err != nil {
-		return nil, storageError()
-	}
-	if !ok {
-		return nil, notFoundError("AI Chat action")
+		return nil, err
 	}
 	now := service.now().UTC()
 	action.Status = contracts.AiChatActionStatus(request.Status)
@@ -1361,20 +1395,14 @@ func (service *Service) SaveAiChatCompaction(ctx context.Context, request contra
 	if strings.TrimSpace(request.ConversationID) == "" || strings.TrimSpace(request.Summary) == "" || request.TokenCount < 0 {
 		return nil, validationError("AI Chat compaction requires conversation, summary, and non-negative token count")
 	}
-	conversation, ok, err := service.store.GetAiChatConversation(ctx, strings.TrimSpace(request.ConversationID))
+	conversation, err := service.requireAiChatConversationAccess(ctx, request.BridgeEnvelope, request.ConversationID)
 	if err != nil {
-		return nil, storageError()
-	}
-	if !ok {
-		return nil, notFoundError("AI Chat conversation")
-	}
-	if conversation.UserID != principalID(request.BridgeEnvelope) {
-		return nil, forbiddenError("AI Chat compaction user must match the conversation owner")
+		return nil, err
 	}
 	now := service.now().UTC()
 	compaction := ports.AiChatCompactionRecord{
 		ID:                 fmt.Sprintf("compaction-%s-%d", normalizeID(request.ConversationID), now.UnixNano()),
-		ConversationID:     request.ConversationID,
+		ConversationID:     conversation.ID,
 		SourceMessageCount: len(request.CoveredMessageIDs),
 		Summary:            strings.TrimSpace(request.Summary),
 		RetainedMessageIDs: append([]string{}, request.CoveredMessageIDs...),

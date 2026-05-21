@@ -838,6 +838,175 @@ func TestAiChatConversationActionsAndCompactionPersistInControlPlane(t *testing.
 	}
 }
 
+func TestAiChatConversationMutationsRequireOwnerAndProjectAccess(t *testing.T) {
+	store := newTestStore()
+	service := NewService(store, fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-ai-chat-admin", localUserID, ptr(LocalProjectID))
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("bootstrap local org: %v", err)
+	}
+	seedOrganizationMember(t, service, LocalCompanyID, "user-1", contracts.CompanyRoleUser, "user-1@example.test")
+	seedOrganizationMember(t, service, LocalCompanyID, "user-2", contracts.CompanyRoleUser, "user-2@example.test")
+	store.projectMembers[projectMemberKey(LocalProjectID, "user-1")] = ports.ProjectMemberRecord{
+		ProjectID: LocalProjectID,
+		UserID:    "user-1",
+		Role:      contracts.ProjectRoleEditor,
+		CreatedAt: fixedNow(),
+		UpdatedAt: fixedNow(),
+	}
+	owner := ssoEnvelope("req-ai-chat-owner", LocalCompanyID, "user-1", "User One", "user-1@example.test", true)
+	otherUser := ssoEnvelope("req-ai-chat-other", LocalCompanyID, "user-2", "User Two", "user-2@example.test", true)
+
+	conversation, err := service.CreateAiChatConversation(ctx, contracts.AiChatConversationCreateRequest{
+		BridgeEnvelope:   owner,
+		CompanyID:        LocalCompanyID,
+		ProjectID:        LocalProjectID,
+		UserID:           "user-1",
+		FirstUserMessage: "Investigate isolation",
+	})
+	if err != nil {
+		t.Fatalf("CreateAiChatConversation returned error: %v", err)
+	}
+	conversationID := conversation["id"].(string)
+	run, err := service.CreateAiChatRun(ctx, contracts.AiChatRunCreateRequest{
+		BridgeEnvelope:      owner,
+		ConversationID:      conversationID,
+		ProjectID:           LocalProjectID,
+		UserID:              "user-1",
+		UserMessageClientID: "client-message-1",
+		IdempotencyKey:      "isolation-run-1",
+		ProviderKind:        "openai",
+		ProviderProfileID:   "provider-1",
+		Model:               "gpt-4.1-mini",
+	})
+	if err != nil {
+		t.Fatalf("CreateAiChatRun returned error: %v", err)
+	}
+	action, err := service.ProposeAiChatAction(ctx, contracts.AiChatActionProposeRequest{
+		BridgeEnvelope: owner,
+		ConversationID: conversationID,
+		RunID:          run.ID,
+		Title:          "Persist view",
+		Risk:           string(contracts.AiChatActionRiskLow),
+		Operation:      "dashboard.save",
+		Preview:        map[string]any{"name": "Isolation"},
+	})
+	if err != nil {
+		t.Fatalf("ProposeAiChatAction returned error: %v", err)
+	}
+	actionID := action["id"].(string)
+
+	if _, err := service.GetAiChatConversation(ctx, contracts.AiChatConversationGetRequest{
+		BridgeEnvelope: otherUser,
+		ConversationID: conversationID,
+	}); !isForbidden(err) {
+		t.Fatalf("GetAiChatConversation by other user error = %v, want forbidden", err)
+	}
+	if _, err := service.AppendAiChatMessage(ctx, contracts.AiChatMessageAppendRequest{
+		BridgeEnvelope: otherUser,
+		ConversationID: conversationID,
+		RunID:          run.ID,
+		Role:           "assistant",
+		Parts:          []map[string]any{{"type": "text", "text": "cross-user message"}},
+	}); !isForbidden(err) {
+		t.Fatalf("AppendAiChatMessage by other user error = %v, want forbidden", err)
+	}
+	if _, err := service.ProposeAiChatAction(ctx, contracts.AiChatActionProposeRequest{
+		BridgeEnvelope: otherUser,
+		ConversationID: conversationID,
+		RunID:          run.ID,
+		Title:          "Cross-user proposal",
+		Risk:           string(contracts.AiChatActionRiskLow),
+		Operation:      "dashboard.save",
+		Preview:        map[string]any{"name": "Forbidden"},
+	}); !isForbidden(err) {
+		t.Fatalf("ProposeAiChatAction by other user error = %v, want forbidden", err)
+	}
+	if _, err := service.ApproveAiChatAction(ctx, contracts.AiChatActionApproveRequest{
+		BridgeEnvelope:  otherUser,
+		ActionID:        actionID,
+		Approved:        true,
+		UserID:          "user-2",
+		ExpectedVersion: 1,
+	}); !isForbidden(err) {
+		t.Fatalf("ApproveAiChatAction by other user error = %v, want forbidden", err)
+	}
+	if _, err := service.FinishAiChatAction(ctx, contracts.AiChatActionFinishRequest{
+		BridgeEnvelope: otherUser,
+		ActionID:       actionID,
+		Status:         string(contracts.AiChatActionStatusSucceeded),
+		Result:         map[string]any{"ok": true},
+	}); !isForbidden(err) {
+		t.Fatalf("FinishAiChatAction by other user error = %v, want forbidden", err)
+	}
+	if _, err := service.SaveAiChatCompaction(ctx, contracts.AiChatCompactionSaveRequest{
+		BridgeEnvelope:    otherUser,
+		ConversationID:    conversationID,
+		Summary:           "cross-user summary",
+		CoveredMessageIDs: []string{},
+		TokenCount:        1,
+	}); !isForbidden(err) {
+		t.Fatalf("SaveAiChatCompaction by other user error = %v, want forbidden", err)
+	}
+
+	delete(store.projectMembers, projectMemberKey(LocalProjectID, "user-1"))
+	if _, err := service.ArchiveAiChatConversation(ctx, contracts.AiChatConversationArchiveRequest{
+		BridgeEnvelope:  owner,
+		ConversationID:  conversationID,
+		UserID:          "user-1",
+		ExpectedVersion: 1,
+	}); !isForbidden(err) {
+		t.Fatalf("ArchiveAiChatConversation after project access removal error = %v, want forbidden", err)
+	}
+	if _, err := service.AppendAiChatMessage(ctx, contracts.AiChatMessageAppendRequest{
+		BridgeEnvelope: owner,
+		ConversationID: conversationID,
+		RunID:          run.ID,
+		Role:           "assistant",
+		Parts:          []map[string]any{{"type": "text", "text": "lost-access message"}},
+	}); !isForbidden(err) {
+		t.Fatalf("AppendAiChatMessage after project access removal error = %v, want forbidden", err)
+	}
+	if _, err := service.ProposeAiChatAction(ctx, contracts.AiChatActionProposeRequest{
+		BridgeEnvelope: owner,
+		ConversationID: conversationID,
+		RunID:          run.ID,
+		Title:          "Lost-access proposal",
+		Risk:           string(contracts.AiChatActionRiskLow),
+		Operation:      "dashboard.save",
+		Preview:        map[string]any{"name": "Forbidden"},
+	}); !isForbidden(err) {
+		t.Fatalf("ProposeAiChatAction after project access removal error = %v, want forbidden", err)
+	}
+	if _, err := service.ApproveAiChatAction(ctx, contracts.AiChatActionApproveRequest{
+		BridgeEnvelope:  owner,
+		ActionID:        actionID,
+		Approved:        true,
+		UserID:          "user-1",
+		ExpectedVersion: 1,
+	}); !isForbidden(err) {
+		t.Fatalf("ApproveAiChatAction after project access removal error = %v, want forbidden", err)
+	}
+	if _, err := service.FinishAiChatAction(ctx, contracts.AiChatActionFinishRequest{
+		BridgeEnvelope: owner,
+		ActionID:       actionID,
+		Status:         string(contracts.AiChatActionStatusSucceeded),
+		Result:         map[string]any{"ok": true},
+	}); !isForbidden(err) {
+		t.Fatalf("FinishAiChatAction after project access removal error = %v, want forbidden", err)
+	}
+	if _, err := service.SaveAiChatCompaction(ctx, contracts.AiChatCompactionSaveRequest{
+		BridgeEnvelope:    owner,
+		ConversationID:    conversationID,
+		Summary:           "lost-access summary",
+		CoveredMessageIDs: []string{},
+		TokenCount:        1,
+	}); !isForbidden(err) {
+		t.Fatalf("SaveAiChatCompaction after project access removal error = %v, want forbidden", err)
+	}
+}
+
 func TestAdminInvariantDeniesFinalAdminRemovalAndDowngrade(t *testing.T) {
 	service := NewService(newTestStore(), fixedNow)
 	ctx := context.Background()
