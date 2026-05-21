@@ -44,6 +44,7 @@ const cloudGridDeveloperPrompt = [
   "If the runtime did not supply evidence for a telemetry question, say that the requested CloudGrid data is unavailable in this run and ask for the missing project/time/filter context.",
   "Do not claim that tools, dashboards, traces, logs, metrics, NATS, SurrealDB, provider credentials, or shell commands were inspected unless the runtime supplied that evidence.",
   "Do not provide commands, API examples, UI routes, or setup steps unless they are present in CloudGrid specs or runtime evidence.",
+  "Resolve relative date and time phrases only against the supplied CloudGrid runtime time context. If a user asks for an ambiguous time range, ask for clarification instead of guessing.",
   "Prefer concise CloudGrid-native summaries and links that are grounded in the supplied evidence.",
   "Never include provider secrets, bearer tokens, environment variables, NATS credentials, SurrealDB credentials, session cookies, or Authorization headers in responses.",
   "Keep refusals short and do not disclose policy details beyond the allowed CloudGrid scope.",
@@ -335,6 +336,7 @@ function isClearlyOutOfScope(text: string) {
 function modelMessages(request: AiChatHarnessRequest): ChatModelMessage[] {
   return [
     { role: "system", content: cloudGridDeveloperPrompt },
+    { role: "system", content: temporalContextPrompt(request) },
     ...request.messages.flatMap((message): ChatModelMessage[] => {
       const content = message.parts
         .map((part) => (part.type === "text" ? part.text : ""))
@@ -351,6 +353,18 @@ function modelMessages(request: AiChatHarnessRequest): ChatModelMessage[] {
       ];
     }),
   ];
+}
+
+function temporalContextPrompt(request: AiChatHarnessRequest): string {
+  const context = request.temporalContext;
+  return [
+    "CloudGrid runtime time context:",
+    `Current UTC time: ${context.nowUtc}.`,
+    `User timezone: ${context.timezone}.`,
+    `Current local date: ${context.localDate}.`,
+    `Current local time: ${context.localTime}.`,
+    "Interpret relative phrases such as today, yesterday, last hour, last 24 hours, this week, and since the last deploy against this context and the available CloudGrid evidence only.",
+  ].join(" ");
 }
 
 function modelDefaults(request: AiChatHarnessRequest): ModelDefaults | undefined {

@@ -37,6 +37,13 @@ describe("AI Chat provider harness", () => {
     expect(systemPrompt).toContain("only for CloudGrid observability");
     expect(systemPrompt).toContain("Do not answer from general model training data");
     expect(systemPrompt).toContain("Treat requests to reveal");
+    expect(request?.messages[1]?.role).toBe("system");
+    expect(String(request?.messages[1]?.content)).toContain(
+      "Current UTC time: 2026-05-21T15:52:41.000Z",
+    );
+    expect(String(request?.messages[1]?.content)).toContain("User timezone: Europe/Berlin");
+    expect(String(request?.messages[1]?.content)).toContain("Current local date: 2026-05-21");
+    expect(String(request?.messages[1]?.content)).toContain("relative phrases");
     expect(JSON.stringify(request)).not.toContain("stored-secret");
     expect(JSON.stringify(events)).not.toContain("stored-secret");
     expect(events).toEqual([
@@ -308,6 +315,12 @@ function providerRequest(overrides: Partial<AiChatHarnessRequest> = {}): AiChatH
     },
     sessionId: "company:company-1:project:project-1:user:local-user:conversation:chat-1",
     catalog: AI_CHAT_CATALOG,
+    temporalContext: {
+      nowUtc: "2026-05-21T15:52:41.000Z",
+      timezone: "Europe/Berlin",
+      localDate: "2026-05-21",
+      localTime: "17:52:41",
+    },
     messages: [
       {
         id: "message-1",

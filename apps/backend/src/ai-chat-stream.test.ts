@@ -116,6 +116,10 @@ describe("AI Chat stream endpoint", () => {
     expect(harness.requests.at(0)?.catalog.tools.map((tool) => tool.id)).toEqual(
       AI_CHAT_TOOLS.map((tool) => tool.id),
     );
+    expect(harness.requests.at(0)?.temporalContext).toMatchObject({
+      timezone: "UTC",
+    });
+    expect(harness.requests.at(0)?.temporalContext.nowUtc).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(harness.requests.at(0)?.messages.at(-1)?.parts).toEqual([
       { type: "text", text: "Investigate slow traces" },
     ]);

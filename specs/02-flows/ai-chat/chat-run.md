@@ -45,7 +45,11 @@ depends_on: [CAP-AIC-001, TEC-BE-029, TEC-BE-030]
    `specs/04-backend/ai-runtime-structure.md`, streams `run.started`, and
    starts `workflow.chat_run` with the provider snapshot, compacted
    conversation memory, recent message window, AI runtime catalog tool
-   registry, and W3C trace context.
+   registry, deterministic runtime time context, and W3C trace context. The
+   time context includes current UTC time, the accepted IANA user timezone, and
+   the current local date/time for that timezone. Relative user phrases such as
+   "today", "yesterday", and "last hour" must be resolved against this context
+   and the available CloudGrid evidence, never model training data.
 9. When harness emits text, BFF streams `text.delta` and appends assistant
    message parts incrementally after applying the assistant Markdown sanitation
    rules from `specs/04-backend/ai-chat.md`.

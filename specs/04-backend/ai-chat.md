@@ -234,6 +234,9 @@ Required methods:
 - resolved credential material in memory only;
 - recent conversation messages and latest compaction summary;
 - tool declaration schemas;
+- deterministic runtime time context containing current UTC time, accepted IANA
+  timezone, and current local date/time for resolving relative human date/time
+  phrases;
 - W3C trace context;
 - max tool calls, max output tokens, and timeout budget.
 

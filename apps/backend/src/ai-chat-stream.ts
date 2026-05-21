@@ -62,9 +62,17 @@ export interface AiChatHarnessRequest {
   };
   sessionId: string;
   catalog: AiChatCatalogSnapshot;
+  temporalContext: AiChatTemporalContext;
   messages: AiChatConversation["messages"];
   compaction?: AiChatConversation["compaction"] | null;
   signal: AbortSignal;
+}
+
+export interface AiChatTemporalContext {
+  nowUtc: string;
+  timezone: string;
+  localDate: string;
+  localTime: string;
 }
 
 export type AiChatHarnessEvent =
@@ -294,6 +302,7 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
             credential,
             sessionId: aiChatSessionId(conversation),
             catalog: AI_CHAT_CATALOG,
+            temporalContext: aiChatTemporalContext(input.timezone),
             messages: harnessMessages,
             compaction: conversation.compaction,
             signal,
@@ -737,15 +746,31 @@ function validTimeZone(timezone: string | undefined) {
 }
 
 function datePartsInTimeZone(date: Date, timeZone: string) {
+  const parts = dateTimePartsInTimeZone(date, timeZone);
+  return {
+    day: parts.day,
+    month: parts.month,
+    year: parts.year,
+  };
+}
+
+function dateTimePartsInTimeZone(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
     month: "2-digit",
+    second: "2-digit",
     timeZone,
     year: "numeric",
   }).formatToParts(date);
   return {
     day: Number(parts.find((part) => part.type === "day")?.value ?? "1"),
+    hour: Number(parts.find((part) => part.type === "hour")?.value ?? "0"),
+    minute: Number(parts.find((part) => part.type === "minute")?.value ?? "0"),
     month: Number(parts.find((part) => part.type === "month")?.value ?? "1"),
+    second: Number(parts.find((part) => part.type === "second")?.value ?? "0"),
     year: Number(parts.find((part) => part.type === "year")?.value ?? "1970"),
   };
 }
@@ -815,6 +840,18 @@ function aiChatSessionId(conversation: AiChatConversation) {
     `user:${conversation.userId}`,
     `conversation:${conversation.id}`,
   ].join(":");
+}
+
+function aiChatTemporalContext(timezone: string | undefined): AiChatTemporalContext {
+  const safeTimezone = validTimeZone(timezone) ? (timezone as string) : "UTC";
+  const now = new Date();
+  const parts = dateTimePartsInTimeZone(now, safeTimezone);
+  return {
+    nowUtc: now.toISOString(),
+    timezone: safeTimezone,
+    localDate: `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}`,
+    localTime: `${pad2(parts.hour)}:${pad2(parts.minute)}:${pad2(parts.second)}`,
+  };
 }
 
 function toolCallIdFor(toolCallCount: number) {
