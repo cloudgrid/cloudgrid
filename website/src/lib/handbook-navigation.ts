@@ -21,6 +21,7 @@ export const handbookNav: HandbookNavItem[] = [
     href: "/handbook/getting-started",
     description: "Start from released images or from source, then send data.",
     children: [
+      { label: "Install AI skills", href: "/handbook/getting-started/install-skills" },
       { label: "Release Compose", href: "/handbook/getting-started/docker-compose-release" },
       { label: "Local quickstart", href: "/handbook/getting-started/local-quickstart" },
       { label: "Send telemetry", href: "/handbook/getting-started/send-telemetry" },

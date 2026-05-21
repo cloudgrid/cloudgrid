@@ -12,20 +12,34 @@ CloudGrid is an OTLP observability workspace for project-scoped traces, logs, me
 
 This handbook is written as a product journey rather than a folder dump. Start by understanding the boundary of the product, run a stack, send telemetry, configure access, then move into daily workflows and operations.
 
+## Install AI Skills First
+
+If you use an AI coding assistant with CloudGrid, install the checked-in
+CloudGrid skills before setup, operations, or extension work:
+
+```sh
+npx skills add cloudgrid/cloudgrid --all
+```
+
+The command uses the Vercel Labs `skills` CLI to install the CloudGrid skill
+catalog. See [Install AI skills](/handbook/getting-started/install-skills) for
+local checkout installs, single-skill installs, and the current skill list.
+
 ## Recommended Path
 
 | Step | Read | Outcome |
 | --- | --- | --- |
-| 1 | [What CloudGrid is](/handbook/overview/what-is-cloudgrid) | Understand the product boundary, implemented surfaces, and known production gaps. |
-| 2 | [Runtime modes](/handbook/overview/runtime-modes) | Decide whether you are running local mode or deployed SSO mode. |
-| 3 | [Release Compose](/handbook/getting-started/docker-compose-release) or [Local quickstart](/handbook/getting-started/local-quickstart) | Start CloudGrid either from published images or from source. |
-| 4 | [Send telemetry](/handbook/getting-started/send-telemetry) | Prove the OTLP collector, bridge, writer, reader, and UI path end to end. |
-| 5 | [Concepts](/handbook/concepts) | Understand companies, projects, access, signals, live traces, metrics, retention, and alerts. |
-| 6 | [Guides](/handbook/guides) | Work with ingest credentials, traces, logs, metrics, dashboards, and AI evaluation. |
-| 7 | [Configuration](/handbook/configuration) | Add the right local, deployed, SSO, SMTP, storage, and self-observability values. |
-| 8 | [Operate](/handbook/operations) | Start, stop, monitor, troubleshoot, and assess production readiness. |
-| 9 | [Architecture](/handbook/architecture) | Reason about service boundaries, flows, tenancy, and extension points. |
-| 10 | [Reference](/handbook/reference) | Look up commands, ports, environment variables, routes, contracts, and errors. |
+| 1 | [Install AI skills](/handbook/getting-started/install-skills) | Give compatible AI assistants the CloudGrid setup, operations, investigation, and extension playbooks. |
+| 2 | [What CloudGrid is](/handbook/overview/what-is-cloudgrid) | Understand the product boundary, implemented surfaces, and known production gaps. |
+| 3 | [Runtime modes](/handbook/overview/runtime-modes) | Decide whether you are running local mode or deployed SSO mode. |
+| 4 | [Release Compose](/handbook/getting-started/docker-compose-release) or [Local quickstart](/handbook/getting-started/local-quickstart) | Start CloudGrid either from published images or from source. |
+| 5 | [Send telemetry](/handbook/getting-started/send-telemetry) | Prove the OTLP collector, bridge, writer, reader, and UI path end to end. |
+| 6 | [Concepts](/handbook/concepts) | Understand companies, projects, access, signals, live traces, metrics, retention, and alerts. |
+| 7 | [Guides](/handbook/guides) | Work with ingest credentials, traces, logs, metrics, dashboards, and AI evaluation. |
+| 8 | [Configuration](/handbook/configuration) | Add the right local, deployed, SSO, SMTP, storage, and self-observability values. |
+| 9 | [Operate](/handbook/operations) | Start, stop, monitor, troubleshoot, and assess production readiness. |
+| 10 | [Architecture](/handbook/architecture) | Reason about service boundaries, flows, tenancy, and extension points. |
+| 11 | [Reference](/handbook/reference) | Look up commands, ports, environment variables, routes, contracts, and errors. |
 
 ## How The Handbook Is Organized
 
