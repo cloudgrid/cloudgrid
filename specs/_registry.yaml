@@ -1003,7 +1003,13 @@ ids:
     slug: ai-chat-runtime
     file: specs/04-backend/ai-chat.md
     status: draft
-    depends_on: [DOM-007, TEC-BE-001, TEC-BE-008, TEC-BE-011, TEC-BE-028, NFR-003]
+    depends_on: [DOM-007, TEC-BE-001, TEC-BE-008, TEC-BE-011, TEC-BE-028, TEC-BE-030, NFR-003]
+    deprecated_by: null
+  TEC-BE-030:
+    slug: ai-runtime-structure
+    file: specs/04-backend/ai-runtime-structure.md
+    status: draft
+    depends_on: [DOM-007, TEC-BE-005, TEC-BE-028, TEC-BE-029]
     deprecated_by: null
   TEC-FE-009:
     slug: ai-chat-views

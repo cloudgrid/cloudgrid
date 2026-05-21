@@ -6,7 +6,7 @@ status: draft
 owner: sebastian.wessel@egg-ai.com
 updated: 2026-05-21
 provenance: from-user
-depends_on: [DOM-007, TEC-BE-001, TEC-BE-008, TEC-BE-011, TEC-BE-028, NFR-003]
+depends_on: [DOM-007, TEC-BE-001, TEC-BE-008, TEC-BE-011, TEC-BE-028, TEC-BE-030, NFR-003]
 ---
 
 # AI Chat Runtime
@@ -171,6 +171,12 @@ The BFF must not stream hidden provider reasoning text. Provider reasoning may
 only surface as generic `tool.started` or `message.created` status labels.
 
 ## Harness Chat Port
+
+The harness graph, model aliases, specialist agents, provider adapter rules,
+tool strategy, JSON-render integration, large-result behavior, and session
+identity requirements are defined in
+`specs/04-backend/ai-runtime-structure.md`. This section defines the BFF chat
+port used by the stream endpoint.
 
 The BFF integrates the AI harness through an internal `AiChatHarnessPort`.
 

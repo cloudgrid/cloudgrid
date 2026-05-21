@@ -16,6 +16,7 @@ If the needed behavior is missing, update the relevant spec first.
 | `cloudgrid-extension-development` | Spec-first feature work, contracts, BFF/bridge/service boundaries, adapters, public API client, tests, and verification. |
 | `cloudgrid-observability-ui` | Traces, logs, metrics, dashboards, widgets, pins, live trace UI, frontend/BFF observability contract alignment. |
 | `cloudgrid-surrealdb` | SurrealDB schema, query, readiness, storage adapter, and credential-handling work. |
+| `ai-harness` | PURISTA harness agents, workflows, tools, model aliases, provider adapters, state, sandbox, telemetry, and tests. |
 
 ## Authoring Rules
 
