@@ -4,7 +4,7 @@ title: AI Chat runtime
 layer: backend
 status: draft
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-18
+updated: 2026-05-21
 provenance: from-user
 depends_on: [DOM-007, TEC-BE-001, TEC-BE-008, TEC-BE-011, TEC-BE-028, NFR-003]
 ---
@@ -62,6 +62,14 @@ The BFF does not:
 Control-plane owns chat history, provider settings, action approvals, and
 conversation metadata. Storage-read owns trace/log/metric/AI-eval query
 semantics. Harness owns model-provider execution.
+
+AI Chat provider execution must use PURISTA harness model provider adapters
+through the harness model boundary. The BFF must not implement provider-specific
+HTTP clients, streaming parsers, retry semantics, or credential handling outside
+that boundary. The bundled AI Chat runtime supports `openai`,
+`openai_compatible` through the OpenAI-compatible PURISTA adapter base URL, and
+`anthropic`. Provider kinds without an installed PURISTA harness adapter must
+fail setup with a bounded provider error until the adapter is added.
 
 ## Public Runtime Surface
 

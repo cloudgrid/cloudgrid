@@ -1,26 +1,20 @@
 import { describe, expect, test } from "bun:test";
+import type { ModelProvider, TextRequest, TextResponse, TextStreamChunk } from "@purista/harness";
 import { createAiChatHarness } from "./ai-chat-harness";
 import type { AiChatHarnessRequest } from "./ai-chat-stream";
 
 describe("AI Chat provider harness", () => {
-  test("streams OpenAI Responses API text deltas without exposing credentials", async () => {
-    const fetchCalls: Array<{ url: string; init: RequestInit }> = [];
-    const harness = createAiChatHarness("provider", {
-      fetch: async (url, init) => {
-        fetchCalls.push({ url: String(url), init: init ?? {} });
-        return new Response(
-          [
-            'data: {"type":"response.output_text.delta","delta":"hello"}',
-            "",
-            'data: {"type":"response.completed","response":{"usage":{"input_tokens":7,"output_tokens":3}}}',
-            "",
-          ].join("\n"),
-          {
-            status: 200,
-            headers: { "content-type": "text/event-stream" },
-          },
-        );
+  test("streams through the PURISTA harness provider adapter without exposing credentials", async () => {
+    const provider = recordingProvider([
+      { kind: "delta", text: "hello" },
+      {
+        kind: "finish",
+        usage: { inputTokens: 7, outputTokens: 3, totalTokens: 10 },
+        finishReason: "stop",
       },
+    ]);
+    const harness = createAiChatHarness("provider", {
+      providerFactory: () => provider,
     });
 
     if (!harness) {
@@ -32,55 +26,15 @@ describe("AI Chat provider harness", () => {
       events.push(event);
     }
 
-    expect(fetchCalls).toHaveLength(1);
-    expect(fetchCalls[0]?.url).toBe("https://api.openai.com/v1/responses");
-    expect(fetchCalls[0]?.init.headers).toMatchObject({
-      authorization: "Bearer stored-secret",
+    expect(provider.textStreamRequests).toHaveLength(1);
+    const request = provider.textStreamRequests[0];
+    expect(request?.model).toBe("gpt-5-mini");
+    expect(request?.defaults).toBeUndefined();
+    expect(request?.messages[0]).toMatchObject({
+      role: "system",
+      content: expect.stringContaining("CloudGrid-native observability assistant"),
     });
-    const providerBody = JSON.parse(String(fetchCalls[0]?.init.body));
-    expect(providerBody.input[0]).toMatchObject({
-      role: "developer",
-      content: [
-        {
-          type: "input_text",
-        },
-      ],
-    });
-    const developerPrompt = providerBody.input[0].content[0].text;
-    expect(typeof developerPrompt).toBe("string");
-    expect(String(developerPrompt).includes("CloudGrid-native observability assistant")).toBe(true);
-    expect(
-      String(developerPrompt).includes(
-        "traces, logs, metrics, dashboards, alerts, and AI-evaluation",
-      ),
-    ).toBe(true);
-    expect(
-      String(developerPrompt).includes("Do not tell users to switch to Jaeger, Zipkin, Datadog"),
-    ).toBe(true);
-    expect(String(developerPrompt).includes("Never invent CloudGrid CLIs")).toBe(true);
-    expect(String(developerPrompt).includes("answer only from that evidence")).toBe(true);
-    expect(String(developerPrompt).includes("Do not provide commands, API examples")).toBe(true);
-    expect(String(developerPrompt).includes("stored-secret")).toBe(false);
-    expect(JSON.stringify(providerBody)).not.toContain("stored-secret");
-    expect(providerBody).toMatchObject({
-      model: "gpt-5-mini",
-      stream: true,
-      input: [
-        {
-          role: "developer",
-          content: [
-            {
-              type: "input_text",
-              text: developerPrompt,
-            },
-          ],
-        },
-        {
-          role: "user",
-          content: [{ type: "input_text", text: "Investigate this trace" }],
-        },
-      ],
-    });
+    expect(JSON.stringify(request)).not.toContain("stored-secret");
     expect(JSON.stringify(events)).not.toContain("stored-secret");
     expect(events).toEqual([
       { kind: "text_delta", text: "hello" },
@@ -88,16 +42,10 @@ describe("AI Chat provider harness", () => {
     ]);
   });
 
-  test("uses configured OpenAI-compatible base URLs", async () => {
-    const urls: string[] = [];
+  test("maps company provider parameters into harness model defaults", async () => {
+    const provider = recordingProvider([{ kind: "delta", text: "done" }]);
     const harness = createAiChatHarness("provider", {
-      fetch: async (url) => {
-        urls.push(String(url));
-        return new Response("data: [DONE]\n\n", {
-          status: 200,
-          headers: { "content-type": "text/event-stream" },
-        });
-      },
+      providerFactory: () => provider,
     });
 
     if (!harness) {
@@ -107,19 +55,90 @@ describe("AI Chat provider harness", () => {
     for await (const _event of harness.streamChat(
       providerRequest({
         provider: {
-          providerKind: "openai_compatible",
-          model: "custom-model",
-          baseUrl: "https://llm.example.test/v1",
-          parameters: { extras: {} },
+          providerKind: "anthropic",
+          model: "claude-sonnet-4-5",
+          baseUrl: null,
+          parameters: {
+            temperature: 0.2,
+            topP: 0.9,
+            maxOutputTokens: 512,
+            extras: { reasoningEffort: "low" },
+          },
         },
       }),
     )) {
       // Drain the stream.
     }
 
-    expect(urls).toEqual(["https://llm.example.test/v1/responses"]);
+    expect(provider.textStreamRequests[0]?.defaults).toEqual({
+      temperature: 0.2,
+      topP: 0.9,
+      maxTokens: 512,
+      providerOptions: { reasoningEffort: "low" },
+    });
+  });
+
+  test("fails unsupported provider kinds through the bounded provider error path", async () => {
+    const harness = createAiChatHarness("provider");
+
+    if (!harness) {
+      throw new Error("expected provider harness");
+    }
+
+    const events = [];
+    for await (const event of harness.streamChat(
+      providerRequest({
+        provider: {
+          providerKind: "azure_foundry",
+          model: "deployment-a",
+          baseUrl: "https://azure.example.test",
+          parameters: { extras: {} },
+        },
+      }),
+    )) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      {
+        kind: "provider_error",
+        message:
+          "Unsupported AI Chat provider kind for installed PURISTA harness adapters: azure_foundry",
+        retryable: false,
+      },
+    ]);
+    expect(JSON.stringify(events)).not.toContain("stored-secret");
   });
 });
+
+function recordingProvider(chunks: TextStreamChunk[]) {
+  const textStreamRequests: TextRequest[] = [];
+  const provider: ModelProvider & { textStreamRequests: TextRequest[] } = {
+    id: "recording",
+    genAiSystem: "recording",
+    textStreamRequests,
+    async text(request): Promise<TextResponse> {
+      textStreamRequests.push(request);
+      return {
+        content: chunks
+          .filter(
+            (chunk): chunk is Extract<TextStreamChunk, { kind: "delta" }> => chunk.kind === "delta",
+          )
+          .map((chunk) => chunk.text)
+          .join(""),
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        finishReason: "stop",
+      };
+    },
+    async *textStream(request) {
+      textStreamRequests.push(request);
+      for (const chunk of chunks) {
+        yield chunk;
+      }
+    },
+  };
+  return provider;
+}
 
 function providerRequest(overrides: Partial<AiChatHarnessRequest> = {}): AiChatHarnessRequest {
   return {

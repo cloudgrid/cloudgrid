@@ -13,6 +13,9 @@
   "dependencies": {
     "@cloudgrid/runtime": "workspace:*",
     "@cloudgrid/ui-contracts": "workspace:*",
+    "@purista/harness": "1.1.0",
+    "@purista/harness-anthropic": "1.1.0",
+    "@purista/harness-openai": "1.1.0",
     "graphql": "16.14.0",
     "graphql-yoga": "5.21.0",
     "hono": "4.12.18",

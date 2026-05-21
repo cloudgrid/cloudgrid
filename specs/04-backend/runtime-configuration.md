@@ -4,7 +4,7 @@ title: Runtime configuration
 layer: backend
 status: draft
 owner: unknown@example.com
-updated: 2026-05-08
+updated: 2026-05-21
 provenance: inferred-draft
 ---
 
@@ -58,11 +58,18 @@ provenance: inferred-draft
   in deployed mode.
 - `CLOUDGRID_AI_CHAT_HARNESS_MODE`, default `provider`; allowed values are
   `provider`, `mock`, and `off`. `provider` executes the configured AI provider
-  with the request-time credential resolved from `managed:` or `env:` refs.
-  `mock` is only for local smoke checks and automated integration tests.
+  through the installed PURISTA harness model provider adapter with the
+  request-time credential resolved from `managed:` or `env:` refs. The BFF must
+  not call model providers directly. `mock` is only for local smoke checks and
+  automated integration tests.
 - `CLOUDGRID_AI_CHAT_PROVIDER_KIND`, optional local-mode bootstrap provider
   kind: `anthropic`, `openai`, `azure_foundry`, `aws_bedrock`, or
   `openai_compatible`.
+- Built-in PURISTA harness adapter support currently covers `openai`,
+  `openai_compatible` through the OpenAI-compatible base URL, and `anthropic`.
+  `azure_foundry` and `aws_bedrock` configuration is accepted as provider
+  contract data but must fail setup until a matching PURISTA harness adapter is
+  installed and wired.
 - `CLOUDGRID_AI_CHAT_MODEL`, required when local-mode AI Chat provider bootstrap
   is used.
 - `CLOUDGRID_AI_CHAT_CREDENTIAL_REF`, required when local-mode AI Chat provider
