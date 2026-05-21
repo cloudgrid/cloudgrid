@@ -10,6 +10,7 @@ export * from "./generated";
 export * from "./telemetry-query";
 export * from "./dashboard-query";
 export * from "./alert-query";
+export * from "./ai-eval-query";
 
 export type DateTime = string;
 

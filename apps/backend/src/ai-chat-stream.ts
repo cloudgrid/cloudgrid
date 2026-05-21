@@ -9,6 +9,8 @@ import type {
   AiChatMessage,
   AiChatMessagePart,
   AiProviderParameters,
+  AgentRunSearchResult,
+  AgentRunStatus,
   AlertEventConnection,
   AlertRule,
   AlertSeverity,
@@ -27,6 +29,7 @@ import type {
 import {
   LOG_SEARCH_HARD_LIMIT,
   METRIC_SERIES_HARD_LIMIT,
+  buildAgentRunSearchInput,
   buildAlertHistoryInput,
   buildAlertRuleSearchInput,
   buildDashboardListInput,
@@ -41,7 +44,12 @@ import { GraphQLError } from "graphql";
 import type { Hono } from "hono";
 import { AI_CHAT_CATALOG, type AiChatCatalogSnapshot, aiChatToolById } from "./ai-chat/catalog";
 import type { NormalizedAuthContext } from "./auth";
-import type { ControlPlaneBridge, MetricQueryBridge, TelemetryQueryBridge } from "./bridge";
+import type {
+  AiEvalBridge,
+  ControlPlaneBridge,
+  MetricQueryBridge,
+  TelemetryQueryBridge,
+} from "./bridge";
 
 export type AiChatStreamEventType =
   | "run.started"
@@ -117,7 +125,7 @@ export interface AiChatCompactionDraft {
 }
 
 interface AiChatVariables {
-  bridge: Partial<ControlPlaneBridge & TelemetryQueryBridge & MetricQueryBridge>;
+  bridge: Partial<ControlPlaneBridge & TelemetryQueryBridge & MetricQueryBridge & AiEvalBridge>;
   auth: { authenticateRequest(request: Request): Promise<NormalizedAuthContext> };
 }
 
@@ -175,6 +183,14 @@ type AlertListToolIntent = {
 
 type AlertHistoryToolIntent = {
   ruleId?: string | null;
+};
+
+type AgentRunToolIntent = {
+  range: TraceToolRange;
+  limit: number;
+  status?: AgentRunStatus | null;
+  agentName?: string | null;
+  query?: string | null;
 };
 
 type MetricToolIntent = {
@@ -684,10 +700,38 @@ async function answerWithCloudGridTool({
   userText,
 }: {
   authContext: NormalizedAuthContext;
-  bridge: Partial<ControlPlaneBridge & TelemetryQueryBridge & MetricQueryBridge>;
+  bridge: Partial<ControlPlaneBridge & TelemetryQueryBridge & MetricQueryBridge & AiEvalBridge>;
   input: AiChatStreamRequest;
   userText: string;
 }): Promise<{ text: string; toolName: string } | null> {
+  const agentRunIntent = agentRunToolIntent(userText, input.timezone);
+  if (agentRunIntent) {
+    if (!bridge.agentRuns) {
+      return {
+        toolName: "aiEval.searchAgentRuns",
+        text: "I could not query CloudGrid AI Eval agent runs because the agent-run search tool is not available in this run.",
+      };
+    }
+
+    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+    const result = await bridge.agentRuns(
+      buildAgentRunSearchInput({
+        agentName: agentRunIntent.agentName ?? null,
+        status: agentRunIntent.status ?? null,
+        from: agentRunIntent.range.from.toISOString(),
+        to: agentRunIntent.range.to.toISOString(),
+        query: agentRunIntent.query ?? null,
+        limit: agentRunIntent.limit,
+      }),
+      authContext,
+    );
+
+    return {
+      toolName: "aiEval.searchAgentRuns",
+      text: formatAgentRunToolAnswer(result, agentRunIntent, project),
+    };
+  }
+
   const alertHistoryIntent = alertHistoryToolIntent(userText);
   if (alertHistoryIntent) {
     if (!bridge.alertHistory) {
@@ -1014,6 +1058,29 @@ function alertListToolIntent(text: string): AlertListToolIntent | null {
   };
 }
 
+function agentRunToolIntent(text: string, timezone: string | undefined): AgentRunToolIntent | null {
+  const normalized = text.toLowerCase();
+  if (!/\b(ai eval|ai-eval|evaluation|eval)\b/.test(normalized)) {
+    return null;
+  }
+  if (!/\b(agent runs?|runs?)\b/.test(normalized)) {
+    return null;
+  }
+  if (
+    !/\b(show|list|find|search|latest|last|recent|newest|failing|failed|errors?)\b/.test(normalized)
+  ) {
+    return null;
+  }
+  const hours = metricHoursFromText(normalized) ?? 24 * 7;
+  return {
+    range: /\btoday\b/.test(normalized) ? todayRange(timezone) : lastHoursRange(timezone, hours),
+    limit: aiEvalLimitFromText(normalized) ?? 10,
+    status: agentRunStatusFromText(normalized),
+    agentName: agentNameFromText(text),
+    query: quotedSearchFromText(text),
+  };
+}
+
 function metricToolIntent(text: string, timezone: string | undefined): MetricToolIntent | null {
   const normalized = text.toLowerCase();
   const metricName = metricNameFromText(text);
@@ -1132,6 +1199,25 @@ function alertSignalFromText(text: string): AlertSignal | null {
   return null;
 }
 
+function agentRunStatusFromText(text: string): AgentRunStatus | null {
+  if (/\b(error|errors|errored|failed|failing|failure)\b/.test(text)) return "error";
+  if (/\b(cancelled|canceled)\b/.test(text)) return "cancelled";
+  if (/\b(ok|passed|successful|success)\b/.test(text)) return "ok";
+  if (/\b(unset|unknown)\b/.test(text)) return "unset";
+  return null;
+}
+
+function agentNameFromText(text: string) {
+  const match =
+    text.match(/\bfor\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/) ??
+    text.match(/\bagent\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/);
+  const value = match?.[1]?.replace(/[.,;:!?)]$/g, "") ?? null;
+  if (!value || /^(ai|eval|evaluation|agent|runs?|for)$/i.test(value)) {
+    return null;
+  }
+  return value;
+}
+
 function metricHoursFromText(text: string) {
   const hourMatch = text.match(/\b(?:last|past)\s+(\d{1,3})\s*(?:h|hr|hrs|hour|hours)\b/);
   if (hourMatch) {
@@ -1196,6 +1282,18 @@ function logLimitFromText(text: string) {
     return null;
   }
   return Math.min(limit, LOG_SEARCH_HARD_LIMIT);
+}
+
+function aiEvalLimitFromText(text: string) {
+  const match = text.match(/\b(?:last|latest|recent|newest|show|list)\s+(\d{1,3})\b/);
+  if (!match) {
+    return null;
+  }
+  const limit = Number(match[1]);
+  if (!Number.isInteger(limit) || limit < 1) {
+    return null;
+  }
+  return Math.min(limit, 200);
 }
 
 function logSeverityFromText(text: string) {
@@ -1346,6 +1444,32 @@ function formatAlertHistoryToolAnswer(
   ].join("\n");
 }
 
+function formatAgentRunToolAnswer(
+  result: AgentRunSearchResult,
+  intent: AgentRunToolIntent,
+  project: { id: string; label: string },
+) {
+  if (!result.items.length) {
+    const qualifier = intent.status === "error" ? "failing " : "";
+    return `No ${qualifier}AI Eval agent runs were returned for ${intent.range.label} in project ${project.label} between ${intent.range.from.toISOString()} and ${intent.range.to.toISOString()}.`;
+  }
+
+  const noun = result.items.length === 1 ? "AI Eval agent run" : "AI Eval agent runs";
+  const nextCursor = result.nextCursor
+    ? "\n\nMore AI Eval agent runs are available; open AI Eval with the same filters to continue paging."
+    : "";
+  return [
+    `CloudGrid returned ${result.items.length} ${noun} for ${intent.range.label} in project ${project.label} between ${intent.range.from.toISOString()} and ${intent.range.to.toISOString()}.`,
+    "",
+    "| Run | Agent | Status | Started | Duration | Tokens | Cost |",
+    "| --- | --- | --- | --- | ---: | ---: | ---: |",
+    ...result.items.slice(0, intent.limit).map(agentRunRow),
+    nextCursor,
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+}
+
 function formatMetricToolAnswer(
   result: MetricSeriesResult,
   intent: MetricToolIntent,
@@ -1479,6 +1603,23 @@ function alertEvidenceLink(event: AlertEventConnection["items"][number]) {
     return event.evidenceLogId;
   }
   return event.evidenceMetricName ?? "-";
+}
+
+function agentRunRow(run: AgentRunSearchResult["items"][number]) {
+  const trace = `[${run.id}](/traces/${encodeURIComponent(run.traceId)}?spanId=${encodeURIComponent(run.rootSpanId)})`;
+  const tokens = run.tokenTotals?.total ?? "-";
+  const cost = run.costEstimate
+    ? `${run.costEstimate.amount.toFixed(4)} ${run.costEstimate.currency}`
+    : "-";
+  return [
+    markdownTableCell(trace),
+    markdownTableCell(run.agent.name ?? "-"),
+    markdownTableCell(run.status),
+    markdownTableCell(run.startedAt),
+    typeof run.durationMs === "number" ? `${run.durationMs.toFixed(1)} ms` : "-",
+    String(tokens),
+    markdownTableCell(cost),
+  ].join(" | ");
 }
 
 function durationLabel(durationMs: number | null | undefined) {

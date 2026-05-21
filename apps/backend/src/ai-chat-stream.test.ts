@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { ModelProvider, TextRequest, TextResponse, TextStreamChunk } from "@purista/harness";
-import type { AiChatRun, AlertRule, CompanyAiProviderSettings } from "@cloudgrid/ui-contracts";
+import type {
+  AgentRun,
+  AiChatRun,
+  AlertRule,
+  CompanyAiProviderSettings,
+} from "@cloudgrid/ui-contracts";
 import { AI_CHAT_TOOLS } from "./ai-chat/catalog";
 import { createAiChatHarness } from "./ai-chat-harness";
 import type { AiChatHarnessEvent, AiChatHarnessPort } from "./ai-chat-stream";
@@ -1123,6 +1128,72 @@ describe("AI Chat stream endpoint", () => {
     delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
   });
 
+  test("answers AI Eval agent run questions with injected project context and shared defaults", async () => {
+    process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
+    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const agentRunInputs: unknown[] = [];
+    const agentRunProjectIds: Array<string | undefined> = [];
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          return configuredCompanyProvider();
+        },
+        async agentRuns(input, authContext) {
+          agentRunInputs.push(input);
+          agentRunProjectIds.push(authContext?.projectId);
+          return {
+            items: [
+              agentRunShape({
+                id: "agent-run-checkout-1",
+                traceId: "trace-agent-1",
+                rootSpanId: "span-agent-1",
+                agent: { name: "support" },
+                status: "error",
+                durationMs: 2450,
+              }),
+            ],
+            nextCursor: null,
+          };
+        },
+        async aiChatAppendMessage() {},
+      }),
+      { graphqlUI: false, aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(
+      streamRequest({
+        idempotencyKey: "idempotency-key-ai-eval-agent-runs",
+        parts: [{ type: "text", text: "show the last 10 failing AI Eval agent runs for support" }],
+      }),
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(harness.requests).toHaveLength(0);
+    expect(agentRunProjectIds).toEqual(["project-1"]);
+    expect(agentRunInputs).toHaveLength(1);
+    expect(agentRunInputs[0]).toMatchObject({
+      agentId: null,
+      agentName: "support",
+      status: "error",
+      experimentRunId: null,
+      query: null,
+      limit: 10,
+      cursor: null,
+    });
+    expect(String((agentRunInputs[0] as { from?: string }).from)).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(body).toContain("CloudGrid returned 1 AI Eval agent run");
+    expect(body).toContain("support");
+    expect(body).toContain("error");
+    expect(body).toContain("/traces/trace-agent-1?spanId=span-agent-1");
+    expect(body).not.toContain("Project ID");
+
+    delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
+  });
+
   test("rejects a duplicate completed idempotency key with the existing run id", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
     const harness = recordingHarness([{ kind: "final_message", text: "done" }]);
@@ -1392,6 +1463,27 @@ function alertRuleShape(overrides: Partial<AlertRule> = {}): AlertRule {
     updatedAt: "2026-05-14T08:00:00.000Z",
     updatedByUserId: "local-user",
     version: 1,
+    ...overrides,
+  };
+}
+
+function agentRunShape(overrides: Partial<AgentRun> = {}): AgentRun {
+  return {
+    id: "agent-run-1",
+    traceId: "trace-agent-1",
+    rootSpanId: "span-agent-1",
+    agent: { name: "support" },
+    status: "ok",
+    startedAt: "2026-05-21T16:52:14.000Z",
+    endedAt: null,
+    durationMs: 1200,
+    tokenTotals: { input: 12, output: 8, total: 20 },
+    costEstimate: { amount: 0.01, currency: "USD" },
+    transcript: [{ role: "user", spanId: "span-agent-1" }],
+    llmCalls: [],
+    toolCalls: [],
+    retrievalEvents: [],
+    evalResults: [],
     ...overrides,
   };
 }
