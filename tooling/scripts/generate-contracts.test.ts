@@ -17,8 +17,11 @@ import {
   AUTH_PROVIDERS,
   COMPANY_ROLES,
   CONTROL_PLANE_SUBJECTS,
+  CLOUDGRID_ENV_VARS,
   DEPLOYMENT_MODES,
+  MESSAGE_BRIDGE_SUBJECTS,
   PROJECT_STATUSES,
+  TELEMETRY_SUBJECTS,
 } from "../../apps/packages/definition/src/index";
 
 const root = join(import.meta.dir, "..", "..");
@@ -47,8 +50,11 @@ describe("contract generation", () => {
       ...AI_CHAT_ACTION_STATUSES,
       ...AI_CHAT_ARTIFACT_KINDS,
       ...AI_CHAT_STREAM_EVENT_TYPES,
+      ...TELEMETRY_SUBJECTS,
       ...CONTROL_PLANE_SUBJECTS,
       ...AI_EVAL_SUBJECTS,
+      ...MESSAGE_BRIDGE_SUBJECTS,
+      ...CLOUDGRID_ENV_VARS,
     ]) {
       expect(ts).toContain(value);
       expect(go).toContain(value);

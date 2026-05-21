@@ -25,7 +25,7 @@ The checked source of truth is:
 - `specs/03-contracts/entities/*.schema.json`
 - `specs/03-contracts/errors.yaml`
 
-Manual generated outputs are allowed only while `tooling/scripts/check-contracts.mjs` verifies drift-sensitive symbols and cross-layer conformance. The checker must validate `apps/packages/public-api-client` GraphQL operation documents against the public GraphQL SDL, ensure frontend routes do not define route-local GraphQL operations or direct `/graphql` calls outside the approved client wrapper, validate every public API client operation has `apps/packages/integration-scenarios` coverage metadata, validate required GraphQL input fields against `apps/packages/ui-contracts/src/generated.ts`, and validate AsyncAPI request required fields against Go request structs.
+Manual generated outputs are allowed only while `tooling/scripts/check-contracts.mjs` verifies drift-sensitive symbols and cross-layer conformance. The checker must validate `apps/packages/public-api-client` GraphQL operation documents against the public GraphQL SDL, ensure frontend routes do not define route-local GraphQL operations or direct `/graphql` calls outside the approved client wrapper, validate every public API client operation has `apps/packages/integration-scenarios` coverage metadata, validate required GraphQL input fields against `apps/packages/ui-contracts/src/generated.ts`, validate AsyncAPI request required fields against Go request structs, validate AsyncAPI channel addresses against `MESSAGE_BRIDGE_SUBJECTS`, validate production NATS subject literals against the same registry, and validate every `CLOUDGRID_*` or `VITE_CLOUDGRID_*` configuration name against `CLOUDGRID_ENV_VARS`.
 
 ## Generated Outputs
 
@@ -56,6 +56,9 @@ The check command is a hard drift gate. It must fail when:
   directly instead of using the shared frontend client,
 - `ui-contracts` omits a required GraphQL input field,
 - an AsyncAPI request schema requires a field that is missing from its Go request struct,
+- an AsyncAPI channel address is missing from or extra to `MESSAGE_BRIDGE_SUBJECTS`,
+- a production BFF or Go service message subject literal is not registered in `MESSAGE_BRIDGE_SUBJECTS`,
+- a source, spec, deployment manifest, handbook page, or skill references a `CLOUDGRID_*` or `VITE_CLOUDGRID_*` variable that is not registered in `CLOUDGRID_ENV_VARS`,
 - generated enum or subject metadata is stale.
 - a generated control-plane subject is missing from `ControlSubjects()`.
 - a generated control-plane request/reply subject is missing from the control-plane NATS handler map.
