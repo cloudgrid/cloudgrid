@@ -109,6 +109,58 @@ describe("AI Chat provider harness", () => {
     ]);
     expect(JSON.stringify(events)).not.toContain("stored-secret");
   });
+
+  test("passes harness model spans into CloudGrid self-observability when tracing is configured", async () => {
+    const spans: Array<{
+      name: string;
+      traceId?: string;
+      spanId?: string;
+      parentSpanId?: string;
+      attributes?: Record<string, string>;
+    }> = [];
+    const provider = recordingProvider([
+      {
+        kind: "finish",
+        usage: { inputTokens: 7, outputTokens: 3, totalTokens: 10 },
+        finishReason: "stop",
+      },
+    ]);
+    const harness = createAiChatHarness("provider", {
+      providerFactory: () => provider,
+      traceContextFactory: () => ({
+        traceId: "11111111111111111111111111111111",
+        spanId: "2222222222222222",
+        traceState: "vendor=value",
+      }),
+      traceRecorder: { recordSpan: (record) => spans.push(record) },
+    });
+
+    if (!harness) {
+      throw new Error("expected provider harness");
+    }
+
+    for await (const _event of harness.streamChat(providerRequest())) {
+      // Drain the stream.
+    }
+
+    expect(provider.textStreamRequests[0]?.traceparent).toMatch(
+      /^00-11111111111111111111111111111111-[0-9a-f]{16}-01$/,
+    );
+    expect(spans).toHaveLength(1);
+    expect(spans[0]).toMatchObject({
+      name: "chat gpt-5-mini",
+      traceId: "11111111111111111111111111111111",
+      parentSpanId: "2222222222222222",
+      attributes: {
+        "harness.name": "cloudgrid-ai-chat",
+        "harness.model.alias": "chat",
+        "harness.model.method": "text_stream",
+        "gen_ai.request.model": "gpt-5-mini",
+      },
+    });
+    expect(JSON.stringify(spans)).not.toContain("stored-secret");
+    expect(JSON.stringify(spans)).not.toContain("Investigate this trace");
+  });
 });
 
 function recordingProvider(chunks: TextStreamChunk[]) {

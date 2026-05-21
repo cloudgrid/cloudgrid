@@ -166,7 +166,9 @@ export async function createApp(config = loadConfig(), logger = createLogger("bf
     deploymentMode: config.deploymentMode,
     selfObservability: config.selfObservability,
   });
-  const aiChatHarness = createAiChatHarness(config.aiChatHarnessMode);
+  const aiChatHarness = createAiChatHarness(config.aiChatHarnessMode, {
+    ...(selfObservability ? { traceRecorder: selfObservability } : {}),
+  });
   const bridge = await createNATSTelemetryQueryBridge(
     config.natsUrl,
     config.requestTimeoutMs,

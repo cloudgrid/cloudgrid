@@ -3,17 +3,28 @@ import {
   type ModelCallOptions,
   type ModelDefaults,
   type ModelProvider,
+  type SpanAttrs,
+  type TelemetryShim,
 } from "@purista/harness";
 import { anthropic } from "@purista/harness-anthropic";
 import { openai } from "@purista/harness-openai";
 import type { AiChatHarnessEvent, AiChatHarnessPort, AiChatHarnessRequest } from "./ai-chat-stream";
 import type { AiChatHarnessMode } from "./config";
+import {
+  createTraceContext,
+  type SelfObservabilityTraceRecorder,
+  type TraceContext,
+  traceContextToTraceParent,
+} from "./self-observability";
 
 interface CreateAiChatHarnessOptions {
   providerFactory?: AiChatModelProviderFactory;
+  traceContextFactory?: () => TraceContext;
+  traceRecorder?: SelfObservabilityTraceRecorder;
 }
 
 type AiChatModelProviderFactory = (request: AiChatHarnessRequest) => ModelProvider;
+type HarnessSpan = Parameters<Parameters<TelemetryShim["span"]>[2]>[0];
 type ChatModelMessage =
   | { role: "system"; content: string }
   | { role: "user"; content: string }
@@ -42,19 +53,34 @@ export function createAiChatHarness(
     return new MockAiChatHarness();
   }
   if (mode === "provider") {
-    return new PuristaAiChatHarness(options.providerFactory ?? providerFromAiChatSettings);
+    return new PuristaAiChatHarness(options.providerFactory ?? providerFromAiChatSettings, {
+      traceContextFactory: options.traceContextFactory ?? createTraceContext,
+      ...(options.traceRecorder ? { traceRecorder: options.traceRecorder } : {}),
+    });
   }
   return undefined;
 }
 
 class PuristaAiChatHarness implements AiChatHarnessPort {
-  constructor(private readonly providerFactory: AiChatModelProviderFactory) {}
+  constructor(
+    private readonly providerFactory: AiChatModelProviderFactory,
+    private readonly telemetry: {
+      traceContextFactory: () => TraceContext;
+      traceRecorder?: SelfObservabilityTraceRecorder;
+    },
+  ) {}
 
   async *streamChat(request: AiChatHarnessRequest): AsyncIterable<AiChatHarnessEvent> {
     let provider: ModelProvider | undefined;
     try {
       provider = this.providerFactory(request);
       const defaults = modelDefaults(request);
+      const telemetryShim = this.telemetry.traceRecorder
+        ? new CloudGridHarnessTelemetryShim({
+            traceContext: this.telemetry.traceContextFactory(),
+            traceRecorder: this.telemetry.traceRecorder,
+          })
+        : undefined;
       const models = createModelRegistry(
         {
           chat: {
@@ -64,7 +90,10 @@ class PuristaAiChatHarness implements AiChatHarnessPort {
             ...(defaults ? { defaults } : {}),
           },
         },
-        { harnessName: "cloudgrid-ai-chat" },
+        {
+          harnessName: "cloudgrid-ai-chat",
+          ...(telemetryShim ? { telemetry: telemetryShim } : {}),
+        },
       );
       const chat = models.chat;
       if (!chat) {
@@ -120,6 +149,74 @@ class PuristaAiChatHarness implements AiChatHarnessPort {
       summary: "Conversation compaction is not enabled for the CloudGrid AI Chat harness.",
       retainedMessageIds: [],
     };
+  }
+}
+
+class CloudGridHarnessTelemetryShim implements TelemetryShim {
+  readonly #traceRecorder: SelfObservabilityTraceRecorder;
+  readonly #rootTraceContext: TraceContext;
+  readonly #spanStack: TraceContext[] = [];
+
+  constructor(options: {
+    traceContext: TraceContext;
+    traceRecorder: SelfObservabilityTraceRecorder;
+  }) {
+    this.#rootTraceContext = options.traceContext;
+    this.#traceRecorder = options.traceRecorder;
+  }
+
+  async span<T>(name: string, attrs: SpanAttrs, fn: (span: HarnessSpan) => Promise<T>): Promise<T> {
+    const parent = this.#spanStack.at(-1);
+    const parentSpanId = parent?.spanId ?? this.#rootTraceContext.spanId;
+    const traceState = parent?.traceState ?? this.#rootTraceContext.traceState;
+    const spanContext = createTraceContext({
+      traceId: () => this.#rootTraceContext.traceId,
+      ...(parentSpanId ? { parentSpanId } : {}),
+      ...(traceState ? { traceState } : {}),
+    });
+    const started = Date.now();
+    this.#spanStack.push(spanContext);
+    try {
+      const result = await fn(noopHarnessSpan());
+      this.#recordSpan(name, attrs, spanContext, started, "success");
+      return result;
+    } catch (error) {
+      this.#recordSpan(name, attrs, spanContext, started, "error", error);
+      throw error;
+    } finally {
+      this.#spanStack.pop();
+    }
+  }
+
+  recordHistogram(_name: string, _value: number, _attrs: SpanAttrs): void {}
+
+  recordCounter(_name: string, _value: number, _attrs: SpanAttrs): void {}
+
+  currentTraceparent(): string | undefined {
+    return traceContextToTraceParent(this.#spanStack.at(-1) ?? this.#rootTraceContext);
+  }
+
+  #recordSpan(
+    name: string,
+    attrs: SpanAttrs,
+    spanContext: TraceContext,
+    started: number,
+    result: "success" | "error",
+    error?: unknown,
+  ) {
+    this.#traceRecorder.recordSpan({
+      name,
+      traceId: spanContext.traceId,
+      spanId: spanContext.spanId,
+      ...(spanContext.parentSpanId ? { parentSpanId: spanContext.parentSpanId } : {}),
+      ...(spanContext.traceState ? { traceState: spanContext.traceState } : {}),
+      attributes: {
+        ...stringAttributes(attrs),
+        ...(error instanceof Error ? { "error.type": error.name } : {}),
+      },
+      result,
+      durationSeconds: Math.max(0, Date.now() - started) / 1000,
+    });
   }
 }
 
@@ -248,4 +345,32 @@ function objectExtras(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function stringAttributes(attrs: SpanAttrs): Record<string, string> {
+  const output: Record<string, string> = {};
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value === undefined) {
+      continue;
+    }
+    output[key] = Array.isArray(value) ? value.join(",") : String(value);
+  }
+  return output;
+}
+
+function noopHarnessSpan(): HarnessSpan {
+  const span = {
+    spanContext: () => ({}),
+    setAttribute: () => span,
+    setAttributes: () => span,
+    addEvent: () => span,
+    addLink: () => span,
+    addLinks: () => span,
+    setStatus: () => span,
+    updateName: () => span,
+    end: () => {},
+    isRecording: () => false,
+    recordException: () => {},
+  };
+  return span as unknown as HarnessSpan;
 }

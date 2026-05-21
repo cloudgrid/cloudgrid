@@ -16,6 +16,11 @@ If the needed behavior is missing, update the relevant spec first.
 | `cloudgrid-extension-development` | Spec-first feature work, contracts, BFF/bridge/service boundaries, adapters, public API client, tests, and verification. |
 | `cloudgrid-observability-ui` | Traces, logs, metrics, dashboards, widgets, pins, live trace UI, frontend/BFF observability contract alignment. |
 | `cloudgrid-surrealdb` | SurrealDB schema, query, readiness, storage adapter, and credential-handling work. |
+| `cloudgrid-trace-investigation` | AI Chat and UI trace investigation, waterfalls, critical path evidence, trace-to-log pivots, and trace renderer guidance. |
+| `cloudgrid-logs-investigation` | AI Chat and UI log investigation, severity, correlation, log clusters, trace pivots, and log renderer guidance. |
+| `cloudgrid-metrics-investigation` | AI Chat and UI metric investigation, series comparison, aggregations, exemplars, and metric renderer guidance. |
+| `cloudgrid-ai-eval-investigation` | AI Chat and AI Eval investigation, runs, scorers, datasets, optimization evidence, and privacy-safe eval artifacts. |
+| `cloudgrid-json-render-artifacts` | AI Chat JSON-render artifacts, Markdown sanitation, renderer catalog validation, and action approval cards. |
 | `ai-harness` | PURISTA harness agents, workflows, tools, model aliases, provider adapters, state, sandbox, telemetry, and tests. |
 
 ## Authoring Rules

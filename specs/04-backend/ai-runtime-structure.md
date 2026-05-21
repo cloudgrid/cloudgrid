@@ -92,6 +92,36 @@ registry calls are allowed only inside a temporary adapter while the full
 workflow graph is incomplete; they must use PURISTA harness provider adapters
 and must not call external providers directly.
 
+## Specialist Skills
+
+Specialist agents should not rely on one large system prompt. Each specialist
+agent gets a small stable instruction and a mounted harness skill when it needs
+domain-specific investigation procedure, renderer guidance, evidence review
+rules, or troubleshooting playbooks.
+
+Required CloudGrid-owned harness skills:
+
+| Skill | Allowlisted agents | Purpose |
+| --- | --- | --- |
+| `cloudgrid-trace-investigation` | `trace_analyst`, `main_chat` when trace tools are enabled | Trace waterfall, critical path, span/error evidence, and trace route guidance. |
+| `cloudgrid-logs-investigation` | `logs_analyst`, `main_chat` when log tools are enabled | Log clustering, severity, correlation, and bounded log evidence guidance. |
+| `cloudgrid-metrics-investigation` | `metrics_analyst`, `main_chat` when metric tools are enabled | Metric query interpretation, chart selection, aggregation caveats, and dashboard suggestions. |
+| `cloudgrid-ai-eval-investigation` | `ai_eval_analyst`, `main_chat` when AI Eval tools are enabled | Dataset, scorer, run quality, optimization, and regression evidence guidance. |
+| `cloudgrid-json-render-artifacts` | all agents that may emit `render.emitJsonRender` | Approved renderer catalog, data limits, and renderer intent examples. |
+
+The full `SKILL.md` bodies are not injected into prompts. Harness mounts skills
+into the sandbox and appends only the compact skill index. Skill-aware agents
+must keep read-only built-ins enabled with `builtinTools: ['read', 'list',
+'grep']` so the model can inspect `/skills/<name>/SKILL.md` and references.
+Mutation-capable built-ins such as `write`, `edit`, or `bash` remain disabled
+unless a future spec explicitly requires them and defines permissions.
+
+Use a prompt-only instruction only for short invariant behavior that should
+always be present, such as project scoping, not leaking secrets, and refusing to
+invent CloudGrid data. Use a mounted skill for specialist reasoning that is
+likely to evolve independently, has examples, references renderer choices, or
+would otherwise make the system prompt bulky.
+
 ## Model Aliases And Provider Adapters
 
 The catalog must define model aliases instead of embedding provider/model
@@ -213,6 +243,13 @@ cross-project admin workflow and authorization model.
 ## Telemetry And Privacy
 
 Production harness telemetry must use content capture mode `NO_CONTENT`.
+The BFF must pass a harness `TelemetryShim` whenever CloudGrid
+self-observability tracing is enabled. The shim records harness model,
+workflow, tool, and agent spans into the existing
+`SelfObservabilityTraceRecorder`/OTLP exporter path and propagates W3C
+`traceparent` into provider adapter calls. When tracing is disabled, the shim is
+omitted and AI execution continues without telemetry side effects.
+
 Logs, spans, and metrics may include bounded identifiers such as company ID,
 project ID, user ID, conversation ID, run ID, model alias, provider kind, tool
 ID, renderer key, artifact count, token counts, and error code.
