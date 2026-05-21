@@ -68,6 +68,16 @@ func run() int {
 		}()
 		handlerOptions.SelfObservability = signalExporter
 	}
+	flushSelfObservability := func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if signalExporter != nil {
+			_ = signalExporter.Shutdown(shutdownCtx)
+		}
+		if metricsExporter != nil {
+			_ = metricsExporter.Shutdown(shutdownCtx)
+		}
+	}
 
 	bridge, err := collector.ConnectNATSMessageBridge(natsURL, startupTimeout)
 	if err != nil {
@@ -76,8 +86,8 @@ func run() int {
 	}
 	defer bridge.Close()
 
-	probes := health.NewState("otlp-collector", func(_ context.Context) map[string]health.Check {
-		if bridge.IsClosed() {
+	probes := health.NewState("otlp-collector", func(ctx context.Context) map[string]health.Check {
+		if err := bridge.CheckReady(ctx, handlerOptions.MaxRequestBytes); err != nil {
 			return map[string]health.Check{
 				"nats":          health.Unavailable("ERR-013", "MESSAGE_BRIDGE_UNAVAILABLE", "message bridge is unavailable"),
 				"http_listener": health.OK(),
@@ -138,6 +148,7 @@ func run() int {
 			logStartupError(logger, serverErr.kind+"_server_failed", "ERR-010", "RUNTIME_COMPOSITION_FAILED", "OTLP "+serverErr.kind+" server stopped unexpectedly")
 			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer shutdownCancel()
+			flushSelfObservability()
 			_ = server.Shutdown(shutdownCtx)
 			grpcServer.Stop()
 			return 1
@@ -153,6 +164,7 @@ func run() int {
 		)
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
+		flushSelfObservability()
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			logStartupError(logger, "http_server_shutdown_failed", "ERR-010", "RUNTIME_COMPOSITION_FAILED", "OTLP HTTP server did not shut down cleanly")
 			return 1
@@ -241,7 +253,7 @@ func otlpHTTPAddr(getenv func(string) string) string {
 	if addr := strings.TrimSpace(getenv("CLOUDGRID_OTLP_HTTP_ADDR")); addr != "" {
 		return addr
 	}
-	return net.JoinHostPort(envOr(getenv, "CLOUDGRID_OTLP_HOST", "0.0.0.0"), envOr(getenv, "CLOUDGRID_OTLP_PORT", "4318"))
+	return "0.0.0.0:4318"
 }
 
 func envOrDefault(name string, fallback string) string {

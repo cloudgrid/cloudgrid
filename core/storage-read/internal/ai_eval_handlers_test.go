@@ -25,7 +25,7 @@ func TestAiEvalQueryHandlerRoutesDeclaredQuerySubjects(t *testing.T) {
 	}
 	message := bridgeMessageForTest(SubjectEvalDatasetSearch, mustMarshalNATSHandlerTest(t, request))
 
-	handleAiEvalQuery(store, nil)(message)
+	handleAiEvalQuery(store, nil, defaultQueryTimeout)(message)
 
 	if len(store.calls) != 1 {
 		t.Fatalf("query calls = %d, want one call", len(store.calls))
@@ -60,7 +60,7 @@ func TestAiEvalQueryHandlerReturnsBridgeErrorWhenResponseCannotBeEncoded(t *test
 	}
 	message := bridgeMessageForTest(SubjectEvalQualityOverview, mustMarshalNATSHandlerTest(t, request))
 
-	handleAiEvalQuery(store, nil)(message)
+	handleAiEvalQuery(store, nil, defaultQueryTimeout)(message)
 
 	var response contracts.EvalQueryResponse
 	if err := json.Unmarshal(message.response, &response); err != nil {
@@ -102,7 +102,7 @@ func TestAiEvalQueryHandlerRejectsInvalidJSONAndStoreFailures(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			message := bridgeMessageForTest(SubjectEvalResultsSearch, tt.data)
 
-			handleAiEvalQuery(tt.store, nil)(message)
+			handleAiEvalQuery(tt.store, nil, defaultQueryTimeout)(message)
 
 			var response contracts.EvalQueryResponse
 			if err := json.Unmarshal(message.response, &response); err != nil {
@@ -153,7 +153,7 @@ func TestOnlinePolicyMatchesResolveHandlerRoutesTypedRequest(t *testing.T) {
 	}
 	message := bridgeMessageForTest(SubjectEvalOnlinePolicyMatchesResolve, mustMarshalNATSHandlerTest(t, request))
 
-	handleOnlinePolicyMatchesResolve(store, nil)(message)
+	handleOnlinePolicyMatchesResolve(store, nil, defaultQueryTimeout)(message)
 
 	if len(store.onlineResolveRequests) != 1 {
 		t.Fatalf("online resolve calls = %d, want one", len(store.onlineResolveRequests))
@@ -185,7 +185,7 @@ func TestAiEvalMutationQueryHandlerRoutesDatasetExportStart(t *testing.T) {
 	}
 	message := bridgeMessageForTest(SubjectEvalDatasetExportStart, mustMarshalNATSHandlerTest(t, request))
 
-	handleAiEvalMutationQuery(store, nil)(message)
+	handleAiEvalMutationQuery(store, nil, defaultQueryTimeout)(message)
 
 	if len(store.calls) != 1 || store.calls[0].subject != SubjectEvalDatasetExportStart {
 		t.Fatalf("calls = %#v, want dataset export start", store.calls)
@@ -203,7 +203,7 @@ func TestAiEvalMutationQueryAndManifestHandlersReturnBridgeErrors(t *testing.T) 
 	t.Run("invalid mutation json", func(t *testing.T) {
 		message := bridgeMessageForTest(SubjectEvalDatasetExportStart, []byte("{"))
 
-		handleAiEvalMutationQuery(&aiEvalStoreForTest{}, nil)(message)
+		handleAiEvalMutationQuery(&aiEvalStoreForTest{}, nil, defaultQueryTimeout)(message)
 
 		var response contracts.EvalMutationResponse
 		if err := json.Unmarshal(message.response, &response); err != nil {
@@ -220,7 +220,7 @@ func TestAiEvalMutationQueryAndManifestHandlersReturnBridgeErrors(t *testing.T) 
 			Input:          map[string]any{"datasetId": "dataset-1"},
 		}))
 
-		handleAiEvalMutationQuery(&aiEvalStoreForTest{err: errors.New("ERR-006 STORAGE_UNAVAILABLE: down")}, nil)(message)
+		handleAiEvalMutationQuery(&aiEvalStoreForTest{err: errors.New("ERR-006 STORAGE_UNAVAILABLE: down")}, nil, defaultQueryTimeout)(message)
 
 		var response contracts.EvalMutationResponse
 		if err := json.Unmarshal(message.response, &response); err != nil {
@@ -234,7 +234,7 @@ func TestAiEvalMutationQueryAndManifestHandlersReturnBridgeErrors(t *testing.T) 
 	t.Run("invalid manifest json", func(t *testing.T) {
 		message := bridgeMessageForTest(SubjectEvalManifestResolve, []byte("{"))
 
-		handleExperimentManifestResolve(&aiEvalStoreForTest{}, nil)(message)
+		handleExperimentManifestResolve(&aiEvalStoreForTest{}, nil, defaultQueryTimeout)(message)
 
 		var response contracts.ExperimentManifestResolveResponse
 		if err := json.Unmarshal(message.response, &response); err != nil {
@@ -256,7 +256,7 @@ func TestExperimentManifestResolveHandlerRoutesTypedRequest(t *testing.T) {
 	}
 	message := bridgeMessageForTest(SubjectEvalManifestResolve, mustMarshalNATSHandlerTest(t, request))
 
-	handleExperimentManifestResolve(store, nil)(message)
+	handleExperimentManifestResolve(store, nil, defaultQueryTimeout)(message)
 
 	var response contracts.ExperimentManifestResolveResponse
 	if err := json.Unmarshal(message.response, &response); err != nil {
@@ -348,7 +348,7 @@ func TestAiEvalLiveStartProgressFanoutAndStop(t *testing.T) {
 		DatasetItemRunID: &itemRunID,
 		OccurredAt:       now.Add(time.Second),
 	}
-	handleExperimentProgressNotification(registry, nil)(bridgeMessageForTest(SubjectEvalExperimentProgress, mustMarshalNATSHandlerTest(t, notification)))
+	handleExperimentProgressNotification(registry, nil, defaultQueryTimeout)(bridgeMessageForTest(SubjectEvalExperimentProgress, mustMarshalNATSHandlerTest(t, notification)))
 	if len(publisher.events) != 2 {
 		t.Fatalf("published events = %d, want heartbeat plus progress", len(publisher.events))
 	}
@@ -372,14 +372,14 @@ func TestAiEvalLiveStartProgressFanoutAndStop(t *testing.T) {
 		t.Fatalf("subscription count = %d, want stop to remove live eval subscription", registry.Count())
 	}
 
-	handleExperimentProgressNotification(registry, nil)(bridgeMessageForTest(SubjectEvalExperimentProgress, mustMarshalNATSHandlerTest(t, notification)))
+	handleExperimentProgressNotification(registry, nil, defaultQueryTimeout)(bridgeMessageForTest(SubjectEvalExperimentProgress, mustMarshalNATSHandlerTest(t, notification)))
 	if len(publisher.events) != 2 {
 		t.Fatalf("published events = %d, want no fanout after stop", len(publisher.events))
 	}
 }
 
 func TestAiEvalStorageReadSubjectsExcludeMutationSubjects(t *testing.T) {
-	handlers := aiEvalReadSubjectHandlers(&aiEvalStoreForTest{}, NewEvalLiveRegistry(&aiEvalStoreForTest{}, &evalLivePublisherForTest{}, EvalLiveOptions{}), nil)
+	handlers := aiEvalReadSubjectHandlers(&aiEvalStoreForTest{}, NewEvalLiveRegistry(&aiEvalStoreForTest{}, &evalLivePublisherForTest{}, EvalLiveOptions{}), nil, defaultQueryTimeout)
 
 	for _, subject := range []string{
 		SubjectEvalAgentRunsSearch,

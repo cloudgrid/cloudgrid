@@ -226,6 +226,7 @@ func shutdownSignal() <-chan os.Signal {
 
 func newLogger(output io.Writer) *slog.Logger {
 	handler := slog.NewJSONHandler(output, &slog.HandlerOptions{
+		Level: runtimeLogLevel(),
 		ReplaceAttr: func(_ []string, attr slog.Attr) slog.Attr {
 			switch attr.Key {
 			case slog.TimeKey:
@@ -239,6 +240,19 @@ func newLogger(output io.Writer) *slog.Logger {
 		},
 	})
 	return slog.New(handler)
+}
+
+func runtimeLogLevel() slog.Level {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("CLOUDGRID_LOG_LEVEL"))) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }
 
 func logError(logger *slog.Logger, event string, err error, fallbackID string, fields ...any) {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -247,7 +248,7 @@ func TestTraceIngestPublishesNormalTelemetryAndAIProjection(t *testing.T) {
 func TestHTTPCompletionLogUsesJSONShapeAndOmitsPayloads(t *testing.T) {
 	var out bytes.Buffer
 	publisher := &recordingPublisher{}
-	handler := NewHandler(publisher, NewLogger(&out))
+	handler := NewHandler(publisher, NewLoggerWithLevel(&out, slog.LevelDebug))
 	payload := mustProtoJSON(t, traceRequest())
 
 	request := httptest.NewRequest(http.MethodPost, "/v1/traces", bytes.NewReader(payload))
@@ -263,7 +264,7 @@ func TestHTTPCompletionLogUsesJSONShapeAndOmitsPayloads(t *testing.T) {
 			t.Fatalf("log missing key %q: %#v", key, entry)
 		}
 	}
-	if entry["event"] != "http_request_completed" || entry["request_id"] != "req-log-shape" || entry["status"] != "ok" {
+	if entry["level"] != "debug" || entry["event"] != "http_request_completed" || entry["request_id"] != "req-log-shape" || entry["status"] != "ok" {
 		t.Fatalf("completion log = %#v", entry)
 	}
 	logLine := string(out.Bytes())
@@ -271,6 +272,23 @@ func TestHTTPCompletionLogUsesJSONShapeAndOmitsPayloads(t *testing.T) {
 		if bytes.Contains([]byte(logLine), []byte(forbidden)) {
 			t.Fatalf("completion log contains forbidden payload detail %q: %s", forbidden, logLine)
 		}
+	}
+}
+
+func TestHTTPCompletionLogSuppressesSuccessAtDefaultLevel(t *testing.T) {
+	var out bytes.Buffer
+	publisher := &recordingPublisher{}
+	handler := NewHandler(publisher, NewLogger(&out))
+	payload := mustProtoJSON(t, traceRequest())
+
+	request := httptest.NewRequest(http.MethodPost, "/v1/traces", bytes.NewReader(payload))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if out.Len() != 0 {
+		t.Fatalf("default success logs = %s, want suppressed debug log", out.String())
 	}
 }
 

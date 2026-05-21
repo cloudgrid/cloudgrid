@@ -47,7 +47,7 @@ func BuildMetricNameSearchQuery(input contracts.MetricNameSearchInput, authConte
 		return QueryStatement{}, err
 	}
 
-	params := map[string]any{"limit": limit}
+	params := map[string]any{"limit": limit + 1}
 	addOwnershipParams(params, target)
 	conditions := retentionVisibleConditions()
 	pointConditions := retentionVisibleConditions()
@@ -70,6 +70,15 @@ func BuildMetricNameSearchQuery(input contracts.MetricNameSearchInput, authConte
 		params["service"] = strings.TrimSpace(*input.Service)
 		conditions = append(conditions, "metricName IN (SELECT VALUE metricName FROM metric_point "+whereClause(pointConditions)+")")
 	}
+	if input.Cursor != nil && strings.TrimSpace(*input.Cursor) != "" {
+		cursor, err := decodeCursor(*input.Cursor, "lastSeenAt_desc_metricName_asc")
+		if err != nil {
+			return QueryStatement{}, err
+		}
+		conditions = append(conditions, "(lastSeenAt < $cursorValue OR (lastSeenAt = $cursorValue AND metricName > $cursorId))")
+		params["cursorValue"] = cursor.LastValue
+		params["cursorId"] = cursor.LastID
+	}
 
 	return QueryStatement{
 		SQL: strings.Join([]string{
@@ -80,6 +89,7 @@ func BuildMetricNameSearchQuery(input contracts.MetricNameSearchInput, authConte
 			"LIMIT $limit;",
 		}, " "),
 		Params: params,
+		Target: target,
 	}, nil
 }
 
@@ -98,10 +108,11 @@ func BuildMetricDescriptorByNameQuery(metricName string, authContext ...*contrac
 		SQL: strings.Join([]string{
 			"SELECT metricName AS id, metricName AS name, description, unit, kind, aggregationTemporality, monotonic, attributeKeys, firstSeenAt, lastSeenAt",
 			"FROM metric_descriptor",
-			"WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND metricName = $metricName",
+			whereClause(append(retentionVisibleConditions(), "metricName = $metricName")),
 			"LIMIT 1;",
 		}, " "),
 		Params: params,
+		Target: target,
 	}, nil
 }
 
@@ -166,6 +177,7 @@ func BuildMetricSeriesQuery(input contracts.MetricSeriesInput, descriptor contra
 				"LIMIT $limit;",
 			}, " "),
 			Params: params,
+			Target: target,
 		}, ResolvedMetricSeriesQuery{
 			Interval: formatMetricInterval(interval),
 			Limit:    limit,

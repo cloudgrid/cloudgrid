@@ -41,6 +41,29 @@ func TestNewLoggerEmitsKubernetesShape(t *testing.T) {
 	}
 }
 
+func TestNewLoggerSuppressesDebugByDefaultAndAllowsRuntimeDebug(t *testing.T) {
+	var out bytes.Buffer
+	newLogger(&out).Debug("hot path",
+		"service", "storage-write",
+		"event", "telemetry_ingest_persisted",
+		"request_id", "req-1",
+	)
+	if out.Len() != 0 {
+		t.Fatalf("default logger emitted debug entry: %s", out.String())
+	}
+
+	t.Setenv("CLOUDGRID_LOG_LEVEL", "debug")
+	newLogger(&out).Debug("hot path",
+		"service", "storage-write",
+		"event", "telemetry_ingest_persisted",
+		"request_id", "req-1",
+	)
+	entry := decodeLogEntry(t, out.Bytes())
+	if entry["level"] != "debug" {
+		t.Fatalf("level = %#v, want debug", entry["level"])
+	}
+}
+
 func TestRunReturnsFailureWhenRequiredConfigIsMissing(t *testing.T) {
 	t.Setenv("CLOUDGRID_STORAGE_ADAPTER", "surrealdb")
 	t.Setenv("CLOUDGRID_SURREALDB_URL", "")

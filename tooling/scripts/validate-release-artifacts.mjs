@@ -117,6 +117,7 @@ export async function validateReleaseArtifacts(root = process.cwd()) {
   const values = await readYaml(read, "charts/cloudgrid/values.yaml", errors);
   const compose = await readYaml(read, "deploy/compose/cloudgrid.compose.yaml", errors);
   const composeEnv = await readText(read, "deploy/compose/cloudgrid.env.example", errors);
+  const natsConfig = await readText(read, "deploy/compose/nats.conf", errors);
   const composeScript = await readText(read, "deploy/compose/cloudgrid-local.sh", errors);
   const rootPackage = await readJson(read, "package.json", errors);
   if (rootPackage?.version !== releaseVersion) {
@@ -157,6 +158,11 @@ export async function validateReleaseArtifacts(root = process.cwd()) {
     if (values.nats?.service?.type && values.nats.service.type !== "ClusterIP") {
       errors.push("charts/cloudgrid/values.yaml: bundled NATS must be private ClusterIP");
     }
+    if ((values.nats?.bundled?.maxPayloadBytes ?? 0) < 4 * 1024 * 1024) {
+      errors.push(
+        "charts/cloudgrid/values.yaml: bundled NATS maxPayloadBytes must cover the default OTLP request limit",
+      );
+    }
     if (values.surrealdb?.service?.type && values.surrealdb.service.type !== "ClusterIP") {
       errors.push("charts/cloudgrid/values.yaml: bundled SurrealDB must be private ClusterIP");
     }
@@ -189,6 +195,13 @@ export async function validateReleaseArtifacts(root = process.cwd()) {
       }
     }
     if (
+      !String(compose.services?.nats?.environment?.CLOUDGRID_NATS_MAX_PAYLOAD ?? "").includes(
+        "8388608",
+      )
+    ) {
+      errors.push("deploy/compose/cloudgrid.compose.yaml: NATS max payload env default required");
+    }
+    if (
       !String(compose.services?.bff?.environment?.CLOUDGRID_FRONTEND_SERVE_STATIC).includes("true")
     ) {
       errors.push("deploy/compose/cloudgrid.compose.yaml: BFF must serve built frontend assets");
@@ -196,6 +209,9 @@ export async function validateReleaseArtifacts(root = process.cwd()) {
   }
   if (!composeEnv.includes("CLOUDGRID_IMAGE_TAG=v1.0.0-beta")) {
     errors.push("deploy/compose/cloudgrid.env.example: must default to current beta image tag");
+  }
+  if (!natsConfig.includes("max_payload: $CLOUDGRID_NATS_MAX_PAYLOAD")) {
+    errors.push("deploy/compose/nats.conf: must configure max_payload from environment");
   }
   for (const required of [
     "cloudgrid.compose.yaml",

@@ -157,6 +157,42 @@ describe("BFF GraphQL control-plane resolvers", () => {
     ]);
   });
 
+  test("persists selected project into the BFF auth context for deep reloads", async () => {
+    const observedProjectIds: Array<string | undefined> = [];
+    const { app } = createAppWithBridge(
+      bridge({
+        async selectProject() {
+          return viewer();
+        },
+        async viewer(authContext: NormalizedAuthContext) {
+          observedProjectIds.push(authContext.projectId);
+          return viewer();
+        },
+      }),
+      { graphqlUI: false, auth: { mode: "local", sessionTtlSeconds: 28_800 } },
+    );
+
+    const selectResponse = await app.request("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query:
+          'mutation Select { selectProject(projectId: "project-1") { selectedProject { id } } }',
+      }),
+    });
+    const viewerResponse = await app.request("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: "query Viewer { viewer { selectedProject { id } } }",
+      }),
+    });
+
+    expect((await selectResponse.json()).errors).toBeUndefined();
+    expect((await viewerResponse.json()).errors).toBeUndefined();
+    expect(observedProjectIds).toEqual(["project-1"]);
+  });
+
   test("routes organization member and invitation operations through the control-plane bridge", async () => {
     const calls: string[] = [];
     const { app } = createAppWithBridge(
@@ -549,6 +585,10 @@ describe("BFF GraphQL control-plane resolvers", () => {
           calls.push(`archiveAiChatConversation:${id}`);
           return { ...aiChatConversation("org-1", "project-1", id), status: "archived" as const };
         },
+        async deleteAiChatConversation(id: string, _authContext: NormalizedAuthContext) {
+          calls.push(`deleteAiChatConversation:${id}`);
+          return true;
+        },
         async approveAiChatAction(
           input: ApproveAiChatActionInput,
           _authContext: NormalizedAuthContext,
@@ -608,6 +648,7 @@ describe("BFF GraphQL control-plane resolvers", () => {
               firstUserMessage: "Investigate slow traces"
             }) { id projectId messages { role parts { type text } } }
             archiveAiChatConversation(id: "chat-1") { status }
+            deleteAiChatConversation(id: "chat-2")
             approveAiChatAction(input: {
               actionId: "action-1",
               approved: true,
@@ -643,6 +684,7 @@ describe("BFF GraphQL control-plane resolvers", () => {
       "updateCompanyAiProviderSettings:org-1:1",
       "createAiChatConversation:org-1:project-1",
       "archiveAiChatConversation:chat-1",
+      "deleteAiChatConversation:chat-2",
       "approveAiChatAction:action-1:true",
       "projectAiProviderSettings:project-1",
       "companyAiProviderSettings:org-1",
@@ -764,6 +806,7 @@ function aiProviderProfile(id: string, ownerScope: string, ownerId: string) {
     baseUrl: null,
     credentialRef: "env:OPENAI_API_KEY",
     models: { chat: ["gpt-5-mini"] },
+    parameters: {},
     timeoutMs: 30_000,
     maxConcurrency: null,
     disabledAt: null,

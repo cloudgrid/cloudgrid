@@ -498,6 +498,13 @@ channels:
         $ref: "#/components/messages/CompanyAiProviderSettingsUpdateRequest"
       CompanyAiProviderSettingsUpdateResponse:
         $ref: "#/components/messages/CompanyAiProviderSettingsUpdateResponse"
+  control.ai_provider_secrets.resolve:
+    address: control.ai_provider_secrets.resolve
+    messages:
+      AiProviderSecretResolveRequest:
+        $ref: "#/components/messages/AiProviderSecretResolveRequest"
+      AiProviderSecretResolveResponse:
+        $ref: "#/components/messages/AiProviderSecretResolveResponse"
   control.ai_chat.history:
     address: control.ai_chat.history
     messages:
@@ -526,6 +533,13 @@ channels:
         $ref: "#/components/messages/AiChatConversationArchiveRequest"
       AiChatConversationArchiveResponse:
         $ref: "#/components/messages/AiChatConversationArchiveResponse"
+  control.ai_chat.conversation.delete:
+    address: control.ai_chat.conversation.delete
+    messages:
+      AiChatConversationDeleteRequest:
+        $ref: "#/components/messages/AiChatConversationDeleteRequest"
+      AiChatConversationDeleteResponse:
+        $ref: "#/components/messages/AiChatConversationDeleteResponse"
   control.ai_chat.message.append:
     address: control.ai_chat.message.append
     messages:
@@ -1676,6 +1690,14 @@ components:
       name: CompanyAiProviderSettingsUpdateResponse
       payload:
         $ref: "#/components/schemas/CompanyAiProviderSettingsUpdateResponse"
+    AiProviderSecretResolveRequest:
+      name: AiProviderSecretResolveRequest
+      payload:
+        $ref: "#/components/schemas/AiProviderSecretResolveRequest"
+    AiProviderSecretResolveResponse:
+      name: AiProviderSecretResolveResponse
+      payload:
+        $ref: "#/components/schemas/AiProviderSecretResolveResponse"
     AiChatHistoryRequest:
       name: AiChatHistoryRequest
       payload:
@@ -1708,6 +1730,14 @@ components:
       name: AiChatConversationArchiveResponse
       payload:
         $ref: "#/components/schemas/AiChatConversationArchiveResponse"
+    AiChatConversationDeleteRequest:
+      name: AiChatConversationDeleteRequest
+      payload:
+        $ref: "#/components/schemas/AiChatConversationDeleteRequest"
+    AiChatConversationDeleteResponse:
+      name: AiChatConversationDeleteResponse
+      payload:
+        $ref: "#/components/schemas/AiChatConversationDeleteResponse"
     AiChatMessageAppendRequest:
       name: AiChatMessageAppendRequest
       payload:
@@ -4176,6 +4206,41 @@ components:
               $ref: "../entities/ai/ai-provider-settings.schema.json"
         error:
           $ref: "#/components/schemas/BridgeError"
+    AiProviderSecretResolveRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [credentialRef]
+          properties:
+            credentialRef:
+              type: string
+              pattern: "^managed:"
+    AiProviderSecretResolveResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [credential]
+          properties:
+            credential:
+              type: object
+              additionalProperties: false
+              required: [credentialRef, value]
+              properties:
+                credentialRef:
+                  type: string
+                value:
+                  type: string
+        error:
+          $ref: "#/components/schemas/BridgeError"
     AiChatHistoryRequest:
       allOf:
         - $ref: "#/components/schemas/BridgeEnvelope"
@@ -4230,7 +4295,12 @@ components:
         ok:
           type: boolean
         data:
-          $ref: "../entities/ai/ai-chat.schema.json"
+          type: object
+          additionalProperties: false
+          required: [conversation]
+          properties:
+            conversation:
+              $ref: "../entities/ai/ai-chat.schema.json"
         error:
           $ref: "#/components/schemas/BridgeError"
     AiChatConversationCreateRequest:
@@ -4260,7 +4330,12 @@ components:
         ok:
           type: boolean
         data:
-          $ref: "../entities/ai/ai-chat.schema.json"
+          type: object
+          additionalProperties: false
+          required: [conversation]
+          properties:
+            conversation:
+              $ref: "../entities/ai/ai-chat.schema.json"
         error:
           $ref: "#/components/schemas/BridgeError"
     AiChatConversationArchiveRequest:
@@ -4287,7 +4362,41 @@ components:
         ok:
           type: boolean
         data:
-          $ref: "../entities/ai/ai-chat.schema.json"
+          type: object
+          additionalProperties: false
+          required: [conversation]
+          properties:
+            conversation:
+              $ref: "../entities/ai/ai-chat.schema.json"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AiChatConversationDeleteRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [conversationId, userId]
+          properties:
+            conversationId:
+              type: string
+            userId:
+              type: string
+    AiChatConversationDeleteResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId:
+          type: string
+        ok:
+          type: boolean
+        data:
+          type: object
+          additionalProperties: false
+          required: [deleted]
+          properties:
+            deleted:
+              type: boolean
         error:
           $ref: "#/components/schemas/BridgeError"
     AiChatMessageAppendRequest:
@@ -5130,6 +5239,9 @@ components:
                   minimum: 1
                   maximum: 200
                   default: 50
+                cursor:
+                  type: string
+                  description: Opaque pagination cursor returned by the previous metric name page.
     MetricNameSearchResponse:
       type: object
       additionalProperties: false
@@ -5148,6 +5260,9 @@ components:
               type: array
               items:
                 $ref: "../entities/metric-descriptor.schema.json"
+            nextCursor:
+              type: string
+              nullable: true
         error:
           $ref: "#/components/schemas/BridgeError"
     MetricSeriesRequest:
@@ -5913,7 +6028,7 @@ components:
           type: string
 x-cloudgrid:
   timeout_ms:
-    read_request_reply: 2000
+    read_request_reply: 6000
     write_publish_ack: 1000
   write_stream:
     name: TELEMETRY_INGEST

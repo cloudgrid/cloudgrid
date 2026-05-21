@@ -222,6 +222,8 @@ Behavior:
 - selection loads descriptor into the inspector and prepares a default query;
 - list search updates `MetricNameSearchInput.query`;
 - service and time controls map to `MetricNameSearchInput` fields;
+- the list incrementally loads backend cursor pages as the user scrolls;
+- the frontend must not filter or page metric descriptors over an already-fetched client subset;
 - the list remains readable with hundreds of metrics through virtualization.
 
 ### Metric Query Surface

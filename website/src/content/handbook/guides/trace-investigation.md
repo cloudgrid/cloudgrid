@@ -29,6 +29,8 @@ Live is a mode inside `/traces`; there is no separate `/live` route.
 5. Open a trace row.
 6. Inspect spans, events, exceptions, links, and correlated logs.
 
+History results load additional backend cursor pages while scrolling. Search, filters, sort, and cursor handling belong to `Query.traces` and storage-read; the UI does not search or page over a client-side subset.
+
 ## Trace Detail
 
 Trace detail is a route-level workspace, not a drawer. It is designed for dense investigation state:

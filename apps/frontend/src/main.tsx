@@ -13,6 +13,7 @@ import { AppShell } from "./routes/app-shell";
 import { AuthCallbackRoute, AuthGate, LoginRoute, RootRedirect } from "./routes/auth-routes";
 import {
   OrganizationMembersRoute,
+  OrganizationAiProviderRoute,
   OrganizationOverviewRoute,
   OrganizationProjectsRoute,
   OrganizationsRoute,
@@ -58,6 +59,12 @@ function App() {
                       element={<OrganizationMembersRoute />}
                       path="/organizations/:organizationId/members"
                     />
+                    {aiChatEnabled ? (
+                      <Route
+                        element={<OrganizationAiProviderRoute />}
+                        path="/organizations/:organizationId/ai-provider"
+                      />
+                    ) : null}
                     <Route
                       element={<OrganizationProjectsRoute />}
                       path="/organizations/:organizationId/projects"

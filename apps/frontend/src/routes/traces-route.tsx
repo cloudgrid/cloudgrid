@@ -1,7 +1,8 @@
 import type { TelemetryFacetResult, TraceSearchInput } from "@cloudgrid/ui-contracts";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, ClipboardCopy, Clock, Radio, SlidersHorizontal, X } from "lucide-react";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { ClipboardCopy, Clock, Radio, SlidersHorizontal, X } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
+import { InfiniteScrollSentinel } from "../components/infinite-scroll-sentinel";
 import { EmptyState, ErrorPanel, LoadingRows } from "../components/query-state";
 import { RouteBreadcrumb } from "../components/route-breadcrumb";
 import { Button } from "../components/ui/button";
@@ -34,17 +35,20 @@ export function TracesRoute() {
   const [routeSearchParams, setRouteSearchParams] = useSearchParams();
   const traceMode = routeSearchParams.get("mode") === "live" ? "live" : "history";
   const filtered = hasActiveFilters(searchParams);
+  const traceSearchInput = { ...filters, cursor: null };
   const facetInput = {
     from: filters.from ?? null,
     to: filters.to ?? null,
     service: filters.service ?? null,
     search: filters.query ?? null,
-    limit: 50,
+    limit: 25,
   };
   const debouncedFacetInput = useDebouncedValue(facetInput, 250);
-  const query = useQuery({
-    queryKey: queryKeys.traces(filters),
-    queryFn: () => client.searchTraces(filters),
+  const query = useInfiniteQuery({
+    queryKey: queryKeys.traces(traceSearchInput),
+    queryFn: ({ pageParam }) => client.searchTraces({ ...traceSearchInput, cursor: pageParam }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: traceMode === "history",
   });
   const facetsQuery = useQuery({
@@ -63,6 +67,12 @@ export function TracesRoute() {
       return params;
     });
   };
+  const traceResult = query.data
+    ? {
+        items: query.data.pages.flatMap((page) => page.items),
+        nextCursor: query.hasNextPage ? (query.data.pages.at(-1)?.nextCursor ?? null) : null,
+      }
+    : null;
 
   if (traceMode === "live") {
     return (
@@ -128,7 +138,7 @@ export function TracesRoute() {
             {query.isError ? (
               <ErrorPanel error={query.error} onRetry={() => void query.refetch()} />
             ) : null}
-            {query.isSuccess && query.data.items.length === 0 && filtered ? (
+            {query.isSuccess && traceResult?.items.length === 0 && filtered ? (
               <EmptyState
                 filtered={filtered}
                 title={t("traces.empty.filtered.title")}
@@ -141,7 +151,7 @@ export function TracesRoute() {
                 }
               />
             ) : null}
-            {query.isSuccess && query.data.items.length === 0 && !filtered ? (
+            {query.isSuccess && traceResult?.items.length === 0 && !filtered ? (
               <EmptyState
                 filtered={filtered}
                 title={t("traces.empty.noTraces.title")}
@@ -156,25 +166,21 @@ export function TracesRoute() {
                 }
               />
             ) : null}
-            {query.isSuccess && query.data.items.length > 0 ? (
+            {query.isSuccess && traceResult && traceResult.items.length > 0 ? (
               <TraceTable
                 onSortChange={(value) => setFilter("sort", value)}
-                result={query.data}
+                result={traceResult}
                 sort={filters.sort ?? "startedAt_desc"}
               />
             ) : null}
+            <InfiniteScrollSentinel
+              hasMore={query.hasNextPage}
+              isLoading={query.isFetchingNextPage}
+              label={t("actions.loadMore")}
+              loadingLabel={t("actions.loadingMore")}
+              onLoadMore={() => void query.fetchNextPage()}
+            />
           </div>
-          {query.isSuccess && query.data.nextCursor ? (
-            <div className="flex shrink-0 justify-end border-t bg-background px-3 py-2">
-              <Button
-                onClick={() => setFilter("cursor", query.data.nextCursor ?? null)}
-                variant="outline"
-              >
-                <ArrowRight data-icon="inline-start" />
-                {t("actions.nextPage")}
-              </Button>
-            </div>
-          ) : null}
         </section>
       </div>
     </section>

@@ -27,7 +27,7 @@ func TestTraceGetHandlerForwardsTraceDetailQuery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	handleTraceGet(&loggingReadStore{}, nil)(bridgeMessageForTest(SubjectTraceGet, data))
+	handleTraceGet(&loggingReadStore{}, nil, defaultQueryTimeout)(bridgeMessageForTest(SubjectTraceGet, data))
 
 	if lastTraceDetailQuery == nil || lastTraceDetailQuery.SelectedSpanID == nil || *lastTraceDetailQuery.SelectedSpanID != selectedSpanID {
 		t.Fatalf("forwarded query = %#v, want selected span", lastTraceDetailQuery)
@@ -55,7 +55,7 @@ func TestFacetHandlerForwardsFacetQuery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	handleTelemetryFacets(&loggingReadStore{}, nil)(bridgeMessageForTest(SubjectTelemetryFacets, data))
+	handleTelemetryFacets(&loggingReadStore{}, nil, defaultQueryTimeout)(bridgeMessageForTest(SubjectTelemetryFacets, data))
 
 	if lastFacetQuery.Service == nil || *lastFacetQuery.Service != service {
 		t.Fatalf("forwarded facet query = %#v, want service", lastFacetQuery)
@@ -82,7 +82,7 @@ func TestMetricHandlersForwardInputsAndEnforceReadAuth(t *testing.T) {
 		},
 		Input: contracts.MetricNameSearchInput{Query: &query},
 	}
-	handleMetricNameSearch(&loggingReadStore{}, nil)(bridgeMessageForTest(SubjectMetricNames, mustMarshalNATSHandlerTest(t, namesRequest)))
+	handleMetricNameSearch(&loggingReadStore{}, nil, defaultQueryTimeout)(bridgeMessageForTest(SubjectMetricNames, mustMarshalNATSHandlerTest(t, namesRequest)))
 	if lastMetricNameInput.Query == nil || *lastMetricNameInput.Query != query {
 		t.Fatalf("forwarded metric names input = %#v, want query", lastMetricNameInput)
 	}
@@ -99,7 +99,7 @@ func TestMetricHandlersForwardInputsAndEnforceReadAuth(t *testing.T) {
 			Aggregation: contracts.MetricAggregationAvg,
 		},
 	}
-	handleMetricSeriesQuery(&loggingReadStore{}, nil)(bridgeMessageForTest(SubjectMetricQuery, mustMarshalNATSHandlerTest(t, seriesRequest)))
+	handleMetricSeriesQuery(&loggingReadStore{}, nil, defaultQueryTimeout)(bridgeMessageForTest(SubjectMetricQuery, mustMarshalNATSHandlerTest(t, seriesRequest)))
 	if lastMetricSeriesInput.MetricName != metricName {
 		t.Fatalf("forwarded metric series input = %#v, want metric name", lastMetricSeriesInput)
 	}
@@ -111,7 +111,7 @@ func TestMetricHandlersForwardInputsAndEnforceReadAuth(t *testing.T) {
 		},
 		Input: seriesRequest.Input,
 	}))
-	handleMetricSeriesQuery(&loggingReadStore{}, nil)(message)
+	handleMetricSeriesQuery(&loggingReadStore{}, nil, defaultQueryTimeout)(message)
 	var response contracts.MetricSeriesResponse
 	if err := json.Unmarshal(message.response, &response); err != nil {
 		t.Fatalf("metric series response is not JSON: %v", err)
@@ -139,7 +139,7 @@ func TestMetricHandlersForwardInputsAndEnforceReadAuth(t *testing.T) {
 		},
 	}
 	richMessage := bridgeMessageForTest(SubjectRichMetricQuery, mustMarshalNATSHandlerTest(t, richRequest))
-	handleRichMetricSeriesQuery(&loggingReadStore{}, nil)(richMessage)
+	handleRichMetricSeriesQuery(&loggingReadStore{}, nil, defaultQueryTimeout)(richMessage)
 	var richResponse contracts.RichMetricSeriesResponse
 	if err := json.Unmarshal(richMessage.response, &richResponse); err != nil {
 		t.Fatalf("rich metric series response is not JSON: %v", err)
@@ -164,22 +164,22 @@ func TestTelemetryReadHandlersEnforceReadAuth(t *testing.T) {
 	}{
 		{name: "trace search", run: func() *portableBridgeMessageTest {
 			message := bridgeMessageForTest(SubjectTraceSearch, mustMarshalNATSHandlerTest(t, contracts.TraceSearchRequest{BridgeEnvelope: envelope}))
-			handleTraceSearch(&loggingReadStore{}, nil)(message)
+			handleTraceSearch(&loggingReadStore{}, nil, defaultQueryTimeout)(message)
 			return message
 		}},
 		{name: "trace detail", run: func() *portableBridgeMessageTest {
 			message := bridgeMessageForTest(SubjectTraceGet, mustMarshalNATSHandlerTest(t, contracts.TraceDetailRequest{BridgeEnvelope: envelope, TraceID: "trace-1"}))
-			handleTraceGet(&loggingReadStore{}, nil)(message)
+			handleTraceGet(&loggingReadStore{}, nil, defaultQueryTimeout)(message)
 			return message
 		}},
 		{name: "log search", run: func() *portableBridgeMessageTest {
 			message := bridgeMessageForTest(SubjectLogSearch, mustMarshalNATSHandlerTest(t, contracts.LogSearchRequest{BridgeEnvelope: envelope}))
-			handleLogSearch(&loggingReadStore{}, nil)(message)
+			handleLogSearch(&loggingReadStore{}, nil, defaultQueryTimeout)(message)
 			return message
 		}},
 		{name: "facets", run: func() *portableBridgeMessageTest {
 			message := bridgeMessageForTest(SubjectTelemetryFacets, mustMarshalNATSHandlerTest(t, contracts.TelemetryFacetRequest{BridgeEnvelope: envelope}))
-			handleTelemetryFacets(&loggingReadStore{}, nil)(message)
+			handleTelemetryFacets(&loggingReadStore{}, nil, defaultQueryTimeout)(message)
 			return message
 		}},
 	}
@@ -214,7 +214,7 @@ func TestTelemetryReadHandlersFailClosedForSSOWithoutReadDecision(t *testing.T) 
 	}
 	message := bridgeMessageForTest(SubjectTraceSearch, mustMarshalNATSHandlerTest(t, request))
 
-	handleTraceSearch(&loggingReadStore{}, nil)(message)
+	handleTraceSearch(&loggingReadStore{}, nil, defaultQueryTimeout)(message)
 
 	var response contracts.TraceSearchResponse
 	if err := json.Unmarshal(message.response, &response); err != nil {
@@ -240,7 +240,7 @@ func TestTelemetryReadHandlersAcceptSSOReadScopeWithoutReadAllowedFlag(t *testin
 	}
 	message := bridgeMessageForTest(SubjectTraceSearch, mustMarshalNATSHandlerTest(t, request))
 
-	handleTraceSearch(&loggingReadStore{}, nil)(message)
+	handleTraceSearch(&loggingReadStore{}, nil, defaultQueryTimeout)(message)
 
 	var response contracts.TraceSearchResponse
 	if err := json.Unmarshal(message.response, &response); err != nil {
@@ -263,7 +263,7 @@ func TestReadHandlerRecordsBoundedRequestMetrics(t *testing.T) {
 	}
 	recorder := NewInMemoryMetricsRecorder()
 
-	handleTraceSearchWithMetrics(&loggingReadStore{}, nil, recorder)(bridgeMessageForTest(SubjectTraceSearch, mustMarshalNATSHandlerTest(t, request)))
+	handleTraceSearchWithMetrics(&loggingReadStore{}, nil, recorder, defaultQueryTimeout)(bridgeMessageForTest(SubjectTraceSearch, mustMarshalNATSHandlerTest(t, request)))
 
 	snapshot := recorder.Snapshot()
 	assertReadMetricEvent(t, snapshot, "cloudgrid.storage.read.requests", map[string]string{
@@ -284,7 +284,7 @@ func TestReadHandlerRecordsErrorRequestMetrics(t *testing.T) {
 	}
 	recorder := NewInMemoryMetricsRecorder()
 
-	handleTraceSearchWithMetrics(&failingReadStore{err: errors.New("database timeout for project_1")}, nil, recorder)(bridgeMessageForTest(SubjectTraceSearch, mustMarshalNATSHandlerTest(t, request)))
+	handleTraceSearchWithMetrics(&failingReadStore{err: errors.New("database timeout for project_1")}, nil, recorder, defaultQueryTimeout)(bridgeMessageForTest(SubjectTraceSearch, mustMarshalNATSHandlerTest(t, request)))
 
 	snapshot := recorder.Snapshot()
 	assertReadMetricEvent(t, snapshot, "cloudgrid.storage.read.requests", map[string]string{
@@ -312,7 +312,7 @@ func TestLiveTraceHandlersRecordSubscriptionMetrics(t *testing.T) {
 		Query:          contracts.LiveTraceQuery{},
 	}
 
-	handleLiveTraceStartWithMetrics(registry, nil, recorder)(bridgeMessageForTest(SubjectLiveTraceStart, mustMarshalNATSHandlerTest(t, startRequest)))
+	handleLiveTraceStartWithMetrics(registry, nil, recorder, defaultQueryTimeout)(bridgeMessageForTest(SubjectLiveTraceStart, mustMarshalNATSHandlerTest(t, startRequest)))
 	handleLiveTraceStopWithMetrics(registry, nil, recorder)(bridgeMessageForTest(SubjectLiveTraceStop, mustMarshalNATSHandlerTest(t, contracts.LiveTraceStopRequest{
 		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-live-stop"},
 		SubscriptionID: "sub-1",
@@ -337,7 +337,7 @@ func TestTelemetryHandlersWireRecorderIntoProductionHandlerMap(t *testing.T) {
 		MaxSubscriptions:  10,
 		Now:               fixedLiveNow,
 	})
-	handlers := telemetryHandlers(nil, &loggingReadStore{}, registry, nil, recorder)
+	handlers := telemetryHandlersWithSelfObservability(nil, &loggingReadStore{}, registry, nil, recorder, nil, RuntimeLimits{QueryTimeout: defaultQueryTimeout})
 	service := "api"
 	request := contracts.TraceSearchRequest{
 		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-trace-search"},
@@ -350,6 +350,24 @@ func TestTelemetryHandlersWireRecorderIntoProductionHandlerMap(t *testing.T) {
 		"operation": "trace_search",
 		"result":    "success",
 	})
+}
+
+func TestTelemetryHandlersUseConfiguredRuntimeTimeout(t *testing.T) {
+	recorder := NewInMemoryMetricsRecorder()
+	store := &deadlineReadStore{}
+	registry := NewLiveTraceRegistry(&liveTestStore{}, &liveTestPublisher{}, LiveTraceOptions{
+		HeartbeatInterval: time.Second,
+		MaxSubscriptions:  10,
+		Now:               fixedLiveNow,
+	})
+	handlers := telemetryHandlersWithSelfObservability(nil, store, registry, nil, recorder, nil, RuntimeLimits{QueryTimeout: 12 * time.Second})
+	request := contracts.TraceSearchRequest{BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-timeout"}}
+
+	handlers[SubjectTraceSearch](bridgeMessageForTest(SubjectTraceSearch, mustMarshalNATSHandlerTest(t, request)))
+
+	if store.remainingDeadline < 9*time.Second {
+		t.Fatalf("trace search handler deadline remaining = %s, want configured runtime timeout above 9s", store.remainingDeadline)
+	}
 }
 
 func TestRichMetricHandlerEvaluatesBinaryFormulaFromMetricSeries(t *testing.T) {
@@ -393,7 +411,7 @@ func TestRichMetricHandlerEvaluatesBinaryFormulaFromMetricSeries(t *testing.T) {
 		},
 	}
 	message := bridgeMessageForTest(SubjectRichMetricQuery, mustMarshalNATSHandlerTest(t, request))
-	handleRichMetricSeriesQuery(&fixedMetricReadStore{from: from}, nil)(message)
+	handleRichMetricSeriesQuery(&fixedMetricReadStore{from: from}, nil, defaultQueryTimeout)(message)
 
 	var response contracts.RichMetricSeriesResponse
 	if err := json.Unmarshal(message.response, &response); err != nil {
@@ -432,7 +450,7 @@ func TestProjectTelemetryOverviewHandlerForwardsTargetsAndEnforcesReadAuth(t *te
 		}},
 	}
 	message := bridgeMessageForTest(SubjectProjectTelemetryOverview, mustMarshalNATSHandlerTest(t, request))
-	handleProjectTelemetryOverview(&loggingReadStore{}, nil)(message)
+	handleProjectTelemetryOverview(&loggingReadStore{}, nil, defaultQueryTimeout)(message)
 	var response contracts.ProjectTelemetryOverviewResponse
 	if err := json.Unmarshal(message.response, &response); err != nil {
 		t.Fatalf("project telemetry overview response is not JSON: %v", err)
@@ -448,7 +466,7 @@ func TestProjectTelemetryOverviewHandlerForwardsTargetsAndEnforcesReadAuth(t *te
 	deniedRequest.RequestID = "req-project-overview-denied"
 	deniedRequest.AuthContext.ReadAllowed = &denied
 	deniedMessage := bridgeMessageForTest(SubjectProjectTelemetryOverview, mustMarshalNATSHandlerTest(t, deniedRequest))
-	handleProjectTelemetryOverview(&loggingReadStore{}, nil)(deniedMessage)
+	handleProjectTelemetryOverview(&loggingReadStore{}, nil, defaultQueryTimeout)(deniedMessage)
 	var deniedResponse contracts.ProjectTelemetryOverviewResponse
 	if err := json.Unmarshal(deniedMessage.response, &deniedResponse); err != nil {
 		t.Fatalf("denied response is not JSON: %v", err)
@@ -584,7 +602,7 @@ func TestReadHandlersLogMappedErrorsForStoreFailures(t *testing.T) {
 					BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-trace-search"},
 					Query:          contracts.TraceSearchQuery{},
 				})
-				handleTraceSearch(store, logger)(bridgeMessageForTest(SubjectTraceSearch, data))
+				handleTraceSearch(store, logger, defaultQueryTimeout)(bridgeMessageForTest(SubjectTraceSearch, data))
 			},
 		},
 		{
@@ -597,7 +615,7 @@ func TestReadHandlersLogMappedErrorsForStoreFailures(t *testing.T) {
 					BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-trace-get"},
 					TraceID:        "trace-missing",
 				})
-				handleTraceGet(store, logger)(bridgeMessageForTest(SubjectTraceGet, data))
+				handleTraceGet(store, logger, defaultQueryTimeout)(bridgeMessageForTest(SubjectTraceGet, data))
 			},
 		},
 		{
@@ -610,7 +628,7 @@ func TestReadHandlersLogMappedErrorsForStoreFailures(t *testing.T) {
 					BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-log-search"},
 					Query:          contracts.LogSearchQuery{},
 				})
-				handleLogSearch(store, logger)(bridgeMessageForTest(SubjectLogSearch, data))
+				handleLogSearch(store, logger, defaultQueryTimeout)(bridgeMessageForTest(SubjectLogSearch, data))
 			},
 		},
 		{
@@ -623,7 +641,7 @@ func TestReadHandlersLogMappedErrorsForStoreFailures(t *testing.T) {
 					BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-facets"},
 					Query:          contracts.TelemetryFacetQuery{},
 				})
-				handleTelemetryFacets(store, logger)(bridgeMessageForTest(SubjectTelemetryFacets, data))
+				handleTelemetryFacets(store, logger, defaultQueryTimeout)(bridgeMessageForTest(SubjectTelemetryFacets, data))
 			},
 		},
 	}
@@ -652,16 +670,16 @@ func TestReadHandlersLogValidationErrorsForInvalidJSON(t *testing.T) {
 		run     func(logger *slog.Logger)
 	}{
 		{name: "trace search", subject: SubjectTraceSearch, run: func(logger *slog.Logger) {
-			handleTraceSearch(&loggingReadStore{}, logger)(bridgeMessageForTest(SubjectTraceSearch, []byte("{")))
+			handleTraceSearch(&loggingReadStore{}, logger, defaultQueryTimeout)(bridgeMessageForTest(SubjectTraceSearch, []byte("{")))
 		}},
 		{name: "trace get", subject: SubjectTraceGet, run: func(logger *slog.Logger) {
-			handleTraceGet(&loggingReadStore{}, logger)(bridgeMessageForTest(SubjectTraceGet, []byte("{")))
+			handleTraceGet(&loggingReadStore{}, logger, defaultQueryTimeout)(bridgeMessageForTest(SubjectTraceGet, []byte("{")))
 		}},
 		{name: "log search", subject: SubjectLogSearch, run: func(logger *slog.Logger) {
-			handleLogSearch(&loggingReadStore{}, logger)(bridgeMessageForTest(SubjectLogSearch, []byte("{")))
+			handleLogSearch(&loggingReadStore{}, logger, defaultQueryTimeout)(bridgeMessageForTest(SubjectLogSearch, []byte("{")))
 		}},
 		{name: "facets", subject: SubjectTelemetryFacets, run: func(logger *slog.Logger) {
-			handleTelemetryFacets(&loggingReadStore{}, logger)(bridgeMessageForTest(SubjectTelemetryFacets, []byte("{")))
+			handleTelemetryFacets(&loggingReadStore{}, logger, defaultQueryTimeout)(bridgeMessageForTest(SubjectTelemetryFacets, []byte("{")))
 		}},
 	}
 
@@ -688,7 +706,7 @@ func TestLiveTraceStartAndStopHandlersMutateRegistryAndLogCompletion(t *testing.
 		MaxSubscriptions:  10,
 		Now:               fixedLiveNow,
 	})
-	logger := storageReadTestLogger(&out)
+	logger := storageReadDebugTestLogger(&out)
 	startRequest := contracts.LiveTraceStartRequest{
 		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-live-start"},
 		SubscriptionID: "sub-1",
@@ -696,7 +714,7 @@ func TestLiveTraceStartAndStopHandlersMutateRegistryAndLogCompletion(t *testing.
 		Query:          contracts.LiveTraceQuery{},
 	}
 
-	handleLiveTraceStart(registry, logger)(bridgeMessageForTest(SubjectLiveTraceStart, mustMarshalNATSHandlerTest(t, startRequest)))
+	handleLiveTraceStart(registry, logger, defaultQueryTimeout)(bridgeMessageForTest(SubjectLiveTraceStart, mustMarshalNATSHandlerTest(t, startRequest)))
 	if registry.Count() != 1 {
 		t.Fatalf("subscription count = %d, want live start handler to register subscription", registry.Count())
 	}
@@ -705,7 +723,7 @@ func TestLiveTraceStartAndStopHandlersMutateRegistryAndLogCompletion(t *testing.
 	}
 
 	startLog := decodeStorageReadLog(t, firstLogLineNATSHandlerTest(out.Bytes()))
-	if startLog["status"] != "ok" || startLog["request_id"] != "req-live-start" || startLog["operation_or_subject"] != SubjectLiveTraceStart {
+	if startLog["level"] != "debug" || startLog["status"] != "ok" || startLog["request_id"] != "req-live-start" || startLog["operation_or_subject"] != SubjectLiveTraceStart {
 		t.Fatalf("start log = %#v, want ok live start completion", startLog)
 	}
 
@@ -718,7 +736,7 @@ func TestLiveTraceStartAndStopHandlersMutateRegistryAndLogCompletion(t *testing.
 	}
 
 	stopLog := decodeStorageReadLog(t, lastLogLineNATSHandlerTest(out.Bytes()))
-	if stopLog["status"] != "ok" || stopLog["request_id"] != "req-live-stop" || stopLog["operation_or_subject"] != SubjectLiveTraceStop {
+	if stopLog["level"] != "debug" || stopLog["status"] != "ok" || stopLog["request_id"] != "req-live-stop" || stopLog["operation_or_subject"] != SubjectLiveTraceStop {
 		t.Fatalf("stop log = %#v, want ok live stop completion", stopLog)
 	}
 }
@@ -753,7 +771,7 @@ func TestLiveTraceStartHandlerLogsValidationAndAuthorizationErrors(t *testing.T)
 			var out bytes.Buffer
 			registry := NewLiveTraceRegistry(&liveTestStore{}, &liveTestPublisher{}, LiveTraceOptions{Now: fixedLiveNow})
 
-			handleLiveTraceStart(registry, storageReadTestLogger(&out))(bridgeMessageForTest(SubjectLiveTraceStart, tt.data))
+			handleLiveTraceStart(registry, storageReadTestLogger(&out), defaultQueryTimeout)(bridgeMessageForTest(SubjectLiveTraceStart, tt.data))
 
 			entry := decodeStorageReadLog(t, out.Bytes())
 			if entry["status"] != "error" || entry["request_id"] != tt.requestID || entry["operation_or_subject"] != SubjectLiveTraceStart {
@@ -802,7 +820,7 @@ func TestTracePersistedNotificationHandlerResolvesCandidatesAndLogsCompletion(t 
 	}
 	var out bytes.Buffer
 
-	handleTracePersistedNotification(registry, storageReadTestLogger(&out))(bridgeMessageForTest(SubjectPersistedTraces, mustMarshalNATSHandlerTest(t, contracts.TracePersistedNotification{
+	handleTracePersistedNotification(registry, storageReadDebugTestLogger(&out), defaultQueryTimeout)(bridgeMessageForTest(SubjectPersistedTraces, mustMarshalNATSHandlerTest(t, contracts.TracePersistedNotification{
 		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-notify"},
 		CommandID:      "cmd-1",
 		TraceIDs:       []string{"trace-1"},
@@ -817,7 +835,7 @@ func TestTracePersistedNotificationHandlerResolvesCandidatesAndLogsCompletion(t 
 		t.Fatalf("published events = %#v, want heartbeat plus trace-1 live event", events)
 	}
 	entry := decodeStorageReadLog(t, out.Bytes())
-	if entry["status"] != "ok" || entry["request_id"] != "req-notify" || entry["operation_or_subject"] != SubjectPersistedTraces {
+	if entry["level"] != "debug" || entry["status"] != "ok" || entry["request_id"] != "req-notify" || entry["operation_or_subject"] != SubjectPersistedTraces {
 		t.Fatalf("notification log = %#v, want ok completion", entry)
 	}
 }
@@ -866,7 +884,7 @@ func TestTracePersistedNotificationHandlerLogsInvalidJSONAndStoreErrors(t *testi
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			handleTracePersistedNotification(tt.registry, storageReadTestLogger(&out))(bridgeMessageForTest(SubjectPersistedTraces, tt.data))
+			handleTracePersistedNotification(tt.registry, storageReadTestLogger(&out), defaultQueryTimeout)(bridgeMessageForTest(SubjectPersistedTraces, tt.data))
 
 			entry := decodeStorageReadLog(t, out.Bytes())
 			if entry["status"] != "error" || entry["request_id"] != tt.requestID || entry["operation_or_subject"] != SubjectPersistedTraces {

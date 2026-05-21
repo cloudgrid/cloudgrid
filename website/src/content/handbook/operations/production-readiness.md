@@ -1,10 +1,10 @@
 ---
 title: "Production Readiness"
-description: "CloudGrid has implemented local and deployed-mode product surfaces, with production completion packages tracked explicitly."
+description: "CloudGrid production readiness depends on verified release artifacts, hardened deployed configuration, and deployment-specific benchmark evidence."
 order: 7
 accent: amber
 eyebrow: "Handbook - Operations"
-updated: 2026-05-18
+updated: 2026-05-19
 ---
 
 CloudGrid has implemented the main product surfaces for local and deployed-mode evaluation. Treat this page as the operator readiness map before exposing a shared CloudGrid environment.
@@ -31,10 +31,10 @@ Do not present CloudGrid as a complete public production distribution until thes
 | --- | --- |
 | Release artifacts | Release workflow and Dockerfiles are present; signed images, image provenance, release manifest, SBOM output, and vulnerability reports are produced when the release workflow runs. |
 | Kubernetes | Helm chart and profile overlays are present; operators still need environment-specific values, secrets, ingress/TLS, and published image digests. |
-| Retention execution | Retention policy CRUD, storage-maintenance batch execution, and disabled-by-default scheduling are implemented; implement the specified production SurrealDB deletion adapter and enable it per environment before telemetry is deleted. |
-| Alert execution | Alert rule/silence/history CRUD and evaluator domain/runtime logic are implemented; implement the specified project enumeration, email/webhook adapter runtime, and dashboard alert widgets before presenting alerting as production-executing. |
+| Retention execution | Retention policy CRUD, storage-maintenance batch execution, disabled-by-default scheduling, and the SurrealDB deletion adapter are implemented; enable the scheduler per environment and run the opt-in SurrealDB retention suite before relying on deletion in production. |
+| Alert execution | Alert rule/silence/history CRUD, evaluator runtime, project discovery, email/webhook adapter runtime, adapter catalog validation, and dashboard alert widgets are implemented; deployments still need concrete SMTP/webhook environment values. |
 | Production scale | The performance and scaling spec defines targets and variables; opt-in local and production-like benchmark scripts are present, but each deployment still needs its own recorded benchmark run before being declared production-ready. |
-| Auth hardening | Local/default project isolation is implemented; implement the production hardening package in the authentication and authorization spec before exposing multi-tenant deployed environments. |
+| Auth hardening | Deployed-mode BFF HTTP, WebSocket, app-shell, collector, storage-read, storage-write, and control-plane authorization boundaries have acceptance coverage; operators still need configured SSO providers and secrets. |
 
 ## Deployment Boundary
 
@@ -59,11 +59,16 @@ Only the BFF and OTLP collector are public ingress candidates. NATS and SurrealD
 - BFF and OTLP collector are the only public ingress candidates.
 - Use `CLOUDGRID_DEPLOYMENT_MODE=deployed` and `CLOUDGRID_AUTH_MODE=sso`.
 - Configure a real SSO provider and a strong `CLOUDGRID_SESSION_SECRET`.
+- Configure a stable `CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY` before allowing managed AI provider API keys in deployed mode.
+- Install production Kubernetes deployments with the versioned Helm chart and digest-pinned service images.
+- Verify `release-manifest.json`, `release-values.yaml`, checksums, signatures, SBOMs, scan reports, image signatures, and image digests before promotion.
 - Configure SMTP invitation delivery for deployed SSO onboarding, or explicitly set disabled delivery with manual recipient notification.
 - Keep project API keys in a secret manager and send them only as bearer credentials from emitters.
 - Keep GraphiQL disabled except during trusted operator sessions.
 - Keep local mode off untrusted networks.
+- Keep NATS and SurrealDB private; use external managed or operator-owned dependencies for production.
 - Use self-observability as a normal CloudGrid project with a normal ingest credential.
+- Run production benchmark probes with `CLOUDGRID_BENCH_DEPLOYMENT_PROFILE=production-like`, `CLOUDGRID_BENCH_ENVIRONMENT_ID`, and `CLOUDGRID_BENCH_IMAGE_TAG` against the exact deployment.
 - Run the relevant root verification commands before deployment; see [Commands](/handbook/reference/commands).
 
 ## Scaling Shape
@@ -84,4 +89,4 @@ The intended scale path is horizontal at service boundaries. Production-scale st
 
 ## Next Step
 
-Review [Kubernetes and deployment status](/handbook/configuration/deployed/kubernetes), then use [Retention operations](/handbook/operations/retention) and [Alerting operations](/handbook/operations/alerting) to understand which administrative surfaces are configured versus executed.
+Review [Enterprise Helm install](/handbook/configuration/deployed/helm-install), [Release artifact verification](/handbook/operations/release-verification), and [Sizing and scaling](/handbook/operations/sizing), then use [Retention operations](/handbook/operations/retention) and [Alerting operations](/handbook/operations/alerting) to understand which administrative surfaces are configured versus executed.

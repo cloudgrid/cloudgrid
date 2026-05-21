@@ -54,7 +54,11 @@ Project-level AI Eval configuration lives at:
 
 Settings use `Query.projectAiSettings` and `Mutation.updateProjectAiSettings` for project enablement, provider profile metadata, model aliases, online policy, and daily budget state.
 
-Raw provider API keys, bearer tokens, refresh tokens, cookies, Authorization headers, and provider secret JSON must not be persisted, returned, logged, or bundled.
+Raw provider API keys, bearer tokens, refresh tokens, cookies, Authorization
+headers, and provider secret JSON must not be returned, logged, or bundled.
+Project provider profiles may use encrypted `managed:` credential references
+when configured through CloudGrid. Offline harness provider credentials remain
+owned by the harness deployment.
 
 ## Dataset Import And Export
 

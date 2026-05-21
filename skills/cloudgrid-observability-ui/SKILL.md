@@ -52,7 +52,7 @@ Use the owning module:
 | Shared public operations | `apps/packages/public-api-client`. |
 | Generated UI contracts | `apps/packages/ui-contracts`. |
 | GraphQL SDL | `specs/03-contracts/graphql/public-schema.graphql`. |
-| Public docs | `docs/` and `website/src/content/handbook/` when behavior changes. |
+| Public docs | `website/src/content/handbook/` when behavior changes. |
 
 Do not define route-local GraphQL documents or direct `/graphql` calls when a
 shared public API client operation exists or should be added.
@@ -145,7 +145,7 @@ Do not expose SurrealDB credentials, provider tokens, bearer values, session coo
    virtualization, and inspector state are allowed.
 5. Put telemetry query semantics in storage-read, not frontend or BFF.
 6. Add focused tests for the changed route, view model, or bridge mapping.
-7. Update handbook/docs if the user workflow changes.
+7. Update the website handbook if the user workflow changes.
 
 ## Current TODO Boundaries
 

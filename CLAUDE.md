@@ -4,7 +4,11 @@ Follow [AGENTS.md](./AGENTS.md). Specs in `specs/` are authoritative.
 
 Do not invent implementation details when the specs are silent. Update the relevant spec first, then implement.
 
-Update user-facing and operator documentation only in `website/`, primarily under `website/src/content/handbook/`. Do not add or update files in `docs/`; it is legacy content pending migration and later removal.
+For message bridge work, keep specs, generated contracts, BFF payloads, Go service registration, and tests in one change. Control-plane subjects must be present in `core/go-contracts/generated_contracts.go`, `ControlSubjects()`, the NATS handler map, and focused BFF bridge tests. Do not wrap bridge requests in `input` unless AsyncAPI defines an `input` field.
+
+For self-observability exporter work, OTLP JSON must use protobuf JSON mapping. `traceId`, `spanId`, `parentSpanId`, metric exemplar IDs, and log trace/span correlation fields are OTLP `bytes` fields, so JSON values must be base64 strings, not W3C hex strings. Shutdown flush is best-effort and should not emit bridge-unavailable process log noise while services are stopping.
+
+Update user-facing and operator documentation only in `website/`, primarily under `website/src/content/handbook/`.
 
 For frontend UX work, follow `specs/05-frontend/product-ux-concept.md`, `specs/05-frontend/logs-metrics-dashboards-ux-concept.md`, `specs/05-frontend/dashboard-widgets.md`, and `DESIGN.md`. Do not invent alternate navigation, onboarding, empty-state, drawer/dialog/popover, or route layout patterns in components. Preserve UX v2: global topbar, project/domain sidebar navigation, independent scroll containers, centered project-card picker, admin settings shell, flat shadcn/Tailwind styling, explicit button hierarchy, no card-in-card layouts, and local `Personal` admin safety.
 

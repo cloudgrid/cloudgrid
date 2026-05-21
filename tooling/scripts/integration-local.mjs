@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -13,9 +13,12 @@ import {
   alertSilencesOperation,
   annotationQueueOperation,
   appendDatasetItemsOperation,
+  aiChatHistoryOperation,
   commitDatasetImportOperation,
+  companyAiProviderSettingsOperation,
   createAlertRuleOperation,
   createAlertSilenceOperation,
+  createAiChatConversationOperation,
   createDatasetOperation,
   createExperimentOperation,
   createIngestCredentialOperation,
@@ -63,6 +66,7 @@ import {
   traceDetailOperation,
   traceSearchOperation,
   updateAlertRuleOperation,
+  updateCompanyAiProviderSettingsOperation,
   updateOrganizationMemberOperation,
   updateProjectAiSettingsOperation,
   updateProjectMemberOperation,
@@ -303,6 +307,8 @@ async function main(args = process.argv.slice(2)) {
     runID,
     "dataset-transfer",
   );
+  const integrationRunDir = resolve(repoRoot, ".cloudgrid", "integration", runID);
+  const natsConfigPath = join(integrationRunDir, "nats.conf");
 
   const plan = [
     `Mode: ${externalInfra ? "external infrastructure" : "isolated Docker infrastructure"}`,
@@ -341,6 +347,19 @@ async function main(args = process.argv.slice(2)) {
   try {
     if (!externalInfra) {
       console.log("Starting isolated Docker infrastructure...");
+      mkdirSync(integrationRunDir, { recursive: true });
+      writeFileSync(
+        natsConfigPath,
+        [
+          "jetstream {",
+          '  store_dir: "/tmp/nats/jetstream"',
+          "}",
+          "",
+          "http_port: 8222",
+          `max_payload: ${baseEnv.CLOUDGRID_NATS_MAX_PAYLOAD || "8388608"}`,
+          "",
+        ].join("\n"),
+      );
       containers.push(
         await startDockerContainer({
           name: `cloudgrid-${runID}-nats`,
@@ -349,7 +368,8 @@ async function main(args = process.argv.slice(2)) {
             [natsPort, 4222],
             [natsMonitorPort, 8222],
           ],
-          args: ["-js", "-m", "8222"],
+          volumes: [[natsConfigPath, "/etc/nats/nats.conf", "ro"]],
+          args: ["-c", "/etc/nats/nats.conf"],
         }),
       );
       await waitForHttp(`http://127.0.0.1:${natsMonitorPort}/healthz`, 20_000);
@@ -391,8 +411,9 @@ async function main(args = process.argv.slice(2)) {
       CLOUDGRID_BFF_HOST: "127.0.0.1",
       CLOUDGRID_BFF_PORT: String(bffPort),
       CLOUDGRID_GRAPHQL_UI: "false",
-      CLOUDGRID_OTLP_HOST: "127.0.0.1",
-      CLOUDGRID_OTLP_PORT: String(otlpPort),
+      CLOUDGRID_AI_CHAT_HARNESS_MODE: "mock",
+      CLOUDGRID_LOG_LEVEL: "debug",
+      CLOUDGRID_SELF_OBSERVABILITY_ENABLED: "false",
       CLOUDGRID_OTLP_HTTP_ADDR: `127.0.0.1:${otlpPort}`,
       CLOUDGRID_OTLP_GRPC_ADDR: `127.0.0.1:${otlpGrpcPort}`,
       CLOUDGRID_DATASET_TRANSFER_DIR: datasetTransferDir,
@@ -454,7 +475,7 @@ async function main(args = process.argv.slice(2)) {
         ...serviceEnv,
       }),
     );
-    await processes.at(-1).waitForLog("startup_ready", 20_000);
+    await waitForHttp(`http://127.0.0.1:${otlpPort}/readyz`, 20_000);
 
     console.log("Asserting public health endpoints...");
     await assertJsonStatus(`http://127.0.0.1:${bffPort}/livez`, "ok");
@@ -463,6 +484,7 @@ async function main(args = process.argv.slice(2)) {
     await assertJsonStatus(`http://127.0.0.1:${storageWriteHealthPort}/readyz`, "ok");
     await assertJsonStatus(`http://127.0.0.1:${storageReadHealthPort}/readyz`, "ok");
     await assertJsonStatus(`http://127.0.0.1:${controlPlaneHealthPort}/readyz`, "ok");
+    await assertJsonStatus(`http://127.0.0.1:${otlpPort}/readyz`, "ok");
 
     console.log("Asserting public GraphQL control-plane path...");
     const viewer = await graphql(bffPort, viewerOperation, {}, "Viewer");
@@ -488,6 +510,7 @@ async function main(args = process.argv.slice(2)) {
 
     await assertAdminGraphQLScenario(bffPort, organizationId, runID);
     await assertProjectSettingsScenario(bffPort, "default");
+    await assertAiChatScenario(bffPort, organizationId, "default", runID);
     await assertAlertingScenario(bffPort, "default", runMetricFixture.metricName);
 
     console.log("Asserting shared frontend dashboard operations...");
@@ -891,13 +914,17 @@ function startProcess(name, cmd, env) {
   };
 }
 
-async function startDockerContainer({ name, image, ports, args }) {
+async function startDockerContainer({ name, image, ports, args, volumes = [] }) {
   const portArgs = ports.flatMap(([hostPort, containerPort]) => [
     "-p",
     `127.0.0.1:${hostPort}:${containerPort}`,
   ]);
+  const volumeArgs = volumes.flatMap(([hostPath, containerPath, mode]) => [
+    "-v",
+    `${hostPath}:${containerPath}${mode ? `:${mode}` : ""}`,
+  ]);
   const proc = Bun.spawn({
-    cmd: ["docker", "run", "--rm", "--name", name, ...portArgs, image, ...args],
+    cmd: ["docker", "run", "--rm", "--name", name, ...portArgs, ...volumeArgs, image, ...args],
     cwd: repoRoot,
     stdout: "pipe",
     stderr: "pipe",
@@ -1415,6 +1442,130 @@ async function assertProjectSettingsScenario(port, projectId) {
   );
 }
 
+async function assertAiChatScenario(port, organizationId, projectId, runID) {
+  console.log("Asserting public GraphQL AI Chat workflow with mocked provider...");
+  const currentSettings = await graphql(
+    port,
+    companyAiProviderSettingsOperation,
+    { companyId: organizationId },
+    "CompanyAiProviderSettings",
+  );
+  const version = currentSettings.data?.companyAiProviderSettings?.version;
+  assert(Number.isInteger(version), "CompanyAiProviderSettings did not return a version");
+
+  const providerId = `provider-${runID}`;
+  const settings = await graphql(
+    port,
+    updateCompanyAiProviderSettingsOperation,
+    {
+      input: {
+        companyId: organizationId,
+        expectedVersion: version,
+        providerProfile: {
+          id: providerId,
+          label: "Integration mock provider",
+          providerKind: "openai",
+          baseUrl: null,
+          credentialValue: `integration-secret-${runID}`,
+          models: { chat: ["mock-chat-model"] },
+          parameters: {},
+          timeoutMs: 30_000,
+          maxConcurrency: null,
+          disabled: false,
+        },
+        chatModelAlias: {
+          id: `chat-${providerId}`,
+          name: "chat-default",
+          providerProfileId: providerId,
+          model: "mock-chat-model",
+          purpose: "chat",
+          parameters: { extras: {} },
+        },
+      },
+    },
+    "UpdateCompanyAiProviderSettings",
+  );
+  assert(
+    settings.data?.updateCompanyAiProviderSettings?.effective?.missingChatProvider === false,
+    "UpdateCompanyAiProviderSettings did not enable AI Chat",
+  );
+  assert(
+    settings.data.updateCompanyAiProviderSettings.providerProfile?.credentialRef?.startsWith(
+      "managed:",
+    ),
+    "UpdateCompanyAiProviderSettings did not return a managed credential ref",
+  );
+
+  const firstUserMessage = `Investigate mocked provider ${runID}`;
+  const created = await graphql(
+    port,
+    createAiChatConversationOperation,
+    {
+      input: {
+        companyId: organizationId,
+        projectId,
+        title: null,
+        firstUserMessage,
+      },
+    },
+    "CreateAiChatConversation",
+  );
+  const conversation = created.data?.createAiChatConversation;
+  assert(conversation?.id, "CreateAiChatConversation did not return a conversation id");
+  assert(
+    conversation.messages?.some((message) =>
+      message.parts?.some((part) => part.type === "text" && part.text === firstUserMessage),
+    ),
+    "CreateAiChatConversation did not persist the first user message",
+  );
+
+  const streamEvents = await streamAiChatRun(port, {
+    conversationId: conversation.id,
+    projectId,
+    userMessageClientId: `client-${runID}`,
+    idempotencyKey: `idempotency-${runID}-${randomHex(8)}`,
+    parts: [{ type: "text", text: "Summarize the current project state" }],
+    timezone: "UTC",
+  });
+  assert(
+    streamEvents.some((event) => event.type === "run.started"),
+    "AI Chat stream did not emit run.started",
+  );
+  assert(
+    streamEvents.some((event) => event.type === "text.delta"),
+    "AI Chat stream did not emit text.delta",
+  );
+  assert(
+    streamEvents.at(-1)?.type === "run.completed",
+    `AI Chat stream terminal event was ${streamEvents.at(-1)?.type}`,
+  );
+  assert(
+    !JSON.stringify(streamEvents).includes("integration-secret"),
+    "AI Chat stream leaked credential material",
+  );
+
+  const history = await graphql(
+    port,
+    aiChatHistoryOperation,
+    {
+      input: {
+        companyId: organizationId,
+        projectId,
+        includeArchived: false,
+        first: 10,
+        after: null,
+      },
+    },
+    "AiChatHistory",
+  );
+  assert(
+    history.data?.aiChatHistory?.projectGroups?.some((group) =>
+      group.conversations?.some((item) => item.id === conversation.id),
+    ),
+    "AiChatHistory did not return the streamed conversation",
+  );
+}
+
 function retentionRuleInput(rule) {
   const input = {
     dataClass: rule.dataClass,
@@ -1651,6 +1802,7 @@ async function assertAiEvalScenario(port, natsUrl, runID, traceFixture) {
     {
       input: {
         datasetId: dataset.id,
+        expectedDatasetVersion: committedImport.data.commitDatasetImport.committedDatasetVersion,
         items: [
           {
             input: { prompt: `manual integration row ${runID}` },
@@ -2191,8 +2343,7 @@ async function assertCollectorNatsStartupFailure(baseEnv, port) {
     {
       ...baseEnv,
       CLOUDGRID_NATS_URL: "nats://127.0.0.1:1",
-      CLOUDGRID_OTLP_HOST: "127.0.0.1",
-      CLOUDGRID_OTLP_PORT: String(port),
+      CLOUDGRID_OTLP_HTTP_ADDR: `127.0.0.1:${port}`,
     },
   );
   try {
@@ -2315,6 +2466,28 @@ async function graphql(port, query, variables, operationName) {
     throw new Error(`GraphQL ${operationName ?? "operation"} errors: ${JSON.stringify(errors)}`);
   }
   return body;
+}
+
+async function streamAiChatRun(port, input) {
+  const response = await fetch(`http://127.0.0.1:${port}/api/ai-chat/stream`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const body = await response.text();
+  assert(response.ok, `AI Chat stream returned ${response.status}: ${body}`);
+  return body
+    .trim()
+    .split("\n\n")
+    .filter(Boolean)
+    .map((chunk) => {
+      const data = chunk
+        .split("\n")
+        .filter((line) => line.startsWith("data: "))
+        .map((line) => line.slice("data: ".length))
+        .join("\n");
+      return JSON.parse(data);
+    });
 }
 
 async function assertNatsReady(natsUrl) {

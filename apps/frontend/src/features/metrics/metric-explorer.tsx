@@ -274,7 +274,7 @@ export function MetricSeriesExplorer({
         </div>
       )}
       <div className="divide-y">
-        {result.series.slice(0, 20).map((series) => (
+        {result.series.map((series) => (
           <MetricSeriesRows key={metricSeriesKey(series)} series={series} />
         ))}
       </div>
@@ -444,7 +444,7 @@ function MetricSeriesRows({ series }: { series: MetricSeries }) {
         <div className="font-medium text-muted-foreground">{t("metrics.series.timestamp")}</div>
         <div className="font-medium text-muted-foreground">{t("metrics.series.value")}</div>
         <div className="font-medium text-muted-foreground">{t("metrics.series.exemplars")}</div>
-        {series.points.slice(0, 80).map((point) => (
+        {series.points.map((point) => (
           <div className="contents" key={`${point.timestamp}:${point.value}`}>
             <code>{point.timestamp}</code>
             <code>{point.value}</code>
@@ -507,13 +507,13 @@ function buildMetricExplorerChartData(result: MetricSeriesResult, chartType: Met
   const timestamps = Array.from(
     new Set(result.series.flatMap((series) => series.points.map((point) => point.timestamp))),
   ).sort();
-  const series = result.series.slice(0, 8).map((metricSeries, index) => ({
+  const series = result.series.map((metricSeries, index) => ({
     key: `series_${index}`,
     label: metricSeriesLabel(metricSeries.labels),
   }));
   const data = timestamps.map((timestamp) => {
     const row: Record<string, number | string | null> = { label: timestamp };
-    result.series.slice(0, 8).forEach((metricSeries, index) => {
+    result.series.forEach((metricSeries, index) => {
       row[`series_${index}`] =
         metricSeries.points.find((point) => point.timestamp === timestamp)?.value ?? null;
     });
@@ -638,7 +638,7 @@ function SeriesTab({ result }: { result: MetricSeriesResult | null }) {
         </InspectorRow>
       </dl>
       <div className="divide-y rounded-md border">
-        {result.series.slice(0, 20).map((series) => (
+        {result.series.map((series) => (
           <div className="px-2 py-1.5 text-xs" key={metricSeriesKey(series)}>
             <code className="block truncate">{JSON.stringify(series.labels)}</code>
             <span className="text-muted-foreground">

@@ -40,12 +40,13 @@ nats:
     enabled: false
     image:
       repository: nats
-      tag: "2.12.2-alpine"
+      tag: "2.14.0"
       digest: ""
       pullPolicy: IfNotPresent
     persistence:
       enabled: true
       size: 8Gi
+    maxPayloadBytes: 8388608
   external:
     url: nats://nats.private:4222
   service:
@@ -57,7 +58,7 @@ surrealdb:
     enabled: false
     image:
       repository: surrealdb/surrealdb
-      tag: "v2.3.10"
+      tag: "v3.0.5"
       digest: ""
       pullPolicy: IfNotPresent
     username: ""
@@ -117,7 +118,7 @@ otlpCollector:
     digest: ""
     pullPolicy: IfNotPresent
   env:
-    CLOUDGRID_OTLP_PORT: "4318"
+    CLOUDGRID_OTLP_HTTP_ADDR: "0.0.0.0:4318"
     CLOUDGRID_OTLP_GRPC_ADDR: "0.0.0.0:4317"
   service:
     type: ClusterIP
@@ -211,6 +212,9 @@ controlPlane:
     CLOUDGRID_CONTROL_PLANE_HEALTH_PORT: "8084"
   surrealdbSecret:
     enabled: true
+  providerSecretEncryptionKey:
+    existingSecret: ""
+    secretKey: CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY
   service:
     type: ClusterIP
     port: 8084

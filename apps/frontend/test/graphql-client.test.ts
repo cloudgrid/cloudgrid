@@ -433,6 +433,58 @@ describe("GraphQL client", () => {
         RemoveProjectMember: { removeProjectMember: true },
         RetentionPolicy: { retentionPolicy },
         UpdateRetentionPolicy: { updateRetentionPolicy: retentionPolicy },
+        CompanyAiProviderSettings: {
+          companyAiProviderSettings: {
+            companyId: "org-1",
+            providerProfile: null,
+            chatModelAlias: null,
+            effective: {
+              warnings: [],
+              missingProviderProfiles: [],
+              disabledProviderProfiles: [],
+              missingChatProvider: true,
+            },
+            version: 1,
+            updatedAt: now,
+            updatedByUserId: "user-1",
+          },
+        },
+        UpdateCompanyAiProviderSettings: {
+          updateCompanyAiProviderSettings: {
+            companyId: "org-1",
+            providerProfile: {
+              id: "company-chat-provider",
+              ownerScope: "company",
+              ownerId: "org-1",
+              label: "Company chat",
+              providerKind: "openai",
+              baseUrl: null,
+              credentialRef: "env:OPENAI_API_KEY",
+              models: { chat: ["gpt-5-mini"] },
+              parameters: {},
+              timeoutMs: 30000,
+              maxConcurrency: null,
+              disabledAt: null,
+            },
+            chatModelAlias: {
+              id: "company-chat",
+              name: "chat",
+              providerProfileId: "company-chat-provider",
+              model: "gpt-5-mini",
+              purpose: "chat",
+              parameters: { extras: {} },
+            },
+            effective: {
+              warnings: [],
+              missingProviderProfiles: [],
+              disabledProviderProfiles: [],
+              missingChatProvider: false,
+            },
+            version: 2,
+            updatedAt: now,
+            updatedByUserId: "user-1",
+          },
+        },
         AlertRules: { alertRules: [rule] },
         AlertHistory: {
           alertHistory: {
@@ -499,9 +551,45 @@ describe("GraphQL client", () => {
         rules: [{ dataClass: "TRACES", mode: "delete", retentionDays: 30 }],
       }),
     ).resolves.toMatchObject({ projectId: "project-1" });
-    await expect(client.getAlertRules("project-1")).resolves.toEqual([
-      expect.objectContaining({ id: "rule-1", kind: "TRACE_ERROR" }),
-    ]);
+    await expect(client.getCompanyAiProviderSettings("org-1")).resolves.toMatchObject({
+      companyId: "org-1",
+      effective: { missingChatProvider: true },
+    });
+    await expect(
+      client.updateCompanyAiProviderSettings({
+        companyId: "org-1",
+        expectedVersion: 1,
+        providerProfile: {
+          id: "company-chat-provider",
+          label: "Company chat",
+          providerKind: "openai",
+          credentialRef: "env:OPENAI_API_KEY",
+          models: { chat: ["gpt-5-mini"] },
+          timeoutMs: 30000,
+        },
+        chatModelAlias: {
+          id: "company-chat",
+          name: "chat",
+          providerProfileId: "company-chat-provider",
+          model: "gpt-5-mini",
+          purpose: "chat",
+          parameters: { extras: {} },
+        },
+      }),
+    ).resolves.toMatchObject({
+      companyId: "org-1",
+      effective: { missingChatProvider: false },
+    });
+    await expect(
+      client.getAlertRules("project-1", {
+        search: "latency",
+        status: "FIRING",
+        severity: "ERROR",
+        signal: "TRACE",
+        enabled: true,
+        sort: "UPDATED_DESC",
+      }),
+    ).resolves.toEqual([expect.objectContaining({ id: "rule-1", kind: "TRACE_ERROR" })]);
     await expect(
       client.getAlertHistory({ projectId: "project-1", ruleId: "rule-1" }),
     ).resolves.toMatchObject({ items: [{ id: "event-1", state: "FIRING" }] });
@@ -551,6 +639,8 @@ describe("GraphQL client", () => {
       "RemoveProjectMember",
       "RetentionPolicy",
       "UpdateRetentionPolicy",
+      "CompanyAiProviderSettings",
+      "UpdateCompanyAiProviderSettings",
       "AlertRules",
       "AlertHistory",
       "AlertSummary",
@@ -572,12 +662,45 @@ describe("GraphQL client", () => {
       first: 50,
       after: null,
     });
+    expect(variablesByOperation.AlertRules).toEqual({
+      projectId: "project-1",
+      input: {
+        search: "latency",
+        status: "FIRING",
+        severity: "ERROR",
+        signal: "TRACE",
+        enabled: true,
+        sort: "UPDATED_DESC",
+      },
+    });
     expect(variablesByOperation.AlertSummary).toEqual({
       projectId: "project-1",
       input: {
         states: ["FIRING"],
         severities: ["ERROR"],
         signals: ["TRACE"],
+      },
+    });
+    expect(variablesByOperation.UpdateCompanyAiProviderSettings).toEqual({
+      input: {
+        companyId: "org-1",
+        expectedVersion: 1,
+        providerProfile: {
+          id: "company-chat-provider",
+          label: "Company chat",
+          providerKind: "openai",
+          credentialRef: "env:OPENAI_API_KEY",
+          models: { chat: ["gpt-5-mini"] },
+          timeoutMs: 30000,
+        },
+        chatModelAlias: {
+          id: "company-chat",
+          name: "chat",
+          providerProfileId: "company-chat-provider",
+          model: "gpt-5-mini",
+          purpose: "chat",
+          parameters: { extras: {} },
+        },
       },
     });
   });
@@ -741,6 +864,7 @@ describe("GraphQL client", () => {
     await expect(
       client.appendDatasetItems({
         datasetId: "dataset-1",
+        expectedDatasetVersion: 1,
         items: [
           {
             input: { prompt: "Check answer" },

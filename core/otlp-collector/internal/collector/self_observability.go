@@ -91,6 +91,9 @@ func ResolveSelfObservabilityConfig(getenv func(string) string) (SelfObservabili
 			}
 		}
 	}
+	if deploymentMode == DeploymentModeLocal && enabled && config.OTLPBearerToken == "" {
+		return SelfObservabilityConfig{}, configInvalidError("%s is required when self-observability is enabled", "CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN")
+	}
 	return config, nil
 }
 

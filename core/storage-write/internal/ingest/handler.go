@@ -95,7 +95,7 @@ func HandleMessageWithMetrics(ctx context.Context, msg Message, store ports.Tele
 	}
 	if exists {
 		result = "success"
-		logCommand(logger, slog.LevelInfo, "telemetry_ingest_duplicate_acknowledged", "telemetry ingest duplicate acknowledged", command, subject, attempt, now().Sub(start), "", "")
+		logCommand(logger, slog.LevelDebug, "telemetry_ingest_duplicate_acknowledged", "telemetry ingest duplicate acknowledged", command, subject, attempt, now().Sub(start), "", "")
 		_ = msg.Ack()
 		return
 	}
@@ -115,7 +115,7 @@ func HandleMessageWithMetrics(ctx context.Context, msg Message, store ports.Tele
 		}
 	}
 
-	logCommand(logger, slog.LevelInfo, "telemetry_ingest_persisted", "telemetry ingest persisted", command, subject, attempt, now().Sub(start), "", "")
+	logCommand(logger, slog.LevelDebug, "telemetry_ingest_persisted", "telemetry ingest persisted", command, subject, attempt, now().Sub(start), "", "")
 	_ = msg.Ack()
 }
 
@@ -139,7 +139,7 @@ func handleMetricMessage(ctx context.Context, msg Message, store ports.MetricsWr
 		return "error"
 	}
 	if exists {
-		logMetricsCommand(logger, slog.LevelInfo, "telemetry_ingest_duplicate_acknowledged", "telemetry ingest duplicate acknowledged", command, subject, attempt, now().Sub(start), "", "")
+		logMetricsCommand(logger, slog.LevelDebug, "telemetry_ingest_duplicate_acknowledged", "telemetry ingest duplicate acknowledged", command, subject, attempt, now().Sub(start), "", "")
 		_ = msg.Ack()
 		return "success"
 	}
@@ -150,7 +150,7 @@ func handleMetricMessage(ctx context.Context, msg Message, store ports.MetricsWr
 		return "error"
 	}
 	recordMetricRecords(recorder, command, "persisted")
-	logMetricsCommand(logger, slog.LevelInfo, "telemetry_ingest_persisted", "telemetry ingest persisted", command, subject, attempt, now().Sub(start), "", "")
+	logMetricsCommand(logger, slog.LevelDebug, "telemetry_ingest_persisted", "telemetry ingest persisted", command, subject, attempt, now().Sub(start), "", "")
 	_ = msg.Ack()
 	return "persisted"
 }

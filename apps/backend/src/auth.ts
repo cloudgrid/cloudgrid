@@ -57,6 +57,7 @@ interface LoginTransaction {
 interface BrowserSession {
   id: string;
   principal: AuthenticatedPrincipal;
+  selectedProjectId?: string;
   expiresAt: number;
 }
 
@@ -89,6 +90,7 @@ export class CloudGridAuthService {
   #provider?: AuthProviderFixture;
   #transactions = new Map<string, LoginTransaction>();
   #sessions = new Map<string, BrowserSession>();
+  #localSelectedProjectId?: string;
   #now: () => number;
   #fetch: typeof fetch;
 
@@ -229,7 +231,7 @@ export class CloudGridAuthService {
 
   async authenticateRequest(request: Request): Promise<NormalizedAuthContext> {
     if (this.#config.mode === "local") {
-      return localAuthContext();
+      return this.#localAuthContext();
     }
     const session = await this.#sessionFromRequest(request);
     if (session) {
@@ -244,7 +246,7 @@ export class CloudGridAuthService {
     initAuthorization?: string,
   ): Promise<NormalizedAuthContext> {
     if (this.#config.mode === "local") {
-      return localAuthContext();
+      return this.#localAuthContext();
     }
     if (request) {
       const session = await this.#sessionFromRequest(request);
@@ -272,6 +274,28 @@ export class CloudGridAuthService {
       scope: (input.scopes ?? []).join(" "),
     };
     return signJwt(claims, this.#sessionSecret());
+  }
+
+  async rememberSelectedProject(request: Request, projectId: string): Promise<void> {
+    const selectedProjectId = projectId.trim();
+    if (!selectedProjectId) {
+      return;
+    }
+    if (this.#config.mode === "local") {
+      this.#localSelectedProjectId = selectedProjectId;
+      return;
+    }
+    const session = await this.#sessionFromRequest(request);
+    if (session) {
+      session.selectedProjectId = selectedProjectId;
+    }
+  }
+
+  #localAuthContext(): NormalizedAuthContext {
+    return {
+      ...localAuthContext(),
+      ...(this.#localSelectedProjectId ? { projectId: this.#localSelectedProjectId } : {}),
+    };
   }
 
   async #sessionFromRequest(request: Request): Promise<BrowserSession | null> {
@@ -361,6 +385,9 @@ export class CloudGridAuthService {
     }
     if (this.#config.companyId) {
       context.companyId = this.#config.companyId;
+    }
+    if (session.selectedProjectId) {
+      context.projectId = session.selectedProjectId;
     }
     return context;
   }
@@ -476,6 +503,7 @@ export function localAuthContext(): NormalizedAuthContext {
   return {
     mode: "anonymous",
     authMode: "local",
+    principalId: "local-user",
     tenantId: "local",
     companyId: "local",
     projectId: "default",

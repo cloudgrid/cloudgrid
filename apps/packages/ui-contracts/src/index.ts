@@ -381,6 +381,7 @@ export interface MetricNameSearchInput {
   from?: DateTime | null;
   to?: DateTime | null;
   limit?: number | null;
+  cursor?: string | null;
 }
 
 export interface MetricSeriesInput {
@@ -654,6 +655,7 @@ export interface DatasetItemInput {
 
 export interface AppendDatasetItemsInput {
   datasetId: string;
+  expectedDatasetVersion: number;
   items: DatasetItemInput[];
 }
 
@@ -835,8 +837,10 @@ export interface AiProviderProfileInput {
   label: string;
   providerKind: AiProviderKind;
   baseUrl?: string | null;
-  credentialRef: string;
+  credentialRef?: string | null;
+  credentialValue?: string | null;
   models: JSONValue;
+  parameters?: JSONValue | null;
   timeoutMs?: number | null;
   maxConcurrency?: number | null;
   disabled?: boolean | null;
@@ -1618,6 +1622,7 @@ export interface AiProviderProfile {
   baseUrl?: string | null;
   credentialRef: string;
   models: JSONValue;
+  parameters: JSONValue;
   timeoutMs: number;
   maxConcurrency?: number | null;
   disabledAt?: DateTime | null;
@@ -1860,6 +1865,7 @@ export interface MetricQueryWarning {
 
 export interface MetricNameSearchResult {
   items: MetricDescriptor[];
+  nextCursor?: string | null;
 }
 
 export interface MetricSeriesResult {
@@ -2609,6 +2615,10 @@ export interface CreateAiChatConversationMutationData {
 
 export interface ArchiveAiChatConversationMutationData {
   archiveAiChatConversation: AiChatConversation;
+}
+
+export interface DeleteAiChatConversationMutationData {
+  deleteAiChatConversation: boolean;
 }
 
 export interface ApproveAiChatActionMutationData {

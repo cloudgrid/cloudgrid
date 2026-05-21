@@ -4,7 +4,7 @@ description: "This table summarizes the current CloudGrid runtime variables. See
 order: 2
 accent: rose
 eyebrow: "Handbook - Reference"
-updated: 2026-05-18
+updated: 2026-05-20
 ---
 
 This table summarizes the current CloudGrid runtime variables. See [Runtime environment](/handbook/configuration/runtime-environment) for validation context.
@@ -18,7 +18,10 @@ This table summarizes the current CloudGrid runtime variables. See [Runtime envi
 | `CLOUDGRID_DEPLOYMENT_MODE` | `local` | `local` or `deployed`. |
 | `CLOUDGRID_AUTH_MODE` | `local` | `local` or `sso`; must match deployment mode. |
 | `CLOUDGRID_NATS_URL` | `nats://localhost:4222` | Private message bridge. |
+| `CLOUDGRID_NATS_MAX_PAYLOAD` | `8388608` | Local Compose and bundled chart NATS payload limit; external NATS must be at least as high as `CLOUDGRID_OTLP_MAX_REQUEST_BYTES`. |
 | `CLOUDGRID_STORAGE_ADAPTER` | `surrealdb` | Must match compiled Go adapter. |
+| `CLOUDGRID_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `warning`, or `error`. Keep production at `info` unless diagnosing a specific issue. |
+| `CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY` | local development key | Stable control-plane key material for encrypted managed AI provider secrets. Required in deployed mode before storing or resolving production provider API keys. Mount only into control-plane. |
 
 ## BFF And Frontend
 
@@ -26,11 +29,18 @@ This table summarizes the current CloudGrid runtime variables. See [Runtime envi
 | --- | --- | --- |
 | `CLOUDGRID_BFF_HOST` | `0.0.0.0` | BFF bind host. |
 | `CLOUDGRID_BFF_PORT` | `3000` | BFF port. |
+| `CLOUDGRID_MESSAGE_BRIDGE_REQUEST_TIMEOUT_MS` | `12000` | BFF request/reply timeout for private NATS subjects. Keep this above `CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS` so storage-read can return bounded query failures instead of client-side bridge timeouts. |
 | `CLOUDGRID_FRONTEND_DEV_PORT` | `5173` | Vite dev server port. |
 | `CLOUDGRID_FRONTEND_SERVE_STATIC` | `false` in dev | BFF serves built frontend when true. |
 | `CLOUDGRID_FRONTEND_STATIC_DIR` | `./apps/backend/public` | Static frontend directory. |
 | `CLOUDGRID_GRAPHQL_UI` | dev-enabled | Enable GraphiQL for trusted sessions. |
 | `CLOUDGRID_PUBLIC_URL` | unset | External browser base URL used in invitation emails. |
+| `CLOUDGRID_AI_CHAT_ENABLED` | `false` | Enables the BFF AI Chat runtime and route. |
+| `VITE_CLOUDGRID_AI_CHAT_ENABLED` | unset | Frontend build-time override; set to `false` to hide the route. |
+| `CLOUDGRID_AI_CHAT_HARNESS_MODE` | `provider` | BFF AI Chat harness runtime. `provider` uses configured company credentials, `mock` is only for local smoke checks, and `off` disables execution. |
+| `CLOUDGRID_AI_CHAT_PROVIDER_KIND` | unset | Optional local-mode bootstrap provider kind. |
+| `CLOUDGRID_AI_CHAT_MODEL` | unset | Required when local-mode AI Chat provider bootstrap is enabled. |
+| `CLOUDGRID_AI_CHAT_CREDENTIAL_REF` | unset | Optional local-mode bootstrap credential reference for the configured AI Chat provider. UI-managed providers normally use encrypted `managed:` refs instead. |
 
 ## SSO
 
@@ -82,17 +92,18 @@ and retries email asynchronously.
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `CLOUDGRID_OTLP_HTTP_ADDR` | `0.0.0.0:4318` | OTLP/HTTP bind address. |
-| `CLOUDGRID_OTLP_HOST` | `0.0.0.0` | Fallback host when `CLOUDGRID_OTLP_HTTP_ADDR` is unset. |
-| `CLOUDGRID_OTLP_PORT` | `4318` | Fallback port when `CLOUDGRID_OTLP_HTTP_ADDR` is unset. |
 | `CLOUDGRID_OTLP_GRPC_ADDR` | `0.0.0.0:4317` | OTLP/gRPC bind address. |
 | `CLOUDGRID_OTLP_MAX_REQUEST_BYTES` | `4194304` | HTTP body limit. |
 | `CLOUDGRID_OTLP_GRPC_MAX_MESSAGE_BYTES` | HTTP body limit | gRPC message limit. |
 | `CLOUDGRID_OTLP_GRPC_COMPRESSION` | `gzip` | `gzip` or `none`. |
 | `CLOUDGRID_OTLP_LOCAL_PROJECT_ID` | `default` | Single-project local fallback. |
 | `CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS` | unset | JSON bearer-token-to-project map. |
+| `CLOUDGRID_OTLP_MAX_SPANS_PER_REQUEST` | `10000` | Reject oversized trace exports before publish. |
+| `CLOUDGRID_OTLP_MAX_LOGS_PER_REQUEST` | `10000` | Reject oversized log exports before publish. |
 | `CLOUDGRID_OTLP_MAX_METRIC_POINTS_PER_REQUEST` | `20000` | Reject oversized metric exports before publish. |
-
-The performance spec also defines production-scale collector variables for span and log request limits, publish timeouts, and project status cache freshness. Add them to this reference only after they are present in runtime parsing or `.env.example`.
+| `CLOUDGRID_OTLP_PUBLISH_TIMEOUT_MS` | `1000` | Collector NATS publish timeout. |
+| `CLOUDGRID_PROJECT_STATUS_CACHE_TTL_SECONDS` | `60` | Fresh project-status authorization cache lifetime in deployed collector mode. |
+| `CLOUDGRID_PROJECT_STATUS_CACHE_STALE_SECONDS` | `120` | Stale project-status cache reuse window during temporary control-plane failures. |
 
 ## Self-Observability
 
@@ -102,11 +113,25 @@ The performance spec also defines production-scale collector variables for span 
 | `CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID` | `local` in local | Required in deployed when enabled. |
 | `CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID` | `cloudgrid-system` | Project receiving CloudGrid telemetry. |
 | `CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT` | `http://localhost:4318` local | Required in deployed when enabled. |
-| `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN` | unset | Required in deployed and local token mode. |
+| `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN` | unset | Required whenever self-observability is enabled; in local mode it must map to `cloudgrid-system`. |
 | `CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS` | `10` | `1..300`. |
 | `CLOUDGRID_SELF_OBSERVABILITY_TRACES_ENABLED` | `true` when enabled | Trace export toggle. |
 | `CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED` | `true` when enabled | Log export toggle. |
 | `CLOUDGRID_SELF_OBSERVABILITY_METRICS_ENABLED` | `true` when enabled | Metric export toggle. |
+
+## Benchmark Evidence
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `CLOUDGRID_ENABLE_BENCHMARKS` | unset | Must be `true` to run benchmark probes. |
+| `CLOUDGRID_BENCH_DEPLOYMENT_PROFILE` | `local` | Must be `production-like` for production benchmark profiles. |
+| `CLOUDGRID_BENCH_ENVIRONMENT_ID` | `local` | Required for production benchmark profiles. Identifies the promoted environment in the JSON result. |
+| `CLOUDGRID_BENCH_IMAGE_TAG` | `local` | Required for production benchmark profiles. Identifies the release image in the JSON result. |
+| `CLOUDGRID_BENCH_GRAPHQL_URL` | unset | Required for read and combined benchmark profiles. |
+| `CLOUDGRID_BENCH_OTLP_TRACES_URL` | unset | Required for ingest and combined benchmark profiles. |
+| `CLOUDGRID_BENCH_OTLP_BEARER_TOKEN` | unset | Optional ingest credential for benchmark OTLP probes. |
+| `CLOUDGRID_BENCH_REQUESTS` | `1` | Integer `1..1000`. |
+| `CLOUDGRID_BENCH_REQUIRED` | unset | Set to `true` to fail the command when thresholds fail. |
 
 ## Storage And Control-Plane
 
@@ -118,7 +143,7 @@ The performance spec also defines production-scale collector variables for span 
 | `CLOUDGRID_SURREALDB_USERNAME` | local `root` | Do not expose publicly. |
 | `CLOUDGRID_SURREALDB_PASSWORD` | local `root` | Do not expose publicly. |
 | `CLOUDGRID_STORAGE_READ_MAX_METRIC_POINTS` | `5000` | Maximum metric points in one response. |
-| `CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS` | `1500` | Query timeout applied by storage-read before SurrealDB calls. |
+| `CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS` | `10000` | Single storage-read request deadline for trace, log, metric, facet, live-notification, and AI-eval read handlers. |
 | `CLOUDGRID_STORAGE_READ_MAX_PAGE_SIZE` | `200` | Maximum trace/log/facet page size. |
 | `CLOUDGRID_LIVE_MAX_SUBSCRIPTIONS` | `2000` | Maximum active live trace subscriptions per storage-read process. |
 | `CLOUDGRID_LIVE_EVENT_BUFFER_SIZE` | `100` | Configured per-subscription live event buffer size for bounded live delivery. |

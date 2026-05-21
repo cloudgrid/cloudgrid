@@ -109,8 +109,135 @@ describe("AI Chat stream endpoint", () => {
       parameters: { extras: {} },
     });
     expect(harness.requests.at(0)?.credential.value).toBe("secret-provider-key");
+    expect(harness.requests.at(0)?.messages.at(-1)?.parts).toEqual([
+      { type: "text", text: "Investigate slow traces" },
+    ]);
     expect(appended).toHaveLength(2);
 
+    delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
+  });
+
+  test("resolves managed provider credentials at runtime without exposing the API key", async () => {
+    const harness = recordingHarness([{ kind: "final_message", text: "done" }]);
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          const settings = configuredCompanyProvider();
+          const providerProfile = settings.providerProfile;
+          if (!providerProfile) {
+            throw new Error("test fixture requires a provider profile");
+          }
+          return configuredCompanyProvider({
+            providerProfile: {
+              ...providerProfile,
+              credentialRef: "managed:company/company-1/provider-1",
+            },
+          });
+        },
+        async resolveAiProviderSecret(credentialRef) {
+          return { credentialRef, value: "stored-provider-key" };
+        },
+      }),
+      { graphqlUI: false, aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(streamRequest({ idempotencyKey: "idempotency-key-managed" }));
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(body).not.toContain("stored-provider-key");
+    expect(harness.requests.at(0)?.credential.value).toBe("stored-provider-key");
+  });
+
+  test("can skip appending the initial user message already persisted by conversation create", async () => {
+    process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
+    const harness = recordingHarness([{ kind: "final_message", text: "done" }]);
+    const appended: unknown[] = [];
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation({ messages: [], title: "Investigate slow traces" });
+        },
+        async companyAiProviderSettings() {
+          return configuredCompanyProvider();
+        },
+        async aiChatAppendMessage(input) {
+          appended.push(input);
+        },
+      }),
+      { graphqlUI: false, aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(
+      streamRequest({
+        idempotencyKey: "idempotency-key-no-dupe",
+        skipUserMessageAppend: true,
+      }),
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(parseSse(body).map((event) => event.type)).toContain("run.completed");
+    expect(appended).toHaveLength(1);
+    expect(appended[0]).toMatchObject({ role: "assistant" });
+    delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
+  });
+
+  test("handles client cancellation without leaking stream abort errors", async () => {
+    process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
+    let observedSignal: AbortSignal | undefined;
+    const harness: AiChatHarnessPort = {
+      async *streamChat(request) {
+        observedSignal = request.signal;
+        yield { kind: "text_delta", text: "partial" };
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        yield { kind: "text_delta", text: "after-cancel" };
+      },
+      async compactConversation() {
+        throw new Error("unused");
+      },
+    };
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          return configuredCompanyProvider();
+        },
+        async aiChatAppendMessage() {},
+        async aiChatFinalizeRun() {
+          return {
+            id: "run-1",
+            conversationId: "chat-1",
+            status: "cancelled",
+            providerProfileId: "provider-1",
+            model: "gpt-5-mini",
+            artifacts: [],
+            actionProposals: [],
+            startedAt: "2026-05-18T00:00:00.000Z",
+            completedAt: "2026-05-18T00:00:01.000Z",
+            error: "cancelled",
+          };
+        },
+      }),
+      { graphqlUI: false, aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(streamRequest({ idempotencyKey: "idempotency-key-cancel" }));
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("missing response body");
+    }
+    await reader.read();
+
+    await expect(reader.cancel()).resolves.toBeUndefined();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    expect(observedSignal?.aborted).toBe(true);
     delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
   });
 
@@ -183,7 +310,7 @@ describe("AI Chat stream endpoint", () => {
       {
         conversationId: "chat-1",
         projectId: "project-1",
-        userId: "user-local",
+        userId: "local-user",
         userMessageClientId: "client-message-1",
         idempotencyKey: "idempotency-key-0005",
         providerKind: "openai",
@@ -209,6 +336,107 @@ describe("AI Chat stream endpoint", () => {
         artifactCount: 0,
       },
     ]);
+
+    delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
+  });
+
+  test("answers today's trace questions from the CloudGrid trace tool without provider guesses", async () => {
+    process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
+    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const traceInputs: unknown[] = [];
+    const appended: unknown[] = [];
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          return configuredCompanyProvider();
+        },
+        async viewer() {
+          return {
+            user: { id: "local-user", displayName: "Local user", email: null },
+            organizations: [],
+            selectedProject: {
+              id: "project-1",
+              organizationId: "company-1",
+              name: "Default project",
+              slug: "default",
+              status: "active",
+              telemetry: {
+                traceCount: 1,
+                logCount: 0,
+                metricCount: 0,
+                serviceCount: 1,
+                lastIngestAt: "2026-05-21T08:15:00.000Z",
+              },
+            },
+          };
+        },
+        async searchTraces(input) {
+          traceInputs.push(input);
+          return {
+            items: [
+              {
+                id: "trace-1234567890abcdef",
+                serviceName: "checkout-api",
+                operationName: "POST /checkout",
+                startedAt: "2026-05-21T08:15:00.000Z",
+                startedAtUnixNano: "0",
+                endedAt: null,
+                endedAtUnixNano: null,
+                durationNano: "120000000",
+                durationMs: 120,
+                rootSpanId: "span-1",
+                status: "error",
+                attributes: {},
+                spanCount: 4,
+                errorSpanCount: 1,
+                logCount: 0,
+                serviceCount: 1,
+              },
+            ],
+            nextCursor: null,
+          };
+        },
+        async aiChatAppendMessage(input) {
+          appended.push(input);
+        },
+      }),
+      { graphqlUI: false, aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(
+      streamRequest({
+        idempotencyKey: "idempotency-key-trace-tool",
+        parts: [{ type: "text", text: "what are the traces of today?" }],
+        timezone: "Europe/Berlin",
+      }),
+    );
+    const events = parseSse(await response.text());
+
+    expect(response.status).toBe(200);
+    expect(events.map((event) => event.type)).toEqual([
+      "run.started",
+      "message.created",
+      "tool.started",
+      "tool.completed",
+      "text.delta",
+      "run.completed",
+    ]);
+    expect(harness.requests).toHaveLength(0);
+    expect(traceInputs).toHaveLength(1);
+    expect(traceInputs[0]).toMatchObject({ limit: 25, sort: "startedAt_desc" });
+    expect(JSON.stringify(events)).toContain("Default project (project-1)");
+    expect(JSON.stringify(events)).toContain("checkout-api");
+    expect(JSON.stringify(events)).toContain("/traces/trace-1234567890abcdef");
+    expect(JSON.stringify(events)).not.toContain("cgctl");
+    expect(JSON.stringify(events)).not.toContain("/v1/projects");
+    expect(appended).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: "assistant", parts: expect.any(Array) }),
+      ]),
+    );
 
     delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
   });
@@ -342,7 +570,9 @@ function recordingHarness(events: AiChatHarnessEvent[]) {
   return harness;
 }
 
-function configuredCompanyProvider(): CompanyAiProviderSettings {
+function configuredCompanyProvider(
+  overrides: Partial<CompanyAiProviderSettings> = {},
+): CompanyAiProviderSettings {
   return {
     companyId: "company-1",
     providerProfile: {
@@ -354,6 +584,7 @@ function configuredCompanyProvider(): CompanyAiProviderSettings {
       baseUrl: null,
       credentialRef: "env:CLOUDGRID_TEST_AI_CHAT_KEY",
       models: { chat: ["gpt-5-mini"] },
+      parameters: {},
       timeoutMs: 30_000,
       maxConcurrency: null,
       disabledAt: null,
@@ -375,6 +606,7 @@ function configuredCompanyProvider(): CompanyAiProviderSettings {
     version: 1,
     updatedAt: "2026-05-18T00:00:00.000Z",
     updatedByUserId: "user-local",
+    ...overrides,
   };
 }
 
@@ -390,7 +622,7 @@ function conversationShape() {
     id: "chat-1",
     companyId: "company-1",
     projectId: "project-1",
-    userId: "user-local",
+    userId: "local-user",
     title: "Investigate slow traces",
     status: "active" as const,
     messages: [],

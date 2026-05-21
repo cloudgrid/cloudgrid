@@ -45,8 +45,52 @@ func TestBuildMetricNameSearchQueryFiltersAndOrdersDescriptors(t *testing.T) {
 			t.Fatalf("metric name SQL missing %q:\n%s", want, stmt.SQL)
 		}
 	}
-	if stmt.Params["query"] != "duration" || stmt.Params["service"] != service || stmt.Params["limit"] != limit {
-		t.Fatalf("params = %#v, want query/service/limit", stmt.Params)
+	if stmt.Params["query"] != "duration" || stmt.Params["service"] != service || stmt.Params["limit"] != limit+1 {
+		t.Fatalf("params = %#v, want query/service/limit+1 sentinel", stmt.Params)
+	}
+}
+
+func TestBuildMetricNameSearchQueryAppliesCursor(t *testing.T) {
+	cursorTime := time.Date(2026, 5, 14, 8, 0, 0, 0, time.UTC)
+	cursor := encodeCursor(t, "lastSeenAt_desc_metricName_asc", cursorTime.Format(time.RFC3339Nano), "requests")
+
+	stmt, err := BuildMetricNameSearchQuery(contracts.MetricNameSearchInput{Cursor: &cursor})
+	if err != nil {
+		t.Fatalf("BuildMetricNameSearchQuery returned error: %v", err)
+	}
+
+	for _, want := range []string{
+		"lastSeenAt < $cursorValue",
+		"lastSeenAt = $cursorValue AND metricName > $cursorId",
+		"ORDER BY lastSeenAt DESC, metricName ASC",
+	} {
+		if !strings.Contains(stmt.SQL, want) {
+			t.Fatalf("metric name SQL missing %q:\n%s", want, stmt.SQL)
+		}
+	}
+	if stmt.Params["cursorValue"] != cursorTime || stmt.Params["cursorId"] != "requests" {
+		t.Fatalf("params = %#v, want decoded cursor", stmt.Params)
+	}
+}
+
+func TestMetricNamePageReturnsCursor(t *testing.T) {
+	now := time.Date(2026, 5, 14, 8, 0, 0, 0, time.UTC)
+	items := []contracts.MetricDescriptor{
+		{Name: "requests", LastSeenAt: now},
+		{Name: "latency", LastSeenAt: now.Add(-time.Minute)},
+	}
+
+	page, cursor := metricNamePage(items, 1)
+	if len(page) != 1 || page[0].Name != "requests" || cursor == nil {
+		t.Fatalf("metric page = %#v cursor=%v, want first item and cursor", page, cursor)
+	}
+
+	decoded, err := decodeCursor(*cursor, "lastSeenAt_desc_metricName_asc")
+	if err != nil {
+		t.Fatalf("decode cursor: %v", err)
+	}
+	if decoded.LastValue != now || decoded.LastID != "requests" {
+		t.Fatalf("cursor = %#v, want requests at %s", decoded, now)
 	}
 }
 

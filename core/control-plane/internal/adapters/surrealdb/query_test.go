@@ -37,6 +37,13 @@ func TestControlPlaneSchemaIncludesRequiredTablesAndRelations(t *testing.T) {
 		"DEFINE TABLE IF NOT EXISTS project_ai_settings SCHEMAFULL TYPE NORMAL",
 		"DEFINE FIELD OVERWRITE settings ON project_ai_settings TYPE object FLEXIBLE",
 		"DEFINE INDEX IF NOT EXISTS project_ai_settings_project ON project_ai_settings FIELDS projectId UNIQUE",
+		"DEFINE TABLE IF NOT EXISTS company_ai_provider_settings SCHEMAFULL TYPE NORMAL",
+		"DEFINE TABLE IF NOT EXISTS ai_chat_conversation SCHEMAFULL TYPE NORMAL",
+		"DEFINE TABLE IF NOT EXISTS ai_chat_message SCHEMAFULL TYPE NORMAL",
+		"DEFINE FIELD OVERWRITE parts[*] ON ai_chat_message TYPE object FLEXIBLE",
+		"DEFINE TABLE IF NOT EXISTS ai_chat_run SCHEMAFULL TYPE NORMAL",
+		"DEFINE TABLE IF NOT EXISTS ai_chat_action SCHEMAFULL TYPE NORMAL",
+		"DEFINE TABLE IF NOT EXISTS ai_chat_compaction SCHEMAFULL TYPE NORMAL",
 		"DEFINE TABLE IF NOT EXISTS alert_rule SCHEMAFULL TYPE NORMAL",
 		"DEFINE FIELD IF NOT EXISTS query ON alert_rule TYPE object FLEXIBLE",
 		"DEFINE TABLE IF NOT EXISTS alert_silence SCHEMAFULL TYPE NORMAL",
@@ -77,6 +84,12 @@ func TestControlPlaneReadinessRequiresDashboardTables(t *testing.T) {
 	info.Tables["project_membership"] = "DEFINE TABLE project_membership"
 	info.Tables["retention_policy"] = "DEFINE TABLE retention_policy"
 	info.Tables["project_ai_settings"] = "DEFINE TABLE project_ai_settings"
+	info.Tables["company_ai_provider_settings"] = "DEFINE TABLE company_ai_provider_settings"
+	info.Tables["ai_chat_conversation"] = "DEFINE TABLE ai_chat_conversation"
+	info.Tables["ai_chat_message"] = "DEFINE TABLE ai_chat_message"
+	info.Tables["ai_chat_run"] = "DEFINE TABLE ai_chat_run"
+	info.Tables["ai_chat_action"] = "DEFINE TABLE ai_chat_action"
+	info.Tables["ai_chat_compaction"] = "DEFINE TABLE ai_chat_compaction"
 	info.Tables["alert_rule"] = "DEFINE TABLE alert_rule"
 	info.Tables["alert_silence"] = "DEFINE TABLE alert_silence"
 	info.Tables["alert_event"] = "DEFINE TABLE alert_event"

@@ -31,9 +31,10 @@ func TestBuildTraceSearchQueryUsesFiltersParametersAndDeterministicSort(t *testi
 	}
 
 	assertContains(t, stmt.SQL, "SELECT traceId AS id")
-	assertContains(t, stmt.SQL, "AS operationName")
-	assertContains(t, stmt.SQL, "SELECT name, startedAt, spanId FROM span")
-	assertContains(t, stmt.SQL, "parentSpanId = NONE")
+	assertContains(t, stmt.SQL, "operationName")
+	assertContains(t, stmt.SQL, "startedAtUnixNano")
+	assertContains(t, stmt.SQL, "endedAtUnixNano")
+	assertContains(t, stmt.SQL, "durationNano")
 	assertContains(t, stmt.SQL, "FROM trace")
 	assertContains(t, stmt.SQL, "tenantId = $tenantId")
 	assertContains(t, stmt.SQL, "companyId = $companyId")
@@ -47,8 +48,8 @@ func TestBuildTraceSearchQueryUsesFiltersParametersAndDeterministicSort(t *testi
 	assertContains(t, stmt.SQL, "LIMIT $limit")
 	assertNoMutation(t, stmt.SQL)
 
-	if stmt.Params["service"] != service || stmt.Params["status"] != string(status) || stmt.Params["limit"] != limit {
-		t.Fatalf("params = %#v, want service/status/limit", stmt.Params)
+	if stmt.Params["service"] != service || stmt.Params["status"] != string(status) || stmt.Params["limit"] != limit+1 {
+		t.Fatalf("params = %#v, want service/status/limit+1 sentinel", stmt.Params)
 	}
 	if stmt.Params["tenantId"] != "local" || stmt.Params["companyId"] != "local" || stmt.Params["projectId"] != "default" {
 		t.Fatalf("params = %#v, want local ownership defaults", stmt.Params)
@@ -88,7 +89,10 @@ func TestBuildProjectTelemetryOverviewQueriesUseOwnershipAndReadOnlyStatements(t
 		assertContains(t, stmt.SQL, "companyId = $companyId")
 		assertContains(t, stmt.SQL, "projectId = $projectId")
 		if name != "lastIngest" && name != "services" {
-			assertContains(t, stmt.SQL, "deletedAt = NONE")
+			assertContains(t, stmt.SQL, "(deletedAt = NONE OR deletedAt = NULL)")
+		}
+		if stmt.Target != target {
+			t.Fatalf("%s target = %#v, want %#v", name, stmt.Target, target)
 		}
 		assertNoMutation(t, stmt.SQL)
 		if stmt.Params["tenantId"] != "tenant-1" || stmt.Params["companyId"] != "company-1" || stmt.Params["projectId"] != "project-1" {
@@ -119,6 +123,25 @@ func TestResolveProjectTelemetryTargetUsesExplicitProjectAndAuthTenant(t *testin
 	}
 	if target.TenantID != tenantID || target.CompanyID != "company-1" || target.ProjectID != "project-1" || target.AuthMode != deployedAuthMode {
 		t.Fatalf("target = %#v, want auth tenant and explicit company/project", target)
+	}
+	if target.Namespace != "cg_tenant_tenant-1" || target.Database != "project_project-1" {
+		t.Fatalf("target = %#v, want deployed tenant namespace/project database", target)
+	}
+}
+
+func TestResolveProjectTelemetryTargetUsesLocalNamespaceForLocalAuth(t *testing.T) {
+	target, err := ResolveProjectTelemetryTarget(contracts.ProjectTelemetryOverviewTarget{
+		CompanyID: "local",
+		ProjectID: "cloudgrid-system",
+	}, nil)
+	if err != nil {
+		t.Fatalf("ResolveProjectTelemetryTarget returned error: %v", err)
+	}
+	if target.Namespace != "cloudgrid_local" || target.Database != "project_cloudgrid-system" {
+		t.Fatalf("target = %#v, want local namespace and explicit project database", target)
+	}
+	if target.TenantID != "local" || target.CompanyID != "local" || target.ProjectID != "cloudgrid-system" || target.AuthMode != localAuthMode {
+		t.Fatalf("target ownership = %#v, want local/local/cloudgrid-system", target)
 	}
 }
 
@@ -193,8 +216,7 @@ func TestBuildLiveTraceCandidatesQueryNarrowsByTraceIDsAndLiveFilters(t *testing
 	}
 
 	assertContains(t, stmt.SQL, "SELECT traceId AS id")
-	assertContains(t, stmt.SQL, "AS operationName")
-	assertContains(t, stmt.SQL, "SELECT name, startedAt, spanId FROM span")
+	assertContains(t, stmt.SQL, "operationName")
 	assertContains(t, stmt.SQL, "FROM trace")
 	assertContains(t, stmt.SQL, "tenantId = $tenantId")
 	assertContains(t, stmt.SQL, "companyId = $companyId")
@@ -264,8 +286,7 @@ func TestBuildTraceDetailQueryUsesTraceIDAndReadOnlyStatements(t *testing.T) {
 	assertContains(t, stmt.SQL, "SELECT traceId AS id")
 	assertContains(t, stmt.SQL, "startedAtUnixNano")
 	assertContains(t, stmt.SQL, "durationNano")
-	assertContains(t, stmt.SQL, "FROM trace")
-	assertContains(t, stmt.SQL, "traceId = $traceId")
+	assertContains(t, stmt.SQL, "FROM type::record('trace', $traceId)")
 	assertContains(t, stmt.SQL, "tenantId = $tenantId")
 	assertContains(t, stmt.SQL, "projectId = $projectId")
 	assertContains(t, stmt.SQL, "deletedAt = NONE")
@@ -394,6 +415,9 @@ func TestBuildLogSearchQueryUsesFiltersParametersAndTextSearch(t *testing.T) {
 
 	if stmt.Params["search"] != "timeout" {
 		t.Fatalf("params = %#v, want lowercase search", stmt.Params)
+	}
+	if stmt.Params["limit"] != limit+1 {
+		t.Fatalf("params = %#v, want limit+1 sentinel", stmt.Params)
 	}
 }
 

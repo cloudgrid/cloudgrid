@@ -217,8 +217,9 @@ func validateEvalLiveStart(request contracts.EvalLiveStartRequest) error {
 	return nil
 }
 
-func aiEvalReadSubjectHandlers(store AiEvalQueryStore, registry *EvalLiveRegistry, logger *slog.Logger) map[string]bridgeMessageHandler {
-	queryHandler := handleAiEvalQuery(store, logger)
+func aiEvalReadSubjectHandlers(store AiEvalQueryStore, registry *EvalLiveRegistry, logger *slog.Logger, timeout time.Duration) map[string]bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
+	queryHandler := handleAiEvalQuery(store, logger, timeout)
 	return map[string]bridgeMessageHandler{
 		SubjectEvalAgentRunsSearch:            queryHandler,
 		SubjectEvalDatasetSearch:              queryHandler,
@@ -228,17 +229,18 @@ func aiEvalReadSubjectHandlers(store AiEvalQueryStore, registry *EvalLiveRegistr
 		SubjectEvalExperimentSearch:           queryHandler,
 		SubjectEvalResultsSearch:              queryHandler,
 		SubjectEvalQualityOverview:            queryHandler,
-		SubjectEvalDatasetExportStart:         handleAiEvalMutationQuery(store, logger),
-		SubjectEvalManifestResolve:            handleExperimentManifestResolve(store, logger),
-		SubjectEvalOnlinePolicyMatchesResolve: handleOnlinePolicyMatchesResolve(store, logger),
+		SubjectEvalDatasetExportStart:         handleAiEvalMutationQuery(store, logger, timeout),
+		SubjectEvalManifestResolve:            handleExperimentManifestResolve(store, logger, timeout),
+		SubjectEvalOnlinePolicyMatchesResolve: handleOnlinePolicyMatchesResolve(store, logger, timeout),
 		SubjectAnnotationQueueSearch:          queryHandler,
 		SubjectEvalLiveStart:                  handleEvalLiveStart(registry, logger),
 		SubjectEvalLiveStop:                   handleEvalLiveStop(registry, logger),
-		SubjectEvalExperimentProgress:         handleExperimentProgressNotification(registry, logger),
+		SubjectEvalExperimentProgress:         handleExperimentProgressNotification(registry, logger, timeout),
 	}
 }
 
-func handleAiEvalMutationQuery(store AiEvalQueryStore, logger *slog.Logger) bridgeMessageHandler {
+func handleAiEvalMutationQuery(store AiEvalQueryStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var request contracts.EvalMutationRequest
@@ -252,7 +254,7 @@ func handleAiEvalMutationQuery(store AiEvalQueryStore, logger *slog.Logger) brid
 			logHandlerCompletion(logger, msg.Subject(), response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
 		data, err := store.QueryAiEval(ctx, msg.Subject(), request.Input)
 		if err != nil {
@@ -267,7 +269,8 @@ func handleAiEvalMutationQuery(store AiEvalQueryStore, logger *slog.Logger) brid
 	}
 }
 
-func handleAiEvalQuery(store AiEvalQueryStore, logger *slog.Logger) bridgeMessageHandler {
+func handleAiEvalQuery(store AiEvalQueryStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var request contracts.EvalQueryRequest
@@ -281,7 +284,7 @@ func handleAiEvalQuery(store AiEvalQueryStore, logger *slog.Logger) bridgeMessag
 			logHandlerCompletion(logger, msg.Subject(), response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
 		data, err := store.QueryAiEval(ctx, msg.Subject(), request.Input)
 		if err != nil {
@@ -296,7 +299,8 @@ func handleAiEvalQuery(store AiEvalQueryStore, logger *slog.Logger) bridgeMessag
 	}
 }
 
-func handleExperimentManifestResolve(store AiEvalQueryStore, logger *slog.Logger) bridgeMessageHandler {
+func handleExperimentManifestResolve(store AiEvalQueryStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var request contracts.ExperimentManifestResolveRequest
@@ -310,7 +314,7 @@ func handleExperimentManifestResolve(store AiEvalQueryStore, logger *slog.Logger
 			logHandlerCompletion(logger, SubjectEvalManifestResolve, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
 		manifest, err := store.ResolveExperimentManifest(ctx, request)
 		if err != nil {
@@ -329,7 +333,8 @@ func handleExperimentManifestResolve(store AiEvalQueryStore, logger *slog.Logger
 	}
 }
 
-func handleOnlinePolicyMatchesResolve(store AiEvalQueryStore, logger *slog.Logger) bridgeMessageHandler {
+func handleOnlinePolicyMatchesResolve(store AiEvalQueryStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var request contracts.OnlinePolicyMatchesResolveRequest
@@ -343,7 +348,7 @@ func handleOnlinePolicyMatchesResolve(store AiEvalQueryStore, logger *slog.Logge
 			logHandlerCompletion(logger, SubjectEvalOnlinePolicyMatchesResolve, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
 		data, err := store.ResolveOnlinePolicyMatches(ctx, request)
 		if err != nil {
@@ -416,7 +421,8 @@ func handleEvalLiveStop(registry *EvalLiveRegistry, logger *slog.Logger) bridgeM
 	}
 }
 
-func handleExperimentProgressNotification(registry *EvalLiveRegistry, logger *slog.Logger) bridgeMessageHandler {
+func handleExperimentProgressNotification(registry *EvalLiveRegistry, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var notification contracts.ExperimentProgressNotification
@@ -424,7 +430,7 @@ func handleExperimentProgressNotification(registry *EvalLiveRegistry, logger *sl
 			logHandlerCompletion(logger, SubjectEvalExperimentProgress, "", false, start, ptr(bridgeErrorFromError(validationError("invalid experiment progress notification JSON"))))
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
 		if err := registry.HandleProgress(ctx, notification); err != nil {
 			bridgeError := bridgeErrorFromError(err)

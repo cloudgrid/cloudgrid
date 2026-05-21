@@ -179,7 +179,7 @@ paths:
           $ref: "#/components/responses/Error"
         "410":
           $ref: "#/components/responses/Error"
-  /api/ai-chat/runs:
+  /api/ai-chat/stream:
     post:
       operationId: OPR-AIC-post-chat-run
       summary: Start an AI Chat run and stream server-sent events.

@@ -59,6 +59,8 @@ Every telemetry record still stores `tenantId` and `projectId` as defense-in-dep
 - Service record: `service:<serviceNameSlug>`.
 - Ingest command record: `ingest_command:<commandId>`.
 
+Deterministic record IDs are the primary direct-reference mechanism for hot telemetry records. String IDs remain stored as fields for GraphQL contracts, filtering, notification payloads, and compound indexes. Do not add graph edge tables for trace-span, span-parent, span-log, service-span, or metric-service links on the ingest path unless an async materialization spec defines the extra write cost and query that consumes it.
+
 ## Trace Record
 
 ```ts
@@ -67,6 +69,7 @@ Every telemetry record still stores `tenantId` and `projectId` as defense-in-dep
   projectId: string
   traceId: string
   serviceName?: string
+  operationName?: string
   startedAt: Date
   endedAt?: Date
   durationMs?: number
@@ -79,6 +82,10 @@ Every telemetry record still stores `tenantId` and `projectId` as defense-in-dep
   serviceCount: number
 }
 ```
+
+`operationName` is the root span name captured at write time. Trace-list and live-candidate reads must project this field directly from `trace`; they must not perform per-row span lookups to derive it.
+
+Trace summary counters are denormalized on `trace`. Trace-list and live-candidate reads must project `spanCount`, `errorSpanCount`, `logCount`, and `serviceCount` directly from `trace`. Log-only ingest that refreshes an existing trace's `logCount` must target `trace:<traceId>` by deterministic record ID and may use the indexed `log_event(tenantId, companyId, projectId, traceId, timestamp)` lookup to recompute the count.
 
 ## Span Record
 
@@ -185,28 +192,38 @@ Every telemetry record still stores `tenantId` and `projectId` as defense-in-dep
 - `ingest_command.commandId` unique.
 - `ingest_command.completedAt`.
 - `trace.startedAt`.
+- `trace.tenantId, trace.companyId, trace.projectId, trace.startedAt`.
+- `trace.tenantId, trace.companyId, trace.projectId, trace.traceId`.
+- `trace.tenantId, trace.companyId, trace.projectId, trace.serviceName, trace.startedAt`.
+- `trace.tenantId, trace.companyId, trace.projectId, trace.status, trace.startedAt`.
 - `trace.serviceName`.
-- `trace.serviceName, trace.startedAt`.
 - `trace.status`.
-- `trace.status, trace.startedAt`.
 - `span.traceId`.
 - `span.parentSpanId`.
-- `span.traceId, parentSpanId`.
+- `span.tenantId, span.companyId, span.projectId, span.traceId, span.parentSpanId, span.startedAt`.
+- `span.tenantId, span.companyId, span.projectId, span.serviceName, span.traceId`.
 - `span.serviceName`.
 - `span.name`.
 - `span.status`.
 - `log_event.timestamp`.
+- `log_event.tenantId, log_event.companyId, log_event.projectId, log_event.timestamp`.
 - `log_event.serviceName`.
 - `log_event.serviceName, timestamp`.
 - `log_event.traceId`.
 - `log_event.traceId, timestamp`.
+- `log_event.tenantId, log_event.companyId, log_event.projectId, log_event.serviceName, log_event.timestamp`.
+- `log_event.tenantId, log_event.companyId, log_event.projectId, log_event.traceId, log_event.timestamp`.
 - `log_event.spanId`.
 - `log_event.severityText`.
 - `metric_descriptor.metricName`.
 - `metric_descriptor.lastSeenAt`.
+- `metric_descriptor.tenantId, metric_descriptor.companyId, metric_descriptor.projectId, metric_descriptor.lastSeenAt`.
+- `metric_descriptor.tenantId, metric_descriptor.companyId, metric_descriptor.projectId, metric_descriptor.metricName`.
 - `metric_point.metricName`.
 - `metric_point.metricName, timestamp`.
+- `metric_point.tenantId, metric_point.companyId, metric_point.projectId, metric_point.metricName, metric_point.timestamp`.
 - `metric_point.serviceName, timestamp`.
+- `metric_point.tenantId, metric_point.companyId, metric_point.projectId, metric_point.serviceName, metric_point.timestamp`.
 - `metric_point.timestamp`.
 - `metric_ingest_cardinality.metricName, windowStart`.
 

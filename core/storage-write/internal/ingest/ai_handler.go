@@ -59,7 +59,7 @@ func HandleAIProjectionMessage(ctx context.Context, msg Message, store ports.AIW
 		return
 	}
 	if exists {
-		logAIProjection(logger, slog.LevelInfo, "ai_projection_duplicate_acknowledged", "AI projection duplicate acknowledged", command, subject, attempt, now().Sub(start), "", "")
+		logAIProjection(logger, slog.LevelDebug, "ai_projection_duplicate_acknowledged", "AI projection duplicate acknowledged", command, subject, attempt, now().Sub(start), "", "")
 		_ = msg.Ack()
 		return
 	}
@@ -79,7 +79,7 @@ func HandleAIProjectionMessage(ctx context.Context, msg Message, store ports.AIW
 		logAIProjection(logger, slog.LevelError, "ai_projection_notification_failed", "message bridge is unavailable", command, subject, attempt, now().Sub(start), bridgeErrorID, bridgeErrorCode)
 	}
 
-	logAIProjection(logger, slog.LevelInfo, "ai_projection_persisted", "AI projection persisted", command, subject, attempt, now().Sub(start), "", "")
+	logAIProjection(logger, slog.LevelDebug, "ai_projection_persisted", "AI projection persisted", command, subject, attempt, now().Sub(start), "", "")
 	_ = msg.Ack()
 }
 

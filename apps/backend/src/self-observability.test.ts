@@ -362,10 +362,14 @@ describe("BFF OTLP self-observability trace and log exporter", () => {
       expect(JSON.stringify(payload)).toContain("cloudgrid.self_observability.company_id");
       expect(JSON.stringify(payload)).toContain("ops");
     }
+    const span = tracePayload.resourceSpans[0].scopeSpans[0].spans[0];
+    expect(span.traceId).toBe("EREREREREREREREREREREQ==");
+    expect(span.spanId).toBe("IiIiIiIiIiI=");
+    expect(span.parentSpanId).toBe("MzMzMzMzMzM=");
     expect(JSON.stringify(tracePayload)).toContain("graphql.request");
-    expect(JSON.stringify(tracePayload)).toContain("11111111111111111111111111111111");
-    expect(JSON.stringify(tracePayload)).toContain("2222222222222222");
-    expect(JSON.stringify(tracePayload)).toContain("3333333333333333");
+    expect(JSON.stringify(tracePayload)).not.toContain("11111111111111111111111111111111");
+    expect(JSON.stringify(tracePayload)).not.toContain("2222222222222222");
+    expect(JSON.stringify(tracePayload)).not.toContain("3333333333333333");
     expect(JSON.stringify(tracePayload)).toContain("vendor=value");
     expect(JSON.stringify(tracePayload)).toContain("graphql.operation.name");
     expect(JSON.stringify(tracePayload)).not.toContain("query SensitiveTraceList");

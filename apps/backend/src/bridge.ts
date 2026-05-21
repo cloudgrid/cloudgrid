@@ -211,10 +211,12 @@ const subjects = {
   projectAiProviderSettingsUpdate: "control.ai_providers.project.update",
   companyAiProviderSettingsGet: "control.ai_providers.company.get",
   companyAiProviderSettingsUpdate: "control.ai_providers.company.update",
+  aiProviderSecretResolve: "control.ai_provider_secrets.resolve",
   aiChatHistory: "control.ai_chat.history",
   aiChatConversationGet: "control.ai_chat.conversation.get",
   aiChatConversationCreate: "control.ai_chat.conversation.create",
   aiChatConversationArchive: "control.ai_chat.conversation.archive",
+  aiChatConversationDelete: "control.ai_chat.conversation.delete",
   aiChatMessageAppend: "control.ai_chat.message.append",
   aiChatRunCreate: "control.ai_chat.run.create",
   aiChatRunUpdate: "control.ai_chat.run.update",
@@ -425,6 +427,10 @@ export interface ControlPlaneBridge {
     input: UpdateCompanyAiProviderSettingsInput,
     authContext?: NormalizedAuthContext,
   ): Promise<CompanyAiProviderSettings>;
+  resolveAiProviderSecret?(
+    credentialRef: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<{ credentialRef: string; value: string }>;
   aiChatHistory(
     input: AiChatHistoryInput,
     authContext?: NormalizedAuthContext,
@@ -441,6 +447,7 @@ export interface ControlPlaneBridge {
     id: string,
     authContext?: NormalizedAuthContext,
   ): Promise<AiChatConversation>;
+  deleteAiChatConversation(id: string, authContext?: NormalizedAuthContext): Promise<boolean>;
   approveAiChatAction(
     input: ApproveAiChatActionInput,
     authContext?: NormalizedAuthContext,
@@ -1296,7 +1303,13 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<ProjectAiProviderSettings> {
     const data = await this.#request<{ settings?: ProjectAiProviderSettings }>(
       subjects.projectAiProviderSettingsUpdate,
-      { ...envelope(authContext), input, expectedVersion: input.expectedVersion },
+      {
+        ...envelope(authContext),
+        projectId: input.projectId,
+        providerProfiles: input.providerProfiles,
+        modelAliases: input.modelAliases,
+        expectedVersion: input.expectedVersion,
+      },
     );
     return requiredData(
       data.settings,
@@ -1324,11 +1337,31 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<CompanyAiProviderSettings> {
     const data = await this.#request<{ settings?: CompanyAiProviderSettings }>(
       subjects.companyAiProviderSettingsUpdate,
-      { ...envelope(authContext), input, expectedVersion: input.expectedVersion },
+      {
+        ...envelope(authContext),
+        companyId: input.companyId,
+        providerProfile: input.providerProfile,
+        chatModelAlias: input.chatModelAlias,
+        expectedVersion: input.expectedVersion,
+      },
     );
     return requiredData(
       data.settings,
       "Company AI provider settings update returned an empty response",
+    );
+  }
+
+  async resolveAiProviderSecret(
+    credentialRef: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<{ credentialRef: string; value: string }> {
+    const data = await this.#request<{ credential?: { credentialRef?: string; value?: string } }>(
+      subjects.aiProviderSecretResolve,
+      { ...envelope(authContext), credentialRef },
+    );
+    return requiredData(
+      aiProviderSecretSchema.parse(data.credential),
+      "AI provider secret resolver returned an empty response",
     );
   }
 
@@ -1338,7 +1371,8 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<AiChatHistory> {
     const data = await this.#request<{ history?: AiChatHistory }>(subjects.aiChatHistory, {
       ...envelope(authContext),
-      input: compactInput(input as unknown as Record<string, unknown>),
+      userId: authContext?.principalId ?? "",
+      ...compactInput(input as unknown as Record<string, unknown>),
     });
     return requiredData(data.history, "AI Chat history returned an empty response");
   }
@@ -1360,7 +1394,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<AiChatConversation> {
     const data = await this.#request<{ conversation?: AiChatConversation }>(
       subjects.aiChatConversationCreate,
-      { ...envelope(authContext), input },
+      { ...envelope(authContext), ...input, userId: authContext?.principalId ?? "" },
     );
     return requiredData(
       data.conversation,
@@ -1374,12 +1408,29 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<AiChatConversation> {
     const data = await this.#request<{ conversation?: AiChatConversation }>(
       subjects.aiChatConversationArchive,
-      { ...envelope(authContext), conversationId: id },
+      {
+        ...envelope(authContext),
+        conversationId: id,
+        userId: authContext?.principalId ?? "",
+        expectedVersion: 1,
+      },
     );
     return requiredData(
       data.conversation,
       "AI Chat conversation archive returned an empty response",
     );
+  }
+
+  async deleteAiChatConversation(
+    id: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<boolean> {
+    const data = await this.#request<{ deleted?: boolean }>(subjects.aiChatConversationDelete, {
+      ...envelope(authContext),
+      conversationId: id,
+      userId: authContext?.principalId ?? "",
+    });
+    return data.deleted === true;
   }
 
   async approveAiChatAction(
@@ -1388,7 +1439,14 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<AiChatActionProposal> {
     const data = await this.#request<{ action?: AiChatActionProposal }>(
       subjects.aiChatActionApprove,
-      { ...envelope(authContext), input, expectedVersion: input.expectedVersion },
+      {
+        ...envelope(authContext),
+        actionId: input.actionId,
+        approved: input.approved,
+        userId: authContext?.principalId ?? "",
+        reason: input.reason,
+        expectedVersion: input.expectedVersion,
+      },
     );
     return requiredData(data.action, "AI Chat action approval returned an empty response");
   }
@@ -1496,9 +1554,10 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     input: AppendDatasetItemsInput,
     authContext?: NormalizedAuthContext,
   ): Promise<Dataset> {
+    const { expectedDatasetVersion, ...rest } = input;
     return this.#requestParsed(
       subjects.datasetItemsAppend,
-      { ...envelope(authContext), input },
+      { ...envelope(authContext), input: { ...rest, version: expectedDatasetVersion } },
       typedDatasetSchema,
     );
   }
@@ -1687,10 +1746,14 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     input: TraceSearchInput,
     authContext?: NormalizedAuthContext,
   ): Promise<TraceSearchResult> {
-    return this.#request<TraceSearchResult>(subjects.traceSearch, {
-      ...envelope(authContext),
-      query: compactInput(input as Record<string, unknown>) as TraceSearchInput,
-    });
+    return this.#requestParsed(
+      subjects.traceSearch,
+      {
+        ...envelope(authContext),
+        query: compactInput(input as Record<string, unknown>) as TraceSearchInput,
+      },
+      traceSearchResultSchema,
+    );
   }
 
   async getTraceDetail(
@@ -2126,7 +2189,14 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
         );
         throw graphQLErrorFromBridge(error, response.requestId || requestId);
       }
-      this.#logRequest("info", subject, response.requestId || requestId, start, "ok", traceContext);
+      this.#logRequest(
+        "debug",
+        subject,
+        response.requestId || requestId,
+        start,
+        "ok",
+        traceContext,
+      );
       return response.data;
     } catch (error) {
       if (error instanceof GraphQLError) {
@@ -2144,7 +2214,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   }
 
   #logRequest(
-    level: "info" | "warn" | "error",
+    level: "debug" | "info" | "warn" | "error",
     subject: string,
     requestId: string,
     start: number,
@@ -2255,8 +2325,25 @@ export async function createNATSTelemetryQueryBridge(
   logger: CloudGridLogger,
   options: BridgeOptions & { pubSub?: EphemeralPubSub; lifecycle?: MessageBridgeLifecycle } = {},
 ): Promise<NATSTelemetryQueryBridge> {
-  const connection = await connectNATS({ servers, name: "cloudgrid-bff" });
+  const connection = await connectNATSWithStartupRetry({ servers, name: "cloudgrid-bff" });
   return new NATSTelemetryQueryBridge(connection, timeoutMs, logger, options);
+}
+
+async function connectNATSWithStartupRetry(options: { servers: string; name: string }) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 20; attempt += 1) {
+    try {
+      return await connectNATS(options);
+    } catch (error) {
+      lastError = error;
+      await delay(250);
+    }
+  }
+  throw lastError;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function graphQLErrorFromBridge(error?: BridgeErrorLike, requestId?: string) {
@@ -2560,6 +2647,28 @@ const searchResultSchema = <Item extends z.ZodTypeAny>(item: Item) =>
     items: z.array(item),
     nextCursor: z.string().optional().nullable(),
   });
+
+const traceSummarySchema = z.object({
+  id: z.string().min(1),
+  serviceName: z.string().optional().nullable(),
+  operationName: z.string().optional().nullable(),
+  startedAt: dateTimeSchema,
+  startedAtUnixNano: z.string().min(1),
+  endedAt: dateTimeSchema.optional().nullable(),
+  endedAtUnixNano: z.string().optional().nullable(),
+  durationNano: z.string().optional().nullable(),
+  durationMs: z.number().optional().nullable(),
+  rootSpanId: z.string().optional().nullable(),
+  status: traceStatusSchema.optional().nullable(),
+  attributes: z.record(z.string(), z.unknown()),
+  spanCount: z.number().int(),
+  errorSpanCount: z.number().int(),
+  logCount: z.number().int(),
+  serviceCount: z.number().int(),
+});
+const traceSearchResultSchema = searchResultSchema(
+  traceSummarySchema,
+) as z.ZodType<TraceSearchResult>;
 
 const tokenTotalsSchema = z
   .object({
@@ -3017,6 +3126,11 @@ const projectAiSettingsSchema = z.object({
   version: z.number().int(),
   updatedAt: dateTimeSchema,
   updatedByUserId: z.string().min(1),
+});
+
+const aiProviderSecretSchema = z.object({
+  credentialRef: z.string().min(1),
+  value: z.string().min(1),
 });
 
 const aiQualityOverviewSchema = z.object({

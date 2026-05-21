@@ -492,8 +492,8 @@ func TestRecordHelpersIncludeOptionalFieldsAndDefaults(t *testing.T) {
 		DurationMs:  &duration,
 		RootSpanID:  &rootSpan,
 		Status:      &status,
-	}, 2, 1, 3, 4, target)
-	for _, key := range []string{"serviceName", "endedAt", "durationMs", "rootSpanId", "status"} {
+	}, "GET /checkout", 2, 1, 3, 4, target)
+	for _, key := range []string{"serviceName", "operationName", "endedAt", "durationMs", "rootSpanId", "status"} {
 		if _, ok := trace[key]; !ok {
 			t.Fatalf("trace record missing %q: %#v", key, trace)
 		}
@@ -558,7 +558,7 @@ func TestBuildPersistQueryBuildsOptionalLogAndServiceFields(t *testing.T) {
 		t.Fatalf("BuildPersistQuery() error = %v", err)
 	}
 
-	if !strings.Contains(sql, "UPDATE trace SET logCount = (SELECT count() AS count FROM log_event") {
+	if !strings.Contains(sql, "UPDATE type::record('trace', $traceLog0_id) SET logCount = (SELECT count() AS count FROM log_event") {
 		t.Fatalf("log ingest should refresh denormalized trace log counts:\n%s", sql)
 	}
 	if vars["traceLog0_id"] != "trace-1" {

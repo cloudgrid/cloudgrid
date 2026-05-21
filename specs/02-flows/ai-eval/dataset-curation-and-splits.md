@@ -53,8 +53,8 @@ unvalidated raw split expression.
    - promoting a trace/span;
    - resolving an annotation item;
    - manual entry;
-   - importing a batch through `Mutation.appendDatasetItems` with explicit
-     item payloads;
+  - importing a batch through `Mutation.appendDatasetItems` with
+    `expectedDatasetVersion` and explicit item payloads;
    - importing JSONL, JSON array, CSV, or ZIP uploads through
      `FLW-AIE-005`.
 4. Storage-write creates a new dataset version or appends to a mutable draft

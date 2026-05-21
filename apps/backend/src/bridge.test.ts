@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createLogger } from "@cloudgrid/runtime";
 import type { RetentionRuleInput } from "@cloudgrid/ui-contracts";
 import { JSONCodec, type NatsConnection } from "nats";
+import { localAuthContext } from "./auth";
 import { MessageBridgeCloudGridBridge, NATSTelemetryQueryBridge } from "./bridge";
 import { NATSRequestReplyClient } from "./bridge/adapters/nats";
 
@@ -67,6 +68,40 @@ describe("NATS telemetry query bridge", () => {
         attributes: [{ key: "http.status_code", operator: "gte", value: 500 }],
       },
     });
+  });
+
+  test("rejects trace search responses that violate the public non-null GraphQL contract", async () => {
+    const codec = JSONCodec<unknown>();
+    const connection = {
+      request: async (_requestedSubject: string, data: Uint8Array) => {
+        const payload = codec.decode(data);
+        return {
+          data: codec.encode({
+            requestId: requestId(payload),
+            ok: true,
+            data: {
+              items: [
+                {
+                  id: "trace-1",
+                  serviceName: "api",
+                  startedAt: "2026-05-08T10:00:00.000Z",
+                  attributes: {},
+                  spanCount: 1,
+                  errorSpanCount: 0,
+                  logCount: 0,
+                  serviceCount: 1,
+                },
+              ],
+              nextCursor: null,
+            },
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+
+    await expect(bridge.searchTraces({})).rejects.toThrow("Message bridge is unavailable");
   });
 
   test("sends telemetry facet requests to telemetry.facets", async () => {
@@ -644,6 +679,164 @@ describe("NATS telemetry query bridge", () => {
     expect(requests[5]?.payload).toMatchObject({ invitationId: "invite-1" });
   });
 
+  test("sends AI provider and AI Chat control requests using AsyncAPI top-level payload fields", async () => {
+    const codec = JSONCodec<unknown>();
+    const requests: Array<{ subject: string; payload: unknown }> = [];
+    const connection = {
+      request: async (requestedSubject: string, data: Uint8Array) => {
+        const payload = codec.decode(data);
+        requests.push({ subject: requestedSubject, payload });
+        return {
+          data: codec.encode({
+            requestId: requestId(payload),
+            ok: true,
+            data: aiControlResponseFor(requestedSubject),
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+    const authContext = {
+      mode: "authenticated" as const,
+      authMode: "sso" as const,
+      principalId: "user-1",
+    };
+
+    await bridge.updateProjectAiProviderSettings(
+      {
+        projectId: "project-1",
+        providerProfiles: [],
+        modelAliases: [],
+        expectedVersion: 1,
+      },
+      authContext,
+    );
+    await bridge.updateCompanyAiProviderSettings(
+      {
+        companyId: "org-1",
+        providerProfile: aiProviderProfile("company"),
+        chatModelAlias: {
+          id: "company-chat",
+          name: "chat",
+          providerProfileId: "provider-1",
+          model: "gpt-4.1-mini",
+          purpose: "chat",
+          parameters: {},
+        },
+        expectedVersion: 1,
+      },
+      authContext,
+    );
+    await bridge.aiChatHistory(
+      { companyId: "org-1", projectId: "project-1", first: 10 },
+      authContext,
+    );
+    await bridge.resolveAiProviderSecret("managed:company/org-1/provider-1", authContext);
+    await bridge.createAiChatConversation(
+      {
+        companyId: "org-1",
+        projectId: "project-1",
+        firstUserMessage: "Investigate errors",
+      },
+      authContext,
+    );
+    await bridge.deleteAiChatConversation("chat-1", authContext);
+    await bridge.approveAiChatAction(
+      { actionId: "action-1", approved: true, expectedVersion: 1 },
+      authContext,
+    );
+
+    expect(requests.map((request) => request.subject)).toEqual([
+      "control.ai_providers.project.update",
+      "control.ai_providers.company.update",
+      "control.ai_chat.history",
+      "control.ai_provider_secrets.resolve",
+      "control.ai_chat.conversation.create",
+      "control.ai_chat.conversation.delete",
+      "control.ai_chat.action.approve",
+    ]);
+    expect(requests[0]?.payload).toMatchObject({
+      projectId: "project-1",
+      providerProfiles: [],
+      modelAliases: [],
+      expectedVersion: 1,
+    });
+    expect(requests[0]?.payload).not.toHaveProperty("input");
+    expect(requests[1]?.payload).toMatchObject({
+      companyId: "org-1",
+      providerProfile: { id: "provider-1" },
+      chatModelAlias: { id: "company-chat" },
+      expectedVersion: 1,
+    });
+    expect(requests[1]?.payload).not.toHaveProperty("input");
+    expect(requests[2]?.payload).toMatchObject({
+      companyId: "org-1",
+      userId: "user-1",
+      projectId: "project-1",
+      first: 10,
+    });
+    expect(requests[2]?.payload).not.toHaveProperty("input");
+    expect(requests[3]?.payload).toMatchObject({
+      credentialRef: "managed:company/org-1/provider-1",
+    });
+    expect(requests[3]?.payload).not.toHaveProperty("input");
+    expect(requests[4]?.payload).toMatchObject({
+      companyId: "org-1",
+      projectId: "project-1",
+      userId: "user-1",
+      firstUserMessage: "Investigate errors",
+    });
+    expect(requests[4]?.payload).not.toHaveProperty("input");
+    expect(requests[5]?.payload).toMatchObject({
+      conversationId: "chat-1",
+      userId: "user-1",
+    });
+    expect(requests[5]?.payload).not.toHaveProperty("input");
+    expect(requests[6]?.payload).toMatchObject({
+      actionId: "action-1",
+      approved: true,
+      userId: "user-1",
+      expectedVersion: 1,
+    });
+    expect(requests[6]?.payload).not.toHaveProperty("input");
+  });
+
+  test("uses the durable local principal for AI Chat conversation create requests", async () => {
+    const codec = JSONCodec<unknown>();
+    let payload: unknown;
+    const connection = {
+      request: async (_requestedSubject: string, data: Uint8Array) => {
+        payload = codec.decode(data);
+        return {
+          data: codec.encode({
+            requestId: requestId(payload),
+            ok: true,
+            data: aiControlResponseFor("control.ai_chat.conversation.create"),
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+
+    await bridge.createAiChatConversation(
+      {
+        companyId: "local",
+        projectId: "default",
+        firstUserMessage: "Investigate errors",
+      },
+      localAuthContext(),
+    );
+
+    expect(payload).toMatchObject({
+      companyId: "local",
+      projectId: "default",
+      userId: "local-user",
+      firstUserMessage: "Investigate errors",
+    });
+  });
+
   test("starts live traces through storage-read and stops on iterator return", async () => {
     const codec = JSONCodec<unknown>();
     const requestedSubjects: string[] = [];
@@ -1024,6 +1217,122 @@ function controlResponseFor(subject: string) {
     default:
       throw new Error(`unexpected subject ${subject}`);
   }
+}
+
+function aiControlResponseFor(subject: string) {
+  switch (subject) {
+    case "control.ai_providers.project.update":
+      return { settings: projectAiProviderSettings() };
+    case "control.ai_providers.company.update":
+      return { settings: companyAiProviderSettings() };
+    case "control.ai_chat.history":
+      return {
+        history: {
+          companyId: "org-1",
+          userId: "user-1",
+          projectGroups: [],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      };
+    case "control.ai_provider_secrets.resolve":
+      return { credential: { credentialRef: "managed:company/org-1/provider-1", value: "secret" } };
+    case "control.ai_chat.conversation.create":
+      return { conversation: aiChatConversation() };
+    case "control.ai_chat.conversation.delete":
+      return { deleted: true };
+    case "control.ai_chat.action.approve":
+      return { action: aiChatActionProposal("approved") };
+    default:
+      throw new Error(`unexpected AI control subject ${subject}`);
+  }
+}
+
+function aiProviderProfile(scope: "project" | "company") {
+  const providerKind = "openai" as const;
+  void scope;
+  return {
+    id: "provider-1",
+    label: "OpenAI",
+    providerKind,
+    credentialRef: "env:OPENAI_API_KEY",
+    models: { chat: ["gpt-4.1-mini"] },
+  };
+}
+
+function projectAiProviderSettings() {
+  return {
+    projectId: "project-1",
+    providerProfiles: [],
+    modelAliases: [],
+    effective: {
+      enabled: false,
+      warnings: [],
+      missingCredentialRefs: [],
+      disabledProviderProfiles: [],
+      missingAliasPurposes: [],
+      runtimeSource: "stored",
+    },
+    version: 2,
+    updatedAt: "2026-05-18T08:00:00.000Z",
+    updatedByUserId: "user-1",
+  };
+}
+
+function companyAiProviderSettings() {
+  return {
+    companyId: "org-1",
+    chatProviderProfile: aiProviderProfile("company"),
+    effective: {
+      enabled: true,
+      warnings: [],
+      missingCredentialRefs: [],
+      disabledProviderProfiles: [],
+      runtimeSource: "stored",
+    },
+    version: 2,
+    updatedAt: "2026-05-18T08:00:00.000Z",
+    updatedByUserId: "user-1",
+  };
+}
+
+function aiChatConversation() {
+  return {
+    id: "chat-1",
+    companyId: "org-1",
+    projectId: "project-1",
+    userId: "user-1",
+    title: "Investigate errors",
+    status: "active",
+    lastMessageAt: "2026-05-18T08:00:00.000Z",
+    lastRunStatus: "idle",
+    messages: [],
+    runs: [],
+    artifacts: [],
+    actionProposals: [],
+    compactions: [],
+    version: 1,
+    createdAt: "2026-05-18T08:00:00.000Z",
+    updatedAt: "2026-05-18T08:00:00.000Z",
+  };
+}
+
+function aiChatActionProposal(status = "proposed") {
+  return {
+    id: "action-1",
+    conversationId: "chat-1",
+    runId: "run-1",
+    projectId: "project-1",
+    risk: "medium",
+    status,
+    actionKind: "dashboard.save",
+    inputPreview: {},
+    requiresApproval: true,
+    idempotencyKey: "action-1",
+    expiresAt: "2026-05-18T08:15:00.000Z",
+    version: 2,
+    createdAt: "2026-05-18T08:00:00.000Z",
+    updatedAt: "2026-05-18T08:00:00.000Z",
+  };
 }
 
 function organizationInvitation(overrides: Record<string, unknown> = {}) {

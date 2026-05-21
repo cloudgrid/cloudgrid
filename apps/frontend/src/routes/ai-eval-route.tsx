@@ -707,7 +707,11 @@ function AddDatasetRowDialog({ dataset }: { dataset: Dataset }) {
         split,
         reviewStatus,
       };
-      const input: AppendDatasetItemsInput = { datasetId: dataset.id, items: [item] };
+      const input: AppendDatasetItemsInput = {
+        datasetId: dataset.id,
+        expectedDatasetVersion: dataset.version,
+        items: [item],
+      };
       return telemetryClient.appendDatasetItems(input);
     },
     onSuccess() {

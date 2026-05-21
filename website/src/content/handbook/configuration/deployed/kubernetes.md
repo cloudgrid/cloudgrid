@@ -1,15 +1,15 @@
 ---
 title: "Kubernetes And Deployment Status"
-description: "CloudGrid includes a Helm chart and release workflow definition; published images and release attestations are produced by the release workflow."
+description: "CloudGrid includes a Helm chart and release workflow; enterprise installs use verified artifacts and digest-pinned image values."
 order: 15
 accent: amber
 eyebrow: "Handbook - Configuration"
-updated: 2026-05-18
+updated: 2026-05-19
 ---
 
 CloudGrid now includes a Helm chart at `charts/cloudgrid` and a release workflow definition. Signed service images, pushed chart artifacts, SBOM/provenance output, and a release manifest are produced only when the release workflow runs.
 
-Treat this page as a deployment-readiness map. The chart is the implemented deployment artifact, but operators still need environment-specific values, secrets, ingress/TLS, and image digests from a completed release.
+Treat this page as a deployment-readiness map. For the actual install path, use [Enterprise Helm install](/handbook/configuration/deployed/helm-install). Operators still need environment-specific values, secrets, ingress/TLS, external dependency configuration, and image digests from a completed release.
 
 ## Target Service Set
 
@@ -133,6 +133,7 @@ Kubernetes Secrets should hold:
 - `CLOUDGRID_SESSION_SECRET`;
 - SSO provider client secrets;
 - SurrealDB username and password;
+- `CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY` for encrypted managed AI provider secrets;
 - deployed self-observability bearer token;
 - optional AI-eval harness credentials when the relevant specs and adapters define them.
 
@@ -163,4 +164,4 @@ These profiles are implemented under `charts/cloudgrid/profiles` and are intende
 
 ## Next Step
 
-For currently implemented runtime configuration, use [Deployed configuration](/handbook/configuration/deployed) and [SSO overview](/handbook/configuration/deployed/sso).
+Install with [Enterprise Helm install](/handbook/configuration/deployed/helm-install), configure [external NATS and SurrealDB](/handbook/configuration/deployed/external-dependencies), and verify artifacts with [Release artifact verification](/handbook/operations/release-verification).

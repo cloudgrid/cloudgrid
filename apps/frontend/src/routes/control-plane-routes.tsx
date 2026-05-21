@@ -1,4 +1,6 @@
 import type {
+  AiProviderKind,
+  CompanyAiProviderSettings,
   CreatedIngestCredential,
   IngestCredentialListResult,
   Organization,
@@ -12,6 +14,7 @@ import type {
   RetentionMode,
   RetentionRule,
   UpdateProjectAiSettingsInput,
+  UpdateCompanyAiProviderSettingsInput,
 } from "@cloudgrid/ui-contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -54,7 +57,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog";
-import { Field, FieldLabel } from "../components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import {
@@ -97,6 +100,7 @@ import {
 } from "../lib/session-state";
 import { cn } from "../lib/utils";
 import { useAppSession } from "../providers/app-session-provider";
+import { aiChatProviderQueryKey } from "../features/ai-chat/view-model";
 import { aiEvalEnabled } from "./ai-eval-route";
 
 export function OrganizationsRoute() {
@@ -614,6 +618,295 @@ export function OrganizationMembersRoute() {
   );
 }
 
+export function OrganizationAiProviderRoute() {
+  const { organizationId } = useParams();
+  const { client, viewer } = useAppSession();
+  const queryClient = useQueryClient();
+  const organization = findOrganization(viewer?.organizations, organizationId);
+  const [saved, setSaved] = useState(false);
+  const [providerKind, setProviderKind] = useState<AiProviderKind>("openai");
+  const [formError, setFormError] = useState<string | null>(null);
+  const settingsQuery = useQuery({
+    enabled: !!organization,
+    queryKey: organization
+      ? aiChatProviderQueryKey(organization.id)
+      : ["CompanyAiProviderSettings"],
+    queryFn: () => client.getCompanyAiProviderSettings(organization?.id ?? ""),
+  });
+  const updateMutation = useMutation({
+    mutationFn: client.updateCompanyAiProviderSettings,
+    async onSuccess(settings) {
+      setSaved(true);
+      queryClient.setQueryData(aiChatProviderQueryKey(settings.companyId), settings);
+      await queryClient.invalidateQueries({ queryKey: aiChatProviderQueryKey(settings.companyId) });
+    },
+  });
+
+  useEffect(() => {
+    const nextKind = settingsQuery.data?.providerProfile?.providerKind;
+    if (nextKind) {
+      setProviderKind(nextKind);
+    }
+  }, [settingsQuery.data?.providerProfile?.providerKind]);
+
+  if (!organization) {
+    return <NotFoundState title={t("companies.notFound.title")} />;
+  }
+
+  if (organization.role !== "admin") {
+    return (
+      <AdminSettingsShell activeItem="ai-provider" organization={organization}>
+        <RouteHeader
+          title={t("companies.aiProvider.title")}
+          description={t("companies.aiProvider.description")}
+        />
+        <Alert variant="destructive">
+          <Shield aria-hidden />
+          <AlertTitle>{t("companies.aiProvider.forbiddenTitle")}</AlertTitle>
+          <AlertDescription>{t("companies.aiProvider.forbiddenDescription")}</AlertDescription>
+        </Alert>
+      </AdminSettingsShell>
+    );
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const settings = settingsQuery.data;
+    if (!settings) {
+      return;
+    }
+    const form = new FormData(event.currentTarget);
+    const input = toCompanyAiProviderSettingsInput(settings, form, providerKind);
+    if (!input) {
+      setFormError(t("companies.aiProvider.validation"));
+      return;
+    }
+    setFormError(null);
+    setSaved(false);
+    updateMutation.mutate(input);
+  }
+
+  const settings = settingsQuery.data;
+  const profile = settings?.providerProfile ?? null;
+  const alias = settings?.chatModelAlias ?? null;
+  const preservedCredentialRef =
+    profile?.credentialRef && isAllowedAiCredentialRef(profile.credentialRef)
+      ? profile.credentialRef
+      : "";
+  const profileParameters = readJsonObject(profile?.parameters);
+  const region = readString(profileParameters.region);
+  const deployment = readString(profileParameters.deployment);
+
+  return (
+    <AdminSettingsShell activeItem="ai-provider" organization={organization}>
+      <RouteHeader
+        title={t("companies.aiProvider.title")}
+        description={t("companies.aiProvider.description")}
+      />
+      <SettingsFormSurface>
+        {settingsQuery.isError ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-destructive">{t("companies.aiProvider.loadError")}</p>
+            <Button
+              onClick={() => void settingsQuery.refetch()}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <RefreshCw data-icon="inline-start" />
+              {t("actions.retry")}
+            </Button>
+          </div>
+        ) : null}
+        <div className="rounded-lg border">
+          <div className="grid gap-0 divide-y md:grid-cols-4 md:divide-x md:divide-y-0">
+            <ReadOnlyField
+              label={t("companies.aiProvider.current")}
+              value={profile?.label ?? t("companies.aiProvider.notConfigured")}
+            />
+            <ReadOnlyField
+              label={t("companies.aiProvider.providerKind")}
+              value={profile ? aiProviderKindLabel(profile.providerKind) : t("value.none")}
+            />
+            <ReadOnlyField
+              label={t("companies.aiProvider.chatModel")}
+              value={alias?.model ?? t("value.none")}
+            />
+            <ReadOnlyField
+              label={t("projects.settings.policyVersion")}
+              value={settings ? String(settings.version) : t("state.loading")}
+            />
+          </div>
+        </div>
+
+        <form className="grid max-w-4xl gap-5" onSubmit={submit}>
+          <div className="grid gap-3 border-y py-4 sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="company-ai-label">{t("companies.aiProvider.label")}</FieldLabel>
+              <Input
+                defaultValue={profile?.label ?? "Company chat"}
+                disabled={!settings || updateMutation.isPending}
+                id="company-ai-label"
+                name="label"
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="company-ai-kind">
+                {t("companies.aiProvider.providerKind")}
+              </FieldLabel>
+              <Select
+                disabled={!settings || updateMutation.isPending}
+                onValueChange={(value) => setProviderKind(value as AiProviderKind)}
+                value={providerKind}
+              >
+                <SelectTrigger id="company-ai-kind">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {aiProviderKinds.map((kind) => (
+                      <SelectItem key={kind} value={kind}>
+                        {aiProviderKindLabel(kind)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="company-ai-credential-value">
+                {t("companies.aiProvider.credentialValue")}
+              </FieldLabel>
+              <Input
+                autoComplete="off"
+                disabled={!settings || updateMutation.isPending}
+                id="company-ai-credential-value"
+                name="credentialValue"
+                placeholder={
+                  preservedCredentialRef
+                    ? t("companies.aiProvider.credentialValuePlaceholderExisting")
+                    : "sk-..."
+                }
+                type="password"
+              />
+              <input name="credentialRef" type="hidden" value={preservedCredentialRef} />
+              <FieldDescription>
+                {t("companies.aiProvider.credentialRefDescription")}
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="company-ai-model">
+                {t("companies.aiProvider.chatModel")}
+              </FieldLabel>
+              <Input
+                defaultValue={alias?.model ?? firstChatModel(profile) ?? "gpt-5-mini"}
+                disabled={!settings || updateMutation.isPending}
+                id="company-ai-model"
+                name="model"
+                placeholder="gpt-5-mini"
+              />
+            </Field>
+            {providerKind === "azure_foundry" || providerKind === "openai_compatible" ? (
+              <Field>
+                <FieldLabel htmlFor="company-ai-base-url">
+                  {t("companies.aiProvider.baseUrl")}
+                </FieldLabel>
+                <Input
+                  defaultValue={profile?.baseUrl ?? ""}
+                  disabled={!settings || updateMutation.isPending}
+                  id="company-ai-base-url"
+                  name="baseUrl"
+                  placeholder="https://example.openai.azure.com"
+                  type="url"
+                />
+              </Field>
+            ) : null}
+            {providerKind === "azure_foundry" ? (
+              <Field>
+                <FieldLabel htmlFor="company-ai-deployment">
+                  {t("companies.aiProvider.deployment")}
+                </FieldLabel>
+                <Input
+                  defaultValue={deployment}
+                  disabled={!settings || updateMutation.isPending}
+                  id="company-ai-deployment"
+                  name="deployment"
+                />
+              </Field>
+            ) : null}
+            {providerKind === "aws_bedrock" ? (
+              <Field>
+                <FieldLabel htmlFor="company-ai-region">
+                  {t("companies.aiProvider.region")}
+                </FieldLabel>
+                <Input
+                  defaultValue={region}
+                  disabled={!settings || updateMutation.isPending}
+                  id="company-ai-region"
+                  name="region"
+                  placeholder="us-east-1"
+                />
+              </Field>
+            ) : null}
+            <Field>
+              <FieldLabel htmlFor="company-ai-timeout">
+                {t("companies.aiProvider.timeoutMs")}
+              </FieldLabel>
+              <Input
+                defaultValue={profile?.timeoutMs ?? 30000}
+                disabled={!settings || updateMutation.isPending}
+                id="company-ai-timeout"
+                min="1000"
+                name="timeoutMs"
+                step="1000"
+                type="number"
+              />
+            </Field>
+          </div>
+
+          {settings?.effective.warnings.length ? (
+            <Alert>
+              <AlertTitle>{t("companies.aiProvider.warnings")}</AlertTitle>
+              <AlertDescription>{settings.effective.warnings.join(", ")}</AlertDescription>
+            </Alert>
+          ) : null}
+          {settings?.effective.missingChatProvider ? (
+            <Alert>
+              <Bot aria-hidden />
+              <AlertTitle>{t("companies.aiProvider.missingTitle")}</AlertTitle>
+              <AlertDescription>{t("companies.aiProvider.missingDescription")}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button disabled={!settings || updateMutation.isPending} type="submit">
+              <Save data-icon="inline-start" />
+              {t("companies.aiProvider.save")}
+            </Button>
+            <Button asChild type="button" variant="outline">
+              <Link to="/ai-chat">
+                <Bot data-icon="inline-start" />
+                {t("companies.aiProvider.openChat")}
+              </Link>
+            </Button>
+            {saved ? (
+              <span className="text-sm text-muted-foreground">
+                {t("companies.aiProvider.saved")}
+              </span>
+            ) : null}
+            {formError ? <span className="text-sm text-destructive">{formError}</span> : null}
+            {updateMutation.isError ? (
+              <span className="text-sm text-destructive">
+                {t("companies.aiProvider.saveError")}
+              </span>
+            ) : null}
+          </div>
+        </form>
+      </SettingsFormSurface>
+    </AdminSettingsShell>
+  );
+}
+
 export function OrganizationProjectsRoute() {
   const { organizationId } = useParams();
   const navigate = useNavigate();
@@ -1124,7 +1417,7 @@ function _ProjectOnboardingChecklist({
       icon: TerminalSquare,
       action: (
         <Button asChild size="sm" variant="outline">
-          <a href="/docs/03-operations/" rel="noreferrer" target="_blank">
+          <a href="/handbook/guides/ingest-otlp" rel="noreferrer" target="_blank">
             <TerminalSquare data-icon="inline-start" />
             {t("projects.checklist.telemetry.action")}
           </a>
@@ -1217,7 +1510,7 @@ function _ProjectOnboardingChecklist({
                     step.secondaryAction
                   ) : (
                     <Button asChild size="sm" variant="ghost">
-                      <a href="/docs/03-operations/" rel="noreferrer" target="_blank">
+                      <a href="/handbook/operations" rel="noreferrer" target="_blank">
                         <ExternalLink data-icon="inline-start" />
                         {t("projects.checklist.docs")}
                       </a>
@@ -2186,7 +2479,7 @@ function AdminSettingsShell({
   children,
   organization,
 }: {
-  activeItem: "organization" | "projects" | "members";
+  activeItem: "organization" | "projects" | "members" | "ai-provider";
   children: ReactNode;
   organization: Organization;
 }) {
@@ -2320,6 +2613,117 @@ export OTEL_EXPORTER_OTLP_ENDPOINT='${endpoint}'`
 
 function SettingsFormSurface({ children }: { children: ReactNode }) {
   return <div className="grid gap-4">{children}</div>;
+}
+
+const aiProviderKinds: AiProviderKind[] = [
+  "openai",
+  "anthropic",
+  "azure_foundry",
+  "aws_bedrock",
+  "openai_compatible",
+];
+
+function aiProviderKindLabel(kind: AiProviderKind) {
+  switch (kind) {
+    case "anthropic":
+      return "Anthropic";
+    case "azure_foundry":
+      return "Azure AI Foundry";
+    case "aws_bedrock":
+      return "AWS Bedrock";
+    case "openai_compatible":
+      return "OpenAI-compatible";
+    case "openai":
+      return "OpenAI";
+  }
+}
+
+function toCompanyAiProviderSettingsInput(
+  settings: CompanyAiProviderSettings,
+  form: FormData,
+  providerKind: AiProviderKind,
+): UpdateCompanyAiProviderSettingsInput | null {
+  const label = stringField(form.get("label")) ?? "Company chat";
+  const rawCredentialRef = stringField(form.get("credentialRef"));
+  const credentialRef =
+    rawCredentialRef && isAllowedAiCredentialRef(rawCredentialRef) ? rawCredentialRef : null;
+  const credentialValue = stringField(form.get("credentialValue"));
+  const model = stringField(form.get("model"));
+  const baseUrl = stringField(form.get("baseUrl"));
+  const region = stringField(form.get("region"));
+  const deployment = stringField(form.get("deployment"));
+  const timeoutMs = numberField(form.get("timeoutMs")) ?? 30000;
+  if ((!credentialRef && !credentialValue) || !model) {
+    return null;
+  }
+  const providerProfileId = settings.providerProfile?.id ?? "company-chat-provider";
+  const aliasId = settings.chatModelAlias?.id ?? "company-chat";
+  const profileParameters = providerParametersForKind(providerKind, { deployment, region });
+  return {
+    companyId: settings.companyId,
+    expectedVersion: settings.version,
+    providerProfile: {
+      id: providerProfileId,
+      label,
+      providerKind,
+      baseUrl:
+        providerKind === "azure_foundry" || providerKind === "openai_compatible" ? baseUrl : null,
+      credentialRef,
+      credentialValue,
+      models: { chat: [model] },
+      parameters: profileParameters,
+      timeoutMs,
+      maxConcurrency: settings.providerProfile?.maxConcurrency ?? null,
+      disabled: false,
+    },
+    chatModelAlias: {
+      id: aliasId,
+      name: "chat",
+      providerProfileId,
+      model,
+      purpose: "chat",
+      parameters: { extras: {} },
+    },
+  };
+}
+
+function providerParametersForKind(
+  providerKind: AiProviderKind,
+  values: { deployment: string | null; region: string | null },
+) {
+  const extras: Record<string, string> = {};
+  if (providerKind === "azure_foundry" && values.deployment) {
+    extras.deployment = values.deployment;
+  }
+  if (providerKind === "aws_bedrock" && values.region) {
+    extras.region = values.region;
+  }
+  return extras;
+}
+
+function isAllowedAiCredentialRef(value: string) {
+  return value.startsWith("managed:") || value.startsWith("env:") || value.startsWith("external:");
+}
+
+function readJsonObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function firstChatModel(settings: CompanyAiProviderSettings["providerProfile"]): string | null {
+  const models = settings?.models;
+  if (models && typeof models === "object" && !Array.isArray(models)) {
+    const chatModels = (models as Record<string, unknown>).chat;
+    if (Array.isArray(chatModels) && typeof chatModels[0] === "string") {
+      return chatModels[0];
+    }
+  }
+  return null;
 }
 
 function ReadOnlyField({ label, value }: { label: string; value: string }) {
@@ -2631,12 +3035,15 @@ function retentionModeLabel(mode: RetentionMode) {
   return labels[mode];
 }
 
-function adminNavLabel(id: "organization" | "projects" | "members") {
+function adminNavLabel(id: "organization" | "projects" | "members" | "ai-provider") {
   if (id === "projects") {
     return t("nav.projects");
   }
   if (id === "members") {
     return t("companies.members.title");
+  }
+  if (id === "ai-provider") {
+    return t("nav.aiProvider");
   }
   return t("companies.title");
 }

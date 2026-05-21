@@ -51,7 +51,16 @@ export function createGraphQLWebSocketHandler(
       return state;
     },
     message(socket: GraphQLWebSocketLike, raw: string | Buffer) {
-      void handleMessage(socket, raw.toString(), bridge, logger, schema, auth);
+      void handleMessage(socket, raw.toString(), bridge, logger, schema, auth).catch((error) => {
+        if (isClientDisconnectError(error)) {
+          return;
+        }
+        logger.error("graphql_websocket_message_failed", {
+          error_id: "ERR-014",
+          error_code: "MESSAGE_BRIDGE_TIMEOUT",
+          error_message: error instanceof Error ? error.message : String(error),
+        });
+      });
     },
     close(socket: GraphQLWebSocketLike) {
       for (const iterator of socket.data.operations.values()) {
@@ -60,6 +69,13 @@ export function createGraphQLWebSocketHandler(
       socket.data.operations.clear();
     },
   };
+}
+
+function isClientDisconnectError(error: unknown): boolean {
+  return (
+    error instanceof DOMException &&
+    (error.name === "AbortError" || error.message === "The connection was closed.")
+  );
 }
 
 async function handleMessage(
@@ -94,8 +110,14 @@ async function handleMessage(
     return;
   }
 
+  function getHonoValue(key: "auth"): typeof auth;
+  function getHonoValue(key: "bridge"): typeof bridge;
+  function getHonoValue(key: "auth" | "bridge") {
+    return key === "auth" ? auth : bridge;
+  }
+
   const contextValue: CloudGridYogaContext = {
-    hono: { get: () => bridge },
+    hono: { get: getHonoValue },
     requestId: crypto.randomUUID(),
     logger,
     authContext: auth.authenticateWebSocket(socket.data.request, socket.data.authorization),

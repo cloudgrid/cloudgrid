@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { loadConfig, startupProblem } from "./config";
 
+const localSelfObservabilityEnv = {
+  CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN: "self-observability-token",
+};
+
 describe("BFF runtime config", () => {
   test("uses development defaults for local startup", () => {
-    const config = loadConfig({});
+    const config = loadConfig(localSelfObservabilityEnv);
 
     expect(config).toEqual({
       host: "0.0.0.0",
@@ -19,12 +23,13 @@ describe("BFF runtime config", () => {
         projectId: "cloudgrid-system",
         companyId: "local",
         otlpEndpoint: "http://localhost:4318",
+        otlpBearerToken: "self-observability-token",
         exportIntervalSeconds: 10,
         tracesEnabled: true,
         logsEnabled: true,
         metricsEnabled: true,
       },
-      requestTimeoutMs: 2000,
+      requestTimeoutMs: 12000,
       graphqlUI: true,
       graphqlMaxDepth: 12,
       graphqlMaxComplexity: 500,
@@ -32,11 +37,26 @@ describe("BFF runtime config", () => {
       frontendServeStatic: false,
       frontendStaticDir: "./apps/backend/public",
       datasetTransferDir: ".cloudgrid/dataset-transfer",
+      aiChatHarnessMode: "provider",
     });
+  });
+
+  test("configures the message bridge request timeout", () => {
+    const config = loadConfig({
+      ...localSelfObservabilityEnv,
+      CLOUDGRID_MESSAGE_BRIDGE_REQUEST_TIMEOUT_MS: "7500",
+    });
+
+    expect(config.requestTimeoutMs).toBe(7500);
+  });
+
+  test("keeps the default bridge timeout above the default storage-read query timeout", () => {
+    expect(loadConfig(localSelfObservabilityEnv).requestTimeoutMs).toBeGreaterThan(10_000);
   });
 
   test("uses production static-serving defaults and accepts tls NATS URLs", () => {
     const config = loadConfig({
+      ...localSelfObservabilityEnv,
       NODE_ENV: "production",
       CLOUDGRID_BFF_HOST: "127.0.0.1",
       CLOUDGRID_BFF_PORT: "4000",
@@ -62,6 +82,7 @@ describe("BFF runtime config", () => {
         projectId: "cloudgrid-system",
         companyId: "local",
         otlpEndpoint: "http://localhost:4318",
+        otlpBearerToken: "self-observability-token",
         exportIntervalSeconds: 10,
         tracesEnabled: true,
         logsEnabled: true,
@@ -70,7 +91,24 @@ describe("BFF runtime config", () => {
       frontendServeStatic: true,
       frontendStaticDir: "/srv/cloudgrid/public",
       datasetTransferDir: ".cloudgrid/dataset-transfer",
+      aiChatHarnessMode: "provider",
     });
+  });
+
+  test("configures the AI Chat harness mode", () => {
+    const config = loadConfig({
+      ...localSelfObservabilityEnv,
+      CLOUDGRID_AI_CHAT_HARNESS_MODE: "mock",
+    });
+
+    expect(config.aiChatHarnessMode).toBe("mock");
+    expect(
+      loadConfig({ ...localSelfObservabilityEnv, CLOUDGRID_AI_CHAT_HARNESS_MODE: "off" })
+        .aiChatHarnessMode,
+    ).toBe("off");
+    expect(() =>
+      loadConfig({ ...localSelfObservabilityEnv, CLOUDGRID_AI_CHAT_HARNESS_MODE: "invalid" }),
+    ).toThrow("ERR-009 CONFIG_INVALID");
   });
 
   test("parses deployed SSO runtime config", () => {
@@ -120,13 +158,14 @@ describe("BFF runtime config", () => {
   });
 
   test("rejects unsupported NATS URL protocols as config errors", () => {
-    expect(() => loadConfig({ CLOUDGRID_NATS_URL: "http://localhost:4222" })).toThrow(
-      "ERR-009 CONFIG_INVALID",
-    );
+    expect(() =>
+      loadConfig({ ...localSelfObservabilityEnv, CLOUDGRID_NATS_URL: "http://localhost:4222" }),
+    ).toThrow("ERR-009 CONFIG_INVALID");
   });
 
   test("parses GraphQL backpressure config", () => {
     const config = loadConfig({
+      ...localSelfObservabilityEnv,
       CLOUDGRID_GRAPHQL_MAX_DEPTH: "8",
       CLOUDGRID_GRAPHQL_MAX_COMPLEXITY: "1000",
       CLOUDGRID_GRAPHQL_RESPONSE_MEDIA_TYPE: "graphql-response-json",

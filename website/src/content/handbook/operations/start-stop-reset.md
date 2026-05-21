@@ -79,7 +79,7 @@ bun run dev:all
 | --- | --- | --- |
 | `3000` | BFF | `CLOUDGRID_BFF_PORT` |
 | `5173` | frontend dev server | `CLOUDGRID_FRONTEND_DEV_PORT` |
-| `4318` | OTLP/HTTP collector | `CLOUDGRID_OTLP_HTTP_ADDR` or `CLOUDGRID_OTLP_PORT` |
+| `4318` | OTLP/HTTP collector | `CLOUDGRID_OTLP_HTTP_ADDR` |
 | `4317` | OTLP/gRPC collector | `CLOUDGRID_OTLP_GRPC_ADDR` |
 | `4222` | NATS client | `CLOUDGRID_NATS_PORT` in Docker Compose env |
 | `8000` | SurrealDB | `CLOUDGRID_SURREALDB_PORT` in Docker Compose env |

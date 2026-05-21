@@ -26,8 +26,10 @@ not an in-process port. The v1 implementation is `puristajs/harness`.
   idempotency key return the same result.
 - **No spans in response bodies.** Harness emits spans via OTLP back into
   CloudGrid; the response body carries only summaries.
-- **CloudGrid never holds provider credentials.** Model-provider keys live
-  in your harness configuration.
+- **Harness credentials stay in the harness.** AI Eval harness provider keys
+  live in harness configuration. CloudGrid-managed AI Chat and project provider
+  secrets use the separate managed-secret path documented under deployed
+  provider secrets.
 
 ## Example: a minimal harness skeleton
 

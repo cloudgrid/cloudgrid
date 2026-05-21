@@ -29,6 +29,10 @@ export default defineConfig(({ mode }) => {
           target: bffTarget,
           changeOrigin: true,
         },
+        "/api": {
+          target: bffTarget,
+          changeOrigin: true,
+        },
       },
     },
   };

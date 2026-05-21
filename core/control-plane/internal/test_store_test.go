@@ -22,49 +22,66 @@ type DashboardPinRecord = ports.DashboardPinRecord
 type ProjectMemberRecord = ports.ProjectMemberRecord
 type RetentionPolicyRecord = ports.RetentionPolicyRecord
 type ProjectAiSettingsRecord = ports.ProjectAiSettingsRecord
+type CompanyAiProviderSettingsRecord = ports.CompanyAiProviderSettingsRecord
+type AiChatConversationRecord = ports.AiChatConversationRecord
+type AiChatMessageRecord = ports.AiChatMessageRecord
 type AiChatRunRecord = ports.AiChatRunRecord
+type AiChatActionRecord = ports.AiChatActionRecord
+type AiChatCompactionRecord = ports.AiChatCompactionRecord
 type AlertRuleRecord = ports.AlertRuleRecord
 type AlertSilenceRecord = ports.AlertSilenceRecord
 type AlertEventRecord = ports.AlertEventRecord
 
 type testStore struct {
-	mu                sync.RWMutex
-	users             map[string]ports.UserRecord
-	organizations     map[string]ports.OrganizationRecord
-	projects          map[string]ports.ProjectRecord
-	memberships       map[string]ports.MembershipRecord
-	invitations       map[string]ports.InvitationRecord
-	credentials       map[string]ports.IngestCredentialRecord
-	dashboards        map[string]ports.DashboardRecord
-	dashboardPins     map[string]ports.DashboardPinRecord
-	projectMembers    map[string]ports.ProjectMemberRecord
-	emailDeliveries   map[string]ports.EmailDeliveryRecord
-	retentionPolicies map[string]ports.RetentionPolicyRecord
-	projectAiSettings map[string]ports.ProjectAiSettingsRecord
-	aiChatRuns        map[string]ports.AiChatRunRecord
-	alertRules        map[string]ports.AlertRuleRecord
-	alertSilences     map[string]ports.AlertSilenceRecord
-	alertEvents       map[string]ports.AlertEventRecord
+	mu                  sync.RWMutex
+	users               map[string]ports.UserRecord
+	organizations       map[string]ports.OrganizationRecord
+	projects            map[string]ports.ProjectRecord
+	memberships         map[string]ports.MembershipRecord
+	invitations         map[string]ports.InvitationRecord
+	credentials         map[string]ports.IngestCredentialRecord
+	dashboards          map[string]ports.DashboardRecord
+	dashboardPins       map[string]ports.DashboardPinRecord
+	projectMembers      map[string]ports.ProjectMemberRecord
+	emailDeliveries     map[string]ports.EmailDeliveryRecord
+	retentionPolicies   map[string]ports.RetentionPolicyRecord
+	projectAiSettings   map[string]ports.ProjectAiSettingsRecord
+	companyAiSettings   map[string]ports.CompanyAiProviderSettingsRecord
+	aiProviderSecrets   map[string]ports.AiProviderSecretRecord
+	aiChatConversations map[string]ports.AiChatConversationRecord
+	aiChatMessages      map[string]ports.AiChatMessageRecord
+	aiChatRuns          map[string]ports.AiChatRunRecord
+	aiChatActions       map[string]ports.AiChatActionRecord
+	aiChatCompactions   map[string]ports.AiChatCompactionRecord
+	alertRules          map[string]ports.AlertRuleRecord
+	alertSilences       map[string]ports.AlertSilenceRecord
+	alertEvents         map[string]ports.AlertEventRecord
 }
 
 func newTestStore() *testStore {
 	return &testStore{
-		users:             map[string]ports.UserRecord{},
-		organizations:     map[string]ports.OrganizationRecord{},
-		projects:          map[string]ports.ProjectRecord{},
-		memberships:       map[string]ports.MembershipRecord{},
-		invitations:       map[string]ports.InvitationRecord{},
-		credentials:       map[string]ports.IngestCredentialRecord{},
-		dashboards:        map[string]ports.DashboardRecord{},
-		dashboardPins:     map[string]ports.DashboardPinRecord{},
-		projectMembers:    map[string]ports.ProjectMemberRecord{},
-		emailDeliveries:   map[string]ports.EmailDeliveryRecord{},
-		retentionPolicies: map[string]ports.RetentionPolicyRecord{},
-		projectAiSettings: map[string]ports.ProjectAiSettingsRecord{},
-		aiChatRuns:        map[string]ports.AiChatRunRecord{},
-		alertRules:        map[string]ports.AlertRuleRecord{},
-		alertSilences:     map[string]ports.AlertSilenceRecord{},
-		alertEvents:       map[string]ports.AlertEventRecord{},
+		users:               map[string]ports.UserRecord{},
+		organizations:       map[string]ports.OrganizationRecord{},
+		projects:            map[string]ports.ProjectRecord{},
+		memberships:         map[string]ports.MembershipRecord{},
+		invitations:         map[string]ports.InvitationRecord{},
+		credentials:         map[string]ports.IngestCredentialRecord{},
+		dashboards:          map[string]ports.DashboardRecord{},
+		dashboardPins:       map[string]ports.DashboardPinRecord{},
+		projectMembers:      map[string]ports.ProjectMemberRecord{},
+		emailDeliveries:     map[string]ports.EmailDeliveryRecord{},
+		retentionPolicies:   map[string]ports.RetentionPolicyRecord{},
+		projectAiSettings:   map[string]ports.ProjectAiSettingsRecord{},
+		companyAiSettings:   map[string]ports.CompanyAiProviderSettingsRecord{},
+		aiProviderSecrets:   map[string]ports.AiProviderSecretRecord{},
+		aiChatConversations: map[string]ports.AiChatConversationRecord{},
+		aiChatMessages:      map[string]ports.AiChatMessageRecord{},
+		aiChatRuns:          map[string]ports.AiChatRunRecord{},
+		aiChatActions:       map[string]ports.AiChatActionRecord{},
+		aiChatCompactions:   map[string]ports.AiChatCompactionRecord{},
+		alertRules:          map[string]ports.AlertRuleRecord{},
+		alertSilences:       map[string]ports.AlertSilenceRecord{},
+		alertEvents:         map[string]ports.AlertEventRecord{},
 	}
 }
 
@@ -489,6 +506,132 @@ func (store *testStore) PutProjectAiSettings(_ context.Context, settings ports.P
 	return nil
 }
 
+func (store *testStore) GetCompanyAiProviderSettings(_ context.Context, companyID string) (ports.CompanyAiProviderSettingsRecord, bool, error) {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	settings, ok := store.companyAiSettings[companyID]
+	settings.Settings = cloneMap(settings.Settings)
+	return settings, ok, nil
+}
+
+func (store *testStore) PutCompanyAiProviderSettings(_ context.Context, settings ports.CompanyAiProviderSettingsRecord) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	settings.Settings = cloneMap(settings.Settings)
+	store.companyAiSettings[settings.CompanyID] = settings
+	return nil
+}
+
+func (store *testStore) GetAiProviderSecret(_ context.Context, secretID string) (ports.AiProviderSecretRecord, bool, error) {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	secret, ok := store.aiProviderSecrets[secretID]
+	return secret, ok, nil
+}
+
+func (store *testStore) PutAiProviderSecret(_ context.Context, secret ports.AiProviderSecretRecord) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.aiProviderSecrets[secret.ID] = secret
+	return nil
+}
+
+func (store *testStore) GetAiChatConversation(_ context.Context, conversationID string) (ports.AiChatConversationRecord, bool, error) {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	conversation, ok := store.aiChatConversations[conversationID]
+	return conversation, ok, nil
+}
+
+func (store *testStore) ListAiChatConversations(_ context.Context, companyID string, userID string, projectID *string, includeArchived bool, limit int) ([]ports.AiChatConversationRecord, error) {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	items := []ports.AiChatConversationRecord{}
+	for _, conversation := range store.aiChatConversations {
+		if conversation.CompanyID != companyID || conversation.UserID != userID {
+			continue
+		}
+		if projectID != nil && conversation.ProjectID != *projectID {
+			continue
+		}
+		if !includeArchived && conversation.Status == contracts.AiChatConversationStatusArchived {
+			continue
+		}
+		items = append(items, conversation)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if !items[i].LastMessageAt.Equal(items[j].LastMessageAt) {
+			return items[i].LastMessageAt.After(items[j].LastMessageAt)
+		}
+		return items[i].ID < items[j].ID
+	})
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	return items, nil
+}
+
+func (store *testStore) PutAiChatConversation(_ context.Context, conversation ports.AiChatConversationRecord) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.aiChatConversations[conversation.ID] = conversation
+	return nil
+}
+
+func (store *testStore) DeleteAiChatConversation(_ context.Context, conversationID string) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	delete(store.aiChatConversations, conversationID)
+	for id, message := range store.aiChatMessages {
+		if message.ConversationID == conversationID {
+			delete(store.aiChatMessages, id)
+		}
+	}
+	for id, run := range store.aiChatRuns {
+		if run.ConversationID == conversationID {
+			delete(store.aiChatRuns, id)
+		}
+	}
+	for id, action := range store.aiChatActions {
+		if action.ConversationID == conversationID {
+			delete(store.aiChatActions, id)
+		}
+	}
+	for id, compaction := range store.aiChatCompactions {
+		if compaction.ConversationID == conversationID {
+			delete(store.aiChatCompactions, id)
+		}
+	}
+	return nil
+}
+
+func (store *testStore) PutAiChatMessage(_ context.Context, message ports.AiChatMessageRecord) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	message.Parts = cloneMapSlice(message.Parts)
+	store.aiChatMessages[message.ID] = message
+	return nil
+}
+
+func (store *testStore) ListAiChatMessages(_ context.Context, conversationID string, limit int) ([]ports.AiChatMessageRecord, error) {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	items := []ports.AiChatMessageRecord{}
+	for _, message := range store.aiChatMessages {
+		if message.ConversationID == conversationID {
+			message.Parts = cloneMapSlice(message.Parts)
+			items = append(items, message)
+		}
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].CreatedAt.Before(items[j].CreatedAt)
+	})
+	if limit > 0 && len(items) > limit {
+		items = items[len(items)-limit:]
+	}
+	return items, nil
+}
+
 func (store *testStore) GetAiChatRun(_ context.Context, runID string) (ports.AiChatRunRecord, bool, error) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
@@ -526,6 +669,34 @@ func (store *testStore) PutAiChatRun(_ context.Context, run ports.AiChatRunRecor
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	store.aiChatRuns[run.ID] = run
+	return nil
+}
+
+func (store *testStore) GetAiChatAction(_ context.Context, actionID string) (ports.AiChatActionRecord, bool, error) {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	action, ok := store.aiChatActions[actionID]
+	action.InputPreview = cloneMap(action.InputPreview)
+	action.Result = cloneMap(action.Result)
+	return action, ok, nil
+}
+
+func (store *testStore) PutAiChatAction(_ context.Context, action ports.AiChatActionRecord) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	action.InputPreview = cloneMap(action.InputPreview)
+	action.Result = cloneMap(action.Result)
+	store.aiChatActions[action.ID] = action
+	return nil
+}
+
+func (store *testStore) PutAiChatCompaction(_ context.Context, compaction ports.AiChatCompactionRecord) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	compaction.RetainedMessageIDs = append([]string{}, compaction.RetainedMessageIDs...)
+	compaction.ArtifactSummaries = append([]string{}, compaction.ArtifactSummaries...)
+	compaction.PendingActionIDs = append([]string{}, compaction.PendingActionIDs...)
+	store.aiChatCompactions[compaction.ID] = compaction
 	return nil
 }
 
@@ -677,6 +848,17 @@ func cloneMap(input map[string]any) map[string]any {
 	output := make(map[string]any, len(input))
 	for key, value := range input {
 		output[key] = value
+	}
+	return output
+}
+
+func cloneMapSlice(input []map[string]any) []map[string]any {
+	if input == nil {
+		return nil
+	}
+	output := make([]map[string]any, 0, len(input))
+	for _, item := range input {
+		output = append(output, cloneMap(item))
 	}
 	return output
 }

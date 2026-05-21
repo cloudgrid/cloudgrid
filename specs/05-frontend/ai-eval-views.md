@@ -113,11 +113,11 @@ Import UI:
   commit and the preview allows it;
 - calls `Mutation.commitDatasetImport` only after user confirmation.
 
-Manual row creation uses `Mutation.appendDatasetItems` with structured fields
-for input prompt, expected answer, split, review status, and optional source
-trace/span. Text answers use a text field. JSON answers use a field editor for
-name, scalar type, and value. The UI must not require JSON input for the common
-manual-row path.
+Manual row creation uses `Mutation.appendDatasetItems` with the current
+`expectedDatasetVersion`, structured fields for input prompt, expected answer,
+split, review status, and optional source trace/span. Text answers use a text
+field. JSON answers use a field editor for name, scalar type, and value. The UI
+must not require JSON input for the common manual-row path.
 
 Export UI:
 

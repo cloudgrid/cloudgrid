@@ -624,6 +624,7 @@ func BuildOnlinePolicyMatchesResolveQueries(request contracts.OnlinePolicyMatche
 				"LIMIT 1;",
 			}, " "),
 			Params: cloneParams(params),
+			Target: target,
 		},
 		"projection": {
 			SQL: strings.Join([]string{
@@ -633,6 +634,7 @@ func BuildOnlinePolicyMatchesResolveQueries(request contracts.OnlinePolicyMatche
 				"ORDER BY id ASC LIMIT 200;",
 			}, " "),
 			Params: cloneParams(params),
+			Target: target,
 		},
 		"scorers": {
 			SQL: strings.Join([]string{
@@ -642,6 +644,7 @@ func BuildOnlinePolicyMatchesResolveQueries(request contracts.OnlinePolicyMatche
 				"ORDER BY id ASC LIMIT 1000;",
 			}, " "),
 			Params: cloneParams(params),
+			Target: target,
 		},
 	}, nil
 }
@@ -720,6 +723,7 @@ func BuildAiEvalQuery(subject string, input map[string]any) (QueryStatement, err
 			"LIMIT $limit;",
 		}, " "),
 		Params: params,
+		Target: target,
 	}, nil
 }
 
@@ -744,6 +748,7 @@ func BuildDatasetHealthQueries(input map[string]any) (map[string]QueryStatement,
 				"GROUP ALL;",
 			}, " "),
 			Params: cloneParams(params),
+			Target: target,
 		},
 		"splitCounts": {
 			SQL: strings.Join([]string{
@@ -753,6 +758,7 @@ func BuildDatasetHealthQueries(input map[string]any) (map[string]QueryStatement,
 				"GROUP BY split;",
 			}, " "),
 			Params: cloneParams(params),
+			Target: target,
 		},
 		"duplicates": {
 			SQL: strings.Join([]string{
@@ -762,6 +768,7 @@ func BuildDatasetHealthQueries(input map[string]any) (map[string]QueryStatement,
 				"LIMIT 200;",
 			}, " "),
 			Params: cloneParams(params),
+			Target: target,
 		},
 	}, nil
 }
@@ -782,6 +789,7 @@ func BuildDatasetListCountsQuery(datasetIDs []string) (QueryStatement, error) {
 			"GROUP BY datasetId;",
 		}, " "),
 		Params: params,
+		Target: target,
 	}, nil
 }
 
@@ -807,6 +815,7 @@ func BuildDatasetExportItemsQuery(input map[string]any) (QueryStatement, error) 
 			"ORDER BY id ASC LIMIT 50000;",
 		}, " "),
 		Params: params,
+		Target: target,
 	}, nil
 }
 
@@ -839,6 +848,7 @@ func BuildAiQualityOverviewQueries(input map[string]any) (map[string]QueryStatem
 				"ORDER BY runCount DESC LIMIT 100;",
 			}, " "),
 			Params: cloneParams(params),
+			Target: target,
 		},
 		"summary": {
 			SQL: strings.Join([]string{
@@ -848,6 +858,7 @@ func BuildAiQualityOverviewQueries(input map[string]any) (map[string]QueryStatem
 				"GROUP ALL;",
 			}, " "),
 			Params: cloneParams(params),
+			Target: target,
 		},
 	}, nil
 }
@@ -872,6 +883,7 @@ func BuildExperimentRunEventQueries(experimentRunID string, datasetItemRunID *st
 				"LIMIT 1;",
 			}, " "),
 			Params: runParams,
+			Target: target,
 		},
 	}
 	if datasetItemRunID != nil && strings.TrimSpace(*datasetItemRunID) != "" {
@@ -886,6 +898,7 @@ func BuildExperimentRunEventQueries(experimentRunID string, datasetItemRunID *st
 				"LIMIT 1;",
 			}, " "),
 			Params: itemParams,
+			Target: target,
 		}
 	}
 	return queries, nil
@@ -922,6 +935,7 @@ func BuildExperimentManifestResolveQueries(request contracts.ExperimentManifestR
 				"LIMIT 1;",
 			}, " "),
 			Params: cloneParams(params),
+			Target: target,
 		},
 		"experiment": {
 			SQL: strings.Join([]string{
@@ -931,6 +945,7 @@ func BuildExperimentManifestResolveQueries(request contracts.ExperimentManifestR
 				"LIMIT 1;",
 			}, " "),
 			Params: cloneParams(params),
+			Target: target,
 		},
 		"datasetItems": {
 			SQL: strings.Join([]string{
@@ -940,6 +955,7 @@ func BuildExperimentManifestResolveQueries(request contracts.ExperimentManifestR
 				"ORDER BY id ASC LIMIT 10000;",
 			}, " "),
 			Params: itemParams,
+			Target: target,
 		},
 		"scorers": {
 			SQL: strings.Join([]string{
@@ -949,6 +965,7 @@ func BuildExperimentManifestResolveQueries(request contracts.ExperimentManifestR
 				"ORDER BY id ASC;",
 			}, " "),
 			Params: cloneParams(params),
+			Target: target,
 		},
 	}, nil
 }

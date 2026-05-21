@@ -2,10 +2,10 @@ import {
   type AuthRuntimeConfig,
   type CloudGridErrorId,
   type DeploymentMode,
-  type SelfObservabilityRuntimeConfig,
   parseBooleanFlag,
   parseDeploymentRuntimeConfig,
   parsePort,
+  type SelfObservabilityRuntimeConfig,
 } from "@cloudgrid/runtime";
 
 export interface RuntimeConfig {
@@ -23,9 +23,15 @@ export interface RuntimeConfig {
   frontendServeStatic: boolean;
   frontendStaticDir: string;
   datasetTransferDir: string;
+  aiChatHarnessMode: AiChatHarnessMode;
 }
 
 export type GraphQLResponseMediaType = "compatible" | "graphql-response-json";
+export type AiChatHarnessMode = "provider" | "mock" | "off";
+
+const defaultMessageBridgeRequestTimeoutMs = 12_000;
+const minMessageBridgeRequestTimeoutMs = 100;
+const maxMessageBridgeRequestTimeoutMs = 30_000;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
   const deployment = parseDeploymentRuntimeConfig(env);
@@ -36,7 +42,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     host: env.CLOUDGRID_BFF_HOST || "0.0.0.0",
     port: parsePort(env.CLOUDGRID_BFF_PORT, 3000),
     natsUrl: parseNatsUrl(env.CLOUDGRID_NATS_URL || "nats://localhost:4222"),
-    requestTimeoutMs: 2000,
+    requestTimeoutMs: parseIntegerEnv(
+      env.CLOUDGRID_MESSAGE_BRIDGE_REQUEST_TIMEOUT_MS,
+      defaultMessageBridgeRequestTimeoutMs,
+      minMessageBridgeRequestTimeoutMs,
+      maxMessageBridgeRequestTimeoutMs,
+      "CLOUDGRID_MESSAGE_BRIDGE_REQUEST_TIMEOUT_MS",
+    ),
     graphqlUI: parseBooleanFlag(env.CLOUDGRID_GRAPHQL_UI, env.NODE_ENV !== "production"),
     graphqlMaxDepth: parseIntegerEnv(
       env.CLOUDGRID_GRAPHQL_MAX_DEPTH,
@@ -61,6 +73,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     ),
     frontendStaticDir: env.CLOUDGRID_FRONTEND_STATIC_DIR || "./apps/backend/public",
     datasetTransferDir: env.CLOUDGRID_DATASET_TRANSFER_DIR || ".cloudgrid/dataset-transfer",
+    aiChatHarnessMode: parseAiChatHarnessMode(env.CLOUDGRID_AI_CHAT_HARNESS_MODE),
   };
 }
 
@@ -119,5 +132,15 @@ function parseGraphQLResponseMediaType(raw: string | undefined): GraphQLResponse
   }
   throw new Error(
     "ERR-009 CONFIG_INVALID: CLOUDGRID_GRAPHQL_RESPONSE_MEDIA_TYPE must be compatible or graphql-response-json",
+  );
+}
+
+function parseAiChatHarnessMode(raw: string | undefined): AiChatHarnessMode {
+  const value = raw?.trim() || "provider";
+  if (value === "provider" || value === "mock" || value === "off") {
+    return value;
+  }
+  throw new Error(
+    "ERR-009 CONFIG_INVALID: CLOUDGRID_AI_CHAT_HARNESS_MODE must be provider, mock, or off",
   );
 }

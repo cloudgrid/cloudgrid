@@ -2,8 +2,14 @@ package internal
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/mail"
 	"slices"
 	"sort"
@@ -23,12 +29,15 @@ const (
 )
 
 type Service struct {
-	store           ports.ControlStore
-	now             func() time.Time
-	statusChanges   []contracts.ProjectStatusChangedNotification
-	invitationEmail InvitationEmailConfig
-	emailTransport  InvitationEmailTransport
-	alertAdapters   map[string]struct{}
+	store               ports.ControlStore
+	now                 func() time.Time
+	statusChanges       []contracts.ProjectStatusChangedNotification
+	invitationEmail     InvitationEmailConfig
+	emailTransport      InvitationEmailTransport
+	alertAdapters       map[string]struct{}
+	secretKey           []byte
+	requireSecretKey    bool
+	secretKeyConfigured bool
 }
 
 func NewService(store ports.ControlStore, now func() time.Time) *Service {
@@ -41,11 +50,14 @@ func NewServiceWithOptions(store ports.ControlStore, now func() time.Time, optio
 	}
 	config := options.InvitationEmail.normalized()
 	return &Service{
-		store:           store,
-		now:             now,
-		invitationEmail: config,
-		emailTransport:  options.EmailTransport,
-		alertAdapters:   alertAdapterCatalog(options.AlertNotificationAdapters),
+		store:               store,
+		now:                 now,
+		invitationEmail:     config,
+		emailTransport:      options.EmailTransport,
+		alertAdapters:       alertAdapterCatalog(options.AlertNotificationAdapters),
+		secretKey:           providerSecretKey(options.ProviderSecretEncryptionKey),
+		requireSecretKey:    options.RequireProviderSecretEncryptionKey,
+		secretKeyConfigured: providerSecretKeyConfigured(options.ProviderSecretEncryptionKey),
 	}
 }
 
@@ -54,7 +66,7 @@ func (service *Service) GetViewer(ctx context.Context, envelope contracts.Bridge
 	if err := service.bootstrapViewer(ctx, envelope); err != nil {
 		return contracts.Viewer{}, err
 	}
-	viewer, err := service.viewer(ctx, principalID, nil)
+	viewer, err := service.viewer(ctx, principalID, authContextProjectID(envelope))
 	if err != nil {
 		return contracts.Viewer{}, err
 	}
@@ -807,6 +819,579 @@ func (service *Service) UpdateProjectAiSettings(ctx context.Context, request con
 		return nil, storageError()
 	}
 	return cloneAnyMap(updated), nil
+}
+
+func (service *Service) GetProjectAiProviderSettings(ctx context.Context, request contracts.ProjectAiProviderSettingsGetRequest) (map[string]any, error) {
+	project, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, request.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	settings, err := service.projectAiSettings(ctx, project.ID, principalID(request.BridgeEnvelope))
+	if err != nil {
+		return nil, err
+	}
+	return projectAiProviderSettingsFromProjectSettings(project, settings, service.now().UTC(), principalID(request.BridgeEnvelope)), nil
+}
+
+func (service *Service) UpdateProjectAiProviderSettings(ctx context.Context, request contracts.ProjectAiProviderSettingsUpdateRequest) (map[string]any, error) {
+	project, err := service.requireProjectAdmin(ctx, request.BridgeEnvelope, request.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	current, err := service.projectAiSettingsRecord(ctx, project.ID, principalID(request.BridgeEnvelope))
+	if err != nil {
+		return nil, err
+	}
+	if request.ExpectedVersion != current.Version {
+		return nil, forbiddenError("project AI provider settings version is stale")
+	}
+	now := service.now().UTC()
+	profiles, err := service.normalizeProjectProviderProfilesStrict(ctx, request.ProviderProfiles, project.OrganizationID, project.ID, now, principalID(request.BridgeEnvelope))
+	if err != nil {
+		return nil, err
+	}
+	aliases, err := normalizeProjectModelAliasesStrict(request.ModelAliases, project.OrganizationID, project.ID, now, principalID(request.BridgeEnvelope))
+	if err != nil {
+		return nil, err
+	}
+	updated := cloneAnyMap(current.Settings)
+	updated["projectId"] = project.ID
+	updated["providerProfiles"] = profiles
+	updated["modelAliases"] = aliases
+	updated["version"] = current.Version + 1
+	updated["updatedAt"] = now
+	updated["updatedByUserId"] = principalID(request.BridgeEnvelope)
+	updated["effective"] = effectiveProjectAiSettings(updated)
+	record := ports.ProjectAiSettingsRecord{
+		ProjectID:       project.ID,
+		Settings:        updated,
+		UpdatedAt:       now,
+		UpdatedByUserID: principalID(request.BridgeEnvelope),
+		Version:         current.Version + 1,
+	}
+	if err := service.store.PutProjectAiSettings(ctx, record); err != nil {
+		return nil, storageError()
+	}
+	return projectAiProviderSettingsFromProjectSettings(project, updated, now, principalID(request.BridgeEnvelope)), nil
+}
+
+func (service *Service) GetCompanyAiProviderSettings(ctx context.Context, request contracts.CompanyAiProviderSettingsGetRequest) (map[string]any, error) {
+	companyID := strings.TrimSpace(request.CompanyID)
+	if companyID == "" {
+		return nil, validationError("companyId is required")
+	}
+	if err := service.bootstrapViewer(ctx, request.BridgeEnvelope); err != nil {
+		return nil, err
+	}
+	if _, ok, err := service.store.GetMembership(ctx, companyID, principalID(request.BridgeEnvelope)); err != nil {
+		return nil, storageError()
+	} else if !ok {
+		return nil, forbiddenError("viewer is not a member of company")
+	}
+	record, err := service.companyAiProviderSettingsRecord(ctx, companyID, principalID(request.BridgeEnvelope))
+	if err != nil {
+		return nil, err
+	}
+	return companyAiProviderSettingsFromRecord(record, service.now().UTC(), principalID(request.BridgeEnvelope)), nil
+}
+
+func (service *Service) UpdateCompanyAiProviderSettings(ctx context.Context, request contracts.CompanyAiProviderSettingsUpdateRequest) (map[string]any, error) {
+	companyID := strings.TrimSpace(request.CompanyID)
+	if companyID == "" {
+		return nil, validationError("companyId is required")
+	}
+	if err := service.bootstrapViewer(ctx, request.BridgeEnvelope); err != nil {
+		return nil, err
+	}
+	if err := service.requireAdmin(ctx, request.BridgeEnvelope, companyID); err != nil {
+		return nil, err
+	}
+	current, err := service.companyAiProviderSettingsRecord(ctx, companyID, principalID(request.BridgeEnvelope))
+	if err != nil {
+		return nil, err
+	}
+	if request.ExpectedVersion != current.Version {
+		return nil, forbiddenError("company AI provider settings version is stale")
+	}
+	if containsSecretLookingKeyExceptCredentialValue(request.ProviderProfile) || containsSecretLookingKey(request.ChatModelAlias) {
+		return nil, validationError("company AI provider settings must not contain raw secret-looking fields")
+	}
+	now := service.now().UTC()
+	settings := defaultCompanyAiProviderSettings(companyID, now, principalID(request.BridgeEnvelope), current.Version+1)
+	profile, err := service.normalizeCompanyAiProviderProfile(ctx, request.ProviderProfile, companyID, now, principalID(request.BridgeEnvelope))
+	if err != nil {
+		return nil, err
+	}
+	settings["chatProviderProfile"] = profile
+	settings["chatModelAlias"] = normalizeCompanyChatModelAlias(request.ChatModelAlias, companyID, now, principalID(request.BridgeEnvelope))
+	settings["effective"] = effectiveCompanyAiProviderSettings(profile)
+	record := ports.CompanyAiProviderSettingsRecord{
+		CompanyID:       companyID,
+		Settings:        settings,
+		UpdatedAt:       now,
+		UpdatedByUserID: principalID(request.BridgeEnvelope),
+		Version:         current.Version + 1,
+	}
+	if err := service.store.PutCompanyAiProviderSettings(ctx, record); err != nil {
+		return nil, storageError()
+	}
+	return companyAiProviderSettingsFromRecord(record, now, principalID(request.BridgeEnvelope)), nil
+}
+
+func (service *Service) ResolveAiProviderSecret(ctx context.Context, request contracts.AiProviderSecretResolveRequest) (map[string]any, error) {
+	ref := strings.TrimSpace(request.CredentialRef)
+	if !strings.HasPrefix(ref, "managed:") {
+		return nil, validationError("credentialRef must use managed:")
+	}
+	parts := strings.Split(ref, "/")
+	if len(parts) != 3 {
+		return nil, validationError("managed credentialRef is invalid")
+	}
+	scope := strings.TrimPrefix(parts[0], "managed:")
+	ownerID := parts[1]
+	providerID := parts[2]
+	if scope != "company" && scope != "project" {
+		return nil, validationError("managed credentialRef scope is invalid")
+	}
+	var companyID string
+	var projectID string
+	switch scope {
+	case "company":
+		companyID = ownerID
+		if err := service.bootstrapViewer(ctx, request.BridgeEnvelope); err != nil {
+			return nil, err
+		}
+		if _, ok, err := service.store.GetMembership(ctx, companyID, principalID(request.BridgeEnvelope)); err != nil {
+			return nil, storageError()
+		} else if !ok {
+			return nil, forbiddenError("viewer is not a member of company")
+		}
+	case "project":
+		projectID = ownerID
+		project, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, projectID)
+		if err != nil {
+			return nil, err
+		}
+		companyID = project.OrganizationID
+	}
+	record, ok, err := service.store.GetAiProviderSecret(ctx, managedAiProviderSecretID(scope, companyID, projectID, providerID))
+	if err != nil {
+		return nil, storageError()
+	}
+	if !ok {
+		return nil, validationError("managed credentialRef was not found")
+	}
+	value, err := service.decryptAiProviderSecret(record)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"credentialRef": ref,
+		"value":         value,
+	}, nil
+}
+
+func (service *Service) GetAiChatHistory(ctx context.Context, request contracts.AiChatHistoryRequest) (map[string]any, error) {
+	companyID := strings.TrimSpace(request.CompanyID)
+	if companyID == "" {
+		return nil, validationError("companyId is required")
+	}
+	userID := strings.TrimSpace(request.UserID)
+	if userID == "" {
+		userID = principalID(request.BridgeEnvelope)
+	}
+	if userID == "" || userID != principalID(request.BridgeEnvelope) {
+		return nil, forbiddenError("AI Chat history user must match the authenticated principal")
+	}
+	if err := service.bootstrapViewer(ctx, request.BridgeEnvelope); err != nil {
+		return nil, err
+	}
+	membership, ok, err := service.store.GetMembership(ctx, companyID, userID)
+	if err != nil {
+		return nil, storageError()
+	}
+	if !ok {
+		return nil, forbiddenError("viewer is not a member of company")
+	}
+	if request.ProjectID != nil && strings.TrimSpace(*request.ProjectID) != "" {
+		if _, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, strings.TrimSpace(*request.ProjectID)); err != nil {
+			return nil, err
+		}
+	}
+	_ = membership
+	limit := 50
+	if request.First != nil {
+		limit = *request.First
+	}
+	if limit < 1 || limit > 100 {
+		return nil, validationError("first must be between 1 and 100")
+	}
+	var projectID *string
+	if request.ProjectID != nil && strings.TrimSpace(*request.ProjectID) != "" {
+		trimmed := strings.TrimSpace(*request.ProjectID)
+		projectID = &trimmed
+	}
+	conversations, err := service.store.ListAiChatConversations(ctx, companyID, userID, projectID, request.IncludeArchived, limit)
+	if err != nil {
+		return nil, storageError()
+	}
+	groups := map[string][]any{}
+	projectNames := map[string]string{}
+	for _, conversation := range conversations {
+		groups[conversation.ProjectID] = append(groups[conversation.ProjectID], contractAiChatConversation(conversation, nil))
+		if _, known := projectNames[conversation.ProjectID]; !known {
+			if project, ok, err := service.store.GetProject(ctx, conversation.ProjectID); err != nil {
+				return nil, storageError()
+			} else if ok {
+				projectNames[conversation.ProjectID] = project.Name
+			} else {
+				projectNames[conversation.ProjectID] = conversation.ProjectID
+			}
+		}
+	}
+	projectGroups := []any{}
+	for projectID, items := range groups {
+		projectName := projectNames[projectID]
+		if strings.TrimSpace(projectName) == "" {
+			projectName = projectID
+		}
+		projectGroups = append(projectGroups, map[string]any{"projectId": projectID, "projectName": projectName, "conversations": items})
+	}
+	sort.Slice(projectGroups, func(i, j int) bool {
+		left := projectGroups[i].(map[string]any)["projectId"].(string)
+		right := projectGroups[j].(map[string]any)["projectId"].(string)
+		if projectID != nil {
+			if left == *projectID {
+				return true
+			}
+			if right == *projectID {
+				return false
+			}
+		}
+		return left < right
+	})
+	return map[string]any{
+		"companyId":     companyID,
+		"userId":        userID,
+		"projectGroups": projectGroups,
+		"pageInfo": map[string]any{
+			"hasNextPage": false,
+			"endCursor":   nil,
+		},
+	}, nil
+}
+
+func (service *Service) GetAiChatConversation(ctx context.Context, request contracts.AiChatConversationGetRequest) (map[string]any, error) {
+	if strings.TrimSpace(request.ConversationID) == "" {
+		return nil, validationError("conversationId is required")
+	}
+	conversation, ok, err := service.store.GetAiChatConversation(ctx, strings.TrimSpace(request.ConversationID))
+	if err != nil {
+		return nil, storageError()
+	}
+	if !ok {
+		return nil, nil
+	}
+	if conversation.UserID != principalID(request.BridgeEnvelope) {
+		return nil, forbiddenError("AI Chat conversation user must match the authenticated principal")
+	}
+	if _, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, conversation.ProjectID); err != nil {
+		return nil, err
+	}
+	messages, err := service.store.ListAiChatMessages(ctx, conversation.ID, 200)
+	if err != nil {
+		return nil, storageError()
+	}
+	return contractAiChatConversation(conversation, messages), nil
+}
+
+func (service *Service) CreateAiChatConversation(ctx context.Context, request contracts.AiChatConversationCreateRequest) (map[string]any, error) {
+	if strings.TrimSpace(request.CompanyID) == "" || strings.TrimSpace(request.ProjectID) == "" || strings.TrimSpace(request.UserID) == "" || strings.TrimSpace(request.FirstUserMessage) == "" {
+		return nil, validationError("AI Chat conversation create requires company, project, user, and first message fields")
+	}
+	if request.UserID != principalID(request.BridgeEnvelope) {
+		return nil, forbiddenError("AI Chat conversation user must match the authenticated principal")
+	}
+	project, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, request.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	if project.OrganizationID != request.CompanyID {
+		return nil, forbiddenError("project does not belong to company")
+	}
+	now := service.now().UTC()
+	title := strings.TrimSpace(pointerString(request.Title))
+	if title == "" {
+		title = strings.TrimSpace(request.FirstUserMessage)
+	}
+	if len(title) > 80 {
+		title = title[:80]
+	}
+	conversation := ports.AiChatConversationRecord{
+		ID:            fmt.Sprintf("chat-%s-%d", normalizeID(project.ID), now.UnixNano()),
+		CompanyID:     request.CompanyID,
+		ProjectID:     project.ID,
+		UserID:        request.UserID,
+		Title:         title,
+		Status:        contracts.AiChatConversationStatusActive,
+		LastMessageAt: now,
+		LastRunStatus: string(contracts.AiChatRunStatusIdle),
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		Version:       1,
+	}
+	if err := service.store.PutAiChatConversation(ctx, conversation); err != nil {
+		return nil, storageError()
+	}
+	message := ports.AiChatMessageRecord{
+		ID:             fmt.Sprintf("msg-%s-1", conversation.ID),
+		ConversationID: conversation.ID,
+		Role:           "user",
+		Parts:          []map[string]any{{"type": "text", "text": strings.TrimSpace(request.FirstUserMessage)}},
+		CreatedAt:      now,
+	}
+	if err := service.store.PutAiChatMessage(ctx, message); err != nil {
+		return nil, storageError()
+	}
+	return contractAiChatConversation(conversation, []ports.AiChatMessageRecord{message}), nil
+}
+
+func (service *Service) ArchiveAiChatConversation(ctx context.Context, request contracts.AiChatConversationArchiveRequest) (map[string]any, error) {
+	if strings.TrimSpace(request.ConversationID) == "" || strings.TrimSpace(request.UserID) == "" {
+		return nil, validationError("conversationId and userId are required")
+	}
+	if request.UserID != principalID(request.BridgeEnvelope) {
+		return nil, forbiddenError("AI Chat conversation user must match the authenticated principal")
+	}
+	if request.ExpectedVersion < 1 {
+		return nil, validationError("expectedVersion is required")
+	}
+	conversation, ok, err := service.store.GetAiChatConversation(ctx, strings.TrimSpace(request.ConversationID))
+	if err != nil {
+		return nil, storageError()
+	}
+	if !ok {
+		return nil, notFoundError("AI Chat conversation")
+	}
+	if conversation.UserID != request.UserID {
+		return nil, forbiddenError("AI Chat conversation user must match the conversation owner")
+	}
+	if request.ExpectedVersion != conversation.Version {
+		return nil, forbiddenError("AI Chat conversation version is stale")
+	}
+	now := service.now().UTC()
+	conversation.Status = contracts.AiChatConversationStatusArchived
+	conversation.UpdatedAt = now
+	conversation.Version++
+	if err := service.store.PutAiChatConversation(ctx, conversation); err != nil {
+		return nil, storageError()
+	}
+	messages, err := service.store.ListAiChatMessages(ctx, conversation.ID, 200)
+	if err != nil {
+		return nil, storageError()
+	}
+	return contractAiChatConversation(conversation, messages), nil
+}
+
+func (service *Service) DeleteAiChatConversation(ctx context.Context, request contracts.AiChatConversationDeleteRequest) (bool, error) {
+	if strings.TrimSpace(request.ConversationID) == "" || strings.TrimSpace(request.UserID) == "" {
+		return false, validationError("conversationId and userId are required")
+	}
+	if request.UserID != principalID(request.BridgeEnvelope) {
+		return false, forbiddenError("AI Chat conversation user must match the authenticated principal")
+	}
+	conversation, ok, err := service.store.GetAiChatConversation(ctx, strings.TrimSpace(request.ConversationID))
+	if err != nil {
+		return false, storageError()
+	}
+	if !ok {
+		return false, notFoundError("AI Chat conversation")
+	}
+	if conversation.UserID != request.UserID {
+		return false, forbiddenError("AI Chat conversation user must match the conversation owner")
+	}
+	if _, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, conversation.ProjectID); err != nil {
+		return false, err
+	}
+	if err := service.store.DeleteAiChatConversation(ctx, conversation.ID); err != nil {
+		return false, storageError()
+	}
+	return true, nil
+}
+
+func (service *Service) AppendAiChatMessage(ctx context.Context, request contracts.AiChatMessageAppendRequest) (map[string]any, error) {
+	if strings.TrimSpace(request.ConversationID) == "" || strings.TrimSpace(request.RunID) == "" || strings.TrimSpace(request.Role) == "" || len(request.Parts) == 0 {
+		return nil, validationError("AI Chat message append requires conversation, run, role, and parts")
+	}
+	if containsSecretLookingKey(map[string]any{"parts": mapsFromAnySlice(request.Parts)}) {
+		return nil, validationError("AI Chat message parts must not contain raw secret-looking fields")
+	}
+	conversation, ok, err := service.store.GetAiChatConversation(ctx, strings.TrimSpace(request.ConversationID))
+	if err != nil {
+		return nil, storageError()
+	}
+	if !ok {
+		return nil, notFoundError("AI Chat conversation")
+	}
+	if conversation.UserID != principalID(request.BridgeEnvelope) {
+		return nil, forbiddenError("AI Chat message user must match the conversation owner")
+	}
+	now := service.now().UTC()
+	message := ports.AiChatMessageRecord{
+		ID:             fmt.Sprintf("msg-%s-%d", normalizeID(request.ConversationID), now.UnixNano()),
+		ConversationID: request.ConversationID,
+		RunID:          request.RunID,
+		Role:           request.Role,
+		Parts:          cloneAnyMapSlice(request.Parts),
+		CreatedAt:      now,
+	}
+	if err := service.store.PutAiChatMessage(ctx, message); err != nil {
+		return nil, storageError()
+	}
+	conversation.LastMessageAt = now
+	conversation.UpdatedAt = now
+	if err := service.store.PutAiChatConversation(ctx, conversation); err != nil {
+		return nil, storageError()
+	}
+	return contractAiChatMessage(message), nil
+}
+
+func (service *Service) ProposeAiChatAction(ctx context.Context, request contracts.AiChatActionProposeRequest) (map[string]any, error) {
+	if strings.TrimSpace(request.ConversationID) == "" || strings.TrimSpace(request.RunID) == "" || strings.TrimSpace(request.Title) == "" || strings.TrimSpace(request.Operation) == "" {
+		return nil, validationError("AI Chat action proposal requires conversation, run, title, and operation")
+	}
+	if containsSecretLookingKey(request.Preview) {
+		return nil, validationError("AI Chat action proposal preview must not contain raw secret-looking fields")
+	}
+	run, ok, err := service.store.GetAiChatRun(ctx, strings.TrimSpace(request.RunID))
+	if err != nil {
+		return nil, storageError()
+	}
+	if !ok {
+		return nil, notFoundError("AI Chat run")
+	}
+	if run.ConversationID != request.ConversationID {
+		return nil, validationError("AI Chat action run does not belong to conversation")
+	}
+	now := service.now().UTC()
+	action := ports.AiChatActionRecord{
+		ID:               fmt.Sprintf("action-%s-%d", normalizeID(request.RunID), now.UnixNano()),
+		ConversationID:   request.ConversationID,
+		RunID:            request.RunID,
+		ProjectID:        run.ProjectID,
+		Risk:             contracts.AiChatActionRisk(request.Risk),
+		Status:           contracts.AiChatActionStatusProposed,
+		ActionKind:       request.Operation,
+		InputPreview:     cloneAnyMap(request.Preview),
+		RequiresApproval: true,
+		IdempotencyKey:   fmt.Sprintf("%s-%d", request.RunID, now.UnixNano()),
+		ExpiresAt:        now.Add(15 * time.Minute),
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		Version:          1,
+	}
+	if err := service.store.PutAiChatAction(ctx, action); err != nil {
+		return nil, storageError()
+	}
+	return contractAiChatAction(action), nil
+}
+
+func (service *Service) ApproveAiChatAction(ctx context.Context, request contracts.AiChatActionApproveRequest) (map[string]any, error) {
+	if strings.TrimSpace(request.ActionID) == "" || strings.TrimSpace(request.UserID) == "" {
+		return nil, validationError("actionId and userId are required")
+	}
+	if request.UserID != principalID(request.BridgeEnvelope) {
+		return nil, forbiddenError("AI Chat action approver must match the authenticated principal")
+	}
+	if request.ExpectedVersion < 1 {
+		return nil, validationError("expectedVersion is required")
+	}
+	action, ok, err := service.store.GetAiChatAction(ctx, strings.TrimSpace(request.ActionID))
+	if err != nil {
+		return nil, storageError()
+	}
+	if !ok {
+		return nil, notFoundError("AI Chat action")
+	}
+	if request.ExpectedVersion != action.Version {
+		return nil, forbiddenError("AI Chat action version is stale")
+	}
+	now := service.now().UTC()
+	status := contracts.AiChatActionStatusRejected
+	if request.Approved {
+		status = contracts.AiChatActionStatusApproved
+	}
+	action.Status = status
+	action.ApprovedByUserID = &request.UserID
+	action.ApprovedAt = &now
+	action.UpdatedAt = now
+	action.Version++
+	if err := service.store.PutAiChatAction(ctx, action); err != nil {
+		return nil, storageError()
+	}
+	return contractAiChatAction(action), nil
+}
+
+func (service *Service) FinishAiChatAction(ctx context.Context, request contracts.AiChatActionFinishRequest) (map[string]any, error) {
+	if strings.TrimSpace(request.ActionID) == "" || strings.TrimSpace(request.Status) == "" {
+		return nil, validationError("actionId and status are required")
+	}
+	if containsSecretLookingKey(request.Result) {
+		return nil, validationError("AI Chat action result must not contain raw secret-looking fields")
+	}
+	action, ok, err := service.store.GetAiChatAction(ctx, strings.TrimSpace(request.ActionID))
+	if err != nil {
+		return nil, storageError()
+	}
+	if !ok {
+		return nil, notFoundError("AI Chat action")
+	}
+	now := service.now().UTC()
+	action.Status = contracts.AiChatActionStatus(request.Status)
+	action.Result = cloneAnyMap(request.Result)
+	action.UpdatedAt = now
+	action.Version++
+	if err := service.store.PutAiChatAction(ctx, action); err != nil {
+		return nil, storageError()
+	}
+	return contractAiChatAction(action), nil
+}
+
+func (service *Service) SaveAiChatCompaction(ctx context.Context, request contracts.AiChatCompactionSaveRequest) (map[string]any, error) {
+	if strings.TrimSpace(request.ConversationID) == "" || strings.TrimSpace(request.Summary) == "" || request.TokenCount < 0 {
+		return nil, validationError("AI Chat compaction requires conversation, summary, and non-negative token count")
+	}
+	conversation, ok, err := service.store.GetAiChatConversation(ctx, strings.TrimSpace(request.ConversationID))
+	if err != nil {
+		return nil, storageError()
+	}
+	if !ok {
+		return nil, notFoundError("AI Chat conversation")
+	}
+	if conversation.UserID != principalID(request.BridgeEnvelope) {
+		return nil, forbiddenError("AI Chat compaction user must match the conversation owner")
+	}
+	now := service.now().UTC()
+	compaction := ports.AiChatCompactionRecord{
+		ID:                 fmt.Sprintf("compaction-%s-%d", normalizeID(request.ConversationID), now.UnixNano()),
+		ConversationID:     request.ConversationID,
+		SourceMessageCount: len(request.CoveredMessageIDs),
+		Summary:            strings.TrimSpace(request.Summary),
+		RetainedMessageIDs: append([]string{}, request.CoveredMessageIDs...),
+		ArtifactSummaries:  []string{},
+		PendingActionIDs:   []string{},
+		TokenCount:         request.TokenCount,
+		CreatedAt:          now,
+	}
+	if err := service.store.PutAiChatCompaction(ctx, compaction); err != nil {
+		return nil, storageError()
+	}
+	conversation.LatestCompactionID = &compaction.ID
+	conversation.UpdatedAt = now
+	if err := service.store.PutAiChatConversation(ctx, conversation); err != nil {
+		return nil, storageError()
+	}
+	return contractAiChatCompaction(compaction), nil
 }
 
 func (service *Service) ListAlertRules(ctx context.Context, request contracts.AlertRuleListRequest) ([]contracts.AlertRule, error) {
@@ -1845,6 +2430,9 @@ func (service *Service) bootstrapViewer(ctx context.Context, envelope contracts.
 		}
 	}
 	if organizationID == LocalCompanyID {
+		if err := service.ensureLocalAdminMembership(ctx, userID, now); err != nil {
+			return err
+		}
 		localProjects := []ports.ProjectRecord{
 			{
 				ID:             LocalProjectID,
@@ -1876,6 +2464,38 @@ func (service *Service) bootstrapViewer(ctx context.Context, envelope contracts.
 				}
 			}
 		}
+	}
+	return nil
+}
+
+func (service *Service) ensureLocalAdminMembership(ctx context.Context, userID string, now time.Time) error {
+	if userID == "" {
+		userID = localUserID
+	}
+	if userID != localUserID {
+		return nil
+	}
+	membership, ok, err := service.store.GetMembership(ctx, LocalCompanyID, localUserID)
+	if err != nil {
+		return storageError()
+	}
+	if ok && membership.Role == contracts.CompanyRoleAdmin {
+		return nil
+	}
+	if !ok {
+		membership = ports.MembershipRecord{
+			UserID:         localUserID,
+			OrganizationID: LocalCompanyID,
+			CreatedAt:      now,
+		}
+	}
+	membership.Role = contracts.CompanyRoleAdmin
+	membership.UpdatedAt = now
+	if membership.CreatedAt.IsZero() {
+		membership.CreatedAt = now
+	}
+	if err := service.store.PutMembership(ctx, membership); err != nil {
+		return storageError()
 	}
 	return nil
 }
@@ -2684,6 +3304,35 @@ func (service *Service) projectAiSettingsRecord(ctx context.Context, projectID s
 	return record, nil
 }
 
+func (service *Service) companyAiProviderSettingsRecord(ctx context.Context, companyID string, actor string) (ports.CompanyAiProviderSettingsRecord, error) {
+	record, ok, err := service.store.GetCompanyAiProviderSettings(ctx, companyID)
+	if err != nil {
+		return ports.CompanyAiProviderSettingsRecord{}, storageError()
+	}
+	if ok {
+		normalized, changed := normalizeCompanyAiProviderSettingsRecord(record)
+		if changed {
+			if err := service.store.PutCompanyAiProviderSettings(ctx, normalized); err != nil {
+				return ports.CompanyAiProviderSettingsRecord{}, storageError()
+			}
+		}
+		return normalized, nil
+	}
+	now := service.now().UTC()
+	settings := defaultCompanyAiProviderSettings(companyID, now, actor, 1)
+	record = ports.CompanyAiProviderSettingsRecord{
+		CompanyID:       companyID,
+		Settings:        settings,
+		UpdatedAt:       now,
+		UpdatedByUserID: actor,
+		Version:         1,
+	}
+	if err := service.store.PutCompanyAiProviderSettings(ctx, record); err != nil {
+		return ports.CompanyAiProviderSettingsRecord{}, storageError()
+	}
+	return record, nil
+}
+
 func defaultProjectAiSettings(projectID string, now time.Time, actor string, version int) map[string]any {
 	return map[string]any{
 		"projectId":                 projectID,
@@ -2723,12 +3372,451 @@ func defaultProjectAiSettings(projectID string, now time.Time, actor string, ver
 			"deterministicOnly":        true,
 			"missingProviderProfiles":  []any{},
 			"disabledProviderProfiles": []any{},
+			"missingChatProvider":      false,
 			"budgetExhausted":          false,
 		},
 		"version":         version,
 		"updatedAt":       now,
 		"updatedByUserId": actor,
 	}
+}
+
+func defaultCompanyAiProviderSettings(companyID string, now time.Time, actor string, version int) map[string]any {
+	return map[string]any{
+		"companyId":           companyID,
+		"chatProviderProfile": nil,
+		"chatModelAlias":      nil,
+		"effective": map[string]any{
+			"enabled":                  false,
+			"warnings":                 []any{"No company AI Chat provider configured."},
+			"missingCredentialRefs":    []any{},
+			"missingProviderProfiles":  []any{},
+			"disabledProviderProfiles": []any{},
+			"missingChatProvider":      true,
+			"runtimeSource":            "stored",
+		},
+		"version":         version,
+		"updatedAt":       now,
+		"updatedByUserId": actor,
+	}
+}
+
+func normalizeCompanyAiProviderSettingsRecord(record ports.CompanyAiProviderSettingsRecord) (ports.CompanyAiProviderSettingsRecord, bool) {
+	settings := cloneAnyMap(record.Settings)
+	changed := false
+	effective, ok := settings["effective"].(map[string]any)
+	if !ok {
+		effective = map[string]any{}
+		settings["effective"] = effective
+		changed = true
+	} else {
+		effective = cloneAnyMap(effective)
+		settings["effective"] = effective
+	}
+	if settings["chatProviderProfile"] == nil && settings["providerProfile"] != nil {
+		settings["chatProviderProfile"] = settings["providerProfile"]
+		changed = true
+	}
+	if legacyDisabled, ok := effective["disabledProviderProfileIds"].([]any); ok {
+		if _, hasCurrent := effective["disabledProviderProfiles"].([]any); !hasCurrent {
+			effective["disabledProviderProfiles"] = legacyDisabled
+			changed = true
+		}
+	}
+	delete(effective, "disabledProviderProfileIds")
+	for _, key := range []string{"warnings", "missingCredentialRefs", "missingProviderProfiles", "disabledProviderProfiles"} {
+		if _, ok := effective[key].([]any); !ok {
+			effective[key] = []any{}
+			changed = true
+		}
+	}
+	if _, ok := effective["enabled"].(bool); !ok {
+		effective["enabled"] = false
+		changed = true
+	}
+	if _, ok := effective["missingChatProvider"].(bool); !ok {
+		effective["missingChatProvider"] = settings["chatProviderProfile"] == nil
+		changed = true
+	}
+	if _, ok := effective["runtimeSource"].(string); !ok {
+		effective["runtimeSource"] = "stored"
+		changed = true
+	}
+	record.Settings = settings
+	return record, changed
+}
+
+func companyAiProviderSettingsFromRecord(record ports.CompanyAiProviderSettingsRecord, now time.Time, actor string) map[string]any {
+	settings := cloneAnyMap(record.Settings)
+	profile := settings["chatProviderProfile"]
+	if profile == nil {
+		profile = settings["providerProfile"]
+	}
+	if rawProfile := mapFromAny(profile); len(rawProfile) > 0 {
+		profile = publicAiProviderProfile(rawProfile, record.CompanyID, "", now, actor)
+	}
+	return map[string]any{
+		"companyId":       stringFromMapDefault(settings, "companyId", record.CompanyID),
+		"providerProfile": profile,
+		"chatModelAlias":  settings["chatModelAlias"],
+		"effective":       valueOrDefault(settings["effective"], effectiveCompanyAiProviderSettings(mapFromAny(profile))),
+		"version":         valueOrDefault(settings["version"], record.Version),
+		"updatedAt":       valueOrDefault(settings["updatedAt"], valueOrDefault(record.UpdatedAt, now)),
+		"updatedByUserId": valueOrDefault(settings["updatedByUserId"], valueOrDefault(record.UpdatedByUserID, actor)),
+	}
+}
+
+func projectAiProviderSettingsFromProjectSettings(project ports.ProjectRecord, settings map[string]any, now time.Time, actor string) map[string]any {
+	version := 1
+	if value, ok := intFromMap(settings, "version"); ok {
+		version = value
+	}
+	return map[string]any{
+		"projectId":        project.ID,
+		"providerProfiles": normalizeProjectProviderProfiles(anySliceFromMap(settings, "providerProfiles"), project.OrganizationID, project.ID, now, actor),
+		"modelAliases":     normalizeProjectModelAliases(anySliceFromMap(settings, "modelAliases"), project.OrganizationID, project.ID, now, actor),
+		"effective":        effectiveAiProviderSettings(anySliceFromMap(settings, "providerProfiles"), anySliceFromMap(settings, "modelAliases")),
+		"version":          version,
+		"updatedAt":        valueOrDefault(settings["updatedAt"], now),
+		"updatedByUserId":  stringFromMapDefault(settings, "updatedByUserId", actor),
+	}
+}
+
+func publicAiProviderProfile(profile map[string]any, companyID string, projectID string, now time.Time, actor string) map[string]any {
+	result := cloneAnyMap(profile)
+	scope := stringFromMapDefault(result, "ownerScope", stringFromMapDefault(result, "scope", "company"))
+	ownerID := stringFromMapDefault(result, "ownerId", "")
+	if ownerID == "" {
+		if scope == "project" && projectID != "" {
+			ownerID = projectID
+		} else {
+			ownerID = companyID
+		}
+	}
+	result["ownerScope"] = scope
+	result["ownerId"] = ownerID
+	result["timeoutMs"] = valueOrDefault(result["timeoutMs"], 30000)
+	result["parameters"] = valueOrDefault(result["parameters"], map[string]any{})
+	result["models"] = valueOrDefault(result["models"], map[string]any{})
+	result["updatedAt"] = valueOrDefault(result["updatedAt"], now)
+	result["updatedByUserId"] = stringFromMapDefault(result, "updatedByUserId", actor)
+	delete(result, "scope")
+	delete(result, "companyId")
+	delete(result, "projectId")
+	return result
+}
+
+func normalizeProjectProviderProfiles(items []any, companyID string, projectID string, now time.Time, actor string) []any {
+	profiles := make([]any, 0, len(items))
+	seen := map[string]struct{}{}
+	for index, item := range items {
+		input, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		profile, err := normalizeAiProviderProfile(input, "project", companyID, projectID, now, actor, index)
+		if err != nil {
+			continue
+		}
+		id := profile["id"].(string)
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		profiles = append(profiles, profile)
+	}
+	return profiles
+}
+
+func (service *Service) normalizeProjectProviderProfilesStrict(ctx context.Context, items []map[string]any, companyID string, projectID string, now time.Time, actor string) ([]any, error) {
+	profiles := make([]any, 0, len(items))
+	seen := map[string]struct{}{}
+	for index, input := range items {
+		profile, err := service.normalizeAiProviderProfile(ctx, input, "project", companyID, projectID, now, actor, index)
+		if err != nil {
+			return nil, err
+		}
+		id := profile["id"].(string)
+		if _, exists := seen[id]; exists {
+			return nil, validationError("provider profile IDs must be unique")
+		}
+		seen[id] = struct{}{}
+		profiles = append(profiles, profile)
+	}
+	return profiles, nil
+}
+
+func (service *Service) normalizeCompanyAiProviderProfile(ctx context.Context, input map[string]any, companyID string, now time.Time, actor string) (map[string]any, error) {
+	return service.normalizeAiProviderProfile(ctx, input, "company", companyID, "", now, actor, 0)
+}
+
+func normalizeAiProviderProfile(input map[string]any, scope string, companyID string, projectID string, now time.Time, actor string, index int) (map[string]any, error) {
+	if containsSecretLookingKey(input) {
+		return nil, validationError("AI provider profile must not contain raw secret-looking fields")
+	}
+	id, _ := stringFromMap(input, "id")
+	if id == "" {
+		id = fmt.Sprintf("provider-%d", index+1)
+	}
+	kind := stringFromMapDefault(input, "providerKind", string(contracts.AiProviderKindOpenAI))
+	if !slices.Contains(contracts.AiProviderKinds, kind) {
+		return nil, validationError("unsupported AI provider kind")
+	}
+	credentialRef := stringFromMapDefault(input, "credentialRef", "")
+	if credentialRef == "" || !allowedAiCredentialRef(credentialRef) {
+		return nil, validationError("credentialRef must use managed:, env:, or external:")
+	}
+	parameters, _ := mapFromMap(input, "parameters")
+	baseURL, hasBaseURL := stringFromMap(input, "baseUrl")
+	if kind == string(contracts.AiProviderKindOpenAICompatible) || kind == string(contracts.AiProviderKindAzureFoundry) {
+		if !hasBaseURL || !strings.HasPrefix(baseURL, "https://") {
+			return nil, validationError("provider baseUrl must be HTTPS")
+		}
+	}
+	if kind == string(contracts.AiProviderKindOpenAI) || kind == string(contracts.AiProviderKindAnthropic) || kind == string(contracts.AiProviderKindAWSBedrock) {
+		if hasBaseURL {
+			return nil, validationError("provider baseUrl is not allowed for this provider kind")
+		}
+	}
+	if kind == string(contracts.AiProviderKindAWSBedrock) {
+		if _, ok := stringFromMap(parameters, "region"); !ok {
+			return nil, validationError("aws_bedrock provider requires parameters.region")
+		}
+	}
+	if kind == string(contracts.AiProviderKindAzureFoundry) {
+		if _, ok := stringFromMap(parameters, "deployment"); !ok {
+			return nil, validationError("azure_foundry provider requires parameters.deployment")
+		}
+	}
+	profile := map[string]any{
+		"id":              id,
+		"ownerScope":      scope,
+		"ownerId":         companyID,
+		"scope":           scope,
+		"companyId":       companyID,
+		"label":           stringFromMapDefault(input, "label", id),
+		"providerKind":    kind,
+		"credentialRef":   credentialRef,
+		"models":          valueOrDefault(input["models"], map[string]any{}),
+		"parameters":      parameters,
+		"timeoutMs":       valueOrDefault(input["timeoutMs"], 30000),
+		"createdAt":       valueOrDefault(input["createdAt"], now),
+		"updatedAt":       now,
+		"updatedByUserId": actor,
+	}
+	if projectID != "" {
+		profile["ownerId"] = projectID
+		profile["projectId"] = projectID
+	}
+	if hasBaseURL {
+		profile["baseUrl"] = baseURL
+	}
+	copyOptionalStringSetting(profile, input, "defaultModel")
+	if value := nullableIntNumberFromMap(input, "maxConcurrency"); value != nil {
+		profile["maxConcurrency"] = value
+	}
+	if disabledAt := input["disabledAt"]; disabledAt != nil {
+		profile["disabledAt"] = disabledAt
+	}
+	return profile, nil
+}
+
+func (service *Service) normalizeAiProviderProfile(ctx context.Context, input map[string]any, scope string, companyID string, projectID string, now time.Time, actor string, index int) (map[string]any, error) {
+	if containsSecretLookingKeyExceptCredentialValue(input) {
+		return nil, validationError("AI provider profile must not contain raw secret-looking fields")
+	}
+	credentialValue, hasCredentialValue := stringFromMap(input, "credentialValue")
+	sanitized := cloneAnyMap(input)
+	delete(sanitized, "credentialValue")
+	id, _ := stringFromMap(sanitized, "id")
+	if id == "" {
+		id = fmt.Sprintf("provider-%d", index+1)
+		sanitized["id"] = id
+	}
+	if hasCredentialValue {
+		credentialRef, err := service.storeAiProviderSecret(ctx, scope, companyID, projectID, id, credentialValue, now, actor)
+		if err != nil {
+			return nil, err
+		}
+		sanitized["credentialRef"] = credentialRef
+	}
+	return normalizeAiProviderProfile(sanitized, scope, companyID, projectID, now, actor, index)
+}
+
+func normalizeProjectModelAliases(items []any, companyID string, projectID string, now time.Time, actor string) []any {
+	aliases := make([]any, 0, len(items))
+	seen := map[string]struct{}{}
+	for index, item := range items {
+		input, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := stringFromMap(input, "id")
+		if id == "" {
+			id = fmt.Sprintf("model-alias-%d", index+1)
+		}
+		name := stringFromMapDefault(input, "name", id)
+		if _, exists := seen[name]; exists {
+			continue
+		}
+		seen[name] = struct{}{}
+		parameters, _ := mapFromMap(input, "parameters")
+		aliases = append(aliases, map[string]any{
+			"id":                id,
+			"companyId":         companyID,
+			"projectId":         projectID,
+			"name":              name,
+			"providerProfileId": stringFromMapDefault(input, "providerProfileId", ""),
+			"model":             stringFromMapDefault(input, "model", ""),
+			"purpose":           stringFromMapDefault(input, "purpose", string(contracts.AiModelPurposeDefault)),
+			"parameters":        parameters,
+			"createdAt":         valueOrDefault(input["createdAt"], now),
+			"updatedAt":         now,
+			"updatedByUserId":   actor,
+		})
+	}
+	return aliases
+}
+
+func normalizeProjectModelAliasesStrict(items []map[string]any, companyID string, projectID string, now time.Time, actor string) ([]any, error) {
+	aliases := make([]any, 0, len(items))
+	seenIDs := map[string]struct{}{}
+	seenNames := map[string]struct{}{}
+	for index, input := range items {
+		if containsSecretLookingKey(input) {
+			return nil, validationError("AI model aliases must not contain raw secret-looking fields")
+		}
+		id, _ := stringFromMap(input, "id")
+		if id == "" {
+			id = fmt.Sprintf("model-alias-%d", index+1)
+		}
+		if _, exists := seenIDs[id]; exists {
+			return nil, validationError("model alias IDs must be unique")
+		}
+		seenIDs[id] = struct{}{}
+		name := stringFromMapDefault(input, "name", id)
+		if _, exists := seenNames[name]; exists {
+			return nil, validationError("model alias names must be unique")
+		}
+		seenNames[name] = struct{}{}
+		providerProfileID := stringFromMapDefault(input, "providerProfileId", "")
+		if providerProfileID == "" {
+			return nil, validationError("model aliases require providerProfileId")
+		}
+		model := stringFromMapDefault(input, "model", "")
+		if model == "" {
+			return nil, validationError("model aliases require model")
+		}
+		purpose := stringFromMapDefault(input, "purpose", string(contracts.AiModelPurposeDefault))
+		if !slices.Contains(contracts.AiModelPurposes, purpose) {
+			return nil, validationError("unsupported AI model purpose")
+		}
+		parameters, _ := mapFromMap(input, "parameters")
+		aliases = append(aliases, map[string]any{
+			"id":                id,
+			"companyId":         companyID,
+			"projectId":         projectID,
+			"name":              name,
+			"providerProfileId": providerProfileID,
+			"model":             model,
+			"purpose":           purpose,
+			"parameters":        parameters,
+			"createdAt":         valueOrDefault(input["createdAt"], now),
+			"updatedAt":         now,
+			"updatedByUserId":   actor,
+		})
+	}
+	return aliases, nil
+}
+
+func normalizeCompanyChatModelAlias(input map[string]any, companyID string, now time.Time, actor string) map[string]any {
+	parameters, _ := mapFromMap(input, "parameters")
+	return map[string]any{
+		"id":                stringFromMapDefault(input, "id", "company-chat"),
+		"companyId":         companyID,
+		"name":              stringFromMapDefault(input, "name", "chat"),
+		"providerProfileId": stringFromMapDefault(input, "providerProfileId", ""),
+		"model":             stringFromMapDefault(input, "model", ""),
+		"purpose":           stringFromMapDefault(input, "purpose", string(contracts.AiModelPurposeChat)),
+		"parameters":        parameters,
+		"createdAt":         valueOrDefault(input["createdAt"], now),
+		"updatedAt":         now,
+		"updatedByUserId":   actor,
+	}
+}
+
+func effectiveAiProviderSettings(profiles []any, aliases []any) map[string]any {
+	missingCredentialRefs := []any{}
+	disabledProfileIDs := []any{}
+	for _, item := range profiles {
+		profile, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id := stringFromMapDefault(profile, "id", "")
+		if _, ok := stringFromMap(profile, "credentialRef"); !ok && id != "" {
+			missingCredentialRefs = append(missingCredentialRefs, id)
+		}
+		if profile["disabledAt"] != nil && id != "" {
+			disabledProfileIDs = append(disabledProfileIDs, id)
+		}
+	}
+	return map[string]any{
+		"enabled":                  len(profiles) > 0 && len(missingCredentialRefs) == 0,
+		"warnings":                 []any{},
+		"missingCredentialRefs":    missingCredentialRefs,
+		"missingProviderProfiles":  []any{},
+		"disabledProviderProfiles": disabledProfileIDs,
+		"missingChatProvider":      false,
+		"missingAliasPurposes":     missingAiModelAliasPurposes(aliases),
+		"runtimeSource":            "stored",
+	}
+}
+
+func effectiveCompanyAiProviderSettings(profile map[string]any) map[string]any {
+	missingCredentialRefs := []any{}
+	warnings := []any{}
+	missingChatProvider := len(profile) == 0
+	if missingChatProvider {
+		warnings = append(warnings, "No company AI Chat provider configured.")
+	} else if _, ok := stringFromMap(profile, "credentialRef"); !ok {
+		missingCredentialRefs = append(missingCredentialRefs, stringFromMapDefault(profile, "id", "company-chat"))
+		warnings = append(warnings, "Company AI Chat provider is missing a credential reference.")
+	}
+	disabledProfileIDs := []any{}
+	if profile["disabledAt"] != nil {
+		disabledProfileIDs = append(disabledProfileIDs, stringFromMapDefault(profile, "id", "company-chat"))
+	}
+	return map[string]any{
+		"enabled":                  len(missingCredentialRefs) == 0 && len(disabledProfileIDs) == 0,
+		"warnings":                 warnings,
+		"missingCredentialRefs":    missingCredentialRefs,
+		"missingProviderProfiles":  []any{},
+		"disabledProviderProfiles": disabledProfileIDs,
+		"missingChatProvider":      missingChatProvider,
+		"runtimeSource":            "stored",
+	}
+}
+
+func missingAiModelAliasPurposes(aliases []any) []any {
+	purposes := map[string]struct{}{}
+	for _, item := range aliases {
+		alias, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		purpose := stringFromMapDefault(alias, "purpose", "")
+		if purpose != "" {
+			purposes[purpose] = struct{}{}
+		}
+	}
+	missing := []any{}
+	for _, purpose := range []string{string(contracts.AiModelPurposeDefault), string(contracts.AiModelPurposeChat), string(contracts.AiModelPurposeJudge), string(contracts.AiModelPurposeOptimizer), string(contracts.AiModelPurposeEmbedding), string(contracts.AiModelPurposeReplay)} {
+		if _, ok := purposes[purpose]; !ok {
+			missing = append(missing, purpose)
+		}
+	}
+	return missing
 }
 
 func normalizeProjectAiSettingsInput(input map[string]any, projectID string, now time.Time, actor string, version int) (map[string]any, error) {
@@ -4053,6 +5141,99 @@ func cloneAnyMap(input map[string]any) map[string]any {
 	return output
 }
 
+func mapsFromAnySlice(input []map[string]any) []any {
+	output := make([]any, 0, len(input))
+	for _, item := range input {
+		output = append(output, cloneAnyMap(item))
+	}
+	return output
+}
+
+func cloneAnyMapSlice(input []map[string]any) []map[string]any {
+	if input == nil {
+		return nil
+	}
+	output := make([]map[string]any, 0, len(input))
+	for _, item := range input {
+		output = append(output, cloneAnyMap(item))
+	}
+	return output
+}
+
+func contractAiChatConversation(conversation ports.AiChatConversationRecord, messages []ports.AiChatMessageRecord) map[string]any {
+	messageViews := []any{}
+	for _, message := range messages {
+		messageViews = append(messageViews, contractAiChatMessage(message))
+	}
+	return map[string]any{
+		"id":                 conversation.ID,
+		"companyId":          conversation.CompanyID,
+		"projectId":          conversation.ProjectID,
+		"userId":             conversation.UserID,
+		"title":              conversation.Title,
+		"status":             string(conversation.Status),
+		"lastMessageAt":      conversation.LastMessageAt,
+		"lastRunStatus":      conversation.LastRunStatus,
+		"latestCompactionId": conversation.LatestCompactionID,
+		"messages":           messageViews,
+		"runs":               []any{},
+		"artifacts":          []any{},
+		"actionProposals":    []any{},
+		"compactions":        []any{},
+		"version":            conversation.Version,
+		"createdAt":          conversation.CreatedAt,
+		"updatedAt":          conversation.UpdatedAt,
+	}
+}
+
+func contractAiChatMessage(message ports.AiChatMessageRecord) map[string]any {
+	return map[string]any{
+		"id":             message.ID,
+		"conversationId": message.ConversationID,
+		"runId":          message.RunID,
+		"role":           message.Role,
+		"parts":          mapsFromAnySlice(message.Parts),
+		"tokenEstimate":  message.TokenEstimate,
+		"createdAt":      message.CreatedAt,
+	}
+}
+
+func contractAiChatAction(action ports.AiChatActionRecord) map[string]any {
+	return map[string]any{
+		"id":               action.ID,
+		"conversationId":   action.ConversationID,
+		"runId":            action.RunID,
+		"projectId":        action.ProjectID,
+		"risk":             string(action.Risk),
+		"status":           string(action.Status),
+		"actionKind":       action.ActionKind,
+		"inputPreview":     cloneAnyMap(action.InputPreview),
+		"requiresApproval": action.RequiresApproval,
+		"approvedByUserId": action.ApprovedByUserID,
+		"approvedAt":       action.ApprovedAt,
+		"idempotencyKey":   action.IdempotencyKey,
+		"expiresAt":        action.ExpiresAt,
+		"result":           cloneAnyMap(action.Result),
+		"version":          action.Version,
+		"createdAt":        action.CreatedAt,
+		"updatedAt":        action.UpdatedAt,
+	}
+}
+
+func contractAiChatCompaction(compaction ports.AiChatCompactionRecord) map[string]any {
+	return map[string]any{
+		"id":                 compaction.ID,
+		"conversationId":     compaction.ConversationID,
+		"sourceMessageCount": compaction.SourceMessageCount,
+		"summary":            compaction.Summary,
+		"retainedMessageIds": append([]string{}, compaction.RetainedMessageIDs...),
+		"artifactSummaries":  append([]string{}, compaction.ArtifactSummaries...),
+		"pendingActionIds":   append([]string{}, compaction.PendingActionIDs...),
+		"tokenCount":         compaction.TokenCount,
+		"createdAt":          compaction.CreatedAt,
+	}
+}
+
 func stringFromMap(input map[string]any, key string) (string, bool) {
 	value, ok := input[key].(string)
 	if !ok {
@@ -4087,6 +5268,14 @@ func mapFromMap(input map[string]any, key string) (map[string]any, bool) {
 		return map[string]any{}, false
 	}
 	return value, true
+}
+
+func mapFromAny(input any) map[string]any {
+	value, ok := input.(map[string]any)
+	if !ok {
+		return map[string]any{}
+	}
+	return value
 }
 
 func anySliceFromMap(input map[string]any, key string) []any {
@@ -4192,6 +5381,142 @@ func containsSecretLookingKey(value any) bool {
 		}
 	}
 	return false
+}
+
+func containsSecretLookingKeyExceptCredentialValue(value any) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, nested := range typed {
+			if key == "credentialValue" {
+				continue
+			}
+			normalized := strings.ToLower(strings.ReplaceAll(key, "-", "_"))
+			if strings.Contains(normalized, "authorization") ||
+				strings.Contains(normalized, "cookie") ||
+				strings.Contains(normalized, "x_api_key") ||
+				strings.Contains(normalized, "api_key") ||
+				strings.Contains(normalized, "token") ||
+				strings.Contains(normalized, "secret") ||
+				strings.Contains(normalized, "password") {
+				return true
+			}
+			if containsSecretLookingKeyExceptCredentialValue(nested) {
+				return true
+			}
+		}
+	case []any:
+		for _, nested := range typed {
+			if containsSecretLookingKeyExceptCredentialValue(nested) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func allowedAiCredentialRef(ref string) bool {
+	return strings.HasPrefix(ref, "managed:") || strings.HasPrefix(ref, "env:") || strings.HasPrefix(ref, "external:")
+}
+
+func providerSecretKey(input string) []byte {
+	key := strings.TrimSpace(input)
+	if key == "" {
+		key = "cloudgrid-local-provider-secret-key"
+	}
+	sum := sha256.Sum256([]byte(key))
+	return sum[:]
+}
+
+func providerSecretKeyConfigured(input string) bool {
+	return strings.TrimSpace(input) != ""
+}
+
+func managedAiProviderSecretRef(scope string, companyID string, projectID string, providerID string) string {
+	if scope == "project" {
+		return "managed:project/" + normalizeID(projectID) + "/" + normalizeID(providerID)
+	}
+	return "managed:company/" + normalizeID(companyID) + "/" + normalizeID(providerID)
+}
+
+func managedAiProviderSecretID(scope string, companyID string, projectID string, providerID string) string {
+	if scope == "project" {
+		return "project-" + normalizeID(projectID) + "-" + normalizeID(providerID)
+	}
+	return "company-" + normalizeID(companyID) + "-" + normalizeID(providerID)
+}
+
+func (service *Service) storeAiProviderSecret(ctx context.Context, scope string, companyID string, projectID string, providerID string, value string, now time.Time, actor string) (string, error) {
+	if strings.TrimSpace(value) == "" {
+		return "", validationError("credentialValue must not be empty")
+	}
+	if service.requireSecretKey && !service.secretKeyConfigured {
+		return "", validationError("CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY is required before storing managed provider secrets")
+	}
+	block, err := aes.NewCipher(service.secretKey)
+	if err != nil {
+		return "", validationError("provider secret encryption is unavailable")
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", validationError("provider secret encryption is unavailable")
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", validationError("provider secret encryption is unavailable")
+	}
+	ciphertext := gcm.Seal(nil, nonce, []byte(value), nil)
+	record := ports.AiProviderSecretRecord{
+		ID:              managedAiProviderSecretID(scope, companyID, projectID, providerID),
+		Scope:           scope,
+		CompanyID:       companyID,
+		ProjectID:       projectID,
+		ProviderID:      providerID,
+		Algorithm:       "aes-256-gcm",
+		Nonce:           base64.StdEncoding.EncodeToString(nonce),
+		Ciphertext:      base64.StdEncoding.EncodeToString(ciphertext),
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		UpdatedByUserID: actor,
+	}
+	if existing, ok, err := service.store.GetAiProviderSecret(ctx, record.ID); err != nil {
+		return "", storageError()
+	} else if ok {
+		record.CreatedAt = existing.CreatedAt
+	}
+	if err := service.store.PutAiProviderSecret(ctx, record); err != nil {
+		return "", storageError()
+	}
+	return managedAiProviderSecretRef(scope, companyID, projectID, providerID), nil
+}
+
+func (service *Service) decryptAiProviderSecret(record ports.AiProviderSecretRecord) (string, error) {
+	if record.Algorithm != "aes-256-gcm" {
+		return "", validationError("provider secret uses an unsupported encryption algorithm")
+	}
+	if service.requireSecretKey && !service.secretKeyConfigured {
+		return "", validationError("CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY is required before resolving managed provider secrets")
+	}
+	nonce, err := base64.StdEncoding.DecodeString(record.Nonce)
+	if err != nil {
+		return "", validationError("provider secret is invalid")
+	}
+	ciphertext, err := base64.StdEncoding.DecodeString(record.Ciphertext)
+	if err != nil {
+		return "", validationError("provider secret is invalid")
+	}
+	block, err := aes.NewCipher(service.secretKey)
+	if err != nil {
+		return "", validationError("provider secret encryption is unavailable")
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", validationError("provider secret encryption is unavailable")
+	}
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", validationError("provider secret could not be decrypted")
+	}
+	return string(plaintext), nil
 }
 
 func defaultOrganizationName(organizationID string) string {

@@ -67,10 +67,14 @@ export function orderedAiChatProjectGroups(
   selectedProjectId: string,
 ): AiChatProjectGroup[] {
   return [...(history?.projectGroups ?? [])]
+    .filter((group) => group.projectId === selectedProjectId)
     .map((group) => ({
       ...group,
-      conversations: [...group.conversations].sort(compareConversationLastMessageDesc),
+      conversations: [...group.conversations]
+        .filter((conversation) => conversation.projectId === selectedProjectId)
+        .sort(compareConversationLastMessageDesc),
     }))
+    .filter((group) => group.conversations.length > 0)
     .sort((left, right) => {
       if (left.projectId === selectedProjectId) return -1;
       if (right.projectId === selectedProjectId) return 1;

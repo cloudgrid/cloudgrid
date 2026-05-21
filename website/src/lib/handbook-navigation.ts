@@ -53,6 +53,7 @@ export const handbookNav: HandbookNavItem[] = [
       { label: "Logs", href: "/handbook/guides/logs" },
       { label: "Metrics", href: "/handbook/guides/metrics" },
       { label: "Dashboards", href: "/handbook/guides/dashboards" },
+      { label: "AI Chat", href: "/handbook/guides/ai-chat" },
       { label: "AI evaluation", href: "/handbook/guides/ai-eval" },
     ],
   },
@@ -79,8 +80,22 @@ export const handbookNav: HandbookNavItem[] = [
         children: [
           { label: "Deployment choices", href: "/handbook/deployment" },
           { label: "Kubernetes", href: "/handbook/configuration/deployed/kubernetes" },
+          { label: "Helm install", href: "/handbook/configuration/deployed/helm-install" },
+          {
+            label: "External dependencies",
+            href: "/handbook/configuration/deployed/external-dependencies",
+          },
+          {
+            label: "Image customization",
+            href: "/handbook/configuration/deployed/image-customization",
+          },
+          {
+            label: "Private registry",
+            href: "/handbook/configuration/deployed/private-registry",
+          },
           { label: "Invitations", href: "/handbook/configuration/deployed/invitations" },
           { label: "Invitation email", href: "/handbook/configuration/deployed/invitation-email" },
+          { label: "Provider secrets", href: "/handbook/configuration/deployed/provider-secrets" },
           {
             label: "Self-observability",
             href: "/handbook/configuration/deployed/self-observability",
@@ -112,6 +127,9 @@ export const handbookNav: HandbookNavItem[] = [
       { label: "Alerting", href: "/handbook/operations/alerting" },
       { label: "Troubleshooting", href: "/handbook/operations/troubleshooting" },
       { label: "Production readiness", href: "/handbook/operations/production-readiness" },
+      { label: "Release verification", href: "/handbook/operations/release-verification" },
+      { label: "Upgrade and rollback", href: "/handbook/operations/upgrade-rollback" },
+      { label: "Sizing and scaling", href: "/handbook/operations/sizing" },
     ],
   },
   {

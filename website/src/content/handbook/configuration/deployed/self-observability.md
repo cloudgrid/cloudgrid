@@ -65,6 +65,12 @@ flowchart LR
 
 Exporter failures log bounded warnings and never fail readiness, request handling, message acknowledgement, or shutdown. If the collector rejects self-telemetry credentials, it uses the same `ERR-016` behavior as ordinary ingest.
 
+## Inspect CloudGrid Logs
+
+After deployment, select the configured self-observability project and open Logs. CloudGrid service log records use the normal log query path and include bounded service, event, operation, request, and CloudGrid error attributes. When trace and span IDs are present, use the normal log-to-trace pivot to inspect the matching CloudGrid trace.
+
+Set `CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED=false` when you need to stop OTLP log export without disabling stdout and stderr process logs.
+
 ## Next Step
 
 Use [Project API keys](/handbook/guides/project-api-keys) to create the ingest credential used by `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN`.

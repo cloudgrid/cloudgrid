@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { createServeOptions, isGraphQLWebSocketRequest } from "./index";
+import {
+  createServeOptions,
+  handleProcessClientDisconnect,
+  isClientDisconnectError,
+  isGraphQLWebSocketRequest,
+} from "./index";
 
 describe("BFF server wiring", () => {
   test("detects only /graphql websocket upgrades", () => {
@@ -62,6 +67,7 @@ describe("BFF server wiring", () => {
       },
     );
 
+    expect(options.idleTimeout).toBe(255);
     const response = await options.fetch(new Request("http://localhost/graphql"), {
       upgrade() {
         throw new Error("upgrade should not be called");
@@ -72,5 +78,57 @@ describe("BFF server wiring", () => {
       throw new Error("expected HTTP response");
     }
     expect(await response.text()).toBe("http");
+  });
+
+  test("serve options convert client disconnect aborts without dumping raw errors", async () => {
+    const options = createServeOptions(
+      { host: "127.0.0.1", port: 3000 },
+      {
+        fetch: () => {
+          throw new DOMException("The connection was closed.", "AbortError");
+        },
+      },
+      {
+        protocol: "graphql-transport-ws",
+        open() {
+          return { operations: new Map() };
+        },
+        message() {},
+        close() {},
+      },
+    );
+
+    const response = await options.fetch(new Request("http://localhost/graphql"), {
+      upgrade() {
+        throw new Error("upgrade should not be called");
+      },
+    });
+
+    expect(response?.status).toBe(499);
+  });
+
+  test("detects Bun client disconnect aborts", () => {
+    expect(
+      isClientDisconnectError(new DOMException("The connection was closed.", "AbortError")),
+    ).toBe(true);
+    expect(isClientDisconnectError(new Error("The connection was closed."))).toBe(false);
+  });
+
+  test("process-level disconnect handler suppresses aborted client rejections only", () => {
+    const debugEvents: string[] = [];
+    const logger = {
+      debug(event: string) {
+        debugEvents.push(event);
+      },
+    };
+
+    expect(
+      handleProcessClientDisconnect(
+        new DOMException("The connection was closed.", "AbortError"),
+        logger,
+      ),
+    ).toBe(true);
+    expect(handleProcessClientDisconnect(new Error("database timeout"), logger)).toBe(false);
+    expect(debugEvents).toEqual(["client_disconnected"]);
   });
 });

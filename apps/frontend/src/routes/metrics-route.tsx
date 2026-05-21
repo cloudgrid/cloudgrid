@@ -5,11 +5,12 @@ import type {
   MetricDescriptor,
   MetricSeriesInput,
 } from "@cloudgrid/ui-contracts";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ErrorPanel, LoadingRows } from "../components/query-state";
+import { InfiniteScrollSentinel } from "../components/infinite-scroll-sentinel";
 import { Button } from "../components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
 import { Input } from "../components/ui/input";
@@ -120,13 +121,20 @@ export function MetricsRoute() {
     to: searchParams.get("to") || null,
     limit: 100,
   };
-  const namesQuery = useQuery({
+  const namesQuery = useInfiniteQuery({
     queryKey: queryKeys.metricNames(namesInput),
-    queryFn: () => telemetryClient.getMetricNames(namesInput),
+    queryFn: ({ pageParam }) =>
+      telemetryClient.getMetricNames({ ...namesInput, cursor: pageParam }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
+  const metricNames = useMemo(
+    () => namesQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [namesQuery.data],
+  );
   const selectedMetric = useMemo(
-    () => namesQuery.data?.items.find((metric) => metric.name === state.metricName) ?? null,
-    [namesQuery.data, state.metricName],
+    () => metricNames.find((metric) => metric.name === state.metricName) ?? null,
+    [metricNames, state.metricName],
   );
   const effectiveState = selectedMetric
     ? withMetricDescriptorDefaults(state, selectedMetric, {
@@ -146,14 +154,14 @@ export function MetricsRoute() {
   });
 
   useEffect(() => {
-    if (state.metricName || !namesQuery.data?.items[0]) {
+    if (state.metricName || !metricNames[0]) {
       return;
     }
     setSearchParams((params) => {
-      params.set("metric", namesQuery.data.items[0]?.name ?? "");
+      params.set("metric", metricNames[0]?.name ?? "");
       return params;
     });
-  }, [namesQuery.data, setSearchParams, state.metricName]);
+  }, [metricNames, setSearchParams, state.metricName]);
 
   const setParam = (key: string, value: string | null) => {
     setSearchParams((params) => {
@@ -249,7 +257,7 @@ export function MetricsRoute() {
             {namesQuery.isError ? (
               <ErrorPanel error={namesQuery.error} onRetry={() => void namesQuery.refetch()} />
             ) : null}
-            {namesQuery.isSuccess && namesQuery.data.items.length === 0 ? (
+            {namesQuery.isSuccess && metricNames.length === 0 ? (
               <MetricExplorerEmpty
                 filtered={Boolean(metricSearch)}
                 href={ingestSettingsHref}
@@ -260,9 +268,16 @@ export function MetricsRoute() {
               />
             ) : null}
             <MetricList
-              metrics={namesQuery.data?.items ?? []}
+              metrics={metricNames}
               onSelectMetric={selectMetric}
               selectedMetricName={state.metricName}
+            />
+            <InfiniteScrollSentinel
+              hasMore={namesQuery.hasNextPage}
+              isLoading={namesQuery.isFetchingNextPage}
+              label={t("actions.loadMore")}
+              loadingLabel={t("actions.loadingMore")}
+              onLoadMore={() => void namesQuery.fetchNextPage()}
             />
           </div>
         </aside>

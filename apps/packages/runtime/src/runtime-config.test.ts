@@ -3,7 +3,11 @@ import { parseDeploymentRuntimeConfig } from "./runtime-config";
 
 describe("deployment runtime config", () => {
   test("defaults to local deployment with local auth", () => {
-    expect(parseDeploymentRuntimeConfig({})).toEqual({
+    expect(
+      parseDeploymentRuntimeConfig({
+        CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN: "system-token",
+      }),
+    ).toEqual({
       deploymentMode: "local",
       auth: {
         mode: "local",
@@ -14,12 +18,19 @@ describe("deployment runtime config", () => {
         projectId: "cloudgrid-system",
         companyId: "local",
         otlpEndpoint: "http://localhost:4318",
+        otlpBearerToken: "system-token",
         exportIntervalSeconds: 10,
         tracesEnabled: true,
         logsEnabled: true,
         metricsEnabled: true,
       },
     });
+  });
+
+  test("requires a self-observability bearer token when local self-observability is enabled", () => {
+    expect(() => parseDeploymentRuntimeConfig({})).toThrow(
+      "CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN",
+    );
   });
 
   test("defaults deployed self-observability to disabled", () => {
@@ -94,6 +105,7 @@ describe("deployment runtime config", () => {
     expect(
       parseDeploymentRuntimeConfig({
         CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS: "300",
+        CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN: "system-token",
       }).selfObservability.exportIntervalSeconds,
     ).toBe(300);
   });

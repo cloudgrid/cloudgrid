@@ -17,6 +17,7 @@ func TestAiChatRunLifecycleIsIdempotentAndDurable(t *testing.T) {
 	if _, err := service.GetViewer(context.Background(), localEnvelope("req-bootstrap", localUserID, ptr(LocalProjectID))); err != nil {
 		t.Fatalf("bootstrap local viewer: %v", err)
 	}
+	seedAiChatConversation(t, store, "chat-1", nowish(service))
 	request := contracts.AiChatRunCreateRequest{
 		BridgeEnvelope:      localEnvelope("req-create", localUserID, ptr(LocalProjectID)),
 		ConversationID:      "chat-1",
@@ -75,6 +76,7 @@ func TestAiChatRunIdempotencyWindowExpiresAfterSevenDays(t *testing.T) {
 	if _, err := service.GetViewer(context.Background(), localEnvelope("req-bootstrap", localUserID, ptr(LocalProjectID))); err != nil {
 		t.Fatalf("bootstrap local viewer: %v", err)
 	}
+	seedAiChatConversation(t, store, "chat-1", now)
 	oldRun := ports.AiChatRunRecord{
 		ID:                  "run_old",
 		ConversationID:      "chat-1",
@@ -110,4 +112,27 @@ func TestAiChatRunIdempotencyWindowExpiresAfterSevenDays(t *testing.T) {
 	if run.ID == oldRun.ID {
 		t.Fatalf("run ID = %q, want a new run after dedupe window", run.ID)
 	}
+}
+
+func seedAiChatConversation(t *testing.T, store *testStore, id string, now time.Time) {
+	t.Helper()
+	if err := store.PutAiChatConversation(context.Background(), ports.AiChatConversationRecord{
+		ID:            id,
+		CompanyID:     LocalCompanyID,
+		ProjectID:     LocalProjectID,
+		UserID:        localUserID,
+		Title:         "Investigate errors",
+		Status:        contracts.AiChatConversationStatusActive,
+		LastMessageAt: now,
+		LastRunStatus: string(contracts.AiChatRunStatusIdle),
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		Version:       1,
+	}); err != nil {
+		t.Fatalf("seed AI Chat conversation: %v", err)
+	}
+}
+
+func nowish(service *Service) time.Time {
+	return service.now().UTC()
 }

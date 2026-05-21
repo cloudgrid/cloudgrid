@@ -100,6 +100,40 @@ Generated files must say which spec generated them. Do not hand-edit generated f
 
 Contract changes must update all participating layers in one change: GraphQL SDL, AsyncAPI, `apps/packages/ui-contracts`, BFF operation/client code, Go request structs, and focused tests where applicable. `bun run contracts:check` is the drift gate and validates frontend GraphQL operations against the SDL, required GraphQL input fields against UI TypeScript contracts, and AsyncAPI request fields against Go structs. Do not claim a contract change complete without running it.
 
+Message bridge alignment is enforced in service tests, not by convention alone:
+
+- `core/go-contracts/generated_contracts.go` is the generated subject inventory.
+- `core/control-plane/internal.ControlSubjects()` must contain exactly the generated control-plane subjects.
+- The control-plane NATS handler map must register every generated control-plane request/reply subject. Stream or notification-only subjects may be present in `ControlSubjects()` without a request handler only when the focused test documents the exception.
+- The TypeScript BFF bridge payload must match the AsyncAPI request schema exactly. Do not wrap a request in `input` unless the AsyncAPI schema explicitly has an `input` field.
+- Add or update focused bridge tests whenever a BFF method maps GraphQL/public input to a message bridge subject, especially for required fields, auth-derived fields, and optimistic concurrency fields.
+
+For control-plane subject work, run:
+
+```sh
+bun test apps/backend/src/bridge.test.ts
+go test -tags surrealdb ./core/control-plane/...
+bun run contracts:check
+```
+
+## Self-Observability Alignment
+
+Self-observability exporters must follow `specs/04-backend/self-observability.md` exactly.
+
+- OTLP JSON `bytes` fields are base64 strings. W3C hex trace IDs and span IDs are valid transport context, but they must not be written directly to OTLP JSON `traceId`, `spanId`, `parentSpanId`, exemplar IDs, or log correlation fields.
+- Go exporters should build official OTLP protobuf messages and serialize them with `protojson`.
+- TypeScript exporters that construct JSON directly must have focused tests proving trace/span byte fields are protobuf-JSON compatible.
+- Normal exporter failures are bounded, rate-limited, and controlled by `CLOUDGRID_SELF_OBSERVABILITY_EXPORT_FAILURE_LOG_LEVEL`.
+- Graceful shutdown flushes are best-effort and must not log `MESSAGE_BRIDGE_UNAVAILABLE` noise after the collector or bridge has started stopping.
+
+For self-observability exporter work, run:
+
+```sh
+bun test apps/backend/src/self-observability.test.ts
+go test -tags surrealdb ./core/go-runtime/selfobs
+bun run typecheck
+```
+
 ## Error Handling
 
 - GraphQL errors use `extensions.code` from the error taxonomy.
@@ -119,6 +153,15 @@ Logs are structured JSON. Required fields:
 - `request_id`
 
 Include `trace_id`, `span_id`, `message_subject`, `nats_subject` when the v1 adapter is used, and `command_id` when known. Never log full OTLP payloads or secrets by default.
+
+Level policy:
+
+- `debug`: successful high-frequency GraphQL operations, NATS request/reply calls, NATS handler completions, OTLP HTTP completions, telemetry ingest completions, live trace notifications, and per-request timing diagnostics.
+- `info`: low-frequency lifecycle events operators need by default, primarily startup readiness, shutdown, and explicit long-lived mode changes.
+- `warn`: validation failures, denied or malformed client actions, recoverable dependency degradation, retryable bridge failures, and configured self-observability export failures.
+- `error`: startup failure, required dependency unavailability, terminal processing failure, data loss risk, and unexpected internal failures.
+
+The default threshold is `info`. Do not add steady-state success logs at `info`; production should be quiet after startup while healthy.
 
 ## Testing
 

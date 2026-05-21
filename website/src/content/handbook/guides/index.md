@@ -18,6 +18,7 @@ Guides are task-focused. Each page covers one job and points to the next useful 
 | Search logs | [Logs](/handbook/guides/logs) |
 | Explore metrics | [Metrics](/handbook/guides/metrics) |
 | Build dashboards | [Dashboards](/handbook/guides/dashboards) |
+| Ask project-scoped AI Chat questions | [AI Chat](/handbook/guides/ai-chat) |
 | Configure AI evaluation workflows | [AI evaluation](/handbook/guides/ai-eval) |
 
 If a guide needs behavior that is not covered by specs, update the relevant spec before documenting it as available.

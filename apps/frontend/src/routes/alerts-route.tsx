@@ -1,4 +1,4 @@
-import type { AlertRule, AlertRuleSearchInput } from "@cloudgrid/ui-contracts";
+import type { AlertRule } from "@cloudgrid/ui-contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, Plus, RefreshCw, X } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
@@ -20,10 +20,6 @@ import { t } from "../lib/i18n";
 import { queryKeys } from "../lib/query-keys";
 import { useAppSession } from "../providers/app-session-provider";
 
-type AlertRulesClient = {
-  getAlertRules(projectId: string, input?: AlertRuleSearchInput): Promise<AlertRule[]>;
-};
-
 export function AlertsRoute() {
   const { client, viewer } = useAppSession();
   const queryClient = useQueryClient();
@@ -40,8 +36,8 @@ export function AlertsRoute() {
   const [editorOpen, setEditorOpen] = useState(searchParams.get("new") === "1");
   const rulesQuery = useQuery({
     enabled: Boolean(projectId),
-    queryKey: queryKeys.alertRules(projectId),
-    queryFn: () => (client as AlertRulesClient).getAlertRules(projectId, alertRuleInput),
+    queryKey: queryKeys.alertRules(projectId, alertRuleInput),
+    queryFn: () => client.getAlertRules(projectId, alertRuleInput),
   });
   const rules = rulesQuery.data ?? [];
   const selectedRule = rules.find((rule) => rule.id === selectedRuleId) ?? rules[0] ?? null;

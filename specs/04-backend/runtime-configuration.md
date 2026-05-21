@@ -14,11 +14,12 @@ provenance: inferred-draft
 
 - `CLOUDGRID_NATS_URL`, default `nats://localhost:4222`.
 - `CLOUDGRID_DEPLOYMENT_MODE`, default `local`; allowed values are `local` and `deployed`.
+- `CLOUDGRID_LOG_LEVEL`, default `info`; allowed values are `debug`, `info`, `warn`, `warning`, and `error`. Successful hot-path completion events are debug-only.
 - `CLOUDGRID_SELF_OBSERVABILITY_ENABLED`, default `true` when `CLOUDGRID_DEPLOYMENT_MODE=local`, default `false` when `CLOUDGRID_DEPLOYMENT_MODE=deployed`.
 - `CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID`, default `cloudgrid-system`.
 - `CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID`, default `local` in local mode; required when self-observability is enabled in deployed mode.
 - `CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT`, default `http://localhost:4318` in local mode; required when self-observability is enabled in deployed mode.
-- `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN`, required when self-observability is enabled in deployed mode.
+- `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN`, required whenever self-observability is enabled. In local mode it must be a token mapped to the configured self-observability project by `CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS`.
 - `CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS`, default `10`; minimum `1`, maximum `300`.
 - `CLOUDGRID_SELF_OBSERVABILITY_TRACES_ENABLED`, default `true` when self-observability is enabled.
 - `CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED`, default `true` when self-observability is enabled.
@@ -55,6 +56,10 @@ provenance: inferred-draft
   stream endpoint, GraphQL chat operations, and frontend navigation.
 - `CLOUDGRID_AI_CHAT_TRACING_ENABLED`, default `true` in local mode and `false`
   in deployed mode.
+- `CLOUDGRID_AI_CHAT_HARNESS_MODE`, default `provider`; allowed values are
+  `provider`, `mock`, and `off`. `provider` executes the configured AI provider
+  with the request-time credential resolved from `managed:` or `env:` refs.
+  `mock` is only for local smoke checks and automated integration tests.
 - `CLOUDGRID_AI_CHAT_PROVIDER_KIND`, optional local-mode bootstrap provider
   kind: `anthropic`, `openai`, `azure_foundry`, `aws_bedrock`, or
   `openai_compatible`.
@@ -95,11 +100,19 @@ operator testing and must surface `suppressed` delivery status in admin UI.
 
 ## Go OTLP Collector Variables
 
-- `CLOUDGRID_OTLP_HOST`, default `0.0.0.0`.
-- `CLOUDGRID_OTLP_PORT`, default `4318`.
+- `CLOUDGRID_OTLP_HTTP_ADDR`, default `0.0.0.0:4318`.
+- `CLOUDGRID_OTLP_GRPC_ADDR`, default `0.0.0.0:4317`.
 - `CLOUDGRID_OTLP_LOCAL_PROJECT_ID`, optional single-project local ingest target used only in local mode when no project-token map is configured.
 - `CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS`, optional JSON object mapping opaque bearer tokens to local project IDs. Token keys must be at least 32 characters. When set, local OTLP requests require `Authorization: Bearer <token>`.
+- `CLOUDGRID_OTLP_MAX_REQUEST_BYTES`, default `4194304`; rejects oversized OTLP/HTTP exports before decoding.
+- `CLOUDGRID_OTLP_GRPC_MAX_MESSAGE_BYTES`, default equal to `CLOUDGRID_OTLP_MAX_REQUEST_BYTES`; rejects oversized OTLP/gRPC exports before decoding.
+- `CLOUDGRID_OTLP_GRPC_COMPRESSION`, default `gzip`; allowed values are `gzip` and `none`.
+- `CLOUDGRID_OTLP_MAX_SPANS_PER_REQUEST`, default `10000`; rejects oversized trace exports before publish.
+- `CLOUDGRID_OTLP_MAX_LOGS_PER_REQUEST`, default `10000`; rejects oversized log exports before publish.
 - `CLOUDGRID_OTLP_MAX_METRIC_POINTS_PER_REQUEST`, default `20000`; rejects oversized metric exports before publish.
+- `CLOUDGRID_OTLP_PUBLISH_TIMEOUT_MS`, default `1000`; bounds collector NATS publish attempts.
+- `CLOUDGRID_PROJECT_STATUS_CACHE_TTL_SECONDS`, default `60`; bounds fresh project-status authorization cache entries in deployed collector mode.
+- `CLOUDGRID_PROJECT_STATUS_CACHE_STALE_SECONDS`, default `120`; bounds stale project-status cache reuse during temporary control-plane failures.
 - `CLOUDGRID_AUTH_MODE`, default `local`; allowed values are `local` and `sso`.
 - Bearer-token issuer, audience, and JWKS configuration is still provider-specific in deployed mode. The collector must use trusted service-token configuration only and must not infer browser SSO company/project access from provider profile claims.
 
@@ -117,7 +130,8 @@ The command owns only local developer convenience configuration:
 - It writes `CLOUDGRID_OTLP_LOCAL_PROJECT_ID=default` for explicit
   single-project fallback.
 - It writes `CLOUDGRID_PROJECT_API_KEY` to the token mapped to `default` for
-  local fixture scripts and examples.
+  local fixture scripts and examples. Fixture scripts also accept
+  `CLOUDGRID_OTLP_BEARER_TOKEN` when a caller wants a command-specific token.
 - It writes `CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID=cloudgrid-system`,
   `CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID=local`, and
   `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN` to the token mapped to

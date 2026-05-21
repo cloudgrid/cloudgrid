@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import type { Organization, Project, Viewer } from "@cloudgrid/ui-contracts";
+import type {
+  CompanyAiProviderSettings,
+  Organization,
+  Project,
+  Viewer,
+} from "@cloudgrid/ui-contracts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -17,6 +22,7 @@ import { ThemeProvider } from "../src/providers/theme-provider";
 import {
   buildProjectSetupSnippet,
   mergeCreatedIngestCredential,
+  OrganizationAiProviderRoute,
   ProjectSettingsRoute,
   ProjectsRoute,
   ProjectWorkspaceRedirectRoute,
@@ -62,7 +68,45 @@ const viewer: Viewer = {
   selectedProject: null,
 };
 
-function controlPlaneMarkup(path: string) {
+const companyAiProviderSettings: CompanyAiProviderSettings = {
+  companyId: "org-example",
+  providerProfile: {
+    id: "company-chat-provider",
+    ownerScope: "company",
+    ownerId: "org-example",
+    label: "Company chat",
+    providerKind: "openai",
+    baseUrl: null,
+    credentialRef: "env:OPENAI_API_KEY",
+    models: { chat: ["gpt-5-mini"] },
+    parameters: {},
+    timeoutMs: 30000,
+    maxConcurrency: null,
+    disabledAt: null,
+  },
+  chatModelAlias: {
+    id: "company-chat",
+    name: "chat",
+    providerProfileId: "company-chat-provider",
+    model: "gpt-5-mini",
+    purpose: "chat",
+    parameters: { extras: {} },
+  },
+  effective: {
+    warnings: [],
+    missingProviderProfiles: [],
+    disabledProviderProfiles: [],
+    missingChatProvider: false,
+  },
+  version: 1,
+  updatedAt: "2026-05-15T08:00:00.000Z",
+  updatedByUserId: "user-1",
+};
+
+function controlPlaneMarkup(
+  path: string,
+  options: { companyAiProviderSettings?: CompanyAiProviderSettings } = {},
+) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -122,6 +166,7 @@ function controlPlaneMarkup(path: string) {
         baseUrl: null,
         credentialRef: "secret://openai",
         models: ["gpt-5-mini"],
+        parameters: {},
         timeoutMs: 30000,
         maxConcurrency: null,
         disabledAt: null,
@@ -179,6 +224,10 @@ function controlPlaneMarkup(path: string) {
     updatedAt: "2026-05-15T08:00:00.000Z",
     updatedByUserId: "user-1",
   });
+  queryClient.setQueryData(
+    ["CompanyAiProviderSettings", "org-example"],
+    options.companyAiProviderSettings ?? companyAiProviderSettings,
+  );
   queryClient.setQueryData(
     ["ProjectMembers", "project-checkout"],
     [
@@ -257,6 +306,8 @@ function controlPlaneMarkup(path: string) {
     }),
     getProjectAiSettings: async () =>
       queryClient.getQueryData(["ProjectAiSettings", "project-checkout"]),
+    getCompanyAiProviderSettings: async () =>
+      queryClient.getQueryData(["CompanyAiProviderSettings", "org-example"]),
     getViewer: async () => ({ ...viewer, selectedProject: checkoutProject }),
     removeProjectMember: async () => true,
     revokeIngestCredential: async () => true,
@@ -286,6 +337,23 @@ function controlPlaneMarkup(path: string) {
       enabled: input.enabled,
       version: input.expectedVersion + 1,
     }),
+    updateCompanyAiProviderSettings: async (input) => ({
+      ...companyAiProviderSettings,
+      companyId: input.companyId,
+      providerProfile: {
+        ...companyAiProviderSettings.providerProfile,
+        ...input.providerProfile,
+        parameters: input.providerProfile.parameters ?? {},
+        ownerScope: "company",
+        ownerId: input.companyId,
+        disabledAt: input.providerProfile.disabled ? "2026-05-15T08:00:00.000Z" : null,
+      },
+      chatModelAlias: {
+        ...companyAiProviderSettings.chatModelAlias,
+        ...input.chatModelAlias,
+      },
+      version: input.expectedVersion + 1,
+    }),
   };
 
   return renderToStaticMarkup(
@@ -307,6 +375,10 @@ function controlPlaneMarkup(path: string) {
               createElement(
                 Routes,
                 null,
+                createElement(Route, {
+                  path: "/organizations/:organizationId/ai-provider",
+                  element: createElement(OrganizationAiProviderRoute),
+                }),
                 createElement(Route, {
                   path: "/projects",
                   element: createElement(ProjectsRoute),
@@ -511,8 +583,42 @@ describe("UX v2 project models", () => {
     });
 
     expect(admin.layout).toBe("admin-settings");
-    expect(admin.sidebarItems.map((item) => item.id)).toEqual(["organization", "projects"]);
+    expect(admin.sidebarItems.map((item) => item.id)).toEqual([
+      "organization",
+      "projects",
+      "ai-provider",
+    ]);
     expect(admin.showMemberAdministration).toBe(false);
+  });
+
+  test("renders company AI Chat provider settings without raw secret inputs", () => {
+    const markup = controlPlaneMarkup("/organizations/org-example/ai-provider");
+
+    expect(markup).toContain("AI Provider");
+    expect(markup).toContain("Company chat");
+    expect(markup).toContain("env:OPENAI_API_KEY");
+    expect(markup).toContain("gpt-5-mini");
+    expect(markup).toContain("Save AI provider");
+    expect(markup).toContain("credentialRef");
+    expect(markup).not.toContain("api key value");
+    expect(markup).not.toContain('name="secret"');
+  });
+
+  test("does not preserve unsupported legacy company AI credential refs", () => {
+    const markup = controlPlaneMarkup("/organizations/org-example/ai-provider", {
+      companyAiProviderSettings: {
+        ...companyAiProviderSettings,
+        providerProfile: companyAiProviderSettings.providerProfile
+          ? {
+              ...companyAiProviderSettings.providerProfile,
+              credentialRef: "secret://ai/openai",
+            }
+          : null,
+      },
+    });
+
+    expect(markup).toContain('name="credentialRef"');
+    expect(markup).not.toContain("secret://ai/openai");
   });
 
   test("renders retention settings from the GraphQL retention policy contract", () => {

@@ -21,6 +21,8 @@ export type { GraphQLMetricRecord, GraphQLMetricsRecorder } from "./graphql-metr
 export { createApp, createAppWithBridge, createCloudGridSchema } from "./graphql";
 export { createGraphQLWebSocketHandler } from "./graphql-ws";
 
+let clientDisconnectHandlersInstalled = false;
+
 if (import.meta.main) {
   await startServer();
 }
@@ -31,6 +33,7 @@ export async function startServer() {
     const config = loadConfig();
     const { app, bridge, selfObservability } = await createApp(config, logger);
     const graphQLWebSocket = createGraphQLWebSocketHandler(bridge, logger, { auth: config.auth });
+    installClientDisconnectHandlers(logger);
     const server = Bun.serve(createServeOptions(config, app, graphQLWebSocket));
 
     let shutdownStarted = false;
@@ -77,6 +80,7 @@ export async function startServer() {
       error_id: problem.errorId,
       error_code: problem.errorCode,
       message: problem.message,
+      detail: error instanceof Error ? error.message : undefined,
     });
     process.exit(1);
   }
@@ -92,8 +96,9 @@ export function createServeOptions(
 ) {
   return {
     hostname: config.host,
+    idleTimeout: 255,
     port: config.port,
-    fetch: (
+    fetch: async (
       request: Request,
       server: {
         upgrade: (
@@ -112,7 +117,14 @@ export function createServeOptions(
         }
         return new Response("WebSocket upgrade failed", { status: 400 });
       }
-      return app.fetch(request);
+      try {
+        return await app.fetch(request);
+      } catch (error) {
+        if (isClientDisconnectError(error)) {
+          return new Response(null, { status: 499 });
+        }
+        throw error;
+      }
     },
     websocket: {
       message(socket: Parameters<typeof graphQLWebSocket.message>[0], message: string | Buffer) {
@@ -130,4 +142,39 @@ export function isGraphQLWebSocketRequest(request: Request): boolean {
   return (
     url.pathname === "/graphql" && request.headers.get("upgrade")?.toLowerCase() === "websocket"
   );
+}
+
+export function isClientDisconnectError(error: unknown): boolean {
+  return (
+    error instanceof DOMException &&
+    (error.name === "AbortError" || error.message === "The connection was closed.")
+  );
+}
+
+export function installClientDisconnectHandlers(
+  logger: Pick<ReturnType<typeof createLogger>, "debug">,
+) {
+  if (clientDisconnectHandlersInstalled) {
+    return;
+  }
+  clientDisconnectHandlersInstalled = true;
+  process.on("unhandledRejection", (reason) => {
+    if (handleProcessClientDisconnect(reason, logger)) {
+      return;
+    }
+    throw reason;
+  });
+}
+
+export function handleProcessClientDisconnect(
+  reason: unknown,
+  logger: Pick<ReturnType<typeof createLogger>, "debug">,
+): boolean {
+  if (!isClientDisconnectError(reason)) {
+    return false;
+  }
+  logger.debug("client_disconnected", {
+    message: "client_disconnected",
+  });
+  return true;
 }

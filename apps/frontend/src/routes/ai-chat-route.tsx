@@ -2,6 +2,7 @@ import type {
   AiChatActionProposal,
   AiChatArtifact,
   AiChatConversation,
+  AiChatHistory,
   AiChatMessage,
   AiChatProjectGroup,
   CompanyAiProviderSettings,
@@ -13,17 +14,52 @@ import {
   Archive,
   Bot,
   Check,
+  Clipboard,
+  Clock3,
   FileJson,
   History,
-  Loader2,
+  MessageCircle,
   MessageSquarePlus,
+  PanelLeft,
   Send,
   ShieldAlert,
-  UserCircle,
+  Sparkles,
+  Trash2,
   X,
 } from "lucide-react";
-import { type FormEvent, type ReactNode, useMemo, useState } from "react";
+import {
+  type FormEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import {
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  ConversationScrollButton,
+} from "../components/ai-elements/conversation";
+import {
+  MarkdownResponse,
+  Message,
+  MessageAction,
+  MessageActions,
+  MessageAvatar,
+  MessageContent,
+} from "../components/ai-elements/message";
+import {
+  PromptInput,
+  PromptInputBody,
+  PromptInputFooter,
+  PromptInputSubmit,
+  PromptInputTextarea,
+  PromptInputTools,
+} from "../components/ai-elements/prompt-input";
+import { Shimmer } from "../components/ai-elements/shimmer";
 import { CodeBlock } from "../components/code-block";
 import { EmptyState, ErrorPanel, LoadingRows } from "../components/query-state";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
@@ -55,7 +91,6 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
-import { Textarea } from "../components/ui/textarea";
 import { createAiChatGraphQLClient } from "../features/ai-chat/api";
 import {
   aiChatActionById,
@@ -65,7 +100,6 @@ import {
   aiChatHistoryQueryKey,
   aiChatProviderQueryKey,
   findAiChatConversation,
-  firstAiChatConversation,
   isCompanyAiChatProviderConfigured,
   orderedAiChatProjectGroups,
   safeAiChatArtifactView,
@@ -107,8 +141,14 @@ export function AiChatRoute() {
   const queryClient = useQueryClient();
   const [prompt, setPrompt] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [localConversation, setLocalConversation] = useState<AiChatConversation | null>(null);
   const [streamState, setStreamState] = useState<LocalAiChatStreamState | null>(null);
   const [streamAbort, setStreamAbort] = useState<AbortController | null>(null);
+  const promptRef = useRef<HTMLTextAreaElement | null>(null);
+  const promptAutoFocused = useRef(false);
+  const focusPromptInput = useCallback(() => {
+    requestAnimationFrame(() => promptRef.current?.focus());
+  }, []);
 
   const providerQuery = useQuery({
     enabled: aiChatEnabled && Boolean(companyId),
@@ -133,15 +173,30 @@ export function AiChatRoute() {
     conversationId,
     projectId,
   );
-  const fallbackConversation = firstAiChatConversation(historyQuery.data, projectId) ?? null;
-  const shouldFetchConversation = Boolean(conversationId && !conversationFromHistory);
+  const localConversationForRoute =
+    localConversation && conversationId === localConversation.id ? localConversation : null;
+  const hydratedLocalConversation = isHydratedAiChatConversation(localConversationForRoute)
+    ? localConversationForRoute
+    : null;
+  const hydratedHistoryConversation = isHydratedAiChatConversation(conversationFromHistory)
+    ? conversationFromHistory
+    : null;
+  const shouldFetchConversation = Boolean(
+    conversationId && !hydratedHistoryConversation && !hydratedLocalConversation,
+  );
   const conversationQuery = useQuery({
     enabled: aiChatEnabled && shouldFetchConversation,
     queryKey: aiChatConversationQueryKey(conversationId),
     queryFn: () => aiChatClient.getAiChatConversation(conversationId ?? ""),
   });
   const activeConversation =
-    conversationFromHistory ?? conversationQuery.data ?? fallbackConversation ?? null;
+    conversationId === null
+      ? null
+      : (hydratedLocalConversation ??
+        conversationQuery.data ??
+        hydratedHistoryConversation ??
+        conversationFromHistory ??
+        null);
   const displayedConversation = useMemo(
     () =>
       activeConversation
@@ -164,15 +219,16 @@ export function AiChatRoute() {
       }),
     onSuccess: async (conversation) => {
       setPrompt("");
+      setLocalConversation(conversation);
+      queryClient.setQueryData(aiChatConversationQueryKey(conversation.id), conversation);
+      queryClient.setQueryData<AiChatHistory>(
+        aiChatHistoryQueryKey({ companyId, projectId }),
+        (current) => upsertConversationInHistory(current, conversation),
+      );
       setSearchParams({ conversation: conversation.id });
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: aiChatHistoryQueryKey({ companyId, projectId }),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: aiChatConversationQueryKey(conversation.id),
-        }),
-      ]);
+      await queryClient.invalidateQueries({
+        queryKey: aiChatHistoryQueryKey({ companyId, projectId }),
+      });
     },
   });
   const approveAiChatAction = useMutation({
@@ -189,6 +245,55 @@ export function AiChatRoute() {
       ]);
     },
   });
+  const deleteConversation = useMutation({
+    mutationFn: (id: string) => aiChatClient.deleteAiChatConversation(id),
+    onSuccess: async (_deleted, id) => {
+      queryClient.removeQueries({ queryKey: aiChatConversationQueryKey(id) });
+      queryClient.setQueryData<AiChatHistory>(
+        aiChatHistoryQueryKey({ companyId, projectId }),
+        (current) => removeConversationFromHistory(current, id),
+      );
+      if (activeConversation?.id === id) {
+        setLocalConversation(null);
+        setStreamState(null);
+        setSearchParams({});
+      }
+      await queryClient.invalidateQueries({
+        queryKey: aiChatHistoryQueryKey({ companyId, projectId }),
+      });
+    },
+  });
+
+  const providerConfigured = isCompanyAiChatProviderConfigured(providerQuery.data);
+  const missingProvider =
+    !providerQuery.isLoading && (!providerQuery.data || providerConfigured === false);
+  const streaming = streamState?.status === "streaming";
+  const activeRunStatus = displayedConversation?.latestRun?.status ?? null;
+  const canSubmitPrompt =
+    providerConfigured &&
+    prompt.trim().length > 0 &&
+    !createConversation.isPending &&
+    !streaming &&
+    (!displayedConversation ||
+      (displayedConversation.status === "active" &&
+        activeRunStatus !== "streaming" &&
+        activeRunStatus !== "awaiting_approval"));
+
+  useEffect(() => {
+    focusPromptInput();
+  }, [focusPromptInput]);
+
+  useEffect(() => {
+    if (
+      !promptAutoFocused.current &&
+      providerConfigured &&
+      !historyQuery.isLoading &&
+      !conversationQuery.isLoading
+    ) {
+      promptAutoFocused.current = true;
+      focusPromptInput();
+    }
+  }, [conversationQuery.isLoading, focusPromptInput, historyQuery.isLoading, providerConfigured]);
 
   if (!aiChatEnabled) {
     return (
@@ -232,43 +337,39 @@ export function AiChatRoute() {
     );
   }
 
-  const providerConfigured = isCompanyAiChatProviderConfigured(providerQuery.data);
-  const missingProvider =
-    !providerQuery.isLoading && (!providerQuery.data || providerConfigured === false);
-  const providerBadge = providerConfigured
-    ? t("aiChat.provider.configured")
-    : t("aiChat.provider.missing");
-  const streaming = streamState?.status === "streaming";
-  const activeRunStatus = displayedConversation?.latestRun?.status ?? null;
-  const canSubmitPrompt =
-    providerConfigured &&
-    prompt.trim().length > 0 &&
-    !createConversation.isPending &&
-    !streaming &&
-    (!displayedConversation ||
-      (displayedConversation.status === "active" &&
-        activeRunStatus !== "streaming" &&
-        activeRunStatus !== "awaiting_approval"));
-
   async function submitPrompt(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canSubmitPrompt) {
       return;
     }
     const text = prompt.trim();
-    const conversation =
-      activeConversation ??
-      (await createConversation.mutateAsync({
-        firstUserMessage: text,
-      }));
-    await streamPrompt(conversation, text);
+    try {
+      let conversation = activeConversation;
+      let skipUserMessageAppend = false;
+      if (!conversation) {
+        conversation = await createConversation.mutateAsync({
+          firstUserMessage: text,
+        });
+        skipUserMessageAppend = true;
+      }
+      await streamPrompt(conversation, text, { skipUserMessageAppend });
+    } catch {
+      // React Query owns the mutation error; streamPrompt owns stream failures.
+    }
   }
 
-  async function streamPrompt(conversation: AiChatConversation, text: string) {
+  async function streamPrompt(
+    conversation: AiChatConversation,
+    text: string,
+    options: { skipUserMessageAppend?: boolean } = {},
+  ) {
     const abort = new AbortController();
+    let completed = false;
     setStreamAbort(abort);
     setPrompt("");
     setSearchParams({ conversation: conversation.id });
+    setLocalConversation(conversation);
+    queryClient.setQueryData(aiChatConversationQueryKey(conversation.id), conversation);
     setStreamState({
       assistantText: "",
       conversationId: conversation.id,
@@ -278,17 +379,20 @@ export function AiChatRoute() {
       userText: text,
     });
     try {
-      for await (const event of aiChatClient.streamAiChatRun(
-        {
-          conversationId: conversation.id,
-          projectId: conversation.projectId,
-          userMessageClientId: crypto.randomUUID(),
-          idempotencyKey: crypto.randomUUID(),
-          parts: [{ type: "text", text }],
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        },
-        { signal: abort.signal },
-      )) {
+      const streamInput = {
+        conversationId: conversation.id,
+        projectId: conversation.projectId,
+        userMessageClientId: crypto.randomUUID(),
+        idempotencyKey: crypto.randomUUID(),
+        parts: [{ type: "text" as const, text }],
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      };
+      if (options.skipUserMessageAppend === true) {
+        Object.assign(streamInput, { skipUserMessageAppend: true });
+      }
+      for await (const event of aiChatClient.streamAiChatRun(streamInput, {
+        signal: abort.signal,
+      })) {
         if (event.type === "run.started") {
           setStreamState((state) =>
             state ? { ...state, runId: event.runId, status: "streaming" } : state,
@@ -322,6 +426,7 @@ export function AiChatRoute() {
           );
         }
         if (event.type === "run.completed") {
+          completed = true;
           setStreamState((state) => (state ? { ...state, status: "completed" } : state));
         }
       }
@@ -339,6 +444,23 @@ export function AiChatRoute() {
       }
     } finally {
       setStreamAbort(null);
+      let refreshedConversation: AiChatConversation | null = null;
+      if (completed) {
+        try {
+          const refreshed = await aiChatClient.getAiChatConversation(conversation.id);
+          if (refreshed) {
+            refreshedConversation = refreshed;
+            setLocalConversation(refreshed);
+            queryClient.setQueryData(aiChatConversationQueryKey(conversation.id), refreshed);
+            queryClient.setQueryData<AiChatHistory>(
+              aiChatHistoryQueryKey({ companyId, projectId }),
+              (current) => upsertConversationInHistory(current, refreshed),
+            );
+          }
+        } catch {
+          refreshedConversation = null;
+        }
+      }
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: aiChatHistoryQueryKey({ companyId, projectId }),
@@ -347,7 +469,20 @@ export function AiChatRoute() {
           queryKey: aiChatConversationQueryKey(conversation.id),
         }),
       ]);
+      if (completed && refreshedConversation) {
+        setStreamState(null);
+      }
+      focusPromptInput();
     }
+  }
+
+  function startNewConversation() {
+    streamAbort?.abort();
+    setPrompt("");
+    setStreamState(null);
+    setLocalConversation(null);
+    setSearchParams({});
+    setHistoryOpen(false);
   }
 
   function openConversation(conversation: AiChatConversation) {
@@ -358,6 +493,7 @@ export function AiChatRoute() {
       return;
     }
     setSearchParams({ conversation: conversation.id });
+    setLocalConversation(conversation);
     setHistoryOpen(false);
   }
 
@@ -365,44 +501,36 @@ export function AiChatRoute() {
     <ConversationHistoryRail
       activeConversationId={activeConversation?.id ?? null}
       groups={groups}
+      onNewConversation={startNewConversation}
+      onDeleteConversation={(conversation) => deleteConversation.mutate(conversation.id)}
       onOpenConversation={openConversation}
       selectedProjectId={projectId}
     />
   );
 
   return (
-    <section className="flex h-full min-h-0 flex-col gap-4">
-      <RouteHeader
-        action={
-          <div className="flex items-center gap-2">
-            <Sheet onOpenChange={setHistoryOpen} open={historyOpen}>
-              <SheetTrigger asChild>
-                <Button className="lg:hidden" type="button" variant="outline">
-                  <History data-icon="inline-start" />
-                  {t("aiChat.history")}
-                </Button>
-              </SheetTrigger>
-              <SheetContent className="w-[340px] max-w-[90vw]" side="left">
-                <SheetHeader>
-                  <SheetTitle>{t("aiChat.history")}</SheetTitle>
-                  <SheetDescription>{t("aiChat.history.description")}</SheetDescription>
-                </SheetHeader>
-                <div className="min-h-0 px-4 pb-4">{historyRail}</div>
-              </SheetContent>
-            </Sheet>
-            <Button onClick={() => setSearchParams({})} type="button">
-              <MessageSquarePlus data-icon="inline-start" />
-              {t("aiChat.newConversation")}
+    <section className="flex h-full min-h-0 flex-col bg-background">
+      <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-3 lg:hidden">
+        <Sheet onOpenChange={setHistoryOpen} open={historyOpen}>
+          <SheetTrigger asChild>
+            <Button size="sm" type="button" variant="ghost">
+              <History data-icon="inline-start" />
+              {t("aiChat.history")}
             </Button>
-          </div>
-        }
-        description={t("aiChat.description")}
-        status={
-          <Badge variant={providerConfigured ? "secondary" : "outline"}>{providerBadge}</Badge>
-        }
-        title={t("aiChat.title")}
-      />
-
+          </SheetTrigger>
+          <SheetContent className="w-[340px] max-w-[90vw]" side="left">
+            <SheetHeader>
+              <SheetTitle>{t("aiChat.history")}</SheetTitle>
+              <SheetDescription>{t("aiChat.history.description")}</SheetDescription>
+            </SheetHeader>
+            <div className="min-h-0 px-4 pb-4">{historyRail}</div>
+          </SheetContent>
+        </Sheet>
+        <Button onClick={startNewConversation} size="icon" type="button" variant="ghost">
+          <MessageSquarePlus data-icon="inline-start" />
+          <span className="sr-only">{t("aiChat.newConversation")}</span>
+        </Button>
+      </div>
       {providerQuery.error ? (
         <ErrorPanel
           error={providerQuery.error}
@@ -418,11 +546,11 @@ export function AiChatRoute() {
           settings={providerQuery.data}
         />
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-lg border bg-background lg:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="hidden min-h-0 border-r lg:flex">{historyRail}</aside>
-          <div className="flex min-h-0 flex-col">
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden bg-background lg:grid-cols-[260px_minmax(0,1fr)]">
+          <aside className="hidden min-h-0 border-r bg-muted/15 lg:flex">{historyRail}</aside>
+          <div className="relative flex min-h-0 flex-col overflow-hidden bg-background">
             {historyQuery.isLoading || providerQuery.isLoading ? (
-              <LoadingRows />
+              <AiChatLoadingState />
             ) : historyQuery.error || conversationQuery.error ? (
               <ErrorPanel
                 error={historyQuery.error ?? conversationQuery.error}
@@ -435,61 +563,117 @@ export function AiChatRoute() {
               <ConversationTranscript
                 approvalPending={approveAiChatAction.isPending}
                 conversation={displayedConversation}
+                streaming={streaming}
                 onApprove={(proposal, approved) =>
                   approveAiChatAction.mutate({ proposal, approved })
                 }
               />
             ) : (
-              <EmptyState
+              <ConversationEmptyState
+                className="min-h-0 flex-1"
                 description={t("aiChat.empty.description")}
-                filtered={false}
-                primaryAction={
-                  <Button disabled type="button" variant="outline">
-                    <MessageSquarePlus data-icon="inline-start" />
-                    {t("aiChat.empty.action")}
-                  </Button>
-                }
+                icon={<MessageCircle aria-hidden className="size-6" />}
                 title={t("aiChat.empty.title")}
-              />
+              >
+                <div className="grid w-full max-w-lg grid-cols-1 gap-2 text-left sm:grid-cols-3">
+                  {[
+                    t("aiChat.suggestion.latency"),
+                    t("aiChat.suggestion.logs"),
+                    t("aiChat.suggestion.dashboard"),
+                  ].map((suggestion) => (
+                    <Button
+                      className="h-auto min-h-12 justify-start whitespace-normal rounded-md border bg-background px-3 py-2 text-left text-xs leading-5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      key={suggestion}
+                      onClick={() => {
+                        setPrompt(suggestion);
+                        focusPromptInput();
+                      }}
+                      type="button"
+                      variant="ghost"
+                    >
+                      <MessageCircle aria-hidden className="size-3 shrink-0" />
+                      {suggestion}
+                    </Button>
+                  ))}
+                </div>
+              </ConversationEmptyState>
             )}
-            <form className="border-t bg-background p-3" onSubmit={submitPrompt}>
-              <div className="flex flex-col gap-2">
-                <Textarea
+            <PromptInput className="shrink-0 border-t px-3 py-2" onSubmit={submitPrompt}>
+              <PromptInputBody className="mx-auto w-full max-w-6xl rounded-md border bg-background px-3 py-1 shadow-sm">
+                <PromptInputTextarea
                   aria-label={t("aiChat.prompt")}
                   disabled={!providerConfigured || createConversation.isPending}
                   onChange={(event) => setPrompt(event.target.value)}
                   placeholder={t("aiChat.promptPlaceholder")}
+                  ref={promptRef}
                   value={prompt}
                 />
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs text-muted-foreground">
-                    {streaming ? t("aiChat.streaming") : t("aiChat.prompt.textOnly")}
-                  </p>
+                <PromptInputFooter className="px-0 pb-1">
+                  <PromptInputTools>
+                    <p className="text-xs text-muted-foreground">
+                      {streaming ? (
+                        <Shimmer>{t("aiChat.streaming")}</Shimmer>
+                      ) : (
+                        t("aiChat.prompt.textOnly")
+                      )}
+                    </p>
+                  </PromptInputTools>
                   {streaming ? (
                     <Button onClick={() => streamAbort?.abort()} type="button" variant="outline">
                       <X data-icon="inline-start" />
                       {t("actions.cancel")}
                     </Button>
                   ) : (
-                    <Button disabled={!canSubmitPrompt} type="submit">
-                      {createConversation.isPending ? (
-                        <Loader2 data-icon="inline-start" />
-                      ) : (
-                        <Send data-icon="inline-start" />
-                      )}
+                    <PromptInputSubmit
+                      disabled={!canSubmitPrompt}
+                      status={createConversation.isPending ? "submitted" : "ready"}
+                    >
                       {t("aiChat.prompt.send")}
-                    </Button>
+                    </PromptInputSubmit>
                   )}
-                </div>
+                </PromptInputFooter>
+                {createConversation.error ? (
+                  <Alert variant="destructive">
+                    <AlertCircle aria-hidden />
+                    <AlertTitle>{t("aiChat.createError")}</AlertTitle>
+                    <AlertDescription className="flex flex-col gap-3">
+                      <span>{errorMessage(createConversation.error)}</span>
+                      <Button
+                        className="w-fit"
+                        disabled={!canSubmitPrompt}
+                        type="submit"
+                        variant="outline"
+                      >
+                        <Send data-icon="inline-start" />
+                        {t("actions.retry")}
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
                 {streamState?.status === "failed" && streamState.error ? (
                   <Alert variant="destructive">
                     <AlertCircle aria-hidden />
                     <AlertTitle>{t("aiChat.runError")}</AlertTitle>
-                    <AlertDescription>{streamState.error}</AlertDescription>
+                    <AlertDescription className="flex flex-col gap-3">
+                      <span>{streamState.error}</span>
+                      {activeConversation ? (
+                        <Button
+                          className="w-fit"
+                          onClick={() =>
+                            void streamPrompt(activeConversation, streamState.userText)
+                          }
+                          type="button"
+                          variant="outline"
+                        >
+                          <Send data-icon="inline-start" />
+                          {t("actions.retry")}
+                        </Button>
+                      ) : null}
+                    </AlertDescription>
                   </Alert>
                 ) : null}
-              </div>
-            </form>
+              </PromptInputBody>
+            </PromptInput>
           </div>
         </div>
       )}
@@ -561,60 +745,173 @@ function MissingProviderState({
   );
 }
 
+function AiChatLoadingState() {
+  return (
+    <Conversation className="bg-background">
+      <div className="flex h-14 shrink-0 items-center gap-2 border-b bg-card px-4">
+        <Sparkles aria-hidden className="size-4 text-muted-foreground" />
+        <Shimmer className="text-sm font-medium">{t("aiChat.streaming")}</Shimmer>
+      </div>
+      <ConversationContent className="bg-background">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+          <LoadingRows />
+        </div>
+      </ConversationContent>
+    </Conversation>
+  );
+}
+
 function ConversationHistoryRail({
   activeConversationId,
   groups,
+  onDeleteConversation,
+  onNewConversation,
   onOpenConversation,
   selectedProjectId,
 }: {
   activeConversationId: string | null;
   groups: AiChatProjectGroup[];
+  onDeleteConversation: (conversation: AiChatConversation) => void;
+  onNewConversation: () => void;
   onOpenConversation: (conversation: AiChatConversation) => void;
   selectedProjectId: string;
 }) {
   if (!groups.length) {
     return (
-      <div className="flex min-h-48 flex-1 items-center justify-center p-4 text-center text-sm text-muted-foreground">
-        {t("aiChat.history.empty")}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <HistoryRailHeader count={0} onNewConversation={onNewConversation} />
+        <div className="flex min-h-48 flex-1 items-center justify-center p-4 text-center text-sm text-muted-foreground">
+          {t("aiChat.history.empty")}
+        </div>
       </div>
     );
   }
 
   return (
-    <nav aria-label={t("aiChat.history")} className="min-h-0 flex-1 overflow-auto p-2">
-      <div className="flex flex-col gap-3">
-        {groups.map((group) => (
-          <section className="flex flex-col gap-1" key={group.projectId}>
-            <h2 className="px-2 text-xs font-medium text-muted-foreground">{group.projectName}</h2>
-            <div className="flex flex-col gap-1">
-              {group.conversations.map((conversation) => (
-                <Button
-                  className={cn(
-                    "h-auto min-h-14 w-full flex-col items-start justify-start gap-1 px-2 py-2 text-left",
-                    conversation.id === activeConversationId && "bg-muted",
-                  )}
-                  key={conversation.id}
-                  onClick={() => onOpenConversation(conversation)}
-                  type="button"
-                  variant="ghost"
-                >
-                  <span className="flex min-w-0 items-start gap-2">
-                    <History aria-hidden />
-                    <span className="line-clamp-2 text-sm font-medium">{conversation.title}</span>
-                  </span>
-                  <span className="flex max-w-full items-center gap-2 text-xs text-muted-foreground">
-                    {conversation.projectId !== selectedProjectId ? (
-                      <Badge variant="outline">{t("aiChat.history.otherProject")}</Badge>
-                    ) : null}
-                    <span className="truncate">{formatDateTime(conversation.lastMessageAt)}</span>
-                  </span>
-                </Button>
-              ))}
-            </div>
-          </section>
-        ))}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <HistoryRailHeader
+        count={groups.reduce((count, group) => count + group.conversations.length, 0)}
+        onNewConversation={onNewConversation}
+      />
+      <nav aria-label={t("aiChat.history")} className="min-h-0 flex-1 overflow-auto p-2">
+        <div className="flex flex-col gap-4">
+          {groups.map((group) => (
+            <section className="flex flex-col gap-1" key={group.projectId}>
+              <div className="flex items-center justify-between px-2">
+                <h2 className="text-xs font-medium text-muted-foreground">{group.projectName}</h2>
+                <span className="text-xs text-muted-foreground">{group.conversations.length}</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                {group.conversations.map((conversation) => (
+                  <div
+                    className={cn(
+                      "group/history-item flex items-stretch gap-1 rounded-md border border-transparent",
+                      conversation.id === activeConversationId
+                        ? "border-border bg-background text-foreground"
+                        : "text-muted-foreground hover:bg-background hover:text-foreground",
+                    )}
+                    key={conversation.id}
+                  >
+                    <Button
+                      className="h-auto min-h-16 min-w-0 flex-1 flex-col items-start justify-start gap-1 rounded-md px-2 py-2 text-left text-inherit hover:bg-transparent hover:text-inherit"
+                      onClick={() => onOpenConversation(conversation)}
+                      type="button"
+                      variant="ghost"
+                    >
+                      <span className="flex min-w-0 items-start gap-2">
+                        <History aria-hidden className="mt-0.5 size-4 shrink-0" />
+                        <span className="line-clamp-2 text-sm font-medium">
+                          {conversation.title}
+                        </span>
+                      </span>
+                      <span className="flex max-w-full items-center gap-2 text-xs text-muted-foreground">
+                        {conversation.projectId !== selectedProjectId ? (
+                          <Badge variant="outline">{t("aiChat.history.otherProject")}</Badge>
+                        ) : null}
+                        <Clock3 aria-hidden className="size-3" />
+                        <span className="truncate">
+                          {formatDateTime(conversation.lastMessageAt)}
+                        </span>
+                      </span>
+                    </Button>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button
+                          aria-label={t("aiChat.history.delete")}
+                          className="my-2 mr-1 size-8 shrink-0 opacity-70 hover:opacity-100"
+                          size="icon"
+                          title={t("aiChat.history.delete")}
+                          type="button"
+                          variant="ghost"
+                        >
+                          <Trash2 aria-hidden className="size-4" />
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>{t("aiChat.history.deleteTitle")}</DialogTitle>
+                          <DialogDescription>
+                            {t("aiChat.history.deleteDescription")}
+                          </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter>
+                          <DialogClose asChild>
+                            <Button type="button" variant="outline">
+                              <X aria-hidden className="size-4" />
+                              {t("actions.cancel")}
+                            </Button>
+                          </DialogClose>
+                          <DialogClose asChild>
+                            <Button
+                              onClick={() => onDeleteConversation(conversation)}
+                              type="button"
+                              variant="destructive"
+                            >
+                              <Trash2 data-icon="inline-start" />
+                              {t("aiChat.history.delete")}
+                            </Button>
+                          </DialogClose>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      </nav>
+    </div>
+  );
+}
+
+function HistoryRailHeader({
+  count,
+  onNewConversation,
+}: {
+  count: number;
+  onNewConversation: () => void;
+}) {
+  return (
+    <div className="flex h-14 shrink-0 items-center justify-between border-b px-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <PanelLeft aria-hidden className="size-4 text-muted-foreground" />
+        <h2 className="truncate text-sm font-semibold">{t("aiChat.history")}</h2>
       </div>
-    </nav>
+      <div className="flex items-center gap-1.5">
+        <Badge variant="outline">{count}</Badge>
+        <Button
+          aria-label={t("aiChat.newConversation")}
+          onClick={onNewConversation}
+          size="icon"
+          title={t("aiChat.newConversation")}
+          type="button"
+          variant="ghost"
+        >
+          <MessageSquarePlus aria-hidden className="size-4" />
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -622,98 +919,196 @@ function ConversationTranscript({
   approvalPending,
   conversation,
   onApprove,
+  streaming,
 }: {
   approvalPending: boolean;
   conversation: AiChatConversation;
   onApprove: (proposal: AiChatActionProposal, approved: boolean) => void;
+  streaming: boolean;
 }) {
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const stickToBottom = useRef(true);
+  const messageGrowthKey = useMemo(
+    () =>
+      conversation.messages
+        .map((message) => {
+          const partGrowth = message.parts
+            .map((part) => (part.type === "text" ? (part.text ?? "").length : part.type))
+            .join(",");
+          return `${message.id}:${partGrowth}`;
+        })
+        .join("|"),
+    [conversation.messages],
+  );
+  const scrollToLatest = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const node = contentRef.current;
+    if (!node) {
+      return;
+    }
+    node.scrollTo({ behavior, top: node.scrollHeight });
+  }, []);
+  const scrollTrigger = `${conversation.id}:${messageGrowthKey}`;
+
+  useEffect(() => {
+    void scrollTrigger;
+    if (!streaming && !stickToBottom.current) {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      scrollToLatest(streaming ? "auto" : "smooth");
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [scrollToLatest, scrollTrigger, streaming]);
+
   return (
-    <div className="min-h-0 flex-1 overflow-auto">
-      <div className="mx-auto flex max-w-4xl flex-col gap-4 p-4">
-        <div className="flex flex-wrap items-center gap-2 border-b pb-3">
-          <h2 className="min-w-0 flex-1 truncate text-lg font-semibold">{conversation.title}</h2>
-          <ConversationStatusBadges conversation={conversation} />
+    <Conversation className="bg-background">
+      <ConversationContent
+        className="bg-background"
+        onScroll={(event) => {
+          const node = event.currentTarget;
+          stickToBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 96;
+        }}
+        ref={contentRef}
+      >
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 pt-4 pb-6">
+          <div className="flex justify-end">
+            <ConversationStatusBadges conversation={conversation} streaming={streaming} />
+          </div>
+          {conversation.compaction ? (
+            <Alert className="bg-background">
+              <Archive aria-hidden />
+              <AlertTitle>{t("aiChat.compaction.title")}</AlertTitle>
+              <AlertDescription>{conversation.compaction.summary}</AlertDescription>
+            </Alert>
+          ) : null}
+          <div className="flex flex-col gap-4">
+            {conversation.messages.map((message) => (
+              <Message from={message.role} key={message.id}>
+                {message.role !== "user" ? (
+                  <MessageAvatar>
+                    <Bot className="size-4" aria-hidden />
+                  </MessageAvatar>
+                ) : null}
+                <div
+                  className={cn(
+                    "flex max-w-[min(1040px,100%)] flex-col gap-1",
+                    message.role === "user" && "items-end",
+                  )}
+                >
+                  <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+                    <span>
+                      {message.role === "user"
+                        ? t("aiChat.message.user")
+                        : t("aiChat.message.assistant")}
+                    </span>
+                    <span>{formatDateTime(message.createdAt)}</span>
+                  </div>
+                  <MessageContent className="max-w-full" from={message.role}>
+                    {message.parts.map((part, index) => {
+                      const key = `${message.id}-${index}`;
+                      if (part.type === "text") {
+                        return (
+                          <AssistantText
+                            key={key}
+                            pending={streaming && message.id.startsWith("local-assistant-")}
+                            text={part.text ?? ""}
+                          />
+                        );
+                      }
+                      if (part.type === "json_render") {
+                        return (
+                          <ArtifactPanel
+                            artifact={aiChatArtifactById(conversation, part.artifactId ?? null)}
+                            key={key}
+                          />
+                        );
+                      }
+                      if (part.type === "action_request") {
+                        return (
+                          <ActionProposalPanel
+                            disabled={approvalPending}
+                            key={key}
+                            onApprove={onApprove}
+                            proposal={aiChatActionById(conversation, part.actionId ?? null)}
+                          />
+                        );
+                      }
+                      return (
+                        <Badge className="w-fit" key={key} variant="outline">
+                          {part.type}
+                        </Badge>
+                      );
+                    })}
+                  </MessageContent>
+                  {message.role === "assistant" ? (
+                    <MessageActions className="px-1">
+                      <MessageAction
+                        label={t("aiChat.message.copy")}
+                        onClick={() => copyMessageText(message)}
+                      >
+                        <Clipboard aria-hidden className="size-3" />
+                      </MessageAction>
+                    </MessageActions>
+                  ) : null}
+                </div>
+                {message.role === "user" ? (
+                  <MessageAvatar className="bg-primary text-primary-foreground">
+                    <span className="text-xs font-semibold">{t("aiChat.message.user")}</span>
+                  </MessageAvatar>
+                ) : null}
+              </Message>
+            ))}
+          </div>
         </div>
-        {conversation.compaction ? (
-          <Alert className="bg-background">
-            <Archive aria-hidden />
-            <AlertTitle>{t("aiChat.compaction.title")}</AlertTitle>
-            <AlertDescription>{conversation.compaction.summary}</AlertDescription>
-          </Alert>
-        ) : null}
-        <div className="flex flex-col gap-4">
-          {conversation.messages.map((message) => (
-            <article
-              className={cn(
-                "flex gap-3",
-                message.role === "user" ? "justify-end" : "justify-start",
-              )}
-              key={message.id}
-            >
-              {message.role !== "user" ? (
-                <span className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted">
-                  <Bot className="size-4" aria-hidden />
-                </span>
-              ) : null}
-              <div
-                className={cn(
-                  "flex max-w-[min(760px,100%)] flex-col gap-2 rounded-lg border p-3 text-sm",
-                  message.role === "user" ? "bg-primary text-primary-foreground" : "bg-background",
-                )}
-              >
-                {message.parts.map((part, index) => {
-                  const key = `${message.id}-${index}`;
-                  if (part.type === "text") {
-                    return <p key={key}>{part.text}</p>;
-                  }
-                  if (part.type === "json_render") {
-                    return (
-                      <ArtifactPanel
-                        artifact={aiChatArtifactById(conversation, part.artifactId ?? null)}
-                        key={key}
-                      />
-                    );
-                  }
-                  if (part.type === "action_request") {
-                    return (
-                      <ActionProposalPanel
-                        disabled={approvalPending}
-                        key={key}
-                        onApprove={onApprove}
-                        proposal={aiChatActionById(conversation, part.actionId ?? null)}
-                      />
-                    );
-                  }
-                  return (
-                    <Badge className="w-fit" key={key} variant="outline">
-                      {part.type}
-                    </Badge>
-                  );
-                })}
-              </div>
-              {message.role === "user" ? (
-                <span className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted">
-                  <UserCircle className="size-4" aria-hidden />
-                </span>
-              ) : null}
-            </article>
-          ))}
-        </div>
-      </div>
-    </div>
+      </ConversationContent>
+      <ConversationScrollButton onClick={() => scrollToLatest()} />
+    </Conversation>
   );
 }
 
-function ConversationStatusBadges({ conversation }: { conversation: AiChatConversation }) {
+function AssistantText({ pending, text }: { pending: boolean; text: string }) {
+  if (pending && !text.trim()) {
+    return (
+      <div
+        aria-label={t("aiChat.pending")}
+        className="flex items-center gap-2 text-sm text-muted-foreground"
+        role="status"
+      >
+        <LoaderInline />
+        <Shimmer>{t("aiChat.pending")}</Shimmer>
+      </div>
+    );
+  }
+
+  return <MarkdownResponse className={pending ? "text-muted-foreground" : undefined} text={text} />;
+}
+
+function LoaderInline() {
+  return (
+    <span
+      aria-hidden
+      className="size-3 rounded-full border border-muted-foreground/40 border-t-foreground motion-safe:animate-spin"
+    />
+  );
+}
+
+function ConversationStatusBadges({
+  conversation,
+  streaming,
+}: {
+  conversation: AiChatConversation;
+  streaming: boolean;
+}) {
   const run = conversation.latestRun;
   return (
-    <>
+    <div className="flex flex-wrap items-center justify-end gap-2">
       {conversation.status === "archived" ? (
         <Badge variant="outline">{t("aiChat.archived")}</Badge>
       ) : null}
+      {streaming ? <Badge variant="secondary">{t("aiChat.streaming")}</Badge> : null}
       {run ? <Badge variant="secondary">{run.status}</Badge> : null}
       {run?.error ? <Badge variant="destructive">{t("aiChat.runError")}</Badge> : null}
-    </>
+    </div>
   );
 }
 
@@ -917,7 +1312,13 @@ function conversationWithLocalStream(
       createdAt: new Date().toISOString(),
     });
   }
-  if (streamState.assistantText || streamState.error || streamState.status === "streaming") {
+  const shouldRenderLocalAssistant =
+    streamState.assistantText || streamState.error || streamState.status === "streaming";
+  const localAssistantAlreadyPersisted =
+    streamState.status === "completed" &&
+    !streamState.error &&
+    messages.some((message) => assistantMessageMatches(message, streamState.assistantText));
+  if (shouldRenderLocalAssistant && !localAssistantAlreadyPersisted) {
     messages.push({
       id: `local-assistant-${streamState.conversationId}`,
       conversationId: conversation.id,
@@ -957,11 +1358,81 @@ function conversationWithLocalStream(
   };
 }
 
+function assistantMessageMatches(message: AiChatMessage, text: string): boolean {
+  return (
+    message.role === "assistant" &&
+    normalizeMessageText(messageText(message)) === normalizeMessageText(text)
+  );
+}
+
+function upsertConversationInHistory(
+  history: AiChatHistory | undefined,
+  conversation: AiChatConversation,
+): AiChatHistory | undefined {
+  if (!history) {
+    return history;
+  }
+  let foundGroup = false;
+  const projectGroups = history.projectGroups.map((group) => {
+    const conversations = group.conversations.filter((item) => item.id !== conversation.id);
+    if (group.projectId !== conversation.projectId) {
+      return { ...group, conversations };
+    }
+    foundGroup = true;
+    return { ...group, conversations: [conversation, ...conversations] };
+  });
+  if (!foundGroup) {
+    projectGroups.unshift({
+      projectId: conversation.projectId,
+      projectName: conversation.projectId,
+      conversations: [conversation],
+    });
+  }
+  return { ...history, projectGroups };
+}
+
+function removeConversationFromHistory(
+  history: AiChatHistory | undefined,
+  conversationId: string,
+): AiChatHistory | undefined {
+  if (!history) {
+    return history;
+  }
+  return {
+    ...history,
+    projectGroups: history.projectGroups
+      .map((group) => ({
+        ...group,
+        conversations: group.conversations.filter(
+          (conversation) => conversation.id !== conversationId,
+        ),
+      }))
+      .filter((group) => group.conversations.length > 0),
+  };
+}
+
+function isHydratedAiChatConversation(
+  conversation: AiChatConversation | null | undefined,
+): conversation is AiChatConversation {
+  return Boolean(conversation && conversation.messages.length > 0);
+}
+
 function userMessageMatches(message: AiChatMessage, text: string) {
   return (
     message.role === "user" &&
     message.parts.some((part) => part.type === "text" && part.text === text)
   );
+}
+
+function messageText(message: AiChatMessage): string {
+  return message.parts
+    .filter((part): part is { text: string; type: "text" } => part.type === "text")
+    .map((part) => part.text)
+    .join("\n\n");
+}
+
+function normalizeMessageText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
 }
 
 function isStreamTextPart(value: unknown): value is { type: "text"; text: string } {
@@ -983,4 +1454,19 @@ function stringifyJsonValue(value: unknown) {
   if (typeof value === "string") return value;
   if (value === null || value === undefined) return "";
   return JSON.stringify(value);
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : t("errors.generic");
+}
+
+function copyMessageText(message: AiChatMessage) {
+  const text = message.parts
+    .filter((part): part is { text: string; type: "text" } => part.type === "text")
+    .map((part) => part.text)
+    .join("\n\n");
+
+  if (text && typeof navigator !== "undefined" && navigator.clipboard) {
+    void navigator.clipboard.writeText(text);
+  }
 }

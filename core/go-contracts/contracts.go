@@ -1014,6 +1014,7 @@ type MetricNameSearchInput struct {
 	From    *time.Time `json:"from,omitempty"`
 	To      *time.Time `json:"to,omitempty"`
 	Limit   *int       `json:"limit,omitempty"`
+	Cursor  *string    `json:"cursor,omitempty"`
 }
 
 type MetricNameSearchRequest struct {
@@ -1022,7 +1023,8 @@ type MetricNameSearchRequest struct {
 }
 
 type MetricNameSearchData struct {
-	Items []MetricDescriptor `json:"items"`
+	Items      []MetricDescriptor `json:"items"`
+	NextCursor *string            `json:"nextCursor,omitempty"`
 }
 
 type MetricNameSearchResponse struct {
@@ -2579,6 +2581,11 @@ type CompanyAiProviderSettingsUpdateRequest struct {
 	ExpectedVersion int            `json:"expectedVersion"`
 }
 
+type AiProviderSecretResolveRequest struct {
+	BridgeEnvelope
+	CredentialRef string `json:"credentialRef"`
+}
+
 type AiChatHistoryRequest struct {
 	BridgeEnvelope
 	CompanyID       string  `json:"companyId"`
@@ -2608,6 +2615,12 @@ type AiChatConversationArchiveRequest struct {
 	ConversationID  string `json:"conversationId"`
 	UserID          string `json:"userId"`
 	ExpectedVersion int    `json:"expectedVersion"`
+}
+
+type AiChatConversationDeleteRequest struct {
+	BridgeEnvelope
+	ConversationID string `json:"conversationId"`
+	UserID         string `json:"userId"`
 }
 
 type AiChatMessageAppendRequest struct {

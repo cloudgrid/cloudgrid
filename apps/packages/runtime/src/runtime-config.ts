@@ -136,6 +136,11 @@ function parseSelfObservabilityConfig(
       );
     }
   }
+  if (deploymentMode === "local" && enabled && !otlpBearerToken) {
+    throwConfig(
+      "CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN is required when self-observability is enabled",
+    );
+  }
 
   const resolvedProjectId = projectId ?? "cloudgrid-system";
   const resolvedCompanyId = companyId ?? (deploymentMode === "local" ? "local" : undefined);

@@ -67,6 +67,7 @@ const traceSortSchema = z.enum([
   "errorFirst",
 ]);
 const logSortSchema = z.enum(["timestamp_desc", "timestamp_asc", "severity_desc"]);
+const allowedAiCredentialRefPrefixes = ["managed:", "env:", "external:"];
 const attributeOperatorSchema = z.enum([
   "eq",
   "neq",
@@ -202,6 +203,7 @@ const metricNameSearchInputSchema = withTimeRange(
     from: isoDateTimeSchema.optional(),
     to: isoDateTimeSchema.optional(),
     limit: z.number().int().min(1).max(200).optional(),
+    cursor: z.string().min(1).optional(),
   }),
 );
 const metricSeriesInputSchema = withTimeRange(
@@ -645,6 +647,7 @@ const datasetItemInputSchema = z.object({
 });
 const appendDatasetItemsInputSchema = z.object({
   datasetId: z.string().min(1),
+  expectedDatasetVersion: z.number().int().min(1),
   items: z.array(datasetItemInputSchema).min(1).max(500),
 });
 const datasetImportFormatSchema = z.enum(["jsonl", "json_array", "csv", "zip"]);
@@ -792,17 +795,35 @@ const aiProviderProfileInputSchema = z
     label: z.string().min(1),
     providerKind: aiProviderKindSchema,
     baseUrl: z.string().min(1).optional().nullable(),
-    credentialRef: z.string().min(1),
+    credentialRef: z.string().min(1).optional().nullable(),
+    credentialValue: z.string().min(1).optional().nullable(),
     models: z.unknown(),
+    parameters: z.unknown().optional().nullable(),
     timeoutMs: z.number().int().min(1_000).max(300_000).optional().nullable(),
     maxConcurrency: z.number().int().min(1).optional().nullable(),
     disabled: z.boolean().optional().nullable(),
   })
   .superRefine((input, context) => {
-    if (containsSensitiveKey(input)) {
+    const { credentialValue: _credentialValue, ...safeInput } = input;
+    if (containsSensitiveKey(safeInput)) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: "AI provider settings must not include raw secret-bearing keys",
+        path: ["credentialRef"],
+      });
+    }
+    if (!input.credentialRef && !input.credentialValue) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "AI provider settings require a credential reference or write-only credential value",
+        path: ["credentialRef"],
+      });
+    }
+    if (input.credentialRef && !isAllowedAiCredentialRef(input.credentialRef)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "AI provider credentialRef must use managed:, env:, or external:",
         path: ["credentialRef"],
       });
     }
@@ -1837,4 +1858,8 @@ function containsSensitiveKey(input: unknown): boolean {
     }
     return containsSensitiveKey(value);
   });
+}
+
+function isAllowedAiCredentialRef(value: string): boolean {
+  return allowedAiCredentialRefPrefixes.some((prefix) => value.startsWith(prefix));
 }

@@ -57,6 +57,9 @@ The check command is a hard drift gate. It must fail when:
 - `ui-contracts` omits a required GraphQL input field,
 - an AsyncAPI request schema requires a field that is missing from its Go request struct,
 - generated enum or subject metadata is stale.
+- a generated control-plane subject is missing from `ControlSubjects()`.
+- a generated control-plane request/reply subject is missing from the control-plane NATS handler map.
+- a BFF bridge method sends a request envelope that does not match the AsyncAPI request shape, including accidental `input` wrappers on subjects whose schemas require top-level fields.
 
 ## Canonicalization
 
@@ -77,6 +80,14 @@ A contract change is complete only when all applicable layers are updated in the
 - Go bridge contract output,
 - error taxonomy when new failures are introduced,
 - focused contract test or drift-check assertion.
+
+For control-plane message subjects, the focused assertion must include a Go
+coverage test that compares `core/go-contracts.ControlPlaneSubjects` with the
+service subject registry and handler map. Notification-only subjects may be
+excluded from the handler-map assertion only by name, with the exclusion visible
+in the test. The corresponding BFF bridge test must assert the emitted subject
+and payload field layout for each public resolver or runtime call using that
+subject.
 
 Implementation agents must stop if they need a new field, enum value, subject, event type, operation, or error code that is not present in those layers.
 

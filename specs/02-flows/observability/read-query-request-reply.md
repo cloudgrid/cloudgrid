@@ -67,7 +67,8 @@ Resolve GraphQL telemetry reads through private NATS request/reply without expos
 
 ### Step 2 - NATS Request
 
-- **Action**: Send request to `telemetry.traces.search`, `telemetry.traces.get`, `telemetry.logs.search`, or `telemetry.facets` with a 2 second timeout.
+- **Action**: Send request to `telemetry.traces.search`, `telemetry.traces.get`, `telemetry.logs.search`, or `telemetry.facets` with the configured `CLOUDGRID_MESSAGE_BRIDGE_REQUEST_TIMEOUT_MS` timeout. The default is 12 seconds and must remain greater than `CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS`.
+- **Pagination**: Trace and log searches use cursor pagination. Storage-read fetches `limit + 1` rows, returns at most `limit` rows, and emits `nextCursor` from the last returned row when another page exists. Trace cursors are based on `(startedAt DESC, traceId ASC)`. Log cursors are based on `(timestamp DESC, logEventId ASC)`.
 - **Success**: Continue to Step 3.
 - **Retryable error**: Return ERR-013 or ERR-014 as GraphQL error.
 - **Permanent error**: Return mapped BridgeError.

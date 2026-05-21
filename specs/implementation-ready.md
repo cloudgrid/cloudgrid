@@ -37,7 +37,7 @@ Status values:
 | IR-003 | complete | Collector local/deployed bearer routing and sanitized auth failures exist; control-plane final-admin safeguards exist; storage-read fails closed for SSO read/live scopes and tenant mismatch; storage-write rejects deployed ingest commands without collector-authorized tenant/company/project routing; BFF GraphQL HTTP, WebSocket, and protected app shell coverage exists. `bun test apps/backend/src/static.test.ts apps/backend/src/auth.test.ts apps/backend/src/graphql-ws.test.ts` and `go test -tags surrealdb ./core/otlp-collector/... ./core/storage-read/... ./core/storage-write/... ./core/control-plane/...` pass. | None for deployed-mode auth hardening. |
 | IR-004 | blocked-by-environment | Benchmark commands, sizing/release docs, and benchmark JSON release identity fields exist. Production profiles require `CLOUDGRID_BENCH_DEPLOYMENT_PROFILE=production-like`, `CLOUDGRID_BENCH_ENVIRONMENT_ID`, and `CLOUDGRID_BENCH_IMAGE_TAG`. `bun test tooling/scripts/bench.test.mjs` passes. | Run production benchmark commands against the exact deployment being promoted and store the JSON evidence with release identity, thresholds, and pass/fail status. |
 | IR-005 | complete | AI provider and AI Chat generated metadata, BFF bridge/resolvers, validation, integration scenario coverage, and contract drift checks are present. `bun run contracts:check` passes. | None for the contract wave. Runtime/UI execution remains IR-006. |
-| IR-006 | partial | `/ai-chat` route, project navigation, provider status/history/conversation reads, safe artifact previews, server-issued action approval UI, BFF SSE stream endpoint, ordered terminal stream events, abort cleanup, public API stream client helper, follow-up prompt streaming UI, durable run create/update/finalize contracts, control-plane run idempotency, tests, and handbook docs are present. `bun run contracts:check`, `bun run typecheck`, targeted BFF/frontend tests, and `go test -tags surrealdb ./core/control-plane/...` pass. | Complete AI Elements/json-render component integration and richer provider settings forms for company/project configuration. |
+| IR-006 | partial | `/ai-chat` route, project navigation, provider status/history/conversation reads, safe artifact previews, server-issued action approval UI, company AI provider admin route, company provider update client mutation, BFF SSE stream endpoint, ordered terminal stream events, abort cleanup, public API stream client helper, follow-up prompt streaming UI, durable run create/update/finalize contracts, control-plane run idempotency, tests, and handbook docs are present. `bun run contracts:check`, `bun run typecheck`, targeted BFF/frontend tests, and `go test -tags surrealdb ./core/control-plane/...` pass. | Complete AI Elements/json-render component integration and the project provider profile/model-alias management surface at `/projects/:projectId/settings/ai-providers`. |
 | IR-007 | complete | No dedicated `core/log-ingest` service is specified for this wave; the collector still serves `POST /v1/logs`, publishes `telemetry.ingest.logs`, and storage-write receives the existing durable log command contract. | None unless a future backend ingestion wave explicitly introduces `core/log-ingest`. |
 | IR-008 | complete | Website handbook now covers Helm install, external NATS/SurrealDB, image customization, private registry/air-gapped installs, release verification, upgrade/rollback, and sizing. `bun run --cwd website build` passes. | None for documentation scope. Environment-specific values and verified release assets are produced outside the docs pass. |
 | IR-009 | partial | Shared Go OTLP trace/log exporter now supports per-signal toggles, bounded sanitized log records, trace/span IDs, severity numbers, observed timestamps, log scope naming, dropped-buffer metrics, rate-limited exporter failure warnings, and sanitization tests. AI-eval runner now wires exporter startup, NATS handler spans/failure logs, and shutdown flush. `go test -tags surrealdb ./core/go-runtime/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/...` passes. | Complete full-service log event coverage evidence across BFF, collector, control-plane, storage-read, storage-write, and AI-eval runner, plus normal Logs UI inspection evidence for the self-observability project. |
@@ -205,7 +205,7 @@ Source specs:
 
 - [Performance and scaling](./06-nfr/performance-and-scaling.md)
 - [Release, CI/CD, and distribution](./06-nfr/release-distribution.md)
-- [Production readiness docs](../docs/operations/production-readiness.md)
+- [Production readiness docs](../website/src/content/handbook/operations/production-readiness.md)
 
 Write scope:
 
@@ -327,7 +327,11 @@ Acceptance:
 - one chat run cannot query across projects;
 - destructive actions require explicit approval;
 - stream events are ordered, terminal, and replay-safe according to contracts;
-- generated UI contracts are the only frontend data source.
+- generated UI contracts are the only frontend data source;
+- local integration coverage creates a managed company provider, creates an AI
+  Chat conversation, streams through `CLOUDGRID_AI_CHAT_HARNESS_MODE=mock`,
+  verifies terminal events, verifies history persistence, and checks that
+  credential material is absent from stream events.
 
 Verification:
 
@@ -390,12 +394,12 @@ Source specs:
 
 - [Release, CI/CD, and distribution](./06-nfr/release-distribution.md)
 - [Performance and scaling](./06-nfr/performance-and-scaling.md)
-- [Kubernetes handbook](../docs/configuration/deployed/kubernetes.md)
-- [Production readiness docs](../docs/operations/production-readiness.md)
+- [Kubernetes handbook](../website/src/content/handbook/configuration/deployed/kubernetes.md)
+- [Production readiness docs](../website/src/content/handbook/operations/production-readiness.md)
 
 Write scope:
 
-- `docs`
+- `website/src/content/handbook`
 - `website/src/content/handbook`
 - `.github/workflows` only when documentation needs workflow output paths
 - release validation scripts only when docs reference generated artifact names

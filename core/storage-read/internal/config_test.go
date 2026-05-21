@@ -8,7 +8,8 @@ import (
 
 func TestLoadConfigAppliesDefaultsAndOptionalCredentials(t *testing.T) {
 	env := map[string]string{
-		"CLOUDGRID_SURREALDB_URL": "http://localhost:8000/rpc",
+		"CLOUDGRID_SURREALDB_URL":                        "http://localhost:8000/rpc",
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN": "system-token",
 	}
 
 	cfg, err := LoadConfig(MapEnv(env))
@@ -34,7 +35,7 @@ func TestLoadConfigAppliesDefaultsAndOptionalCredentials(t *testing.T) {
 	if cfg.SurrealDB.Username != "" || cfg.SurrealDB.Password != "" {
 		t.Fatalf("credentials should be optional and empty by default")
 	}
-	if cfg.Limits.QueryTimeout != 1500*time.Millisecond ||
+	if cfg.Limits.QueryTimeout != 10000*time.Millisecond ||
 		cfg.Limits.MaxPageSize != 200 ||
 		cfg.Limits.MaxMetricPoints != 5000 ||
 		cfg.Limits.LiveMaxSubscriptions != 2000 ||
@@ -45,12 +46,13 @@ func TestLoadConfigAppliesDefaultsAndOptionalCredentials(t *testing.T) {
 
 func TestLoadConfigReadsStorageReadScalingLimits(t *testing.T) {
 	cfg, err := LoadConfig(MapEnv(map[string]string{
-		"CLOUDGRID_SURREALDB_URL":                  "http://localhost:8000/rpc",
-		"CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS":  "2500",
-		"CLOUDGRID_STORAGE_READ_MAX_PAGE_SIZE":     "500",
-		"CLOUDGRID_STORAGE_READ_MAX_METRIC_POINTS": "10000",
-		"CLOUDGRID_LIVE_MAX_SUBSCRIPTIONS":         "3000",
-		"CLOUDGRID_LIVE_EVENT_BUFFER_SIZE":         "250",
+		"CLOUDGRID_SURREALDB_URL":                        "http://localhost:8000/rpc",
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN": "system-token",
+		"CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS":        "2500",
+		"CLOUDGRID_STORAGE_READ_MAX_PAGE_SIZE":           "500",
+		"CLOUDGRID_STORAGE_READ_MAX_METRIC_POINTS":       "10000",
+		"CLOUDGRID_LIVE_MAX_SUBSCRIPTIONS":               "3000",
+		"CLOUDGRID_LIVE_EVENT_BUFFER_SIZE":               "250",
 	}))
 	if err != nil {
 		t.Fatalf("LoadConfig returned error: %v", err)
@@ -79,8 +81,9 @@ func TestLoadConfigRejectsInvalidStorageReadScalingLimits(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := LoadConfig(MapEnv(map[string]string{
-				"CLOUDGRID_SURREALDB_URL": "http://localhost:8000/rpc",
-				tt.key:                    tt.value,
+				"CLOUDGRID_SURREALDB_URL":                        "http://localhost:8000/rpc",
+				"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN": "system-token",
+				tt.key: tt.value,
 			}))
 			if err == nil || !strings.Contains(err.Error(), tt.key) {
 				t.Fatalf("error = %v, want validation mentioning %s", err, tt.key)
@@ -91,8 +94,9 @@ func TestLoadConfigRejectsInvalidStorageReadScalingLimits(t *testing.T) {
 
 func TestLoadConfigRejectsMissingSurrealDBURLWithoutLeakingCredentials(t *testing.T) {
 	env := map[string]string{
-		"CLOUDGRID_SURREALDB_USERNAME": "root",
-		"CLOUDGRID_SURREALDB_PASSWORD": "super-secret",
+		"CLOUDGRID_SURREALDB_USERNAME":                   "root",
+		"CLOUDGRID_SURREALDB_PASSWORD":                   "super-secret",
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN": "system-token",
 	}
 
 	_, err := LoadConfig(MapEnv(env))
@@ -111,8 +115,9 @@ func TestLoadConfigRejectsMissingSurrealDBURLWithoutLeakingCredentials(t *testin
 
 func TestLoadConfigRejectsPartialCredentials(t *testing.T) {
 	env := map[string]string{
-		"CLOUDGRID_SURREALDB_URL":      "http://localhost:8000/rpc",
-		"CLOUDGRID_SURREALDB_USERNAME": "root",
+		"CLOUDGRID_SURREALDB_URL":                        "http://localhost:8000/rpc",
+		"CLOUDGRID_SURREALDB_USERNAME":                   "root",
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN": "system-token",
 	}
 
 	_, err := LoadConfig(MapEnv(env))
@@ -126,7 +131,8 @@ func TestLoadConfigRejectsPartialCredentials(t *testing.T) {
 
 func TestLoadConfigPreservesStorageAdapterSelection(t *testing.T) {
 	env := map[string]string{
-		"CLOUDGRID_STORAGE_ADAPTER": "postgres",
+		"CLOUDGRID_STORAGE_ADAPTER":                      "postgres",
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN": "system-token",
 	}
 
 	cfg, err := LoadConfig(MapEnv(env))
@@ -140,7 +146,8 @@ func TestLoadConfigPreservesStorageAdapterSelection(t *testing.T) {
 
 func TestLoadConfigAppliesLocalSelfObservabilityDefaults(t *testing.T) {
 	cfg, err := LoadConfig(MapEnv(map[string]string{
-		"CLOUDGRID_SURREALDB_URL": "http://localhost:8000/rpc",
+		"CLOUDGRID_SURREALDB_URL":                        "http://localhost:8000/rpc",
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN": "system-token",
 	}))
 	if err != nil {
 		t.Fatalf("LoadConfig returned error: %v", err)
@@ -153,14 +160,53 @@ func TestLoadConfigAppliesLocalSelfObservabilityDefaults(t *testing.T) {
 	if self.ProjectID != "cloudgrid-system" || self.CompanyID != "local" || self.OTLPEndpoint != "http://localhost:4318" {
 		t.Fatalf("self-observability identity/endpoint = %#v, want local defaults", self)
 	}
-	if self.OTLPBearerToken != "" {
-		t.Fatal("local self-observability token should be empty by default")
+	if self.OTLPBearerToken != "system-token" {
+		t.Fatalf("OTLPBearerToken = %q, want configured token", self.OTLPBearerToken)
 	}
 	if self.ExportIntervalSeconds != 10 {
 		t.Fatalf("ExportIntervalSeconds = %d, want 10", self.ExportIntervalSeconds)
 	}
+	if self.ExportFailureLogLevel != "warn" {
+		t.Fatalf("ExportFailureLogLevel = %q, want warn", self.ExportFailureLogLevel)
+	}
 	if !self.TracesEnabled || !self.LogsEnabled || !self.MetricsEnabled {
 		t.Fatalf("signal defaults = traces:%v logs:%v metrics:%v, want all enabled", self.TracesEnabled, self.LogsEnabled, self.MetricsEnabled)
+	}
+}
+
+func TestLoadConfigRejectsLocalEnabledSelfObservabilityWithoutBearerToken(t *testing.T) {
+	_, err := LoadConfig(MapEnv(map[string]string{
+		"CLOUDGRID_SURREALDB_URL": "http://localhost:8000/rpc",
+	}))
+	if err == nil || !strings.Contains(err.Error(), "CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN") {
+		t.Fatalf("LoadConfig error = %v, want bearer token validation", err)
+	}
+}
+
+func TestLoadConfigAppliesSelfObservabilityFailureLogLevelOverride(t *testing.T) {
+	cfg, err := LoadConfig(MapEnv(map[string]string{
+		"CLOUDGRID_SURREALDB_URL":                               "http://localhost:8000/rpc",
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN":        "system-token",
+		"CLOUDGRID_SELF_OBSERVABILITY_EXPORT_FAILURE_LOG_LEVEL": "off",
+	}))
+	if err != nil {
+		t.Fatalf("LoadConfig returned error: %v", err)
+	}
+	if cfg.SelfObservability.ExportFailureLogLevel != "off" {
+		t.Fatalf("ExportFailureLogLevel = %q, want off", cfg.SelfObservability.ExportFailureLogLevel)
+	}
+}
+
+func TestLoadConfigRejectsInvalidSelfObservabilityFailureLogLevel(t *testing.T) {
+	_, err := LoadConfig(MapEnv(map[string]string{
+		"CLOUDGRID_SURREALDB_URL":                               "http://localhost:8000/rpc",
+		"CLOUDGRID_SELF_OBSERVABILITY_EXPORT_FAILURE_LOG_LEVEL": "verbose",
+	}))
+	if err == nil {
+		t.Fatal("LoadConfig returned nil error")
+	}
+	if !strings.Contains(err.Error(), "CLOUDGRID_SELF_OBSERVABILITY_EXPORT_FAILURE_LOG_LEVEL") {
+		t.Fatalf("error = %q, want failure log level validation", err.Error())
 	}
 }
 

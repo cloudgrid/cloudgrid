@@ -25,7 +25,7 @@ func TestTraceGetHandlerAcceptsPortableBridgeMessage(t *testing.T) {
 		data:    data,
 	}
 
-	handleTraceGet(&loggingReadStore{}, nil)(message)
+	handleTraceGet(&loggingReadStore{}, nil, defaultQueryTimeout)(message)
 
 	if lastTraceDetailQuery == nil || lastTraceDetailQuery.SelectedSpanID == nil || *lastTraceDetailQuery.SelectedSpanID != selectedSpanID {
 		t.Fatalf("forwarded query = %#v, want selected span from portable message", lastTraceDetailQuery)

@@ -6,7 +6,10 @@ import (
 )
 
 func TestResolveSelfObservabilityConfigLocalDefaultsEnabled(t *testing.T) {
-	config, err := ResolveSelfObservabilityConfig(func(string) string { return "" })
+	env := map[string]string{
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN": "system-token",
+	}
+	config, err := ResolveSelfObservabilityConfig(func(name string) string { return env[name] })
 	if err != nil {
 		t.Fatalf("ResolveSelfObservabilityConfig() error = %v", err)
 	}
@@ -17,11 +20,21 @@ func TestResolveSelfObservabilityConfigLocalDefaultsEnabled(t *testing.T) {
 	if config.CompanyID != "local" || config.ProjectID != "cloudgrid-system" || config.OTLPEndpoint != "http://localhost:4318" {
 		t.Fatalf("config = %#v, want local/cloudgrid-system/http://localhost:4318", config)
 	}
+	if config.OTLPBearerToken != "system-token" {
+		t.Fatalf("OTLPBearerToken = %q, want configured token", config.OTLPBearerToken)
+	}
 	if config.ExportIntervalSeconds != 10 {
 		t.Fatalf("ExportIntervalSeconds = %d, want 10", config.ExportIntervalSeconds)
 	}
 	if !config.TracesEnabled || !config.LogsEnabled || !config.MetricsEnabled {
 		t.Fatalf("signal toggles = traces:%t logs:%t metrics:%t, want all enabled", config.TracesEnabled, config.LogsEnabled, config.MetricsEnabled)
+	}
+}
+
+func TestResolveSelfObservabilityConfigLocalEnabledRequiresBearerToken(t *testing.T) {
+	_, err := ResolveSelfObservabilityConfig(func(string) string { return "" })
+	if err == nil || !strings.Contains(err.Error(), "CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN") {
+		t.Fatalf("ResolveSelfObservabilityConfig() error = %v, want bearer token validation", err)
 	}
 }
 

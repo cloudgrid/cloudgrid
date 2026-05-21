@@ -39,7 +39,19 @@ type BridgeMessage interface {
 
 type bridgeMessageHandler func(BridgeMessage)
 
-func handleProjectTelemetryOverview(store ports.TelemetryReadStore, logger *slog.Logger) bridgeMessageHandler {
+func readHandlerTimeout(timeout time.Duration) time.Duration {
+	if timeout > 0 {
+		return timeout
+	}
+	return defaultQueryTimeout
+}
+
+func readHandlerContext(timeout time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), timeout)
+}
+
+func handleProjectTelemetryOverview(store ports.TelemetryReadStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var request contracts.ProjectTelemetryOverviewRequest
@@ -59,7 +71,7 @@ func handleProjectTelemetryOverview(store ports.TelemetryReadStore, logger *slog
 			logHandlerCompletion(logger, SubjectProjectTelemetryOverview, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
 		data, err := store.GetProjectTelemetryOverviews(ctx, request)
 		if err != nil {
@@ -74,7 +86,8 @@ func handleProjectTelemetryOverview(store ports.TelemetryReadStore, logger *slog
 	}
 }
 
-func handleTraceSearch(store ports.TelemetryReadStore, logger *slog.Logger) bridgeMessageHandler {
+func handleTraceSearch(store ports.TelemetryReadStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var request contracts.TraceSearchRequest
@@ -94,7 +107,7 @@ func handleTraceSearch(store ports.TelemetryReadStore, logger *slog.Logger) brid
 			logHandlerCompletion(logger, SubjectTraceSearch, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
 		data, err := store.SearchTraces(ctx, request.Query, request.AuthContext)
 		if err != nil {
@@ -109,7 +122,8 @@ func handleTraceSearch(store ports.TelemetryReadStore, logger *slog.Logger) brid
 	}
 }
 
-func handleTraceGet(store ports.TelemetryReadStore, logger *slog.Logger) bridgeMessageHandler {
+func handleTraceGet(store ports.TelemetryReadStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var request contracts.TraceDetailRequest
@@ -129,7 +143,7 @@ func handleTraceGet(store ports.TelemetryReadStore, logger *slog.Logger) bridgeM
 			logHandlerCompletion(logger, SubjectTraceGet, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
 		data, err := store.GetTraceDetail(ctx, request.TraceID, request.Query, request.AuthContext)
 		if err != nil {
@@ -144,7 +158,8 @@ func handleTraceGet(store ports.TelemetryReadStore, logger *slog.Logger) bridgeM
 	}
 }
 
-func handleLogSearch(store ports.TelemetryReadStore, logger *slog.Logger) bridgeMessageHandler {
+func handleLogSearch(store ports.TelemetryReadStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var request contracts.LogSearchRequest
@@ -164,7 +179,7 @@ func handleLogSearch(store ports.TelemetryReadStore, logger *slog.Logger) bridge
 			logHandlerCompletion(logger, SubjectLogSearch, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
 		data, err := store.SearchLogs(ctx, request.Query, request.AuthContext)
 		if err != nil {
@@ -179,7 +194,8 @@ func handleLogSearch(store ports.TelemetryReadStore, logger *slog.Logger) bridge
 	}
 }
 
-func handleTelemetryFacets(store ports.TelemetryReadStore, logger *slog.Logger) bridgeMessageHandler {
+func handleTelemetryFacets(store ports.TelemetryReadStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var request contracts.TelemetryFacetRequest
@@ -199,7 +215,7 @@ func handleTelemetryFacets(store ports.TelemetryReadStore, logger *slog.Logger) 
 			logHandlerCompletion(logger, SubjectTelemetryFacets, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
 		data, err := store.GetTelemetryFacets(ctx, request.Query, request.AuthContext)
 		if err != nil {
@@ -214,7 +230,8 @@ func handleTelemetryFacets(store ports.TelemetryReadStore, logger *slog.Logger) 
 	}
 }
 
-func handleMetricNameSearch(store ports.TelemetryReadStore, logger *slog.Logger) bridgeMessageHandler {
+func handleMetricNameSearch(store ports.TelemetryReadStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var request contracts.MetricNameSearchRequest
@@ -234,7 +251,7 @@ func handleMetricNameSearch(store ports.TelemetryReadStore, logger *slog.Logger)
 			logHandlerCompletion(logger, SubjectMetricNames, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
 		data, err := store.SearchMetricNames(ctx, request.Input, request.AuthContext)
 		if err != nil {
@@ -249,7 +266,8 @@ func handleMetricNameSearch(store ports.TelemetryReadStore, logger *slog.Logger)
 	}
 }
 
-func handleMetricSeriesQuery(store ports.TelemetryReadStore, logger *slog.Logger) bridgeMessageHandler {
+func handleMetricSeriesQuery(store ports.TelemetryReadStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var request contracts.MetricSeriesRequest
@@ -269,7 +287,7 @@ func handleMetricSeriesQuery(store ports.TelemetryReadStore, logger *slog.Logger
 			logHandlerCompletion(logger, SubjectMetricQuery, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
 		data, err := store.QueryMetricSeries(ctx, request.Input, request.AuthContext)
 		if err != nil {
@@ -284,7 +302,8 @@ func handleMetricSeriesQuery(store ports.TelemetryReadStore, logger *slog.Logger
 	}
 }
 
-func handleRichMetricSeriesQuery(store ports.TelemetryReadStore, logger *slog.Logger) bridgeMessageHandler {
+func handleRichMetricSeriesQuery(store ports.TelemetryReadStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var request contracts.RichMetricSeriesRequest
@@ -304,7 +323,7 @@ func handleRichMetricSeriesQuery(store ports.TelemetryReadStore, logger *slog.Lo
 			logHandlerCompletion(logger, SubjectRichMetricQuery, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
 		data, err := QueryRichMetricSeriesFromMetricSeries(ctx, store, request.Input, request.AuthContext)
 		if err != nil {
@@ -375,7 +394,8 @@ func stringPtrValue(value *string) string {
 	return *value
 }
 
-func handleLiveTraceStart(registry *LiveTraceRegistry, logger *slog.Logger) bridgeMessageHandler {
+func handleLiveTraceStart(registry *LiveTraceRegistry, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var request contracts.LiveTraceStartRequest
@@ -389,7 +409,7 @@ func handleLiveTraceStart(registry *LiveTraceRegistry, logger *slog.Logger) brid
 			logHandlerCompletion(logger, SubjectLiveTraceStart, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
 		data, err := registry.Start(ctx, request)
 		if err != nil {
@@ -431,7 +451,8 @@ func handleLiveTraceStop(registry *LiveTraceRegistry, logger *slog.Logger) bridg
 	}
 }
 
-func handleTracePersistedNotification(registry *LiveTraceRegistry, logger *slog.Logger) bridgeMessageHandler {
+func handleTracePersistedNotification(registry *LiveTraceRegistry, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var notification contracts.TracePersistedNotification
@@ -439,7 +460,7 @@ func handleTracePersistedNotification(registry *LiveTraceRegistry, logger *slog.
 			logHandlerCompletion(logger, SubjectPersistedTraces, "", false, start, ptr(bridgeErrorFromError(validationError("invalid trace persisted notification JSON"))))
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
 		if err := registry.HandleTracePersisted(ctx, notification); err != nil {
 			bridgeError := bridgeErrorFromError(err)
@@ -454,7 +475,7 @@ func logHandlerCompletion(logger *slog.Logger, subject string, requestID string,
 	if logger == nil {
 		return
 	}
-	level := slog.LevelInfo
+	level := slog.LevelDebug
 	status := "ok"
 	attrs := []any{
 		"service", storageReadService,

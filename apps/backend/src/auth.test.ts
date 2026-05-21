@@ -30,6 +30,7 @@ describe("BFF auth routes and sessions", () => {
     expect(authContext).toMatchObject({
       mode: "anonymous",
       authMode: "local",
+      principalId: "local-user",
       tenantId: "local",
       companyId: "local",
       projectId: "default",

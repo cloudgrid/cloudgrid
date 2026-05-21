@@ -48,7 +48,7 @@ describe("BFF GraphQL telemetry resolvers", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        query: `query { traces { items { id operationName } } }`,
+        query: `query { traces { items { id operationName startedAtUnixNano } } }`,
       }),
     });
 
@@ -57,6 +57,7 @@ describe("BFF GraphQL telemetry resolvers", () => {
     expect(body.data.traces.items[0]).toEqual({
       id: "trace-1",
       operationName: "POST /checkout",
+      startedAtUnixNano: "1778234400000000000",
     });
   });
 

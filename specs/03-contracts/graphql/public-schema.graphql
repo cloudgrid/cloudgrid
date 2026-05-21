@@ -91,6 +91,7 @@ type Mutation {
   updateCompanyAiProviderSettings(input: UpdateCompanyAiProviderSettingsInput!): CompanyAiProviderSettings!
   createAiChatConversation(input: CreateAiChatConversationInput!): AiChatConversation!
   archiveAiChatConversation(id: ID!): AiChatConversation!
+  deleteAiChatConversation(id: ID!): Boolean!
   approveAiChatAction(input: ApproveAiChatActionInput!): AiChatActionProposal!
 }
 
@@ -278,6 +279,7 @@ input MetricNameSearchInput {
   from: DateTime
   to: DateTime
   limit: Int = 50
+  cursor: String
 }
 
 input MetricSeriesInput {
@@ -550,6 +552,7 @@ input CreateDatasetInput {
 
 input AppendDatasetItemsInput {
   datasetId: ID!
+  expectedDatasetVersion: Int!
   items: [DatasetItemInput!]!
 }
 
@@ -741,8 +744,10 @@ input AiProviderProfileInput {
   label: String!
   providerKind: AiProviderKind!
   baseUrl: String
-  credentialRef: String!
+  credentialRef: String
+  credentialValue: String
   models: JSON!
+  parameters: JSON = {}
   timeoutMs: Int = 30000
   maxConcurrency: Int
   disabled: Boolean = false
@@ -1746,6 +1751,7 @@ type MetricDescriptor {
 
 type MetricNameSearchResult {
   items: [MetricDescriptor!]!
+  nextCursor: String
 }
 
 type MetricSeriesResult {
@@ -2410,6 +2416,7 @@ type AiProviderProfile {
   baseUrl: String
   credentialRef: String!
   models: JSON!
+  parameters: JSON!
   timeoutMs: Int!
   maxConcurrency: Int
   disabledAt: DateTime

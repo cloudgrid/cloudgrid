@@ -431,6 +431,9 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
     async updateCompanyAiProviderSettings(input: UpdateCompanyAiProviderSettingsInput) {
       return companyAiProviderSettings(input.companyId, input.expectedVersion + 1);
     },
+    async resolveAiProviderSecret(credentialRef: string) {
+      return { credentialRef, value: "managed-provider-secret" };
+    },
     async aiChatHistory(input: AiChatHistoryInput) {
       return {
         companyId: input.companyId,
@@ -453,6 +456,9 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
     },
     async archiveAiChatConversation(id: string) {
       return { ...aiChatConversation("org-1", "project-1", id), status: "archived" as const };
+    },
+    async deleteAiChatConversation() {
+      return true;
     },
     async approveAiChatAction(input: ApproveAiChatActionInput) {
       return aiChatActionProposal(input.actionId, input.approved ? "approved" : "rejected");
@@ -668,6 +674,7 @@ function aiProviderProfile(id: string, ownerScope: string, ownerId: string) {
     baseUrl: null,
     credentialRef: "env:OPENAI_API_KEY",
     models: { chat: ["gpt-5-mini"] },
+    parameters: {},
     timeoutMs: 30_000,
     maxConcurrency: null,
     disabledAt: null,

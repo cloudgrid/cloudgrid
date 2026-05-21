@@ -8,11 +8,43 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
 )
 
 func TestNATSHandlerCompletionLogUsesJSONShape(t *testing.T) {
+	var out bytes.Buffer
+	logger := storageReadDebugTestLogger(&out)
+	request := contracts.TraceSearchRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-read-1"},
+		Query:          contracts.TraceSearchQuery{},
+	}
+	data, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	handleTraceSearch(&loggingReadStore{}, logger, defaultQueryTimeout)(bridgeMessageForTest(SubjectTraceSearch, data))
+
+	entry := decodeStorageReadLog(t, out.Bytes())
+	for _, key := range []string{"timestamp", "level", "service", "event", "request_id", "message", "operation_or_subject", "status", "duration_ms"} {
+		if _, ok := entry[key]; !ok {
+			t.Fatalf("log missing key %q: %#v", key, entry)
+		}
+	}
+	if entry["level"] != "debug" || entry["event"] != "nats_handler_completed" || entry["request_id"] != "req-read-1" || entry["operation_or_subject"] != SubjectTraceSearch || entry["status"] != "ok" {
+		t.Fatalf("completion log = %#v", entry)
+	}
+	line := string(out.Bytes())
+	for _, forbidden := range []string{"SELECT ", "password", "body"} {
+		if strings.Contains(line, forbidden) {
+			t.Fatalf("completion log contains forbidden detail %q: %s", forbidden, line)
+		}
+	}
+}
+
+func TestNATSHandlerCompletionLogSuppressesSuccessAtDefaultLevel(t *testing.T) {
 	var out bytes.Buffer
 	logger := storageReadTestLogger(&out)
 	request := contracts.TraceSearchRequest{
@@ -24,22 +56,10 @@ func TestNATSHandlerCompletionLogUsesJSONShape(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	handleTraceSearch(&loggingReadStore{}, logger)(bridgeMessageForTest(SubjectTraceSearch, data))
+	handleTraceSearch(&loggingReadStore{}, logger, defaultQueryTimeout)(bridgeMessageForTest(SubjectTraceSearch, data))
 
-	entry := decodeStorageReadLog(t, out.Bytes())
-	for _, key := range []string{"timestamp", "level", "service", "event", "request_id", "message", "operation_or_subject", "status", "duration_ms"} {
-		if _, ok := entry[key]; !ok {
-			t.Fatalf("log missing key %q: %#v", key, entry)
-		}
-	}
-	if entry["event"] != "nats_handler_completed" || entry["request_id"] != "req-read-1" || entry["operation_or_subject"] != SubjectTraceSearch || entry["status"] != "ok" {
-		t.Fatalf("completion log = %#v", entry)
-	}
-	line := string(out.Bytes())
-	for _, forbidden := range []string{"SELECT ", "password", "body"} {
-		if strings.Contains(line, forbidden) {
-			t.Fatalf("completion log contains forbidden detail %q: %s", forbidden, line)
-		}
+	if out.Len() != 0 {
+		t.Fatalf("default success logs = %s, want suppressed debug log", out.String())
 	}
 }
 
@@ -73,6 +93,18 @@ func (store *loggingReadStore) SearchTraces(_ context.Context, _ contracts.Trace
 	return contracts.TraceSearchData{Items: []contracts.TraceSummary{}}, nil
 }
 
+type deadlineReadStore struct {
+	loggingReadStore
+	remainingDeadline time.Duration
+}
+
+func (store *deadlineReadStore) SearchTraces(ctx context.Context, _ contracts.TraceSearchQuery, _ *contracts.AuthContext) (contracts.TraceSearchData, error) {
+	if deadline, ok := ctx.Deadline(); ok {
+		store.remainingDeadline = time.Until(deadline)
+	}
+	return contracts.TraceSearchData{Items: []contracts.TraceSummary{}}, nil
+}
+
 func (store *loggingReadStore) SearchLiveTraceCandidates(_ context.Context, _ contracts.LiveTraceQuery, _ []string, _ *contracts.AuthContext) ([]contracts.TraceSummary, error) {
 	return []contracts.TraceSummary{}, nil
 }
@@ -103,6 +135,23 @@ func (store *loggingReadStore) QueryMetricSeries(_ context.Context, input contra
 
 func storageReadTestLogger(output io.Writer) *slog.Logger {
 	return slog.New(slog.NewJSONHandler(output, &slog.HandlerOptions{
+		ReplaceAttr: func(_ []string, attr slog.Attr) slog.Attr {
+			switch attr.Key {
+			case slog.TimeKey:
+				attr.Key = "timestamp"
+			case slog.MessageKey:
+				attr.Key = "message"
+			case slog.LevelKey:
+				attr.Value = slog.StringValue(strings.ToLower(attr.Value.String()))
+			}
+			return attr
+		},
+	}))
+}
+
+func storageReadDebugTestLogger(output io.Writer) *slog.Logger {
+	return slog.New(slog.NewJSONHandler(output, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
 		ReplaceAttr: func(_ []string, attr slog.Attr) slog.Attr {
 			switch attr.Key {
 			case slog.TimeKey:

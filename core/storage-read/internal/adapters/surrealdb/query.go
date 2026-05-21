@@ -27,11 +27,12 @@ func ConfigureQueryLimits(maxPageSize int) {
 	}
 }
 
-const traceSummaryProjection = "traceId AS id, serviceName, (SELECT name, startedAt, spanId FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND traceId = $parent.traceId AND parentSpanId = NONE ORDER BY startedAt ASC, spanId ASC LIMIT 1)[0].name AS operationName, startedAt, endedAt, durationMs, rootSpanId, status, attributes, spanCount, errorSpanCount, logCount, serviceCount"
+const traceSummaryProjection = "traceId AS id, serviceName, operationName, startedAt, startedAtUnixNano, endedAt, endedAtUnixNano, durationNano, durationMs, rootSpanId, status, attributes, spanCount, errorSpanCount, logCount, serviceCount"
 
 type QueryStatement struct {
 	SQL    string
 	Params map[string]any
+	Target TelemetryTarget
 }
 
 func BuildProjectTelemetryOverviewQueries(target TelemetryTarget) map[string]QueryStatement {
@@ -39,24 +40,29 @@ func BuildProjectTelemetryOverviewQueries(target TelemetryTarget) map[string]Que
 	addOwnershipParams(params, target)
 	return map[string]QueryStatement{
 		"traces": {
-			SQL:    "SELECT count() AS count FROM trace WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE GROUP ALL;",
+			SQL:    "SELECT count() AS count FROM trace WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND (deletedAt = NONE OR deletedAt = NULL) GROUP ALL;",
 			Params: cloneParams(params),
+			Target: target,
 		},
 		"logs": {
-			SQL:    "SELECT count() AS count FROM log_event WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE GROUP ALL;",
+			SQL:    "SELECT count() AS count FROM log_event WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND (deletedAt = NONE OR deletedAt = NULL) GROUP ALL;",
 			Params: cloneParams(params),
+			Target: target,
 		},
 		"metrics": {
-			SQL:    "SELECT count() AS count FROM metric_descriptor WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE GROUP ALL;",
+			SQL:    "SELECT count() AS count FROM metric_descriptor WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND (deletedAt = NONE OR deletedAt = NULL) GROUP ALL;",
 			Params: cloneParams(params),
+			Target: target,
 		},
 		"services": {
 			SQL:    "SELECT count() AS count FROM service WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId GROUP ALL;",
 			Params: cloneParams(params),
+			Target: target,
 		},
 		"lastIngest": {
 			SQL:    "SELECT completedAt AS lastIngestAt FROM ingest_command WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId ORDER BY completedAt DESC LIMIT 1;",
 			Params: cloneParams(params),
+			Target: target,
 		},
 	}
 }
@@ -74,7 +80,7 @@ func BuildTraceSearchQuery(query contracts.TraceSearchQuery, authContext ...*con
 		return QueryStatement{}, err
 	}
 
-	params := map[string]any{"limit": limit}
+	params := map[string]any{"limit": limit + 1}
 	addOwnershipParams(params, target)
 	conditions := retentionVisibleConditions()
 	if query.Service != nil {
@@ -112,6 +118,7 @@ func BuildTraceSearchQuery(query contracts.TraceSearchQuery, authContext ...*con
 			"LIMIT $limit;",
 		}, " "),
 		Params: params,
+		Target: target,
 	}, nil
 }
 
@@ -181,6 +188,7 @@ func BuildLiveTraceCandidatesQuery(query contracts.LiveTraceQuery, traceIDs []st
 			"LIMIT $limit;",
 		}, " "),
 		Params: params,
+		Target: target,
 	}, nil
 }
 
@@ -195,7 +203,7 @@ func BuildTraceDetailQuery(request contracts.TraceDetailRequest) (QueryStatement
 	}
 
 	sql := strings.Join([]string{
-		"LET $trace = SELECT traceId AS id, serviceName, startedAt, startedAtUnixNano, endedAt, endedAtUnixNano, durationNano, durationMs, rootSpanId, status, attributes FROM trace WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND traceId = $traceId;",
+		"LET $trace = SELECT traceId AS id, serviceName, startedAt, startedAtUnixNano, endedAt, endedAtUnixNano, durationNano, durationMs, rootSpanId, status, attributes FROM type::record('trace', $traceId) WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE;",
 		"LET $spans = SELECT spanId AS id, traceId, parentSpanId, name, kind, serviceName, startedAt, startedAtUnixNano, endedAt, endedAtUnixNano, durationNano, durationMs, status, attributes, events, links FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND traceId = $traceId ORDER BY startedAt ASC, spanId ASC;",
 		"LET $spanIds = $spans.map(|$span| $span.id);",
 		"LET $contextFrom = $trace[0].startedAt - 5s;",
@@ -210,6 +218,7 @@ func BuildTraceDetailQuery(request contracts.TraceDetailRequest) (QueryStatement
 	return QueryStatement{
 		SQL:    sql,
 		Params: params,
+		Target: target,
 	}, nil
 }
 
@@ -227,11 +236,12 @@ func BuildTraceByIDQuery(traceID string, authContext ...*contracts.AuthContext) 
 	return QueryStatement{
 		SQL: strings.Join([]string{
 			"SELECT traceId AS id, serviceName, startedAt, startedAtUnixNano, endedAt, endedAtUnixNano, durationNano, durationMs, rootSpanId, status, attributes",
-			"FROM trace",
-			"WHERE traceId = $traceId AND tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE",
+			"FROM type::record('trace', $traceId)",
+			"WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE",
 			"LIMIT 1;",
 		}, " "),
 		Params: params,
+		Target: target,
 	}, nil
 }
 
@@ -254,6 +264,7 @@ func BuildSpansByTraceIDQuery(traceID string, authContext ...*contracts.AuthCont
 			"ORDER BY startedAt ASC, spanId ASC;",
 		}, " "),
 		Params: params,
+		Target: target,
 	}, nil
 }
 
@@ -299,6 +310,7 @@ func BuildLogsForTraceDetailQuery(trace contracts.Trace, spans []contracts.Span,
 			"contextFrom": contextFrom,
 			"contextTo":   contextTo,
 		}, target),
+		Target: target,
 	}, nil
 }
 
@@ -333,6 +345,7 @@ func BuildFacetQueries(query contracts.TelemetryFacetQuery, authContext ...*cont
 				"LIMIT $limit;",
 			}, " "),
 			Params: cloneParams(params),
+			Target: target,
 		},
 		"operations": {
 			SQL: strings.Join([]string{
@@ -344,6 +357,7 @@ func BuildFacetQueries(query contracts.TelemetryFacetQuery, authContext ...*cont
 				"LIMIT $limit;",
 			}, " "),
 			Params: cloneParams(params),
+			Target: target,
 		},
 		"spanNames": {
 			SQL: strings.Join([]string{
@@ -355,6 +369,7 @@ func BuildFacetQueries(query contracts.TelemetryFacetQuery, authContext ...*cont
 				"LIMIT $limit;",
 			}, " "),
 			Params: cloneParams(params),
+			Target: target,
 		},
 		"severities": {
 			SQL: strings.Join([]string{
@@ -366,6 +381,7 @@ func BuildFacetQueries(query contracts.TelemetryFacetQuery, authContext ...*cont
 				"LIMIT $limit;",
 			}, " "),
 			Params: cloneParams(params),
+			Target: target,
 		},
 		"attributeKeys": {
 			SQL: strings.Join([]string{
@@ -375,6 +391,7 @@ func BuildFacetQueries(query contracts.TelemetryFacetQuery, authContext ...*cont
 				"LIMIT $attributeScanLimit;",
 			}, " "),
 			Params: cloneParams(params),
+			Target: target,
 		},
 	}, nil
 }
@@ -439,7 +456,7 @@ func withOwnershipParams(params map[string]any, target TelemetryTarget) map[stri
 }
 
 func retentionVisibleConditions() []string {
-	return append(ownershipConditions(), "deletedAt = NONE")
+	return append(ownershipConditions(), "(deletedAt = NONE OR deletedAt = NULL)")
 }
 
 func firstAuthContext(values []*contracts.AuthContext) *contracts.AuthContext {
@@ -462,7 +479,7 @@ func BuildLogSearchQuery(query contracts.LogSearchQuery, authContext ...*contrac
 		return QueryStatement{}, err
 	}
 
-	params := map[string]any{"limit": limit}
+	params := map[string]any{"limit": limit + 1}
 	addOwnershipParams(params, target)
 	conditions := retentionVisibleConditions()
 	if query.Service != nil {
@@ -512,6 +529,7 @@ func BuildLogSearchQuery(query contracts.LogSearchQuery, authContext ...*contrac
 			"LIMIT $limit;",
 		}, " "),
 		Params: params,
+		Target: target,
 	}, nil
 }
 
@@ -651,4 +669,20 @@ func decodeCursor(value string, expectedSort string) (decodedCursor, error) {
 
 func cursorError() error {
 	return fmt.Errorf("ERR-003 INVALID_CURSOR: Invalid pagination cursor")
+}
+
+func pageCursor(sort string, lastValue time.Time, lastID string) *string {
+	if lastValue.IsZero() || strings.TrimSpace(lastID) == "" {
+		return nil
+	}
+	payload, err := json.Marshal(rawCursor{
+		Sort:      sort,
+		LastValue: lastValue.UTC().Format(time.RFC3339Nano),
+		LastID:    lastID,
+	})
+	if err != nil {
+		return nil
+	}
+	value := base64.RawURLEncoding.EncodeToString(payload)
+	return &value
 }

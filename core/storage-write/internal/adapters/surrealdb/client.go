@@ -11,8 +11,9 @@ import (
 )
 
 type Client struct {
-	db *sdk.DB
-	mu sync.Mutex
+	db                 *sdk.DB
+	initializedTargets map[string]bool
+	mu                 sync.Mutex
 }
 
 type Config struct {
@@ -58,7 +59,7 @@ func Connect(ctx context.Context, cfg Config) (*Client, error) {
 		return nil, err
 	}
 
-	return &Client{db: db}, nil
+	return &Client{db: db, initializedTargets: map[string]bool{}}, nil
 }
 
 func SDKEndpointURL(value string) string {
@@ -86,8 +87,33 @@ func (c *Client) QueryInTarget(ctx context.Context, target TelemetryTarget, sql 
 	if err := c.db.Use(ctx, target.Namespace, target.Database); err != nil {
 		return err
 	}
+	if err := c.ensureSchemaLocked(ctx, target); err != nil {
+		return err
+	}
 	_, err := sdk.Query[any](ctx, c.db, sql, vars)
 	return err
+}
+
+func (c *Client) QueryRowsInTarget(ctx context.Context, target TelemetryTarget, sql string, vars map[string]any) ([]map[string]any, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.db.Use(ctx, target.Namespace, target.Database); err != nil {
+		return nil, err
+	}
+	if err := c.ensureSchemaLocked(ctx, target); err != nil {
+		return nil, err
+	}
+	results, err := sdk.Query[[]map[string]any](ctx, c.db, sql, vars)
+	if err != nil {
+		return nil, err
+	}
+	if results == nil || len(*results) == 0 {
+		return []map[string]any{}, nil
+	}
+	if (*results)[0].Error != nil {
+		return nil, (*results)[0].Error
+	}
+	return (*results)[0].Result, nil
 }
 
 func (c *Client) IngestCommandExistsInTarget(ctx context.Context, target TelemetryTarget, commandID string) (bool, error) {
@@ -100,6 +126,9 @@ func (c *Client) IngestCommandExistsInTarget(ctx context.Context, target Telemet
 	if err := c.db.Use(ctx, target.Namespace, target.Database); err != nil {
 		return false, err
 	}
+	if err := c.ensureSchemaLocked(ctx, target); err != nil {
+		return false, err
+	}
 	results, err := sdk.Query[[]ingestCommand](ctx, c.db, "SELECT commandId FROM ingest_command WHERE commandId = $commandId LIMIT 1;", map[string]any{
 		"commandId": commandID,
 	})
@@ -110,6 +139,21 @@ func (c *Client) IngestCommandExistsInTarget(ctx context.Context, target Telemet
 		return false, nil
 	}
 	return len((*results)[0].Result) > 0, nil
+}
+
+func (c *Client) ensureSchemaLocked(ctx context.Context, target TelemetryTarget) error {
+	key := target.Namespace + "/" + target.Database
+	if c.initializedTargets == nil {
+		c.initializedTargets = map[string]bool{}
+	}
+	if c.initializedTargets[key] {
+		return nil
+	}
+	if _, err := sdk.Query[any](ctx, c.db, SchemaSQL(), map[string]any{}); err != nil {
+		return err
+	}
+	c.initializedTargets[key] = true
+	return nil
 }
 
 func (c *Client) Close(ctx context.Context) error {

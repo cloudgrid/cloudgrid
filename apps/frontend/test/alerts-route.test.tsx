@@ -100,7 +100,7 @@ function alertsMarkup({ path = "/alerts", rules }: { path?: string; rules: Alert
     },
   });
   queryClient.setQueryData(["Viewer"], viewer);
-  queryClient.setQueryData(["AlertRules", "project-1"], rules);
+  queryClient.setQueryData(["AlertRules", "project-1", { sort: "updatedAt_desc" }], rules);
   queryClient.setQueryData(["AlertHistory", "project-1", "rule-1", 50, null], {
     items: [alertEvent],
     pageInfo: { hasNextPage: false, endCursor: null },

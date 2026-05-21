@@ -73,18 +73,13 @@ const allowedFixtureSets = new Set(["generated", "contracts", "all"]);
 export function parseSeedArgs(argv, env = process.env) {
   const options = {
     continuous: false,
-    endpoint:
-      env.CLOUDGRID_OTLP_ENDPOINT || `http://127.0.0.1:${env.CLOUDGRID_OTLP_PORT || "4318"}`,
+    endpoint: env.CLOUDGRID_OTLP_ENDPOINT || "http://127.0.0.1:4318",
     fixtureSet: "generated",
     format: "all",
     intervalMs: 5_000,
     maxBatches: null,
     signal: "all",
-    token:
-      env.CLOUDGRID_OTLP_BEARER_TOKEN ||
-      env.CLOUDGRID_OTLP_TOKEN ||
-      env.CLOUDGRID_PROJECT_API_KEY ||
-      null,
+    token: env.CLOUDGRID_OTLP_BEARER_TOKEN || env.CLOUDGRID_PROJECT_API_KEY || null,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -777,9 +772,7 @@ Options:
 
 Environment:
   CLOUDGRID_OTLP_ENDPOINT       Collector base URL. Defaults to http://127.0.0.1:4318.
-  CLOUDGRID_OTLP_PORT           Used for the default endpoint when set.
   CLOUDGRID_OTLP_BEARER_TOKEN   Optional bearer token for local project-token mode.
-  CLOUDGRID_OTLP_TOKEN          Fallback optional bearer token.
   CLOUDGRID_PROJECT_API_KEY     Fallback token written by bun run setup:local for the default local project.
 `;
 }

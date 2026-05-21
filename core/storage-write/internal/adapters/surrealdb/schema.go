@@ -12,18 +12,22 @@ type SchemaQueryer interface {
 }
 
 func Initialize(ctx context.Context, db SchemaQueryer) error {
-	return db.Query(ctx, strings.Join(Statements(), ";\n")+";", map[string]any{})
+	return db.Query(ctx, SchemaSQL(), map[string]any{})
+}
+
+func SchemaSQL() string {
+	return strings.Join(Statements(), ";\n") + ";"
 }
 
 func Statements() []string {
 	statements := []string{
-		"DEFINE DATABASE OVERWRITE project_default STRICT",
 		"DEFINE TABLE IF NOT EXISTS trace SCHEMAFULL TYPE NORMAL",
 		"DEFINE FIELD IF NOT EXISTS tenantId ON trace TYPE string",
 		"DEFINE FIELD IF NOT EXISTS companyId ON trace TYPE string",
 		"DEFINE FIELD IF NOT EXISTS projectId ON trace TYPE string",
 		"DEFINE FIELD IF NOT EXISTS traceId ON trace TYPE string",
 		"DEFINE FIELD IF NOT EXISTS serviceName ON trace TYPE option<string>",
+		"DEFINE FIELD IF NOT EXISTS operationName ON trace TYPE option<string>",
 		"DEFINE FIELD IF NOT EXISTS startedAt ON trace TYPE datetime",
 		"DEFINE FIELD IF NOT EXISTS startedAtUnixNano ON trace TYPE string",
 		"DEFINE FIELD IF NOT EXISTS endedAt ON trace TYPE option<datetime>",
@@ -43,6 +47,10 @@ func Statements() []string {
 		"DEFINE INDEX IF NOT EXISTS idx_trace_startedAt ON trace FIELDS startedAt",
 		"DEFINE INDEX IF NOT EXISTS idx_trace_tenant_project_startedAt ON trace FIELDS tenantId, projectId, startedAt",
 		"DEFINE INDEX IF NOT EXISTS idx_trace_tenant_project_traceId ON trace FIELDS tenantId, projectId, traceId",
+		"DEFINE INDEX IF NOT EXISTS idx_trace_tenant_company_project_startedAt ON trace FIELDS tenantId, companyId, projectId, startedAt",
+		"DEFINE INDEX IF NOT EXISTS idx_trace_tenant_company_project_traceId ON trace FIELDS tenantId, companyId, projectId, traceId",
+		"DEFINE INDEX IF NOT EXISTS idx_trace_tenant_company_project_service_started ON trace FIELDS tenantId, companyId, projectId, serviceName, startedAt",
+		"DEFINE INDEX IF NOT EXISTS idx_trace_tenant_company_project_status_started ON trace FIELDS tenantId, companyId, projectId, status, startedAt",
 		"DEFINE INDEX IF NOT EXISTS idx_trace_serviceName ON trace FIELDS serviceName",
 		"DEFINE INDEX IF NOT EXISTS idx_trace_status ON trace FIELDS status",
 
@@ -79,6 +87,8 @@ func Statements() []string {
 		"DEFINE FIELD IF NOT EXISTS finalDeleteAfter ON span TYPE option<datetime>",
 		"DEFINE INDEX IF NOT EXISTS idx_span_traceId ON span FIELDS traceId",
 		"DEFINE INDEX IF NOT EXISTS idx_span_parentSpanId ON span FIELDS parentSpanId",
+		"DEFINE INDEX IF NOT EXISTS idx_span_tenant_company_project_trace_parent_started ON span FIELDS tenantId, companyId, projectId, traceId, parentSpanId, startedAt",
+		"DEFINE INDEX IF NOT EXISTS idx_span_tenant_company_project_service_trace ON span FIELDS tenantId, companyId, projectId, serviceName, traceId",
 		"DEFINE INDEX IF NOT EXISTS idx_span_serviceName ON span FIELDS serviceName",
 		"DEFINE INDEX IF NOT EXISTS idx_span_name ON span FIELDS name",
 		"DEFINE INDEX IF NOT EXISTS idx_span_status ON span FIELDS status",
@@ -103,9 +113,12 @@ func Statements() []string {
 		"DEFINE FIELD IF NOT EXISTS finalDeleteAfter ON log_event TYPE option<datetime>",
 		"DEFINE INDEX IF NOT EXISTS idx_log_event_timestamp ON log_event FIELDS timestamp",
 		"DEFINE INDEX IF NOT EXISTS idx_log_event_tenant_project_timestamp ON log_event FIELDS tenantId, projectId, timestamp",
+		"DEFINE INDEX IF NOT EXISTS idx_log_event_tenant_company_project_timestamp ON log_event FIELDS tenantId, companyId, projectId, timestamp",
 		"DEFINE INDEX IF NOT EXISTS idx_log_event_serviceName ON log_event FIELDS serviceName",
 		"DEFINE INDEX IF NOT EXISTS idx_log_event_tenant_project_serviceName ON log_event FIELDS tenantId, projectId, serviceName",
+		"DEFINE INDEX IF NOT EXISTS idx_log_event_tenant_company_project_service_timestamp ON log_event FIELDS tenantId, companyId, projectId, serviceName, timestamp",
 		"DEFINE INDEX IF NOT EXISTS idx_log_event_traceId ON log_event FIELDS traceId",
+		"DEFINE INDEX IF NOT EXISTS idx_log_event_tenant_company_project_trace_timestamp ON log_event FIELDS tenantId, companyId, projectId, traceId, timestamp",
 		"DEFINE INDEX IF NOT EXISTS idx_log_event_spanId ON log_event FIELDS spanId",
 		"DEFINE INDEX IF NOT EXISTS idx_log_event_severityText ON log_event FIELDS severityText",
 
@@ -127,6 +140,8 @@ func Statements() []string {
 		"DEFINE FIELD IF NOT EXISTS finalDeleteAfter ON metric_descriptor TYPE option<datetime>",
 		"DEFINE INDEX IF NOT EXISTS idx_metric_descriptor_metricName ON metric_descriptor FIELDS metricName",
 		"DEFINE INDEX IF NOT EXISTS idx_metric_descriptor_lastSeenAt ON metric_descriptor FIELDS lastSeenAt",
+		"DEFINE INDEX IF NOT EXISTS idx_metric_descriptor_tenant_company_project_lastSeenAt ON metric_descriptor FIELDS tenantId, companyId, projectId, lastSeenAt",
+		"DEFINE INDEX IF NOT EXISTS idx_metric_descriptor_tenant_company_project_metricName ON metric_descriptor FIELDS tenantId, companyId, projectId, metricName",
 
 		"DEFINE TABLE IF NOT EXISTS metric_point SCHEMAFULL TYPE NORMAL",
 		"DEFINE FIELD IF NOT EXISTS tenantId ON metric_point TYPE string",
@@ -159,7 +174,9 @@ func Statements() []string {
 		"DEFINE FIELD IF NOT EXISTS finalDeleteAfter ON metric_point TYPE option<datetime>",
 		"DEFINE INDEX IF NOT EXISTS idx_metric_point_metricName ON metric_point FIELDS metricName",
 		"DEFINE INDEX IF NOT EXISTS idx_metric_point_metricName_timestamp ON metric_point FIELDS metricName, timestamp",
+		"DEFINE INDEX IF NOT EXISTS idx_metric_point_tenant_company_project_metric_timestamp ON metric_point FIELDS tenantId, companyId, projectId, metricName, timestamp",
 		"DEFINE INDEX IF NOT EXISTS idx_metric_point_serviceName_timestamp ON metric_point FIELDS serviceName, timestamp",
+		"DEFINE INDEX IF NOT EXISTS idx_metric_point_tenant_company_project_service_timestamp ON metric_point FIELDS tenantId, companyId, projectId, serviceName, timestamp",
 		"DEFINE INDEX IF NOT EXISTS idx_metric_point_timestamp ON metric_point FIELDS timestamp",
 
 		"DEFINE TABLE IF NOT EXISTS metric_ingest_cardinality SCHEMAFULL TYPE NORMAL",

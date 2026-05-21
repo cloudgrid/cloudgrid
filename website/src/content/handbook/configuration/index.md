@@ -44,6 +44,7 @@ flowchart TD
 | SSO provider setup | [SSO overview](/handbook/configuration/deployed/sso) |
 | Organization invitations | [Invitations](/handbook/configuration/deployed/invitations) |
 | Invitation email delivery | [Invitation email delivery](/handbook/configuration/deployed/invitation-email) |
+| AI provider secrets | [Provider secrets](/handbook/configuration/deployed/provider-secrets) |
 | Deployed self-observability | [Deployed self-observability](/handbook/configuration/deployed/self-observability) |
 | Storage | [SurrealDB storage](/handbook/configuration/storage-surrealdb) |
 
@@ -68,6 +69,7 @@ CLOUDGRID_AUTH_PROVIDERS=github
 CLOUDGRID_AUTH_COMPANY_ID=acme
 CLOUDGRID_SESSION_SECRET='<32-plus-byte-secret>'
 CLOUDGRID_PUBLIC_URL=https://cloudgrid.example.com
+CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY='<long-random-secret>'
 CLOUDGRID_INVITATION_EMAIL_MODE=smtp
 CLOUDGRID_INVITATION_EMAIL_REQUIRE_DELIVERY=true
 CLOUDGRID_INVITATION_EMAIL_FROM='CloudGrid <noreply@example.com>'
@@ -89,7 +91,8 @@ Invitation email delivery is intentionally separate from SSO:
 ## Boundary Rules
 
 - SurrealDB credentials belong only to storage and control-plane services.
-- The frontend never receives SurrealDB credentials, provider tokens, session secrets, or project API key secrets.
+- AI provider API keys entered in CloudGrid are encrypted by control-plane and returned only as `managed:` references.
+- The frontend never receives SurrealDB credentials, raw provider tokens, session secrets, or project API key secrets.
 - The BFF owns browser SSO sessions and public GraphQL.
 - The collector owns OTLP ingest authorization before payload decode.
 - Unknown production-scale variables must not be partially applied until their spec and tests exist.

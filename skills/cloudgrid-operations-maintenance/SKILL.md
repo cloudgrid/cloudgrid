@@ -18,7 +18,7 @@ reviewing production readiness.
 5. `specs/06-nfr/integration-test-suite.md`
 6. `specs/04-backend/data-retention-policy.md` for retention
 7. `specs/04-backend/alerting.md` for alerting
-8. `docs/operations/`, `docs/reference/commands.md`, and `docs/reference/ports.md`
+8. `website/src/content/handbook/operations/`, `website/src/content/handbook/reference/commands.md`, and `website/src/content/handbook/reference/ports.md`
 9. `.github/workflows/verify.yml`, `.github/workflows/release.yml`, `deploy/`, and `charts/`
 
 If behavior is not specified, report it as an operational gap instead of

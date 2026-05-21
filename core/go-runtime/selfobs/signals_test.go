@@ -119,13 +119,13 @@ func TestOTLPTraceLogExporterUsesProvidedTraceContext(t *testing.T) {
 	}
 
 	span := firstOTLPSpan(tracePayload)
-	if span["traceId"] != "4bf92f3577b34da6a3ce929d0e0e4736" {
+	if span["traceId"] != "S/kvNXezTaajzpKdDg5HNg==" {
 		t.Fatalf("traceId = %q", span["traceId"])
 	}
-	if span["spanId"] != "00f067aa0ba902b7" {
+	if span["spanId"] != "APBnqgupArc=" {
 		t.Fatalf("spanId = %q", span["spanId"])
 	}
-	if span["parentSpanId"] != "1111111111111111" {
+	if span["parentSpanId"] != "ERERERERERE=" {
 		t.Fatalf("parentSpanId = %q", span["parentSpanId"])
 	}
 	if span["traceState"] != "rojo=1" {
@@ -263,10 +263,10 @@ func TestOTLPTraceLogExporterSanitizesLogsAndAddsOTLPLogFields(t *testing.T) {
 	}
 
 	record := firstOTLPLogRecord(logPayload)
-	if record["traceId"] != "4bf92f3577b34da6a3ce929d0e0e4736" || record["spanId"] != "00f067aa0ba902b7" {
+	if record["traceId"] != "S/kvNXezTaajzpKdDg5HNg==" || record["spanId"] != "APBnqgupArc=" {
 		t.Fatalf("log trace/span = %q/%q", record["traceId"], record["spanId"])
 	}
-	if record["severityText"] != "ERROR" || record["severityNumber"] != float64(17) {
+	if record["severityText"] != "ERROR" || record["severityNumber"] != "SEVERITY_NUMBER_ERROR" {
 		t.Fatalf("severity fields = %#v", record)
 	}
 	if record["observedTimeUnixNano"] == "" || record["timeUnixNano"] == "" {
@@ -359,6 +359,103 @@ func TestOTLPTraceLogExporterFailureIsNonFatalAndLogsBoundedWarning(t *testing.T
 			t.Fatalf("failure log contains forbidden raw detail %q: %s", forbidden, logLine)
 		}
 	}
+}
+
+func TestOTLPTraceLogExporterShutdownSuppressesBridgeFailureLogs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	var logs bytes.Buffer
+	exporter, err := NewOTLPTraceLogExporter(TraceLogExporterConfig{
+		Enabled:               true,
+		Endpoint:              server.URL,
+		ExportIntervalSeconds: 300,
+		ServiceName:           "cloudgrid.storage_write",
+		DeploymentMode:        "local",
+		CompanyID:             "local",
+		ProjectID:             "cloudgrid-system",
+		Logger:                slog.New(slog.NewJSONHandler(&logs, nil)),
+	})
+	if err != nil {
+		t.Fatalf("NewOTLPTraceLogExporter() error = %v", err)
+	}
+	exporter.RecordSpan(SpanEvent{Name: "persist command"})
+	exporter.RecordLog(LogEvent{Message: "shutdown log", SeverityText: "WARN"})
+
+	if err := exporter.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown() error = %v, want exporter failures isolated", err)
+	}
+	if logs.Len() != 0 {
+		t.Fatalf("shutdown failure logs = %s, want quiet shutdown flush", logs.String())
+	}
+}
+
+func TestOTLPTraceLogExporterFailureLogLevelCanBeSuppressed(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	metrics := &recordingMetricsRecorder{}
+	var logs bytes.Buffer
+	exporter, err := NewOTLPTraceLogExporter(TraceLogExporterConfig{
+		Enabled:               true,
+		Endpoint:              server.URL,
+		ExportIntervalSeconds: 300,
+		ServiceName:           "cloudgrid.storage_write",
+		DeploymentMode:        "local",
+		CompanyID:             "local",
+		ProjectID:             "cloudgrid-system",
+		Logger:                slog.New(slog.NewJSONHandler(&logs, nil)),
+		MetricsRecorder:       metrics,
+		FailureLogLevel:       "off",
+	})
+	if err != nil {
+		t.Fatalf("NewOTLPTraceLogExporter() error = %v", err)
+	}
+	exporter.RecordSpan(SpanEvent{Name: "persist command"})
+
+	if err := exporter.Flush(context.Background()); err != nil {
+		t.Fatalf("Flush() error = %v, want exporter failures isolated", err)
+	}
+	if logs.Len() != 0 {
+		t.Fatalf("failure logs = %s, want suppressed process log", logs.String())
+	}
+	if !metrics.has("cloudgrid.exporter.failures", map[string]string{"service": "cloudgrid.storage_write", "signal": "traces", "result": "error"}) {
+		t.Fatalf("metrics = %#v, want exporter failure metric", metrics.events)
+	}
+	_ = exporter.Shutdown(context.Background())
+}
+
+func TestOTLPTraceLogExporterUsesConfiguredFailureLogLevel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	var logs bytes.Buffer
+	exporter, err := NewOTLPTraceLogExporter(TraceLogExporterConfig{
+		Enabled:               true,
+		Endpoint:              server.URL,
+		ExportIntervalSeconds: 300,
+		ServiceName:           "cloudgrid.storage_write",
+		DeploymentMode:        "local",
+		CompanyID:             "local",
+		ProjectID:             "cloudgrid-system",
+		Logger:                slog.New(slog.NewJSONHandler(&logs, nil)),
+		FailureLogLevel:       "info",
+	})
+	if err != nil {
+		t.Fatalf("NewOTLPTraceLogExporter() error = %v", err)
+	}
+	exporter.RecordLog(LogEvent{Message: "storage write failed"})
+
+	if err := exporter.Flush(context.Background()); err != nil {
+		t.Fatalf("Flush() error = %v, want exporter failures isolated", err)
+	}
+	if !strings.Contains(logs.String(), `"level":"INFO"`) {
+		t.Fatalf("failure logs = %s, want INFO level", logs.String())
+	}
+	_ = exporter.Shutdown(context.Background())
 }
 
 func TestOTLPTraceLogExporterRateLimitsFailureWarnings(t *testing.T) {

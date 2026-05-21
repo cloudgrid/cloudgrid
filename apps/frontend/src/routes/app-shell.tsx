@@ -117,7 +117,10 @@ export function AppShell() {
     location.pathname.match(/^\/organizations\/([^/]+)/)?.[1] ??
     currentOrganization?.id ??
     fallbackOrganizationId;
+  const adminOrganization =
+    viewer?.organizations.find((organization) => organization.id === adminOrganizationId) ?? null;
   const showAdminMembersLink = !(mode === "local" && adminOrganizationId === "local");
+  const showAdminAiProviderLink = aiChatEnabled && adminOrganization?.role === "admin";
   const dashboardsQuery = useQuery({
     enabled: showProjectWorkspace,
     queryKey: queryKeys.dashboards({ includeBuiltins: true }),
@@ -233,7 +236,7 @@ export function AppShell() {
                   >
                     <span className="truncate">{currentOrganizationLabel}</span>
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper">
                     <SelectGroup>
                       {(viewer?.organizations ?? []).map((organization) => (
                         <SelectItem key={organization.id} value={organization.id}>
@@ -257,7 +260,7 @@ export function AppShell() {
                 >
                   <span className="truncate">{selectedProjectLabel}</span>
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent position="popper">
                   <SelectGroup>
                     {topbarProjects.map((project) => (
                       <SelectItem key={project.id} value={project.id}>
@@ -400,7 +403,7 @@ export function AppShell() {
                           >
                             <span className="truncate">{currentOrganizationLabel}</span>
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent position="popper">
                             <SelectGroup>
                               {(viewer?.organizations ?? []).map((organization) => (
                                 <SelectItem key={organization.id} value={organization.id}>
@@ -426,7 +429,7 @@ export function AppShell() {
                         >
                           <span className="truncate">{selectedProjectLabel}</span>
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent position="popper">
                           <SelectGroup>
                             {topbarProjects.map((project) => (
                               <SelectItem key={project.id} value={project.id}>
@@ -445,6 +448,7 @@ export function AppShell() {
                     ) : showAdminSettings ? (
                       <AdminSidebarNav
                         adminOrganizationId={adminOrganizationId}
+                        showAdminAiProviderLink={showAdminAiProviderLink}
                         showAdminMembersLink={showAdminMembersLink}
                       />
                     ) : null}
@@ -463,7 +467,7 @@ export function AppShell() {
           {projectSidebarContext ? (
             <aside className="hidden min-h-0 border-r bg-sidebar text-sidebar-foreground lg:flex lg:flex-col">
               <nav
-                aria-label={t("nav.projectSelector")}
+                aria-label={t("nav.projectNavigation")}
                 className="min-h-0 flex-1 overflow-y-auto p-2 pt-3"
               >
                 <ProjectSidebarNav {...projectSidebarContext} />
@@ -490,6 +494,7 @@ export function AppShell() {
               <nav aria-label={t("nav.companies")} className="min-h-0 flex-1 overflow-y-auto p-2">
                 <AdminSidebarNav
                   adminOrganizationId={adminOrganizationId}
+                  showAdminAiProviderLink={showAdminAiProviderLink}
                   showAdminMembersLink={showAdminMembersLink}
                 />
               </nav>
@@ -616,9 +621,11 @@ function ProjectSidebarNav({
 
 function AdminSidebarNav({
   adminOrganizationId,
+  showAdminAiProviderLink,
   showAdminMembersLink,
 }: {
   adminOrganizationId: string;
+  showAdminAiProviderLink: boolean;
   showAdminMembersLink: boolean;
 }) {
   return (
@@ -647,6 +654,15 @@ function AdminSidebarNav({
             >
               <UserCircle className="size-4" aria-hidden />
               <span className="truncate">{t("nav.members")}</span>
+            </NavLink>
+          ) : null}
+          {showAdminAiProviderLink ? (
+            <NavLink
+              className={sidebarLinkClass}
+              to={`/organizations/${adminOrganizationId}/ai-provider`}
+            >
+              <Bot className="size-4" aria-hidden />
+              <span className="truncate">{t("nav.aiProvider")}</span>
             </NavLink>
           ) : null}
         </>

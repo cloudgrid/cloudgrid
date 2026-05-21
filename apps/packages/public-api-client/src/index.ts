@@ -15,6 +15,7 @@ import type {
   AlertEventConnection,
   AlertHistoryQueryData,
   AlertRule,
+  AlertRuleSearchInput,
   AlertRulesQueryData,
   AlertSilence,
   AlertSilencesQueryData,
@@ -56,6 +57,7 @@ import type {
   DatasetsQueryData,
   DeleteAlertRuleMutationData,
   DeleteAlertSilenceMutationData,
+  DeleteAiChatConversationMutationData,
   ExperimentRun,
   ExperimentRunEvent,
   ExperimentRunQueryData,
@@ -130,6 +132,8 @@ import type {
   UpdateOrganizationMemberMutationData,
   UpdateProjectAiSettingsInput,
   UpdateProjectAiSettingsMutationData,
+  UpdateCompanyAiProviderSettingsInput,
+  UpdateCompanyAiProviderSettingsMutationData,
   UpdateProjectMemberMutationData,
   UpdateRetentionPolicyInput,
   UpdateRetentionPolicyMutationData,
@@ -223,15 +227,19 @@ export interface ControlPlaneGraphQLClient {
   getProjectAiSettings: (projectId: string) => Promise<ProjectAiSettings>;
   updateProjectAiSettings: (input: UpdateProjectAiSettingsInput) => Promise<ProjectAiSettings>;
   getCompanyAiProviderSettings: (companyId: string) => Promise<CompanyAiProviderSettings>;
+  updateCompanyAiProviderSettings: (
+    input: UpdateCompanyAiProviderSettingsInput,
+  ) => Promise<CompanyAiProviderSettings>;
   getAiChatHistory: (input: AiChatHistoryInput) => Promise<AiChatHistory>;
   getAiChatConversation: (id: string) => Promise<AiChatConversation | null>;
   createAiChatConversation: (input: CreateAiChatConversationInput) => Promise<AiChatConversation>;
+  deleteAiChatConversation: (id: string) => Promise<boolean>;
   approveAiChatAction: (input: ApproveAiChatActionInput) => Promise<AiChatActionProposal>;
   streamAiChatRun: (
     input: AiChatStreamRequest,
     options?: AiChatStreamOptions,
   ) => AsyncIterable<AiChatStreamEvent>;
-  getAlertRules: (projectId: string) => Promise<AlertRule[]>;
+  getAlertRules: (projectId: string, input?: AlertRuleSearchInput) => Promise<AlertRule[]>;
   getAlertHistory: (input: {
     projectId: string;
     ruleId?: string | null;
@@ -260,6 +268,7 @@ export interface AiChatStreamRequest {
   userMessageClientId: string;
   idempotencyKey: string;
   parts: AiChatStreamTextPart[];
+  skipUserMessageAppend?: boolean;
   timezone?: string;
 }
 
@@ -858,6 +867,15 @@ export function createControlPlaneGraphQLClient(endpoint = "/graphql"): ControlP
       );
       return data.companyAiProviderSettings;
     },
+    async updateCompanyAiProviderSettings(input) {
+      const data = await requestGraphQL<UpdateCompanyAiProviderSettingsMutationData>(
+        endpoint,
+        "UpdateCompanyAiProviderSettings",
+        updateCompanyAiProviderSettingsOperation,
+        { input },
+      );
+      return data.updateCompanyAiProviderSettings;
+    },
     async getAiChatHistory(input) {
       const data = await requestGraphQL<AiChatHistoryQueryData>(
         endpoint,
@@ -885,6 +903,15 @@ export function createControlPlaneGraphQLClient(endpoint = "/graphql"): ControlP
       );
       return data.createAiChatConversation;
     },
+    async deleteAiChatConversation(id) {
+      const data = await requestGraphQL<DeleteAiChatConversationMutationData>(
+        endpoint,
+        "DeleteAiChatConversation",
+        deleteAiChatConversationOperation,
+        { id },
+      );
+      return data.deleteAiChatConversation;
+    },
     async approveAiChatAction(input) {
       const data = await requestGraphQL<ApproveAiChatActionMutationData>(
         endpoint,
@@ -897,12 +924,12 @@ export function createControlPlaneGraphQLClient(endpoint = "/graphql"): ControlP
     streamAiChatRun(input, options) {
       return streamAiChatRun(endpoint, input, options);
     },
-    async getAlertRules(projectId) {
+    async getAlertRules(projectId, input = {}) {
       const data = await requestGraphQL<AlertRulesQueryData>(
         endpoint,
         "AlertRules",
         alertRulesOperation,
-        { projectId },
+        { projectId, input },
       );
       return data.alertRules;
     },
@@ -1705,6 +1732,7 @@ export const metricNamesOperation = `
       items {
         ${metricDescriptorFields}
       }
+      nextCursor
     }
   }
 `;
@@ -1959,6 +1987,7 @@ const aiProviderProfileFields = `
   baseUrl
   credentialRef
   models
+  parameters
   timeoutMs
   maxConcurrency
   disabledAt
@@ -2079,6 +2108,26 @@ export const companyAiProviderSettingsOperation = `
   }
 `;
 
+export const updateCompanyAiProviderSettingsOperation = `
+  mutation UpdateCompanyAiProviderSettings($input: UpdateCompanyAiProviderSettingsInput!) {
+    updateCompanyAiProviderSettings(input: $input) {
+      companyId
+      providerProfile {
+        ${aiProviderProfileFields}
+      }
+      chatModelAlias {
+        ${aiModelAliasFields}
+      }
+      effective {
+        ${aiProviderEffectiveFields}
+      }
+      version
+      updatedAt
+      updatedByUserId
+    }
+  }
+`;
+
 export const aiChatHistoryOperation = `
   query AiChatHistory($input: AiChatHistoryInput!) {
     aiChatHistory(input: $input) {
@@ -2112,6 +2161,12 @@ export const createAiChatConversationOperation = `
     createAiChatConversation(input: $input) {
       ${aiChatConversationFields}
     }
+  }
+`;
+
+export const deleteAiChatConversationOperation = `
+  mutation DeleteAiChatConversation($id: ID!) {
+    deleteAiChatConversation(id: $id)
   }
 `;
 
@@ -2173,8 +2228,8 @@ const alertSilenceFields = `
 `;
 
 export const alertRulesOperation = `
-  query AlertRules($projectId: ID!) {
-    alertRules(projectId: $projectId) {
+  query AlertRules($projectId: ID!, $input: AlertRuleSearchInput) {
+    alertRules(projectId: $projectId, input: $input) {
       ${alertRuleFields}
     }
   }
@@ -3139,6 +3194,13 @@ export const publicGraphQLOperations = [
     requiresSelectedProject: false,
   },
   {
+    operationName: "UpdateCompanyAiProviderSettings",
+    document: updateCompanyAiProviderSettingsOperation,
+    kind: "mutation",
+    area: "ai-chat",
+    requiresSelectedProject: false,
+  },
+  {
     operationName: "AiChatHistory",
     document: aiChatHistoryOperation,
     kind: "query",
@@ -3155,6 +3217,13 @@ export const publicGraphQLOperations = [
   {
     operationName: "CreateAiChatConversation",
     document: createAiChatConversationOperation,
+    kind: "mutation",
+    area: "ai-chat",
+    requiresSelectedProject: true,
+  },
+  {
+    operationName: "DeleteAiChatConversation",
+    document: deleteAiChatConversationOperation,
     kind: "mutation",
     area: "ai-chat",
     requiresSelectedProject: true,
@@ -3389,9 +3458,11 @@ export type SupportedGraphQLData =
   | ProjectMembersQueryData
   | RetentionPolicyQueryData
   | CompanyAiProviderSettingsQueryData
+  | UpdateCompanyAiProviderSettingsMutationData
   | AiChatHistoryQueryData
   | AiChatConversationQueryData
   | CreateAiChatConversationMutationData
+  | DeleteAiChatConversationMutationData
   | ApproveAiChatActionMutationData
   | AlertRulesQueryData
   | AlertHistoryQueryData

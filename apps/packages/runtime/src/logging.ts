@@ -24,8 +24,22 @@ export interface LogSink {
   stderr: (line: string) => void;
 }
 
-export function createLogger(service: string, sink: LogSink = consoleSink): CloudGridLogger {
+const levelPriority: Record<LogLevel, number> = {
+  debug: 10,
+  info: 20,
+  warn: 30,
+  error: 40,
+};
+
+export function createLogger(
+  service: string,
+  sink: LogSink = consoleSink,
+  minimumLevel: LogLevel = parseLogLevel(process.env.CLOUDGRID_LOG_LEVEL),
+): CloudGridLogger {
   const write = (level: LogLevel, event: string, fields: LogFields = {}) => {
+    if (levelPriority[level] < levelPriority[minimumLevel]) {
+      return;
+    }
     const record = {
       timestamp: new Date().toISOString(),
       level,
@@ -49,6 +63,24 @@ export function createLogger(service: string, sink: LogSink = consoleSink): Clou
     warn: (event, fields) => write("warn", event, fields),
     error: (event, fields) => write("error", event, fields),
   };
+}
+
+function parseLogLevel(value: string | undefined): LogLevel {
+  switch (value?.trim().toLowerCase()) {
+    case "debug":
+      return "debug";
+    case "warn":
+    case "warning":
+      return "warn";
+    case "error":
+      return "error";
+    case "info":
+    case "":
+    case undefined:
+      return "info";
+    default:
+      return "info";
+  }
 }
 
 const consoleSink: LogSink = {

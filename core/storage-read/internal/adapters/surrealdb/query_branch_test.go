@@ -68,8 +68,8 @@ func TestBuildTraceByIDAndSpansByTraceIDQueriesTrimIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTraceByIDQuery returned error: %v", err)
 	}
-	assertContains(t, traceStmt.SQL, "FROM trace")
-	assertContains(t, traceStmt.SQL, "WHERE traceId = $traceId")
+	assertContains(t, traceStmt.SQL, "FROM type::record('trace', $traceId)")
+	assertContains(t, traceStmt.SQL, "WHERE tenantId = $tenantId")
 	assertContains(t, traceStmt.SQL, "LIMIT 1")
 	assertNoMutation(t, traceStmt.SQL)
 	if traceStmt.Params["traceId"] != "trace-123" {

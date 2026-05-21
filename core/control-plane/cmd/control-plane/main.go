@@ -65,9 +65,11 @@ func run() int {
 		invitationEmailTransport = internal.NewSMTPInvitationEmailTransport(invitationEmailConfig)
 	}
 	service := internal.NewServiceWithOptions(store, time.Now, internal.ServiceOptions{
-		InvitationEmail:           invitationEmailConfig,
-		EmailTransport:            invitationEmailTransport,
-		AlertNotificationAdapters: splitCSV(os.Getenv("CLOUDGRID_ALERT_NOTIFICATION_ADAPTERS")),
+		InvitationEmail:                    invitationEmailConfig,
+		EmailTransport:                     invitationEmailTransport,
+		AlertNotificationAdapters:          splitCSV(os.Getenv("CLOUDGRID_ALERT_NOTIFICATION_ADAPTERS")),
+		ProviderSecretEncryptionKey:        os.Getenv("CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY"),
+		RequireProviderSecretEncryptionKey: strings.EqualFold(os.Getenv("CLOUDGRID_DEPLOYMENT_MODE"), "deployed"),
 	})
 	stopInvitationEmailWorker := startInvitationEmailWorker(service, invitationEmailConfig, logger)
 	defer stopInvitationEmailWorker()
@@ -204,6 +206,7 @@ func shutdownSignal() <-chan os.Signal {
 
 func newLogger(output io.Writer) *slog.Logger {
 	handler := slog.NewJSONHandler(output, &slog.HandlerOptions{
+		Level: runtimeLogLevel(),
 		ReplaceAttr: func(_ []string, attr slog.Attr) slog.Attr {
 			switch attr.Key {
 			case slog.TimeKey:
@@ -217,6 +220,19 @@ func newLogger(output io.Writer) *slog.Logger {
 		},
 	})
 	return slog.New(handler)
+}
+
+func runtimeLogLevel() slog.Level {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("CLOUDGRID_LOG_LEVEL"))) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }
 
 func logError(logger *slog.Logger, event string, err error, fallbackID string, fields ...any) {
@@ -453,6 +469,9 @@ func resolveControlPlaneSelfObservabilityConfig(getenv func(string) string) (con
 	}
 	if mode == "deployed" && enabled && (config.CompanyID == "" || config.ProjectID == "" || config.OTLPEndpoint == "" || config.OTLPBearerToken == "") {
 		return controlPlaneSelfObservabilityConfig{}, configInvalidError("deployed self-observability requires company ID, project ID, OTLP endpoint, and bearer token")
+	}
+	if mode == "local" && enabled && config.OTLPBearerToken == "" {
+		return controlPlaneSelfObservabilityConfig{}, configInvalidError("CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN is required when self-observability is enabled")
 	}
 	return config, nil
 }

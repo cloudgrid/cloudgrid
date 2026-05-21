@@ -70,7 +70,7 @@ export function useTraceFilters() {
       attributes: attributeFiltersOrNull(searchParams.get("attributeKey")),
       sort: traceSortOrNull(searchParams.get("sort")),
       cursor: valueOrNull(searchParams.get("cursor")),
-      limit: 50,
+      limit: 25,
     }),
     [searchParams],
   );

@@ -142,6 +142,8 @@ The `/traces` route supports:
 
 The table columns are service, operation/root span, trace ID, started time, duration, status, span count, error span count, log count, and participating service count.
 
+Trace history uses backend cursor pagination behind an infinite-scroll table. The frontend must send filters, sort, and the returned cursor to `Query.traces`; it must not search, filter, sort, or page over an already-fetched client-side subset.
+
 ## Log Explorer
 
 The `/logs` route supports:

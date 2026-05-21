@@ -151,9 +151,11 @@ export const integrationScenarios = [
       "Exercises AI Chat provider status, history, conversation creation, conversation reads, and action approval through the local GraphQL stack.",
     covers: [
       "CompanyAiProviderSettings",
+      "UpdateCompanyAiProviderSettings",
       "AiChatHistory",
       "AiChatConversation",
       "CreateAiChatConversation",
+      "DeleteAiChatConversation",
       "ApproveAiChatAction",
     ],
   },

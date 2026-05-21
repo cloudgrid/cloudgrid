@@ -42,7 +42,10 @@ func TestControlSurrealDBConfigUsesSharedDefaults(t *testing.T) {
 }
 
 func TestResolveControlPlaneSelfObservabilityConfigUsesLocalDefaults(t *testing.T) {
-	config, err := resolveControlPlaneSelfObservabilityConfig(func(string) string { return "" })
+	env := map[string]string{
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN": "system-token",
+	}
+	config, err := resolveControlPlaneSelfObservabilityConfig(func(name string) string { return env[name] })
 	if err != nil {
 		t.Fatalf("resolveControlPlaneSelfObservabilityConfig returned error: %v", err)
 	}
@@ -54,6 +57,16 @@ func TestResolveControlPlaneSelfObservabilityConfigUsesLocalDefaults(t *testing.
 	}
 	if config.OTLPEndpoint != "http://localhost:4318" || config.ExportIntervalSeconds != 10 {
 		t.Fatalf("endpoint/interval = %q/%d, want local defaults", config.OTLPEndpoint, config.ExportIntervalSeconds)
+	}
+	if config.OTLPBearerToken != "system-token" {
+		t.Fatalf("OTLPBearerToken = %q, want configured token", config.OTLPBearerToken)
+	}
+}
+
+func TestResolveControlPlaneSelfObservabilityConfigRejectsLocalEnabledWithoutBearerToken(t *testing.T) {
+	_, err := resolveControlPlaneSelfObservabilityConfig(func(string) string { return "" })
+	if err == nil || !strings.Contains(err.Error(), "CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN") {
+		t.Fatalf("resolveControlPlaneSelfObservabilityConfig error = %v, want bearer token validation", err)
 	}
 }
 

@@ -72,16 +72,9 @@ describe("seed OTLP fixtures script", () => {
     expect(
       parseSeedArgs([], {
         CLOUDGRID_OTLP_BEARER_TOKEN: "bearer-token",
-        CLOUDGRID_OTLP_TOKEN: "legacy-token",
         CLOUDGRID_PROJECT_API_KEY: "project-api-key",
       }).token,
     ).toBe("bearer-token");
-    expect(
-      parseSeedArgs([], {
-        CLOUDGRID_OTLP_TOKEN: "legacy-token",
-        CLOUDGRID_PROJECT_API_KEY: "project-api-key",
-      }).token,
-    ).toBe("legacy-token");
     expect(parseSeedArgs([], { CLOUDGRID_PROJECT_API_KEY: "project-api-key" }).token).toBe(
       "project-api-key",
     );

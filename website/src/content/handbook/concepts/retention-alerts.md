@@ -78,9 +78,9 @@ flowchart LR
   Control --> History["in-app alert history"]
 ```
 
-The alert evaluator owns schedules, rule execution, state transitions, deduplication, and notification dispatch. The repository includes evaluator domain logic and transport-neutral handlers, but production firing requires scheduler, storage-read/control-plane adapters, and configured notification dispatch. Dashboard widget thresholds are visual dashboard settings and do not execute alert rules.
+The alert evaluator owns schedules, rule execution, state transitions, deduplication, and notification dispatch. The repository includes evaluator domain logic, scheduler startup validation, service project discovery, storage-read/control-plane adapters, and the in-app, email, and webhook notification adapters. Production firing still requires operators to configure the enabled adapter catalog and the deployment SMTP or webhook values. Dashboard widget thresholds are visual dashboard settings and do not execute alert rules.
 
-Non-core adapters such as email, webhook, Slack, or Teams require their own provider config and secret-handling specs before implementation.
+Slack and Teams are not first-class alert adapter IDs in this repository. Operators can route to those systems through the signed webhook adapter when they provide an HTTPS endpoint and signing secret.
 
 ## Next Step
 

@@ -87,6 +87,7 @@ import {
   requireScopes,
 } from "./auth";
 import { attachAiChatStreamRoutes, type AiChatHarnessPort } from "./ai-chat-stream";
+import { createAiChatHarness } from "./ai-chat-harness";
 import {
   type AiEvalBridge,
   type ControlPlaneBridge,
@@ -220,6 +221,7 @@ export async function createApp(config = loadConfig(), logger = createLogger("bf
     deploymentMode: config.deploymentMode,
     selfObservability: config.selfObservability,
   });
+  const aiChatHarness = createAiChatHarness(config.aiChatHarnessMode);
   const bridge = await createNATSTelemetryQueryBridge(
     config.natsUrl,
     config.requestTimeoutMs,
@@ -235,14 +237,17 @@ export async function createApp(config = loadConfig(), logger = createLogger("bf
   return {
     ...createAppWithBridge(
       bridge,
-      selfObservability
-        ? {
-            ...config,
-            metricsRecorder: selfObservability,
-            traceRecorder: selfObservability,
-            logRecorder: selfObservability,
-          }
-        : config,
+      {
+        ...config,
+        ...(aiChatHarness ? { aiChatHarness } : {}),
+        ...(selfObservability
+          ? {
+              metricsRecorder: selfObservability,
+              traceRecorder: selfObservability,
+              logRecorder: selfObservability,
+            }
+          : {}),
+      },
       logger,
     ),
     selfObservability,
@@ -284,6 +289,7 @@ export function createAppWithBridge(
     schema: createCloudGridSchema(),
     graphiql: config.graphqlUI,
     context: ({ request }) => ({
+      request,
       requestId: crypto.randomUUID(),
       logger,
       metricsRecorder: config.metricsRecorder,
@@ -322,8 +328,14 @@ export function createAppWithBridge(
   return { app, bridge, auth };
 }
 
+interface CloudGridHonoGetter {
+  get(key: "auth"): CloudGridAuthService;
+  get(key: "bridge"): AppBridge;
+}
+
 export type CloudGridYogaContext = {
-  hono: { get: (key: "bridge") => AppBridge };
+  hono: CloudGridHonoGetter;
+  request?: Request;
   requestId: string;
   logger: CloudGridLogger;
   metricsRecorder?: GraphQLMetricsRecorder;
@@ -894,12 +906,17 @@ export function createCloudGridSchema() {
       },
       Mutation: {
         selectProject: async (_parent, args: { projectId: string }, context) =>
-          logGraphQLOperation(context, "selectProject", async () =>
-            requireControlBridge(context).selectProject(
-              validateId(args.projectId, "project id"),
+          logGraphQLOperation(context, "selectProject", async () => {
+            const projectId = validateId(args.projectId, "project id");
+            const viewer = await requireControlBridge(context).selectProject(
+              projectId,
               await authContext(context),
-            ),
-          ),
+            );
+            if (context.request) {
+              await context.hono.get("auth").rememberSelectedProject(context.request, projectId);
+            }
+            return viewer;
+          }),
         createProject: async (_parent, args: { input: CreateProjectInput }, context) =>
           logGraphQLOperation(context, "createProject", async () =>
             requireControlBridge(context).createProject(
@@ -1248,6 +1265,13 @@ export function createCloudGridSchema() {
               await authContext(context),
             ),
           ),
+        deleteAiChatConversation: async (_parent, args: { id: string }, context) =>
+          logGraphQLOperation(context, "deleteAiChatConversation", async () =>
+            requireAiChatControlBridge(context).deleteAiChatConversation(
+              validateId(args.id, "AI Chat conversation id"),
+              await authContext(context),
+            ),
+          ),
         approveAiChatAction: async (_parent, args: { input: ApproveAiChatActionInput }, context) =>
           logGraphQLOperation(context, "approveAiChatAction", async () =>
             requireAiChatControlBridge(context).approveAiChatAction(
@@ -1319,7 +1343,7 @@ export function createCloudGridSchema() {
 }
 
 async function authContext(context: CloudGridYogaContext): Promise<NormalizedAuthContext> {
-  return context.authContext ?? localAuthContext();
+  return context.authContext ? await context.authContext : localAuthContext();
 }
 
 function requireControlBridge(context: CloudGridYogaContext): ControlPlaneBridge {
@@ -1360,6 +1384,7 @@ function requireAiChatControlBridge(context: CloudGridYogaContext): ControlPlane
     !bridge.aiChatConversation ||
     !bridge.createAiChatConversation ||
     !bridge.archiveAiChatConversation ||
+    !bridge.deleteAiChatConversation ||
     !bridge.approveAiChatAction
   ) {
     throw authGraphQLError("ERR-016");
@@ -1447,7 +1472,7 @@ async function logGraphQLOperation<T>(
       "success",
       elapsedSecondsFromMilliseconds(start),
     );
-    context.logger.info("graphql_operation_completed", {
+    context.logger.debug("graphql_operation_completed", {
       request_id: context.requestId,
       operation_or_subject: operation,
       status: "ok",

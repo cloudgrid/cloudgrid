@@ -29,9 +29,9 @@ export interface AdminSettingsModel {
   layout: "admin-settings";
   organizationName: string;
   sidebarItems: Array<{
-    id: "organization" | "projects" | "members";
+    id: "organization" | "projects" | "members" | "ai-provider";
     href: string;
-    labelKey: "companies.title" | "nav.projects" | "companies.members.title";
+    labelKey: "companies.title" | "nav.projects" | "companies.members.title" | "nav.aiProvider";
   }>;
   showMemberAdministration: boolean;
 }
@@ -145,6 +145,14 @@ export function buildAdminSettingsModel({
       id: "members",
       href: `/organizations/${encodedOrganizationId}/members`,
       labelKey: "companies.members.title",
+    });
+  }
+
+  if (organization.role === "admin") {
+    sidebarItems.push({
+      id: "ai-provider",
+      href: `/organizations/${encodedOrganizationId}/ai-provider`,
+      labelKey: "nav.aiProvider",
     });
   }
 

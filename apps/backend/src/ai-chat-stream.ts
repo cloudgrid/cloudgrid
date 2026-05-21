@@ -6,15 +6,18 @@ import {
 } from "@cloudgrid/runtime";
 import type {
   AiChatConversation,
+  AiChatMessage,
   AiChatMessagePart,
   AiProviderParameters,
   CompanyAiProviderSettings,
   JSONValue,
+  TraceSearchResult,
+  TraceSummary,
 } from "@cloudgrid/ui-contracts";
 import { GraphQLError } from "graphql";
 import type { Hono } from "hono";
 import type { NormalizedAuthContext } from "./auth";
-import type { ControlPlaneBridge } from "./bridge";
+import type { ControlPlaneBridge, TelemetryQueryBridge } from "./bridge";
 
 export type AiChatStreamEventType =
   | "run.started"
@@ -80,7 +83,7 @@ export interface AiChatCompactionDraft {
 }
 
 interface AiChatVariables {
-  bridge: Partial<ControlPlaneBridge>;
+  bridge: Partial<ControlPlaneBridge & TelemetryQueryBridge>;
   auth: { authenticateRequest(request: Request): Promise<NormalizedAuthContext> };
 }
 
@@ -99,6 +102,7 @@ const streamRequestSchema = z.object({
   userMessageClientId: z.string().min(1).max(120),
   idempotencyKey: z.string().min(16).max(160),
   parts: z.array(textPartSchema).min(1).max(16),
+  skipUserMessageAppend: z.boolean().optional(),
   timezone: z.string().min(1).max(80).optional(),
 });
 
@@ -146,7 +150,7 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
     if (!provider) {
       return problemResponse("ERR-AIC-001");
     }
-    const credential = resolveCredential(provider.credentialRef);
+    const credential = await resolveCredential(provider.credentialRef, bridge, authContext);
     if (!credential) {
       return problemResponse("ERR-AIP-001");
     }
@@ -183,7 +187,19 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
       type: "text",
       text: part.text,
     }));
-    const shouldAppendUserMessage = !conversationAlreadyHasMessage(conversation, userParts);
+    const shouldAppendUserMessage =
+      input.skipUserMessageAppend !== true &&
+      !conversationAlreadyHasMessage(conversation, userParts);
+    const currentUserMessage: AiChatMessage = {
+      id: input.userMessageClientId,
+      conversationId: input.conversationId,
+      role: "user",
+      parts: userParts,
+      createdAt: new Date().toISOString(),
+    };
+    const harnessMessages = shouldAppendUserMessage
+      ? [...conversation.messages, currentUserMessage]
+      : conversation.messages;
 
     if (shouldAppendUserMessage) {
       await bridge.aiChatAppendMessage(
@@ -213,11 +229,53 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
           });
           await emit("message.created", { role: "user", parts: userParts });
 
+          const toolAnswer = await answerWithCloudGridTool({
+            authContext,
+            bridge,
+            input,
+            userText: userParts.map((part) => part.text ?? "").join("\n"),
+          });
+          if (toolAnswer) {
+            toolCallCount = 1;
+            await emit("tool.started", { name: toolAnswer.toolName });
+            await emit("tool.completed", {
+              name: toolAnswer.toolName,
+              status: "completed",
+              resultSummary: toolAnswer.resultSummary,
+            });
+            assistantParts.push({ type: "text", text: toolAnswer.text });
+            await emit("text.delta", { text: toolAnswer.text });
+            const finalParts = collapseTextParts(assistantParts);
+            await bridge.aiChatAppendMessage(
+              {
+                conversationId: input.conversationId,
+                runId,
+                role: "assistant",
+                parts: finalParts,
+              },
+              authContext,
+            );
+            await bridge.aiChatFinalizeRun(
+              {
+                runId,
+                status: "completed",
+                inputTokenCount: 0,
+                outputTokenCount: 0,
+                toolCallCount,
+                sandboxScriptCount: 0,
+                artifactCount: 0,
+              },
+              authContext,
+            );
+            await emit("run.completed", { status: "completed" });
+            return;
+          }
+
           for await (const event of harness.streamChat({
             conversation,
             provider: provider.publicSnapshot,
             credential,
-            messages: conversation.messages,
+            messages: harnessMessages,
             compaction: conversation.compaction,
             signal,
           })) {
@@ -393,10 +451,11 @@ function streamResponse(
   outerSignal.addEventListener("abort", onAbort, { once: true });
   let sequence = 0;
   const encoder = new TextEncoder();
+  let closed = false;
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const emit = async (type: AiChatStreamEventType, payload: Record<string, unknown>) => {
-        if (abort.signal.aborted) {
+        if (abort.signal.aborted || closed) {
           throw new AbortError();
         }
         const event: AiChatStreamEvent = {
@@ -410,17 +469,39 @@ function streamResponse(
           sequence += 1;
           event.sequence = sequence;
         }
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        } catch (error) {
+          if (isStreamAbortError(error)) {
+            abort.abort();
+            throw new AbortError();
+          }
+          throw error;
+        }
       };
 
+      let closeError: unknown;
       try {
         await run(emit, abort.signal);
       } finally {
         outerSignal.removeEventListener("abort", onAbort);
-        controller.close();
+        if (!closed) {
+          closed = true;
+          try {
+            controller.close();
+          } catch (error) {
+            if (!isStreamAbortError(error)) {
+              closeError = error;
+            }
+          }
+        }
+      }
+      if (closeError) {
+        throw closeError;
       }
     },
     cancel() {
+      closed = true;
       abort.abort();
     },
   });
@@ -438,7 +519,7 @@ function conversationOwnedByCurrentUser(
   authContext: NormalizedAuthContext,
 ) {
   if (authContext.authMode === "local") {
-    return conversation.userId === "user-local" || conversation.userId === "local";
+    return conversation.userId === "local-user";
   }
   return Boolean(authContext.principalId && conversation.userId === authContext.principalId);
 }
@@ -472,19 +553,220 @@ function redactedProvider(settings: CompanyAiProviderSettings) {
   };
 }
 
-function resolveCredential(ref: string) {
-  if (!ref.startsWith("env:")) {
+async function answerWithCloudGridTool({
+  authContext,
+  bridge,
+  input,
+  userText,
+}: {
+  authContext: NormalizedAuthContext;
+  bridge: Partial<ControlPlaneBridge & TelemetryQueryBridge>;
+  input: AiChatStreamRequest;
+  userText: string;
+}): Promise<{ resultSummary: string; text: string; toolName: string } | null> {
+  if (!isTodayTraceQuestion(userText)) {
     return null;
   }
-  const name = ref.slice("env:".length);
-  if (!name || !/^[A-Z0-9_]+$/.test(name)) {
-    return null;
+  if (!bridge.searchTraces) {
+    return {
+      toolName: "cloudgrid.traces.search",
+      resultSummary: "Trace search tool unavailable",
+      text: "I could not query CloudGrid traces for today because the trace search tool is not available in this run.",
+    };
   }
-  const value = process.env[name];
-  if (!value) {
-    return null;
+
+  const range = todayRange(input.timezone);
+  const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+  const result = await bridge.searchTraces(
+    {
+      from: range.from.toISOString(),
+      to: range.to.toISOString(),
+      limit: 25,
+      sort: "startedAt_desc",
+    },
+    authContext,
+  );
+
+  return {
+    toolName: "cloudgrid.traces.search",
+    resultSummary: `${result.items.length} traces returned for ${range.label} in ${project.label}`,
+    text: formatTodayTracesAnswer(result, range, project),
+  };
+}
+
+async function aiChatSelectedProjectContext(
+  bridge: Partial<ControlPlaneBridge>,
+  authContext: NormalizedAuthContext,
+  projectId: string,
+) {
+  if (bridge.viewer) {
+    try {
+      const viewer = await bridge.viewer(authContext);
+      const selectedProject = viewer?.selectedProject;
+      if (selectedProject?.id === projectId) {
+        return {
+          id: selectedProject.id,
+          label: `${selectedProject.name} (${selectedProject.id})`,
+        };
+      }
+    } catch {
+      // Trace search still has the authoritative project scope through authContext.
+    }
   }
-  return { ref, value };
+  return { id: projectId, label: projectId };
+}
+
+function isTodayTraceQuestion(text: string) {
+  const normalized = text.toLowerCase();
+  return (
+    /\btraces?\b/.test(normalized) && (/\btoday\b/.test(normalized) || /\bheute\b/.test(normalized))
+  );
+}
+
+function todayRange(timezone: string | undefined) {
+  const safeTimezone = validTimeZone(timezone) ? (timezone as string) : "UTC";
+  const now = new Date();
+  const parts = datePartsInTimeZone(now, safeTimezone);
+  const from = zonedDateTimeToUtc(parts.year, parts.month, parts.day, safeTimezone);
+  return {
+    from,
+    to: now,
+    label: `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)} (${safeTimezone})`,
+  };
+}
+
+function formatTodayTracesAnswer(
+  result: TraceSearchResult,
+  range: ReturnType<typeof todayRange>,
+  project: { id: string; label: string },
+) {
+  if (!result.items.length) {
+    return `No traces were returned for today in project ${project.label} (${range.label}) between ${range.from.toISOString()} and ${range.to.toISOString()}.`;
+  }
+
+  const rows = result.items.slice(0, 10).map(traceSummaryRow);
+  const errorCount = result.items.filter((trace) => trace.errorSpanCount > 0).length;
+  const nextCursor = result.nextCursor
+    ? "\n\nMore traces are available for this range; open Traces with the same time range to continue paging."
+    : "";
+  return [
+    `CloudGrid returned ${result.items.length} traces for today in project ${project.label} (${range.label}) between ${range.from.toISOString()} and ${range.to.toISOString()}.`,
+    `Error traces in this result: ${errorCount}.`,
+    "",
+    "| Trace | Service | Operation | Started | Duration | Spans | Error spans |",
+    "| --- | --- | --- | --- | ---: | ---: | ---: |",
+    ...rows,
+    nextCursor,
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+}
+
+function traceSummaryRow(trace: TraceSummary) {
+  const operation = trace.operationName ?? "unknown";
+  const service = trace.serviceName ?? "unknown";
+  const duration = typeof trace.durationMs === "number" ? `${trace.durationMs.toFixed(1)} ms` : "-";
+  return [
+    markdownTableCell(`[${shortTraceId(trace.id)}](/traces/${encodeURIComponent(trace.id)})`),
+    markdownTableCell(service),
+    markdownTableCell(operation),
+    markdownTableCell(trace.startedAt),
+    markdownTableCell(duration),
+    String(trace.spanCount),
+    String(trace.errorSpanCount),
+  ].join(" | ");
+}
+
+function shortTraceId(traceId: string) {
+  return traceId.length > 12 ? `${traceId.slice(0, 12)}...` : traceId;
+}
+
+function markdownTableCell(value: string) {
+  return value.replace(/\|/g, "\\|").replace(/\n/g, " ");
+}
+
+function validTimeZone(timezone: string | undefined) {
+  if (!timezone) {
+    return false;
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function datePartsInTimeZone(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone,
+    year: "numeric",
+  }).formatToParts(date);
+  return {
+    day: Number(parts.find((part) => part.type === "day")?.value ?? "1"),
+    month: Number(parts.find((part) => part.type === "month")?.value ?? "1"),
+    year: Number(parts.find((part) => part.type === "year")?.value ?? "1970"),
+  };
+}
+
+function zonedDateTimeToUtc(year: number, month: number, day: number, timeZone: string) {
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+  return new Date(utcGuess.getTime() - timeZoneOffsetMs(utcGuess, timeZone));
+}
+
+function timeZoneOffsetMs(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone,
+    year: "numeric",
+  }).formatToParts(date);
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? "0");
+  const asUtc = Date.UTC(
+    value("year"),
+    value("month") - 1,
+    value("day"),
+    value("hour"),
+    value("minute"),
+    value("second"),
+  );
+  return asUtc - date.getTime();
+}
+
+function pad2(value: number) {
+  return value.toString().padStart(2, "0");
+}
+
+async function resolveCredential(
+  ref: string,
+  bridge: ControlPlaneBridge,
+  authContext: NormalizedAuthContext,
+) {
+  if (ref.startsWith("managed:")) {
+    if (!bridge.resolveAiProviderSecret) {
+      return null;
+    }
+    const credential = await bridge.resolveAiProviderSecret(ref, authContext);
+    return { ref: credential.credentialRef, value: credential.value };
+  }
+  if (ref.startsWith("env:")) {
+    const name = ref.slice("env:".length);
+    if (!name || !/^[A-Z0-9_]+$/.test(name)) {
+      return null;
+    }
+    const value = process.env[name];
+    if (!value) {
+      return null;
+    }
+    return { ref, credentialRef: ref, value };
+  }
+  return null;
 }
 
 function collapseTextParts(parts: AiChatMessagePart[]) {
@@ -558,3 +840,12 @@ class AiChatStreamProblem extends Error {
 }
 
 class AbortError extends Error {}
+
+function isStreamAbortError(error: unknown): boolean {
+  return (
+    error instanceof DOMException &&
+    (error.name === "AbortError" ||
+      error.name === "InvalidStateError" ||
+      error.message === "The connection was closed.")
+  );
+}

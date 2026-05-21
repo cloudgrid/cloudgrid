@@ -179,6 +179,66 @@ func TestSurrealDBControlStoreBootstrapsViewer(t *testing.T) {
 	if len(dashboards) != 1 || dashboards[0].ID != dashboardID {
 		t.Fatalf("ListDashboards local = %#v, want saved dashboard", dashboards)
 	}
+	chatConversation := ports.AiChatConversationRecord{
+		ID:            "chat-probe",
+		CompanyID:     LocalCompanyID,
+		ProjectID:     LocalProjectID,
+		UserID:        "local-user",
+		Title:         "Investigate checkout",
+		Status:        contracts.AiChatConversationStatusActive,
+		LastMessageAt: fixedNow(),
+		LastRunStatus: string(contracts.AiChatRunStatusIdle),
+		CreatedAt:     fixedNow(),
+		UpdatedAt:     fixedNow(),
+		Version:       1,
+	}
+	if err := store.PutAiChatConversation(ctx, chatConversation); err != nil {
+		t.Fatalf("PutAiChatConversation local returned error: %v", err)
+	}
+	if err := store.PutAiChatMessage(ctx, ports.AiChatMessageRecord{
+		ID:             "msg-chat-probe-1",
+		ConversationID: chatConversation.ID,
+		Role:           "user",
+		Parts:          []map[string]any{{"type": "text", "text": "Why did checkout fail?"}},
+		CreatedAt:      fixedNow(),
+	}); err != nil {
+		t.Fatalf("PutAiChatMessage local returned error: %v", err)
+	}
+	chatMessages, err := store.ListAiChatMessages(ctx, chatConversation.ID, 10)
+	if err != nil {
+		t.Fatalf("ListAiChatMessages local returned error: %v", err)
+	}
+	if len(chatMessages) != 1 || chatMessages[0].ConversationID != chatConversation.ID {
+		t.Fatalf("ListAiChatMessages local = %#v, want saved first message", chatMessages)
+	}
+	chatRun := ports.AiChatRunRecord{
+		ID:                  "run-chat-probe",
+		ConversationID:      chatConversation.ID,
+		ProjectID:           LocalProjectID,
+		UserID:              "local-user",
+		UserMessageClientID: "client-message-1",
+		IdempotencyKey:      "idempotency-key-1",
+		ProviderKind:        "openai",
+		ProviderProfileID:   "provider-1",
+		Model:               "mock-chat-model",
+		Status:              contracts.AiChatRunStatusCompleted,
+		InputTokenCount:     4,
+		OutputTokenCount:    8,
+		EstimatedCostUSD:    ptrFloat(0),
+		StartedAt:           fixedNow(),
+		CompletedAt:         ptrTime(fixedNow()),
+		UpdatedAt:           fixedNow(),
+	}
+	if err := store.PutAiChatRun(ctx, chatRun); err != nil {
+		t.Fatalf("PutAiChatRun local returned error: %v", err)
+	}
+	loadedRun, ok, err := store.GetAiChatRun(ctx, chatRun.ID)
+	if err != nil || !ok {
+		t.Fatalf("GetAiChatRun local returned ok=%v error=%v", ok, err)
+	}
+	if loadedRun.Status != contracts.AiChatRunStatusCompleted {
+		t.Fatalf("GetAiChatRun local status = %q, want completed", loadedRun.Status)
+	}
 	if err := store.PutDashboardPin(ctx, ports.DashboardPinRecord{
 		UserID:      "local-user",
 		ProjectID:   LocalProjectID,
@@ -205,7 +265,7 @@ func TestSurrealDBControlStoreBootstrapsViewer(t *testing.T) {
 	if viewer.User.ID != "local-user" {
 		t.Fatalf("viewer user ID = %q, want local-user", viewer.User.ID)
 	}
-	if len(viewer.Organizations) != 1 || len(viewer.Organizations[0].Projects) != 1 {
+	if len(viewer.Organizations) != 1 || !viewerHasProject(viewer, LocalProjectID) {
 		t.Fatalf("viewer organizations = %#v, want local organization with default project", viewer.Organizations)
 	}
 	selected, err := service.SelectProject(ctx, contracts.ProjectSelectRequest{
@@ -225,4 +285,23 @@ func integrationValueOrDefault(value string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func viewerHasProject(viewer contracts.Viewer, projectID string) bool {
+	for _, organization := range viewer.Organizations {
+		for _, project := range organization.Projects {
+			if project.ID == projectID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func ptrTime(value time.Time) *time.Time {
+	return &value
+}
+
+func ptrFloat(value float64) *float64 {
+	return &value
 }

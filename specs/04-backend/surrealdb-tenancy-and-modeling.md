@@ -81,7 +81,9 @@ Use document records plus indexed fields for hot telemetry:
 - `service` stores service metadata observed in the project.
 - `ingest_command` stores idempotency/audit metadata.
 
-Do not create graph relation records for every span parent/child edge on the ingest hot path. Span hierarchy is represented by indexed `traceId`, `spanId`, and `parentSpanId` fields and derived by storage-read. High-volume graph edges may be introduced only by a later async topology/materialization spec.
+Do not create graph relation records for every span parent/child edge on the ingest hot path. Span hierarchy is represented by deterministic record IDs plus indexed scalar fields: `traceId`, `spanId`, and `parentSpanId`. Storage-read derives trees from those fields. High-volume graph edges may be introduced only by a later async topology/materialization spec.
+
+Record links may be added only when they replace a real hot query or enable a direct lookup without duplicating work on every ingest. The MVP telemetry read paths do not need SurrealDB graph traversal for trace detail, trace search, log search, or metric series reads. Low-volume control-plane relationships are the appropriate place for graph relation tables because those relationships carry membership/pin/project metadata and are navigated interactively.
 
 ## Record IDs
 
@@ -90,6 +92,9 @@ Inside a project database:
 - `trace:<traceId>`
 - `span:<traceId>_<spanId>`
 - `log_event:<deterministicLogEventId>`
+- `metric_descriptor:<metricNameSlug>`
+- `metric_point:<metricNameSlug>_<timestampUnixNano>_<attributeHash>`
+- `metric_ingest_cardinality:<metricNameSlug>_<windowStart>`
 - `service:<serviceNameSlug>`
 - `ingest_command:<commandId>`
 
@@ -100,20 +105,39 @@ Trace IDs and span IDs remain fields as well as record ID components so GraphQL 
 Required synchronous indexes:
 
 - `trace.startedAt`
-- `trace.serviceName, trace.startedAt`
-- `trace.status, trace.startedAt`
-- `trace.rootSpanName, trace.startedAt`
+- `trace.operationName, trace.startedAt` may be added when operation-name filtering moves from span lookup to trace summary filtering.
+- `trace.tenantId, trace.companyId, trace.projectId, startedAt`
+- `trace.tenantId, trace.companyId, trace.projectId, traceId`
+- `trace.tenantId, trace.companyId, trace.projectId, serviceName, startedAt`
+- `trace.tenantId, trace.companyId, trace.projectId, status, startedAt`
+- `trace.serviceName`
+- `trace.status`
 - `span.traceId`
-- `span.traceId, parentSpanId`
-- `span.traceId, serviceName`
-- `span.traceId, status`
-- `span.serviceName, startedAt`
-- `span.name, startedAt`
+- `span.parentSpanId`
+- `span.tenantId, span.companyId, span.projectId, traceId, parentSpanId, startedAt`
+- `span.tenantId, span.companyId, span.projectId, serviceName, traceId`
+- `span.serviceName`
+- `span.name`
+- `span.status`
 - `log_event.timestamp`
-- `log_event.serviceName, timestamp`
-- `log_event.traceId, timestamp`
-- `log_event.spanId, timestamp`
-- `log_event.severityText, timestamp`
+- `log_event.tenantId, log_event.companyId, log_event.projectId, timestamp`
+- `log_event.tenantId, log_event.companyId, log_event.projectId, serviceName, timestamp`
+- `log_event.tenantId, log_event.companyId, log_event.projectId, traceId, timestamp`
+- `log_event.serviceName`
+- `log_event.traceId`
+- `log_event.spanId`
+- `log_event.severityText`
+- `metric_descriptor.metricName`
+- `metric_descriptor.lastSeenAt`
+- `metric_descriptor.tenantId, metric_descriptor.companyId, metric_descriptor.projectId, lastSeenAt`
+- `metric_descriptor.tenantId, metric_descriptor.companyId, metric_descriptor.projectId, metricName`
+- `metric_point.metricName`
+- `metric_point.metricName, timestamp`
+- `metric_point.tenantId, metric_point.companyId, metric_point.projectId, metricName, timestamp`
+- `metric_point.serviceName, timestamp`
+- `metric_point.tenantId, metric_point.companyId, metric_point.projectId, serviceName, timestamp`
+- `metric_point.timestamp`
+- `metric_ingest_cardinality.metricName, windowStart`
 - `ingest_command.commandId` unique
 - `ingest_command.completedAt`
 
@@ -137,6 +161,8 @@ All SurrealQL from adapters must use parameterized queries. Do not interpolate G
 
 Storage-read must prefer direct record ID lookup for `trace(id)` and indexed predicates for lists/facets. Query builders must have tests for generated SurrealQL text and parameters.
 
+Storage-write must use deterministic record IDs for single-record trace, span, log, service, metric descriptor, metric cardinality, and ingest-command mutations. It must not update hot telemetry rows by scanning `WHERE tenantId AND companyId AND projectId AND id-field` when the target record ID is known.
+
 Use `EXPLAIN`/`EXPLAIN ANALYZE` in opt-in integration tests for critical query shapes:
 
 - trace search by service/time,
@@ -147,6 +173,8 @@ Use `EXPLAIN`/`EXPLAIN ANALYZE` in opt-in integration tests for critical query s
 - bounded facets.
 
 The default CI path must not depend on exact `EXPLAIN` output shape.
+
+Known expensive exploratory predicates must remain visibly bounded until materialized indexes exist. This includes arbitrary `attributes[$key]` filters, substring `CONTAINS` over dynamic text, and attribute-key discovery with `object::keys(attributes)`. Product surfaces that use those predicates must keep small default limits and explicit time windows, and must not be used as unbounded project overview queries.
 
 ## Events, Live Queries, And Changefeeds
 

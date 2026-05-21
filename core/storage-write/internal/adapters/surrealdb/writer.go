@@ -22,6 +22,10 @@ type WriterQueryer interface {
 	IngestCommandExistsInTarget(ctx context.Context, target TelemetryTarget, commandID string) (bool, error)
 }
 
+type targetRowsQueryer interface {
+	QueryRowsInTarget(ctx context.Context, target TelemetryTarget, sql string, vars map[string]any) ([]map[string]any, error)
+}
+
 type Persister struct {
 	DB WriterQueryer
 }
@@ -127,7 +131,26 @@ func (p Persister) PersistEvalMutation(ctx context.Context, subject string, requ
 	if err != nil {
 		return nil, err
 	}
-	return data, p.DB.QueryInTarget(ctx, target, sql, vars)
+	if err := p.DB.QueryInTarget(ctx, target, sql, vars); err != nil {
+		return nil, err
+	}
+	if subject == "eval.dataset.items.append" {
+		queryer, ok := p.DB.(targetRowsQueryer)
+		if !ok {
+			return data, nil
+		}
+		rows, err := queryer.QueryRowsInTarget(ctx, target, "SELECT meta::id(id) AS id, name, description, version, createdAt, itemCount, tags FROM type::record('ai_dataset', $dataset_id) LIMIT 1;", map[string]any{
+			"dataset_id": mapStringValue(request.Input, "datasetId"),
+		})
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) > 0 {
+			normalizeRecordDateStrings(rows[0])
+			return rows[0], nil
+		}
+	}
+	return data, nil
 }
 
 func BuildPersistQuery(command contracts.PersistTelemetryCommand, subject string, completedAt time.Time) (string, map[string]any, error) {
@@ -168,10 +191,16 @@ func BuildPersistQuery(command contracts.PersistTelemetryCommand, subject string
 	spanCountByTrace := map[string]int{}
 	errorSpanCountByTrace := map[string]int{}
 	serviceNamesByTrace := map[string]map[string]struct{}{}
+	operationNameByTrace := map[string]string{}
 	for _, span := range command.Spans {
 		spanCountByTrace[span.TraceID]++
 		if spanHasErrorStatus(span) {
 			errorSpanCountByTrace[span.TraceID]++
+		}
+		if isRootSpan(span) && strings.TrimSpace(span.Name) != "" {
+			if _, exists := operationNameByTrace[span.TraceID]; !exists {
+				operationNameByTrace[span.TraceID] = span.Name
+			}
 		}
 		if serviceName := spanServiceName(span); serviceName != "" {
 			if serviceNamesByTrace[span.TraceID] == nil {
@@ -196,7 +225,7 @@ func BuildPersistQuery(command contracts.PersistTelemetryCommand, subject string
 		}
 		key := fmt.Sprintf("trace%d", i)
 		vars[key+"_id"] = trace.ID
-		vars[key+"_record"] = traceRecord(trace, spanCountByTrace[trace.ID], errorSpanCountByTrace[trace.ID], logCountByTrace[trace.ID], len(serviceNamesByTrace[trace.ID]), target)
+		vars[key+"_record"] = traceRecord(trace, operationNameByTrace[trace.ID], spanCountByTrace[trace.ID], errorSpanCountByTrace[trace.ID], logCountByTrace[trace.ID], len(serviceNamesByTrace[trace.ID]), target)
 		builder.WriteString(fmt.Sprintf("UPSERT type::record('trace', $%s_id) CONTENT $%s_record;\n", key, key))
 		if trace.ServiceName != nil {
 			mergeService(serviceRecords, *trace.ServiceName, trace.StartedAt, trace.Attributes)
@@ -270,7 +299,7 @@ func BuildPersistQuery(command contracts.PersistTelemetryCommand, subject string
 	for i, traceID := range traceLogIDs {
 		key := fmt.Sprintf("traceLog%d", i)
 		vars[key+"_id"] = traceID
-		builder.WriteString(fmt.Sprintf("UPDATE trace SET logCount = (SELECT count() AS count FROM log_event WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId = $%s_id GROUP ALL)[0].count WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId = $%s_id;\n", key, key))
+		builder.WriteString(fmt.Sprintf("UPDATE type::record('trace', $%s_id) SET logCount = (SELECT count() AS count FROM log_event WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId = $%s_id GROUP ALL)[0].count;\n", key, key))
 	}
 
 	serviceNames := make([]string, 0, len(serviceRecords))
@@ -959,7 +988,7 @@ type serviceRecord struct {
 	Attributes  contracts.Attributes
 }
 
-func traceRecord(trace contracts.Trace, spanCount int, errorSpanCount int, logCount int, serviceCount int, target TelemetryTarget) map[string]any {
+func traceRecord(trace contracts.Trace, operationName string, spanCount int, errorSpanCount int, logCount int, serviceCount int, target TelemetryTarget) map[string]any {
 	record := map[string]any{
 		"traceId":           trace.ID,
 		"startedAt":         trace.StartedAt.UTC(),
@@ -971,6 +1000,9 @@ func traceRecord(trace contracts.Trace, spanCount int, errorSpanCount int, logCo
 		"serviceCount":      serviceCount,
 	}
 	putStringPtr(record, "serviceName", trace.ServiceName)
+	if strings.TrimSpace(operationName) != "" {
+		record["operationName"] = strings.TrimSpace(operationName)
+	}
 	if trace.EndedAt != nil {
 		endedAtNano := unixNanoString(*trace.EndedAt)
 		record["endedAt"] = trace.EndedAt.UTC()
@@ -982,6 +1014,10 @@ func traceRecord(trace contracts.Trace, spanCount int, errorSpanCount int, logCo
 	putStatusPtr(record, "status", trace.Status)
 	addOwnership(record, target)
 	return record
+}
+
+func isRootSpan(span contracts.Span) bool {
+	return span.ParentSpanID == nil || strings.TrimSpace(*span.ParentSpanID) == ""
 }
 
 func spanRecord(span contracts.Span, target TelemetryTarget) map[string]any {

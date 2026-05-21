@@ -680,7 +680,7 @@ func metricPointCount(request *collectormetricspb.ExportMetricsServiceRequest) i
 
 func (h *handler) logCompletion(r *http.Request, w *completionResponseWriter, duration time.Duration) {
 	status := "ok"
-	level := slog.LevelInfo
+	level := slog.LevelDebug
 	if w.status >= 400 {
 		status = "error"
 		level = slog.LevelWarn

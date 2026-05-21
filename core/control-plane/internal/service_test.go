@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/cloudgrid-dev/cloudgrid/core/control-plane/internal/ports"
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
 	"slices"
@@ -296,6 +297,544 @@ func TestProjectAiSettingsDefaultAndUpdate(t *testing.T) {
 	profiles := updated["providerProfiles"].([]any)
 	if len(profiles) != 1 || profiles[0].(map[string]any)["projectId"] != LocalProjectID {
 		t.Fatalf("provider profiles = %#v, want project-scoped provider", profiles)
+	}
+}
+
+func TestAiProviderSettingsUseAsyncAPIContractsAndPersistInControlPlane(t *testing.T) {
+	store := newTestStore()
+	service := NewService(store, fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-ai-providers", localUserID, nil)
+
+	projectSettings, err := service.GetProjectAiProviderSettings(ctx, contracts.ProjectAiProviderSettingsGetRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      LocalProjectID,
+	})
+	if err != nil {
+		t.Fatalf("GetProjectAiProviderSettings returned error: %v", err)
+	}
+	if projectSettings["projectId"] != LocalProjectID || projectSettings["version"] != 1 {
+		t.Fatalf("default project provider settings = %#v, want v1 local project", projectSettings)
+	}
+
+	updatedProject, err := service.UpdateProjectAiProviderSettings(ctx, contracts.ProjectAiProviderSettingsUpdateRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      LocalProjectID,
+		ProviderProfiles: []map[string]any{{
+			"id":              "provider-1",
+			"label":           "OpenAI",
+			"providerKind":    "openai",
+			"credentialValue": "sk-project-secret",
+			"models":          map[string]any{"chat": []any{"gpt-4.1-mini"}},
+			"parameters":      map[string]any{},
+		}},
+		ModelAliases: []map[string]any{{
+			"id":                "alias-1",
+			"name":              "chat-fast",
+			"providerProfileId": "provider-1",
+			"model":             "gpt-4.1-mini",
+			"purpose":           "chat",
+			"parameters":        map[string]any{},
+		}},
+		ExpectedVersion: 1,
+	})
+	if err != nil {
+		t.Fatalf("UpdateProjectAiProviderSettings returned error: %v", err)
+	}
+	if updatedProject["version"] != 2 {
+		t.Fatalf("updated project provider settings = %#v, want version 2", updatedProject)
+	}
+	persistedProject, err := service.GetProjectAiProviderSettings(ctx, contracts.ProjectAiProviderSettingsGetRequest{BridgeEnvelope: admin, ProjectID: LocalProjectID})
+	if err != nil {
+		t.Fatalf("GetProjectAiProviderSettings persisted returned error: %v", err)
+	}
+	if persistedProject["version"] != 2 || len(persistedProject["providerProfiles"].([]any)) != 1 {
+		t.Fatalf("persisted project provider settings = %#v, want stored v2 provider", persistedProject)
+	}
+	projectProfile := persistedProject["providerProfiles"].([]any)[0].(map[string]any)
+	if projectProfile["credentialRef"] != "managed:project/default/provider-1" {
+		t.Fatalf("project provider credentialRef = %#v, want managed ref", projectProfile["credentialRef"])
+	}
+	if text := fmt.Sprint(store.aiProviderSecrets["project-default-provider-1"]); strings.Contains(text, "sk-project-secret") {
+		t.Fatalf("stored project provider secret leaked plaintext: %s", text)
+	}
+	resolvedProjectSecret, err := service.ResolveAiProviderSecret(ctx, contracts.AiProviderSecretResolveRequest{
+		BridgeEnvelope: admin,
+		CredentialRef:  "managed:project/default/provider-1",
+	})
+	if err != nil {
+		t.Fatalf("ResolveAiProviderSecret(project) returned error: %v", err)
+	}
+	if resolvedProjectSecret["value"] != "sk-project-secret" {
+		t.Fatalf("resolved project secret = %#v, want submitted value", resolvedProjectSecret)
+	}
+
+	companySettings, err := service.GetCompanyAiProviderSettings(ctx, contracts.CompanyAiProviderSettingsGetRequest{
+		BridgeEnvelope: admin,
+		CompanyID:      LocalCompanyID,
+	})
+	if err != nil {
+		t.Fatalf("GetCompanyAiProviderSettings returned error: %v", err)
+	}
+	if companySettings["version"] != 1 {
+		t.Fatalf("default company provider settings = %#v, want version 1", companySettings)
+	}
+	companyEffective, ok := companySettings["effective"].(map[string]any)
+	if !ok {
+		t.Fatalf("default company provider settings effective = %#v, want object", companySettings["effective"])
+	}
+	if _, ok := companyEffective["missingProviderProfiles"].([]any); !ok {
+		t.Fatalf("default company provider settings effective = %#v, want missingProviderProfiles array", companyEffective)
+	}
+	if companyEffective["missingChatProvider"] != true {
+		t.Fatalf("default company provider settings effective = %#v, want missingChatProvider true", companyEffective)
+	}
+	updatedCompany, err := service.UpdateCompanyAiProviderSettings(ctx, contracts.CompanyAiProviderSettingsUpdateRequest{
+		BridgeEnvelope: admin,
+		CompanyID:      LocalCompanyID,
+		ProviderProfile: map[string]any{
+			"id":              "company-chat-provider",
+			"label":           "OpenAI Chat",
+			"providerKind":    "openai",
+			"credentialValue": "sk-company-secret",
+			"models":          map[string]any{"chat": []any{"gpt-4.1-mini"}},
+			"parameters":      map[string]any{},
+		},
+		ChatModelAlias: map[string]any{
+			"id":                "company-chat",
+			"name":              "chat",
+			"providerProfileId": "company-chat-provider",
+			"model":             "gpt-4.1-mini",
+			"purpose":           "chat",
+			"parameters":        map[string]any{},
+		},
+		ExpectedVersion: 1,
+	})
+	if err != nil {
+		t.Fatalf("UpdateCompanyAiProviderSettings returned error: %v", err)
+	}
+	if updatedCompany["version"] != 2 || updatedCompany["providerProfile"] == nil {
+		t.Fatalf("updated company provider settings = %#v, want stored chat provider", updatedCompany)
+	}
+	companyProfile := updatedCompany["providerProfile"].(map[string]any)
+	if companyProfile["credentialRef"] != "managed:company/local/company-chat-provider" {
+		t.Fatalf("company provider credentialRef = %#v, want managed ref", companyProfile["credentialRef"])
+	}
+	if companyProfile["ownerScope"] != "company" || companyProfile["ownerId"] != LocalCompanyID {
+		t.Fatalf("company provider owner = %#v/%#v, want company/local", companyProfile["ownerScope"], companyProfile["ownerId"])
+	}
+	resolvedCompanySecret, err := service.ResolveAiProviderSecret(ctx, contracts.AiProviderSecretResolveRequest{
+		BridgeEnvelope: admin,
+		CredentialRef:  "managed:company/local/company-chat-provider",
+	})
+	if err != nil {
+		t.Fatalf("ResolveAiProviderSecret(company) returned error: %v", err)
+	}
+	if resolvedCompanySecret["value"] != "sk-company-secret" {
+		t.Fatalf("resolved company secret = %#v, want submitted value", resolvedCompanySecret)
+	}
+}
+
+func TestCompanyAiProviderSettingsAcceptsFrontendManagedSecretPayload(t *testing.T) {
+	store := newTestStore()
+	service := NewService(store, fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-company-ai-frontend-payload", localUserID, nil)
+	settings, err := service.GetCompanyAiProviderSettings(ctx, contracts.CompanyAiProviderSettingsGetRequest{
+		BridgeEnvelope: admin,
+		CompanyID:      LocalCompanyID,
+	})
+	if err != nil {
+		t.Fatalf("GetCompanyAiProviderSettings returned error: %v", err)
+	}
+
+	updated, err := service.UpdateCompanyAiProviderSettings(ctx, contracts.CompanyAiProviderSettingsUpdateRequest{
+		BridgeEnvelope: admin,
+		CompanyID:      LocalCompanyID,
+		ProviderProfile: map[string]any{
+			"id":              "company-chat-provider",
+			"label":           "Company chat",
+			"providerKind":    "openai",
+			"baseUrl":         nil,
+			"credentialRef":   nil,
+			"credentialValue": "sk-from-ui",
+			"models":          map[string]any{"chat": []any{"gpt-5-mini"}},
+			"parameters":      map[string]any{},
+			"timeoutMs":       float64(30000),
+			"maxConcurrency":  nil,
+			"disabled":        false,
+		},
+		ChatModelAlias: map[string]any{
+			"id":                "company-chat",
+			"name":              "chat",
+			"providerProfileId": "company-chat-provider",
+			"model":             "gpt-5-mini",
+			"purpose":           "chat",
+			"parameters":        map[string]any{"extras": map[string]any{}},
+		},
+		ExpectedVersion: settings["version"].(int),
+	})
+	if err != nil {
+		t.Fatalf("UpdateCompanyAiProviderSettings returned error: %v", err)
+	}
+	profile := updated["providerProfile"].(map[string]any)
+	if profile["credentialRef"] != "managed:company/local/company-chat-provider" {
+		t.Fatalf("credentialRef = %#v, want managed company ref", profile["credentialRef"])
+	}
+	if profile["ownerScope"] != "company" || profile["ownerId"] != LocalCompanyID {
+		t.Fatalf("provider owner = %#v/%#v, want company/local", profile["ownerScope"], profile["ownerId"])
+	}
+}
+
+func TestAiProviderManagedSecretsRequireDeploymentEncryptionKeyWhenConfigured(t *testing.T) {
+	store := newTestStore()
+	service := NewServiceWithOptions(store, fixedNow, ServiceOptions{
+		RequireProviderSecretEncryptionKey: true,
+	})
+	ctx := context.Background()
+	admin := localEnvelope("req-ai-providers-key-required", localUserID, nil)
+
+	_, err := service.UpdateCompanyAiProviderSettings(ctx, contracts.CompanyAiProviderSettingsUpdateRequest{
+		BridgeEnvelope: admin,
+		CompanyID:      LocalCompanyID,
+		ProviderProfile: map[string]any{
+			"id":              "company-chat-provider",
+			"label":           "OpenAI Chat",
+			"providerKind":    "openai",
+			"credentialValue": "sk-company-secret",
+			"models":          map[string]any{"chat": []any{"gpt-4.1-mini"}},
+			"parameters":      map[string]any{},
+		},
+		ChatModelAlias: map[string]any{
+			"id":                "company-chat",
+			"name":              "chat",
+			"providerProfileId": "company-chat-provider",
+			"model":             "gpt-4.1-mini",
+			"purpose":           "chat",
+			"parameters":        map[string]any{},
+		},
+		ExpectedVersion: 1,
+	})
+	if err == nil || !strings.Contains(err.Error(), "CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY") {
+		t.Fatalf("UpdateCompanyAiProviderSettings error = %v, want encryption key requirement", err)
+	}
+}
+
+func TestLocalBootstrapRepairsLocalAdminMembership(t *testing.T) {
+	store := newTestStore()
+	service := NewService(store, fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-local-admin-repair", localUserID, nil)
+	store.memberships[membershipKey(LocalCompanyID, localUserID)] = ports.MembershipRecord{
+		UserID:         localUserID,
+		OrganizationID: LocalCompanyID,
+		Role:           contracts.CompanyRoleUser,
+		CreatedAt:      fixedNow(),
+		UpdatedAt:      fixedNow(),
+	}
+
+	if _, err := service.GetViewer(ctx, admin); err != nil {
+		t.Fatalf("GetViewer returned error: %v", err)
+	}
+	membership := store.memberships[membershipKey(LocalCompanyID, localUserID)]
+	if membership.Role != contracts.CompanyRoleAdmin {
+		t.Fatalf("local membership role = %s, want admin", membership.Role)
+	}
+	_, err := service.UpdateCompanyAiProviderSettings(ctx, contracts.CompanyAiProviderSettingsUpdateRequest{
+		BridgeEnvelope: admin,
+		CompanyID:      LocalCompanyID,
+		ProviderProfile: map[string]any{
+			"id":              "company-chat-provider",
+			"label":           "OpenAI Chat",
+			"providerKind":    "openai",
+			"credentialValue": "sk-company-secret",
+			"models":          map[string]any{"chat": []any{"gpt-5-mini"}},
+			"parameters":      map[string]any{},
+		},
+		ChatModelAlias: map[string]any{
+			"id":                "company-chat",
+			"name":              "chat",
+			"providerProfileId": "company-chat-provider",
+			"model":             "gpt-5-mini",
+			"purpose":           "chat",
+			"parameters":        map[string]any{},
+		},
+		ExpectedVersion: 1,
+	})
+	if err != nil {
+		t.Fatalf("UpdateCompanyAiProviderSettings returned error after repair: %v", err)
+	}
+}
+
+func TestCompanyAiProviderSettingsNormalizesPersistedLegacyEffectiveShape(t *testing.T) {
+	store := newTestStore()
+	service := NewService(store, fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-company-ai-legacy", localUserID, ptr(LocalProjectID))
+	store.companyAiSettings[LocalCompanyID] = ports.CompanyAiProviderSettingsRecord{
+		CompanyID: LocalCompanyID,
+		Settings: map[string]any{
+			"companyId":           LocalCompanyID,
+			"chatProviderProfile": nil,
+			"chatModelAlias":      nil,
+			"effective": map[string]any{
+				"enabled":                    false,
+				"warnings":                   []any{"legacy"},
+				"missingCredentialRefs":      []any{},
+				"disabledProviderProfileIds": []any{},
+				"runtimeSource":              "stored",
+			},
+			"version":         3,
+			"updatedAt":       fixedNow(),
+			"updatedByUserId": localUserID,
+		},
+		UpdatedAt:       fixedNow(),
+		UpdatedByUserID: localUserID,
+		Version:         3,
+	}
+
+	settings, err := service.GetCompanyAiProviderSettings(ctx, contracts.CompanyAiProviderSettingsGetRequest{
+		BridgeEnvelope: admin,
+		CompanyID:      LocalCompanyID,
+	})
+	if err != nil {
+		t.Fatalf("GetCompanyAiProviderSettings returned error: %v", err)
+	}
+	effective := settings["effective"].(map[string]any)
+	if _, ok := effective["missingProviderProfiles"].([]any); !ok {
+		t.Fatalf("effective = %#v, want missingProviderProfiles array", effective)
+	}
+	if _, ok := effective["disabledProviderProfiles"].([]any); !ok {
+		t.Fatalf("effective = %#v, want disabledProviderProfiles array", effective)
+	}
+	if effective["missingChatProvider"] != true {
+		t.Fatalf("effective = %#v, want repaired missingChatProvider true", effective)
+	}
+	persisted := store.companyAiSettings[LocalCompanyID].Settings["effective"].(map[string]any)
+	if _, ok := persisted["missingProviderProfiles"].([]any); !ok {
+		t.Fatalf("persisted effective = %#v, want repaired missingProviderProfiles array", persisted)
+	}
+	if _, ok := persisted["disabledProviderProfiles"].([]any); !ok {
+		t.Fatalf("persisted effective = %#v, want repaired disabledProviderProfiles array", persisted)
+	}
+	if persisted["missingChatProvider"] != true {
+		t.Fatalf("persisted effective = %#v, want repaired missingChatProvider true", persisted)
+	}
+}
+
+func TestAiChatConversationActionsAndCompactionPersistInControlPlane(t *testing.T) {
+	store := newTestStore()
+	service := NewService(store, fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-ai-chat", localUserID, ptr(LocalProjectID))
+
+	conversation, err := service.CreateAiChatConversation(ctx, contracts.AiChatConversationCreateRequest{
+		BridgeEnvelope:   admin,
+		CompanyID:        LocalCompanyID,
+		ProjectID:        LocalProjectID,
+		UserID:           localUserID,
+		FirstUserMessage: "Investigate errors",
+	})
+	if err != nil {
+		t.Fatalf("CreateAiChatConversation returned error: %v", err)
+	}
+	conversationID := conversation["id"].(string)
+	loaded, err := service.GetAiChatConversation(ctx, contracts.AiChatConversationGetRequest{
+		BridgeEnvelope: admin,
+		ConversationID: conversationID,
+	})
+	if err != nil {
+		t.Fatalf("GetAiChatConversation returned error: %v", err)
+	}
+	if loaded == nil || len(loaded["messages"].([]any)) != 1 {
+		t.Fatalf("loaded conversation = %#v, want persisted first message", loaded)
+	}
+
+	run, err := service.CreateAiChatRun(ctx, contracts.AiChatRunCreateRequest{
+		BridgeEnvelope:      admin,
+		ConversationID:      conversationID,
+		ProjectID:           LocalProjectID,
+		UserID:              localUserID,
+		UserMessageClientID: "client-message-1",
+		IdempotencyKey:      "idempotency-key-1",
+		ProviderKind:        "openai",
+		ProviderProfileID:   "provider-1",
+		Model:               "gpt-4.1-mini",
+	})
+	if err != nil {
+		t.Fatalf("CreateAiChatRun returned error: %v", err)
+	}
+	message, err := service.AppendAiChatMessage(ctx, contracts.AiChatMessageAppendRequest{
+		BridgeEnvelope: admin,
+		ConversationID: conversationID,
+		RunID:          run.ID,
+		Role:           "assistant",
+		Parts:          []map[string]any{{"type": "text", "text": "Found error spans."}},
+	})
+	if err != nil {
+		t.Fatalf("AppendAiChatMessage returned error: %v", err)
+	}
+	if message["conversationId"] != conversationID {
+		t.Fatalf("message = %#v, want conversationId", message)
+	}
+	action, err := service.ProposeAiChatAction(ctx, contracts.AiChatActionProposeRequest{
+		BridgeEnvelope: admin,
+		ConversationID: conversationID,
+		RunID:          run.ID,
+		Title:          "Save dashboard",
+		Risk:           string(contracts.AiChatActionRiskMedium),
+		Operation:      "dashboard.save",
+		Preview:        map[string]any{"name": "Errors"},
+	})
+	if err != nil {
+		t.Fatalf("ProposeAiChatAction returned error: %v", err)
+	}
+	actionID := action["id"].(string)
+	approved, err := service.ApproveAiChatAction(ctx, contracts.AiChatActionApproveRequest{
+		BridgeEnvelope:  admin,
+		ActionID:        actionID,
+		Approved:        true,
+		UserID:          localUserID,
+		ExpectedVersion: 1,
+	})
+	if err != nil {
+		t.Fatalf("ApproveAiChatAction returned error: %v", err)
+	}
+	if approved["status"] != string(contracts.AiChatActionStatusApproved) {
+		t.Fatalf("approved action = %#v, want approved", approved)
+	}
+	compaction, err := service.SaveAiChatCompaction(ctx, contracts.AiChatCompactionSaveRequest{
+		BridgeEnvelope:    admin,
+		ConversationID:    conversationID,
+		Summary:           "Errors investigated.",
+		CoveredMessageIDs: []string{message["id"].(string)},
+		TokenCount:        42,
+	})
+	if err != nil {
+		t.Fatalf("SaveAiChatCompaction returned error: %v", err)
+	}
+	if compaction["conversationId"] != conversationID {
+		t.Fatalf("compaction = %#v, want conversationId", compaction)
+	}
+	history, err := service.GetAiChatHistory(ctx, contracts.AiChatHistoryRequest{
+		BridgeEnvelope: admin,
+		CompanyID:      LocalCompanyID,
+		UserID:         localUserID,
+		ProjectID:      ptr(LocalProjectID),
+	})
+	if err != nil {
+		t.Fatalf("GetAiChatHistory returned error: %v", err)
+	}
+	if len(history["projectGroups"].([]any)) != 1 {
+		t.Fatalf("history = %#v, want one project group", history)
+	}
+	group := history["projectGroups"].([]any)[0].(map[string]any)
+	if group["projectName"] != "Default project" {
+		t.Fatalf("history project group = %#v, want projectName Default project", group)
+	}
+	otherProjectID := "project-other"
+	store.projects[otherProjectID] = ports.ProjectRecord{
+		ID:             otherProjectID,
+		OrganizationID: LocalCompanyID,
+		Name:           "Other project",
+		Status:         contracts.ProjectStatusActive,
+		CreatedAt:      fixedNow(),
+		UpdatedAt:      fixedNow(),
+	}
+	store.projectMembers[projectMemberKey(otherProjectID, localUserID)] = ports.ProjectMemberRecord{
+		ProjectID: otherProjectID,
+		UserID:    localUserID,
+		Role:      contracts.ProjectRoleEditor,
+		CreatedAt: fixedNow(),
+		UpdatedAt: fixedNow(),
+	}
+	store.aiChatConversations["chat-other-project"] = ports.AiChatConversationRecord{
+		ID:            "chat-other-project",
+		CompanyID:     LocalCompanyID,
+		ProjectID:     otherProjectID,
+		UserID:        localUserID,
+		Title:         "Other project",
+		Status:        contracts.AiChatConversationStatusActive,
+		LastMessageAt: fixedNow().Add(time.Second),
+		CreatedAt:     fixedNow(),
+		UpdatedAt:     fixedNow(),
+		Version:       1,
+	}
+	store.aiChatConversations["chat-other-user"] = ports.AiChatConversationRecord{
+		ID:            "chat-other-user",
+		CompanyID:     LocalCompanyID,
+		ProjectID:     LocalProjectID,
+		UserID:        "user-2",
+		Title:         "Other user",
+		Status:        contracts.AiChatConversationStatusActive,
+		LastMessageAt: fixedNow().Add(2 * time.Second),
+		CreatedAt:     fixedNow(),
+		UpdatedAt:     fixedNow(),
+		Version:       1,
+	}
+	scopedHistory, err := service.GetAiChatHistory(ctx, contracts.AiChatHistoryRequest{
+		BridgeEnvelope: admin,
+		CompanyID:      LocalCompanyID,
+		UserID:         localUserID,
+		ProjectID:      ptr(LocalProjectID),
+	})
+	if err != nil {
+		t.Fatalf("GetAiChatHistory scoped returned error: %v", err)
+	}
+	scopedGroups := scopedHistory["projectGroups"].([]any)
+	if len(scopedGroups) != 1 {
+		t.Fatalf("scoped history = %#v, want one selected project group", scopedHistory)
+	}
+	scopedConversations := scopedGroups[0].(map[string]any)["conversations"].([]any)
+	for _, item := range scopedConversations {
+		conversation := item.(map[string]any)
+		if conversation["projectId"] != LocalProjectID || conversation["userId"] != localUserID {
+			t.Fatalf("scoped conversation = %#v, want only local user/default project", conversation)
+		}
+	}
+	otherUser := localEnvelope("req-ai-chat-other-user", "user-2", ptr(LocalProjectID))
+	if _, err := service.DeleteAiChatConversation(ctx, contracts.AiChatConversationDeleteRequest{
+		BridgeEnvelope: otherUser,
+		ConversationID: conversationID,
+		UserID:         "user-2",
+	}); !isForbidden(err) {
+		t.Fatalf("DeleteAiChatConversation by other user error = %v, want forbidden", err)
+	}
+	deleted, err := service.DeleteAiChatConversation(ctx, contracts.AiChatConversationDeleteRequest{
+		BridgeEnvelope: admin,
+		ConversationID: conversationID,
+		UserID:         localUserID,
+	})
+	if err != nil {
+		t.Fatalf("DeleteAiChatConversation returned error: %v", err)
+	}
+	if !deleted {
+		t.Fatalf("DeleteAiChatConversation deleted = false, want true")
+	}
+	if _, ok := store.aiChatConversations[conversationID]; ok {
+		t.Fatalf("conversation still exists after delete")
+	}
+	if _, ok := store.aiChatMessages[message["id"].(string)]; ok {
+		t.Fatalf("message still exists after delete")
+	}
+	if _, ok := store.aiChatRuns[run.ID]; ok {
+		t.Fatalf("run still exists after delete")
+	}
+	if _, ok := store.aiChatActions[actionID]; ok {
+		t.Fatalf("action still exists after delete")
+	}
+	if _, ok := store.aiChatCompactions[compaction["id"].(string)]; ok {
+		t.Fatalf("compaction still exists after delete")
+	}
+	loadedAfterDelete, err := service.GetAiChatConversation(ctx, contracts.AiChatConversationGetRequest{
+		BridgeEnvelope: admin,
+		ConversationID: conversationID,
+	})
+	if err != nil {
+		t.Fatalf("GetAiChatConversation after delete returned error: %v", err)
+	}
+	if loadedAfterDelete != nil {
+		t.Fatalf("loaded after delete = %#v, want nil", loadedAfterDelete)
 	}
 }
 

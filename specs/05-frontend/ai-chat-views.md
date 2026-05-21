@@ -11,6 +11,11 @@ depends_on: [DOM-007, TEC-BE-029, TEC-FE-001, TEC-FE-002]
 
 # AI Chat Views
 
+AI Chat is CloudGrid's product-native investigation workspace. It must feel
+like part of the trace, log, metric, dashboard, alert, and AI-evaluation
+workflow, not like a generic chat embed or a launcher for Jaeger, Zipkin,
+Datadog, or another external observability product.
+
 ## External UI Inputs
 
 AI Chat uses AI Elements components for conversation structure, messages,
@@ -40,10 +45,11 @@ when `CLOUDGRID_AI_CHAT_ENABLED=false`, when the company provider is not
 configured and the viewer is not a company admin, or when the user lacks access
 to the selected project.
 
-Chat history includes all projects in the current company that the user can
-access. The selected project group is expanded first. Other project groups are
-collapsed by default; selecting a conversation from another project first
-selects that project, then opens the conversation.
+Chat history is scoped to the current user and selected project. The route
+always passes the selected project ID to `Query.aiChatHistory`; stale cache data
+for other projects must be filtered out before rendering. Changing projects
+therefore changes the visible history list instead of showing conversations
+from another project.
 
 ## AI Chat Layout
 
@@ -57,19 +63,24 @@ AI Chat follows the global product UX rules:
 
 The route has:
 
-- route header with title `AI Chat`, selected project context, provider status,
-  and a new-conversation action;
 - conversation history rail inside the route workspace, grouped by project and
   ordered by last message descending;
+- owner-only delete action for each history item, using an icon button and a
+  confirmation dialog; successful deletion removes the item from the rail and
+  clears the active route when the deleted conversation was open;
 - conversation transcript using AI Elements `Conversation`, `Message`, and
   related message/tool components;
 - prompt composer using AI Elements prompt input components;
+- failed conversation creation and failed stream runs render inline error states
+  with explicit retry actions;
 - artifact region inline with assistant messages, using json-render renderers;
 - approval surfaces for assistant action proposals.
 
-On desktop, the route-local history rail is visible beside the transcript. On
-mobile, history opens in a sheet from the route header. The prompt composer is
-sticky to the bottom of the transcript scroll container.
+The route must not add a secondary AI Chat page header above the transcript or
+wrap the chat in a board/card. On desktop, the route-local history rail is
+visible beside the transcript. On mobile, a compact top row exposes history and
+new conversation actions. The prompt composer is sticky to the bottom of the
+transcript scroll container.
 
 AI Elements attachment, screenshot, web-search, and model-picker controls are
 not exposed in v1. The prompt composer accepts text only. The active model is
@@ -102,6 +113,12 @@ User and assistant messages use AI Elements message primitives. Tool and
 reasoning status parts use compact inline status components and must not expose
 raw provider traces or hidden prompts.
 
+Assistant text must render as sanitized Markdown, including paragraphs, lists,
+tables, inline code, fenced code blocks, links, emphasis, and headings. The
+Markdown renderer must disable raw HTML and script execution. BFF-approved
+CloudGrid route links render as normal in-app navigation; unapproved external
+links are rendered as inert text or stripped according to the renderer wrapper.
+
 Supported assistant artifact renderers:
 
 - metric time-series chart;
@@ -121,10 +138,20 @@ JSON renderers are sanitized by the renderer wrapper. External links inside
 assistant artifacts are disabled unless the BFF marks the URL as a CloudGrid
 route.
 
-json-render action handlers are disabled by default. The only allowed handlers
-are route navigation to BFF-approved CloudGrid routes and approval/rejection of
-server-issued `AiChatActionProposal` IDs. Mermaid click directives, raw HTML,
-external scripts, iframe embeds, and external URLs are stripped before render.
+json-render action handlers are disabled by default. The frontend must use only
+renderer keys from the BFF-approved CloudGrid json-render catalog and must
+reject unknown renderer keys instead of falling back to generic JSON execution
+or ad hoc component selection. The only allowed handlers are route navigation
+to BFF-approved CloudGrid routes and approval/rejection of server-issued
+`AiChatActionProposal` IDs. Mermaid click directives, raw HTML, external
+scripts, iframe embeds, and external URLs are stripped before render.
+
+Investigation answers should render CloudGrid evidence inline: trace
+waterfalls and trace tables for trace questions, metric charts for metric
+questions, log lists for log questions, status summaries for incident triage,
+and AI-evaluation tables or diffs when the question concerns agent quality.
+The UI must not replace CloudGrid evidence with instructions to open external
+observability tools when the selected project has the relevant data.
 
 ## Action Approval UI
 
@@ -198,11 +225,17 @@ a forbidden state.
 
 Required frontend tests:
 
-- history renders grouped by project and sorted by last message;
+- history renders only the selected project's conversations for the current
+  user, grouped by project and sorted by last message;
+- deleting a conversation removes it from the rail and does not expose it after
+  reload;
 - missing provider state differs for company admin and non-admin user;
 - streaming transcript appends message parts in order;
+- assistant Markdown renders lists, code fences, tables, and safe CloudGrid
+  links while raw HTML is disabled;
 - json-render artifacts reject unknown renderer keys;
 - approval UI calls only `Mutation.approveAiChatAction`;
+- failed conversation create and failed stream states expose retry controls;
 - destructive proposals use destructive confirmation styling;
 - provider settings forms hide raw secret input and submit credential refs only;
 - mobile history sheet and desktop history rail expose the same conversations.

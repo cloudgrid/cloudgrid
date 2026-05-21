@@ -160,11 +160,11 @@ CloudGrid receives logs as OTLP logs. Local, VM, and Kubernetes stdout/file log 
 
 ## Timeout Policy
 
-- GraphQL resolver to NATS request/reply timeout: 2 seconds, maps to ERR-014.
-- GraphQL subscription start/stop request to storage-read timeout: 2 seconds, maps to ERR-014.
+- GraphQL resolver to NATS request/reply timeout: configured by `CLOUDGRID_MESSAGE_BRIDGE_REQUEST_TIMEOUT_MS`, default 12 seconds, maps to ERR-014.
+- GraphQL subscription start/stop request to storage-read timeout: configured by `CLOUDGRID_MESSAGE_BRIDGE_REQUEST_TIMEOUT_MS`, default 12 seconds, maps to ERR-014.
 - Live trace event heartbeat interval: 15 seconds. If the BFF does not receive heartbeat or data for 45 seconds, it closes the GraphQL subscription with ERR-014.
 - Collector JetStream publish ack timeout: 1 second, maps to ERR-013.
-- Storage-read SurrealDB query timeout: 1500 milliseconds, maps to ERR-006.
+- Storage-read request handler and SurrealDB query timeout: configured by `CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS`, default 10000 milliseconds, maps to ERR-006. This timeout is owned by storage-read handlers and must be the single read-query deadline applied to trace, log, metric, facet, live-notification, and AI-eval read handlers. The BFF message bridge request timeout must remain greater than this timeout so storage-read owns query timeout semantics.
 - Storage-write SurrealDB command timeout: 5 seconds, maps to ERR-006 or ERR-007.
 
 ## Scaling Policy

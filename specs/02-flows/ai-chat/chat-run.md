@@ -45,7 +45,8 @@ depends_on: [CAP-AIC-001, TEC-BE-029]
    provider snapshot, compacted conversation memory, recent message window, tool
    registry, and W3C trace context.
 9. When harness emits text, BFF streams `text.delta` and appends assistant
-   message parts incrementally.
+   message parts incrementally after applying the assistant Markdown sanitation
+   rules from `specs/04-backend/ai-chat.md`.
 10. When harness requests a tool, BFF validates the tool name and arguments,
     injects the conversation `projectId`, executes the tool through approved
     GraphQL helper or message bridge paths, materializes large results into the
@@ -54,8 +55,8 @@ depends_on: [CAP-AIC-001, TEC-BE-029]
     sandbox runner, validates outputs, and streams artifacts or sanitized
     errors.
 12. When the assistant emits a render spec, BFF validates it against the
-    approved json-render catalog, persists the artifact metadata, and streams
-    `artifact.created`.
+    approved CloudGrid json-render catalog, persists the artifact metadata, and
+    streams `artifact.created`.
 13. When the assistant proposes an action, BFF validates the action whitelist,
     persists the proposal, and streams `action.proposed`; execution waits for
     the approval flow.
@@ -87,3 +88,10 @@ depends_on: [CAP-AIC-001, TEC-BE-029]
   execution.
 - Secret-returning mutations, including ingest credential creation, are not
   executable through AI Chat v1.
+- AI Chat must keep primary trace, log, metric, dashboard, alert, and
+  AI-evaluation investigation inside CloudGrid. It must not defer to Jaeger,
+  Zipkin, Datadog, or another external observability product when CloudGrid has
+  the required project data.
+- Assistant structured output must use approved json-render catalog renderers;
+  unknown renderer keys or executable UI payloads are rejected before streaming
+  to the frontend.

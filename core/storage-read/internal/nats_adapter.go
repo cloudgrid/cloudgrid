@@ -18,25 +18,13 @@ func ConnectNATS(url string) (*nats.Conn, error) {
 	return conn, nil
 }
 
-func SubscribeTelemetryHandlers(nc *nats.Conn, store ports.TelemetryReadStore, logger *slog.Logger) ([]*nats.Subscription, error) {
-	return SubscribeTelemetryHandlersWithMetrics(nc, store, logger, nil)
-}
-
-func SubscribeTelemetryHandlersWithMetrics(nc *nats.Conn, store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder) ([]*nats.Subscription, error) {
-	return SubscribeTelemetryHandlersWithSelfObservability(nc, store, logger, recorder, nil)
-}
-
-func SubscribeTelemetryHandlersWithSelfObservability(nc *nats.Conn, store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder, traceLogRecorder TraceLogRecorder) ([]*nats.Subscription, error) {
-	return SubscribeTelemetryHandlersWithOptions(nc, store, logger, recorder, traceLogRecorder, RuntimeLimits{})
-}
-
 func SubscribeTelemetryHandlersWithOptions(nc *nats.Conn, store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder, traceLogRecorder TraceLogRecorder, limits RuntimeLimits) ([]*nats.Subscription, error) {
 	liveRegistry := NewLiveTraceRegistry(store, natsLiveTracePublisher{nc: nc}, LiveTraceOptions{
 		MaxSubscriptions: limits.LiveMaxSubscriptions,
 		EventBufferSize:  limits.LiveEventBufferSize,
 	})
 	runLiveTraceHeartbeats(liveRegistry)
-	handlers := telemetryHandlersWithSelfObservability(nc, store, liveRegistry, logger, recorder, traceLogRecorder)
+	handlers := telemetryHandlersWithSelfObservability(nc, store, liveRegistry, logger, recorder, traceLogRecorder, limits)
 	subscriptions := make([]*nats.Subscription, 0, len(handlers))
 	for subject, handler := range handlers {
 		subscription, err := nc.Subscribe(subject, adaptNATSHandler(handler))
@@ -51,27 +39,24 @@ func SubscribeTelemetryHandlersWithOptions(nc *nats.Conn, store ports.TelemetryR
 	return subscriptions, nil
 }
 
-func telemetryHandlers(nc *nats.Conn, store ports.TelemetryReadStore, liveRegistry *LiveTraceRegistry, logger *slog.Logger, recorder MetricsRecorder) map[string]bridgeMessageHandler {
-	return telemetryHandlersWithSelfObservability(nc, store, liveRegistry, logger, recorder, nil)
-}
-
-func telemetryHandlersWithSelfObservability(nc *nats.Conn, store ports.TelemetryReadStore, liveRegistry *LiveTraceRegistry, logger *slog.Logger, recorder MetricsRecorder, traceLogRecorder TraceLogRecorder) map[string]bridgeMessageHandler {
+func telemetryHandlersWithSelfObservability(nc *nats.Conn, store ports.TelemetryReadStore, liveRegistry *LiveTraceRegistry, logger *slog.Logger, recorder MetricsRecorder, traceLogRecorder TraceLogRecorder, limits RuntimeLimits) map[string]bridgeMessageHandler {
+	timeout := readHandlerTimeout(limits.QueryTimeout)
 	handlers := map[string]bridgeMessageHandler{
-		SubjectProjectTelemetryOverview: withReadSelfObservability("project_telemetry_overview", traceLogRecorder, handleProjectTelemetryOverviewWithMetrics(store, logger, recorder)),
-		SubjectTraceSearch:              withReadSelfObservability("trace_search", traceLogRecorder, handleTraceSearchWithMetrics(store, logger, recorder)),
-		SubjectTraceGet:                 withReadSelfObservability("trace_get", traceLogRecorder, handleTraceGetWithMetrics(store, logger, recorder)),
-		SubjectLogSearch:                withReadSelfObservability("log_search", traceLogRecorder, handleLogSearchWithMetrics(store, logger, recorder)),
-		SubjectMetricNames:              withReadSelfObservability("metric_names", traceLogRecorder, handleMetricNameSearchWithMetrics(store, logger, recorder)),
-		SubjectMetricQuery:              withReadSelfObservability("metric_series", traceLogRecorder, handleMetricSeriesQueryWithMetrics(store, logger, recorder)),
-		SubjectRichMetricQuery:          withReadSelfObservability("rich_metric_series", traceLogRecorder, handleRichMetricSeriesQueryWithMetrics(store, logger, recorder)),
-		SubjectTelemetryFacets:          withReadSelfObservability("telemetry_facets", traceLogRecorder, handleTelemetryFacetsWithMetrics(store, logger, recorder)),
-		SubjectLiveTraceStart:           withReadSelfObservability("live_trace_start", traceLogRecorder, handleLiveTraceStartWithMetrics(liveRegistry, logger, recorder)),
+		SubjectProjectTelemetryOverview: withReadSelfObservability("project_telemetry_overview", traceLogRecorder, handleProjectTelemetryOverviewWithMetrics(store, logger, recorder, timeout)),
+		SubjectTraceSearch:              withReadSelfObservability("trace_search", traceLogRecorder, handleTraceSearchWithMetrics(store, logger, recorder, timeout)),
+		SubjectTraceGet:                 withReadSelfObservability("trace_get", traceLogRecorder, handleTraceGetWithMetrics(store, logger, recorder, timeout)),
+		SubjectLogSearch:                withReadSelfObservability("log_search", traceLogRecorder, handleLogSearchWithMetrics(store, logger, recorder, timeout)),
+		SubjectMetricNames:              withReadSelfObservability("metric_names", traceLogRecorder, handleMetricNameSearchWithMetrics(store, logger, recorder, timeout)),
+		SubjectMetricQuery:              withReadSelfObservability("metric_series", traceLogRecorder, handleMetricSeriesQueryWithMetrics(store, logger, recorder, timeout)),
+		SubjectRichMetricQuery:          withReadSelfObservability("rich_metric_series", traceLogRecorder, handleRichMetricSeriesQueryWithMetrics(store, logger, recorder, timeout)),
+		SubjectTelemetryFacets:          withReadSelfObservability("telemetry_facets", traceLogRecorder, handleTelemetryFacetsWithMetrics(store, logger, recorder, timeout)),
+		SubjectLiveTraceStart:           withReadSelfObservability("live_trace_start", traceLogRecorder, handleLiveTraceStartWithMetrics(liveRegistry, logger, recorder, timeout)),
 		SubjectLiveTraceStop:            withReadSelfObservability("live_trace_stop", traceLogRecorder, handleLiveTraceStopWithMetrics(liveRegistry, logger, recorder)),
-		SubjectPersistedTraces:          handleTracePersistedNotification(liveRegistry, logger),
+		SubjectPersistedTraces:          handleTracePersistedNotification(liveRegistry, logger, timeout),
 	}
 	if aiEvalStore, ok := store.(ports.AiEvalReadStore); ok {
 		evalLiveRegistry := NewEvalLiveRegistry(aiEvalStore, natsLiveTracePublisher{nc: nc}, EvalLiveOptions{})
-		for subject, handler := range aiEvalReadSubjectHandlers(aiEvalStore, evalLiveRegistry, logger) {
+		for subject, handler := range aiEvalReadSubjectHandlers(aiEvalStore, evalLiveRegistry, logger, timeout) {
 			handlers[subject] = handler
 		}
 	}

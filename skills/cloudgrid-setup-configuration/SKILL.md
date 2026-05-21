@@ -21,7 +21,7 @@ Read only the files needed for the requested setup path:
 6. `specs/04-backend/self-observability.md` for self-observability
 7. `specs/06-nfr/release-distribution.md` for release Compose, Docker, Helm, and tags
 8. `deploy/compose/cloudgrid-local.sh`, `deploy/compose/cloudgrid.compose.yaml`, and `deploy/compose/cloudgrid.env.example` for released local runtime
-9. `docs/configuration/` and `docs/getting-started/` when public docs need updates
+9. `website/src/content/handbook/configuration/` and `website/src/content/handbook/getting-started/` when public docs need updates
 
 If a needed config key, auth mode, setup path, or validation rule is missing,
 update the spec before implementing or documenting it.

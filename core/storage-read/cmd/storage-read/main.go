@@ -19,7 +19,13 @@ import (
 	"github.com/cloudgrid-dev/cloudgrid/core/storage-read/internal/ports"
 )
 
-const startupTimeout = 5 * time.Second
+const (
+	startupTimeout              = 5 * time.Second
+	storageCloseTimeout         = time.Second
+	exporterShutdownTimeout     = 2 * time.Second
+	healthReadHeaderTimeout     = 5 * time.Second
+	healthServerShutdownTimeout = 10 * time.Second
+)
 
 func main() {
 	os.Exit(run())
@@ -42,7 +48,7 @@ func run() int {
 		return 1
 	}
 	defer func() {
-		closeCtx, closeCancel := context.WithTimeout(context.Background(), time.Second)
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), storageCloseTimeout)
 		defer closeCancel()
 		if err := adapter.Close(closeCtx); err != nil {
 			logError(logger, "storage_close_failed", err, "ERR-006")
@@ -60,7 +66,7 @@ func run() int {
 	}
 	if metricsExporter != nil {
 		defer func() {
-			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), exporterShutdownTimeout)
 			defer shutdownCancel()
 			_ = metricsExporter.Shutdown(shutdownCtx)
 		}()
@@ -72,7 +78,7 @@ func run() int {
 	}
 	if traceLogExporter != nil {
 		defer func() {
-			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), exporterShutdownTimeout)
 			defer shutdownCancel()
 			_ = traceLogExporter.Shutdown(shutdownCtx)
 		}()
@@ -115,7 +121,7 @@ func run() int {
 	healthServer := &http.Server{
 		Addr:              net.JoinHostPort(cfg.HealthHost, cfg.HealthPort),
 		Handler:           probes.Handler(),
-		ReadHeaderTimeout: 5 * time.Second,
+		ReadHeaderTimeout: healthReadHeaderTimeout,
 	}
 	probes.SetReady(true)
 	healthErrors := make(chan error, 1)
@@ -150,7 +156,7 @@ func run() int {
 			"request_id", "",
 			"signal", signal.String(),
 		)
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), healthServerShutdownTimeout)
 		defer shutdownCancel()
 		if err := healthServer.Shutdown(shutdownCtx); err != nil {
 			logError(logger, "health_server_shutdown_failed", err, "ERR-010")
@@ -182,6 +188,7 @@ func storageReadSelfObservabilityMetricsExporter(cfg storage.Config, logger *slo
 		CompanyID:             self.CompanyID,
 		ProjectID:             self.ProjectID,
 		Logger:                logger,
+		FailureLogLevel:       self.ExportFailureLogLevel,
 	})
 }
 
@@ -202,6 +209,7 @@ func storageReadSelfObservabilityTraceLogExporter(cfg storage.Config, logger *sl
 		TracesEnabled:         self.TracesEnabled,
 		LogsEnabled:           self.LogsEnabled,
 		Logger:                logger,
+		FailureLogLevel:       self.ExportFailureLogLevel,
 	})
 }
 
@@ -220,6 +228,7 @@ func shutdownSignal() <-chan os.Signal {
 
 func newLogger(output io.Writer) *slog.Logger {
 	handler := slog.NewJSONHandler(output, &slog.HandlerOptions{
+		Level: runtimeLogLevel(),
 		ReplaceAttr: func(_ []string, attr slog.Attr) slog.Attr {
 			switch attr.Key {
 			case slog.TimeKey:
@@ -233,6 +242,19 @@ func newLogger(output io.Writer) *slog.Logger {
 		},
 	})
 	return slog.New(handler)
+}
+
+func runtimeLogLevel() slog.Level {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("CLOUDGRID_LOG_LEVEL"))) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }
 
 func logError(logger *slog.Logger, event string, err error, fallbackCode string, fields ...any) {

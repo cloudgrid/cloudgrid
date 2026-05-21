@@ -19,12 +19,15 @@ updated: 2026-05-18
 | `/metrics` | Metric explorer for descriptors, series queries, group-by, filters, and exemplars. |
 | `/dashboards` | Saved and built-in dashboards using typed metric, log, trace, and live widgets. |
 | `/alerts` | Project alert rules, silences, and in-app alert history records. |
+| `/ai-chat` | Optional project-scoped AI Chat assistant when enabled and provider-backed. |
 | `/ai-eval` | Optional AI evaluation workspace. |
 | `/projects/:projectId/settings` | Project general settings. |
 | `/projects/:projectId/settings/ingest` | Project API key setup and key management. |
 | `/projects/:projectId/settings/members` | Project-specific membership and roles. |
 | `/projects/:projectId/settings/retention` | Project retention policy settings. |
+| `/projects/:projectId/settings/ai-providers` | Project AI provider profiles and model aliases. |
 | `/projects/:projectId/settings/ai-eval` | Project AI evaluation settings when enabled. |
+| `/organizations/:organizationId/ai-provider` | Company AI Chat provider settings for company admins. |
 
 There is no `/live` primary route. Live trace receiving is a mode inside `/traces`.
 
