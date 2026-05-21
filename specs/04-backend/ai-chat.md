@@ -176,6 +176,37 @@ excluding heartbeat.
 The BFF must not stream hidden provider reasoning text. Provider reasoning may
 only surface as generic `tool.started` or `message.created` status labels.
 
+Tool status events are user-interface progress signals only. They must include
+only a stable tool ID, safe display label, status, sequence, and optional
+duration/error code. They must not include tool input JSON, tool output JSON,
+provider reasoning, prompts, credentials, query filters, raw trace/log/metric
+records, or sandbox file contents. The frontend renders these events as compact
+tool-use indicators, not expandable payload inspectors.
+
+Artifacts are stream parts, not provider-authored raw Markdown. The BFF emits
+`artifact.created` only after validating the render spec and persisting an
+`AiChatArtifact`. The event payload contains `artifactId`, `renderer`, `label`,
+`renderSpec`, and optional source IDs. The frontend inserts the artifact at the
+current assistant-message position.
+
+For transcript export, copy/paste, and no-JavaScript fallback rendering, the
+canonical Markdown serialization for a JSON-render artifact is a fenced code
+block with this exact info string:
+
+````markdown
+```cloudgrid-json-render:<renderer>
+{ "artifactId": "art_...", "renderer": "<renderer>", "spec": {} }
+```
+````
+
+`<renderer>` must be one approved CloudGrid JSON-render catalog key. The JSON
+body must be valid UTF-8 JSON and must include the persisted `artifactId`.
+Frontend code must render this fence as a CloudGrid artifact only when the
+fence originates from a BFF `artifact` message part or `artifact.created`
+event. User-authored or model-authored text that happens to contain the same
+fence is displayed as an inert code block unless it is backed by a persisted
+artifact ID in the current conversation.
+
 Requests to reveal, print, translate, summarize, debug, ignore, override, or
 bypass hidden prompts, system instructions, developer instructions, policies,
 tool schemas, chain-of-thought, credentials, tokens, environment variables,
@@ -254,6 +285,13 @@ Fields:
 Message parts store sanitized assistant output and artifact references. Large
 tool result files are not embedded in message parts; they are stored as bounded
 artifacts.
+
+Assistant messages preserve mixed content order. A single assistant message may
+contain multiple text parts and multiple artifact parts, for example short
+Markdown analysis, a `trace_waterfall` artifact, more Markdown, and a `table`
+artifact. The BFF is the only component that may create `artifact` message
+parts. The model may request `render.emitJsonRender`; it may not directly write
+artifact message parts or trusted `cloudgrid-json-render:*` fences.
 
 Archiving a conversation sets `status=archived`, hides it from default history,
 and prevents new runs in that conversation. It does not delete messages,
@@ -439,6 +477,14 @@ handlers, and provider-hidden reasoning are stripped before streaming or
 persisting. Links are allowed only when they target BFF-approved CloudGrid
 routes or documented CloudGrid public documentation.
 
+The BFF must not accept JSON-render specs from arbitrary Markdown code fences
+inside model text. Trusted JSON-render artifacts come only from the validated
+`render.emitJsonRender` output tool or from server-side deterministic reducers.
+When persisting or exporting transcripts, artifact parts are serialized as
+`cloudgrid-json-render:<renderer>` fenced code blocks so Markdown text and
+structured renderers can be represented in one ordered response without
+inventing a second transcript format.
+
 Assistant artifacts use JSON-render specs from the approved CloudGrid
 json-render catalog. The assistant must not invent renderer keys or inline ad
 hoc chart/table schemas when an approved catalog renderer exists. The approved
@@ -463,6 +509,13 @@ Render specs must be at most 512 KiB after JSON serialization. Embedded table
 data is capped at 500 rows, chart data at 5000 points, log lists at 200 rows,
 and trace waterfalls at 5000 spans. Larger artifacts must render summarized
 views with a warning and a link back to the source CloudGrid route.
+
+A single run may create at most 12 JSON-render artifacts and at most one
+`action_approval` artifact per pending action proposal. The BFF increments
+`artifactCount` only after validation succeeds. Duplicate render specs with the
+same `sourceToolCallIds`, renderer, and canonical JSON digest within one run
+must be de-duplicated and referenced by the existing artifact ID instead of
+persisted twice.
 
 Trace, log, and metric investigation answers should pair short Markdown
 analysis with structured JSON-render artifacts. Tables are for sortable
@@ -606,6 +659,11 @@ Required tests:
 - read tools call only approved BFF helper or message bridge paths;
 - sandbox rejects network, environment, host path, and oversized output access;
 - render specs reject unapproved catalog keys and executable content;
+- artifact stream events, persisted message parts, and
+  `cloudgrid-json-render:<renderer>` transcript serialization preserve mixed
+  Markdown/artifact ordering without trusting model-authored fenced blocks;
+- tool status events expose only tool names/status labels and never tool
+  payloads;
 - critical actions require approval and re-run authorization checks;
 - stale action versions fail without mutation;
 - conversation history is scoped to the current user, filtered to the selected

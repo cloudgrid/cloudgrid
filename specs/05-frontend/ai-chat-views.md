@@ -23,12 +23,33 @@ tool-call displays, and prompt input. AI Elements components are installed into
 the frontend codebase and adapted to the existing React/Vite, shadcn/ui, and
 Tailwind setup rather than treated as opaque runtime widgets.
 
+The implementation must use AI Elements primitives for the core chat surface,
+not a custom chat framework:
+
+- transcript: `Conversation`, `ConversationContent`, and
+  `ConversationScrollButton`;
+- messages: `Message`, `MessageContent`, and `MessageResponse`;
+- composer: `PromptInput`, `PromptInputTextarea`, and `PromptInputSubmit`;
+- tool progress: AI Elements `Tool`/`ToolHeader`-style status UI or a thin
+  CloudGrid wrapper around it that hides inputs and outputs.
+
+`Reasoning` is not used in CloudGrid AI Chat v1 because hidden model reasoning
+must not be exposed. `ChainOfThought` may only be used as a visual shell for
+discrete CloudGrid progress steps when it displays safe labels derived from
+BFF `tool.started`/`tool.completed` events; it must not display model
+chain-of-thought, provider reasoning text, prompts, tool schemas, tool inputs,
+or tool outputs.
+
 AI Chat uses json-render for structured assistant artifacts. The frontend must
 render only BFF-validated artifact specs from the approved JSON-render catalog.
 
 Reference URLs:
 
 - https://elements.ai-sdk.dev/
+- https://elements.ai-sdk.dev/components/conversation
+- https://elements.ai-sdk.dev/components/prompt-input
+- https://elements.ai-sdk.dev/components/tool
+- https://elements.ai-sdk.dev/components/chain-of-thought
 - https://json-render.dev/
 
 ## Routes
@@ -85,6 +106,13 @@ transcript scroll container.
 AI Elements attachment, screenshot, web-search, and model-picker controls are
 not exposed in v1. The prompt composer accepts text only. The active model is
 company-admin configuration, not a per-message user choice.
+
+If the installed AI Elements `PromptInput` exposes attachment, screenshot,
+web-search, model-picker, or arbitrary action menu affordances, CloudGrid must
+not render those subcomponents in v1. The only visible composer controls are
+the textarea and submit/stop control. Submit is disabled for empty text,
+archived conversations, missing provider configuration, forbidden project
+access, and active non-cancellable stream states.
 
 ## Conversation States
 
@@ -234,6 +262,14 @@ Required frontend tests:
 - assistant Markdown renders lists, code fences, tables, and safe CloudGrid
   links while raw HTML is disabled;
 - json-render artifacts reject unknown renderer keys;
+- mixed Markdown plus artifact responses preserve server event order, including
+  multiple artifacts in one assistant message;
+- `cloudgrid-json-render:<renderer>` fenced blocks render as artifacts only
+  when backed by a BFF artifact part for the current conversation, while
+  user-authored or untrusted model-authored matching fences render as inert
+  code;
+- tool progress indicators show only safe tool labels/statuses and do not show
+  tool input/output payloads;
 - approval UI calls only `Mutation.approveAiChatAction`;
 - failed conversation create and failed stream states expose retry controls;
 - destructive proposals use destructive confirmation styling;

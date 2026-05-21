@@ -264,6 +264,13 @@ Specialist agents should produce renderer intents, not frontend components.
 Frontend rendering remains driven by the approved JSON-render catalog in
 `specs/04-backend/ai-chat.md` and the matching frontend contract tests.
 
+Renderer intents must be emitted through `render.emitJsonRender`; agents must
+not hand-write trusted `cloudgrid-json-render:<renderer>` fenced blocks in
+assistant text. The BFF is responsible for converting validated artifacts into
+ordered stream/message parts and, when a Markdown transcript is needed, into
+the canonical fenced-block serialization defined in
+`specs/04-backend/ai-chat.md`.
+
 ## Session And Scope Identity
 
 AI Chat session identity must include the isolation dimensions:
