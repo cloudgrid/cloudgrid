@@ -41,6 +41,45 @@ func TestControlSurrealDBConfigUsesSharedDefaults(t *testing.T) {
 	}
 }
 
+func TestControlSurrealDBConfigUsesConfiguredValues(t *testing.T) {
+	t.Setenv("CLOUDGRID_SURREALDB_URL", "http://surrealdb.example.test/rpc")
+	t.Setenv("CLOUDGRID_SURREALDB_NAMESPACE", "cloudgrid")
+	t.Setenv("CLOUDGRID_SURREALDB_DATABASE", "prod")
+	t.Setenv("CLOUDGRID_SURREALDB_USERNAME", "service")
+	t.Setenv("CLOUDGRID_SURREALDB_PASSWORD", "secret")
+
+	config := controlSurrealDBConfig()
+	if config.URL != "http://surrealdb.example.test/rpc" ||
+		config.Namespace != "cloudgrid" ||
+		config.Database != "prod" ||
+		config.Username != "service" ||
+		config.Password != "secret" {
+		t.Fatalf("config = %#v, want configured SurrealDB values", config)
+	}
+}
+
+func TestValueOrDefaultTrimsWhitespaceAndFallsBack(t *testing.T) {
+	if got := valueOrDefault("  configured  ", "fallback"); got != "configured" {
+		t.Fatalf("valueOrDefault(configured) = %q, want trimmed configured value", got)
+	}
+	if got := valueOrDefault(" \t ", "fallback"); got != "fallback" {
+		t.Fatalf("valueOrDefault(blank) = %q, want fallback", got)
+	}
+}
+
+func TestSplitCSVTrimsAndDropsEmptyItems(t *testing.T) {
+	got := splitCSV(" email, , slack ,, webhook ")
+	want := []string{"email", "slack", "webhook"}
+	if len(got) != len(want) {
+		t.Fatalf("splitCSV length = %d, want %d: %#v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("splitCSV[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
 func TestResolveControlPlaneSelfObservabilityConfigUsesLocalDefaults(t *testing.T) {
 	env := map[string]string{
 		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN": "system-token",
@@ -63,10 +102,48 @@ func TestResolveControlPlaneSelfObservabilityConfigUsesLocalDefaults(t *testing.
 	}
 }
 
+func TestResolveControlPlaneSelfObservabilityConfigAcceptsDeployedConfig(t *testing.T) {
+	env := map[string]string{
+		"CLOUDGRID_DEPLOYMENT_MODE":                            "deployed",
+		"CLOUDGRID_SELF_OBSERVABILITY_ENABLED":                 "true",
+		"CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID":              "company-1",
+		"CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID":              "cloudgrid-system",
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT":           "https://otlp.example.test",
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN":       "system-token",
+		"CLOUDGRID_SELF_OBSERVABILITY_TRACES_ENABLED":          "false",
+		"CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED":            "true",
+		"CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS": "45",
+	}
+	config, err := resolveControlPlaneSelfObservabilityConfig(func(name string) string { return env[name] })
+	if err != nil {
+		t.Fatalf("resolveControlPlaneSelfObservabilityConfig returned error: %v", err)
+	}
+	if !config.Enabled || config.TracesEnabled || !config.LogsEnabled || config.ExportIntervalSeconds != 45 {
+		t.Fatalf("config = %#v, want deployed enabled logs-only config", config)
+	}
+}
+
 func TestResolveControlPlaneSelfObservabilityConfigRejectsLocalEnabledWithoutBearerToken(t *testing.T) {
 	_, err := resolveControlPlaneSelfObservabilityConfig(func(string) string { return "" })
 	if err == nil || !strings.Contains(err.Error(), "CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN") {
 		t.Fatalf("resolveControlPlaneSelfObservabilityConfig error = %v, want bearer token validation", err)
+	}
+}
+
+func TestControlPlaneSelfObservabilitySignalExporterReturnsNilWhenSignalsDisabled(t *testing.T) {
+	env := map[string]string{
+		"CLOUDGRID_DEPLOYMENT_MODE":                      "local",
+		"CLOUDGRID_SELF_OBSERVABILITY_ENABLED":           "true",
+		"CLOUDGRID_SELF_OBSERVABILITY_TRACES_ENABLED":    "false",
+		"CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED":      "false",
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN": "system-token",
+	}
+	exporter, err := controlPlaneSelfObservabilitySignalExporter(func(name string) string { return env[name] }, newLogger(testingWriter{t}))
+	if err != nil {
+		t.Fatalf("controlPlaneSelfObservabilitySignalExporter() error = %v", err)
+	}
+	if exporter != nil {
+		t.Fatal("exporter is non-nil when trace and log signals are disabled")
 	}
 }
 
@@ -77,6 +154,30 @@ func TestResolveInvitationEmailConfigUsesLocalDisabledDefaults(t *testing.T) {
 	}
 	if config.Mode != internal.InvitationEmailModeDisabled || config.RequireDelivery {
 		t.Fatalf("invitation email config = %#v, want disabled without required delivery", config)
+	}
+}
+
+func TestInvitationEmailBoolParsesFallbackAndStrictValues(t *testing.T) {
+	tests := []struct {
+		value    string
+		fallback bool
+		want     bool
+	}{
+		{value: "", fallback: true, want: true},
+		{value: " true ", fallback: false, want: true},
+		{value: "FALSE", fallback: true, want: false},
+	}
+	for _, tt := range tests {
+		got, err := invitationEmailBool(tt.value, tt.fallback, "TEST_BOOL")
+		if err != nil {
+			t.Fatalf("invitationEmailBool(%q) returned error: %v", tt.value, err)
+		}
+		if got != tt.want {
+			t.Fatalf("invitationEmailBool(%q) = %v, want %v", tt.value, got, tt.want)
+		}
+	}
+	if _, err := invitationEmailBool("yes", false, "TEST_BOOL"); err == nil || !strings.Contains(err.Error(), "TEST_BOOL") {
+		t.Fatalf("invitationEmailBool invalid error = %v, want named validation", err)
 	}
 }
 

@@ -22,10 +22,13 @@ func (cfg Config) HasCredentials() bool {
 }
 
 type Client struct {
-	db        *sdk.DB
-	namespace string
-	database  string
-	mu        sync.Mutex
+	db                *sdk.DB
+	namespace         string
+	database          string
+	mu                sync.Mutex
+	execOverride      func(context.Context, string, map[string]any) error
+	queryRowsOverride func(context.Context, QueryStatement) (any, error)
+	queryOneOverride  func(context.Context, string, map[string]any) (any, error)
 }
 
 func Connect(ctx context.Context, cfg Config) (*Client, error) {
@@ -91,6 +94,9 @@ func (client *Client) Close(ctx context.Context) error {
 }
 
 func (client *Client) exec(ctx context.Context, sql string, vars map[string]any) error {
+	if client.execOverride != nil {
+		return client.execOverride(ctx, sql, vars)
+	}
 	client.mu.Lock()
 	defer client.mu.Unlock()
 	if err := client.db.Use(ctx, client.namespace, client.database); err != nil {
@@ -111,6 +117,17 @@ func (client *Client) exec(ctx context.Context, sql string, vars map[string]any)
 }
 
 func queryRows[T any](ctx context.Context, client *Client, stmt QueryStatement) ([]T, error) {
+	if client.queryRowsOverride != nil {
+		rows, err := client.queryRowsOverride(ctx, stmt)
+		if err != nil {
+			return nil, err
+		}
+		typed, ok := rows.([]T)
+		if !ok {
+			return nil, fmt.Errorf("test query rows override returned %T, want []T", rows)
+		}
+		return typed, nil
+	}
 	client.mu.Lock()
 	defer client.mu.Unlock()
 	if err := client.db.Use(ctx, client.namespace, client.database); err != nil {
@@ -131,6 +148,17 @@ func queryRows[T any](ctx context.Context, client *Client, stmt QueryStatement) 
 
 func queryOne[T any](ctx context.Context, client *Client, sql string, vars map[string]any) (T, error) {
 	var zero T
+	if client.queryOneOverride != nil {
+		row, err := client.queryOneOverride(ctx, sql, vars)
+		if err != nil {
+			return zero, err
+		}
+		typed, ok := row.(T)
+		if !ok {
+			return zero, fmt.Errorf("test query one override returned %T, want T", row)
+		}
+		return typed, nil
+	}
 	client.mu.Lock()
 	defer client.mu.Unlock()
 	if err := client.db.Use(ctx, client.namespace, client.database); err != nil {

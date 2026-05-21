@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -28,21 +29,80 @@ func main() {
 }
 
 func run() int {
-	logger := collector.NewLogger(os.Stdout)
-	natsURL := envOrDefault("CLOUDGRID_NATS_URL", "nats://localhost:4222")
-	httpAddr := otlpHTTPAddr(os.Getenv)
-	grpcAddr := envOrDefault("CLOUDGRID_OTLP_GRPC_ADDR", "0.0.0.0:4317")
-	handlerOptions, err := buildHandlerOptionsFromEnv(context.Background(), os.Getenv, http.DefaultClient)
+	return runWithRuntime(collectorRuntime{
+		getenv:     os.Getenv,
+		output:     os.Stdout,
+		httpClient: http.DefaultClient,
+		connectBridge: func(url string, timeout time.Duration) (collectorBridge, error) {
+			bridge, err := collector.ConnectNATSMessageBridge(url, timeout)
+			if err != nil {
+				return nil, err
+			}
+			return realCollectorBridge{bridge: bridge}, nil
+		},
+		listen: net.Listen,
+		signals: func() chan os.Signal {
+			signals := make(chan os.Signal, 1)
+			signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+			return signals
+		},
+		stopSignals: signal.Stop,
+	})
+}
+
+type collectorBridge interface {
+	Publisher() collector.Publisher
+	CheckReady(context.Context, int64) error
+	Drain() error
+	Close()
+}
+
+type realCollectorBridge struct {
+	bridge *collector.NATSMessageBridge
+}
+
+func (bridge realCollectorBridge) Publisher() collector.Publisher {
+	return bridge.bridge.Publisher()
+}
+
+func (bridge realCollectorBridge) CheckReady(ctx context.Context, minPayloadBytes int64) error {
+	return bridge.bridge.CheckReady(ctx, minPayloadBytes)
+}
+
+func (bridge realCollectorBridge) Drain() error {
+	return bridge.bridge.Drain()
+}
+
+func (bridge realCollectorBridge) Close() {
+	bridge.bridge.Close()
+}
+
+type collectorRuntime struct {
+	getenv        func(string) string
+	output        io.Writer
+	httpClient    *http.Client
+	connectBridge func(string, time.Duration) (collectorBridge, error)
+	listen        func(string, string) (net.Listener, error)
+	signals       func() chan os.Signal
+	stopSignals   func(chan<- os.Signal)
+}
+
+func runWithRuntime(runtime collectorRuntime) int {
+	logger := collector.NewLogger(runtime.output)
+	natsURL := envOr(runtime.getenv, "CLOUDGRID_NATS_URL", "nats://localhost:4222")
+	httpAddr := otlpHTTPAddr(runtime.getenv)
+	grpcAddr := envOr(runtime.getenv, "CLOUDGRID_OTLP_GRPC_ADDR", "0.0.0.0:4317")
+	handlerOptions, err := buildHandlerOptionsFromEnv(context.Background(), runtime.getenv, runtime.httpClient)
 	if err != nil {
 		logStartupError(logger, "auth_config_invalid", "ERR-009", "CONFIG_INVALID", err.Error())
 		return 1
 	}
-	grpcOptions, err := buildGRPCOptionsFromEnv(os.Getenv, handlerOptions.MaxRequestBytes)
+	grpcOptions, err := buildGRPCOptionsFromEnv(runtime.getenv, handlerOptions.MaxRequestBytes)
 	if err != nil {
 		logStartupError(logger, "grpc_config_invalid", "ERR-009", "CONFIG_INVALID", err.Error())
 		return 1
 	}
-	metricsExporter, err := collectorSelfObservabilityMetricsExporter(os.Getenv, logger)
+	metricsExporter, err := collectorSelfObservabilityMetricsExporter(runtime.getenv, logger)
 	if err != nil {
 		logStartupError(logger, "self_observability_config_invalid", "ERR-009", "CONFIG_INVALID", err.Error())
 		return 1
@@ -55,7 +115,7 @@ func run() int {
 		}()
 		handlerOptions.MetricsRecorder = collector.NewOTLPIngestMetricsRecorder(metricsExporter)
 	}
-	signalExporter, err := collectorSelfObservabilitySignalExporter(os.Getenv, logger)
+	signalExporter, err := collectorSelfObservabilitySignalExporter(runtime.getenv, logger)
 	if err != nil {
 		logStartupError(logger, "self_observability_config_invalid", "ERR-009", "CONFIG_INVALID", err.Error())
 		return 1
@@ -79,7 +139,7 @@ func run() int {
 		}
 	}
 
-	bridge, err := collector.ConnectNATSMessageBridge(natsURL, startupTimeout)
+	bridge, err := runtime.connectBridge(natsURL, startupTimeout)
 	if err != nil {
 		logStartupError(logger, "message_bridge_unavailable", "ERR-013", "MESSAGE_BRIDGE_UNAVAILABLE", "cannot connect to NATS; start Docker infra or set CLOUDGRID_NATS_URL")
 		return 1
@@ -109,12 +169,12 @@ func run() int {
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	httpListener, err := net.Listen("tcp", httpAddr)
+	httpListener, err := runtime.listen("tcp", httpAddr)
 	if err != nil {
 		logStartupError(logger, "http_server_bind_failed", "ERR-010", "RUNTIME_COMPOSITION_FAILED", "cannot bind OTLP HTTP listener; the port may already be in use", "addr", httpAddr)
 		return 1
 	}
-	grpcListener, err := net.Listen("tcp", grpcAddr)
+	grpcListener, err := runtime.listen("tcp", grpcAddr)
 	if err != nil {
 		_ = httpListener.Close()
 		logStartupError(logger, "grpc_server_bind_failed", "ERR-010", "RUNTIME_COMPOSITION_FAILED", "cannot bind OTLP gRPC listener; the port may already be in use", "addr", grpcAddr)
@@ -137,9 +197,8 @@ func run() int {
 		serverErrors <- serverError{kind: "grpc", err: grpcServer.Serve(grpcListener)}
 	}()
 
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(signals)
+	signals := runtime.signals()
+	defer runtime.stopSignals(signals)
 
 	select {
 	case serverErr := <-serverErrors:

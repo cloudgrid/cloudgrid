@@ -7,7 +7,7 @@ export interface HandbookNavItem {
 
 export const handbookNav: HandbookNavItem[] = [
   {
-    label: "Start here",
+    label: "Overview",
     href: "/handbook",
     description: "Read the product boundary, runtime choices, and first path.",
     children: [
@@ -17,7 +17,7 @@ export const handbookNav: HandbookNavItem[] = [
     ],
   },
   {
-    label: "Get running",
+    label: "Getting started",
     href: "/handbook/getting-started",
     description: "Start from released images or from source, then send data.",
     children: [
@@ -28,7 +28,7 @@ export const handbookNav: HandbookNavItem[] = [
     ],
   },
   {
-    label: "Understand the model",
+    label: "Concepts",
     href: "/handbook/concepts",
     description: "Companies, projects, signals, live traces, metrics, and lifecycle.",
     children: [
@@ -43,7 +43,7 @@ export const handbookNav: HandbookNavItem[] = [
     ],
   },
   {
-    label: "Use CloudGrid",
+    label: "Guides",
     href: "/handbook/guides",
     description: "Task guides for ingestion, investigation, dashboards, and AI eval.",
     children: [
@@ -58,7 +58,7 @@ export const handbookNav: HandbookNavItem[] = [
     ],
   },
   {
-    label: "Configure",
+    label: "Configuration",
     href: "/handbook/configuration",
     description: "Local mode, deployed mode, SSO, SMTP, storage, and runtime values.",
     children: [
@@ -116,7 +116,7 @@ export const handbookNav: HandbookNavItem[] = [
     ],
   },
   {
-    label: "Operate",
+    label: "Operations",
     href: "/handbook/operations",
     description: "Start, stop, monitor, troubleshoot, and assess production readiness.",
     children: [
@@ -144,6 +144,17 @@ export const handbookNav: HandbookNavItem[] = [
       { label: "Read flow", href: "/handbook/architecture/read-flow" },
       { label: "Live trace flow", href: "/handbook/architecture/live-trace-flow" },
       { label: "Tenancy and security", href: "/handbook/architecture/tenancy-security" },
+      {
+        label: "Extension boundaries",
+        href: "/handbook/adapters",
+        children: [
+          { label: "Storage adapter", href: "/handbook/adapters/storage" },
+          { label: "Bridge adapter", href: "/handbook/adapters/bridge" },
+          { label: "Auth provider adapter", href: "/handbook/adapters/auth" },
+          { label: "Harness adapter", href: "/handbook/adapters/harness" },
+          { label: "Public API clients", href: "/handbook/adapters/public-api-clients" },
+        ],
+      },
     ],
   },
   {
@@ -157,17 +168,6 @@ export const handbookNav: HandbookNavItem[] = [
       { label: "Routes", href: "/handbook/reference/routes" },
       { label: "Contracts", href: "/handbook/reference/contracts" },
       { label: "Errors", href: "/handbook/reference/errors" },
-    ],
-  },
-  {
-    label: "Extend",
-    href: "/handbook/adapters",
-    description: "Storage, bridge, auth-provider, and harness adapter boundaries.",
-    children: [
-      { label: "Storage adapter", href: "/handbook/adapters/storage" },
-      { label: "Bridge adapter", href: "/handbook/adapters/bridge" },
-      { label: "Auth provider adapter", href: "/handbook/adapters/auth" },
-      { label: "Harness adapter", href: "/handbook/adapters/harness" },
     ],
   },
 ];

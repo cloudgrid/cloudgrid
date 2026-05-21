@@ -250,6 +250,63 @@ describe("NATS telemetry query bridge", () => {
     ]);
   });
 
+  test("emits AsyncAPI top-level request payload shapes for telemetry subject families", async () => {
+    const codec = JSONCodec<unknown>();
+    const requests: Array<{ subject: string; payload: Record<string, unknown> }> = [];
+    const connection = {
+      request: async (requestedSubject: string, data: Uint8Array) => {
+        const payload = codec.decode(data) as Record<string, unknown>;
+        requests.push({ subject: requestedSubject, payload });
+        return {
+          data: codec.encode({
+            requestId: requestId(payload),
+            ok: true,
+            data: responseForTelemetrySubject(requestedSubject),
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+
+    await bridge.searchTraces({ service: "api", limit: 10 }, localAuthContext());
+    await bridge.getTraceDetail(
+      "trace-1",
+      { selectedSpanId: "span-1", relatedLogLimit: 10 },
+      localAuthContext(),
+    );
+    await bridge.searchLogs({ service: "api", limit: 10 }, localAuthContext());
+    await bridge.telemetryFacets({ service: "api", limit: 25 }, localAuthContext());
+    await bridge.metricNames({ query: "token", limit: 10 }, localAuthContext());
+    await bridge.metricSeries(
+      {
+        metricName: "gen_ai.client.token.usage",
+        from: "2026-05-14T08:00:00.000Z",
+        to: "2026-05-14T09:00:00.000Z",
+        aggregation: "sum",
+      },
+      localAuthContext(),
+    );
+    await bridge.richMetricSeries(
+      {
+        from: "2026-05-14T08:00:00.000Z",
+        to: "2026-05-14T09:00:00.000Z",
+        query: { interval: "PT1M", queries: [], formulas: [], displaySeries: [] },
+      },
+      localAuthContext(),
+    );
+
+    expect(payloadKeysBySubject(requests)).toEqual({
+      "telemetry.facets": ["authContext", "issuedAt", "query", "requestId"],
+      "telemetry.logs.search": ["authContext", "issuedAt", "query", "requestId"],
+      "telemetry.metrics.names": ["authContext", "input", "issuedAt", "requestId"],
+      "telemetry.metrics.query": ["authContext", "input", "issuedAt", "requestId"],
+      "telemetry.metrics.rich_query": ["authContext", "input", "issuedAt", "requestId"],
+      "telemetry.traces.get": ["authContext", "issuedAt", "query", "requestId", "traceId"],
+      "telemetry.traces.search": ["authContext", "issuedAt", "query", "requestId"],
+    });
+  });
+
   test("sends dashboard queries and mutations to control-plane dashboard subjects", async () => {
     const codec = JSONCodec<unknown>();
     const requests: Array<{ subject: string; payload: unknown }> = [];
@@ -1089,6 +1146,49 @@ function requestId(payload: unknown): string {
     return payload.requestId;
   }
   return "request-1";
+}
+
+function payloadKeysBySubject(
+  requests: Array<{ subject: string; payload: Record<string, unknown> }>,
+) {
+  return Object.fromEntries(
+    requests.map(({ subject, payload }) => [subject, Object.keys(payload).sort()]),
+  );
+}
+
+function responseForTelemetrySubject(subject: string) {
+  if (subject === "telemetry.traces.search") {
+    return { items: [], nextCursor: null };
+  }
+  if (subject === "telemetry.traces.get") {
+    return traceDetail();
+  }
+  if (subject === "telemetry.logs.search") {
+    return { items: [], nextCursor: null };
+  }
+  if (subject === "telemetry.facets") {
+    return {
+      services: [],
+      operations: [],
+      spanNames: [],
+      severities: [],
+      attributeKeys: [],
+    };
+  }
+  if (subject === "telemetry.metrics.names") {
+    return { items: [] };
+  }
+  if (subject === "telemetry.metrics.rich_query") {
+    return { interval: "PT1M", series: [], displaySeries: [], warnings: [] };
+  }
+  return {
+    metric: metricDescriptor("gen_ai.client.token.usage"),
+    aggregation: "sum",
+    interval: "PT1M",
+    groupBy: [],
+    series: [],
+    warnings: [],
+  };
 }
 
 async function waitUntil(predicate: () => boolean, timeoutMs: number) {

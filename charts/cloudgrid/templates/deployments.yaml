@@ -73,6 +73,9 @@ spec:
             {{- end }}
           env:
             {{- include "cloudgrid.env.common" $root | nindent 12 }}
+            {{- if eq $name "cloudgrid-otlp-collector" }}
+            {{- include "cloudgrid.env.collectorAuth" $root | nindent 12 }}
+            {{- end }}
             {{- range $key, $value := $svc.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}

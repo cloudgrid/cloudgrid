@@ -127,106 +127,14 @@ import {
   NATSEphemeralPubSub,
   NATSRequestReplyClient,
 } from "./bridge/adapters/nats";
+import { bridgeSubjects as subjects } from "./bridge/subjects";
+import { telemetryMetricPayload, telemetryQueryPayload } from "./bridge/telemetry-client";
 import type {
   SelfObservabilityLogRecorder,
   SelfObservabilityTraceRecorder,
   TraceContext,
 } from "./self-observability";
 import { createTraceContext, traceContextToTraceParent } from "./self-observability";
-
-const subjects = {
-  viewerGet: "control.viewer.get",
-  organizationsList: "control.organizations.list",
-  organizationGet: "control.organizations.get",
-  membersList: "control.members.list",
-  invitationsList: "control.invitations.list",
-  invitationCreate: "control.invitations.create",
-  invitationResend: "control.invitations.resend",
-  invitationRevoke: "control.invitations.revoke",
-  projectInvitationCreate: "control.project_invitations.create",
-  projectsList: "control.projects.list",
-  projectGet: "control.projects.get",
-  projectCreate: "control.projects.create",
-  projectUpdate: "control.projects.update",
-  projectSelect: "control.projects.select",
-  memberUpdate: "control.members.update",
-  memberRemove: "control.members.remove",
-  projectMembersList: "control.project_members.list",
-  projectMembersUpdate: "control.project_members.update",
-  projectMembersRemove: "control.project_members.remove",
-  retentionGet: "control.retention.get",
-  retentionUpdate: "control.retention.update",
-  alertRulesList: "control.alert_rules.list",
-  alertRulesCreate: "control.alert_rules.create",
-  alertRulesUpdate: "control.alert_rules.update",
-  alertRulesDelete: "control.alert_rules.delete",
-  alertSilencesList: "control.alert_silences.list",
-  alertSilencesCreate: "control.alert_silences.create",
-  alertSilencesDelete: "control.alert_silences.delete",
-  alertHistoryList: "control.alert_history.list",
-  alertSummaryGet: "control.alert_summary.get",
-  ingestCredentialsList: "control.ingest_credentials.list",
-  ingestCredentialsCreate: "control.ingest_credentials.create",
-  ingestCredentialsRevoke: "control.ingest_credentials.revoke",
-  traceSearch: "telemetry.traces.search",
-  traceGet: "telemetry.traces.get",
-  logSearch: "telemetry.logs.search",
-  telemetryFacets: "telemetry.facets",
-  projectTelemetryOverview: "telemetry.projects.overview",
-  metricNames: "telemetry.metrics.names",
-  metricSeries: "telemetry.metrics.query",
-  richMetricSeries: "telemetry.metrics.rich_query",
-  dashboardsList: "control.dashboards.list",
-  dashboardsSave: "control.dashboards.save",
-  dashboardsDelete: "control.dashboards.delete",
-  dashboardPinsSet: "control.dashboard_pins.set",
-  dashboardPinsReorder: "control.dashboard_pins.reorder",
-  liveTraceStart: "telemetry.traces.live.start",
-  liveTraceStop: "telemetry.traces.live.stop",
-  agentRunSearch: "eval.agent_runs.search",
-  datasetCreate: "eval.dataset.create",
-  datasetSearch: "eval.dataset.search",
-  datasetItemsAppend: "eval.dataset.items.append",
-  datasetItemPromote: "eval.dataset.item.promote",
-  datasetImportPrepare: "eval.dataset.import.prepare",
-  datasetImportCommit: "eval.dataset.import.commit",
-  datasetExportStart: "eval.dataset.export.start",
-  datasetTransferGet: "eval.dataset.transfer.get",
-  scorerCreate: "eval.scorer.create",
-  scorerSearch: "eval.scorer.search",
-  experimentCreate: "eval.experiment.create",
-  experimentStart: "eval.experiment.start",
-  experimentCancel: "eval.experiment.cancel",
-  optimizationStart: "eval.optimization.start",
-  experimentSearch: "eval.experiment.search",
-  resultSearch: "eval.results.search",
-  liveExperimentStart: "eval.live.start",
-  liveExperimentStop: "eval.live.stop",
-  annotationQueueSearch: "annotation.queue.search",
-  annotationItemUpdate: "annotation.item.update",
-  promptVersionPromote: "eval.prompt_version.promote",
-  projectAiSettingsGet: "control.ai_settings.get",
-  projectAiSettingsUpdate: "control.ai_settings.update",
-  projectAiProviderSettingsGet: "control.ai_providers.project.get",
-  projectAiProviderSettingsUpdate: "control.ai_providers.project.update",
-  companyAiProviderSettingsGet: "control.ai_providers.company.get",
-  companyAiProviderSettingsUpdate: "control.ai_providers.company.update",
-  aiProviderSecretResolve: "control.ai_provider_secrets.resolve",
-  aiChatHistory: "control.ai_chat.history",
-  aiChatConversationGet: "control.ai_chat.conversation.get",
-  aiChatConversationCreate: "control.ai_chat.conversation.create",
-  aiChatConversationArchive: "control.ai_chat.conversation.archive",
-  aiChatConversationDelete: "control.ai_chat.conversation.delete",
-  aiChatMessageAppend: "control.ai_chat.message.append",
-  aiChatRunCreate: "control.ai_chat.run.create",
-  aiChatRunUpdate: "control.ai_chat.run.update",
-  aiChatRunFinalize: "control.ai_chat.run.finalize",
-  aiChatActionPropose: "control.ai_chat.action.propose",
-  aiChatActionApprove: "control.ai_chat.action.approve",
-  aiChatActionFinish: "control.ai_chat.action.finish",
-  aiChatCompactionSave: "control.ai_chat.compaction.save",
-  aiQualityOverview: "eval.quality.overview",
-} as const;
 
 interface BridgeEnvelope {
   requestId: string;
@@ -1750,7 +1658,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
       subjects.traceSearch,
       {
         ...envelope(authContext),
-        query: compactInput(input as Record<string, unknown>) as TraceSearchInput,
+        ...telemetryQueryPayload(input),
       },
       traceSearchResultSchema,
     );
@@ -1764,7 +1672,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     return this.#request<TraceDetail>(subjects.traceGet, {
       ...envelope(authContext),
       traceId,
-      query: compactInput(input as Record<string, unknown>) as TraceDetailInput,
+      ...telemetryQueryPayload(input),
     });
   }
 
@@ -1774,7 +1682,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<LogSearchResult> {
     return this.#request<LogSearchResult>(subjects.logSearch, {
       ...envelope(authContext),
-      query: compactInput(input as Record<string, unknown>) as LogSearchInput,
+      ...telemetryQueryPayload(input),
     });
   }
 
@@ -1784,7 +1692,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<TelemetryFacetResult> {
     return this.#request<TelemetryFacetResult>(subjects.telemetryFacets, {
       ...envelope(authContext),
-      query: compactInput(input as Record<string, unknown>) as TelemetryFacetInput,
+      ...telemetryQueryPayload(input),
     });
   }
 
@@ -1794,7 +1702,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<MetricNameSearchResult> {
     return this.#request<MetricNameSearchResult>(subjects.metricNames, {
       ...envelope(authContext),
-      input: compactInput(input as Record<string, unknown>) as MetricNameSearchInput,
+      ...telemetryMetricPayload(input),
     });
   }
 
@@ -1804,9 +1712,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<MetricSeriesResult> {
     return this.#request<MetricSeriesResult>(subjects.metricSeries, {
       ...envelope(authContext),
-      input: compactInput(
-        input as unknown as Record<string, unknown>,
-      ) as unknown as MetricSeriesInput,
+      ...telemetryMetricPayload(input),
     });
   }
 
@@ -1816,9 +1722,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<RichMetricSeriesResult> {
     return this.#request<RichMetricSeriesResult>(subjects.richMetricSeries, {
       ...envelope(authContext),
-      input: compactInput(
-        input as unknown as Record<string, unknown>,
-      ) as unknown as RichMetricSeriesInput,
+      ...telemetryMetricPayload(input),
     });
   }
 

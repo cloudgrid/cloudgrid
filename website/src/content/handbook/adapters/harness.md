@@ -3,8 +3,8 @@ title: Harness adapter
 description: HTTP contract for the AI evaluation execution surface.
 order: 4
 accent: rose
-eyebrow: Handbook · Adapters · Harness
-updated: 2026-05-17
+eyebrow: Handbook - Architecture - Extension boundaries
+updated: 2026-05-21
 ---
 
 Unlike the other three ports, the harness adapter is an **HTTP contract** —
@@ -30,6 +30,9 @@ not an in-process port. The v1 implementation is `puristajs/harness`.
   live in harness configuration. CloudGrid-managed AI Chat and project provider
   secrets use the separate managed-secret path documented under deployed
   provider secrets.
+- **No storage shortcuts.** Harness results return through the harness HTTP
+  response and CloudGrid message contracts; telemetry still returns through
+  normal OTLP ingest, storage-write persistence, and storage-read GraphQL views.
 
 ## Example: a minimal harness skeleton
 

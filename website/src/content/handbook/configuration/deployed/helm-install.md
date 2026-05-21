@@ -128,6 +128,10 @@ bff:
 
 otlpCollector:
   replicas: 2
+  serviceTokenAuth:
+    issuer: https://tokens.example.com/
+    audience: cloudgrid-ingest
+    jwksUrl: https://tokens.example.com/.well-known/jwks.json
   ingress:
     enabled: true
     className: nginx
@@ -148,6 +152,12 @@ storageWrite:
 
 Keep NATS and SurrealDB private. The chart must not expose either dependency publicly.
 
+The collector service-token settings are required in deployed SSO mode. They
+validate OTLP ingest bearer tokens and are intentionally separate from browser
+SSO provider settings such as `CLOUDGRID_AUTH_GOOGLE_CLIENT_ID` or
+`CLOUDGRID_AUTH_AZURE_CLIENT_ID`; do not rely on browser login provider values
+for collector startup.
+
 ## 4. Render And Inspect
 
 Render the selected profile and overlays before installing:
@@ -161,6 +171,17 @@ helm template cloudgrid oci://ghcr.io/cloudgrid-dev/charts/cloudgrid \
 ```
 
 Check that only the BFF and OTLP collector have ingress, that SurrealDB credentials are mounted only into `storage-read`, `storage-write`, `control-plane`, and `storage-maintenance`, and that `CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY` is mounted only into `control-plane`.
+
+Also check that the collector deployment renders:
+
+```text
+CLOUDGRID_AUTH_ISSUER
+CLOUDGRID_AUTH_AUDIENCE
+CLOUDGRID_AUTH_JWKS_URL
+```
+
+Render fails when `authMode=sso` and any of those collector service-token values
+are empty.
 
 ## 5. Install Or Upgrade
 

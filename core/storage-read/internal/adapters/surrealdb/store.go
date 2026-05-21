@@ -20,6 +20,7 @@ type Store struct {
 }
 
 var queryRowsMu sync.Mutex
+var queryRowsOverride func(context.Context, *sdk.DB, QueryStatement, any) error
 
 func (store Store) GetProjectTelemetryOverviews(ctx context.Context, request contracts.ProjectTelemetryOverviewRequest) (contracts.ProjectTelemetryOverviewData, error) {
 	items := make([]contracts.ProjectTelemetryOverviewItem, 0, len(request.Projects))
@@ -507,6 +508,13 @@ func normalizeTraceSummaries(items []contracts.TraceSummary) {
 }
 
 func queryRows[T any](ctx context.Context, db *sdk.DB, stmt QueryStatement) ([]T, error) {
+	if queryRowsOverride != nil {
+		var rows []T
+		if err := queryRowsOverride(ctx, db, stmt, &rows); err != nil {
+			return nil, err
+		}
+		return rows, nil
+	}
 	if db == nil {
 		return nil, fmt.Errorf("storage database is not configured")
 	}

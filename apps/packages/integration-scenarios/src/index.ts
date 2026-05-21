@@ -1,7 +1,7 @@
 import {
   type PublicGraphQLOperationName,
   publicGraphQLOperationNames,
-} from "@cloudgrid/public-api-client";
+} from "@cloudgrid/public-api-client/operations";
 
 export type ScenarioExecutionMode = "local-e2e";
 

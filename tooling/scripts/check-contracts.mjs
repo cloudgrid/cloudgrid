@@ -591,7 +591,10 @@ function validateSchemaRefs(value, location, schemaNames) {
 }
 
 function validateFrontendGraphQLOperations(schema) {
-  const source = read("apps/packages/public-api-client/src/index.ts");
+  const source = sourceFiles("apps/packages/public-api-client/src", [".ts"])
+    .filter((file) => !file.endsWith(".test.ts"))
+    .map((file) => read(file))
+    .join("\n");
   const templates = extractTemplateLiteralExports(source);
   const operations = new Map(
     [...templates.entries()]
@@ -636,7 +639,7 @@ async function validatePublicApiScenarioCoverage() {
     { publicGraphQLOperationNames },
     { integrationScenarios, uncoveredPublicGraphQLOperationNames },
   ] = await Promise.all([
-    import(pathToFileURL(join(root, "apps/packages/public-api-client/src/index.ts")).href),
+    import(pathToFileURL(join(root, "apps/packages/public-api-client/src/operations.ts")).href),
     import(pathToFileURL(join(root, "apps/packages/integration-scenarios/src/index.ts")).href),
   ]);
   const knownOperationNames = new Set(publicGraphQLOperationNames);

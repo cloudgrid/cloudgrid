@@ -73,6 +73,17 @@ helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
   value: {{ include "cloudgrid.natsUrl" . | quote }}
 {{- end -}}
 
+{{- define "cloudgrid.env.collectorAuth" -}}
+{{- if eq .Values.authMode "sso" }}
+- name: CLOUDGRID_AUTH_ISSUER
+  value: {{ required "otlpCollector.serviceTokenAuth.issuer is required when authMode=sso" .Values.otlpCollector.serviceTokenAuth.issuer | quote }}
+- name: CLOUDGRID_AUTH_AUDIENCE
+  value: {{ required "otlpCollector.serviceTokenAuth.audience is required when authMode=sso" .Values.otlpCollector.serviceTokenAuth.audience | quote }}
+- name: CLOUDGRID_AUTH_JWKS_URL
+  value: {{ required "otlpCollector.serviceTokenAuth.jwksUrl is required when authMode=sso" .Values.otlpCollector.serviceTokenAuth.jwksUrl | quote }}
+{{- end }}
+{{- end -}}
+
 {{- define "cloudgrid.env.surrealdb" -}}
 - name: CLOUDGRID_SURREALDB_URL
   value: {{ include "cloudgrid.surrealdbUrl" . | quote }}

@@ -114,7 +114,13 @@ operator testing and must surface `suppressed` delivery status in admin UI.
 - `CLOUDGRID_PROJECT_STATUS_CACHE_TTL_SECONDS`, default `60`; bounds fresh project-status authorization cache entries in deployed collector mode.
 - `CLOUDGRID_PROJECT_STATUS_CACHE_STALE_SECONDS`, default `120`; bounds stale project-status cache reuse during temporary control-plane failures.
 - `CLOUDGRID_AUTH_MODE`, default `local`; allowed values are `local` and `sso`.
-- Bearer-token issuer, audience, and JWKS configuration is still provider-specific in deployed mode. The collector must use trusted service-token configuration only and must not infer browser SSO company/project access from provider profile claims.
+- `CLOUDGRID_AUTH_ISSUER`, required by the collector when `CLOUDGRID_AUTH_MODE=sso`; trusted issuer for OTLP ingest bearer tokens.
+- `CLOUDGRID_AUTH_AUDIENCE`, required by the collector when `CLOUDGRID_AUTH_MODE=sso`; expected audience for OTLP ingest bearer tokens.
+- `CLOUDGRID_AUTH_JWKS_URL`, required by the collector when `CLOUDGRID_AUTH_MODE=sso`; JWKS endpoint used to validate OTLP ingest bearer-token signatures.
+
+Collector bearer-token issuer, audience, and JWKS configuration is service-token
+configuration. The collector must not infer browser SSO company/project access
+from provider profile claims or browser SSO provider client settings.
 
 ### Local OTLP Token Initialization
 
@@ -162,6 +168,8 @@ Invalid combinations:
 - `CLOUDGRID_DEPLOYMENT_MODE=deployed` with `CLOUDGRID_AUTH_MODE=local`.
 - `CLOUDGRID_AUTH_MODE=sso` without `CLOUDGRID_AUTH_PROVIDERS`.
 - `CLOUDGRID_AUTH_MODE=sso` with an enabled provider missing required `CLOUDGRID_AUTH_<PROVIDER>_*` values.
+- Collector `CLOUDGRID_AUTH_MODE=sso` without `CLOUDGRID_AUTH_ISSUER`,
+  `CLOUDGRID_AUTH_AUDIENCE`, or `CLOUDGRID_AUTH_JWKS_URL`.
 - `CLOUDGRID_DEPLOYMENT_MODE=deployed` with invitation email mode `smtp` and missing `CLOUDGRID_PUBLIC_URL`, sender, or required SMTP host/port values.
 - `CLOUDGRID_DEPLOYMENT_MODE=deployed` with invitation email mode `disabled` and `CLOUDGRID_INVITATION_EMAIL_REQUIRE_DELIVERY=true`.
 - `CLOUDGRID_DEPLOYMENT_MODE=deployed` with `CLOUDGRID_SELF_OBSERVABILITY_ENABLED=true` and missing `CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID`, `CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID`, `CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT`, or `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN`.

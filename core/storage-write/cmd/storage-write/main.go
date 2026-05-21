@@ -27,17 +27,41 @@ func main() {
 }
 
 func run() int {
-	logger := newLogger(os.Stdout)
+	return runWithRuntime(storageWriteRuntime{
+		output:     os.Stdout,
+		loadConfig: config.Load,
+		newAdapter: newTelemetryWriteAdapter,
+		newBridge: func(natsURL string, store ports.TelemetryWriteStore, logger *slog.Logger, recorder ingest.MetricsRecorder, traceLogRecorder ingest.TraceLogRecorder, consumer config.ConsumerConfig) (messageBridgeAdapter, error) {
+			return newMessageBridgeAdapterWithSelfObservability(natsURL, store, logger, recorder, traceLogRecorder, consumer)
+		},
+		listen: net.Listen,
+		signalContext: func() (context.Context, context.CancelFunc) {
+			return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		},
+	})
+}
+
+type storageWriteRuntime struct {
+	output        io.Writer
+	loadConfig    func() (config.Config, error)
+	newAdapter    func(context.Context, config.Config) (telemetryWriteAdapter, error)
+	newBridge     func(string, ports.TelemetryWriteStore, *slog.Logger, ingest.MetricsRecorder, ingest.TraceLogRecorder, config.ConsumerConfig) (messageBridgeAdapter, error)
+	listen        func(string, string) (net.Listener, error)
+	signalContext func() (context.Context, context.CancelFunc)
+}
+
+func runWithRuntime(runtime storageWriteRuntime) int {
+	logger := newLogger(runtime.output)
 	ctx, cancel := context.WithTimeout(context.Background(), startupTimeout)
 	defer cancel()
 
-	cfg, err := config.Load()
+	cfg, err := runtime.loadConfig()
 	if err != nil {
 		logError(logger, "startup_config_invalid", err, "", "")
 		return 1
 	}
 
-	adapter, err := newTelemetryWriteAdapter(ctx, cfg)
+	adapter, err := runtime.newAdapter(ctx, cfg)
 	if err != nil {
 		logError(logger, "startup_storage_unavailable", err, "", "ERR-006")
 		return 1
@@ -87,39 +111,18 @@ func run() int {
 	if traceLogExporter != nil {
 		traceLogRecorder = ingest.NewSignalFilteredTraceLogRecorder(traceLogExporter, cfg.SelfObservability.TracesEnabled, cfg.SelfObservability.LogsEnabled)
 	}
-	bridge, err := newMessageBridgeAdapterWithSelfObservability(cfg.NATSURL, adapter.Store, logger, recorder, traceLogRecorder, cfg.Consumer)
+	bridge, err := runtime.newBridge(cfg.NATSURL, adapter.Store, logger, recorder, traceLogRecorder, cfg.Consumer)
 	if err != nil {
 		logError(logger, "message_bridge_unavailable", err, "", "ERR-013")
 		return 1
 	}
 	defer bridge.Close()
 
-	probes := health.NewState("storage-write", func(ctx context.Context) map[string]health.Check {
-		checks := map[string]health.Check{}
-		if bridge.IsClosed() {
-			checks["nats"] = health.Unavailable("ERR-013", "MESSAGE_BRIDGE_UNAVAILABLE", "message bridge is unavailable")
-		} else {
-			checks["nats"] = health.OK()
-		}
-		storageCheck := adapter.Name
-		if storageCheck == "" {
-			storageCheck = "storage"
-		}
-		if err := adapter.CheckReadiness(ctx); err != nil {
-			checks[storageCheck] = health.Unavailable("ERR-006", "STORAGE_UNAVAILABLE", "storage is unavailable")
-		} else {
-			checks[storageCheck] = health.OK()
-		}
-		return checks
-	})
-	healthServer := &http.Server{
-		Addr:              net.JoinHostPort(cfg.HealthHost, cfg.HealthPort),
-		Handler:           probes.Handler(),
-		ReadHeaderTimeout: 5 * time.Second,
-	}
+	probes := health.NewState("storage-write", storageWriteHealthChecks(bridge, adapter))
+	healthServer := storageWriteHealthServer(cfg, probes.Handler())
 	probes.SetReady(true)
 	healthErrors := make(chan error, 1)
-	healthListener, err := net.Listen("tcp", healthServer.Addr)
+	healthListener, err := runtime.listen("tcp", healthServer.Addr)
 	if err != nil {
 		logError(logger, "health_server_bind_failed", err, "", "ERR-010", "health_addr", healthServer.Addr)
 		return 1
@@ -141,7 +144,7 @@ func run() int {
 		"health_addr", healthServer.Addr,
 	)
 
-	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	runCtx, stop := runtime.signalContext()
 	defer stop()
 
 	consumerErrors := make(chan error, 1)
@@ -177,6 +180,35 @@ func run() int {
 		"request_id", "",
 	)
 	return 0
+}
+
+func storageWriteHealthChecks(bridge messageBridgeAdapter, adapter telemetryWriteAdapter) health.Checker {
+	return func(ctx context.Context) map[string]health.Check {
+		checks := map[string]health.Check{}
+		if bridge.IsClosed() {
+			checks["nats"] = health.Unavailable("ERR-013", "MESSAGE_BRIDGE_UNAVAILABLE", "message bridge is unavailable")
+		} else {
+			checks["nats"] = health.OK()
+		}
+		storageCheck := adapter.Name
+		if storageCheck == "" {
+			storageCheck = "storage"
+		}
+		if err := adapter.CheckReadiness(ctx); err != nil {
+			checks[storageCheck] = health.Unavailable("ERR-006", "STORAGE_UNAVAILABLE", "storage is unavailable")
+		} else {
+			checks[storageCheck] = health.OK()
+		}
+		return checks
+	}
+}
+
+func storageWriteHealthServer(cfg config.Config, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              net.JoinHostPort(cfg.HealthHost, cfg.HealthPort),
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 }
 
 func storageWriteSelfObservabilityMetricsExporter(cfg config.Config, logger *slog.Logger) (*selfobs.OTLPHTTPMetricsExporter, error) {

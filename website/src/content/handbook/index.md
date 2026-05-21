@@ -20,10 +20,12 @@ This handbook is written as a product journey rather than a folder dump. Start b
 | 2 | [Runtime modes](/handbook/overview/runtime-modes) | Decide whether you are running local mode or deployed SSO mode. |
 | 3 | [Release Compose](/handbook/getting-started/docker-compose-release) or [Local quickstart](/handbook/getting-started/local-quickstart) | Start CloudGrid either from published images or from source. |
 | 4 | [Send telemetry](/handbook/getting-started/send-telemetry) | Prove the OTLP collector, bridge, writer, reader, and UI path end to end. |
-| 5 | [Configuration](/handbook/configuration) | Add the right local, deployed, SSO, SMTP, storage, and self-observability values. |
-| 6 | [Use CloudGrid](/handbook/guides) | Work with ingest credentials, traces, logs, metrics, dashboards, and AI evaluation. |
-| 7 | [Operate](/handbook/operations) | Start, stop, monitor, troubleshoot, and assess production readiness. |
-| 8 | [Reference](/handbook/reference) | Look up commands, ports, environment variables, routes, contracts, and errors. |
+| 5 | [Concepts](/handbook/concepts) | Understand companies, projects, access, signals, live traces, metrics, retention, and alerts. |
+| 6 | [Guides](/handbook/guides) | Work with ingest credentials, traces, logs, metrics, dashboards, and AI evaluation. |
+| 7 | [Configuration](/handbook/configuration) | Add the right local, deployed, SSO, SMTP, storage, and self-observability values. |
+| 8 | [Operate](/handbook/operations) | Start, stop, monitor, troubleshoot, and assess production readiness. |
+| 9 | [Architecture](/handbook/architecture) | Reason about service boundaries, flows, tenancy, and extension points. |
+| 10 | [Reference](/handbook/reference) | Look up commands, ports, environment variables, routes, contracts, and errors. |
 
 ## How The Handbook Is Organized
 
@@ -31,15 +33,14 @@ The left navigation mirrors the journey:
 
 | Area | What belongs there |
 | --- | --- |
-| Start here | Product scope, runtime modes, and the route tour. |
-| Get running | The two supported local paths and the first telemetry export. |
-| Understand the model | Companies, projects, access, signals, live traces, metrics, retention, and alerts. |
-| Use CloudGrid | Task guides for day-to-day observability work. |
-| Configure | Local mode, deployed mode, SSO, invitations, SMTP, Kubernetes, storage, and environment values. |
-| Operate | Health checks, resets, bridge behavior, retention, alerting, troubleshooting, and production readiness. |
-| Architecture | Internal service boundaries and flows when you need to reason about implementation behavior. |
+| Overview | Product scope, runtime modes, and the route tour. |
+| Getting started | The two supported local paths and the first telemetry export. |
+| Concepts | Companies, projects, access, signals, live traces, metrics, retention, and alerts. |
+| Guides | Task guides for day-to-day observability work. |
+| Configuration | Local mode, deployed mode, SSO, invitations, SMTP, Kubernetes, storage, and environment values. |
+| Operations | Health checks, resets, bridge behavior, retention, alerting, troubleshooting, and production readiness. |
+| Architecture | Internal service boundaries, flows, and extension boundaries. |
 | Reference | Stable lookup tables. |
-| Extend | Adapter authoring boundaries. |
 
 ## System Thumbnail
 

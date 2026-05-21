@@ -135,6 +135,41 @@ func TestSubscribedControlHandlersCoverGeneratedContractSubjects(t *testing.T) {
 	}
 }
 
+func TestControlHandlersReturnBridgeErrorsForStructurallyValidEmptyRequests(t *testing.T) {
+	service := NewService(newTestStore(), fixedNow)
+	handlers := controlHandlers(service, nil, nil, nil)
+	for subject, handler := range handlers {
+		t.Run(subject, func(t *testing.T) {
+			message := &captureBridgeMessage{data: []byte(`{}`)}
+			handler(message)
+			if len(message.response) == 0 {
+				t.Fatal("handler did not respond")
+			}
+			var response map[string]any
+			if err := json.Unmarshal(message.response, &response); err != nil {
+				t.Fatalf("response is not JSON: %v\n%s", err, string(message.response))
+			}
+			if _, ok := response["ok"].(bool); !ok {
+				t.Fatalf("response missing boolean ok field: %#v", response)
+			}
+			if _, ok := response["requestId"].(string); !ok {
+				t.Fatalf("response missing requestId field: %#v", response)
+			}
+			if response["ok"] == false {
+				errorValue, ok := response["error"].(map[string]any)
+				if !ok {
+					t.Fatalf("error response missing bridge error: %#v", response)
+				}
+				for _, field := range []string{"id", "code", "message", "retryable"} {
+					if _, ok := errorValue[field]; !ok {
+						t.Fatalf("bridge error missing %s: %#v", field, errorValue)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestMemberAndInvitationNATSHandlersReturnContractShapes(t *testing.T) {
 	service := NewService(newTestStore(), fixedNow)
 	admin := localEnvelope("req-admin", "admin-1", nil)

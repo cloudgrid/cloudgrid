@@ -6,7 +6,7 @@ import {
   organizationMembersOperation,
   resendOrganizationInvitationOperation,
   revokeOrganizationInvitationOperation,
-} from "../src/lib/graphql-client";
+} from "@cloudgrid/public-api-client/operations";
 import { queryKeys } from "../src/lib/query-keys";
 
 describe("organization member invitation GraphQL operations", () => {

@@ -72,7 +72,7 @@ import {
   updateProjectMemberOperation,
   updateRetentionPolicyOperation,
   viewerOperation,
-} from "../../apps/packages/public-api-client/src/index.ts";
+} from "../../apps/packages/public-api-client/src/operations.ts";
 import { buildFixtureRequests, createSeedRunContext, postFixture } from "./seed-otlp-fixtures.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));

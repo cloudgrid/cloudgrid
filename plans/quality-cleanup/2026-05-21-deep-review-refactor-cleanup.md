@@ -10,6 +10,22 @@
 
 ---
 
+## Progress Ledger
+
+Use this section as the pause/resume handoff. Keep entries short, dated, and tied to task numbers.
+
+- 2026-05-21: Initial interface inspection completed with parallel agents. Findings were folded into Task 0 and a first cleanup slice was committed as `7147322 chore: deep cleanup and interface drift fixes`.
+- 2026-05-21: Continued full cleanup execution from `codex/selfobs-otlp-runtime-cleanup` with parallel ownership boundaries:
+  - Task 2 public API client DX split: completed, owner `apps/packages/public-api-client`.
+  - Task 3 BFF resolver/bridge decomposition: completed, owner `apps/backend`.
+  - Task 4 Go coverage >80: completed, owner `core/*`; direct aggregate coverage is `80.1%`.
+  - Task 5 handbook/deploy/spec cleanup: completed, owner `website`, `charts`, `deploy`, `specs`.
+- 2026-05-21: Worker D completed Task 5 docs/deploy/spec cleanup: handbook navigation follows overview -> getting started -> concepts -> guides -> configuration -> operations -> architecture -> reference; extension boundaries cover auth, bridge, storage, harness, and public API clients; Helm renders collector service-token auth env for deployed SSO.
+- 2026-05-21: Public API client now has a narrow documented root facade, operation metadata lives behind the `./operations` subpath, and contract checks scan operation literals across client modules.
+- 2026-05-21: BFF bridge methods are split by subject family and GraphQL resolver families are composed from domain files while preserving BFF-only forwarding semantics.
+- 2026-05-21: Go coverage was raised with focused branch and startup-composition tests across collector, storage-read, storage-write, and control-plane packages.
+- 2026-05-21: Final repository gate passed: format, typecheck, lint, tests, contract drift checks, release artifact validation, build, Go workspace tests, BFF/backend coverage, and direct Go aggregate coverage.
+
 ## File Structure Map
 
 - `apps/packages/public-api-client/src/index.ts`: public TypeScript API client; split into focused operation modules and add TSDoc to exported API.
@@ -31,7 +47,7 @@
 - Modify: `plans/quality-cleanup/2026-05-21-deep-review-refactor-cleanup.md`
 - Modify only as findings demand: `specs/03-contracts/graphql/public-schema.graphql`, `specs/03-contracts/messages/message-bridge.asyncapi.yaml`, `specs/03-contracts/errors.yaml`, `specs/04-backend/*.md`, `specs/05-frontend/*.md`, `apps/backend/src/**`, `apps/frontend/src/**`, `core/**`, `website/src/content/handbook/**`
 
-- [ ] **Step 1: Trace public data flows end to end**
+- [x] **Step 1: Trace public data flows end to end**
 
 Inspect each user-visible and service-visible flow from source contract through implementation and consumer:
 
@@ -43,15 +59,15 @@ AI Chat and AI Eval flows -> GraphQL/AsyncAPI/spec contracts -> BFF bridge -> Go
 runtime configuration -> specs/env docs -> .env examples/deploy manifests -> BFF/Go config loaders -> handbook
 ```
 
-- [ ] **Step 2: Verify interface shape alignment**
+- [x] **Step 2: Verify interface shape alignment**
 
 Compare GraphQL SDL, frontend generated/UI types, BFF resolver argument/result shapes, AsyncAPI message payloads, generated Go contracts, Go NATS handlers, and handbook/spec descriptions. Record every drift item as a concrete plan update before changing behavior.
 
-- [ ] **Step 3: Update the plan from findings**
+- [x] **Step 3: Update the plan from findings**
 
 Add or refine downstream tasks when inspection finds missing tests, stale docs, mismatched field names, unregistered subjects, inconsistent errors, or behavior not covered by specs. Specs remain source of truth; if implementation needs behavior not covered by specs, update the spec before implementation.
 
-- [ ] **Step 4: Verify drift checks**
+- [x] **Step 4: Verify drift checks**
 
 Run the relevant checks for touched contract surfaces:
 
@@ -154,7 +170,7 @@ No matches.
 - Test: `apps/packages/public-api-client/src/ai-chat-stream.test.ts`
 - Test: create `apps/packages/public-api-client/src/client.test.ts`
 
-- [ ] **Step 1: Write API export snapshot tests**
+- [x] **Step 1: Write API export snapshot tests**
 
 Add a test that imports the package entrypoint and asserts the intended public exports:
 
@@ -174,19 +190,19 @@ describe("public API client exports", () => {
 });
 ```
 
-- [ ] **Step 2: Extract transport without changing behavior**
+- [x] **Step 2: Extract transport without changing behavior**
 
 Move fetch, GraphQL envelope parsing, and problem-error mapping into `graphql-transport.ts`. Export only typed helpers used by client modules.
 
-- [ ] **Step 3: Extract operation families**
+- [x] **Step 3: Extract operation families**
 
 Move telemetry reads into `observability.ts`, control-plane mutations/queries into `control-plane.ts`, dashboard operations into `dashboards.ts`, and SSE stream handling into `ai-chat.ts`.
 
-- [ ] **Step 4: Add TSDoc to public exports**
+- [x] **Step 4: Add TSDoc to public exports**
 
 Every exported public function and class from `apps/packages/public-api-client/src/index.ts` must have TSDoc describing purpose, parameters, error behavior, and return type semantics.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -218,19 +234,19 @@ All public API client tests pass and typecheck exits 0.
 - Test: `apps/backend/src/graphql.test.ts`
 - Test: `apps/backend/src/graphql-control.test.ts`
 
-- [ ] **Step 1: Add parity tests before extraction**
+- [x] **Step 1: Add parity tests before extraction**
 
 For each bridge subject family, assert the exact AsyncAPI top-level payload shape currently emitted by BFF bridge methods.
 
-- [ ] **Step 2: Extract bridge clients by subject family**
+- [x] **Step 2: Extract bridge clients by subject family**
 
 Move methods without changing exported behavior. Keep NATS adapter code under `apps/backend/src/bridge/adapters/nats.ts`.
 
-- [ ] **Step 3: Extract resolver families**
+- [x] **Step 3: Extract resolver families**
 
 Move resolver bodies into domain files and compose them from `graphql.ts`. The BFF must continue to validate, map, and forward only; no telemetry filtering, aggregation, ranking, or enrichment is allowed.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -254,7 +270,7 @@ Focused BFF tests and contract check pass.
 - Test: `core/control-plane/internal/adapters/surrealdb/*_test.go`
 - Test: `core/*/cmd/*/*_test.go`
 
-- [ ] **Step 1: Measure package coverage after baseline fixes**
+- [x] **Step 1: Measure package coverage after baseline fixes**
 
 Run:
 
@@ -263,11 +279,11 @@ go test -tags surrealdb -coverprofile=/tmp/cloudgrid-go-backend.out ./core/otlp-
 go tool cover -func=/tmp/cloudgrid-go-backend.out | tail -1
 ```
 
-- [ ] **Step 2: Add focused branch tests for packages below 80%**
+- [x] **Step 2: Add focused branch tests for packages below 80%**
 
 Prioritize packages shown below 80% in the measured output. Cover validation branches, error mapping, query construction, readiness, and startup composition branches without adding production-only test hooks.
 
-- [ ] **Step 3: Verify aggregate coverage**
+- [x] **Step 3: Verify aggregate coverage**
 
 Run:
 
@@ -296,7 +312,7 @@ total: (statements) >80.0%
 - Modify: `website/src/content/handbook/reference/*.md`
 - Modify: `website/src/lib/handbook-navigation.ts`
 
-- [ ] **Step 1: Audit navigation order**
+- [x] **Step 1: Audit navigation order**
 
 Ensure navigation follows:
 
@@ -304,15 +320,15 @@ Ensure navigation follows:
 overview -> getting started -> concepts -> guides -> configuration -> operations -> architecture -> reference
 ```
 
-- [ ] **Step 2: Remove obsolete or duplicate setup guidance**
+- [x] **Step 2: Remove obsolete or duplicate setup guidance**
 
 Delete references to removed env aliases, deleted `docs/`, fake compatibility surfaces, and unsupported storage or API behavior.
 
-- [ ] **Step 3: Add extension/developer path**
+- [x] **Step 3: Add extension/developer path**
 
 Ensure adapter and extension pages explain how to extend auth, bridge, storage, harness, and public API clients without violating the service boundaries in `specs/00-conventions.md`.
 
-- [ ] **Step 4: Verify website**
+- [x] **Step 4: Verify website**
 
 Run:
 
@@ -331,7 +347,7 @@ Astro build exits 0.
 **Files:**
 - Modify only files changed by previous tasks.
 
-- [ ] **Step 1: Run full repository gate**
+- [x] **Step 1: Run full repository gate**
 
 Run:
 

@@ -43,6 +43,11 @@ Deployed mode defaults:
 
 - `CLOUDGRID_SELF_OBSERVABILITY_ENABLED=false` unless explicitly enabled.
 - Enabling self-observability requires explicit company, project, OTLP endpoint, and ingest credential configuration.
+- The configured OTLP endpoint must be accepted by the collector's deployed
+  ingest bearer-token validator. Collector validation uses
+  `CLOUDGRID_AUTH_ISSUER`, `CLOUDGRID_AUTH_AUDIENCE`, and
+  `CLOUDGRID_AUTH_JWKS_URL`; browser SSO provider settings are not a substitute
+  for these service-token values.
 - Control-plane must not create a company in deployed mode for this feature.
 - The configured project is visible only through the existing organization membership and selected-project authorization rules.
 - The control-plane service validates at startup/readiness that the configured self-observability project exists and belongs to the configured company. A mismatch fails with ERR-009. Other services validate only static self-observability configuration and rely on the collector's ingest credential validation for project routing.

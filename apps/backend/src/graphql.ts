@@ -2,31 +2,22 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   type AuthRuntimeConfig,
-  type CloudGridErrorId,
   type CloudGridLogger,
   createProblemDetails,
   createLogger,
-  type LogFields,
 } from "@cloudgrid/runtime";
 import type {
   AgentRunSearchInput,
   AiQualityOverviewInput,
   AiChatHistoryInput,
-  AlertSummaryInput,
-  AlertRuleSearchInput,
   AnnotationQueueSearchInput,
   AppendDatasetItemsInput,
   ApproveAiChatActionInput,
   CommitDatasetImportInput,
-  CreateAlertRuleInput,
-  CreateAlertSilenceInput,
   CreateAiChatConversationInput,
   CreateDatasetInput,
   CreateExperimentInput,
-  CreateIngestCredentialInput,
-  CreateProjectInput,
   CreateScorerInput,
-  DashboardListInput,
   Dataset,
   DatasetItemSearchInput,
   DatasetSearchInput,
@@ -34,43 +25,23 @@ import type {
   Experiment,
   ExperimentRun,
   ExperimentSearchInput,
-  InviteOrganizationMemberInput,
-  InviteProjectMemberInput,
   LiveExperimentRunInput,
-  LiveTraceInput,
-  LogSearchInput,
-  MetricNameSearchInput,
-  MetricSeriesInput,
   PrepareDatasetImportInput,
-  ProjectListInput,
   PromotePromptVersionInput,
   PromoteSpanToDatasetItemInput,
-  RemoveOrganizationMemberInput,
-  ReorderDashboardPinsInput,
   ResolveAnnotationInput,
-  RichMetricSeriesInput,
-  SaveDashboardInput,
   ScorerSearchInput,
-  SetDashboardPinnedInput,
   StartDatasetExportInput,
   StartExperimentRunInput,
   StartOptimizationRunInput,
-  TelemetryFacetInput,
-  TraceDetailInput,
-  TraceSearchInput,
   UpdateCompanyAiProviderSettingsInput,
-  UpdateAlertRuleInput,
-  UpdateOrganizationMemberInput,
   UpdateProjectAiProviderSettingsInput,
   UpdateProjectAiSettingsInput,
-  UpdateProjectInput,
-  UpdateRetentionPolicyInput,
 } from "@cloudgrid/ui-contracts";
 import {
   type DocumentNode,
   type FieldNode,
   type FragmentDefinitionNode,
-  GraphQLError,
   GraphQLScalarType,
   Kind,
   parse,
@@ -80,9 +51,7 @@ import { createSchema, createYoga } from "graphql-yoga";
 import { Hono } from "hono";
 import {
   type AuthProviderFixture,
-  authGraphQLError,
   CloudGridAuthService,
-  localAuthContext,
   type NormalizedAuthContext,
   requireScopes,
 } from "./auth";
@@ -92,18 +61,12 @@ import {
   type AiEvalBridge,
   type ControlPlaneBridge,
   createNATSTelemetryQueryBridge,
-  elapsedMilliseconds,
   type MetricQueryBridge,
   type TelemetryQueryBridge,
 } from "./bridge";
 import { loadConfig } from "./config";
 import { attachDatasetTransferRoutes } from "./dataset-transfer";
 import type { GraphQLMetricsRecorder } from "./graphql-metrics";
-import {
-  graphQLOperationType,
-  recordGraphQLMetrics,
-  sanitizeGraphQLOperationName,
-} from "./graphql-metrics";
 import { healthResponse } from "./health";
 import {
   OTLPSelfObservabilityExporter,
@@ -111,63 +74,45 @@ import {
   type SelfObservabilityTraceRecorder,
 } from "./self-observability";
 import { attachStaticRoutes } from "./static";
+import { controlPlaneResolvers } from "./graphql/resolvers/control-plane";
+import {
+  authContext,
+  logGraphQLOperation,
+  requireAiChatControlBridge,
+  requireAiEvalBridge,
+} from "./graphql/resolvers/context";
+import { dashboardResolvers } from "./graphql/resolvers/dashboards";
+import { metricsResolvers } from "./graphql/resolvers/metrics";
+import { telemetryResolvers } from "./graphql/resolvers/telemetry";
 import {
   validateAgentRunSearchInput,
   validateAiQualityOverviewInput,
   validateAiChatHistoryInput,
-  validateAlertRuleSearchInput,
-  validateAlertSummaryInput,
   validateAnnotationQueueSearchInput,
   validateAppendDatasetItemsInput,
   validateApproveAiChatActionInput,
   validateCommitDatasetImportInput,
-  validateCreateAlertRuleInput,
-  validateCreateAlertSilenceInput,
   validateCreateAiChatConversationInput,
   validateCreateDatasetInput,
   validateCreateExperimentInput,
-  validateCreateIngestCredentialInput,
-  validateCreateProjectInput,
   validateCreateScorerInput,
-  validateDashboardListInput,
   validateDatasetItemSearchInput,
   validateDatasetSearchInput,
   validateEvalResultSearchInput,
   validateExperimentSearchInput,
   validateId,
-  validateInviteOrganizationMemberInput,
-  validateInviteProjectMemberInput,
   validateLiveExperimentRunInput,
-  validateLiveTraceInput,
-  validateLogSearchInput,
-  validateMetricNameSearchInput,
-  validateMetricSeriesInput,
   validatePrepareDatasetImportInput,
-  validateProjectListInput,
-  validateProjectRole,
   validatePromotePromptVersionInput,
   validatePromoteSpanToDatasetItemInput,
-  validateRemoveOrganizationMemberInput,
-  validateReorderDashboardPinsInput,
   validateResolveAnnotationInput,
-  validateRichMetricSeriesInput,
-  validateSaveDashboardInput,
   validateScorerSearchInput,
-  validateSetDashboardPinnedInput,
   validateStartDatasetExportInput,
   validateStartExperimentRunInput,
   validateStartOptimizationRunInput,
-  validateTelemetryFacetInput,
-  validateTraceDetailInput,
-  validateTraceId,
-  validateTraceSearchInput,
   validateUpdateCompanyAiProviderSettingsInput,
-  validateUpdateAlertRuleInput,
-  validateUpdateOrganizationMemberInput,
   validateUpdateProjectAiProviderSettingsInput,
   validateUpdateProjectAiSettingsInput,
-  validateUpdateProjectInput,
-  validateUpdateRetentionPolicyInput,
 } from "./validation";
 
 const schemaPath = fileURLToPath(
@@ -600,190 +545,20 @@ function graphQLContentType(responseMediaType: GraphQLRequestBounds["responseMed
 }
 
 export function createCloudGridSchema() {
+  const controlPlane = controlPlaneResolvers();
+  const dashboards = dashboardResolvers();
+  const metrics = metricsResolvers();
+  const telemetry = telemetryResolvers();
   return createSchema<CloudGridYogaContext>({
     typeDefs: readFileSync(schemaPath, "utf8"),
     resolvers: {
       JSON: JSONScalar,
       DateTime: DateTimeScalar,
       Query: {
-        viewer: async (_parent, _args, context) =>
-          logGraphQLOperation(context, "viewer", async () =>
-            requireControlBridge(context).viewer(await authContext(context)),
-          ),
-        organizations: async (_parent, _args, context) =>
-          logGraphQLOperation(context, "organizations", async () =>
-            requireControlBridge(context).organizations(await authContext(context)),
-          ),
-        organization: async (_parent, args: { id: string }, context) =>
-          logGraphQLOperation(context, "organization", async () =>
-            requireControlBridge(context).organization(
-              validateId(args.id, "organization id"),
-              await authContext(context),
-            ),
-          ),
-        organizationMembers: async (_parent, args: { organizationId: string }, context) =>
-          logGraphQLOperation(context, "organizationMembers", async () =>
-            requireControlBridge(context).organizationMembers(
-              validateId(args.organizationId, "organization id"),
-              await authContext(context),
-            ),
-          ),
-        organizationInvitations: async (_parent, args: { organizationId: string }, context) =>
-          logGraphQLOperation(context, "organizationInvitations", async () =>
-            requireControlBridge(context).organizationInvitations(
-              validateId(args.organizationId, "organization id"),
-              await authContext(context),
-            ),
-          ),
-        projects: async (_parent, args: { input?: ProjectListInput }, context) =>
-          logGraphQLOperation(context, "projects", async () =>
-            requireControlBridge(context).projects(
-              validateProjectListInput(args.input ?? {}),
-              await authContext(context),
-            ),
-          ),
-        project: async (_parent, args: { id: string }, context) =>
-          logGraphQLOperation(context, "project", async () =>
-            requireControlBridge(context).project(
-              validateId(args.id, "project id"),
-              await authContext(context),
-            ),
-          ),
-        projectMembers: async (_parent, args: { projectId: string }, context) =>
-          logGraphQLOperation(context, "projectMembers", async () =>
-            requireControlBridge(context).projectMembers(
-              validateId(args.projectId, "project id"),
-              await authContext(context),
-            ),
-          ),
-        traces: async (_parent, args: { input?: TraceSearchInput }, context) =>
-          logGraphQLOperation(context, "traces", async () =>
-            context.hono
-              .get("bridge")
-              .searchTraces(validateTraceSearchInput(args.input ?? {}), await authContext(context)),
-          ),
-        trace: async (_parent, args: { id: string; input?: TraceDetailInput }, context) =>
-          logGraphQLOperation(context, "trace", async () =>
-            context.hono
-              .get("bridge")
-              .getTraceDetail(
-                validateTraceId(args.id),
-                validateTraceDetailInput(args.input ?? {}),
-                await authContext(context),
-              ),
-          ),
-        logs: async (_parent, args: { input?: LogSearchInput }, context) =>
-          logGraphQLOperation(context, "logs", async () =>
-            context.hono
-              .get("bridge")
-              .searchLogs(validateLogSearchInput(args.input ?? {}), await authContext(context)),
-          ),
-        telemetryFacets: async (_parent, args: { input?: TelemetryFacetInput }, context) =>
-          logGraphQLOperation(context, "telemetryFacets", async () =>
-            context.hono
-              .get("bridge")
-              .telemetryFacets(
-                validateTelemetryFacetInput(args.input ?? {}),
-                await authContext(context),
-              ),
-          ),
-        metricNames: async (_parent, args: { input?: MetricNameSearchInput }, context) =>
-          logGraphQLOperation(context, "metricNames", async () =>
-            requireMetricQueryBridge(context).metricNames(
-              validateMetricNameSearchInput(args.input ?? {}),
-              await authContext(context),
-            ),
-          ),
-        metricSeries: async (_parent, args: { input: MetricSeriesInput }, context) =>
-          logGraphQLOperation(context, "metricSeries", async () =>
-            requireMetricQueryBridge(context).metricSeries(
-              validateMetricSeriesInput(args.input),
-              await authContext(context),
-            ),
-          ),
-        richMetricSeries: async (_parent, args: { input: RichMetricSeriesInput }, context) =>
-          logGraphQLOperation(context, "richMetricSeries", async () =>
-            requireMetricQueryBridge(context).richMetricSeries(
-              validateRichMetricSeriesInput(args.input),
-              await authContext(context),
-            ),
-          ),
-        dashboards: async (_parent, args: { input?: DashboardListInput }, context) =>
-          logGraphQLOperation(context, "dashboards", async () =>
-            requireControlBridge(context).dashboards(
-              validateDashboardListInput(args.input ?? {}),
-              await authContext(context),
-            ),
-          ),
-        retentionPolicy: async (_parent, args: { projectId: string }, context) =>
-          logGraphQLOperation(context, "retentionPolicy", async () =>
-            requireControlBridge(context).retentionPolicy(
-              validateId(args.projectId, "project id"),
-              await authContext(context),
-            ),
-          ),
-        alertRules: async (
-          _parent,
-          args: { projectId: string; input?: AlertRuleSearchInput | null },
-          context,
-        ) =>
-          logGraphQLOperation(context, "alertRules", async () =>
-            requireControlBridge(context).alertRules(
-              validateId(args.projectId, "project id"),
-              validateAlertRuleSearchInput(args.input ?? {}),
-              await authContext(context),
-            ),
-          ),
-        alertHistory: async (
-          _parent,
-          args: {
-            projectId: string;
-            ruleId?: string | null;
-            first?: number | null;
-            after?: string | null;
-          },
-          context,
-        ) =>
-          logGraphQLOperation(context, "alertHistory", async () =>
-            requireControlBridge(context).alertHistory(
-              validateId(args.projectId, "project id"),
-              args.ruleId ? validateId(args.ruleId, "alert rule id") : null,
-              args.first ?? 50,
-              args.after ?? null,
-              await authContext(context),
-            ),
-          ),
-        alertSummary: async (
-          _parent,
-          args: { projectId: string; input?: AlertSummaryInput | null },
-          context,
-        ) =>
-          logGraphQLOperation(context, "alertSummary", async () =>
-            requireControlBridge(context).alertSummary(
-              validateId(args.projectId, "project id"),
-              validateAlertSummaryInput(args.input ?? {}),
-              await authContext(context),
-            ),
-          ),
-        alertSilences: async (
-          _parent,
-          args: { projectId: string; ruleId?: string | null },
-          context,
-        ) =>
-          logGraphQLOperation(context, "alertSilences", async () =>
-            requireControlBridge(context).alertSilences(
-              validateId(args.projectId, "project id"),
-              args.ruleId ? validateId(args.ruleId, "alert rule id") : null,
-              await authContext(context),
-            ),
-          ),
-        ingestCredentials: async (_parent, args: { projectId: string }, context) =>
-          logGraphQLOperation(context, "ingestCredentials", async () =>
-            requireControlBridge(context).ingestCredentials(
-              validateId(args.projectId, "project id"),
-              await authContext(context),
-            ),
-          ),
+        ...(controlPlane.Query as Record<string, unknown>),
+        ...(dashboards.Query as Record<string, unknown>),
+        ...(metrics.Query as Record<string, unknown>),
+        ...(telemetry.Query as Record<string, unknown>),
         agentRuns: async (_parent, args: { input?: AgentRunSearchInput }, context) =>
           logGraphQLOperation(context, "agentRuns", async () =>
             requireAiEvalBridge(context).agentRuns(
@@ -905,208 +680,8 @@ export function createCloudGridSchema() {
           ),
       },
       Mutation: {
-        selectProject: async (_parent, args: { projectId: string }, context) =>
-          logGraphQLOperation(context, "selectProject", async () => {
-            const projectId = validateId(args.projectId, "project id");
-            const viewer = await requireControlBridge(context).selectProject(
-              projectId,
-              await authContext(context),
-            );
-            if (context.request) {
-              await context.hono.get("auth").rememberSelectedProject(context.request, projectId);
-            }
-            return viewer;
-          }),
-        createProject: async (_parent, args: { input: CreateProjectInput }, context) =>
-          logGraphQLOperation(context, "createProject", async () =>
-            requireControlBridge(context).createProject(
-              validateCreateProjectInput(args.input),
-              await authContext(context),
-            ),
-          ),
-        updateProject: async (_parent, args: { id: string; input: UpdateProjectInput }, context) =>
-          logGraphQLOperation(context, "updateProject", async () =>
-            requireControlBridge(context).updateProject(
-              validateId(args.id, "project id"),
-              validateUpdateProjectInput(args.input),
-              await authContext(context),
-            ),
-          ),
-        inviteOrganizationMember: async (
-          _parent,
-          args: { input: InviteOrganizationMemberInput },
-          context,
-        ) =>
-          logGraphQLOperation(context, "inviteOrganizationMember", async () =>
-            requireControlBridge(context).inviteOrganizationMember(
-              validateInviteOrganizationMemberInput(args.input),
-              await authContext(context),
-            ),
-          ),
-        inviteProjectMember: async (_parent, args: { input: InviteProjectMemberInput }, context) =>
-          logGraphQLOperation(context, "inviteProjectMember", async () =>
-            requireControlBridge(context).inviteProjectMember(
-              validateInviteProjectMemberInput(args.input),
-              await authContext(context),
-            ),
-          ),
-        resendOrganizationInvitation: async (_parent, args: { id: string }, context) =>
-          logGraphQLOperation(context, "resendOrganizationInvitation", async () =>
-            requireControlBridge(context).resendOrganizationInvitation(
-              validateId(args.id, "invitation id"),
-              await authContext(context),
-            ),
-          ),
-        revokeOrganizationInvitation: async (_parent, args: { id: string }, context) =>
-          logGraphQLOperation(context, "revokeOrganizationInvitation", async () =>
-            requireControlBridge(context).revokeOrganizationInvitation(
-              validateId(args.id, "invitation id"),
-              await authContext(context),
-            ),
-          ),
-        updateOrganizationMember: async (
-          _parent,
-          args: { input: UpdateOrganizationMemberInput },
-          context,
-        ) =>
-          logGraphQLOperation(context, "updateOrganizationMember", async () =>
-            requireControlBridge(context).updateOrganizationMember(
-              validateUpdateOrganizationMemberInput(args.input),
-              await authContext(context),
-            ),
-          ),
-        removeOrganizationMember: async (
-          _parent,
-          args: { input: RemoveOrganizationMemberInput },
-          context,
-        ) =>
-          logGraphQLOperation(context, "removeOrganizationMember", async () =>
-            requireControlBridge(context).removeOrganizationMember(
-              validateRemoveOrganizationMemberInput(args.input),
-              await authContext(context),
-            ),
-          ),
-        updateProjectMember: async (
-          _parent,
-          args: { projectId: string; userId: string; role: "viewer" | "editor" | "admin" },
-          context,
-        ) =>
-          logGraphQLOperation(context, "updateProjectMember", async () =>
-            requireControlBridge(context).updateProjectMember(
-              validateId(args.projectId, "project id"),
-              validateId(args.userId, "user id"),
-              validateProjectRole(args.role),
-              await authContext(context),
-            ),
-          ),
-        removeProjectMember: async (
-          _parent,
-          args: { projectId: string; userId: string },
-          context,
-        ) =>
-          logGraphQLOperation(context, "removeProjectMember", async () =>
-            requireControlBridge(context).removeProjectMember(
-              validateId(args.projectId, "project id"),
-              validateId(args.userId, "user id"),
-              await authContext(context),
-            ),
-          ),
-        createIngestCredential: async (
-          _parent,
-          args: { input: CreateIngestCredentialInput },
-          context,
-        ) =>
-          logGraphQLOperation(context, "createIngestCredential", async () =>
-            requireControlBridge(context).createIngestCredential(
-              validateCreateIngestCredentialInput(args.input),
-              await authContext(context),
-            ),
-          ),
-        revokeIngestCredential: async (_parent, args: { id: string }, context) =>
-          logGraphQLOperation(context, "revokeIngestCredential", async () =>
-            requireControlBridge(context).revokeIngestCredential(
-              validateId(args.id, "ingest credential id"),
-              await authContext(context),
-            ),
-          ),
-        saveDashboard: async (_parent, args: { input: SaveDashboardInput }, context) =>
-          logGraphQLOperation(context, "saveDashboard", async () =>
-            requireControlBridge(context).saveDashboard(
-              validateSaveDashboardInput(args.input),
-              await authContext(context),
-            ),
-          ),
-        deleteDashboard: async (_parent, args: { id: string }, context) =>
-          logGraphQLOperation(context, "deleteDashboard", async () =>
-            requireControlBridge(context).deleteDashboard(
-              validateId(args.id, "dashboard id"),
-              await authContext(context),
-            ),
-          ),
-        setDashboardPinned: async (_parent, args: { input: SetDashboardPinnedInput }, context) =>
-          logGraphQLOperation(context, "setDashboardPinned", async () =>
-            requireControlBridge(context).setDashboardPinned(
-              validateSetDashboardPinnedInput(args.input),
-              await authContext(context),
-            ),
-          ),
-        reorderDashboardPins: async (
-          _parent,
-          args: { input: ReorderDashboardPinsInput },
-          context,
-        ) =>
-          logGraphQLOperation(context, "reorderDashboardPins", async () =>
-            requireControlBridge(context).reorderDashboardPins(
-              validateReorderDashboardPinsInput(args.input),
-              await authContext(context),
-            ),
-          ),
-        updateRetentionPolicy: async (
-          _parent,
-          args: { input: UpdateRetentionPolicyInput },
-          context,
-        ) =>
-          logGraphQLOperation(context, "updateRetentionPolicy", async () =>
-            requireControlBridge(context).updateRetentionPolicy(
-              validateUpdateRetentionPolicyInput(args.input),
-              await authContext(context),
-            ),
-          ),
-        createAlertRule: async (_parent, args: { input: CreateAlertRuleInput }, context) =>
-          logGraphQLOperation(context, "createAlertRule", async () =>
-            requireControlBridge(context).createAlertRule(
-              validateCreateAlertRuleInput(args.input),
-              await authContext(context),
-            ),
-          ),
-        updateAlertRule: async (_parent, args: { input: UpdateAlertRuleInput }, context) =>
-          logGraphQLOperation(context, "updateAlertRule", async () =>
-            requireControlBridge(context).updateAlertRule(
-              validateUpdateAlertRuleInput(args.input),
-              await authContext(context),
-            ),
-          ),
-        deleteAlertRule: async (_parent, args: { id: string }, context) =>
-          logGraphQLOperation(context, "deleteAlertRule", async () =>
-            requireControlBridge(context).deleteAlertRule(
-              validateId(args.id, "alert rule id"),
-              await authContext(context),
-            ),
-          ),
-        createAlertSilence: async (_parent, args: { input: CreateAlertSilenceInput }, context) =>
-          logGraphQLOperation(context, "createAlertSilence", async () =>
-            requireControlBridge(context).createAlertSilence(
-              validateCreateAlertSilenceInput(args.input),
-              await authContext(context),
-            ),
-          ),
-        deleteAlertSilence: async (_parent, args: { id: string }, context) =>
-          logGraphQLOperation(context, "deleteAlertSilence", async () =>
-            requireControlBridge(context).deleteAlertSilence(
-              validateId(args.id, "alert silence id"),
-              await authContext(context),
-            ),
-          ),
+        ...(controlPlane.Mutation as Record<string, unknown>),
+        ...(dashboards.Mutation as Record<string, unknown>),
         createDataset: async (_parent, args: { input: CreateDatasetInput }, context) =>
           logGraphQLOperation(context, "createDataset", async () =>
             requireAiEvalBridge(context).createDataset(
@@ -1314,17 +889,7 @@ export function createCloudGridSchema() {
           ),
       },
       Subscription: {
-        liveTraces: {
-          subscribe: (_parent, args: { input?: LiveTraceInput }, context) =>
-            logGraphQLOperation(context, "liveTraces", async () => {
-              const auth = await authContext(context);
-              requireScopes(auth, ["telemetry:read", "telemetry:live"]);
-              return context.hono
-                .get("bridge")
-                .subscribeLiveTraces(validateLiveTraceInput(args.input ?? {}), auth);
-            }),
-          resolve: (event: unknown) => event,
-        },
+        ...(telemetry.Subscription as Record<string, unknown>),
         liveExperimentRun: {
           subscribe: (_parent, args: { input: LiveExperimentRunInput }, context) =>
             logGraphQLOperation(context, "liveExperimentRun", async () => {
@@ -1340,212 +905,6 @@ export function createCloudGridSchema() {
       },
     },
   });
-}
-
-async function authContext(context: CloudGridYogaContext): Promise<NormalizedAuthContext> {
-  return context.authContext ? await context.authContext : localAuthContext();
-}
-
-function requireControlBridge(context: CloudGridYogaContext): ControlPlaneBridge {
-  const bridge = context.hono.get("bridge");
-  if (
-    !bridge.viewer ||
-    !bridge.organizations ||
-    !bridge.organization ||
-    !bridge.projects ||
-    !bridge.project ||
-    !bridge.createProject ||
-    !bridge.updateProject ||
-    !bridge.selectProject ||
-    !bridge.updateOrganizationMember ||
-    !bridge.removeOrganizationMember ||
-    !bridge.ingestCredentials ||
-    !bridge.createIngestCredential ||
-    !bridge.revokeIngestCredential ||
-    !bridge.dashboards ||
-    !bridge.saveDashboard ||
-    !bridge.deleteDashboard ||
-    !bridge.setDashboardPinned ||
-    !bridge.reorderDashboardPins
-  ) {
-    throw authGraphQLError("ERR-016");
-  }
-  return bridge as ControlPlaneBridge;
-}
-
-function requireAiChatControlBridge(context: CloudGridYogaContext): ControlPlaneBridge {
-  const bridge = context.hono.get("bridge");
-  if (
-    !bridge.projectAiProviderSettings ||
-    !bridge.updateProjectAiProviderSettings ||
-    !bridge.companyAiProviderSettings ||
-    !bridge.updateCompanyAiProviderSettings ||
-    !bridge.aiChatHistory ||
-    !bridge.aiChatConversation ||
-    !bridge.createAiChatConversation ||
-    !bridge.archiveAiChatConversation ||
-    !bridge.deleteAiChatConversation ||
-    !bridge.approveAiChatAction
-  ) {
-    throw authGraphQLError("ERR-016");
-  }
-  return bridge as ControlPlaneBridge;
-}
-
-function requireMetricQueryBridge(context: CloudGridYogaContext): MetricQueryBridge {
-  const bridge = context.hono.get("bridge");
-  if (!bridge.metricNames || !bridge.metricSeries) {
-    throw authGraphQLError("ERR-016");
-  }
-  return bridge as TelemetryQueryBridge & MetricQueryBridge;
-}
-
-function requireAiEvalBridge(context: CloudGridYogaContext): AiEvalBridge {
-  const bridge = context.hono.get("bridge");
-  if (
-    !bridge.agentRuns ||
-    !bridge.agentRun ||
-    !bridge.datasets ||
-    !bridge.dataset ||
-    !bridge.datasetImport ||
-    !bridge.datasetExport ||
-    !bridge.datasetItems ||
-    !bridge.scorers ||
-    !bridge.experiments ||
-    !bridge.experimentRun ||
-    !bridge.experimentRuns ||
-    !bridge.datasetItemRuns ||
-    !bridge.evalResults ||
-    !bridge.annotationQueue ||
-    !bridge.projectAiSettings ||
-    !bridge.aiQualityOverview ||
-    !bridge.createDataset ||
-    !bridge.appendDatasetItems ||
-    !bridge.prepareDatasetImport ||
-    !bridge.commitDatasetImport ||
-    !bridge.startDatasetExport ||
-    !bridge.promoteSpanToDatasetItem ||
-    !bridge.createScorer ||
-    !bridge.createExperiment ||
-    !bridge.startExperimentRun ||
-    !bridge.cancelExperimentRun ||
-    !bridge.startOptimizationRun ||
-    !bridge.promotePromptVersion ||
-    !bridge.resolveAnnotation ||
-    !bridge.updateProjectAiSettings ||
-    !bridge.subscribeLiveExperimentRun
-  ) {
-    throw authGraphQLError("ERR-016");
-  }
-  return bridge as AiEvalBridge;
-}
-
-async function logGraphQLOperation<T>(
-  context: {
-    requestId: string;
-    logger: CloudGridLogger;
-    metricsRecorder?: GraphQLMetricsRecorder;
-    traceRecorder?: SelfObservabilityTraceRecorder;
-    logRecorder?: SelfObservabilityLogRecorder;
-  },
-  operation: string,
-  run: () => Promise<T>,
-): Promise<T> {
-  const start = performance.now();
-  const operationName = sanitizeGraphQLOperationName(operation);
-  const operationType = graphQLOperationType(operationName);
-  try {
-    const result = await run();
-    context.traceRecorder?.recordSpan({
-      name: "graphql.request",
-      result: "success",
-      durationSeconds: elapsedSecondsFromMilliseconds(start),
-      attributes: {
-        "cloudgrid.request_id": context.requestId,
-        "graphql.operation.name": operationName,
-        "graphql.operation.type": operationType,
-      },
-    });
-    recordGraphQLMetrics(
-      context.metricsRecorder,
-      operation,
-      "success",
-      elapsedSecondsFromMilliseconds(start),
-    );
-    context.logger.debug("graphql_operation_completed", {
-      request_id: context.requestId,
-      operation_or_subject: operation,
-      status: "ok",
-      duration_ms: elapsedMilliseconds(start),
-    });
-    return result;
-  } catch (error) {
-    const mapped = graphQLErrorLogFields(error);
-    const errorID = mapped.error_id ?? "ERR-006";
-    const errorCode = mapped.error_code ?? "STORAGE_UNAVAILABLE";
-    context.traceRecorder?.recordSpan({
-      name: "graphql.request",
-      result: "error",
-      durationSeconds: elapsedSecondsFromMilliseconds(start),
-      attributes: {
-        "cloudgrid.request_id": context.requestId,
-        "graphql.operation.name": operationName,
-        "graphql.operation.type": operationType,
-      },
-    });
-    context.logRecorder?.recordLog({
-      event: "graphql_operation_failed",
-      severity: "WARN",
-      attributes: {
-        "graphql.operation.name": operationName,
-        "graphql.operation.type": operationType,
-        "error.id": errorID,
-        "error.code": errorCode,
-      },
-    });
-    recordGraphQLMetrics(
-      context.metricsRecorder,
-      operation,
-      "error",
-      elapsedSecondsFromMilliseconds(start),
-    );
-    context.logger.warn("graphql_operation_completed", {
-      request_id: context.requestId,
-      operation_or_subject: operation,
-      status: "error",
-      duration_ms: elapsedMilliseconds(start),
-      ...mapped,
-    });
-    throw error;
-  }
-}
-
-function elapsedSecondsFromMilliseconds(start: number): number {
-  return elapsedMilliseconds(start) / 1000;
-}
-
-function graphQLErrorLogFields(error: unknown): Pick<LogFields, "error_id" | "error_code"> {
-  if (error instanceof GraphQLError) {
-    const problem = error.extensions?.problem;
-    if (isProblemLogFields(problem)) {
-      return { error_id: problem.id, error_code: problem.code };
-    }
-    if (typeof error.extensions?.code === "string") {
-      return { error_code: error.extensions.code };
-    }
-  }
-  return {};
-}
-
-function isProblemLogFields(value: unknown): value is { id: CloudGridErrorId; code: string } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "id" in value &&
-    "code" in value &&
-    typeof value.id === "string" &&
-    typeof value.code === "string"
-  );
 }
 
 function parseLiteral(ast: Parameters<NonNullable<GraphQLScalarType["parseLiteral"]>>[0]): unknown {

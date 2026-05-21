@@ -104,6 +104,9 @@ and retries email asynchronously.
 | `CLOUDGRID_OTLP_PUBLISH_TIMEOUT_MS` | `1000` | Collector NATS publish timeout. |
 | `CLOUDGRID_PROJECT_STATUS_CACHE_TTL_SECONDS` | `60` | Fresh project-status authorization cache lifetime in deployed collector mode. |
 | `CLOUDGRID_PROJECT_STATUS_CACHE_STALE_SECONDS` | `120` | Stale project-status cache reuse window during temporary control-plane failures. |
+| `CLOUDGRID_AUTH_ISSUER` | unset | Required by the collector when `CLOUDGRID_AUTH_MODE=sso`; trusted issuer for OTLP ingest bearer tokens. |
+| `CLOUDGRID_AUTH_AUDIENCE` | unset | Required by the collector when `CLOUDGRID_AUTH_MODE=sso`; expected audience for OTLP ingest bearer tokens. |
+| `CLOUDGRID_AUTH_JWKS_URL` | unset | Required by the collector when `CLOUDGRID_AUTH_MODE=sso`; JWKS endpoint for OTLP ingest bearer-token signatures. |
 
 ## Self-Observability
 

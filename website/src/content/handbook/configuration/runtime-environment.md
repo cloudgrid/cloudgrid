@@ -41,6 +41,9 @@ Runtime configuration is service-owned. Each service validates only the variable
 | `CLOUDGRID_OTLP_GRPC_COMPRESSION` | `gzip` | OTLP/gRPC compression mode, `gzip` or `none`. |
 | `CLOUDGRID_OTLP_LOCAL_PROJECT_ID` | `default` | Local single-project fallback when token routing is not configured. |
 | `CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS` | unset | JSON token-to-project map for local multi-project ingest. |
+| `CLOUDGRID_AUTH_ISSUER` | unset | Collector-only issuer for deployed OTLP ingest bearer tokens when `CLOUDGRID_AUTH_MODE=sso`. |
+| `CLOUDGRID_AUTH_AUDIENCE` | unset | Collector-only audience for deployed OTLP ingest bearer tokens when `CLOUDGRID_AUTH_MODE=sso`. |
+| `CLOUDGRID_AUTH_JWKS_URL` | unset | Collector-only JWKS endpoint for deployed OTLP ingest bearer-token validation when `CLOUDGRID_AUTH_MODE=sso`. |
 
 ## Storage And Control-Plane Variables
 

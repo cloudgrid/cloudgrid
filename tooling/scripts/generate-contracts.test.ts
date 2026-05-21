@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { $ } from "bun";
 import { buildSchema, isInputObjectType, isNonNullType, parse, validate } from "graphql";
@@ -73,7 +73,10 @@ describe("contract generation", () => {
     const schema = buildSchema(
       readFileSync(join(root, "specs/03-contracts/graphql/public-schema.graphql"), "utf8"),
     );
-    const source = readFileSync(join(root, "apps/packages/public-api-client/src/index.ts"), "utf8");
+    const source = sourceFiles(join(root, "apps/packages/public-api-client/src"))
+      .filter((file) => !file.endsWith(".test.ts"))
+      .map((file) => readFileSync(file, "utf8"))
+      .join("\n");
     const templates = extractTemplates(source);
     const operations = [...templates.entries()]
       .filter(([name]) => name.endsWith("Operation"))
@@ -121,6 +124,20 @@ describe("contract generation", () => {
     expect(violations).toEqual([]);
   });
 });
+
+function sourceFiles(directory: string): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(directory)) {
+    const path = join(directory, entry);
+    const stat = statSync(path);
+    if (stat.isDirectory()) {
+      files.push(...sourceFiles(path));
+    } else if (entry.endsWith(".ts")) {
+      files.push(path);
+    }
+  }
+  return files;
+}
 
 function extractTemplates(source: string) {
   const values = new Map<string, string>();

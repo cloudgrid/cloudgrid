@@ -117,6 +117,13 @@ otlpCollector:
     tag: ""
     digest: ""
     pullPolicy: IfNotPresent
+  serviceTokenAuth:
+    # Required when authMode=sso. These validate bearer tokens sent to the
+    # public OTLP collector and are intentionally separate from browser SSO
+    # provider client settings.
+    issuer: "https://issuer.example.invalid"
+    audience: "cloudgrid-ingest"
+    jwksUrl: "https://issuer.example.invalid/.well-known/jwks.json"
   env:
     CLOUDGRID_OTLP_HTTP_ADDR: "0.0.0.0:4318"
     CLOUDGRID_OTLP_GRPC_ADDR: "0.0.0.0:4317"
