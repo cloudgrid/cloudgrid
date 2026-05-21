@@ -5,6 +5,7 @@ import { spawn } from "bun";
 
 const processes = [];
 let stopping = false;
+const defaultReadyTimeoutMs = 60_000;
 
 export async function main() {
   const env = mergedEnv(parseDotEnvFile(".env"), process.env);
@@ -154,7 +155,7 @@ async function startService(name, command, readyURL, extraEnv = {}) {
     }
   });
   if (readyURL) {
-    await waitForReady(name, readyURL, () => exitedCode);
+    await waitForReady(name, readyURL, () => exitedCode, devReadyTimeoutMs(extraEnv));
   }
 }
 
@@ -188,8 +189,8 @@ async function stopAll(exitCode) {
   process.exit(exitCode);
 }
 
-async function waitForReady(name, url, exitedCode) {
-  const deadline = Date.now() + 15_000;
+async function waitForReady(name, url, exitedCode, timeoutMs = defaultReadyTimeoutMs) {
+  const deadline = Date.now() + timeoutMs;
   let lastError = "";
   while (Date.now() < deadline) {
     if (exitedCode() !== undefined) {
@@ -201,14 +202,28 @@ async function waitForReady(name, url, exitedCode) {
       if (response.ok) {
         return;
       }
-      lastError = `${response.status} ${response.statusText}`;
+      lastError = await readinessError(response);
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
     }
     await Bun.sleep(100);
   }
-  console.error(`[${name}] did not become ready at ${url}: ${lastError}`);
+  console.error(`[${name}] did not become ready at ${url} within ${timeoutMs}ms: ${lastError}`);
   await stopAll(1);
+}
+
+export function devReadyTimeoutMs(env) {
+  const configured = Number(env.CLOUDGRID_DEV_READY_TIMEOUT_MS || "");
+  return Number.isFinite(configured) && configured > 0 ? configured : defaultReadyTimeoutMs;
+}
+
+async function readinessError(response) {
+  const body = await response.text();
+  const compactBody = body.trim().replace(/\s+/g, " ");
+  if (compactBody === "") {
+    return `${response.status} ${response.statusText}`;
+  }
+  return `${response.status} ${response.statusText}: ${compactBody}`;
 }
 
 export function parseDotEnv(text) {

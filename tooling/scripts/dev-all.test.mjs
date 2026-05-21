@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { mergedEnv, natsPayloadReadinessMessage, parseDotEnv } from "./dev-all.mjs";
+import {
+  devReadyTimeoutMs,
+  mergedEnv,
+  natsPayloadReadinessMessage,
+  parseDotEnv,
+} from "./dev-all.mjs";
 
 describe("dev-all helpers", () => {
   test("parseDotEnv reads local dev values without overriding process env", () => {
@@ -35,5 +40,11 @@ describe("dev-all helpers", () => {
         monitorPort: "8222",
       }),
     ).toEqual({ ok: true, message: "" });
+  });
+
+  test("readiness timeout supports slower local Go and SurrealDB startup", () => {
+    expect(devReadyTimeoutMs({})).toBe(60_000);
+    expect(devReadyTimeoutMs({ CLOUDGRID_DEV_READY_TIMEOUT_MS: "90000" })).toBe(90_000);
+    expect(devReadyTimeoutMs({ CLOUDGRID_DEV_READY_TIMEOUT_MS: "0" })).toBe(60_000);
   });
 });
