@@ -93,16 +93,19 @@ import {
 } from "../components/ui/table";
 import { createAiChatGraphQLClient } from "../features/ai-chat/api";
 import {
+  applyAiChatStreamEvent,
   aiChatActionById,
   aiChatApprovalInput,
   aiChatArtifactById,
   aiChatConversationQueryKey,
   aiChatHistoryQueryKey,
   aiChatProviderQueryKey,
+  createAiChatStreamViewState,
   findAiChatConversation,
   isCompanyAiChatProviderConfigured,
   orderedAiChatProjectGroups,
   safeAiChatArtifactView,
+  type AiChatStreamViewState,
 } from "../features/ai-chat/view-model";
 import { formatDateTime } from "../lib/format";
 import { t } from "../lib/i18n";
@@ -117,15 +120,6 @@ const aiChatClient = createAiChatGraphQLClient(
   import.meta.env.VITE_CLOUDGRID_GRAPHQL_URL || "/graphql",
 );
 
-interface LocalAiChatStreamState {
-  assistantText: string;
-  conversationId: string;
-  error: string | null;
-  runId: string | null;
-  status: "streaming" | "completed" | "failed";
-  userText: string;
-}
-
 export function AiChatRoute() {
   const { selectProject, viewer } = useAppSession();
   const selectedProject = viewer?.selectedProject ?? null;
@@ -134,6 +128,7 @@ export function AiChatRoute() {
     : null;
   const companyId = organization?.id ?? selectedProject?.organizationId ?? "";
   const projectId = selectedProject?.id ?? "";
+  const userId = viewer?.user.id ?? "";
   const isCompanyAdmin = organization?.role === "admin";
   const [searchParams, setSearchParams] = useSearchParams();
   const conversationId = searchParams.get("conversation");
@@ -142,7 +137,7 @@ export function AiChatRoute() {
   const [prompt, setPrompt] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [localConversation, setLocalConversation] = useState<AiChatConversation | null>(null);
-  const [streamState, setStreamState] = useState<LocalAiChatStreamState | null>(null);
+  const [streamState, setStreamState] = useState<AiChatStreamViewState | null>(null);
   const [streamAbort, setStreamAbort] = useState<AbortController | null>(null);
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
   const promptAutoFocused = useRef(false);
@@ -157,7 +152,7 @@ export function AiChatRoute() {
   });
   const historyQuery = useQuery({
     enabled: aiChatEnabled && Boolean(companyId && projectId),
-    queryKey: aiChatHistoryQueryKey({ companyId, projectId }),
+    queryKey: aiChatHistoryQueryKey({ companyId, projectId, userId }),
     queryFn: () =>
       aiChatClient.getAiChatHistory({
         companyId,
@@ -172,11 +167,13 @@ export function AiChatRoute() {
     historyQuery.data,
     conversationId,
     projectId,
+    userId,
   );
   const localConversationForRoute =
     localConversation &&
     conversationId === localConversation.id &&
-    localConversation.projectId === projectId
+    localConversation.projectId === projectId &&
+    localConversation.userId === userId
       ? localConversation
       : null;
   const hydratedLocalConversation = isHydratedAiChatConversation(localConversationForRoute)
@@ -190,10 +187,14 @@ export function AiChatRoute() {
   );
   const conversationQuery = useQuery({
     enabled: aiChatEnabled && Boolean(projectId) && shouldFetchConversation,
-    queryKey: aiChatConversationQueryKey(conversationId, projectId),
+    queryKey: aiChatConversationQueryKey({ conversationId, projectId, userId }),
     queryFn: () => aiChatClient.getAiChatConversation(conversationId ?? ""),
   });
-  const fetchedConversation = conversationInSelectedProject(conversationQuery.data, projectId);
+  const fetchedConversation = conversationInSelectedProject(
+    conversationQuery.data,
+    projectId,
+    userId,
+  );
   const activeConversation =
     conversationId === null
       ? null
@@ -210,8 +211,8 @@ export function AiChatRoute() {
     [activeConversation, providerQuery.data, streamState],
   );
   const groups = useMemo(
-    () => orderedAiChatProjectGroups(historyQuery.data, projectId),
-    [historyQuery.data, projectId],
+    () => orderedAiChatProjectGroups(historyQuery.data, projectId, userId),
+    [historyQuery.data, projectId, userId],
   );
 
   const createConversation = useMutation({
@@ -226,16 +227,16 @@ export function AiChatRoute() {
       setPrompt("");
       setLocalConversation(conversation);
       queryClient.setQueryData(
-        aiChatConversationQueryKey(conversation.id, projectId),
+        aiChatConversationQueryKey({ conversationId: conversation.id, projectId, userId }),
         conversation,
       );
       queryClient.setQueryData<AiChatHistory>(
-        aiChatHistoryQueryKey({ companyId, projectId }),
+        aiChatHistoryQueryKey({ companyId, projectId, userId }),
         (current) => upsertConversationInHistory(current, conversation),
       );
       setSearchParams({ conversation: conversation.id });
       await queryClient.invalidateQueries({
-        queryKey: aiChatHistoryQueryKey({ companyId, projectId }),
+        queryKey: aiChatHistoryQueryKey({ companyId, projectId, userId }),
       });
     },
   });
@@ -245,10 +246,14 @@ export function AiChatRoute() {
     onSuccess: async (proposal) => {
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: aiChatHistoryQueryKey({ companyId, projectId }),
+          queryKey: aiChatHistoryQueryKey({ companyId, projectId, userId }),
         }),
         queryClient.invalidateQueries({
-          queryKey: aiChatConversationQueryKey(proposal.conversationId, projectId),
+          queryKey: aiChatConversationQueryKey({
+            conversationId: proposal.conversationId,
+            projectId,
+            userId,
+          }),
         }),
       ]);
     },
@@ -256,9 +261,11 @@ export function AiChatRoute() {
   const deleteConversation = useMutation({
     mutationFn: (id: string) => aiChatClient.deleteAiChatConversation(id),
     onSuccess: async (_deleted, id) => {
-      queryClient.removeQueries({ queryKey: aiChatConversationQueryKey(id, projectId) });
+      queryClient.removeQueries({
+        queryKey: aiChatConversationQueryKey({ conversationId: id, projectId, userId }),
+      });
       queryClient.setQueryData<AiChatHistory>(
-        aiChatHistoryQueryKey({ companyId, projectId }),
+        aiChatHistoryQueryKey({ companyId, projectId, userId }),
         (current) => removeConversationFromHistory(current, id),
       );
       if (activeConversation?.id === id) {
@@ -267,7 +274,7 @@ export function AiChatRoute() {
         setSearchParams({});
       }
       await queryClient.invalidateQueries({
-        queryKey: aiChatHistoryQueryKey({ companyId, projectId }),
+        queryKey: aiChatHistoryQueryKey({ companyId, projectId, userId }),
       });
     },
   });
@@ -373,12 +380,9 @@ export function AiChatRoute() {
   ) {
     if (conversation.projectId !== projectId) {
       setStreamState({
-        assistantText: "",
-        conversationId: conversation.id,
+        ...createAiChatStreamViewState({ conversationId: conversation.id, userText: text }),
         error: t("aiChat.runError"),
-        runId: null,
         status: "failed",
-        userText: text,
       });
       return;
     }
@@ -388,15 +392,13 @@ export function AiChatRoute() {
     setPrompt("");
     setSearchParams({ conversation: conversation.id });
     setLocalConversation(conversation);
-    queryClient.setQueryData(aiChatConversationQueryKey(conversation.id, projectId), conversation);
-    setStreamState({
-      assistantText: "",
-      conversationId: conversation.id,
-      error: null,
-      runId: null,
-      status: "streaming",
-      userText: text,
-    });
+    queryClient.setQueryData(
+      aiChatConversationQueryKey({ conversationId: conversation.id, projectId, userId }),
+      conversation,
+    );
+    setStreamState(
+      createAiChatStreamViewState({ conversationId: conversation.id, userText: text }),
+    );
     try {
       const streamInput = {
         conversationId: conversation.id,
@@ -412,41 +414,9 @@ export function AiChatRoute() {
       for await (const event of aiChatClient.streamAiChatRun(streamInput, {
         signal: abort.signal,
       })) {
-        if (event.type === "run.started") {
-          setStreamState((state) =>
-            state ? { ...state, runId: event.runId, status: "streaming" } : state,
-          );
-        }
-        if (event.type === "text.delta") {
-          const delta = typeof event.payload.text === "string" ? event.payload.text : "";
-          setStreamState((state) =>
-            state ? { ...state, assistantText: state.assistantText + delta } : state,
-          );
-        }
-        if (event.type === "message.created" && event.payload.role === "assistant") {
-          const textPart = Array.isArray(event.payload.parts)
-            ? event.payload.parts.find(isStreamTextPart)
-            : null;
-          if (textPart) {
-            setStreamState((state) => (state ? { ...state, assistantText: textPart.text } : state));
-          }
-        }
-        if (event.type === "run.failed") {
-          const problem = isRecord(event.payload.problem) ? event.payload.problem : null;
-          setStreamState((state) =>
-            state
-              ? {
-                  ...state,
-                  error:
-                    typeof problem?.detail === "string" ? problem.detail : t("aiChat.runError"),
-                  status: "failed",
-                }
-              : state,
-          );
-        }
+        setStreamState((state) => (state ? applyAiChatStreamEvent(state, event) : state));
         if (event.type === "run.completed") {
           completed = true;
-          setStreamState((state) => (state ? { ...state, status: "completed" } : state));
         }
       }
     } catch (error) {
@@ -467,16 +437,16 @@ export function AiChatRoute() {
       if (completed) {
         try {
           const refreshed = await aiChatClient.getAiChatConversation(conversation.id);
-          const selectedRefreshed = conversationInSelectedProject(refreshed, projectId);
+          const selectedRefreshed = conversationInSelectedProject(refreshed, projectId, userId);
           if (selectedRefreshed) {
             refreshedConversation = selectedRefreshed;
             setLocalConversation(selectedRefreshed);
             queryClient.setQueryData(
-              aiChatConversationQueryKey(conversation.id, projectId),
+              aiChatConversationQueryKey({ conversationId: conversation.id, projectId, userId }),
               selectedRefreshed,
             );
             queryClient.setQueryData<AiChatHistory>(
-              aiChatHistoryQueryKey({ companyId, projectId }),
+              aiChatHistoryQueryKey({ companyId, projectId, userId }),
               (current) => upsertConversationInHistory(current, selectedRefreshed),
             );
           }
@@ -486,10 +456,14 @@ export function AiChatRoute() {
       }
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: aiChatHistoryQueryKey({ companyId, projectId }),
+          queryKey: aiChatHistoryQueryKey({ companyId, projectId, userId }),
         }),
         queryClient.invalidateQueries({
-          queryKey: aiChatConversationQueryKey(conversation.id, projectId),
+          queryKey: aiChatConversationQueryKey({
+            conversationId: conversation.id,
+            projectId,
+            userId,
+          }),
         }),
       ]);
       if (completed && refreshedConversation) {
@@ -1053,14 +1027,23 @@ function ConversationTranscript({
                             key={key}
                             onApprove={onApprove}
                             proposal={aiChatActionById(conversation, part.actionProposalId ?? null)}
+                            streamPart={part}
                           />
                         );
                       }
-                      return (
-                        <Badge className="w-fit" key={key} variant="outline">
-                          {part.type}
-                        </Badge>
-                      );
+                      if (part.type === "tool_status") {
+                        return <ToolStatusPart key={key} part={part} />;
+                      }
+                      if (part.type === "approval_result") {
+                        return <ApprovalResultPart key={key} part={part} />;
+                      }
+                      if (part.type === "error") {
+                        return <ErrorPart key={key} part={part} />;
+                      }
+                      if (part.type === "compaction_summary") {
+                        return <CompactionSummaryPart key={key} part={part} />;
+                      }
+                      return <UnknownMessagePart key={key} type={part.type} />;
                     })}
                   </MessageContent>
                   {message.role === "assistant" ? (
@@ -1132,6 +1115,66 @@ function ConversationStatusBadges({
       {run ? <Badge variant="secondary">{run.status}</Badge> : null}
       {run?.problem ? <Badge variant="destructive">{t("aiChat.runError")}</Badge> : null}
     </div>
+  );
+}
+
+function ToolStatusPart({ part }: { part: AiChatMessage["parts"][number] }) {
+  const durationMs = jsonRecord(part.json)?.durationMs;
+  const errorCode = jsonRecord(part.json)?.errorCode;
+  return (
+    <div className="flex w-fit max-w-full flex-wrap items-center gap-2 rounded-md border bg-background px-3 py-2 text-xs">
+      <Clock3 aria-hidden className="size-3 text-muted-foreground" />
+      <span className="font-medium">{part.label ?? part.toolName ?? t("aiChat.tool.label")}</span>
+      {part.toolName ? (
+        <code className="rounded bg-muted px-1.5 py-0.5 font-mono">{part.toolName}</code>
+      ) : null}
+      {part.status ? <Badge variant="outline">{part.status}</Badge> : null}
+      {typeof durationMs === "number" ? (
+        <span className="text-muted-foreground">{durationMs}ms</span>
+      ) : null}
+      {typeof errorCode === "string" ? <Badge variant="destructive">{errorCode}</Badge> : null}
+    </div>
+  );
+}
+
+function ApprovalResultPart({ part }: { part: AiChatMessage["parts"][number] }) {
+  return (
+    <Alert className="bg-background">
+      <Check aria-hidden />
+      <AlertTitle>{t("aiChat.approval.result")}</AlertTitle>
+      <AlertDescription>{part.text ?? stringifyJsonValue(part.json)}</AlertDescription>
+    </Alert>
+  );
+}
+
+function ErrorPart({ part }: { part: AiChatMessage["parts"][number] }) {
+  const problem = jsonRecord(part.problem);
+  const code = typeof problem?.code === "string" ? problem.code : null;
+  const detail = typeof problem?.detail === "string" ? problem.detail : part.text;
+  return (
+    <Alert className="bg-background" variant="destructive">
+      <AlertCircle aria-hidden />
+      <AlertTitle>{code ?? t("aiChat.runError")}</AlertTitle>
+      {detail ? <AlertDescription>{detail}</AlertDescription> : null}
+    </Alert>
+  );
+}
+
+function CompactionSummaryPart({ part }: { part: AiChatMessage["parts"][number] }) {
+  return (
+    <Alert className="bg-background">
+      <Archive aria-hidden />
+      <AlertTitle>{t("aiChat.compaction.title")}</AlertTitle>
+      <AlertDescription>{part.text ?? stringifyJsonValue(part.json)}</AlertDescription>
+    </Alert>
+  );
+}
+
+function UnknownMessagePart({ type }: { type: string }) {
+  return (
+    <Badge className="w-fit" variant="outline">
+      {type}
+    </Badge>
   );
 }
 
@@ -1215,13 +1258,29 @@ function ActionProposalPanel({
   disabled,
   onApprove,
   proposal,
+  streamPart,
 }: {
   disabled: boolean;
   onApprove: (proposal: AiChatActionProposal, approved: boolean) => void;
   proposal: AiChatActionProposal | null;
+  streamPart?: AiChatMessage["parts"][number];
 }) {
   if (!proposal) {
-    return <AlertDescription>{t("aiChat.approval.missing")}</AlertDescription>;
+    const preview = jsonRecord(streamPart?.json);
+    return (
+      <Alert className="bg-background">
+        <ShieldAlert aria-hidden />
+        <AlertTitle>{t("aiChat.approval.missing")}</AlertTitle>
+        <AlertDescription className="flex flex-wrap gap-2">
+          {typeof preview?.actionKind === "string" ? (
+            <Badge variant="outline">{preview.actionKind}</Badge>
+          ) : null}
+          {typeof preview?.risk === "string" ? (
+            <Badge variant="outline">{preview.risk}</Badge>
+          ) : null}
+        </AlertDescription>
+      </Alert>
+    );
   }
 
   const approvable = proposal.status === "proposed";
@@ -1318,7 +1377,7 @@ function ActionProposalPanel({
 
 function conversationWithLocalStream(
   conversation: AiChatConversation,
-  streamState: LocalAiChatStreamState | null,
+  streamState: AiChatStreamViewState | null,
   providerSettings: CompanyAiProviderSettings | undefined,
 ): AiChatConversation {
   if (!streamState || streamState.conversationId !== conversation.id) {
@@ -1336,22 +1395,29 @@ function conversationWithLocalStream(
     });
   }
   const shouldRenderLocalAssistant =
-    streamState.assistantText || streamState.error || streamState.status === "streaming";
+    streamState.assistantParts.length > 0 ||
+    streamState.error ||
+    streamState.status === "streaming";
+  const assistantText = messageTextFromParts(streamState.assistantParts);
   const localAssistantAlreadyPersisted =
     streamState.status === "completed" &&
     !streamState.error &&
-    messages.some((message) => assistantMessageMatches(message, streamState.assistantText));
+    messages.some((message) => assistantMessageMatches(message, assistantText));
   if (shouldRenderLocalAssistant && !localAssistantAlreadyPersisted) {
+    const parts =
+      streamState.assistantParts.length > 0
+        ? streamState.assistantParts
+        : [
+            {
+              type: "text" as const,
+              text: streamState.error ?? t("aiChat.streaming"),
+            },
+          ];
     messages.push({
       id: `local-assistant-${streamState.conversationId}`,
       conversationId: conversation.id,
       role: "assistant",
-      parts: [
-        {
-          type: "text",
-          text: streamState.error ?? streamState.assistantText ?? t("aiChat.streaming"),
-        },
-      ],
+      parts,
       createdAt: new Date().toISOString(),
     });
   }
@@ -1381,8 +1447,11 @@ function conversationWithLocalStream(
       inputTokenCount: conversation.latestRun?.inputTokenCount ?? null,
       outputTokenCount: conversation.latestRun?.outputTokenCount ?? null,
       estimatedCostUsd: conversation.latestRun?.estimatedCostUsd ?? null,
-      artifacts: conversation.latestRun?.artifacts ?? [],
-      actionProposals: conversation.latestRun?.actionProposals ?? [],
+      artifacts: mergeById(conversation.latestRun?.artifacts ?? [], streamState.artifacts),
+      actionProposals: mergeById(
+        conversation.latestRun?.actionProposals ?? [],
+        streamState.actionProposals,
+      ),
       startedAt: conversation.latestRun?.startedAt ?? new Date().toISOString(),
       completedAt:
         streamState.status === "completed" || streamState.status === "failed"
@@ -1456,8 +1525,11 @@ function isHydratedAiChatConversation(
 function conversationInSelectedProject(
   conversation: AiChatConversation | null | undefined,
   projectId: string,
+  userId?: string | null,
 ): AiChatConversation | null {
-  return conversation?.projectId === projectId ? conversation : null;
+  return conversation?.projectId === projectId && (!userId || conversation.userId === userId)
+    ? conversation
+    : null;
 }
 
 function userMessageMatches(message: AiChatMessage, text: string) {
@@ -1474,23 +1546,36 @@ function messageText(message: AiChatMessage): string {
     .join("\n\n");
 }
 
+function messageTextFromParts(parts: AiChatMessage["parts"]): string {
+  return parts
+    .filter((part): part is { text: string; type: "text" } => part.type === "text")
+    .map((part) => part.text)
+    .join("\n\n");
+}
+
 function normalizeMessageText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-function isStreamTextPart(value: unknown): value is { type: "text"; text: string } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "type" in value &&
-    value.type === "text" &&
-    "text" in value &&
-    typeof value.text === "string"
-  );
-}
-
 function isRecord(value: unknown): value is Record<string, JSONValue> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function jsonRecord(value: unknown): Record<string, JSONValue> | null {
+  return isRecord(value) ? value : null;
+}
+
+function mergeById<T extends { id: string }>(current: T[], incoming: T[]): T[] {
+  const merged = [...current];
+  for (const item of incoming) {
+    const index = merged.findIndex((candidate) => candidate.id === item.id);
+    if (index === -1) {
+      merged.push(item);
+    } else {
+      merged[index] = item;
+    }
+  }
+  return merged;
 }
 
 function stringifyJsonValue(value: unknown) {

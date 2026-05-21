@@ -1099,10 +1099,7 @@ func (service *Service) GetAiChatConversation(ctx context.Context, request contr
 	if conversation.UserID != principalID(request.BridgeEnvelope) {
 		return nil, forbiddenError("AI Chat conversation user must match the authenticated principal")
 	}
-	if err := requireAiChatCurrentProject(request.BridgeEnvelope, conversation.ProjectID); err != nil {
-		return nil, err
-	}
-	if _, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, conversation.ProjectID); err != nil {
+	if _, err := service.requireAiChatConversationProject(ctx, request.BridgeEnvelope, conversation); err != nil {
 		return nil, err
 	}
 	messages, err := service.store.ListAiChatMessages(ctx, conversation.ID, 200)
@@ -1126,13 +1123,24 @@ func (service *Service) requireAiChatConversationAccess(ctx context.Context, env
 	if conversation.UserID != principalID(envelope) {
 		return ports.AiChatConversationRecord{}, forbiddenError("AI Chat conversation user must match the authenticated principal")
 	}
-	if err := requireAiChatCurrentProject(envelope, conversation.ProjectID); err != nil {
-		return ports.AiChatConversationRecord{}, err
-	}
-	if _, err := service.requireProjectAccess(ctx, envelope, conversation.ProjectID); err != nil {
+	if _, err := service.requireAiChatConversationProject(ctx, envelope, conversation); err != nil {
 		return ports.AiChatConversationRecord{}, err
 	}
 	return conversation, nil
+}
+
+func (service *Service) requireAiChatConversationProject(ctx context.Context, envelope contracts.BridgeEnvelope, conversation ports.AiChatConversationRecord) (ports.ProjectRecord, error) {
+	if err := requireAiChatCurrentProject(envelope, conversation.ProjectID); err != nil {
+		return ports.ProjectRecord{}, err
+	}
+	project, err := service.requireProjectAccess(ctx, envelope, conversation.ProjectID)
+	if err != nil {
+		return ports.ProjectRecord{}, err
+	}
+	if project.OrganizationID != conversation.CompanyID {
+		return ports.ProjectRecord{}, forbiddenError("AI Chat conversation company must match the project company")
+	}
+	return project, nil
 }
 
 func (service *Service) requireAiChatActionAccess(ctx context.Context, envelope contracts.BridgeEnvelope, actionID string) (ports.AiChatActionRecord, ports.AiChatConversationRecord, error) {
@@ -1261,7 +1269,7 @@ func (service *Service) DeleteAiChatConversation(ctx context.Context, request co
 	if conversation.UserID != request.UserID {
 		return false, forbiddenError("AI Chat conversation user must match the conversation owner")
 	}
-	if _, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, conversation.ProjectID); err != nil {
+	if _, err := service.requireAiChatConversationProject(ctx, request.BridgeEnvelope, conversation); err != nil {
 		return false, err
 	}
 	if err := service.store.DeleteAiChatConversation(ctx, conversation.ID); err != nil {
@@ -1339,6 +1347,8 @@ func (service *Service) ProposeAiChatAction(ctx context.Context, request contrac
 		ConversationID:   conversation.ID,
 		RunID:            run.ID,
 		ProjectID:        run.ProjectID,
+		Title:            strings.TrimSpace(request.Title),
+		Description:      trimOptionalString(request.Description),
 		Risk:             contracts.AiChatActionRisk(request.Risk),
 		Status:           contracts.AiChatActionStatusProposed,
 		ActionKind:       request.ActionKind,
@@ -1371,6 +1381,21 @@ func (service *Service) ApproveAiChatAction(ctx context.Context, request contrac
 	if err != nil {
 		return nil, err
 	}
+	if action.ApprovalKey != nil && *action.ApprovalKey == strings.TrimSpace(request.IdempotencyKey) && action.Status != contracts.AiChatActionStatusProposed {
+		return contractAiChatAction(action), nil
+	}
+	if action.Status != contracts.AiChatActionStatusProposed {
+		return nil, aiChatActionStateError(action)
+	}
+	if service.now().UTC().After(action.ExpiresAt) {
+		action.Status = contracts.AiChatActionStatusExpired
+		action.UpdatedAt = service.now().UTC()
+		action.Version++
+		if err := service.store.PutAiChatAction(ctx, action); err != nil {
+			return nil, storageError()
+		}
+		return nil, aiChatActionStateError(action)
+	}
 	if request.ExpectedVersion != action.Version {
 		return nil, forbiddenError("AI Chat action version is stale")
 	}
@@ -1382,6 +1407,8 @@ func (service *Service) ApproveAiChatAction(ctx context.Context, request contrac
 	action.Status = status
 	action.ApprovedByUserID = &request.UserID
 	action.ApprovedAt = &now
+	action.ApprovalKey = optionalStringPtr(strings.TrimSpace(request.IdempotencyKey))
+	action.ApprovalReason = trimOptionalString(request.Reason)
 	action.UpdatedAt = now
 	action.Version++
 	if err := service.store.PutAiChatAction(ctx, action); err != nil {
@@ -5256,11 +5283,18 @@ func contractAiChatMessage(message ports.AiChatMessageRecord) map[string]any {
 }
 
 func contractAiChatAction(action ports.AiChatActionRecord) map[string]any {
+	description := pointerString(action.Description)
+	var decidedByUserID any
+	if action.ApprovedByUserID != nil {
+		decidedByUserID = *action.ApprovedByUserID
+	}
 	return map[string]any{
 		"id":               action.ID,
 		"conversationId":   action.ConversationID,
 		"runId":            action.RunID,
 		"projectId":        action.ProjectID,
+		"title":            action.Title,
+		"description":      description,
 		"risk":             string(action.Risk),
 		"status":           string(action.Status),
 		"actionKind":       action.ActionKind,
@@ -5269,10 +5303,14 @@ func contractAiChatAction(action ports.AiChatActionRecord) map[string]any {
 		"requiresApproval": action.RequiresApproval,
 		"approvedByUserId": action.ApprovedByUserID,
 		"approvedAt":       action.ApprovedAt,
+		"decidedByUserId":  decidedByUserID,
+		"decidedAt":        action.ApprovedAt,
 		"idempotencyKey":   action.IdempotencyKey,
+		"approvalKey":      action.ApprovalKey,
 		"expiresAt":        action.ExpiresAt,
 		"result":           cloneAnyMap(action.Result),
 		"version":          action.Version,
+		"requestedAt":      action.CreatedAt,
 		"createdAt":        action.CreatedAt,
 		"updatedAt":        action.UpdatedAt,
 	}

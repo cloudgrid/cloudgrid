@@ -29,7 +29,8 @@ func (service *Service) CreateAiChatRun(ctx context.Context, request contracts.A
 	if err := requireAiChatCurrentProject(request.BridgeEnvelope, request.ProjectID); err != nil {
 		return contracts.AiChatRun{}, err
 	}
-	if _, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, request.ProjectID); err != nil {
+	project, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, request.ProjectID)
+	if err != nil {
 		return contracts.AiChatRun{}, err
 	}
 	conversation, ok, err := service.store.GetAiChatConversation(ctx, request.ConversationID)
@@ -41,6 +42,9 @@ func (service *Service) CreateAiChatRun(ctx context.Context, request contracts.A
 	}
 	if conversation.ProjectID != request.ProjectID || conversation.UserID != request.UserID {
 		return contracts.AiChatRun{}, forbiddenError("AI Chat run must match the conversation project and owner")
+	}
+	if conversation.CompanyID != project.OrganizationID {
+		return contracts.AiChatRun{}, forbiddenError("AI Chat conversation company must match the project company")
 	}
 	if conversation.Status == contracts.AiChatConversationStatusArchived {
 		return contracts.AiChatRun{}, forbiddenError("archived AI Chat conversations cannot start runs")
@@ -162,6 +166,13 @@ func (service *Service) aiChatRunForMutation(ctx context.Context, envelope contr
 	if principal := principalID(envelope); principal != run.UserID {
 		return ports.AiChatRunRecord{}, forbiddenError("AI Chat run user must match the authenticated principal")
 	}
+	conversation, err := service.requireAiChatConversationAccess(ctx, envelope, run.ConversationID)
+	if err != nil {
+		return ports.AiChatRunRecord{}, err
+	}
+	if conversation.ProjectID != run.ProjectID || conversation.UserID != run.UserID {
+		return ports.AiChatRunRecord{}, forbiddenError("AI Chat run must match the conversation project and owner")
+	}
 	return run, nil
 }
 
@@ -222,6 +233,23 @@ func aiChatDuplicateRunError(run ports.AiChatRunRecord) error {
 
 func aiChatActiveRunError(run ports.AiChatRunRecord) error {
 	return aiChatRunStateError("ERR-AIC-004", "AI_CHAT_LIMIT_EXCEEDED", "Another AI Chat run is already active", true, run)
+}
+
+func aiChatActionStateError(action ports.AiChatActionRecord) error {
+	return codedBridgeError{
+		error: fmt.Errorf("ERR-AIC-003 AI_CHAT_ACTION_NOT_APPROVABLE: AI Chat action proposal cannot be approved"),
+		bridge: contracts.BridgeError{
+			ID:        "ERR-AIC-003",
+			Code:      "AI_CHAT_ACTION_NOT_APPROVABLE",
+			Message:   "AI Chat action proposal cannot be approved",
+			Retryable: false,
+			Details: map[string]any{
+				"actionProposalId": action.ID,
+				"status":           string(action.Status),
+				"version":          action.Version,
+			},
+		},
+	}
 }
 
 func aiChatRunStateError(id string, code string, message string, retryable bool, run ports.AiChatRunRecord) error {

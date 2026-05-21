@@ -16,6 +16,7 @@ If the needed behavior is missing, update the relevant spec first.
 | `cloudgrid-extension-development` | Spec-first feature work, contracts, BFF/bridge/service boundaries, adapters, public API client, tests, and verification. |
 | `cloudgrid-observability-ui` | Traces, logs, metrics, dashboards, widgets, pins, live trace UI, frontend/BFF observability contract alignment. |
 | `cloudgrid-surrealdb` | SurrealDB schema, query, readiness, storage adapter, and credential-handling work. |
+| `cloudgrid-ai-chat-operations` | AI Chat provider setup, project-scoped usage, harness execution boundaries, unsupported adapters, approvals, artifacts, telemetry privacy, docs, and skill coordination. |
 | `cloudgrid-trace-investigation` | AI Chat and UI trace investigation, waterfalls, critical path evidence, trace-to-log pivots, and trace renderer guidance. |
 | `cloudgrid-logs-investigation` | AI Chat and UI log investigation, severity, correlation, log clusters, trace pivots, and log renderer guidance. |
 | `cloudgrid-metrics-investigation` | AI Chat and UI metric investigation, series comparison, aggregations, exemplars, and metric renderer guidance. |
@@ -25,9 +26,9 @@ If the needed behavior is missing, update the relevant spec first.
 
 ## Authoring Rules
 
-- Follow Anthropic's agent skill authoring best practices: concise
-  `SKILL.md`, specific discovery metadata, progressive disclosure, concrete
-  examples, and real usage evaluations.
+- Follow [agent skill authoring best practices](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices):
+  concise `SKILL.md`, specific discovery metadata, progressive disclosure,
+  concrete examples, and real usage evaluations.
 - Keep each `SKILL.md` under 500 body lines and task-oriented.
 - Put triggering context in the frontmatter `description`; write it as
   third-person discovery metadata and include `Use when`.

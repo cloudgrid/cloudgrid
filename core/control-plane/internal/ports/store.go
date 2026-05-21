@@ -250,6 +250,8 @@ type AiChatActionRecord struct {
 	ConversationID   string
 	RunID            string
 	ProjectID        string
+	Title            string
+	Description      *string
 	Risk             contracts.AiChatActionRisk
 	Status           contracts.AiChatActionStatus
 	ActionKind       string
@@ -259,6 +261,8 @@ type AiChatActionRecord struct {
 	ApprovedByUserID *string
 	ApprovedAt       *time.Time
 	IdempotencyKey   string
+	ApprovalKey      *string
+	ApprovalReason   *string
 	ExpiresAt        time.Time
 	Result           map[string]any
 	CreatedAt        time.Time

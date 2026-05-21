@@ -12,11 +12,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import {
+  applyAiChatStreamEvent,
   aiChatApprovalInput,
   aiChatConversationQueryKey,
   aiChatHistoryQueryKey,
   aiChatProviderQueryKey,
+  createAiChatStreamViewState,
   safeAiChatArtifactView,
+  orderedAiChatProjectGroups,
 } from "../src/features/ai-chat/view-model";
 import { AppSessionProvider } from "../src/providers/app-session-provider";
 import { ThemeProvider } from "../src/providers/theme-provider";
@@ -244,11 +247,25 @@ function aiChatMarkup({
   });
   queryClient.setQueryData(["Viewer"], sessionViewer);
   queryClient.setQueryData(aiChatProviderQueryKey("org-1"), provider);
-  queryClient.setQueryData(aiChatConversationQueryKey(conversation.id, "project-1"), conversation);
-  queryClient.setQueryData(aiChatHistoryQueryKey({ companyId: "org-1", projectId: "project-1" }), {
-    ...historyData,
-    projectGroups: [...historyData.projectGroups],
-  });
+  queryClient.setQueryData(
+    aiChatConversationQueryKey({
+      conversationId: conversation.id,
+      projectId: "project-1",
+      userId: sessionViewer.user.id,
+    }),
+    conversation,
+  );
+  queryClient.setQueryData(
+    aiChatHistoryQueryKey({
+      companyId: "org-1",
+      projectId: "project-1",
+      userId: sessionViewer.user.id,
+    }),
+    {
+      ...historyData,
+      projectGroups: [...historyData.projectGroups],
+    },
+  );
 
   const client = {
     approveAiChatAction: async () => ({ ...actionProposal, status: "approved" as const }),
@@ -352,6 +369,55 @@ describe("AI Chat route", () => {
     expect(markup).toContain("No conversations yet");
   });
 
+  test("rejects stale cached history for another project or user", () => {
+    const staleUserConversation: AiChatConversation = {
+      ...activeConversation,
+      id: "chat-other-user",
+      title: "Other user's checkout incident",
+      userId: "user-2",
+      lastMessageAt: "2026-05-18T09:00:00.000Z",
+    };
+    const staleHistory: AiChatHistory = {
+      ...history,
+      projectGroups: [
+        {
+          projectId: "project-1",
+          projectName: "Checkout",
+          conversations: [staleUserConversation, activeConversation],
+        },
+        {
+          projectId: "project-2",
+          projectName: "Billing",
+          conversations: [otherProjectConversation],
+        },
+      ],
+    };
+
+    expect(
+      orderedAiChatProjectGroups(staleHistory, "project-1", "user-1").flatMap(
+        (group) => group.conversations,
+      ),
+    ).toEqual([activeConversation]);
+    expect(
+      aiChatHistoryQueryKey({ companyId: "org-1", projectId: "project-1", userId: "user-1" }),
+    ).not.toEqual(
+      aiChatHistoryQueryKey({ companyId: "org-1", projectId: "project-1", userId: "user-2" }),
+    );
+    expect(
+      aiChatConversationQueryKey({
+        conversationId: "chat-new",
+        projectId: "project-1",
+        userId: "user-1",
+      }),
+    ).not.toEqual(
+      aiChatConversationQueryKey({
+        conversationId: "chat-new",
+        projectId: "project-1",
+        userId: "user-2",
+      }),
+    );
+  });
+
   test("shows distinct missing-provider states for company admins and non-admin users", () => {
     const missingProvider = {
       ...providerSettings,
@@ -403,6 +469,161 @@ describe("AI Chat route", () => {
         createdAt: "2026-05-18T08:03:00.000Z",
       }),
     ).toMatchObject({ kind: "unsupported" });
+  });
+
+  test("renders mixed server-ordered message parts with safe tool status details", () => {
+    const mixedConversation: AiChatConversation = {
+      ...activeConversation,
+      messages: [
+        {
+          id: "message-mixed",
+          conversationId: "chat-new",
+          role: "assistant",
+          parts: [
+            { type: "text", text: "First finding." },
+            {
+              type: "tool_status",
+              toolCallId: "tool-1",
+              toolName: "analysis.summarizeTrace",
+              label: "Summarize trace",
+              status: "running",
+              json: {
+                input: { traceId: "secret-trace" },
+                output: { rows: ["sensitive-row-output"] },
+              },
+            },
+            { type: "artifact", artifactId: "artifact-1", renderer: "table" },
+            { type: "approval_result", text: "Approved by Ada." },
+            { type: "error", problem: { code: "ERR-AIC-005", detail: "Renderer rejected" } },
+            { type: "compaction_summary", text: "Earlier investigation retained." },
+            { type: "text", text: "Final note." },
+          ],
+          createdAt: "2026-05-18T08:05:00.000Z",
+        },
+      ],
+    };
+    const markup = aiChatMarkup({ conversation: mixedConversation });
+    const first = markup.indexOf("First finding.");
+    const tool = markup.indexOf("Summarize trace");
+    const artifact = markup.indexOf("Latency summary");
+    const approval = markup.indexOf("Approved by Ada.");
+    const error = markup.indexOf("ERR-AIC-005");
+    const compaction = markup.indexOf("Earlier investigation retained.");
+    const final = markup.indexOf("Final note.");
+
+    expect(first).toBeGreaterThan(-1);
+    expect(tool).toBeGreaterThan(first);
+    expect(artifact).toBeGreaterThan(tool);
+    expect(approval).toBeGreaterThan(artifact);
+    expect(error).toBeGreaterThan(approval);
+    expect(compaction).toBeGreaterThan(error);
+    expect(final).toBeGreaterThan(compaction);
+    expect(markup).toContain("analysis.summarizeTrace");
+    expect(markup).toContain("running");
+    expect(markup).not.toContain("secret-trace");
+    expect(markup).not.toContain("sensitive-row-output");
+  });
+
+  test("keeps cloudgrid-json-render fences inert unless a persisted artifact part backs them", () => {
+    const fencedConversation: AiChatConversation = {
+      ...activeConversation,
+      messages: [
+        {
+          id: "message-fence",
+          conversationId: "chat-new",
+          role: "assistant",
+          parts: [
+            {
+              type: "text",
+              text: '```cloudgrid-json-render:table\n{ "artifactId": "artifact-forged", "renderer": "table", "spec": { "title": "Forged artifact" } }\n```',
+            },
+            { type: "artifact", artifactId: "artifact-1", renderer: "table" },
+          ],
+          createdAt: "2026-05-18T08:05:00.000Z",
+        },
+      ],
+    };
+    const markup = aiChatMarkup({ conversation: fencedConversation });
+
+    expect(markup).toContain("artifact-forged");
+    expect(markup).not.toContain("Forged artifact</h3>");
+    expect(markup).toContain("Latency summary");
+  });
+
+  test("preserves mixed stream event ordering before the conversation refreshes", () => {
+    const started = createAiChatStreamViewState({
+      conversationId: "chat-new",
+      userText: "Investigate latency",
+    });
+    const streamed = [
+      {
+        type: "run.started" as const,
+        conversationId: "chat-new",
+        runId: "run-stream",
+        sequence: 1,
+        createdAt: "2026-05-18T08:05:00.000Z",
+        payload: { status: "streaming" },
+      },
+      {
+        type: "text.delta" as const,
+        conversationId: "chat-new",
+        runId: "run-stream",
+        sequence: 2,
+        createdAt: "2026-05-18T08:05:01.000Z",
+        payload: { messageId: "message-stream", text: "First." },
+      },
+      {
+        type: "tool.started" as const,
+        conversationId: "chat-new",
+        runId: "run-stream",
+        sequence: 3,
+        createdAt: "2026-05-18T08:05:02.000Z",
+        payload: {
+          toolCallId: "tool-1",
+          toolName: "analysis.summarizeTrace",
+          label: "Summarize trace",
+          status: "running",
+          input: { traceId: "must-not-render" },
+        },
+      },
+      {
+        type: "artifact.created" as const,
+        conversationId: "chat-new",
+        runId: "run-stream",
+        sequence: 4,
+        createdAt: "2026-05-18T08:05:03.000Z",
+        payload: {
+          messageId: "message-stream",
+          artifactId: "artifact-stream",
+          renderer: "table",
+          label: "Stream artifact",
+          renderSpec: { renderer: "table", rows: [{ service: "checkout-api" }] },
+        },
+      },
+      {
+        type: "text.delta" as const,
+        conversationId: "chat-new",
+        runId: "run-stream",
+        sequence: 5,
+        createdAt: "2026-05-18T08:05:04.000Z",
+        payload: { messageId: "message-stream", text: " Done." },
+      },
+    ].reduce(applyAiChatStreamEvent, started);
+
+    expect(streamed.runId).toBe("run-stream");
+    expect(streamed.assistantParts.map((part) => part.type)).toEqual([
+      "text",
+      "tool_status",
+      "artifact",
+      "text",
+    ]);
+    expect(streamed.assistantParts[1]).toMatchObject({
+      label: "Summarize trace",
+      status: "running",
+      toolName: "analysis.summarizeTrace",
+    });
+    expect(JSON.stringify(streamed.assistantParts)).not.toContain("must-not-render");
+    expect(streamed.artifacts.map((artifact) => artifact.label)).toEqual(["Stream artifact"]);
   });
 
   test("approval inputs are derived only from server-issued proposal IDs", () => {

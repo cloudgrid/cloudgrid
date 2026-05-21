@@ -16,6 +16,7 @@ import type {
 } from "@cloudgrid/ui-contracts";
 import { GraphQLError } from "graphql";
 import type { Hono } from "hono";
+import { AI_CHAT_CATALOG, type AiChatCatalogSnapshot, aiChatToolById } from "./ai-chat/catalog";
 import type { NormalizedAuthContext } from "./auth";
 import type { ControlPlaneBridge, TelemetryQueryBridge } from "./bridge";
 
@@ -59,6 +60,8 @@ export interface AiChatHarnessRequest {
     ref: string;
     value: string;
   };
+  sessionId: string;
+  catalog: AiChatCatalogSnapshot;
   messages: AiChatConversation["messages"];
   compaction?: AiChatConversation["compaction"] | null;
   signal: AbortSignal;
@@ -239,13 +242,24 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
             userText: userParts.map((part) => part.text ?? "").join("\n"),
           });
           if (toolAnswer) {
-            toolCallCount = 1;
-            await emit("tool.started", { name: toolAnswer.toolName });
-            await emit("tool.completed", {
-              name: toolAnswer.toolName,
-              status: "completed",
-              resultSummary: toolAnswer.resultSummary,
-            });
+            toolCallCount += 1;
+            const toolCallId = toolCallIdFor(toolCallCount);
+            await emit(
+              "tool.started",
+              safeToolStatusPayload({
+                toolCallId,
+                toolName: toolAnswer.toolName,
+                status: "started",
+              }),
+            );
+            await emit(
+              "tool.completed",
+              safeToolStatusPayload({
+                toolCallId,
+                toolName: toolAnswer.toolName,
+                status: "completed",
+              }),
+            );
             assistantParts.push({ type: "text", text: toolAnswer.text });
             await emit("text.delta", { text: toolAnswer.text });
             const finalParts = collapseTextParts(assistantParts);
@@ -278,6 +292,8 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
             conversation,
             provider: provider.publicSnapshot,
             credential,
+            sessionId: aiChatSessionId(conversation),
+            catalog: AI_CHAT_CATALOG,
             messages: harnessMessages,
             compaction: conversation.compaction,
             signal,
@@ -309,12 +325,24 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
             }
             if (event.kind === "tool_call_requested") {
               toolCallCount += 1;
-              await emit("tool.started", { name: event.name });
-              await emit("tool.completed", {
-                name: event.name,
-                status: "rejected",
-                error: "AI Chat tool execution is not configured for this runtime",
-              });
+              const toolCallId = toolCallIdFor(toolCallCount);
+              await emit(
+                "tool.started",
+                safeToolStatusPayload({
+                  toolCallId,
+                  toolName: event.name,
+                  status: "started",
+                }),
+              );
+              await emit(
+                "tool.completed",
+                safeToolStatusPayload({
+                  toolCallId,
+                  toolName: event.name,
+                  status: "failed",
+                  errorCode: "ERR-AIC-001",
+                }),
+              );
             }
           }
 
@@ -576,14 +604,13 @@ async function answerWithCloudGridTool({
   bridge: Partial<ControlPlaneBridge & TelemetryQueryBridge>;
   input: AiChatStreamRequest;
   userText: string;
-}): Promise<{ resultSummary: string; text: string; toolName: string } | null> {
+}): Promise<{ text: string; toolName: string } | null> {
   if (!isTodayTraceQuestion(userText)) {
     return null;
   }
   if (!bridge.searchTraces) {
     return {
-      toolName: "cloudgrid.traces.search",
-      resultSummary: "Trace search tool unavailable",
+      toolName: "telemetry.searchTraces",
       text: "I could not query CloudGrid traces for today because the trace search tool is not available in this run.",
     };
   }
@@ -601,8 +628,7 @@ async function answerWithCloudGridTool({
   );
 
   return {
-    toolName: "cloudgrid.traces.search",
-    resultSummary: `${result.items.length} traces returned for ${range.label} in ${project.label}`,
+    toolName: "telemetry.searchTraces",
     text: formatTodayTracesAnswer(result, range, project),
   };
 }
@@ -780,6 +806,37 @@ async function resolveCredential(
     return { ref, credentialRef: ref, value };
   }
   return null;
+}
+
+function aiChatSessionId(conversation: AiChatConversation) {
+  return [
+    `company:${conversation.companyId}`,
+    `project:${conversation.projectId}`,
+    `user:${conversation.userId}`,
+    `conversation:${conversation.id}`,
+  ].join(":");
+}
+
+function toolCallIdFor(toolCallCount: number) {
+  return `tool-${toolCallCount}`;
+}
+
+function safeToolStatusPayload(input: {
+  toolCallId: string;
+  toolName: string;
+  status: "started" | "completed" | "failed";
+  durationMs?: number;
+  errorCode?: CloudGridErrorId;
+}) {
+  const tool = aiChatToolById(input.toolName);
+  return {
+    toolCallId: input.toolCallId,
+    toolName: tool?.id ?? input.toolName,
+    label: tool?.streamLabel ?? "Using CloudGrid tool",
+    status: input.status,
+    ...(input.durationMs !== undefined ? { durationMs: input.durationMs } : {}),
+    ...(input.errorCode ? { errorCode: input.errorCode } : {}),
+  };
 }
 
 function collapseTextParts(parts: AiChatMessagePart[]) {

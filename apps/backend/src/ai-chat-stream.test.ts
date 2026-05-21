@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AiChatRun, CompanyAiProviderSettings } from "@cloudgrid/ui-contracts";
+import { AI_CHAT_TOOLS } from "./ai-chat/catalog";
 import type { AiChatHarnessEvent, AiChatHarnessPort } from "./ai-chat-stream";
 import { graphQLErrorFromBridge } from "./bridge";
 import { createAppWithBridge } from "./graphql";
@@ -109,6 +110,12 @@ describe("AI Chat stream endpoint", () => {
       parameters: { extras: {} },
     });
     expect(harness.requests.at(0)?.credential.value).toBe("secret-provider-key");
+    expect(harness.requests.at(0)?.sessionId).toBe(
+      "company:company-1:project:project-1:user:local-user:conversation:chat-1",
+    );
+    expect(harness.requests.at(0)?.catalog.tools.map((tool) => tool.id)).toEqual(
+      AI_CHAT_TOOLS.map((tool) => tool.id),
+    );
     expect(harness.requests.at(0)?.messages.at(-1)?.parts).toEqual([
       { type: "text", text: "Investigate slow traces" },
     ]);
@@ -404,6 +411,25 @@ describe("AI Chat stream endpoint", () => {
       "text.delta",
       "run.completed",
     ]);
+    const toolEvents = events.filter(
+      (event) => event.type === "tool.started" || event.type === "tool.completed",
+    );
+    expect(toolEvents.map((event) => event.payload)).toEqual([
+      {
+        toolCallId: "tool-1",
+        toolName: "telemetry.searchTraces",
+        label: "Searching traces",
+        status: "started",
+      },
+      {
+        toolCallId: "tool-1",
+        toolName: "telemetry.searchTraces",
+        label: "Searching traces",
+        status: "completed",
+      },
+    ]);
+    expect(JSON.stringify(toolEvents)).not.toContain("resultSummary");
+    expect(JSON.stringify(toolEvents)).not.toContain("checkout-api");
     expect(harness.requests).toHaveLength(0);
     expect(traceInputs).toHaveLength(1);
     expect(traceInputs[0]).toMatchObject({ limit: 25, sort: "startedAt_desc" });

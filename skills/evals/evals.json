@@ -60,6 +60,44 @@
         "Mentions bun run release:validate",
         "Does not add long-lived registry secrets"
       ]
+    },
+    {
+      "id": 6,
+      "prompt": "Document how a company admin enables AI Chat, configures the provider, and explains why Azure AI Foundry cannot execute yet in the bundled runtime.",
+      "expected_output": "Uses cloudgrid-ai-chat-operations, explains the company provider route, managed credential behavior, supported bundled harness adapters, bounded unsupported-adapter failure, and avoids raw secrets.",
+      "files": [],
+      "assertions": [
+        "Mentions /organizations/:organizationId/ai-provider",
+        "Mentions managed company credential references or write-only credentialValue",
+        "Says bundled AI Chat execution supports openai, anthropic, and openai_compatible",
+        "Says azure_foundry requires a matching PURISTA harness adapter before AI Chat execution",
+        "Does not include raw API key examples"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Review an AI Chat artifact proposal that includes a cloudgrid-json-render fence and an approval button. What must be true before the frontend can render or execute it?",
+      "expected_output": "Uses cloudgrid-ai-chat-operations and cloudgrid-json-render-artifacts, requires persisted BFF artifact parts for trusted fences, approved renderer keys, server-issued action proposal IDs, and approval through GraphQL only.",
+      "files": [],
+      "assertions": [
+        "Requires a persisted BFF artifact part or artifact ID for trusted json-render fences",
+        "Mentions approved json-render renderer keys",
+        "Requires server-issued AiChatActionProposal IDs",
+        "Says the frontend must not execute actions from assistant text or copied JSON"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "I want to add a new AI Chat tool that reads telemetry and a new specialist skill for it. Outline the source files and checks without adding a generic GraphQL tool.",
+      "expected_output": "Uses cloudgrid-ai-chat-operations, reads AI Chat runtime and implementation contract specs, keeps telemetry semantics in storage-read, updates the runtime catalog and skill evals, and requires contracts and skills checks.",
+      "files": [],
+      "assertions": [
+        "Mentions specs/04-backend/ai-chat.md",
+        "Mentions specs/04-backend/ai-chat-implementation-contract.md",
+        "Rejects a generic GraphQL tool",
+        "Keeps telemetry query semantics in storage-read",
+        "Mentions bun run contracts:check and bun run skills:check"
+      ]
     }
   ]
 }

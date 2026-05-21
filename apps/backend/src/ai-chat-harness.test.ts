@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ModelProvider, TextRequest, TextResponse, TextStreamChunk } from "@purista/harness";
+import { AI_CHAT_CATALOG, AI_CHAT_MODEL_ALIASES } from "./ai-chat/catalog";
 import { createAiChatHarness } from "./ai-chat-harness";
 import type { AiChatHarnessRequest } from "./ai-chat-stream";
 
@@ -155,13 +156,23 @@ describe("AI Chat provider harness", () => {
       parentSpanId: "2222222222222222",
       attributes: {
         "harness.name": "cloudgrid-ai-chat",
-        "harness.model.alias": "chat",
+        "harness.model.alias": AI_CHAT_MODEL_ALIASES.chat_reasoning.id,
         "harness.model.method": "text_stream",
         "gen_ai.request.model": "gpt-5-mini",
       },
     });
     expect(JSON.stringify(spans)).not.toContain("stored-secret");
     expect(JSON.stringify(spans)).not.toContain("Investigate this trace");
+  });
+
+  test("keeps direct provider adapter bindings out of AI Chat runtime code", async () => {
+    const runtimeSource = await Bun.file(new URL("./ai-chat-harness.ts", import.meta.url)).text();
+
+    expect(runtimeSource).not.toContain("@purista/harness-openai");
+    expect(runtimeSource).not.toContain("@purista/harness-anthropic");
+    expect(runtimeSource).not.toContain("openai(");
+    expect(runtimeSource).not.toContain("anthropic(");
+    expect(runtimeSource).toContain("AI_CHAT_MODEL_ALIASES.chat_reasoning");
   });
 
   test("refuses prompt extraction before model execution", async () => {
@@ -295,6 +306,8 @@ function providerRequest(overrides: Partial<AiChatHarnessRequest> = {}): AiChatH
       ref: "managed:company/company-1/provider-1",
       value: "stored-secret",
     },
+    sessionId: "company:company-1:project:project-1:user:local-user:conversation:chat-1",
+    catalog: AI_CHAT_CATALOG,
     messages: [
       {
         id: "message-1",
