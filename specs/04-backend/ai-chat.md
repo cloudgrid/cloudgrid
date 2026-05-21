@@ -32,6 +32,12 @@ CloudGrid evidence. It must not invent CLIs, REST telemetry read endpoints,
 screens, dashboards, traces, logs, metrics, tool output, or setup steps based on
 model training data.
 
+The assistant is not a general-purpose chat surface. Clearly out-of-scope
+requests, including politics, elections, ideology, religion, entertainment,
+sports, general news, personal advice, medical, legal, financial, weather, or
+general knowledge, must be refused before model execution when detected by the
+BFF policy gate.
+
 ## Boundary
 
 The v1 runtime is modularly integrated into `apps/backend`.
@@ -169,6 +175,12 @@ excluding heartbeat.
 
 The BFF must not stream hidden provider reasoning text. Provider reasoning may
 only surface as generic `tool.started` or `message.created` status labels.
+
+Requests to reveal, print, translate, summarize, debug, ignore, override, or
+bypass hidden prompts, system instructions, developer instructions, policies,
+tool schemas, chain-of-thought, credentials, tokens, environment variables,
+provider request/response bodies, or internal implementation details must be
+refused before provider execution when detected by the BFF policy gate.
 
 ## Harness Chat Port
 
