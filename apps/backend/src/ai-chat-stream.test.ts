@@ -30,6 +30,21 @@ describe("AI Chat stream endpoint", () => {
     ).toThrow("AI Chat render spec failed validation");
   });
 
+  test("rejects malformed table, status, log, and metric render specs before streaming", () => {
+    const base = { title: "Artifact", ariaLabel: "Artifact" };
+
+    for (const renderSpec of [
+      { ...base, renderer: "table", data: { rows: {} } },
+      { ...base, renderer: "status_summary", data: [] },
+      { ...base, renderer: "log_list", data: { items: {} } },
+      { ...base, renderer: "metric_timeseries", data: { result: { series: [] } } },
+    ]) {
+      expect(() => validateAiChatRenderSpec(renderSpec)).toThrow(
+        "AI Chat render spec failed validation",
+      );
+    }
+  });
+
   test("rejects a stream request whose project does not match the conversation", async () => {
     const harness = recordingHarness([{ kind: "text_delta", text: "nope" }]);
     const { app } = createAppWithBridge(

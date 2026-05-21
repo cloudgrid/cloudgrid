@@ -113,6 +113,39 @@ describe("contract generation", () => {
     );
   });
 
+  test("AI Chat json-render catalog constrains common artifact data shapes", () => {
+    const schema = JSON.parse(
+      readFileSync(
+        join(root, "specs/03-contracts/entities/ai/json-render-catalog.schema.json"),
+        "utf8",
+      ),
+    ) as {
+      allOf: Array<{
+        if?: { properties?: { renderer?: { const?: string } } };
+        then?: { properties?: { data?: unknown } };
+      }>;
+      $defs: Record<string, { required?: string[]; properties?: Record<string, unknown> }>;
+    };
+    const dataRefFor = (renderer: string) =>
+      schema.allOf.find((rule) => rule.if?.properties?.renderer?.const === renderer)?.then
+        ?.properties?.data;
+
+    expect(dataRefFor("table")).toEqual({ $ref: "#/$defs/tableData" });
+    expect(dataRefFor("status_summary")).toEqual({ $ref: "#/$defs/statusSummaryData" });
+    expect(dataRefFor("log_list")).toEqual({ $ref: "#/$defs/logListData" });
+    expect(dataRefFor("metric_timeseries")).toEqual({ $ref: "#/$defs/metricSeriesData" });
+    expect(schema.$defs.tableData?.required).toEqual(["rows"]);
+    expect(schema.$defs.tableData?.properties?.rows).toMatchObject({
+      type: "array",
+      maxItems: 500,
+    });
+    expect(schema.$defs.logListData?.properties?.items).toMatchObject({
+      type: "array",
+      maxItems: 200,
+    });
+    expect(schema.$defs.metricSeriesData?.required).toEqual(["result"]);
+  });
+
   test("public API GraphQL operations validate against the public schema", () => {
     const schema = buildSchema(
       readFileSync(join(root, "specs/03-contracts/graphql/public-schema.graphql"), "utf8"),

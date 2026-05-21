@@ -58,6 +58,38 @@
       }
     },
     {
+      "if": { "properties": { "renderer": { "const": "table" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/tableData" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "renderer": { "const": "status_summary" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/statusSummaryData" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "renderer": { "const": "log_list" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/logListData" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "renderer": { "const": "metric_timeseries" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/metricSeriesData" }
+        }
+      }
+    },
+    {
       "if": { "properties": { "renderer": { "const": "trace_waterfall" } } },
       "then": {
         "properties": {
@@ -88,6 +120,70 @@
     "jsonObject": {
       "type": "object",
       "additionalProperties": true
+    },
+    "tableData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rows"],
+      "properties": {
+        "rows": {
+          "type": "array",
+          "maxItems": 500,
+          "items": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "statusSummaryData": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "values": { "type": "object", "additionalProperties": true },
+        "rows": {
+          "type": "array",
+          "maxItems": 500,
+          "items": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "logListData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 200,
+          "items": { "type": "object", "additionalProperties": true }
+        },
+        "nextCursor": { "type": ["string", "null"] }
+      }
+    },
+    "metricSeriesData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["result"],
+      "properties": {
+        "result": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["metric", "series"],
+          "properties": {
+            "metric": { "type": "object", "additionalProperties": true },
+            "series": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": ["labels", "points"],
+                "properties": {
+                  "labels": {},
+                  "points": { "type": "array", "maxItems": 5000, "items": { "type": "object" } }
+                }
+              }
+            }
+          }
+        }
+      }
     },
     "trace": {
       "type": "object",

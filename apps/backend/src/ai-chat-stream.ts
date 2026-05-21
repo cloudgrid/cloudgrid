@@ -348,6 +348,60 @@ const traceWaterfallDataSchema = z
   })
   .strict();
 
+const tableRenderDataSchema = z
+  .object({
+    rows: z.array(z.record(z.string(), z.unknown())).max(AI_CHAT_CATALOG.budgets.embeddedTableRows),
+  })
+  .strict();
+
+const statusSummaryRenderDataSchema = z
+  .object({
+    values: z.record(z.string(), z.unknown()).optional(),
+    rows: z
+      .array(z.record(z.string(), z.unknown()))
+      .max(AI_CHAT_CATALOG.budgets.embeddedTableRows)
+      .optional(),
+  })
+  .strict();
+
+const logListRenderDataSchema = z
+  .object({
+    items: z.array(z.record(z.string(), z.unknown())).max(AI_CHAT_CATALOG.budgets.logListRows),
+    nextCursor: z.string().nullable().optional(),
+  })
+  .strict();
+
+const metricSeriesRenderDataSchema = z
+  .object({
+    result: z
+      .object({
+        metric: z.record(z.string(), z.unknown()),
+        series: z.array(
+          z
+            .object({
+              labels: jsonValueSchema,
+              points: z.array(z.record(z.string(), z.unknown())),
+            })
+            .passthrough(),
+        ),
+      })
+      .passthrough(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const pointCount = value.result.series.reduce(
+      (total, series) => total + series.points.length,
+      0,
+    );
+    if (pointCount > AI_CHAT_CATALOG.budgets.chartPoints) {
+      context.addIssue({
+        code: "custom",
+        message: "metric series render data exceeds chart point limit",
+        path: ["result", "series"],
+      });
+    }
+  });
+
 const aiChatRenderSpecSchema = z
   .object({
     renderer: z.enum([
@@ -387,6 +441,21 @@ const aiChatRenderSpecSchema = z
     }
     if (value.renderer === "trace_waterfall") {
       const result = traceWaterfallDataSchema.safeParse(value.data);
+      if (!result.success) {
+        for (const issue of result.error.issues) {
+          context.addIssue({ ...issue, path: ["data", ...issue.path] });
+        }
+      }
+    }
+    const rendererDataSchemas: Partial<Record<typeof value.renderer, z.ZodTypeAny>> = {
+      table: tableRenderDataSchema,
+      status_summary: statusSummaryRenderDataSchema,
+      log_list: logListRenderDataSchema,
+      metric_timeseries: metricSeriesRenderDataSchema,
+    };
+    const dataSchema = rendererDataSchemas[value.renderer];
+    if (dataSchema) {
+      const result = dataSchema.safeParse(value.data);
       if (!result.success) {
         for (const issue of result.error.issues) {
           context.addIssue({ ...issue, path: ["data", ...issue.path] });
