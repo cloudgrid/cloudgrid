@@ -1,0 +1,56 @@
+plan: dashboard_gap_closure
+waves:
+  wave_01_frontend_foundation:
+    tickets: [TICKET-101]
+    depends_on: []
+    parallel: false
+  wave_02_frontend_parallel:
+    tickets: [TICKET-102, TICKET-103, TICKET-104]
+    depends_on: [TICKET-101]
+    parallel: true
+  wave_03_pins_and_integration:
+    tickets: [TICKET-105, TICKET-106]
+    depends_on: [TICKET-101, TICKET-102]
+    parallel: true
+  wave_04_rich_metric_gate:
+    tickets: [TICKET-107]
+    depends_on: [TICKET-102, TICKET-103, TICKET-104]
+    parallel: false
+edges:
+  TICKET-101: []
+  TICKET-102: [TICKET-101]
+  TICKET-103: [TICKET-101]
+  TICKET-104: [TICKET-101]
+  TICKET-105: [TICKET-101, TICKET-102]
+  TICKET-106: [TICKET-102]
+  TICKET-107: [TICKET-102, TICKET-103, TICKET-104]
+unblocked_initial: [TICKET-101]
+tickets:
+  TICKET-101:
+    depends_on: []
+    blocked_by: []
+    unblocks: [TICKET-102, TICKET-103, TICKET-104, TICKET-105]
+  TICKET-102:
+    depends_on: [TICKET-101]
+    blocked_by: []
+    unblocks: [TICKET-105, TICKET-106, TICKET-107]
+  TICKET-103:
+    depends_on: [TICKET-101]
+    blocked_by: []
+    unblocks: [TICKET-107]
+  TICKET-104:
+    depends_on: [TICKET-101]
+    blocked_by: []
+    unblocks: [TICKET-107]
+  TICKET-105:
+    depends_on: [TICKET-101, TICKET-102]
+    blocked_by: []
+    unblocks: []
+  TICKET-106:
+    depends_on: [TICKET-102]
+    blocked_by: []
+    unblocks: []
+  TICKET-107:
+    depends_on: [TICKET-102, TICKET-103, TICKET-104]
+    blocked_by: []
+    unblocks: []

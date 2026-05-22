@@ -48,7 +48,7 @@ describe("dashboards UX migration", () => {
     expect(routeSource).toContain('t("dashboards.editor.display")');
     expect(routeSource).toContain('t("dashboards.editor.thresholds")');
     expect(routeSource).toContain('t("dashboards.name")');
-    expect(routeSource).toContain("editableDashboardDraft");
+    expect(routeSource).toContain("startDraftForSelectedDashboard");
     expect(routeSource).toContain('"metric_timeseries"');
     expect(routeSource).toContain('"metric_stat"');
     expect(routeSource).toContain('"metric_table"');
@@ -116,8 +116,8 @@ describe("dashboards UX migration", () => {
   });
 
   test("supports WYSIWYG layout editing with pointer and keyboard controls", () => {
-    expect(routeSource).toContain("moveDashboardWidget");
-    expect(routeSource).toContain("resizeDashboardWidget");
+    expect(routeSource).toContain('type: "move_widget"');
+    expect(routeSource).toContain('type: "resize_widget"');
     expect(routeSource).toContain("compactDashboardLayout");
     expect(routeSource).toContain("onPointerDown");
     expect(routeSource).toContain("onKeyDown");
@@ -135,8 +135,9 @@ describe("dashboards UX migration", () => {
   });
 
   test("exposes full widget draft actions and deterministic save ordering", () => {
-    expect(routeSource).toContain("duplicateWidgetInDraft");
-    expect(routeSource).toContain("removeWidgetFromDraft");
+    expect(routeSource).toContain("dashboardDraftReducer");
+    expect(routeSource).toContain("duplicateWidgetInput");
+    expect(routeSource).toContain('type: "remove_widget"');
     expect(routeSource).toContain("sortDashboardWidgetsForSave");
     expect(routeSource).toContain('t("dashboards.duplicate")');
     expect(routeSource).toContain('t("dashboards.delete")');
@@ -154,6 +155,14 @@ describe("dashboards UX migration", () => {
     expect(routeSource).toContain("displaySeries");
     expect(routeSource).not.toContain("eval(");
     expect(routeSource).not.toContain("new Function");
+  });
+
+  test("gates rich metric creation and editing until the implementation wave is complete", () => {
+    expect(routeSource).toContain("RICH_METRIC_EDITING_ENABLED");
+    expect(routeSource).toContain("isRichMetricEditingEnabled");
+    expect(routeSource).toContain("RichMetricUnsupportedState");
+    expect(routeSource).toContain("...(isRichMetricEditingEnabled()");
+    expect(routeSource).toContain("!isRichMetricEditingEnabled() ? (");
   });
 
   test("offers the full dashboard chart catalog", () => {

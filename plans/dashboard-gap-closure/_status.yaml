@@ -1,0 +1,66 @@
+plan: dashboard_gap_closure
+updated: 2026-05-22
+summary:
+  total: 7
+  ready: 7
+  in_progress: 0
+  review: 0
+  done: 0
+  blocked: 0
+tickets:
+  TICKET-101:
+    wave: wave_01_frontend_foundation
+    status: ready
+    owner: dashboard-foundation-agent
+    depends_on: []
+    blocked_by: []
+    evidence: []
+    next: run foundation ticket
+  TICKET-102:
+    wave: wave_02_frontend_parallel
+    status: ready
+    owner: dashboard-route-agent
+    depends_on: [TICKET-101]
+    blocked_by: []
+    evidence: []
+    next: wait for TICKET-101 completion
+  TICKET-103:
+    wave: wave_02_frontend_parallel
+    status: ready
+    owner: metric-controls-agent
+    depends_on: [TICKET-101]
+    blocked_by: []
+    evidence: []
+    next: wait for TICKET-101 completion
+  TICKET-104:
+    wave: wave_02_frontend_parallel
+    status: ready
+    owner: dashboard-renderers-agent
+    depends_on: [TICKET-101]
+    blocked_by: []
+    evidence: []
+    next: wait for TICKET-101 completion
+  TICKET-105:
+    wave: wave_03_pins_and_integration
+    status: ready
+    owner: dashboard-foundation-agent
+    depends_on: [TICKET-101, TICKET-102]
+    blocked_by: []
+    evidence: []
+    next: wait for TICKET-101 and TICKET-102 completion
+  TICKET-106:
+    wave: wave_03_pins_and_integration
+    status: ready
+    owner: dashboard-pins-agent
+    depends_on: [TICKET-102]
+    blocked_by: []
+    evidence: []
+    next: wait for TICKET-102 completion
+  TICKET-107:
+    wave: wave_04_rich_metric_gate
+    status: ready
+    owner: rich-metric-gate-agent
+    depends_on: [TICKET-102, TICKET-103, TICKET-104]
+    blocked_by: []
+    evidence: []
+    next: wait for TICKET-102 TICKET-103 and TICKET-104 completion

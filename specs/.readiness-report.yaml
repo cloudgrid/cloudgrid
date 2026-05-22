@@ -1,12 +1,89 @@
 status: approved
 updated: 2026-05-22
-scope: ai_evaluation_parallel_agent_finalization
+scope: multi_scope_parallel_agent_readiness
 human_approval:
   status: approved
   approved_by: user
-  approval_basis: User requested making the evaluation and AI Chat specs implementation-ready for autonomous agents without drift, unspecification, or agent-owned product decisions.
+  approval_basis: User approved dashboard specs as ready and requested an autonomous parallel-agent implementation plan; previous AI Evaluation approval remains preserved.
 blocking_decisions: []
 open_decisions: []
+dashboard_gap_closure:
+  status: approved_for_parallel_implementation
+  review_basis:
+    - Dashboard behavior is specified across the dashboard capability, dashboard widgets frontend spec, dashboard query flow, logs/metrics/dashboards UX concept, and dashboard implementation contract.
+    - Rich metric creation and editing are explicitly production-gated; existing saved rich metric widgets may render read-only through `Query.richMetricSeries`.
+    - Frontend ownership boundaries are explicit: reducer/layout, route shell, metric-control reuse, widget source mappers, widget renderers, widget editors, and pin UI.
+    - Existing shared metric functionality is identified as a required reuse source instead of allowing dashboard-specific duplicate metric query controls.
+    - Tablet and touch requirements are explicit: 12-column wide layout, 6-column tablet projection, 44px touch targets, and stacked mobile controls without freeform drag-resize.
+  no_agent_decision_rules:
+    - Agents must not add routes, widget kinds, chart kinds, GraphQL fields, NATS subjects, error codes, dashboard storage locations, role rules, pin limits, or layout dimensions outside the approved specs.
+    - Agents must not add `MetricView`, browser-local saved dashboard truth, browser-local pin truth, raw JSON widget configs, executable formulas, or frontend/BFF telemetry semantics.
+    - Agents must not expose production `metric_rich` creation or editing until GraphQL, AsyncAPI, generated TypeScript, generated Go, storage-read, BFF, frontend editor, and focused tests satisfy the rich metric gate.
+    - Agents must reuse or extract shared Metrics controls and helpers for metric name, aggregation, group-by, filters, interval, sort, chart type, and `MetricSeriesInput` behavior.
+    - Agents must stop and update specs/contracts first if a ticket requires behavior outside `specs/05-frontend/dashboard-implementation-contract.md`.
+  parallel_boundaries:
+    - owner: dashboard-foundation-agent
+      write_scope: [apps/frontend/src/features/dashboards, apps/frontend/test/dashboard-layout.test.ts, apps/frontend/test/dashboard-draft-reducer.test.ts]
+      must_not_write: [apps/backend, core, specs/03-contracts]
+    - owner: dashboard-route-agent
+      write_scope: [apps/frontend/src/routes/dashboards-route.tsx, apps/frontend/src/lib/i18n.ts, apps/frontend/test/dashboards-ux.test.ts]
+      must_not_write: [apps/backend, core, specs/03-contracts]
+    - owner: metric-controls-agent
+      write_scope: [apps/frontend/src/features/metrics, apps/frontend/src/features/dashboards/widget-editor, apps/frontend/test]
+      must_not_write: [apps/backend, core, specs/03-contracts]
+    - owner: dashboard-renderers-agent
+      write_scope: [apps/frontend/src/features/dashboards/widget-renderers, apps/frontend/src/features/dashboards/widget-source-mappers.ts, apps/frontend/test]
+      must_not_write: [apps/backend, core]
+    - owner: dashboard-pins-agent
+      write_scope: [apps/frontend/src/routes, apps/frontend/src/features/dashboards, apps/frontend/test]
+      must_not_write: [apps/backend, core, specs/03-contracts]
+    - owner: rich-metric-gate-agent
+      write_scope: [specs/03-contracts, apps/packages/ui-contracts, apps/packages/definition, core/go-contracts, apps/backend, core/storage-read, apps/frontend]
+      must_split_by_boundary_before_implementation: true
+  implementation_plan:
+    root: plans/dashboard-gap-closure
+    status: ready
+    tickets:
+      - TICKET-101
+      - TICKET-102
+      - TICKET-103
+      - TICKET-104
+      - TICKET-105
+      - TICKET-106
+      - TICKET-107
+  gate_simulation:
+    status: pass
+    planner_result: implementation_ready_for_autonomous_agents
+    blockers_for_implementation: []
+    simulated_tickets:
+      - id: TICKET-101
+        name: Dashboard reducer, layout, and source mapper foundation
+        owner_boundary: dashboard-foundation-agent
+        acceptance: Pure dashboard reducer, layout solver, and widget source mappers are tested and ready for route/editor/renderers.
+      - id: TICKET-102
+        name: Dashboard route modes and discard/save conflict flow
+        owner_boundary: dashboard-route-agent
+        acceptance: Overview and builder modes, URL state, discard, save success, and conflict flow consume foundation modules without route-local widget mutation.
+      - id: TICKET-103
+        name: Shared metric controls and non-rich widget editors
+        owner_boundary: metric-controls-agent
+        acceptance: Metric dashboard widgets reuse shared Metrics controls and every non-rich widget editor exposes exact Data, Display, and Thresholds groups.
+      - id: TICKET-104
+        name: Widget renderers and local widget states
+        owner_boundary: dashboard-renderers-agent
+        acceptance: Widget renderers and source mappers are extracted, render GraphQL view models only, and keep loading/empty/warning/error states widget-local.
+      - id: TICKET-105
+        name: Tablet, touch, and keyboard canvas integration
+        owner_boundary: dashboard-foundation-agent
+        acceptance: 12-column desktop, 6-column tablet, stacked mobile, pointer handles, and keyboard controls are wired to reducer/layout behavior.
+      - id: TICKET-106
+        name: Persisted pins and dashboard shortcuts
+        owner_boundary: dashboard-pins-agent
+        acceptance: Dashboard shortcuts use persisted pin contracts only, cap visible pins at five, and support accessible reorder where exposed.
+      - id: TICKET-107
+        name: Rich metric production gate closure
+        owner_boundary: split_by_contract_storage_bff_frontend
+        acceptance: Rich metric creation/editing remains gated until contract, storage-read, BFF, frontend, and focused tests pass.
 ai_eval_parallel_agent_finalization:
   status: approved_for_parallel_implementation
   review_basis:

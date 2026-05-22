@@ -111,10 +111,14 @@ import {
   DASHBOARD_GRID_COLUMNS,
   DASHBOARD_GRID_ROW_HEIGHT,
   defaultDashboardWidgetLayout,
-  moveDashboardWidget,
-  resizeDashboardWidget,
   sortDashboardWidgetsForSave,
 } from "../features/dashboards/dashboard-layout";
+import {
+  dashboardDraftReducer,
+  startDashboardDraft,
+  toDashboardSaveInput,
+  type DashboardDraftState,
+} from "../features/dashboards/dashboard-draft-reducer";
 import { TelemetryChart, type TelemetryChartKind } from "../features/telemetry/telemetry-chart";
 import type {
   Dashboard,
@@ -135,10 +139,15 @@ import { useAppSession } from "../providers/app-session-provider";
 import { useTelemetryClient } from "../providers/telemetry-client-provider";
 
 const EMPTY_METRIC_NAME = "gen_ai.client.token.usage";
+const RICH_METRIC_EDITING_ENABLED = false;
 
 const metricChartTypes: MetricChartType[] = [...METRIC_CHART_TYPES];
 
 const metricAggregations: MetricAggregation[] = [...METRIC_AGGREGATIONS];
+
+function isRichMetricEditingEnabled() {
+  return RICH_METRIC_EDITING_ENABLED;
+}
 
 export function DashboardsRoute() {
   const { client } = useAppSession();
@@ -146,7 +155,7 @@ export function DashboardsRoute() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("query") ?? "");
-  const [draft, setDraft] = useState<SaveDashboardInput | null>(null);
+  const [draftState, setDraftState] = useState<DashboardDraftState | null>(null);
   const [inspectorWidgetId, setInspectorWidgetId] = useState<string | null>(null);
   const [pendingDashboardId, setPendingDashboardId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -161,7 +170,8 @@ export function DashboardsRoute() {
   const selectedDashboard = dashboardId
     ? (dashboards.find((dashboard) => dashboard.id === dashboardId) ?? null)
     : null;
-  const widgets = draft?.widgets ?? selectedDashboard?.widgets ?? [];
+  const draft = draftState ? toDashboardSaveInput(draftState) : null;
+  const widgets = draftState?.widgets ?? selectedDashboard?.widgets ?? [];
   const dashboardMetricNames = metricNamesForDashboardWidgets(widgets);
   const dashboardMetricDescriptorsQuery = useQuery({
     enabled:
@@ -198,7 +208,7 @@ export function DashboardsRoute() {
     mutationFn: client.saveDashboard,
     onSuccess(dashboard) {
       notifyMutationSuccess("Dashboard saved.");
-      setDraft(null);
+      setDraftState(null);
       setInspectorWidgetId(null);
       void queryClient.invalidateQueries({ queryKey: ["Dashboards"] });
       setSearchParams((params) => {
@@ -214,7 +224,7 @@ export function DashboardsRoute() {
     mutationFn: client.deleteDashboard,
     onSuccess() {
       notifyMutationSuccess("Dashboard deleted.");
-      setDraft(null);
+      setDraftState(null);
       setInspectorWidgetId(null);
       void queryClient.invalidateQueries({ queryKey: ["Dashboards"] });
       setSearchParams((params) => {
@@ -238,7 +248,7 @@ export function DashboardsRoute() {
   });
 
   const commitDashboardSelection = (id: string) => {
-    setDraft(null);
+    setDraftState(null);
     setInspectorWidgetId(null);
     setSearchParams((params) => {
       params.set("dashboard", id);
@@ -248,21 +258,14 @@ export function DashboardsRoute() {
     });
   };
   const selectDashboard = (id: string) => {
-    if (draft) {
+    if (draftState) {
       setPendingDashboardId(id);
       return;
     }
     commitDashboardSelection(id);
   };
   const createDashboard = () => {
-    setDraft({
-      name: t("dashboards.untitled"),
-      description: null,
-      tags: [],
-      visibility: "personal",
-      defaultTimeWindow: "PT1H",
-      widgets: [],
-    });
+    setDraftState(startDashboardDraft({ source: "new" }));
     setInspectorWidgetId(null);
     setSearchParams((params) => {
       params.delete("dashboard");
@@ -274,7 +277,7 @@ export function DashboardsRoute() {
     if (!selectedDashboard) {
       return;
     }
-    setDraft(duplicateDashboardDraft(selectedDashboard));
+    setDraftState(startDashboardDraft({ dashboard: selectedDashboard, source: "duplicate" }));
     setInspectorWidgetId(null);
   };
   const deleteDashboard = () => {
@@ -284,9 +287,10 @@ export function DashboardsRoute() {
     void deleteMutation.mutate(selectedDashboard.id);
   };
   const addWidget = (kind: DashboardWidgetKind) => {
-    setDraft((current) => {
-      const next = appendWidget(current ?? editableDashboardDraft(selectedDashboard), kind);
-      const widget = next.widgets.at(-1);
+    setDraftState((current) => {
+      const base = current ?? startDraftForSelectedDashboard(selectedDashboard);
+      const widget = createDashboardWidget(kind, base.widgets.length + 1);
+      const next = dashboardDraftReducer(base, { type: "add_widget", widget });
       if (widget) {
         setInspectorWidgetId(widget.id);
         setSearchParams((params) => {
@@ -299,43 +303,47 @@ export function DashboardsRoute() {
     });
   };
   const updateWidget = (widget: DashboardWidgetInput) => {
-    setDraft((current) => {
-      const base = current ?? editableDashboardDraft(selectedDashboard);
-      return {
-        ...base,
-        widgets: base.widgets.map((candidate) => (candidate.id === widget.id ? widget : candidate)),
-      };
-    });
-  };
-  const duplicateWidget = (widgetId: string) => {
-    setDraft((current) =>
-      duplicateWidgetInDraft(current ?? editableDashboardDraft(selectedDashboard), widgetId),
+    setDraftState((current) =>
+      dashboardDraftReducer(current ?? startDraftForSelectedDashboard(selectedDashboard), {
+        type: "update_widget_data",
+        widget,
+      }),
     );
   };
+  const duplicateWidget = (widgetId: string) => {
+    setDraftState((current) => {
+      const base = current ?? startDraftForSelectedDashboard(selectedDashboard);
+      const widget = duplicateWidgetInput(base.widgets, widgetId);
+      return widget ? dashboardDraftReducer(base, { type: "duplicate_widget", widget }) : base;
+    });
+  };
   const removeWidget = (widgetId: string) => {
-    setDraft((current) =>
-      removeWidgetFromDraft(current ?? editableDashboardDraft(selectedDashboard), widgetId),
+    setDraftState((current) =>
+      dashboardDraftReducer(current ?? startDraftForSelectedDashboard(selectedDashboard), {
+        type: "remove_widget",
+        widgetId,
+      }),
     );
     setInspectorWidgetId((current) => (current === widgetId ? null : current));
   };
   const moveWidget = (widgetId: string, deltaX: number, deltaY: number) => {
-    setDraft((current) =>
-      moveDashboardWidget(
-        current ?? editableDashboardDraft(selectedDashboard),
-        widgetId,
+    setDraftState((current) =>
+      dashboardDraftReducer(current ?? startDraftForSelectedDashboard(selectedDashboard), {
+        type: "move_widget",
         deltaX,
         deltaY,
-      ),
+        widgetId,
+      }),
     );
   };
   const resizeWidget = (widgetId: string, deltaWidth: number, deltaHeight: number) => {
-    setDraft((current) =>
-      resizeDashboardWidget(
-        current ?? editableDashboardDraft(selectedDashboard),
-        widgetId,
+    setDraftState((current) =>
+      dashboardDraftReducer(current ?? startDraftForSelectedDashboard(selectedDashboard), {
+        type: "resize_widget",
         deltaWidth,
         deltaHeight,
-      ),
+        widgetId,
+      }),
     );
   };
   const openWidgetInspector = (widgetId: string) => {
@@ -362,7 +370,16 @@ export function DashboardsRoute() {
             <Input
               aria-label={t("dashboards.name")}
               className="h-9 max-w-xl border-transparent px-0 text-xl font-semibold shadow-none focus-visible:border-input focus-visible:px-3"
-              onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+              onChange={(event) =>
+                setDraftState((current) =>
+                  current
+                    ? dashboardDraftReducer(current, {
+                        type: "update_metadata",
+                        patch: { name: event.target.value },
+                      })
+                    : current,
+                )
+              }
               value={draft.name}
             />
           ) : (
@@ -461,7 +478,11 @@ export function DashboardsRoute() {
           <WidgetEditorSheet
             dashboard={selectedDashboard}
             draft={draft}
-            onDraftChange={setDraft}
+            onDraftChange={(nextDraft) =>
+              setDraftState((current) =>
+                current ? syncDraftStateFromSaveInput(current, nextDraft) : current,
+              )
+            }
             onOpenChange={(open) => {
               if (!open) {
                 setInspectorWidgetId(null);
@@ -1981,7 +2002,11 @@ function AddWidgetButton({ onAddWidget }: { onAddWidget: (kind: DashboardWidgetK
       <Table2 data-icon="inline-start" key="metric_table" />,
       t("dashboards.widget.metricTable"),
     ],
-    ["metric_rich", <LineChart data-icon="inline-start" key="metric_rich" />, "Rich metric"],
+    ...(isRichMetricEditingEnabled()
+      ? ([
+          ["metric_rich", <LineChart data-icon="inline-start" key="metric_rich" />, "Rich metric"],
+        ] satisfies Array<[DashboardWidgetKind, ReactNode, string]>)
+      : []),
     [
       "log_table",
       <Table2 data-icon="inline-start" key="log_table" />,
@@ -2123,13 +2148,17 @@ function WidgetEditorGroups({
             </SummaryRow>
           </FieldGroup>
         ) : widget.richMetric ? (
-          <RichMetricWidgetEditor
-            disabled={disabled}
-            onWidgetChange={onWidgetChange}
-            range={range}
-            telemetryClient={telemetryClient}
-            widget={widget}
-          />
+          !isRichMetricEditingEnabled() ? (
+            <RichMetricUnsupportedState />
+          ) : (
+            <RichMetricWidgetEditor
+              disabled={disabled}
+              onWidgetChange={onWidgetChange}
+              range={range}
+              telemetryClient={telemetryClient}
+              widget={widget}
+            />
+          )
         ) : widget.logs ? (
           <LogWidgetEditor disabled={disabled} onWidgetChange={onWidgetChange} widget={widget} />
         ) : widget.traces ? (
@@ -2226,6 +2255,15 @@ function WidgetEditorGroups({
           </p>
         )}
       </EditorGroup>
+    </div>
+  );
+}
+
+function RichMetricUnsupportedState() {
+  return (
+    <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+      Rich metric widgets can render saved data, but creation and editing stay disabled until the
+      complete rich metric implementation gate passes.
     </div>
   );
 }
@@ -3146,57 +3184,46 @@ function EmptyDashboardCanvas({
   );
 }
 
-function duplicateDashboardDraft(dashboard: Dashboard | null): SaveDashboardInput {
+function startDraftForSelectedDashboard(dashboard: Dashboard | null): DashboardDraftState {
   if (!dashboard) {
-    return {
-      name: t("dashboards.untitled"),
-      description: null,
-      tags: [],
-      visibility: "personal",
-      defaultTimeWindow: "PT1H",
-      widgets: [],
-    };
+    return startDashboardDraft({ source: "new" });
+  }
+  if (dashboard.visibility === "builtin") {
+    return startDashboardDraft({ dashboard, source: "duplicate" });
+  }
+  return startDashboardDraft({ dashboard, source: "edit_existing" });
+}
+
+function syncDraftStateFromSaveInput(
+  state: DashboardDraftState,
+  draft: SaveDashboardInput | null,
+): DashboardDraftState | null {
+  if (!draft) {
+    return null;
   }
   return {
-    name: `${dashboard.name} ${t("dashboards.copySuffix")}`,
-    description: dashboard.description ?? null,
-    tags: [...dashboard.tags],
-    visibility: dashboard.visibility === "project" ? "project" : "personal",
-    defaultTimeWindow: dashboard.defaultTimeWindow,
-    widgets: dashboard.widgets.map((widget) => ({
-      id: widget.id,
-      title: widget.title,
-      description: widget.description ?? null,
-      kind: widget.kind,
-      layout: { ...widget.layout },
-      metric: widget.metric ? { ...widget.metric } : null,
-      richMetric: widget.richMetric ? { ...widget.richMetric } : null,
-      logs: widget.logs ? { ...widget.logs } : null,
-      traces: widget.traces ? { ...widget.traces } : null,
-      liveTraces: widget.liveTraces ? { ...widget.liveTraces } : null,
-      alert: widget.alert ? { ...widget.alert } : null,
-    })),
+    ...state,
+    dirty: {
+      ...state.dirty,
+      metadata:
+        state.dirty.metadata ||
+        state.metadata.name !== draft.name ||
+        state.metadata.description !== (draft.description ?? null) ||
+        state.metadata.visibility !== (draft.visibility ?? "personal"),
+      widgetData: state.dirty.widgetData || state.widgets !== draft.widgets,
+    },
+    metadata: {
+      defaultTimeWindow: draft.defaultTimeWindow ?? state.metadata.defaultTimeWindow,
+      description: draft.description ?? null,
+      name: draft.name,
+      tags: draft.tags ?? [],
+      visibility: draft.visibility ?? "personal",
+    },
+    widgets: draft.widgets,
   };
 }
 
-function editableDashboardDraft(dashboard: Dashboard | null): SaveDashboardInput {
-  if (!dashboard || dashboard.visibility === "builtin") {
-    return duplicateDashboardDraft(dashboard);
-  }
-  return {
-    id: dashboard.id,
-    version: dashboard.version,
-    name: dashboard.name,
-    description: dashboard.description ?? null,
-    tags: [...dashboard.tags],
-    visibility: dashboard.visibility,
-    defaultTimeWindow: dashboard.defaultTimeWindow,
-    widgets: dashboard.widgets.map(toWidgetInput),
-  };
-}
-
-function appendWidget(draft: SaveDashboardInput, kind: DashboardWidgetKind): SaveDashboardInput {
-  const index = draft.widgets.length + 1;
+function createDashboardWidget(kind: DashboardWidgetKind, index: number): DashboardWidgetInput {
   const layout = defaultDashboardWidgetLayout(kind, index);
   const base = {
     id: `widget-${index}`,
@@ -3204,96 +3231,108 @@ function appendWidget(draft: SaveDashboardInput, kind: DashboardWidgetKind): Sav
     kind,
     layout,
   };
-  const widget =
-    kind === "metric_timeseries" || kind === "metric_stat" || kind === "metric_table"
-      ? ({
-          ...base,
-          metric: {
-            metricName: EMPTY_METRIC_NAME,
-            aggregation: "sum",
-            groupBy: [],
-            filters: [],
-            timeWindow: "PT1H",
-            interval: "PT1M",
-            visualization:
-              kind === "metric_stat" ? "stat" : kind === "metric_table" ? "table" : "line",
-            legend: kind === "metric_timeseries",
-            maxSeries: 20,
-            thresholds: [],
-          },
-        } satisfies DashboardWidgetInput)
-      : kind === "metric_rich"
-        ? ({
-            ...base,
-            richMetric: {
-              query: defaultRichMetricQuery(),
-              visualization: "line",
-              legend: true,
-              maxSeries: 20,
-              thresholds: [],
-            },
-          } satisfies DashboardWidgetInput)
-        : kind === "log_table"
-          ? ({
-              ...base,
-              logs: {
-                search: null,
-                service: null,
-                severity: null,
-                traceId: null,
-                spanId: null,
-                attributes: [],
-                sort: "timestamp_desc",
-                limit: 50,
-                columns: ["timestamp", "severity", "service", "trace_span", "body"],
-              },
-            } satisfies DashboardWidgetInput)
-          : kind === "trace_table"
-            ? ({
-                ...base,
-                traces: {
-                  query: null,
-                  service: null,
-                  operationName: null,
-                  spanName: null,
-                  status: null,
-                  minDurationMs: null,
-                  maxDurationMs: null,
-                  attributes: [],
-                  sort: "startedAt_desc",
-                  limit: 50,
-                  columns: ["started_at", "status", "service", "operation", "duration"],
-                },
-              } satisfies DashboardWidgetInput)
-            : kind === "live_trace_table"
-              ? ({
-                  ...base,
-                  liveTraces: {
-                    query: null,
-                    service: null,
-                    operationName: null,
-                    spanName: null,
-                    status: null,
-                    minDurationMs: null,
-                    maxDurationMs: null,
-                    attributes: [],
-                    limit: 50,
-                  },
-                } satisfies DashboardWidgetInput)
-              : ({
-                  ...base,
-                  alert: {
-                    ruleIds: [],
-                    states: [],
-                    severities: [],
-                    signals: [],
-                    timeWindow: "PT1H",
-                    limit: kind === "alert_evidence" ? 1 : 20,
-                  },
-                } satisfies DashboardWidgetInput);
+
+  return widgetFromBase(base, kind);
+}
+
+function widgetFromBase(
+  base: {
+    id: string;
+    kind: DashboardWidgetKind;
+    layout: DashboardWidgetInput["layout"];
+    title: string;
+  },
+  kind: DashboardWidgetKind,
+): DashboardWidgetInput {
+  if (kind === "metric_timeseries" || kind === "metric_stat" || kind === "metric_table") {
+    return {
+      ...base,
+      metric: {
+        metricName: EMPTY_METRIC_NAME,
+        aggregation: "sum",
+        groupBy: [],
+        filters: [],
+        timeWindow: "PT1H",
+        interval: "PT1M",
+        visualization: kind === "metric_stat" ? "stat" : kind === "metric_table" ? "table" : "line",
+        legend: kind === "metric_timeseries",
+        maxSeries: 20,
+        thresholds: [],
+      },
+    };
+  }
+  if (kind === "metric_rich") {
+    return {
+      ...base,
+      richMetric: {
+        query: defaultRichMetricQuery(),
+        visualization: "line",
+        legend: true,
+        maxSeries: 20,
+        thresholds: [],
+      },
+    };
+  }
+  if (kind === "log_table") {
+    return {
+      ...base,
+      logs: {
+        search: null,
+        service: null,
+        severity: null,
+        traceId: null,
+        spanId: null,
+        attributes: [],
+        sort: "timestamp_desc",
+        limit: 50,
+        columns: ["timestamp", "severity", "service", "trace_span", "body"],
+      },
+    };
+  }
+  if (kind === "trace_table") {
+    return {
+      ...base,
+      traces: {
+        query: null,
+        service: null,
+        operationName: null,
+        spanName: null,
+        status: null,
+        minDurationMs: null,
+        maxDurationMs: null,
+        attributes: [],
+        sort: "startedAt_desc",
+        limit: 50,
+        columns: ["started_at", "status", "service", "operation", "duration"],
+      },
+    };
+  }
+  if (kind === "live_trace_table") {
+    return {
+      ...base,
+      liveTraces: {
+        query: null,
+        service: null,
+        operationName: null,
+        spanName: null,
+        status: null,
+        minDurationMs: null,
+        maxDurationMs: null,
+        attributes: [],
+        limit: 50,
+      },
+    };
+  }
   return {
-    ...draft,
-    widgets: compactDashboardLayout([...draft.widgets, widget]),
+    ...base,
+    alert: {
+      ruleIds: [],
+      states: [],
+      severities: [],
+      signals: [],
+      timeWindow: "PT1H",
+      limit: kind === "alert_evidence" ? 1 : 20,
+    },
   };
 }
 
@@ -3352,12 +3391,12 @@ function prepareDashboardSaveInput(draft: SaveDashboardInput): SaveDashboardInpu
   };
 }
 
-function duplicateWidgetInDraft(draft: SaveDashboardInput, widgetId: string): SaveDashboardInput {
-  const source = draft.widgets.find((widget) => widget.id === widgetId);
+function duplicateWidgetInput(widgets: DashboardWidgetInput[], widgetId: string) {
+  const source = widgets.find((widget) => widget.id === widgetId);
   if (!source) {
-    return draft;
+    return null;
   }
-  const clone: DashboardWidgetInput = {
+  return {
     ...toWidgetInput(source),
     id: `${source.id}-copy-${Date.now().toString(36)}`,
     title: `${source.title} ${t("dashboards.copySuffix")}`,
@@ -3365,14 +3404,6 @@ function duplicateWidgetInDraft(draft: SaveDashboardInput, widgetId: string): Sa
       ...source.layout,
       y: source.layout.y + source.layout.h,
     },
-  };
-  return { ...draft, widgets: compactDashboardLayout([...draft.widgets, clone], clone.id) };
-}
-
-function removeWidgetFromDraft(draft: SaveDashboardInput, widgetId: string): SaveDashboardInput {
-  return {
-    ...draft,
-    widgets: compactDashboardLayout(draft.widgets.filter((widget) => widget.id !== widgetId)),
   };
 }
 
