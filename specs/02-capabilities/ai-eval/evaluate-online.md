@@ -62,6 +62,13 @@ continuous measurement. Near-realtime alerting is out of scope.
   policy configuration prevents scoring.
 - Production measurement results do not trigger alert rules. Alerting requires a
   separate realtime run mode and alerting contract.
+- Online evaluation default cadence is asynchronous and bounded: eligible
+  notifications should be processed within 5 minutes when budgets and rate
+  limits permit, stale notifications older than the policy lookback are skipped,
+  and backfill is opt-in only.
+- Production result deduplication uses `(projectionId, policyId, policyVersion,
+  scorerId, scorerVersion)`. No implementation may dedupe only by trace ID or
+  scorer ID.
 
 ## Acceptance Criteria
 

@@ -65,6 +65,33 @@ declared evidence, content, provider, cost, latency, and safety requirements.
 9. A user may later review/filter/cluster score results and explicitly prepare
    dataset candidates or annotation queue items through user-facing mutations.
 
+## Cadence, Deduplication, And Backfill
+
+Online evaluation is asynchronous continuous measurement, not a request-path
+hook.
+
+- Runner may process persisted projection notifications immediately or in
+  bounded batches. The default scheduling target is within 5 minutes of
+  `persistedAt` when rate limits and budgets permit.
+- A notification older than the project policy lookback window is skipped with a
+  bounded `stale_notification` reason. The default lookback is 24 hours.
+- Idempotency key is `(projectionId, policyId, policyVersion, scorerId,
+  scorerVersion)`. Replayed notifications must not create duplicate
+  `EvalResult` records.
+- Sampling is evaluated after policy matching and before scorer execution. The
+  sampling decision is deterministic from project ID, projection ID, policy ID,
+  policy version, and scorer ID.
+- Daily policy caps use the project-local calendar day of `persistedAt`, not
+  runner wall-clock time.
+- Backfill uses the same policy resolution and idempotency key as live
+  notification handling. Backfill must be opt-in and must not run from default
+  startup.
+- When budgets or rate limits are exhausted, runner records a skipped result
+  only if a policy match existed. No-match notifications are silently ignored
+  after bounded metrics/logging.
+- Skipped results contribute to `skippedReasons` in production quality
+  overviews but never to model-quality pass/fail rates.
+
 ## Boundaries
 
 Notifications contain IDs, kinds, and routing hints only. They do not contain source payload content. Runner loads all needed read models through storage-read and persists only through storage-write.

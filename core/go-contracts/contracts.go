@@ -2387,6 +2387,52 @@ type EvalMutationResponse struct {
 	Error     *BridgeError   `json:"error,omitempty"`
 }
 
+type DatasetCandidateSource struct {
+	SourceKind      string  `json:"sourceKind"`
+	TraceID         *string `json:"traceId,omitempty"`
+	SpanID          *string `json:"spanId,omitempty"`
+	EvalResultID    *string `json:"evalResultId,omitempty"`
+	ExperimentRunID *string `json:"experimentRunId,omitempty"`
+	PolicyID        *string `json:"policyId,omitempty"`
+	CoverageGapID   *string `json:"coverageGapId,omitempty"`
+	HealthIssueID   *string `json:"healthIssueId,omitempty"`
+	ClusterID       *string `json:"clusterId,omitempty"`
+}
+
+type DatasetCandidatesPrepareRequest struct {
+	BridgeEnvelope
+	DatasetID                  *string                  `json:"datasetId,omitempty"`
+	Sources                    []DatasetCandidateSource `json:"sources"`
+	TargetShape                *string                  `json:"targetShape,omitempty"`
+	Split                      *string                  `json:"split,omitempty"`
+	ReviewStatus               *string                  `json:"reviewStatus,omitempty"`
+	ContentTreatment           *string                  `json:"contentTreatment,omitempty"`
+	AnonymizationPolicyID      *string                  `json:"anonymizationPolicyId,omitempty"`
+	AnonymizationPolicyVersion *int                     `json:"anonymizationPolicyVersion,omitempty"`
+}
+
+type DatasetCandidatesSearchRequest struct {
+	BridgeEnvelope
+	DatasetID        *string `json:"datasetId,omitempty"`
+	Status           *string `json:"status,omitempty"`
+	SourceKind       *string `json:"sourceKind,omitempty"`
+	TargetShape      *string `json:"targetShape,omitempty"`
+	ContentTreatment *string `json:"contentTreatment,omitempty"`
+	ClusterID        *string `json:"clusterId,omitempty"`
+	Query            *string `json:"query,omitempty"`
+	Limit            *int    `json:"limit,omitempty"`
+	Cursor           *string `json:"cursor,omitempty"`
+}
+
+type DatasetCandidatesCommitRequest struct {
+	BridgeEnvelope
+	DatasetID              string   `json:"datasetId"`
+	ExpectedDatasetVersion int      `json:"expectedDatasetVersion"`
+	CandidateIDs           []string `json:"candidateIds"`
+	Split                  *string  `json:"split,omitempty"`
+	ReviewStatus           *string  `json:"reviewStatus,omitempty"`
+}
+
 type VersionedRef struct {
 	ID      string `json:"id"`
 	Version int    `json:"version"`
@@ -2466,6 +2512,14 @@ type ExperimentStartRequest struct {
 type ExperimentCancelRequest struct {
 	BridgeEnvelope
 	ExperimentRunID string `json:"experimentRunId"`
+}
+
+type ExperimentRunControlRequest struct {
+	BridgeEnvelope
+	ExperimentRunID        string  `json:"experimentRunId"`
+	Command                string  `json:"command"`
+	ExpectedManifestDigest *string `json:"expectedManifestDigest,omitempty"`
+	IdempotencyKey         *string `json:"idempotencyKey,omitempty"`
 }
 
 type OptimizationStartRequest struct {

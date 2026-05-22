@@ -231,6 +231,31 @@ Eval:
 - max parallel experiment item execution;
 - existing provider/profile/policy counts and effective warnings.
 
+## Scorer Template Forms
+
+The scorer creation UI is implementation-final only when each scorer kind has a
+typed template form. Raw JSON editing is an advanced drawer and cannot be the
+primary create path.
+
+| Scorer kind | Required controls | Optional controls | Preview/validation |
+| --- | --- | --- | --- |
+| `deterministic` | match mode (`exact_match`, `contains`, `regex`, `attribute_equality`), expected path, actual path, pass threshold. | case sensitivity, normalization, forbidden values. | Shows sample expected/actual comparison and pass/fail. |
+| `schema_json` | JSON schema builder or schema upload, actual output path. | strict additional-properties toggle, required path presets. | Validates schema syntax and shows invalid path examples. |
+| `semantic` | model alias or embedding profile, expected path, actual path, threshold. | distance metric, calibration notes. | Shows threshold explanation and missing provider warning. |
+| `rag` | answer path, required facts path, retrieved document refs path, citation policy. | forbidden docs, minimum faithfulness/context recall. | Shows required evidence classes and content policy status. |
+| `llm_judge` | judge model alias, rubric criteria, primary facts, actual answer path, pass threshold. | secondary/background facts, unsupported-claim penalty. | Shows token/cost warning and content classes sent to judge. |
+| `pairwise_judge` | judge model alias, baseline output path, candidate output path, rubric criteria. | tie policy, confidence threshold. | Shows comparison direction and promotion blocker behavior. |
+| `tool_correctness` | expected tool name/path, actual tool call path, argument match rules. | order requirements, extra-call policy. | Shows missing/extra/argument-diff preview. |
+| `trajectory` | expected step sequence, actual trajectory path, terminal outcome rule. | optional steps, order tolerance. | Shows matched/missing/extra step preview. |
+| `workflow` | workflow phase map, agent/tool loop path, success/failure terminal rule. | branch rules, per-agent weights. | Shows phase coverage and failing step refs. |
+| `human` | label set, review queue target, pass labels. | assignment hints, consensus count. | Shows unresolved-count behavior. |
+| `composite` | child scorer refs, weights, required gates. | blocker gates, minimum support. | Shows aggregate score formula and failed-gate preview. |
+
+Template forms must emit `scorer-definition.schema.json` and must reject
+unknown fields before sending `Mutation.createScorer`. The UI may show the
+advanced JSON drawer only after the template is valid, and changes in that
+drawer must still revalidate against the same schema.
+
 ## Frontend Boundary
 
 Frontend code owns route state, selection, tabs, focus, expansion, sorting

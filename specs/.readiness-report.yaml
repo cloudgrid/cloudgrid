@@ -1,12 +1,104 @@
 status: approved
-updated: 2026-05-21
-scope: expanded_ai_evaluation_wave_and_ai_chat_implementation_wave
+updated: 2026-05-22
+scope: ai_evaluation_parallel_agent_finalization
 human_approval:
   status: approved
   approved_by: user
   approval_basis: User requested making the evaluation and AI Chat specs implementation-ready for autonomous agents without drift, unspecification, or agent-owned product decisions.
 blocking_decisions: []
 open_decisions: []
+ai_eval_parallel_agent_finalization:
+  status: approved_for_parallel_implementation
+  review_basis:
+    - AI Eval GraphQL, AsyncAPI, JSON Schema, TypeScript UI contracts, and Go contracts define the executable v1 surfaces.
+    - Dataset candidate preparation/search/commit now have dedicated AsyncAPI request and response shapes.
+    - Pause and resume use a dedicated `ExperimentRunControlRequest`; they do not reuse start or cancel payloads.
+    - V1 optimizer contracts expose only `bootstrap_fewshot` and `critic_mutate_judge_pick`; roadmap optimizers are non-executable.
+    - Experiment run summaries and eval result visualization payloads have typed contracts or explicit schema-backed JSON payloads.
+    - Online evaluation is asynchronous continuous measurement with explicit cadence, deduplication, sampling, stale-notification, and backfill rules.
+    - Scorer creation has required frontend template controls per scorer kind and cannot rely on raw JSON as the primary path.
+  no_agent_decision_rules:
+    - Agents must not add scorer kinds, optimizer kinds, result visualization kinds, dataset candidate statuses, run statuses, NATS subjects, GraphQL operations, or JSON fields not present in the specs and machine contracts.
+    - Agents must not reinterpret online policy targets outside storage-read.
+    - Agents must not implement pause/resume by relying on sandbox process memory, filesystem snapshots, or durable replay unless the adapter satisfies the durable replay profile.
+    - Agents must not auto-create dataset items, annotation queue items, or alert rules from online production measurement.
+    - Agents must stop and update specs/contracts first if a ticket requires behavior outside the listed contract traceability.
+  parallel_boundaries:
+    - owner: contract-agent
+      write_scope: [specs/03-contracts, apps/packages/ui-contracts, apps/packages/definition, core/go-contracts, tooling/scripts/check-contracts.mjs]
+      must_not_write: [apps/frontend, apps/backend/src/resolvers, core/storage-read, core/storage-write, core/ai-eval-runner]
+    - owner: bff-agent
+      write_scope: [apps/backend, apps/packages/runtime]
+      must_not_write: [core, apps/frontend, specs/03-contracts unless closing a spec gap first]
+    - owner: frontend-agent
+      write_scope: [apps/frontend, apps/packages/ui-contracts]
+      must_not_write: [apps/backend, core]
+    - owner: storage-read-agent
+      write_scope: [core/storage-read]
+      must_not_write: [core/storage-write, apps/backend, apps/frontend]
+    - owner: storage-write-agent
+      write_scope: [core/storage-write]
+      must_not_write: [core/storage-read, apps/backend, apps/frontend]
+    - owner: runner-agent
+      write_scope: [core/ai-eval-runner]
+      must_not_write: [core/storage-read, core/storage-write, apps/backend, apps/frontend]
+    - owner: harness-adapter-agent
+      write_scope: [apps/packages/cloudgrid-harness-adapter]
+      must_not_write: [core, apps/backend, apps/frontend]
+  implementation_final_tickets:
+    - id: AIE-FINAL-1
+      owner: contract-agent
+      contract_traceability:
+        - public-schema.graphql AI Eval queries, mutations, subscriptions, enums, and typed run summary
+        - message-bridge.asyncapi.yaml AI Eval subjects including dataset candidates and run control
+        - entities/ai/*.schema.json
+      acceptance: Generated TS and Go contracts expose every approved AI Eval field and `bun run contracts:check` fails on subject, required-field, or AI Eval shape drift.
+    - id: AIE-FINAL-2
+      owner: storage-write-agent
+      contract_traceability:
+        - eval.dataset.create
+        - eval.dataset.items.append
+        - eval.dataset.item.update
+        - eval.dataset.candidates.prepare write phase
+        - eval.dataset.candidates.commit
+        - eval.scorer.create
+        - eval.experiment.create
+        - eval.results.persist
+      acceptance: Storage-write is the only AI Eval SurrealDB mutator and enforces dataset versions, candidate state transitions, commit idempotency, scorer definition schemas, result payload schemas, and content-treatment provenance.
+    - id: AIE-FINAL-3
+      owner: storage-read-agent
+      contract_traceability:
+        - eval.dataset.candidates.search
+        - eval.dataset.candidates.prepare read phase
+        - eval.manifest.resolve
+        - eval.online.policy_matches.resolve
+        - eval.quality.overview
+        - eval.experiment.search
+      acceptance: Storage-read owns policy matching, candidate evidence, coverage gaps, manifest digests, typed run summaries, and all scorer-specific aggregation view models.
+    - id: AIE-FINAL-4
+      owner: runner-agent
+      contract_traceability:
+        - eval.experiment.start
+        - eval.experiment.pause
+        - eval.experiment.resume
+        - eval.experiment.cancel
+        - eval.optimization.start
+        - eval.results.persist
+        - eval.experiment.progress
+      acceptance: Runner enforces run policy, state machine, idempotent pause/resume/cancel, fresh-sandbox resume for ephemeral adapters, result payload schemas, cleanup retry, and online measurement cadence without reading or writing SurrealDB directly.
+    - id: AIE-FINAL-5
+      owner: bff-agent
+      contract_traceability:
+        - all AI Eval GraphQL operations in public-schema.graphql
+        - all AI Eval request/reply subjects in message-bridge.asyncapi.yaml
+      acceptance: BFF validates inputs, calls only approved NATS subjects, validates replies, maps errors, and does not derive telemetry, score summaries, manifests, policy matches, or dataset candidate content.
+    - id: AIE-FINAL-6
+      owner: frontend-agent
+      contract_traceability:
+        - specs/05-frontend/ai-eval-views.md
+        - specs/05-frontend/ai-eval-ux-concept.md
+        - typed GraphQL view models
+      acceptance: Frontend renders AI Eval setup, datasets, candidates, scorers, experiments, run controls, result analytics, optimization, production quality, and settings using GraphQL view models only, with no raw JSON primary forms for common scorer/dataset workflows.
 inferred_defaults:
   - CloudGrid AI Eval is an observability-native evaluation flywheel, not a generic eval SDK clone.
   - Project AI settings live in the project admin settings shell and are owned by control-plane.

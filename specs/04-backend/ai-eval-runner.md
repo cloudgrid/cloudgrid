@@ -180,6 +180,28 @@ Abort behavior:
 Verification must prove pause/resume does not depend on sandbox snapshotting and
 that duplicate harness attempts cannot duplicate CloudGrid persisted records.
 
+Public run-control contract:
+
+- `Mutation.pauseExperimentRun(id)` maps to `eval.experiment.pause` with
+  `ExperimentRunControlRequest.command = pause`.
+- `Mutation.resumeExperimentRun(id)` maps to `eval.experiment.resume` with
+  `ExperimentRunControlRequest.command = resume`.
+- BFF may pass `expectedManifestDigest` only when it already read the run
+  manifest digest from GraphQL; storage-read remains the authority for the
+  persisted digest.
+- Repeated pause for `pausing` or `paused` returns the current run without
+  scheduling additional sandbox calls.
+- Repeated resume for `resuming` or `running` returns the current run without
+  scheduling additional sandbox calls.
+- Resume from any terminal state fails with non-retryable `ERR-AIE-001`.
+- Resume with a stale or mismatched manifest digest fails with non-retryable
+  `ERR-AIE-002` before any harness call.
+- Pause/resume requests are idempotent by `experimentRunId`, `command`, current
+  run version, and optional `idempotencyKey`.
+- Cancel remains the only v1 public terminal stop command. There is no public
+  cleanup mutation; cleanup is runner-owned and reported through run problems,
+  progress events, and infrastructure health.
+
 ## Evaluation Capability Contract
 
 Scorer definitions are reusable across offline experiments, optimization,
@@ -411,6 +433,28 @@ analytics, but it must keep the same visualization kinds and bounded evidence
 rules. The frontend must render the returned view model and must not recompute
 confusion matrices, fact coverage, RAG grounding, tool diffs, workflow steps, or
 composite gates from raw rows.
+
+Required result visualizations:
+
+| `resultKind` | `metrics` owner | Required visualization kind | Required user-visible fields |
+| --- | --- | --- | --- |
+| `classification` | scorer or storage-read aggregate | `confusion_matrix` | overall accuracy, per-label accuracy/support, matrix labels, matrix counts, bounded example refs. |
+| `json_schema` | scorer | `table` | valid rate, invalid path counts, missing required fields, representative invalid examples. |
+| `llm_judge` | scorer | `fact_coverage` or `rubric_breakdown` | score, primary fact coverage, secondary/background fact coverage, missing critical facts, unsupported claims, bounded rationale summary. |
+| `pairwise_judge` | scorer | `rubric_breakdown` | winner, margin/confidence, compared output refs, rubric criterion outcomes. |
+| `semantic_similarity` | scorer | `scalar` or `distribution` | mean score, threshold, pass/fail count, nearest failure examples. |
+| `rag` | scorer | `rag_grounding` | faithfulness, context recall, answer relevance, citation coverage, required/forbidden document refs. |
+| `tool_correctness` | scorer | `tool_call_diff` | expected/actual tool name, argument diffs, missing/extra calls, order violations. |
+| `trajectory` | scorer | `trajectory_steps` | expected/actual step sequence, matched/missing/extra steps, terminal outcome. |
+| `workflow` | scorer | `workflow_steps` | agent/workflow phase, tool-loop status, branch outcome, failing step refs. |
+| `human_review` | storage-read aggregate | `distribution` | labels, counts, reviewer status, unresolved count. |
+| `composite` | storage-read aggregate | `composite_gate` | child scorer refs, weights, required gates, failed blocker gates. |
+
+If a scorer cannot produce its required visualization, it must persist a
+scorer/config `problem` and must not store an ad hoc JSON visualization. New
+visualization kinds require updating GraphQL enum values, JSON Schema,
+storage-read aggregation rules, frontend rendering, and contract checks in the
+same change.
 
 The runner must distinguish:
 

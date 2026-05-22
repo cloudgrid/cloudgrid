@@ -807,11 +807,26 @@ function validateAiEvalContractAlignment() {
     }
   }
 
+  for (const symbol of [
+    "DatasetCandidatesPrepareRequest",
+    "DatasetCandidatesSearchRequest",
+    "DatasetCandidatesCommitRequest",
+    "ExperimentRunControlRequest",
+  ]) {
+    if (!goSource.includes(`type ${symbol} struct`)) {
+      throw new Error(`go contracts missing typed AI Eval request contract ${symbol}`);
+    }
+  }
+
   for (const [structName, fields] of Object.entries({
     ExperimentStartRequest: ["solverRef", "splitSelector", "runPolicy"],
+    ExperimentRunControlRequest: ["experimentRunId", "command"],
     OptimizationStartRequest: ["config", "runPolicy"],
     ExperimentManifestResolveRequest: ["basePromptVersionId", "optimizationConfig"],
     OnlinePolicyMatchesResolveData: ["runPolicy"],
+    DatasetCandidatesPrepareRequest: ["sources", "contentTreatment", "anonymizationPolicyVersion"],
+    DatasetCandidatesSearchRequest: ["datasetId", "status", "cursor"],
+    DatasetCandidatesCommitRequest: ["datasetId", "expectedDatasetVersion", "candidateIds"],
   })) {
     const body = goStructBody(goSource, structName);
     if (!body) {
@@ -834,6 +849,23 @@ function validateAiEvalContractAlignment() {
       throw new Error(
         `v1 executable optimizer contracts must not include roadmap optimizer ${forbidden}`,
       );
+    }
+  }
+
+  for (const required of [
+    "DatasetCandidatesPrepareRequest",
+    "DatasetCandidatesSearchRequest",
+    "DatasetCandidatesCommitRequest",
+    "DatasetCandidatesResponse",
+    "ExperimentRunControlRequest",
+    "eval.dataset.candidates.prepare",
+    "eval.dataset.candidates.search",
+    "eval.dataset.candidates.commit",
+    "eval.experiment.pause",
+    "eval.experiment.resume",
+  ]) {
+    if (!asyncApiSource.includes(required)) {
+      throw new Error(`AsyncAPI missing AI Eval executable contract token ${required}`);
     }
   }
 

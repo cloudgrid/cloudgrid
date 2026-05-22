@@ -65,8 +65,18 @@ Every response uses `{ requestId, ok, data?, error? }`. On success, `data` conta
 
 Subject payload lock:
 
+- `eval.dataset.candidates.prepare` uses `DatasetCandidatesPrepareRequest` in
+  AsyncAPI and returns `DatasetCandidatesResponse` with
+  `dataset-candidate.schema.json` items.
+- `eval.dataset.candidates.search` uses `DatasetCandidatesSearchRequest` in
+  AsyncAPI and returns `DatasetCandidatesResponse`.
+- `eval.dataset.candidates.commit` uses `DatasetCandidatesCommitRequest` in
+  AsyncAPI and returns a GraphQL-ready `Dataset` in `EvalMutationResponse.data`.
 - `eval.experiment.start` uses `ExperimentStartRequest` in AsyncAPI and
   `EvalSolverRef` from `eval-run-ref.schema.json`.
+- `eval.experiment.pause` and `eval.experiment.resume` use
+  `ExperimentRunControlRequest` in AsyncAPI with `command = pause` or
+  `command = resume`. They never reuse start or cancel payloads.
 - `eval.optimization.start` uses `OptimizationStartRequest` in AsyncAPI and
   `optimizationConfig` from `eval-run-ref.schema.json`.
 - `eval.manifest.resolve` returns `ExperimentManifest` and must include typed
@@ -138,8 +148,8 @@ disallowed policy executable.
 
 ## Dataset Candidate Contract
 
-Dataset candidate subjects use `EvalMutationRequest` or `EvalQueryRequest`
-envelopes. Payloads must include:
+Dataset candidate subjects use dedicated AsyncAPI payloads, not generic
+`EvalMutationRequest` or `EvalQueryRequest` envelopes. Payloads must include:
 
 - selected project and dataset IDs where applicable;
 - source references: trace/span IDs, eval result IDs, experiment run IDs,
@@ -155,6 +165,50 @@ envelopes. Payloads must include:
 Preparation may create candidate records and bounded evidence. Commit is the
 only operation that creates dataset items. Candidates must not contain original
 sensitive values after realistic anonymization has run.
+
+Implementation split:
+
+- BFF validates GraphQL input and sends the matching AsyncAPI request shape
+  without deriving candidate content.
+- Storage-read resolves sources, coverage gaps, clusters, dataset health,
+  bounded evidence, and candidate search result ordering.
+- Storage-write persists candidate records, status transitions, commit
+  idempotency, and dataset version changes.
+- If candidate preparation needs both read-derived evidence and writes, BFF
+  calls storage-read first for the bounded source model and storage-write second
+  for persistence. No service may both query and mutate SurrealDB directly.
+
+Prepare idempotency key:
+
+- `requestId` plus normalized source refs, dataset ID, target shape, split,
+  review status, content treatment, anonymization policy ID/version, and
+  selected project ID.
+
+Commit idempotency key:
+
+- dataset ID, expected dataset version, sorted candidate IDs, selected split,
+  selected review status, and selected project ID.
+
+Commit fails with `ERR-AIE-003` when any selected candidate is not `ready`, was
+already committed into a different dataset version, belongs to another project,
+or has stale anonymization provenance for the requested policy version.
+
+Candidate search ordering is deterministic: newest `updatedAt` first, then
+`id` ascending. Cursor pagination encodes the last `updatedAt` and `id`; offset
+pagination is not allowed for large candidate sets.
+
+Candidate status transitions:
+
+| Current | Command/source | Next | Rule |
+| --- | --- | --- | --- |
+| none | prepare valid candidate | `suggested` or `ready` | `ready` only when required input, expected, shape, treatment, and provenance are complete. |
+| none | prepare candidate needing human edits | `reviewing` | Used for uncertain anonymization, missing expected output, or blocked entity categories. |
+| `suggested` | user starts edit | `reviewing` | Does not mutate a dataset item. |
+| `reviewing` | user completes required fields | `ready` | Storage-write validates shape and treatment. |
+| `ready` | commit | `committed` | Creates a new dataset version and records source candidate IDs. |
+| `suggested`, `reviewing`, `ready` | dismiss | `dismissed` | Does not affect dataset versions. |
+| `suggested`, `reviewing`, `ready` | merged/replaced | `superseded` | Stores replacement candidate or cluster ID. |
+| `committed`, `dismissed`, `superseded` | any mutation except metadata audit append | terminal | Reopen is not allowed in v1. |
 
 ## Dataset Item Update Contract
 
