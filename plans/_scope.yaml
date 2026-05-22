@@ -1,0 +1,26 @@
+scope: ai_eval_v1_parallel_implementation
+status: active
+spec_source: specs/.readiness-report.yaml
+approved_scope: ai_evaluation_parallel_agent_finalization
+included:
+  - AI Eval contracts and generated TS/Go artifacts
+  - Storage-write AI Eval mutations and persistence
+  - Storage-read AI Eval query, manifest, candidate, policy, and aggregate semantics
+  - Runner start, pause, resume, cancel, optimization, online measurement, and result persistence
+  - Harness adapter sandbox lifecycle and scoring/optimization boundary
+  - BFF GraphQL validation, bridge routing, and response validation
+  - Frontend AI Eval datasets, candidates, scorers, experiments, run controls, analytics, production quality, and settings links
+  - Integration gates and progress evidence
+excluded:
+  - realtime AI Eval alerting
+  - model fine tuning
+  - durable replay adapter implementation beyond the specified adapter contract
+  - provider-secret storage inside CloudGrid
+  - automatic dataset item, annotation, or alert creation from online measurement
+global_constraints:
+  - Frontend renders GraphQL view models only.
+  - BFF calls only approved NATS subjects and does not derive telemetry or AI Eval aggregates.
+  - Storage-write is the only AI Eval SurrealDB mutator.
+  - Storage-read owns AI Eval query semantics, manifests, online policy matching, and aggregates.
+  - Runner never reads or writes SurrealDB directly.
+  - Agents stop and update specs/contracts first when behavior is absent.

@@ -1,0 +1,74 @@
+plan: ai_eval_v1_parallel_implementation
+updated: 2026-05-22
+summary:
+  total: 8
+  ready: 8
+  in_progress: 0
+  review: 0
+  done: 0
+  blocked: 0
+tickets:
+  TICKET-001:
+    wave: wave_01_contracts
+    status: ready
+    owner: contract-agent
+    depends_on: []
+    blocked_by: []
+    evidence: []
+    next: run contract ticket
+  TICKET-002:
+    wave: wave_02_storage
+    status: ready
+    owner: storage-write-agent
+    depends_on: [TICKET-001]
+    blocked_by: []
+    evidence: []
+    next: wait for TICKET-001 completion
+  TICKET-003:
+    wave: wave_02_storage
+    status: ready
+    owner: storage-read-agent
+    depends_on: [TICKET-001]
+    blocked_by: []
+    evidence: []
+    next: wait for TICKET-001 completion
+  TICKET-004:
+    wave: wave_03_runner_harness
+    status: ready
+    owner: runner-agent
+    depends_on: [TICKET-002, TICKET-003]
+    blocked_by: []
+    evidence: []
+    next: wait for storage tickets
+  TICKET-005:
+    wave: wave_03_runner_harness
+    status: ready
+    owner: harness-adapter-agent
+    depends_on: [TICKET-001]
+    blocked_by: []
+    evidence: []
+    next: wait for TICKET-001 completion
+  TICKET-006:
+    wave: wave_04_bff
+    status: ready
+    owner: bff-agent
+    depends_on: [TICKET-002, TICKET-003, TICKET-004]
+    blocked_by: []
+    evidence: []
+    next: wait for service tickets
+  TICKET-007:
+    wave: wave_05_frontend
+    status: ready
+    owner: frontend-agent
+    depends_on: [TICKET-006]
+    blocked_by: []
+    evidence: []
+    next: wait for BFF ticket
+  TICKET-008:
+    wave: wave_06_integration
+    status: ready
+    owner: integration-agent
+    depends_on: [TICKET-004, TICKET-005, TICKET-006, TICKET-007]
+    blocked_by: []
+    evidence: []
+    next: wait for implementation tickets
