@@ -149,10 +149,40 @@ func (c *Client) ensureSchemaLocked(ctx context.Context, target TelemetryTarget)
 	if c.initializedTargets[key] {
 		return nil
 	}
-	if _, err := sdk.Query[any](ctx, c.db, SchemaSQL(), map[string]any{}); err != nil {
+	if err := c.executeSchemaLocked(ctx); err != nil {
 		return err
 	}
 	c.initializedTargets[key] = true
+	return nil
+}
+
+func (c *Client) InitializeSchema(ctx context.Context) error {
+	target, err := ResolveTelemetryTarget(nil)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.db.Use(ctx, target.Namespace, target.Database); err != nil {
+		return err
+	}
+	if err := c.executeSchemaLocked(ctx); err != nil {
+		return err
+	}
+	key := target.Namespace + "/" + target.Database
+	if c.initializedTargets == nil {
+		c.initializedTargets = map[string]bool{}
+	}
+	c.initializedTargets[key] = true
+	return nil
+}
+
+func (c *Client) executeSchemaLocked(ctx context.Context) error {
+	for _, statement := range Statements() {
+		if _, err := sdk.Query[any](ctx, c.db, statement+";", map[string]any{}); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

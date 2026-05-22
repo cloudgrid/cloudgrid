@@ -31,7 +31,6 @@ curl -fsS http://localhost:8084/readyz
 | Metrics explorer has no series | Confirm `/v1/metrics` ingest returned `200`, selected time range includes points, and storage-read can query metric names and series. |
 | Dashboard widget is empty | Run the same metric, log, or trace query in `/metrics`, `/logs`, or `/traces`. Widgets use the same project-scoped GraphQL queries. |
 | Live view stalls | Check storage-write post-persist notifications, storage-read live session logs, and BFF WebSocket logs. |
-| GraphiQL missing | It is disabled by default in production. Set `CLOUDGRID_GRAPHQL_UI=true` only for trusted operator sessions. |
 
 ## Debug Flow
 

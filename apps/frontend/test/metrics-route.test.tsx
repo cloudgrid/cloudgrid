@@ -6,6 +6,8 @@ import { MemoryRouter } from "react-router-dom";
 import {
   buildExemplarTraceHref,
   MetricInspector,
+  MetricList,
+  MetricSeriesExplorer,
   metricInspectorTabOrDefault,
 } from "../src/features/metrics/metric-explorer";
 import {
@@ -71,6 +73,7 @@ describe("metrics route helpers", () => {
         interval: "PT1M",
         groupBy: ["gen_ai.system"],
         filters: [{ key: "gen_ai.system", operator: "eq", value: "openai" }],
+        sort: "value_desc",
       }),
     ).toEqual({
       metricName: "gen_ai.client.token.usage",
@@ -80,17 +83,93 @@ describe("metrics route helpers", () => {
       aggregation: "sum",
       groupBy: ["gen_ai.system"],
       filters: [{ key: "gen_ai.system", operator: "eq", value: "openai" }],
+      sort: "value_desc",
       limit: 1000,
     });
   });
 
   test("defaults metric explorer controls without selecting a dashboard or saved view", () => {
-    const state = defaultMetricQueryState(new URLSearchParams("metric=custom.metric"));
+    const state = defaultMetricQueryState(
+      new URLSearchParams("metric=custom.metric&seriesSort=timestamp_desc"),
+    );
 
     expect(state.metricName).toBe("custom.metric");
     expect(state.aggregation).toBe("avg");
     expect(state.groupBy).toEqual([]);
+    expect(state.sort).toBe("timestamp_desc");
     expect(state.chartType).toBe("line");
+  });
+
+  test("passes metric descriptor and series sort to backend query variables", () => {
+    expect(routeSource).toContain("buildMetricNameSearchInput");
+    expect(routeSource).toContain("sort: metricNameSort");
+    expect(routeSource).toContain('metricSeriesSortOrDefault(searchParams.get("seriesSort"))');
+    expect(routeSource).toContain('onChange={(value) => setParam("sort", value)}');
+    expect(explorerSource).toContain('onChange("seriesSort", value)');
+    expect(explorerSource).toContain("metricSeriesSorts.map");
+  });
+
+  test("metric list and table preserve backend row ordering", () => {
+    const metrics = [
+      {
+        ...descriptor,
+        id: "metric:z",
+        name: "z.metric",
+        kind: "gauge" as const,
+        lastSeenAt: "2026-05-14T08:00:00.000Z",
+      },
+      {
+        ...descriptor,
+        id: "metric:a",
+        name: "a.metric",
+        kind: "sum" as const,
+        lastSeenAt: "2026-05-14T09:00:00.000Z",
+      },
+    ];
+    const listMarkup = renderToStaticMarkup(
+      <MetricList metrics={metrics} onSelectMetric={() => {}} selectedMetricName={null} />,
+    );
+
+    expect(listMarkup.indexOf("z.metric")).toBeLessThan(listMarkup.indexOf("a.metric"));
+
+    const tableMarkup = renderToStaticMarkup(
+      <MemoryRouter>
+        <MetricSeriesExplorer
+          chartType="table"
+          result={{
+            metric: descriptor,
+            aggregation: "sum",
+            interval: "PT1M",
+            groupBy: ["gen_ai.system"],
+            warnings: [],
+            series: [
+              {
+                labels: { "gen_ai.system": "z-system" },
+                points: [
+                  {
+                    timestamp: "2026-05-14T09:00:00.000Z",
+                    value: 9,
+                    exemplars: [],
+                  },
+                ],
+              },
+              {
+                labels: { "gen_ai.system": "a-system" },
+                points: [
+                  {
+                    timestamp: "2026-05-14T08:00:00.000Z",
+                    value: 1,
+                    exemplars: [],
+                  },
+                ],
+              },
+            ],
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(tableMarkup.indexOf("z-system")).toBeLessThan(tableMarkup.indexOf("a-system"));
   });
 
   test("resets only metric explorer caches on project changes", () => {

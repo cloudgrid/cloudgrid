@@ -22,7 +22,7 @@ provenance: inferred-draft
 - Must not create JetStream consumers for `TELEMETRY_INGEST` and must not subscribe to `telemetry.persisted.traces`.
 - Validates runtime configuration, GraphQL resolver inputs, and decoded NATS request/reply responses with Zod before using them.
 - Maps all public GraphQL failures to `GraphQLError.extensions.problem`, using RFC 9457 Problem Details fields plus CloudGrid `id`, `code`, `retryable`, and optional `details` extension members.
-- Enables the GraphQL development UI only when running in development or when `CLOUDGRID_GRAPHQL_UI=true`; production defaults to disabled.
+- Exposes the `/graphql` API endpoint without a bundled GraphQL IDE or development UI.
 - Must not filter, aggregate, rank, correlate, or enrich telemetry records. Telemetry read semantics are owned by storage-read as defined in `04-backend/telemetry-query-semantics.md`.
 - Owns GraphQL subscription transport lifecycle only: WebSocket/session acceptance, input validation, start/stop bridge calls, event decoding, public error mapping, heartbeat forwarding, and cleanup on disconnect.
 

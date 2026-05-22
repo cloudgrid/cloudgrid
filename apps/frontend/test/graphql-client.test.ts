@@ -775,13 +775,39 @@ describe("GraphQL client", () => {
       const experimentRun = {
         id: "run-1",
         experimentId: "experiment-1",
-        solverRef: { kind: "local" },
+        solverRef: { kind: "agent", name: "local" },
         manifest: null,
         baselineRunId: null,
         status: "queued",
+        runPolicy: { maxParallelRequests: 10 },
         startedAt: "2026-05-17T08:00:00.000Z",
         endedAt: null,
-        summary: {},
+        summary: {
+          itemCounts: {
+            total: 0,
+            passed: 0,
+            failed: 0,
+            errored: 0,
+            skipped: 0,
+            needsReview: 0,
+            quarantined: 0,
+          },
+          scoreSummaries: [],
+          problemCounts: {
+            modelQuality: 0,
+            itemQuality: 0,
+            scorerConfig: 0,
+            infrastructure: 0,
+          },
+          budgetUsage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            estimatedUsd: 0,
+          },
+          latency: null,
+          regressions: [],
+        },
         itemRuns: { items: [], nextCursor: null },
       };
       const experiment = {
@@ -889,7 +915,7 @@ describe("GraphQL client", () => {
         datasetId: "dataset-1",
         datasetVersion: 1,
         scorerIds: ["scorer-1"],
-        solverRef: { kind: "local" },
+        solverRef: { kind: "agent", name: "local" },
       }),
     ).resolves.toMatchObject({ id: "experiment-1" });
     await expect(

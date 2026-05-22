@@ -22,6 +22,7 @@
     "providerProfileRefs",
     "budget",
     "concurrency",
+    "runPolicy",
     "createdAt"
   ],
   "properties": {
@@ -35,14 +36,23 @@
     "splitSelector": { "$ref": "#/$defs/splitSelector" },
     "datasetItemIds": { "type": "array", "items": { "type": "string" } },
     "scorerRefs": { "type": "array", "items": { "$ref": "#/$defs/versionedRef" } },
-    "baselineRef": { "type": "object", "additionalProperties": true },
-    "solverRef": { "type": "object", "additionalProperties": true },
+    "baselineRef": { "$ref": "./eval-run-ref.schema.json#/$defs/baselineRef" },
+    "solverRef": { "$ref": "./eval-run-ref.schema.json#/$defs/solverRef" },
+    "optimizationConfig": { "$ref": "./eval-run-ref.schema.json#/$defs/optimizationConfig" },
     "promptVersionRefs": { "type": "array", "items": { "type": "string" }, "default": [] },
     "skillSnapshotRefs": { "type": "array", "items": { "type": "string" }, "default": [] },
     "toolSnapshotRefs": { "type": "array", "items": { "type": "string" }, "default": [] },
     "providerProfileRefs": { "type": "array", "items": { "type": "string" }, "default": [] },
-    "budget": { "type": "object", "additionalProperties": true },
-    "concurrency": { "type": "object", "additionalProperties": true },
+    "budget": { "$ref": "./eval-run-policy.schema.json#/$defs/costBudget" },
+    "concurrency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxParallelRequests"],
+      "properties": {
+        "maxParallelRequests": { "type": "integer", "minimum": 1, "maximum": 100 }
+      }
+    },
+    "runPolicy": { "$ref": "./eval-run-policy.schema.json" },
     "createdAt": { "type": "string", "format": "date-time" }
   },
   "$defs": {

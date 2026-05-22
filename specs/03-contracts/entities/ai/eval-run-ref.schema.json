@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-024",
+  "title": "EvalRunRefs",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/$defs/solverRef" },
+    { "$ref": "#/$defs/baselineRef" },
+    { "$ref": "#/$defs/optimizationConfig" }
+  ],
+  "$defs": {
+    "versionedRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "solverRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["prompt", "agent", "workflow", "skill", "tool"] },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "promptVersion": { "$ref": "#/$defs/versionedRef" },
+        "agentRef": { "type": "string" },
+        "workflowRef": { "type": "string" },
+        "skillSnapshotRef": { "type": "string" },
+        "toolSnapshotRef": { "type": "string" },
+        "modelAlias": { "type": "string" },
+        "providerProfileId": { "type": "string" }
+      }
+    },
+    "baselineRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["experiment_run", "prompt_version", "solver_ref", "none"]
+        },
+        "experimentRunId": { "type": "string" },
+        "promptVersion": { "$ref": "#/$defs/versionedRef" },
+        "solverRef": { "$ref": "#/$defs/solverRef" }
+      }
+    },
+    "optimizationConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "oneOf": [
+        { "$ref": "#/$defs/bootstrapFewshotConfig" },
+        { "$ref": "#/$defs/criticMutateJudgePickConfig" }
+      ]
+    },
+    "bootstrapFewshotConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateCount", "maxExamplesPerCandidate", "selectionScorerIds", "seed"],
+      "properties": {
+        "optimizerKind": { "type": "string", "const": "bootstrap_fewshot" },
+        "candidateCount": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "maxExamplesPerCandidate": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "selectionScorerIds": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "seed": { "type": "integer" },
+        "diversityStrategy": {
+          "type": "string",
+          "enum": ["none", "by_label", "by_cluster", "by_failure_mode"],
+          "default": "none"
+        }
+      }
+    },
+    "criticMutateJudgePickConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateCount", "mutationInstructions", "judgeScorerIds", "seed", "maxRounds"],
+      "properties": {
+        "optimizerKind": { "type": "string", "const": "critic_mutate_judge_pick" },
+        "candidateCount": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "mutationInstructions": { "type": "string", "minLength": 1, "maxLength": 10000 },
+        "judgeScorerIds": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "seed": { "type": "integer" },
+        "maxRounds": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "keepTopK": { "type": "integer", "minimum": 1, "maximum": 20 }
+      }
+    }
+  }
+}

@@ -4,20 +4,31 @@
   "title": "ExperimentRun",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "experimentId", "solverRef", "status", "startedAt", "summary"],
+  "required": ["id", "experimentId", "solverRef", "status", "runPolicy", "startedAt", "summary"],
   "properties": {
     "id": { "type": "string" },
     "experimentId": { "type": "string" },
-    "solverRef": { "type": "object", "additionalProperties": true },
+    "solverRef": { "$ref": "./eval-run-ref.schema.json#/$defs/solverRef" },
     "manifestDigest": { "type": "string" },
     "manifest": { "$ref": "./experiment-manifest.schema.json" },
     "baselineRunId": { "type": "string" },
     "status": {
       "type": "string",
-      "enum": ["queued", "running", "cancelled", "failed", "finished"]
+      "enum": [
+        "queued",
+        "running",
+        "pausing",
+        "paused",
+        "resuming",
+        "cancelling",
+        "cancelled",
+        "failed",
+        "completed"
+      ]
     },
+    "runPolicy": { "$ref": "./eval-run-policy.schema.json" },
     "startedAt": { "type": "string", "format": "date-time" },
     "endedAt": { "type": "string", "format": "date-time" },
-    "summary": { "type": "object", "additionalProperties": true }
+    "summary": { "$ref": "./eval-aggregation.schema.json#/$defs/runSummary" }
   }
 }

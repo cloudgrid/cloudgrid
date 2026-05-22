@@ -64,7 +64,6 @@ Only the BFF and OTLP collector are public ingress candidates. NATS and SurrealD
 - Verify `release-manifest.json`, `release-values.yaml`, checksums, signatures, SBOMs, scan reports, image signatures, and image digests before promotion.
 - Configure SMTP invitation delivery for deployed SSO onboarding, or explicitly set disabled delivery with manual recipient notification.
 - Keep project API keys in a secret manager and send them only as bearer credentials from emitters.
-- Keep GraphiQL disabled except during trusted operator sessions.
 - Keep local mode off untrusted networks.
 - Keep NATS and SurrealDB private; use external managed or operator-owned dependencies for production.
 - Use self-observability as a normal CloudGrid project with a normal ingest credential.

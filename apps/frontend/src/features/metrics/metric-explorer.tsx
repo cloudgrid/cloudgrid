@@ -6,6 +6,7 @@ import type {
   MetricExemplar,
   MetricSeries,
   MetricSeriesResult,
+  MetricSeriesSort,
 } from "@cloudgrid/ui-contracts";
 import { METRIC_AGGREGATIONS, METRIC_EXPLORER_CHART_TYPES } from "@cloudgrid/ui-contracts";
 import { Activity, ClipboardCopy, ExternalLink, X } from "lucide-react";
@@ -32,6 +33,12 @@ import { TelemetryChart, type TelemetryChartKind } from "../telemetry/telemetry-
 
 export const metricAggregations: MetricAggregation[] = [...METRIC_AGGREGATIONS];
 export const metricChartTypes: MetricChartType[] = [...METRIC_EXPLORER_CHART_TYPES];
+const metricSeriesSorts: MetricSeriesSort[] = [
+  "timestamp_asc",
+  "timestamp_desc",
+  "value_desc",
+  "value_asc",
+];
 
 export type MetricInspectorTab = "descriptor" | "attributes" | "series" | "exemplars";
 
@@ -119,12 +126,13 @@ export function MetricQueryControls({
     interval: string;
     groupBy: string[];
     filters: AttributeFilterInput[];
+    sort: MetricSeriesSort;
     chartType: MetricChartType;
   };
 }) {
   return (
     <section className="shrink-0 border bg-background p-2">
-      <FieldGroup className="grid gap-2 md:grid-cols-3 xl:grid-cols-5">
+      <FieldGroup className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
         <Field>
           <FieldLabel htmlFor="metric-aggregation">{t("metrics.aggregation")}</FieldLabel>
           <Select
@@ -184,6 +192,23 @@ export function MetricQueryControls({
           </Select>
         </Field>
         <Field>
+          <FieldLabel htmlFor="metric-series-sort">{t("filters.sort")}</FieldLabel>
+          <Select onValueChange={(value) => onChange("seriesSort", value)} value={state.sort}>
+            <SelectTrigger id="metric-series-sort">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {metricSeriesSorts.map((sort) => (
+                  <SelectItem key={sort} value={sort}>
+                    {metricSeriesSortLabel(sort)}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field>
           <FieldLabel htmlFor="metric-chart-type">{t("metrics.preview")}</FieldLabel>
           <Select onValueChange={(value) => onChange("chartType", value)} value={state.chartType}>
             <SelectTrigger id="metric-chart-type">
@@ -203,6 +228,19 @@ export function MetricQueryControls({
       </FieldGroup>
     </section>
   );
+}
+
+function metricSeriesSortLabel(sort: MetricSeriesSort) {
+  switch (sort) {
+    case "timestamp_desc":
+      return t("metrics.sort.timestampDesc");
+    case "value_desc":
+      return t("metrics.sort.valueDesc");
+    case "value_asc":
+      return t("metrics.sort.valueAsc");
+    default:
+      return t("metrics.sort.timestampAsc");
+  }
 }
 
 export function MetricSeriesExplorer({

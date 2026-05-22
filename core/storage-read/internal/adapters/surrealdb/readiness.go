@@ -14,10 +14,10 @@ import (
 var requiredTables = []string{"trace", "span", "log_event", "metric_descriptor", "metric_point", "metric_ingest_cardinality", "service", "ingest_command"}
 
 var requiredIndexes = map[string][]string{
-	"trace":                     {"startedAt", "serviceName", "status", "tenantId, companyId, projectId, startedAt", "tenantId, companyId, projectId, traceId", "tenantId, companyId, projectId, serviceName, startedAt", "tenantId, companyId, projectId, status, startedAt"},
+	"trace":                     {"startedAt", "serviceName", "status", "searchText", "tenantId, companyId, projectId, startedAt", "tenantId, companyId, projectId, traceId", "tenantId, companyId, projectId, serviceName, startedAt", "tenantId, companyId, projectId, status, startedAt"},
 	"span":                      {"traceId", "parentSpanId", "tenantId, companyId, projectId, traceId, parentSpanId, startedAt", "tenantId, companyId, projectId, serviceName, traceId"},
-	"log_event":                 {"timestamp", "serviceName", "traceId", "spanId", "severityText", "tenantId, companyId, projectId, timestamp", "tenantId, companyId, projectId, serviceName, timestamp", "tenantId, companyId, projectId, traceId, timestamp"},
-	"metric_descriptor":         {"metricName", "lastSeenAt", "tenantId, companyId, projectId, lastSeenAt", "tenantId, companyId, projectId, metricName"},
+	"log_event":                 {"timestamp", "serviceName", "traceId", "spanId", "severityText", "searchText", "tenantId, companyId, projectId, timestamp", "tenantId, companyId, projectId, serviceName, timestamp", "tenantId, companyId, projectId, traceId, timestamp"},
+	"metric_descriptor":         {"metricName", "lastSeenAt", "searchText", "tenantId, companyId, projectId, lastSeenAt", "tenantId, companyId, projectId, metricName"},
 	"metric_point":              {"metricName", "metricName, timestamp", "serviceName, timestamp", "tenantId, companyId, projectId, metricName, timestamp", "tenantId, companyId, projectId, serviceName, timestamp", "timestamp"},
 	"metric_ingest_cardinality": {"metricName, windowStart"},
 }

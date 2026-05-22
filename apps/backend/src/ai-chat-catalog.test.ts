@@ -16,7 +16,7 @@ describe("AI Chat runtime catalog", () => {
       "rerank",
       "structured_reasoning",
     ]);
-    expect(AI_CHAT_MODEL_ALIASES.chat_reasoning.capabilities).toEqual(["text_stream", "tool_use"]);
+    expect(AI_CHAT_MODEL_ALIASES.chat_reasoning.capabilities).toEqual(["object", "tool_use"]);
   });
 
   test("contains the approved tools, renderers, actions, skills, and budgets", () => {

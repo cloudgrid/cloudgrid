@@ -80,7 +80,7 @@ func (store Store) SearchTraces(ctx context.Context, query contracts.TraceSearch
 		return contracts.TraceSearchData{}, storageError()
 	}
 	normalizeTraceSummaries(items)
-	items, nextCursor := tracePage(items, limit)
+	items, nextCursor := tracePage(items, limit, query.Sort)
 	return contracts.TraceSearchData{Items: items, NextCursor: nextCursor}, nil
 }
 
@@ -148,35 +148,66 @@ func (store Store) SearchLogs(ctx context.Context, query contracts.LogSearchQuer
 		return contracts.LogSearchData{}, storageError()
 	}
 	setLogCorrelations(items)
-	items, nextCursor := logPage(items, limit)
+	items, nextCursor := logPage(items, limit, query.Sort)
 	return contracts.LogSearchData{Items: items, NextCursor: nextCursor}, nil
 }
 
-func tracePage(items []contracts.TraceSummary, limit int) ([]contracts.TraceSummary, *string) {
+func tracePage(items []contracts.TraceSummary, limit int, sort *contracts.TraceSort) ([]contracts.TraceSummary, *string) {
 	if limit < 1 || len(items) <= limit {
 		return items, nil
 	}
 	page := items[:limit]
 	last := page[len(page)-1]
-	return page, pageCursor("startedAt_desc_traceId_asc", last.StartedAt, last.ID)
+	spec := traceSearchSortSpec(sort)
+	switch spec.valueKind {
+	case cursorValueFloat:
+		duration := 0.0
+		if last.DurationMs != nil {
+			duration = *last.DurationMs
+		}
+		return page, pageCursorValue(spec.cursorSort, strconv.FormatFloat(duration, 'f', -1, 64), last.ID)
+	case cursorValueTraceErrorFirst:
+		return page, pageCursorTraceErrorFirst(spec.cursorSort, last.Status != nil && *last.Status == contracts.TraceStatusError, last.StartedAt, last.ID)
+	default:
+		return page, pageCursor(spec.cursorSort, last.StartedAt, last.ID)
+	}
 }
 
-func logPage(items []contracts.LogEvent, limit int) ([]contracts.LogEvent, *string) {
+func logPage(items []contracts.LogEvent, limit int, sort *contracts.LogSort) ([]contracts.LogEvent, *string) {
 	if limit < 1 || len(items) <= limit {
 		return items, nil
 	}
 	page := items[:limit]
 	last := page[len(page)-1]
-	return page, pageCursor("timestamp_desc_logEventId_asc", last.Timestamp, last.ID)
+	spec := logSearchSortSpec(sort)
+	switch spec.valueKind {
+	case cursorValueFloat:
+		severity := 0
+		if last.SeverityNumber != nil {
+			severity = *last.SeverityNumber
+		}
+		return page, pageCursorValue(spec.cursorSort, strconv.Itoa(severity), last.ID)
+	default:
+		return page, pageCursor(spec.cursorSort, last.Timestamp, last.ID)
+	}
 }
 
-func metricNamePage(items []contracts.MetricDescriptor, limit int) ([]contracts.MetricDescriptor, *string) {
+func metricNamePage(items []contracts.MetricDescriptor, limit int, sort *contracts.MetricNameSort) ([]contracts.MetricDescriptor, *string) {
 	if limit < 1 || len(items) <= limit {
 		return items, nil
 	}
 	page := items[:limit]
 	last := page[len(page)-1]
-	return page, pageCursor("lastSeenAt_desc_metricName_asc", last.LastSeenAt, last.Name)
+	spec := metricNameSearchSortSpec(sort)
+	switch spec.valueKind {
+	case cursorValueString:
+		if sort != nil && *sort == contracts.MetricNameSortKindAsc {
+			return page, pageCursorValue(spec.cursorSort, string(last.Kind), last.Name)
+		}
+		return page, pageCursorValue(spec.cursorSort, last.Name, last.Name)
+	default:
+		return page, pageCursor(spec.cursorSort, last.LastSeenAt, last.Name)
+	}
 }
 
 func (store Store) GetTelemetryFacets(ctx context.Context, query contracts.TelemetryFacetQuery, authContext *contracts.AuthContext) (contracts.TelemetryFacetData, error) {
@@ -262,7 +293,7 @@ func (store Store) SearchMetricNames(ctx context.Context, input contracts.Metric
 		return contracts.MetricNameSearchData{}, storageError()
 	}
 	normalizeMetricDescriptors(items)
-	items, nextCursor := metricNamePage(items, limit)
+	items, nextCursor := metricNamePage(items, limit, input.Sort)
 	return contracts.MetricNameSearchData{Items: items, NextCursor: nextCursor}, nil
 }
 

@@ -115,7 +115,6 @@ describe("BFF self-observability trace and log wiring", () => {
         async close() {},
       },
       {
-        graphqlUI: false,
         traceRecorder: { recordSpan: (record) => spans.push(record) },
         logRecorder: { recordLog: (record) => logs.push(record) },
       },

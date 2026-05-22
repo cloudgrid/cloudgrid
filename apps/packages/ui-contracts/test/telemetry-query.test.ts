@@ -1,22 +1,29 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildLogSearchInput,
+  buildMetricNameSearchInput,
   buildMetricSeriesInput,
   buildTelemetryFacetInput,
   buildTraceDetailInput,
   buildTraceSearchInput,
   createDefaultLogTimeRange,
+  createDefaultMetricTimeRange,
   createDefaultTraceTimeRange,
   defaultLogSort,
-  defaultTraceSort,
-  LOG_SEARCH_DEFAULT_LIMIT,
-  LOG_SEARCH_HARD_LIMIT,
-  METRIC_SERIES_DEFAULT_LIMIT,
-  METRIC_SERIES_HARD_LIMIT,
-  createDefaultMetricTimeRange,
   defaultMetricAggregation,
   defaultMetricAggregationForMetricName,
   defaultMetricIntervalForHours,
+  defaultMetricNameSort,
+  defaultMetricSeriesSort,
+  defaultTraceSort,
+  LOG_SEARCH_DEFAULT_LIMIT,
+  LOG_SEARCH_HARD_LIMIT,
+  METRIC_NAME_SEARCH_DEFAULT_LIMIT,
+  METRIC_NAME_SEARCH_HARD_LIMIT,
+  METRIC_SERIES_DEFAULT_LIMIT,
+  METRIC_SERIES_HARD_LIMIT,
+  metricNameSortOrDefault,
+  metricSeriesSortOrDefault,
   TRACE_RELATED_LOG_DEFAULT_LIMIT,
   TRACE_SEARCH_DEFAULT_LIMIT,
   TRACE_SEARCH_HARD_LIMIT,
@@ -56,6 +63,7 @@ describe("shared telemetry query contracts", () => {
       aggregation: "sum",
       groupBy: ["gen_ai.system"],
       filters: [{ key: "gen_ai.system", operator: "eq", value: "openai" }],
+      sort: "timestamp_asc",
       limit: METRIC_SERIES_DEFAULT_LIMIT,
     });
   });
@@ -74,6 +82,37 @@ describe("shared telemetry query contracts", () => {
     expect(defaultMetricIntervalForHours(1)).toBe("PT1M");
     expect(defaultMetricIntervalForHours(24)).toBe("PT5M");
     expect(METRIC_SERIES_HARD_LIMIT).toBe(5000);
+    expect(defaultMetricNameSort()).toBe("lastSeenAt_desc");
+    expect(defaultMetricSeriesSort()).toBe("timestamp_asc");
+    expect(metricNameSortOrDefault("name_desc")).toBe("name_desc");
+    expect(metricNameSortOrDefault("unknown")).toBe("lastSeenAt_desc");
+    expect(metricSeriesSortOrDefault("value_desc")).toBe("value_desc");
+    expect(metricSeriesSortOrDefault("unknown")).toBe("timestamp_asc");
+    expect(METRIC_NAME_SEARCH_DEFAULT_LIMIT).toBe(50);
+    expect(METRIC_NAME_SEARCH_HARD_LIMIT).toBe(200);
+  });
+
+  test("builds metric name search input with backend-owned sort and pagination state", () => {
+    expect(
+      buildMetricNameSearchInput({
+        query: "token",
+        service: "api",
+        from: "2026-05-21T16:00:00.000Z",
+        to: "2026-05-21T17:00:00.000Z",
+        sort: "name_desc",
+        cursor: "cursor-1",
+        limit: 500,
+      }),
+    ).toEqual({
+      query: "token",
+      service: "api",
+      from: "2026-05-21T16:00:00.000Z",
+      to: "2026-05-21T17:00:00.000Z",
+      sort: "name_desc",
+      cursor: "cursor-1",
+      limit: METRIC_NAME_SEARCH_HARD_LIMIT,
+      services: null,
+    });
   });
 
   test("centralizes log search defaults for UI controls and AI tool calls", () => {
@@ -98,6 +137,7 @@ describe("shared telemetry query contracts", () => {
       from: "2026-05-21T16:00:00.000Z",
       to: "2026-05-21T17:00:00.000Z",
       service: "api",
+      services: null,
       traceId: null,
       spanId: null,
       severity: null,
@@ -132,6 +172,7 @@ describe("shared telemetry query contracts", () => {
       from: "2026-05-21T16:00:00.000Z",
       to: "2026-05-21T17:00:00.000Z",
       service: "api",
+      services: null,
       query: null,
       operationName: null,
       spanName: null,
@@ -162,6 +203,8 @@ describe("shared telemetry query contracts", () => {
       from: "2026-05-21T16:00:00.000Z",
       to: "2026-05-21T17:00:00.000Z",
       service: null,
+      services: null,
+      signal: "traces",
       search: "checkout",
       limit: 25,
     });

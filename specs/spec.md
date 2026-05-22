@@ -101,6 +101,7 @@ This directory is the implementation specification for the MVP. The original sin
 - [AI Chat conversation compaction flow](./02-flows/ai-chat/conversation-compaction.md)
 - [Dataset curation and splits](./02-capabilities/ai-eval/curate-datasets.md)
 - [Production AI quality tracking](./02-capabilities/ai-eval/track-production-quality.md)
+- [Dataset candidate suggestions](./02-capabilities/ai-eval/suggest-dataset-candidates.md)
 - [Metric ingest](./02-capabilities/metrics/ingest-otlp-metrics.md)
 - [Metric query](./02-capabilities/metrics/query-metrics.md)
 - [Dashboards](./02-capabilities/metrics/manage-dashboards.md)

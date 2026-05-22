@@ -39,7 +39,7 @@ async function* liveEvents<T>(events: T[]): AsyncIterableIterator<T> {
 
 describe("BFF health probes", () => {
   test("reports ready when NATS is connected", async () => {
-    const { app } = createAppWithBridge(bridgeWithHealth("ok"), { graphqlUI: false });
+    const { app } = createAppWithBridge(bridgeWithHealth("ok"), {});
 
     const response = await app.request("/readyz");
     const body = await response.json();
@@ -55,7 +55,7 @@ describe("BFF health probes", () => {
   });
 
   test("reports degraded when NATS is unavailable", async () => {
-    const { app } = createAppWithBridge(bridgeWithHealth("unavailable"), { graphqlUI: false });
+    const { app } = createAppWithBridge(bridgeWithHealth("unavailable"), {});
 
     const response = await app.request("/api/health");
     const body = await response.json();

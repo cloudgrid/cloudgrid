@@ -81,6 +81,7 @@ if (asyncApi?.asyncapi !== "3.0.0") {
 validateAsyncApiChannelsFromDefinition(asyncApi);
 validateAsyncApiReferences(asyncApi);
 validateAsyncApiRequestStructs(asyncApi);
+validateAiEvalContractAlignment();
 validateMessageSubjectLiteralsFromDefinition();
 validateCloudGridEnvVarsFromDefinition();
 if (asyncApi["x-cloudgrid"]?.error_mapping?.graphql_extension_path !== "extensions.problem") {
@@ -780,6 +781,92 @@ function validateAsyncApiRequestStructs(document) {
         throw new Error(`Go request struct ${schemaName} missing required AsyncAPI field ${field}`);
       }
     }
+  }
+}
+
+function validateAiEvalContractAlignment() {
+  const goSource = read("core/go-contracts/contracts.go");
+  const uiSource = read("apps/packages/ui-contracts/src/index.ts");
+  const backendValidation = read("apps/backend/src/validation.ts");
+  const backendBridge = read("apps/backend/src/bridge.ts");
+  const asyncApiSource = read("specs/03-contracts/messages/message-bridge.asyncapi.yaml");
+
+  for (const symbol of [
+    "EvalSolverRef",
+    "EvalBaselineRef",
+    "OptimizationConfig",
+    "BootstrapFewshotConfig",
+    "CriticMutateJudgePickConfig",
+    "EvalRunPolicy",
+  ]) {
+    if (!goSource.includes(`type ${symbol} struct`)) {
+      throw new Error(`go contracts missing typed AI Eval contract ${symbol}`);
+    }
+    if (!uiSource.includes(`interface ${symbol}`)) {
+      throw new Error(`ui contracts missing typed AI Eval contract ${symbol}`);
+    }
+  }
+
+  for (const [structName, fields] of Object.entries({
+    ExperimentStartRequest: ["solverRef", "splitSelector", "runPolicy"],
+    OptimizationStartRequest: ["config", "runPolicy"],
+    ExperimentManifestResolveRequest: ["basePromptVersionId", "optimizationConfig"],
+    OnlinePolicyMatchesResolveData: ["runPolicy"],
+  })) {
+    const body = goStructBody(goSource, structName);
+    if (!body) {
+      throw new Error(`go contracts missing AI Eval struct ${structName}`);
+    }
+    for (const field of fields) {
+      if (!body.includes(`json:"${field}`)) {
+        throw new Error(`go AI Eval struct ${structName} missing JSON field ${field}`);
+      }
+    }
+  }
+
+  for (const forbidden of [
+    "mipro-v2",
+    "reflective-text-gradient",
+    "mipro_v2",
+    "reflective_text_gradient",
+  ]) {
+    if (asyncApiSource.includes(forbidden) || backendValidation.includes(forbidden)) {
+      throw new Error(
+        `v1 executable optimizer contracts must not include roadmap optimizer ${forbidden}`,
+      );
+    }
+  }
+
+  for (const required of [
+    "const evalSolverRefInputSchema",
+    "const evalBaselineRefInputSchema",
+    "const optimizationConfigInputSchema",
+    "const evalRunPolicyInputSchema",
+    "bootstrap_fewshot",
+    "critic_mutate_judge_pick",
+  ]) {
+    if (!backendValidation.includes(required)) {
+      throw new Error(`backend validation missing AI Eval alignment token ${required}`);
+    }
+  }
+
+  for (const required of [
+    "const evalSolverRefSchema",
+    "const evalBaselineRefSchema",
+    "const optimizationConfigSchema",
+    "const evalRunPolicySchema",
+    "const experimentRunSummarySchema",
+  ]) {
+    if (!backendBridge.includes(required)) {
+      throw new Error(`backend bridge parser missing AI Eval alignment token ${required}`);
+    }
+  }
+
+  if (!graphqlSchemaSource.includes("summary: ExperimentRunSummary!")) {
+    throw new Error("GraphQL ExperimentRun.summary must use the typed ExperimentRunSummary object");
+  }
+  if (!uiSource.includes("summary: ExperimentRunSummary")) {
+    throw new Error("ui contracts ExperimentRun.summary must use ExperimentRunSummary");
   }
 }
 

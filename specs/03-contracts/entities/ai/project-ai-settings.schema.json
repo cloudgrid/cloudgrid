@@ -12,6 +12,8 @@
     "onlinePolicies",
     "budget",
     "sampling",
+    "runPolicyDefaults",
+    "datasetPipeline",
     "datasetDefaults",
     "version",
     "updatedAt",
@@ -41,6 +43,8 @@
     },
     "budget": { "$ref": "#/$defs/budget" },
     "sampling": { "$ref": "#/$defs/sampling" },
+    "runPolicyDefaults": { "$ref": "./eval-run-policy.schema.json" },
+    "datasetPipeline": { "$ref": "#/$defs/datasetPipeline" },
     "datasetDefaults": { "$ref": "#/$defs/datasetDefaults" },
     "effective": { "$ref": "#/$defs/effective" },
     "version": { "type": "integer", "minimum": 1 },
@@ -96,7 +100,17 @@
     "onlinePolicy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "enabled", "name", "target", "scorerIds", "sampleRate", "annotationRules"],
+      "required": [
+        "id",
+        "enabled",
+        "name",
+        "target",
+        "scorerIds",
+        "sampleRate",
+        "contentAllowance",
+        "maxLatencyClass",
+        "annotationRules"
+      ],
       "properties": {
         "id": { "type": "string" },
         "enabled": { "type": "boolean" },
@@ -105,6 +119,25 @@
         "scorerIds": { "type": "array", "items": { "type": "string" } },
         "sampleRate": { "type": "number", "minimum": 0, "maximum": 1 },
         "maxDailyRuns": { "type": "integer", "minimum": 1 },
+        "contentAllowance": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "none",
+              "metadata_only",
+              "captured_content",
+              "dataset_content",
+              "retrieved_document_content"
+            ]
+          },
+          "default": ["metadata_only"]
+        },
+        "maxLatencyClass": {
+          "type": "string",
+          "enum": ["inline", "near_realtime", "batch"],
+          "default": "batch"
+        },
         "annotationRules": {
           "type": "array",
           "items": { "$ref": "#/$defs/annotationRule" },
@@ -216,6 +249,42 @@
         "splitAllocation": { "type": "object", "additionalProperties": true },
         "smallDatasetReviewedThreshold": { "type": "integer", "minimum": 1, "default": 30 },
         "requireReviewForRegression": { "type": "boolean", "default": true }
+      }
+    },
+    "datasetPipeline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidateSuggestionsEnabled",
+        "requireReviewBeforeCommit",
+        "anonymizationMode",
+        "anonymizationConsistencyScope",
+        "preserveLocale",
+        "preserveTemporalDistance",
+        "blockedEntityTypes"
+      ],
+      "properties": {
+        "candidateSuggestionsEnabled": { "type": "boolean", "default": true },
+        "requireReviewBeforeCommit": { "type": "boolean", "default": true },
+        "anonymizationMode": {
+          "type": "string",
+          "enum": ["off", "realistic", "redact"],
+          "default": "realistic"
+        },
+        "anonymizationPolicyId": { "type": "string" },
+        "anonymizationPolicyVersion": { "type": "integer", "minimum": 1 },
+        "anonymizationConsistencyScope": {
+          "type": "string",
+          "enum": ["project", "dataset"],
+          "default": "dataset"
+        },
+        "preserveLocale": { "type": "boolean", "default": true },
+        "preserveTemporalDistance": { "type": "boolean", "default": true },
+        "blockedEntityTypes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        }
       }
     },
     "effective": {

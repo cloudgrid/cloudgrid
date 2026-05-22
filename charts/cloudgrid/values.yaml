@@ -86,7 +86,6 @@ bff:
     pullPolicy: IfNotPresent
   env:
     CLOUDGRID_BFF_PORT: "3000"
-    CLOUDGRID_GRAPHQL_UI: "false"
   service:
     type: ClusterIP
     port: 3000

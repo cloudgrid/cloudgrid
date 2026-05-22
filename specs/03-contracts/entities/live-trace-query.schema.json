@@ -6,6 +6,11 @@
   "additionalProperties": false,
   "properties": {
     "service": { "type": "string" },
+    "services": {
+      "type": "array",
+      "maxItems": 25,
+      "items": { "type": "string", "minLength": 1 }
+    },
     "query": { "type": "string" },
     "operationName": { "type": "string" },
     "spanName": { "type": "string" },

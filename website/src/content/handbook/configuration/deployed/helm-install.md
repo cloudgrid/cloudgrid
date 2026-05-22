@@ -112,7 +112,6 @@ bff:
     CLOUDGRID_PUBLIC_URL: https://cloudgrid.example.com
     CLOUDGRID_AUTH_PROVIDERS: github
     CLOUDGRID_AUTH_COMPANY_ID: acme
-    CLOUDGRID_GRAPHQL_UI: "false"
   ingress:
     enabled: true
     className: nginx

@@ -39,7 +39,7 @@ describe("BFF completion logging", () => {
         },
         async close() {},
       },
-      { graphqlUI: false },
+      {},
       logger,
     );
 
@@ -92,7 +92,7 @@ describe("BFF completion logging", () => {
         },
         async close() {},
       },
-      { graphqlUI: false },
+      {},
       logger,
     );
 

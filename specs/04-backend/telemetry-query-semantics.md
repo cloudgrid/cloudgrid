@@ -25,6 +25,10 @@ CloudGrid uses a dumb-client, smart-backend read model. Public GraphQL clients r
 - The Go storage-read service owns live trace matching semantics behind the same storage reader port and must not rely on the BFF or frontend to decide whether a trace matches live filters.
 - Database-specific pushdown belongs in `core/storage-read/internal/adapters/<database>/`.
 - Frontend clients render GraphQL view models and own only local presentation state such as selection, expansion, keyboard focus, tab state, URL state, and virtualization windows.
+- Route-primary telemetry search, filtering, pagination, and table/list sorting
+  are backend-owned for traces, logs, and metrics. Frontend controls may update
+  URL state and GraphQL variables, but they must not reorder or filter already
+  loaded route-primary telemetry rows to simulate backend behavior.
 
 ## Database Pushdown
 
@@ -36,11 +40,13 @@ Required SurrealDB pushdown:
 - Live trace filters: service, status, lower-bound time range, duration range, operation name, span name, free-text query fields, attribute predicates, trace ID predicates from post-persist notifications, deterministic `startedAt desc, id asc` ordering, and limit.
 - Trace summary aggregations: span count, error span count, log count, service count, primary service, root span, trace status, started time, ended time, and duration.
 - Log search filters: service, trace ID, span ID, severity, inclusive time range, text search, attribute predicates, cursor predicates, sort order, and limit.
-- Facet queries: service, operation, span name, severity, and attribute-key counts with deterministic `count desc, value asc` ordering and bounded result sizes.
+- Facet queries: service, operation, span name, severity, and attribute-key counts with deterministic `count desc, value asc` ordering and bounded result sizes. Service facets are signal-scoped: trace service facets come from span/trace data, log service facets come from log data, and metric service facets come from metric-point data.
 - Trace detail scoped reads: trace, spans, span events, span links, correlated logs, related-log candidates, selected span lookup, match candidates, missing-parent detection, root candidates, and service-level counts.
 - Trace detail view-model aggregates: root span IDs, orphan span IDs, maximum depth when derivable from the query result, service breakdown counts, error counts, and duration totals.
 - Metric name search: metric name, service, time range, last seen ordering, bounded limit, and attribute-key metadata.
 - Metric series: metric name, inclusive time range, attribute predicates, grouping keys, aggregation, downsampling interval, exemplar links, deterministic time ordering, and point limit.
+
+Route-primary free-text search for traces, live trace candidates, logs, and metric names must be pushed into SurrealDB full-text indexes on the storage-owned `searchText` projections. Query builders must use full-text match operators against `searchText`, not substring `CONTAINS` over hot telemetry fields or dynamic attribute value joins. Facet typeahead and explicit attribute `contains` predicates remain bounded exploratory predicates until a dedicated indexed projection is specified.
 
 Application code may derive values only when the database expression would be materially less clear, less portable inside the adapter, or not supported by the selected database. Allowed code-side derivations for MVP are:
 
@@ -60,8 +66,12 @@ The GraphQL schema is the public read contract. Its aggregate and enriched field
 - `TraceDetail.structure` is returned by storage-read through the BFF and is not reconstructed by clients.
 - `Span.depth`, `childCount`, `hasError`, `isCriticalPath`, `isOrphan`, `isServiceEntry`, `exceptionCount`, `exceptions`, and `links.direction` are backend-derived.
 - `TraceDetail.spanMatches`, `relatedLogs`, and `warnings` are backend-derived and already respect `TraceDetailInput`.
-- `TelemetryFacetResult` values are backend-derived suggestions with bounded counts.
+- `TelemetryFacetResult` values are backend-derived suggestions with bounded counts. `TelemetryFacetInput.signal` scopes service suggestions to the telemetry signal used by the route so metrics-only, logs-only, and traces-only services are not mixed in a single picker.
 - `MetricNameSearchResult`, `MetricSeriesResult`, and `DashboardListResult` are backend-derived view models. Clients do not calculate rates, percentiles, rollups, grouping, downsampling, metric descriptor metadata, or dashboard visibility/pin state.
+- `TraceSearchInput.sort`, `LogSearchInput.sort`, `MetricNameSearchInput.sort`,
+  and `MetricSeriesInput.sort` are executed by storage-read. Cursor predicates
+  must be generated for the active sort and must reject cursors encoded for a
+  different sort with `ERR-003 INVALID_CURSOR`.
 - `LiveTraceEvent.trace` is a `TraceSummary` produced by storage-read with the same field semantics as `Query.traces`.
 - `LiveTraceEvent.type` is assigned by storage-read:
   - `snapshot`: initial bounded trace summaries sent after subscription start when matching historical data exists.
@@ -103,7 +113,15 @@ Storage-read maintains per-subscription state:
 
 ## Metric Query Semantics
 
-`Query.metricNames` returns descriptors for the selected project. Results sort by `lastSeenAt desc, name asc` and are limited to 200.
+`Query.metricNames` returns descriptors for the selected project. Results
+default to `lastSeenAt desc, name asc` and are limited to 200.
+`MetricNameSearchInput.sort` supports:
+
+- `lastSeenAt_desc`: `lastSeenAt desc, name asc` default;
+- `lastSeenAt_asc`: `lastSeenAt asc, name asc`;
+- `name_asc`: `name asc`;
+- `name_desc`: `name desc`;
+- `kind_asc`: `kind asc, name asc`.
 
 `Query.metricSeries` returns one or more grouped time series:
 
@@ -113,6 +131,9 @@ Storage-read maintains per-subscription state:
 - maximum returned points across all series is `MetricSeriesInput.limit`, default 1000 and maximum 5000;
 - `groupBy` accepts at most 5 keys and only keys present in `MetricDescriptor.attributeKeys`;
 - labels are returned as a JSON object keyed by `groupBy` field;
+- result ordering defaults to `timestamp_asc` and is performed in storage-read.
+  `MetricSeriesInput.sort` supports `timestamp_asc`, `timestamp_desc`,
+  `value_desc`, and `value_asc`;
 - empty matching data returns `series: []`, not an error.
 
 Aggregation compatibility is defined in [Metrics signal](./metrics-signal.md#query-semantics). Unsupported combinations return ERR-001 before any storage query.
@@ -120,6 +141,7 @@ Aggregation compatibility is defined in [Metrics signal](./metrics-signal.md#que
 ## Verification
 
 - Storage-read query builder tests must assert every GraphQL and NATS filter is represented in adapter query parameters or explicitly rejected by validation.
+- Storage-read query builder tests must assert route-primary telemetry free-text search uses `searchText` full-text match predicates, and schema readiness tests must fail when required `searchText` full-text indexes are missing or still building.
 - Storage-read tests must cover database-backed counts and facet ordering.
 - Storage-read metric tests must cover metric name search, aggregation compatibility, grouping, filters, interval downsampling, point limits, empty results, and exemplar trace/span links.
 - BFF resolver tests must assert resolvers only validate/map/request/reply and do not aggregate telemetry records.

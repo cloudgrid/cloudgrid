@@ -3650,6 +3650,9 @@ func normalizeAiProviderProfile(input map[string]any, scope string, companyID st
 	if credentialRef == "" || !allowedAiCredentialRef(credentialRef) {
 		return nil, validationError("credentialRef must use managed:, env:, or external:")
 	}
+	if !aiProviderCredentialRefMatchesScope(credentialRef, scope, companyID, projectID) {
+		return nil, validationError("credentialRef managed scope must match provider owner")
+	}
 	parameters, _ := mapFromMap(input, "parameters")
 	baseURL, hasBaseURL := stringFromMap(input, "baseUrl")
 	if kind == string(contracts.AiProviderKindOpenAICompatible) || kind == string(contracts.AiProviderKindAzureFoundry) {
@@ -3703,6 +3706,28 @@ func normalizeAiProviderProfile(input map[string]any, scope string, companyID st
 		profile["disabledAt"] = disabledAt
 	}
 	return profile, nil
+}
+
+func aiProviderCredentialRefMatchesScope(ref string, scope string, companyID string, projectID string) bool {
+	if !strings.HasPrefix(ref, "managed:") {
+		return true
+	}
+	parts := strings.Split(ref, "/")
+	if len(parts) != 3 {
+		return false
+	}
+	refScope := strings.TrimPrefix(parts[0], "managed:")
+	ownerID := parts[1]
+	if refScope != scope {
+		return false
+	}
+	if scope == "company" {
+		return ownerID == companyID
+	}
+	if scope == "project" {
+		return ownerID == projectID
+	}
+	return false
 }
 
 func (service *Service) normalizeAiProviderProfile(ctx context.Context, input map[string]any, scope string, companyID string, projectID string, now time.Time, actor string, index int) (map[string]any, error) {

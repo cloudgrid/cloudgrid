@@ -1,15 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import type { ModelProvider, TextRequest, TextResponse, TextStreamChunk } from "@purista/harness";
 import type {
   AgentRun,
-  AiQualityOverview,
   AiChatRun,
+  AiQualityOverview,
   AlertRule,
   CompanyAiProviderSettings,
   Dataset,
   Experiment,
   Scorer,
 } from "@cloudgrid/ui-contracts";
+import type {
+  JsonValue,
+  ModelProvider,
+  ObjectRequest,
+  ObjectResponse,
+  TextRequest,
+  TextResponse,
+  TextStreamChunk,
+} from "@purista/harness";
 import { AI_CHAT_TOOLS } from "./ai-chat/catalog";
 import { createAiChatHarness } from "./ai-chat-harness";
 import type { AiChatHarnessEvent, AiChatHarnessPort } from "./ai-chat-stream";
@@ -62,7 +70,7 @@ describe("AI Chat stream endpoint", () => {
           return configuredCompanyProvider();
         },
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const response = await app.fetch(
@@ -96,7 +104,7 @@ describe("AI Chat stream endpoint", () => {
           };
         },
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const response = await app.fetch(streamRequest({ idempotencyKey: "idempotency-key-0002" }));
@@ -127,7 +135,7 @@ describe("AI Chat stream endpoint", () => {
           appended.push(input);
         },
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const response = await app.fetch(streamRequest({ idempotencyKey: "idempotency-key-0003" }));
@@ -140,7 +148,7 @@ describe("AI Chat stream endpoint", () => {
       "message.created",
       "text.delta",
       "text.delta",
-      "message.created",
+      "text.delta",
       "run.completed",
     ]);
     expect(events.map((event) => event.sequence)).toEqual([1, 2, 3, 4, 5, 6]);
@@ -207,7 +215,7 @@ describe("AI Chat stream endpoint", () => {
           return runShape({ id: input.runId, status: input.status });
         },
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     try {
@@ -225,12 +233,11 @@ describe("AI Chat stream endpoint", () => {
         "run.started",
         "message.created",
         "text.delta",
-        "text.delta",
         "run.completed",
       ]);
-      expect(provider.textStreamRequests).toHaveLength(1);
-      expect(provider.textStreamRequests[0]?.model).toBe("gpt-5-mini");
-      expect(provider.textStreamRequests[0]?.messages[0]?.role).toBe("system");
+      expect(provider.objectRequests).toHaveLength(1);
+      expect(provider.objectRequests[0]?.model).toBe("gpt-5-mini");
+      expect(provider.objectRequests[0]?.messages[0]?.role).toBe("system");
       expect(appended).toContainEqual(
         expect.objectContaining({
           role: "assistant",
@@ -272,7 +279,7 @@ describe("AI Chat stream endpoint", () => {
           return { credentialRef, value: "stored-provider-key" };
         },
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const response = await app.fetch(streamRequest({ idempotencyKey: "idempotency-key-managed" }));
@@ -281,6 +288,204 @@ describe("AI Chat stream endpoint", () => {
     expect(response.status).toBe(200);
     expect(body).not.toContain("stored-provider-key");
     expect(harness.requests.at(0)?.credential.value).toBe("stored-provider-key");
+  });
+
+  test("rejects managed chat credentials scoped to another company before secret resolution", async () => {
+    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    let resolved = false;
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          const settings = configuredCompanyProvider();
+          const providerProfile = settings.providerProfile;
+          if (!providerProfile) {
+            throw new Error("test fixture requires a provider profile");
+          }
+          return configuredCompanyProvider({
+            providerProfile: {
+              ...providerProfile,
+              credentialRef: "managed:company/other-company/provider-1",
+            },
+          });
+        },
+        async resolveAiProviderSecret() {
+          resolved = true;
+          return { credentialRef: "managed:company/other-company/provider-1", value: "wrong" };
+        },
+      }),
+      { aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(
+      streamRequest({ idempotencyKey: "idempotency-key-wrong-company-credential" }),
+    );
+    const problem = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(problem.id).toBe("ERR-AIP-001");
+    expect(problem.detail).toBe("AI provider credential is not scoped to this conversation");
+    expect(resolved).toBe(false);
+    expect(harness.requests).toHaveLength(0);
+  });
+
+  test("rejects managed chat credentials scoped to another project before secret resolution", async () => {
+    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    let resolved = false;
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          const settings = configuredCompanyProvider();
+          const providerProfile = settings.providerProfile;
+          if (!providerProfile) {
+            throw new Error("test fixture requires a provider profile");
+          }
+          return configuredCompanyProvider({
+            providerProfile: {
+              ...providerProfile,
+              credentialRef: "managed:project/other-project/provider-1",
+            },
+          });
+        },
+        async resolveAiProviderSecret() {
+          resolved = true;
+          return { credentialRef: "managed:project/other-project/provider-1", value: "wrong" };
+        },
+      }),
+      { aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(
+      streamRequest({ idempotencyKey: "idempotency-key-wrong-project-credential" }),
+    );
+    const problem = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(problem.id).toBe("ERR-AIP-001");
+    expect(problem.detail).toBe("AI provider credential is not scoped to this conversation");
+    expect(resolved).toBe(false);
+    expect(harness.requests).toHaveLength(0);
+  });
+
+  test("rejects managed credential resolver responses that swap the credential ref", async () => {
+    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          const settings = configuredCompanyProvider();
+          const providerProfile = settings.providerProfile;
+          if (!providerProfile) {
+            throw new Error("test fixture requires a provider profile");
+          }
+          return configuredCompanyProvider({
+            providerProfile: {
+              ...providerProfile,
+              credentialRef: "managed:company/company-1/provider-1",
+            },
+          });
+        },
+        async resolveAiProviderSecret() {
+          return { credentialRef: "managed:company/company-2/provider-1", value: "wrong" };
+        },
+      }),
+      { aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(
+      streamRequest({ idempotencyKey: "idempotency-key-swapped-managed-ref" }),
+    );
+    const problem = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(problem.id).toBe("ERR-AIP-001");
+    expect(harness.requests).toHaveLength(0);
+  });
+
+  test("maps provider runtime errors to safe actionable failure details", async () => {
+    process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
+    const harness = recordingHarness([
+      {
+        kind: "provider_error",
+        message: "401 Unauthorized: invalid API key sk-secret-provider-key",
+        retryable: false,
+      },
+    ]);
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          return configuredCompanyProvider();
+        },
+      }),
+      { aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(
+      streamRequest({ idempotencyKey: "idempotency-key-provider-error" }),
+    );
+    const body = await response.text();
+    const failed = parseSse(body).find((event) => event.type === "run.failed");
+
+    expect(response.status).toBe(200);
+    expect(failed).toMatchObject({
+      payload: {
+        problem: {
+          code: "AI_PROVIDER_CREDENTIAL_UNAVAILABLE",
+          detail: "AI provider rejected the configured credential",
+        },
+      },
+    });
+    expect(body).not.toContain("sk-secret-provider-key");
+    delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
+  });
+
+  test("maps opaque provider runtime errors to a product-level failure detail", async () => {
+    process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
+    const harness = recordingHarness([
+      {
+        kind: "provider_error",
+        message: "AI Chat harness execution failed",
+        retryable: true,
+      },
+    ]);
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          return configuredCompanyProvider();
+        },
+      }),
+      { aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(
+      streamRequest({ idempotencyKey: "idempotency-key-provider-opaque-error" }),
+    );
+    const body = await response.text();
+    const failed = parseSse(body).find((event) => event.type === "run.failed");
+
+    expect(response.status).toBe(200);
+    expect(failed).toMatchObject({
+      payload: {
+        problem: {
+          detail: "The configured AI provider could not complete this request",
+        },
+      },
+    });
+    expect(body).not.toContain("AI Chat harness execution failed");
+    delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
   });
 
   test("can skip appending the initial user message already persisted by conversation create", async () => {
@@ -299,7 +504,7 @@ describe("AI Chat stream endpoint", () => {
           appended.push(input);
         },
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const response = await app.fetch(
@@ -348,7 +553,7 @@ describe("AI Chat stream endpoint", () => {
           });
         },
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const response = await app.fetch(streamRequest({ idempotencyKey: "idempotency-key-cancel" }));
@@ -402,7 +607,7 @@ describe("AI Chat stream endpoint", () => {
           appended.push(input);
         },
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const response = await app.fetch(streamRequest({ idempotencyKey: "idempotency-key-0005" }));
@@ -451,7 +656,10 @@ describe("AI Chat stream endpoint", () => {
 
   test("answers today's trace questions from the CloudGrid trace tool without provider guesses", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
-    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const harness = toolCallingHarness({
+      name: "telemetry.searchTraces",
+      args: { window: "today", limit: 25 },
+    });
     const traceInputs: unknown[] = [];
     const traceProjectIds: Array<string | undefined> = [];
     const appended: unknown[] = [];
@@ -514,7 +722,7 @@ describe("AI Chat stream endpoint", () => {
           appended.push(input);
         },
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const response = await app.fetch(
@@ -533,8 +741,8 @@ describe("AI Chat stream endpoint", () => {
       "message.created",
       "tool.started",
       "tool.completed",
-      "text.delta",
       "artifact.created",
+      "text.delta",
       "run.completed",
     ]);
     expectArtifact(body, "table", "Traces");
@@ -557,7 +765,7 @@ describe("AI Chat stream endpoint", () => {
     ]);
     expect(JSON.stringify(toolEvents)).not.toContain("resultSummary");
     expect(JSON.stringify(toolEvents)).not.toContain("checkout-api");
-    expect(harness.requests).toHaveLength(0);
+    expect(harness.requests).toHaveLength(1);
     expect(traceInputs).toHaveLength(1);
     expect(traceInputs[0]).toMatchObject({ limit: 25, sort: "startedAt_desc" });
     expect(traceProjectIds).toEqual(["project-1"]);
@@ -577,7 +785,10 @@ describe("AI Chat stream endpoint", () => {
 
   test("answers latest failing trace questions with current project defaults", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
-    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const harness = toolCallingHarness({
+      name: "telemetry.searchTraces",
+      args: { limit: 10, windowHours: 24, status: "error" },
+    });
     const traceInputs: unknown[] = [];
     const { app } = createAppWithBridge(
       bridge({
@@ -615,7 +826,7 @@ describe("AI Chat stream endpoint", () => {
         },
         async aiChatAppendMessage() {},
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const response = await app.fetch(
@@ -628,7 +839,7 @@ describe("AI Chat stream endpoint", () => {
     const body = await response.text();
 
     expect(response.status).toBe(200);
-    expect(harness.requests).toHaveLength(0);
+    expect(harness.requests).toHaveLength(1);
     expect(traceInputs).toHaveLength(1);
     expect(traceInputs[0]).toMatchObject({
       limit: 10,
@@ -644,9 +855,102 @@ describe("AI Chat stream endpoint", () => {
     delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
   });
 
+  test("answers recent trace questions through the provider tool loop without asking for confirmation", async () => {
+    process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
+    const provider = objectLoopProvider([
+      {
+        toolCalls: [
+          {
+            id: "call-recent-traces",
+            name: "telemetry_searchTraces",
+            arguments: { limit: 10, windowHours: 24 },
+          },
+        ],
+      },
+      {
+        answer: "CloudGrid returned 1 recent trace. Open /traces/trace-recent-1 for details.",
+        usage: { inputTokens: 40, outputTokens: 12, totalTokens: 52 },
+      },
+    ]);
+    const harness = createAiChatHarness("provider", { providerFactory: () => provider });
+    if (!harness) {
+      throw new Error("expected provider harness");
+    }
+    const traceInputs: unknown[] = [];
+    const { app } = createAppWithBridge(
+      bridge({
+        async aiChatConversation() {
+          return conversation();
+        },
+        async companyAiProviderSettings() {
+          return configuredCompanyProvider();
+        },
+        async searchTraces(input) {
+          traceInputs.push(input);
+          return {
+            items: [
+              {
+                id: "trace-recent-1",
+                serviceName: "api",
+                operationName: "GET /recent",
+                startedAt: "2026-05-21T16:55:00.000Z",
+                startedAtUnixNano: "0",
+                endedAt: null,
+                endedAtUnixNano: null,
+                durationNano: "90000000",
+                durationMs: 90,
+                rootSpanId: "span-1",
+                status: "ok",
+                attributes: {},
+                spanCount: 2,
+                errorSpanCount: 0,
+                logCount: 0,
+                serviceCount: 1,
+              },
+            ],
+            nextCursor: null,
+          };
+        },
+        async aiChatAppendMessage() {},
+      }),
+      { aiChatHarness: harness },
+    );
+
+    const response = await app.fetch(
+      streamRequest({
+        idempotencyKey: "idempotency-key-recent-traces",
+        parts: [{ type: "text", text: "what are the recent 10 traces?" }],
+        timezone: "Europe/Berlin",
+      }),
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(provider.objectRequests).toHaveLength(2);
+    const providerToolNames = provider.objectRequests[0]?.tools?.map((tool) => tool.name) ?? [];
+    expect(providerToolNames).toContain("telemetry_searchTraces");
+    expect(providerToolNames).not.toContain("telemetry.searchTraces");
+    expect(providerToolNames.every((name) => /^[a-zA-Z0-9_-]+$/.test(name))).toBe(true);
+    expect(traceInputs).toHaveLength(1);
+    expect(traceInputs[0]).toMatchObject({
+      limit: 10,
+      sort: "startedAt_desc",
+    });
+    expectArtifact(body, "table", "Traces");
+    expect(body).toContain("CloudGrid returned 1 recent trace");
+    expect(body).toContain("/traces/trace-recent-1");
+    expect(body).not.toContain("Would you like me");
+    expect(body).not.toContain("confirm");
+
+    delete process.env.CLOUDGRID_TEST_AI_CHAT_KEY;
+  });
+
   test("answers metric questions with injected project context and default query settings", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
-    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const harness = toolCallingHarness({
+      name: "telemetry.queryMetrics",
+      args: { metricName: "gen_ai.client.token.usage", windowHours: 24 },
+    });
     const metricInputs: unknown[] = [];
     const metricProjectIds: Array<string | undefined> = [];
     const { app } = createAppWithBridge(
@@ -683,7 +987,7 @@ describe("AI Chat stream endpoint", () => {
         },
         async aiChatAppendMessage() {},
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const response = await app.fetch(
@@ -697,14 +1001,14 @@ describe("AI Chat stream endpoint", () => {
     const events = parseSse(body);
 
     expect(response.status).toBe(200);
-    expect(harness.requests).toHaveLength(0);
+    expect(harness.requests).toHaveLength(1);
     expect(events.map((event) => event.type)).toEqual([
       "run.started",
       "message.created",
       "tool.started",
       "tool.completed",
-      "text.delta",
       "artifact.created",
+      "text.delta",
       "run.completed",
     ]);
     expectArtifact(body, "metric_timeseries", "gen_ai.client.token.usage");
@@ -730,7 +1034,10 @@ describe("AI Chat stream endpoint", () => {
 
   test("answers latest log questions with injected project context and default query settings", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
-    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const harness = toolCallingHarness({
+      name: "telemetry.searchLogs",
+      args: { limit: 10, severity: "error", service: "storage-write" },
+    });
     const logInputs: unknown[] = [];
     const logProjectIds: Array<string | undefined> = [];
     const { app } = createAppWithBridge(
@@ -765,7 +1072,7 @@ describe("AI Chat stream endpoint", () => {
         },
         async aiChatAppendMessage() {},
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const response = await app.fetch(
@@ -779,7 +1086,7 @@ describe("AI Chat stream endpoint", () => {
 
     expect(response.status).toBe(200);
     expectArtifact(body, "log_list", "Logs");
-    expect(harness.requests).toHaveLength(0);
+    expect(harness.requests).toHaveLength(1);
     expect(logInputs).toHaveLength(1);
     expect(logInputs[0]).toMatchObject({
       service: "storage-write",
@@ -802,7 +1109,10 @@ describe("AI Chat stream endpoint", () => {
 
   test("answers trace detail questions through the trace detail tool with default filters", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
-    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const harness = toolCallingHarness({
+      name: "telemetry.getTrace",
+      args: { traceId: "trace-detail-123" },
+    });
     const traceDetailInputs: unknown[] = [];
     const traceProjectIds: Array<string | undefined> = [];
     const { app } = createAppWithBridge(
@@ -875,7 +1185,7 @@ describe("AI Chat stream endpoint", () => {
         },
         async aiChatAppendMessage() {},
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const response = await app.fetch(
@@ -903,7 +1213,7 @@ describe("AI Chat stream endpoint", () => {
         }),
       }),
     );
-    expect(harness.requests).toHaveLength(0);
+    expect(harness.requests).toHaveLength(1);
     expect(traceDetailInputs).toEqual([
       {
         traceId: "trace-detail-123",
@@ -934,7 +1244,10 @@ describe("AI Chat stream endpoint", () => {
 
   test("answers telemetry facet questions with injected project context and shared defaults", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
-    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const harness = toolCallingHarness({
+      name: "telemetry.getFacets",
+      args: { window: "today", search: "checkout" },
+    });
     const facetInputs: unknown[] = [];
     const facetProjectIds: Array<string | undefined> = [];
     const { app } = createAppWithBridge(
@@ -958,7 +1271,7 @@ describe("AI Chat stream endpoint", () => {
         },
         async aiChatAppendMessage() {},
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const response = await app.fetch(
@@ -972,7 +1285,7 @@ describe("AI Chat stream endpoint", () => {
 
     expect(response.status).toBe(200);
     expectArtifact(body, "table", "Telemetry facets");
-    expect(harness.requests).toHaveLength(0);
+    expect(harness.requests).toHaveLength(1);
     expect(facetInputs).toHaveLength(1);
     expect(facetInputs[0]).toMatchObject({
       search: "checkout",
@@ -991,7 +1304,10 @@ describe("AI Chat stream endpoint", () => {
 
   test("answers dashboard list questions with injected project context and shared defaults", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
-    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const harness = toolCallingHarness({
+      name: "dashboards.list",
+      args: { query: "tokens" },
+    });
     const dashboardInputs: unknown[] = [];
     const dashboardProjectIds: Array<string | undefined> = [];
     const { app } = createAppWithBridge(
@@ -1032,7 +1348,7 @@ describe("AI Chat stream endpoint", () => {
         },
         async aiChatAppendMessage() {},
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const response = await app.fetch(
@@ -1046,7 +1362,7 @@ describe("AI Chat stream endpoint", () => {
 
     expect(response.status).toBe(200);
     expectArtifact(body, "table", "Dashboards");
-    expect(harness.requests).toHaveLength(0);
+    expect(harness.requests).toHaveLength(1);
     expect(dashboardInputs).toEqual([
       {
         includeBuiltins: true,
@@ -1068,7 +1384,10 @@ describe("AI Chat stream endpoint", () => {
 
   test("answers alert list questions with injected project context and shared defaults", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
-    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const harness = toolCallingHarness({
+      name: "alerts.list",
+      args: { search: "checkout", severity: "ERROR", signal: "TRACE" },
+    });
     const alertInputs: unknown[] = [];
     const alertProjectIds: string[] = [];
     const { app } = createAppWithBridge(
@@ -1093,7 +1412,7 @@ describe("AI Chat stream endpoint", () => {
         },
         async aiChatAppendMessage() {},
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const response = await app.fetch(
@@ -1106,7 +1425,7 @@ describe("AI Chat stream endpoint", () => {
 
     expect(response.status).toBe(200);
     expectArtifact(body, "table", "Alert rules");
-    expect(harness.requests).toHaveLength(0);
+    expect(harness.requests).toHaveLength(1);
     expect(alertProjectIds).toEqual(["project-1"]);
     expect(alertInputs).toEqual([
       {
@@ -1128,7 +1447,10 @@ describe("AI Chat stream endpoint", () => {
 
   test("answers alert history questions with injected project context and shared defaults", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
-    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const harness = toolCallingHarness({
+      name: "alerts.history",
+      args: { ruleId: "rule-checkout-errors" },
+    });
     const historyInputs: unknown[] = [];
     const { app } = createAppWithBridge(
       bridge({
@@ -1165,7 +1487,7 @@ describe("AI Chat stream endpoint", () => {
         },
         async aiChatAppendMessage() {},
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const response = await app.fetch(
@@ -1178,7 +1500,7 @@ describe("AI Chat stream endpoint", () => {
 
     expect(response.status).toBe(200);
     expectArtifact(body, "table", "Alert history");
-    expect(harness.requests).toHaveLength(0);
+    expect(harness.requests).toHaveLength(1);
     expect(historyInputs).toEqual([
       { projectId: "project-1", ruleId: "rule-checkout-errors", first: 50, after: null },
     ]);
@@ -1192,7 +1514,10 @@ describe("AI Chat stream endpoint", () => {
 
   test("answers AI Eval agent run questions with injected project context and shared defaults", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
-    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const harness = toolCallingHarness({
+      name: "aiEval.searchAgentRuns",
+      args: { limit: 10, status: "error", agentName: "support" },
+    });
     const agentRunInputs: unknown[] = [];
     const agentRunProjectIds: Array<string | undefined> = [];
     const { app } = createAppWithBridge(
@@ -1222,7 +1547,7 @@ describe("AI Chat stream endpoint", () => {
         },
         async aiChatAppendMessage() {},
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const response = await app.fetch(
@@ -1235,7 +1560,7 @@ describe("AI Chat stream endpoint", () => {
 
     expect(response.status).toBe(200);
     expectArtifact(body, "table", "AI Eval agent runs");
-    expect(harness.requests).toHaveLength(0);
+    expect(harness.requests).toHaveLength(1);
     expect(agentRunProjectIds).toEqual(["project-1"]);
     expect(agentRunInputs).toHaveLength(1);
     expect(agentRunInputs[0]).toMatchObject({
@@ -1259,7 +1584,28 @@ describe("AI Chat stream endpoint", () => {
 
   test("answers route-backed AI Eval questions with shared defaults", async () => {
     process.env.CLOUDGRID_TEST_AI_CHAT_KEY = "secret-provider-key";
-    const harness = recordingHarness([{ kind: "final_message", text: "should not run" }]);
+    const harness = promptToolHarness([
+      {
+        includes: "datasets",
+        name: "aiEval.searchDatasets",
+        args: { query: "regression" },
+      },
+      {
+        includes: "scorers",
+        name: "aiEval.searchScorers",
+        args: { query: "exact" },
+      },
+      {
+        includes: "experiments",
+        name: "aiEval.searchExperiments",
+        args: { query: "checkout", status: "running" },
+      },
+      {
+        includes: "production quality",
+        name: "aiEval.qualityOverview",
+        args: { service: "checkout" },
+      },
+    ]);
     const calls: Array<{ method: string; input: unknown; projectId: string | undefined }> = [];
     const appended: unknown[] = [];
     const finalized: unknown[] = [];
@@ -1304,7 +1650,7 @@ describe("AI Chat stream endpoint", () => {
           return runShape({ id: input.runId, status: input.status });
         },
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const datasetResponse = await app.fetch(
@@ -1345,7 +1691,7 @@ describe("AI Chat stream endpoint", () => {
       experimentResponse.status,
       qualityResponse.status,
     ]).toEqual([200, 200, 200, 200]);
-    expect(harness.requests).toHaveLength(0);
+    expect(harness.requests).toHaveLength(4);
     expect(calls).toHaveLength(4);
     expect(calls).toContainEqual(
       expect.objectContaining({
@@ -1398,7 +1744,17 @@ describe("AI Chat stream endpoint", () => {
       expect.objectContaining({
         role: "assistant",
         parts: expect.arrayContaining([
-          expect.objectContaining({ type: "artifact", renderer: "table" }),
+          expect.objectContaining({
+            type: "artifact",
+            renderer: "table",
+            label: "AI Eval datasets",
+            json: expect.objectContaining({
+              renderSpec: expect.objectContaining({
+                renderer: "table",
+                title: "AI Eval datasets",
+              }),
+            }),
+          }),
         ]),
       }),
     );
@@ -1448,7 +1804,7 @@ describe("AI Chat stream endpoint", () => {
         },
         async aiChatAppendMessage() {},
       }),
-      { graphqlUI: false, aiChatHarness: harness },
+      { aiChatHarness: harness },
     );
 
     const first = await app.fetch(streamRequest({ idempotencyKey: "idempotency-key-0004" }));
@@ -1536,6 +1892,77 @@ function recordingHarness(events: AiChatHarnessEvent[]) {
     },
   };
   return harness;
+}
+
+function toolCallingHarness(tool: { name: string; args: Record<string, unknown> }) {
+  return promptToolHarness([{ includes: "", ...tool }]);
+}
+
+function promptToolHarness(
+  tools: Array<{ includes: string; name: string; args: Record<string, unknown> }>,
+) {
+  const requests: Array<Parameters<AiChatHarnessPort["streamChat"]>[0]> = [];
+  const harness: AiChatHarnessPort & {
+    requests: Array<Parameters<AiChatHarnessPort["streamChat"]>[0]>;
+  } = {
+    requests,
+    async *streamChat(request) {
+      requests.push(request);
+      const latestUserMessage =
+        request.messages
+          .at(-1)
+          ?.parts.map((part) => (part.type === "text" ? part.text : ""))
+          .join(" ")
+          .toLowerCase() ?? "";
+      const tool =
+        tools.find((candidate) => latestUserMessage.includes(candidate.includes.toLowerCase())) ??
+        tools[0];
+      if (!tool) {
+        yield { kind: "final_message", text: "No test tool configured." };
+        return;
+      }
+      const toolCallId = "tool-1";
+      yield { kind: "tool_started", toolCallId, name: tool.name };
+      const output = await request.executeTool?.(tool.name, tool.args);
+      yield { kind: "tool_completed", toolCallId, name: tool.name, ...(output ? { output } : {}) };
+      yield { kind: "final_message", text: output?.text ?? "Tool completed." };
+    },
+    async compactConversation() {
+      return {
+        summary: "Test compaction",
+        retainedMessageIds: [],
+      };
+    },
+  };
+  return harness;
+}
+
+function objectLoopProvider(
+  responses: Array<{
+    answer?: string;
+    toolCalls?: NonNullable<ObjectResponse["toolCalls"]>;
+    usage?: ObjectResponse["usage"];
+  }>,
+) {
+  const objectRequests: ObjectRequest[] = [];
+  let index = 0;
+  const provider: ModelProvider & { objectRequests: ObjectRequest[] } = {
+    id: "object-loop",
+    genAiSystem: "recording",
+    objectRequests,
+    async object<T extends JsonValue>(request: ObjectRequest<T>): Promise<ObjectResponse<T>> {
+      objectRequests.push(request);
+      const response = responses[Math.min(index, responses.length - 1)];
+      index += 1;
+      return {
+        object: { answer: response?.answer ?? "" } as unknown as T,
+        ...(response?.toolCalls?.length ? { toolCalls: response.toolCalls } : {}),
+        usage: response?.usage ?? { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        finishReason: response?.toolCalls?.length ? "tool_calls" : "stop",
+      };
+    },
+  };
+  return provider;
 }
 
 function configuredCompanyProvider(
@@ -1821,10 +2248,15 @@ function dashboardWidgetShape(overrides: Record<string, unknown> = {}) {
 
 function recordingProvider(chunks: TextStreamChunk[]) {
   const textStreamRequests: TextRequest[] = [];
-  const provider: ModelProvider & { textStreamRequests: TextRequest[] } = {
+  const objectRequests: ObjectRequest[] = [];
+  const provider: ModelProvider & {
+    textStreamRequests: TextRequest[];
+    objectRequests: ObjectRequest[];
+  } = {
     id: "recording",
     genAiSystem: "recording",
     textStreamRequests,
+    objectRequests,
     async text(request): Promise<TextResponse> {
       textStreamRequests.push(request);
       return {
@@ -1843,6 +2275,22 @@ function recordingProvider(chunks: TextStreamChunk[]) {
       for (const chunk of chunks) {
         yield chunk;
       }
+    },
+    async object<T extends JsonValue>(request: ObjectRequest<T>): Promise<ObjectResponse<T>> {
+      objectRequests.push(request);
+      return {
+        object: {
+          answer: chunks
+            .filter(
+              (chunk): chunk is Extract<TextStreamChunk, { kind: "delta" }> =>
+                chunk.kind === "delta",
+            )
+            .map((chunk) => chunk.text)
+            .join(""),
+        } as unknown as T,
+        usage: { inputTokens: 7, outputTokens: 4, totalTokens: 11 },
+        finishReason: "stop",
+      };
     },
   };
   return provider;

@@ -5,8 +5,12 @@ import type {
   MetricAggregation,
   MetricChartType,
   MetricDescriptor,
+  MetricNameSearchInput,
+  MetricNameSort,
   MetricSeriesInput,
+  MetricSeriesSort,
   TelemetryFacetInput,
+  TelemetryFacetSignal,
   TraceDetailInput,
   TraceSearchInput,
   TraceSort,
@@ -51,6 +55,8 @@ export const METRIC_EXPLORER_CHART_TYPES = [
 
 export const METRIC_SERIES_DEFAULT_LIMIT = 1000;
 export const METRIC_SERIES_HARD_LIMIT = 5000;
+export const METRIC_NAME_SEARCH_DEFAULT_LIMIT = 50;
+export const METRIC_NAME_SEARCH_HARD_LIMIT = 200;
 export const LOG_SEARCH_DEFAULT_LIMIT = 50;
 export const LOG_SEARCH_HARD_LIMIT = 200;
 export const TRACE_SEARCH_DEFAULT_LIMIT = 50;
@@ -68,6 +74,18 @@ export interface MetricQueryDefaultsInput extends MetricTimeRange {
   interval: string;
   groupBy: string[];
   filters: AttributeFilterInput[];
+  sort?: MetricSeriesSort | null;
+  limit?: number | null;
+}
+
+export interface MetricNameSearchDefaultsInput {
+  query?: string | null;
+  service?: string | null;
+  services?: string[] | null;
+  from?: string | null;
+  to?: string | null;
+  sort?: MetricNameSort | null;
+  cursor?: string | null;
   limit?: number | null;
 }
 
@@ -78,6 +96,7 @@ export interface LogTimeRange {
 
 export interface LogSearchDefaultsInput extends LogTimeRange {
   service?: string | null;
+  services?: string[] | null;
   traceId?: string | null;
   spanId?: string | null;
   severity?: string | null;
@@ -95,6 +114,7 @@ export interface TraceTimeRange {
 
 export interface TraceSearchDefaultsInput extends TraceTimeRange {
   service?: string | null;
+  services?: string[] | null;
   query?: string | null;
   operationName?: string | null;
   spanName?: string | null;
@@ -121,8 +141,12 @@ export interface TraceDetailDefaultsInput {
   logSearch?: string | null;
 }
 
-export interface TelemetryFacetDefaultsInput extends TraceTimeRange {
+export interface TelemetryFacetDefaultsInput {
+  from?: string | null;
+  to?: string | null;
   service?: string | null;
+  services?: string[] | null;
+  signal?: TelemetryFacetSignal | null;
   search?: string | null;
   limit?: number | null;
 }
@@ -224,6 +248,29 @@ export function metricChartTypeOrDefault(value: string | null): MetricChartType 
     : "line";
 }
 
+export function defaultMetricNameSort(): MetricNameSort {
+  return "lastSeenAt_desc";
+}
+
+export function metricNameSortOrDefault(value: string | null): MetricNameSort {
+  return value === "lastSeenAt_asc" ||
+    value === "name_asc" ||
+    value === "name_desc" ||
+    value === "kind_asc"
+    ? value
+    : defaultMetricNameSort();
+}
+
+export function defaultMetricSeriesSort(): MetricSeriesSort {
+  return "timestamp_asc";
+}
+
+export function metricSeriesSortOrDefault(value: string | null): MetricSeriesSort {
+  return value === "timestamp_desc" || value === "value_desc" || value === "value_asc"
+    ? value
+    : defaultMetricSeriesSort();
+}
+
 export function defaultLogSort(): LogSort {
   return "timestamp_desc";
 }
@@ -256,6 +303,7 @@ export function buildMetricSeriesInput(
     aggregation: state.aggregation,
     groupBy: state.groupBy,
     filters: state.filters,
+    sort: state.sort ?? defaultMetricSeriesSort(),
     limit: Math.min(
       Math.max(1, Math.trunc(state.limit ?? METRIC_SERIES_DEFAULT_LIMIT)),
       METRIC_SERIES_HARD_LIMIT,
@@ -264,9 +312,28 @@ export function buildMetricSeriesInput(
   };
 }
 
+export function buildMetricNameSearchInput(
+  state: MetricNameSearchDefaultsInput = {},
+): MetricNameSearchInput {
+  return {
+    query: state.query ?? null,
+    service: state.service ?? null,
+    services: normalizedServices(state.services),
+    from: state.from ?? null,
+    to: state.to ?? null,
+    sort: state.sort ?? defaultMetricNameSort(),
+    cursor: state.cursor ?? null,
+    limit: Math.min(
+      Math.max(1, Math.trunc(state.limit ?? METRIC_NAME_SEARCH_DEFAULT_LIMIT)),
+      METRIC_NAME_SEARCH_HARD_LIMIT,
+    ),
+  };
+}
+
 export function buildLogSearchInput(state: LogSearchDefaultsInput): LogSearchInput {
   return {
     service: state.service ?? null,
+    services: normalizedServices(state.services),
     traceId: state.traceId ?? null,
     spanId: state.spanId ?? null,
     severity: state.severity ?? null,
@@ -286,6 +353,7 @@ export function buildLogSearchInput(state: LogSearchDefaultsInput): LogSearchInp
 export function buildTraceSearchInput(state: TraceSearchDefaultsInput): TraceSearchInput {
   return {
     service: state.service ?? null,
+    services: normalizedServices(state.services),
     query: state.query ?? null,
     operationName: state.operationName ?? null,
     spanName: state.spanName ?? null,
@@ -325,13 +393,32 @@ export function buildTraceDetailInput(state: TraceDetailDefaultsInput = {}): Tra
 
 export function buildTelemetryFacetInput(state: TelemetryFacetDefaultsInput): TelemetryFacetInput {
   return {
-    from: state.from,
-    to: state.to,
+    from: state.from ?? null,
+    to: state.to ?? null,
     service: state.service ?? null,
+    services: normalizedServices(state.services),
+    signal: state.signal ?? "traces",
     search: state.search ?? null,
     limit: Math.min(
       Math.max(1, Math.trunc(state.limit ?? TRACE_FACET_DEFAULT_LIMIT)),
       TRACE_SEARCH_HARD_LIMIT,
     ),
   };
+}
+
+function normalizedServices(services: string[] | null | undefined): string[] | null {
+  if (!services) {
+    return null;
+  }
+  const seen = new Set<string>();
+  const normalized = services
+    .map((service) => service.trim())
+    .filter((service) => {
+      if (!service || seen.has(service)) {
+        return false;
+      }
+      seen.add(service);
+      return true;
+    });
+  return normalized.length > 0 ? normalized : null;
 }

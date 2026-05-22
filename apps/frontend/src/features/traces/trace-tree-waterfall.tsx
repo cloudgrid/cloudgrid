@@ -27,6 +27,7 @@ import { cn } from "../../lib/utils";
 import {
   buildInitialExpandedSpanIds,
   buildTraceTreeIndexes,
+  expandSelectedSpanPath,
   flattenTraceTree,
   isDescendantOf,
   MISSING_PARENT_GROUP_ID,
@@ -305,24 +306,34 @@ export function TraceTreeWaterfall({
     [spans],
   );
   const [expandedSpanIds, setExpandedSpanIds] = useState<Set<string>>(() =>
-    buildInitialExpandedSpanIds({
+    expandSelectedSpanPath(
+      buildInitialExpandedSpanIds({
+        indexes,
+        selectedSpanId: null,
+        criticalPathSpanIds: criticalPathSpanIdSet,
+        errorSpanIds,
+      }),
       indexes,
       selectedSpanId,
-      criticalPathSpanIds: criticalPathSpanIdSet,
-      errorSpanIds,
-    }),
+    ),
   );
 
   useEffect(() => {
     setExpandedSpanIds(
       buildInitialExpandedSpanIds({
         indexes,
-        selectedSpanId,
+        selectedSpanId: null,
         criticalPathSpanIds: criticalPathSpanIdSet,
         errorSpanIds,
       }),
     );
-  }, [indexes, selectedSpanId, criticalPathSpanIdSet, errorSpanIds]);
+  }, [indexes, criticalPathSpanIdSet, errorSpanIds]);
+
+  useEffect(() => {
+    if (selectedSpanId) {
+      setExpandedSpanIds((current) => expandSelectedSpanPath(current, indexes, selectedSpanId));
+    }
+  }, [indexes, selectedSpanId]);
 
   const rows = useMemo(
     () =>

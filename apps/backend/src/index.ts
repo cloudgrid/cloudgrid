@@ -1,4 +1,4 @@
-import { createLogger } from "@cloudgrid/runtime";
+import { createLogger, createProblemDetails } from "@cloudgrid/runtime";
 import type { RuntimeConfig } from "./config";
 import { loadConfig, startupProblem } from "./config";
 import { createApp } from "./graphql";
@@ -17,8 +17,8 @@ export type {
 export { graphQLErrorFromBridge, NATSTelemetryQueryBridge } from "./bridge";
 export type { RuntimeConfig } from "./config";
 export { loadConfig, startupProblem } from "./config";
-export type { GraphQLMetricRecord, GraphQLMetricsRecorder } from "./graphql-metrics";
 export { createApp, createAppWithBridge, createCloudGridSchema } from "./graphql";
+export type { GraphQLMetricRecord, GraphQLMetricsRecorder } from "./graphql-metrics";
 export { createGraphQLWebSocketHandler } from "./graphql-ws";
 
 let clientDisconnectHandlersInstalled = false;
@@ -34,7 +34,7 @@ export async function startServer() {
     const { app, bridge, selfObservability } = await createApp(config, logger);
     const graphQLWebSocket = createGraphQLWebSocketHandler(bridge, logger, { auth: config.auth });
     installClientDisconnectHandlers(logger);
-    const server = Bun.serve(createServeOptions(config, app, graphQLWebSocket));
+    const server = Bun.serve(createServeOptions(config, app, graphQLWebSocket, logger));
 
     let shutdownStarted = false;
     const shutdown = async (signal: NodeJS.Signals) => {
@@ -72,7 +72,6 @@ export async function startServer() {
 
     logger.info("startup_ready", {
       message: `CloudGrid BFF listening on http://${config.host}:${config.port}`,
-      graphql_ui: config.graphqlUI,
     });
   } catch (error) {
     const problem = startupProblem(error);
@@ -93,6 +92,7 @@ export function createServeOptions(
     ReturnType<typeof createGraphQLWebSocketHandler>,
     "protocol" | "open" | "message" | "close"
   >,
+  logger: Pick<ReturnType<typeof createLogger>, "debug" | "error"> = createLogger("bff"),
 ) {
   return {
     hostname: config.host,
@@ -121,9 +121,30 @@ export function createServeOptions(
         return await app.fetch(request);
       } catch (error) {
         if (isClientDisconnectError(error)) {
+          logger.debug("client_disconnected", {
+            method: request.method,
+            path: new URL(request.url).pathname,
+            message: "client_disconnected",
+          });
           return new Response(null, { status: 499 });
         }
-        throw error;
+        const problem = createProblemDetails({
+          id: "ERR-010",
+          detail: "Request handling failed",
+        });
+        logger.error("request_failed", {
+          ...logErrorFields(error),
+          error_id: problem.id,
+          error_code: problem.code,
+          method: request.method,
+          path: new URL(request.url).pathname,
+          status: problem.status,
+          message: problem.detail,
+        });
+        return Response.json(problem, {
+          status: problem.status,
+          headers: { "content-type": "application/problem+json" },
+        });
       }
     },
     websocket: {
@@ -152,7 +173,7 @@ export function isClientDisconnectError(error: unknown): boolean {
 }
 
 export function installClientDisconnectHandlers(
-  logger: Pick<ReturnType<typeof createLogger>, "debug">,
+  logger: Pick<ReturnType<typeof createLogger>, "debug" | "error">,
 ) {
   if (clientDisconnectHandlersInstalled) {
     return;
@@ -162,13 +183,13 @@ export function installClientDisconnectHandlers(
     if (handleProcessClientDisconnect(reason, logger)) {
       return;
     }
-    throw reason;
+    handleProcessFatalError("unhandled_rejection", reason, logger);
   });
   process.on("uncaughtException", (error) => {
     if (handleProcessClientDisconnect(error, logger)) {
       return;
     }
-    throw error;
+    handleProcessFatalError("uncaught_exception", error, logger);
   });
 }
 
@@ -183,4 +204,32 @@ export function handleProcessClientDisconnect(
     message: "client_disconnected",
   });
   return true;
+}
+
+export function handleProcessFatalError(
+  event: "uncaught_exception" | "unhandled_rejection",
+  reason: unknown,
+  logger: Pick<ReturnType<typeof createLogger>, "error">,
+): void {
+  logger.error(event, {
+    ...logErrorFields(reason),
+    error_id: "ERR-010",
+    error_code: "RUNTIME_COMPOSITION_FAILED",
+    message: "Unhandled backend runtime failure",
+  });
+  process.exit(1);
+}
+
+export function logErrorFields(error: unknown) {
+  if (error instanceof Error || error instanceof DOMException) {
+    return {
+      error_name: error.name,
+      detail: error.message,
+      stack: error.stack || undefined,
+    };
+  }
+  return {
+    error_name: typeof error,
+    detail: typeof error === "string" ? error : "Non-error value thrown",
+  };
 }

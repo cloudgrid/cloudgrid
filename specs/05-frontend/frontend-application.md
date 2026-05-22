@@ -76,14 +76,14 @@ provenance: inferred-draft
   frontend must not call harness, providers, sandbox, NATS, SurrealDB, or
   storage-read directly.
 - The app shell has project selection mode and project workspace mode as defined in `05-frontend/product-ux-concept.md`.
-- In project selection mode, the topbar must not show `Live`, `Traces`, `Logs`, `Metrics`, or `AI Eval`.
-- In project workspace mode, primary navigation order is `Traces`, `Logs`, `Metrics`, `Dashboards`, `AI Chat`, and `AI Eval` when enabled. AI Eval is enabled by default and may be explicitly disabled with the AI-eval frontend feature flags. AI Chat is enabled only when the AI Chat feature flag and company provider settings allow it. `Live` is a mode inside `Traces`; `Alerts` remains available at `/alerts` but is not a primary project sidebar item; there is no project Overview route. Company/member management and settings are reached through context menus or explicit management routes, not mixed into telemetry navigation.
+- In project selection mode, the topbar must not show `AI Chat`, `Live`, `Traces`, `Logs`, `Metrics`, or `Evaluations`.
+- In project workspace mode, primary navigation order is `AI Chat` when enabled, pinned dashboard shortcuts when present, then `Traces`, `Logs`, `Metrics`, `Dashboards`, and `Evaluations` when enabled. AI Eval is enabled by default and may be explicitly disabled with the AI-eval frontend feature flags. AI Chat is enabled only when the AI Chat feature flag and company provider settings allow it. `Live` is a mode inside `Traces`; `Alerts` remains available at `/alerts` but is not a primary project sidebar item; there is no project Overview route. Company/member management and settings are reached through context menus or explicit management routes, not mixed into telemetry navigation.
 
-## Development GraphQL UI
+## GraphQL Endpoint
 
-- The BFF may expose GraphiQL at `/graphql` only in development or when `CLOUDGRID_GRAPHQL_UI=true`.
 - The Vite frontend development server may proxy `/graphql` and `/auth` to the local BFF to keep frontend code on same-origin BFF GraphQL and auth routes.
-- The production frontend must not require direct GraphQL tooling routes beyond the BFF-owned `/graphql` endpoint.
+- CloudGrid does not expose a bundled GraphQL IDE or GraphQL tooling route in the product frontend or BFF.
+- The production frontend must not require direct GraphQL tooling routes beyond the BFF-owned `/graphql` API endpoint.
 
 ## Required States
 

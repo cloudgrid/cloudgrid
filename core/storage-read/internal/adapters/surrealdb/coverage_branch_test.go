@@ -81,7 +81,8 @@ func TestCursorAndWhereHelperBranches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decodeCursor() error = %v", err)
 	}
-	if decoded.LastID != "row-1" || decoded.LastValue.Nanosecond() != 123 {
+	cursorValue, ok := decoded.LastValue.(time.Time)
+	if !ok || decoded.LastID != "row-1" || cursorValue.Nanosecond() != 123 {
 		t.Fatalf("decoded cursor = %#v", decoded)
 	}
 	if _, err := decodeCursor(*encoded, "other"); err == nil || !strings.Contains(err.Error(), "ERR-003") {
@@ -207,7 +208,7 @@ func TestQueryLimitTenancyAndQueryBuilderBranches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildLogSearchQuery() error = %v", err)
 	}
-	for _, want := range []string{"serviceName = $service", "traceId = $traceId", "spanId = $spanId", "severityText = $severity", "timestamp >= $from", "timestamp <= $to", "bodyText", "timestamp < $cursorValue"} {
+	for _, want := range []string{"serviceName IN $services", "traceId = $traceId", "spanId = $spanId", "severityText = $severity", "timestamp >= $from", "timestamp <= $to", "searchText @AND@ $search", "timestamp < $cursorValue"} {
 		if !strings.Contains(logStmt.SQL, want) {
 			t.Fatalf("log SQL = %s, missing %q", logStmt.SQL, want)
 		}
@@ -222,7 +223,7 @@ func TestQueryLimitTenancyAndQueryBuilderBranches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTraceSearchQuery() error = %v", err)
 	}
-	for _, want := range []string{participatingSpanServiceCondition(), "status = $status", "startedAt >= $from", "startedAt <= $to", "startedAt < $cursorValue"} {
+	for _, want := range []string{"serviceName IN $services", "status = $status", "startedAt >= $from", "startedAt <= $to", "startedAt < $cursorValue"} {
 		if !strings.Contains(traceStmt.SQL, want) {
 			t.Fatalf("trace SQL = %s, missing %q", traceStmt.SQL, want)
 		}
@@ -232,7 +233,7 @@ func TestQueryLimitTenancyAndQueryBuilderBranches(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildFacetQueries() error = %v", err)
 	}
-	if !strings.Contains(facetStmt["services"].SQL, "string::lowercase(name) CONTAINS $search") {
+	if !strings.Contains(facetStmt["services"].SQL, "string::lowercase(serviceName) CONTAINS $search") {
 		t.Fatalf("facet services SQL = %s", facetStmt["services"].SQL)
 	}
 	if strings.Contains(facetStmt["attributeKeys"].SQL, "$search") {

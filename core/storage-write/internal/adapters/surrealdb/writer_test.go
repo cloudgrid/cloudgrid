@@ -492,11 +492,15 @@ func TestRecordHelpersIncludeOptionalFieldsAndDefaults(t *testing.T) {
 		DurationMs:  &duration,
 		RootSpanID:  &rootSpan,
 		Status:      &status,
-	}, "GET /checkout", 2, 1, 3, 4, target)
-	for _, key := range []string{"serviceName", "operationName", "endedAt", "durationMs", "rootSpanId", "status"} {
+	}, "GET /checkout", []string{"SELECT carts"}, []contracts.Attributes{{"db.system": "postgresql"}}, 2, 1, 3, 4, target)
+	for _, key := range []string{"serviceName", "operationName", "endedAt", "durationMs", "rootSpanId", "status", "searchText"} {
 		if _, ok := trace[key]; !ok {
 			t.Fatalf("trace record missing %q: %#v", key, trace)
 		}
+	}
+	traceSearch, ok := trace["searchText"].(string)
+	if !ok || !strings.Contains(traceSearch, "SELECT carts") || !strings.Contains(traceSearch, "postgresql") {
+		t.Fatalf("trace searchText = %#v, want span names and attributes", trace["searchText"])
 	}
 
 	records := map[string]serviceRecord{}
@@ -567,6 +571,9 @@ func TestBuildPersistQueryBuildsOptionalLogAndServiceFields(t *testing.T) {
 	logRecord := vars["log0_record"].(map[string]any)
 	if logRecord["bodyText"] != "plain body" || logRecord["observedTimestamp"] != observedAt.UTC() {
 		t.Fatalf("log record optional fields = %#v", logRecord)
+	}
+	if searchText, ok := logRecord["searchText"].(string); !ok || !strings.Contains(searchText, "plain body") || !strings.Contains(searchText, "WARN") {
+		t.Fatalf("log searchText = %#v, want body and severity", logRecord["searchText"])
 	}
 	if logRecord["severityText"] != "WARN" || logRecord["severityNumber"] != severity {
 		t.Fatalf("log severity fields = %#v", logRecord)

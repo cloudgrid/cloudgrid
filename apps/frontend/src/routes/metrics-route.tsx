@@ -3,26 +3,39 @@ import type {
   MetricAggregation,
   MetricChartType,
   MetricDescriptor,
+  MetricNameSort,
   MetricSeriesInput,
+  MetricSeriesSort,
 } from "@cloudgrid/ui-contracts";
 import {
+  buildMetricNameSearchInput,
   buildMetricSeriesInput,
+  buildTelemetryFacetInput,
   createDefaultMetricTimeRange,
   createObservedMetricRange,
   defaultMetricAggregation,
   metricAggregationOrDefault,
   metricChartTypeOrDefault,
+  metricNameSortOrDefault,
+  metricSeriesSortOrDefault,
 } from "@cloudgrid/ui-contracts";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ErrorPanel, LoadingRows } from "../components/query-state";
 import { InfiniteScrollSentinel } from "../components/infinite-scroll-sentinel";
+import { ErrorPanel, LoadingRows } from "../components/query-state";
 import { Button } from "../components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import {
   CenteredMessage,
   MetricExplorerEmpty,
@@ -32,11 +45,10 @@ import {
   MetricQueryControls,
   MetricSearchField,
   MetricSeriesExplorer,
-  metricAggregations,
-  metricChartTypes,
   metricInspectorTabOrDefault,
   sanitizeMetricGroupBy,
 } from "../features/metrics/metric-explorer";
+import { ServiceMultiSelect } from "../features/telemetry/service-multi-select";
 import { t } from "../lib/i18n";
 import { queryKeys } from "../lib/query-keys";
 import { useDebouncedValue } from "../lib/use-debounced-value";
@@ -54,6 +66,7 @@ export interface MetricQueryState extends TimeRange {
   interval: string;
   groupBy: string[];
   filters: AttributeFilterInput[];
+  sort: MetricSeriesSort;
   chartType: MetricChartType;
 }
 
@@ -71,12 +84,13 @@ export function defaultMetricQueryState(searchParams: URLSearchParams): MetricQu
     interval: searchParams.get("interval") ?? "PT1M",
     groupBy: splitCsv(searchParams.get("groupBy") ?? searchParams.get("group") ?? ""),
     filters: attributeFilters(searchParams),
+    sort: metricSeriesSortOrDefault(searchParams.get("seriesSort")),
     chartType: metricChartTypeOrDefault(searchParams.get("chartType")),
   };
 }
 
-export { sanitizeMetricGroupBy };
 export { buildMetricSeriesInput } from "@cloudgrid/ui-contracts";
+export { sanitizeMetricGroupBy };
 
 export function metricRouteCachePredicate(queryKey: readonly unknown[]): boolean {
   return queryKey[0] === "MetricNames" || queryKey[0] === "MetricSeries";
@@ -92,6 +106,7 @@ export function MetricsRoute() {
   const previousProjectIdRef = useRef(selectedProjectId);
   const debouncedMetricSearch = useDebouncedValue(metricSearch, 250);
   const state = defaultMetricQueryState(searchParams);
+  const metricNameSort = metricNameSortOrDefault(searchParams.get("sort"));
   const inspectorTab = metricInspectorTabOrDefault(searchParams.get("tab"));
   const ingestSettingsHref = viewer?.selectedProject
     ? `/projects/${encodeURIComponent(viewer.selectedProject.id)}/settings/ingest`
@@ -107,19 +122,32 @@ export function MetricsRoute() {
     });
   }, [queryClient, selectedProjectId]);
 
-  const namesInput = {
+  const selectedServices = searchParams.getAll("service").filter((service) => service.trim());
+  const namesInput = buildMetricNameSearchInput({
     query: debouncedMetricSearch || null,
-    service: searchParams.get("service") || null,
+    services: selectedServices,
     from: searchParams.get("from") || null,
     to: searchParams.get("to") || null,
+    sort: metricNameSort,
     limit: 100,
-  };
+  });
   const namesQuery = useInfiniteQuery({
     queryKey: queryKeys.metricNames(namesInput),
     queryFn: ({ pageParam }) =>
       telemetryClient.getMetricNames({ ...namesInput, cursor: pageParam }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  });
+  const serviceFacetInput = buildTelemetryFacetInput({
+    from: searchParams.get("from") || null,
+    to: searchParams.get("to") || null,
+    signal: "metrics",
+    search: debouncedMetricSearch || null,
+    limit: 100,
+  });
+  const serviceFacetsQuery = useQuery({
+    queryKey: queryKeys.telemetryFacets(serviceFacetInput),
+    queryFn: () => telemetryClient.getTelemetryFacets(serviceFacetInput),
   });
   const metricNames = useMemo(
     () => namesQuery.data?.pages.flatMap((page) => page.items) ?? [],
@@ -166,6 +194,18 @@ export function MetricsRoute() {
       if (key !== "cursor") {
         params.delete("cursor");
       }
+      return params;
+    });
+  };
+  const setServicesParam = (services: string[]) => {
+    setSearchParams((params) => {
+      params.delete("service");
+      for (const service of services) {
+        if (service.trim()) {
+          params.append("service", service.trim());
+        }
+      }
+      params.delete("cursor");
       return params;
     });
   };
@@ -223,7 +263,7 @@ export function MetricsRoute() {
       </header>
 
       <div className="shrink-0 border-b pb-2">
-        <FieldGroup className="grid gap-2 lg:grid-cols-[1.4fr_1fr]">
+        <FieldGroup className="grid gap-2 lg:grid-cols-[1.4fr_1fr_220px]">
           <MetricSearchField
             metricSearch={metricSearch}
             onChange={(value) => {
@@ -233,13 +273,18 @@ export function MetricsRoute() {
           />
           <Field>
             <FieldLabel htmlFor="metric-service">{t("filters.service")}</FieldLabel>
-            <Input
+            <ServiceMultiSelect
               id="metric-service"
-              onChange={(event) => setParam("service", event.target.value)}
+              onChange={setServicesParam}
+              options={serviceFacetsQuery.data?.services}
               placeholder={t("metrics.service.placeholder")}
-              value={searchParams.get("service") ?? ""}
+              selected={selectedServices}
             />
           </Field>
+          <MetricNameSortField
+            onChange={(value) => setParam("sort", value)}
+            value={metricNameSort}
+          />
         </FieldGroup>
       </div>
 
@@ -356,6 +401,32 @@ function MetricTimeRangePopover({
         </FieldGroup>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function MetricNameSortField({
+  onChange,
+  value,
+}: {
+  onChange: (value: string | null) => void;
+  value: MetricNameSort;
+}) {
+  return (
+    <Field>
+      <FieldLabel htmlFor="metric-name-sort">{t("filters.sort")}</FieldLabel>
+      <Select onValueChange={(next) => onChange(next)} value={value}>
+        <SelectTrigger id="metric-name-sort">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="lastSeenAt_desc">{t("metrics.sort.lastSeenDesc")}</SelectItem>
+          <SelectItem value="lastSeenAt_asc">{t("metrics.sort.lastSeenAsc")}</SelectItem>
+          <SelectItem value="name_asc">{t("metrics.sort.nameAsc")}</SelectItem>
+          <SelectItem value="name_desc">{t("metrics.sort.nameDesc")}</SelectItem>
+          <SelectItem value="kind_asc">{t("metrics.sort.kindAsc")}</SelectItem>
+        </SelectContent>
+      </Select>
+    </Field>
   );
 }
 

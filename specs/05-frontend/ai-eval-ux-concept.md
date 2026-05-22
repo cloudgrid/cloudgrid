@@ -84,6 +84,10 @@ Each row has one primary action and one status. The UI must not require users to
 understand NATS subjects, harness internals, trace IDs, scorer versions, or
 provider credential plumbing before their first deterministic eval.
 
+The first-use flow may surface dataset suggestions when production evidence
+already exists. Suggestions are reviewable work items, not automatic dataset
+mutations.
+
 ## Trace Evidence
 
 AI Eval does not duplicate Traces as an `Agent runs` page. Any production or
@@ -112,6 +116,16 @@ with structured controls, import bulk rows, and export datasets in v1. Product
 UI must not expose dead controls or internal implementation phrases such as
 `needs contract`.
 
+Dataset item tables must handle large datasets through backed search, filters,
+sorting, and cursor-based pagination or infinite scrolling. The frontend must
+not compute dataset health, duplicate warnings, leakage, coverage gaps,
+quarantine status, or token-limit status locally.
+
+Users can manually add, edit, remove, review, reject, assign splits, and update
+metadata for dataset items. Every mutation uses the current dataset version.
+Removal excludes the item from the next version and must not imply historical
+manifest mutation.
+
 Expected answers support two primary modes:
 
 - text answer: one text field stored under the canonical `answer` key;
@@ -121,6 +135,30 @@ Expected answers support two primary modes:
 
 Dataset split colors must be stable and non-dominant. Split labels are text plus
 small swatches, not large badges.
+
+### Dataset Suggestions And Anonymization
+
+Dataset suggestions are part of the Datasets workspace. They help users improve
+eval data from production measurement failures, failed offline item runs,
+coverage gaps, duplicate clusters, invalid/oversized items, and selected
+traces. Suggestions are never committed automatically.
+
+Candidate review shows:
+
+- source trace/span or result reference;
+- reason: failure, gap, duplicate, leakage, oversized, invalid, flaky, or manual
+  selection;
+- proposed target shape: single turn, conversation, tool call, agent trajectory,
+  workflow trace, retrieval case, or production trace reference;
+- proposed input, expected output, metadata, split, and review status;
+- duplicate or cluster membership;
+- content treatment and anonymization policy provenance.
+
+Realistic anonymization is displayed as a content treatment, not as synthetic
+data. The UI may show that names, emails, payment values, addresses, phone
+numbers, URLs, IDs, or other sensitive classes were transformed, but it must not
+show original sensitive values after transformation. Users can commit, edit,
+dismiss, or supersede candidates.
 
 ### Dataset Import
 
@@ -225,6 +263,44 @@ Scoreboard columns:
 - item count;
 - started/ended.
 
+Below the common scoreboard, selected scorer details render the visualization
+declared by storage-read:
+
+- classification: overall accuracy, per-category accuracy, category support,
+  confusion matrix, and representative false-positive/false-negative examples;
+- JSON/schema: validity rate, invalid path counts, missing fields, and bounded
+  invalid-output examples;
+- LLM judge: overall score, pass/fail, rubric criteria, primary fact coverage,
+  secondary/background fact coverage, missing critical facts, unsupported
+  claims, bounded quotes, and sanitized judge rationale;
+- RAG: faithfulness, context recall, answer relevance, citation/support
+  coverage, unsupported claims, and missing expected evidence;
+- tool correctness: expected versus actual tool calls, argument issues, order
+  violations, missing/extra calls, retry/fallback behavior;
+- trajectory/workflow: required/forbidden step outcomes, handoff correctness,
+  loop/retry bounds, and final outcome;
+- human review: label/rating distribution and unresolved reviews;
+- composite: child scorer weights, gates, blockers, and final pass/fail reason.
+
+The frontend must not derive confusion matrices, fact coverage, per-category
+accuracy, rubric summaries, or composite gate status from raw result rows. It
+renders GraphQL view models and bounded evidence only.
+
+Run details show lifecycle and reliability state:
+
+- status: queued, running, pausing, paused, resuming, cancelling, cancelled,
+  failed, or completed;
+- progress by item and scorer;
+- max parallel requests, defaulting to 10 when not overridden;
+- token and cost budget usage;
+- rate-limit/backpressure warnings;
+- retry and timeout summaries;
+- model-quality failures separately from item-quality issues;
+- quarantined, skipped, oversized, invalid, and flaky item counts.
+
+Pause, resume, cancel, and retry controls appear only when backed by the
+GraphQL contract and current status permits the action.
+
 Candidate promotion is always explicit. The UI must show why a candidate cannot
 be promoted: missing holdout, budget exceeded, quality regression, latency
 regression, cost regression, failed required scorer, or stale baseline.
@@ -266,6 +342,10 @@ Primary workspace:
 
 Policy editing belongs in an inspector or settings drawer. The frontend never
 evaluates policy matches locally.
+
+Production quality is asynchronous continuous measurement. It is not a
+near-realtime alerting surface in the approved scope. Failed or low-quality
+segments can feed dataset suggestions and review actions.
 
 ## Annotations
 
@@ -354,7 +434,7 @@ action at most.
 
 Required frontend tests:
 
-- AI Eval nav appears when the frontend feature is enabled and disappears when
+- Evaluations nav appears when the frontend feature is enabled and disappears when
   explicitly disabled;
 - first-use checklist routes to correct project settings and AI Eval sections;
 - no route-primary data surface is wrapped in cards;

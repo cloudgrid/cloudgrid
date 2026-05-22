@@ -146,7 +146,6 @@ ConfigMaps can hold non-secret values such as deployment mode, ports, provider I
 - Configure one or more SSO providers and callback URLs.
 - Set `CLOUDGRID_PUBLIC_URL` to the browser URL used in invitation email links.
 - Configure SMTP invitation email variables for deployed SSO onboarding.
-- Keep `CLOUDGRID_GRAPHQL_UI` disabled unless the environment is trusted.
 - Mount SurrealDB credentials only into storage-read, storage-write, control-plane, and storage-maintenance.
 - Use external managed NATS and SurrealDB for production unless a chart profile explicitly documents bundled production dependencies.
 

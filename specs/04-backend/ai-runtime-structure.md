@@ -4,7 +4,7 @@ title: AI runtime structure
 layer: backend
 status: draft
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-21
+updated: 2026-05-22
 provenance: from-user
 depends_on: [DOM-007, TEC-BE-005, TEC-BE-028, TEC-BE-029]
 ---
@@ -240,6 +240,184 @@ SQL, filesystem paths outside the sandbox, shell commands, environment variable
 names, provider credentials, company IDs, project IDs, user IDs, tenant IDs, or
 authorization claims from the model. The BFF injects scope fields from the
 validated request context.
+
+## Harness Sandbox Profiles
+
+Every CloudGrid harness workflow runs inside an explicit sandbox profile. The
+profile defines persistence, filesystem scope, network access, secret exposure,
+artifact handling, and cleanup. Run pause/resume operates at the CloudGrid
+orchestration layer; v1 never snapshots or resumes process memory or sandbox
+filesystems.
+
+Sandbox profiles are selected through adapter configuration, not through
+different CloudGrid orchestration code. Future durable replay workspaces must
+implement the same adapter lifecycle calls as ephemeral profiles, so CloudGrid
+can switch profiles without changing run scheduling, idempotency, or result
+persistence semantics.
+
+Approved profiles:
+
+| Profile | Persistence | Allowed Workflows | Lifecycle |
+| --- | --- | --- | --- |
+| `ephemeral_chat` | Temporary in-memory or per-run directory. | AI Chat runs and compaction. | Created for one chat run, deleted after terminal stream handling after bounded artifacts/previews are persisted. |
+| `ephemeral_eval_item` | Temporary per dataset item, scorer, or production measurement attempt. | Offline eval item execution, scorer execution, production measurement, dataset backfill. | Created per attempt, deleted after bounded outputs, scorer evidence, summaries, and artifacts are persisted. |
+| `ephemeral_optimization_candidate` | Temporary per optimizer candidate or candidate/item attempt. | Prompt, skill, and tool optimization. | Created per candidate attempt, deleted after candidate refs, summaries, scores, and selected artifacts are persisted. |
+| `durable_replay_workspace` | Persisted encrypted workspace snapshot. | Future workflow replay only. | Out of scope for AI Eval v1. May be enabled only after the adapter satisfies the durable replay requirements in this spec. |
+
+Common sandbox rules:
+
+- the model receives only opaque sandbox refs, never host paths;
+- provider secrets, NATS credentials, SurrealDB credentials, session cookies,
+  and authorization headers are never mounted into the sandbox;
+- sandbox code must not call CloudGrid GraphQL, NATS, SurrealDB, OTLP, or
+  private service endpoints directly;
+- arbitrary network is denied unless a specific harness adapter/tool contract
+  explicitly allows a bounded provider or tool call;
+- write access is limited to sandbox output directories;
+- outputs are size, row, token, CPU, memory, and wall-clock bounded;
+- cleanup deletes full temporary files after CloudGrid persists approved
+  artifacts, bounded previews, summaries, or result evidence.
+
+Pause/resume rules:
+
+- pause stops scheduling new attempts and checkpoints completed CloudGrid
+  records;
+- active attempts may finish, timeout, or be aborted according to run policy;
+- resume validates the persisted manifest digest and starts unfinished eligible
+  work in fresh sandboxes;
+- duplicate harness execution is allowed after unknown outcomes, but CloudGrid
+  persistence remains idempotent.
+
+Required lifecycle operations for sandbox-capable harness adapters:
+
+- `start`: allocate or attach a sandbox/workspace for a run, item, scorer, or
+  optimizer candidate attempt and return an opaque `sandboxRef`.
+- `pause`: stop accepting new work for a sandbox/workspace and checkpoint
+  adapter-managed state when the profile supports checkpointing.
+- `resume`: attach to an existing checkpoint when the profile supports durable
+  replay, or return a fresh sandbox for unfinished work when the profile is
+  ephemeral.
+- `abort`: terminate active sandbox work according to run policy.
+- `cleanup`: delete temporary files, revoke transient handles, and return a
+  bounded cleanup summary.
+
+Ephemeral profiles may implement `pause` and `resume` as control acknowledgments
+with no process/filesystem snapshot. Durable profiles must not be introduced
+until their adapter proves `start`, `pause`, `resume`, `abort`, and `cleanup`
+preserve CloudGrid idempotency and privacy rules.
+
+## Durable Replay Workspace Requirements
+
+`durable_replay_workspace` is a future adapter profile for workflow replay where
+filesystem state is part of the replay evidence. It is not required for AI Chat
+or AI Eval v1. CloudGrid must keep supporting pause/resume through product-owned
+run checkpoints and fresh ephemeral sandboxes even when no durable replay
+adapter is installed.
+
+The current PURISTA harness package provides durable runtime and sandbox
+extension points, but not a complete production durable workspace policy. The
+CloudGrid adapter contract therefore treats durable replay as an optional
+capability that must be negotiated and verified before use. The upstream harness
+feature request is tracked at
+`https://github.com/puristajs/harness/issues/11`.
+
+Capability negotiation:
+
+- the adapter must expose `runtime.checkpoint` and
+  `runtime.resume_from_checkpoint`;
+- the adapter must expose `sandbox.snapshot` and `sandbox.resume`;
+- `sandbox.hibernate` is optional and means active compute can be released after
+  a snapshot;
+- `sandbox.persistent_fs` is optional for long-lived workspaces without
+  hibernation, but it is not a substitute for checkpoint refs;
+- if any required capability is missing, CloudGrid must select an ephemeral
+  profile and resume unfinished work from CloudGrid records instead.
+
+Checkpoint storage requirements:
+
+- every durable checkpoint has a stable opaque `checkpointRef`;
+- every workspace snapshot has a stable opaque `snapshotRef` when filesystem
+  state is persisted;
+- checkpoint metadata stores `runId`, `sessionId`, `attemptId`, `workerId`,
+  `stepId`, monotonic `sequence`, `manifestDigest`, profile, schema version,
+  `committedAt`, and optional `expiresAt`;
+- checkpoint payloads are JSON-serializable and size bounded by run policy;
+- workspace snapshots are adapter-owned binary/file state and are referenced
+  only by opaque refs, never by host paths;
+- the adapter must document crash behavior for checkpoint/snapshot ordering. If
+  a snapshot succeeds but checkpoint persistence fails, cleanup must delete or
+  orphan-mark the snapshot. If checkpoint persistence succeeds but the response
+  is lost, retrying the same lifecycle call must return the same committed
+  checkpoint or an equivalent idempotent success.
+
+Retention requirements:
+
+- active and paused durable workspaces retain snapshots until the run reaches a
+  terminal state or the configured workspace TTL expires;
+- terminal successful runs default to cleanup after approved artifacts,
+  summaries, and evidence are persisted;
+- failed, cancelled, or aborted runs may retain snapshots for debugging only
+  under an explicit retention window;
+- retention ceilings are enforced per project and per run policy;
+- orphan checkpoints and snapshots are eligible for periodic cleanup after their
+  cleanup deadline or retention expiry;
+- cleanup outcomes are recorded as infrastructure health, not as eval scores.
+
+Encryption and secret-safety requirements:
+
+- durable checkpoints, snapshots, files, and adapter metadata must be encrypted
+  at rest by the adapter or its backing store;
+- encryption keys are deployment-owned. Tenant/project-scoped keys are allowed
+  only as deployment hardening and must not change CloudGrid auth semantics;
+- provider credentials, CloudGrid credentials, session cookies, NATS subjects,
+  SurrealDB connection details, authorization claims, and raw provider payloads
+  must never be persisted in checkpoint metadata or workspace snapshots;
+- lifecycle responses, logs, spans, and cleanup summaries must redact host
+  paths, raw file contents, secrets, prompts, provider request bodies, and
+  provider responses;
+- key rotation must not make unexpired checkpoints unreadable without an
+  explicit operator migration or delete action.
+
+Cleanup retry requirements:
+
+- `cleanup` is idempotent by `sandboxRef` and optional `checkpointRef`;
+- retrying cleanup after a timeout, process crash, partial delete, or unknown
+  outcome must not recreate workspace state or mutate eval results;
+- cleanup responses include only bounded status, deleted byte/file counts when
+  available, retryability, and warning/problem codes;
+- adapters must expose enough state for a periodic sweeper to find and retry
+  expired or orphaned workspaces;
+- cleanup retry exhaustion creates an infrastructure problem record and leaves
+  the run/result quality classification unchanged.
+
+Workspace quota requirements:
+
+- run policy must be able to cap workspace bytes, single file bytes, file count,
+  checkpoint payload bytes, snapshot bytes, workspace age, active workspaces,
+  paused workspaces, and concurrent resumes;
+- quota failures are infrastructure or item/setup problems, not model-quality
+  failures;
+- quota errors must be deterministic and retryable only when reducing requested
+  size, deleting stale workspaces, or waiting for configured quota recovery can
+  resolve them;
+- the adapter must report effective quota values or explicit "not supported"
+  warnings during startup/inspection so CloudGrid does not assume protection
+  that the adapter cannot enforce.
+
+Verification requirements:
+
+- conformance tests must prove duplicate `start`, `pause`, `resume`, `abort`,
+  and `cleanup` calls are idempotent;
+- checkpoint/snapshot crash injection tests must cover both commit order
+  failures;
+- privacy tests must prove secrets and host paths are absent from persisted
+  checkpoint metadata, lifecycle responses, logs, spans, and cleanup summaries;
+- quota tests must cover max workspace bytes, max file count, max snapshot size,
+  and concurrent workspace limits;
+- retention tests must cover terminal cleanup, failed cleanup retry, and orphan
+  sweeper behavior;
+- default CI uses a fake durable adapter and must not require external
+  filesystem snapshot infrastructure or cloud credentials.
 
 ## Large Data Handling
 

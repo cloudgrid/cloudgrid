@@ -65,7 +65,7 @@ Layout:
   - project summary row;
   - onboarding checklist;
   - recent ingest/readiness section;
-  - navigation actions to Live, Traces, Logs, Metrics, and AI Eval when enabled.
+  - navigation actions to Traces, Logs, Metrics, Dashboards, and Evaluations when enabled.
 
 Behavior:
 
@@ -81,7 +81,7 @@ Playwright states:
 
 Layout:
 
-- Header: title "Trace search", refresh action, link to GraphQL UI when enabled.
+- Header: title "Trace search" and refresh action.
 - FilterBar: `query`, `service`, `operationName`, `spanName`, `status`, `from`, `to`, `minDurationMs`, `maxDurationMs`, `attributes`, `sort`.
 - Result table with columns: status, service, operation/root span, trace ID, start time, duration, spans, error spans, logs, services.
 

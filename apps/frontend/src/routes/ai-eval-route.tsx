@@ -15,6 +15,7 @@ import type {
   DatasetItemInput,
   DatasetReviewStatus,
   DatasetSplit,
+  EvalSolverKind,
   Experiment,
   ExperimentRun,
   JSONValue,
@@ -2424,7 +2425,7 @@ function CreateExperimentDialog({
   const [datasetId, setDatasetId] = useState(datasets[0]?.id ?? "");
   const [scorerId, setScorerId] = useState(scorers[0]?.id ?? "");
   const [split, setSplit] = useState<DatasetSplit>("validation");
-  const [solverKind, setSolverKind] = useState("local");
+  const [solverKind, setSolverKind] = useState<EvalSolverKind>("agent");
   const [solverName, setSolverName] = useState("current-agent");
   const [localError, setLocalError] = useState<string | null>(null);
   const selectedDataset = datasets.find((dataset) => dataset.id === datasetId) ?? datasets[0];
@@ -2455,7 +2456,7 @@ function CreateExperimentDialog({
         datasetVersion: selectedDataset.version,
         splitSelector: { splits: [split], reviewedOnly: false, includeSynthetic: false },
         scorerIds: [scorerId],
-        solverRef: { kind: solverKind, name: solverName } satisfies JSONValue,
+        solverRef: { kind: solverKind, name: solverName },
         tags: [],
       };
       return telemetryClient.createExperiment(input);
@@ -2534,14 +2535,19 @@ function CreateExperimentDialog({
           </Field>
           <Field>
             <FieldLabel>Solver kind</FieldLabel>
-            <Select onValueChange={setSolverKind} value={solverKind}>
+            <Select
+              onValueChange={(value) => setSolverKind(value as EvalSolverKind)}
+              value={solverKind}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="local">Local runner</SelectItem>
-                <SelectItem value="provider">Provider profile</SelectItem>
-                <SelectItem value="prompt_version">Prompt version</SelectItem>
+                <SelectItem value="agent">Agent</SelectItem>
+                <SelectItem value="workflow">Workflow</SelectItem>
+                <SelectItem value="prompt">Prompt</SelectItem>
+                <SelectItem value="skill">Skill</SelectItem>
+                <SelectItem value="tool">Tool</SelectItem>
               </SelectContent>
             </Select>
           </Field>

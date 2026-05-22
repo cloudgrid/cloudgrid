@@ -13,8 +13,8 @@ import type {
   RetentionDataClass,
   RetentionMode,
   RetentionRule,
-  UpdateProjectAiSettingsInput,
   UpdateCompanyAiProviderSettingsInput,
+  UpdateProjectAiSettingsInput,
 } from "@cloudgrid/ui-contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -84,6 +84,7 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
+import { aiChatProviderQueryKey } from "../features/ai-chat/view-model";
 import {
   buildAdminSettingsModel,
   buildProjectPickerModel,
@@ -100,7 +101,6 @@ import {
 } from "../lib/session-state";
 import { cn } from "../lib/utils";
 import { useAppSession } from "../providers/app-session-provider";
-import { aiChatProviderQueryKey } from "../features/ai-chat/view-model";
 import { aiEvalEnabled } from "./ai-eval-route";
 
 export function OrganizationsRoute() {
@@ -210,12 +210,13 @@ export function OrganizationOverviewRoute() {
 
 export function OrganizationMembersRoute() {
   const { organizationId } = useParams();
-  const { client, mode, refetchViewer, viewer } = useAppSession();
+  const { client, isBackendUnavailable, mode, refetchViewer, viewer } = useAppSession();
   const queryClient = useQueryClient();
   const organization = findOrganization(viewer?.organizations, organizationId);
   const adminModel = organization ? buildAdminSettingsModel({ mode, organization }) : null;
   const canAdminister =
     !!adminModel?.showMemberAdministration && canAdministerMembers(organization?.role);
+  const canMutateMembers = canAdminister && !isBackendUnavailable;
   const [pendingAction, setPendingAction] = useState<{
     action: "demote" | "remove";
     member: OrganizationMember;
@@ -224,14 +225,14 @@ export function OrganizationMembersRoute() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteError, setInviteError] = useState<string | null>(null);
   const membersQuery = useQuery({
-    enabled: !!organization && !!adminModel?.showMemberAdministration,
+    enabled: !!organization && !!adminModel?.showMemberAdministration && !isBackendUnavailable,
     queryKey: organization
       ? queryKeys.organizationMembers(organization.id)
       : ["OrganizationMembers"],
     queryFn: () => client.getOrganizationMembers(organization?.id ?? ""),
   });
   const invitationsQuery = useQuery({
-    enabled: canAdminister,
+    enabled: canMutateMembers,
     queryKey: organization
       ? queryKeys.organizationInvitations(organization.id)
       : ["OrganizationInvitations"],
@@ -340,7 +341,7 @@ export function OrganizationMembersRoute() {
     <AdminSettingsShell activeItem="members" organization={currentOrganization}>
       <RouteHeader
         action={
-          canAdminister ? (
+          canMutateMembers ? (
             <Button onClick={() => setInviteOpen(true)} type="button">
               <Plus data-icon="inline-start" />
               {t("companies.members.invite")}
@@ -351,6 +352,17 @@ export function OrganizationMembersRoute() {
         description={t("companies.members.description")}
       />
       {problem ? <ProblemDetailsAlert problem={problem} /> : null}
+      {isBackendUnavailable ? (
+        <Alert variant="destructive">
+          <Shield aria-hidden />
+          <AlertTitle>{t("companies.members.loadError")}</AlertTitle>
+          <AlertDescription>{t("backend.unavailable.description")}</AlertDescription>
+          <Button onClick={() => void refetchViewer()} size="sm" type="button" variant="outline">
+            <RefreshCw data-icon="inline-start" />
+            {t("actions.retry")}
+          </Button>
+        </Alert>
+      ) : null}
       {loadError ? (
         <Alert variant="destructive">
           <AlertTitle>{t("companies.members.loadError")}</AlertTitle>
@@ -366,132 +378,136 @@ export function OrganizationMembersRoute() {
           <AlertDescription>{t("companies.personal.localAdminLimited")}</AlertDescription>
         </Alert>
       ) : null}
-      <section className="flex min-h-0 flex-col gap-3">
-        <div>
-          <h2 className="text-base font-semibold tracking-normal">
-            {t("companies.members.activeTitle")}
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {t("companies.members.activeDescription")}
-          </p>
-        </div>
-        <div className="min-h-0 overflow-auto rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("companies.members.user")}</TableHead>
-                <TableHead>{t("companies.members.role")}</TableHead>
-                {canAdminister ? <TableHead>{t("companies.members.actions")}</TableHead> : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {membersQuery.isPending ? (
+      {!isBackendUnavailable ? (
+        <section className="flex min-h-0 flex-col gap-3">
+          <div>
+            <h2 className="text-base font-semibold tracking-normal">
+              {t("companies.members.activeTitle")}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {t("companies.members.activeDescription")}
+            </p>
+          </div>
+          <div className="min-h-0 overflow-auto rounded-lg border">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={canAdminister ? 3 : 2}>{t("state.loading")}</TableCell>
+                  <TableHead>{t("companies.members.user")}</TableHead>
+                  <TableHead>{t("companies.members.role")}</TableHead>
+                  {canMutateMembers ? (
+                    <TableHead>{t("companies.members.actions")}</TableHead>
+                  ) : null}
                 </TableRow>
-              ) : activeMembers.length ? (
-                activeMembers.map((member) => {
-                  const demoteSafety = canMutateOrganizationMember({
-                    mode,
-                    organization: currentOrganization,
-                    viewerUserId: currentViewer.user.id,
-                    targetUserId: member.user.id,
-                    mutation: "demote",
-                  });
-                  const removeSafety = canMutateOrganizationMember({
-                    mode,
-                    organization: currentOrganization,
-                    viewerUserId: currentViewer.user.id,
-                    targetUserId: member.user.id,
-                    mutation: "remove",
-                  });
+              </TableHeader>
+              <TableBody>
+                {!isBackendUnavailable && membersQuery.isPending ? (
+                  <TableRow>
+                    <TableCell colSpan={canMutateMembers ? 3 : 2}>{t("state.loading")}</TableCell>
+                  </TableRow>
+                ) : activeMembers.length ? (
+                  activeMembers.map((member) => {
+                    const demoteSafety = canMutateOrganizationMember({
+                      mode,
+                      organization: currentOrganization,
+                      viewerUserId: currentViewer.user.id,
+                      targetUserId: member.user.id,
+                      mutation: "demote",
+                    });
+                    const removeSafety = canMutateOrganizationMember({
+                      mode,
+                      organization: currentOrganization,
+                      viewerUserId: currentViewer.user.id,
+                      targetUserId: member.user.id,
+                      mutation: "remove",
+                    });
 
-                  return (
-                    <TableRow key={member.user.id}>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-medium">
-                            {member.user.displayName ?? member.user.id}
-                          </span>
-                          <span className="text-sm text-muted-foreground">
-                            {member.user.email ?? member.user.id}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <RoleBadge role={member.role} />
-                      </TableCell>
-                      {canAdminister ? (
+                    return (
+                      <TableRow key={member.user.id}>
                         <TableCell>
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              disabled={updateMember.isPending || member.role === "admin"}
-                              onClick={() =>
-                                updateMember.mutate({
-                                  organizationId: currentOrganization.id,
-                                  userId: member.user.id,
-                                  role: "admin",
-                                })
-                              }
-                              size="sm"
-                              type="button"
-                              variant="outline"
-                            >
-                              <Shield data-icon="inline-start" />
-                              {t("companies.members.makeAdmin")}
-                            </Button>
-                            <Button
-                              disabled={
-                                updateMember.isPending ||
-                                member.role === "user" ||
-                                !demoteSafety.allowed
-                              }
-                              onClick={() => setPendingAction({ action: "demote", member })}
-                              size="sm"
-                              title={
-                                !demoteSafety.allowed
-                                  ? t("companies.members.demoteBlocked")
-                                  : undefined
-                              }
-                              type="button"
-                              variant="outline"
-                            >
-                              <Shield data-icon="inline-start" />
-                              {t("companies.members.makeUser")}
-                            </Button>
-                            <Button
-                              disabled={removeMember.isPending || !removeSafety.allowed}
-                              onClick={() => setPendingAction({ action: "remove", member })}
-                              size="sm"
-                              title={
-                                !removeSafety.allowed
-                                  ? t("companies.members.demoteBlocked")
-                                  : undefined
-                              }
-                              type="button"
-                              variant="outline"
-                            >
-                              <Trash2 data-icon="inline-start" />
-                              {t("companies.members.remove")}
-                            </Button>
+                          <div className="flex flex-col">
+                            <span className="font-medium">
+                              {member.user.displayName ?? member.user.id}
+                            </span>
+                            <span className="text-sm text-muted-foreground">
+                              {member.user.email ?? member.user.id}
+                            </span>
                           </div>
                         </TableCell>
-                      ) : null}
-                    </TableRow>
-                  );
-                })
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={canAdminister ? 3 : 2}>
-                    {t("companies.members.activeMembersEmpty")}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </section>
-      {canAdminister ? (
+                        <TableCell>
+                          <RoleBadge role={member.role} />
+                        </TableCell>
+                        {canMutateMembers ? (
+                          <TableCell>
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                disabled={updateMember.isPending || member.role === "admin"}
+                                onClick={() =>
+                                  updateMember.mutate({
+                                    organizationId: currentOrganization.id,
+                                    userId: member.user.id,
+                                    role: "admin",
+                                  })
+                                }
+                                size="sm"
+                                type="button"
+                                variant="outline"
+                              >
+                                <Shield data-icon="inline-start" />
+                                {t("companies.members.makeAdmin")}
+                              </Button>
+                              <Button
+                                disabled={
+                                  updateMember.isPending ||
+                                  member.role === "user" ||
+                                  !demoteSafety.allowed
+                                }
+                                onClick={() => setPendingAction({ action: "demote", member })}
+                                size="sm"
+                                title={
+                                  !demoteSafety.allowed
+                                    ? t("companies.members.demoteBlocked")
+                                    : undefined
+                                }
+                                type="button"
+                                variant="outline"
+                              >
+                                <Shield data-icon="inline-start" />
+                                {t("companies.members.makeUser")}
+                              </Button>
+                              <Button
+                                disabled={removeMember.isPending || !removeSafety.allowed}
+                                onClick={() => setPendingAction({ action: "remove", member })}
+                                size="sm"
+                                title={
+                                  !removeSafety.allowed
+                                    ? t("companies.members.demoteBlocked")
+                                    : undefined
+                                }
+                                type="button"
+                                variant="outline"
+                              >
+                                <Trash2 data-icon="inline-start" />
+                                {t("companies.members.remove")}
+                              </Button>
+                            </div>
+                          </TableCell>
+                        ) : null}
+                      </TableRow>
+                    );
+                  })
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={canMutateMembers ? 3 : 2}>
+                      {t("companies.members.activeMembersEmpty")}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </section>
+      ) : null}
+      {canMutateMembers ? (
         <section className="flex min-h-0 flex-col gap-3">
           <div>
             <h2 className="text-base font-semibold tracking-normal">
@@ -514,7 +530,7 @@ export function OrganizationMembersRoute() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {invitationsQuery.isPending ? (
+                {!isBackendUnavailable && invitationsQuery.isPending ? (
                   <TableRow>
                     <TableCell colSpan={6}>{t("state.loading")}</TableCell>
                   </TableRow>
@@ -620,14 +636,14 @@ export function OrganizationMembersRoute() {
 
 export function OrganizationAiProviderRoute() {
   const { organizationId } = useParams();
-  const { client, viewer } = useAppSession();
+  const { client, isBackendUnavailable, refetchViewer, viewer } = useAppSession();
   const queryClient = useQueryClient();
   const organization = findOrganization(viewer?.organizations, organizationId);
   const [saved, setSaved] = useState(false);
   const [providerKind, setProviderKind] = useState<AiProviderKind>("openai");
   const [formError, setFormError] = useState<string | null>(null);
   const settingsQuery = useQuery({
-    enabled: !!organization,
+    enabled: !!organization && !isBackendUnavailable,
     queryKey: organization
       ? aiChatProviderQueryKey(organization.id)
       : ["CompanyAiProviderSettings"],
@@ -704,7 +720,18 @@ export function OrganizationAiProviderRoute() {
         description={t("companies.aiProvider.description")}
       />
       <SettingsFormSurface>
-        {settingsQuery.isError ? (
+        {isBackendUnavailable ? (
+          <Alert variant="destructive">
+            <Shield aria-hidden />
+            <AlertTitle>{t("companies.aiProvider.loadError")}</AlertTitle>
+            <AlertDescription>{t("backend.unavailable.description")}</AlertDescription>
+            <Button onClick={() => void refetchViewer()} size="sm" type="button" variant="outline">
+              <RefreshCw data-icon="inline-start" />
+              {t("actions.retry")}
+            </Button>
+          </Alert>
+        ) : null}
+        {!isBackendUnavailable && settingsQuery.isError ? (
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-sm text-destructive">{t("companies.aiProvider.loadError")}</p>
             <Button
@@ -718,190 +745,178 @@ export function OrganizationAiProviderRoute() {
             </Button>
           </div>
         ) : null}
-        <div className="rounded-lg border">
-          <div className="grid gap-0 divide-y md:grid-cols-4 md:divide-x md:divide-y-0">
-            <ReadOnlyField
-              label={t("companies.aiProvider.current")}
-              value={profile?.label ?? t("companies.aiProvider.notConfigured")}
-            />
-            <ReadOnlyField
-              label={t("companies.aiProvider.providerKind")}
-              value={profile ? aiProviderKindLabel(profile.providerKind) : t("value.none")}
-            />
-            <ReadOnlyField
-              label={t("companies.aiProvider.chatModel")}
-              value={alias?.model ?? t("value.none")}
-            />
-            <ReadOnlyField
-              label={t("projects.settings.policyVersion")}
-              value={settings ? String(settings.version) : t("state.loading")}
-            />
-          </div>
-        </div>
+        {!isBackendUnavailable ? (
+          <form className="grid max-w-4xl gap-5" onSubmit={submit}>
+            <div className="grid gap-3 border-y py-4 sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="company-ai-label">
+                  {t("companies.aiProvider.label")}
+                </FieldLabel>
+                <Input
+                  defaultValue={profile?.label ?? "Company chat"}
+                  disabled={!settings || updateMutation.isPending || isBackendUnavailable}
+                  id="company-ai-label"
+                  name="label"
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="company-ai-kind">
+                  {t("companies.aiProvider.providerKind")}
+                </FieldLabel>
+                <Select
+                  disabled={!settings || updateMutation.isPending || isBackendUnavailable}
+                  onValueChange={(value) => setProviderKind(value as AiProviderKind)}
+                  value={providerKind}
+                >
+                  <SelectTrigger id="company-ai-kind">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {aiProviderKinds.map((kind) => (
+                        <SelectItem key={kind} value={kind}>
+                          {aiProviderKindLabel(kind)}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="company-ai-credential-value">
+                  {t("companies.aiProvider.credentialValue")}
+                </FieldLabel>
+                <Input
+                  autoComplete="off"
+                  disabled={!settings || updateMutation.isPending || isBackendUnavailable}
+                  id="company-ai-credential-value"
+                  name="credentialValue"
+                  placeholder={
+                    preservedCredentialRef
+                      ? t("companies.aiProvider.credentialValuePlaceholderExisting")
+                      : "sk-..."
+                  }
+                  type="password"
+                />
+                <input name="credentialRef" type="hidden" value={preservedCredentialRef} />
+                <FieldDescription>
+                  {t("companies.aiProvider.credentialRefDescription")}
+                </FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="company-ai-model">
+                  {t("companies.aiProvider.chatModel")}
+                </FieldLabel>
+                <Input
+                  defaultValue={alias?.model ?? firstChatModel(profile) ?? "gpt-5-mini"}
+                  disabled={!settings || updateMutation.isPending || isBackendUnavailable}
+                  id="company-ai-model"
+                  name="model"
+                  placeholder="gpt-5-mini"
+                />
+              </Field>
+              {providerKind === "azure_foundry" || providerKind === "openai_compatible" ? (
+                <Field>
+                  <FieldLabel htmlFor="company-ai-base-url">
+                    {t("companies.aiProvider.baseUrl")}
+                  </FieldLabel>
+                  <Input
+                    defaultValue={profile?.baseUrl ?? ""}
+                    disabled={!settings || updateMutation.isPending || isBackendUnavailable}
+                    id="company-ai-base-url"
+                    name="baseUrl"
+                    placeholder="https://example.openai.azure.com"
+                    type="url"
+                  />
+                </Field>
+              ) : null}
+              {providerKind === "azure_foundry" ? (
+                <Field>
+                  <FieldLabel htmlFor="company-ai-deployment">
+                    {t("companies.aiProvider.deployment")}
+                  </FieldLabel>
+                  <Input
+                    defaultValue={deployment}
+                    disabled={!settings || updateMutation.isPending || isBackendUnavailable}
+                    id="company-ai-deployment"
+                    name="deployment"
+                  />
+                </Field>
+              ) : null}
+              {providerKind === "aws_bedrock" ? (
+                <Field>
+                  <FieldLabel htmlFor="company-ai-region">
+                    {t("companies.aiProvider.region")}
+                  </FieldLabel>
+                  <Input
+                    defaultValue={region}
+                    disabled={!settings || updateMutation.isPending || isBackendUnavailable}
+                    id="company-ai-region"
+                    name="region"
+                    placeholder="us-east-1"
+                  />
+                </Field>
+              ) : null}
+              <Field>
+                <FieldLabel htmlFor="company-ai-timeout">
+                  {t("companies.aiProvider.timeoutMs")}
+                </FieldLabel>
+                <Input
+                  defaultValue={profile?.timeoutMs ?? 30000}
+                  disabled={!settings || updateMutation.isPending || isBackendUnavailable}
+                  id="company-ai-timeout"
+                  min="1000"
+                  name="timeoutMs"
+                  step="1000"
+                  type="number"
+                />
+              </Field>
+            </div>
 
-        <form className="grid max-w-4xl gap-5" onSubmit={submit}>
-          <div className="grid gap-3 border-y py-4 sm:grid-cols-2">
-            <Field>
-              <FieldLabel htmlFor="company-ai-label">{t("companies.aiProvider.label")}</FieldLabel>
-              <Input
-                defaultValue={profile?.label ?? "Company chat"}
-                disabled={!settings || updateMutation.isPending}
-                id="company-ai-label"
-                name="label"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="company-ai-kind">
-                {t("companies.aiProvider.providerKind")}
-              </FieldLabel>
-              <Select
-                disabled={!settings || updateMutation.isPending}
-                onValueChange={(value) => setProviderKind(value as AiProviderKind)}
-                value={providerKind}
+            {settings?.effective.warnings.length ? (
+              <Alert>
+                <AlertTitle>{t("companies.aiProvider.warnings")}</AlertTitle>
+                <AlertDescription>{settings.effective.warnings.join(", ")}</AlertDescription>
+              </Alert>
+            ) : null}
+            {settings?.effective.missingChatProvider ? (
+              <Alert>
+                <Bot aria-hidden />
+                <AlertTitle>{t("companies.aiProvider.missingTitle")}</AlertTitle>
+                <AlertDescription>{t("companies.aiProvider.missingDescription")}</AlertDescription>
+              </Alert>
+            ) : null}
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                disabled={!settings || updateMutation.isPending || isBackendUnavailable}
+                type="submit"
               >
-                <SelectTrigger id="company-ai-kind">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {aiProviderKinds.map((kind) => (
-                      <SelectItem key={kind} value={kind}>
-                        {aiProviderKindLabel(kind)}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="company-ai-credential-value">
-                {t("companies.aiProvider.credentialValue")}
-              </FieldLabel>
-              <Input
-                autoComplete="off"
-                disabled={!settings || updateMutation.isPending}
-                id="company-ai-credential-value"
-                name="credentialValue"
-                placeholder={
-                  preservedCredentialRef
-                    ? t("companies.aiProvider.credentialValuePlaceholderExisting")
-                    : "sk-..."
-                }
-                type="password"
-              />
-              <input name="credentialRef" type="hidden" value={preservedCredentialRef} />
-              <FieldDescription>
-                {t("companies.aiProvider.credentialRefDescription")}
-              </FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="company-ai-model">
-                {t("companies.aiProvider.chatModel")}
-              </FieldLabel>
-              <Input
-                defaultValue={alias?.model ?? firstChatModel(profile) ?? "gpt-5-mini"}
-                disabled={!settings || updateMutation.isPending}
-                id="company-ai-model"
-                name="model"
-                placeholder="gpt-5-mini"
-              />
-            </Field>
-            {providerKind === "azure_foundry" || providerKind === "openai_compatible" ? (
-              <Field>
-                <FieldLabel htmlFor="company-ai-base-url">
-                  {t("companies.aiProvider.baseUrl")}
-                </FieldLabel>
-                <Input
-                  defaultValue={profile?.baseUrl ?? ""}
-                  disabled={!settings || updateMutation.isPending}
-                  id="company-ai-base-url"
-                  name="baseUrl"
-                  placeholder="https://example.openai.azure.com"
-                  type="url"
-                />
-              </Field>
-            ) : null}
-            {providerKind === "azure_foundry" ? (
-              <Field>
-                <FieldLabel htmlFor="company-ai-deployment">
-                  {t("companies.aiProvider.deployment")}
-                </FieldLabel>
-                <Input
-                  defaultValue={deployment}
-                  disabled={!settings || updateMutation.isPending}
-                  id="company-ai-deployment"
-                  name="deployment"
-                />
-              </Field>
-            ) : null}
-            {providerKind === "aws_bedrock" ? (
-              <Field>
-                <FieldLabel htmlFor="company-ai-region">
-                  {t("companies.aiProvider.region")}
-                </FieldLabel>
-                <Input
-                  defaultValue={region}
-                  disabled={!settings || updateMutation.isPending}
-                  id="company-ai-region"
-                  name="region"
-                  placeholder="us-east-1"
-                />
-              </Field>
-            ) : null}
-            <Field>
-              <FieldLabel htmlFor="company-ai-timeout">
-                {t("companies.aiProvider.timeoutMs")}
-              </FieldLabel>
-              <Input
-                defaultValue={profile?.timeoutMs ?? 30000}
-                disabled={!settings || updateMutation.isPending}
-                id="company-ai-timeout"
-                min="1000"
-                name="timeoutMs"
-                step="1000"
-                type="number"
-              />
-            </Field>
-          </div>
-
-          {settings?.effective.warnings.length ? (
-            <Alert>
-              <AlertTitle>{t("companies.aiProvider.warnings")}</AlertTitle>
-              <AlertDescription>{settings.effective.warnings.join(", ")}</AlertDescription>
-            </Alert>
-          ) : null}
-          {settings?.effective.missingChatProvider ? (
-            <Alert>
-              <Bot aria-hidden />
-              <AlertTitle>{t("companies.aiProvider.missingTitle")}</AlertTitle>
-              <AlertDescription>{t("companies.aiProvider.missingDescription")}</AlertDescription>
-            </Alert>
-          ) : null}
-
-          <div className="flex flex-wrap items-center gap-3">
-            <Button disabled={!settings || updateMutation.isPending} type="submit">
-              <Save data-icon="inline-start" />
-              {t("companies.aiProvider.save")}
-            </Button>
-            <Button asChild type="button" variant="outline">
-              <Link to="/ai-chat">
-                <Bot data-icon="inline-start" />
-                {t("companies.aiProvider.openChat")}
-              </Link>
-            </Button>
-            {saved ? (
-              <span className="text-sm text-muted-foreground">
-                {t("companies.aiProvider.saved")}
-              </span>
-            ) : null}
-            {formError ? <span className="text-sm text-destructive">{formError}</span> : null}
-            {updateMutation.isError ? (
-              <span className="text-sm text-destructive">
-                {t("companies.aiProvider.saveError")}
-              </span>
-            ) : null}
-          </div>
-        </form>
+                <Save data-icon="inline-start" />
+                {t("companies.aiProvider.save")}
+              </Button>
+              {!isBackendUnavailable ? (
+                <Button asChild type="button" variant="outline">
+                  <Link to="/ai-chat">
+                    <Bot data-icon="inline-start" />
+                    {t("companies.aiProvider.openChat")}
+                  </Link>
+                </Button>
+              ) : null}
+              {saved ? (
+                <span className="text-sm text-muted-foreground">
+                  {t("companies.aiProvider.saved")}
+                </span>
+              ) : null}
+              {formError ? <span className="text-sm text-destructive">{formError}</span> : null}
+              {updateMutation.isError ? (
+                <span className="text-sm text-destructive">
+                  {t("companies.aiProvider.saveError")}
+                </span>
+              ) : null}
+            </div>
+          </form>
+        ) : null}
       </SettingsFormSurface>
     </AdminSettingsShell>
   );
@@ -3017,7 +3032,7 @@ function retentionDataClassLabel(dataClass: RetentionDataClass) {
     TRACES: "Traces",
     LOGS: "Logs",
     METRICS: "Metrics",
-    AI_EVALS: "AI evals",
+    AI_EVALS: "Evaluations",
     DATASETS: "Datasets",
     SCORERS: "Scorers",
     DASHBOARD_HISTORY: "Dashboard history",

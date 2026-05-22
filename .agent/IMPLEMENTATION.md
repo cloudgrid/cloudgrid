@@ -205,7 +205,7 @@ Frontend implementation must preserve these rules:
 
 - The global topbar is the only app-wide navigation surface. It is 56px tall and owns CloudGrid identity/home, company dropdown, project dropdown, command/search, setup/help, theme/language controls when implemented, and user menu. It never contains telemetry route tabs.
 - No telemetry navigation is visible before a project is selected.
-- Project workspace navigation lives in the left project sidebar, ordered optional pinned dashboard shortcuts, Overview, Traces, Logs, Metrics, Dashboards, AI Eval when enabled, with Project settings separated at the bottom. Live trace receiving is a mode inside Traces, not a separate sidebar entry.
+- Project workspace navigation lives in the left project sidebar, ordered AI Chat when enabled, optional pinned dashboard shortcuts, Traces, Logs, Metrics, Dashboards, Evaluations when enabled, with Project settings separated at the bottom. Live trace receiving is a mode inside Traces, not a separate sidebar entry.
 - Dashboard sidebar shortcuts and star/pin actions use `Query.dashboards`, `Mutation.setDashboardPinned`, and `Mutation.reorderDashboardPins`. Do not fake persisted dashboard pins in production UI.
 - Company/member management and settings are reached from context menus or management routes, not mixed into telemetry navigation.
 - `/projects` is the project selection and creation entry point.

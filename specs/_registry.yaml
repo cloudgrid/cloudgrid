@@ -855,6 +855,12 @@ ids:
     status: approved
     depends_on: [CAP-AIE-007, FLW-AIE-005, TEC-BE-025]
     deprecated_by: null
+  CAP-AIE-010:
+    slug: suggest-dataset-candidates
+    file: specs/02-capabilities/ai-eval/suggest-dataset-candidates.md
+    status: approved
+    depends_on: [CAP-AIE-002, CAP-AIE-005, CAP-AIE-007, NFR-009]
+    deprecated_by: null
   CAP-AIP-001:
     slug: manage-project-ai-providers
     file: specs/02-capabilities/ai-platform/manage-project-ai-providers.md

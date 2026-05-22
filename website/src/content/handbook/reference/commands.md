@@ -17,6 +17,7 @@ Run commands from the repository root unless a command says otherwise.
 | Prepare local token routing | `bun run setup:local` |
 | Start NATS and SurrealDB | `bun run dev:infra` |
 | Start local app stack | `bun run dev:all` |
+| Stop stale local app processes | `bun run dev:clean` |
 | Start BFF/frontend dev | `bun run dev` |
 | Seed development telemetry | `bun run dev:seed` |
 | Seed continuous live telemetry | `bun run dev:seed:live` |

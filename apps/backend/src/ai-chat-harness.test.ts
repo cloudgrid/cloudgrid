@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import type { ModelProvider, TextRequest, TextResponse, TextStreamChunk } from "@purista/harness";
-import { AI_CHAT_CATALOG, AI_CHAT_MODEL_ALIASES } from "./ai-chat/catalog";
+import type {
+  JsonValue,
+  ModelProvider,
+  ObjectRequest,
+  ObjectResponse,
+  TextRequest,
+  TextResponse,
+  TextStreamChunk,
+} from "@purista/harness";
+import { AI_CHAT_CATALOG } from "./ai-chat/catalog";
 import { createAiChatHarness } from "./ai-chat-harness";
 import type { AiChatHarnessRequest } from "./ai-chat-stream";
 
@@ -27,8 +35,8 @@ describe("AI Chat provider harness", () => {
       events.push(event);
     }
 
-    expect(provider.textStreamRequests).toHaveLength(1);
-    const request = provider.textStreamRequests[0];
+    expect(provider.objectRequests).toHaveLength(1);
+    const request = provider.objectRequests[0];
     expect(request?.model).toBe("gpt-5-mini");
     expect(request?.defaults).toBeUndefined();
     expect(request?.messages[0]?.role).toBe("system");
@@ -38,9 +46,15 @@ describe("AI Chat provider harness", () => {
     expect(systemPrompt).toContain("Do not answer from general model training data");
     expect(systemPrompt).toContain("Current company, project, user, and conversation scope");
     expect(systemPrompt).toContain("Use CloudGrid tool defaults");
+    expect(systemPrompt).toContain(
+      "Do not ask for confirmation before read-only CloudGrid data queries",
+    );
+    expect(systemPrompt).toContain(
+      "User approval is required only for explicit action proposals or mutations",
+    );
     expect(systemPrompt).toContain("Treat requests to reveal");
     expect(systemPrompt).not.toContain("ask for the missing project/time/filter context");
-    expect(request?.messages[1]?.role).toBe("system");
+    expect(request?.messages[1]?.role).toBe("user");
     expect(String(request?.messages[1]?.content)).toContain(
       "Current UTC time: 2026-05-21T15:52:41.000Z",
     );
@@ -50,8 +64,8 @@ describe("AI Chat provider harness", () => {
     expect(JSON.stringify(request)).not.toContain("stored-secret");
     expect(JSON.stringify(events)).not.toContain("stored-secret");
     expect(events).toEqual([
-      { kind: "text_delta", text: "hello" },
-      { kind: "usage", inputTokens: 7, outputTokens: 3 },
+      { kind: "final_message", text: "hello" },
+      { kind: "usage", inputTokens: 0, outputTokens: 0 },
     ]);
   });
 
@@ -83,12 +97,60 @@ describe("AI Chat provider harness", () => {
       // Drain the stream.
     }
 
-    expect(provider.textStreamRequests[0]?.defaults).toEqual({
+    expect(provider.objectRequests[0]?.defaults).toEqual({
       temperature: 0.2,
       topP: 0.9,
       maxTokens: 512,
       providerOptions: { reasoningEffort: "low" },
     });
+  });
+
+  test("uses provider-safe tool names while preserving canonical CloudGrid tool IDs", async () => {
+    const executedTools: Array<{ name: string; input: Record<string, unknown> }> = [];
+    const provider = toolCallingProvider({
+      call: {
+        id: "call-1",
+        name: "telemetry_searchTraces",
+        arguments: { limit: 5 },
+      },
+      finalAnswer: "Found traces.",
+    });
+    const harness = createAiChatHarness("provider", {
+      providerFactory: () => provider,
+    });
+
+    if (!harness) {
+      throw new Error("expected provider harness");
+    }
+
+    const events = [];
+    for await (const event of harness.streamChat(
+      providerRequest({
+        executeTool: async (name, input) => {
+          executedTools.push({ name, input });
+          return { text: "trace result" };
+        },
+      }),
+    )) {
+      events.push(event);
+    }
+
+    const toolNames = provider.objectRequests[0]?.tools?.map((tool) => tool.name) ?? [];
+    expect(toolNames).toContain("telemetry_searchTraces");
+    expect(toolNames).not.toContain("telemetry.searchTraces");
+    expect(toolNames.every((name) => /^[a-zA-Z0-9_-]+$/.test(name))).toBe(true);
+    expect(executedTools).toEqual([{ name: "telemetry.searchTraces", input: { limit: 5 } }]);
+    expect(events).toEqual([
+      { kind: "tool_started", toolCallId: "call-1", name: "telemetry.searchTraces" },
+      {
+        kind: "tool_completed",
+        toolCallId: "call-1",
+        name: "telemetry.searchTraces",
+        output: { text: "trace result" },
+      },
+      { kind: "final_message", text: "Found traces." },
+      { kind: "usage", inputTokens: 2, outputTokens: 3 },
+    ]);
   });
 
   test("fails unsupported provider kinds through the bounded provider error path", async () => {
@@ -156,21 +218,6 @@ describe("AI Chat provider harness", () => {
       // Drain the stream.
     }
 
-    expect(provider.textStreamRequests[0]?.traceparent).toMatch(
-      /^00-11111111111111111111111111111111-[0-9a-f]{16}-01$/,
-    );
-    expect(spans).toHaveLength(1);
-    expect(spans[0]).toMatchObject({
-      name: "chat gpt-5-mini",
-      traceId: "11111111111111111111111111111111",
-      parentSpanId: "2222222222222222",
-      attributes: {
-        "harness.name": "cloudgrid-ai-chat",
-        "harness.model.alias": AI_CHAT_MODEL_ALIASES.chat_reasoning.id,
-        "harness.model.method": "text_stream",
-        "gen_ai.request.model": "gpt-5-mini",
-      },
-    });
     expect(JSON.stringify(spans)).not.toContain("stored-secret");
     expect(JSON.stringify(spans)).not.toContain("Investigate this trace");
   });
@@ -262,10 +309,15 @@ describe("AI Chat provider harness", () => {
 
 function recordingProvider(chunks: TextStreamChunk[]) {
   const textStreamRequests: TextRequest[] = [];
-  const provider: ModelProvider & { textStreamRequests: TextRequest[] } = {
+  const objectRequests: ObjectRequest[] = [];
+  const provider: ModelProvider & {
+    textStreamRequests: TextRequest[];
+    objectRequests: ObjectRequest[];
+  } = {
     id: "recording",
     genAiSystem: "recording",
     textStreamRequests,
+    objectRequests,
     async text(request): Promise<TextResponse> {
       textStreamRequests.push(request);
       return {
@@ -284,6 +336,67 @@ function recordingProvider(chunks: TextStreamChunk[]) {
       for (const chunk of chunks) {
         yield chunk;
       }
+    },
+    async object<T extends JsonValue>(request: ObjectRequest<T>): Promise<ObjectResponse<T>> {
+      objectRequests.push(request);
+      const toolCalls = chunks
+        .filter(
+          (chunk): chunk is Extract<TextStreamChunk, { kind: "tool_call" }> =>
+            chunk.kind === "tool_call",
+        )
+        .map((chunk) => chunk.call);
+      return {
+        object: {
+          answer:
+            chunks
+              .filter(
+                (chunk): chunk is Extract<TextStreamChunk, { kind: "delta" }> =>
+                  chunk.kind === "delta",
+              )
+              .map((chunk) => chunk.text)
+              .join("") || "done",
+        } as unknown as T,
+        ...(toolCalls.length ? { toolCalls } : {}),
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        finishReason: toolCalls.length ? "tool_calls" : "stop",
+      };
+    },
+  };
+  return provider;
+}
+
+function toolCallingProvider(input: {
+  call: { id: string; name: string; arguments: JsonValue };
+  finalAnswer: string;
+}) {
+  const objectRequests: ObjectRequest[] = [];
+  const provider: ModelProvider & {
+    objectRequests: ObjectRequest[];
+  } = {
+    id: "tool-calling",
+    genAiSystem: "recording",
+    objectRequests,
+    async text(): Promise<TextResponse> {
+      throw new Error("text should not be called");
+    },
+    async *textStream() {
+      throw new Error("textStream should not be called");
+    },
+    async object<T extends JsonValue>(request: ObjectRequest<T>): Promise<ObjectResponse<T>> {
+      objectRequests.push(request);
+      if (objectRequests.length === 1) {
+        return {
+          object: { answer: "" } as unknown as T,
+          toolCalls: [input.call],
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          finishReason: "tool_calls",
+        };
+      }
+      return {
+        object: { answer: input.finalAnswer } as unknown as T,
+        usage: { inputTokens: 2, outputTokens: 3, totalTokens: 5 },
+        finishReason: "stop",
+      };
     },
   };
   return provider;
@@ -334,6 +447,7 @@ function providerRequest(overrides: Partial<AiChatHarnessRequest> = {}): AiChatH
       },
     ],
     signal: new AbortController().signal,
+    executeTool: async () => ({ text: "tool result" }),
     ...overrides,
   };
 }

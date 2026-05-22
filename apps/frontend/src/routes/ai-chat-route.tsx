@@ -75,6 +75,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../components/ui/dialog";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "../components/ui/resizable";
 import {
   Sheet,
   SheetContent,
@@ -86,19 +87,19 @@ import {
 import { createAiChatGraphQLClient } from "../features/ai-chat/api";
 import { AiChatArtifactRenderer } from "../features/ai-chat/artifact-renderer";
 import {
-  applyAiChatStreamEvent,
+  type AiChatStreamViewState,
   aiChatActionById,
   aiChatApprovalInput,
   aiChatArtifactById,
   aiChatConversationQueryKey,
   aiChatHistoryQueryKey,
   aiChatProviderQueryKey,
+  applyAiChatStreamEvent,
   createAiChatStreamViewState,
   findAiChatConversation,
   isCompanyAiChatProviderConfigured,
   orderedAiChatProjectGroups,
   safeAiChatArtifactView,
-  type AiChatStreamViewState,
 } from "../features/ai-chat/view-model";
 import { formatDateTime } from "../lib/format";
 import { t } from "../lib/i18n";
@@ -497,6 +498,92 @@ export function AiChatRoute() {
       selectedProjectId={projectId}
     />
   );
+  const chatPanel = (
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      {historyQuery.isLoading || providerQuery.isLoading ? (
+        <AiChatLoadingState />
+      ) : historyQuery.error || conversationQuery.error ? (
+        <ErrorPanel
+          error={historyQuery.error ?? conversationQuery.error}
+          onRetry={() => {
+            void historyQuery.refetch();
+            void conversationQuery.refetch();
+          }}
+        />
+      ) : displayedConversation ? (
+        <ConversationTranscript
+          approvalPending={approveAiChatAction.isPending}
+          conversation={displayedConversation}
+          onRetryFailedMessage={(text) => {
+            if (activeConversation) {
+              void streamPrompt(activeConversation, text);
+            }
+          }}
+          streaming={streaming}
+          onApprove={(proposal, approved) => approveAiChatAction.mutate({ proposal, approved })}
+        />
+      ) : (
+        <ConversationEmptyState
+          className="min-h-0 flex-1"
+          description={t("aiChat.empty.description")}
+          icon={<MessageCircle aria-hidden className="size-6" />}
+          title={t("aiChat.empty.title")}
+        >
+          <div className="grid w-full max-w-lg grid-cols-1 gap-2 text-left sm:grid-cols-3">
+            {[
+              t("aiChat.suggestion.traces"),
+              t("aiChat.suggestion.logs"),
+              t("aiChat.suggestion.metrics"),
+            ].map((suggestion) => (
+              <Button
+                className="h-auto min-h-12 justify-start whitespace-normal rounded-md border bg-background px-3 py-2 text-left text-xs leading-5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                key={suggestion}
+                onClick={() => {
+                  setPrompt(suggestion);
+                  focusPromptInput();
+                }}
+                type="button"
+                variant="ghost"
+              >
+                <MessageCircle aria-hidden className="size-3 shrink-0" />
+                {suggestion}
+              </Button>
+            ))}
+          </div>
+        </ConversationEmptyState>
+      )}
+      <PromptInput className="shrink-0 border-t px-3 py-2" onSubmit={submitPrompt}>
+        <PromptInputBody className="mx-auto w-full max-w-6xl rounded-md border bg-background px-3 py-1 shadow-sm">
+          <PromptInputTextarea
+            aria-label={t("aiChat.prompt")}
+            disabled={!providerConfigured || createConversation.isPending}
+            onChange={(event) => setPrompt(event.target.value)}
+            placeholder={t("aiChat.promptPlaceholder")}
+            ref={promptRef}
+            value={prompt}
+          />
+          <PromptInputFooter className="px-0 pb-1">
+            <PromptInputTools>
+              <p className="text-xs text-muted-foreground">{t("aiChat.prompt.textOnly")}</p>
+            </PromptInputTools>
+            {streaming ? (
+              <Button onClick={() => streamAbort?.abort()} type="button" variant="outline">
+                <X data-icon="inline-start" />
+                {t("actions.cancel")}
+              </Button>
+            ) : (
+              <PromptInputSubmit
+                disabled={!canSubmitPrompt}
+                status={createConversation.isPending ? "submitted" : "ready"}
+              >
+                {t("aiChat.prompt.send")}
+              </PromptInputSubmit>
+            )}
+          </PromptInputFooter>
+        </PromptInputBody>
+      </PromptInput>
+    </div>
+  );
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-background">
@@ -536,135 +623,31 @@ export function AiChatRoute() {
           settings={providerQuery.data}
         />
       ) : (
-        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden bg-background lg:grid-cols-[260px_minmax(0,1fr)]">
-          <aside className="hidden min-h-0 border-r bg-muted/15 lg:flex">{historyRail}</aside>
-          <div className="relative flex min-h-0 flex-col overflow-hidden bg-background">
-            {historyQuery.isLoading || providerQuery.isLoading ? (
-              <AiChatLoadingState />
-            ) : historyQuery.error || conversationQuery.error ? (
-              <ErrorPanel
-                error={historyQuery.error ?? conversationQuery.error}
-                onRetry={() => {
-                  void historyQuery.refetch();
-                  void conversationQuery.refetch();
-                }}
-              />
-            ) : displayedConversation ? (
-              <ConversationTranscript
-                approvalPending={approveAiChatAction.isPending}
-                conversation={displayedConversation}
-                streaming={streaming}
-                onApprove={(proposal, approved) =>
-                  approveAiChatAction.mutate({ proposal, approved })
-                }
-              />
-            ) : (
-              <ConversationEmptyState
-                className="min-h-0 flex-1"
-                description={t("aiChat.empty.description")}
-                icon={<MessageCircle aria-hidden className="size-6" />}
-                title={t("aiChat.empty.title")}
-              >
-                <div className="grid w-full max-w-lg grid-cols-1 gap-2 text-left sm:grid-cols-3">
-                  {[
-                    t("aiChat.suggestion.latency"),
-                    t("aiChat.suggestion.logs"),
-                    t("aiChat.suggestion.dashboard"),
-                  ].map((suggestion) => (
-                    <Button
-                      className="h-auto min-h-12 justify-start whitespace-normal rounded-md border bg-background px-3 py-2 text-left text-xs leading-5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      key={suggestion}
-                      onClick={() => {
-                        setPrompt(suggestion);
-                        focusPromptInput();
-                      }}
-                      type="button"
-                      variant="ghost"
-                    >
-                      <MessageCircle aria-hidden className="size-3 shrink-0" />
-                      {suggestion}
-                    </Button>
-                  ))}
-                </div>
-              </ConversationEmptyState>
-            )}
-            <PromptInput className="shrink-0 border-t px-3 py-2" onSubmit={submitPrompt}>
-              <PromptInputBody className="mx-auto w-full max-w-6xl rounded-md border bg-background px-3 py-1 shadow-sm">
-                <PromptInputTextarea
-                  aria-label={t("aiChat.prompt")}
-                  disabled={!providerConfigured || createConversation.isPending}
-                  onChange={(event) => setPrompt(event.target.value)}
-                  placeholder={t("aiChat.promptPlaceholder")}
-                  ref={promptRef}
-                  value={prompt}
-                />
-                <PromptInputFooter className="px-0 pb-1">
-                  <PromptInputTools>
-                    <p className="text-xs text-muted-foreground">
-                      {streaming ? (
-                        <Shimmer>{t("aiChat.streaming")}</Shimmer>
-                      ) : (
-                        t("aiChat.prompt.textOnly")
-                      )}
-                    </p>
-                  </PromptInputTools>
-                  {streaming ? (
-                    <Button onClick={() => streamAbort?.abort()} type="button" variant="outline">
-                      <X data-icon="inline-start" />
-                      {t("actions.cancel")}
-                    </Button>
-                  ) : (
-                    <PromptInputSubmit
-                      disabled={!canSubmitPrompt}
-                      status={createConversation.isPending ? "submitted" : "ready"}
-                    >
-                      {t("aiChat.prompt.send")}
-                    </PromptInputSubmit>
-                  )}
-                </PromptInputFooter>
-                {createConversation.error ? (
-                  <Alert variant="destructive">
-                    <AlertCircle aria-hidden />
-                    <AlertTitle>{t("aiChat.createError")}</AlertTitle>
-                    <AlertDescription className="flex flex-col gap-3">
-                      <span>{errorMessage(createConversation.error)}</span>
-                      <Button
-                        className="w-fit"
-                        disabled={!canSubmitPrompt}
-                        type="submit"
-                        variant="outline"
-                      >
-                        <Send data-icon="inline-start" />
-                        {t("actions.retry")}
-                      </Button>
-                    </AlertDescription>
-                  </Alert>
-                ) : null}
-                {streamState?.status === "failed" && streamState.error ? (
-                  <Alert variant="destructive">
-                    <AlertCircle aria-hidden />
-                    <AlertTitle>{t("aiChat.runError")}</AlertTitle>
-                    <AlertDescription className="flex flex-col gap-3">
-                      <span>{streamState.error}</span>
-                      {activeConversation ? (
-                        <Button
-                          className="w-fit"
-                          onClick={() =>
-                            void streamPrompt(activeConversation, streamState.userText)
-                          }
-                          type="button"
-                          variant="outline"
-                        >
-                          <Send data-icon="inline-start" />
-                          {t("actions.retry")}
-                        </Button>
-                      ) : null}
-                    </AlertDescription>
-                  </Alert>
-                ) : null}
-              </PromptInputBody>
-            </PromptInput>
-          </div>
+        <div className="min-h-0 flex-1 overflow-hidden bg-background">
+          <div className="flex h-full min-h-0 lg:hidden">{chatPanel}</div>
+          <ResizablePanelGroup
+            className="hidden min-h-0 flex-1 overflow-hidden lg:flex"
+            orientation="horizontal"
+          >
+            <ResizablePanel
+              className="flex h-full min-h-0 min-w-[240px] max-w-[460px] overflow-hidden bg-muted/15"
+              defaultSize="300px"
+              groupResizeBehavior="preserve-pixel-size"
+              id="history"
+              maxSize="460px"
+              minSize="240px"
+            >
+              <aside className="flex h-full min-h-0 border-r bg-muted/15">{historyRail}</aside>
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel
+              className="flex h-full min-h-0 min-w-[520px] overflow-hidden"
+              id="chat"
+              minSize="520px"
+            >
+              {chatPanel}
+            </ResizablePanel>
+          </ResizablePanelGroup>
         </div>
       )}
     </section>
@@ -769,7 +752,7 @@ function ConversationHistoryRail({
   if (!groups.length) {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
-        <HistoryRailHeader count={0} onNewConversation={onNewConversation} />
+        <HistoryRailHeader onNewConversation={onNewConversation} />
         <div className="flex min-h-48 flex-1 items-center justify-center p-4 text-center text-sm text-muted-foreground">
           {t("aiChat.history.empty")}
         </div>
@@ -779,18 +762,11 @@ function ConversationHistoryRail({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <HistoryRailHeader
-        count={groups.reduce((count, group) => count + group.conversations.length, 0)}
-        onNewConversation={onNewConversation}
-      />
+      <HistoryRailHeader onNewConversation={onNewConversation} />
       <nav aria-label={t("aiChat.history")} className="min-h-0 flex-1 overflow-auto p-2">
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
           {groups.map((group) => (
             <section className="flex flex-col gap-1" key={group.projectId}>
-              <div className="flex items-center justify-between px-2">
-                <h2 className="text-xs font-medium text-muted-foreground">{group.projectName}</h2>
-                <span className="text-xs text-muted-foreground">{group.conversations.length}</span>
-              </div>
               <div className="flex flex-col gap-1">
                 {group.conversations.map((conversation) => (
                   <div
@@ -808,18 +784,18 @@ function ConversationHistoryRail({
                       type="button"
                       variant="ghost"
                     >
-                      <span className="flex min-w-0 items-start gap-2">
+                      <span className="flex w-full min-w-0 items-start gap-2">
                         <History aria-hidden className="mt-0.5 size-4 shrink-0" />
-                        <span className="line-clamp-2 text-sm font-medium">
+                        <span className="line-clamp-2 min-w-0 flex-1 whitespace-normal break-words text-sm font-medium leading-5">
                           {conversation.title}
                         </span>
                       </span>
-                      <span className="flex max-w-full items-center gap-2 text-xs text-muted-foreground">
+                      <span className="flex w-full min-w-0 items-center gap-2 text-xs text-muted-foreground">
                         {conversation.projectId !== selectedProjectId ? (
                           <Badge variant="outline">{t("aiChat.history.otherProject")}</Badge>
                         ) : null}
                         <Clock3 aria-hidden className="size-3" />
-                        <span className="truncate">
+                        <span className="min-w-0 flex-1 truncate">
                           {formatDateTime(conversation.lastMessageAt)}
                         </span>
                       </span>
@@ -875,32 +851,24 @@ function ConversationHistoryRail({
   );
 }
 
-function HistoryRailHeader({
-  count,
-  onNewConversation,
-}: {
-  count: number;
-  onNewConversation: () => void;
-}) {
+function HistoryRailHeader({ onNewConversation }: { onNewConversation: () => void }) {
   return (
     <div className="flex h-14 shrink-0 items-center justify-between border-b px-3">
       <div className="flex min-w-0 items-center gap-2">
         <PanelLeft aria-hidden className="size-4 text-muted-foreground" />
         <h2 className="truncate text-sm font-semibold">{t("aiChat.history")}</h2>
       </div>
-      <div className="flex items-center gap-1.5">
-        <Badge variant="outline">{count}</Badge>
-        <Button
-          aria-label={t("aiChat.newConversation")}
-          onClick={onNewConversation}
-          size="icon"
-          title={t("aiChat.newConversation")}
-          type="button"
-          variant="ghost"
-        >
-          <MessageSquarePlus aria-hidden className="size-4" />
-        </Button>
-      </div>
+      <Button
+        aria-label={t("aiChat.newConversation")}
+        className="size-8 shrink-0"
+        onClick={onNewConversation}
+        size="icon"
+        title={t("aiChat.newConversation")}
+        type="button"
+        variant="ghost"
+      >
+        <MessageSquarePlus aria-hidden className="size-4" />
+      </Button>
     </div>
   );
 }
@@ -909,11 +877,13 @@ function ConversationTranscript({
   approvalPending,
   conversation,
   onApprove,
+  onRetryFailedMessage,
   streaming,
 }: {
   approvalPending: boolean;
   conversation: AiChatConversation;
   onApprove: (proposal: AiChatActionProposal, approved: boolean) => void;
+  onRetryFailedMessage: (text: string) => void;
   streaming: boolean;
 }) {
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -961,9 +931,6 @@ function ConversationTranscript({
         ref={contentRef}
       >
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 pt-4 pb-6">
-          <div className="flex justify-end">
-            <ConversationStatusBadges conversation={conversation} streaming={streaming} />
-          </div>
           {conversation.compaction ? (
             <Alert className="bg-background">
               <Archive aria-hidden />
@@ -972,7 +939,7 @@ function ConversationTranscript({
             </Alert>
           ) : null}
           <div className="flex flex-col gap-4">
-            {conversation.messages.map((message) => (
+            {conversation.messages.map((message, messageIndex) => (
               <Message from={message.role} key={message.id}>
                 {message.role !== "user" ? (
                   <MessageAvatar>
@@ -994,6 +961,11 @@ function ConversationTranscript({
                     <span>{formatDateTime(message.createdAt)}</span>
                   </div>
                   <MessageContent className="max-w-full" from={message.role}>
+                    {message.role === "assistant" &&
+                    streaming &&
+                    message.id.startsWith("local-assistant-") ? (
+                      <AssistantLiveStatus parts={message.parts} />
+                    ) : null}
                     {message.parts.map((part, index) => {
                       const key = `${message.id}-${index}`;
                       if (part.type === "text") {
@@ -1006,12 +978,13 @@ function ConversationTranscript({
                         );
                       }
                       if (part.type === "artifact") {
-                        return (
-                          <ArtifactPanel
-                            artifact={aiChatArtifactById(conversation, part.artifactId ?? null)}
-                            key={key}
-                          />
-                        );
+                        const artifact =
+                          aiChatArtifactById(conversation, part.artifactId ?? null) ??
+                          aiChatArtifactFromPart(conversation, part);
+                        if (!artifact) {
+                          return null;
+                        }
+                        return <ArtifactPanel artifact={artifact} key={key} />;
                       }
                       if (part.type === "action_proposal") {
                         return (
@@ -1031,7 +1004,20 @@ function ConversationTranscript({
                         return <ApprovalResultPart key={key} part={part} />;
                       }
                       if (part.type === "error") {
-                        return <ErrorPart key={key} part={part} />;
+                        if (!isCurrentVisibleErrorPart(conversation, messageIndex, index)) {
+                          return null;
+                        }
+                        const retryText = lastUserTextBeforeMessage(
+                          conversation.messages,
+                          messageIndex,
+                        );
+                        return (
+                          <ErrorPart
+                            key={key}
+                            onRetry={retryText ? () => onRetryFailedMessage(retryText) : undefined}
+                            part={part}
+                          />
+                        );
                       }
                       if (part.type === "compaction_summary") {
                         return <CompactionSummaryPart key={key} part={part} />;
@@ -1067,19 +1053,24 @@ function ConversationTranscript({
 
 function AssistantText({ pending, text }: { pending: boolean; text: string }) {
   if (pending && !text.trim()) {
-    return (
-      <div
-        aria-label={t("aiChat.pending")}
-        className="flex items-center gap-2 text-sm text-muted-foreground"
-        role="status"
-      >
-        <LoaderInline />
-        <Shimmer>{t("aiChat.pending")}</Shimmer>
-      </div>
-    );
+    return null;
   }
 
   return <MarkdownResponse className={pending ? "text-muted-foreground" : undefined} text={text} />;
+}
+
+function AssistantLiveStatus({ parts }: { parts: AiChatMessage["parts"] }) {
+  const label = assistantLiveStatusLabel(parts);
+  return (
+    <div
+      aria-label={label}
+      className="flex w-fit max-w-full items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground"
+      role="status"
+    >
+      <LoaderInline />
+      <Shimmer>{label}</Shimmer>
+    </div>
+  );
 }
 
 function LoaderInline() {
@@ -1091,32 +1082,34 @@ function LoaderInline() {
   );
 }
 
-function ConversationStatusBadges({
-  conversation,
-  streaming,
-}: {
-  conversation: AiChatConversation;
-  streaming: boolean;
-}) {
-  const run = conversation.latestRun;
-  return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
-      {conversation.status === "archived" ? (
-        <Badge variant="outline">{t("aiChat.archived")}</Badge>
-      ) : null}
-      {streaming ? <Badge variant="secondary">{t("aiChat.streaming")}</Badge> : null}
-      {run ? <Badge variant="secondary">{run.status}</Badge> : null}
-      {run?.problem ? <Badge variant="destructive">{t("aiChat.runError")}</Badge> : null}
-    </div>
-  );
+function assistantLiveStatusLabel(parts: AiChatMessage["parts"]) {
+  if (parts.some((part) => part.type === "text" && part.text?.trim())) {
+    return t("aiChat.status.answering");
+  }
+  const runningTool = [...parts]
+    .reverse()
+    .find((part) => part.type === "tool_status" && part.status === "running");
+  if (runningTool) {
+    return `${t("aiChat.status.usingTool")} ${
+      runningTool.label ?? runningTool.toolName ?? t("aiChat.tool.label")
+    }`;
+  }
+  const completedTool = [...parts]
+    .reverse()
+    .find((part) => part.type === "tool_status" && part.status === "completed");
+  if (completedTool) {
+    return t("aiChat.status.readingToolResult");
+  }
+  return t("aiChat.status.thinking");
 }
 
 function ToolStatusPart({ part }: { part: AiChatMessage["parts"][number] }) {
   const durationMs = jsonRecord(part.json)?.durationMs;
   const errorCode = jsonRecord(part.json)?.errorCode;
+  const running = part.status === "running";
   return (
     <div className="flex w-fit max-w-full flex-wrap items-center gap-2 rounded-md border bg-background px-3 py-2 text-xs">
-      <Clock3 aria-hidden className="size-3 text-muted-foreground" />
+      {running ? <LoaderInline /> : <Clock3 aria-hidden className="size-3 text-muted-foreground" />}
       <span className="font-medium">{part.label ?? part.toolName ?? t("aiChat.tool.label")}</span>
       {part.toolName ? (
         <code className="rounded bg-muted px-1.5 py-0.5 font-mono">{part.toolName}</code>
@@ -1140,17 +1133,43 @@ function ApprovalResultPart({ part }: { part: AiChatMessage["parts"][number] }) 
   );
 }
 
-function ErrorPart({ part }: { part: AiChatMessage["parts"][number] }) {
+function ErrorPart({
+  onRetry,
+  part,
+}: {
+  onRetry?: (() => void) | undefined;
+  part: AiChatMessage["parts"][number];
+}) {
   const problem = jsonRecord(part.problem);
-  const code = typeof problem?.code === "string" ? problem.code : null;
-  const detail = typeof problem?.detail === "string" ? problem.detail : part.text;
+  const detail = userFacingAiChatErrorDetail(
+    typeof problem?.detail === "string" ? problem.detail : part.text,
+  );
   return (
     <Alert className="bg-background" variant="destructive">
       <AlertCircle aria-hidden />
-      <AlertTitle>{code ?? t("aiChat.runError")}</AlertTitle>
-      {detail ? <AlertDescription>{detail}</AlertDescription> : null}
+      <AlertTitle>{t("aiChat.runError")}</AlertTitle>
+      <AlertDescription className="flex flex-col gap-3">
+        {detail ? <span>{detail}</span> : null}
+        {onRetry ? (
+          <Button className="w-fit" onClick={onRetry} type="button" variant="outline">
+            <Send data-icon="inline-start" />
+            {t("actions.retry")}
+          </Button>
+        ) : null}
+      </AlertDescription>
     </Alert>
   );
+}
+
+function userFacingAiChatErrorDetail(detail: string | null | undefined) {
+  const normalized = detail?.trim() ?? "";
+  if (
+    normalized === "AI provider execution failed" ||
+    normalized === "AI Chat provider execution failed"
+  ) {
+    return "The configured AI provider could not complete this request";
+  }
+  return normalized;
 }
 
 function CompactionSummaryPart({ part }: { part: AiChatMessage["parts"][number] }) {
@@ -1173,7 +1192,7 @@ function UnknownMessagePart({ type }: { type: string }) {
 
 function ArtifactPanel({ artifact }: { artifact: AiChatArtifact | null }) {
   if (!artifact) {
-    return <AlertDescription>{t("aiChat.artifact.missing")}</AlertDescription>;
+    return null;
   }
 
   const view = safeAiChatArtifactView(artifact);
@@ -1202,6 +1221,31 @@ function ArtifactPanel({ artifact }: { artifact: AiChatArtifact | null }) {
       <AiChatArtifactRenderer content={view.content} renderer={view.renderer} />
     </section>
   );
+}
+
+function aiChatArtifactFromPart(
+  conversation: AiChatConversation,
+  part: AiChatMessage["parts"][number],
+): AiChatArtifact | null {
+  const artifactId = part.artifactId?.trim();
+  const renderer = part.renderer?.trim();
+  const json = jsonRecord(part.json);
+  const renderSpec = jsonRecord(json?.renderSpec) ?? json;
+  if (!artifactId || !renderer || !renderSpec) {
+    return null;
+  }
+  return {
+    id: artifactId,
+    conversationId: conversation.id,
+    runId: conversation.latestRun?.id ?? "",
+    kind: "json_render",
+    label: part.label?.trim() || renderer,
+    mediaType: "application/json",
+    sizeBytes: 0,
+    renderSpec,
+    fileRef: null,
+    createdAt: conversation.updatedAt,
+  };
 }
 
 function ActionProposalPanel({
@@ -1357,12 +1401,20 @@ function conversationWithLocalStream(
     const parts =
       streamState.assistantParts.length > 0
         ? streamState.assistantParts
-        : [
-            {
-              type: "text" as const,
-              text: streamState.error ?? t("aiChat.streaming"),
-            },
-          ];
+        : streamState.error
+          ? [
+              {
+                type: "error" as const,
+                text: streamState.error,
+                problem: { detail: streamState.error },
+              },
+            ]
+          : [
+              {
+                type: "text" as const,
+                text: "",
+              },
+            ];
     messages.push({
       id: `local-assistant-${streamState.conversationId}`,
       conversationId: conversation.id,
@@ -1418,6 +1470,36 @@ function assistantMessageMatches(message: AiChatMessage, text: string): boolean 
     message.role === "assistant" &&
     normalizeMessageText(messageText(message)) === normalizeMessageText(text)
   );
+}
+
+function isCurrentVisibleErrorPart(
+  conversation: AiChatConversation,
+  messageIndex: number,
+  partIndex: number,
+) {
+  if (messageIndex !== conversation.messages.length - 1) {
+    return false;
+  }
+  const message = conversation.messages[messageIndex];
+  if (!message || message.role !== "assistant") {
+    return false;
+  }
+  const latestErrorIndex = message.parts.findLastIndex((part) => part.type === "error");
+  return latestErrorIndex === partIndex;
+}
+
+function lastUserTextBeforeMessage(messages: AiChatMessage[], messageIndex: number) {
+  for (let index = messageIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role !== "user") {
+      continue;
+    }
+    const text = messageText(message).trim();
+    if (text) {
+      return text;
+    }
+  }
+  return null;
 }
 
 function upsertConversationInHistory(
@@ -1532,10 +1614,6 @@ function stringifyJsonValue(value: unknown) {
   if (typeof value === "string") return value;
   if (value === null || value === undefined) return "";
   return JSON.stringify(value);
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : t("errors.generic");
 }
 
 function copyMessageText(message: AiChatMessage) {

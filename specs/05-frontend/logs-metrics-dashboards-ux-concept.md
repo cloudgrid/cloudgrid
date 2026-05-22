@@ -35,6 +35,11 @@ All routes use the global CloudGrid shell, selected project context, flat shadcn
 - Drawers are for detail/editor flows. Modals are only for confirmation, warning, information, or error acknowledgement.
 - Copy, save, create, update, delete, pin/unpin, and toggle actions must show success and failure feedback. Mutation failures show GraphQL problem details or field validation near the action surface; clipboard and low-risk utility actions may use compact toast/status feedback.
 - Server-backed list sorting belongs to GraphQL/backend contracts. Local component sorting is allowed only for bounded detail tables and already-loaded inspector sublists, never for route-primary server-backed lists.
+- Route-primary search, filtering, pagination, and table/list sorting for
+  `/logs`, `/traces`, and `/metrics` must update GraphQL input variables and
+  refetch backend-owned results. Frontend code may use local search only inside
+  already-loaded detail or inspector content, such as selected log attributes
+  or metric descriptor attribute-key inspection.
 - URL state preserves filters, selected records, selected metric, selected dashboard, time range, active inspector, and selected widget where specified.
 
 ## `/logs` Log Search Workspace
@@ -91,12 +96,15 @@ Advanced filters:
 
 Behavior:
 
-- Filters map directly to `LogSearchInput`.
+- Filters map directly to `LogSearchInput`, including multi-service selections through the `services` filter when more than one service is selected.
 - Active filters render as removable chips below the filter bar.
-- Manual entry remains available even when facets are unavailable.
+- Service selection uses bounded backend facet suggestions with removable chips, and manual entry remains available even when facets are unavailable. `/logs` requests `Query.telemetryFacets` with `signal: logs`; `/metrics` requests it with `signal: metrics`, so service suggestions are not mixed across telemetry signals.
 - Filter chips update URL state and refetch `Query.logs`.
 - Search input submits after debounce and on Enter; Enter must not open the selected row unless focus is on a row.
 - Filter suggestions are suggestions only. They do not replace typed filters or create a separate navigation rail.
+- Search, filters, cursor pagination, and sortable log columns are always
+  backend-driven through `Query.logs` and `LogSearchInput`. The log table must
+  not filter or reorder the loaded page in React for route-primary behavior.
 
 ### Log Table
 
@@ -222,8 +230,11 @@ Behavior:
 - selection loads descriptor into the inspector and prepares a default query;
 - list search updates `MetricNameSearchInput.query`;
 - service and time controls map to `MetricNameSearchInput` fields;
+- descriptor sorting maps to `MetricNameSearchInput.sort`;
 - the list incrementally loads backend cursor pages as the user scrolls;
 - the frontend must not filter or page metric descriptors over an already-fetched client subset;
+- the frontend must not sort metric descriptors locally for route-primary
+  list ordering;
 - the list remains readable with hundreds of metrics through virtualization.
 
 ### Metric Query Surface
@@ -243,6 +254,8 @@ Rules:
 
 - query execution uses `Query.metricSeries`;
 - controls map directly to `MetricSeriesInput`;
+- result ordering maps to `MetricSeriesInput.sort` and is applied by
+  storage-read;
 - frontend must not invent calculated fields or derived aggregations;
 - invalid backend combinations render GraphQL validation errors inline;
 - query warnings stay visible in the result header and inspector;
@@ -363,7 +376,7 @@ The global project sidebar may expose dashboard shortcuts because saved dashboar
 
 Rules:
 
-- pinned dashboards appear as a `Pinned dashboards` group at the top of the project sidebar, above the primary project navigation;
+- pinned dashboards appear as a `Pinned dashboards` group below `AI Chat` when present and above the primary telemetry navigation;
 - show at most five pinned dashboards in the sidebar; additional pinned dashboards remain available in `/dashboards`;
 - pinned entries open `/dashboards?dashboard=<dashboardId>` with the selected dashboard ID in URL state;
 - the primary `Dashboards` navigation entry is collapsible and may reveal custom dashboards the current user can access;

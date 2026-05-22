@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-021",
+  "title": "DatasetItemShapePayloads",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/$defs/singleTurn" },
+    { "$ref": "#/$defs/conversation" },
+    { "$ref": "#/$defs/toolCall" },
+    { "$ref": "#/$defs/agentTrajectory" },
+    { "$ref": "#/$defs/workflowTrace" },
+    { "$ref": "#/$defs/retrievalCase" },
+    { "$ref": "#/$defs/productionTraceRef" }
+  ],
+  "$defs": {
+    "message": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "content"],
+      "properties": {
+        "role": { "type": "string", "enum": ["system", "user", "assistant", "tool"] },
+        "content": { "type": "string", "maxLength": 20000 },
+        "toolName": { "type": "string" },
+        "toolCallId": { "type": "string" }
+      }
+    },
+    "expectedFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "text", "importance"],
+      "properties": {
+        "id": { "type": "string" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "importance": { "type": "string", "enum": ["primary", "secondary"] }
+      }
+    },
+    "expectedToolCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolName", "match"],
+      "properties": {
+        "toolName": { "type": "string", "minLength": 1 },
+        "arguments": { "type": "object", "additionalProperties": true },
+        "match": { "type": "string", "enum": ["required", "forbidden", "optional"] },
+        "order": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "expectedStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "match"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["agent", "tool", "retrieval", "handoff", "final"] },
+        "name": { "type": "string" },
+        "match": { "type": "string", "enum": ["required", "forbidden", "optional"] },
+        "order": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "singleTurn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape", "input"],
+      "properties": {
+        "shape": { "type": "string", "const": "single_turn" },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["prompt"],
+          "properties": {
+            "prompt": { "type": "string", "minLength": 1, "maxLength": 50000 },
+            "variables": { "type": "object", "additionalProperties": true }
+          }
+        },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "answer": { "type": "string", "maxLength": 50000 },
+            "json": {},
+            "facts": { "type": "array", "items": { "$ref": "#/$defs/expectedFact" } }
+          }
+        }
+      }
+    },
+    "conversation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape", "input"],
+      "properties": {
+        "shape": { "type": "string", "const": "conversation" },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["messages"],
+          "properties": {
+            "messages": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 100,
+              "items": { "$ref": "#/$defs/message" }
+            }
+          }
+        },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "answer": { "type": "string", "maxLength": 50000 },
+            "facts": { "type": "array", "items": { "$ref": "#/$defs/expectedFact" } }
+          }
+        }
+      }
+    },
+    "toolCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape", "input", "expected"],
+      "properties": {
+        "shape": { "type": "string", "const": "tool_call" },
+        "input": { "$ref": "#/$defs/conversation/properties/input" },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["toolCalls"],
+          "properties": {
+            "toolCalls": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/expectedToolCall" }
+            },
+            "finalAnswer": { "type": "string", "maxLength": 50000 }
+          }
+        }
+      }
+    },
+    "agentTrajectory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape", "input", "expected"],
+      "properties": {
+        "shape": { "type": "string", "const": "agent_trajectory" },
+        "input": { "$ref": "#/$defs/conversation/properties/input" },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["steps"],
+          "properties": {
+            "steps": { "type": "array", "items": { "$ref": "#/$defs/expectedStep" } },
+            "maxToolCalls": { "type": "integer", "minimum": 0 },
+            "maxAgentLoops": { "type": "integer", "minimum": 0 },
+            "finalAnswer": { "type": "string", "maxLength": 50000 }
+          }
+        }
+      }
+    },
+    "workflowTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape", "input", "expected"],
+      "properties": {
+        "shape": { "type": "string", "const": "workflow_trace" },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["workflowRef", "request"],
+          "properties": {
+            "workflowRef": { "type": "string", "minLength": 1 },
+            "request": { "type": "object", "additionalProperties": true }
+          }
+        },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "steps": { "type": "array", "items": { "$ref": "#/$defs/expectedStep" } },
+            "output": {},
+            "status": { "type": "string", "enum": ["passed", "failed"] }
+          }
+        }
+      }
+    },
+    "retrievalCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape", "input", "expected"],
+      "properties": {
+        "shape": { "type": "string", "const": "retrieval_case" },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["query"],
+          "properties": {
+            "query": { "type": "string", "minLength": 1, "maxLength": 20000 },
+            "contextRefs": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "answer": { "type": "string", "maxLength": 50000 },
+            "facts": { "type": "array", "items": { "$ref": "#/$defs/expectedFact" } },
+            "requiredDocumentRefs": { "type": "array", "items": { "type": "string" } },
+            "forbiddenDocumentRefs": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "productionTraceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["shape", "input"],
+      "properties": {
+        "shape": { "type": "string", "const": "production_trace_ref" },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["traceId"],
+          "properties": {
+            "traceId": { "type": "string", "minLength": 1 },
+            "spanId": { "type": "string" },
+            "agentRunId": { "type": "string" }
+          }
+        },
+        "expected": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

@@ -60,8 +60,9 @@ Reference URLs:
 - `/organizations/:organizationId/ai-provider`: company admin settings route
   for the one provider used by AI Chat.
 
-The project sidebar order becomes `Traces`, `Logs`, `Metrics`, `Dashboards`,
-`AI Chat`, and `AI Eval` when both AI features are enabled. AI Chat is hidden
+The project sidebar order becomes `AI Chat`, pinned dashboard shortcuts when
+present, `Traces`, `Logs`, `Metrics`, `Dashboards`, and `Evaluations` when both
+AI features are enabled. AI Chat is hidden
 when `CLOUDGRID_AI_CHAT_ENABLED=false`, when the company provider is not
 configured and the viewer is not a company admin, or when the user lacks access
 to the selected project.

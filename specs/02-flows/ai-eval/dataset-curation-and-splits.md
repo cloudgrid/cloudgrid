@@ -53,6 +53,7 @@ unvalidated raw split expression.
    - promoting a trace/span;
    - resolving an annotation item;
    - manual entry;
+   - committing reviewed dataset candidates;
   - importing a batch through `Mutation.appendDatasetItems` with
     `expectedDatasetVersion` and explicit item payloads;
    - importing JSONL, JSON array, CSV, or ZIP uploads through
@@ -61,9 +62,15 @@ unvalidated raw split expression.
    version according to the dataset versioning contract.
 5. Storage-read computes dataset health: split counts, reviewed counts,
    duplicate candidates, source trace coverage, leakage warnings, missing
-   expected values, and schema validation status.
-6. User reviews items, edits expected output, assigns split, and marks reviewed.
-7. Dataset becomes selectable for experiments when it has at least one reviewed
+   expected values, schema validation status, oversized/token-limit items,
+   invalid target shapes, flaky item markers, anonymization coverage, and
+   production-segment coverage gaps.
+6. User searches, filters, sorts, pages, or infinite-scrolls dataset items
+   through storage-read cursors. The frontend must not load all items to compute
+   counts, facets, duplicates, leakage, or health.
+7. User reviews items, edits expected output, edits metadata, removes items,
+   assigns split, marks reviewed, or marks items rejected.
+8. Dataset becomes selectable for experiments when it has at least one reviewed
    item in a permitted split.
 
 ## Small-Dataset Mode
@@ -88,6 +95,15 @@ ready.
   optimization manifests that include `holdout`.
 - Duplicate item: storage-read reports duplicate candidates; duplicate is a
   warning, not an automatic rejection.
+- Oversized item: storage-read or runner marks token-limit failures as
+  `needs_review` or `quarantined`; the item is excluded from future runs when
+  policy requires quarantine.
+- Invalid item shape: storage-read marks schema or target-shape issues and the
+  runner skips the item before harness execution.
+- Repeated technical item failure: item is marked flaky or quarantined and does
+  not count as a model-quality regression.
+- Realistic anonymization failure: candidate commit fails with `ERR-001` unless
+  policy permits fallback to redaction.
 - Import mapping error: import preview records row-level issues and commit
   rejects invalid rows according to `FLW-AIE-005`.
 - Stale dataset version: mutation fails with `ERR-001`.
@@ -117,3 +133,10 @@ Required tests:
 - small-dataset mode marks confidence low;
 - stale version update fails;
 - duplicate detection returns warning data from storage-read, not frontend code.
+- manual add/edit/remove creates a new dataset version and preserves historical
+  manifests;
+- dataset item search uses cursor pagination and storage-read facets;
+- oversized, invalid, and repeatedly failing items are separated from
+  model-quality failures;
+- realistic anonymization records policy provenance and never stores original
+  sensitive values in dataset items.

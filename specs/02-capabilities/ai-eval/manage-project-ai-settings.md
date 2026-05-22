@@ -33,9 +33,10 @@ the dedicated Project AI Providers settings page.
   Project AI Providers.
 - Project admins configure budget, sampling, concurrency, and dataset split
   defaults.
-- Project admins configure online policies, but v1 policies are disabled by
-  default, must target at least one explicit production segment, and may
-  reference deterministic scorers only.
+- Project admins configure production measurement policies, but policies are
+  disabled by default, must target at least one explicit production segment, and
+  may reference only scorers whose declared content, provider, budget, latency,
+  and production-safety requirements are satisfied by the policy.
 - Project admins may configure manual annotation defaults for online policies.
   These defaults do not create annotation queue items automatically; they are
   used only when a user explicitly triggers annotation item creation after
@@ -49,12 +50,13 @@ the dedicated Project AI Providers settings page.
 
 ## Acceptance Criteria
 
-- Given no provider profile, deterministic-only local evaluation can still be
-  enabled when the project budget permits deterministic execution.
+- Given no provider profile, no-provider local evaluation can still be enabled
+  when selected scorer capabilities do not require a model/provider call.
 - Given an LLM judge scorer without a judge profile, experiment creation or run
   start fails with a validation error before harness execution.
-- Given an enabled online policy references a non-deterministic scorer, the
-  settings update fails with `ERR-001`.
+- Given an enabled production measurement policy references a scorer whose
+  requirements are not allowed by policy or project settings, the settings
+  update fails with `ERR-001`.
 - Given an enabled online policy has an empty target, unsupported target key, or
   secret-looking attribute selector, the settings update fails with `ERR-001`.
 - Given a raw API key-like field in settings input, control-plane rejects the

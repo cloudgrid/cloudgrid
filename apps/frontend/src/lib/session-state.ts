@@ -156,7 +156,7 @@ export function resolveAppShellMode({
 }): AppShellMode {
   if (
     pathname === "/organizations" ||
-    /^\/organizations\/[^/]+(?:\/projects|\/members)?\/?$/.test(pathname)
+    /^\/organizations\/[^/]+(?:\/projects|\/members|\/ai-provider)?\/?$/.test(pathname)
   ) {
     return "admin-settings";
   }

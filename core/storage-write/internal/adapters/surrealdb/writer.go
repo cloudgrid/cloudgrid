@@ -191,9 +191,13 @@ func BuildPersistQuery(command contracts.PersistTelemetryCommand, subject string
 	spanCountByTrace := map[string]int{}
 	errorSpanCountByTrace := map[string]int{}
 	serviceNamesByTrace := map[string]map[string]struct{}{}
+	spanNamesByTrace := map[string][]string{}
+	spanAttributesByTrace := map[string][]contracts.Attributes{}
 	operationNameByTrace := map[string]string{}
 	for _, span := range command.Spans {
 		spanCountByTrace[span.TraceID]++
+		spanNamesByTrace[span.TraceID] = append(spanNamesByTrace[span.TraceID], span.Name)
+		spanAttributesByTrace[span.TraceID] = append(spanAttributesByTrace[span.TraceID], span.Attributes)
 		if spanHasErrorStatus(span) {
 			errorSpanCountByTrace[span.TraceID]++
 		}
@@ -225,7 +229,7 @@ func BuildPersistQuery(command contracts.PersistTelemetryCommand, subject string
 		}
 		key := fmt.Sprintf("trace%d", i)
 		vars[key+"_id"] = trace.ID
-		vars[key+"_record"] = traceRecord(trace, operationNameByTrace[trace.ID], spanCountByTrace[trace.ID], errorSpanCountByTrace[trace.ID], logCountByTrace[trace.ID], len(serviceNamesByTrace[trace.ID]), target)
+		vars[key+"_record"] = traceRecord(trace, operationNameByTrace[trace.ID], spanNamesByTrace[trace.ID], spanAttributesByTrace[trace.ID], spanCountByTrace[trace.ID], errorSpanCountByTrace[trace.ID], logCountByTrace[trace.ID], len(serviceNamesByTrace[trace.ID]), target)
 		builder.WriteString(fmt.Sprintf("UPSERT type::record('trace', $%s_id) CONTENT $%s_record;\n", key, key))
 		if trace.ServiceName != nil {
 			mergeService(serviceRecords, *trace.ServiceName, trace.StartedAt, trace.Attributes)
@@ -886,6 +890,13 @@ func metricDescriptorRecord(descriptor contracts.MetricDescriptor, target Teleme
 		"lastSeenAt":    descriptor.LastSeenAt.UTC(),
 	}
 	putStringPtr(record, "description", descriptor.Description)
+	record["searchText"] = searchText(
+		descriptor.Name,
+		descriptor.Unit,
+		string(descriptor.Kind),
+		descriptor.Description,
+		descriptor.AttributeKeys,
+	)
 	if descriptor.AggregationTemporality != nil {
 		record["aggregationTemporality"] = string(*descriptor.AggregationTemporality)
 	}
@@ -988,7 +999,7 @@ type serviceRecord struct {
 	Attributes  contracts.Attributes
 }
 
-func traceRecord(trace contracts.Trace, operationName string, spanCount int, errorSpanCount int, logCount int, serviceCount int, target TelemetryTarget) map[string]any {
+func traceRecord(trace contracts.Trace, operationName string, spanNames []string, spanAttributes []contracts.Attributes, spanCount int, errorSpanCount int, logCount int, serviceCount int, target TelemetryTarget) map[string]any {
 	record := map[string]any{
 		"traceId":           trace.ID,
 		"startedAt":         trace.StartedAt.UTC(),
@@ -998,6 +1009,7 @@ func traceRecord(trace contracts.Trace, operationName string, spanCount int, err
 		"errorSpanCount":    errorSpanCount,
 		"logCount":          logCount,
 		"serviceCount":      serviceCount,
+		"searchText":        traceSearchText(trace, operationName, spanNames, spanAttributes),
 	}
 	putStringPtr(record, "serviceName", trace.ServiceName)
 	if strings.TrimSpace(operationName) != "" {
@@ -1049,6 +1061,7 @@ func logRecord(log contracts.LogEvent, target TelemetryTarget) map[string]any {
 		"body":       log.Body,
 		"timestamp":  log.Timestamp.UTC(),
 		"attributes": nonNilAttributes(log.Attributes),
+		"searchText": logSearchText(log),
 	}
 	putStringPtr(record, "traceId", log.TraceID)
 	putStringPtr(record, "spanId", log.SpanID)
@@ -1063,6 +1076,87 @@ func logRecord(log contracts.LogEvent, target TelemetryTarget) map[string]any {
 	putTimePtr(record, "observedTimestamp", log.ObservedTimestamp)
 	addOwnership(record, target)
 	return record
+}
+
+func traceSearchText(trace contracts.Trace, operationName string, spanNames []string, spanAttributes []contracts.Attributes) string {
+	parts := []any{trace.ID, trace.ServiceName, operationName, trace.RootSpanID, trace.Status, trace.Attributes}
+	for _, spanName := range spanNames {
+		parts = append(parts, spanName)
+	}
+	for _, attributes := range spanAttributes {
+		parts = append(parts, attributes)
+	}
+	return searchText(parts...)
+}
+
+func logSearchText(log contracts.LogEvent) string {
+	return searchText(log.ID, log.TraceID, log.SpanID, log.ServiceName, log.SeverityText, log.Body, log.Attributes)
+}
+
+func searchText(parts ...any) string {
+	terms := make([]string, 0, len(parts))
+	for _, part := range parts {
+		appendSearchTerms(&terms, part)
+	}
+	return strings.Join(uniqueNonBlankStrings(terms), " ")
+}
+
+func appendSearchTerms(terms *[]string, value any) {
+	switch typed := value.(type) {
+	case nil:
+		return
+	case string:
+		*terms = append(*terms, typed)
+	case *string:
+		if typed != nil {
+			*terms = append(*terms, *typed)
+		}
+	case fmt.Stringer:
+		*terms = append(*terms, typed.String())
+	case []string:
+		*terms = append(*terms, typed...)
+	case contracts.Attributes:
+		appendAttributesSearchTerms(terms, map[string]any(typed))
+	case map[string]any:
+		appendAttributesSearchTerms(terms, typed)
+	case contracts.TraceStatus:
+		*terms = append(*terms, string(typed))
+	case *contracts.TraceStatus:
+		if typed != nil {
+			*terms = append(*terms, string(*typed))
+		}
+	default:
+		*terms = append(*terms, fmt.Sprint(typed))
+	}
+}
+
+func appendAttributesSearchTerms(terms *[]string, attributes map[string]any) {
+	keys := make([]string, 0, len(attributes))
+	for key := range attributes {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		*terms = append(*terms, key)
+		appendSearchTerms(terms, attributes[key])
+	}
+}
+
+func uniqueNonBlankStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
 }
 
 func spanEvents(events []contracts.SpanEvent) []map[string]any {

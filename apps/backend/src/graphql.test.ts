@@ -4,6 +4,7 @@ import type {
   LiveTraceEvent,
   LiveTraceInput,
   LogSearchInput,
+  MetricNameSearchInput,
   RichMetricSeriesInput,
   TelemetryFacetInput,
   TelemetryFacetResult,
@@ -41,7 +42,7 @@ describe("BFF GraphQL telemetry resolvers", () => {
           nextCursor: null,
         }),
       }),
-      { graphqlUI: false },
+      {},
     );
 
     const response = await app.request("/graphql", {
@@ -70,7 +71,7 @@ describe("BFF GraphQL telemetry resolvers", () => {
           return { items: [], nextCursor: null };
         },
       }),
-      { graphqlUI: false, graphqlMaxDepth: 2 },
+      { graphqlMaxDepth: 2 },
     );
 
     const response = await app.request("/graphql", {
@@ -101,7 +102,7 @@ describe("BFF GraphQL telemetry resolvers", () => {
           return { items: [], nextCursor: null };
         },
       }),
-      { graphqlUI: false, graphqlMaxComplexity: 3 },
+      { graphqlMaxComplexity: 3 },
     );
 
     const response = await app.request("/graphql", {
@@ -124,7 +125,6 @@ describe("BFF GraphQL telemetry resolvers", () => {
 
   test("uses GraphQL response media type when strict mode is configured", async () => {
     const { app } = createAppWithBridge(bridge(), {
-      graphqlUI: false,
       graphqlResponseMediaType: "graphql-response-json",
     });
 
@@ -152,7 +152,7 @@ describe("BFF GraphQL telemetry resolvers", () => {
           return traceDetail();
         },
       }),
-      { graphqlUI: false },
+      {},
     );
 
     const response = await app.request("/graphql", {
@@ -221,7 +221,7 @@ describe("BFF GraphQL telemetry resolvers", () => {
           };
         },
       }),
-      { graphqlUI: false },
+      {},
     );
 
     const response = await app.request("/graphql", {
@@ -265,7 +265,7 @@ describe("BFF GraphQL telemetry resolvers", () => {
   });
 
   test("maps invalid telemetry facet input to validation problem details", async () => {
-    const { app } = createAppWithBridge(bridge(), { graphqlUI: false });
+    const { app } = createAppWithBridge(bridge(), {});
 
     const response = await app.request("/graphql", {
       method: "POST",
@@ -382,7 +382,7 @@ describe("BFF GraphQL telemetry resolvers", () => {
           return metricSeriesResult();
         },
       } as Partial<TelemetryQueryBridge>),
-      { graphqlUI: false },
+      {},
     );
 
     const response = await app.request("/graphql", {
@@ -428,12 +428,84 @@ describe("BFF GraphQL telemetry resolvers", () => {
       aggregation: "sum",
       groupBy: ["gen_ai.system", "gen_ai.request.model"],
       filters: [{ key: "service.name", operator: "eq", value: "api" }],
+      sort: "timestamp_asc",
       limit: 500,
     });
   });
 
+  test("passes metric name search sort through to storage-read bridge", async () => {
+    let receivedInput: MetricNameSearchInput | undefined;
+    const { app } = createAppWithBridge(
+      bridge({
+        metricNames: async (input: MetricNameSearchInput) => {
+          receivedInput = input;
+          return {
+            items: [
+              {
+                id: "metric:gen_ai.client.token.usage",
+                tenantId: "tenant-1",
+                projectId: "project-1",
+                name: "gen_ai.client.token.usage",
+                description: null,
+                unit: "1",
+                kind: "sum",
+                aggregationTemporality: "delta",
+                monotonic: true,
+                attributeKeys: ["service.name"],
+                firstSeenAt: "2026-05-14T08:00:00.000Z",
+                lastSeenAt: "2026-05-14T09:00:00.000Z",
+              },
+            ],
+            nextCursor: "next",
+          };
+        },
+      }),
+      {},
+    );
+
+    const response = await app.request("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: `
+          query MetricNames($input: MetricNameSearchInput!) {
+            metricNames(input: $input) {
+              items { name kind lastSeenAt }
+              nextCursor
+            }
+          }
+        `,
+        variables: {
+          input: {
+            query: "token",
+            service: "api",
+            from: "2026-05-14T08:00:00.000Z",
+            to: "2026-05-14T09:00:00.000Z",
+            sort: "name_desc",
+            cursor: "cursor-1",
+            limit: 25,
+          },
+        },
+      }),
+    });
+
+    const body = await response.json();
+
+    expect(body.errors).toBeUndefined();
+    expect(body.data.metricNames.nextCursor).toBe("next");
+    expect(receivedInput).toEqual({
+      query: "token",
+      service: "api",
+      from: "2026-05-14T08:00:00.000Z",
+      to: "2026-05-14T09:00:00.000Z",
+      sort: "name_desc",
+      cursor: "cursor-1",
+      limit: 25,
+    });
+  });
+
   test("maps invalid metric series input to validation problem details", async () => {
-    const { app } = createAppWithBridge(bridge(), { graphqlUI: false });
+    const { app } = createAppWithBridge(bridge(), {});
 
     const response = await app.request("/graphql", {
       method: "POST",
@@ -477,7 +549,7 @@ describe("BFF GraphQL telemetry resolvers", () => {
           return richMetricSeriesResult();
         },
       }),
-      { graphqlUI: false },
+      {},
     );
 
     const input: RichMetricSeriesInput = {
@@ -609,7 +681,7 @@ describe("BFF GraphQL telemetry resolvers", () => {
   });
 
   test("maps invalid rich metric formula references to validation problem details", async () => {
-    const { app } = createAppWithBridge(bridge(), { graphqlUI: false });
+    const { app } = createAppWithBridge(bridge(), {});
 
     const response = await app.request("/graphql", {
       method: "POST",
@@ -762,7 +834,7 @@ describe("BFF GraphQL telemetry resolvers", () => {
         };
       },
     };
-    const { app } = createAppWithBridge(controlBridge, { graphqlUI: false });
+    const { app } = createAppWithBridge(controlBridge, {});
 
     const listResponse = await app.request("/graphql", {
       method: "POST",
@@ -968,7 +1040,7 @@ describe("BFF GraphQL telemetry resolvers", () => {
         throw new Error("unused");
       },
     };
-    const { app } = createAppWithBridge(controlBridge, { graphqlUI: false });
+    const { app } = createAppWithBridge(controlBridge, {});
 
     const listResponse = await app.request("/graphql", {
       method: "POST",

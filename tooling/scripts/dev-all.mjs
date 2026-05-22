@@ -14,38 +14,7 @@ export async function main() {
   const otlpHTTPPort = portFromHostPort(env.CLOUDGRID_OTLP_HTTP_ADDR || "0.0.0.0:4318");
   const aiEvalEnabled = env.CLOUDGRID_AI_EVAL_ENABLED !== "false";
   const aiEvalHarnessURL = env.CLOUDGRID_AI_EVAL_HARNESS_URL || "http://127.0.0.1:8090";
-  const aiEvalHarnessPort = new URL(aiEvalHarnessURL).port || "8090";
-
-  const requiredPorts = [
-    ["backend", env.CLOUDGRID_BFF_PORT || "3000", "CLOUDGRID_BFF_PORT"],
-    ["frontend", frontendPort, "CLOUDGRID_FRONTEND_DEV_PORT"],
-    ["otlp-collector", otlpHTTPPort, "CLOUDGRID_OTLP_HTTP_ADDR"],
-    [
-      "storage-read health",
-      env.CLOUDGRID_STORAGE_READ_HEALTH_PORT || "8081",
-      "CLOUDGRID_STORAGE_READ_HEALTH_PORT",
-    ],
-    [
-      "storage-write health",
-      env.CLOUDGRID_STORAGE_WRITE_HEALTH_PORT || "8082",
-      "CLOUDGRID_STORAGE_WRITE_HEALTH_PORT",
-    ],
-    [
-      "control-plane health",
-      env.CLOUDGRID_CONTROL_PLANE_HEALTH_PORT || "8084",
-      "CLOUDGRID_CONTROL_PLANE_HEALTH_PORT",
-    ],
-    ...(aiEvalEnabled
-      ? [
-          [
-            "ai-eval-runner health",
-            env.CLOUDGRID_AI_EVAL_RUNNER_HEALTH_PORT || "8085",
-            "CLOUDGRID_AI_EVAL_RUNNER_HEALTH_PORT",
-          ],
-          ["ai-eval harness", aiEvalHarnessPort, "CLOUDGRID_AI_EVAL_HARNESS_URL"],
-        ]
-      : []),
-  ];
+  const requiredPorts = devStackPorts(env);
 
   console.log("CloudGrid dev stack starting. Run Docker infra first with:");
   console.log("  docker compose --env-file .env up -d nats surrealdb");
@@ -135,6 +104,52 @@ export async function main() {
   process.on("SIGTERM", () => stopAll(0));
 
   await Promise.all(processes.map(([, proc]) => proc.exited));
+}
+
+export function devStackPorts(env) {
+  const aiEvalEnabled = env.CLOUDGRID_AI_EVAL_ENABLED !== "false";
+  const aiEvalHarnessURL = env.CLOUDGRID_AI_EVAL_HARNESS_URL || "http://127.0.0.1:8090";
+  const aiEvalHarnessPort = new URL(aiEvalHarnessURL).port || "8090";
+
+  return [
+    ["backend", env.CLOUDGRID_BFF_PORT || "3000", "CLOUDGRID_BFF_PORT"],
+    ["frontend", env.CLOUDGRID_FRONTEND_DEV_PORT || "5173", "CLOUDGRID_FRONTEND_DEV_PORT"],
+    [
+      "otlp-collector",
+      portFromHostPort(env.CLOUDGRID_OTLP_HTTP_ADDR || "0.0.0.0:4318"),
+      "CLOUDGRID_OTLP_HTTP_ADDR",
+    ],
+    [
+      "otlp-collector grpc",
+      portFromHostPort(env.CLOUDGRID_OTLP_GRPC_ADDR || "0.0.0.0:4317"),
+      "CLOUDGRID_OTLP_GRPC_ADDR",
+    ],
+    [
+      "storage-read health",
+      env.CLOUDGRID_STORAGE_READ_HEALTH_PORT || "8081",
+      "CLOUDGRID_STORAGE_READ_HEALTH_PORT",
+    ],
+    [
+      "storage-write health",
+      env.CLOUDGRID_STORAGE_WRITE_HEALTH_PORT || "8082",
+      "CLOUDGRID_STORAGE_WRITE_HEALTH_PORT",
+    ],
+    [
+      "control-plane health",
+      env.CLOUDGRID_CONTROL_PLANE_HEALTH_PORT || "8084",
+      "CLOUDGRID_CONTROL_PLANE_HEALTH_PORT",
+    ],
+    ...(aiEvalEnabled
+      ? [
+          [
+            "ai-eval-runner health",
+            env.CLOUDGRID_AI_EVAL_RUNNER_HEALTH_PORT || "8085",
+            "CLOUDGRID_AI_EVAL_RUNNER_HEALTH_PORT",
+          ],
+          ["ai-eval harness", aiEvalHarnessPort, "CLOUDGRID_AI_EVAL_HARNESS_URL"],
+        ]
+      : []),
+  ];
 }
 
 async function startService(name, command, readyURL, extraEnv = {}) {
@@ -336,16 +351,26 @@ export function natsPayloadReadinessMessage({ actualPayload, requiredPayload, mo
   };
 }
 
-function isPortAvailable(port) {
+export function isPortAvailable(port) {
   if (!Number.isInteger(port) || port <= 0 || port > 65535) {
     return Promise.resolve(false);
   }
+  return Promise.all([canBindPort(port), canBindPort(port, "127.0.0.1")]).then((results) =>
+    results.every(Boolean),
+  );
+}
+
+function canBindPort(port, host) {
   return new Promise((resolve) => {
     const server = createServer();
     server.once("error", () => resolve(false));
     server.once("listening", () => {
       server.close(() => resolve(true));
     });
+    if (host) {
+      server.listen(port, host);
+      return;
+    }
     server.listen(port);
   });
 }

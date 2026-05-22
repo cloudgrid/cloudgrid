@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -83,9 +84,10 @@ func BuildTraceSearchQuery(query contracts.TraceSearchQuery, authContext ...*con
 	params := map[string]any{"limit": limit + 1}
 	addOwnershipParams(params, target)
 	conditions := retentionVisibleConditions()
-	if query.Service != nil {
-		conditions = append(conditions, participatingSpanServiceCondition())
-		params["service"] = *query.Service
+	sortSpec := traceSearchSortSpec(query.Sort)
+	if services := normalizedServiceFilters(query.Service, query.Services); len(services) > 0 {
+		conditions = append(conditions, "serviceName IN $services")
+		params["services"] = services
 	}
 	if query.Status != nil {
 		conditions = append(conditions, "status = $status")
@@ -99,13 +101,49 @@ func BuildTraceSearchQuery(query contracts.TraceSearchQuery, authContext ...*con
 		conditions = append(conditions, "startedAt <= $to")
 		params["to"] = query.To.UTC()
 	}
-	if query.Cursor != nil && strings.TrimSpace(*query.Cursor) != "" {
-		cursor, err := decodeCursor(*query.Cursor, "startedAt_desc_traceId_asc")
+	if query.MinDurationMs != nil {
+		conditions = append(conditions, "durationMs >= $minDurationMs")
+		params["minDurationMs"] = *query.MinDurationMs
+	}
+	if query.MaxDurationMs != nil {
+		conditions = append(conditions, "durationMs <= $maxDurationMs")
+		params["maxDurationMs"] = *query.MaxDurationMs
+	}
+	if query.Query != nil && strings.TrimSpace(*query.Query) != "" {
+		conditions = append(conditions, "searchText @AND@ $query")
+		params["query"] = strings.ToLower(strings.TrimSpace(*query.Query))
+	}
+	if query.OperationName != nil && strings.TrimSpace(*query.OperationName) != "" {
+		conditions = append(conditions, rootSpanNameCondition("$operationName"))
+		params["operationName"] = strings.TrimSpace(*query.OperationName)
+	}
+	if query.SpanName != nil && strings.TrimSpace(*query.SpanName) != "" {
+		conditions = append(conditions, spanNameCondition("$spanName"))
+		params["spanName"] = strings.TrimSpace(*query.SpanName)
+	}
+	for index, filter := range query.Attributes {
+		condition, err := attributeFilterCondition(filter, index, params)
 		if err != nil {
 			return QueryStatement{}, err
 		}
-		conditions = append(conditions, "(startedAt < $cursorValue OR (startedAt = $cursorValue AND traceId > $cursorId))")
-		params["cursorValue"] = cursor.LastValue
+		conditions = append(conditions, condition)
+	}
+	if query.Cursor != nil && strings.TrimSpace(*query.Cursor) != "" {
+		cursor, err := decodeCursorForSort(*query.Cursor, sortSpec.cursorSort, sortSpec.valueKind)
+		if err != nil {
+			return QueryStatement{}, err
+		}
+		conditions = append(conditions, sortSpec.cursorCondition)
+		if sortSpec.valueKind == cursorValueTraceErrorFirst {
+			value, ok := cursor.LastValue.(traceErrorFirstCursorValue)
+			if !ok {
+				return QueryStatement{}, cursorError()
+			}
+			params["cursorErrorFirst"] = value.ErrorFirst
+			params["cursorStartedAt"] = value.StartedAt
+		} else {
+			params["cursorValue"] = cursor.LastValue
+		}
 		params["cursorId"] = cursor.LastID
 	}
 
@@ -114,7 +152,7 @@ func BuildTraceSearchQuery(query contracts.TraceSearchQuery, authContext ...*con
 			"SELECT " + traceSummaryProjection,
 			"FROM trace",
 			whereClause(conditions),
-			"ORDER BY startedAt DESC, traceId ASC",
+			sortSpec.orderBy,
 			"LIMIT $limit;",
 		}, " "),
 		Params: params,
@@ -139,9 +177,9 @@ func BuildLiveTraceCandidatesQuery(query contracts.LiveTraceQuery, traceIDs []st
 	params := map[string]any{"limit": limit, "traceIds": traceIDs}
 	addOwnershipParams(params, target)
 	conditions := append(retentionVisibleConditions(), "traceId IN $traceIds")
-	if query.Service != nil {
+	if services := normalizedServiceFilters(query.Service, query.Services); len(services) > 0 {
 		conditions = append(conditions, participatingSpanServiceCondition())
-		params["service"] = *query.Service
+		params["services"] = services
 	}
 	if query.Status != nil {
 		conditions = append(conditions, "status = $status")
@@ -160,15 +198,15 @@ func BuildLiveTraceCandidatesQuery(query contracts.LiveTraceQuery, traceIDs []st
 		params["maxDurationMs"] = *query.MaxDurationMs
 	}
 	if query.Query != nil && strings.TrimSpace(*query.Query) != "" {
-		conditions = append(conditions, "(string::lowercase(traceId) CONTAINS $query OR string::lowercase(serviceName) CONTAINS $query OR string::lowercase(rootSpanId) CONTAINS $query OR string::lowercase(string::join(attributes.values(), ' ')) CONTAINS $query)")
+		conditions = append(conditions, "searchText @AND@ $query")
 		params["query"] = strings.ToLower(strings.TrimSpace(*query.Query))
 	}
 	if query.OperationName != nil && strings.TrimSpace(*query.OperationName) != "" {
-		conditions = append(conditions, "traceId IN (SELECT VALUE traceId FROM span WHERE parentSpanId = NONE AND name = $operationName)")
+		conditions = append(conditions, rootSpanNameCondition("$operationName"))
 		params["operationName"] = strings.TrimSpace(*query.OperationName)
 	}
 	if query.SpanName != nil && strings.TrimSpace(*query.SpanName) != "" {
-		conditions = append(conditions, "traceId IN (SELECT VALUE traceId FROM span WHERE name = $spanName)")
+		conditions = append(conditions, spanNameCondition("$spanName"))
 		params["spanName"] = strings.TrimSpace(*query.SpanName)
 	}
 	for index, filter := range query.Attributes {
@@ -332,21 +370,11 @@ func BuildFacetQueries(query contracts.TelemetryFacetQuery, authContext ...*cont
 	spanConditions := facetSpanConditions(query, params, true)
 	attributeSpanConditions := facetSpanConditions(query, params, false)
 	logConditions := facetLogConditions(query, params)
+	serviceFacetStatement := serviceFacetQuery(query, params, target)
 	params["attributeScanLimit"] = attributeKeyFacetScanLimit
 
 	return map[string]QueryStatement{
-		"services": {
-			SQL: strings.Join([]string{
-				"SELECT serviceName AS value, count() AS count",
-				"FROM span",
-				whereClause(append(spanConditions, "serviceName != NONE")),
-				"GROUP BY serviceName",
-				"ORDER BY count DESC, value ASC",
-				"LIMIT $limit;",
-			}, " "),
-			Params: cloneParams(params),
-			Target: target,
-		},
+		"services": serviceFacetStatement,
 		"operations": {
 			SQL: strings.Join([]string{
 				"SELECT name AS value, count() AS count",
@@ -398,9 +426,9 @@ func BuildFacetQueries(query contracts.TelemetryFacetQuery, authContext ...*cont
 
 func facetSpanConditions(query contracts.TelemetryFacetQuery, params map[string]any, includeSearch bool) []string {
 	conditions := retentionVisibleConditions()
-	if query.Service != nil {
-		conditions = append(conditions, "serviceName = $service")
-		params["service"] = *query.Service
+	if services := normalizedServiceFilters(query.Service, query.Services); len(services) > 0 {
+		conditions = append(conditions, "serviceName IN $services")
+		params["services"] = services
 	}
 	if query.From != nil {
 		conditions = append(conditions, "startedAt >= $from")
@@ -419,9 +447,9 @@ func facetSpanConditions(query contracts.TelemetryFacetQuery, params map[string]
 
 func facetLogConditions(query contracts.TelemetryFacetQuery, params map[string]any) []string {
 	conditions := retentionVisibleConditions()
-	if query.Service != nil {
-		conditions = append(conditions, "serviceName = $service")
-		params["service"] = *query.Service
+	if services := normalizedServiceFilters(query.Service, query.Services); len(services) > 0 {
+		conditions = append(conditions, "serviceName IN $services")
+		params["services"] = services
 	}
 	if query.From != nil {
 		conditions = append(conditions, "timestamp >= $from")
@@ -438,8 +466,164 @@ func facetLogConditions(query contracts.TelemetryFacetQuery, params map[string]a
 	return conditions
 }
 
+func serviceFacetQuery(query contracts.TelemetryFacetQuery, params map[string]any, target TelemetryTarget) QueryStatement {
+	signal := contracts.TelemetryFacetSignalTraces
+	if query.Signal != nil {
+		signal = *query.Signal
+	}
+	switch signal {
+	case contracts.TelemetryFacetSignalLogs:
+		return QueryStatement{
+			SQL: strings.Join([]string{
+				"SELECT serviceName AS value, count() AS count",
+				"FROM log_event",
+				whereClause(append(facetLogConditions(query, params), "serviceName != NONE")),
+				"GROUP BY serviceName",
+				"ORDER BY count DESC, value ASC",
+				"LIMIT $limit;",
+			}, " "),
+			Params: cloneParams(params),
+			Target: target,
+		}
+	case contracts.TelemetryFacetSignalMetrics:
+		return QueryStatement{
+			SQL: strings.Join([]string{
+				"SELECT serviceName AS value, count() AS count",
+				"FROM metric_point",
+				whereClause(append(facetMetricPointConditions(query, params), "serviceName != NONE")),
+				"GROUP BY serviceName",
+				"ORDER BY count DESC, value ASC",
+				"LIMIT $limit;",
+			}, " "),
+			Params: cloneParams(params),
+			Target: target,
+		}
+	default:
+		return QueryStatement{
+			SQL: strings.Join([]string{
+				"SELECT serviceName AS value, count() AS count",
+				"FROM span",
+				whereClause(append(facetSpanConditions(query, params, true), "serviceName != NONE")),
+				"GROUP BY serviceName",
+				"ORDER BY count DESC, value ASC",
+				"LIMIT $limit;",
+			}, " "),
+			Params: cloneParams(params),
+			Target: target,
+		}
+	}
+}
+
+func facetMetricPointConditions(query contracts.TelemetryFacetQuery, params map[string]any) []string {
+	conditions := retentionVisibleConditions()
+	if services := normalizedServiceFilters(query.Service, query.Services); len(services) > 0 {
+		conditions = append(conditions, "serviceName IN $services")
+		params["services"] = services
+	}
+	if query.From != nil {
+		conditions = append(conditions, "timestamp >= $from")
+		params["from"] = query.From.UTC()
+	}
+	if query.To != nil {
+		conditions = append(conditions, "timestamp <= $to")
+		params["to"] = query.To.UTC()
+	}
+	if query.Search != nil && strings.TrimSpace(*query.Search) != "" {
+		conditions = append(conditions, "string::lowercase(serviceName) CONTAINS $search")
+		params["search"] = strings.ToLower(strings.TrimSpace(*query.Search))
+	}
+	return conditions
+}
+
 func participatingSpanServiceCondition() string {
-	return "traceId IN (SELECT VALUE traceId FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND serviceName = $service)"
+	return "traceId IN (SELECT VALUE traceId FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND serviceName IN $services)"
+}
+
+func rootSpanNameCondition(nameParam string) string {
+	return fmt.Sprintf("traceId IN (SELECT VALUE traceId FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND parentSpanId = NONE AND name = %s)", nameParam)
+}
+
+func spanNameCondition(nameParam string) string {
+	return fmt.Sprintf("traceId IN (SELECT VALUE traceId FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND name = %s)", nameParam)
+}
+
+type querySortSpec struct {
+	cursorSort      string
+	cursorCondition string
+	orderBy         string
+	valueKind       cursorValueKind
+}
+
+func traceSearchSortSpec(sort *contracts.TraceSort) querySortSpec {
+	if sort == nil {
+		return querySortSpec{
+			cursorSort:      "startedAt_desc_traceId_asc",
+			cursorCondition: "(startedAt < $cursorValue OR (startedAt = $cursorValue AND traceId > $cursorId))",
+			orderBy:         "ORDER BY startedAt DESC, traceId ASC",
+			valueKind:       cursorValueTime,
+		}
+	}
+	switch *sort {
+	case contracts.TraceSortStartedAtAsc:
+		return querySortSpec{
+			cursorSort:      "startedAt_asc_traceId_asc",
+			cursorCondition: "(startedAt > $cursorValue OR (startedAt = $cursorValue AND traceId > $cursorId))",
+			orderBy:         "ORDER BY startedAt ASC, traceId ASC",
+			valueKind:       cursorValueTime,
+		}
+	case contracts.TraceSortDurationDesc:
+		return querySortSpec{
+			cursorSort:      "duration_desc_traceId_asc",
+			cursorCondition: "(durationMs < $cursorValue OR (durationMs = $cursorValue AND traceId > $cursorId))",
+			orderBy:         "ORDER BY durationMs DESC, traceId ASC",
+			valueKind:       cursorValueFloat,
+		}
+	case contracts.TraceSortDurationAsc:
+		return querySortSpec{
+			cursorSort:      "duration_asc_traceId_asc",
+			cursorCondition: "(durationMs > $cursorValue OR (durationMs = $cursorValue AND traceId > $cursorId))",
+			orderBy:         "ORDER BY durationMs ASC, traceId ASC",
+			valueKind:       cursorValueFloat,
+		}
+	case contracts.TraceSortErrorFirst:
+		return querySortSpec{
+			cursorSort:      "errorFirst_startedAt_desc_traceId_asc",
+			cursorCondition: "(($cursorErrorFirst = true AND ((status = 'error' AND (startedAt < $cursorStartedAt OR (startedAt = $cursorStartedAt AND traceId > $cursorId))) OR status != 'error')) OR ($cursorErrorFirst = false AND status != 'error' AND (startedAt < $cursorStartedAt OR (startedAt = $cursorStartedAt AND traceId > $cursorId))))",
+			orderBy:         "ORDER BY status = 'error' DESC, startedAt DESC, traceId ASC",
+			valueKind:       cursorValueTraceErrorFirst,
+		}
+	default:
+		return traceSearchSortSpec(nil)
+	}
+}
+
+func logSearchSortSpec(sort *contracts.LogSort) querySortSpec {
+	if sort == nil {
+		return querySortSpec{
+			cursorSort:      "timestamp_desc_logEventId_asc",
+			cursorCondition: "(timestamp < $cursorValue OR (timestamp = $cursorValue AND logEventId > $cursorId))",
+			orderBy:         "ORDER BY timestamp DESC, logEventId ASC",
+			valueKind:       cursorValueTime,
+		}
+	}
+	switch *sort {
+	case contracts.LogSortTimestampAsc:
+		return querySortSpec{
+			cursorSort:      "timestamp_asc_logEventId_asc",
+			cursorCondition: "(timestamp > $cursorValue OR (timestamp = $cursorValue AND logEventId > $cursorId))",
+			orderBy:         "ORDER BY timestamp ASC, logEventId ASC",
+			valueKind:       cursorValueTime,
+		}
+	case contracts.LogSortSeverityDesc:
+		return querySortSpec{
+			cursorSort:      "severity_desc_logEventId_asc",
+			cursorCondition: "(severityNumber < $cursorValue OR (severityNumber = $cursorValue AND logEventId > $cursorId))",
+			orderBy:         "ORDER BY severityNumber DESC, logEventId ASC",
+			valueKind:       cursorValueFloat,
+		}
+	default:
+		return logSearchSortSpec(nil)
+	}
 }
 
 func cloneParams(params map[string]any) map[string]any {
@@ -482,9 +666,10 @@ func BuildLogSearchQuery(query contracts.LogSearchQuery, authContext ...*contrac
 	params := map[string]any{"limit": limit + 1}
 	addOwnershipParams(params, target)
 	conditions := retentionVisibleConditions()
-	if query.Service != nil {
-		conditions = append(conditions, "serviceName = $service")
-		params["service"] = *query.Service
+	sortSpec := logSearchSortSpec(query.Sort)
+	if services := normalizedServiceFilters(query.Service, query.Services); len(services) > 0 {
+		conditions = append(conditions, "serviceName IN $services")
+		params["services"] = services
 	}
 	if query.TraceID != nil {
 		conditions = append(conditions, "traceId = $traceId")
@@ -507,15 +692,15 @@ func BuildLogSearchQuery(query contracts.LogSearchQuery, authContext ...*contrac
 		params["to"] = query.To.UTC()
 	}
 	if query.Search != nil && strings.TrimSpace(*query.Search) != "" {
-		conditions = append(conditions, "(string::lowercase(bodyText) CONTAINS $search OR string::lowercase(string::join(attributes.values(), ' ')) CONTAINS $search)")
+		conditions = append(conditions, "searchText @AND@ $search")
 		params["search"] = strings.ToLower(strings.TrimSpace(*query.Search))
 	}
 	if query.Cursor != nil && strings.TrimSpace(*query.Cursor) != "" {
-		cursor, err := decodeCursor(*query.Cursor, "timestamp_desc_logEventId_asc")
+		cursor, err := decodeCursorForSort(*query.Cursor, sortSpec.cursorSort, sortSpec.valueKind)
 		if err != nil {
 			return QueryStatement{}, err
 		}
-		conditions = append(conditions, "(timestamp < $cursorValue OR (timestamp = $cursorValue AND logEventId > $cursorId))")
+		conditions = append(conditions, sortSpec.cursorCondition)
 		params["cursorValue"] = cursor.LastValue
 		params["cursorId"] = cursor.LastID
 	}
@@ -525,7 +710,7 @@ func BuildLogSearchQuery(query contracts.LogSearchQuery, authContext ...*contrac
 			"SELECT logEventId AS id, traceId, spanId, serviceName, severityText, severityNumber, body, timestamp, observedTimestamp, attributes",
 			"FROM log_event",
 			whereClause(conditions),
-			"ORDER BY timestamp DESC, logEventId ASC",
+			sortSpec.orderBy,
 			"LIMIT $limit;",
 		}, " "),
 		Params: params,
@@ -563,6 +748,27 @@ func normalizedTraceIDs(traceIDs []string) []string {
 		}
 		normalized = append(normalized, traceID)
 		seen[traceID] = true
+	}
+	return normalized
+}
+
+func normalizedServiceFilters(service *string, services []string) []string {
+	normalized := make([]string, 0, len(services)+1)
+	seen := map[string]bool{}
+	if service != nil {
+		value := strings.TrimSpace(*service)
+		if value != "" {
+			normalized = append(normalized, value)
+			seen[value] = true
+		}
+	}
+	for _, service := range services {
+		value := strings.TrimSpace(service)
+		if value == "" || seen[value] {
+			continue
+		}
+		normalized = append(normalized, value)
+		seen[value] = true
 	}
 	return normalized
 }
@@ -630,9 +836,14 @@ func validationError(reason string) error {
 }
 
 type decodedCursor struct {
-	Sort      string    `json:"sort"`
-	LastValue time.Time `json:"-"`
-	LastID    string    `json:"lastId"`
+	Sort      string `json:"sort"`
+	LastValue any    `json:"-"`
+	LastID    string `json:"lastId"`
+}
+
+type traceErrorFirstCursorValue struct {
+	ErrorFirst bool
+	StartedAt  time.Time
 }
 
 type rawCursor struct {
@@ -641,7 +852,20 @@ type rawCursor struct {
 	LastID    string `json:"lastId"`
 }
 
+type cursorValueKind string
+
+const (
+	cursorValueTime            cursorValueKind = "time"
+	cursorValueFloat           cursorValueKind = "float"
+	cursorValueString          cursorValueKind = "string"
+	cursorValueTraceErrorFirst cursorValueKind = "trace_error_first"
+)
+
 func decodeCursor(value string, expectedSort string) (decodedCursor, error) {
+	return decodeCursorForSort(value, expectedSort, cursorValueTime)
+}
+
+func decodeCursorForSort(value string, expectedSort string, kind cursorValueKind) (decodedCursor, error) {
 	payload, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil {
 		return decodedCursor{}, cursorError()
@@ -655,14 +879,46 @@ func decodeCursor(value string, expectedSort string) (decodedCursor, error) {
 		return decodedCursor{}, cursorError()
 	}
 
-	lastValue, err := time.Parse(time.RFC3339Nano, raw.LastValue)
-	if err != nil {
+	var lastValue any
+	switch kind {
+	case cursorValueTime:
+		parsed, err := time.Parse(time.RFC3339Nano, raw.LastValue)
+		if err != nil {
+			return decodedCursor{}, cursorError()
+		}
+		lastValue = parsed.UTC()
+	case cursorValueFloat:
+		parsed, err := strconv.ParseFloat(raw.LastValue, 64)
+		if err != nil {
+			return decodedCursor{}, cursorError()
+		}
+		lastValue = parsed
+	case cursorValueString:
+		lastValue = raw.LastValue
+	case cursorValueTraceErrorFirst:
+		parts := strings.SplitN(raw.LastValue, "|", 2)
+		if len(parts) != 2 {
+			return decodedCursor{}, cursorError()
+		}
+		parsed, err := time.Parse(time.RFC3339Nano, parts[1])
+		if err != nil {
+			return decodedCursor{}, cursorError()
+		}
+		switch parts[0] {
+		case "1", "true", "error":
+			lastValue = traceErrorFirstCursorValue{ErrorFirst: true, StartedAt: parsed.UTC()}
+		case "0", "false", "ok":
+			lastValue = traceErrorFirstCursorValue{ErrorFirst: false, StartedAt: parsed.UTC()}
+		default:
+			return decodedCursor{}, cursorError()
+		}
+	default:
 		return decodedCursor{}, cursorError()
 	}
 
 	return decodedCursor{
 		Sort:      raw.Sort,
-		LastValue: lastValue.UTC(),
+		LastValue: lastValue,
 		LastID:    raw.LastID,
 	}, nil
 }
@@ -685,4 +941,28 @@ func pageCursor(sort string, lastValue time.Time, lastID string) *string {
 	}
 	value := base64.RawURLEncoding.EncodeToString(payload)
 	return &value
+}
+
+func pageCursorValue(sort string, lastValue string, lastID string) *string {
+	if strings.TrimSpace(lastValue) == "" || strings.TrimSpace(lastID) == "" {
+		return nil
+	}
+	payload, err := json.Marshal(rawCursor{
+		Sort:      sort,
+		LastValue: lastValue,
+		LastID:    lastID,
+	})
+	if err != nil {
+		return nil
+	}
+	value := base64.RawURLEncoding.EncodeToString(payload)
+	return &value
+}
+
+func pageCursorTraceErrorFirst(sort string, errorFirst bool, startedAt time.Time, lastID string) *string {
+	prefix := "0"
+	if errorFirst {
+		prefix = "1"
+	}
+	return pageCursorValue(sort, prefix+"|"+startedAt.UTC().Format(time.RFC3339Nano), lastID)
 }

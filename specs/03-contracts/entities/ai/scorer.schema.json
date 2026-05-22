@@ -8,8 +8,23 @@
   "properties": {
     "id": { "type": "string" },
     "name": { "type": "string" },
-    "kind": { "type": "string", "enum": ["deterministic", "rag", "llm_judge", "human"] },
-    "definition": { "type": "object", "additionalProperties": true },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "deterministic",
+        "schema_json",
+        "semantic",
+        "rag",
+        "llm_judge",
+        "pairwise_judge",
+        "tool_correctness",
+        "trajectory",
+        "workflow",
+        "human",
+        "composite"
+      ]
+    },
+    "definition": { "$ref": "./scorer-definition.schema.json" },
     "judgeModelRef": { "type": "string" },
     "version": { "type": "integer", "minimum": 1 },
     "calibration": { "type": "object", "additionalProperties": true }

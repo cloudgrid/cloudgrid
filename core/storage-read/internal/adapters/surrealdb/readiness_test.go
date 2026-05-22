@@ -119,6 +119,7 @@ func completeTableInfo() map[string]TableInfo {
 			"idx_trace_startedAt":                              "DEFINE INDEX idx_trace_startedAt ON trace FIELDS startedAt",
 			"idx_trace_serviceName":                            "DEFINE INDEX idx_trace_serviceName ON trace FIELDS serviceName",
 			"idx_trace_status":                                 "DEFINE INDEX idx_trace_status ON trace FIELDS status",
+			"idx_trace_searchText":                             "DEFINE INDEX idx_trace_searchText ON trace FIELDS searchText FULLTEXT ANALYZER cloudgrid_search BM25",
 			"idx_trace_tenant_company_project_startedAt":       "DEFINE INDEX idx_trace_tenant_company_project_startedAt ON trace FIELDS tenantId, companyId, projectId, startedAt",
 			"idx_trace_tenant_company_project_traceId":         "DEFINE INDEX idx_trace_tenant_company_project_traceId ON trace FIELDS tenantId, companyId, projectId, traceId",
 			"idx_trace_tenant_company_project_service_started": "DEFINE INDEX idx_trace_tenant_company_project_service_started ON trace FIELDS tenantId, companyId, projectId, serviceName, startedAt",
@@ -136,6 +137,7 @@ func completeTableInfo() map[string]TableInfo {
 			"idx_log_event_traceId":                                  "DEFINE INDEX idx_log_event_traceId ON log_event FIELDS traceId",
 			"idx_log_event_spanId":                                   "DEFINE INDEX idx_log_event_spanId ON log_event FIELDS spanId",
 			"idx_log_event_severityText":                             "DEFINE INDEX idx_log_event_severityText ON log_event FIELDS severityText",
+			"idx_log_event_searchText":                               "DEFINE INDEX idx_log_event_searchText ON log_event FIELDS searchText FULLTEXT ANALYZER cloudgrid_search BM25",
 			"idx_log_event_tenant_company_project_timestamp":         "DEFINE INDEX idx_log_event_tenant_company_project_timestamp ON log_event FIELDS tenantId, companyId, projectId, timestamp",
 			"idx_log_event_tenant_company_project_service_timestamp": "DEFINE INDEX idx_log_event_tenant_company_project_service_timestamp ON log_event FIELDS tenantId, companyId, projectId, serviceName, timestamp",
 			"idx_log_event_tenant_company_project_trace_timestamp":   "DEFINE INDEX idx_log_event_tenant_company_project_trace_timestamp ON log_event FIELDS tenantId, companyId, projectId, traceId, timestamp",
@@ -143,6 +145,7 @@ func completeTableInfo() map[string]TableInfo {
 		"metric_descriptor": {Fields: softDeleteFields(), Indexes: map[string]string{
 			"idx_metric_descriptor_metricName":                        "DEFINE INDEX idx_metric_descriptor_metricName ON metric_descriptor FIELDS metricName",
 			"idx_metric_descriptor_lastSeenAt":                        "DEFINE INDEX idx_metric_descriptor_lastSeenAt ON metric_descriptor FIELDS lastSeenAt",
+			"idx_metric_descriptor_searchText":                        "DEFINE INDEX idx_metric_descriptor_searchText ON metric_descriptor FIELDS searchText FULLTEXT ANALYZER cloudgrid_search BM25",
 			"idx_metric_descriptor_tenant_company_project_lastSeenAt": "DEFINE INDEX idx_metric_descriptor_tenant_company_project_lastSeenAt ON metric_descriptor FIELDS tenantId, companyId, projectId, lastSeenAt",
 			"idx_metric_descriptor_tenant_company_project_metricName": "DEFINE INDEX idx_metric_descriptor_tenant_company_project_metricName ON metric_descriptor FIELDS tenantId, companyId, projectId, metricName",
 		}},

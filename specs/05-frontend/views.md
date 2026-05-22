@@ -22,7 +22,7 @@ The authenticated app shell contains:
 
 - company selector;
 - project selector;
-- primary navigation for Traces, Logs, Metrics, Dashboards, and AI Eval after a project is selected; Live is a mode inside Traces;
+- primary navigation for AI Chat when enabled, pinned dashboard shortcuts when present, Traces, Logs, Metrics, Dashboards, and Evaluations after a project is selected; Live is a mode inside Traces;
 - user/session menu with logout.
 
 The selected project is visually persistent across telemetry pages. Switching projects calls GraphQL `Mutation.selectProject` and then refreshes project-scoped telemetry queries/subscriptions.
@@ -101,7 +101,7 @@ The live trace view streams `Subscription.liveTraces` events and displays trace-
 
 Columns: event time, event type, service, operation/root span, trace ID, started time, duration, status, span count, error span count, log count, and service count. Row click opens `/traces/:traceId`.
 
-Server filters: free text query, service, operation/span name, lower-bound time, status, duration range, attribute filters, and limit. These map directly to `LiveTraceInput`.
+Server filters: free text query, one or more services, operation/span name, lower-bound time, status, duration range, attribute filters, and limit. These map directly to `LiveTraceInput`.
 
 Controls:
 

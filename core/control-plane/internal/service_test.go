@@ -435,6 +435,63 @@ func TestAiProviderSettingsUseAsyncAPIContractsAndPersistInControlPlane(t *testi
 	}
 }
 
+func TestAiProviderSettingsRejectManagedCredentialRefsOutsideOwnerScope(t *testing.T) {
+	store := newTestStore()
+	service := NewService(store, fixedNow)
+	ctx := context.Background()
+	admin := localEnvelope("req-ai-provider-credential-scope", localUserID, nil)
+
+	_, err := service.UpdateCompanyAiProviderSettings(ctx, contracts.CompanyAiProviderSettingsUpdateRequest{
+		BridgeEnvelope: admin,
+		CompanyID:      LocalCompanyID,
+		ProviderProfile: map[string]any{
+			"id":            "company-chat-provider",
+			"label":         "OpenAI Chat",
+			"providerKind":  "openai",
+			"credentialRef": "managed:company/other-company/company-chat-provider",
+			"models":        map[string]any{"chat": []any{"gpt-5-mini"}},
+			"parameters":    map[string]any{},
+		},
+		ChatModelAlias: map[string]any{
+			"id":                "company-chat",
+			"name":              "chat",
+			"providerProfileId": "company-chat-provider",
+			"model":             "gpt-5-mini",
+			"purpose":           "chat",
+			"parameters":        map[string]any{},
+		},
+		ExpectedVersion: 1,
+	})
+	if err == nil || !strings.Contains(err.Error(), "credentialRef managed scope must match provider owner") {
+		t.Fatalf("UpdateCompanyAiProviderSettings error = %v, want managed owner scope validation", err)
+	}
+
+	_, err = service.UpdateProjectAiProviderSettings(ctx, contracts.ProjectAiProviderSettingsUpdateRequest{
+		BridgeEnvelope: admin,
+		ProjectID:      LocalProjectID,
+		ProviderProfiles: []map[string]any{{
+			"id":            "provider-1",
+			"label":         "OpenAI",
+			"providerKind":  "openai",
+			"credentialRef": "managed:project/other-project/provider-1",
+			"models":        map[string]any{"chat": []any{"gpt-5-mini"}},
+			"parameters":    map[string]any{},
+		}},
+		ModelAliases: []map[string]any{{
+			"id":                "alias-1",
+			"name":              "chat-fast",
+			"providerProfileId": "provider-1",
+			"model":             "gpt-5-mini",
+			"purpose":           "chat",
+			"parameters":        map[string]any{},
+		}},
+		ExpectedVersion: 1,
+	})
+	if err == nil || !strings.Contains(err.Error(), "credentialRef managed scope must match provider owner") {
+		t.Fatalf("UpdateProjectAiProviderSettings error = %v, want managed owner scope validation", err)
+	}
+}
+
 func TestCompanyAiProviderSettingsAcceptsFrontendManagedSecretPayload(t *testing.T) {
 	store := newTestStore()
 	service := NewService(store, fixedNow)

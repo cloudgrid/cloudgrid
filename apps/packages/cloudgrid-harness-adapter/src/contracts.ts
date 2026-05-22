@@ -28,9 +28,43 @@ export const traceContextSchema = z
   })
   .catchall(z.string());
 
+export const sandboxProfileSchema = z.enum([
+  "ephemeral_eval_item",
+  "ephemeral_optimization_candidate",
+  "durable_replay_workspace",
+]);
+
+export const sandboxLifecycleRequestSchema = z.object({
+  experimentRunId: z.string().min(1),
+  datasetItemId: z.string().min(1).optional(),
+  scorerId: z.string().min(1).optional(),
+  candidateId: z.string().min(1).optional(),
+  attemptId: z.string().min(1).optional(),
+  manifestDigest: z.string().min(1),
+  sandboxProfile: sandboxProfileSchema,
+  sandboxRef: z.string().min(1).optional(),
+  checkpointRef: z.string().min(1).optional(),
+  runPolicy: jsonObjectSchema.optional(),
+  cleanupRetry: jsonObjectSchema.optional(),
+  traceContext: traceContextSchema.optional(),
+});
+
+export const sandboxLifecycleResponseSchema = z.object({
+  sandboxRef: z.string().min(1),
+  sandboxProfile: sandboxProfileSchema,
+  checkpointSupported: z.boolean(),
+  checkpointRef: z.string().min(1).optional(),
+  cleanupRequired: z.boolean(),
+  cleanupDeadline: z.string().datetime().optional(),
+  cleanupSummary: jsonObjectSchema.optional(),
+  warnings: z.array(z.string()).default([]),
+});
+
 export const runRequestSchema = z.object({
   experimentRunId: z.string().min(1),
   datasetItemId: z.string().min(1),
+  sandboxRef: z.string().min(1).optional(),
+  sandboxProfile: sandboxProfileSchema.optional(),
   solverRef: solverRefSchema,
   input: z.unknown(),
   expected: z.unknown().optional(),
@@ -81,6 +115,8 @@ export const scoreTargetSchema = z.object({
 export const scoreRequestSchema = z.object({
   scorer: scorerSchema,
   target: scoreTargetSchema,
+  sandboxRef: z.string().min(1).optional(),
+  sandboxProfile: sandboxProfileSchema.optional(),
   traceContext: traceContextSchema.optional(),
 });
 
@@ -113,6 +149,8 @@ export const basePromptVersionSchema = z.object({
 export const optimizeRequestSchema = z.object({
   experimentRunId: z.string().min(1),
   experimentId: z.string().min(1),
+  sandboxRef: z.string().min(1).optional(),
+  sandboxProfile: sandboxProfileSchema.optional(),
   optimizerKind: optimizerKindSchema,
   basePromptVersion: basePromptVersionSchema,
   config: jsonObjectSchema.optional(),
@@ -162,6 +200,8 @@ export const agentsResponseSchema = z.object({
 export const harnessAdapterSchemas = {
   problemDetails: problemDetailsSchema,
   healthResponse: healthResponseSchema,
+  sandboxLifecycleRequest: sandboxLifecycleRequestSchema,
+  sandboxLifecycleResponse: sandboxLifecycleResponseSchema,
   runRequest: runRequestSchema,
   runResponse: runResponseSchema,
   scorer: scorerSchema,
@@ -174,6 +214,9 @@ export const harnessAdapterSchemas = {
 
 export type ProblemDetails = z.infer<typeof problemDetailsSchema>;
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
+export type SandboxProfile = z.infer<typeof sandboxProfileSchema>;
+export type SandboxLifecycleRequest = z.infer<typeof sandboxLifecycleRequestSchema>;
+export type SandboxLifecycleResponse = z.infer<typeof sandboxLifecycleResponseSchema>;
 export type RunRequest = z.infer<typeof runRequestSchema>;
 export type RunResponse = z.infer<typeof runResponseSchema>;
 export type Scorer = z.infer<typeof scorerSchema>;

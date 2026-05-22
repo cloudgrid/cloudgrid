@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-025",
+  "title": "DatasetCandidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "status",
+    "sourceKind",
+    "source",
+    "targetShape",
+    "metadata",
+    "split",
+    "reviewStatus",
+    "contentTreatment",
+    "reason",
+    "warnings",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "datasetId": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["suggested", "reviewing", "ready", "committed", "dismissed", "superseded"]
+    },
+    "sourceKind": {
+      "type": "string",
+      "enum": [
+        "trace",
+        "eval_result",
+        "experiment_item_run",
+        "production_measurement",
+        "coverage_gap",
+        "health_issue",
+        "failure_cluster",
+        "manual"
+      ]
+    },
+    "source": { "type": "object", "additionalProperties": true },
+    "targetShape": {
+      "type": "string",
+      "enum": [
+        "single_turn",
+        "conversation",
+        "tool_call",
+        "agent_trajectory",
+        "workflow_trace",
+        "retrieval_case",
+        "production_trace_ref"
+      ]
+    },
+    "input": true,
+    "expected": true,
+    "metadata": { "type": "object", "additionalProperties": true },
+    "split": {
+      "type": "string",
+      "enum": ["dev", "optimization", "validation", "regression", "holdout"]
+    },
+    "reviewStatus": {
+      "type": "string",
+      "enum": ["unreviewed", "reviewed", "rejected"]
+    },
+    "contentTreatment": {
+      "type": "string",
+      "enum": ["original", "realistic_anonymized", "redacted", "synthetic"]
+    },
+    "anonymization": { "$ref": "./dataset-item.schema.json#/$defs/anonymization" },
+    "reason": { "type": "string" },
+    "clusterId": { "type": "string" },
+    "warnings": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

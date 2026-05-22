@@ -70,7 +70,10 @@ Rules:
 - Company/admin settings use a separate admin settings shell.
 - Content regions own their own scrolling; the app must not rely on one full-page scroll for dense telemetry surfaces.
 - Confirmation, information, warning, and error interruptions use modal dialogs only.
-- Local mode uses a `Personal` company and must not expose company administration unless multi-company auth is enabled.
+- Local mode uses a `Personal` company and exposes only useful company admin
+  surfaces for that durable boundary: projects, members, and AI provider
+  settings. It must not expose destructive company deletion, owner-transfer,
+  billing, or orphaning flows.
 
 ## Information Architecture
 
@@ -82,7 +85,7 @@ Project selection mode:
 
 - Applies when the current route is `/projects` or when a project-scoped route is requested without a selected project.
 - Topbar shows CloudGrid identity/home, company dropdown when applicable, project dropdown with `Select project` when no project is selected, command/search button, theme/language controls when implemented, and user menu.
-- Telemetry navigation entries `Traces`, `Logs`, `Metrics`, `Dashboards`, and `AI Eval` are hidden.
+- Telemetry navigation entries `AI Chat`, `Traces`, `Logs`, `Metrics`, `Dashboards`, and `Evaluations` are hidden.
 - Main content is a centered project picker with company context, search/filter, rich selectable project cards, create action when authorized, and local onboarding prompt when applicable.
 - The project picker must be horizontally centered in the remaining viewport and must not use a left navigation sidebar.
 
@@ -91,20 +94,24 @@ Project workspace mode:
 - Applies after `viewer.selectedProject` exists and the route is project-scoped.
 - Global topbar shows CloudGrid identity/home, company dropdown, project dropdown, command/search button, help/setup entry, theme/language controls when implemented, and user menu.
 - A left project/domain sidebar owns primary project navigation.
-- Sidebar order is `Traces`, `Logs`, `Metrics`, `Dashboards`, `AI Chat` when enabled, `AI Eval` when enabled, then a separated `Project settings` entry.
+- Sidebar order is `AI Chat` when enabled, pinned dashboard shortcuts when present, then `Traces`, `Logs`, `Metrics`, `Dashboards`, `Evaluations` when enabled, and a separated `Project settings` entry.
 - The project sidebar must not repeat the selected company/project summary. The global topbar owns company and project context with dropdown selectors.
-- Pinned dashboard shortcuts may appear above the primary navigation when explicit user dashboard preference data exists.
+- Pinned dashboard shortcuts may appear below `AI Chat` and above the primary telemetry navigation when explicit user dashboard preference data exists.
 - The `Dashboards` entry may be expanded to show custom dashboards available to the current user; the parent entry still opens the dashboard workspace.
 - `Live` is not a primary sidebar entry. Live receiving is a mode inside `/traces` because it uses the same trace row model, filters, and trace detail route.
 - The active route uses a selected rail state and text label. Collapsed sidebar state may hide labels on desktop but must preserve tooltips and accessible names.
-- Company/member administration is reached from the user/company menu, not mixed into project telemetry navigation.
+- Company settings are reached from a compact global topbar action for company
+  admins. Company/member administration must not be mixed into project telemetry
+  navigation.
 
 Admin settings mode:
 
 - Applies to company and administrative routes: `/organizations`, `/organizations/:organizationId`, `/organizations/:organizationId/projects`, `/organizations/:organizationId/members`, and specified billing/security/audit routes.
 - Global topbar remains visible.
 - A dedicated admin settings sidebar replaces the project/domain sidebar.
-- Admin sidebar groups are `Organization`, `Projects`, `Members`, `AI Provider` when AI Chat is enabled, and explicitly specified admin-only sections.
+- Admin sidebar groups are `Projects`, `Members`, `AI Provider` when AI Chat is
+  enabled, and explicitly specified admin-only sections. The admin sidebar does
+  not include separate `Companies` or read-only company overview entries.
 - Telemetry navigation remains hidden in admin settings mode.
 
 ### Route Groups
@@ -156,7 +163,8 @@ Desktop topbar:
 - Height: 56px.
 - Left section width: content-sized, CloudGrid wordmark/home link plus environment badge when not production.
 - Center section: company dropdown and project dropdown, each truncating safely, combined minimum width 320px and maximum width 560px, horizontally centered when viewport allows.
-- Right section: command button, setup/help button, theme/language controls when implemented, user menu.
+- Right section: command button, company settings action for company admins,
+  setup/help button, theme/language controls when implemented, user menu.
 - The topbar never contains telemetry route tabs in UX v2.
 
 Project selection mode topbar:
@@ -308,7 +316,7 @@ Required behavior:
 - If no projects exist, the primary action is `Create project`.
 - Project creation uses a drawer on desktop and a sheet on mobile.
 - After project creation succeeds, call `Mutation.selectProject` and navigate to `/traces`.
-- The user must never see `Traces`, `Logs`, `Metrics`, `Dashboards`, or `AI Eval` topbar navigation before a project is selected.
+- The user must never see `AI Chat`, `Traces`, `Logs`, `Metrics`, `Dashboards`, or `Evaluations` topbar navigation before a project is selected.
 
 ### Project Home Checklist
 
@@ -515,7 +523,7 @@ Dashboards layout:
 - Left dashboard rail: pinned, built-in, personal, and project dashboards, search, create action.
 - Main surface: responsive dashboard widget grid.
 - Right inspector drawer: widget details or editor.
-- Project sidebar: pinned dashboard shortcuts above primary navigation and optional `Dashboards` children from `Query.dashboards`.
+- Project sidebar: `AI Chat` first when enabled, pinned dashboard shortcuts below it when present, and optional `Dashboards` children from `Query.dashboards`.
 
 Steps:
 
@@ -575,10 +583,14 @@ Entry: company switcher, `/organizations`.
 Layout:
 
 - Company routes use admin-focused list/detail layouts.
+- The company admin sidebar exposes only useful management surfaces: projects,
+  members, and AI provider settings. It does not include a company list entry or
+  a read-only company overview entry.
 - Company project list and member list are dense tables, not dashboard cards.
 - Company AI Provider settings uses the same admin shell and is visible only to
   company admins.
 - Member mutation actions use dialogs for confirmation and drawers for invite/edit forms.
+- Users cannot demote or remove their own account from the company member list.
 - The Members route has one primary `Invite member` action for company admins.
   The invite drawer accepts one email address, explains that access activates
   only after SSO sign-in with a matching verified email, and does not expose an
@@ -667,7 +679,7 @@ The app may feel dense, but it must not feel cramped. Density comes from aligned
 Copy rules:
 
 - Use verb-first actions: `Create project`, `Select project`, `Copy endpoint`, `Clear filters`, `Open trace`.
-- Avoid implementation terms in user-facing navigation. Use `Company`, `Project`, `Traces`, `Logs`, `Metrics`, `Dashboards`, `AI Chat`, `AI Eval`, and `Settings`. Use `Live` only as a trace workspace mode label, not as a primary navigation entry.
+- Avoid implementation terms in user-facing navigation. Use `Company`, `Project`, `Traces`, `Logs`, `Metrics`, `Dashboards`, `AI Chat`, `Evaluations`, and `Settings`. Use `Live` only as a trace workspace mode label, not as a primary navigation entry.
 - Technical protocol terms are allowed only inside setup and documentation surfaces: `OTLP`, `OpenTelemetry`, `Bearer token`, `GraphQL`.
 - Every user-visible string goes through the translation layer.
 

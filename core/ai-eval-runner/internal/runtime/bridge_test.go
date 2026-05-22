@@ -61,7 +61,7 @@ func TestExperimentStartHandlerRoutesToRunnerAndRespondsWithRunData(t *testing.T
 			AuthContext:  &contracts.AuthContext{ProjectID: stringPtr("project-1")},
 		},
 		ExperimentID: "experiment-1",
-		SolverRef:    map[string]any{"adapter": "harness"},
+		SolverRef:    &contracts.EvalSolverRef{Kind: "agent", Name: "harness"},
 	})
 
 	NewRunnerService(runner, nil).SubjectHandlers()[SubjectExperimentStart](msg)

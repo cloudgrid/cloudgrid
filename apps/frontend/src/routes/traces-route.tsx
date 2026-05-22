@@ -1,4 +1,5 @@
 import type { TelemetryFacetResult, TraceSearchInput } from "@cloudgrid/ui-contracts";
+import { TRACE_SEARCH_DEFAULT_LIMIT } from "@cloudgrid/ui-contracts";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { ClipboardCopy, Clock, Radio, SlidersHorizontal, X } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -31,15 +32,15 @@ export function TracesRoute() {
   const ingestSettingsHref = viewer?.selectedProject
     ? `/projects/${encodeURIComponent(viewer.selectedProject.id)}/settings/ingest`
     : "/projects";
-  const { filters, searchParams, setFilter, clearFilters } = useTraceFilters();
+  const { filters, searchParams, setFilter, setServicesFilter, clearFilters } = useTraceFilters();
   const [routeSearchParams, setRouteSearchParams] = useSearchParams();
   const traceMode = routeSearchParams.get("mode") === "live" ? "live" : "history";
   const filtered = hasActiveFilters(searchParams);
-  const traceSearchInput = { ...filters, cursor: null };
+  const traceSearchInput = { ...filters, cursor: null, limit: TRACE_SEARCH_DEFAULT_LIMIT };
   const facetInput = {
     from: filters.from ?? null,
     to: filters.to ?? null,
-    service: filters.service ?? null,
+    signal: "traces" as const,
     search: filters.query ?? null,
     limit: 25,
   };
@@ -94,7 +95,13 @@ export function TracesRoute() {
         onModeChange={setTraceMode}
         projectName={viewer?.selectedProject?.name ?? t("projects.select")}
       />
-      <TraceFilters filters={filters} onChange={setFilter} onClear={clearFilters} />
+      <TraceFilters
+        filters={filters}
+        onChange={setFilter}
+        onClear={clearFilters}
+        onServicesChange={setServicesFilter}
+        serviceOptions={facetsQuery.data?.services}
+      />
       <TraceFacetDrawer
         facets={facetsQuery.data}
         isError={facetsQuery.isError}
@@ -102,12 +109,14 @@ export function TracesRoute() {
         onAttributeKeySelect={(value) => setFilter("attributeKey", value)}
         onOperationSelect={(value) => setFilter("operationName", value)}
         onRetry={() => void facetsQuery.refetch()}
-        onServiceSelect={(value) => setFilter("service", value)}
+        onServiceSelect={(value) =>
+          toggleServiceFilter(filters.services ?? [], value, setServicesFilter)
+        }
         onSpanNameSelect={(value) => setFilter("spanName", value)}
         selected={{
           attributeKey: searchParams.get("attributeKey"),
           operation: filters.operationName,
-          service: filters.service,
+          service: filters.services ?? filters.service,
           spanName: filters.spanName,
         }}
         error={facetsQuery.error}
@@ -122,12 +131,14 @@ export function TracesRoute() {
             onAttributeKeySelect={(value) => setFilter("attributeKey", value)}
             onOperationSelect={(value) => setFilter("operationName", value)}
             onRetry={() => void facetsQuery.refetch()}
-            onServiceSelect={(value) => setFilter("service", value)}
+            onServiceSelect={(value) =>
+              toggleServiceFilter(filters.services ?? [], value, setServicesFilter)
+            }
             onSpanNameSelect={(value) => setFilter("spanName", value)}
             selected={{
               attributeKey: searchParams.get("attributeKey"),
               operation: filters.operationName,
-              service: filters.service,
+              service: filters.services ?? filters.service,
               spanName: filters.spanName,
             }}
           />
@@ -187,6 +198,20 @@ export function TracesRoute() {
   );
 }
 
+function toggleServiceFilter(
+  current: readonly string[],
+  value: string | null,
+  onChange: (services: string[]) => void,
+) {
+  if (!value) {
+    onChange([]);
+    return;
+  }
+  onChange(
+    current.includes(value) ? current.filter((service) => service !== value) : [...current, value],
+  );
+}
+
 function TraceFacetDrawer(props: TraceFacetsContentProps) {
   return (
     <div className="flex shrink-0 justify-end xl:hidden">
@@ -224,7 +249,7 @@ interface TraceFacetsContentProps {
   selected: {
     attributeKey: string | null;
     operation: TraceSearchInput["operationName"];
-    service: TraceSearchInput["service"];
+    service: TraceSearchInput["service"] | TraceSearchInput["services"];
     spanName: TraceSearchInput["spanName"];
   };
 }

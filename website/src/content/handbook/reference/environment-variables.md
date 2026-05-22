@@ -33,7 +33,6 @@ This table summarizes the current CloudGrid runtime variables. See [Runtime envi
 | `CLOUDGRID_FRONTEND_DEV_PORT` | `5173` | Vite dev server port. |
 | `CLOUDGRID_FRONTEND_SERVE_STATIC` | `false` in dev | BFF serves built frontend when true. |
 | `CLOUDGRID_FRONTEND_STATIC_DIR` | `./apps/backend/public` | Static frontend directory. |
-| `CLOUDGRID_GRAPHQL_UI` | dev-enabled | Enable GraphiQL for trusted sessions. |
 | `CLOUDGRID_PUBLIC_URL` | unset | External browser base URL used in invitation emails. |
 | `CLOUDGRID_AI_CHAT_ENABLED` | `false` | Enables the BFF AI Chat runtime and route. |
 | `VITE_CLOUDGRID_AI_CHAT_ENABLED` | unset | Frontend build-time override; set to `false` to hide the route. |

@@ -186,7 +186,7 @@ project.
 ## UX Rules
 
 - The project sidebar exposes Dashboards after a project is selected.
-- Pinned dashboards appear above primary navigation only when `DashboardListResult.pinnedDashboardIds` or `DashboardPreferences.pinnedDashboardIds` is available.
+- Pinned dashboards appear below `AI Chat` and above primary telemetry navigation only when `DashboardListResult.pinnedDashboardIds` or `DashboardPreferences.pinnedDashboardIds` is available.
 - The Dashboards sidebar entry may expand to show visible custom dashboards; the parent entry still opens `/dashboards`.
 - `/metrics` remains a technical metric explorer and does not show dashboard management.
 - `/dashboards` is the saved visual composition workspace.

@@ -21,15 +21,23 @@ implements:
 
 ## Business Intent
 
-Turn observed production or local failures into durable evaluation cases.
+Turn observed production or local failures into durable evaluation cases and
+reviewable dataset candidates.
 
 ## Behavior
 
 - Users can promote a trace or span into a reviewed or unreviewed
   `DatasetItem`.
 - The dataset item stores input, expected output, metadata, source trace/span
-  pointers, review status, split assignment, and annotations.
+  pointers, review status, split assignment, target shape, content treatment,
+  anonymization provenance, and annotations.
 - If content capture is off, promotion can store metadata and source pointers, but cannot fabricate missing prompt or completion content.
+- Promotion may first create a `DatasetCandidate` rather than a committed
+  `DatasetItem` when project policy requires review, realistic anonymization,
+  clustering, or expected-output authoring.
+- Realistic anonymization replaces sensitive values with safe fake values before
+  candidate commit when enabled. It must preserve useful semantics and
+  repeated-reference consistency while recording policy provenance.
 - Annotation queue items are created by online scoring rules or by `Mutation.resolveAnnotation` when the user reopens or reassigns a review item.
 - Storage-read owns annotation queue filtering and facets.
 - Annotation resolution can create a new dataset item or update an existing item
@@ -39,6 +47,12 @@ Turn observed production or local failures into durable evaluation cases.
 
 - Given a source span with captured input and output content, promotion creates a dataset item with source pointers and user-provided expected output.
 - Given missing content, promotion requires explicit user-supplied input before creating a dataset item.
+- Given project policy requires candidate review, promotion creates a
+  `DatasetCandidate` and waits for explicit commit before changing the dataset
+  version.
+- Given realistic anonymization is enabled, committed dataset content contains
+  safe fake names, emails, payment values, phone numbers, addresses, URLs, and
+  other detected sensitive fields, not the original sensitive values.
 - Given a resolved queue item, storage-write links it to the created dataset item and storage-read removes it from open queue results.
 - Given a user assigns `holdout`, the item becomes unavailable to optimization
   manifests.

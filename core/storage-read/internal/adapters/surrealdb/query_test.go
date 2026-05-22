@@ -40,7 +40,7 @@ func TestBuildTraceSearchQueryUsesFiltersParametersAndDeterministicSort(t *testi
 	assertContains(t, stmt.SQL, "companyId = $companyId")
 	assertContains(t, stmt.SQL, "projectId = $projectId")
 	assertContains(t, stmt.SQL, "deletedAt = NONE")
-	assertContains(t, stmt.SQL, "serviceName = $service")
+	assertContains(t, stmt.SQL, "serviceName IN $services")
 	assertContains(t, stmt.SQL, "status = $status")
 	assertContains(t, stmt.SQL, "startedAt >= $from")
 	assertContains(t, stmt.SQL, "startedAt <= $to")
@@ -48,7 +48,7 @@ func TestBuildTraceSearchQueryUsesFiltersParametersAndDeterministicSort(t *testi
 	assertContains(t, stmt.SQL, "LIMIT $limit")
 	assertNoMutation(t, stmt.SQL)
 
-	if stmt.Params["service"] != service || stmt.Params["status"] != string(status) || stmt.Params["limit"] != limit+1 {
+	if services, ok := stmt.Params["services"].([]string); !ok || len(services) != 1 || services[0] != service || stmt.Params["status"] != string(status) || stmt.Params["limit"] != limit+1 {
 		t.Fatalf("params = %#v, want service/status/limit+1 sentinel", stmt.Params)
 	}
 	if stmt.Params["tenantId"] != "local" || stmt.Params["companyId"] != "local" || stmt.Params["projectId"] != "default" {
@@ -59,7 +59,7 @@ func TestBuildTraceSearchQueryUsesFiltersParametersAndDeterministicSort(t *testi
 	}
 }
 
-func TestBuildTraceSearchQueryFiltersByParticipatingSpanService(t *testing.T) {
+func TestBuildTraceSearchQueryUsesIndexedTraceServiceFilter(t *testing.T) {
 	service := "payments"
 
 	stmt, err := BuildTraceSearchQuery(contracts.TraceSearchQuery{
@@ -69,14 +69,18 @@ func TestBuildTraceSearchQueryFiltersByParticipatingSpanService(t *testing.T) {
 		t.Fatalf("BuildTraceSearchQuery returned error: %v", err)
 	}
 
-	assertContains(t, stmt.SQL, "traceId IN (SELECT VALUE traceId FROM span")
-	assertContains(t, stmt.SQL, "serviceName = $service")
+	assertContains(t, stmt.SQL, "serviceName IN $services")
+	assertNotContains(t, stmt.SQL, "SELECT VALUE traceId FROM span")
 	assertContains(t, stmt.SQL, "tenantId = $tenantId")
 	assertContains(t, stmt.SQL, "companyId = $companyId")
 	assertContains(t, stmt.SQL, "projectId = $projectId")
+	assertContains(t, stmt.SQL, "LIMIT $limit")
 	assertNoMutation(t, stmt.SQL)
-	if stmt.Params["service"] != service {
+	if services, ok := stmt.Params["services"].([]string); !ok || len(services) != 1 || services[0] != service {
 		t.Fatalf("params = %#v, want service", stmt.Params)
+	}
+	if stmt.Params["limit"] != defaultPageLimit+1 {
+		t.Fatalf("limit param = %#v, want default page limit sentinel", stmt.Params["limit"])
 	}
 }
 
@@ -222,7 +226,7 @@ func TestBuildLiveTraceCandidatesQueryNarrowsByTraceIDsAndLiveFilters(t *testing
 	assertContains(t, stmt.SQL, "companyId = $companyId")
 	assertContains(t, stmt.SQL, "projectId = $projectId")
 	assertContains(t, stmt.SQL, "traceId IN $traceIds")
-	assertContains(t, stmt.SQL, "serviceName = $service")
+	assertContains(t, stmt.SQL, "serviceName IN $services")
 	assertContains(t, stmt.SQL, "status = $status")
 	assertContains(t, stmt.SQL, "startedAt >= $from")
 	assertContains(t, stmt.SQL, "attributes[$attributeKey0] = $attributeValue0")
@@ -230,7 +234,7 @@ func TestBuildLiveTraceCandidatesQueryNarrowsByTraceIDsAndLiveFilters(t *testing
 	assertContains(t, stmt.SQL, "LIMIT $limit")
 	assertNoMutation(t, stmt.SQL)
 
-	if stmt.Params["limit"] != limit || stmt.Params["service"] != service || stmt.Params["status"] != string(status) {
+	if services, ok := stmt.Params["services"].([]string); !ok || len(services) != 1 || services[0] != service || stmt.Params["limit"] != limit || stmt.Params["status"] != string(status) {
 		t.Fatalf("params = %#v, want live filter params", stmt.Params)
 	}
 	traceIDs, ok := stmt.Params["traceIds"].([]string)
@@ -251,12 +255,12 @@ func TestBuildLiveTraceCandidatesQueryFiltersByParticipatingSpanService(t *testi
 
 	assertContains(t, stmt.SQL, "traceId IN $traceIds")
 	assertContains(t, stmt.SQL, "traceId IN (SELECT VALUE traceId FROM span")
-	assertContains(t, stmt.SQL, "serviceName = $service")
+	assertContains(t, stmt.SQL, "serviceName IN $services")
 	assertContains(t, stmt.SQL, "tenantId = $tenantId")
 	assertContains(t, stmt.SQL, "companyId = $companyId")
 	assertContains(t, stmt.SQL, "projectId = $projectId")
 	assertNoMutation(t, stmt.SQL)
-	if stmt.Params["service"] != service {
+	if services, ok := stmt.Params["services"].([]string); !ok || len(services) != 1 || services[0] != service {
 		t.Fatalf("params = %#v, want service", stmt.Params)
 	}
 }
@@ -274,6 +278,120 @@ func TestBuildTraceSearchQueryAppliesCursorPredicate(t *testing.T) {
 	assertContains(t, stmt.SQL, "startedAt = $cursorValue AND traceId > $cursorId")
 	if stmt.Params["cursorValue"] != cursorTime || stmt.Params["cursorId"] != "trace-9" {
 		t.Fatalf("params = %#v, want decoded trace cursor", stmt.Params)
+	}
+}
+
+func TestBuildTraceSearchQueryPushesOptionalFiltersAndActiveSort(t *testing.T) {
+	queryText := "  Checkout Timeout  "
+	operationName := "GET /checkout"
+	spanName := "SELECT carts"
+	minDuration := 25.5
+	maxDuration := 250.5
+	sort := contracts.TraceSortDurationDesc
+	cursor := encodeCursor(t, "duration_desc_traceId_asc", "250.5", "trace-9")
+
+	stmt, err := BuildTraceSearchQuery(contracts.TraceSearchQuery{
+		Query:         &queryText,
+		OperationName: &operationName,
+		SpanName:      &spanName,
+		MinDurationMs: &minDuration,
+		MaxDurationMs: &maxDuration,
+		Attributes: []contracts.AttributeFilter{
+			{Key: "http.route", Operator: contracts.AttributeFilterOperatorContains, Value: "/checkout"},
+		},
+		Sort:   &sort,
+		Cursor: &cursor,
+	})
+	if err != nil {
+		t.Fatalf("BuildTraceSearchQuery returned error: %v", err)
+	}
+
+	assertContains(t, stmt.SQL, "durationMs >= $minDurationMs")
+	assertContains(t, stmt.SQL, "durationMs <= $maxDurationMs")
+	assertContains(t, stmt.SQL, "searchText @AND@ $query")
+	assertContains(t, stmt.SQL, "traceId IN (SELECT VALUE traceId FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND parentSpanId = NONE AND name = $operationName)")
+	assertContains(t, stmt.SQL, "traceId IN (SELECT VALUE traceId FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND name = $spanName)")
+	assertContains(t, stmt.SQL, "string::lowercase(<string> attributes[$attributeKey0]) CONTAINS $attributeValue0")
+	assertContains(t, stmt.SQL, "durationMs < $cursorValue")
+	assertContains(t, stmt.SQL, "durationMs = $cursorValue AND traceId > $cursorId")
+	assertContains(t, stmt.SQL, "ORDER BY durationMs DESC, traceId ASC")
+	if stmt.Params["query"] != "checkout timeout" || stmt.Params["cursorValue"] != 250.5 {
+		t.Fatalf("params = %#v, want normalized query and numeric duration cursor", stmt.Params)
+	}
+}
+
+func TestBuildTraceSearchQueryPushesSpanSubqueryOwnership(t *testing.T) {
+	operationName := "GET /checkout"
+	spanName := "SELECT carts"
+
+	stmt, err := BuildTraceSearchQuery(contracts.TraceSearchQuery{
+		OperationName: &operationName,
+		SpanName:      &spanName,
+	})
+	if err != nil {
+		t.Fatalf("BuildTraceSearchQuery returned error: %v", err)
+	}
+
+	assertContains(t, stmt.SQL, "traceId IN (SELECT VALUE traceId FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND parentSpanId = NONE AND name = $operationName)")
+	assertContains(t, stmt.SQL, "traceId IN (SELECT VALUE traceId FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND name = $spanName)")
+}
+
+func TestBuildTraceSearchQueryUsesActiveSortForEveryCursorVariant(t *testing.T) {
+	cursorTime := time.Date(2026, 5, 8, 8, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name       string
+		sort       contracts.TraceSort
+		cursorSort string
+		lastValue  string
+		wantSQL    []string
+		wantValue  any
+	}{
+		{
+			name:       "started at asc",
+			sort:       contracts.TraceSortStartedAtAsc,
+			cursorSort: "startedAt_asc_traceId_asc",
+			lastValue:  cursorTime.Format(time.RFC3339Nano),
+			wantSQL:    []string{"startedAt > $cursorValue", "startedAt = $cursorValue AND traceId > $cursorId", "ORDER BY startedAt ASC, traceId ASC"},
+			wantValue:  cursorTime,
+		},
+		{
+			name:       "duration asc",
+			sort:       contracts.TraceSortDurationAsc,
+			cursorSort: "duration_asc_traceId_asc",
+			lastValue:  "42.25",
+			wantSQL:    []string{"durationMs > $cursorValue", "durationMs = $cursorValue AND traceId > $cursorId", "ORDER BY durationMs ASC, traceId ASC"},
+			wantValue:  42.25,
+		},
+		{
+			name:       "error first",
+			sort:       contracts.TraceSortErrorFirst,
+			cursorSort: "errorFirst_startedAt_desc_traceId_asc",
+			lastValue:  "1|" + cursorTime.Format(time.RFC3339Nano),
+			wantSQL:    []string{"status = 'error' AND (startedAt < $cursorStartedAt OR (startedAt = $cursorStartedAt AND traceId > $cursorId))", "OR status != 'error'", "ORDER BY status = 'error' DESC, startedAt DESC, traceId ASC"},
+			wantValue:  cursorTime,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cursor := encodeCursor(t, tt.cursorSort, tt.lastValue, "trace-9")
+			stmt, err := BuildTraceSearchQuery(contracts.TraceSearchQuery{Sort: &tt.sort, Cursor: &cursor})
+			if err != nil {
+				t.Fatalf("BuildTraceSearchQuery returned error: %v", err)
+			}
+			for _, want := range tt.wantSQL {
+				assertContains(t, stmt.SQL, want)
+			}
+			if tt.sort == contracts.TraceSortErrorFirst {
+				if stmt.Params["cursorStartedAt"] != tt.wantValue || stmt.Params["cursorErrorFirst"] != true || stmt.Params["cursorId"] != "trace-9" {
+					t.Fatalf("params = %#v, want error-first cursor params", stmt.Params)
+				}
+				return
+			}
+			if stmt.Params["cursorValue"] != tt.wantValue || stmt.Params["cursorId"] != "trace-9" {
+				t.Fatalf("params = %#v, want decoded cursor", stmt.Params)
+			}
+		})
 	}
 }
 
@@ -365,7 +483,7 @@ func TestBuildFacetQueriesUseBoundedReadOnlyStatements(t *testing.T) {
 		}
 		assertContains(t, stmt.SQL, "LIMIT $limit")
 		assertContains(t, stmt.SQL, "ORDER BY count DESC, value ASC")
-		if stmt.Params["limit"] != limit || stmt.Params["service"] != service || stmt.Params["search"] != search {
+		if services, ok := stmt.Params["services"].([]string); !ok || len(services) != 1 || services[0] != service || stmt.Params["limit"] != limit || stmt.Params["search"] != search {
 			t.Fatalf("%s params = %#v, want common facet params", name, stmt.Params)
 		}
 	}
@@ -377,6 +495,25 @@ func TestBuildFacetQueriesUseBoundedReadOnlyStatements(t *testing.T) {
 	if strings.Contains(stmts["attributeKeys"].SQL, "SPLIT") || strings.Contains(stmts["attributeKeys"].SQL, "GROUP BY") {
 		t.Fatalf("attribute key facet query must not combine SPLIT and GROUP in SurrealDB v3:\n%s", stmts["attributeKeys"].SQL)
 	}
+}
+
+func TestBuildFacetQueriesScopesServiceFacetBySignal(t *testing.T) {
+	logSignal := contracts.TelemetryFacetSignalLogs
+	metricSignal := contracts.TelemetryFacetSignalMetrics
+
+	logStmts, err := BuildFacetQueries(contracts.TelemetryFacetQuery{Signal: &logSignal})
+	if err != nil {
+		t.Fatalf("BuildFacetQueries logs returned error: %v", err)
+	}
+	assertContains(t, logStmts["services"].SQL, "FROM log_event")
+	assertContains(t, logStmts["services"].SQL, "GROUP BY serviceName")
+
+	metricStmts, err := BuildFacetQueries(contracts.TelemetryFacetQuery{Signal: &metricSignal})
+	if err != nil {
+		t.Fatalf("BuildFacetQueries metrics returned error: %v", err)
+	}
+	assertContains(t, metricStmts["services"].SQL, "FROM metric_point")
+	assertContains(t, metricStmts["services"].SQL, "GROUP BY serviceName")
 }
 
 func TestBuildLogSearchQueryUsesFiltersParametersAndTextSearch(t *testing.T) {
@@ -404,11 +541,11 @@ func TestBuildLogSearchQueryUsesFiltersParametersAndTextSearch(t *testing.T) {
 	assertContains(t, stmt.SQL, "tenantId = $tenantId")
 	assertContains(t, stmt.SQL, "companyId = $companyId")
 	assertContains(t, stmt.SQL, "projectId = $projectId")
-	assertContains(t, stmt.SQL, "serviceName = $service")
+	assertContains(t, stmt.SQL, "serviceName IN $services")
 	assertContains(t, stmt.SQL, "traceId = $traceId")
 	assertContains(t, stmt.SQL, "spanId = $spanId")
 	assertContains(t, stmt.SQL, "severityText = $severity")
-	assertContains(t, stmt.SQL, "string::lowercase(bodyText) CONTAINS $search")
+	assertContains(t, stmt.SQL, "searchText @AND@ $search")
 	assertContains(t, stmt.SQL, "ORDER BY timestamp DESC, logEventId ASC")
 	assertContains(t, stmt.SQL, "LIMIT $limit")
 	assertNoMutation(t, stmt.SQL)
@@ -434,6 +571,38 @@ func TestBuildLogSearchQueryAppliesCursorPredicate(t *testing.T) {
 	assertContains(t, stmt.SQL, "timestamp = $cursorValue AND logEventId > $cursorId")
 	if stmt.Params["cursorValue"] != cursorTime || stmt.Params["cursorId"] != "log-9" {
 		t.Fatalf("params = %#v, want decoded log cursor", stmt.Params)
+	}
+}
+
+func TestBuildLogSearchQueryUsesActiveSortForCursor(t *testing.T) {
+	sort := contracts.LogSortTimestampAsc
+	cursorTime := time.Date(2026, 5, 8, 8, 0, 0, 0, time.UTC)
+	cursor := encodeCursor(t, "timestamp_asc_logEventId_asc", cursorTime.Format(time.RFC3339Nano), "log-9")
+
+	stmt, err := BuildLogSearchQuery(contracts.LogSearchQuery{Sort: &sort, Cursor: &cursor})
+	if err != nil {
+		t.Fatalf("BuildLogSearchQuery returned error: %v", err)
+	}
+
+	assertContains(t, stmt.SQL, "timestamp > $cursorValue")
+	assertContains(t, stmt.SQL, "timestamp = $cursorValue AND logEventId > $cursorId")
+	assertContains(t, stmt.SQL, "ORDER BY timestamp ASC, logEventId ASC")
+}
+
+func TestBuildLogSearchQueryUsesSeveritySortForCursor(t *testing.T) {
+	sort := contracts.LogSortSeverityDesc
+	cursor := encodeCursor(t, "severity_desc_logEventId_asc", "17", "log-9")
+
+	stmt, err := BuildLogSearchQuery(contracts.LogSearchQuery{Sort: &sort, Cursor: &cursor})
+	if err != nil {
+		t.Fatalf("BuildLogSearchQuery returned error: %v", err)
+	}
+
+	assertContains(t, stmt.SQL, "severityNumber < $cursorValue")
+	assertContains(t, stmt.SQL, "severityNumber = $cursorValue AND logEventId > $cursorId")
+	assertContains(t, stmt.SQL, "ORDER BY severityNumber DESC, logEventId ASC")
+	if stmt.Params["cursorValue"] != 17.0 || stmt.Params["cursorId"] != "log-9" {
+		t.Fatalf("params = %#v, want decoded severity cursor", stmt.Params)
 	}
 }
 
@@ -472,6 +641,13 @@ func assertContains(t *testing.T, haystack, needle string) {
 	t.Helper()
 	if !strings.Contains(haystack, needle) {
 		t.Fatalf("SQL %q does not contain %q", haystack, needle)
+	}
+}
+
+func assertNotContains(t *testing.T, haystack, needle string) {
+	t.Helper()
+	if strings.Contains(haystack, needle) {
+		t.Fatalf("SQL %q contains %q", haystack, needle)
 	}
 }
 

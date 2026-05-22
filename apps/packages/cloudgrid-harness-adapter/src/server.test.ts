@@ -110,6 +110,66 @@ describe("cloudgrid harness adapter server", () => {
     expect(span?.traceState).toBe("vendor=value");
   });
 
+  test("sandbox lifecycle endpoints expose adapter-switchable control calls", async () => {
+    const server = createHarnessAdapterServer();
+
+    const start = await server.fetch(
+      new Request("http://adapter.test/v1/sandboxes/start", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          experimentRunId: "run-1",
+          datasetItemId: "item-1",
+          manifestDigest: "manifest-digest-1",
+          sandboxProfile: "ephemeral_eval_item",
+          runPolicy: { maxParallelRequests: 10 },
+        }),
+      }),
+    );
+
+    expect(start.status).toBe(200);
+    const started = (await readJson(start)) as { sandboxRef: string; checkpointSupported: boolean };
+    expect(started).toMatchObject({
+      sandboxRef: "sandbox-run-1-item-1",
+      sandboxProfile: "ephemeral_eval_item",
+      checkpointSupported: false,
+      cleanupRequired: true,
+    });
+
+    for (const action of ["pause", "resume", "abort", "cleanup"]) {
+      const response = await server.fetch(
+        new Request(`http://adapter.test/v1/sandboxes/${action}`, {
+          method: "POST",
+          headers: jsonHeaders,
+          body: JSON.stringify({
+            experimentRunId: "run-1",
+            datasetItemId: "item-1",
+            manifestDigest: "manifest-digest-1",
+            sandboxProfile: "ephemeral_eval_item",
+            sandboxRef: started.sandboxRef,
+            cleanupRetry:
+              action === "cleanup" ? { attempt: 2, reason: "unknown_outcome" } : undefined,
+          }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      expect(await readJson(response)).toMatchObject({
+        sandboxRef: started.sandboxRef,
+        checkpointSupported: false,
+        ...(action === "cleanup"
+          ? {
+              cleanupSummary: {
+                status: "acknowledged",
+                retryable: false,
+                deletedBytes: 0,
+                deletedFiles: 0,
+              },
+            }
+          : {}),
+      });
+    }
+  });
+
   test("POST /v1/score executes deterministic contains and regex scorers", async () => {
     const server = createHarnessAdapterServer();
 

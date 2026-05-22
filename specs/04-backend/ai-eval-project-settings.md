@@ -28,7 +28,11 @@ Control-plane owns:
 - default judge, optimizer, embedding, and replay model references;
 - online evaluation policies;
 - budget, sampling, and concurrency defaults;
+- run reliability defaults: max parallel requests, token budgets, rate limits,
+  backpressure, retry, timeout, failure budget, checkpointing, and quarantine
+  rules;
 - dataset split defaults and small-dataset guidance thresholds.
+- dataset candidate and anonymization defaults.
 
 Control-plane does not execute model calls, score runs, read telemetry, write
 AI-eval results, or store raw model-provider secrets.
@@ -57,6 +61,10 @@ Fields:
 - `onlinePolicies`: enabled/disabled online scoring policies.
 - `budget`: daily and per-run budget caps.
 - `sampling`: online sampling defaults.
+- `runPolicyDefaults`: default run reliability policy values used when a run
+  does not override them.
+- `datasetPipeline`: dataset candidate, realistic anonymization, review, and
+  commit defaults.
 - `datasetDefaults`: split and review defaults for new datasets.
 - `version`: optimistic concurrency version.
 - `updatedAt`, `updatedByUserId`.
@@ -77,12 +85,19 @@ Fields:
 - `enabled`.
 - `name`.
 - `target`: project segment selector over the exact fields defined below.
-- `scorerIds`: scorer versions to apply. For online scoring v1 every referenced
-  scorer must resolve to `Scorer.kind = deterministic`.
+- `scorerIds`: scorer versions to apply. Each referenced scorer must declare
+  production-measurement compatibility and its requirements must be satisfied by
+  the policy's content allowance, provider references, model aliases, budget,
+  latency class, and safety constraints.
 - `sampleRate`: float from `0` to `1`, capped by project defaults.
 - `maxDailyRuns`: optional integer cap.
 - `annotationRules`: manual annotation defaults for UI batch actions. The
   runner must ignore these during online scoring notification handling.
+- `contentAllowance`: allowed content classes for production measurement:
+  `none`, `metadata_only`, `captured_content`, `dataset_content`, and
+  `retrieved_document_content`.
+- `maxLatencyClass`: highest scorer latency class allowed for continuous
+  production measurement. Realtime alerting latency classes are out of scope.
 - `createdAt`, `updatedAt`, `updatedByUserId`.
 
 Policies are declarative. The runner asks storage-read for matching policies
@@ -121,15 +136,79 @@ the UI when a user explicitly creates annotation items from selected online
 score results. The runner and storage-read live notification path must not
 create `AnnotationQueueItem` records from these rules.
 
+### RunPolicyDefaults
+
+The machine-readable source of truth is
+`specs/03-contracts/entities/ai/eval-run-policy.schema.json`. Project defaults,
+experiment overrides, optimization overrides, production measurement policy
+resolution, and harness adapter requests must use the same field names and
+validation rules.
+
+Fields:
+
+- `maxParallelRequests`: default maximum concurrent harness/model/scorer calls.
+  Default `10`.
+- `tokenBudget`: optional per-run, per-item input, and per-item output token
+  ceilings.
+- `rateLimit`: per-provider, per-project, and per-run request/token pacing.
+- `backpressure`: slow, pause, skip, or fail behavior for harness, provider,
+  queue, NATS, or storage lag.
+- `retry`: retryable error codes, maximum attempts, exponential backoff, jitter,
+  and retry budget.
+- `timeout`: item, scorer, adapter call, and whole-run deadlines.
+- `failureBudget`: maximum model-quality failures and technical errors before a
+  run fails.
+- `checkpoint`: checkpoint cadence for pause/resume.
+- `quarantine`: rules for marking oversized, invalid, flaky, or repeatedly
+  failing dataset items.
+- `costBudget`: per-run and daily project cost ceilings.
+- `workspaceQuota`: sandbox/workspace caps used by ephemeral and future durable
+  replay profiles.
+- `cleanupRetry`: cleanup retry/backoff/orphan handling for sandbox lifecycle
+  cleanup calls.
+
+### DatasetPipelineSettings
+
+Fields:
+
+- `candidateSuggestionsEnabled`: enables dataset candidate preparation from
+  production measurements, failed offline item runs, coverage gaps, and health
+  issues.
+- `requireReviewBeforeCommit`: requires human confirmation before candidates
+  become dataset items. Default `true`.
+- `anonymizationMode`: `off`, `realistic`, or `redact`.
+- `anonymizationPolicyId` and `anonymizationPolicyVersion`: selected policy.
+- `anonymizationConsistencyScope`: `project` or `dataset`.
+- `preserveLocale`: keep locale-shaped replacement values.
+- `preserveTemporalDistance`: shift dates consistently instead of replacing all
+  dates independently.
+- `blockedEntityTypes`: entity types that must be redacted or dropped instead
+  of realistically replaced.
+
+Realistic anonymization must use safe fake replacements. Reserved domains,
+test-only payment numbers, non-routable network values, and invalid secret-like
+patterns are required for generated values that look sensitive.
+
 ## Defaults
 
 When AI Eval is enabled for a project:
 
 - online scoring remains disabled until at least one online policy is enabled;
 - default daily evaluation budget is `0 USD` until a project admin sets a
-  positive budget or explicitly selects local deterministic-only mode;
-- online scoring v1 defaults to deterministic-only mode;
+  positive budget or explicitly selects local no-provider mode for scorer
+  capabilities that do not require a model/provider call;
+- production measurement defaults to metadata-only content allowance and batch
+  latency class;
 - default online sample rate is `0`;
+- default max parallel requests is `10`;
+- retry defaults are bounded exponential backoff with jitter and at most three
+  attempts for retryable harness/provider/storage errors;
+- default backpressure behavior is to slow scheduling, then pause the run when
+  queues remain above policy thresholds;
+- dataset candidate suggestions are enabled for reviewed users but require
+  explicit commit;
+- realistic anonymization is the recommended default for production-derived
+  dataset candidates, while project settings may choose `off` or `redact`;
 - policy templates may be shown in the UI, but they must be saved disabled
   until a project admin enables them;
 - default split allocation for imported or promoted reviewed items is
@@ -143,7 +222,8 @@ When AI Eval is enabled for a project:
 The approved public contract includes:
 
 - GraphQL `ProjectAiSettings`, `OnlineEvaluationPolicy`, `AiEvalBudget`,
-  `AiEvalSampling`, and `DatasetDefaults` types.
+  `AiEvalSampling`, `EvalRunPolicyDefaults`, `DatasetPipelineSettings`, and
+  `DatasetDefaults` types.
 - GraphQL `Query.projectAiSettings(projectId: ID!)`.
 - GraphQL `Mutation.updateProjectAiSettings(input: UpdateProjectAiSettingsInput!)`.
 - GraphQL project/provider reference fields that point at
@@ -185,12 +265,18 @@ Updates fail with `ERR-001` when:
 - default model alias references are missing, disabled, or assigned to an
   incompatible purpose in Project AI Provider settings;
 - sample rates are outside `0..1`;
+- max parallel requests is below `1` or above configured hard caps;
+- token budget, timeout, retry, or rate limit values are outside allowed
+  bounds;
 - daily budget is negative;
 - an enabled online policy has an empty target;
 - an online policy target uses an unknown key or a raw/secret-looking content
   selector;
-- an enabled online policy references any scorer whose resolved kind is not
-  `deterministic`;
+- an enabled production policy references any scorer whose declared requirements
+  are not allowed by the policy or project settings;
+- a realistic anonymization policy attempts to generate routable emails, usable
+  payment credentials, real API-key-looking secrets, or stores original values
+  in dataset metadata;
 - strings contain secret-looking keys such as `authorization`, `cookie`,
   `x-api-key`, `api_key`, `token`, `secret`, or `password`.
 
@@ -206,7 +292,12 @@ Required tests:
 - raw secret-looking fields are rejected;
 - disabled default provider references are rejected;
 - effective settings include derived defaults;
-- local mode can enable deterministic-only evaluation without provider secrets;
-- enabled online policies reject non-deterministic scorers;
+- local mode can enable no-provider evaluation without provider secrets;
+- enabled online policies reject scorers whose requirements are not satisfied by
+  policy and project settings;
 - enabled online policies reject empty targets and secret-looking selectors;
+- run policy defaults enforce max parallel requests default `10`, bounded
+  retries, rate limits, backpressure, and token budgets;
+- dataset pipeline settings record anonymization policy provenance and require
+  explicit candidate commit;
 - BFF resolvers call only control-plane message subjects.

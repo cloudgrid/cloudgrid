@@ -16,7 +16,6 @@ export interface RuntimeConfig {
   port: number;
   natsUrl: string;
   requestTimeoutMs: number;
-  graphqlUI: boolean;
   graphqlMaxDepth: number;
   graphqlMaxComplexity: number;
   graphqlResponseMediaType: GraphQLResponseMediaType;
@@ -49,7 +48,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
       maxMessageBridgeRequestTimeoutMs,
       "CLOUDGRID_MESSAGE_BRIDGE_REQUEST_TIMEOUT_MS",
     ),
-    graphqlUI: parseBooleanFlag(env.CLOUDGRID_GRAPHQL_UI, env.NODE_ENV !== "production"),
     graphqlMaxDepth: parseIntegerEnv(
       env.CLOUDGRID_GRAPHQL_MAX_DEPTH,
       12,

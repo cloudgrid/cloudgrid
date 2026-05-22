@@ -532,6 +532,9 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
         split: "dev" as const,
         reviewStatus: "unreviewed" as const,
         synthetic: false,
+        targetShape: "single_turn" as const,
+        contentTreatment: "original" as const,
+        quarantineStatus: "none" as const,
         leakageWarnings: [],
       };
     },
@@ -904,6 +907,18 @@ function projectAiSettings(projectId = "project-1", version = 1): ProjectAiSetti
       maxConcurrentExperimentItems: 4,
       maxConcurrentOptimizationCandidates: 2,
     },
+    runPolicyDefaults: { maxParallelRequests: 10 },
+    datasetPipeline: {
+      candidateSuggestionsEnabled: true,
+      requireReviewBeforeCommit: true,
+      anonymizationMode: "realistic",
+      anonymizationPolicyId: null,
+      anonymizationPolicyVersion: null,
+      anonymizationConsistencyScope: "project",
+      preserveLocale: true,
+      preserveTemporalDistance: true,
+      blockedEntityTypes: [],
+    },
     datasetDefaults: {
       splitAllocation: {},
       smallDatasetReviewedThreshold: 30,
@@ -1048,10 +1063,36 @@ function experimentRun(): ExperimentRun {
   return {
     id: "experiment-run-1",
     experimentId: "experiment-1",
-    solverRef: {},
+    solverRef: { kind: "agent", name: "candidate" },
     status: "running",
+    runPolicy: { maxParallelRequests: 10 },
     startedAt: "2026-05-12T10:00:00.000Z",
-    summary: {},
+    summary: {
+      itemCounts: {
+        total: 0,
+        passed: 0,
+        failed: 0,
+        errored: 0,
+        skipped: 0,
+        needsReview: 0,
+        quarantined: 0,
+      },
+      scoreSummaries: [],
+      problemCounts: {
+        modelQuality: 0,
+        itemQuality: 0,
+        scorerConfig: 0,
+        infrastructure: 0,
+      },
+      budgetUsage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        estimatedUsd: 0,
+      },
+      latency: null,
+      regressions: [],
+    },
   };
 }
 

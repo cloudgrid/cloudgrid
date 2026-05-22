@@ -52,6 +52,16 @@ The startup order avoids noisy first-load request timeouts. If the BFF starts be
 
 Stop `dev:all` with `Ctrl+C`.
 
+Stop stale local app processes left behind on CloudGrid dev ports:
+
+```sh
+bun run dev:clean
+```
+
+By default, this only stops listeners whose current working directory is inside
+the CloudGrid checkout. Use `bun run dev:clean -- --force` only when you want to
+terminate any process bound to a configured CloudGrid app port.
+
 Stop Docker infrastructure:
 
 ```sh

@@ -20,6 +20,10 @@ depends_on: [DOM-006, TEC-BE-024]
 | `eval.dataset.create` | BFF | `core/storage-write` | Create a dataset. |
 | `eval.dataset.items.append` | BFF | `core/storage-write` | Append manually authored or imported dataset items. |
 | `eval.dataset.item.promote` | BFF | `core/storage-write` | Promote a source trace/span into a dataset item. |
+| `eval.dataset.item.update` | BFF | `core/storage-write` | Edit, remove, review, reject, split-change, quarantine, or restore a dataset item in a new dataset version. |
+| `eval.dataset.candidates.prepare` | BFF | `core/storage-read`, `core/storage-write` | Prepare reviewable dataset candidates from traces, failed results, clusters, coverage gaps, or health issues. |
+| `eval.dataset.candidates.search` | BFF | `core/storage-read` | Search dataset candidates, clusters, anonymization provenance, and suggestion status. |
+| `eval.dataset.candidates.commit` | BFF | `core/storage-write` | Commit selected reviewed candidates into a dataset version. |
 | `eval.dataset.import.prepare` | BFF | `core/storage-write` | Validate staged dataset upload and return import preview. |
 | `eval.dataset.import.commit` | BFF | `core/storage-write` | Commit a prepared import preview into a dataset version. |
 | `eval.dataset.export.start` | BFF | `core/storage-read`, `core/storage-write` | Resolve and prepare canonical dataset export artifact. |
@@ -31,6 +35,8 @@ depends_on: [DOM-006, TEC-BE-024]
 | `eval.experiment.create` | BFF | `core/storage-write` | Create an experiment. |
 | `eval.experiment.start` | BFF | `core/ai-eval-runner` | Start an offline experiment run. |
 | `eval.experiment.cancel` | BFF | `core/ai-eval-runner` | Cancel an experiment run. |
+| `eval.experiment.pause` | BFF | `core/ai-eval-runner` | Pause an experiment or optimization run after checkpointing active work. |
+| `eval.experiment.resume` | BFF | `core/ai-eval-runner` | Resume a paused run with the persisted manifest digest. |
 | `eval.optimization.start` | BFF | `core/ai-eval-runner` | Start an optimization run. |
 | `eval.experiment.search` | BFF, runner | `core/storage-read` | Search experiments and experiment runs. |
 | `eval.results.search` | BFF, runner | `core/storage-read` | Search eval results. |
@@ -56,6 +62,24 @@ Each request uses `BridgeEnvelope` plus a subject-specific payload. BFF-originat
 ## Response Shape Rule
 
 Every response uses `{ requestId, ok, data?, error? }`. On success, `data` contains exactly the GraphQL-ready view model or persisted entity required by the caller. On failure, `error.code` is one of the codes in `specs/03-contracts/errors.yaml`.
+
+Subject payload lock:
+
+- `eval.experiment.start` uses `ExperimentStartRequest` in AsyncAPI and
+  `EvalSolverRef` from `eval-run-ref.schema.json`.
+- `eval.optimization.start` uses `OptimizationStartRequest` in AsyncAPI and
+  `optimizationConfig` from `eval-run-ref.schema.json`.
+- `eval.manifest.resolve` returns `ExperimentManifest` and must include typed
+  `solverRef`, optional `baselineRef`, optional `optimizationConfig`, and
+  `runPolicy`.
+- `eval.results.persist` persists `EvalResult`,
+  `eval-result-payload.schema.json`, and `DatasetItemRun` records.
+- `eval.experiment.search` returns run summaries that conform to
+  `eval-aggregation.schema.json#/$defs/runSummary`.
+- `eval.quality.overview` returns
+  `eval-aggregation.schema.json#/$defs/qualityOverview`.
+
+Implementers must not use subject-local anonymous JSON for these payloads.
 
 ## Mutation Routing Rule
 
@@ -97,17 +121,48 @@ Response payload:
 
 - `matches`: matched enabled online policies with `policyId`, `policyVersion`,
   `policyName`, `target`, `sampleRate`, optional `maxDailyRuns`, and
-  deterministic `scorerRefs`.
+  `scorerRefs`.
 - `projection`: bounded scorer input read model with source IDs, routing fields,
   safe indexed attributes, and no raw prompt/completion/tool/retrieval content.
-- `warnings`: bounded strings for invalid policies, stale scorer references, or
-  unsupported scorer kinds.
+- `runPolicy`: resolved sampling, max parallel requests, token budget,
+  rate-limit, backpressure, retry, timeout, cost, and failure-budget values.
+- `warnings`: bounded strings for invalid policies, stale scorer references,
+  missing scorer requirements, disallowed content access, missing provider/model
+  aliases, budget limits, or unsupported latency class.
 
-Storage-read owns all policy target matching and scorer-kind validation. The
-runner must not reimplement target matching. If a policy references a scorer
-outside the deterministic v1 online set, storage-read either omits it with a
-warning or returns a validation error. Runner must not call harness to make the
-policy executable.
+Storage-read owns all policy target matching and scorer requirement validation.
+The runner must not reimplement target matching. If a policy references a scorer
+whose requirements are not satisfied, storage-read either omits it with a
+warning or returns a validation error. Runner must not call harness to make a
+disallowed policy executable.
+
+## Dataset Candidate Contract
+
+Dataset candidate subjects use `EvalMutationRequest` or `EvalQueryRequest`
+envelopes. Payloads must include:
+
+- selected project and dataset IDs where applicable;
+- source references: trace/span IDs, eval result IDs, experiment run IDs,
+  policy IDs, coverage-gap IDs, health issue IDs, or cluster IDs;
+- candidate target shape;
+- requested split and review status;
+- content treatment: `original`, `realistic_anonymized`, `redacted`, or
+  `synthetic`;
+- anonymization policy reference when content treatment is
+  `realistic_anonymized` or `redacted`;
+- expected dataset version for commit.
+
+Preparation may create candidate records and bounded evidence. Commit is the
+only operation that creates dataset items. Candidates must not contain original
+sensitive values after realistic anonymization has run.
+
+## Dataset Item Update Contract
+
+`eval.dataset.item.update` is the only approved mutation subject for manual
+dataset item edit, remove, review, reject, split change, metadata update,
+quarantine, and restore. The request includes `expectedDatasetVersion` and
+creates a new dataset version or draft mutation. Removing an item hides it from
+later versions and never mutates historical run manifests.
 
 ## Dataset Import/Export Contract
 
@@ -164,3 +219,74 @@ different digest for the same `experimentRunId`, the runner fails with
 The manifest snapshot embeds resolved refs needed for replay. It does not embed
 raw provider secrets, raw prompt/completion content from source traces, or
 unbounded retrieved document content.
+
+`baselineRef`, `solverRef`, and optimization config are defined by
+`specs/03-contracts/entities/ai/eval-run-ref.schema.json`. The runner and
+storage-read must reject manifests with anonymous solver objects, unknown
+baseline kinds, unknown optimizer config fields, or roadmap optimizer configs
+without an approved future spec.
+
+## Eval Run Policy Contract
+
+`eval.manifest.resolve` returns `runPolicy` with:
+
+- `maxParallelRequests`, default `10`;
+- token budget: per-run, per-item input, and per-item output;
+- cost budget: per-run and daily project caps;
+- rate-limit values for provider, project, and run;
+- backpressure behavior for harness, provider, queue, NATS, and storage lag;
+- retry policy: retryable codes, max attempts, backoff, jitter, retry budget;
+- timeout policy: item, scorer, adapter call, and run deadlines;
+- failure budget: model-quality failures and technical errors;
+- checkpoint cadence;
+- quarantine rules for oversized, invalid, flaky, or repeatedly failing items.
+
+## Harness Sandbox Lifecycle Contract
+
+The runner must treat sandbox lifecycle as an adapter contract, not an
+implementation detail hidden inside `/v1/run`, `/v1/score`, or `/v1/optimize`.
+
+Required adapter requests:
+
+- `POST /v1/sandboxes/start`
+- `POST /v1/sandboxes/pause`
+- `POST /v1/sandboxes/resume`
+- `POST /v1/sandboxes/abort`
+- `POST /v1/sandboxes/cleanup`
+
+Common request fields:
+
+- `experimentRunId`;
+- optional `datasetItemId`, `scorerId`, `candidateId`, and `attemptId`;
+- `manifestDigest`;
+- `sandboxProfile`;
+- `runPolicy`;
+- W3C trace context;
+- optional `sandboxRef` for pause, resume, abort, and cleanup;
+- optional durable `checkpointRef` for resume-capable adapters.
+- optional cleanup retry metadata when the request is a retry after timeout,
+  process crash, partial delete, or unknown outcome.
+
+Common response fields:
+
+- `sandboxRef`;
+- `sandboxProfile`;
+- `checkpointSupported`;
+- optional `checkpointRef`;
+- `cleanupRequired`;
+- optional `cleanupDeadline`;
+- optional bounded cleanup summary for cleanup calls;
+- bounded `warnings`.
+
+Ephemeral adapters return `checkpointSupported=false`; their pause/resume calls
+acknowledge control state but do not snapshot process memory or filesystems.
+Durable replay adapters must use the same request/response shapes and must keep
+CloudGrid persistence idempotent. Durable replay adapters must satisfy the
+checkpoint storage, retention, encryption, cleanup retry, workspace quota, and
+verification requirements in `specs/04-backend/ai-runtime-structure.md`.
+
+Cleanup responses must not include file contents, provider credentials, host
+paths, raw sandbox logs, prompts, provider request bodies, provider responses,
+NATS subjects, SurrealDB connection details, session cookies, or authorization
+claims. Cleanup retry exhaustion is represented as an infrastructure problem and
+must not mutate previously persisted eval scores.

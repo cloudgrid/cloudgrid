@@ -76,6 +76,7 @@ Deterministic record IDs are the primary direct-reference mechanism for hot tele
   rootSpanId?: string
   status?: "ok" | "error" | "unset"
   attributes: Record<string, unknown>
+  searchText?: string
   spanCount: number
   errorSpanCount: number
   logCount: number
@@ -86,6 +87,8 @@ Deterministic record IDs are the primary direct-reference mechanism for hot tele
 `operationName` is the root span name captured at write time. Trace-list and live-candidate reads must project this field directly from `trace`; they must not perform per-row span lookups to derive it.
 
 Trace summary counters are denormalized on `trace`. Trace-list and live-candidate reads must project `spanCount`, `errorSpanCount`, `logCount`, and `serviceCount` directly from `trace`. Log-only ingest that refreshes an existing trace's `logCount` must target `trace:<traceId>` by deterministic record ID and may use the indexed `log_event(tenantId, companyId, projectId, traceId, timestamp)` lookup to recompute the count.
+
+`searchText` is a storage-owned full-text projection for route-primary trace and live-trace search. Storage-write populates it from trace identifiers, primary service, operation/root span data, trace status, trace attributes, span names, and span attributes. Public read contracts do not expose it.
 
 ## Span Record
 
@@ -126,8 +129,11 @@ Trace summary counters are denormalized on `trace`. Trace-list and live-candidat
   timestamp: Date
   observedTimestamp?: Date
   attributes: Record<string, unknown>
+  searchText?: string
 }
 ```
+
+`searchText` is a storage-owned full-text projection for log search. Storage-write populates it from log ID, trace/span correlation IDs, service, severity, body, and attributes. Public read contracts do not expose it.
 
 ## Metric Descriptor Record
 
@@ -142,10 +148,13 @@ Trace summary counters are denormalized on `trace`. Trace-list and live-candidat
   aggregationTemporality?: "unspecified" | "delta" | "cumulative"
   monotonic?: boolean
   attributeKeys: string[]
+  searchText?: string
   firstSeenAt: Date
   lastSeenAt: Date
 }
 ```
+
+`searchText` is a storage-owned full-text projection for metric-name search. Storage-write populates it from metric name, unit, kind, description, and attribute keys. Public read contracts do not expose it.
 
 ## Metric Point Record
 

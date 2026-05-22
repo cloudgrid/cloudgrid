@@ -4,11 +4,24 @@
   "title": "DatasetItemRun",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "experimentRunId", "datasetItemId", "output", "latencyMs"],
+  "required": ["id", "experimentRunId", "datasetItemId", "status", "output", "latencyMs"],
   "properties": {
     "id": { "type": "string" },
     "experimentRunId": { "type": "string" },
     "datasetItemId": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "running",
+        "passed",
+        "failed",
+        "errored",
+        "skipped",
+        "needs_review",
+        "quarantined"
+      ]
+    },
     "harnessRunId": { "type": "string" },
     "output": true,
     "latencyMs": { "type": "number", "minimum": 0 },
@@ -16,6 +29,7 @@
       "type": "object",
       "additionalProperties": { "type": "integer", "minimum": 0 }
     },
-    "evalResultIds": { "type": "array", "items": { "type": "string" }, "default": [] }
+    "evalResultIds": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "problem": { "type": "object", "additionalProperties": true }
   }
 }

@@ -23,6 +23,7 @@ func TestStatementsDefineRequiredIndexes(t *testing.T) {
 	got := strings.Join(Statements(), "\n")
 
 	for _, want := range []string{
+		"DEFINE ANALYZER IF NOT EXISTS cloudgrid_search TOKENIZERS blank, class, camel FILTERS lowercase, ascii",
 		"DEFINE INDEX IF NOT EXISTS idx_trace_startedAt ON trace FIELDS startedAt",
 		"DEFINE INDEX IF NOT EXISTS idx_trace_tenant_project_startedAt ON trace FIELDS tenantId, projectId, startedAt",
 		"DEFINE INDEX IF NOT EXISTS idx_trace_tenant_project_traceId ON trace FIELDS tenantId, projectId, traceId",
@@ -32,6 +33,7 @@ func TestStatementsDefineRequiredIndexes(t *testing.T) {
 		"DEFINE INDEX IF NOT EXISTS idx_trace_tenant_company_project_status_started ON trace FIELDS tenantId, companyId, projectId, status, startedAt",
 		"DEFINE INDEX IF NOT EXISTS idx_trace_serviceName ON trace FIELDS serviceName",
 		"DEFINE INDEX IF NOT EXISTS idx_trace_status ON trace FIELDS status",
+		"DEFINE INDEX IF NOT EXISTS idx_trace_searchText ON trace FIELDS searchText FULLTEXT ANALYZER cloudgrid_search BM25",
 		"DEFINE INDEX IF NOT EXISTS idx_span_traceId ON span FIELDS traceId",
 		"DEFINE INDEX IF NOT EXISTS idx_span_parentSpanId ON span FIELDS parentSpanId",
 		"DEFINE INDEX IF NOT EXISTS idx_span_tenant_company_project_trace_parent_started ON span FIELDS tenantId, companyId, projectId, traceId, parentSpanId, startedAt",
@@ -49,10 +51,12 @@ func TestStatementsDefineRequiredIndexes(t *testing.T) {
 		"DEFINE INDEX IF NOT EXISTS idx_log_event_tenant_company_project_trace_timestamp ON log_event FIELDS tenantId, companyId, projectId, traceId, timestamp",
 		"DEFINE INDEX IF NOT EXISTS idx_log_event_spanId ON log_event FIELDS spanId",
 		"DEFINE INDEX IF NOT EXISTS idx_log_event_severityText ON log_event FIELDS severityText",
+		"DEFINE INDEX IF NOT EXISTS idx_log_event_searchText ON log_event FIELDS searchText FULLTEXT ANALYZER cloudgrid_search BM25",
 		"DEFINE INDEX IF NOT EXISTS idx_metric_descriptor_metricName ON metric_descriptor FIELDS metricName",
 		"DEFINE INDEX IF NOT EXISTS idx_metric_descriptor_lastSeenAt ON metric_descriptor FIELDS lastSeenAt",
 		"DEFINE INDEX IF NOT EXISTS idx_metric_descriptor_tenant_company_project_lastSeenAt ON metric_descriptor FIELDS tenantId, companyId, projectId, lastSeenAt",
 		"DEFINE INDEX IF NOT EXISTS idx_metric_descriptor_tenant_company_project_metricName ON metric_descriptor FIELDS tenantId, companyId, projectId, metricName",
+		"DEFINE INDEX IF NOT EXISTS idx_metric_descriptor_searchText ON metric_descriptor FIELDS searchText FULLTEXT ANALYZER cloudgrid_search BM25",
 		"DEFINE INDEX IF NOT EXISTS idx_metric_point_metricName ON metric_point FIELDS metricName",
 		"DEFINE INDEX IF NOT EXISTS idx_metric_point_metricName_timestamp ON metric_point FIELDS metricName, timestamp",
 		"DEFINE INDEX IF NOT EXISTS idx_metric_point_tenant_company_project_metric_timestamp ON metric_point FIELDS tenantId, companyId, projectId, metricName, timestamp",
@@ -229,25 +233,36 @@ func TestStatementsUseFlexibleFieldsOnlyWhereSchemaAllowsOpenData(t *testing.T) 
 	}
 }
 
-func TestInitializeRunsOneParameterizedSchemaQuery(t *testing.T) {
+func TestInitializeRunsParameterizedSchemaStatements(t *testing.T) {
 	db := &recordingDB{}
 
 	if err := Initialize(context.Background(), db); err != nil {
 		t.Fatalf("Initialize() error = %v", err)
 	}
 
-	if db.sql == "" {
+	if len(db.queries) != len(Statements()) {
+		t.Fatalf("Initialize() executed %d statements, want %d", len(db.queries), len(Statements()))
+	}
+	if db.queries[0].sql == "" {
 		t.Fatal("Initialize() did not execute SQL")
 	}
-	if db.vars == nil {
-		t.Fatal("Initialize() vars = nil")
-	}
-	if len(db.vars) != 0 {
-		t.Fatalf("Initialize() vars = %#v", db.vars)
+	for _, query := range db.queries {
+		if query.vars == nil {
+			t.Fatal("Initialize() vars = nil")
+		}
+		if len(query.vars) != 0 {
+			t.Fatalf("Initialize() vars = %#v", query.vars)
+		}
 	}
 }
 
 type recordingDB struct {
+	sql     string
+	vars    map[string]any
+	queries []recordedQuery
+}
+
+type recordedQuery struct {
 	sql  string
 	vars map[string]any
 }
@@ -255,5 +270,6 @@ type recordingDB struct {
 func (db *recordingDB) Query(_ context.Context, sql string, vars map[string]any) error {
 	db.sql = sql
 	db.vars = vars
+	db.queries = append(db.queries, recordedQuery{sql: sql, vars: vars})
 	return nil
 }

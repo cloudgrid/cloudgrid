@@ -46,9 +46,11 @@ Stream experiment run progress through GraphQL while keeping live matching and e
 - `item_completed`
 - `progress`
 - `heartbeat`
+- `paused`
+- `resumed`
 - `cancelled`
 - `failed`
-- `finished`
+- `completed`
 
 Candidate events are represented as `progress` until the GraphQL contract adds
 dedicated optimization candidate event types.

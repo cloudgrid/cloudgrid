@@ -6,6 +6,12 @@
   "additionalProperties": false,
   "properties": {
     "service": { "type": "string", "description": "Exact service name filter." },
+    "services": {
+      "type": "array",
+      "maxItems": 25,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Exact service name filters; records match any listed service."
+    },
     "query": {
       "type": "string",
       "description": "Case-insensitive search across trace ID, primary service, root span, span names, and string attributes."

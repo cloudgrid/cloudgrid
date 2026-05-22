@@ -204,6 +204,9 @@ func TestMetricRecordHelperBranches(t *testing.T) {
 	if descriptor["description"] != description || descriptor["monotonic"] != true || descriptor["aggregationTemporality"] != string(temporality) {
 		t.Fatalf("descriptor record = %#v", descriptor)
 	}
+	if searchText, ok := descriptor["searchText"].(string); !ok || !strings.Contains(searchText, "http.requests") || !strings.Contains(searchText, "route") {
+		t.Fatalf("descriptor searchText = %#v, want metric name and attribute keys", descriptor["searchText"])
+	}
 
 	point := contracts.MetricPoint{
 		MetricName:     "latency.ms",

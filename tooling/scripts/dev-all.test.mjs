@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   devReadyTimeoutMs,
   devShutdownGraceMs,
+  devStackPorts,
+  isPortAvailable,
   mergedEnv,
   natsPayloadReadinessMessage,
   parseDotEnv,
@@ -53,5 +55,33 @@ describe("dev-all helpers", () => {
     expect(devShutdownGraceMs({})).toBe(10_000);
     expect(devShutdownGraceMs({ CLOUDGRID_DEV_SHUTDOWN_GRACE_MS: "30000" })).toBe(30_000);
     expect(devShutdownGraceMs({ CLOUDGRID_DEV_SHUTDOWN_GRACE_MS: "-1" })).toBe(10_000);
+  });
+
+  test("dev stack ports include frontend and AI eval listeners", () => {
+    const ports = devStackPorts({
+      CLOUDGRID_BFF_PORT: "3999",
+      CLOUDGRID_FRONTEND_DEV_PORT: "5999",
+      CLOUDGRID_OTLP_GRPC_ADDR: "0.0.0.0:4999",
+      CLOUDGRID_AI_EVAL_HARNESS_URL: "http://127.0.0.1:8999",
+    });
+
+    expect(ports).toContainEqual(["frontend", "5999", "CLOUDGRID_FRONTEND_DEV_PORT"]);
+    expect(ports).toContainEqual(["otlp-collector grpc", "4999", "CLOUDGRID_OTLP_GRPC_ADDR"]);
+    expect(ports).toContainEqual(["ai-eval harness", "8999", "CLOUDGRID_AI_EVAL_HARNESS_URL"]);
+  });
+
+  test("port availability detects loopback listeners", async () => {
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch() {
+        return new Response("ok");
+      },
+    });
+    try {
+      expect(await isPortAvailable(server.port)).toBe(false);
+    } finally {
+      server.stop(true);
+    }
   });
 });

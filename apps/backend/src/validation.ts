@@ -9,9 +9,9 @@ import type {
   AppendDatasetItemsInput,
   ApproveAiChatActionInput,
   CommitDatasetImportInput,
+  CreateAiChatConversationInput,
   CreateAlertRuleInput,
   CreateAlertSilenceInput,
-  CreateAiChatConversationInput,
   CreateDatasetInput,
   CreateExperimentInput,
   CreateIngestCredentialInput,
@@ -47,8 +47,8 @@ import type {
   TelemetryFacetInput,
   TraceDetailInput,
   TraceSearchInput,
-  UpdateCompanyAiProviderSettingsInput,
   UpdateAlertRuleInput,
+  UpdateCompanyAiProviderSettingsInput,
   UpdateOrganizationMemberInput,
   UpdateProjectAiProviderSettingsInput,
   UpdateProjectAiSettingsInput,
@@ -66,7 +66,21 @@ const traceSortSchema = z.enum([
   "duration_asc",
   "errorFirst",
 ]);
+const telemetryFacetSignalSchema = z.enum(["traces", "logs", "metrics"]);
 const logSortSchema = z.enum(["timestamp_desc", "timestamp_asc", "severity_desc"]);
+const metricNameSortSchema = z.enum([
+  "lastSeenAt_desc",
+  "lastSeenAt_asc",
+  "name_asc",
+  "name_desc",
+  "kind_asc",
+]);
+const metricSeriesSortSchema = z.enum([
+  "timestamp_asc",
+  "timestamp_desc",
+  "value_desc",
+  "value_asc",
+]);
 const allowedAiCredentialRefPrefixes = ["managed:", "env:", "external:"];
 const attributeOperatorSchema = z.enum([
   "eq",
@@ -90,6 +104,7 @@ const traceSearchInputSchema = withTimeRange(
   withDurationRange(
     z.object({
       service: z.string().min(1).optional(),
+      services: z.array(z.string().min(1)).max(25).optional(),
       query: z.string().min(1).optional(),
       operationName: z.string().min(1).optional(),
       spanName: z.string().min(1).optional(),
@@ -111,6 +126,7 @@ const traceSearchInputSchema = withTimeRange(
 const liveTraceInputSchema = withDurationRange(
   z.object({
     service: z.string().min(1).optional(),
+    services: z.array(z.string().min(1)).max(25).optional(),
     query: z.string().min(1).optional(),
     operationName: z.string().min(1).optional(),
     spanName: z.string().min(1).optional(),
@@ -146,6 +162,7 @@ const traceDetailInputSchema = withDurationRange(
 const logSearchInputSchema = withTimeRange(
   z.object({
     service: z.string().min(1).optional(),
+    services: z.array(z.string().min(1)).max(25).optional(),
     traceId: z.string().min(1).optional(),
     spanId: z.string().min(1).optional(),
     severity: z.string().min(1).optional(),
@@ -164,6 +181,8 @@ const telemetryFacetInputSchema = withTimeRange(
     from: isoDateTimeSchema.optional(),
     to: isoDateTimeSchema.optional(),
     service: z.string().min(1).optional(),
+    services: z.array(z.string().min(1)).max(25).optional(),
+    signal: telemetryFacetSignalSchema.optional(),
     search: z.string().min(1).optional(),
     limit: z.number().int().min(1).max(200).optional(),
   }),
@@ -200,8 +219,10 @@ const metricNameSearchInputSchema = withTimeRange(
   z.object({
     query: z.string().min(1).optional(),
     service: z.string().min(1).optional(),
+    services: z.array(z.string().min(1)).max(25).optional(),
     from: isoDateTimeSchema.optional(),
     to: isoDateTimeSchema.optional(),
+    sort: metricNameSortSchema.optional(),
     limit: z.number().int().min(1).max(200).optional(),
     cursor: z.string().min(1).optional(),
   }),
@@ -215,6 +236,7 @@ const metricSeriesInputSchema = withTimeRange(
     aggregation: metricAggregationSchema,
     groupBy: z.array(z.string().min(1)).max(5).optional(),
     filters: z.array(attributeFilterSchema).optional(),
+    sort: metricSeriesSortSchema.optional(),
     limit: z.number().int().min(1).max(5000).optional(),
   }),
 );
@@ -532,19 +554,137 @@ const scorerKindSchema = z.enum([
   "semantic",
   "rag",
   "llm_judge",
+  "pairwise_judge",
   "tool_correctness",
   "trajectory",
+  "workflow",
   "human",
+  "composite",
 ]);
 const evalTargetKindSchema = z.enum(["agentRun", "span", "datasetItemRun"]);
 const experimentRunStatusSchema = z.enum(["queued", "running", "cancelled", "failed", "finished"]);
 const annotationStatusSchema = z.enum(["open", "in_review", "resolved", "dismissed"]);
-const optimizerKindSchema = z.enum([
-  "bootstrap_fewshot",
-  "critic_mutate_judge_pick",
-  "mipro_v2",
-  "reflective_text_gradient",
+const optimizerKindSchema = z.enum(["bootstrap_fewshot", "critic_mutate_judge_pick"]);
+const evalSolverKindSchema = z.enum(["prompt", "agent", "workflow", "skill", "tool"]);
+const evalBaselineKindSchema = z.enum(["experiment_run", "prompt_version", "solver_ref", "none"]);
+const bootstrapFewshotDiversityStrategySchema = z.enum([
+  "none",
+  "by_label",
+  "by_cluster",
+  "by_failure_mode",
 ]);
+const evalSolverRefInputSchema = z
+  .object({
+    kind: evalSolverKindSchema,
+    name: z.string().min(1).max(160),
+    promptVersionId: z.string().min(1).optional().nullable(),
+    promptVersion: z.number().int().min(1).optional().nullable(),
+    agentRef: z.string().min(1).optional().nullable(),
+    workflowRef: z.string().min(1).optional().nullable(),
+    skillSnapshotRef: z.string().min(1).optional().nullable(),
+    toolSnapshotRef: z.string().min(1).optional().nullable(),
+    modelAlias: z.string().min(1).optional().nullable(),
+    providerProfileId: z.string().min(1).optional().nullable(),
+  })
+  .strict();
+const evalBaselineRefInputSchema = z
+  .object({
+    kind: evalBaselineKindSchema,
+    experimentRunId: z.string().min(1).optional().nullable(),
+    promptVersionId: z.string().min(1).optional().nullable(),
+    promptVersion: z.number().int().min(1).optional().nullable(),
+    solverRef: evalSolverRefInputSchema.optional().nullable(),
+  })
+  .strict();
+const bootstrapFewshotConfigInputSchema = z
+  .object({
+    candidateCount: z.number().int().min(1).max(100),
+    maxExamplesPerCandidate: z.number().int().min(1).max(100),
+    selectionScorerIds: z.array(z.string().min(1)).min(1),
+    seed: z.number().int(),
+    diversityStrategy: bootstrapFewshotDiversityStrategySchema.optional().nullable(),
+  })
+  .strict();
+const criticMutateJudgePickConfigInputSchema = z
+  .object({
+    candidateCount: z.number().int().min(1).max(100),
+    mutationInstructions: z.string().min(1).max(10000),
+    judgeScorerIds: z.array(z.string().min(1)).min(1),
+    seed: z.number().int(),
+    maxRounds: z.number().int().min(1).max(20),
+    keepTopK: z.number().int().min(1).max(20).optional().nullable(),
+  })
+  .strict();
+const optimizationConfigInputSchema = z
+  .object({
+    bootstrapFewshot: bootstrapFewshotConfigInputSchema.optional().nullable(),
+    criticMutateJudgePick: criticMutateJudgePickConfigInputSchema.optional().nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const configured = [value.bootstrapFewshot, value.criticMutateJudgePick].filter(Boolean).length;
+    if (configured > 1) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "exactly one optimization config may be provided",
+      });
+    }
+  });
+const evalLimitBehaviorSchema = z.enum(["skip_item", "pause_run", "fail_run"]);
+const evalRunPolicyInputSchema = z
+  .object({
+    maxParallelRequests: z.number().int().min(1).max(100).optional().nullable(),
+    tokenBudget: z
+      .object({
+        maxRunTokens: z.number().int().min(1).optional().nullable(),
+        maxItemInputTokens: z.number().int().min(1).optional().nullable(),
+        maxItemOutputTokens: z.number().int().min(1).optional().nullable(),
+        maxJudgeTokens: z.number().int().min(1).optional().nullable(),
+        behavior: evalLimitBehaviorSchema.optional().nullable(),
+      })
+      .strict()
+      .optional()
+      .nullable(),
+    costBudget: z
+      .object({
+        maxRunUsd: z.number().min(0).optional().nullable(),
+        maxDailyProjectUsd: z.number().min(0).optional().nullable(),
+        behavior: evalLimitBehaviorSchema.optional().nullable(),
+      })
+      .strict()
+      .optional()
+      .nullable(),
+    rateLimit: z
+      .object({
+        maxRequestsPerMinute: z.number().int().min(1).optional().nullable(),
+        maxTokensPerMinute: z.number().int().min(1).optional().nullable(),
+        providerBurst: z.number().int().min(1).optional().nullable(),
+        projectBurst: z.number().int().min(1).optional().nullable(),
+      })
+      .strict()
+      .optional()
+      .nullable(),
+    retry: z
+      .object({
+        maxAttempts: z.number().int().min(1).max(10).optional().nullable(),
+        baseDelayMs: z.number().int().min(0).max(60000).optional().nullable(),
+        maxDelayMs: z.number().int().min(1).max(600000).optional().nullable(),
+        jitter: z.boolean().optional().nullable(),
+        retryBudget: z.number().int().min(0).optional().nullable(),
+        retryableCodes: z.array(z.string().min(1)).optional().nullable(),
+      })
+      .strict()
+      .optional()
+      .nullable(),
+    timeout: jsonObjectSchema.optional().nullable(),
+    failureBudget: jsonObjectSchema.optional().nullable(),
+    backpressure: jsonObjectSchema.optional().nullable(),
+    checkpoint: jsonObjectSchema.optional().nullable(),
+    quarantine: jsonObjectSchema.optional().nullable(),
+    workspaceQuota: jsonObjectSchema.optional().nullable(),
+    cleanupRetry: jsonObjectSchema.optional().nullable(),
+  })
+  .strict();
 const datasetSplitSchema = z.enum(["dev", "optimization", "validation", "regression", "holdout"]);
 const datasetReviewStatusSchema = z.enum(["unreviewed", "reviewed", "rejected"]);
 const providerKindSchema = z.enum([
@@ -731,8 +871,8 @@ const createExperimentInputSchema = z.object({
   datasetVersion: z.number().int().min(1),
   splitSelector: datasetSplitSelectorInputSchema.optional(),
   scorerIds: z.array(z.string().min(1)).min(1),
-  solverRef: z.unknown(),
-  baselineRef: z.unknown().optional().nullable(),
+  solverRef: evalSolverRefInputSchema,
+  baselineRef: evalBaselineRefInputSchema.optional().nullable(),
   promptVersionRefs: z.array(z.string().min(1)).optional(),
   skillSnapshotRefs: z.array(z.string().min(1)).optional(),
   toolSnapshotRefs: z.array(z.string().min(1)).optional(),
@@ -741,16 +881,36 @@ const createExperimentInputSchema = z.object({
 });
 const startExperimentRunInputSchema = z.object({
   experimentId: z.string().min(1),
-  solverRef: z.unknown().optional(),
+  solverRef: evalSolverRefInputSchema.optional().nullable(),
   splitSelector: datasetSplitSelectorInputSchema.optional().nullable(),
+  runPolicy: evalRunPolicyInputSchema.optional().nullable(),
 });
-const startOptimizationRunInputSchema = z.object({
-  experimentId: z.string().min(1),
-  optimizerKind: optimizerKindSchema,
-  basePromptVersionId: z.string().min(1),
-  splitSelector: datasetSplitSelectorInputSchema.optional(),
-  config: z.unknown().optional(),
-});
+const startOptimizationRunInputSchema = z
+  .object({
+    experimentId: z.string().min(1),
+    optimizerKind: optimizerKindSchema,
+    basePromptVersionId: z.string().min(1),
+    splitSelector: datasetSplitSelectorInputSchema.optional(),
+    config: optimizationConfigInputSchema.optional().nullable(),
+    runPolicy: evalRunPolicyInputSchema.optional().nullable(),
+  })
+  .superRefine((value, context) => {
+    if (!value.config) {
+      return;
+    }
+    if (value.optimizerKind === "bootstrap_fewshot" && !value.config.bootstrapFewshot) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "bootstrapFewshot config is required for bootstrap_fewshot",
+      });
+    }
+    if (value.optimizerKind === "critic_mutate_judge_pick" && !value.config.criticMutateJudgePick) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "criticMutateJudgePick config is required for critic_mutate_judge_pick",
+      });
+    }
+  });
 const promotePromptVersionInputSchema = z.object({
   promptVersionId: z.string().min(1),
   tag: z.string().min(1),

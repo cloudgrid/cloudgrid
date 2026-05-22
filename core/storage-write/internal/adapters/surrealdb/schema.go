@@ -11,8 +11,20 @@ type SchemaQueryer interface {
 	Query(ctx context.Context, sql string, vars map[string]any) error
 }
 
+type SchemaInitializer interface {
+	InitializeSchema(ctx context.Context) error
+}
+
 func Initialize(ctx context.Context, db SchemaQueryer) error {
-	return db.Query(ctx, SchemaSQL(), map[string]any{})
+	if initializer, ok := db.(SchemaInitializer); ok {
+		return initializer.InitializeSchema(ctx)
+	}
+	for _, statement := range Statements() {
+		if err := db.Query(ctx, statement+";", map[string]any{}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func SchemaSQL() string {
@@ -21,6 +33,7 @@ func SchemaSQL() string {
 
 func Statements() []string {
 	statements := []string{
+		"DEFINE ANALYZER IF NOT EXISTS cloudgrid_search TOKENIZERS blank, class, camel FILTERS lowercase, ascii",
 		"DEFINE TABLE IF NOT EXISTS trace SCHEMAFULL TYPE NORMAL",
 		"DEFINE FIELD IF NOT EXISTS tenantId ON trace TYPE string",
 		"DEFINE FIELD IF NOT EXISTS companyId ON trace TYPE string",
@@ -37,6 +50,7 @@ func Statements() []string {
 		"DEFINE FIELD IF NOT EXISTS rootSpanId ON trace TYPE option<string>",
 		"DEFINE FIELD IF NOT EXISTS status ON trace TYPE option<string>",
 		"DEFINE FIELD IF NOT EXISTS attributes ON trace TYPE object FLEXIBLE",
+		"DEFINE FIELD IF NOT EXISTS searchText ON trace TYPE option<string>",
 		"DEFINE FIELD IF NOT EXISTS spanCount ON trace TYPE int",
 		"DEFINE FIELD IF NOT EXISTS errorSpanCount ON trace TYPE int",
 		"DEFINE FIELD IF NOT EXISTS logCount ON trace TYPE int",
@@ -53,6 +67,7 @@ func Statements() []string {
 		"DEFINE INDEX IF NOT EXISTS idx_trace_tenant_company_project_status_started ON trace FIELDS tenantId, companyId, projectId, status, startedAt",
 		"DEFINE INDEX IF NOT EXISTS idx_trace_serviceName ON trace FIELDS serviceName",
 		"DEFINE INDEX IF NOT EXISTS idx_trace_status ON trace FIELDS status",
+		"DEFINE INDEX IF NOT EXISTS idx_trace_searchText ON trace FIELDS searchText FULLTEXT ANALYZER cloudgrid_search BM25",
 
 		"DEFINE TABLE IF NOT EXISTS span SCHEMAFULL TYPE NORMAL",
 		"DEFINE FIELD IF NOT EXISTS tenantId ON span TYPE string",
@@ -108,6 +123,7 @@ func Statements() []string {
 		"DEFINE FIELD IF NOT EXISTS timestamp ON log_event TYPE datetime",
 		"DEFINE FIELD IF NOT EXISTS observedTimestamp ON log_event TYPE option<datetime>",
 		"DEFINE FIELD IF NOT EXISTS attributes ON log_event TYPE object FLEXIBLE",
+		"DEFINE FIELD IF NOT EXISTS searchText ON log_event TYPE option<string>",
 		"DEFINE FIELD IF NOT EXISTS deletedAt ON log_event TYPE option<datetime>",
 		"DEFINE FIELD IF NOT EXISTS deletedByRetentionPolicyId ON log_event TYPE option<string>",
 		"DEFINE FIELD IF NOT EXISTS finalDeleteAfter ON log_event TYPE option<datetime>",
@@ -121,6 +137,7 @@ func Statements() []string {
 		"DEFINE INDEX IF NOT EXISTS idx_log_event_tenant_company_project_trace_timestamp ON log_event FIELDS tenantId, companyId, projectId, traceId, timestamp",
 		"DEFINE INDEX IF NOT EXISTS idx_log_event_spanId ON log_event FIELDS spanId",
 		"DEFINE INDEX IF NOT EXISTS idx_log_event_severityText ON log_event FIELDS severityText",
+		"DEFINE INDEX IF NOT EXISTS idx_log_event_searchText ON log_event FIELDS searchText FULLTEXT ANALYZER cloudgrid_search BM25",
 
 		"DEFINE TABLE IF NOT EXISTS metric_descriptor SCHEMAFULL TYPE NORMAL",
 		"DEFINE FIELD IF NOT EXISTS tenantId ON metric_descriptor TYPE string",
@@ -133,6 +150,7 @@ func Statements() []string {
 		"DEFINE FIELD IF NOT EXISTS aggregationTemporality ON metric_descriptor TYPE option<string>",
 		"DEFINE FIELD IF NOT EXISTS monotonic ON metric_descriptor TYPE option<bool>",
 		"DEFINE FIELD IF NOT EXISTS attributeKeys ON metric_descriptor TYPE array<string>",
+		"DEFINE FIELD IF NOT EXISTS searchText ON metric_descriptor TYPE option<string>",
 		"DEFINE FIELD IF NOT EXISTS firstSeenAt ON metric_descriptor TYPE datetime",
 		"DEFINE FIELD IF NOT EXISTS lastSeenAt ON metric_descriptor TYPE datetime",
 		"DEFINE FIELD IF NOT EXISTS deletedAt ON metric_descriptor TYPE option<datetime>",
@@ -142,6 +160,7 @@ func Statements() []string {
 		"DEFINE INDEX IF NOT EXISTS idx_metric_descriptor_lastSeenAt ON metric_descriptor FIELDS lastSeenAt",
 		"DEFINE INDEX IF NOT EXISTS idx_metric_descriptor_tenant_company_project_lastSeenAt ON metric_descriptor FIELDS tenantId, companyId, projectId, lastSeenAt",
 		"DEFINE INDEX IF NOT EXISTS idx_metric_descriptor_tenant_company_project_metricName ON metric_descriptor FIELDS tenantId, companyId, projectId, metricName",
+		"DEFINE INDEX IF NOT EXISTS idx_metric_descriptor_searchText ON metric_descriptor FIELDS searchText FULLTEXT ANALYZER cloudgrid_search BM25",
 
 		"DEFINE TABLE IF NOT EXISTS metric_point SCHEMAFULL TYPE NORMAL",
 		"DEFINE FIELD IF NOT EXISTS tenantId ON metric_point TYPE string",

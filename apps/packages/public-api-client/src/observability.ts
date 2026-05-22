@@ -388,10 +388,114 @@ const datasetItemRunFields = `
   }
 `;
 
+const versionedRefFields = `
+  id
+  version
+`;
+
+const solverRefFields = `
+  kind
+  name
+  promptVersion {
+    ${versionedRefFields}
+  }
+  agentRef
+  workflowRef
+  skillSnapshotRef
+  toolSnapshotRef
+  modelAlias
+  providerProfileId
+`;
+
+const baselineRefFields = `
+  kind
+  experimentRunId
+  promptVersion {
+    ${versionedRefFields}
+  }
+  solverRef {
+    ${solverRefFields}
+  }
+`;
+
+const optimizationConfigFields = `
+  optimizerKind
+  bootstrapFewshot {
+    candidateCount
+    maxExamplesPerCandidate
+    selectionScorerIds
+    seed
+    diversityStrategy
+  }
+  criticMutateJudgePick {
+    candidateCount
+    mutationInstructions
+    judgeScorerIds
+    seed
+    maxRounds
+    keepTopK
+  }
+`;
+
+const runPolicyFields = `
+  maxParallelRequests
+`;
+
+const experimentRunSummaryFields = `
+  itemCounts {
+    total
+    passed
+    failed
+    errored
+    skipped
+    needsReview
+    quarantined
+  }
+  scoreSummaries {
+    scorerId
+    scorerVersion
+    resultKind
+    passRate
+    meanScore
+    p50
+    p95
+    support
+    visualization {
+      kind
+      title
+      data
+    }
+  }
+  problemCounts {
+    modelQuality
+    itemQuality
+    scorerConfig
+    infrastructure
+  }
+  budgetUsage {
+    inputTokens
+    outputTokens
+    totalTokens
+    estimatedUsd
+  }
+  latency {
+    p50Ms
+    p95Ms
+    maxMs
+  }
+  regressions {
+    kind
+    count
+    blocker
+  }
+`;
+
 const experimentRunFields = `
   id
   experimentId
-  solverRef
+  solverRef {
+    ${solverRefFields}
+  }
   manifest {
     digest
     datasetId
@@ -405,8 +509,15 @@ const experimentRunFields = `
       id
       version
     }
-    baselineRef
-    solverRef
+    baselineRef {
+      ${baselineRefFields}
+    }
+    solverRef {
+      ${solverRefFields}
+    }
+    optimizationConfig {
+      ${optimizationConfigFields}
+    }
     promptVersionRefs
     skillSnapshotRefs
     toolSnapshotRefs
@@ -417,9 +528,14 @@ const experimentRunFields = `
   }
   baselineRunId
   status
+  runPolicy {
+    ${runPolicyFields}
+  }
   startedAt
   endedAt
-  summary
+  summary {
+    ${experimentRunSummaryFields}
+  }
   itemRuns {
     items {
       ${datasetItemRunFields}
@@ -700,7 +816,9 @@ export const experimentsOperation = `
           reviewedOnly
           includeSynthetic
         }
-        baselineRef
+        baselineRef {
+          ${baselineRefFields}
+        }
         promptVersionRefs
         skillSnapshotRefs
         toolSnapshotRefs
@@ -732,7 +850,9 @@ export const createExperimentOperation = `
         reviewedOnly
         includeSynthetic
       }
-      baselineRef
+      baselineRef {
+        ${baselineRefFields}
+      }
       promptVersionRefs
       skillSnapshotRefs
       toolSnapshotRefs

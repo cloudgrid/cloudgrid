@@ -61,7 +61,7 @@ describe("BFF GraphQL control-plane resolvers", () => {
           return project();
         },
       }),
-      { graphqlUI: false, auth: { mode: "local", sessionTtlSeconds: 28_800 } },
+      { auth: { mode: "local", sessionTtlSeconds: 28_800 } },
     );
 
     const response = await app.request("/graphql", {
@@ -127,7 +127,7 @@ describe("BFF GraphQL control-plane resolvers", () => {
           return true;
         },
       }),
-      { graphqlUI: false, auth: { mode: "local", sessionTtlSeconds: 28_800 } },
+      { auth: { mode: "local", sessionTtlSeconds: 28_800 } },
     );
 
     const response = await app.request("/graphql", {
@@ -169,7 +169,7 @@ describe("BFF GraphQL control-plane resolvers", () => {
           return viewer();
         },
       }),
-      { graphqlUI: false, auth: { mode: "local", sessionTtlSeconds: 28_800 } },
+      { auth: { mode: "local", sessionTtlSeconds: 28_800 } },
     );
 
     const selectResponse = await app.request("/graphql", {
@@ -244,7 +244,7 @@ describe("BFF GraphQL control-plane resolvers", () => {
           return invitation({ id, status: "revoked", revokedAt: "2026-05-16T10:00:00.000Z" });
         },
       }),
-      { graphqlUI: false, auth: { mode: "local", sessionTtlSeconds: 28_800 } },
+      { auth: { mode: "local", sessionTtlSeconds: 28_800 } },
     );
 
     const queryResponse = await app.request("/graphql", {
@@ -429,7 +429,7 @@ describe("BFF GraphQL control-plane resolvers", () => {
           return true;
         },
       }),
-      { graphqlUI: false, auth: { mode: "local", sessionTtlSeconds: 28_800 } },
+      { auth: { mode: "local", sessionTtlSeconds: 28_800 } },
     );
 
     const mutationResponse = await app.request("/graphql", {
@@ -600,7 +600,7 @@ describe("BFF GraphQL control-plane resolvers", () => {
           );
         },
       }),
-      { graphqlUI: false, auth: { mode: "local", sessionTtlSeconds: 28_800 } },
+      { auth: { mode: "local", sessionTtlSeconds: 28_800 } },
     );
 
     const mutationResponse = await app.request("/graphql", {

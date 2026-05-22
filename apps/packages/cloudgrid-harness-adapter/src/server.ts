@@ -9,6 +9,8 @@ import {
   problemDetailsSchema,
   runRequestSchema,
   runResponseSchema,
+  sandboxLifecycleRequestSchema,
+  sandboxLifecycleResponseSchema,
   scoreRequestSchema,
   scoreResponseSchema,
 } from "./contracts";
@@ -80,6 +82,19 @@ export function createHarnessAdapterServer(
         return handleRun(request, otlp);
       }
 
+      if (
+        request.method === "POST" &&
+        [
+          "/v1/sandboxes/start",
+          "/v1/sandboxes/pause",
+          "/v1/sandboxes/resume",
+          "/v1/sandboxes/abort",
+          "/v1/sandboxes/cleanup",
+        ].includes(url.pathname)
+      ) {
+        return handleSandboxLifecycle(request, url.pathname);
+      }
+
       if (request.method === "POST" && url.pathname === "/v1/score") {
         return handleScore(request, otlp);
       }
@@ -91,6 +106,50 @@ export function createHarnessAdapterServer(
       return json(problem("ERR-005", "METHOD_NOT_ALLOWED", 405, "Route is not supported"), 405);
     },
   };
+}
+
+async function handleSandboxLifecycle(request: Request, path: string): Promise<Response> {
+  const parsed = await parseJson(request, sandboxLifecycleRequestSchema);
+  if (!parsed.success) {
+    return parsed.response;
+  }
+
+  const body = parsed.data;
+  const action = path.split("/").at(-1) ?? "start";
+  const sandboxRef =
+    body.sandboxRef ??
+    stableId(
+      "sandbox",
+      body.experimentRunId,
+      body.datasetItemId ?? body.scorerId ?? body.candidateId ?? body.attemptId ?? action,
+    );
+
+  return json(
+    sandboxLifecycleResponseSchema.parse({
+      sandboxRef,
+      sandboxProfile: body.sandboxProfile,
+      checkpointSupported: body.sandboxProfile === "durable_replay_workspace",
+      ...(body.sandboxProfile === "durable_replay_workspace"
+        ? { checkpointRef: body.checkpointRef ?? stableId("checkpoint", sandboxRef) }
+        : {}),
+      cleanupRequired: action !== "cleanup",
+      cleanupDeadline: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      ...(action === "cleanup"
+        ? {
+            cleanupSummary: {
+              status: "acknowledged",
+              retryable: false,
+              deletedBytes: 0,
+              deletedFiles: 0,
+            },
+          }
+        : {}),
+      warnings:
+        body.sandboxProfile === "durable_replay_workspace"
+          ? ["durable replay workspace is a future profile in the local scaffold"]
+          : [],
+    }),
+  );
 }
 
 async function handleRun(request: Request, otlp: OtlpConfig): Promise<Response> {

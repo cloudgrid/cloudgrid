@@ -21,27 +21,32 @@ implements:
 
 ## Business Intent
 
-Continuously measure production agent quality from deterministic online scoring
-results using project-scoped online evaluation policies. Latency, cost,
-tool-behavior, retrieval-quality, and judge-backed quality signals remain
-visible when produced by existing telemetry or offline eval workflows, but v1
-online scoring does not execute non-deterministic scorers.
+Continuously measure production agent quality from asynchronous production
+measurement results using project-scoped policies. This use case is not
+near-realtime alerting. Latency, cost, tool behavior, retrieval quality,
+trajectory quality, judge-backed quality, and deterministic correctness signals
+are visible when the policy satisfies the scorer capability requirements.
 
 ## Behavior
 
 - Online evaluation policies select production segments by agent, environment,
   route, service, tool, retrieval source, model, trace attributes, and project.
 - Runner evaluates only matched sampled projections after budget and concurrency
-  checks pass.
+  checks pass. Rate limits, backpressure, retry, timeout, token budget, and
+  failure budget are applied through `EvalRunPolicy`.
 - Storage-write persists `EvalResult` records and bounded skipped-result
-  summaries. It does not persist annotation queue records from the online
-  scoring notification path in v1.
+  summaries. It does not persist annotation queue records or dataset item
+  records from the production scoring notification path.
 - Storage-read derives quality overview view models by project segment. The BFF
   and frontend do not aggregate raw results locally.
 - Alerting integrations may consume quality summaries only after alerting
   contracts explicitly include AI-eval signals.
-- Users create annotation queue items from online score results only through an
-  explicit review/batch action after filtering the result list.
+- Users create dataset candidates or annotation queue items from production score
+  results only through an explicit review/batch action after filtering or
+  clustering the result list.
+- Storage-read surfaces candidate suggestions, failure clusters, coverage gaps,
+  and repeated production failures so users can improve datasets without
+  manually scanning every trace.
 
 ## Acceptance Criteria
 
@@ -49,9 +54,12 @@ online scoring does not execute non-deterministic scorers.
   scored according to policy limits.
 - Given concurrency or sample caps prevent scoring, runner records bounded
   skipped results and does not call harness.
-- Given a failed deterministic online scorer, the failed result appears in
-  production quality views and can be selected by a user for manual annotation
-  item creation.
+- Given a failed production measurement, the failed result appears in production
+  quality views and can be selected or clustered by a user for dataset candidate
+  creation.
 - Given a production quality query, storage-read returns trend and segment
   summaries without exposing raw prompt/completion content unless content
   capture permits it.
+- Given repeated failures in one route/tool/model segment, storage-read returns
+  a bounded suggestion or coverage-gap signal that can feed the dataset
+  candidate workflow.

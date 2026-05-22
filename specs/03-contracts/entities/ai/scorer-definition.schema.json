@@ -1,0 +1,353 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-023",
+  "title": "ScorerDefinition",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/$defs/exactMatch" },
+    { "$ref": "#/$defs/contains" },
+    { "$ref": "#/$defs/regex" },
+    { "$ref": "#/$defs/jsonSchema" },
+    { "$ref": "#/$defs/attributeEquality" },
+    { "$ref": "#/$defs/semanticSimilarity" },
+    { "$ref": "#/$defs/rag" },
+    { "$ref": "#/$defs/llmJudge" },
+    { "$ref": "#/$defs/pairwiseJudge" },
+    { "$ref": "#/$defs/toolCorrectness" },
+    { "$ref": "#/$defs/trajectory" },
+    { "$ref": "#/$defs/workflow" },
+    { "$ref": "#/$defs/humanReview" },
+    { "$ref": "#/$defs/composite" }
+  ],
+  "$defs": {
+    "jsonPointer": { "type": "string", "pattern": "^(/[^/~]*(~[01][^/~]*)*)*$" },
+    "threshold": { "type": "number", "minimum": 0, "maximum": 1 },
+    "contentClass": {
+      "type": "string",
+      "enum": [
+        "none",
+        "metadata_only",
+        "captured_content",
+        "dataset_content",
+        "retrieved_document_content"
+      ]
+    },
+    "latencyClass": { "type": "string", "enum": ["inline", "near_realtime", "batch"] },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executionLocation", "contentClass", "latencyClass"],
+      "properties": {
+        "executionLocation": {
+          "type": "string",
+          "enum": [
+            "local_deterministic",
+            "harness_scorer",
+            "model_backed_harness",
+            "human_mediated",
+            "aggregate_only"
+          ]
+        },
+        "contentClass": { "$ref": "#/$defs/contentClass" },
+        "latencyClass": { "$ref": "#/$defs/latencyClass" },
+        "modelAlias": { "type": "string" },
+        "providerProfileId": { "type": "string" },
+        "costClass": { "type": "string", "enum": ["free", "low", "medium", "high"] },
+        "allowedRunModes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "offline_experiment",
+              "optimization",
+              "continuous_measurement",
+              "dataset_backfill",
+              "ci_regression_gate",
+              "realtime_alerting"
+            ]
+          }
+        }
+      }
+    },
+    "base": {
+      "type": "object",
+      "required": ["type", "resultKind", "requirements"],
+      "properties": {
+        "type": { "type": "string" },
+        "resultKind": {
+          "type": "string",
+          "enum": [
+            "classification",
+            "json_schema",
+            "llm_judge",
+            "pairwise_judge",
+            "semantic_similarity",
+            "rag",
+            "tool_correctness",
+            "trajectory",
+            "workflow",
+            "human_review",
+            "composite",
+            "deterministic"
+          ]
+        },
+        "requirements": { "$ref": "#/$defs/requirements" },
+        "threshold": { "$ref": "#/$defs/threshold" }
+      }
+    },
+    "exactMatch": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["type", "expectedPath", "actualPath"],
+          "properties": {
+            "type": { "const": "exact_match" },
+            "expectedPath": { "$ref": "#/$defs/jsonPointer" },
+            "actualPath": { "$ref": "#/$defs/jsonPointer" },
+            "caseSensitive": { "type": "boolean", "default": true }
+          }
+        }
+      ]
+    },
+    "contains": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["type", "actualPath", "value"],
+          "properties": {
+            "type": { "const": "contains" },
+            "actualPath": { "$ref": "#/$defs/jsonPointer" },
+            "value": { "type": "string", "minLength": 1 },
+            "caseSensitive": { "type": "boolean", "default": false }
+          }
+        }
+      ]
+    },
+    "regex": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["type", "actualPath", "pattern"],
+          "properties": {
+            "type": { "const": "regex" },
+            "actualPath": { "$ref": "#/$defs/jsonPointer" },
+            "pattern": { "type": "string", "minLength": 1 },
+            "flags": { "type": "string", "pattern": "^[imsu]*$" }
+          }
+        }
+      ]
+    },
+    "jsonSchema": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["type", "actualPath", "schema"],
+          "properties": {
+            "type": { "const": "json_schema" },
+            "actualPath": { "$ref": "#/$defs/jsonPointer" },
+            "schema": { "type": "object", "additionalProperties": true }
+          }
+        }
+      ]
+    },
+    "attributeEquality": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["type", "leftPath", "rightPath"],
+          "properties": {
+            "type": { "const": "attribute_equality" },
+            "leftPath": { "$ref": "#/$defs/jsonPointer" },
+            "rightPath": { "$ref": "#/$defs/jsonPointer" }
+          }
+        }
+      ]
+    },
+    "semanticSimilarity": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["type", "expectedPath", "actualPath", "embeddingModelAlias"],
+          "properties": {
+            "type": { "const": "semantic_similarity" },
+            "expectedPath": { "$ref": "#/$defs/jsonPointer" },
+            "actualPath": { "$ref": "#/$defs/jsonPointer" },
+            "embeddingModelAlias": { "type": "string", "minLength": 1 },
+            "threshold": { "$ref": "#/$defs/threshold" }
+          }
+        }
+      ]
+    },
+    "rag": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["type", "checks"],
+          "properties": {
+            "type": { "const": "rag" },
+            "checks": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "enum": ["faithfulness", "context_recall", "answer_relevance", "citation_coverage"]
+              }
+            },
+            "requiredDocumentRefsPath": { "$ref": "#/$defs/jsonPointer" }
+          }
+        }
+      ]
+    },
+    "llmJudge": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["type", "rubric", "facts"],
+          "properties": {
+            "type": { "const": "llm_judge" },
+            "rubric": { "type": "array", "items": { "$ref": "#/$defs/rubricCriterion" } },
+            "facts": { "type": "array", "items": { "$ref": "#/$defs/factExpectation" } },
+            "judgeModelAlias": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "pairwiseJudge": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["type", "rubric", "candidateAPath", "candidateBPath"],
+          "properties": {
+            "type": { "const": "pairwise_judge" },
+            "rubric": { "type": "array", "items": { "$ref": "#/$defs/rubricCriterion" } },
+            "candidateAPath": { "$ref": "#/$defs/jsonPointer" },
+            "candidateBPath": { "$ref": "#/$defs/jsonPointer" },
+            "judgeModelAlias": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "toolCorrectness": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["type", "expectedToolCallsPath"],
+          "properties": {
+            "type": { "const": "tool_correctness" },
+            "expectedToolCallsPath": { "$ref": "#/$defs/jsonPointer" },
+            "actualToolCallsPath": { "$ref": "#/$defs/jsonPointer" },
+            "enforceOrder": { "type": "boolean", "default": false }
+          }
+        }
+      ]
+    },
+    "trajectory": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["type", "expectedStepsPath"],
+          "properties": {
+            "type": { "const": "trajectory" },
+            "expectedStepsPath": { "$ref": "#/$defs/jsonPointer" },
+            "actualStepsPath": { "$ref": "#/$defs/jsonPointer" },
+            "maxToolCallsPath": { "$ref": "#/$defs/jsonPointer" },
+            "maxAgentLoopsPath": { "$ref": "#/$defs/jsonPointer" }
+          }
+        }
+      ]
+    },
+    "workflow": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["type", "expectedStepsPath"],
+          "properties": {
+            "type": { "const": "workflow" },
+            "expectedStepsPath": { "$ref": "#/$defs/jsonPointer" },
+            "actualStepsPath": { "$ref": "#/$defs/jsonPointer" },
+            "terminalStatusPath": { "$ref": "#/$defs/jsonPointer" }
+          }
+        }
+      ]
+    },
+    "humanReview": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["type", "labelSet"],
+          "properties": {
+            "type": { "const": "human_review" },
+            "labelSet": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+            "requiresReviewerRole": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "composite": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        {
+          "type": "object",
+          "required": ["type", "children"],
+          "properties": {
+            "type": { "const": "composite" },
+            "children": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/compositeChild" }
+            },
+            "passMode": {
+              "type": "string",
+              "enum": ["all", "weighted_threshold", "any_blocking"],
+              "default": "all"
+            }
+          }
+        }
+      ]
+    },
+    "rubricCriterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "description", "weight"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "weight": { "type": "number", "minimum": 0 }
+      }
+    },
+    "factExpectation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "text", "importance"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "text": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "importance": { "type": "string", "enum": ["primary", "secondary"] }
+      }
+    },
+    "compositeChild": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scorerId", "scorerVersion", "weight"],
+      "properties": {
+        "scorerId": { "type": "string", "minLength": 1 },
+        "scorerVersion": { "type": "integer", "minimum": 1 },
+        "weight": { "type": "number", "minimum": 0 },
+        "blocking": { "type": "boolean", "default": false }
+      }
+    }
+  }
+}

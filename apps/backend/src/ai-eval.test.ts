@@ -263,7 +263,7 @@ describe("AI-eval GraphQL resolvers", () => {
           return datasetExportJob();
         },
       }),
-      { graphqlUI: false },
+      {},
     );
 
     const queryResponse = await app.request("/graphql", {
@@ -522,7 +522,7 @@ describe("AI-eval dataset transfer HTTP endpoints", () => {
           return dataset();
         },
       }),
-      { graphqlUI: false, datasetTransferDir: transferDir },
+      { datasetTransferDir: transferDir },
     );
 
     const form = new FormData();
@@ -557,10 +557,7 @@ describe("AI-eval dataset transfer HTTP endpoints", () => {
   test("rejects unsafe ZIP uploads before staging bytes", async () => {
     const transferDir = join(import.meta.dir, "..", ".tmp-ai-eval-transfer-zip-test");
     rmSync(transferDir, { recursive: true, force: true });
-    const { app } = createAppWithBridge(bridge(), {
-      graphqlUI: false,
-      datasetTransferDir: transferDir,
-    });
+    const { app } = createAppWithBridge(bridge(), { datasetTransferDir: transferDir });
 
     const form = new FormData();
     form.set("projectId", "project-1");
@@ -817,6 +814,9 @@ function datasetItem(): DatasetItem {
     split: "dev",
     reviewStatus: "unreviewed",
     synthetic: false,
+    targetShape: "single_turn",
+    contentTreatment: "original",
+    quarantineStatus: "none",
     leakageWarnings: [],
   };
 }
@@ -825,10 +825,40 @@ function experimentRun(): ExperimentRun {
   return {
     id: "experiment-run-1",
     experimentId: "experiment-1",
-    solverRef: {},
+    solverRef: { kind: "agent", name: "candidate" },
     status: "running",
+    runPolicy: { maxParallelRequests: 10 },
     startedAt: "2026-05-12T10:00:00.000Z",
-    summary: {},
+    summary: emptyExperimentRunSummary(),
+  };
+}
+
+function emptyExperimentRunSummary(): ExperimentRun["summary"] {
+  return {
+    itemCounts: {
+      total: 0,
+      passed: 0,
+      failed: 0,
+      errored: 0,
+      skipped: 0,
+      needsReview: 0,
+      quarantined: 0,
+    },
+    scoreSummaries: [],
+    problemCounts: {
+      modelQuality: 0,
+      itemQuality: 0,
+      scorerConfig: 0,
+      infrastructure: 0,
+    },
+    budgetUsage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      estimatedUsd: 0,
+    },
+    latency: null,
+    regressions: [],
   };
 }
 
@@ -877,6 +907,8 @@ function projectAiSettings(): ProjectAiSettings {
         target: {},
         scorerIds: ["scorer-1"],
         sampleRate: 0.1,
+        contentAllowance: ["captured_content"],
+        maxLatencyClass: "batch",
         annotationRules: [],
         updatedAt: "2026-05-12T10:00:00.000Z",
         updatedByUserId: "user-1",
@@ -892,6 +924,18 @@ function projectAiSettings(): ProjectAiSettings {
       maxOnlineSampleRate: 1,
       maxConcurrentExperimentItems: 4,
       maxConcurrentOptimizationCandidates: 2,
+    },
+    runPolicyDefaults: { maxParallelRequests: 10 },
+    datasetPipeline: {
+      candidateSuggestionsEnabled: true,
+      requireReviewBeforeCommit: true,
+      anonymizationMode: "realistic",
+      anonymizationPolicyId: null,
+      anonymizationPolicyVersion: null,
+      anonymizationConsistencyScope: "project",
+      preserveLocale: true,
+      preserveTemporalDistance: true,
+      blockedEntityTypes: [],
     },
     datasetDefaults: {
       splitAllocation: {},

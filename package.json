@@ -14,6 +14,7 @@
     "build": "bun run --cwd apps/packages/definition build && bun run --cwd apps/packages/otlp build && bun run --cwd apps/packages/runtime build && bun run --cwd apps/packages/ui-contracts build && bun run --cwd apps/packages/public-api-client build && bun run --cwd apps/packages/integration-scenarios build && bun run --cwd apps/packages/cloudgrid-harness-adapter build && bun run --cwd apps/frontend build && bun run --cwd apps/backend build",
     "dev": "bun run --cwd apps/backend dev",
     "dev:all": "bun tooling/scripts/dev-all.mjs",
+    "dev:clean": "bun tooling/scripts/dev-clean.mjs",
     "dev:infra": "docker compose --env-file .env up -d nats surrealdb",
     "dev:seed": "bun tooling/scripts/seed-otlp-fixtures.mjs",
     "dev:seed:live": "bun tooling/scripts/seed-otlp-fixtures.mjs --continuous",

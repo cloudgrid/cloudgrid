@@ -11,19 +11,19 @@ import type {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { TooltipProvider } from "../src/components/ui/tooltip";
+import { AiChatArtifactRenderer } from "../src/features/ai-chat/artifact-renderer";
 import {
-  applyAiChatStreamEvent,
   aiChatApprovalInput,
   aiChatConversationQueryKey,
   aiChatHistoryQueryKey,
   aiChatProviderQueryKey,
+  applyAiChatStreamEvent,
   createAiChatStreamViewState,
-  safeAiChatArtifactView,
   orderedAiChatProjectGroups,
+  safeAiChatArtifactView,
 } from "../src/features/ai-chat/view-model";
-import { AiChatArtifactRenderer } from "../src/features/ai-chat/artifact-renderer";
 import { buildBalancedTraceFixture } from "../src/features/traces/trace-fixtures";
-import { TooltipProvider } from "../src/components/ui/tooltip";
 import { AppSessionProvider } from "../src/providers/app-session-provider";
 import { ThemeProvider } from "../src/providers/theme-provider";
 import { AiChatRoute } from "../src/routes/ai-chat-route";
@@ -301,15 +301,17 @@ function aiChatMarkup({
 }
 
 describe("AI Chat route", () => {
-  test("adds AI Chat to project navigation after Dashboards and before AI Eval", () => {
+  test("adds AI Chat as the first project navigation entry before Evaluations", () => {
     const markup = aiChatMarkup();
+    const traces = markup.indexOf(">Traces<");
     const dashboards = markup.indexOf(">Dashboards<");
     const aiChat = markup.indexOf(">AI Chat<");
-    const aiEval = markup.indexOf(">AI eval<");
+    const evaluations = markup.indexOf(">Evaluations<");
 
-    expect(dashboards).toBeGreaterThan(-1);
-    expect(aiChat).toBeGreaterThan(dashboards);
-    expect(aiEval).toBeGreaterThan(aiChat);
+    expect(aiChat).toBeGreaterThan(-1);
+    expect(traces).toBeGreaterThan(aiChat);
+    expect(dashboards).toBeGreaterThan(traces);
+    expect(evaluations).toBeGreaterThan(dashboards);
   });
 
   test("renders only selected project history for the current user with newest conversation first", () => {
@@ -338,8 +340,35 @@ describe("AI Chat route", () => {
     expect(markup).toContain('aria-label="New conversation"');
     expect(markup).toContain("Investigate checkout latency");
     expect(markup).toContain("Older checkout question");
-    expect(markup).toContain("No conversations yet");
+    expect(markup).toContain("Ask about this project");
+    expect(markup).not.toContain(">No conversations yet<");
+    expect(markup).toContain(
+      "Ask about traces, logs, metrics, dashboards, or project evidence in the selected project.",
+    );
+    expect(markup).toContain("Show recent traces");
+    expect(markup).toContain("Find error logs");
+    expect(markup).toContain("List available metrics");
+    expect(markup).not.toContain("The BFF keeps history");
+    expect(markup).not.toContain("Find the checkout latency driver");
+    expect(markup).not.toContain("Compare logs around the last deploy");
+    expect(markup).not.toContain("Draft a dashboard from current evidence");
     expect(markup).not.toContain("<strong>p95</strong>");
+  });
+
+  test("uses a resizable desktop history rail with readable conversation entries", () => {
+    const source = readFileSync(
+      new URL("../src/routes/ai-chat-route.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("ResizablePanelGroup");
+    expect(source).toContain("ResizableHandle");
+    expect(source).toContain('id="history"');
+    expect(source).toContain("hidden min-h-0 flex-1 overflow-hidden lg:flex");
+    expect(source).toContain("flex h-full min-h-0 min-w-[520px] overflow-hidden");
+    expect(source).toContain("onNewConversation={onNewConversation}");
+    expect(source).not.toContain("HistoryRailNewButton");
+    expect(source).toContain("break-words");
   });
 
   test("selected chat uses hydrated conversation data when history only has summaries", () => {
@@ -361,6 +390,132 @@ describe("AI Chat route", () => {
     expect(markup).toContain("Latency summary");
   });
 
+  test("renders only the latest failed chat request as an in-chat retryable error", () => {
+    const baseRun = activeConversation.latestRun;
+    if (!baseRun) {
+      throw new Error("test fixture requires a latest run");
+    }
+    const failedConversation: AiChatConversation = {
+      ...activeConversation,
+      messages: [
+        ...activeConversation.messages,
+        {
+          id: "message-3",
+          conversationId: "chat-new",
+          role: "user",
+          parts: [{ type: "text", text: "Try again" }],
+          createdAt: "2026-05-18T08:05:00.000Z",
+        },
+        {
+          id: "message-4",
+          conversationId: "chat-new",
+          role: "assistant",
+          parts: [
+            {
+              type: "error",
+              text: "AI provider rejected the configured credential",
+              problem: {
+                code: "AI_PROVIDER_CREDENTIAL_UNAVAILABLE",
+                detail: "AI provider rejected the configured credential",
+              },
+            },
+          ],
+          createdAt: "2026-05-18T08:06:00.000Z",
+        },
+      ],
+      latestRun: {
+        ...baseRun,
+        id: "run-failed",
+        status: "failed",
+        problem: { detail: "AI provider rejected the configured credential" },
+      },
+    };
+    const markup = aiChatMarkup({ conversation: failedConversation });
+
+    expect(markup).not.toContain("AI_PROVIDER_CREDENTIAL_UNAVAILABLE");
+    expect(markup).toContain("AI Chat could not answer");
+    expect(markup).toContain("AI provider rejected the configured credential");
+    expect(markup).toContain(">Retry<");
+    expect(markup).not.toContain(">failed<");
+  });
+
+  test("sanitizes legacy provider failure details in the chat transcript", () => {
+    const failedConversation: AiChatConversation = {
+      ...activeConversation,
+      messages: [
+        ...activeConversation.messages,
+        {
+          id: "message-3",
+          conversationId: "chat-new",
+          role: "user",
+          parts: [{ type: "text", text: "Try again" }],
+          createdAt: "2026-05-18T08:05:00.000Z",
+        },
+        {
+          id: "message-4",
+          conversationId: "chat-new",
+          role: "assistant",
+          parts: [
+            {
+              type: "error",
+              text: "AI provider execution failed",
+              problem: { detail: "AI provider execution failed" },
+            },
+          ],
+          createdAt: "2026-05-18T08:06:00.000Z",
+        },
+      ],
+    };
+    const markup = aiChatMarkup({ conversation: failedConversation });
+
+    expect(markup).toContain("The configured AI provider could not complete this request");
+    expect(markup).not.toContain("AI provider execution failed");
+  });
+
+  test("hides stale chat error boxes after a newer message exists", () => {
+    const staleFailedConversation: AiChatConversation = {
+      ...activeConversation,
+      messages: [
+        ...activeConversation.messages,
+        {
+          id: "message-3",
+          conversationId: "chat-new",
+          role: "user",
+          parts: [{ type: "text", text: "Try again" }],
+          createdAt: "2026-05-18T08:05:00.000Z",
+        },
+        {
+          id: "message-4",
+          conversationId: "chat-new",
+          role: "assistant",
+          parts: [
+            {
+              type: "error",
+              text: "AI provider rejected the configured credential",
+              problem: {
+                code: "AI_PROVIDER_CREDENTIAL_UNAVAILABLE",
+                detail: "AI provider rejected the configured credential",
+              },
+            },
+          ],
+          createdAt: "2026-05-18T08:06:00.000Z",
+        },
+        {
+          id: "message-5",
+          conversationId: "chat-new",
+          role: "user",
+          parts: [{ type: "text", text: "Use the current traces instead" }],
+          createdAt: "2026-05-18T08:07:00.000Z",
+        },
+      ],
+    };
+    const markup = aiChatMarkup({ conversation: staleFailedConversation });
+
+    expect(markup).not.toContain("AI_PROVIDER_CREDENTIAL_UNAVAILABLE");
+    expect(markup).not.toContain("AI provider rejected the configured credential");
+    expect(markup).toContain("Use the current traces instead");
+  });
+
   test("does not render a direct-url conversation from another project", () => {
     const markup = aiChatMarkup({
       conversation: otherProjectConversation,
@@ -369,7 +524,7 @@ describe("AI Chat route", () => {
 
     expect(markup).not.toContain("Billing retry errors");
     expect(markup).not.toContain("Why did checkout latency spike?");
-    expect(markup).toContain("No conversations yet");
+    expect(markup).toContain("Ask about this project");
   });
 
   test("rejects stale cached history for another project or user", () => {
@@ -605,7 +760,7 @@ describe("AI Chat route", () => {
     const tool = markup.indexOf("Summarize trace");
     const artifact = markup.indexOf("Latency summary");
     const approval = markup.indexOf("Approved by Ada.");
-    const error = markup.indexOf("ERR-AIC-005");
+    const error = markup.indexOf("Renderer rejected");
     const compaction = markup.indexOf("Earlier investigation retained.");
     const final = markup.indexOf("Final note.");
 
@@ -620,6 +775,71 @@ describe("AI Chat route", () => {
     expect(markup).toContain("running");
     expect(markup).not.toContain("secret-trace");
     expect(markup).not.toContain("sensitive-row-output");
+  });
+
+  test("does not show missing artifact noise for stale artifact references", () => {
+    const staleArtifactConversation: AiChatConversation = {
+      ...activeConversation,
+      messages: [
+        {
+          id: "message-stale-artifact",
+          conversationId: "chat-new",
+          role: "assistant",
+          parts: [
+            { type: "text", text: "Recent traces are ready." },
+            { type: "artifact", artifactId: "artifact-missing", renderer: "table" },
+          ],
+          createdAt: "2026-05-18T08:05:00.000Z",
+        },
+      ],
+      latestRun: {
+        ...activeConversation.latestRun!,
+        artifacts: [],
+      },
+    };
+    const markup = aiChatMarkup({ conversation: staleArtifactConversation });
+
+    expect(markup).toContain("Recent traces are ready.");
+    expect(markup).not.toContain("Artifact reference is not available.");
+  });
+
+  test("renders artifact metadata stored on the message part when run artifacts are unavailable", () => {
+    const partBackedArtifactConversation: AiChatConversation = {
+      ...activeConversation,
+      messages: [
+        {
+          id: "message-part-artifact",
+          conversationId: "chat-new",
+          role: "assistant",
+          parts: [
+            {
+              type: "artifact",
+              artifactId: "artifact-part",
+              renderer: "table",
+              label: "Recent traces",
+              json: {
+                renderSpec: {
+                  renderer: "table",
+                  title: "Recent traces",
+                  ariaLabel: "Recent traces table",
+                  data: { rows: [{ service: "checkout-api", status: "ok" }] },
+                },
+              },
+            },
+          ],
+          createdAt: "2026-05-18T08:05:00.000Z",
+        },
+      ],
+      latestRun: {
+        ...activeConversation.latestRun!,
+        artifacts: [],
+      },
+    };
+    const markup = aiChatMarkup({ conversation: partBackedArtifactConversation });
+
+    expect(markup).toContain("Recent traces");
+    expect(markup).toContain("checkout-api");
+    expect(markup).not.toContain("Artifact reference is not available.");
   });
 
   test("keeps cloudgrid-json-render fences inert unless a persisted artifact part backs them", () => {
@@ -764,8 +984,12 @@ describe("AI Chat route", () => {
     expect(source).toContain("../components/ai-elements/conversation");
     expect(source).toContain("../components/ai-elements/message");
     expect(source).toContain("../components/ai-elements/prompt-input");
-    expect(source).toContain("createConversation.error");
-    expect(source).toContain('streamState?.status === "failed"');
+    expect(source).not.toContain("createConversation.error");
+    expect(source).toContain("isCurrentVisibleErrorPart");
+    expect(source).toContain("onRetryFailedMessage");
+    expect(source).toContain("AssistantLiveStatus");
+    expect(source).toContain("assistantLiveStatusLabel");
+    expect(source).not.toContain("ConversationStatusBadges");
     expect(source).toContain("actions.retry");
   });
 

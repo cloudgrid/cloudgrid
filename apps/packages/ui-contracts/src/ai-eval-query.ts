@@ -23,11 +23,24 @@ const SCORER_KINDS = [
   "semantic",
   "rag",
   "llm_judge",
+  "pairwise_judge",
   "tool_correctness",
   "trajectory",
+  "workflow",
   "human",
+  "composite",
 ] as const;
-const EXPERIMENT_RUN_STATUSES = ["queued", "running", "cancelled", "failed", "finished"] as const;
+const EXPERIMENT_RUN_STATUSES = [
+  "queued",
+  "running",
+  "pausing",
+  "paused",
+  "resuming",
+  "cancelling",
+  "cancelled",
+  "failed",
+  "completed",
+] as const;
 
 /** Optional agent-run query overrides accepted by UI routes and AI tool callers. */
 export interface AgentRunSearchDefaultsInput {

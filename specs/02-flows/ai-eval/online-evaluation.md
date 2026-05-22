@@ -28,12 +28,16 @@ terminal_failure: skip-scoring-and-log
 
 # Online AI Evaluation
 
-## V1 Scope
+## Scope
 
-Online evaluation v1 is a conservative production monitoring feature. It is
-disabled by default, executes deterministic scorers only, never invokes
-harness `/v1/score`, never sends production content to judge models, never
-creates annotation items automatically, and never triggers alert rules.
+Online evaluation in the approved scope means asynchronous continuous production
+measurement. It is disabled by default, never creates annotation or dataset
+items automatically, and never triggers alert rules. Near-realtime alerting is a
+future run mode requiring a separate alerting contract.
+
+Scorer capabilities are reusable across offline and production workflows.
+Production policies decide whether a scorer may run by checking the scorer's
+declared evidence, content, provider, cost, latency, and safety requirements.
 
 ## Steps
 
@@ -43,18 +47,23 @@ creates annotation items automatically, and never triggers alert rules.
    notification IDs and routing hints.
 4. Storage-read loads project AI settings, verifies project AI Eval is enabled,
    evaluates only enabled online policies, validates policy target selectors,
-   resolves scorer versions, and returns matched deterministic scorer refs plus
-   bounded read models for the projection.
+   resolves scorer versions, and returns matched scorer refs plus bounded read
+   models for the projection when policy satisfies each scorer's declared
+   production requirements.
 5. Storage-read returns no match when the project is disabled, the policy is
-   disabled, the selector does not match, or every referenced scorer is outside
-   the v1 deterministic online scorer set.
-6. Runner checks sampling, concurrency, idempotency, and policy caps from the
-   resolved policy data.
-7. Runner executes deterministic scorers locally and persists `EvalResult` or
-   bounded skipped-result summaries through storage-write.
+   disabled, the selector does not match, or every referenced scorer is
+   disallowed by policy, content, provider, model alias, budget, latency, or
+   safety constraints.
+6. Runner checks sampling, rate limits, backpressure, token budget, cost budget,
+   timeout, concurrency, idempotency, and policy caps from the resolved policy
+   data.
+7. Runner executes local scorers locally and calls harness `/v1/score` only for
+   scorer capabilities explicitly allowed by the resolved policy. Runner
+   persists `EvalResult` or bounded skipped-result summaries through
+   storage-write.
 8. Storage-read derives production quality summaries from persisted results.
-9. A user may later review/filter online score results and explicitly create
-   annotation queue items through `annotation.item.update`.
+9. A user may later review/filter/cluster score results and explicitly prepare
+   dataset candidates or annotation queue items through user-facing mutations.
 
 ## Boundaries
 
@@ -64,8 +73,11 @@ Runner must not match online policies by reading raw projection maps locally.
 Policy semantics remain in storage-read so production quality summaries,
 annotation routing, and scorer selection use the same filter behavior.
 
-Runner must not call harness, read provider profiles, resolve provider secrets,
-or forward prompt/completion/tool/retrieval content for online scoring in v1.
+Runner must not read provider secrets. It may pass provider profile IDs and model
+aliases to harness only when the resolved policy allows the scorer's provider
+requirements. It must not forward prompt/completion/tool/retrieval content
+unless content capture, project policy, scorer definition, and user/admin
+configuration explicitly allow that content class.
 
 ## Online Policy Match Contract
 
@@ -85,15 +97,20 @@ The response payload contains:
   `policyId`, `policyVersion`, `policyName`, `sampleRate`, `maxDailyRuns`,
   `scorerRefs`, and `target`.
 - `scorerRefs`: each scorer ref includes `scorerId`, `scorerVersion`, and
-  `kind`. In v1 every returned scorer kind must be `deterministic`.
+  `kind`, execution requirements, content requirements, provider requirements,
+  cost class, latency class, and production-safety classification.
 - `projection`: bounded read model containing source IDs, kind, project,
   agent/service/route/environment/model/prompt version/tool/retrieval routing
   fields, and safe indexed attributes needed by deterministic scorers.
-- `warnings`: bounded warning strings for invalid disabled policies, unsupported
-  scorer kinds, or stale scorer references.
+- `warnings`: bounded warning strings for invalid disabled policies, disallowed
+  scorer requirements, missing provider/model aliases, budget constraints,
+  unsupported content access, or stale scorer references.
 
-The response must not include raw prompt, completion, tool parameter, retrieved
-document content, provider credentials, or harness request bodies.
+The response must not include provider credentials or harness request bodies.
+Raw prompt, completion, tool parameter, or retrieved-document content may appear
+only when the scorer definition requires it, capture exists, and the resolved
+policy explicitly allows that content class. Otherwise the response contains
+source pointers, digests, routing fields, and safe indexed attributes only.
 
 ## Online Policy Target Contract
 

@@ -151,7 +151,13 @@ Advanced filters open from `More`:
 - sort;
 - trace ID exact match.
 
-Facet suggestions come only from `Query.telemetryFacets`. Manual entry remains available when facets are empty or unavailable. Facets show value, bounded count, selected state, and a right-aligned count. Selecting a facet updates URL state and refetches `Query.traces`. Clicking an already selected facet clears that one facet filter and preserves all other active filters.
+Facet suggestions come only from `Query.telemetryFacets` with `signal: traces`. Service filtering supports multiple selected services through the `services` filter and uses removable selected chips. Manual entry remains available when facets are empty or unavailable. Facets show value, bounded count, selected state, and a right-aligned count. Selecting a facet updates URL state and refetches `Query.traces`. Clicking an already selected facet clears that one facet filter and preserves all other active filters.
+
+Search, filtering, pagination, and table-column sorting for the trace table
+are always backend-driven through `Query.traces` and `TraceSearchInput`.
+The frontend must not filter or reorder the loaded trace page to implement
+route-primary search/filter/sort. Sortable headers update URL state and
+refetch with the selected `TraceSearchInput.sort`.
 
 ### States
 

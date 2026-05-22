@@ -112,8 +112,8 @@ export const AI_CHAT_MODEL_ALIASES = {
   chat_reasoning: {
     id: "chat_reasoning",
     usedBy: ["agent.main_chat", "workflow.compact_conversation"],
-    capabilities: ["text_stream", "tool_use"],
-    notes: "Streams user-facing CloudGrid AI Chat text.",
+    capabilities: ["object", "tool_use"],
+    notes: "Runs the main CloudGrid AI Chat agent loop with typed tool calls.",
   },
   structured_reasoning: {
     id: "structured_reasoning",

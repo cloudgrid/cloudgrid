@@ -3,13 +3,13 @@ import { fileURLToPath } from "node:url";
 import {
   type AuthRuntimeConfig,
   type CloudGridLogger,
-  createProblemDetails,
   createLogger,
+  createProblemDetails,
 } from "@cloudgrid/runtime";
 import type {
   AgentRunSearchInput,
-  AiQualityOverviewInput,
   AiChatHistoryInput,
+  AiQualityOverviewInput,
   AnnotationQueueSearchInput,
   AppendDatasetItemsInput,
   ApproveAiChatActionInput,
@@ -49,14 +49,14 @@ import {
 } from "graphql";
 import { createSchema, createYoga } from "graphql-yoga";
 import { Hono } from "hono";
+import { createAiChatHarness } from "./ai-chat-harness";
+import { type AiChatHarnessPort, attachAiChatStreamRoutes } from "./ai-chat-stream";
 import {
   type AuthProviderFixture,
   CloudGridAuthService,
   type NormalizedAuthContext,
   requireScopes,
 } from "./auth";
-import { attachAiChatStreamRoutes, type AiChatHarnessPort } from "./ai-chat-stream";
-import { createAiChatHarness } from "./ai-chat-harness";
 import {
   type AiEvalBridge,
   type ControlPlaneBridge,
@@ -66,6 +66,16 @@ import {
 } from "./bridge";
 import { loadConfig } from "./config";
 import { attachDatasetTransferRoutes } from "./dataset-transfer";
+import {
+  authContext,
+  logGraphQLOperation,
+  requireAiChatControlBridge,
+  requireAiEvalBridge,
+} from "./graphql/resolvers/context";
+import { controlPlaneResolvers } from "./graphql/resolvers/control-plane";
+import { dashboardResolvers } from "./graphql/resolvers/dashboards";
+import { metricsResolvers } from "./graphql/resolvers/metrics";
+import { telemetryResolvers } from "./graphql/resolvers/telemetry";
 import type { GraphQLMetricsRecorder } from "./graphql-metrics";
 import { healthResponse } from "./health";
 import {
@@ -74,20 +84,10 @@ import {
   type SelfObservabilityTraceRecorder,
 } from "./self-observability";
 import { attachStaticRoutes } from "./static";
-import { controlPlaneResolvers } from "./graphql/resolvers/control-plane";
-import {
-  authContext,
-  logGraphQLOperation,
-  requireAiChatControlBridge,
-  requireAiEvalBridge,
-} from "./graphql/resolvers/context";
-import { dashboardResolvers } from "./graphql/resolvers/dashboards";
-import { metricsResolvers } from "./graphql/resolvers/metrics";
-import { telemetryResolvers } from "./graphql/resolvers/telemetry";
 import {
   validateAgentRunSearchInput,
-  validateAiQualityOverviewInput,
   validateAiChatHistoryInput,
+  validateAiQualityOverviewInput,
   validateAnnotationQueueSearchInput,
   validateAppendDatasetItemsInput,
   validateApproveAiChatActionInput,
@@ -130,7 +130,6 @@ type AppBridge = TelemetryQueryBridge &
   Partial<AiEvalBridge>;
 
 interface CreateAppOptions {
-  graphqlUI: boolean;
   graphqlMaxDepth?: number;
   graphqlMaxComplexity?: number;
   graphqlResponseMediaType?: "compatible" | "graphql-response-json";
@@ -234,7 +233,7 @@ export function createAppWithBridge(
   const yoga = createYoga<YogaContext>({
     graphqlEndpoint: "/graphql",
     schema: createCloudGridSchema(),
-    graphiql: config.graphqlUI,
+    graphiql: false,
     context: ({ request }) => ({
       request,
       requestId: crypto.randomUUID(),

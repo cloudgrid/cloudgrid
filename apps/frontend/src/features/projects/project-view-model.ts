@@ -29,9 +29,9 @@ export interface AdminSettingsModel {
   layout: "admin-settings";
   organizationName: string;
   sidebarItems: Array<{
-    id: "organization" | "projects" | "members" | "ai-provider";
+    id: "projects" | "members" | "ai-provider";
     href: string;
-    labelKey: "companies.title" | "nav.projects" | "companies.members.title" | "nav.aiProvider";
+    labelKey: "nav.projects" | "companies.members.title" | "nav.aiProvider";
   }>;
   showMemberAdministration: boolean;
 }
@@ -125,14 +125,9 @@ export function buildAdminSettingsModel({
   mode: DeploymentMode;
   organization: Organization;
 }): AdminSettingsModel {
-  const isLocalPersonal = isLocalPersonalOrganization(mode, organization);
+  void mode;
   const encodedOrganizationId = encodeURIComponent(organization.id);
   const sidebarItems: AdminSettingsModel["sidebarItems"] = [
-    {
-      id: "organization",
-      href: `/organizations/${encodedOrganizationId}`,
-      labelKey: "companies.title",
-    },
     {
       id: "projects",
       href: `/organizations/${encodedOrganizationId}/projects`,
@@ -140,15 +135,12 @@ export function buildAdminSettingsModel({
     },
   ];
 
-  if (!isLocalPersonal) {
+  if (organization.role === "admin") {
     sidebarItems.push({
       id: "members",
       href: `/organizations/${encodedOrganizationId}/members`,
       labelKey: "companies.members.title",
     });
-  }
-
-  if (organization.role === "admin") {
     sidebarItems.push({
       id: "ai-provider",
       href: `/organizations/${encodedOrganizationId}/ai-provider`,
@@ -160,7 +152,7 @@ export function buildAdminSettingsModel({
     layout: "admin-settings",
     organizationName: displayCompanyName(organization),
     sidebarItems,
-    showMemberAdministration: !isLocalPersonal,
+    showMemberAdministration: organization.role === "admin",
   };
 }
 
@@ -176,15 +168,14 @@ export function canMutateOrganizationMember({
   organization: Organization;
   targetUserId: string;
   viewerUserId: string;
-}): { allowed: true } | { allowed: false; reason: "local-personal-single-admin" } {
-  if (
-    isLocalPersonalOrganization(mode, organization) &&
-    targetUserId === viewerUserId &&
-    (mutation === "demote" || mutation === "remove")
-  ) {
+}): { allowed: true } | { allowed: false; reason: "own-account" } {
+  void mode;
+  void organization;
+
+  if (targetUserId === viewerUserId && (mutation === "demote" || mutation === "remove")) {
     return {
       allowed: false,
-      reason: "local-personal-single-admin",
+      reason: "own-account",
     };
   }
 
@@ -197,8 +188,4 @@ export function displayCompanyName(organization: Organization): string {
 
 export function displayRole(role: CompanyRole): string {
   return role;
-}
-
-function isLocalPersonalOrganization(mode: DeploymentMode, organization: Organization): boolean {
-  return mode === "local" && organization.id === "local";
 }

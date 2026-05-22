@@ -1,8 +1,10 @@
+import { z } from "@cloudgrid/runtime";
 import {
-  createModelRegistry,
+  defineHarness,
   type ModelCallOptions,
   type ModelDefaults,
   type ModelProvider,
+  type RunEvent,
   type SpanAttrs,
   type TelemetryShim,
 } from "@purista/harness";
@@ -24,10 +26,63 @@ interface CreateAiChatHarnessOptions {
 
 type AiChatModelProviderFactory = (request: AiChatHarnessRequest) => ModelProvider;
 type HarnessSpan = Parameters<Parameters<TelemetryShim["span"]>[2]>[0];
-type ChatModelMessage =
-  | { role: "system"; content: string }
-  | { role: "user"; content: string }
-  | { role: "assistant"; content: string };
+type BuiltAiChatHarness = {
+  getSession: (id: string) => Promise<{
+    agents: Record<string, { stream: (input: unknown, opts?: unknown) => AsyncIterable<RunEvent> }>;
+    close?: () => Promise<void>;
+  }>;
+  shutdown: () => Promise<unknown>;
+};
+const aiChatToolOutputSchema = z.object({
+  text: z.string(),
+  artifacts: z
+    .array(
+      z.object({
+        renderer: z.enum([
+          "log_list",
+          "metric_timeseries",
+          "status_summary",
+          "table",
+          "trace_waterfall",
+        ]),
+        label: z.string(),
+        renderSpec: z.record(z.string(), z.unknown()),
+      }),
+    )
+    .optional(),
+});
+
+const aiChatAgentInputSchema = z.object({
+  latestUserMessage: z.string(),
+  temporalContext: z.string(),
+  conversationMessages: z.array(
+    z.object({
+      role: z.enum(["user", "assistant", "system", "tool"]),
+      content: z.string(),
+    }),
+  ),
+});
+
+const aiChatAgentOutputSchema = z.object({
+  answer: z.string(),
+});
+
+const aiChatModelToolIds = new Set([
+  "telemetry.searchTraces",
+  "telemetry.getTrace",
+  "telemetry.searchLogs",
+  "telemetry.queryMetrics",
+  "telemetry.getFacets",
+  "dashboards.list",
+  "alerts.list",
+  "alerts.history",
+  "aiEval.searchAgentRuns",
+  "aiEval.searchDatasets",
+  "aiEval.searchScorers",
+  "aiEval.searchExperiments",
+  "aiEval.searchEvalResults",
+  "project.get",
+]);
 
 const cloudGridDeveloperPrompt = [
   "You are the CloudGrid-native observability assistant running inside CloudGrid.",
@@ -43,6 +98,7 @@ const cloudGridDeveloperPrompt = [
   "If the user asks for telemetry and the runtime supplied tool evidence, answer only from that evidence.",
   "Current company, project, user, and conversation scope are injected by the CloudGrid runtime into tool execution; never ask the user for a project ID or include scope fields in tool arguments.",
   "Use CloudGrid tool defaults for omitted optional telemetry inputs such as current project, default time window, limit, aggregation, resolution, and filters; ask only for a genuinely missing domain choice such as an unknown metric name.",
+  "Do not ask for confirmation before read-only CloudGrid data queries. Query traces, logs, metrics, dashboards, alerts, AI Eval evidence, and project context directly with available tools and defaults. User approval is required only for explicit action proposals or mutations.",
   "If the runtime did not supply evidence for a telemetry question after using available tools and defaults, say that the requested CloudGrid data is unavailable in this run.",
   "Do not claim that tools, dashboards, traces, logs, metrics, NATS, SurrealDB, provider credentials, or shell commands were inspected unless the runtime supplied that evidence.",
   "Do not provide commands, API examples, UI routes, or setup steps unless they are present in CloudGrid specs or runtime evidence.",
@@ -80,6 +136,16 @@ class PuristaAiChatHarness implements AiChatHarnessPort {
 
   async *streamChat(request: AiChatHarnessRequest): AsyncIterable<AiChatHarnessEvent> {
     let provider: ModelProvider | undefined;
+    let harness: BuiltAiChatHarness | undefined;
+    let session:
+      | {
+          agents: Record<
+            string,
+            { stream: (input: unknown, opts?: unknown) => AsyncIterable<RunEvent> }
+          >;
+          close?: () => Promise<void>;
+        }
+      | undefined;
     try {
       const policyRefusal = policyRefusalFor(latestUserMessageText(request));
       if (policyRefusal) {
@@ -89,63 +155,92 @@ class PuristaAiChatHarness implements AiChatHarnessPort {
       }
       provider = this.providerFactory(request);
       const defaults = modelDefaults(request);
+      const modelToolNames = aiChatModelToolNames(request);
       const telemetryShim = this.telemetry.traceRecorder
         ? new CloudGridHarnessTelemetryShim({
             traceContext: this.telemetry.traceContextFactory(),
             traceRecorder: this.telemetry.traceRecorder,
           })
         : undefined;
-      const modelAlias = AI_CHAT_MODEL_ALIASES.chat_reasoning.id;
-      const models = createModelRegistry(
-        {
-          [modelAlias]: {
+      const builtHarness = defineHarness({ name: "cloudgrid-ai-chat" })
+        .defaults({
+          agentMaxIterations: request.catalog.budgets.maxToolCallsPerRun,
+          toolTimeoutMs: request.catalog.budgets.sandboxScriptWallClockMs,
+        })
+        .models({
+          [AI_CHAT_MODEL_ALIASES.chat_reasoning.id]: {
             provider,
             model: request.provider.model,
-            capabilities: AI_CHAT_MODEL_ALIASES.chat_reasoning.capabilities,
+            capabilities: ["object", "tool_use"],
             ...(defaults ? { defaults } : {}),
           },
-        },
-        {
-          harnessName: "cloudgrid-ai-chat",
-          ...(telemetryShim ? { telemetry: telemetryShim } : {}),
-        },
-      );
-      const chat = models[AI_CHAT_MODEL_ALIASES.chat_reasoning.id];
-      if (!chat) {
-        yield {
-          kind: "provider_error",
-          message: "AI Chat harness model alias was not registered",
-          retryable: false,
-        };
-        return;
+        })
+        .tools(aiChatHarnessTools(request, modelToolNames) as never)
+        .agents(({ agent }) => ({
+          main_chat: agent({
+            model: AI_CHAT_MODEL_ALIASES.chat_reasoning.id,
+            input: aiChatAgentInputSchema as never,
+            output: aiChatAgentOutputSchema as never,
+            builtinTools: false,
+            tools: [...modelToolNames.values()],
+            maxSteps: request.catalog.budgets.maxToolCallsPerRun,
+            instructions: cloudGridDeveloperPrompt,
+          }),
+        }))
+        .build() as unknown as BuiltAiChatHarness;
+      harness = builtHarness;
+      const activeHarness = builtHarness;
+      const activeSession = await activeHarness.getSession(request.sessionId);
+      session = activeSession;
+      const mainChat = activeSession.agents.main_chat;
+      if (!mainChat) {
+        throw new Error("AI Chat main_chat agent was not registered");
       }
 
-      for await (const chunk of chat.textStream(
-        { messages: modelMessages(request) },
-        request.signal,
+      for await (const event of mainChat.stream(
         {
-          harnessName: "cloudgrid-ai-chat",
-          sessionId: request.sessionId,
-          runId: request.conversation.latestRun?.id ?? request.conversation.id,
-          agentId: "main_chat",
+          latestUserMessage: latestUserMessageText(request),
+          temporalContext: temporalContextPrompt(request),
+          conversationMessages: conversationMessagesForAgent(request),
+        },
+        {
+          signal: request.signal,
+          traceparent: telemetryShim?.currentTraceparent(),
+          metadata: {
+            conversationId: request.conversation.id,
+            projectId: request.conversation.projectId,
+          },
         },
       )) {
-        if (chunk.kind === "delta") {
-          yield { kind: "text_delta", text: chunk.text };
-        }
-        if (chunk.kind === "tool_call") {
+        if (event.type === "tool.started") {
           yield {
-            kind: "tool_call_requested",
-            name: chunk.call.name,
-            arguments: objectExtras(chunk.call.arguments),
+            kind: "tool_started",
+            toolCallId: event.callId,
+            name: canonicalAiChatToolId(event.toolId, modelToolNames),
           };
         }
-        if (chunk.kind === "finish") {
+        if (event.type === "tool.finished") {
+          const canonicalToolId = canonicalAiChatToolId(event.toolId, modelToolNames);
           yield {
-            kind: "usage",
-            inputTokens: chunk.usage.inputTokens,
-            outputTokens: chunk.usage.outputTokens,
+            kind: "tool_completed",
+            toolCallId: event.callId,
+            name: canonicalToolId,
+            ...(event.output
+              ? { output: normalizeAiChatToolOutput(aiChatToolOutputSchema.parse(event.output)) }
+              : {}),
+            ...(event.error ? { errorCode: "ERR-AIC-001" } : {}),
           };
+        }
+        if (event.type === "model.object") {
+          const output = aiChatAgentOutputSchema.parse(event.object);
+          yield { kind: "final_message", text: output.answer };
+          if (event.usage) {
+            yield {
+              kind: "usage",
+              inputTokens: event.usage.inputTokens,
+              outputTokens: event.usage.outputTokens,
+            };
+          }
         }
       }
     } catch (error) {
@@ -155,6 +250,8 @@ class PuristaAiChatHarness implements AiChatHarnessPort {
         retryable: isRetryableHarnessError(error),
       };
     } finally {
+      await session?.close?.();
+      await harness?.shutdown?.();
       await provider?.close?.();
     }
   }
@@ -262,6 +359,89 @@ class MockAiChatHarness implements AiChatHarnessPort {
   }
 }
 
+function aiChatHarnessTools(request: AiChatHarnessRequest, modelToolNames: Map<string, string>) {
+  return Object.fromEntries(
+    request.catalog.tools
+      .filter((tool) => aiChatModelToolIds.has(tool.id))
+      .map((tool) => [
+        modelToolNames.get(tool.id) ?? modelSafeAiChatToolName(tool.id),
+        {
+          description: [
+            `Canonical CloudGrid tool ID: ${tool.id}.`,
+            tool.backendPath,
+            "Use this read-only CloudGrid tool directly when it can answer the user request.",
+            "Do not include companyId, projectId, userId, conversationId, tenantId, or auth fields.",
+            "Omit optional filters, limits, and time windows when defaults are sufficient.",
+          ].join(" "),
+          input: z.record(z.string(), z.unknown()),
+          output: aiChatToolOutputSchema,
+          handler: async (_ctx: unknown, input: Record<string, unknown>) => {
+            if (!request.executeTool) {
+              throw new Error("AI Chat tool executor is unavailable");
+            }
+            return request.executeTool(tool.id, input);
+          },
+        },
+      ]),
+  );
+}
+
+function aiChatModelToolNames(request: AiChatHarnessRequest): Map<string, string> {
+  const modelNames = new Map<string, string>();
+  const canonicalNames = new Map<string, string>();
+  for (const tool of request.catalog.tools) {
+    if (!aiChatModelToolIds.has(tool.id)) {
+      continue;
+    }
+    const modelName = modelSafeAiChatToolName(tool.id);
+    const duplicate = canonicalNames.get(modelName);
+    if (duplicate) {
+      throw new Error(
+        `AI Chat model tool name collision: ${duplicate} and ${tool.id} both map to ${modelName}`,
+      );
+    }
+    canonicalNames.set(modelName, tool.id);
+    modelNames.set(tool.id, modelName);
+  }
+  return modelNames;
+}
+
+function canonicalAiChatToolId(toolId: string, modelToolNames: Map<string, string>) {
+  for (const [canonicalId, modelName] of modelToolNames) {
+    if (toolId === modelName) {
+      return canonicalId;
+    }
+  }
+  return toolId;
+}
+
+function modelSafeAiChatToolName(toolId: string) {
+  return toolId.replaceAll(".", "_");
+}
+
+function normalizeAiChatToolOutput(value: z.infer<typeof aiChatToolOutputSchema>) {
+  const output: {
+    text: string;
+    artifacts?: NonNullable<z.infer<typeof aiChatToolOutputSchema>["artifacts"]>;
+  } = { text: value.text };
+  if (value.artifacts) {
+    output.artifacts = value.artifacts;
+  }
+  return output;
+}
+
+function conversationMessagesForAgent(request: AiChatHarnessRequest) {
+  return request.messages
+    .map((message) => ({
+      role: message.role,
+      content: message.parts
+        .map((part) => (part.type === "text" ? part.text : ""))
+        .join("\n")
+        .trim(),
+    }))
+    .filter((message) => message.content);
+}
+
 function providerFromAiChatSettings(request: AiChatHarnessRequest): ModelProvider {
   return createAiChatProviderAdapter({
     providerKind: request.provider.providerKind,
@@ -333,28 +513,6 @@ function isClearlyOutOfScope(text: string) {
   return /\b(politics?|election|president|prime minister|parliament|congress|senate|democrat|republican|ideology|religion|celebrity|movie|sports?|stock|investment|medical|legal|weather|news)\b/.test(
     text,
   );
-}
-
-function modelMessages(request: AiChatHarnessRequest): ChatModelMessage[] {
-  return [
-    { role: "system", content: cloudGridDeveloperPrompt },
-    { role: "system", content: temporalContextPrompt(request) },
-    ...request.messages.flatMap((message): ChatModelMessage[] => {
-      const content = message.parts
-        .map((part) => (part.type === "text" ? part.text : ""))
-        .join("\n")
-        .trim();
-      if (!content) {
-        return [];
-      }
-      return [
-        {
-          role: message.role === "assistant" ? ("assistant" as const) : ("user" as const),
-          content,
-        },
-      ];
-    }),
-  ];
 }
 
 function temporalContextPrompt(request: AiChatHarnessRequest): string {

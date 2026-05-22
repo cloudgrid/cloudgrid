@@ -35,7 +35,6 @@ describe("BFF GraphQL self-observability metrics", () => {
         async close() {},
       },
       {
-        graphqlUI: false,
         metricsRecorder: {
           record(record) {
             records.push(record);
@@ -121,7 +120,6 @@ describe("BFF GraphQL self-observability metrics", () => {
         async close() {},
       },
       {
-        graphqlUI: false,
         metricsRecorder: {
           record() {
             throw new Error("metrics unavailable");

@@ -431,6 +431,7 @@ type Service struct {
 
 type TraceSearchQuery struct {
 	Service       *string           `json:"service,omitempty"`
+	Services      []string          `json:"services,omitempty"`
 	Query         *string           `json:"query,omitempty"`
 	OperationName *string           `json:"operationName,omitempty"`
 	SpanName      *string           `json:"spanName,omitempty"`
@@ -447,6 +448,7 @@ type TraceSearchQuery struct {
 
 type LiveTraceQuery struct {
 	Service       *string           `json:"service,omitempty"`
+	Services      []string          `json:"services,omitempty"`
 	Query         *string           `json:"query,omitempty"`
 	OperationName *string           `json:"operationName,omitempty"`
 	SpanName      *string           `json:"spanName,omitempty"`
@@ -474,6 +476,7 @@ type TraceDetailQuery struct {
 
 type LogSearchQuery struct {
 	Service    *string           `json:"service,omitempty"`
+	Services   []string          `json:"services,omitempty"`
 	TraceID    *string           `json:"traceId,omitempty"`
 	SpanID     *string           `json:"spanId,omitempty"`
 	Severity   *string           `json:"severity,omitempty"`
@@ -486,12 +489,22 @@ type LogSearchQuery struct {
 	Cursor     *string           `json:"cursor,omitempty"`
 }
 
+type TelemetryFacetSignal string
+
+const (
+	TelemetryFacetSignalTraces  TelemetryFacetSignal = "traces"
+	TelemetryFacetSignalLogs    TelemetryFacetSignal = "logs"
+	TelemetryFacetSignalMetrics TelemetryFacetSignal = "metrics"
+)
+
 type TelemetryFacetQuery struct {
-	From    *time.Time `json:"from,omitempty"`
-	To      *time.Time `json:"to,omitempty"`
-	Service *string    `json:"service,omitempty"`
-	Search  *string    `json:"search,omitempty"`
-	Limit   *int       `json:"limit,omitempty"`
+	From     *time.Time            `json:"from,omitempty"`
+	To       *time.Time            `json:"to,omitempty"`
+	Service  *string               `json:"service,omitempty"`
+	Services []string              `json:"services,omitempty"`
+	Signal   *TelemetryFacetSignal `json:"signal,omitempty"`
+	Search   *string               `json:"search,omitempty"`
+	Limit    *int                  `json:"limit,omitempty"`
 }
 
 type DashboardListInput struct {
@@ -1008,13 +1021,34 @@ const (
 	MetricAggregationP99   MetricAggregation = "p99"
 )
 
+type MetricNameSort string
+
+const (
+	MetricNameSortLastSeenAtDesc MetricNameSort = "lastSeenAt_desc"
+	MetricNameSortLastSeenAtAsc  MetricNameSort = "lastSeenAt_asc"
+	MetricNameSortNameAsc        MetricNameSort = "name_asc"
+	MetricNameSortNameDesc       MetricNameSort = "name_desc"
+	MetricNameSortKindAsc        MetricNameSort = "kind_asc"
+)
+
+type MetricSeriesSort string
+
+const (
+	MetricSeriesSortTimestampAsc  MetricSeriesSort = "timestamp_asc"
+	MetricSeriesSortTimestampDesc MetricSeriesSort = "timestamp_desc"
+	MetricSeriesSortValueDesc     MetricSeriesSort = "value_desc"
+	MetricSeriesSortValueAsc      MetricSeriesSort = "value_asc"
+)
+
 type MetricNameSearchInput struct {
-	Query   *string    `json:"query,omitempty"`
-	Service *string    `json:"service,omitempty"`
-	From    *time.Time `json:"from,omitempty"`
-	To      *time.Time `json:"to,omitempty"`
-	Limit   *int       `json:"limit,omitempty"`
-	Cursor  *string    `json:"cursor,omitempty"`
+	Query    *string         `json:"query,omitempty"`
+	Service  *string         `json:"service,omitempty"`
+	Services []string        `json:"services,omitempty"`
+	From     *time.Time      `json:"from,omitempty"`
+	To       *time.Time      `json:"to,omitempty"`
+	Sort     *MetricNameSort `json:"sort,omitempty"`
+	Limit    *int            `json:"limit,omitempty"`
+	Cursor   *string         `json:"cursor,omitempty"`
 }
 
 type MetricNameSearchRequest struct {
@@ -1042,6 +1076,7 @@ type MetricSeriesInput struct {
 	Aggregation MetricAggregation `json:"aggregation"`
 	GroupBy     []string          `json:"groupBy,omitempty"`
 	Filters     []AttributeFilter `json:"filters,omitempty"`
+	Sort        *MetricSeriesSort `json:"sort,omitempty"`
 	Limit       *int              `json:"limit,omitempty"`
 }
 
@@ -2352,10 +2387,80 @@ type EvalMutationResponse struct {
 	Error     *BridgeError   `json:"error,omitempty"`
 }
 
+type VersionedRef struct {
+	ID      string `json:"id"`
+	Version int    `json:"version"`
+}
+
+type EvalSolverRef struct {
+	Kind              string        `json:"kind"`
+	Name              string        `json:"name"`
+	PromptVersion     *VersionedRef `json:"promptVersion,omitempty"`
+	AgentRef          *string       `json:"agentRef,omitempty"`
+	WorkflowRef       *string       `json:"workflowRef,omitempty"`
+	SkillSnapshotRef  *string       `json:"skillSnapshotRef,omitempty"`
+	ToolSnapshotRef   *string       `json:"toolSnapshotRef,omitempty"`
+	ModelAlias        *string       `json:"modelAlias,omitempty"`
+	ProviderProfileID *string       `json:"providerProfileId,omitempty"`
+}
+
+type EvalBaselineRef struct {
+	Kind            string         `json:"kind"`
+	ExperimentRunID *string        `json:"experimentRunId,omitempty"`
+	PromptVersion   *VersionedRef  `json:"promptVersion,omitempty"`
+	SolverRef       *EvalSolverRef `json:"solverRef,omitempty"`
+}
+
+type DatasetSplitSelector struct {
+	Splits           []string `json:"splits"`
+	ReviewedOnly     bool     `json:"reviewedOnly"`
+	IncludeSynthetic bool     `json:"includeSynthetic"`
+}
+
+type BootstrapFewshotConfig struct {
+	CandidateCount          int      `json:"candidateCount"`
+	MaxExamplesPerCandidate int      `json:"maxExamplesPerCandidate"`
+	SelectionScorerIDs      []string `json:"selectionScorerIds"`
+	Seed                    int      `json:"seed"`
+	DiversityStrategy       *string  `json:"diversityStrategy,omitempty"`
+}
+
+type CriticMutateJudgePickConfig struct {
+	CandidateCount       int      `json:"candidateCount"`
+	MutationInstructions string   `json:"mutationInstructions"`
+	JudgeScorerIDs       []string `json:"judgeScorerIds"`
+	Seed                 int      `json:"seed"`
+	MaxRounds            int      `json:"maxRounds"`
+	KeepTopK             *int     `json:"keepTopK,omitempty"`
+}
+
+type OptimizationConfig struct {
+	OptimizerKind         string                       `json:"optimizerKind,omitempty"`
+	BootstrapFewshot      *BootstrapFewshotConfig      `json:"bootstrapFewshot,omitempty"`
+	CriticMutateJudgePick *CriticMutateJudgePickConfig `json:"criticMutateJudgePick,omitempty"`
+}
+
+type EvalRunPolicy struct {
+	MaxParallelRequests int            `json:"maxParallelRequests"`
+	TokenBudget         map[string]any `json:"tokenBudget,omitempty"`
+	CostBudget          map[string]any `json:"costBudget,omitempty"`
+	RateLimit           map[string]any `json:"rateLimit,omitempty"`
+	Retry               map[string]any `json:"retry,omitempty"`
+	Timeout             map[string]any `json:"timeout,omitempty"`
+	FailureBudget       map[string]any `json:"failureBudget,omitempty"`
+	Backpressure        map[string]any `json:"backpressure,omitempty"`
+	Checkpoint          map[string]any `json:"checkpoint,omitempty"`
+	Quarantine          map[string]any `json:"quarantine,omitempty"`
+	WorkspaceQuota      map[string]any `json:"workspaceQuota,omitempty"`
+	CleanupRetry        map[string]any `json:"cleanupRetry,omitempty"`
+}
+
 type ExperimentStartRequest struct {
 	BridgeEnvelope
-	ExperimentID string         `json:"experimentId"`
-	SolverRef    map[string]any `json:"solverRef,omitempty"`
+	ExperimentID  string         `json:"experimentId"`
+	SolverRef     *EvalSolverRef `json:"solverRef,omitempty"`
+	SplitSelector map[string]any `json:"splitSelector,omitempty"`
+	RunPolicy     *EvalRunPolicy `json:"runPolicy,omitempty"`
 }
 
 type ExperimentCancelRequest struct {
@@ -2365,11 +2470,12 @@ type ExperimentCancelRequest struct {
 
 type OptimizationStartRequest struct {
 	BridgeEnvelope
-	ExperimentID        string         `json:"experimentId"`
-	OptimizerKind       string         `json:"optimizerKind"`
-	BasePromptVersionID string         `json:"basePromptVersionId"`
-	SplitSelector       map[string]any `json:"splitSelector,omitempty"`
-	Config              map[string]any `json:"config,omitempty"`
+	ExperimentID        string              `json:"experimentId"`
+	OptimizerKind       string              `json:"optimizerKind"`
+	BasePromptVersionID string              `json:"basePromptVersionId"`
+	SplitSelector       map[string]any      `json:"splitSelector,omitempty"`
+	Config              *OptimizationConfig `json:"config,omitempty"`
+	RunPolicy           *EvalRunPolicy      `json:"runPolicy,omitempty"`
 }
 
 type ExperimentStartData struct {
@@ -2438,10 +2544,12 @@ type ExperimentProgressNotification struct {
 
 type ExperimentManifestResolveRequest struct {
 	BridgeEnvelope
-	ExperimentRunID string         `json:"experimentRunId"`
-	ExperimentID    string         `json:"experimentId"`
-	SplitSelector   map[string]any `json:"splitSelector,omitempty"`
-	OptimizerKind   *string        `json:"optimizerKind,omitempty"`
+	ExperimentRunID     string              `json:"experimentRunId"`
+	ExperimentID        string              `json:"experimentId"`
+	SplitSelector       map[string]any      `json:"splitSelector,omitempty"`
+	OptimizerKind       *string             `json:"optimizerKind,omitempty"`
+	BasePromptVersionID *string             `json:"basePromptVersionId,omitempty"`
+	OptimizationConfig  *OptimizationConfig `json:"optimizationConfig,omitempty"`
 }
 
 type ExperimentManifestResolveResponse struct {
@@ -2469,8 +2577,9 @@ type OnlinePolicyMatchesResolveResponse struct {
 }
 
 type OnlinePolicyMatchesResolveData struct {
-	Matches  []OnlinePolicyMatch `json:"matches"`
-	Warnings []string            `json:"warnings"`
+	Matches   []OnlinePolicyMatch `json:"matches"`
+	RunPolicy *EvalRunPolicy      `json:"runPolicy,omitempty"`
+	Warnings  []string            `json:"warnings"`
 }
 
 type OnlinePolicyMatch struct {

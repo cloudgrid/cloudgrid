@@ -56,7 +56,7 @@ describe("AI Chat end-to-end stream integration", () => {
             return runFixture({ status: input.status });
           },
         }),
-        { graphqlUI: false, aiChatHarness: harness },
+        { aiChatHarness: harness },
       );
 
       const events = await withAppFetch(app, async () => {
@@ -131,7 +131,7 @@ describe("AI Chat end-to-end stream integration", () => {
             return runFixture({ status: input.status });
           },
         }),
-        { graphqlUI: false, aiChatHarness: createAiChatHarness("provider") ?? undefined },
+        { aiChatHarness: createAiChatHarness("provider") ?? undefined },
       );
 
       const events = await withAppFetch(app, async () => {
@@ -248,7 +248,7 @@ describe("AI Chat end-to-end stream integration", () => {
               });
             },
           }),
-          { graphqlUI: false, aiChatHarness: createAiChatHarness("provider") ?? undefined },
+          { aiChatHarness: createAiChatHarness("provider") ?? undefined },
         );
 
         const events = await withAppFetch(app, async () => {

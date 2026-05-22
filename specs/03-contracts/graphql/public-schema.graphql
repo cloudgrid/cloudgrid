@@ -34,6 +34,7 @@ type Query {
   agentRun(id: ID!): AgentRun
   datasets(input: DatasetSearchInput = {}): DatasetSearchResult!
   dataset(id: ID!): Dataset
+  datasetCandidates(input: DatasetCandidateSearchInput = {}): DatasetCandidateSearchResult!
   datasetImport(id: ID!): DatasetImportJob
   datasetExport(id: ID!): DatasetExportJob
   scorers(input: ScorerSearchInput = {}): ScorerSearchResult!
@@ -75,13 +76,18 @@ type Mutation {
   deleteAlertSilence(id: ID!): Boolean!
   createDataset(input: CreateDatasetInput!): Dataset!
   appendDatasetItems(input: AppendDatasetItemsInput!): Dataset!
+  updateDatasetItems(input: UpdateDatasetItemsInput!): Dataset!
   promoteSpanToDatasetItem(input: PromoteSpanToDatasetItemInput!): DatasetItem!
+  prepareDatasetCandidates(input: PrepareDatasetCandidatesInput!): DatasetCandidateSearchResult!
+  commitDatasetCandidates(input: CommitDatasetCandidatesInput!): Dataset!
   prepareDatasetImport(input: PrepareDatasetImportInput!): DatasetImportJob!
   commitDatasetImport(input: CommitDatasetImportInput!): DatasetImportJob!
   startDatasetExport(input: StartDatasetExportInput!): DatasetExportJob!
   createScorer(input: CreateScorerInput!): Scorer!
   createExperiment(input: CreateExperimentInput!): Experiment!
   startExperimentRun(input: StartExperimentRunInput!): ExperimentRun!
+  pauseExperimentRun(id: ID!): ExperimentRun!
+  resumeExperimentRun(id: ID!): ExperimentRun!
   cancelExperimentRun(id: ID!): ExperimentRun!
   startOptimizationRun(input: StartOptimizationRunInput!): ExperimentRun!
   promotePromptVersion(input: PromotePromptVersionInput!): PromptVersion!
@@ -204,6 +210,7 @@ input CreateIngestCredentialInput {
 
 input TraceSearchInput {
   service: String
+  services: [String!]
   query: String
   operationName: String
   spanName: String
@@ -220,6 +227,7 @@ input TraceSearchInput {
 
 input LiveTraceInput {
   service: String
+  services: [String!]
   query: String
   operationName: String
   spanName: String
@@ -247,6 +255,7 @@ input TraceDetailInput {
 
 input LogSearchInput {
   service: String
+  services: [String!]
   traceId: ID
   spanId: ID
   severity: String
@@ -269,15 +278,25 @@ input TelemetryFacetInput {
   from: DateTime
   to: DateTime
   service: String
+  services: [String!]
+  signal: TelemetryFacetSignal = traces
   search: String
   limit: Int = 50
+}
+
+enum TelemetryFacetSignal {
+  traces
+  logs
+  metrics
 }
 
 input MetricNameSearchInput {
   query: String
   service: String
+  services: [String!]
   from: DateTime
   to: DateTime
+  sort: MetricNameSort = lastSeenAt_desc
   limit: Int = 50
   cursor: String
 }
@@ -290,6 +309,7 @@ input MetricSeriesInput {
   aggregation: MetricAggregation!
   groupBy: [String!] = []
   filters: [AttributeFilterInput!] = []
+  sort: MetricSeriesSort = timestamp_asc
   limit: Int = 1000
 }
 
@@ -564,6 +584,71 @@ input DatasetItemInput {
   sourceSpanId: ID
   split: DatasetSplit = dev
   reviewStatus: DatasetReviewStatus = unreviewed
+  targetShape: DatasetTargetShape = single_turn
+  contentTreatment: DatasetContentTreatment = original
+  synthetic: Boolean = false
+}
+
+input UpdateDatasetItemsInput {
+  datasetId: ID!
+  expectedDatasetVersion: Int!
+  updates: [DatasetItemUpdateInput!]!
+}
+
+input DatasetItemUpdateInput {
+  id: ID!
+  operation: DatasetItemUpdateOperation!
+  input: JSON
+  expected: JSON
+  metadata: JSON
+  split: DatasetSplit
+  reviewStatus: DatasetReviewStatus
+  quarantineStatus: DatasetItemQuarantineStatus
+  targetShape: DatasetTargetShape
+  contentTreatment: DatasetContentTreatment
+}
+
+input DatasetCandidateSearchInput {
+  datasetId: ID
+  status: DatasetCandidateStatus
+  sourceKind: DatasetCandidateSourceKind
+  targetShape: DatasetTargetShape
+  contentTreatment: DatasetContentTreatment
+  clusterId: ID
+  query: String
+  limit: Int = 50
+  cursor: String
+}
+
+input PrepareDatasetCandidatesInput {
+  datasetId: ID
+  sources: [DatasetCandidateSourceInput!]!
+  targetShape: DatasetTargetShape
+  split: DatasetSplit = dev
+  reviewStatus: DatasetReviewStatus = unreviewed
+  contentTreatment: DatasetContentTreatment = realistic_anonymized
+  anonymizationPolicyId: ID
+  anonymizationPolicyVersion: Int
+}
+
+input DatasetCandidateSourceInput {
+  sourceKind: DatasetCandidateSourceKind!
+  traceId: ID
+  spanId: ID
+  evalResultId: ID
+  experimentRunId: ID
+  policyId: ID
+  coverageGapId: ID
+  healthIssueId: ID
+  clusterId: ID
+}
+
+input CommitDatasetCandidatesInput {
+  datasetId: ID!
+  expectedDatasetVersion: Int!
+  candidateIds: [ID!]!
+  split: DatasetSplit
+  reviewStatus: DatasetReviewStatus
 }
 
 input PromoteSpanToDatasetItemInput {
@@ -650,8 +735,8 @@ input CreateExperimentInput {
   datasetVersion: Int!
   splitSelector: DatasetSplitSelectorInput = { splits: [validation] }
   scorerIds: [ID!]!
-  solverRef: JSON!
-  baselineRef: JSON
+  solverRef: EvalSolverRefInput!
+  baselineRef: EvalBaselineRefInput
   promptVersionRefs: [ID!] = []
   skillSnapshotRefs: [ID!] = []
   toolSnapshotRefs: [ID!] = []
@@ -661,8 +746,9 @@ input CreateExperimentInput {
 
 input StartExperimentRunInput {
   experimentId: ID!
-  solverRef: JSON
+  solverRef: EvalSolverRefInput
   splitSelector: DatasetSplitSelectorInput
+  runPolicy: EvalRunPolicyInput
 }
 
 input StartOptimizationRunInput {
@@ -670,7 +756,151 @@ input StartOptimizationRunInput {
   optimizerKind: OptimizerKind!
   basePromptVersionId: ID!
   splitSelector: DatasetSplitSelectorInput = { splits: [optimization, validation] }
-  config: JSON = {}
+  config: OptimizationConfigInput
+  runPolicy: EvalRunPolicyInput
+}
+
+input EvalSolverRefInput {
+  kind: EvalSolverKind!
+  name: String!
+  promptVersionId: ID
+  promptVersion: Int
+  agentRef: String
+  workflowRef: String
+  skillSnapshotRef: String
+  toolSnapshotRef: String
+  modelAlias: String
+  providerProfileId: ID
+}
+
+input EvalBaselineRefInput {
+  kind: EvalBaselineKind!
+  experimentRunId: ID
+  promptVersionId: ID
+  promptVersion: Int
+  solverRef: EvalSolverRefInput
+}
+
+input OptimizationConfigInput {
+  bootstrapFewshot: BootstrapFewshotConfigInput
+  criticMutateJudgePick: CriticMutateJudgePickConfigInput
+}
+
+input BootstrapFewshotConfigInput {
+  candidateCount: Int!
+  maxExamplesPerCandidate: Int!
+  selectionScorerIds: [ID!]!
+  seed: Int!
+  diversityStrategy: BootstrapFewshotDiversityStrategy = none
+}
+
+input CriticMutateJudgePickConfigInput {
+  candidateCount: Int!
+  mutationInstructions: String!
+  judgeScorerIds: [ID!]!
+  seed: Int!
+  maxRounds: Int!
+  keepTopK: Int
+}
+
+input EvalRunPolicyInput {
+  maxParallelRequests: Int = 10
+  tokenBudget: EvalTokenBudgetInput
+  costBudget: EvalCostBudgetInput
+  rateLimit: EvalRateLimitInput
+  retry: EvalRetryPolicyInput
+  timeout: EvalTimeoutPolicyInput
+  failureBudget: EvalFailureBudgetInput
+  backpressure: EvalBackpressurePolicyInput
+  checkpoint: EvalCheckpointPolicyInput
+  quarantine: EvalQuarantinePolicyInput
+  workspaceQuota: EvalWorkspaceQuotaInput
+  cleanupRetry: EvalCleanupRetryPolicyInput
+}
+
+input EvalTokenBudgetInput {
+  maxRunTokens: Int
+  maxItemInputTokens: Int
+  maxItemOutputTokens: Int
+}
+
+input EvalRateLimitInput {
+  maxRequestsPerMinute: Int
+  maxTokensPerMinute: Int
+  providerBurst: Int
+  projectBurst: Int
+}
+
+input EvalRetryPolicyInput {
+  maxAttempts: Int = 3
+  baseDelayMs: Int = 250
+  maxDelayMs: Int = 5000
+  jitter: Boolean = true
+  retryBudget: Int
+  retryableCodes: [String!] = []
+}
+
+input EvalTimeoutPolicyInput {
+  itemTimeoutMs: Int
+  scorerTimeoutMs: Int
+  adapterCallTimeoutMs: Int
+  runTimeoutMs: Int
+  cleanupTimeoutMs: Int
+}
+
+input EvalFailureBudgetInput {
+  maxModelFailures: Int
+  maxTechnicalErrors: Int
+  maxItemQualityFailures: Int
+  maxScorerConfigFailures: Int
+}
+
+input EvalBackpressurePolicyInput {
+  behavior: EvalBackpressureBehavior = slow
+  queueDepthThreshold: Int
+  storageLagMsThreshold: Int
+  providerRateLimitBehavior: EvalBackpressureBehavior
+}
+
+input EvalCostBudgetInput {
+  maxRunUsd: Float
+  maxDailyProjectUsd: Float
+  behavior: EvalLimitBehavior = skip_item
+}
+
+input EvalCheckpointPolicyInput {
+  cadence: EvalCheckpointCadence = item
+  batchSize: Int
+  persistSandboxRefs: Boolean = false
+}
+
+input EvalQuarantinePolicyInput {
+  enabled: Boolean = true
+  maxConsecutiveItemFailures: Int = 3
+  quarantineOversizedItems: Boolean = true
+  quarantineInvalidJson: Boolean = true
+  quarantineMissingEvidence: Boolean = true
+}
+
+input EvalWorkspaceQuotaInput {
+  maxWorkspaceBytes: Int
+  maxSingleFileBytes: Int
+  maxFileCount: Int
+  maxCheckpointPayloadBytes: Int
+  maxSnapshotBytes: Int
+  maxWorkspaceAgeMs: Int
+  maxActiveWorkspaces: Int
+  maxPausedWorkspaces: Int
+  maxConcurrentResumes: Int
+}
+
+input EvalCleanupRetryPolicyInput {
+  maxAttempts: Int = 5
+  baseDelayMs: Int = 1000
+  maxDelayMs: Int = 60000
+  jitter: Boolean = true
+  orphanAfterMs: Int
+  retryableCleanupCodes: [String!] = []
 }
 
 input PromotePromptVersionInput {
@@ -721,6 +951,8 @@ input UpdateProjectAiSettingsInput {
   onlinePolicies: [OnlineEvaluationPolicyInput!] = []
   budget: AiEvalBudgetInput!
   sampling: AiEvalSamplingInput!
+  runPolicyDefaults: EvalRunPolicyInput
+  datasetPipeline: DatasetPipelineSettingsInput
   datasetDefaults: DatasetDefaultsInput!
   expectedVersion: Int!
 }
@@ -822,6 +1054,8 @@ input OnlineEvaluationPolicyInput {
   scorerIds: [ID!]!
   sampleRate: Float!
   maxDailyRuns: Int
+  contentAllowance: [EvalContentClass!] = [metadata_only]
+  maxLatencyClass: EvalLatencyClass = batch
   annotationRules: [AnnotationRuleInput!] = []
 }
 
@@ -843,6 +1077,18 @@ input AiEvalSamplingInput {
   maxOnlineSampleRate: Float!
   maxConcurrentExperimentItems: Int!
   maxConcurrentOptimizationCandidates: Int!
+}
+
+input DatasetPipelineSettingsInput {
+  candidateSuggestionsEnabled: Boolean = true
+  requireReviewBeforeCommit: Boolean = true
+  anonymizationMode: DatasetAnonymizationMode = realistic
+  anonymizationPolicyId: ID
+  anonymizationPolicyVersion: Int
+  anonymizationConsistencyScope: DatasetAnonymizationConsistencyScope = dataset
+  preserveLocale: Boolean = true
+  preserveTemporalDistance: Boolean = true
+  blockedEntityTypes: [String!] = []
 }
 
 input DatasetDefaultsInput {
@@ -876,6 +1122,21 @@ enum LogSort {
   timestamp_desc
   timestamp_asc
   severity_desc
+}
+
+enum MetricNameSort {
+  lastSeenAt_desc
+  lastSeenAt_asc
+  name_asc
+  name_desc
+  kind_asc
+}
+
+enum MetricSeriesSort {
+  timestamp_asc
+  timestamp_desc
+  value_desc
+  value_asc
 }
 
 enum TraceStatus {
@@ -1138,9 +1399,12 @@ enum ScorerKind {
   semantic
   rag
   llm_judge
+  pairwise_judge
   tool_correctness
   trajectory
+  workflow
   human
+  composite
 }
 
 enum EvalTargetKind {
@@ -1149,12 +1413,163 @@ enum EvalTargetKind {
   datasetItemRun
 }
 
+enum EvalRunMode {
+  offline_experiment
+  optimization
+  continuous_measurement
+  dataset_backfill
+  ci_regression_gate
+  realtime_alerting
+}
+
+enum EvalResultKind {
+  classification
+  json_schema
+  llm_judge
+  pairwise_judge
+  semantic_similarity
+  rag
+  tool_correctness
+  trajectory
+  workflow
+  human_review
+  composite
+  deterministic
+}
+
+enum EvalResultVisualizationKind {
+  scalar
+  table
+  confusion_matrix
+  fact_coverage
+  rubric_breakdown
+  rag_grounding
+  tool_call_diff
+  trajectory_steps
+  workflow_steps
+  distribution
+  composite_gate
+}
+
 enum ExperimentRunStatus {
   queued
   running
+  pausing
+  paused
+  resuming
+  cancelling
   cancelled
   failed
-  finished
+  completed
+}
+
+enum DatasetItemRunStatus {
+  pending
+  running
+  passed
+  failed
+  errored
+  skipped
+  needs_review
+  quarantined
+}
+
+enum DatasetItemUpdateOperation {
+  edit
+  remove
+  review
+  reject
+  split_change
+  metadata_update
+  quarantine
+  restore
+}
+
+enum DatasetItemQuarantineStatus {
+  none
+  needs_review
+  quarantined
+}
+
+enum DatasetTargetShape {
+  single_turn
+  conversation
+  tool_call
+  agent_trajectory
+  workflow_trace
+  retrieval_case
+  production_trace_ref
+}
+
+enum DatasetContentTreatment {
+  original
+  realistic_anonymized
+  redacted
+  synthetic
+}
+
+enum DatasetCandidateStatus {
+  suggested
+  reviewing
+  ready
+  committed
+  dismissed
+  superseded
+}
+
+enum DatasetCandidateSourceKind {
+  trace
+  eval_result
+  experiment_item_run
+  production_measurement
+  coverage_gap
+  health_issue
+  failure_cluster
+  manual
+}
+
+enum EvalBackpressureBehavior {
+  slow
+  pause
+  skip
+  fail
+}
+
+enum EvalLimitBehavior {
+  skip_item
+  pause_run
+  fail_run
+}
+
+enum EvalCheckpointCadence {
+  item
+  scorer
+  batch
+}
+
+enum EvalContentClass {
+  none
+  metadata_only
+  captured_content
+  dataset_content
+  retrieved_document_content
+}
+
+enum EvalLatencyClass {
+  inline
+  near_realtime
+  batch
+}
+
+enum DatasetAnonymizationMode {
+  off
+  realistic
+  redact
+}
+
+enum DatasetAnonymizationConsistencyScope {
+  project
+  dataset
 }
 
 enum AnnotationStatus {
@@ -1167,8 +1582,28 @@ enum AnnotationStatus {
 enum OptimizerKind {
   bootstrap_fewshot
   critic_mutate_judge_pick
-  mipro_v2
-  reflective_text_gradient
+}
+
+enum EvalSolverKind {
+  prompt
+  agent
+  workflow
+  skill
+  tool
+}
+
+enum EvalBaselineKind {
+  experiment_run
+  prompt_version
+  solver_ref
+  none
+}
+
+enum BootstrapFewshotDiversityStrategy {
+  none
+  by_label
+  by_cluster
+  by_failure_mode
 }
 
 enum DatasetSplit {
@@ -1323,9 +1758,11 @@ enum ExperimentRunEventType {
   item_completed
   progress
   heartbeat
+  paused
+  resumed
   cancelled
   failed
-  finished
+  completed
 }
 
 type Viewer {
@@ -2095,8 +2532,48 @@ type DatasetItem {
   split: DatasetSplit!
   reviewStatus: DatasetReviewStatus!
   synthetic: Boolean!
+  targetShape: DatasetTargetShape!
+  contentTreatment: DatasetContentTreatment!
+  anonymization: DatasetAnonymizationProvenance
+  quarantineStatus: DatasetItemQuarantineStatus!
+  removedAt: DateTime
   duplicateOfItemId: ID
   leakageWarnings: [String!]!
+}
+
+type DatasetAnonymizationProvenance {
+  policyId: ID!
+  policyVersion: Int!
+  transformedAt: DateTime!
+  consistencyScope: String!
+  transformedFields: [DatasetAnonymizedField!]!
+}
+
+type DatasetAnonymizedField {
+  path: String!
+  entityType: String!
+  strategy: String!
+}
+
+type DatasetCandidate {
+  id: ID!
+  datasetId: ID
+  status: DatasetCandidateStatus!
+  sourceKind: DatasetCandidateSourceKind!
+  source: JSON!
+  targetShape: DatasetTargetShape!
+  input: JSON
+  expected: JSON
+  metadata: JSON!
+  split: DatasetSplit!
+  reviewStatus: DatasetReviewStatus!
+  contentTreatment: DatasetContentTreatment!
+  anonymization: DatasetAnonymizationProvenance
+  reason: String!
+  clusterId: ID
+  warnings: [String!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
 }
 
 type DatasetImportJob {
@@ -2196,9 +2673,21 @@ type EvalResult {
   experimentRunId: ID
   score: Float!
   passed: Boolean!
+  runMode: EvalRunMode
+  resultKind: EvalResultKind
+  metrics: JSON
+  breakdown: JSON
+  visualization: EvalResultVisualization
   evidence: JSON
+  problem: JSON
   judgeRunRef: String
   producedAt: DateTime!
+}
+
+type EvalResultVisualization {
+  kind: EvalResultVisualizationKind!
+  title: String
+  data: JSON!
 }
 
 type Experiment {
@@ -2208,7 +2697,7 @@ type Experiment {
   datasetVersion: Int!
   splitSelector: DatasetSplitSelector!
   scorerIds: [ID!]!
-  baselineRef: JSON
+  baselineRef: EvalBaselineRef
   promptVersionRefs: [ID!]!
   skillSnapshotRefs: [ID!]!
   toolSnapshotRefs: [ID!]!
@@ -2221,25 +2710,187 @@ type Experiment {
 type ExperimentRun {
   id: ID!
   experimentId: ID!
-  solverRef: JSON!
+  solverRef: EvalSolverRef!
   manifest: ExperimentManifest
   baselineRunId: ID
   status: ExperimentRunStatus!
+  runPolicy: EvalRunPolicy!
   startedAt: DateTime!
   endedAt: DateTime
-  summary: JSON!
+  summary: ExperimentRunSummary!
   itemRuns(input: DatasetItemSearchInput = {}): DatasetItemRunSearchResult!
+}
+
+type ExperimentRunSummary {
+  itemCounts: EvalItemCounts!
+  scoreSummaries: [EvalScoreSummary!]!
+  problemCounts: EvalProblemCounts!
+  budgetUsage: EvalBudgetUsage!
+  latency: EvalLatencySummary
+  regressions: [EvalRegressionSummary!]!
+}
+
+type EvalItemCounts {
+  total: Int!
+  passed: Int!
+  failed: Int!
+  errored: Int!
+  skipped: Int!
+  needsReview: Int!
+  quarantined: Int!
+}
+
+type EvalScoreSummary {
+  scorerId: ID!
+  scorerVersion: Int!
+  resultKind: String
+  passRate: Float!
+  meanScore: Float!
+  p50: Float
+  p95: Float
+  support: Int!
+  visualization: EvalResultVisualization
+}
+
+type EvalProblemCounts {
+  modelQuality: Int!
+  itemQuality: Int!
+  scorerConfig: Int!
+  infrastructure: Int!
+}
+
+type EvalBudgetUsage {
+  inputTokens: Int!
+  outputTokens: Int!
+  totalTokens: Int!
+  estimatedUsd: Float!
+}
+
+type EvalLatencySummary {
+  p50Ms: Float
+  p95Ms: Float
+  maxMs: Float
+}
+
+type EvalRegressionSummary {
+  kind: String!
+  count: Int!
+  blocker: Boolean
 }
 
 type DatasetItemRun {
   id: ID!
   experimentRunId: ID!
   datasetItemId: ID!
+  status: DatasetItemRunStatus!
   harnessRunId: String
   output: JSON!
   latencyMs: Float!
   tokenTotals: TokenTotals
+  problem: JSON
   evalResults: [EvalResult!]!
+}
+
+type EvalRunPolicy {
+  maxParallelRequests: Int!
+  tokenBudget: EvalTokenBudget
+  costBudget: EvalCostBudget
+  rateLimit: EvalRateLimit
+  retry: EvalRetryPolicy
+  timeout: EvalTimeoutPolicy
+  failureBudget: EvalFailureBudget
+  backpressure: EvalBackpressurePolicy
+  checkpoint: EvalCheckpointPolicy
+  quarantine: EvalQuarantinePolicy
+  workspaceQuota: EvalWorkspaceQuota
+  cleanupRetry: EvalCleanupRetryPolicy
+}
+
+type EvalTokenBudget {
+  maxRunTokens: Int
+  maxItemInputTokens: Int
+  maxItemOutputTokens: Int
+  maxJudgeTokens: Int
+  behavior: EvalLimitBehavior
+}
+
+type EvalCostBudget {
+  maxRunUsd: Float
+  maxDailyProjectUsd: Float
+  behavior: EvalLimitBehavior
+}
+
+type EvalRateLimit {
+  maxRequestsPerMinute: Int
+  maxTokensPerMinute: Int
+  providerBurst: Int
+  projectBurst: Int
+}
+
+type EvalRetryPolicy {
+  maxAttempts: Int
+  baseDelayMs: Int
+  maxDelayMs: Int
+  jitter: Boolean
+  retryBudget: Int
+  retryableCodes: [String!]!
+}
+
+type EvalTimeoutPolicy {
+  itemTimeoutMs: Int
+  scorerTimeoutMs: Int
+  adapterCallTimeoutMs: Int
+  runTimeoutMs: Int
+  cleanupTimeoutMs: Int
+}
+
+type EvalFailureBudget {
+  maxModelFailures: Int
+  maxTechnicalErrors: Int
+  maxItemQualityFailures: Int
+  maxScorerConfigFailures: Int
+}
+
+type EvalBackpressurePolicy {
+  behavior: EvalBackpressureBehavior
+  queueDepthThreshold: Int
+  storageLagMsThreshold: Int
+  providerRateLimitBehavior: EvalBackpressureBehavior
+}
+
+type EvalCheckpointPolicy {
+  cadence: EvalCheckpointCadence
+  batchSize: Int
+  persistSandboxRefs: Boolean
+}
+
+type EvalQuarantinePolicy {
+  enabled: Boolean
+  maxConsecutiveItemFailures: Int
+  quarantineOversizedItems: Boolean
+  quarantineInvalidJson: Boolean
+  quarantineMissingEvidence: Boolean
+}
+
+type EvalWorkspaceQuota {
+  maxWorkspaceBytes: Int
+  maxSingleFileBytes: Int
+  maxFileCount: Int
+  maxCheckpointPayloadBytes: Int
+  maxSnapshotBytes: Int
+  maxWorkspaceAgeMs: Int
+  maxActiveWorkspaces: Int
+  maxPausedWorkspaces: Int
+  maxConcurrentResumes: Int
+}
+
+type EvalCleanupRetryPolicy {
+  maxAttempts: Int
+  baseDelayMs: Int
+  maxDelayMs: Int
+  jitter: Boolean
+  orphanAfterMs: Int
+  retryableCleanupCodes: [String!]!
 }
 
 type DatasetSplitSelector {
@@ -2259,20 +2910,64 @@ type ExperimentManifest {
   splitSelector: DatasetSplitSelector!
   datasetItemIds: [ID!]!
   scorerRefs: [VersionedRef!]!
-  baselineRef: JSON
-  solverRef: JSON!
+  baselineRef: EvalBaselineRef
+  solverRef: EvalSolverRef!
+  optimizationConfig: OptimizationConfig
   promptVersionRefs: [ID!]!
   skillSnapshotRefs: [ID!]!
   toolSnapshotRefs: [ID!]!
   providerProfileRefs: [ID!]!
   budget: JSON!
   concurrency: JSON!
+  runPolicy: EvalRunPolicy!
   createdAt: DateTime!
 }
 
 type VersionedRef {
   id: ID!
   version: Int!
+}
+
+type EvalSolverRef {
+  kind: EvalSolverKind!
+  name: String!
+  promptVersion: VersionedRef
+  agentRef: String
+  workflowRef: String
+  skillSnapshotRef: String
+  toolSnapshotRef: String
+  modelAlias: String
+  providerProfileId: ID
+}
+
+type EvalBaselineRef {
+  kind: EvalBaselineKind!
+  experimentRunId: ID
+  promptVersion: VersionedRef
+  solverRef: EvalSolverRef
+}
+
+type OptimizationConfig {
+  optimizerKind: OptimizerKind!
+  bootstrapFewshot: BootstrapFewshotConfig
+  criticMutateJudgePick: CriticMutateJudgePickConfig
+}
+
+type BootstrapFewshotConfig {
+  candidateCount: Int!
+  maxExamplesPerCandidate: Int!
+  selectionScorerIds: [ID!]!
+  seed: Int!
+  diversityStrategy: BootstrapFewshotDiversityStrategy!
+}
+
+type CriticMutateJudgePickConfig {
+  candidateCount: Int!
+  mutationInstructions: String!
+  judgeScorerIds: [ID!]!
+  seed: Int!
+  maxRounds: Int!
+  keepTopK: Int
 }
 
 type PromptVersion {
@@ -2313,6 +3008,8 @@ type ProjectAiSettings {
   onlinePolicies: [OnlineEvaluationPolicy!]!
   budget: AiEvalBudget!
   sampling: AiEvalSampling!
+  runPolicyDefaults: EvalRunPolicy!
+  datasetPipeline: DatasetPipelineSettings!
   datasetDefaults: DatasetDefaults!
   effective: ProjectAiSettingsEffective!
   version: Int!
@@ -2350,6 +3047,8 @@ type OnlineEvaluationPolicy {
   scorerIds: [ID!]!
   sampleRate: Float!
   maxDailyRuns: Int
+  contentAllowance: [EvalContentClass!]!
+  maxLatencyClass: EvalLatencyClass!
   annotationRules: [AnnotationRule!]!
   updatedAt: DateTime!
   updatedByUserId: ID!
@@ -2380,6 +3079,18 @@ type DatasetDefaults {
   splitAllocation: JSON!
   smallDatasetReviewedThreshold: Int!
   requireReviewForRegression: Boolean!
+}
+
+type DatasetPipelineSettings {
+  candidateSuggestionsEnabled: Boolean!
+  requireReviewBeforeCommit: Boolean!
+  anonymizationMode: DatasetAnonymizationMode!
+  anonymizationPolicyId: ID
+  anonymizationPolicyVersion: Int
+  anonymizationConsistencyScope: DatasetAnonymizationConsistencyScope!
+  preserveLocale: Boolean!
+  preserveTemporalDistance: Boolean!
+  blockedEntityTypes: [String!]!
 }
 
 type ProjectAiSettingsEffective {
@@ -2601,6 +3312,7 @@ type ExperimentRunEvent {
 type AgentRunSearchResult { items: [AgentRun!]!, nextCursor: String }
 type DatasetSearchResult { items: [Dataset!]!, nextCursor: String }
 type DatasetItemSearchResult { items: [DatasetItem!]!, nextCursor: String }
+type DatasetCandidateSearchResult { items: [DatasetCandidate!]!, nextCursor: String }
 type ScorerSearchResult { items: [Scorer!]!, nextCursor: String }
 type ExperimentSearchResult { items: [Experiment!]!, nextCursor: String }
 type ExperimentRunSearchResult { items: [ExperimentRun!]!, nextCursor: String }

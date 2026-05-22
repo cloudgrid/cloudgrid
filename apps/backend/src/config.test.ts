@@ -30,7 +30,6 @@ describe("BFF runtime config", () => {
         metricsEnabled: true,
       },
       requestTimeoutMs: 12000,
-      graphqlUI: true,
       graphqlMaxDepth: 12,
       graphqlMaxComplexity: 500,
       graphqlResponseMediaType: "compatible",
@@ -68,7 +67,6 @@ describe("BFF runtime config", () => {
       host: "127.0.0.1",
       port: 4000,
       natsUrl: "tls://nats.example.test:4222",
-      graphqlUI: false,
       graphqlMaxDepth: 12,
       graphqlMaxComplexity: 500,
       graphqlResponseMediaType: "compatible",
@@ -174,6 +172,7 @@ describe("BFF runtime config", () => {
     expect(config.graphqlMaxDepth).toBe(8);
     expect(config.graphqlMaxComplexity).toBe(1000);
     expect(config.graphqlResponseMediaType).toBe("graphql-response-json");
+    expect((config as unknown as Record<string, unknown>).graphqlUI).toBeUndefined();
   });
 
   test("rejects invalid GraphQL backpressure config", () => {

@@ -6,9 +6,9 @@ import type {
 } from "@cloudgrid/ui-contracts";
 import {
   LOG_SEARCH_DEFAULT_LIMIT,
+  logSortOrDefault,
   TRACE_RELATED_LOG_DEFAULT_LIMIT,
   TRACE_SEARCH_DEFAULT_LIMIT,
-  logSortOrDefault,
   traceSortOrDefault,
 } from "@cloudgrid/ui-contracts";
 import { useMemo } from "react";
@@ -17,6 +17,20 @@ import { useSearchParams } from "react-router-dom";
 const traceStatuses: TraceStatus[] = ["ok", "error", "unset"];
 function valueOrNull(value: string | null) {
   return value && value.trim().length > 0 ? value : null;
+}
+
+function valuesOrNull(values: string[]) {
+  const seen = new Set<string>();
+  const normalized = values
+    .map((value) => value.trim())
+    .filter((value) => {
+      if (!value || seen.has(value)) {
+        return false;
+      }
+      seen.add(value);
+      return true;
+    });
+  return normalized.length > 0 ? normalized : null;
 }
 
 function traceStatusOrNull(value: string | null): TraceStatus | null {
@@ -47,6 +61,7 @@ export function useTraceFilters() {
   const filters = useMemo<TraceSearchInput>(
     () => ({
       service: valueOrNull(searchParams.get("service")),
+      services: valuesOrNull(searchParams.getAll("service")),
       query: valueOrNull(searchParams.get("query")),
       operationName: valueOrNull(searchParams.get("operationName")),
       spanName: valueOrNull(searchParams.get("spanName")),
@@ -77,9 +92,21 @@ export function useTraceFilters() {
     setSearchParams(next);
   };
 
+  const setServicesFilter = (services: readonly string[]) => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("cursor");
+    next.delete("service");
+    for (const service of services) {
+      if (service.trim()) {
+        next.append("service", service.trim());
+      }
+    }
+    setSearchParams(next);
+  };
+
   const clearFilters = () => setSearchParams(new URLSearchParams());
 
-  return { filters, searchParams, setFilter, clearFilters };
+  return { filters, searchParams, setFilter, setServicesFilter, clearFilters };
 }
 
 export function useTraceDetailFilters() {
@@ -190,6 +217,7 @@ export function useLogFilters() {
   const filters = useMemo<LogSearchInput>(
     () => ({
       service: valueOrNull(searchParams.get("service")),
+      services: valuesOrNull(searchParams.getAll("service")),
       traceId: valueOrNull(searchParams.get("traceId")),
       spanId: valueOrNull(searchParams.get("spanId")),
       severity: valueOrNull(searchParams.get("severity")),
@@ -218,9 +246,21 @@ export function useLogFilters() {
     setSearchParams(next);
   };
 
+  const setServicesFilter = (services: readonly string[]) => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("cursor");
+    next.delete("service");
+    for (const service of services) {
+      if (service.trim()) {
+        next.append("service", service.trim());
+      }
+    }
+    setSearchParams(next);
+  };
+
   const clearFilters = () => setSearchParams(new URLSearchParams());
 
-  return { filters, searchParams, setFilter, clearFilters };
+  return { filters, searchParams, setFilter, setServicesFilter, clearFilters };
 }
 
 export function hasActiveFilters(searchParams: URLSearchParams) {

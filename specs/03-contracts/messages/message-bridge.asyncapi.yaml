@@ -145,6 +145,34 @@ channels:
         $ref: "#/components/messages/EvalMutationRequest"
       EvalMutationResponse:
         $ref: "#/components/messages/EvalMutationResponse"
+  eval.dataset.item.update:
+    address: eval.dataset.item.update
+    messages:
+      EvalMutationRequest:
+        $ref: "#/components/messages/EvalMutationRequest"
+      EvalMutationResponse:
+        $ref: "#/components/messages/EvalMutationResponse"
+  eval.dataset.candidates.prepare:
+    address: eval.dataset.candidates.prepare
+    messages:
+      EvalMutationRequest:
+        $ref: "#/components/messages/EvalMutationRequest"
+      EvalMutationResponse:
+        $ref: "#/components/messages/EvalMutationResponse"
+  eval.dataset.candidates.search:
+    address: eval.dataset.candidates.search
+    messages:
+      EvalQueryRequest:
+        $ref: "#/components/messages/EvalQueryRequest"
+      EvalQueryResponse:
+        $ref: "#/components/messages/EvalQueryResponse"
+  eval.dataset.candidates.commit:
+    address: eval.dataset.candidates.commit
+    messages:
+      EvalMutationRequest:
+        $ref: "#/components/messages/EvalMutationRequest"
+      EvalMutationResponse:
+        $ref: "#/components/messages/EvalMutationResponse"
   eval.dataset.import.prepare:
     address: eval.dataset.import.prepare
     messages:
@@ -220,6 +248,20 @@ channels:
     messages:
       ExperimentCancelRequest:
         $ref: "#/components/messages/ExperimentCancelRequest"
+      ExperimentStartResponse:
+        $ref: "#/components/messages/ExperimentStartResponse"
+  eval.experiment.pause:
+    address: eval.experiment.pause
+    messages:
+      ExperimentCancelRequest:
+        $ref: "#/components/messages/ExperimentCancelRequest"
+      ExperimentStartResponse:
+        $ref: "#/components/messages/ExperimentStartResponse"
+  eval.experiment.resume:
+    address: eval.experiment.resume
+    messages:
+      ExperimentStartRequest:
+        $ref: "#/components/messages/ExperimentStartRequest"
       ExperimentStartResponse:
         $ref: "#/components/messages/ExperimentStartResponse"
   eval.optimization.start:
@@ -2181,8 +2223,11 @@ components:
             experimentId:
               type: string
             solverRef:
-              type: object
-              additionalProperties: true
+              $ref: "../entities/ai/eval-solver-ref.schema.json"
+            splitSelector:
+              $ref: "#/components/schemas/DatasetSplitSelector"
+            runPolicy:
+              $ref: "../entities/ai/eval-run-policy.schema.json"
     ExperimentCancelRequest:
       allOf:
         - $ref: "#/components/schemas/BridgeEnvelope"
@@ -2203,14 +2248,15 @@ components:
               type: string
             optimizerKind:
               type: string
-              enum: [bootstrap-fewshot, critic-mutate-judge-pick, mipro-v2, reflective-text-gradient]
+              enum: [bootstrap_fewshot, critic_mutate_judge_pick]
             basePromptVersionId:
               type: string
             splitSelector:
               $ref: "#/components/schemas/DatasetSplitSelector"
             config:
-              type: object
-              additionalProperties: true
+              $ref: "../entities/ai/optimization-config.schema.json"
+            runPolicy:
+              $ref: "../entities/ai/eval-run-policy.schema.json"
     EvalLiveStartRequest:
       allOf:
         - $ref: "#/components/schemas/BridgeEnvelope"
@@ -2287,6 +2333,10 @@ components:
               $ref: "#/components/schemas/DatasetSplitSelector"
             optimizerKind:
               type: string
+            basePromptVersionId:
+              type: string
+            optimizationConfig:
+              $ref: "../entities/ai/optimization-config.schema.json"
     ExperimentManifestResolveResponse:
       type: object
       additionalProperties: false
@@ -2351,6 +2401,8 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/OnlinePolicyMatch"
+            runPolicy:
+              $ref: "../entities/ai/eval-run-policy.schema.json"
             warnings:
               type: array
               items:
@@ -2398,7 +2450,20 @@ components:
           minimum: 1
         kind:
           type: string
-          enum: [deterministic]
+          enum:
+            [
+              deterministic,
+              schema_json,
+              semantic,
+              rag,
+              llm_judge,
+              pairwise_judge,
+              tool_correctness,
+              trajectory,
+              workflow,
+              human,
+              composite
+            ]
     OnlinePolicyTarget:
       type: object
       additionalProperties: false
@@ -5328,12 +5393,21 @@ components:
                   type: string
                 service:
                   type: string
+                services:
+                  type: array
+                  maxItems: 25
+                  items:
+                    type: string
+                    minLength: 1
                 from:
                   type: string
                   format: date-time
                 to:
                   type: string
                   format: date-time
+                sort:
+                  type: string
+                  enum: [lastSeenAt_desc, lastSeenAt_asc, name_asc, name_desc, kind_asc]
                 limit:
                   type: integer
                   minimum: 1
@@ -5399,6 +5473,9 @@ components:
                   type: array
                   items:
                     $ref: "../entities/attribute-filter.schema.json"
+                sort:
+                  type: string
+                  enum: [timestamp_asc, timestamp_desc, value_desc, value_asc]
                 limit:
                   type: integer
                   minimum: 1
@@ -5866,6 +5943,16 @@ components:
           format: date-time
         service:
           type: string
+        services:
+          type: array
+          maxItems: 25
+          items:
+            type: string
+            minLength: 1
+        signal:
+          type: string
+          enum: [traces, logs, metrics]
+          default: traces
         search:
           type: string
         limit:

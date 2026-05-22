@@ -178,13 +178,14 @@ describe("NATS telemetry query bridge", () => {
     } as unknown as NatsConnection;
     const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
 
-    await bridge.metricNames({ query: "token", limit: 10 });
+    await bridge.metricNames({ query: "token", sort: "name_desc", limit: 10 });
     await bridge.metricSeries({
       metricName: "gen_ai.client.token.usage",
       from: "2026-05-14T08:00:00.000Z",
       to: "2026-05-14T09:00:00.000Z",
       aggregation: "sum",
       groupBy: ["gen_ai.system"],
+      sort: "value_desc",
       limit: 100,
     });
     await bridge.richMetricSeries({
@@ -209,7 +210,7 @@ describe("NATS telemetry query bridge", () => {
     expect(requests).toMatchObject([
       {
         subject: "telemetry.metrics.names",
-        payload: { input: { query: "token", limit: 10 } },
+        payload: { input: { query: "token", sort: "name_desc", limit: 10 } },
       },
       {
         subject: "telemetry.metrics.query",
@@ -220,6 +221,7 @@ describe("NATS telemetry query bridge", () => {
             to: "2026-05-14T09:00:00.000Z",
             aggregation: "sum",
             groupBy: ["gen_ai.system"],
+            sort: "value_desc",
             limit: 100,
           },
         },
@@ -528,7 +530,7 @@ describe("NATS telemetry query bridge", () => {
       datasetId: "dataset-1",
       datasetVersion: 1,
       scorerIds: ["scorer-1"],
-      solverRef: { kind: "integration" },
+      solverRef: { kind: "agent", name: "integration" },
     });
 
     expect(subject).toBe("eval.experiment.create");

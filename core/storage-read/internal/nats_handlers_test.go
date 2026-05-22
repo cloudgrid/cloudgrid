@@ -70,6 +70,8 @@ func TestMetricHandlersForwardInputsAndEnforceReadAuth(t *testing.T) {
 	lastMetricSeriesInput = contracts.MetricSeriesInput{}
 	query := "duration"
 	metricName := "http.server.duration"
+	nameSort := contracts.MetricNameSortNameDesc
+	seriesSort := contracts.MetricSeriesSortValueDesc
 	from := time.Date(2026, 5, 14, 8, 0, 0, 0, time.UTC)
 	to := from.Add(time.Hour)
 	allowed := true
@@ -80,11 +82,14 @@ func TestMetricHandlersForwardInputsAndEnforceReadAuth(t *testing.T) {
 			RequestID:   "req-metric-names",
 			AuthContext: &contracts.AuthContext{AuthMode: ptr("sso"), TenantID: ptr("tenant-1"), CompanyID: ptr("company-1"), ProjectID: ptr("project-1"), ReadAllowed: &allowed},
 		},
-		Input: contracts.MetricNameSearchInput{Query: &query},
+		Input: contracts.MetricNameSearchInput{Query: &query, Sort: &nameSort},
 	}
 	handleMetricNameSearch(&loggingReadStore{}, nil, defaultQueryTimeout)(bridgeMessageForTest(SubjectMetricNames, mustMarshalNATSHandlerTest(t, namesRequest)))
 	if lastMetricNameInput.Query == nil || *lastMetricNameInput.Query != query {
 		t.Fatalf("forwarded metric names input = %#v, want query", lastMetricNameInput)
+	}
+	if lastMetricNameInput.Sort == nil || *lastMetricNameInput.Sort != nameSort {
+		t.Fatalf("forwarded metric names input = %#v, want sort", lastMetricNameInput)
 	}
 
 	seriesRequest := contracts.MetricSeriesRequest{
@@ -97,11 +102,15 @@ func TestMetricHandlersForwardInputsAndEnforceReadAuth(t *testing.T) {
 			From:        from,
 			To:          to,
 			Aggregation: contracts.MetricAggregationAvg,
+			Sort:        &seriesSort,
 		},
 	}
 	handleMetricSeriesQuery(&loggingReadStore{}, nil, defaultQueryTimeout)(bridgeMessageForTest(SubjectMetricQuery, mustMarshalNATSHandlerTest(t, seriesRequest)))
 	if lastMetricSeriesInput.MetricName != metricName {
 		t.Fatalf("forwarded metric series input = %#v, want metric name", lastMetricSeriesInput)
+	}
+	if lastMetricSeriesInput.Sort == nil || *lastMetricSeriesInput.Sort != seriesSort {
+		t.Fatalf("forwarded metric series input = %#v, want sort", lastMetricSeriesInput)
 	}
 
 	message := bridgeMessageForTest(SubjectMetricQuery, mustMarshalNATSHandlerTest(t, contracts.MetricSeriesRequest{

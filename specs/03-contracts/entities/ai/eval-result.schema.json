@@ -23,7 +23,40 @@
     "experimentRunId": { "type": "string" },
     "score": { "type": "number" },
     "passed": { "type": "boolean" },
-    "evidence": { "type": "object", "additionalProperties": true },
+    "runMode": {
+      "type": "string",
+      "enum": [
+        "offline_experiment",
+        "optimization",
+        "continuous_measurement",
+        "dataset_backfill",
+        "ci_regression_gate",
+        "realtime_alerting"
+      ]
+    },
+    "resultKind": {
+      "type": "string",
+      "enum": [
+        "classification",
+        "json_schema",
+        "llm_judge",
+        "pairwise_judge",
+        "semantic_similarity",
+        "rag",
+        "tool_correctness",
+        "trajectory",
+        "workflow",
+        "human_review",
+        "composite",
+        "deterministic"
+      ]
+    },
+    "payload": { "$ref": "./eval-result-payload.schema.json" },
+    "metrics": { "type": "object", "additionalProperties": true },
+    "breakdown": { "type": "object", "additionalProperties": true },
+    "visualization": { "$ref": "./eval-result-payload.schema.json#/properties/visualization" },
+    "evidence": { "$ref": "./eval-result-payload.schema.json#/$defs/evidence" },
+    "problem": { "type": "object", "additionalProperties": true },
     "judgeRunRef": { "type": "string" },
     "producedAt": { "type": "string", "format": "date-time" }
   }

@@ -6,6 +6,12 @@
   "additionalProperties": false,
   "properties": {
     "service": { "type": "string", "description": "Exact service name filter." },
+    "services": {
+      "type": "array",
+      "maxItems": 25,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Exact service name filters; records match any listed service."
+    },
     "traceId": { "type": "string", "description": "Exact trace ID filter." },
     "spanId": { "type": "string", "description": "Exact span ID filter." },
     "severity": { "type": "string", "description": "Severity text filter." },

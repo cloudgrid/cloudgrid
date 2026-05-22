@@ -305,7 +305,16 @@ export function applyAiChatStreamEvent(
       ...base,
       artifacts: replaceById(base.artifacts, artifact),
       assistantMessageId: stringValue(event.payload.messageId) ?? state.assistantMessageId,
-      assistantParts: [...base.assistantParts, { type: "artifact", artifactId, renderer }],
+      assistantParts: [
+        ...base.assistantParts,
+        {
+          type: "artifact",
+          artifactId,
+          renderer,
+          label: artifact.label,
+          json: { renderSpec },
+        },
+      ],
     };
   }
   if (event.type === "action.proposed") {

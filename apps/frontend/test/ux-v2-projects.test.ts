@@ -23,6 +23,7 @@ import {
   buildProjectSetupSnippet,
   mergeCreatedIngestCredential,
   OrganizationAiProviderRoute,
+  OrganizationMembersRoute,
   ProjectSettingsRoute,
   ProjectsRoute,
   ProjectWorkspaceRedirectRoute,
@@ -400,6 +401,81 @@ function controlPlaneMarkup(
   );
 }
 
+function backendUnavailableControlPlaneMarkup(path: string) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+    },
+  });
+  queryClient.setQueryData(["Viewer"], null);
+  const failingClient = {
+    getViewer: async () => null,
+    getCompanyAiProviderSettings: async () => {
+      throw new Error("Failed to fetch");
+    },
+    getOrganizationMembers: async () => {
+      throw new Error("Failed to fetch");
+    },
+    getOrganizationInvitations: async () => {
+      throw new Error("Failed to fetch");
+    },
+    updateCompanyAiProviderSettings: async () => {
+      throw new Error("Failed to fetch");
+    },
+    updateOrganizationMember: async () => {
+      throw new Error("Failed to fetch");
+    },
+    removeOrganizationMember: async () => {
+      throw new Error("Failed to fetch");
+    },
+    inviteOrganizationMember: async () => {
+      throw new Error("Failed to fetch");
+    },
+    revokeOrganizationInvitation: async () => {
+      throw new Error("Failed to fetch");
+    },
+    createProject: async () => checkoutProject,
+    selectProject: async () => viewer,
+  };
+
+  return renderToStaticMarkup(
+    createElement(
+      ThemeProvider,
+      null,
+      createElement(
+        QueryClientProvider,
+        { client: queryClient },
+        createElement(
+          TooltipProvider,
+          null,
+          createElement(
+            AppSessionProvider,
+            { client: failingClient, mode: "local" },
+            createElement(
+              MemoryRouter,
+              { initialEntries: [path] },
+              createElement(
+                Routes,
+                null,
+                createElement(Route, {
+                  path: "/organizations/:organizationId/ai-provider",
+                  element: createElement(OrganizationAiProviderRoute),
+                }),
+                createElement(Route, {
+                  path: "/organizations/:organizationId/members",
+                  element: createElement(OrganizationMembersRoute),
+                }),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 describe("UX v2 project models", () => {
   test("builds a centered project picker model without global dashboard or company rail surfaces", () => {
     const picker = buildProjectPickerModel({
@@ -539,24 +615,18 @@ describe("UX v2 project models", () => {
     expect(source).toContain("Provider profiles");
   });
 
-  test("prevents the single local Personal user from being demoted or removed", () => {
+  test("prevents the current user from being demoted or removed", () => {
     expect(
       canMutateOrganizationMember({
-        mode: "local",
-        organization: {
-          id: "local",
-          name: "Personal",
-          slug: "local",
-          role: "admin",
-          projects: [],
-        },
-        viewerUserId: "local",
-        targetUserId: "local",
+        mode: "deployed",
+        organization: exampleOrganization,
+        viewerUserId: "user-1",
+        targetUserId: "user-1",
         mutation: "remove",
       }),
     ).toEqual({
       allowed: false,
-      reason: "local-personal-single-admin",
+      reason: "own-account",
     });
 
     expect(
@@ -584,11 +654,11 @@ describe("UX v2 project models", () => {
 
     expect(admin.layout).toBe("admin-settings");
     expect(admin.sidebarItems.map((item) => item.id)).toEqual([
-      "organization",
       "projects",
+      "members",
       "ai-provider",
     ]);
-    expect(admin.showMemberAdministration).toBe(false);
+    expect(admin.showMemberAdministration).toBe(true);
   });
 
   test("renders company AI Chat provider settings without raw secret inputs", () => {
@@ -600,8 +670,26 @@ describe("UX v2 project models", () => {
     expect(markup).toContain("gpt-5-mini");
     expect(markup).toContain("Save AI provider");
     expect(markup).toContain("credentialRef");
+    expect(markup).not.toContain("Current provider");
+    expect(markup).not.toContain("Policy version");
+    expect(markup).not.toContain("Loading telemetry");
     expect(markup).not.toContain("api key value");
     expect(markup).not.toContain('name="secret"');
+  });
+
+  test("shows explicit backend unavailable errors on company admin pages", () => {
+    const aiProviderMarkup = backendUnavailableControlPlaneMarkup(
+      "/organizations/local/ai-provider",
+    );
+    const membersMarkup = backendUnavailableControlPlaneMarkup("/organizations/local/members");
+
+    expect(aiProviderMarkup).toContain("AI provider settings could not be loaded.");
+    expect(aiProviderMarkup).toContain("CloudGrid is not reachable.");
+    expect(aiProviderMarkup).not.toContain("Failed to fetch");
+    expect(membersMarkup).toContain("Members or invitations could not be loaded.");
+    expect(membersMarkup).toContain("CloudGrid is not reachable.");
+    expect(membersMarkup).not.toContain("Local user");
+    expect(membersMarkup).not.toContain("Failed to fetch");
   });
 
   test("does not preserve unsupported legacy company AI credential refs", () => {

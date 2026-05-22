@@ -5,12 +5,12 @@ import {
   z,
 } from "@cloudgrid/runtime";
 import type {
+  AgentRunSearchResult,
+  AgentRunStatus,
   AiChatConversation,
   AiChatMessage,
   AiChatMessagePart,
   AiProviderParameters,
-  AgentRunSearchResult,
-  AgentRunStatus,
   AiQualityOverview,
   AlertEventConnection,
   AlertRule,
@@ -19,7 +19,7 @@ import type {
   CompanyAiProviderSettings,
   DashboardListResult,
   DatasetSearchResult,
-  ExperimentRunStatus,
+  EvalResultSearchResult,
   ExperimentSearchResult,
   JSONValue,
   LogSearchResult,
@@ -33,14 +33,12 @@ import type {
 } from "@cloudgrid/ui-contracts";
 import {
   AI_EVAL_SEARCH_DEFAULT_LIMIT,
-  LOG_SEARCH_HARD_LIMIT,
-  METRIC_SERIES_HARD_LIMIT,
   buildAgentRunSearchInput,
   buildAiQualityOverviewInput,
   buildAlertHistoryInput,
   buildAlertRuleSearchInput,
-  buildDatasetSearchInput,
   buildDashboardListInput,
+  buildDatasetSearchInput,
   buildExperimentSearchInput,
   buildLogSearchInput,
   buildScorerSearchInput,
@@ -49,6 +47,8 @@ import {
   buildTraceSearchInput,
   defaultMetricAggregationForMetricName,
   defaultMetricIntervalForHours,
+  LOG_SEARCH_HARD_LIMIT,
+  METRIC_SERIES_HARD_LIMIT,
 } from "@cloudgrid/ui-contracts";
 import { GraphQLError } from "graphql";
 import type { Hono } from "hono";
@@ -106,6 +106,7 @@ export interface AiChatHarnessRequest {
   temporalContext: AiChatTemporalContext;
   messages: AiChatConversation["messages"];
   compaction?: AiChatConversation["compaction"] | null;
+  executeTool?: (name: string, args: Record<string, unknown>) => Promise<AiChatToolResult>;
   signal: AbortSignal;
 }
 
@@ -121,7 +122,15 @@ export type AiChatHarnessEvent =
   | { kind: "final_message"; text: string }
   | { kind: "usage"; inputTokens?: number; outputTokens?: number; estimatedCostUsd?: number }
   | { kind: "provider_error"; message?: string; retryable?: boolean }
-  | { kind: "tool_call_requested"; name: string; arguments: Record<string, unknown> };
+  | { kind: "tool_call_requested"; name: string; arguments: Record<string, unknown> }
+  | { kind: "tool_started"; toolCallId: string; name: string }
+  | {
+      kind: "tool_completed";
+      toolCallId: string;
+      name: string;
+      output?: AiChatToolResult;
+      errorCode?: CloudGridErrorId;
+    };
 
 export interface AiChatCompactionRequest {
   conversation: AiChatConversation;
@@ -180,10 +189,6 @@ type TelemetryFacetToolIntent = {
   service?: string | null;
 };
 
-type DashboardListToolIntent = {
-  query?: string | null;
-};
-
 type AlertListToolIntent = {
   search?: string | null;
   severity?: AlertSeverity | null;
@@ -201,15 +206,6 @@ type AgentRunToolIntent = {
   status?: AgentRunStatus | null;
   agentName?: string | null;
   query?: string | null;
-};
-
-type AiEvalSearchToolIntent = {
-  query?: string | null;
-  limit: number;
-};
-
-type ExperimentToolIntent = AiEvalSearchToolIntent & {
-  status?: ExperimentRunStatus | null;
 };
 
 type AiQualityToolIntent = {
@@ -235,13 +231,12 @@ type LogToolIntent = {
   search?: string | null;
 };
 
-type CloudGridToolAnswer = {
+export type AiChatToolResult = {
   text: string;
-  toolName: string;
   artifacts?: PendingAiChatArtifact[];
 };
 
-type PendingAiChatArtifact = {
+export type PendingAiChatArtifact = {
   renderer: "log_list" | "metric_timeseries" | "status_summary" | "table" | "trace_waterfall";
   label: string;
   renderSpec: Record<string, unknown>;
@@ -564,7 +559,19 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
     if (!provider) {
       return problemResponse("ERR-AIC-001");
     }
-    const credential = await resolveCredential(provider.credentialRef, bridge, authContext);
+    const providerScope = providerCredentialScope(provider.credentialRef);
+    if (!credentialScopeMatchesConversation(providerScope, conversation)) {
+      return problemResponse(
+        "ERR-AIP-001",
+        "AI provider credential is not scoped to this conversation",
+      );
+    }
+    const credential = await resolveCredential(
+      provider.credentialRef,
+      bridge,
+      authContext,
+      providerScope,
+    );
     if (!credential) {
       return problemResponse("ERR-AIP-001");
     }
@@ -636,84 +643,13 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
           estimatedCostUsd: undefined as number | undefined,
         };
         let toolCallCount = 0;
+        let artifactCount = 0;
         const assistantMessageId = assistantMessageIdFor(runId);
         try {
           await emit("run.started", {
             status: "streaming",
           });
           await emit("message.created", { messageId: input.userMessageClientId, role: "user" });
-
-          const toolAnswer = await answerWithCloudGridTool({
-            authContext,
-            bridge,
-            input,
-            userText: userParts.map((part) => part.text ?? "").join("\n"),
-          });
-          if (toolAnswer) {
-            toolCallCount += 1;
-            const toolCallId = toolCallIdFor(toolCallCount);
-            const artifacts = (toolAnswer.artifacts ?? []).map((artifact, index) => ({
-              ...artifact,
-              renderSpec: validateAiChatRenderSpec(artifact.renderSpec),
-              artifactId: artifactIdFor(runId, toolCallCount, index + 1),
-            }));
-            await emit(
-              "tool.started",
-              safeToolStatusPayload({
-                toolCallId,
-                toolName: toolAnswer.toolName,
-                status: "running",
-              }),
-            );
-            await emit(
-              "tool.completed",
-              safeToolStatusPayload({
-                toolCallId,
-                toolName: toolAnswer.toolName,
-                status: "completed",
-              }),
-            );
-            assistantParts.push({ type: "text", text: toolAnswer.text });
-            await emit("text.delta", { messageId: assistantMessageId, text: toolAnswer.text });
-            for (const artifact of artifacts) {
-              assistantParts.push({
-                type: "artifact",
-                artifactId: artifact.artifactId,
-                renderer: artifact.renderer,
-              });
-              await emit("artifact.created", {
-                messageId: assistantMessageId,
-                artifactId: artifact.artifactId,
-                renderer: artifact.renderer,
-                label: artifact.label,
-                renderSpec: artifact.renderSpec,
-              });
-            }
-            const finalParts = collapseTextParts(assistantParts);
-            await bridge.aiChatAppendMessage(
-              {
-                conversationId: input.conversationId,
-                runId,
-                role: "assistant",
-                parts: finalParts,
-              },
-              authContext,
-            );
-            await bridge.aiChatFinalizeRun(
-              {
-                runId,
-                status: "completed",
-                inputTokenCount: 0,
-                outputTokenCount: 0,
-                toolCallCount,
-                sandboxScriptCount: 0,
-                artifactCount: artifacts.length,
-              },
-              authContext,
-            );
-            await emit("run.completed", { status: "completed" });
-            return;
-          }
 
           for await (const event of harness.streamChat({
             conversation,
@@ -724,6 +660,14 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
             temporalContext: aiChatTemporalContext(input.timezone),
             messages: harnessMessages,
             compaction: conversation.compaction,
+            executeTool: (name, args) =>
+              executeAiChatTool({
+                name,
+                args,
+                authContext,
+                bridge,
+                input,
+              }),
             signal,
           })) {
             if (signal.aborted) {
@@ -736,14 +680,11 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
             }
             if (event.kind === "final_message") {
               assistantParts.push({ type: "text", text: event.text });
-              await emit("message.created", {
-                messageId: assistantMessageId,
-                role: "assistant",
-              });
+              await emit("text.delta", { messageId: assistantMessageId, text: event.text });
               continue;
             }
             if (event.kind === "provider_error") {
-              throw providerFailure();
+              throw providerFailure(event.message);
             }
             if (event.kind === "usage") {
               usage.inputTokenCount = event.inputTokens ?? usage.inputTokenCount;
@@ -772,6 +713,55 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
                 }),
               );
             }
+            if (event.kind === "tool_started") {
+              toolCallCount += 1;
+              await emit(
+                "tool.started",
+                safeToolStatusPayload({
+                  toolCallId: event.toolCallId,
+                  toolName: event.name,
+                  status: "running",
+                }),
+              );
+              continue;
+            }
+            if (event.kind === "tool_completed") {
+              await emit(
+                "tool.completed",
+                safeToolStatusPayload({
+                  toolCallId: event.toolCallId,
+                  toolName: event.name,
+                  status: event.errorCode ? "failed" : "completed",
+                  ...(event.errorCode ? { errorCode: event.errorCode } : {}),
+                }),
+              );
+              if (event.output) {
+                const artifacts = (event.output.artifacts ?? []).map((artifact, index) => ({
+                  ...artifact,
+                  renderSpec: validateAiChatRenderSpec(artifact.renderSpec),
+                  artifactId: artifactIdFor(runId, toolCallCount, index + 1),
+                }));
+                for (const artifact of artifacts) {
+                  artifactCount += 1;
+                  assistantParts.push({
+                    type: "artifact",
+                    artifactId: artifact.artifactId,
+                    renderer: artifact.renderer,
+                    label: artifact.label,
+                    json: {
+                      renderSpec: artifact.renderSpec,
+                    },
+                  });
+                  await emit("artifact.created", {
+                    messageId: assistantMessageId,
+                    artifactId: artifact.artifactId,
+                    renderer: artifact.renderer,
+                    label: artifact.label,
+                    renderSpec: artifact.renderSpec,
+                  });
+                }
+              }
+            }
           }
 
           const finalParts = collapseTextParts(assistantParts);
@@ -795,7 +785,7 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
               ...estimatedCostInput(usage.estimatedCostUsd),
               toolCallCount,
               sandboxScriptCount: 0,
-              artifactCount: 0,
+              artifactCount,
             },
             authContext,
           );
@@ -853,7 +843,7 @@ export function attachAiChatStreamRoutes<Variables extends AiChatVariables>(
   });
 }
 
-export function validateAiChatRenderSpec(renderSpec: Record<string, unknown>) {
+export function validateAiChatRenderSpec(renderSpec: Record<string, unknown>): JSONValue {
   const json = JSON.stringify(renderSpec);
   if (json.length > AI_CHAT_CATALOG.budgets.renderSpecMaxBytes) {
     throw renderSpecProblem("render spec exceeds the configured size limit");
@@ -862,7 +852,7 @@ export function validateAiChatRenderSpec(renderSpec: Record<string, unknown>) {
   if (!parsed.success) {
     throw renderSpecProblem("AI Chat render spec failed validation");
   }
-  return parsed.data as Record<string, unknown>;
+  return parsed.data as JSONValue;
 }
 
 function isAiChatBridge(bridge: Partial<ControlPlaneBridge>): bridge is ControlPlaneBridge {
@@ -1022,6 +1012,12 @@ function redactedProvider(settings: CompanyAiProviderSettings) {
   if (!profile || !alias || settings.effective.missingChatProvider) {
     return null;
   }
+  if (settings.companyId !== profile.ownerId || profile.ownerScope !== "company") {
+    return null;
+  }
+  if (profile.id !== alias.providerProfileId) {
+    return null;
+  }
   return {
     providerProfileId: profile.id,
     credentialRef: profile.credentialRef,
@@ -1034,360 +1030,546 @@ function redactedProvider(settings: CompanyAiProviderSettings) {
   };
 }
 
-async function answerWithCloudGridTool({
+async function executeAiChatTool({
+  name,
+  args,
   authContext,
   bridge,
   input,
-  userText,
 }: {
+  name: string;
+  args: Record<string, unknown>;
   authContext: NormalizedAuthContext;
   bridge: Partial<ControlPlaneBridge & TelemetryQueryBridge & MetricQueryBridge & AiEvalBridge>;
   input: AiChatStreamRequest;
-  userText: string;
-}): Promise<CloudGridToolAnswer | null> {
-  const qualityIntent = aiQualityToolIntent(userText, input.timezone);
-  if (qualityIntent) {
-    if (!bridge.aiQualityOverview) {
+}): Promise<AiChatToolResult> {
+  switch (name) {
+    case "telemetry.searchTraces": {
+      if (!bridge.searchTraces) {
+        return {
+          text: "I could not query CloudGrid traces because the trace search tool is not available in this run.",
+        };
+      }
+      const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+      const range = rangeFromToolArgs(args, input.timezone, 24);
+      const limit = boundedIntegerArg(args.limit, 50, 1, 200);
+      const status = stringArg(args.status);
+      const result = await bridge.searchTraces(
+        buildTraceSearchInput({
+          from: range.from.toISOString(),
+          to: range.to.toISOString(),
+          limit,
+          sort: "startedAt_desc",
+          ...(status === "error" ? { status } : {}),
+        }),
+        authContext,
+      );
+      const intent: TraceToolIntent =
+        range.kind === "today"
+          ? { kind: "today", range, limit: 25, ...(status === "error" ? { status } : {}) }
+          : { kind: "recent", range, limit, ...(status === "error" ? { status } : {}) };
       return {
-        toolName: "aiEval.qualityOverview",
-        text: "I could not query CloudGrid AI Eval production quality because the quality tool is not available in this run.",
+        text: formatTraceToolAnswer(result, intent, project),
+        artifacts: [traceSearchTableArtifact(result)],
       };
     }
+    case "telemetry.getTrace": {
+      if (!bridge.getTraceDetail) {
+        return {
+          text: "I could not query CloudGrid trace detail because the trace detail tool is not available in this run.",
+        };
+      }
+      const traceId = requiredStringArg(args.traceId ?? args.id, "traceId");
+      const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+      const result = await bridge.getTraceDetail(traceId, buildTraceDetailInput(), authContext);
+      return {
+        text: formatTraceDetailToolAnswer(result, { traceId }, project),
+        artifacts: result ? [traceWaterfallArtifact(result)] : [],
+      };
+    }
+    case "telemetry.searchLogs": {
+      if (!bridge.searchLogs) {
+        return {
+          text: "I could not query CloudGrid logs because the log search tool is not available in this run.",
+        };
+      }
+      const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+      const range = rangeFromToolArgs(args, input.timezone, 1);
+      const intent: LogToolIntent = {
+        range,
+        limit: boundedIntegerArg(args.limit, 10, 1, LOG_SEARCH_HARD_LIMIT),
+        service: stringArg(args.service),
+        severity: stringArg(args.severity),
+        search: stringArg(args.search ?? args.query),
+      };
+      const result = await bridge.searchLogs(
+        buildLogSearchInput({
+          from: intent.range.from.toISOString(),
+          to: intent.range.to.toISOString(),
+          service: intent.service ?? null,
+          severity: intent.severity ?? null,
+          search: intent.search ?? null,
+          sort: "timestamp_desc",
+          limit: intent.limit,
+        }),
+        authContext,
+      );
+      return {
+        text: formatLogToolAnswer(result, intent, project),
+        artifacts: [logListArtifact(result)],
+      };
+    }
+    case "telemetry.queryMetrics": {
+      if (!bridge.metricSeries) {
+        return {
+          text: "I could not query CloudGrid metrics because the metric query tool is not available in this run.",
+        };
+      }
+      const metricName = requiredStringArg(args.metricName ?? args.metric, "metricName");
+      const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+      const range = rangeFromToolArgs(args, input.timezone, 1);
+      const hours = rangeHours(range) ?? 1;
+      const aggregation =
+        metricAggregationArg(args.aggregation) ??
+        defaultMetricAggregationForMetricName(metricName, "");
+      const intent: MetricToolIntent = {
+        metricName,
+        range,
+        aggregation,
+        interval: stringArg(args.interval) ?? defaultMetricIntervalForHours(hours),
+        limit: METRIC_SERIES_HARD_LIMIT,
+      };
+      const result = await bridge.metricSeries(
+        {
+          metricName,
+          from: range.from.toISOString(),
+          to: range.to.toISOString(),
+          interval: intent.interval,
+          aggregation: intent.aggregation,
+          groupBy: [],
+          filters: [],
+          limit: intent.limit,
+        },
+        authContext,
+      );
+      return {
+        text: formatMetricToolAnswer(result, intent, project),
+        artifacts: [metricTimeseriesArtifact(result, metricName)],
+      };
+    }
+    case "telemetry.getFacets": {
+      if (!bridge.telemetryFacets) {
+        return {
+          text: "I could not query CloudGrid telemetry facets because the facet tool is not available in this run.",
+        };
+      }
+      const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+      const range = rangeFromToolArgs(args, input.timezone, 1);
+      const intent: TelemetryFacetToolIntent = {
+        range,
+        service: stringArg(args.service),
+        search: stringArg(args.search ?? args.query),
+      };
+      const result = await bridge.telemetryFacets(
+        buildTelemetryFacetInput({
+          from: range.from.toISOString(),
+          to: range.to.toISOString(),
+          service: intent.service ?? null,
+          search: intent.search ?? null,
+        }),
+        authContext,
+      );
+      return {
+        text: formatTelemetryFacetToolAnswer(result, intent, project),
+        artifacts: [facetTableArtifact(result)],
+      };
+    }
+    case "dashboards.list": {
+      if (!bridge.dashboards) {
+        return {
+          text: "I could not query CloudGrid dashboards because the dashboard tool is not available in this run.",
+        };
+      }
+      const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+      const result = await bridge.dashboards(
+        buildDashboardListInput({ query: stringArg(args.query ?? args.search) ?? null }),
+        authContext,
+      );
+      return {
+        text: formatDashboardListToolAnswer(result, project),
+        artifacts: [dashboardTableArtifact(result)],
+      };
+    }
+    case "alerts.list": {
+      if (!bridge.alertRules) {
+        return {
+          text: "I could not query CloudGrid alert rules because the alert rule tool is not available in this run.",
+        };
+      }
+      const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+      const intent: AlertListToolIntent = {
+        search: stringArg(args.search ?? args.query),
+        severity: alertSeverityArg(args.severity),
+        signal: alertSignalArg(args.signal),
+        enabled: booleanArg(args.enabled),
+      };
+      const rules = await bridge.alertRules(
+        input.projectId,
+        buildAlertRuleSearchInput({
+          search: intent.search ?? null,
+          severity: intent.severity ?? null,
+          signal: intent.signal ?? null,
+          enabled: intent.enabled ?? null,
+          sort: stringArg(args.sort),
+        }),
+        authContext,
+      );
+      return {
+        text: formatAlertListToolAnswer(rules, project),
+        artifacts: [alertRuleTableArtifact(rules)],
+      };
+    }
+    case "alerts.history": {
+      if (!bridge.alertHistory) {
+        return {
+          text: "I could not query CloudGrid alert history because the alert history tool is not available in this run.",
+        };
+      }
+      const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+      const intent: AlertHistoryToolIntent = {
+        ruleId: stringArg(args.ruleId ?? args.id),
+      };
+      const historyInput = buildAlertHistoryInput({
+        ruleId: intent.ruleId ?? null,
+        first: boundedIntegerArg(args.first ?? args.limit, 50, 1, 200),
+        after: stringArg(args.after ?? args.cursor),
+      });
+      const result = await bridge.alertHistory(
+        input.projectId,
+        historyInput.ruleId,
+        historyInput.first,
+        historyInput.after,
+        authContext,
+      );
+      return {
+        text: formatAlertHistoryToolAnswer(result, project),
+        artifacts: [alertHistoryTableArtifact(result)],
+      };
+    }
+    case "aiEval.searchAgentRuns": {
+      if (!bridge.agentRuns) {
+        return {
+          text: "I could not query CloudGrid AI Eval agent runs because the AI Eval run tool is not available in this run.",
+        };
+      }
+      const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+      const range = rangeFromToolArgs(args, input.timezone, 24 * 7);
+      const intent: AgentRunToolIntent = {
+        range,
+        limit: boundedIntegerArg(args.limit, AI_EVAL_SEARCH_DEFAULT_LIMIT, 1, 200),
+        status: agentRunStatusArg(args.status),
+        agentName: stringArg(args.agentName ?? args.agent),
+        query: stringArg(args.query ?? args.search),
+      };
+      const result = await bridge.agentRuns(
+        buildAgentRunSearchInput({
+          from: intent.range.from.toISOString(),
+          to: intent.range.to.toISOString(),
+          status: intent.status ?? null,
+          agentName: intent.agentName ?? null,
+          query: intent.query ?? null,
+          limit: intent.limit,
+          cursor: stringArg(args.cursor),
+          experimentRunId: stringArg(args.experimentRunId),
+        }),
+        authContext,
+      );
+      return {
+        text: formatAgentRunToolAnswer(result, intent, project),
+        artifacts: [agentRunTableArtifact(result)],
+      };
+    }
+    case "aiEval.searchDatasets": {
+      if (!bridge.datasets) {
+        return {
+          text: "I could not query CloudGrid AI Eval datasets because the dataset tool is not available in this run.",
+        };
+      }
+      const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+      const result = await bridge.datasets(
+        buildDatasetSearchInput({
+          query: stringArg(args.query ?? args.search),
+          tag: stringArg(args.tag),
+          split: stringArg(args.split),
+          reviewStatus: stringArg(args.reviewStatus),
+          limit: boundedIntegerArg(args.limit, AI_EVAL_SEARCH_DEFAULT_LIMIT, 1, 200),
+          cursor: stringArg(args.cursor),
+        }),
+        authContext,
+      );
+      return {
+        text: formatDatasetToolAnswer(result, project),
+        artifacts: [datasetTableArtifact(result)],
+      };
+    }
+    case "aiEval.searchScorers": {
+      if (!bridge.scorers) {
+        return {
+          text: "I could not query CloudGrid AI Eval scorers because the scorer tool is not available in this run.",
+        };
+      }
+      const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+      const result = await bridge.scorers(
+        buildScorerSearchInput({
+          query: stringArg(args.query ?? args.search),
+          kind: stringArg(args.kind),
+          limit: boundedIntegerArg(args.limit, AI_EVAL_SEARCH_DEFAULT_LIMIT, 1, 200),
+          cursor: stringArg(args.cursor),
+        }),
+        authContext,
+      );
+      return {
+        text: formatScorerToolAnswer(result, project),
+        artifacts: [scorerTableArtifact(result)],
+      };
+    }
+    case "aiEval.searchExperiments": {
+      if (!bridge.experiments) {
+        return {
+          text: "I could not query CloudGrid AI Eval experiments because the experiment tool is not available in this run.",
+        };
+      }
+      const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+      const result = await bridge.experiments(
+        buildExperimentSearchInput({
+          query: stringArg(args.query ?? args.search),
+          status: stringArg(args.status),
+          split: stringArg(args.split),
+          datasetId: stringArg(args.datasetId),
+          baselineRunId: stringArg(args.baselineRunId),
+          limit: boundedIntegerArg(args.limit, AI_EVAL_SEARCH_DEFAULT_LIMIT, 1, 200),
+          cursor: stringArg(args.cursor),
+        }),
+        authContext,
+      );
+      return {
+        text: formatExperimentToolAnswer(result, project),
+        artifacts: [experimentTableArtifact(result)],
+      };
+    }
+    case "aiEval.searchEvalResults": {
+      if (!bridge.evalResults) {
+        return {
+          text: "I could not query CloudGrid AI Eval results because the eval result tool is not available in this run.",
+        };
+      }
+      const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+      const result = await bridge.evalResults(
+        {
+          scorerId: stringArg(args.scorerId),
+          experimentRunId: stringArg(args.experimentRunId),
+          targetKind: evalTargetKindArg(args.targetKind),
+          targetId: stringArg(args.targetId),
+          passed: booleanArg(args.passed),
+          limit: boundedIntegerArg(args.limit, AI_EVAL_SEARCH_DEFAULT_LIMIT, 1, 200),
+          cursor: stringArg(args.cursor),
+        },
+        authContext,
+      );
+      return {
+        text: formatEvalResultToolAnswer(result, project),
+        artifacts: [evalResultTableArtifact(result)],
+      };
+    }
+    case "aiEval.qualityOverview": {
+      if (!bridge.aiQualityOverview) {
+        return {
+          text: "I could not query CloudGrid AI Eval production quality because the quality overview tool is not available in this run.",
+        };
+      }
+      const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+      const range = rangeFromToolArgs(args, input.timezone, 24 * 7);
+      const intent: AiQualityToolIntent = {
+        range,
+        service: stringArg(args.service),
+        agentName: stringArg(args.agentName ?? args.agent),
+        limit: boundedIntegerArg(args.limit, AI_EVAL_SEARCH_DEFAULT_LIMIT, 1, 200),
+      };
+      const result = await bridge.aiQualityOverview(
+        buildAiQualityOverviewInput({
+          projectId: input.projectId,
+          from: intent.range.from.toISOString(),
+          to: intent.range.to.toISOString(),
+          service: intent.service ?? null,
+          agentName: intent.agentName ?? null,
+          environment: stringArg(args.environment),
+          route: stringArg(args.route),
+          toolName: stringArg(args.toolName),
+          model: stringArg(args.model),
+          policyId: stringArg(args.policyId),
+          scorerId: stringArg(args.scorerId),
+          limit: intent.limit,
+        }),
+        authContext,
+      );
+      return {
+        text: formatAiQualityToolAnswer(result, intent, project),
+        artifacts: [aiQualityArtifact(result)],
+      };
+    }
+    case "project.get": {
+      const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
+      return {
+        text: `Current CloudGrid project: ${project.label}.`,
+        artifacts: [
+          tableArtifact("Current project", "Current project table", [
+            { id: project.id, label: project.label },
+          ]),
+        ],
+      };
+    }
+    default:
+      throw new AiChatStreamProblem(
+        createProblemDetails({
+          id: "ERR-AIC-001",
+          detail: `AI Chat tool is not available: ${name}`,
+        }),
+      );
+  }
+}
 
-    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
-    const result = await bridge.aiQualityOverview(
-      buildAiQualityOverviewInput({
-        projectId: input.projectId,
-        from: qualityIntent.range.from.toISOString(),
-        to: qualityIntent.range.to.toISOString(),
-        service: qualityIntent.service ?? null,
-        agentName: qualityIntent.agentName ?? null,
-        limit: qualityIntent.limit,
+function stringArg(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function booleanArg(value: unknown): boolean | null {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "enabled" || normalized === "yes") {
+      return true;
+    }
+    if (normalized === "false" || normalized === "disabled" || normalized === "no") {
+      return false;
+    }
+  }
+  return null;
+}
+
+function alertSeverityArg(value: unknown): AlertSeverity | null {
+  const normalized = stringArg(value)?.toUpperCase();
+  return normalized === "INFO" ||
+    normalized === "WARNING" ||
+    normalized === "ERROR" ||
+    normalized === "CRITICAL"
+    ? normalized
+    : null;
+}
+
+function alertSignalArg(value: unknown): AlertSignal | null {
+  const normalized = stringArg(value)?.toUpperCase();
+  return normalized === "METRIC" || normalized === "LOG" || normalized === "TRACE"
+    ? normalized
+    : null;
+}
+
+function agentRunStatusArg(value: unknown): AgentRunStatus | null {
+  const normalized = stringArg(value)?.toLowerCase();
+  return normalized === "ok" ||
+    normalized === "error" ||
+    normalized === "unset" ||
+    normalized === "cancelled"
+    ? normalized
+    : null;
+}
+
+function evalTargetKindArg(value: unknown): "agentRun" | "span" | "datasetItemRun" | null {
+  const normalized = stringArg(value);
+  return normalized === "agentRun" || normalized === "span" || normalized === "datasetItemRun"
+    ? normalized
+    : null;
+}
+
+function requiredStringArg(value: unknown, field: string): string {
+  const parsed = stringArg(value);
+  if (!parsed) {
+    throw new AiChatStreamProblem(
+      createProblemDetails({
+        id: "ERR-001",
+        detail: `AI Chat tool input is missing required field: ${field}`,
       }),
-      authContext,
     );
-
-    return {
-      toolName: "aiEval.qualityOverview",
-      text: formatAiQualityToolAnswer(result, qualityIntent, project),
-      artifacts: [aiQualityArtifact(result)],
-    };
   }
+  return parsed;
+}
 
-  const datasetIntent = aiEvalDatasetToolIntent(userText);
-  if (datasetIntent) {
-    if (!bridge.datasets) {
+function boundedIntegerArg(value: unknown, fallback: number, min: number, max: number): number {
+  const numeric =
+    typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.trunc(numeric)));
+}
+
+function metricAggregationArg(value: unknown): MetricAggregation | null {
+  const parsed = stringArg(value);
+  if (
+    parsed === "avg" ||
+    parsed === "sum" ||
+    parsed === "min" ||
+    parsed === "max" ||
+    parsed === "count" ||
+    parsed === "rate" ||
+    parsed === "p50" ||
+    parsed === "p90" ||
+    parsed === "p95" ||
+    parsed === "p99"
+  ) {
+    return parsed;
+  }
+  return null;
+}
+
+function rangeFromToolArgs(
+  args: Record<string, unknown>,
+  timezone: string | undefined,
+  fallbackHours: number,
+): TraceToolRange & { kind: "today" | "recent" } {
+  const from = stringArg(args.from);
+  const to = stringArg(args.to);
+  if (from && to) {
+    const fromDate = new Date(from);
+    const toDate = new Date(to);
+    if (Number.isFinite(fromDate.getTime()) && Number.isFinite(toDate.getTime())) {
+      const fallbackLabel =
+        fallbackHours === 24
+          ? "last 24 hours"
+          : `last ${fallbackHours} hour${fallbackHours === 1 ? "" : "s"}`;
       return {
-        toolName: "aiEval.searchDatasets",
-        text: "I could not query CloudGrid AI Eval datasets because the dataset search tool is not available in this run.",
+        from: fromDate,
+        to: toDate,
+        label: `${fallbackLabel} (${timezone ?? "UTC"})`,
+        kind: "recent",
       };
     }
-
-    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
-    const result = await bridge.datasets(
-      buildDatasetSearchInput({ query: datasetIntent.query ?? null, limit: datasetIntent.limit }),
-      authContext,
-    );
-
-    return {
-      toolName: "aiEval.searchDatasets",
-      text: formatDatasetToolAnswer(result, project),
-      artifacts: [datasetTableArtifact(result)],
-    };
   }
-
-  const scorerIntent = aiEvalScorerToolIntent(userText);
-  if (scorerIntent) {
-    if (!bridge.scorers) {
-      return {
-        toolName: "aiEval.searchScorers",
-        text: "I could not query CloudGrid AI Eval scorers because the scorer search tool is not available in this run.",
-      };
-    }
-
-    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
-    const result = await bridge.scorers(
-      buildScorerSearchInput({ query: scorerIntent.query ?? null, limit: scorerIntent.limit }),
-      authContext,
-    );
-
-    return {
-      toolName: "aiEval.searchScorers",
-      text: formatScorerToolAnswer(result, project),
-      artifacts: [scorerTableArtifact(result)],
-    };
+  const window = stringArg(args.window ?? args.timeWindow ?? args.range);
+  if (window === "today") {
+    return { ...todayRange(timezone), kind: "today" };
   }
+  const hours = boundedIntegerArg(args.hours ?? args.windowHours, fallbackHours, 1, 24 * 30);
+  return { ...lastHoursRange(timezone, hours), kind: "recent" };
+}
 
-  const experimentIntent = aiEvalExperimentToolIntent(userText);
-  if (experimentIntent) {
-    if (!bridge.experiments) {
-      return {
-        toolName: "aiEval.searchExperiments",
-        text: "I could not query CloudGrid AI Eval experiments because the experiment search tool is not available in this run.",
-      };
-    }
-
-    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
-    const result = await bridge.experiments(
-      buildExperimentSearchInput({
-        query: experimentIntent.query ?? null,
-        status: experimentIntent.status ?? null,
-        limit: experimentIntent.limit,
-      }),
-      authContext,
-    );
-
-    return {
-      toolName: "aiEval.searchExperiments",
-      text: formatExperimentToolAnswer(result, project),
-      artifacts: [experimentTableArtifact(result)],
-    };
-  }
-
-  const agentRunIntent = agentRunToolIntent(userText, input.timezone);
-  if (agentRunIntent) {
-    if (!bridge.agentRuns) {
-      return {
-        toolName: "aiEval.searchAgentRuns",
-        text: "I could not query CloudGrid AI Eval agent runs because the agent-run search tool is not available in this run.",
-      };
-    }
-
-    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
-    const result = await bridge.agentRuns(
-      buildAgentRunSearchInput({
-        agentName: agentRunIntent.agentName ?? null,
-        status: agentRunIntent.status ?? null,
-        from: agentRunIntent.range.from.toISOString(),
-        to: agentRunIntent.range.to.toISOString(),
-        query: agentRunIntent.query ?? null,
-        limit: agentRunIntent.limit,
-      }),
-      authContext,
-    );
-
-    return {
-      toolName: "aiEval.searchAgentRuns",
-      text: formatAgentRunToolAnswer(result, agentRunIntent, project),
-      artifacts: [agentRunTableArtifact(result)],
-    };
-  }
-
-  const alertHistoryIntent = alertHistoryToolIntent(userText);
-  if (alertHistoryIntent) {
-    if (!bridge.alertHistory) {
-      return {
-        toolName: "alerts.history",
-        text: "I could not query CloudGrid alert history because the alert history tool is not available in this run.",
-      };
-    }
-
-    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
-    const historyInput = buildAlertHistoryInput({ ruleId: alertHistoryIntent.ruleId ?? null });
-    const result = await bridge.alertHistory(
-      input.projectId,
-      historyInput.ruleId,
-      historyInput.first,
-      historyInput.after,
-      authContext,
-    );
-
-    return {
-      toolName: "alerts.history",
-      text: formatAlertHistoryToolAnswer(result, project),
-      artifacts: [alertHistoryTableArtifact(result)],
-    };
-  }
-
-  const alertListIntent = alertListToolIntent(userText);
-  if (alertListIntent) {
-    if (!bridge.alertRules) {
-      return {
-        toolName: "alerts.list",
-        text: "I could not query CloudGrid alerts because the alert list tool is not available in this run.",
-      };
-    }
-
-    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
-    const result = await bridge.alertRules(
-      input.projectId,
-      buildAlertRuleSearchInput({
-        search: alertListIntent.search ?? null,
-        severity: alertListIntent.severity ?? null,
-        signal: alertListIntent.signal ?? null,
-        enabled: alertListIntent.enabled ?? null,
-      }),
-      authContext,
-    );
-
-    return {
-      toolName: "alerts.list",
-      text: formatAlertListToolAnswer(result, project),
-      artifacts: [alertRuleTableArtifact(result)],
-    };
-  }
-
-  const dashboardIntent = dashboardListToolIntent(userText);
-  if (dashboardIntent) {
-    if (!bridge.dashboards) {
-      return {
-        toolName: "dashboards.list",
-        text: "I could not query CloudGrid dashboards because the dashboard tool is not available in this run.",
-      };
-    }
-
-    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
-    const result = await bridge.dashboards(
-      buildDashboardListInput({ query: dashboardIntent.query ?? null }),
-      authContext,
-    );
-
-    return {
-      toolName: "dashboards.list",
-      text: formatDashboardListToolAnswer(result, project),
-      artifacts: [dashboardTableArtifact(result)],
-    };
-  }
-
-  const traceDetailIntent = traceDetailToolIntent(userText);
-  if (traceDetailIntent) {
-    if (!bridge.getTraceDetail) {
-      return {
-        toolName: "telemetry.getTrace",
-        text: "I could not query CloudGrid trace detail because the trace detail tool is not available in this run.",
-      };
-    }
-
-    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
-    const result = await bridge.getTraceDetail(
-      traceDetailIntent.traceId,
-      buildTraceDetailInput(),
-      authContext,
-    );
-
-    return {
-      toolName: "telemetry.getTrace",
-      text: formatTraceDetailToolAnswer(result, traceDetailIntent, project),
-      artifacts: result ? [traceWaterfallArtifact(result)] : [],
-    };
-  }
-
-  const facetIntent = telemetryFacetToolIntent(userText, input.timezone);
-  if (facetIntent) {
-    if (!bridge.telemetryFacets) {
-      return {
-        toolName: "telemetry.getFacets",
-        text: "I could not query CloudGrid telemetry facets because the facet tool is not available in this run.",
-      };
-    }
-
-    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
-    const result = await bridge.telemetryFacets(
-      buildTelemetryFacetInput({
-        from: facetIntent.range.from.toISOString(),
-        to: facetIntent.range.to.toISOString(),
-        service: facetIntent.service ?? null,
-        search: facetIntent.search ?? null,
-      }),
-      authContext,
-    );
-
-    return {
-      toolName: "telemetry.getFacets",
-      text: formatTelemetryFacetToolAnswer(result, facetIntent, project),
-      artifacts: [facetTableArtifact(result)],
-    };
-  }
-
-  const metricIntent = metricToolIntent(userText, input.timezone);
-  if (metricIntent) {
-    if (!bridge.metricSeries) {
-      return {
-        toolName: "telemetry.queryMetrics",
-        text: "I could not query CloudGrid metrics because the metric query tool is not available in this run.",
-      };
-    }
-
-    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
-    const result = await bridge.metricSeries(
-      {
-        metricName: metricIntent.metricName,
-        from: metricIntent.range.from.toISOString(),
-        to: metricIntent.range.to.toISOString(),
-        interval: metricIntent.interval,
-        aggregation: metricIntent.aggregation,
-        groupBy: [],
-        filters: [],
-        limit: metricIntent.limit,
-      },
-      authContext,
-    );
-
-    return {
-      toolName: "telemetry.queryMetrics",
-      text: formatMetricToolAnswer(result, metricIntent, project),
-      artifacts: [metricTimeseriesArtifact(result, metricIntent.metricName)],
-    };
-  }
-
-  const logIntent = logToolIntent(userText, input.timezone);
-  if (logIntent) {
-    if (!bridge.searchLogs) {
-      return {
-        toolName: "telemetry.searchLogs",
-        text: "I could not query CloudGrid logs because the log search tool is not available in this run.",
-      };
-    }
-
-    const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
-    const result = await bridge.searchLogs(
-      buildLogSearchInput({
-        from: logIntent.range.from.toISOString(),
-        to: logIntent.range.to.toISOString(),
-        service: logIntent.service ?? null,
-        severity: logIntent.severity ?? null,
-        search: logIntent.search ?? null,
-        sort: "timestamp_desc",
-        limit: logIntent.limit,
-      }),
-      authContext,
-    );
-
-    return {
-      toolName: "telemetry.searchLogs",
-      text: formatLogToolAnswer(result, logIntent, project),
-      artifacts: [logListArtifact(result)],
-    };
-  }
-
-  const intent = traceToolIntent(userText, input.timezone);
-  if (!intent) {
+function rangeHours(range: TraceToolRange): number | null {
+  const diff = range.to.getTime() - range.from.getTime();
+  if (!Number.isFinite(diff) || diff <= 0) {
     return null;
   }
-  if (!bridge.searchTraces) {
-    return {
-      toolName: "telemetry.searchTraces",
-      text: "I could not query CloudGrid traces because the trace search tool is not available in this run.",
-    };
-  }
-
-  const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
-  const result = await bridge.searchTraces(
-    buildTraceSearchInput({
-      from: intent.range.from.toISOString(),
-      to: intent.range.to.toISOString(),
-      limit: intent.limit,
-      sort: "startedAt_desc",
-      ...(intent.status ? { status: intent.status } : {}),
-    }),
-    authContext,
-  );
-
-  return {
-    toolName: "telemetry.searchTraces",
-    text: formatTraceToolAnswer(result, intent, project),
-    artifacts: [traceSearchTableArtifact(result)],
-  };
+  return Math.max(1, Math.round(diff / 3_600_000));
 }
 
 async function aiChatSelectedProjectContext(
@@ -1412,375 +1594,6 @@ async function aiChatSelectedProjectContext(
   return { id: projectId, label: projectId };
 }
 
-function traceToolIntent(text: string, timezone: string | undefined): TraceToolIntent | null {
-  const normalized = text.toLowerCase();
-  if (!/\btraces?\b/.test(normalized)) {
-    return null;
-  }
-  const status = /\b(failing|failed|failure|error|errors|errored)\b/.test(normalized)
-    ? "error"
-    : undefined;
-  if (/\btoday\b/.test(normalized) || /\bheute\b/.test(normalized)) {
-    return { kind: "today", range: todayRange(timezone), limit: 25, ...(status ? { status } : {}) };
-  }
-  if (status && /\b(last|latest|recent|newest)\b/.test(normalized)) {
-    return {
-      kind: "recent",
-      range: lastHoursRange(timezone, 24),
-      limit: traceLimitFromText(normalized) ?? 10,
-      status,
-    };
-  }
-  return null;
-}
-
-function traceDetailToolIntent(text: string): TraceDetailToolIntent | null {
-  const normalized = text.toLowerCase();
-  if (!/\b(trace|span|waterfall|critical path|detail|details|summarize)\b/.test(normalized)) {
-    return null;
-  }
-  const traceId = traceIdFromText(text);
-  return traceId ? { traceId } : null;
-}
-
-function telemetryFacetToolIntent(
-  text: string,
-  timezone: string | undefined,
-): TelemetryFacetToolIntent | null {
-  const normalized = text.toLowerCase();
-  if (!/\bfacets?\b/.test(normalized)) {
-    return null;
-  }
-  if (
-    !/\b(telemetry|trace|traces|log|logs|service|operation|attribute|severity)\b/.test(normalized)
-  ) {
-    return null;
-  }
-  const range = /\btoday\b/.test(normalized)
-    ? todayRange(timezone)
-    : lastHoursRange(timezone, metricHoursFromText(normalized) ?? 1);
-  return {
-    range,
-    service: serviceFromFacetText(text),
-    search: facetSearchFromText(text),
-  };
-}
-
-function dashboardListToolIntent(text: string): DashboardListToolIntent | null {
-  const normalized = text.toLowerCase();
-  if (!/\bdashboards?\b/.test(normalized)) {
-    return null;
-  }
-  if (!/\b(list|show|find|search|which|available)\b/.test(normalized)) {
-    return null;
-  }
-  return {
-    query: dashboardSearchFromText(text),
-  };
-}
-
-function alertHistoryToolIntent(text: string): AlertHistoryToolIntent | null {
-  const normalized = text.toLowerCase();
-  if (!/\balerts?\b/.test(normalized) || !/\b(history|events?|recent)\b/.test(normalized)) {
-    return null;
-  }
-  return { ruleId: alertRuleIdFromText(text) };
-}
-
-function alertListToolIntent(text: string): AlertListToolIntent | null {
-  const normalized = text.toLowerCase();
-  if (!/\balerts?\b/.test(normalized)) {
-    return null;
-  }
-  if (!/\b(list|show|find|search|which|active|firing|errors?|failures?)\b/.test(normalized)) {
-    return null;
-  }
-  return {
-    search: alertSearchFromText(text),
-    severity: alertSeverityFromText(normalized),
-    signal: alertSignalFromText(normalized),
-    enabled: /\b(disabled|inactive)\b/.test(normalized)
-      ? false
-      : /\b(enabled|active)\b/.test(normalized)
-        ? true
-        : null,
-  };
-}
-
-function agentRunToolIntent(text: string, timezone: string | undefined): AgentRunToolIntent | null {
-  const normalized = text.toLowerCase();
-  if (!/\b(ai eval|ai-eval|evaluation|eval)\b/.test(normalized)) {
-    return null;
-  }
-  if (!/\b(agent runs?|runs?)\b/.test(normalized)) {
-    return null;
-  }
-  if (
-    !/\b(show|list|find|search|latest|last|recent|newest|failing|failed|errors?)\b/.test(normalized)
-  ) {
-    return null;
-  }
-  const hours = metricHoursFromText(normalized) ?? 24 * 7;
-  return {
-    range: /\btoday\b/.test(normalized) ? todayRange(timezone) : lastHoursRange(timezone, hours),
-    limit: aiEvalLimitFromText(normalized) ?? 10,
-    status: agentRunStatusFromText(normalized),
-    agentName: agentNameFromText(text),
-    query: quotedSearchFromText(text),
-  };
-}
-
-function aiEvalDatasetToolIntent(text: string): AiEvalSearchToolIntent | null {
-  const normalized = text.toLowerCase();
-  if (
-    !/\b(ai eval|ai-eval|evaluation|eval)\b/.test(normalized) ||
-    !/\bdatasets?\b/.test(normalized)
-  ) {
-    return null;
-  }
-  if (!/\b(show|list|find|search|available)\b/.test(normalized)) {
-    return null;
-  }
-  return { query: aiEvalSearchFromText(text), limit: AI_EVAL_SEARCH_DEFAULT_LIMIT };
-}
-
-function aiEvalScorerToolIntent(text: string): AiEvalSearchToolIntent | null {
-  const normalized = text.toLowerCase();
-  if (
-    !/\b(ai eval|ai-eval|evaluation|eval)\b/.test(normalized) ||
-    !/\bscorers?\b/.test(normalized)
-  ) {
-    return null;
-  }
-  if (!/\b(show|list|find|search|available)\b/.test(normalized)) {
-    return null;
-  }
-  return { query: aiEvalSearchFromText(text), limit: AI_EVAL_SEARCH_DEFAULT_LIMIT };
-}
-
-function aiEvalExperimentToolIntent(text: string): ExperimentToolIntent | null {
-  const normalized = text.toLowerCase();
-  if (
-    !/\b(ai eval|ai-eval|evaluation|eval)\b/.test(normalized) ||
-    !/\bexperiments?\b/.test(normalized)
-  ) {
-    return null;
-  }
-  if (!/\b(show|list|find|search|available|running|queued|failed|finished)\b/.test(normalized)) {
-    return null;
-  }
-  return {
-    query: aiEvalSearchFromText(text),
-    status: experimentStatusFromText(normalized),
-    limit: AI_EVAL_SEARCH_DEFAULT_LIMIT,
-  };
-}
-
-function aiQualityToolIntent(
-  text: string,
-  timezone: string | undefined,
-): AiQualityToolIntent | null {
-  const normalized = text.toLowerCase();
-  if (!/\b(ai eval|ai-eval|evaluation|eval)\b/.test(normalized)) {
-    return null;
-  }
-  if (!/\b(production quality|quality|online scoring|policy results)\b/.test(normalized)) {
-    return null;
-  }
-  const hours = metricHoursFromText(normalized) ?? 24 * 7;
-  return {
-    range: /\btoday\b/.test(normalized) ? todayRange(timezone) : lastHoursRange(timezone, hours),
-    service: serviceFromAiEvalText(text),
-    agentName: agentNameFromText(text),
-    limit: AI_EVAL_SEARCH_DEFAULT_LIMIT,
-  };
-}
-
-function metricToolIntent(text: string, timezone: string | undefined): MetricToolIntent | null {
-  const normalized = text.toLowerCase();
-  const metricName = metricNameFromText(text);
-  if (!metricName) {
-    return null;
-  }
-  if (
-    !/\b(metrics?|series|timeseries|time series|usage|tokens?|samples?|chart|plot|show)\b/.test(
-      normalized,
-    )
-  ) {
-    return null;
-  }
-  const hours = metricHoursFromText(normalized) ?? 1;
-  const range = /\btoday\b/.test(normalized)
-    ? todayRange(timezone)
-    : lastHoursRange(timezone, hours);
-  return {
-    metricName,
-    range,
-    aggregation: defaultMetricAggregationForMetricName(metricName, normalized),
-    interval: defaultMetricIntervalForHours(hours),
-    limit: METRIC_SERIES_HARD_LIMIT,
-  };
-}
-
-function logToolIntent(text: string, timezone: string | undefined): LogToolIntent | null {
-  const normalized = text.toLowerCase();
-  if (!/\blogs?\b/.test(normalized)) {
-    return null;
-  }
-  if (!/\b(show|list|find|search|latest|last|recent|newest|errors?|failures?)\b/.test(normalized)) {
-    return null;
-  }
-  const hours = metricHoursFromText(normalized) ?? 1;
-  const range = /\btoday\b/.test(normalized)
-    ? todayRange(timezone)
-    : lastHoursRange(timezone, hours);
-  return {
-    range,
-    limit: logLimitFromText(normalized) ?? 10,
-    severity: logSeverityFromText(normalized),
-    service: serviceFromLogText(text),
-    search: quotedSearchFromText(text),
-  };
-}
-
-function metricNameFromText(text: string) {
-  const matches = text.match(/\b[a-zA-Z_:][a-zA-Z0-9_:]*(?:[._][a-zA-Z0-9_:]+)+\b/g) ?? [];
-  return (
-    matches
-      .map((match) => match.replace(/[.,;:!?)]$/g, ""))
-      .find((match) => match.includes(".") || match.includes("_")) ?? null
-  );
-}
-
-function traceIdFromText(text: string) {
-  const matches = text.match(/\btrace-[a-zA-Z0-9_.:-]{3,128}\b/g) ?? [];
-  return matches.at(0)?.replace(/[.,;:!?)]$/g, "") ?? null;
-}
-
-function serviceFromFacetText(text: string) {
-  const match = text.match(/\bservice\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/);
-  return match?.[1]?.replace(/[.,;:!?)]$/g, "") ?? null;
-}
-
-function facetSearchFromText(text: string) {
-  const quoted = quotedSearchFromText(text);
-  if (quoted) {
-    return quoted;
-  }
-  const match = text.match(/\b(?:for|matching|search)\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/);
-  return match?.[1]?.replace(/[.,;:!?)]$/g, "") ?? null;
-}
-
-function dashboardSearchFromText(text: string) {
-  const quoted = quotedSearchFromText(text);
-  if (quoted) {
-    return quoted;
-  }
-  const match = text.match(
-    /\b(?:for|matching|search|named)\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/,
-  );
-  return match?.[1]?.replace(/[.,;:!?)]$/g, "") ?? null;
-}
-
-function alertRuleIdFromText(text: string) {
-  const matches = text.match(/\brule-[a-zA-Z0-9_.:-]{3,128}\b/g) ?? [];
-  return matches.at(0)?.replace(/[.,;:!?)]$/g, "") ?? null;
-}
-
-function alertSearchFromText(text: string) {
-  const quoted = quotedSearchFromText(text);
-  if (quoted) {
-    return quoted;
-  }
-  const match = text.match(
-    /\b(?:for|matching|search|named)\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/,
-  );
-  const value = match?.[1]?.replace(/[.,;:!?)]$/g, "") ?? null;
-  return value?.startsWith("rule-") ? null : value;
-}
-
-function alertSeverityFromText(text: string): AlertSeverity | null {
-  if (/\bcritical\b/.test(text)) return "CRITICAL";
-  if (/\b(error|errors|errored|failed|failing|failure)\b/.test(text)) return "ERROR";
-  if (/\b(warn|warning|warnings)\b/.test(text)) return "WARNING";
-  if (/\b(info|information)\b/.test(text)) return "INFO";
-  return null;
-}
-
-function alertSignalFromText(text: string): AlertSignal | null {
-  if (/\btraces?\b/.test(text)) return "TRACE";
-  if (/\blogs?\b/.test(text)) return "LOG";
-  if (/\bmetrics?\b/.test(text)) return "METRIC";
-  return null;
-}
-
-function agentRunStatusFromText(text: string): AgentRunStatus | null {
-  if (/\b(error|errors|errored|failed|failing|failure)\b/.test(text)) return "error";
-  if (/\b(cancelled|canceled)\b/.test(text)) return "cancelled";
-  if (/\b(ok|passed|successful|success)\b/.test(text)) return "ok";
-  if (/\b(unset|unknown)\b/.test(text)) return "unset";
-  return null;
-}
-
-function agentNameFromText(text: string) {
-  const match =
-    text.match(/\bfor\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/) ??
-    text.match(/\bagent\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/);
-  const value = match?.[1]?.replace(/[.,;:!?)]$/g, "") ?? null;
-  if (!value || /^(ai|eval|evaluation|agent|runs?|for)$/i.test(value)) {
-    return null;
-  }
-  return value;
-}
-
-function aiEvalSearchFromText(text: string) {
-  const quoted = quotedSearchFromText(text);
-  if (quoted) {
-    return quoted;
-  }
-  const match = text.match(
-    /\b(?:for|matching|search|named)\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/,
-  );
-  return match?.[1]?.replace(/[.,;:!?)]$/g, "") ?? null;
-}
-
-function serviceFromAiEvalText(text: string) {
-  const match = text.match(/\b(?:for|service)\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/);
-  const value = match?.[1]?.replace(/[.,;:!?)]$/g, "") ?? null;
-  if (!value || /^(quality|production|agent|runs?)$/i.test(value)) {
-    return null;
-  }
-  return value;
-}
-
-function experimentStatusFromText(text: string): ExperimentRunStatus | null {
-  if (/\brunning\b/.test(text)) return "running";
-  if (/\bqueued\b/.test(text)) return "queued";
-  if (/\b(cancelled|canceled)\b/.test(text)) return "cancelled";
-  if (/\bfailed\b/.test(text)) return "failed";
-  if (/\bfinished\b/.test(text)) return "finished";
-  return null;
-}
-
-function metricHoursFromText(text: string) {
-  const hourMatch = text.match(/\b(?:last|past)\s+(\d{1,3})\s*(?:h|hr|hrs|hour|hours)\b/);
-  if (hourMatch) {
-    return boundedMetricHours(Number(hourMatch[1]));
-  }
-  const dayMatch = text.match(/\b(?:last|past)\s+(\d{1,2})\s*(?:d|day|days)\b/);
-  if (dayMatch) {
-    return boundedMetricHours(Number(dayMatch[1]) * 24);
-  }
-  return null;
-}
-
-function boundedMetricHours(hours: number) {
-  if (!Number.isFinite(hours) || hours < 1) {
-    return null;
-  }
-  return Math.min(Math.trunc(hours), 24 * 30);
-}
-
 function todayRange(timezone: string | undefined) {
   const safeTimezone = validTimeZone(timezone) ? (timezone as string) : "UTC";
   const now = new Date();
@@ -1802,60 +1615,6 @@ function lastHoursRange(timezone: string | undefined, hours: number): TraceToolR
     to,
     label: `last ${hours} hours (${safeTimezone})`,
   };
-}
-
-function traceLimitFromText(text: string) {
-  const match = text.match(/\b(?:last|latest|recent|newest)\s+(\d{1,3})\b/);
-  if (!match) {
-    return null;
-  }
-  const limit = Number(match[1]);
-  if (!Number.isInteger(limit) || limit < 1) {
-    return null;
-  }
-  return Math.min(limit, 25);
-}
-
-function logLimitFromText(text: string) {
-  const match = text.match(/\b(?:last|latest|recent|newest|show|list)\s+(\d{1,3})\b/);
-  if (!match) {
-    return null;
-  }
-  const limit = Number(match[1]);
-  if (!Number.isInteger(limit) || limit < 1) {
-    return null;
-  }
-  return Math.min(limit, LOG_SEARCH_HARD_LIMIT);
-}
-
-function aiEvalLimitFromText(text: string) {
-  const match = text.match(/\b(?:last|latest|recent|newest|show|list)\s+(\d{1,3})\b/);
-  if (!match) {
-    return null;
-  }
-  const limit = Number(match[1]);
-  if (!Number.isInteger(limit) || limit < 1) {
-    return null;
-  }
-  return Math.min(limit, 200);
-}
-
-function logSeverityFromText(text: string) {
-  if (/\b(error|errors|errored|failed|failing|failure)\b/.test(text)) return "error";
-  if (/\b(warn|warning|warnings)\b/.test(text)) return "warn";
-  if (/\b(info|information)\b/.test(text)) return "info";
-  if (/\b(debug)\b/.test(text)) return "debug";
-  return null;
-}
-
-function serviceFromLogText(text: string) {
-  const match = text.match(/\b(?:from|for|service)\s+([a-zA-Z0-9][a-zA-Z0-9_.:-]{1,80})\b/);
-  return match?.[1]?.replace(/[.,;:!?)]$/g, "") ?? null;
-}
-
-function quotedSearchFromText(text: string) {
-  const match = text.match(/["']([^"']{2,160})["']/);
-  return match?.[1]?.trim() ?? null;
 }
 
 function formatTraceToolAnswer(
@@ -2065,6 +1824,29 @@ function formatExperimentToolAnswer(
   ].join("\n");
 }
 
+function formatEvalResultToolAnswer(
+  result: EvalResultSearchResult,
+  project: { id: string; label: string },
+) {
+  if (!result.items.length) {
+    return `No AI Eval results were returned for project ${project.label}.`;
+  }
+  const noun = result.items.length === 1 ? "AI Eval result" : "AI Eval results";
+  const nextCursor = result.nextCursor
+    ? "\n\nMore AI Eval results are available; open AI Eval with the same filters to continue paging."
+    : "";
+  return [
+    `CloudGrid returned ${result.items.length} ${noun} for project ${project.label}.`,
+    "",
+    "| Result | Scorer | Target | Score | Passed | Produced |",
+    "| --- | --- | --- | ---: | --- | --- |",
+    ...result.items.map(evalResultRow),
+    nextCursor,
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+}
+
 function formatAiQualityToolAnswer(
   result: AiQualityOverview,
   intent: AiQualityToolIntent,
@@ -2119,6 +1901,22 @@ function experimentTableArtifact(result: ExperimentSearchResult): PendingAiChatA
       scorers: experiment.scorerIds.length,
       runs: experiment.runs?.items.length ?? 0,
       tags: experiment.tags.join(", "),
+    })),
+  );
+}
+
+function evalResultTableArtifact(result: EvalResultSearchResult): PendingAiChatArtifact {
+  return tableArtifact(
+    "AI Eval results",
+    "AI Eval results table",
+    result.items.map((item) => ({
+      result: item.id,
+      scorerId: item.scorerId,
+      scorerVersion: item.scorerVersion,
+      target: `${item.targetKind}:${item.targetId}`,
+      score: item.score,
+      passed: item.passed,
+      producedAt: item.producedAt,
     })),
   );
 }
@@ -2502,6 +2300,17 @@ function experimentRow(experiment: ExperimentSearchResult["items"][number]) {
   ].join(" | ");
 }
 
+function evalResultRow(result: EvalResultSearchResult["items"][number]) {
+  return [
+    markdownTableCell(result.id),
+    markdownTableCell(`${result.scorerId}@${result.scorerVersion}`),
+    markdownTableCell(`${result.targetKind}:${result.targetId}`),
+    String(result.score),
+    result.passed ? "yes" : "no",
+    markdownTableCell(result.producedAt),
+  ].join(" | ");
+}
+
 function qualitySegmentRow(segment: AiQualityOverview["segments"][number]) {
   return [
     markdownTableCell(segment.label),
@@ -2668,26 +2477,81 @@ async function resolveCredential(
   ref: string,
   bridge: ControlPlaneBridge,
   authContext: NormalizedAuthContext,
+  scope: AiChatCredentialScope,
 ) {
-  if (ref.startsWith("managed:")) {
+  if (scope.kind === "managed") {
     if (!bridge.resolveAiProviderSecret) {
       return null;
     }
     const credential = await bridge.resolveAiProviderSecret(ref, authContext);
-    return { ref: credential.credentialRef, value: credential.value };
-  }
-  if (ref.startsWith("env:")) {
-    const name = ref.slice("env:".length);
-    if (!name || !/^[A-Z0-9_]+$/.test(name)) {
+    if (credential.credentialRef !== ref) {
       return null;
     }
-    const value = process.env[name];
+    return { ref: credential.credentialRef, value: credential.value };
+  }
+  if (scope.kind === "env") {
+    if (!scope.name || !/^[A-Z0-9_]+$/.test(scope.name)) {
+      return null;
+    }
+    const value = process.env[scope.name];
     if (!value) {
       return null;
     }
     return { ref, credentialRef: ref, value };
   }
   return null;
+}
+
+type AiChatCredentialScope =
+  | { kind: "managed"; scope: "company" | "project"; ownerId: string; providerProfileId: string }
+  | { kind: "env"; name: string }
+  | { kind: "external"; provider: string; path: string }
+  | { kind: "invalid" };
+
+function providerCredentialScope(ref: string): AiChatCredentialScope {
+  const trimmed = ref.trim();
+  if (trimmed.startsWith("managed:")) {
+    const parts = trimmed.split("/");
+    if (parts.length !== 3) {
+      return { kind: "invalid" };
+    }
+    const scope = parts[0]?.slice("managed:".length);
+    const ownerId = parts[1] ?? "";
+    const providerProfileId = parts[2] ?? "";
+    if ((scope !== "company" && scope !== "project") || !ownerId || !providerProfileId) {
+      return { kind: "invalid" };
+    }
+    return { kind: "managed", scope, ownerId, providerProfileId };
+  }
+  if (trimmed.startsWith("env:")) {
+    return { kind: "env", name: trimmed.slice("env:".length) };
+  }
+  if (trimmed.startsWith("external:")) {
+    const rest = trimmed.slice("external:".length);
+    const separator = rest.indexOf("/");
+    if (separator <= 0 || separator === rest.length - 1) {
+      return { kind: "invalid" };
+    }
+    return {
+      kind: "external",
+      provider: rest.slice(0, separator),
+      path: rest.slice(separator + 1),
+    };
+  }
+  return { kind: "invalid" };
+}
+
+function credentialScopeMatchesConversation(
+  scope: AiChatCredentialScope,
+  conversation: AiChatConversation,
+) {
+  if (scope.kind === "managed") {
+    if (scope.scope === "company") {
+      return scope.ownerId === conversation.companyId;
+    }
+    return scope.ownerId === conversation.projectId;
+  }
+  return scope.kind === "env" || scope.kind === "external";
 }
 
 function aiChatSessionId(conversation: AiChatConversation) {
@@ -2781,13 +2645,70 @@ async function appendTerminalAssistantPart(
   );
 }
 
-function providerFailure() {
+function providerFailure(message?: string) {
   return new AiChatStreamProblem(
     createProblemDetails({
       id: "ERR-AIP-001",
-      detail: "AI Chat provider execution failed",
+      detail: safeProviderFailureDetail(message),
     }),
   );
+}
+
+function safeProviderFailureDetail(message?: string) {
+  const normalized = message?.trim().toLowerCase() ?? "";
+  if (!normalized) {
+    return "The configured AI provider could not complete this request";
+  }
+  if (
+    normalized.includes("unauthorized") ||
+    normalized.includes("authentication") ||
+    normalized.includes("invalid api key") ||
+    normalized.includes("incorrect api key") ||
+    normalized.includes("401")
+  ) {
+    return "AI provider rejected the configured credential";
+  }
+  if (
+    normalized.includes("forbidden") ||
+    normalized.includes("permission") ||
+    normalized.includes("403")
+  ) {
+    return "AI provider refused access for the configured credential";
+  }
+  if (
+    normalized.includes("model") &&
+    (normalized.includes("not found") ||
+      normalized.includes("does not exist") ||
+      normalized.includes("not available") ||
+      normalized.includes("unsupported"))
+  ) {
+    return "AI provider model is unavailable or not accessible";
+  }
+  if (
+    normalized.includes("rate limit") ||
+    normalized.includes("too many requests") ||
+    normalized.includes("429")
+  ) {
+    return "AI provider rate limit was exceeded";
+  }
+  if (
+    normalized.includes("timeout") ||
+    normalized.includes("timed out") ||
+    normalized.includes("network") ||
+    normalized.includes("fetch failed") ||
+    normalized.includes("econnrefused") ||
+    normalized.includes("enotfound")
+  ) {
+    return "AI provider request could not reach the configured endpoint";
+  }
+  if (
+    normalized.includes("baseurl") ||
+    normalized.includes("base url") ||
+    normalized.includes("endpoint")
+  ) {
+    return "AI provider endpoint is invalid or unavailable";
+  }
+  return "The configured AI provider could not complete this request";
 }
 
 function renderSpecProblem(detail: string) {

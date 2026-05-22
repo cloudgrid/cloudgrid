@@ -2527,13 +2527,25 @@ const scorerKindSchema = z.enum([
   "semantic",
   "rag",
   "llm_judge",
+  "pairwise_judge",
   "tool_correctness",
   "trajectory",
+  "workflow",
   "human",
+  "composite",
 ]);
 const evalTargetKindSchema = z.enum(["agentRun", "span", "datasetItemRun"]);
 const experimentRunStatusSchema = z.enum(["queued", "running", "cancelled", "failed", "finished"]);
 const annotationStatusSchema = z.enum(["open", "in_review", "resolved", "dismissed"]);
+const evalSolverKindSchema = z.enum(["prompt", "agent", "workflow", "skill", "tool"]);
+const evalBaselineKindSchema = z.enum(["experiment_run", "prompt_version", "solver_ref", "none"]);
+const optimizerKindSchema = z.enum(["bootstrap_fewshot", "critic_mutate_judge_pick"]);
+const bootstrapFewshotDiversityStrategySchema = z.enum([
+  "none",
+  "by_label",
+  "by_cluster",
+  "by_failure_mode",
+]);
 const datasetSplitSchema = z.enum(["dev", "optimization", "validation", "regression", "holdout"]);
 const datasetReviewStatusSchema = z.enum(["unreviewed", "reviewed", "rejected"]);
 const datasetHealthStatusSchema = z.enum([
@@ -2858,6 +2870,109 @@ const datasetSplitSelectorSchema = z.object({
   includeSynthetic: z.boolean(),
 });
 
+const versionedRefSchema = z.object({
+  id: z.string().min(1),
+  version: z.number().int().min(1),
+});
+
+const evalSolverRefSchema = z.object({
+  kind: evalSolverKindSchema,
+  name: z.string().min(1),
+  promptVersion: versionedRefSchema.optional().nullable(),
+  agentRef: z.string().optional().nullable(),
+  workflowRef: z.string().optional().nullable(),
+  skillSnapshotRef: z.string().optional().nullable(),
+  toolSnapshotRef: z.string().optional().nullable(),
+  modelAlias: z.string().optional().nullable(),
+  providerProfileId: z.string().optional().nullable(),
+});
+
+const evalBaselineRefSchema = z.object({
+  kind: evalBaselineKindSchema,
+  experimentRunId: z.string().optional().nullable(),
+  promptVersion: versionedRefSchema.optional().nullable(),
+  solverRef: evalSolverRefSchema.optional().nullable(),
+});
+
+const optimizationConfigSchema = z.object({
+  optimizerKind: optimizerKindSchema,
+  bootstrapFewshot: z
+    .object({
+      candidateCount: z.number().int(),
+      maxExamplesPerCandidate: z.number().int(),
+      selectionScorerIds: z.array(z.string()),
+      seed: z.number().int(),
+      diversityStrategy: bootstrapFewshotDiversityStrategySchema,
+    })
+    .optional()
+    .nullable(),
+  criticMutateJudgePick: z
+    .object({
+      candidateCount: z.number().int(),
+      mutationInstructions: z.string(),
+      judgeScorerIds: z.array(z.string()),
+      seed: z.number().int(),
+      maxRounds: z.number().int(),
+      keepTopK: z.number().int().optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+});
+
+const evalRunPolicySchema = z.object({
+  maxParallelRequests: z.number().int(),
+  tokenBudget: z.unknown().optional().nullable(),
+  costBudget: z.unknown().optional().nullable(),
+  rateLimit: z.unknown().optional().nullable(),
+  retry: z.unknown().optional().nullable(),
+  timeout: z.unknown().optional().nullable(),
+  failureBudget: z.unknown().optional().nullable(),
+  backpressure: z.unknown().optional().nullable(),
+  checkpoint: z.unknown().optional().nullable(),
+  quarantine: z.unknown().optional().nullable(),
+  workspaceQuota: z.unknown().optional().nullable(),
+  cleanupRetry: z.unknown().optional().nullable(),
+});
+
+const experimentRunSummarySchema = z.object({
+  itemCounts: z.object({
+    total: z.number().int(),
+    passed: z.number().int(),
+    failed: z.number().int(),
+    errored: z.number().int(),
+    skipped: z.number().int(),
+    needsReview: z.number().int(),
+    quarantined: z.number().int(),
+  }),
+  scoreSummaries: z.array(
+    z.object({
+      scorerId: z.string().min(1),
+      scorerVersion: z.number().int(),
+      resultKind: z.string().optional().nullable(),
+      passRate: z.number(),
+      meanScore: z.number(),
+      p50: z.number().optional().nullable(),
+      p95: z.number().optional().nullable(),
+      support: z.number().int(),
+      visualization: z.unknown().optional().nullable(),
+    }),
+  ),
+  problemCounts: z.object({
+    modelQuality: z.number().int(),
+    itemQuality: z.number().int(),
+    scorerConfig: z.number().int(),
+    infrastructure: z.number().int(),
+  }),
+  budgetUsage: z.object({
+    inputTokens: z.number().int(),
+    outputTokens: z.number().int(),
+    totalTokens: z.number().int(),
+    estimatedUsd: z.number(),
+  }),
+  latency: z.unknown().optional().nullable(),
+  regressions: z.array(z.unknown()),
+});
+
 const experimentSchema = z.preprocess(
   (value) => {
     const experiment = value && typeof value === "object" ? compactNullish(value) : {};
@@ -2893,7 +3008,7 @@ const experimentSchema = z.preprocess(
     datasetVersion: z.number().int(),
     splitSelector: datasetSplitSelectorSchema,
     scorerIds: z.array(z.string().min(1)),
-    baselineRef: z.unknown().optional().nullable(),
+    baselineRef: evalBaselineRefSchema.optional().nullable(),
     promptVersionRefs: z.array(z.string()),
     skillSnapshotRefs: z.array(z.string()),
     toolSnapshotRefs: z.array(z.string()),
@@ -2918,13 +3033,33 @@ const datasetItemRunSchema = z.object({
 const experimentRunSchema = z.object({
   id: z.string().min(1),
   experimentId: z.string().min(1),
-  solverRef: z.unknown(),
-  manifest: z.unknown().optional().nullable(),
+  solverRef: evalSolverRefSchema,
+  manifest: z
+    .object({
+      digest: z.string().min(1),
+      datasetId: z.string().min(1),
+      datasetVersion: z.number().int(),
+      splitSelector: datasetSplitSelectorSchema,
+      scorerRefs: z.array(versionedRefSchema),
+      baselineRef: evalBaselineRefSchema.optional().nullable(),
+      solverRef: evalSolverRefSchema,
+      optimizationConfig: optimizationConfigSchema.optional().nullable(),
+      promptVersionRefs: z.array(z.string()),
+      skillSnapshotRefs: z.array(z.string()),
+      toolSnapshotRefs: z.array(z.string()),
+      providerProfileRefs: z.array(z.string()),
+      budget: z.unknown(),
+      concurrency: z.unknown(),
+      createdAt: dateTimeSchema,
+    })
+    .optional()
+    .nullable(),
   baselineRunId: z.string().optional().nullable(),
   status: experimentRunStatusSchema,
+  runPolicy: evalRunPolicySchema,
   startedAt: dateTimeSchema,
   endedAt: dateTimeSchema.optional().nullable(),
-  summary: z.unknown(),
+  summary: experimentRunSummarySchema,
   itemRuns: z.unknown().optional(),
 });
 

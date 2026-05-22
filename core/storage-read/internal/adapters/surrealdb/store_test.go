@@ -99,7 +99,7 @@ func TestTraceAndLogPagesReturnServerCursors(t *testing.T) {
 		{Trace: contracts.Trace{ID: "trace-1", StartedAt: startedAt}},
 		{Trace: contracts.Trace{ID: "trace-2", StartedAt: startedAt.Add(-time.Second)}},
 		{Trace: contracts.Trace{ID: "trace-3", StartedAt: startedAt.Add(-2 * time.Second)}},
-	}, 2)
+	}, 2, nil)
 	if len(traces) != 2 || traceCursor == nil {
 		t.Fatalf("trace page = %d cursor=%v, want two items and cursor", len(traces), traceCursor)
 	}
@@ -107,14 +107,15 @@ func TestTraceAndLogPagesReturnServerCursors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode trace cursor: %v", err)
 	}
-	if decodedTrace.LastID != "trace-2" || !decodedTrace.LastValue.Equal(startedAt.Add(-time.Second)) {
+	traceCursorValue, ok := decodedTrace.LastValue.(time.Time)
+	if !ok || decodedTrace.LastID != "trace-2" || !traceCursorValue.Equal(startedAt.Add(-time.Second)) {
 		t.Fatalf("trace cursor = %#v", decodedTrace)
 	}
 
 	logs, logCursor := logPage([]contracts.LogEvent{
 		{ID: "log-1", Timestamp: startedAt},
 		{ID: "log-2", Timestamp: startedAt.Add(-time.Second)},
-	}, 1)
+	}, 1, nil)
 	if len(logs) != 1 || logCursor == nil {
 		t.Fatalf("log page = %d cursor=%v, want one item and cursor", len(logs), logCursor)
 	}
@@ -122,7 +123,8 @@ func TestTraceAndLogPagesReturnServerCursors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode log cursor: %v", err)
 	}
-	if decodedLog.LastID != "log-1" || !decodedLog.LastValue.Equal(startedAt) {
+	logCursorValue, ok := decodedLog.LastValue.(time.Time)
+	if !ok || decodedLog.LastID != "log-1" || !logCursorValue.Equal(startedAt) {
 		t.Fatalf("log cursor = %#v", decodedLog)
 	}
 }

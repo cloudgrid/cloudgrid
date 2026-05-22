@@ -112,7 +112,7 @@ func (service *RunnerService) handleExperimentStart() Handler {
 			RequestID:    request.RequestID,
 			ProjectID:    projectID(request.AuthContext),
 			ExperimentID: request.ExperimentID,
-			SolverRef:    request.SolverRef,
+			SolverRef:    objectFromTypedContract(request.SolverRef),
 			TraceContext: traceContext(request.TraceContext),
 		})
 		if err != nil {
@@ -192,7 +192,7 @@ func (service *RunnerService) handleOptimizationStart() Handler {
 			ExperimentID:        request.ExperimentID,
 			OptimizerKind:       request.OptimizerKind,
 			BasePromptVersionID: request.BasePromptVersionID,
-			Config:              request.Config,
+			Config:              objectFromTypedContract(request.Config),
 			TraceContext:        traceContext(request.TraceContext),
 		})
 		if err != nil {
@@ -431,6 +431,26 @@ func requestIDFromPayload(payload []byte) string {
 	}
 	_ = json.Unmarshal(payload, &value)
 	return value.RequestID
+}
+
+func objectFromTypedContract(value any) map[string]any {
+	if value == nil {
+		return nil
+	}
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		return nil
+	}
+	for key, nested := range decoded {
+		if nested == nil {
+			delete(decoded, key)
+		}
+	}
+	return decoded
 }
 
 func boundedRunnerSubject(subject string) string {
