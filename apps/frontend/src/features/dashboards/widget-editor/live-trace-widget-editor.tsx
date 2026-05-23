@@ -88,7 +88,13 @@ export function LiveTraceWidgetEditor({
         <SearchInput
           disabled={disabled}
           id={`${widget.id}-live-query`}
-          onChange={(event) => updateLiveTraceWidget(widget, { query: stringOrNull(event.target.value) }, onWidgetChange)}
+          onChange={(event) =>
+            updateLiveTraceWidget(
+              widget,
+              { query: stringOrNull(event.target.value) },
+              onWidgetChange,
+            )
+          }
           placeholder={t("filters.placeholder.query")}
           value={widget.liveTraces.query ?? ""}
         />
@@ -98,7 +104,13 @@ export function LiveTraceWidgetEditor({
         <Input
           disabled={disabled}
           id={`${widget.id}-live-service`}
-          onChange={(event) => updateLiveTraceWidget(widget, { service: stringOrNull(event.target.value) }, onWidgetChange)}
+          onChange={(event) =>
+            updateLiveTraceWidget(
+              widget,
+              { service: stringOrNull(event.target.value) },
+              onWidgetChange,
+            )
+          }
           placeholder={t("filters.placeholder.service")}
           value={widget.liveTraces.service ?? ""}
         />
@@ -115,7 +127,13 @@ export function LiveTraceWidgetEditor({
           disabled={disabled}
           id={`${widget.id}-live-limit`}
           min={1}
-          onChange={(event) => updateLiveTraceWidget(widget, { limit: numberOrNull(event.target.value) }, onWidgetChange)}
+          onChange={(event) =>
+            updateLiveTraceWidget(
+              widget,
+              { limit: numberOrNull(event.target.value) },
+              onWidgetChange,
+            )
+          }
           type="number"
           value={widget.liveTraces.limit ?? ""}
         />

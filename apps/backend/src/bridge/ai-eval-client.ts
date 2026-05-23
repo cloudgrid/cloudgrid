@@ -9,10 +9,13 @@ import type {
   AnnotationQueueSearchInput,
   AppendDatasetItemsInput,
   CommitDatasetImportInput,
+  CommitDatasetCandidatesInput,
   CreateDatasetInput,
   CreateExperimentInput,
   CreateScorerInput,
   Dataset,
+  DatasetCandidateSearchInput,
+  DatasetCandidateSearchResult,
   DatasetExportJob,
   DatasetImportJob,
   DatasetItem,
@@ -31,6 +34,7 @@ import type {
   ExperimentSearchResult,
   LiveExperimentRunInput,
   PrepareDatasetImportInput,
+  PrepareDatasetCandidatesInput,
   ProjectAiSettings,
   PromotePromptVersionInput,
   PromoteSpanToDatasetItemInput,
@@ -64,6 +68,10 @@ export interface AiEvalBridge {
     input: DatasetItemSearchInput,
     authContext?: NormalizedAuthContext,
   ): Promise<DatasetItemSearchResult>;
+  datasetCandidates(
+    input: DatasetCandidateSearchInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<DatasetCandidateSearchResult>;
   scorers(
     input: ScorerSearchInput,
     authContext?: NormalizedAuthContext,
@@ -115,6 +123,14 @@ export interface AiEvalBridge {
     input: StartDatasetExportInput,
     authContext?: NormalizedAuthContext,
   ): Promise<DatasetExportJob>;
+  prepareDatasetCandidates(
+    input: PrepareDatasetCandidatesInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<DatasetCandidateSearchResult>;
+  commitDatasetCandidates(
+    input: CommitDatasetCandidatesInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<Dataset>;
   promoteSpanToDatasetItem(
     input: PromoteSpanToDatasetItemInput,
     authContext?: NormalizedAuthContext,
@@ -129,6 +145,8 @@ export interface AiEvalBridge {
     authContext?: NormalizedAuthContext,
   ): Promise<ExperimentRun>;
   cancelExperimentRun(id: string, authContext?: NormalizedAuthContext): Promise<ExperimentRun>;
+  pauseExperimentRun(id: string, authContext?: NormalizedAuthContext): Promise<ExperimentRun>;
+  resumeExperimentRun(id: string, authContext?: NormalizedAuthContext): Promise<ExperimentRun>;
   startOptimizationRun(
     input: StartOptimizationRunInput,
     authContext?: NormalizedAuthContext,

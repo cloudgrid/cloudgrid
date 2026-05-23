@@ -9,6 +9,7 @@ import (
 	"time"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
+	"github.com/nats-io/nats.go"
 )
 
 func TestEnsureJetStreamIncludesAIProjectionSubject(t *testing.T) {
@@ -355,6 +356,24 @@ func TestHandleEvalMutationRequestSupportsDatasetAppendPromoteAndPromptPromotion
 	}
 }
 
+func TestRegisterEvalMutationRespondersIncludesDatasetUpdateAndCandidateSubjects(t *testing.T) {
+	nc := &fakeSubscribeNATS{}
+
+	if err := RegisterEvalMutationResponders(nc, &fakeNotificationJetStream{}, &fakeAIWriteStore{}, testLogger(t)); err != nil {
+		t.Fatalf("RegisterEvalMutationResponders() error = %v", err)
+	}
+
+	for _, subject := range []string{
+		EvalDatasetItemUpdateSubject,
+		EvalDatasetCandidatesPrepareSubject,
+		EvalDatasetCandidatesCommitSubject,
+	} {
+		if !containsString(nc.subjects, subject) {
+			t.Fatalf("registered subjects = %#v, missing %q", nc.subjects, subject)
+		}
+	}
+}
+
 func TestBuildEvalMutationRecordCoversScorerExperimentResultsAndAnnotation(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -363,12 +382,56 @@ func TestBuildEvalMutationRecordCoversScorerExperimentResultsAndAnnotation(t *te
 		wantFields map[string]any
 	}{
 		{
+			name:    "dataset item update",
+			subject: EvalDatasetItemUpdateSubject,
+			input: map[string]any{
+				"datasetId":              "dataset-1",
+				"itemId":                 "item-1",
+				"expectedDatasetVersion": 2,
+				"operation":              "edit",
+				"input":                  map[string]any{"question": "2+3"},
+				"expected":               map[string]any{"answer": "5"},
+				"split":                  "regression",
+				"reviewStatus":           "reviewed",
+			},
+			wantFields: map[string]any{"id": "item-1", "datasetId": "dataset-1", "version": 3, "split": "regression", "reviewStatus": "reviewed"},
+		},
+		{
+			name:    "candidate prepare",
+			subject: EvalDatasetCandidatesPrepareSubject,
+			input: map[string]any{
+				"datasetId": "dataset-1",
+				"sources": []any{map[string]any{
+					"sourceKind": "trace",
+					"traceId":    "trace-1",
+					"spanId":     "span-1",
+				}},
+				"targetShape":      "single_turn",
+				"split":            "validation",
+				"reviewStatus":     "reviewed",
+				"contentTreatment": "original",
+			},
+			wantFields: map[string]any{"datasetId": "dataset-1", "status": "ready", "sourceKind": "trace", "targetShape": "single_turn"},
+		},
+		{
+			name:    "candidate commit",
+			subject: EvalDatasetCandidatesCommitSubject,
+			input: map[string]any{
+				"datasetId":              "dataset-1",
+				"expectedDatasetVersion": 2,
+				"candidateIds":           []any{"candidate-1"},
+				"split":                  "regression",
+				"reviewStatus":           "reviewed",
+			},
+			wantFields: map[string]any{"id": "dataset-1", "version": 3},
+		},
+		{
 			name:    "scorer",
 			subject: EvalScorerCreateSubject,
 			input: map[string]any{
 				"name":          "exact match",
 				"kind":          "deterministic",
-				"definition":    map[string]any{"operator": "eq", "path": "$.answer"},
+				"definition":    validScorerDefinition(),
 				"judgeModelRef": "gpt-release",
 			},
 			wantFields: map[string]any{"name": "exact match", "kind": "deterministic", "version": 1, "judgeModelRef": "gpt-release"},
@@ -450,6 +513,33 @@ func TestValidateEvalMutationRequestRejectsSubjectSpecificInvalidShapes(t *testi
 			name:    "scorer requires definition",
 			subject: EvalScorerCreateSubject,
 			input:   map[string]any{"name": "scorer", "kind": "deterministic"},
+		},
+		{
+			name:    "scorer rejects schema-invalid definition",
+			subject: EvalScorerCreateSubject,
+			input:   map[string]any{"name": "scorer", "kind": "deterministic", "definition": map[string]any{"type": "exact_match"}},
+		},
+		{
+			name:    "result rejects schema-invalid payload",
+			subject: EvalResultsPersistSubject,
+			input: map[string]any{"results": []any{map[string]any{
+				"id":            "result-1",
+				"scorerId":      "scorer-1",
+				"scorerVersion": 1,
+				"targetKind":    "datasetItemRun",
+				"targetId":      "run-item-1",
+				"payload":       map[string]any{"resultKind": "classification", "metrics": map[string]any{"accuracy": 2}},
+			}}},
+		},
+		{
+			name:    "candidate commit requires expected version",
+			subject: EvalDatasetCandidatesCommitSubject,
+			input:   map[string]any{"datasetId": "dataset-1", "candidateIds": []any{"candidate-1"}},
+		},
+		{
+			name:    "dataset item update requires operation",
+			subject: EvalDatasetItemUpdateSubject,
+			input:   map[string]any{"datasetId": "dataset-1", "itemId": "item-1", "expectedDatasetVersion": 1},
 		},
 		{
 			name:    "experiment requires scorer ids",
@@ -653,6 +743,19 @@ func (msg *fakeRequestMessage) Respond(data []byte) error {
 	return nil
 }
 
+type fakeSubscribeNATS struct {
+	subjects []string
+}
+
+func (nc *fakeSubscribeNATS) Subscribe(subject string, _ nats.MsgHandler) (*nats.Subscription, error) {
+	nc.subjects = append(nc.subjects, subject)
+	return &nats.Subscription{}, nil
+}
+
+func (nc *fakeSubscribeNATS) Publish(_ string, _ []byte) error {
+	return nil
+}
+
 type fakeAIWriteStore struct {
 	projectionDuplicate      bool
 	projectionExistsErr      error
@@ -700,6 +803,20 @@ func containsString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func validScorerDefinition() map[string]any {
+	return map[string]any{
+		"type":         "exact_match",
+		"resultKind":   "deterministic",
+		"expectedPath": "/answer",
+		"actualPath":   "/answer",
+		"requirements": map[string]any{
+			"executionLocation": "local_deterministic",
+			"contentClass":      "dataset_content",
+			"latencyClass":      "inline",
+		},
+	}
 }
 
 type fakeAIEventPublisher struct {

@@ -2,7 +2,7 @@
 id: TICKET-006
 title: BFF AI Eval GraphQL bridge
 wave: 4
-status: ready
+status: done
 parallel_group: bff_serial
 depends_on: [TICKET-002, TICKET-003, TICKET-004]
 blocked_by: []

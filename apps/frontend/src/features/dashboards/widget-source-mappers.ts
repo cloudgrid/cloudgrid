@@ -113,9 +113,7 @@ export function mapRichMetricSeriesInput(
   };
 }
 
-export function mapAlertSummaryInput(
-  widget: DashboardWidgetInput,
-): AlertSummaryInput | null {
+export function mapAlertSummaryInput(widget: DashboardWidgetInput): AlertSummaryInput | null {
   const { alert } = widget;
   if (!alert || widget.kind !== "alert_status") {
     return null;

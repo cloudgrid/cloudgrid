@@ -2,7 +2,7 @@
 id: TICKET-005
 title: Harness adapter lifecycle
 wave: 3
-status: ready
+status: done
 parallel_group: runner_harness_parallel
 depends_on: [TICKET-001]
 blocked_by: []

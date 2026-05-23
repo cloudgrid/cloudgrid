@@ -2,7 +2,7 @@
 id: TICKET-002
 title: Storage-write AI Eval persistence
 wave: 2
-status: ready
+status: done
 parallel_group: storage_parallel
 depends_on: [TICKET-001]
 blocked_by: []

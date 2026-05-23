@@ -9,6 +9,7 @@ import type {
   AppendDatasetItemsInput,
   ApproveAiChatActionInput,
   CommitDatasetImportInput,
+  CommitDatasetCandidatesInput,
   CreateAiChatConversationInput,
   CreateAlertRuleInput,
   CreateAlertSilenceInput,
@@ -19,6 +20,7 @@ import type {
   CreateScorerInput,
   DashboardListInput,
   DatasetItemSearchInput,
+  DatasetCandidateSearchInput,
   DatasetSearchInput,
   EvalResultSearchInput,
   ExperimentSearchInput,
@@ -30,6 +32,7 @@ import type {
   MetricNameSearchInput,
   MetricSeriesInput,
   PrepareDatasetImportInput,
+  PrepareDatasetCandidatesInput,
   ProjectListInput,
   ProjectRole,
   PromotePromptVersionInput,
@@ -749,6 +752,48 @@ const datasetSearchInputSchema = aiSearchPageSchema.extend({
   split: datasetSplitSchema.optional(),
   reviewStatus: datasetReviewStatusSchema.optional(),
 });
+const datasetTargetShapeSchema = z.enum([
+  "single_turn",
+  "conversation",
+  "tool_call",
+  "agent_trajectory",
+  "workflow_trace",
+  "retrieval_case",
+  "production_trace_ref",
+]);
+const datasetContentTreatmentSchema = z.enum([
+  "original",
+  "realistic_anonymized",
+  "redacted",
+  "synthetic",
+]);
+const datasetCandidateStatusSchema = z.enum([
+  "suggested",
+  "reviewing",
+  "ready",
+  "committed",
+  "dismissed",
+  "superseded",
+]);
+const datasetCandidateSourceKindSchema = z.enum([
+  "trace",
+  "eval_result",
+  "experiment_item_run",
+  "production_measurement",
+  "coverage_gap",
+  "health_issue",
+  "failure_cluster",
+  "manual",
+]);
+const datasetCandidateSearchInputSchema = aiSearchPageSchema.extend({
+  datasetId: z.string().min(1).optional().nullable(),
+  status: datasetCandidateStatusSchema.optional().nullable(),
+  sourceKind: datasetCandidateSourceKindSchema.optional().nullable(),
+  targetShape: datasetTargetShapeSchema.optional().nullable(),
+  contentTreatment: datasetContentTreatmentSchema.optional().nullable(),
+  clusterId: z.string().min(1).optional().nullable(),
+  query: z.string().min(1).optional().nullable(),
+});
 const datasetItemSearchInputSchema = aiSearchPageSchema.extend({
   query: z.string().min(1).optional(),
   sourceTraceId: z.string().min(1).optional(),
@@ -858,6 +903,34 @@ const startDatasetExportInputSchema = z.object({
   reviewStatus: datasetReviewStatusSchema.optional().nullable(),
   includeMetadata: z.boolean().optional().nullable(),
   includeSourcePointers: z.boolean().optional().nullable(),
+});
+const datasetCandidateSourceInputSchema = z.object({
+  sourceKind: datasetCandidateSourceKindSchema,
+  traceId: z.string().min(1).optional().nullable(),
+  spanId: z.string().min(1).optional().nullable(),
+  evalResultId: z.string().min(1).optional().nullable(),
+  experimentRunId: z.string().min(1).optional().nullable(),
+  policyId: z.string().min(1).optional().nullable(),
+  coverageGapId: z.string().min(1).optional().nullable(),
+  healthIssueId: z.string().min(1).optional().nullable(),
+  clusterId: z.string().min(1).optional().nullable(),
+});
+const prepareDatasetCandidatesInputSchema = z.object({
+  datasetId: z.string().min(1).optional().nullable(),
+  sources: z.array(datasetCandidateSourceInputSchema).min(1).max(500),
+  targetShape: datasetTargetShapeSchema.optional().nullable(),
+  split: datasetSplitSchema.optional().nullable(),
+  reviewStatus: datasetReviewStatusSchema.optional().nullable(),
+  contentTreatment: datasetContentTreatmentSchema.optional().nullable(),
+  anonymizationPolicyId: z.string().min(1).optional().nullable(),
+  anonymizationPolicyVersion: z.number().int().min(1).optional().nullable(),
+});
+const commitDatasetCandidatesInputSchema = z.object({
+  datasetId: z.string().min(1),
+  expectedDatasetVersion: z.number().int().min(1),
+  candidateIds: z.array(z.string().min(1)).min(1).max(500),
+  split: datasetSplitSchema.optional().nullable(),
+  reviewStatus: datasetReviewStatusSchema.optional().nullable(),
 });
 const promoteSpanToDatasetItemInputSchema = z.object({
   datasetId: z.string().min(1),
@@ -1505,6 +1578,16 @@ export function validateDatasetSearchInput(input: DatasetSearchInput): DatasetSe
   );
 }
 
+export function validateDatasetCandidateSearchInput(
+  input: DatasetCandidateSearchInput,
+): DatasetCandidateSearchInput {
+  return validateAiInput<DatasetCandidateSearchInput>(
+    datasetCandidateSearchInputSchema,
+    input,
+    "Dataset candidate search input",
+  );
+}
+
 export function validateDatasetItemSearchInput(
   input: DatasetItemSearchInput,
 ): DatasetItemSearchInput {
@@ -1590,6 +1673,26 @@ export function validateStartDatasetExportInput(
     startDatasetExportInputSchema,
     input,
     "Start dataset export input",
+  );
+}
+
+export function validatePrepareDatasetCandidatesInput(
+  input: PrepareDatasetCandidatesInput,
+): PrepareDatasetCandidatesInput {
+  return validateAiInput<PrepareDatasetCandidatesInput>(
+    prepareDatasetCandidatesInputSchema,
+    input,
+    "Prepare dataset candidates input",
+  );
+}
+
+export function validateCommitDatasetCandidatesInput(
+  input: CommitDatasetCandidatesInput,
+): CommitDatasetCandidatesInput {
+  return validateAiInput<CommitDatasetCandidatesInput>(
+    commitDatasetCandidatesInputSchema,
+    input,
+    "Commit dataset candidates input",
   );
 }
 

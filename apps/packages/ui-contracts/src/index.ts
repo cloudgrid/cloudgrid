@@ -14,6 +14,13 @@ export * from "./telemetry-query";
 
 export type DateTime = string;
 
+export interface BridgeError {
+  code: string;
+  message: string;
+  retryable?: boolean | null;
+  details?: JSONValue;
+}
+
 export type TraceStatus = "ok" | "error" | "unset";
 
 export type LogCorrelation = "trace" | "span" | "contextual" | "none";
@@ -2468,6 +2475,16 @@ export interface DatasetItemSearchResult {
 export interface DatasetCandidateSearchResult {
   items: DatasetCandidate[];
   nextCursor?: string | null;
+}
+export interface DatasetCandidatesData {
+  items: DatasetCandidate[];
+  nextCursor?: string | null;
+}
+export interface DatasetCandidatesResponse {
+  requestId: string;
+  ok: boolean;
+  data?: DatasetCandidatesData | null;
+  error?: BridgeError | null;
 }
 export interface ScorerSearchResult {
   items: Scorer[];

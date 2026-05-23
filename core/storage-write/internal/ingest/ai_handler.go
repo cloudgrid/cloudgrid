@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,17 +17,20 @@ import (
 )
 
 const (
-	AiProjectionSubject             = "telemetry.ingest.ai_projections"
-	AiProjectionPersistedSubject    = "ai.persisted.projections"
-	EvalDatasetCreateSubject        = "eval.dataset.create"
-	EvalDatasetItemsAppendSubject   = "eval.dataset.items.append"
-	EvalDatasetItemPromoteSubject   = "eval.dataset.item.promote"
-	EvalScorerCreateSubject         = "eval.scorer.create"
-	EvalExperimentCreateSubject     = "eval.experiment.create"
-	EvalResultsPersistSubject       = "eval.results.persist"
-	EvalExperimentProgressSubject   = "eval.experiment.progress"
-	EvalPromptVersionPromoteSubject = "eval.prompt_version.promote"
-	AnnotationItemUpdateSubject     = "annotation.item.update"
+	AiProjectionSubject                 = "telemetry.ingest.ai_projections"
+	AiProjectionPersistedSubject        = "ai.persisted.projections"
+	EvalDatasetCreateSubject            = "eval.dataset.create"
+	EvalDatasetItemsAppendSubject       = "eval.dataset.items.append"
+	EvalDatasetItemPromoteSubject       = "eval.dataset.item.promote"
+	EvalDatasetItemUpdateSubject        = "eval.dataset.item.update"
+	EvalDatasetCandidatesPrepareSubject = "eval.dataset.candidates.prepare"
+	EvalDatasetCandidatesCommitSubject  = "eval.dataset.candidates.commit"
+	EvalScorerCreateSubject             = "eval.scorer.create"
+	EvalExperimentCreateSubject         = "eval.experiment.create"
+	EvalResultsPersistSubject           = "eval.results.persist"
+	EvalExperimentProgressSubject       = "eval.experiment.progress"
+	EvalPromptVersionPromoteSubject     = "eval.prompt_version.promote"
+	AnnotationItemUpdateSubject         = "annotation.item.update"
 )
 
 type RequestMessage interface {
@@ -206,6 +210,58 @@ func BuildEvalMutationRecord(subject string, request contracts.EvalMutationReque
 			"reviewStatus":  stringValueWithDefault(request.Input, "reviewStatus", "reviewed"),
 			"synthetic":     false,
 		}, nil
+	case EvalDatasetItemUpdateSubject:
+		version := intValue(request.Input, "expectedDatasetVersion") + 1
+		return map[string]any{
+			"id":           stringValue(request.Input, "itemId"),
+			"datasetId":    stringValue(request.Input, "datasetId"),
+			"version":      version,
+			"input":        request.Input["input"],
+			"expected":     request.Input["expected"],
+			"metadata":     objectValueWithDefault(request.Input, "metadata"),
+			"split":        stringValueWithDefault(request.Input, "split", "dev"),
+			"reviewStatus": stringValueWithDefault(request.Input, "reviewStatus", "unreviewed"),
+			"removedAt":    optionalStringValue(request.Input, "removedAt"),
+		}, nil
+	case EvalDatasetCandidatesPrepareSubject:
+		source := firstMap(arrayValue(request.Input, "sources"))
+		sourceKind := stringValue(source, "sourceKind")
+		id := stableID("candidate", request.RequestID, stringValue(request.Input, "datasetId"), sourceKind, stringValue(source, "traceId"), stringValue(source, "spanId"), stringValue(source, "evalResultId"))
+		record := map[string]any{
+			"id":               id,
+			"datasetId":        optionalStringValue(request.Input, "datasetId"),
+			"status":           "ready",
+			"sourceKind":       sourceKind,
+			"source":           source,
+			"targetShape":      stringValueWithDefault(request.Input, "targetShape", "single_turn"),
+			"metadata":         objectValueWithDefault(request.Input, "metadata"),
+			"split":            stringValueWithDefault(request.Input, "split", "dev"),
+			"reviewStatus":     stringValueWithDefault(request.Input, "reviewStatus", "unreviewed"),
+			"contentTreatment": stringValueWithDefault(request.Input, "contentTreatment", "original"),
+			"reason":           stringValue(request.Input, "reason"),
+			"warnings":         arrayValue(request.Input, "warnings"),
+			"createdAt":        now.UTC().Format(time.RFC3339),
+			"updatedAt":        now.UTC().Format(time.RFC3339),
+		}
+		if input, ok := request.Input["input"]; ok {
+			record["input"] = input
+		}
+		if expected, ok := request.Input["expected"]; ok {
+			record["expected"] = expected
+		}
+		if anonymization := anonymizationRecord(request.Input, now); anonymization != nil {
+			record["anonymization"] = anonymization
+		}
+		return record, nil
+	case EvalDatasetCandidatesCommitSubject:
+		nextVersion := intValue(request.Input, "expectedDatasetVersion") + 1
+		return map[string]any{
+			"id":                 stringValue(request.Input, "datasetId"),
+			"version":            nextVersion,
+			"sourceCandidateIds": sortedStringValues(arrayValue(request.Input, "candidateIds")),
+			"split":              optionalStringValue(request.Input, "split"),
+			"reviewStatus":       optionalStringValue(request.Input, "reviewStatus"),
+		}, nil
 	case EvalScorerCreateSubject:
 		name := stringValue(request.Input, "name")
 		return map[string]any{
@@ -354,6 +410,35 @@ func validateEvalMutationRequest(subject string, request contracts.EvalMutationR
 			}
 		}
 		return nil
+	case EvalDatasetItemUpdateSubject:
+		for _, field := range []string{"datasetId", "itemId", "operation"} {
+			if err := requireNonBlank(request.Input, field); err != nil {
+				return err
+			}
+		}
+		if intValue(request.Input, "expectedDatasetVersion") < 1 {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: expectedDatasetVersion must be at least 1")
+		}
+		return nil
+	case EvalDatasetCandidatesPrepareSubject:
+		if len(arrayValue(request.Input, "sources")) == 0 {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: sources is required")
+		}
+		if strings.TrimSpace(stringValue(firstMap(arrayValue(request.Input, "sources")), "sourceKind")) == "" {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: sourceKind is required")
+		}
+		return nil
+	case EvalDatasetCandidatesCommitSubject:
+		if err := requireNonBlank(request.Input, "datasetId"); err != nil {
+			return err
+		}
+		if intValue(request.Input, "expectedDatasetVersion") < 1 {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: expectedDatasetVersion must be at least 1")
+		}
+		if len(arrayValue(request.Input, "candidateIds")) == 0 {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: candidateIds is required")
+		}
+		return nil
 	case EvalScorerCreateSubject:
 		if err := requireNonBlank(request.Input, "name"); err != nil {
 			return err
@@ -361,7 +446,10 @@ func validateEvalMutationRequest(subject string, request contracts.EvalMutationR
 		if err := requireNonBlank(request.Input, "kind"); err != nil {
 			return err
 		}
-		return requireObject(request.Input, "definition")
+		if err := requireObject(request.Input, "definition"); err != nil {
+			return err
+		}
+		return validateScorerDefinition(objectValue(request.Input, "definition"))
 	case EvalExperimentCreateSubject:
 		for _, field := range []string{"name", "datasetId"} {
 			if err := requireNonBlank(request.Input, field); err != nil {
@@ -378,6 +466,17 @@ func validateEvalMutationRequest(subject string, request contracts.EvalMutationR
 	case EvalResultsPersistSubject:
 		if len(arrayValue(request.Input, "itemRuns")) == 0 && len(arrayValue(request.Input, "results")) == 0 {
 			return fmt.Errorf("ERR-001 VALIDATION_FAILED: itemRuns or results is required")
+		}
+		for _, result := range arrayValue(request.Input, "results") {
+			resultMap, ok := result.(map[string]any)
+			if !ok {
+				return fmt.Errorf("ERR-001 VALIDATION_FAILED: result is invalid")
+			}
+			if payload := objectValue(resultMap, "payload"); len(payload) > 0 {
+				if err := validateEvalResultPayload(payload); err != nil {
+					return err
+				}
+			}
 		}
 		if len(arrayValue(request.Input, "itemRuns")) > 0 {
 			return requireNonBlank(request.Input, "experimentRunId")
@@ -626,6 +725,112 @@ func boolValue(input map[string]any, key string) bool {
 	}
 	typed, _ := value.(bool)
 	return typed
+}
+
+func sortedStringValues(items []any) []string {
+	values := make([]string, 0, len(items))
+	for _, item := range items {
+		value := strings.TrimSpace(fmt.Sprint(item))
+		if value != "" {
+			values = append(values, value)
+		}
+	}
+	sort.Strings(values)
+	return values
+}
+
+func anonymizationRecord(input map[string]any, now time.Time) map[string]any {
+	policyID := stringValue(input, "anonymizationPolicyId")
+	policyVersion := intValue(input, "anonymizationPolicyVersion")
+	if policyID == "" || policyVersion < 1 {
+		return nil
+	}
+	return map[string]any{
+		"policyId":          policyID,
+		"policyVersion":     policyVersion,
+		"transformedAt":     now.UTC().Format(time.RFC3339),
+		"consistencyScope":  stringValueWithDefault(input, "anonymizationConsistencyScope", "project"),
+		"transformedFields": arrayValue(input, "anonymizationTransformedFields"),
+	}
+}
+
+func validateScorerDefinition(definition map[string]any) error {
+	if strings.TrimSpace(stringValue(definition, "type")) == "" {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: scorer definition type is required")
+	}
+	if strings.TrimSpace(stringValue(definition, "resultKind")) == "" {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: scorer definition resultKind is required")
+	}
+	requirements := objectValue(definition, "requirements")
+	for _, field := range []string{"executionLocation", "contentClass", "latencyClass"} {
+		if strings.TrimSpace(stringValue(requirements, field)) == "" {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: scorer definition requirements.%s is required", field)
+		}
+	}
+	switch stringValue(definition, "type") {
+	case "exact_match":
+		if stringValue(definition, "expectedPath") == "" || stringValue(definition, "actualPath") == "" {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: exact_match scorer paths are required")
+		}
+	}
+	return nil
+}
+
+func validateEvalResultPayload(payload map[string]any) error {
+	resultKind := stringValue(payload, "resultKind")
+	if resultKind == "" {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: eval result payload resultKind is required")
+	}
+	if len(objectValue(payload, "metrics")) == 0 {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: eval result payload metrics is required")
+	}
+	if _, ok := payload["breakdown"].(map[string]any); !ok {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: eval result payload breakdown is required")
+	}
+	if len(objectValue(payload, "visualization")) == 0 {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: eval result payload visualization is required")
+	}
+	if resultKind == "classification" {
+		metrics := objectValue(payload, "metrics")
+		accuracy, ok := numericValue(metrics, "accuracy")
+		if !ok || accuracy < 0 || accuracy > 1 {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: classification accuracy is invalid")
+		}
+		if intValue(metrics, "support") < 0 {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: classification support is invalid")
+		}
+		if _, ok := objectValue(payload, "breakdown")["categories"]; !ok {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: classification categories are required")
+		}
+		visualization := objectValue(payload, "visualization")
+		if stringValue(visualization, "kind") != "confusion_matrix" {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: classification visualization is invalid")
+		}
+		if _, ok := visualization["labels"]; !ok {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: classification visualization is invalid")
+		}
+		if _, ok := visualization["matrix"]; !ok {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: classification visualization is invalid")
+		}
+	}
+	return nil
+}
+
+func numericValue(input map[string]any, key string) (float64, bool) {
+	value, ok := input[key]
+	if !ok || value == nil {
+		return 0, false
+	}
+	switch typed := value.(type) {
+	case int:
+		return float64(typed), true
+	case int64:
+		return float64(typed), true
+	case float64:
+		return typed, true
+	default:
+		return 0, false
+	}
 }
 
 func maxInt(a int, b int) int {

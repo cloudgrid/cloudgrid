@@ -170,6 +170,83 @@ describe("cloudgrid harness adapter server", () => {
     }
   });
 
+  test("sandbox lifecycle rejects invalid policy and disables durable replay checkpoints for v1", async () => {
+    const server = createHarnessAdapterServer();
+
+    const invalidPolicy = await server.fetch(
+      new Request("http://adapter.test/v1/sandboxes/start", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          experimentRunId: "run-1",
+          manifestDigest: "manifest-digest-1",
+          sandboxProfile: "ephemeral_eval_item",
+          runPolicy: { maxParallelRequests: 0 },
+        }),
+      }),
+    );
+    expect(invalidPolicy.status).toBe(400);
+    expect(await readJson(invalidPolicy)).toMatchObject({
+      id: "ERR-001",
+      code: "VALIDATION_FAILED",
+    });
+
+    const durable = await server.fetch(
+      new Request("http://adapter.test/v1/sandboxes/start", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          experimentRunId: "run-1",
+          manifestDigest: "manifest-digest-1",
+          sandboxProfile: "durable_replay_workspace",
+          checkpointRef: "checkpoint-secret-ref",
+          runPolicy: { maxParallelRequests: 1 },
+        }),
+      }),
+    );
+    expect(durable.status).toBe(200);
+    expect(await readJson(durable)).toMatchObject({
+      checkpointSupported: false,
+      warnings: ["durable replay workspace is disabled for AI Eval v1"],
+    });
+  });
+
+  test("cleanup responses are bounded and redacted", async () => {
+    const server = createHarnessAdapterServer();
+
+    const response = await server.fetch(
+      new Request("http://adapter.test/v1/sandboxes/cleanup", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          experimentRunId: "run-1",
+          manifestDigest: "manifest-digest-1",
+          sandboxProfile: "ephemeral_eval_item",
+          sandboxRef: "sandbox-run-1-item-1",
+          cleanupRetry: {
+            attempt: 1,
+            hostPath: "/Users/sebastianwessel/.cloudgrid/secret-workspace",
+            authorization: "Bearer secret",
+            prompt: "raw prompt must not echo",
+            providerRequestBody: { apiKey: "sk-secret" },
+            natsSubject: "eval.results.persist",
+            surrealUrl: "surrealdb://secret",
+          },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).toContain("cleanupSummary");
+    expect(text).not.toContain("/Users/sebastianwessel");
+    expect(text).not.toContain("Bearer secret");
+    expect(text).not.toContain("raw prompt");
+    expect(text).not.toContain("sk-secret");
+    expect(text).not.toContain("surrealdb://");
+    expect(text).not.toContain("eval.results.persist");
+  });
+
   test("POST /v1/score executes deterministic contains and regex scorers", async () => {
     const server = createHarnessAdapterServer();
 
@@ -243,7 +320,11 @@ describe("cloudgrid harness adapter server", () => {
         body: JSON.stringify({
           experimentRunId: "run-optimizer-1",
           experimentId: "experiment-1",
-          optimizerKind: "bootstrap-fewshot",
+          optimizerKind: "bootstrap_fewshot",
+          manifestDigest: "manifest-digest-1",
+          sandboxProfile: "ephemeral_optimization_candidate",
+          sandboxRef: "sandbox-run-optimizer-1-candidate-1",
+          runPolicy: { maxParallelRequests: 1 },
           basePromptVersion: {
             id: "prompt-1",
             name: "Base",

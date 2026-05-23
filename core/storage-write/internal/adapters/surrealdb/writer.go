@@ -566,6 +566,47 @@ func BuildEvalMutationPersistQuery(subject string, request contracts.EvalMutatio
 		vars["company_id"] = target.CompanyID
 		vars["project_id"] = target.ProjectID
 	}
+	if subject == "eval.dataset.item.update" {
+		datasetID := mapStringValue(request.Input, "datasetId")
+		expectedVersion := mapIntValue(request.Input, "expectedDatasetVersion")
+		newVersion := expectedVersion + 1
+		sql = fmt.Sprintf(
+			"BEGIN TRANSACTION;\nLET $dataset = SELECT version FROM type::record('ai_dataset', $dataset_id) LIMIT 1;\nIF array::len($dataset) = 0 OR $dataset[0].version != $expected_dataset_version { THROW 'ERR-001 VALIDATION_FAILED: stale dataset version'; };\nUPSERT type::record('%s', $record_id) CONTENT $record;\nUPDATE type::record('ai_dataset', $dataset_id) SET version = $new_dataset_version, itemCount = (SELECT count() AS count FROM ai_dataset_item WHERE tenantId = $tenant_id AND companyId = $company_id AND projectId = $project_id AND datasetId = $dataset_id AND removedAt = NONE GROUP ALL)[0].count;\nCOMMIT TRANSACTION;",
+			table,
+		)
+		vars["dataset_id"] = datasetID
+		vars["expected_dataset_version"] = expectedVersion
+		vars["new_dataset_version"] = newVersion
+		vars["tenant_id"] = target.TenantID
+		vars["company_id"] = target.CompanyID
+		vars["project_id"] = target.ProjectID
+	}
+	if subject == "eval.dataset.candidates.commit" {
+		datasetID := mapStringValue(request.Input, "datasetId")
+		expectedVersion := mapIntValue(request.Input, "expectedDatasetVersion")
+		newVersion := expectedVersion + 1
+		candidateIDs := sortedMapStringValues(mapArrayValue(request.Input, "candidateIds"))
+		sql = "BEGIN TRANSACTION;\n" +
+			"LET $dataset = SELECT version FROM type::record('ai_dataset', $dataset_id) LIMIT 1;\n" +
+			"IF array::len($dataset) = 0 OR $dataset[0].version != $expected_dataset_version { THROW 'ERR-001 VALIDATION_FAILED: stale dataset version'; };\n" +
+			"LET $candidates = SELECT * FROM ai_dataset_candidate WHERE tenantId = $tenant_id AND companyId = $company_id AND projectId = $project_id AND record::id(id) IN $candidate_ids;\n" +
+			"IF array::len($candidates) != array::len($candidate_ids) OR array::len($candidates[WHERE status != 'ready' OR datasetId != $dataset_id OR (contentTreatment = 'realistic_anonymized' AND anonymization.policyVersion != $anonymization_policy_version)]) > 0 { THROW 'ERR-AIE-003 VALIDATION_FAILED: candidate commit rejected'; };\n" +
+			"FOR $candidate IN $candidates { UPSERT type::record('ai_dataset_item', string::concat('candidate-item-', record::id($candidate.id))) CONTENT object::extend($candidate, { datasetId: $dataset_id, version: $new_dataset_version, split: $selected_split, reviewStatus: $selected_review_status, metadata: object::extend($candidate.metadata ?? {}, { sourceKind: 'candidate_commit', sourceCandidateId: record::id($candidate.id) }) }); };\n" +
+			"UPDATE ai_dataset_candidate SET status = 'committed', committedDatasetId = $dataset_id, committedDatasetVersion = $new_dataset_version, updatedAt = $occurred_at WHERE tenantId = $tenant_id AND companyId = $company_id AND projectId = $project_id AND record::id(id) IN $candidate_ids;\n" +
+			"UPDATE type::record('ai_dataset', $dataset_id) SET version = $new_dataset_version, itemCount = (SELECT count() AS count FROM ai_dataset_item WHERE tenantId = $tenant_id AND companyId = $company_id AND projectId = $project_id AND datasetId = $dataset_id AND removedAt = NONE GROUP ALL)[0].count;\n" +
+			"COMMIT TRANSACTION;"
+		vars["dataset_id"] = datasetID
+		vars["expected_dataset_version"] = expectedVersion
+		vars["new_dataset_version"] = newVersion
+		vars["candidate_ids"] = candidateIDs
+		vars["selected_split"] = mapStringValueWithDefault(request.Input, "split", "dev")
+		vars["selected_review_status"] = mapStringValueWithDefault(request.Input, "reviewStatus", "reviewed")
+		vars["anonymization_policy_version"] = mapIntValue(request.Input, "anonymizationPolicyVersion")
+		vars["occurred_at"] = occurredAt.UTC()
+		vars["tenant_id"] = target.TenantID
+		vars["company_id"] = target.CompanyID
+		vars["project_id"] = target.ProjectID
+	}
 	return sql, vars, data, nil
 }
 
@@ -652,12 +693,89 @@ func evalMutationRecord(subject string, request contracts.EvalMutationRequest, o
 			"synthetic":     false,
 		}
 		return "ai_dataset_item", record, nil
+	case "eval.dataset.item.update":
+		datasetID := mapStringValue(request.Input, "datasetId")
+		itemID := mapStringValue(request.Input, "itemId")
+		expectedVersion := mapIntValue(request.Input, "expectedDatasetVersion")
+		operation := mapStringValue(request.Input, "operation")
+		if datasetID == "" || itemID == "" || expectedVersion < 1 || operation == "" {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: dataset item update input is invalid")
+		}
+		record := map[string]any{
+			"id":           itemID,
+			"datasetId":    datasetID,
+			"version":      expectedVersion + 1,
+			"input":        request.Input["input"],
+			"expected":     request.Input["expected"],
+			"metadata":     mapObjectValueWithDefault(request.Input, "metadata"),
+			"split":        mapStringValueWithDefault(request.Input, "split", "dev"),
+			"reviewStatus": mapStringValueWithDefault(request.Input, "reviewStatus", "unreviewed"),
+		}
+		if operation == "remove" {
+			record["removedAt"] = occurredAt.UTC()
+		}
+		putMapString(record, "targetShape", request.Input, "targetShape")
+		putMapString(record, "contentTreatment", request.Input, "contentTreatment")
+		if anonymization := mapAnonymizationRecord(request.Input, occurredAt); anonymization != nil {
+			record["anonymization"] = anonymization
+		}
+		return "ai_dataset_item", record, nil
+	case "eval.dataset.candidates.prepare":
+		sources := mapArrayValue(request.Input, "sources")
+		source := firstObject(sources)
+		sourceKind := mapStringValue(source, "sourceKind")
+		if len(sources) == 0 || sourceKind == "" {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: candidate sources are required")
+		}
+		record := map[string]any{
+			"id":               stableRecordID("candidate", request.RequestID, mapStringValue(request.Input, "datasetId"), sourceKind, mapStringValue(source, "traceId"), mapStringValue(source, "spanId"), mapStringValue(source, "evalResultId")),
+			"datasetId":        mapStringValue(request.Input, "datasetId"),
+			"status":           "ready",
+			"sourceKind":       sourceKind,
+			"source":           source,
+			"targetShape":      mapStringValueWithDefault(request.Input, "targetShape", "single_turn"),
+			"metadata":         mapObjectValueWithDefault(request.Input, "metadata"),
+			"split":            mapStringValueWithDefault(request.Input, "split", "dev"),
+			"reviewStatus":     mapStringValueWithDefault(request.Input, "reviewStatus", "unreviewed"),
+			"contentTreatment": mapStringValueWithDefault(request.Input, "contentTreatment", "original"),
+			"reason":           mapStringValue(request.Input, "reason"),
+			"warnings":         mapArrayValue(request.Input, "warnings"),
+			"createdAt":        occurredAt.UTC(),
+			"updatedAt":        occurredAt.UTC(),
+		}
+		if input, ok := request.Input["input"]; ok {
+			record["input"] = input
+		}
+		if expected, ok := request.Input["expected"]; ok {
+			record["expected"] = expected
+		}
+		if anonymization := mapAnonymizationRecord(request.Input, occurredAt); anonymization != nil {
+			record["anonymization"] = anonymization
+		}
+		return "ai_dataset_candidate", record, nil
+	case "eval.dataset.candidates.commit":
+		datasetID := mapStringValue(request.Input, "datasetId")
+		expectedVersion := mapIntValue(request.Input, "expectedDatasetVersion")
+		candidateIDs := sortedMapStringValues(mapArrayValue(request.Input, "candidateIds"))
+		if datasetID == "" || expectedVersion < 1 || len(candidateIDs) == 0 {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: candidate commit input is invalid")
+		}
+		return "ai_dataset", map[string]any{
+			"id":                 datasetID,
+			"version":            expectedVersion + 1,
+			"sourceCandidateIds": candidateIDs,
+			"split":              mapStringValue(request.Input, "split"),
+			"reviewStatus":       mapStringValue(request.Input, "reviewStatus"),
+		}, nil
 	case "eval.scorer.create":
 		name := mapStringValue(request.Input, "name")
 		kind := mapStringValue(request.Input, "kind")
 		definition := mapObjectValue(request.Input, "definition")
 		if name == "" || kind == "" || len(definition) == 0 {
 			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: scorer input is invalid")
+		}
+		if err := validateScorerDefinitionRecord(definition); err != nil {
+			return "", nil, err
 		}
 		record := map[string]any{
 			"id":         stableRecordID("scorer", request.RequestID, name),
@@ -689,6 +807,14 @@ func evalMutationRecord(subject string, request contracts.EvalMutationRequest, o
 		experimentRunID := mapStringValue(request.Input, "experimentRunId")
 		itemRuns := mapArrayValue(request.Input, "itemRuns")
 		results := mapArrayValue(request.Input, "results")
+		for _, value := range results {
+			result := firstObject([]any{value})
+			if payload := mapObjectValue(result, "payload"); len(payload) > 0 {
+				if err := validateEvalResultPayloadRecord(payload); err != nil {
+					return "", nil, err
+				}
+			}
+		}
 		if len(results) > 0 && len(itemRuns) == 0 {
 			result := firstObject(results)
 			id := mapStringValue(result, "id")
@@ -1462,6 +1588,109 @@ func mapIntValue(input map[string]any, key string) int {
 		return int(typed)
 	default:
 		return 0
+	}
+}
+
+func sortedMapStringValues(items []any) []string {
+	values := make([]string, 0, len(items))
+	for _, item := range items {
+		value := strings.TrimSpace(fmt.Sprint(item))
+		if value != "" {
+			values = append(values, value)
+		}
+	}
+	sort.Strings(values)
+	return values
+}
+
+func mapAnonymizationRecord(input map[string]any, now time.Time) map[string]any {
+	policyID := mapStringValue(input, "anonymizationPolicyId")
+	policyVersion := mapIntValue(input, "anonymizationPolicyVersion")
+	if policyID == "" || policyVersion < 1 {
+		return nil
+	}
+	return map[string]any{
+		"policyId":          policyID,
+		"policyVersion":     policyVersion,
+		"transformedAt":     now.UTC(),
+		"consistencyScope":  mapStringValueWithDefault(input, "anonymizationConsistencyScope", "project"),
+		"transformedFields": mapArrayValue(input, "anonymizationTransformedFields"),
+	}
+}
+
+func validateScorerDefinitionRecord(definition map[string]any) error {
+	if mapStringValue(definition, "type") == "" {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: scorer definition type is required")
+	}
+	if mapStringValue(definition, "resultKind") == "" {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: scorer definition resultKind is required")
+	}
+	requirements := mapObjectValue(definition, "requirements")
+	for _, field := range []string{"executionLocation", "contentClass", "latencyClass"} {
+		if mapStringValue(requirements, field) == "" {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: scorer definition requirements.%s is required", field)
+		}
+	}
+	if mapStringValue(definition, "type") == "exact_match" && (mapStringValue(definition, "expectedPath") == "" || mapStringValue(definition, "actualPath") == "") {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: exact_match scorer paths are required")
+	}
+	return nil
+}
+
+func validateEvalResultPayloadRecord(payload map[string]any) error {
+	resultKind := mapStringValue(payload, "resultKind")
+	if resultKind == "" {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: eval result payload resultKind is required")
+	}
+	if len(mapObjectValue(payload, "metrics")) == 0 {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: eval result payload metrics is required")
+	}
+	if _, ok := payload["breakdown"].(map[string]any); !ok {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: eval result payload breakdown is required")
+	}
+	if len(mapObjectValue(payload, "visualization")) == 0 {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: eval result payload visualization is required")
+	}
+	if resultKind == "classification" {
+		metrics := mapObjectValue(payload, "metrics")
+		accuracy, ok := mapNumericValue(metrics, "accuracy")
+		if !ok || accuracy < 0 || accuracy > 1 {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: classification accuracy is invalid")
+		}
+		if _, ok := metrics["support"]; !ok || mapIntValue(metrics, "support") < 0 {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: classification support is invalid")
+		}
+		if _, ok := mapObjectValue(payload, "breakdown")["categories"]; !ok {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: classification categories are required")
+		}
+		visualization := mapObjectValue(payload, "visualization")
+		if mapStringValue(visualization, "kind") != "confusion_matrix" {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: classification visualization is invalid")
+		}
+		if _, ok := visualization["labels"]; !ok {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: classification visualization is invalid")
+		}
+		if _, ok := visualization["matrix"]; !ok {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: classification visualization is invalid")
+		}
+	}
+	return nil
+}
+
+func mapNumericValue(input map[string]any, key string) (float64, bool) {
+	value, ok := input[key]
+	if !ok || value == nil {
+		return 0, false
+	}
+	switch typed := value.(type) {
+	case int:
+		return float64(typed), true
+	case int64:
+		return float64(typed), true
+	case float64:
+		return typed, true
+	default:
+		return 0, false
 	}
 }
 

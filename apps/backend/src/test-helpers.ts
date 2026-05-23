@@ -395,6 +395,9 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
     async datasetItems() {
       return { items: [], nextCursor: null };
     },
+    async datasetCandidates() {
+      return { items: [], nextCursor: null };
+    },
     async scorers() {
       return { items: [], nextCursor: null };
     },
@@ -522,6 +525,22 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
     async startDatasetExport() {
       return datasetExportJob();
     },
+    async prepareDatasetCandidates() {
+      return { items: [], nextCursor: null };
+    },
+    async commitDatasetCandidates() {
+      return {
+        id: "dataset-1",
+        name: "Regression",
+        version: 2,
+        createdAt: "2026-05-12T10:00:00.000Z",
+        itemCount: 1,
+        reviewedItemCount: 1,
+        splitCounts: { validation: 1 },
+        health: datasetHealth(),
+        tags: [],
+      };
+    },
     async promoteSpanToDatasetItem() {
       return {
         id: "dataset-item-1",
@@ -568,6 +587,12 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
     },
     async cancelExperimentRun() {
       return experimentRun();
+    },
+    async pauseExperimentRun() {
+      return { ...experimentRun(), status: "paused" as const };
+    },
+    async resumeExperimentRun() {
+      return { ...experimentRun(), status: "running" as const };
     },
     async startOptimizationRun() {
       return experimentRun();

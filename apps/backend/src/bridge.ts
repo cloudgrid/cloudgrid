@@ -32,6 +32,7 @@ import type {
   AppendDatasetItemsInput,
   ApproveAiChatActionInput,
   CommitDatasetImportInput,
+  CommitDatasetCandidatesInput,
   CreateAlertRuleInput,
   CreateAlertSilenceInput,
   CreateAiChatConversationInput,
@@ -46,6 +47,9 @@ import type {
   DashboardListResult,
   DashboardPreferences,
   Dataset,
+  DatasetCandidate,
+  DatasetCandidateSearchInput,
+  DatasetCandidateSearchResult,
   DatasetExportJob,
   DatasetImportJob,
   DatasetItem,
@@ -79,6 +83,7 @@ import type {
   OrganizationInvitation,
   OrganizationMember,
   PrepareDatasetImportInput,
+  PrepareDatasetCandidatesInput,
   Project,
   ProjectAiProviderSettings,
   ProjectAiSettings,
@@ -481,6 +486,10 @@ export interface AiEvalBridge {
     input: DatasetItemSearchInput,
     authContext?: NormalizedAuthContext,
   ): Promise<DatasetItemSearchResult>;
+  datasetCandidates(
+    input: DatasetCandidateSearchInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<DatasetCandidateSearchResult>;
   scorers(
     input: ScorerSearchInput,
     authContext?: NormalizedAuthContext,
@@ -532,6 +541,14 @@ export interface AiEvalBridge {
     input: StartDatasetExportInput,
     authContext?: NormalizedAuthContext,
   ): Promise<DatasetExportJob>;
+  prepareDatasetCandidates(
+    input: PrepareDatasetCandidatesInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<DatasetCandidateSearchResult>;
+  commitDatasetCandidates(
+    input: CommitDatasetCandidatesInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<Dataset>;
   promoteSpanToDatasetItem(
     input: PromoteSpanToDatasetItemInput,
     authContext?: NormalizedAuthContext,
@@ -546,6 +563,8 @@ export interface AiEvalBridge {
     authContext?: NormalizedAuthContext,
   ): Promise<ExperimentRun>;
   cancelExperimentRun(id: string, authContext?: NormalizedAuthContext): Promise<ExperimentRun>;
+  pauseExperimentRun(id: string, authContext?: NormalizedAuthContext): Promise<ExperimentRun>;
+  resumeExperimentRun(id: string, authContext?: NormalizedAuthContext): Promise<ExperimentRun>;
   startOptimizationRun(
     input: StartOptimizationRunInput,
     authContext?: NormalizedAuthContext,
@@ -1111,6 +1130,17 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     );
   }
 
+  async datasetCandidates(
+    input: DatasetCandidateSearchInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<DatasetCandidateSearchResult> {
+    return this.#requestParsed(
+      subjects.datasetCandidatesSearch,
+      { ...envelope(authContext), ...compactInput(input as unknown as Record<string, unknown>) },
+      datasetCandidateSearchResultSchema,
+    );
+  }
+
   async scorers(
     input: ScorerSearchInput,
     authContext?: NormalizedAuthContext,
@@ -1522,6 +1552,28 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     );
   }
 
+  async prepareDatasetCandidates(
+    input: PrepareDatasetCandidatesInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<DatasetCandidateSearchResult> {
+    return this.#requestParsed(
+      subjects.datasetCandidatesPrepare,
+      { ...envelope(authContext), ...compactInput(input as unknown as Record<string, unknown>) },
+      datasetCandidateSearchResultSchema,
+    );
+  }
+
+  async commitDatasetCandidates(
+    input: CommitDatasetCandidatesInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<Dataset> {
+    return this.#requestParsed(
+      subjects.datasetCandidatesCommit,
+      { ...envelope(authContext), ...compactInput(input as unknown as Record<string, unknown>) },
+      typedDatasetSchema,
+    );
+  }
+
   async promoteSpanToDatasetItem(
     input: PromoteSpanToDatasetItemInput,
     authContext?: NormalizedAuthContext,
@@ -1573,6 +1625,38 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     return this.#requestParsed(
       subjects.experimentCancel,
       { ...envelope(authContext), experimentRunId: id },
+      typedExperimentRunSchema,
+    );
+  }
+
+  async pauseExperimentRun(
+    id: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<ExperimentRun> {
+    return this.#requestParsed(
+      subjects.experimentPause,
+      {
+        ...envelope(authContext),
+        experimentRunId: id,
+        command: "pause",
+        idempotencyKey: `${id}:pause`,
+      },
+      typedExperimentRunSchema,
+    );
+  }
+
+  async resumeExperimentRun(
+    id: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<ExperimentRun> {
+    return this.#requestParsed(
+      subjects.experimentResume,
+      {
+        ...envelope(authContext),
+        experimentRunId: id,
+        command: "resume",
+        idempotencyKey: `${id}:resume`,
+      },
       typedExperimentRunSchema,
     );
   }
@@ -2683,6 +2767,39 @@ const bootstrapFewshotDiversityStrategySchema = z.enum([
 ]);
 const datasetSplitSchema = z.enum(["dev", "optimization", "validation", "regression", "holdout"]);
 const datasetReviewStatusSchema = z.enum(["unreviewed", "reviewed", "rejected"]);
+const datasetTargetShapeSchema = z.enum([
+  "single_turn",
+  "conversation",
+  "tool_call",
+  "agent_trajectory",
+  "workflow_trace",
+  "retrieval_case",
+  "production_trace_ref",
+]);
+const datasetContentTreatmentSchema = z.enum([
+  "original",
+  "realistic_anonymized",
+  "redacted",
+  "synthetic",
+]);
+const datasetCandidateStatusSchema = z.enum([
+  "suggested",
+  "reviewing",
+  "ready",
+  "committed",
+  "dismissed",
+  "superseded",
+]);
+const datasetCandidateSourceKindSchema = z.enum([
+  "trace",
+  "eval_result",
+  "experiment_item_run",
+  "production_measurement",
+  "coverage_gap",
+  "health_issue",
+  "failure_cluster",
+  "manual",
+]);
 const datasetHealthStatusSchema = z.enum([
   "ready",
   "needs_review",
@@ -2756,7 +2873,20 @@ const evalResultSchema = z.object({
   experimentRunId: z.string().optional().nullable(),
   score: z.number(),
   passed: z.boolean(),
+  runMode: z.string().optional().nullable(),
+  resultKind: z.string().optional().nullable(),
+  metrics: z.unknown().optional().nullable(),
+  breakdown: z.unknown().optional().nullable(),
+  visualization: z
+    .object({
+      kind: z.string().min(1),
+      title: z.string().optional().nullable(),
+      data: z.unknown(),
+    })
+    .optional()
+    .nullable(),
   evidence: z.unknown().optional().nullable(),
+  problem: z.unknown().optional().nullable(),
   judgeRunRef: z.string().optional().nullable(),
   producedAt: dateTimeSchema,
 });
@@ -2841,6 +2971,42 @@ const datasetItemSchema = z.object({
   synthetic: z.boolean(),
   duplicateOfItemId: z.string().optional().nullable(),
   leakageWarnings: z.array(z.string()),
+});
+
+const datasetCandidateSchema = z.object({
+  id: z.string().min(1),
+  datasetId: z.string().optional().nullable(),
+  status: datasetCandidateStatusSchema,
+  sourceKind: datasetCandidateSourceKindSchema,
+  source: z.unknown(),
+  targetShape: datasetTargetShapeSchema,
+  input: z.unknown().optional().nullable(),
+  expected: z.unknown().optional().nullable(),
+  metadata: z.unknown(),
+  split: datasetSplitSchema,
+  reviewStatus: datasetReviewStatusSchema,
+  contentTreatment: datasetContentTreatmentSchema,
+  anonymization: z
+    .object({
+      policyId: z.string().min(1),
+      policyVersion: z.number().int().min(1),
+      transformedAt: dateTimeSchema,
+      consistencyScope: z.string().min(1),
+      transformedFields: z.array(
+        z.object({
+          path: z.string().min(1),
+          entityType: z.string().min(1),
+          strategy: z.string().min(1),
+        }),
+      ),
+    })
+    .optional()
+    .nullable(),
+  reason: z.string().min(1),
+  clusterId: z.string().optional().nullable(),
+  warnings: z.array(z.string()),
+  createdAt: dateTimeSchema,
+  updatedAt: dateTimeSchema,
 });
 
 const datasetImportFormatSchema = z.enum(["jsonl", "json_array", "csv", "zip"]);
@@ -3550,6 +3716,8 @@ const typedDatasetImportJobSchema =
 const typedDatasetExportJobSchema =
   datasetExportJobSchema as unknown as z.ZodType<DatasetExportJob>;
 const typedDatasetItemSchema = datasetItemSchema as unknown as z.ZodType<DatasetItem>;
+const typedDatasetCandidateSchema =
+  datasetCandidateSchema as unknown as z.ZodType<DatasetCandidate>;
 const typedScorerSchema = scorerSchema as unknown as z.ZodType<Scorer>;
 const typedExperimentSchema = experimentSchema as unknown as z.ZodType<Experiment>;
 const typedExperimentRunSchema = experimentRunSchema as unknown as z.ZodType<ExperimentRun>;
@@ -3588,6 +3756,9 @@ const datasetSearchResultSchema = searchResultSchema(
 const datasetItemSearchResultSchema = searchResultSchema(
   datasetItemSchema,
 ) as unknown as z.ZodType<DatasetItemSearchResult>;
+const datasetCandidateSearchResultSchema = searchResultSchema(
+  typedDatasetCandidateSchema,
+) as unknown as z.ZodType<DatasetCandidateSearchResult>;
 const scorerSearchResultSchema = searchResultSchema(
   scorerSchema,
 ) as unknown as z.ZodType<ScorerSearchResult>;

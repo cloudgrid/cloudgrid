@@ -172,7 +172,8 @@ func (reader NATSStorageReader) ResolveManifest(ctx context.Context, request por
 		SplitSelector:   splitSelectorMap(request.SplitSelector),
 	}
 	if request.OptimizerKind != "" {
-		resolveRequest.OptimizerKind = &request.OptimizerKind
+		optimizerKind := contracts.OptimizerKind(request.OptimizerKind)
+		resolveRequest.OptimizerKind = &optimizerKind
 	}
 	responseData, err := requestJSON(ctx, reader.Requester, reader.timeout(), SubjectManifestResolve, resolveRequest)
 	if err != nil {
@@ -185,8 +186,10 @@ func (reader NATSStorageReader) ResolveManifest(ctx context.Context, request por
 	if !response.OK {
 		return ports.ExperimentManifest{}, errorFromBridge(response.Error)
 	}
-	manifest, _ := response.Data["manifest"].(map[string]any)
-	return manifestFromMap(manifest), nil
+	if response.Data == nil {
+		return ports.ExperimentManifest{}, nil
+	}
+	return manifestFromContract(response.Data.Manifest), nil
 }
 
 func (reader NATSStorageReader) ResolveOnlinePolicyMatches(ctx context.Context, request ports.OnlinePolicyResolveRequest) (ports.OnlinePolicyMatches, error) {
@@ -243,24 +246,7 @@ func (reader NATSStorageReader) ResolveOnlinePolicyMatches(ctx context.Context, 
 			SampleRate:    match.SampleRate,
 			MaxDailyRuns:  maxDailyRuns,
 			ScorerRefs:    scorerRefs,
-			Projection: ports.OnlinePolicyProjection{
-				ProjectID:       match.Projection.ProjectID,
-				TraceID:         match.Projection.TraceID,
-				SpanID:          stringPtrValue(match.Projection.SpanID),
-				ProjectionID:    match.Projection.ProjectionID,
-				Kind:            string(match.Projection.Kind),
-				AgentID:         stringPtrValue(match.Projection.AgentID),
-				AgentName:       stringPtrValue(match.Projection.AgentName),
-				Environment:     stringPtrValue(match.Projection.Environment),
-				ServiceName:     stringPtrValue(match.Projection.ServiceName),
-				Route:           stringPtrValue(match.Projection.Route),
-				ToolName:        stringPtrValue(match.Projection.ToolName),
-				RetrievalSource: stringPtrValue(match.Projection.RetrievalSource),
-				Model:           stringPtrValue(match.Projection.Model),
-				PromptVersionID: stringPtrValue(match.Projection.PromptVersionID),
-				ExperimentRunID: stringPtrValue(match.Projection.ExperimentRunID),
-				SafeAttributes:  match.Projection.SafeAttributes,
-			},
+			Projection:    onlineProjectionFromContract(response.Data.Projection),
 		})
 	}
 	return ports.OnlinePolicyMatches{Matches: matches, Warnings: append([]string(nil), response.Data.Warnings...)}, nil
@@ -486,6 +472,79 @@ func setOptionalString(values map[string]any, key string, value *string) {
 	if value != nil {
 		values[key] = *value
 	}
+}
+
+func onlineProjectionFromContract(projection contracts.OnlinePolicyProjectionReadModel) ports.OnlinePolicyProjection {
+	return ports.OnlinePolicyProjection{
+		ProjectID:       projection.ProjectID,
+		TraceID:         projection.TraceID,
+		SpanID:          stringPtrValue(projection.SpanID),
+		ProjectionID:    projection.ProjectionID,
+		Kind:            string(projection.Kind),
+		AgentID:         stringPtrValue(projection.AgentID),
+		AgentName:       stringPtrValue(projection.AgentName),
+		Environment:     stringPtrValue(projection.Environment),
+		ServiceName:     stringPtrValue(projection.ServiceName),
+		Route:           stringPtrValue(projection.Route),
+		ToolName:        stringPtrValue(projection.ToolName),
+		RetrievalSource: stringPtrValue(projection.RetrievalSource),
+		Model:           stringPtrValue(projection.Model),
+		PromptVersionID: stringPtrValue(projection.PromptVersionID),
+		ExperimentRunID: stringPtrValue(projection.ExperimentRunID),
+		SafeAttributes:  projection.SafeAttributes,
+	}
+}
+
+func manifestFromContract(manifest contracts.ExperimentManifest) ports.ExperimentManifest {
+	scorerRefs := make([]ports.VersionedRef, 0, len(manifest.ScorerRefs))
+	for _, ref := range manifest.ScorerRefs {
+		scorerRefs = append(scorerRefs, ports.VersionedRef{ID: ref.ID, Version: ref.Version})
+	}
+	return ports.ExperimentManifest{
+		Digest:              manifest.Digest,
+		ExperimentRunID:     manifest.ExperimentRunID,
+		ExperimentID:        manifest.ExperimentID,
+		DatasetID:           manifest.DatasetID,
+		DatasetVersion:      manifest.DatasetVersion,
+		SplitSelector:       ports.DatasetSplitSelector{Splits: append([]string(nil), manifest.SplitSelector.Splits...), ReviewedOnly: manifest.SplitSelector.ReviewedOnly, IncludeSynthetic: manifest.SplitSelector.IncludeSynthetic},
+		DatasetItemIDs:      append([]string(nil), manifest.DatasetItemIDs...),
+		ScorerRefs:          scorerRefs,
+		SolverRef:           solverRefFromContract(manifest.SolverRef),
+		PromptVersionRefs:   append([]string(nil), manifest.PromptVersionRefs...),
+		SkillSnapshotRefs:   append([]string(nil), manifest.SkillSnapshotRefs...),
+		ToolSnapshotRefs:    append([]string(nil), manifest.ToolSnapshotRefs...),
+		ProviderProfileRefs: append([]string(nil), manifest.ProviderProfileRefs...),
+		Budget:              copyAnyMap(manifest.Budget),
+		Concurrency:         copyAnyMap(manifest.Concurrency),
+		RunPolicy:           runPolicyFromContract(manifest.RunPolicy),
+	}
+}
+
+func solverRefFromContract(ref contracts.EvalSolverRef) map[string]any {
+	payload, _ := json.Marshal(ref)
+	values := map[string]any{}
+	_ = json.Unmarshal(payload, &values)
+	return values
+}
+
+func runPolicyFromContract(policy contracts.EvalRunPolicy) map[string]any {
+	payload, _ := json.Marshal(policy)
+	values := map[string]any{}
+	_ = json.Unmarshal(payload, &values)
+	for key, value := range values {
+		if value == nil {
+			delete(values, key)
+		}
+	}
+	return values
+}
+
+func copyAnyMap(values map[string]any) map[string]any {
+	copied := map[string]any{}
+	for key, value := range values {
+		copied[key] = value
+	}
+	return copied
 }
 
 func manifestFromMap(manifest map[string]any) ports.ExperimentManifest {

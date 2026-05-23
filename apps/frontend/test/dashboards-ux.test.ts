@@ -5,26 +5,18 @@ import { join } from "node:path";
 const src = (rel: string) => readFileSync(join(import.meta.dir, "../src", rel), "utf8");
 
 const routeSource = src("routes/dashboards-route.tsx");
-const metricRendererSource = src(
-  "features/dashboards/widget-renderers/metric-widget-renderer.tsx",
-);
+const metricRendererSource = src("features/dashboards/widget-renderers/metric-widget-renderer.tsx");
 const richMetricRendererSource = src(
   "features/dashboards/widget-renderers/rich-metric-widget-renderer.tsx",
 );
-const widgetEditorGroupsSource = src(
-  "features/dashboards/widget-editor/widget-editor-groups.tsx",
-);
-const metricWidgetEditorSource = src(
-  "features/dashboards/widget-editor/metric-widget-editor.tsx",
-);
+const widgetEditorGroupsSource = src("features/dashboards/widget-editor/widget-editor-groups.tsx");
+const metricWidgetEditorSource = src("features/dashboards/widget-editor/metric-widget-editor.tsx");
 const richMetricEditorSource = src(
   "features/dashboards/widget-editor/rich-metric-widget-editor.tsx",
 );
 const logEditorSource = src("features/dashboards/widget-editor/log-widget-editor.tsx");
 const traceEditorSource = src("features/dashboards/widget-editor/trace-widget-editor.tsx");
-const liveTraceEditorSource = src(
-  "features/dashboards/widget-editor/live-trace-widget-editor.tsx",
-);
+const liveTraceEditorSource = src("features/dashboards/widget-editor/live-trace-widget-editor.tsx");
 const alertEditorSource = src("features/dashboards/widget-editor/alert-widget-editor.tsx");
 const liveTraceRendererSource = src(
   "features/dashboards/widget-renderers/live-trace-widget-renderer.tsx",

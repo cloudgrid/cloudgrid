@@ -157,4 +157,3 @@ export function normalizeChartKind(visualization: MetricChartType): TelemetryCha
   }
   return "line";
 }
-

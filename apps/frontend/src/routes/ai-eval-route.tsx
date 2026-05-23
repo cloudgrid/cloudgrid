@@ -5,6 +5,7 @@ import type {
   CreateExperimentInput,
   CreateScorerInput,
   Dataset,
+  DatasetCandidate,
   DatasetExportFormat,
   DatasetExportJob,
   DatasetImportCommitMode,
@@ -16,6 +17,7 @@ import type {
   DatasetReviewStatus,
   DatasetSplit,
   EvalSolverKind,
+  EvalResultVisualization,
   Experiment,
   ExperimentRun,
   JSONValue,
@@ -39,7 +41,10 @@ import {
   Download,
   FileText,
   FlaskConical,
+  Pause,
+  Play,
   Plus,
+  RefreshCw,
   Settings,
   Trash2,
   Upload,
@@ -49,6 +54,7 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { EmptyState, ErrorPanel, LoadingRows } from "../components/query-state";
+import { JsonViewer } from "../components/json-viewer";
 import { RouteBreadcrumb } from "../components/route-breadcrumb";
 import { SearchInput } from "../components/search-input";
 import { Badge } from "../components/ui/badge";
@@ -736,6 +742,169 @@ function DatasetItems({ dataset }: { dataset: Dataset }) {
           <p className="mt-1 text-sm text-muted-foreground">
             Import examples to create a reviewed dataset version for experiments.
           </p>
+        </div>
+      ) : null}
+      <DatasetCandidateReview dataset={dataset} />
+    </section>
+  );
+}
+
+function DatasetCandidateReview({ dataset }: { dataset: Dataset }) {
+  const telemetryClient = useTelemetryClient();
+  const queryClient = useQueryClient();
+  const candidatesQuery = useQuery({
+    queryKey: ["DatasetCandidates", dataset.id],
+    queryFn: () =>
+      telemetryClient.searchDatasetCandidates({
+        datasetId: dataset.id,
+        status: "suggested",
+        limit: 25,
+      }),
+  });
+  const commitMutation = useMutation({
+    mutationFn: (candidate: DatasetCandidate) =>
+      telemetryClient.commitDatasetCandidates({
+        datasetId: dataset.id,
+        expectedDatasetVersion: dataset.version,
+        candidateIds: [candidate.id],
+        split: candidate.split,
+        reviewStatus: "reviewed",
+      }),
+    onSuccess() {
+      void queryClient.invalidateQueries({ queryKey: ["Datasets"] });
+      void queryClient.invalidateQueries({ queryKey: ["DatasetCandidates", dataset.id] });
+    },
+  });
+  const prepareMutation = useMutation({
+    mutationFn: (traceId: string) =>
+      telemetryClient.prepareDatasetCandidates({
+        datasetId: dataset.id,
+        sources: [{ sourceKind: "trace", traceId }],
+        targetShape: "single_turn",
+        contentTreatment: "realistic_anonymized",
+      }),
+    onSuccess() {
+      void queryClient.invalidateQueries({ queryKey: ["DatasetCandidates", dataset.id] });
+    },
+  });
+  const [traceId, setTraceId] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const candidates = candidatesQuery.data?.items ?? [];
+
+  return (
+    <section className="mt-4 border-t pt-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-medium">Dataset candidates</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Review production-derived suggestions before committing them to the next dataset
+            version.
+          </p>
+        </div>
+        <div className="flex max-w-md flex-1 flex-wrap items-end gap-2 sm:flex-nowrap">
+          <Field className="min-w-0 flex-1">
+            <FieldLabel htmlFor="candidate-trace-id">Trace source</FieldLabel>
+            <Input
+              id="candidate-trace-id"
+              onChange={(event) => setTraceId(event.target.value)}
+              placeholder="trace id"
+              value={traceId}
+            />
+          </Field>
+          <Button
+            disabled={prepareMutation.isPending}
+            onClick={() => {
+              setLocalError(null);
+              if (!traceId.trim()) {
+                setLocalError("Trace id is required.");
+                return;
+              }
+              void prepareMutation.mutateAsync(traceId.trim()).catch((caught) => {
+                setLocalError(
+                  caught instanceof Error ? caught.message : "Candidate preparation failed.",
+                );
+              });
+            }}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <RefreshCw data-icon="inline-start" />
+            {prepareMutation.isPending ? "Preparing..." : "Prepare candidates"}
+          </Button>
+        </div>
+      </div>
+      {localError || prepareMutation.error || commitMutation.error ? (
+        <div className="mt-3 border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {localError ?? prepareMutation.error?.message ?? commitMutation.error?.message}
+        </div>
+      ) : null}
+      {candidatesQuery.isLoading ? <LoadingRows /> : null}
+      {candidatesQuery.isError ? (
+        <ErrorPanel error={candidatesQuery.error} onRetry={() => void candidatesQuery.refetch()} />
+      ) : null}
+      {!candidatesQuery.isLoading && candidates.length === 0 ? (
+        <div className="mt-3 border border-dashed p-4 text-sm text-muted-foreground">
+          No candidate suggestions are waiting for review.
+        </div>
+      ) : null}
+      {candidates.length > 0 ? (
+        <div className="mt-3 overflow-auto border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Reason</TableHead>
+                <TableHead>Input</TableHead>
+                <TableHead>Expected</TableHead>
+                <TableHead>Treatment</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {candidates.map((candidate) => (
+                <TableRow key={candidate.id}>
+                  <TableCell>
+                    <div className="font-medium">{candidate.reason}</div>
+                    <div className="text-xs text-muted-foreground">{candidate.targetShape}</div>
+                  </TableCell>
+                  <TableCell className="max-w-72 truncate">
+                    {jsonPreview(candidate.input)}
+                  </TableCell>
+                  <TableCell className="max-w-72 truncate">
+                    {jsonPreview(candidate.expected)}
+                  </TableCell>
+                  <TableCell>
+                    <div>{candidate.contentTreatment}</div>
+                    {candidate.anonymization ? (
+                      <div className="text-xs text-muted-foreground">
+                        {candidate.anonymization.policyId} v{candidate.anonymization.policyVersion}{" "}
+                        ·{" "}
+                        {candidate.anonymization.transformedFields
+                          .map((field) => field.entityType)
+                          .join(", ")}
+                      </div>
+                    ) : null}
+                  </TableCell>
+                  <TableCell className="max-w-48 truncate">
+                    {candidate.sourceKind}: {jsonPreview(candidate.source, 80)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      disabled={commitMutation.isPending}
+                      onClick={() => void commitMutation.mutateAsync(candidate)}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      <CheckCircle2 data-icon="inline-start" />
+                      Commit
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       ) : null}
     </section>
@@ -2415,7 +2584,7 @@ function ExperimentsView({
               ))}
             </TableBody>
           </Table>
-          <Scoreboard rows={rows} runs={runs} />
+          <Scoreboard onChanged={onChanged} rows={rows} runs={runs} />
         </div>
       ) : (
         <EmptyState
@@ -2685,9 +2854,11 @@ function StartExperimentRunButton({
 }
 
 function Scoreboard({
+  onChanged,
   rows,
   runs,
 }: {
+  onChanged: () => void;
   rows: ReturnType<typeof experimentScoreboardRows>;
   runs: ExperimentRun[];
 }) {
@@ -2705,32 +2876,64 @@ function Scoreboard({
             <TableHead>{t("aiEval.p95")}</TableHead>
             <TableHead>{t("aiEval.regression")}</TableHead>
             <TableHead>{t("aiEval.items")}</TableHead>
+            <TableHead className="text-right">Controls</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.runId}>
-              <TableCell>{row.runId}</TableCell>
-              <TableCell>
-                <StatusBadge status={row.status} />
-              </TableCell>
-              <TableCell>{formatPercent(row.passRate)}</TableCell>
-              <TableCell>{formatNumber(row.meanScore)}</TableCell>
-              <TableCell>{formatNumber(row.p50Score)}</TableCell>
-              <TableCell>{formatNumber(row.p95Score)}</TableCell>
-              <TableCell>
-                {row.regression ? (
-                  <XCircle className="size-4 text-destructive" />
-                ) : (
-                  <CheckCircle2 className="size-4 text-success" />
-                )}
-              </TableCell>
-              <TableCell>{row.itemRunCount}</TableCell>
-            </TableRow>
-          ))}
+          {rows.map((row) => {
+            const run = runs.find((candidate) => candidate.id === row.runId);
+            return (
+              <TableRow key={row.runId}>
+                <TableCell>{row.runId}</TableCell>
+                <TableCell>
+                  <StatusBadge status={row.status} />
+                </TableCell>
+                <TableCell>{formatPercent(row.passRate)}</TableCell>
+                <TableCell>{formatNumber(row.meanScore)}</TableCell>
+                <TableCell>{formatNumber(row.p50Score)}</TableCell>
+                <TableCell>{formatNumber(row.p95Score)}</TableCell>
+                <TableCell>
+                  {row.regression ? (
+                    <XCircle className="size-4 text-destructive" />
+                  ) : (
+                    <CheckCircle2 className="size-4 text-success" />
+                  )}
+                </TableCell>
+                <TableCell>{row.itemRunCount}</TableCell>
+                <TableCell className="text-right">
+                  {run ? <RunControlButtons onChanged={onChanged} run={run} /> : null}
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
       <div className="mt-4 grid gap-3">
+        {runs.map((run) =>
+          run.summary.scoreSummaries.length > 0 ? (
+            <div className="border-b bg-background py-3 text-sm" key={`${run.id}-summary`}>
+              <div className="font-medium">{run.id} result analytics</div>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                {run.summary.scoreSummaries.map((summary) => (
+                  <div className="border p-3" key={`${run.id}-${summary.scorerId}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span>
+                        {summary.scorerId} v{summary.scorerVersion}
+                      </span>
+                      <span className="text-muted-foreground">{summary.resultKind ?? "score"}</span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                      <Metric label="Pass" value={formatPercent(summary.passRate)} />
+                      <Metric label="Mean" value={formatNumber(summary.meanScore)} />
+                      <Metric label="Support" value={summary.support} />
+                    </div>
+                    <VisualizationBlock visualization={summary.visualization ?? null} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null,
+        )}
         {runs.flatMap((run) =>
           (run.itemRuns?.items ?? []).map((itemRun) => (
             <div className="border-b bg-background py-3 text-sm last:border-b-0" key={itemRun.id}>
@@ -2740,17 +2943,101 @@ function Scoreboard({
               </div>
               <div className="mt-2 text-muted-foreground">{jsonPreview(itemRun.output, 180)}</div>
               <div className="mt-2 flex flex-wrap gap-2">
-                {itemRunScoreSummary(itemRun).map((score) => (
-                  <Badge key={score.id} variant={score.passed ? "secondary" : "destructive"}>
-                    {score.scorerId}: {formatNumber(score.score)}
-                  </Badge>
-                ))}
+                {itemRunScoreSummary(itemRun).map((score) => {
+                  const result = itemRun.evalResults.find((candidate) => candidate.id === score.id);
+                  return (
+                    <div className="grid gap-2" key={score.id}>
+                      <Badge variant={score.passed ? "secondary" : "destructive"}>
+                        {score.scorerId}: {formatNumber(score.score)}
+                      </Badge>
+                      <VisualizationBlock visualization={result?.visualization ?? null} />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )),
         )}
       </div>
     </section>
+  );
+}
+
+function RunControlButtons({ onChanged, run }: { onChanged: () => void; run: ExperimentRun }) {
+  const telemetryClient = useTelemetryClient();
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (action: "pause" | "resume" | "cancel") => {
+      if (action === "pause") {
+        return telemetryClient.pauseExperimentRun(run.id);
+      }
+      if (action === "resume") {
+        return telemetryClient.resumeExperimentRun(run.id);
+      }
+      return telemetryClient.cancelExperimentRun(run.id);
+    },
+    onSuccess() {
+      void queryClient.invalidateQueries({ queryKey: ["Experiments"] });
+      onChanged();
+    },
+  });
+  const canPause = run.status === "running" || run.status === "resuming";
+  const canResume = run.status === "paused";
+  const canCancel = ["queued", "running", "pausing", "paused", "resuming"].includes(run.status);
+
+  return (
+    <div className="inline-flex justify-end gap-1">
+      {canPause ? (
+        <Button
+          disabled={mutation.isPending}
+          onClick={() => void mutation.mutateAsync("pause")}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <Pause data-icon="inline-start" />
+          Pause
+        </Button>
+      ) : null}
+      {canResume ? (
+        <Button
+          disabled={mutation.isPending}
+          onClick={() => void mutation.mutateAsync("resume")}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <Play data-icon="inline-start" />
+          Resume
+        </Button>
+      ) : null}
+      {canCancel ? (
+        <Button
+          disabled={mutation.isPending}
+          onClick={() => void mutation.mutateAsync("cancel")}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <XCircle data-icon="inline-start" />
+          Cancel
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+function VisualizationBlock({ visualization }: { visualization: EvalResultVisualization | null }) {
+  if (!visualization) {
+    return null;
+  }
+  return (
+    <div className="mt-2 border-t pt-2 text-xs">
+      <div className="font-medium">{visualization.title ?? visualization.kind}</div>
+      <div className="mt-1">
+        <JsonViewer value={visualization.data} />
+      </div>
+    </div>
   );
 }
 

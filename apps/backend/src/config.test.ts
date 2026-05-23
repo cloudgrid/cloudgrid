@@ -82,7 +82,10 @@ describe("BFF runtime config", () => {
       loadConfig({ ...localSelfObservabilityEnv, CLOUDGRID_SERVICE_MAX_IN_FLIGHT_REQUESTS: "0" }),
     ).toThrow("ERR-009 CONFIG_INVALID");
     expect(() =>
-      loadConfig({ ...localSelfObservabilityEnv, CLOUDGRID_LOG_STATE_CHANGE_MIN_INTERVAL_MS: "999" }),
+      loadConfig({
+        ...localSelfObservabilityEnv,
+        CLOUDGRID_LOG_STATE_CHANGE_MIN_INTERVAL_MS: "999",
+      }),
     ).toThrow("ERR-009 CONFIG_INVALID");
   });
 

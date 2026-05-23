@@ -2,7 +2,7 @@
 id: TICKET-008
 title: AI Eval integration gates and evidence
 wave: 6
-status: ready
+status: done
 parallel_group: integration_serial
 depends_on: [TICKET-004, TICKET-005, TICKET-006, TICKET-007]
 blocked_by: []

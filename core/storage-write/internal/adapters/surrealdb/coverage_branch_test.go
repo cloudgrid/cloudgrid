@@ -123,9 +123,19 @@ func TestBuildEvalMutationPersistQueryBranches(t *testing.T) {
 			name:    "scorer create with judge model",
 			subject: "eval.scorer.create",
 			input: map[string]any{
-				"name":          "judge",
-				"kind":          "llm",
-				"definition":    map[string]any{"rubric": "strict"},
+				"name": "judge",
+				"kind": "llm",
+				"definition": map[string]any{
+					"type":       "llm_judge",
+					"resultKind": "llm_judge",
+					"requirements": map[string]any{
+						"executionLocation": "model_backed_harness",
+						"contentClass":      "dataset_content",
+						"latencyClass":      "batch",
+					},
+					"rubric": []any{},
+					"facts":  []any{},
+				},
 				"judgeModelRef": "openai:gpt",
 			},
 			table: "ai_scorer",

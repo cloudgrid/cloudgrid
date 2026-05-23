@@ -432,6 +432,9 @@ function toolCallingProvider(input: {
       throw new Error("text should not be called");
     },
     async *textStream() {
+      if (Date.now() < 0) {
+        yield { kind: "delta", text: "" } satisfies TextStreamChunk;
+      }
       throw new Error("textStream should not be called");
     },
     async object<T extends JsonValue>(request: ObjectRequest<T>): Promise<ObjectResponse<T>> {

@@ -128,10 +128,7 @@ async function handleSandboxLifecycle(request: Request, path: string): Promise<R
     sandboxLifecycleResponseSchema.parse({
       sandboxRef,
       sandboxProfile: body.sandboxProfile,
-      checkpointSupported: body.sandboxProfile === "durable_replay_workspace",
-      ...(body.sandboxProfile === "durable_replay_workspace"
-        ? { checkpointRef: body.checkpointRef ?? stableId("checkpoint", sandboxRef) }
-        : {}),
+      checkpointSupported: false,
       cleanupRequired: action !== "cleanup",
       cleanupDeadline: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       ...(action === "cleanup"
@@ -146,7 +143,7 @@ async function handleSandboxLifecycle(request: Request, path: string): Promise<R
         : {}),
       warnings:
         body.sandboxProfile === "durable_replay_workspace"
-          ? ["durable replay workspace is a future profile in the local scaffold"]
+          ? ["durable replay workspace is disabled for AI Eval v1"]
           : [],
     }),
   );

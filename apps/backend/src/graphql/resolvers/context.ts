@@ -111,6 +111,7 @@ export function requireAiEvalBridge(context: ResolverContext): AiEvalBridge {
     !bridge.datasetImport ||
     !bridge.datasetExport ||
     !bridge.datasetItems ||
+    !bridge.datasetCandidates ||
     !bridge.scorers ||
     !bridge.experiments ||
     !bridge.experimentRun ||
@@ -125,11 +126,15 @@ export function requireAiEvalBridge(context: ResolverContext): AiEvalBridge {
     !bridge.prepareDatasetImport ||
     !bridge.commitDatasetImport ||
     !bridge.startDatasetExport ||
+    !bridge.prepareDatasetCandidates ||
+    !bridge.commitDatasetCandidates ||
     !bridge.promoteSpanToDatasetItem ||
     !bridge.createScorer ||
     !bridge.createExperiment ||
     !bridge.startExperimentRun ||
     !bridge.cancelExperimentRun ||
+    !bridge.pauseExperimentRun ||
+    !bridge.resumeExperimentRun ||
     !bridge.startOptimizationRun ||
     !bridge.promotePromptVersion ||
     !bridge.resolveAnnotation ||

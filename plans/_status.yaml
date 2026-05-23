@@ -1,74 +1,105 @@
 plan: ai_eval_v1_parallel_implementation
-updated: 2026-05-22
+updated: 2026-05-23
 summary:
   total: 8
-  ready: 8
+  ready: 0
   in_progress: 0
   review: 0
-  done: 0
+  done: 8
   blocked: 0
 tickets:
   TICKET-001:
     wave: wave_01_contracts
-    status: ready
+    status: done
     owner: contract-agent
     depends_on: []
     blocked_by: []
-    evidence: []
-    next: run contract ticket
+    evidence:
+      - "2026-05-23: bun run contracts:check passed"
+      - "2026-05-23: bun run typecheck passed"
+      - "2026-05-23: go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/... passed"
+    next: complete
   TICKET-002:
     wave: wave_02_storage
-    status: ready
+    status: done
     owner: storage-write-agent
     depends_on: [TICKET-001]
     blocked_by: []
-    evidence: []
-    next: wait for TICKET-001 completion
+    evidence:
+      - "2026-05-23: go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/... passed"
+      - "2026-05-23: bun run contracts:check passed"
+      - "2026-05-23: bun run test passed with storage-write handler and adapter coverage included"
+    next: complete
   TICKET-003:
     wave: wave_02_storage
-    status: ready
+    status: done
     owner: storage-read-agent
     depends_on: [TICKET-001]
     blocked_by: []
-    evidence: []
-    next: wait for TICKET-001 completion
+    evidence:
+      - "2026-05-23: go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/... passed"
+      - "2026-05-23: bun run contracts:check passed"
+      - "2026-05-23: bun run test passed with storage-read handler and adapter coverage included"
+    next: complete
   TICKET-004:
     wave: wave_03_runner_harness
-    status: ready
+    status: done
     owner: runner-agent
     depends_on: [TICKET-002, TICKET-003]
     blocked_by: []
-    evidence: []
-    next: wait for storage tickets
+    evidence:
+      - "2026-05-23: go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/... passed"
+      - "2026-05-23: bun run contracts:check passed"
+      - "2026-05-23: bun run test passed with runner bridge/orchestrator coverage included"
+    next: complete
   TICKET-005:
     wave: wave_03_runner_harness
-    status: ready
+    status: done
     owner: harness-adapter-agent
     depends_on: [TICKET-001]
     blocked_by: []
-    evidence: []
-    next: wait for TICKET-001 completion
+    evidence:
+      - "2026-05-23: bun run typecheck passed, including apps/packages/cloudgrid-harness-adapter"
+      - "2026-05-23: bun run test passed, including harness adapter lifecycle tests"
+      - "2026-05-23: bun run contracts:check passed"
+    next: complete
   TICKET-006:
     wave: wave_04_bff
-    status: ready
+    status: done
     owner: bff-agent
     depends_on: [TICKET-002, TICKET-003, TICKET-004]
     blocked_by: []
-    evidence: []
-    next: wait for service tickets
+    evidence:
+      - "2026-05-23: bun test --coverage apps/backend/src passed with 157 tests and 86.61% line coverage"
+      - "2026-05-23: bun run typecheck passed"
+      - "2026-05-23: bun run contracts:check passed"
+      - "2026-05-23: bun run test passed with BFF AI Eval bridge/resolver tests included"
+    next: complete
   TICKET-007:
     wave: wave_05_frontend
-    status: ready
+    status: done
     owner: frontend-agent
     depends_on: [TICKET-006]
     blocked_by: []
-    evidence: []
-    next: wait for BFF ticket
+    evidence:
+      - "2026-05-23: bun run --cwd apps/frontend build passed"
+      - "2026-05-23: bun run test passed with frontend AI Eval route/client tests included"
+      - "2026-05-23: bun run --cwd apps/frontend smoke -- ai-eval.e2e.ts passed"
+      - "2026-05-23: bun run typecheck passed"
+    next: complete
   TICKET-008:
     wave: wave_06_integration
-    status: ready
+    status: done
     owner: integration-agent
     depends_on: [TICKET-004, TICKET-005, TICKET-006, TICKET-007]
     blocked_by: []
-    evidence: []
-    next: wait for implementation tickets
+    evidence:
+      - "2026-05-23: bun run contracts:check passed"
+      - "2026-05-23: bun run lint passed with existing warning-level website diagnostics"
+      - "2026-05-23: bun run format passed"
+      - "2026-05-23: bun run typecheck passed"
+      - "2026-05-23: bun run test passed with 434 tests"
+      - "2026-05-23: go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/... passed"
+      - "2026-05-23: bun run --cwd apps/frontend smoke -- ai-eval.e2e.ts passed"
+      - "2026-05-23: bun run --cwd website build passed with 92 pages"
+    next: complete

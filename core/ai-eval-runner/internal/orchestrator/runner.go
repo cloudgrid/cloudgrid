@@ -23,14 +23,17 @@ type RunnerConfig struct {
 }
 
 type Runner struct {
-	reader        ports.StorageReader
-	writer        ports.StorageWriter
-	control       ports.ControlPlane
-	harness       ports.HarnessAdapter
-	publisher     ports.ProgressPublisher
-	clock         func() time.Time
-	idGenerator   func() string
-	cancellations map[string]bool
+	reader          ports.StorageReader
+	writer          ports.StorageWriter
+	control         ports.ControlPlane
+	harness         ports.HarnessAdapter
+	publisher       ports.ProgressPublisher
+	clock           func() time.Time
+	idGenerator     func() string
+	cancellations   map[string]bool
+	runStates       map[string]ports.ExperimentRun
+	manifestDigests map[string]string
+	activeSandboxes map[string][]ports.SandboxLifecycleRequest
 }
 
 type StartExperimentRequest struct {
@@ -56,6 +59,18 @@ type CancelExperimentResult struct {
 	Cancelled       bool
 }
 
+type ExperimentRunControlRequest struct {
+	RequestID              string
+	ExperimentRunID        string
+	Command                string
+	ExpectedManifestDigest string
+	IdempotencyKey         string
+}
+
+type ExperimentRunControlResult struct {
+	Run ports.ExperimentRun
+}
+
 type StartOptimizationRequest struct {
 	RequestID           string
 	ProjectID           string
@@ -74,14 +89,17 @@ type StartOptimizationResult struct {
 
 func NewRunner(config RunnerConfig) *Runner {
 	return &Runner{
-		reader:        config.StorageReader,
-		writer:        config.StorageWriter,
-		control:       config.ControlPlane,
-		harness:       config.HarnessAdapter,
-		publisher:     config.ProgressPublisher,
-		clock:         defaultClock(config.Clock),
-		idGenerator:   defaultIDGenerator(config.IDGenerator),
-		cancellations: map[string]bool{},
+		reader:          config.StorageReader,
+		writer:          config.StorageWriter,
+		control:         config.ControlPlane,
+		harness:         config.HarnessAdapter,
+		publisher:       config.ProgressPublisher,
+		clock:           defaultClock(config.Clock),
+		idGenerator:     defaultIDGenerator(config.IDGenerator),
+		cancellations:   map[string]bool{},
+		runStates:       map[string]ports.ExperimentRun{},
+		manifestDigests: map[string]string{},
+		activeSandboxes: map[string][]ports.SandboxLifecycleRequest{},
 	}
 }
 
@@ -123,7 +141,7 @@ func (r *Runner) StartOfflineExperiment(ctx context.Context, request StartExperi
 		solverRef = manifest.SolverRef
 	}
 	solverRef = normalizeSolverRef(solverRef)
-	runPolicy := normalizeRunPolicy(request.RunPolicy)
+	runPolicy := normalizeRunPolicy(mergePolicy(manifest.RunPolicy, request.RunPolicy))
 
 	run := ports.ExperimentRun{
 		ID:           candidateRunID,
@@ -137,6 +155,7 @@ func (r *Runner) StartOfflineExperiment(ctx context.Context, request StartExperi
 	if err := r.writer.PersistExperimentRun(ctx, run); err != nil {
 		return StartExperimentResult{}, err
 	}
+	r.rememberRun(run, manifest.Digest)
 	if err := r.publishProgress(ctx, run.ID, ports.ExperimentProgressStarted, "", run.Status, run.Summary); err != nil {
 		return StartExperimentResult{}, err
 	}
@@ -151,11 +170,39 @@ func (r *Runner) StartOfflineExperiment(ctx context.Context, request StartExperi
 			return StartExperimentResult{Run: run}, nil
 		}
 
+		sandbox, err := r.harness.StartSandbox(ctx, ports.SandboxLifecycleRequest{
+			ExperimentRunID: run.ID,
+			DatasetItemID:   item.ID,
+			AttemptID:       item.ID,
+			ManifestDigest:  manifest.Digest,
+			SandboxProfile:  ports.SandboxProfileEphemeralEvalItem,
+			RunPolicy:       runPolicy,
+			TraceContext:    request.TraceContext,
+		})
+		if err != nil {
+			return StartExperimentResult{}, r.failRun(ctx, run.ID, err)
+		}
+		activeSandbox := ports.SandboxLifecycleRequest{
+			ExperimentRunID: run.ID,
+			DatasetItemID:   item.ID,
+			AttemptID:       item.ID,
+			ManifestDigest:  manifest.Digest,
+			SandboxProfile:  ports.SandboxProfileEphemeralEvalItem,
+			SandboxRef:      sandbox.SandboxRef,
+			RunPolicy:       runPolicy,
+			TraceContext:    request.TraceContext,
+		}
+		r.trackSandbox(run.ID, activeSandbox)
+
 		runResult, err := r.harness.Run(ctx, ports.HarnessRunRequest{
 			ExperimentRunID: run.ID,
 			DatasetItemID:   item.ID,
 			Input:           item.Input,
 			SolverRef:       solverRef,
+			ManifestDigest:  manifest.Digest,
+			RunPolicy:       runPolicy,
+			SandboxProfile:  ports.SandboxProfileEphemeralEvalItem,
+			SandboxRef:      sandbox.SandboxRef,
 			TraceContext:    request.TraceContext,
 		})
 		if err != nil {
@@ -179,7 +226,7 @@ func (r *Runner) StartOfflineExperiment(ctx context.Context, request StartExperi
 		}
 
 		for _, scorer := range scorers {
-			result, err := r.scoreDatasetItemRun(ctx, scorer, item, itemRun, request.TraceContext)
+			result, err := r.scoreDatasetItemRun(ctx, scorer, item, itemRun, manifest.Digest, runPolicy, ports.SandboxProfileEphemeralEvalItem, sandbox.SandboxRef, request.TraceContext)
 			if err != nil {
 				return StartExperimentResult{}, r.failRun(ctx, run.ID, err)
 			}
@@ -196,6 +243,10 @@ func (r *Runner) StartOfflineExperiment(ctx context.Context, request StartExperi
 		}
 
 		completedItems++
+		if _, err := r.harness.CleanupSandbox(ctx, activeSandbox); err != nil {
+			return StartExperimentResult{}, r.failRun(ctx, run.ID, err)
+		}
+		r.untrackSandbox(run.ID, sandbox.SandboxRef)
 		summary := map[string]any{"totalItems": len(items), "completedItems": completedItems}
 		if err := r.publishProgress(ctx, run.ID, ports.ExperimentProgressItemCompleted, itemRun.ID, run.Status, summary); err != nil {
 			return StartExperimentResult{}, err
@@ -214,6 +265,13 @@ func (r *Runner) CancelExperimentRun(ctx context.Context, request CancelExperime
 		return CancelExperimentResult{}, errors.New("experimentRunId is required")
 	}
 	r.cancellations[request.ExperimentRunID] = true
+	current := r.currentRun(request.ExperimentRunID)
+	current.Status = ports.ExperimentRunStatusCancelled
+	current.EndedAt = r.now()
+	r.rememberRun(current, r.manifestDigests[request.ExperimentRunID])
+	for _, sandbox := range r.activeSandboxes[request.ExperimentRunID] {
+		_, _ = r.harness.AbortSandbox(ctx, sandbox)
+	}
 	progress := ports.ExperimentProgress{
 		ExperimentRunID: request.ExperimentRunID,
 		Type:            ports.ExperimentProgressCancelled,
@@ -232,6 +290,75 @@ func (r *Runner) CancelExperimentRun(ctx context.Context, request CancelExperime
 		}
 	}
 	return CancelExperimentResult{ExperimentRunID: request.ExperimentRunID, Cancelled: true}, nil
+}
+
+func (r *Runner) PauseExperimentRun(ctx context.Context, request ExperimentRunControlRequest) (ExperimentRunControlResult, error) {
+	if request.ExperimentRunID == "" {
+		return ExperimentRunControlResult{}, errors.New("experimentRunId is required")
+	}
+	current := r.currentRun(request.ExperimentRunID)
+	if current.Status == ports.ExperimentRunStatusPaused || current.Status == ports.ExperimentRunStatusPausing {
+		return ExperimentRunControlResult{Run: current}, nil
+	}
+	if isTerminalStatus(current.Status) {
+		return ExperimentRunControlResult{}, errors.New("ERR-AIE-001: cannot pause terminal experiment run")
+	}
+	current.Status = ports.ExperimentRunStatusPausing
+	current.Summary = map[string]any{"control": "pause"}
+	for _, sandbox := range r.activeSandboxes[request.ExperimentRunID] {
+		_, _ = r.harness.PauseSandbox(ctx, sandbox)
+	}
+	current.Status = ports.ExperimentRunStatusPaused
+	r.rememberRun(current, r.manifestDigests[request.ExperimentRunID])
+	if r.writer != nil {
+		if err := r.writer.PersistExperimentRun(ctx, current); err != nil {
+			return ExperimentRunControlResult{}, err
+		}
+		if err := r.writer.UpdateExperimentProgress(ctx, ports.ExperimentProgress{ExperimentRunID: current.ID, Type: ports.ExperimentProgressProgress, Status: current.Status, OccurredAt: r.now(), Summary: current.Summary}); err != nil {
+			return ExperimentRunControlResult{}, err
+		}
+	}
+	return ExperimentRunControlResult{Run: current}, nil
+}
+
+func (r *Runner) ResumeExperimentRun(ctx context.Context, request ExperimentRunControlRequest) (ExperimentRunControlResult, error) {
+	if request.ExperimentRunID == "" {
+		return ExperimentRunControlResult{}, errors.New("experimentRunId is required")
+	}
+	current := r.currentRun(request.ExperimentRunID)
+	if isTerminalStatus(current.Status) {
+		return ExperimentRunControlResult{}, errors.New("ERR-AIE-001: cannot resume terminal experiment run")
+	}
+	persistedDigest := r.manifestDigests[request.ExperimentRunID]
+	if persistedDigest == "" && r.reader != nil {
+		manifest, err := r.resolveManifest(ctx, ports.ManifestResolveRequest{ExperimentRunID: request.ExperimentRunID})
+		if err != nil {
+			return ExperimentRunControlResult{}, err
+		}
+		persistedDigest = manifest.Digest
+		if persistedDigest != "" {
+			r.manifestDigests[request.ExperimentRunID] = persistedDigest
+		}
+	}
+	if request.ExpectedManifestDigest != "" && persistedDigest != "" && request.ExpectedManifestDigest != persistedDigest {
+		return ExperimentRunControlResult{}, errors.New("ERR-AIE-002: stale manifest digest")
+	}
+	if current.Status == ports.ExperimentRunStatusRunning || current.Status == ports.ExperimentRunStatusResuming {
+		return ExperimentRunControlResult{Run: current}, nil
+	}
+	current.Status = ports.ExperimentRunStatusResuming
+	current.Summary = map[string]any{"control": "resume"}
+	current.Status = ports.ExperimentRunStatusRunning
+	r.rememberRun(current, persistedDigest)
+	if r.writer != nil {
+		if err := r.writer.PersistExperimentRun(ctx, current); err != nil {
+			return ExperimentRunControlResult{}, err
+		}
+		if err := r.writer.UpdateExperimentProgress(ctx, ports.ExperimentProgress{ExperimentRunID: current.ID, Type: ports.ExperimentProgressProgress, Status: current.Status, OccurredAt: r.now(), Summary: current.Summary}); err != nil {
+			return ExperimentRunControlResult{}, err
+		}
+	}
+	return ExperimentRunControlResult{Run: current}, nil
 }
 
 func (r *Runner) HandlePersistedProjections(ctx context.Context, notification ports.PersistedProjectionNotification) error {
@@ -310,11 +437,29 @@ func (r *Runner) StartOptimization(ctx context.Context, request StartOptimizatio
 	if err := r.publishProgress(ctx, runID, ports.ExperimentProgressStarted, "", ports.ExperimentRunStatusRunning, map[string]any{"experimentId": request.ExperimentID}); err != nil {
 		return StartOptimizationResult{}, err
 	}
+	runPolicy := normalizeRunPolicy(manifest.RunPolicy)
+	sandbox, err := r.harness.StartSandbox(ctx, ports.SandboxLifecycleRequest{
+		ExperimentRunID: runID,
+		CandidateID:     runID,
+		AttemptID:       runID,
+		ManifestDigest:  manifest.Digest,
+		SandboxProfile:  ports.SandboxProfileEphemeralOptimizationCandidate,
+		RunPolicy:       runPolicy,
+		TraceContext:    request.TraceContext,
+	})
+	if err != nil {
+		return StartOptimizationResult{}, r.failRun(ctx, runID, err)
+	}
 	result, err := r.harness.Optimize(ctx, ports.HarnessOptimizeRequest{
 		ExperimentRunID:     runID,
+		ExperimentID:        request.ExperimentID,
 		BasePromptVersionID: request.BasePromptVersionID,
 		OptimizerKind:       request.OptimizerKind,
 		Config:              request.Config,
+		ManifestDigest:      manifest.Digest,
+		RunPolicy:           runPolicy,
+		SandboxProfile:      ports.SandboxProfileEphemeralOptimizationCandidate,
+		SandboxRef:          sandbox.SandboxRef,
 		TraceContext:        request.TraceContext,
 	})
 	if err != nil {
@@ -323,6 +468,7 @@ func (r *Runner) StartOptimization(ctx context.Context, request StartOptimizatio
 	if err := r.publishProgress(ctx, runID, ports.ExperimentProgressFinished, "", ports.ExperimentRunStatusFinished, result.Summary); err != nil {
 		return StartOptimizationResult{}, err
 	}
+	_, _ = r.harness.CleanupSandbox(ctx, ports.SandboxLifecycleRequest{ExperimentRunID: runID, CandidateID: runID, AttemptID: runID, ManifestDigest: manifest.Digest, SandboxProfile: ports.SandboxProfileEphemeralOptimizationCandidate, SandboxRef: sandbox.SandboxRef, RunPolicy: runPolicy, TraceContext: request.TraceContext})
 	return StartOptimizationResult{
 		ExperimentRunID:    runID,
 		CandidatePromptIDs: result.CandidatePromptIDs,
@@ -330,7 +476,7 @@ func (r *Runner) StartOptimization(ctx context.Context, request StartOptimizatio
 	}, nil
 }
 
-func (r *Runner) scoreDatasetItemRun(ctx context.Context, scorer ports.Scorer, item ports.DatasetItem, itemRun ports.DatasetItemRun, traceContext map[string]string) (ports.EvalResult, error) {
+func (r *Runner) scoreDatasetItemRun(ctx context.Context, scorer ports.Scorer, item ports.DatasetItem, itemRun ports.DatasetItemRun, manifestDigest string, runPolicy map[string]any, sandboxProfile string, sandboxRef string, traceContext map[string]string) (ports.EvalResult, error) {
 	result := ports.EvalResult{
 		ScorerID:      scorer.ID,
 		ScorerVersion: scorer.Version,
@@ -349,14 +495,18 @@ func (r *Runner) scoreDatasetItemRun(ctx context.Context, scorer ports.Scorer, i
 	}
 
 	score, err := r.harness.Score(ctx, ports.HarnessScoreRequest{
-		ScorerID:      scorer.ID,
-		ScorerVersion: scorer.Version,
-		TargetKind:    ports.EvalTargetKindDatasetItemRun,
-		TargetID:      itemRun.ID,
-		Input:         item.Input,
-		Output:        itemRun.Output,
-		Expected:      item.Expected,
-		TraceContext:  traceContext,
+		ScorerID:       scorer.ID,
+		ScorerVersion:  scorer.Version,
+		TargetKind:     ports.EvalTargetKindDatasetItemRun,
+		TargetID:       itemRun.ID,
+		Input:          item.Input,
+		Output:         itemRun.Output,
+		Expected:       item.Expected,
+		ManifestDigest: manifestDigest,
+		RunPolicy:      runPolicy,
+		SandboxProfile: sandboxProfile,
+		SandboxRef:     sandboxRef,
+		TraceContext:   traceContext,
 	})
 	if err != nil {
 		return ports.EvalResult{}, err
@@ -610,6 +760,20 @@ func normalizeRunPolicy(value map[string]any) map[string]any {
 	return normalized
 }
 
+func mergePolicy(resolved map[string]any, requested map[string]any) map[string]any {
+	if len(resolved) == 0 {
+		return requested
+	}
+	merged := map[string]any{}
+	for key, value := range resolved {
+		merged[key] = value
+	}
+	for key, value := range requested {
+		merged[key] = value
+	}
+	return merged
+}
+
 func experimentRunSummary(totalItems int, completedItems int, status string) map[string]any {
 	passed := completedItems
 	errored := 0
@@ -671,6 +835,51 @@ func (r *Runner) publishProgress(ctx context.Context, runID string, progressType
 
 func (r *Runner) isCancelled(experimentRunID string) bool {
 	return r.cancellations[experimentRunID]
+}
+
+func (r *Runner) rememberRun(run ports.ExperimentRun, manifestDigest string) {
+	if run.ID == "" {
+		return
+	}
+	r.runStates[run.ID] = run
+	if manifestDigest != "" {
+		r.manifestDigests[run.ID] = manifestDigest
+	}
+}
+
+func (r *Runner) currentRun(experimentRunID string) ports.ExperimentRun {
+	if run, ok := r.runStates[experimentRunID]; ok {
+		return run
+	}
+	return ports.ExperimentRun{ID: experimentRunID, Status: ports.ExperimentRunStatusRunning, Summary: map[string]any{}}
+}
+
+func (r *Runner) trackSandbox(experimentRunID string, sandbox ports.SandboxLifecycleRequest) {
+	r.activeSandboxes[experimentRunID] = append(r.activeSandboxes[experimentRunID], sandbox)
+}
+
+func (r *Runner) untrackSandbox(experimentRunID string, sandboxRef string) {
+	active := r.activeSandboxes[experimentRunID]
+	remaining := active[:0]
+	for _, sandbox := range active {
+		if sandbox.SandboxRef != sandboxRef {
+			remaining = append(remaining, sandbox)
+		}
+	}
+	if len(remaining) == 0 {
+		delete(r.activeSandboxes, experimentRunID)
+		return
+	}
+	r.activeSandboxes[experimentRunID] = remaining
+}
+
+func isTerminalStatus(status string) bool {
+	switch status {
+	case ports.ExperimentRunStatusCancelled, ports.ExperimentRunStatusFailed, ports.ExperimentRunStatusFinished:
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *Runner) requireConfigured() error {

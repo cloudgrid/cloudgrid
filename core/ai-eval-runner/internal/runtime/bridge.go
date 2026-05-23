@@ -20,6 +20,8 @@ import (
 
 const (
 	SubjectExperimentStart       = "eval.experiment.start"
+	SubjectExperimentPause       = "eval.experiment.pause"
+	SubjectExperimentResume      = "eval.experiment.resume"
 	SubjectExperimentCancel      = "eval.experiment.cancel"
 	SubjectOptimizationStart     = "eval.optimization.start"
 	SubjectPersistedProjections  = "ai.persisted.projections"
@@ -78,6 +80,8 @@ func NewRunnerServiceWithOptions(runner *orchestrator.Runner, logger *slog.Logge
 func (service *RunnerService) SubjectHandlers() map[string]Handler {
 	handlers := map[string]Handler{
 		SubjectExperimentStart:      service.handleExperimentStart(),
+		SubjectExperimentPause:      service.handleExperimentControl("pause"),
+		SubjectExperimentResume:     service.handleExperimentControl("resume"),
 		SubjectExperimentCancel:     service.handleExperimentCancel(),
 		SubjectOptimizationStart:    service.handleOptimizationStart(),
 		SubjectPersistedProjections: service.handlePersistedProjections(),
@@ -89,6 +93,53 @@ func (service *RunnerService) SubjectHandlers() map[string]Handler {
 		handlers[subject] = withRunnerSelfObservability(subject, service.selfObservability, handler)
 	}
 	return handlers
+}
+
+func (service *RunnerService) handleExperimentControl(command string) Handler {
+	return func(msg BridgeMessage) {
+		var request contracts.ExperimentRunControlRequest
+		if err := decodeStrict(msg.Data(), &request); err != nil {
+			respond(msg, mutationErrorResponse("", validationBridgeError("invalid experiment control request JSON")))
+			return
+		}
+		if err := validateEnvelope(request.BridgeEnvelope); err != nil {
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError(err.Error())))
+			return
+		}
+		if strings.TrimSpace(request.ExperimentRunID) == "" {
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("experimentRunId is required")))
+			return
+		}
+		if request.Command != command {
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("command must be "+command)))
+			return
+		}
+		ctx, cancel := context.WithTimeout(contextWithAuth(request.AuthContext), defaultRequestTimeout)
+		defer cancel()
+		controlRequest := orchestrator.ExperimentRunControlRequest{
+			RequestID:       request.RequestID,
+			ExperimentRunID: request.ExperimentRunID,
+			Command:         request.Command,
+		}
+		if request.ExpectedManifestDigest != nil {
+			controlRequest.ExpectedManifestDigest = *request.ExpectedManifestDigest
+		}
+		if request.IdempotencyKey != nil {
+			controlRequest.IdempotencyKey = *request.IdempotencyKey
+		}
+		var result orchestrator.ExperimentRunControlResult
+		var err error
+		if command == "pause" {
+			result, err = service.runner.PauseExperimentRun(ctx, controlRequest)
+		} else {
+			result, err = service.runner.ResumeExperimentRun(ctx, controlRequest)
+		}
+		if err != nil {
+			respond(msg, mutationErrorResponse(request.RequestID, bridgeErrorFromError(err)))
+			return
+		}
+		respond(msg, contracts.EvalMutationResponse{RequestID: request.RequestID, OK: true, Data: experimentRunData(result.Run)})
+	}
 }
 
 func (service *RunnerService) handleExperimentStart() Handler {
@@ -177,7 +228,7 @@ func (service *RunnerService) handleOptimizationStart() Handler {
 			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("experimentId is required")))
 			return
 		}
-		if strings.TrimSpace(request.OptimizerKind) == "" {
+		if strings.TrimSpace(string(request.OptimizerKind)) == "" {
 			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("optimizerKind is required")))
 			return
 		}
@@ -191,7 +242,7 @@ func (service *RunnerService) handleOptimizationStart() Handler {
 			RequestID:           request.RequestID,
 			ProjectID:           projectID(request.AuthContext),
 			ExperimentID:        request.ExperimentID,
-			OptimizerKind:       request.OptimizerKind,
+			OptimizerKind:       string(request.OptimizerKind),
 			BasePromptVersionID: request.BasePromptVersionID,
 			Config:              objectFromTypedContract(request.Config),
 			TraceContext:        traceContext(request.TraceContext),
@@ -287,7 +338,8 @@ func bridgeErrorFromError(err error) contracts.BridgeError {
 		return contracts.BridgeError{ID: "ERR-001", Code: "VALIDATION_FAILED", Message: message, Retryable: false}
 	}
 	if strings.HasPrefix(message, "ERR-AIE-") {
-		return contracts.BridgeError{ID: "ERR-AIE", Code: "AI_EVAL_RUNNER_REJECTED", Message: message, Retryable: false}
+		id := strings.SplitN(message, ":", 2)[0]
+		return contracts.BridgeError{ID: id, Code: "AI_EVAL_RUNNER_REJECTED", Message: message, Retryable: false}
 	}
 	if strings.HasPrefix(message, "ERR-013") {
 		return messageBridgeError()
@@ -457,7 +509,7 @@ func objectFromTypedContract(value any) map[string]any {
 
 func boundedRunnerSubject(subject string) string {
 	switch subject {
-	case SubjectExperimentStart, SubjectExperimentCancel, SubjectOptimizationStart, SubjectPersistedProjections:
+	case SubjectExperimentStart, SubjectExperimentPause, SubjectExperimentResume, SubjectExperimentCancel, SubjectOptimizationStart, SubjectPersistedProjections:
 		return subject
 	default:
 		return "unknown"
@@ -470,6 +522,10 @@ func boundedRunnerOperation(subject string) string {
 		return "experiment_start"
 	case SubjectExperimentCancel:
 		return "experiment_cancel"
+	case SubjectExperimentPause:
+		return "experiment_pause"
+	case SubjectExperimentResume:
+		return "experiment_resume"
 	case SubjectOptimizationStart:
 		return "optimization_start"
 	case SubjectPersistedProjections:
@@ -481,7 +537,7 @@ func boundedRunnerOperation(subject string) string {
 
 func boundedRunnerErrorID(id string) string {
 	switch id {
-	case "ERR-001", "ERR-006", "ERR-013", "ERR-AIE":
+	case "ERR-001", "ERR-006", "ERR-013", "ERR-AIE", "ERR-AIE-001", "ERR-AIE-002", "ERR-AIE-003", "ERR-AIE-004":
 		return id
 	default:
 		return "ERR-006"

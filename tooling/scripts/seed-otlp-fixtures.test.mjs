@@ -201,8 +201,14 @@ describe("seed OTLP fixtures script", () => {
   });
 
   test("supports bounded generated fixture batches for integration orchestration", () => {
-    const seedContext = { ...createSeedRunContext(Date.UTC(2026, 4, 18, 12, 0, 0, 0)), pointCount: 3 };
-    const defaultTraces = generatedFixture("rich-traces", createSeedRunContext(Date.UTC(2026, 4, 18, 12, 0, 0, 0)));
+    const seedContext = {
+      ...createSeedRunContext(Date.UTC(2026, 4, 18, 12, 0, 0, 0)),
+      pointCount: 3,
+    };
+    const defaultTraces = generatedFixture(
+      "rich-traces",
+      createSeedRunContext(Date.UTC(2026, 4, 18, 12, 0, 0, 0)),
+    );
     const boundedTraces = generatedFixture("rich-traces", seedContext);
     const boundedMetrics = generatedFixture("rich-metrics", seedContext);
     const defaultSpanCount = defaultTraces.resourceSpans.reduce(

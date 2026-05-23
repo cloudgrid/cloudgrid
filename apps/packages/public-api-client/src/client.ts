@@ -30,6 +30,7 @@ import type {
   ApproveAiChatActionInput,
   ApproveAiChatActionMutationData,
   CommitDatasetImportInput,
+  CommitDatasetCandidatesInput,
   CompanyAiProviderSettings,
   CompanyAiProviderSettingsQueryData,
   CreateAlertRuleInput,
@@ -50,6 +51,8 @@ import type {
   CreateScorerInput,
   CreateScorerMutationData,
   Dataset,
+  DatasetCandidateSearchInput,
+  DatasetCandidateSearchResult,
   DatasetExportJob,
   DatasetImportJob,
   DatasetQueryData,
@@ -90,6 +93,7 @@ import type {
   OrganizationQueryData,
   OrganizationsQueryData,
   PrepareDatasetImportInput,
+  PrepareDatasetCandidatesInput,
   Project,
   ProjectAiSettings,
   ProjectAiSettingsQueryData,
@@ -219,10 +223,12 @@ import {
   annotationQueueOperation,
   appendDatasetItemsOperation,
   commitDatasetImportOperation,
+  commitDatasetCandidatesOperation,
   createDatasetOperation,
   createExperimentOperation,
   createScorerOperation,
   datasetExportOperation,
+  datasetCandidatesOperation,
   datasetOperation,
   datasetsOperation,
   experimentRunOperation,
@@ -233,10 +239,14 @@ import {
   metricNamesOperation,
   metricSeriesOperation,
   prepareDatasetImportOperation,
+  prepareDatasetCandidatesOperation,
   richMetricSeriesOperation,
   scorersOperation,
   startDatasetExportOperation,
   startExperimentRunOperation,
+  cancelExperimentRunOperation,
+  pauseExperimentRunOperation,
+  resumeExperimentRunOperation,
   telemetryFacetsOperation,
   traceDetailOperation,
   traceSearchOperation,
@@ -267,7 +277,17 @@ export interface TelemetryGraphQLClient {
     input: CreateExperimentInput,
   ) => Promise<ExperimentsQueryData["experiments"]["items"][number]>;
   startExperimentRun: (input: StartExperimentRunInput) => Promise<ExperimentRun>;
+  pauseExperimentRun: (id: string) => Promise<ExperimentRun>;
+  resumeExperimentRun: (id: string) => Promise<ExperimentRun>;
+  cancelExperimentRun: (id: string) => Promise<ExperimentRun>;
   getExperimentRun: (id: string) => Promise<ExperimentRun | null>;
+  searchDatasetCandidates: (
+    input: DatasetCandidateSearchInput,
+  ) => Promise<DatasetCandidateSearchResult>;
+  prepareDatasetCandidates: (
+    input: PrepareDatasetCandidatesInput,
+  ) => Promise<DatasetCandidateSearchResult>;
+  commitDatasetCandidates: (input: CommitDatasetCandidatesInput) => Promise<Dataset>;
   searchAnnotationQueue: (input: AnnotationQueueSearchInput) => Promise<AnnotationQueueResult>;
   getAiQualityOverview: (input: AiQualityOverviewInput) => Promise<AiQualityOverview>;
   prepareDatasetImport: (input: PrepareDatasetImportInput) => Promise<DatasetImportJob>;
@@ -555,6 +575,33 @@ export function createTelemetryGraphQLClient(endpoint = "/graphql"): TelemetryGr
       );
       return data.startExperimentRun;
     },
+    async pauseExperimentRun(id) {
+      const data = await requestGraphQL<{ pauseExperimentRun: ExperimentRun }>(
+        endpoint,
+        "PauseExperimentRun",
+        pauseExperimentRunOperation,
+        { id },
+      );
+      return data.pauseExperimentRun;
+    },
+    async resumeExperimentRun(id) {
+      const data = await requestGraphQL<{ resumeExperimentRun: ExperimentRun }>(
+        endpoint,
+        "ResumeExperimentRun",
+        resumeExperimentRunOperation,
+        { id },
+      );
+      return data.resumeExperimentRun;
+    },
+    async cancelExperimentRun(id) {
+      const data = await requestGraphQL<{ cancelExperimentRun: ExperimentRun }>(
+        endpoint,
+        "CancelExperimentRun",
+        cancelExperimentRunOperation,
+        { id },
+      );
+      return data.cancelExperimentRun;
+    },
     async getExperimentRun(id) {
       const data = await requestGraphQL<ExperimentRunQueryData>(
         endpoint,
@@ -563,6 +610,30 @@ export function createTelemetryGraphQLClient(endpoint = "/graphql"): TelemetryGr
         { id },
       );
       return data.experimentRun ?? null;
+    },
+    async searchDatasetCandidates(input) {
+      const data = await requestGraphQL<{ datasetCandidates: DatasetCandidateSearchResult }>(
+        endpoint,
+        "DatasetCandidates",
+        datasetCandidatesOperation,
+        { input },
+      );
+      return data.datasetCandidates;
+    },
+    async prepareDatasetCandidates(input) {
+      const data = await requestGraphQL<{
+        prepareDatasetCandidates: DatasetCandidateSearchResult;
+      }>(endpoint, "PrepareDatasetCandidates", prepareDatasetCandidatesOperation, { input });
+      return data.prepareDatasetCandidates;
+    },
+    async commitDatasetCandidates(input) {
+      const data = await requestGraphQL<{ commitDatasetCandidates: Dataset }>(
+        endpoint,
+        "CommitDatasetCandidates",
+        commitDatasetCandidatesOperation,
+        { input },
+      );
+      return data.commitDatasetCandidates;
     },
     async searchAnnotationQueue(input) {
       const data = await requestGraphQL<AnnotationQueueQueryData>(

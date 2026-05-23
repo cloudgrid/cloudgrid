@@ -5,10 +5,12 @@ package surrealdb
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -18,32 +20,33 @@ import (
 )
 
 const (
-	subjectEvalAgentRunsSearch    = "eval.agent_runs.search"
-	subjectEvalDatasetSearch      = "eval.dataset.search"
-	subjectEvalDatasetExportStart = "eval.dataset.export.start"
-	subjectEvalDatasetTransferGet = "eval.dataset.transfer.get"
-	subjectEvalDatasetHealth      = "eval.dataset.health"
-	subjectEvalScorerSearch       = "eval.scorer.search"
-	subjectEvalExperimentSearch   = "eval.experiment.search"
-	subjectEvalResultsSearch      = "eval.results.search"
-	subjectEvalQualityOverview    = "eval.quality.overview"
-	subjectAnnotationQueueSearch  = "annotation.queue.search"
-	aiEvalDefaultPageLimit        = 50
-	aiEvalMaxPageLimit            = 200
+	subjectEvalAgentRunsSearch         = "eval.agent_runs.search"
+	subjectEvalDatasetSearch           = "eval.dataset.search"
+	subjectEvalDatasetCandidatesSearch = "eval.dataset.candidates.search"
+	subjectEvalDatasetExportStart      = "eval.dataset.export.start"
+	subjectEvalDatasetTransferGet      = "eval.dataset.transfer.get"
+	subjectEvalDatasetHealth           = "eval.dataset.health"
+	subjectEvalScorerSearch            = "eval.scorer.search"
+	subjectEvalExperimentSearch        = "eval.experiment.search"
+	subjectEvalResultsSearch           = "eval.results.search"
+	subjectEvalQualityOverview         = "eval.quality.overview"
+	subjectAnnotationQueueSearch       = "annotation.queue.search"
+	aiEvalDefaultPageLimit             = 50
+	aiEvalMaxPageLimit                 = 200
 )
 
-func (store Store) QueryAiEval(ctx context.Context, subject string, input map[string]any) (map[string]any, error) {
+func (store Store) QueryAiEval(ctx context.Context, subject string, input map[string]any, authContext *contracts.AuthContext) (map[string]any, error) {
 	switch subject {
 	case subjectEvalDatasetTransferGet:
 		return storage.GetDatasetTransfer(ctx, storage.TransferRootForAdapter(), input)
 	case subjectEvalDatasetExportStart:
-		return store.startDatasetExport(ctx, input)
+		return store.startDatasetExport(ctx, input, authContext)
 	case subjectEvalDatasetHealth:
-		return store.queryDatasetHealth(ctx, input)
+		return store.queryDatasetHealth(ctx, input, authContext)
 	case subjectEvalQualityOverview:
-		return store.queryAiQualityOverview(ctx, input)
+		return store.queryAiQualityOverview(ctx, input, authContext)
 	}
-	stmt, err := BuildAiEvalQuery(subject, input)
+	stmt, err := BuildAiEvalQuery(subject, input, authContext)
 	if err != nil {
 		return nil, err
 	}
@@ -53,19 +56,17 @@ func (store Store) QueryAiEval(ctx context.Context, subject string, input map[st
 	}
 	if subject == subjectEvalDatasetSearch {
 		if _, ok := stringInput(input, "datasetId"); !ok {
-			items, err = store.withDatasetListCounts(ctx, items)
+			items, err = store.withDatasetListCounts(ctx, items, authContext)
 			if err != nil {
 				return nil, storageError()
 			}
 		}
 	}
-	return map[string]any{
-		"items":      shapeAiEvalItems(subject, input, items),
-		"nextCursor": nil,
-	}, nil
+	shaped, nextCursor := shapeAiEvalPage(subject, input, items)
+	return map[string]any{"items": shaped, "nextCursor": nextCursor}, nil
 }
 
-func (store Store) withDatasetListCounts(ctx context.Context, rows []map[string]any) ([]map[string]any, error) {
+func (store Store) withDatasetListCounts(ctx context.Context, rows []map[string]any, authContext *contracts.AuthContext) ([]map[string]any, error) {
 	datasetIDs := make([]string, 0, len(rows))
 	for _, row := range rows {
 		if id := aiEvalRecordID(row); id != "" {
@@ -75,7 +76,7 @@ func (store Store) withDatasetListCounts(ctx context.Context, rows []map[string]
 	if len(datasetIDs) == 0 {
 		return rows, nil
 	}
-	stmt, err := BuildDatasetListCountsQuery(datasetIDs)
+	stmt, err := BuildDatasetListCountsQuery(datasetIDs, authContext)
 	if err != nil {
 		return nil, err
 	}
@@ -100,8 +101,8 @@ func (store Store) withDatasetListCounts(ctx context.Context, rows []map[string]
 	return rows, nil
 }
 
-func (store Store) startDatasetExport(ctx context.Context, input map[string]any) (map[string]any, error) {
-	stmt, err := BuildDatasetExportItemsQuery(input)
+func (store Store) startDatasetExport(ctx context.Context, input map[string]any, authContext *contracts.AuthContext) (map[string]any, error) {
+	stmt, err := BuildDatasetExportItemsQuery(input, authContext)
 	if err != nil {
 		return nil, err
 	}
@@ -119,8 +120,8 @@ func (store Store) startDatasetExport(ctx context.Context, input map[string]any)
 	return storage.StartDatasetExport(ctx, storage.TransferRootForAdapter(), request, items, time.Now)
 }
 
-func (store Store) queryDatasetHealth(ctx context.Context, input map[string]any) (map[string]any, error) {
-	stmts, err := BuildDatasetHealthQueries(input)
+func (store Store) queryDatasetHealth(ctx context.Context, input map[string]any, authContext *contracts.AuthContext) (map[string]any, error) {
+	stmts, err := BuildDatasetHealthQueries(input, authContext)
 	if err != nil {
 		return nil, err
 	}
@@ -157,8 +158,8 @@ func (store Store) queryDatasetHealth(ctx context.Context, input map[string]any)
 	return health, nil
 }
 
-func (store Store) queryAiQualityOverview(ctx context.Context, input map[string]any) (map[string]any, error) {
-	stmts, err := BuildAiQualityOverviewQueries(input)
+func (store Store) queryAiQualityOverview(ctx context.Context, input map[string]any, authContext *contracts.AuthContext) (map[string]any, error) {
+	stmts, err := BuildAiQualityOverviewQueries(input, authContext)
 	if err != nil {
 		return nil, err
 	}
@@ -231,6 +232,8 @@ func shapeAiEvalItems(subject string, input map[string]any, rows []map[string]an
 			} else {
 				items = append(items, shapeDatasetRow(row))
 			}
+		case subjectEvalDatasetCandidatesSearch:
+			items = append(items, shapeDatasetCandidateRow(row))
 		case subjectEvalScorerSearch:
 			items = append(items, shapeScorerRow(row))
 		case subjectEvalExperimentSearch:
@@ -250,6 +253,45 @@ func shapeAiEvalItems(subject string, input map[string]any, rows []map[string]an
 		}
 	}
 	return items
+}
+
+func shapeDatasetCandidateRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	if _, ok := stringInput(item, "status"); !ok {
+		item["status"] = "suggested"
+	}
+	if _, ok := item["source"]; !ok || item["source"] == nil {
+		item["source"] = map[string]any{}
+	}
+	if _, ok := item["evidence"]; !ok || item["evidence"] == nil {
+		item["evidence"] = []any{}
+	}
+	if _, ok := item["warnings"]; !ok || item["warnings"] == nil {
+		item["warnings"] = []string{}
+	}
+	return item
+}
+
+func shapeAiEvalPage(subject string, input map[string]any, rows []map[string]any) ([]map[string]any, *string) {
+	limit, err := aiEvalLimit(input)
+	if err != nil {
+		return shapeAiEvalItems(subject, input, rows), nil
+	}
+	hasNext := len(rows) > limit
+	pageRows := rows
+	if hasNext {
+		pageRows = rows[:limit]
+	}
+	items := shapeAiEvalItems(subject, input, pageRows)
+	if !hasNext || len(pageRows) == 0 {
+		return items, nil
+	}
+	cursor, err := encodeAiEvalCursor(aiEvalSortForSubject(subject), pageRows[len(pageRows)-1])
+	if err != nil {
+		return items, nil
+	}
+	return items, &cursor
 }
 
 func shapeAgentRunRow(row map[string]any) map[string]any {
@@ -541,17 +583,29 @@ func (store Store) ResolveOnlinePolicyMatches(ctx context.Context, request contr
 	for _, scorer := range scorers {
 		id := aiEvalStringValue(scorer, "id", "")
 		if id != "" {
-			scorersByID[id] = onlineScorerRow{kind: aiEvalStringValue(scorer, "kind", ""), version: int(numericValue(scorer["version"]))}
+			scorersByID[id] = onlineScorerRow{
+				kind:                aiEvalStringValue(scorer, "kind", ""),
+				version:             int(numericValue(scorer["version"])),
+				contentRequirements: stringSlice(scorer["contentRequirements"]),
+				providerRequired:    boolFromAny(scorer["providerRequired"]),
+				latencyClass:        aiEvalStringValue(scorer, "latencyClass", ""),
+				safetyClass:         aiEvalStringValue(scorer, "safetyClass", ""),
+			}
 		}
 	}
 	matches := []contracts.OnlinePolicyMatch{}
 	warnings := []string{}
+	var responseProjection contracts.OnlinePolicyProjectionReadModel
 	for _, setting := range settingsRows {
 		for _, policy := range onlinePolicies(setting["onlinePolicies"]) {
 			if !boolValue(policy, "enabled") {
 				continue
 			}
 			target := onlinePolicyTargetFromMap(objectMap(policy["target"]))
+			if err := validateOnlinePolicyTarget(target); err != nil {
+				warnings = append(warnings, "invalid target for policy "+aiEvalStringValue(policy, "id", ""))
+				continue
+			}
 			if isEmptyOnlineTarget(target) {
 				warnings = append(warnings, "invalid empty target for policy "+aiEvalStringValue(policy, "id", ""))
 				continue
@@ -559,14 +613,18 @@ func (store Store) ResolveOnlinePolicyMatches(ctx context.Context, request contr
 			scorerRefs := []contracts.OnlinePolicyScorerRef{}
 			for _, scorerID := range stringSlice(policy["scorerIds"]) {
 				scorer := scorersByID[scorerID]
-				if scorer.kind != "deterministic" || scorer.version < 1 {
-					warnings = append(warnings, "unsupported scorer kind for policy "+aiEvalStringValue(policy, "id", ""))
+				if scorer.version < 1 {
+					warnings = append(warnings, "stale scorer reference for policy "+aiEvalStringValue(policy, "id", ""))
+					continue
+				}
+				if !onlineScorerAllowedByPolicy(scorer, policy) {
+					warnings = append(warnings, "disallowed scorer requirements for policy "+aiEvalStringValue(policy, "id", ""))
 					continue
 				}
 				scorerRefs = append(scorerRefs, contracts.OnlinePolicyScorerRef{
 					ScorerID:      scorerID,
 					ScorerVersion: scorer.version,
-					Kind:          "deterministic",
+					Kind:          scorer.kind,
 				})
 			}
 			if len(scorerRefs) == 0 {
@@ -577,6 +635,9 @@ func (store Store) ResolveOnlinePolicyMatches(ctx context.Context, request contr
 				if !onlinePolicyTargetMatchesProjection(target, projectionModel) {
 					continue
 				}
+				if responseProjection.ProjectID == "" {
+					responseProjection = projectionModel
+				}
 				matches = append(matches, contracts.OnlinePolicyMatch{
 					PolicyID:      aiEvalStringValue(policy, "id", ""),
 					PolicyVersion: onlinePolicyVersion(policy),
@@ -584,12 +645,11 @@ func (store Store) ResolveOnlinePolicyMatches(ctx context.Context, request contr
 					Target:        target,
 					SampleRate:    numericValue(policy["sampleRate"]),
 					ScorerRefs:    scorerRefs,
-					Projection:    projectionModel,
 				})
 			}
 		}
 	}
-	return contracts.OnlinePolicyMatchesResolveData{Matches: matches, Warnings: warnings}, nil
+	return contracts.OnlinePolicyMatchesResolveData{Matches: matches, Projection: responseProjection, RunPolicy: defaultEvalRunPolicy(), Warnings: warnings}, nil
 }
 
 func BuildOnlinePolicyMatchesResolveQueries(request contracts.OnlinePolicyMatchesResolveRequest) (map[string]QueryStatement, error) {
@@ -638,9 +698,9 @@ func BuildOnlinePolicyMatchesResolveQueries(request contracts.OnlinePolicyMatche
 		},
 		"scorers": {
 			SQL: strings.Join([]string{
-				"SELECT id, version, kind",
+				"SELECT id, version, kind, contentRequirements, providerRequired, latencyClass, safetyClass",
 				"FROM ai_scorer",
-				whereClause(append(retentionVisibleConditions(), "projectId = $projectId", "kind = 'deterministic'")),
+				whereClause(append(retentionVisibleConditions(), "projectId = $projectId")),
 				"ORDER BY id ASC LIMIT 1000;",
 			}, " "),
 			Params: cloneParams(params),
@@ -649,7 +709,7 @@ func BuildOnlinePolicyMatchesResolveQueries(request contracts.OnlinePolicyMatche
 	}, nil
 }
 
-func BuildAiEvalQuery(subject string, input map[string]any) (QueryStatement, error) {
+func BuildAiEvalQuery(subject string, input map[string]any, authContext ...*contracts.AuthContext) (QueryStatement, error) {
 	table, err := aiEvalTableForSubject(subject, input)
 	if err != nil {
 		return QueryStatement{}, err
@@ -658,12 +718,12 @@ func BuildAiEvalQuery(subject string, input map[string]any) (QueryStatement, err
 	if err != nil {
 		return QueryStatement{}, err
 	}
-	target, err := ResolveTelemetryTarget(nil)
+	target, err := ResolveTelemetryTarget(firstAuthContext(authContext))
 	if err != nil {
 		return QueryStatement{}, err
 	}
 
-	params := map[string]any{"limit": limit}
+	params := map[string]any{"limit": limit + 1}
 	addOwnershipParams(params, target)
 	conditions := retentionVisibleConditions()
 	addRecordIDFilter(&conditions, params, input, "id")
@@ -683,6 +743,20 @@ func BuildAiEvalQuery(subject string, input map[string]any) (QueryStatement, err
 		}
 		addStringFilter(&conditions, params, input, "tag", "tags")
 		addTextSearch(&conditions, params, input, []string{"id", "name", "description"})
+	case subjectEvalDatasetCandidatesSearch:
+		addStringFilter(&conditions, params, input, "datasetId", "datasetId")
+		addStringFilter(&conditions, params, input, "sourceKind", "source.kind")
+		addStringFilter(&conditions, params, input, "status", "status")
+		addStringFilter(&conditions, params, input, "targetShape", "targetShape")
+		addStringFilter(&conditions, params, input, "contentTreatment", "contentTreatment")
+		addStringFilter(&conditions, params, input, "clusterId", "clusterId")
+		addStringFilter(&conditions, params, input, "scorerId", "scorerId")
+		addStringFilter(&conditions, params, input, "policyId", "policyId")
+		addStringFilter(&conditions, params, input, "experimentRunId", "experimentRunId")
+		addStringFilter(&conditions, params, input, "reviewOwner", "reviewOwner")
+		addTimeFilter(&conditions, params, input, "from", "updatedAt", ">=")
+		addTimeFilter(&conditions, params, input, "to", "updatedAt", "<=")
+		addTextSearch(&conditions, params, input, []string{"id", "source.traceId", "source.spanId", "summary"})
 	case subjectEvalScorerSearch:
 		addStringFilter(&conditions, params, input, "kind", "kind")
 		addTextSearch(&conditions, params, input, []string{"id", "name"})
@@ -713,13 +787,16 @@ func BuildAiEvalQuery(subject string, input map[string]any) (QueryStatement, err
 		addStringFilter(&conditions, params, input, "scorerId", "scorerId")
 		addStringFilter(&conditions, params, input, "targetKind", "targetKind")
 	}
+	if err := addAiEvalCursorPredicate(&conditions, params, input, subject); err != nil {
+		return QueryStatement{}, err
+	}
 
 	return QueryStatement{
 		SQL: strings.Join([]string{
 			"SELECT " + aiEvalProjectionForSubject(subject, input),
 			"FROM " + table,
 			whereClause(conditions),
-			"ORDER BY createdAt DESC, id ASC",
+			"ORDER BY " + aiEvalOrderByForSubject(subject),
 			"LIMIT $limit;",
 		}, " "),
 		Params: params,
@@ -727,12 +804,12 @@ func BuildAiEvalQuery(subject string, input map[string]any) (QueryStatement, err
 	}, nil
 }
 
-func BuildDatasetHealthQueries(input map[string]any) (map[string]QueryStatement, error) {
+func BuildDatasetHealthQueries(input map[string]any, authContext ...*contracts.AuthContext) (map[string]QueryStatement, error) {
 	datasetID, ok := stringInput(input, "datasetId")
 	if !ok {
 		return nil, validationError("datasetId is required")
 	}
-	target, err := ResolveTelemetryTarget(nil)
+	target, err := ResolveTelemetryTarget(firstAuthContext(authContext))
 	if err != nil {
 		return nil, err
 	}
@@ -773,8 +850,8 @@ func BuildDatasetHealthQueries(input map[string]any) (map[string]QueryStatement,
 	}, nil
 }
 
-func BuildDatasetListCountsQuery(datasetIDs []string) (QueryStatement, error) {
-	target, err := ResolveTelemetryTarget(nil)
+func BuildDatasetListCountsQuery(datasetIDs []string, authContext ...*contracts.AuthContext) (QueryStatement, error) {
+	target, err := ResolveTelemetryTarget(firstAuthContext(authContext))
 	if err != nil {
 		return QueryStatement{}, err
 	}
@@ -793,12 +870,12 @@ func BuildDatasetListCountsQuery(datasetIDs []string) (QueryStatement, error) {
 	}, nil
 }
 
-func BuildDatasetExportItemsQuery(input map[string]any) (QueryStatement, error) {
+func BuildDatasetExportItemsQuery(input map[string]any, authContext ...*contracts.AuthContext) (QueryStatement, error) {
 	datasetID, ok := stringInput(input, "datasetId")
 	if !ok {
 		return QueryStatement{}, validationError("datasetId is required")
 	}
-	target, err := ResolveTelemetryTarget(nil)
+	target, err := ResolveTelemetryTarget(firstAuthContext(authContext))
 	if err != nil {
 		return QueryStatement{}, err
 	}
@@ -819,12 +896,12 @@ func BuildDatasetExportItemsQuery(input map[string]any) (QueryStatement, error) 
 	}, nil
 }
 
-func BuildAiQualityOverviewQueries(input map[string]any) (map[string]QueryStatement, error) {
+func BuildAiQualityOverviewQueries(input map[string]any, authContext ...*contracts.AuthContext) (map[string]QueryStatement, error) {
 	projectID, ok := stringInput(input, "projectId")
 	if !ok {
 		return nil, validationError("projectId is required")
 	}
-	target, err := ResolveTelemetryTarget(nil)
+	target, err := ResolveTelemetryTarget(firstAuthContext(authContext))
 	if err != nil {
 		return nil, err
 	}
@@ -979,6 +1056,8 @@ func aiEvalTableForSubject(subject string, input map[string]any) (string, error)
 			return "ai_dataset_item", nil
 		}
 		return "ai_dataset", nil
+	case subjectEvalDatasetCandidatesSearch:
+		return "ai_dataset_candidate", nil
 	case subjectEvalScorerSearch:
 		return "ai_scorer", nil
 	case subjectEvalExperimentSearch:
@@ -996,6 +1075,27 @@ func aiEvalTableForSubject(subject string, input map[string]any) (string, error)
 	default:
 		return "", fmt.Errorf("ERR-001 VALIDATION_FAILED: storage-read does not handle AI eval subject %s", subject)
 	}
+}
+
+func aiEvalOrderByForSubject(subject string) string {
+	if subject == subjectEvalDatasetCandidatesSearch {
+		return "updatedAt DESC, id ASC"
+	}
+	return "createdAt DESC, id ASC"
+}
+
+func aiEvalSortForSubject(subject string) string {
+	if subject == subjectEvalDatasetCandidatesSearch {
+		return "updatedAt_desc_id_asc"
+	}
+	return "createdAt_desc_id_asc"
+}
+
+func aiEvalCursorFieldForSubject(subject string) string {
+	if subject == subjectEvalDatasetCandidatesSearch {
+		return "updatedAt"
+	}
+	return "createdAt"
 }
 
 func aiEvalExperimentSearchReturnsRuns(input map[string]any) bool {
@@ -1045,6 +1145,63 @@ func aiEvalLimit(input map[string]any) (int, error) {
 		return 0, validationError("limit must be between 1 and 200")
 	}
 	return limit, nil
+}
+
+type aiEvalCursor struct {
+	Sort      string `json:"sort"`
+	LastValue string `json:"lastValue"`
+	LastID    string `json:"lastId"`
+}
+
+func addAiEvalCursorPredicate(conditions *[]string, params map[string]any, input map[string]any, subject string) error {
+	raw, ok := stringInput(input, "cursor")
+	if !ok {
+		return nil
+	}
+	cursor, err := decodeAiEvalCursor(raw)
+	if err != nil {
+		return err
+	}
+	if cursor.Sort != aiEvalSortForSubject(subject) || strings.TrimSpace(cursor.LastValue) == "" || strings.TrimSpace(cursor.LastID) == "" {
+		return validationError("invalid cursor")
+	}
+	field := aiEvalCursorFieldForSubject(subject)
+	*conditions = append(*conditions, "("+field+" < $cursorLastValue OR ("+field+" = $cursorLastValue AND record::id(id) > $cursorLastId))")
+	params["cursorLastValue"] = cursor.LastValue
+	params["cursorLastId"] = cursor.LastID
+	return nil
+}
+
+func decodeAiEvalCursor(value string) (aiEvalCursor, error) {
+	data, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return aiEvalCursor{}, validationError("invalid cursor")
+	}
+	var cursor aiEvalCursor
+	if err := json.Unmarshal(data, &cursor); err != nil {
+		return aiEvalCursor{}, validationError("invalid cursor")
+	}
+	return cursor, nil
+}
+
+func encodeAiEvalCursor(sortValue string, row map[string]any) (string, error) {
+	field := "createdAt"
+	if sortValue == "updatedAt_desc_id_asc" {
+		field = "updatedAt"
+	}
+	cursor := aiEvalCursor{
+		Sort:      sortValue,
+		LastValue: aiEvalStringValue(row, field, ""),
+		LastID:    aiEvalRecordID(row),
+	}
+	if cursor.LastValue == "" || cursor.LastID == "" {
+		return "", validationError("invalid cursor")
+	}
+	data, err := json.Marshal(cursor)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(data), nil
 }
 
 func addStringFilter(conditions *[]string, params map[string]any, input map[string]any, inputKey string, field string) {
@@ -1287,8 +1444,119 @@ func onlinePolicies(value any) []map[string]any {
 }
 
 type onlineScorerRow struct {
-	kind    string
-	version int
+	kind                string
+	version             int
+	contentRequirements []string
+	providerRequired    bool
+	latencyClass        string
+	safetyClass         string
+}
+
+func validateOnlinePolicyTarget(target contracts.OnlinePolicyTarget) error {
+	for _, filter := range target.Attributes {
+		key := strings.ToLower(strings.TrimSpace(filter.Key))
+		if key == "" {
+			return validationError("invalid online policy target")
+		}
+		if strings.Contains(key, "secret") || strings.Contains(key, "password") || strings.Contains(key, "token") ||
+			strings.Contains(key, "prompt") || strings.Contains(key, "completion") || strings.Contains(key, "content") || strings.Contains(key, "raw") {
+			return validationError("invalid online policy target")
+		}
+		switch string(filter.Operator) {
+		case "eq", "neq", "contains", "exists", "gt", "gte", "lt", "lte", "in", "not_in":
+		default:
+			return validationError("invalid online policy target")
+		}
+	}
+	return nil
+}
+
+func onlineScorerAllowedByPolicy(scorer onlineScorerRow, policy map[string]any) bool {
+	if scorer.kind == "" || scorer.version < 1 {
+		return false
+	}
+	if len(scorer.contentRequirements) > 0 {
+		allowed := aiEvalStringSet(stringSlice(policy["allowedContent"]))
+		if len(allowed) == 0 {
+			allowed = aiEvalStringSet(stringSlice(policy["contentAllowlist"]))
+		}
+		for _, requirement := range scorer.contentRequirements {
+			if !allowed[requirement] {
+				return false
+			}
+		}
+	}
+	if scorer.providerRequired && aiEvalStringValue(policy, "providerProfileId", "") == "" {
+		return false
+	}
+	if scorer.latencyClass == "realtime" && !boolFromAny(policy["allowRealtimeScorers"]) {
+		return false
+	}
+	if scorer.safetyClass == "unsafe" {
+		return false
+	}
+	return true
+}
+
+func aiEvalStringSet(values []string) map[string]bool {
+	result := map[string]bool{}
+	for _, value := range values {
+		result[value] = true
+	}
+	return result
+}
+
+func defaultEvalRunPolicy() *contracts.EvalRunPolicy {
+	return &contracts.EvalRunPolicy{
+		MaxParallelRequests: 10,
+		TokenBudget: map[string]any{
+			"perRun":          0,
+			"perItemInput":    0,
+			"perItemOutput":   0,
+			"enforcementMode": "best_effort",
+		},
+		CostBudget: map[string]any{
+			"perRunUsd":       0,
+			"dailyProjectUsd": 0,
+		},
+		RateLimit: map[string]any{
+			"providerRps": 0,
+			"projectRps":  0,
+			"runRps":      0,
+		},
+		Retry: map[string]any{
+			"maxAttempts":    3,
+			"backoff":        "exponential",
+			"jitter":         true,
+			"retryableCodes": []string{"ERR-013", "ERR-014", "ERR-AIE-003"},
+		},
+		Timeout: map[string]any{
+			"itemMs":        30000,
+			"scorerMs":      30000,
+			"adapterCallMs": 30000,
+			"runMs":         0,
+		},
+		FailureBudget: map[string]any{
+			"modelQualityFailures": 0,
+			"technicalErrors":      0,
+		},
+		Backpressure: map[string]any{
+			"harness":    "defer",
+			"provider":   "defer",
+			"queue":      "defer",
+			"nats":       "retry",
+			"storageLag": "defer",
+		},
+		Checkpoint: map[string]any{
+			"cadenceItems": 50,
+		},
+		Quarantine: map[string]any{
+			"oversized":        true,
+			"invalid":          true,
+			"flaky":            true,
+			"repeatedFailures": true,
+		},
+	}
 }
 
 func onlinePolicyVersion(policy map[string]any) int {
@@ -1521,12 +1789,21 @@ func buildExperimentManifest(request contracts.ExperimentManifestResolveRequest,
 			datasetItemIDs = append(datasetItemIDs, id)
 		}
 	}
+	sort.Strings(datasetItemIDs)
 	scorerRefs := make([]map[string]any, 0, len(scorers))
 	for _, scorer := range scorers {
 		if id, ok := scorer["id"].(string); ok {
 			scorerRefs = append(scorerRefs, map[string]any{"id": id, "version": scorer["version"]})
 		}
 	}
+	sort.Slice(scorerRefs, func(left, right int) bool {
+		return aiEvalStringValue(scorerRefs[left], "id", "") < aiEvalStringValue(scorerRefs[right], "id", "")
+	})
+	createdAt := aiEvalStringValue(experiment, "createdAt", "")
+	if createdAt == "" {
+		createdAt = time.Unix(0, 0).UTC().Format(time.RFC3339)
+	}
+	runPolicy := defaultEvalRunPolicy()
 	manifest := map[string]any{
 		"schema":              "cloudgrid.ai-eval.experiment-manifest.v1",
 		"version":             1,
@@ -1539,16 +1816,24 @@ func buildExperimentManifest(request contracts.ExperimentManifestResolveRequest,
 		"scorerRefs":          scorerRefs,
 		"baselineRef":         experiment["baselineRef"],
 		"solverRef":           experiment["solverRef"],
-		"promptVersionRefs":   stringSlice(experiment["promptVersionRefs"]),
-		"skillSnapshotRefs":   stringSlice(experiment["skillSnapshotRefs"]),
-		"toolSnapshotRefs":    stringSlice(experiment["toolSnapshotRefs"]),
-		"providerProfileRefs": stringSlice(experiment["providerProfileRefs"]),
+		"optimizationConfig":  request.OptimizationConfig,
+		"promptVersionRefs":   sortedStringSlice(experiment["promptVersionRefs"]),
+		"skillSnapshotRefs":   sortedStringSlice(experiment["skillSnapshotRefs"]),
+		"toolSnapshotRefs":    sortedStringSlice(experiment["toolSnapshotRefs"]),
+		"providerProfileRefs": sortedStringSlice(experiment["providerProfileRefs"]),
 		"budget":              map[string]any{},
 		"concurrency":         map[string]any{},
-		"createdAt":           time.Now().UTC().Format(time.RFC3339),
+		"runPolicy":           runPolicy,
+		"createdAt":           createdAt,
 	}
 	manifest["digest"] = manifestDigest(manifest)
 	return manifest
+}
+
+func sortedStringSlice(value any) []string {
+	values := stringSlice(value)
+	sort.Strings(values)
+	return values
 }
 
 func manifestDigest(manifest map[string]any) string {

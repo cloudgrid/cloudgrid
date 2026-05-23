@@ -7,6 +7,8 @@ import type {
   AiQualityOverview,
   CreateDatasetInput,
   Dataset,
+  DatasetCandidate,
+  DatasetCandidateSearchResult,
   DatasetExportJob,
   DatasetImportJob,
   DatasetItem,
@@ -218,6 +220,92 @@ describe("AI-eval bridge", () => {
     expect(requests[6]?.payload).toMatchObject({ input: { id: "import-1", kind: "import" } });
     expect(requests[7]?.payload).toMatchObject({ input: { id: "export-1", kind: "export" } });
   });
+
+  test("routes dataset candidate and idempotent run-control requests to approved subjects", async () => {
+    const requests: Array<{ subject: string; payload: Record<string, unknown> }> = [];
+    const bridge = new MessageBridgeCloudGridBridge(
+      requestReply((subject, payload) => {
+        requests.push({ subject, payload });
+        if (
+          subject === "eval.dataset.candidates.search" ||
+          subject === "eval.dataset.candidates.prepare"
+        ) {
+          return { items: [datasetCandidate()], nextCursor: null };
+        }
+        if (subject === "eval.dataset.candidates.commit") {
+          return dataset();
+        }
+        return experimentRun();
+      }),
+      2000,
+      createLogger("bff"),
+    );
+
+    await bridge.datasetCandidates({ datasetId: "dataset-1", status: "suggested", limit: 25 });
+    await bridge.prepareDatasetCandidates({
+      datasetId: "dataset-1",
+      sources: [{ sourceKind: "trace", traceId: "trace-1", spanId: "span-1" }],
+      targetShape: "single_turn",
+      contentTreatment: "realistic_anonymized",
+      anonymizationPolicyVersion: 3,
+    });
+    await bridge.commitDatasetCandidates({
+      datasetId: "dataset-1",
+      expectedDatasetVersion: 1,
+      candidateIds: ["candidate-1"],
+      split: "validation",
+      reviewStatus: "reviewed",
+    });
+    await bridge.pauseExperimentRun("experiment-run-1");
+    await bridge.resumeExperimentRun("experiment-run-1");
+
+    expect(requests).toEqual([
+      {
+        subject: "eval.dataset.candidates.search",
+        payload: expect.objectContaining({
+          datasetId: "dataset-1",
+          status: "suggested",
+          limit: 25,
+        }),
+      },
+      {
+        subject: "eval.dataset.candidates.prepare",
+        payload: expect.objectContaining({
+          datasetId: "dataset-1",
+          sources: [{ sourceKind: "trace", traceId: "trace-1", spanId: "span-1" }],
+          targetShape: "single_turn",
+          contentTreatment: "realistic_anonymized",
+          anonymizationPolicyVersion: 3,
+        }),
+      },
+      {
+        subject: "eval.dataset.candidates.commit",
+        payload: expect.objectContaining({
+          datasetId: "dataset-1",
+          expectedDatasetVersion: 1,
+          candidateIds: ["candidate-1"],
+          split: "validation",
+          reviewStatus: "reviewed",
+        }),
+      },
+      {
+        subject: "eval.experiment.pause",
+        payload: expect.objectContaining({
+          experimentRunId: "experiment-run-1",
+          command: "pause",
+          idempotencyKey: "experiment-run-1:pause",
+        }),
+      },
+      {
+        subject: "eval.experiment.resume",
+        payload: expect.objectContaining({
+          experimentRunId: "experiment-run-1",
+          command: "resume",
+          idempotencyKey: "experiment-run-1:resume",
+        }),
+      },
+    ]);
+  });
 });
 
 describe("AI-eval GraphQL resolvers", () => {
@@ -240,6 +328,26 @@ describe("AI-eval GraphQL resolvers", () => {
         async aiQualityOverview(input) {
           calls.push({ method: "aiQualityOverview", input });
           return aiQualityOverview();
+        },
+        async datasetCandidates(input) {
+          calls.push({ method: "datasetCandidates", input });
+          return { items: [datasetCandidate()], nextCursor: null };
+        },
+        async prepareDatasetCandidates(input) {
+          calls.push({ method: "prepareDatasetCandidates", input });
+          return { items: [datasetCandidate()], nextCursor: null };
+        },
+        async commitDatasetCandidates(input) {
+          calls.push({ method: "commitDatasetCandidates", input });
+          return dataset();
+        },
+        async pauseExperimentRun(id) {
+          calls.push({ method: "pauseExperimentRun", input: id });
+          return experimentRun();
+        },
+        async resumeExperimentRun(id) {
+          calls.push({ method: "resumeExperimentRun", input: id });
+          return experimentRun();
         },
         async updateProjectAiSettings(input) {
           calls.push({ method: "updateProjectAiSettings", input });
@@ -324,6 +432,45 @@ describe("AI-eval GraphQL resolvers", () => {
         variables: { input: projectAiSettingsInput() },
       }),
     });
+    const candidateSearchResponse = await app.request("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: `
+          query DatasetCandidates($search: DatasetCandidateSearchInput) {
+            datasetCandidates(input: $search) { items { id status reason contentTreatment anonymization { policyVersion transformedFields { entityType } } } }
+          }
+        `,
+        variables: { search: { datasetId: "dataset-1", status: "suggested", limit: 25 } },
+      }),
+    });
+    const candidatesResponse = await app.request("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: `
+          mutation CandidateFlow($prepare: PrepareDatasetCandidatesInput!, $commit: CommitDatasetCandidatesInput!, $runId: ID!) {
+            prepareDatasetCandidates(input: $prepare) { items { id status reason } }
+            commitDatasetCandidates(input: $commit) { id version health { status } }
+            pauseExperimentRun(id: $runId) { id status summary { itemCounts { total } } }
+            resumeExperimentRun(id: $runId) { id status summary { itemCounts { total } } }
+          }
+        `,
+        variables: {
+          prepare: {
+            datasetId: "dataset-1",
+            sources: [{ sourceKind: "trace", traceId: "trace-1" }],
+            contentTreatment: "realistic_anonymized",
+          },
+          commit: {
+            datasetId: "dataset-1",
+            expectedDatasetVersion: 1,
+            candidateIds: ["candidate-1"],
+          },
+          runId: "experiment-run-1",
+        },
+      }),
+    });
     const transferResponse = await app.request("/graphql", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -360,6 +507,8 @@ describe("AI-eval GraphQL resolvers", () => {
     const mutationBody = await mutationResponse.json();
     const settingsBody = await settingsResponse.json();
     const updateSettingsBody = await updateSettingsResponse.json();
+    const candidateSearchBody = await candidateSearchResponse.json();
+    const candidatesBody = await candidatesResponse.json();
     const transferBody = await transferResponse.json();
     const transferQueryBody = await transferQueryResponse.json();
 
@@ -387,6 +536,19 @@ describe("AI-eval GraphQL resolvers", () => {
       projectId: "project-1",
       enabled: true,
     });
+    expect(candidateSearchBody.errors).toBeUndefined();
+    expect(candidateSearchBody.data.datasetCandidates.items[0]).toMatchObject({
+      id: "candidate-1",
+      status: "suggested",
+      contentTreatment: "realistic_anonymized",
+    });
+    expect(candidatesBody.errors).toBeUndefined();
+    expect(candidatesBody.data.commitDatasetCandidates).toMatchObject({
+      id: "dataset-1",
+      version: 1,
+    });
+    expect(candidatesBody.data.pauseExperimentRun).toMatchObject({ id: "experiment-run-1" });
+    expect(candidatesBody.data.resumeExperimentRun).toMatchObject({ id: "experiment-run-1" });
     expect(transferBody.errors).toBeUndefined();
     expect(transferBody.data.prepareDatasetImport).toMatchObject({
       id: "import-1",
@@ -416,6 +578,30 @@ describe("AI-eval GraphQL resolvers", () => {
         input: { projectId: "project-1", agentName: "support", limit: 10 },
       },
       { method: "updateProjectAiSettings", input: projectAiSettingsInput() },
+      {
+        method: "datasetCandidates",
+        input: { datasetId: "dataset-1", status: "suggested", limit: 25 },
+      },
+      {
+        method: "prepareDatasetCandidates",
+        input: {
+          datasetId: "dataset-1",
+          sources: [{ sourceKind: "trace", traceId: "trace-1" }],
+          contentTreatment: "realistic_anonymized",
+          split: "dev",
+          reviewStatus: "unreviewed",
+        },
+      },
+      {
+        method: "commitDatasetCandidates",
+        input: {
+          datasetId: "dataset-1",
+          expectedDatasetVersion: 1,
+          candidateIds: ["candidate-1"],
+        },
+      },
+      { method: "pauseExperimentRun", input: "experiment-run-1" },
+      { method: "resumeExperimentRun", input: "experiment-run-1" },
       {
         method: "prepareDatasetImport",
         input: {
@@ -662,6 +848,15 @@ function bridge(
     async aiQualityOverview() {
       return aiQualityOverview();
     },
+    async datasetCandidates(): Promise<DatasetCandidateSearchResult> {
+      return { items: [], nextCursor: null };
+    },
+    async prepareDatasetCandidates(): Promise<DatasetCandidateSearchResult> {
+      return { items: [], nextCursor: null };
+    },
+    async commitDatasetCandidates() {
+      return dataset();
+    },
     async createDataset(_input: CreateDatasetInput) {
       return dataset();
     },
@@ -704,6 +899,12 @@ function bridge(
       return experimentRun();
     },
     async cancelExperimentRun() {
+      return experimentRun();
+    },
+    async pauseExperimentRun() {
+      return experimentRun();
+    },
+    async resumeExperimentRun() {
       return experimentRun();
     },
     async startOptimizationRun() {
@@ -821,6 +1022,35 @@ function datasetItem(): DatasetItem {
     contentTreatment: "original",
     quarantineStatus: "none",
     leakageWarnings: [],
+  };
+}
+
+function datasetCandidate(): DatasetCandidate {
+  return {
+    id: "candidate-1",
+    datasetId: "dataset-1",
+    status: "suggested",
+    sourceKind: "trace",
+    source: { traceId: "trace-1", spanId: "span-1" },
+    targetShape: "single_turn",
+    input: { prompt: "How should checkout fail gracefully?" },
+    expected: { answer: "Show a retryable payment error." },
+    metadata: { service: "checkout" },
+    split: "validation",
+    reviewStatus: "unreviewed",
+    contentTreatment: "realistic_anonymized",
+    anonymization: {
+      policyId: "default-realistic",
+      policyVersion: 3,
+      transformedAt: "2026-05-12T10:01:00.000Z",
+      consistencyScope: "dataset",
+      transformedFields: [{ path: "$.customer.email", entityType: "email", strategy: "replace" }],
+    },
+    reason: "failed production measurement",
+    clusterId: "cluster-1",
+    warnings: [],
+    createdAt: "2026-05-12T10:00:00.000Z",
+    updatedAt: "2026-05-12T10:05:00.000Z",
   };
 }
 

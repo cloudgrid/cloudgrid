@@ -12,6 +12,7 @@ import (
 
 func TestStartOfflineExperimentRunsDatasetItemsAndPersistsDeterministicResults(t *testing.T) {
 	reader := &fakeReader{
+		manifest: ports.ExperimentManifest{Digest: "manifest-digest-1"},
 		experiments: []ports.Experiment{{
 			ID:             "experiment-1",
 			DatasetID:      "dataset-1",
@@ -73,6 +74,12 @@ func TestStartOfflineExperimentRunsDatasetItemsAndPersistsDeterministicResults(t
 	if len(harness.runRequests) != 1 {
 		t.Fatalf("expected one harness run request, got %d", len(harness.runRequests))
 	}
+	if len(harness.startSandboxRequests) != 1 || len(harness.cleanupSandboxRequests) != 1 {
+		t.Fatalf("sandbox lifecycle calls start=%#v cleanup=%#v", harness.startSandboxRequests, harness.cleanupSandboxRequests)
+	}
+	if harness.runRequests[0].ManifestDigest != "manifest-digest-1" || harness.runRequests[0].SandboxRef != "sandbox-run-1-item-1" || harness.runRequests[0].SandboxProfile != ports.SandboxProfileEphemeralEvalItem {
+		t.Fatalf("harness run missing manifest/sandbox refs: %#v", harness.runRequests[0])
+	}
 	if len(harness.scoreRequests) != 0 {
 		t.Fatalf("deterministic scorer must execute locally, got harness score calls: %#v", harness.scoreRequests)
 	}
@@ -98,6 +105,92 @@ func TestStartOfflineExperimentRunsDatasetItemsAndPersistsDeterministicResults(t
 		ports.ExperimentProgressFinished,
 	}) {
 		t.Fatalf("unexpected published progress: %#v", progressTypes)
+	}
+}
+
+func TestPauseResumeControlIsIdempotentAndValidatesDigest(t *testing.T) {
+	writer := &fakeWriter{}
+	harness := &fakeHarness{}
+	runner := NewRunner(RunnerConfig{
+		StorageReader:     &fakeReader{manifest: ports.ExperimentManifest{Digest: "manifest-digest-1"}},
+		StorageWriter:     writer,
+		HarnessAdapter:    harness,
+		ProgressPublisher: &fakePublisher{},
+		Clock:             fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)),
+	})
+
+	paused, err := runner.PauseExperimentRun(context.Background(), ExperimentRunControlRequest{
+		RequestID:       "pause-1",
+		ExperimentRunID: "run-1",
+	})
+	if err != nil {
+		t.Fatalf("PauseExperimentRun returned error: %v", err)
+	}
+	pausedAgain, err := runner.PauseExperimentRun(context.Background(), ExperimentRunControlRequest{
+		RequestID:       "pause-2",
+		ExperimentRunID: "run-1",
+	})
+	if err != nil {
+		t.Fatalf("second PauseExperimentRun returned error: %v", err)
+	}
+	if paused.Run.Status != ports.ExperimentRunStatusPaused || pausedAgain.Run.Status != ports.ExperimentRunStatusPaused {
+		t.Fatalf("pause statuses = %q/%q", paused.Run.Status, pausedAgain.Run.Status)
+	}
+	if len(harness.pauseSandboxRequests) != 0 {
+		t.Fatalf("pause without active sandbox refs must not call harness: %#v", harness.pauseSandboxRequests)
+	}
+
+	_, err = runner.ResumeExperimentRun(context.Background(), ExperimentRunControlRequest{
+		RequestID:              "resume-stale",
+		ExperimentRunID:        "run-1",
+		ExpectedManifestDigest: "stale-digest",
+	})
+	if err == nil || err.Error() != "ERR-AIE-002: stale manifest digest" {
+		t.Fatalf("resume stale digest error = %v", err)
+	}
+
+	resumed, err := runner.ResumeExperimentRun(context.Background(), ExperimentRunControlRequest{
+		RequestID:              "resume-1",
+		ExperimentRunID:        "run-1",
+		ExpectedManifestDigest: "manifest-digest-1",
+	})
+	if err != nil {
+		t.Fatalf("ResumeExperimentRun returned error: %v", err)
+	}
+	resumedAgain, err := runner.ResumeExperimentRun(context.Background(), ExperimentRunControlRequest{
+		RequestID:              "resume-2",
+		ExperimentRunID:        "run-1",
+		ExpectedManifestDigest: "manifest-digest-1",
+	})
+	if err != nil {
+		t.Fatalf("second ResumeExperimentRun returned error: %v", err)
+	}
+	if resumed.Run.Status != ports.ExperimentRunStatusRunning || resumedAgain.Run.Status != ports.ExperimentRunStatusRunning {
+		t.Fatalf("resume statuses = %q/%q", resumed.Run.Status, resumedAgain.Run.Status)
+	}
+	if len(writer.experimentRuns) < 2 {
+		t.Fatalf("expected persisted pause/resume state, got %#v", writer.experimentRuns)
+	}
+}
+
+func TestResumeTerminalRunFailsWithNonRetryableLifecycleError(t *testing.T) {
+	runner := NewRunner(RunnerConfig{
+		StorageReader:     &fakeReader{},
+		StorageWriter:     &fakeWriter{},
+		HarnessAdapter:    &fakeHarness{},
+		ProgressPublisher: &fakePublisher{},
+	})
+	_, _ = runner.CancelExperimentRun(context.Background(), CancelExperimentRequest{
+		RequestID:       "cancel-1",
+		ExperimentRunID: "run-terminal",
+	})
+
+	_, err := runner.ResumeExperimentRun(context.Background(), ExperimentRunControlRequest{
+		RequestID:       "resume-terminal",
+		ExperimentRunID: "run-terminal",
+	})
+	if err == nil || err.Error() != "ERR-AIE-001: cannot resume terminal experiment run" {
+		t.Fatalf("resume terminal error = %v", err)
 	}
 }
 
@@ -143,6 +236,7 @@ func TestStartOfflineExperimentFallsBackToManifestSolverRef(t *testing.T) {
 
 func TestCancelOfflineExperimentStopsBeforeNextDatasetItem(t *testing.T) {
 	reader := &fakeReader{
+		manifest: ports.ExperimentManifest{Digest: "manifest-digest-1"},
 		experiments: []ports.Experiment{{
 			ID:             "experiment-1",
 			DatasetID:      "dataset-1",
@@ -191,6 +285,9 @@ func TestCancelOfflineExperimentStopsBeforeNextDatasetItem(t *testing.T) {
 	if len(harness.runRequests) != 1 {
 		t.Fatalf("expected cancellation before second item, got %d harness runs", len(harness.runRequests))
 	}
+	if len(harness.abortSandboxRequests) != 1 {
+		t.Fatalf("expected active sandbox abort on cancel, got %#v", harness.abortSandboxRequests)
+	}
 	if last := publisher.progress[len(publisher.progress)-1]; last.Type != ports.ExperimentProgressCancelled {
 		t.Fatalf("expected final cancellation progress, got %#v", last)
 	}
@@ -206,7 +303,7 @@ func TestStartOptimizationDelegatesToHarnessAdapterAndPublishesProgress(t *testi
 	}
 	publisher := &fakePublisher{}
 	runner := NewRunner(RunnerConfig{
-		StorageReader:     &fakeReader{},
+		StorageReader:     &fakeReader{manifest: ports.ExperimentManifest{Digest: "manifest-digest-1"}},
 		StorageWriter:     writer,
 		HarnessAdapter:    harness,
 		ProgressPublisher: publisher,
@@ -217,7 +314,7 @@ func TestStartOptimizationDelegatesToHarnessAdapterAndPublishesProgress(t *testi
 	result, err := runner.StartOptimization(context.Background(), StartOptimizationRequest{
 		RequestID:           "request-1",
 		ExperimentID:        "experiment-1",
-		OptimizerKind:       "bootstrap-fewshot",
+		OptimizerKind:       "bootstrap_fewshot",
 		BasePromptVersionID: "prompt-1",
 		Config:              map[string]any{"maxCandidates": float64(2)},
 		TraceContext:        map[string]string{"traceparent": "00-test"},
@@ -231,6 +328,12 @@ func TestStartOptimizationDelegatesToHarnessAdapterAndPublishesProgress(t *testi
 	}
 	if len(harness.optimizeRequests) != 1 {
 		t.Fatalf("expected one harness optimization call, got %d", len(harness.optimizeRequests))
+	}
+	if harness.optimizeRequests[0].ManifestDigest != "manifest-digest-1" || harness.optimizeRequests[0].SandboxRef != "sandbox-optimization-run-1-optimization-run-1" || harness.optimizeRequests[0].SandboxProfile != ports.SandboxProfileEphemeralOptimizationCandidate {
+		t.Fatalf("harness optimize missing manifest/sandbox refs: %#v", harness.optimizeRequests[0])
+	}
+	if len(harness.startSandboxRequests) != 1 || len(harness.cleanupSandboxRequests) != 1 {
+		t.Fatalf("optimization sandbox lifecycle calls start=%#v cleanup=%#v", harness.startSandboxRequests, harness.cleanupSandboxRequests)
 	}
 	if len(writer.progressUpdates) == 0 {
 		t.Fatalf("expected storage-write progress update")
@@ -588,7 +691,7 @@ func TestStartOptimizationRejectsHoldoutManifestBeforeHarness(t *testing.T) {
 		RequestID:           "request-1",
 		ProjectID:           "project-1",
 		ExperimentID:        "experiment-1",
-		OptimizerKind:       "bootstrap-fewshot",
+		OptimizerKind:       "bootstrap_fewshot",
 		BasePromptVersionID: "prompt-1",
 	})
 
@@ -730,14 +833,44 @@ func (w *fakeWriter) UpdateExperimentProgress(ctx context.Context, progress port
 }
 
 type fakeHarness struct {
-	runner           *Runner
-	runResult        ports.HarnessRunResult
-	scoreResult      ports.HarnessScoreResult
-	optimizeResult   ports.HarnessOptimizeResult
-	afterRun         func(*Runner)
-	runRequests      []ports.HarnessRunRequest
-	scoreRequests    []ports.HarnessScoreRequest
-	optimizeRequests []ports.HarnessOptimizeRequest
+	runner                 *Runner
+	runResult              ports.HarnessRunResult
+	scoreResult            ports.HarnessScoreResult
+	optimizeResult         ports.HarnessOptimizeResult
+	afterRun               func(*Runner)
+	runRequests            []ports.HarnessRunRequest
+	scoreRequests          []ports.HarnessScoreRequest
+	optimizeRequests       []ports.HarnessOptimizeRequest
+	startSandboxRequests   []ports.SandboxLifecycleRequest
+	pauseSandboxRequests   []ports.SandboxLifecycleRequest
+	resumeSandboxRequests  []ports.SandboxLifecycleRequest
+	abortSandboxRequests   []ports.SandboxLifecycleRequest
+	cleanupSandboxRequests []ports.SandboxLifecycleRequest
+}
+
+func (h *fakeHarness) StartSandbox(ctx context.Context, request ports.SandboxLifecycleRequest) (ports.SandboxLifecycleResult, error) {
+	h.startSandboxRequests = append(h.startSandboxRequests, request)
+	return ports.SandboxLifecycleResult{SandboxRef: "sandbox-" + request.ExperimentRunID + "-" + request.AttemptID, SandboxProfile: request.SandboxProfile, CleanupRequired: true}, nil
+}
+
+func (h *fakeHarness) PauseSandbox(ctx context.Context, request ports.SandboxLifecycleRequest) (ports.SandboxLifecycleResult, error) {
+	h.pauseSandboxRequests = append(h.pauseSandboxRequests, request)
+	return ports.SandboxLifecycleResult{SandboxRef: request.SandboxRef, SandboxProfile: request.SandboxProfile}, nil
+}
+
+func (h *fakeHarness) ResumeSandbox(ctx context.Context, request ports.SandboxLifecycleRequest) (ports.SandboxLifecycleResult, error) {
+	h.resumeSandboxRequests = append(h.resumeSandboxRequests, request)
+	return ports.SandboxLifecycleResult{SandboxRef: request.SandboxRef, SandboxProfile: request.SandboxProfile}, nil
+}
+
+func (h *fakeHarness) AbortSandbox(ctx context.Context, request ports.SandboxLifecycleRequest) (ports.SandboxLifecycleResult, error) {
+	h.abortSandboxRequests = append(h.abortSandboxRequests, request)
+	return ports.SandboxLifecycleResult{SandboxRef: request.SandboxRef, SandboxProfile: request.SandboxProfile}, nil
+}
+
+func (h *fakeHarness) CleanupSandbox(ctx context.Context, request ports.SandboxLifecycleRequest) (ports.SandboxLifecycleResult, error) {
+	h.cleanupSandboxRequests = append(h.cleanupSandboxRequests, request)
+	return ports.SandboxLifecycleResult{SandboxRef: request.SandboxRef, SandboxProfile: request.SandboxProfile}, nil
 }
 
 func (h *fakeHarness) Run(ctx context.Context, request ports.HarnessRunRequest) (ports.HarnessRunResult, error) {

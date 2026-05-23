@@ -311,7 +311,7 @@ describe("UX v2 app shell", () => {
     expect(markup).toContain("Example Co");
     expect(markup).toContain("Second Co");
 
-    const source = readFileSync("apps/frontend/src/routes/app-shell.tsx", "utf8");
+    const source = readFileSync(new URL("../src/routes/app-shell.tsx", import.meta.url), "utf8");
     expect(source).toContain("function ProjectSelectGroups");
     expect(source).toContain("<SelectLabel>{organization.name}</SelectLabel>");
     expect(source).toContain("<SelectSeparator />");

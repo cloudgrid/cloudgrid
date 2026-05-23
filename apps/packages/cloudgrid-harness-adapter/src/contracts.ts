@@ -2,6 +2,12 @@ import { z } from "zod";
 
 export const jsonObjectSchema = z.record(z.string(), z.unknown());
 
+export const evalRunPolicySchema = z
+  .object({
+    maxParallelRequests: z.number().int().min(1),
+  })
+  .catchall(z.unknown());
+
 export const problemDetailsSchema = z.object({
   type: z.string(),
   title: z.string(),
@@ -44,7 +50,7 @@ export const sandboxLifecycleRequestSchema = z.object({
   sandboxProfile: sandboxProfileSchema,
   sandboxRef: z.string().min(1).optional(),
   checkpointRef: z.string().min(1).optional(),
-  runPolicy: jsonObjectSchema.optional(),
+  runPolicy: evalRunPolicySchema.optional(),
   cleanupRetry: jsonObjectSchema.optional(),
   traceContext: traceContextSchema.optional(),
 });
@@ -63,6 +69,8 @@ export const sandboxLifecycleResponseSchema = z.object({
 export const runRequestSchema = z.object({
   experimentRunId: z.string().min(1),
   datasetItemId: z.string().min(1),
+  manifestDigest: z.string().min(1).optional(),
+  runPolicy: evalRunPolicySchema.optional(),
   sandboxRef: z.string().min(1).optional(),
   sandboxProfile: sandboxProfileSchema.optional(),
   solverRef: solverRefSchema,
@@ -115,6 +123,8 @@ export const scoreTargetSchema = z.object({
 export const scoreRequestSchema = z.object({
   scorer: scorerSchema,
   target: scoreTargetSchema,
+  manifestDigest: z.string().min(1).optional(),
+  runPolicy: evalRunPolicySchema.optional(),
   sandboxRef: z.string().min(1).optional(),
   sandboxProfile: sandboxProfileSchema.optional(),
   traceContext: traceContextSchema.optional(),
@@ -133,7 +143,7 @@ export const scoreResponseSchema = z.object({
   producedAt: z.string().datetime(),
 });
 
-export const optimizerKindSchema = z.enum(["bootstrap-fewshot", "critic-mutate-judge-pick"]);
+export const optimizerKindSchema = z.enum(["bootstrap_fewshot", "critic_mutate_judge_pick"]);
 
 export const basePromptVersionSchema = z.object({
   id: z.string().min(1),
@@ -149,6 +159,8 @@ export const basePromptVersionSchema = z.object({
 export const optimizeRequestSchema = z.object({
   experimentRunId: z.string().min(1),
   experimentId: z.string().min(1),
+  manifestDigest: z.string().min(1),
+  runPolicy: evalRunPolicySchema.optional(),
   sandboxRef: z.string().min(1).optional(),
   sandboxProfile: sandboxProfileSchema.optional(),
   optimizerKind: optimizerKindSchema,

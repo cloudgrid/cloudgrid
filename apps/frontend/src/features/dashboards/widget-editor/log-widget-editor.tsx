@@ -51,7 +51,9 @@ export function LogWidgetEditor({
         <SearchInput
           disabled={disabled}
           id={`${widget.id}-log-query`}
-          onChange={(event) => updateLogWidget(widget, { search: stringOrNull(event.target.value) }, onWidgetChange)}
+          onChange={(event) =>
+            updateLogWidget(widget, { search: stringOrNull(event.target.value) }, onWidgetChange)
+          }
           placeholder={t("filters.placeholder.search")}
           value={widget.logs.search ?? ""}
         />
@@ -61,7 +63,9 @@ export function LogWidgetEditor({
         <Input
           disabled={disabled}
           id={`${widget.id}-log-service`}
-          onChange={(event) => updateLogWidget(widget, { service: stringOrNull(event.target.value) }, onWidgetChange)}
+          onChange={(event) =>
+            updateLogWidget(widget, { service: stringOrNull(event.target.value) }, onWidgetChange)
+          }
           placeholder={t("filters.placeholder.service")}
           value={widget.logs.service ?? ""}
         />
@@ -71,7 +75,9 @@ export function LogWidgetEditor({
         <Input
           disabled={disabled}
           id={`${widget.id}-log-severity`}
-          onChange={(event) => updateLogWidget(widget, { severity: stringOrNull(event.target.value) }, onWidgetChange)}
+          onChange={(event) =>
+            updateLogWidget(widget, { severity: stringOrNull(event.target.value) }, onWidgetChange)
+          }
           placeholder={t("filters.placeholder.severity")}
           value={widget.logs.severity ?? ""}
         />
@@ -82,7 +88,9 @@ export function LogWidgetEditor({
           disabled={disabled}
           id={`${widget.id}-log-limit`}
           min={1}
-          onChange={(event) => updateLogWidget(widget, { limit: numberOrNull(event.target.value) }, onWidgetChange)}
+          onChange={(event) =>
+            updateLogWidget(widget, { limit: numberOrNull(event.target.value) }, onWidgetChange)
+          }
           type="number"
           value={widget.logs.limit ?? ""}
         />

@@ -3,6 +3,8 @@
 package surrealdb
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"math"
 	"strings"
 	"testing"
@@ -11,6 +13,81 @@ import (
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
 	storage "github.com/cloudgrid-dev/cloudgrid/core/storage-read/internal"
 )
+
+func TestBuildDatasetCandidatesSearchQueryUsesBackedFiltersOrderingAndCursor(t *testing.T) {
+	cursor := mustAiEvalCursorForTest(t, map[string]any{
+		"sort":      "updatedAt_desc_id_asc",
+		"lastValue": "2026-05-20T10:00:00Z",
+		"lastId":    "candidate-1",
+	})
+	stmt, err := BuildAiEvalQuery(storage.SubjectEvalDatasetCandidatesSearch, map[string]any{
+		"datasetId":        "dataset-1",
+		"sourceKind":       "eval_result",
+		"status":           "ready",
+		"targetShape":      "single_turn",
+		"contentTreatment": "redacted",
+		"clusterId":        "cluster-1",
+		"scorerId":         "scorer-1",
+		"policyId":         "policy-1",
+		"experimentRunId":  "run-1",
+		"reviewOwner":      "reviewer-1",
+		"from":             "2026-05-01T00:00:00Z",
+		"to":               "2026-05-21T00:00:00Z",
+		"query":            "checkout",
+		"limit":            25,
+		"cursor":           cursor,
+	})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery(candidate search) returned error: %v", err)
+	}
+
+	for _, want := range []string{
+		"FROM ai_dataset_candidate",
+		"datasetId = $datasetId",
+		"source.kind = $sourceKind",
+		"status = $status",
+		"targetShape = $targetShape",
+		"contentTreatment = $contentTreatment",
+		"clusterId = $clusterId",
+		"scorerId = $scorerId",
+		"policyId = $policyId",
+		"experimentRunId = $experimentRunId",
+		"reviewOwner = $reviewOwner",
+		"updatedAt >= $from",
+		"updatedAt <= $to",
+		"string::lowercase(record::id(id)) CONTAINS $query",
+		"(updatedAt < $cursorLastValue OR (updatedAt = $cursorLastValue AND record::id(id) > $cursorLastId))",
+		"ORDER BY updatedAt DESC, id ASC",
+	} {
+		if !strings.Contains(stmt.SQL, want) {
+			t.Fatalf("SQL = %s, missing %q", stmt.SQL, want)
+		}
+	}
+	if stmt.Params["limit"] != 26 {
+		t.Fatalf("limit param = %#v, want limit+1 for cursor pagination", stmt.Params["limit"])
+	}
+}
+
+func TestAiEvalCursorEncodingAndPageShaping(t *testing.T) {
+	rows := []map[string]any{
+		{"id": "candidate-1", "updatedAt": "2026-05-20T10:00:00Z"},
+		{"id": "candidate-2", "updatedAt": "2026-05-19T10:00:00Z"},
+		{"id": "candidate-3", "updatedAt": "2026-05-18T10:00:00Z"},
+	}
+	pageItems, nextCursor := shapeAiEvalPage(storage.SubjectEvalDatasetCandidatesSearch, map[string]any{"limit": 2}, rows)
+	if len(pageItems) != 2 || nextCursor == nil {
+		t.Fatalf("page items=%#v nextCursor=%v, want two items and cursor", pageItems, nextCursor)
+	}
+	decoded := mustDecodeAiEvalCursorForTest(t, *nextCursor)
+	if decoded["sort"] != "updatedAt_desc_id_asc" || decoded["lastValue"] != "2026-05-19T10:00:00Z" || decoded["lastId"] != "candidate-2" {
+		t.Fatalf("cursor = %#v, want last included updatedAt/id", decoded)
+	}
+
+	_, err := BuildAiEvalQuery(storage.SubjectEvalDatasetCandidatesSearch, map[string]any{"cursor": "not-base64"})
+	if err == nil {
+		t.Fatal("BuildAiEvalQuery accepted malformed cursor")
+	}
+}
 
 func TestBuildAiEvalQueryCoversAgentRunSearchPushdown(t *testing.T) {
 	from := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
@@ -64,8 +141,8 @@ func TestBuildAiEvalQueryUsesDeclaredSubjectTableAndFilters(t *testing.T) {
 			t.Fatalf("SQL = %s, missing condition %q", stmt.SQL, condition)
 		}
 	}
-	if stmt.Params["limit"] != 25 {
-		t.Fatalf("limit param = %#v, want 25", stmt.Params["limit"])
+	if stmt.Params["limit"] != 26 {
+		t.Fatalf("limit param = %#v, want limit+1", stmt.Params["limit"])
 	}
 }
 
@@ -359,8 +436,8 @@ func TestBuildOnlinePolicyMatchesResolveQueriesUseProjectionAndPolicyPushdown(t 
 	if !strings.Contains(stmts["projection"].SQL, "FROM ai_agent_run") || !strings.Contains(stmts["projection"].SQL, "id IN $projectionIds") || !strings.Contains(stmts["projection"].SQL, "traceId = $traceId") {
 		t.Fatalf("projection SQL = %s, want bounded persisted projection lookup", stmts["projection"].SQL)
 	}
-	if !strings.Contains(stmts["scorers"].SQL, "FROM ai_scorer") || !strings.Contains(stmts["scorers"].SQL, "kind = 'deterministic'") {
-		t.Fatalf("scorers SQL = %s, want deterministic scorer lookup", stmts["scorers"].SQL)
+	if !strings.Contains(stmts["scorers"].SQL, "FROM ai_scorer") || !strings.Contains(stmts["scorers"].SQL, "contentRequirements") {
+		t.Fatalf("scorers SQL = %s, want scorer requirement lookup", stmts["scorers"].SQL)
 	}
 }
 
@@ -685,7 +762,7 @@ func TestOnlinePolicyHelpersNormalizeRowsAndFilters(t *testing.T) {
 }
 
 func TestBuildExperimentManifestProducesStableDigest(t *testing.T) {
-	manifest := buildExperimentManifest(contracts.ExperimentManifestResolveRequest{
+	request := contracts.ExperimentManifestResolveRequest{
 		ExperimentRunID: "run-1",
 		ExperimentID:    "experiment-1",
 		SplitSelector: map[string]any{
@@ -693,27 +770,76 @@ func TestBuildExperimentManifestProducesStableDigest(t *testing.T) {
 			"reviewedOnly":     true,
 			"includeSynthetic": false,
 		},
-	}, map[string]any{
+	}
+	experiment := map[string]any{
 		"datasetId":           "dataset-1",
 		"datasetVersion":      2,
 		"baselineRef":         map[string]any{"id": "baseline"},
 		"solverRef":           map[string]any{"id": "solver"},
-		"promptVersionRefs":   []any{"prompt-1"},
+		"promptVersionRefs":   []any{"prompt-2", "prompt-1"},
 		"skillSnapshotRefs":   []any{"skill-1"},
 		"toolSnapshotRefs":    []any{"tool-1"},
 		"providerProfileRefs": []any{"provider-1"},
-	}, []map[string]any{{"id": "item-1"}, {"id": "item-2"}}, []map[string]any{{"id": "scorer-1", "version": 3}})
+		"createdAt":           "2026-05-18T11:00:00Z",
+	}
+	items := []map[string]any{{"id": "item-2"}, {"id": "item-1"}}
+	scorers := []map[string]any{{"id": "scorer-2", "version": 2}, {"id": "scorer-1", "version": 3}}
+	manifest := buildExperimentManifest(request, experiment, items, scorers)
+	rebuilt := buildExperimentManifest(request, experiment, items, scorers)
 
 	if manifest["schema"] != "cloudgrid.ai-eval.experiment-manifest.v1" || manifest["digest"] == "" {
 		t.Fatalf("manifest = %#v, want schema and digest", manifest)
 	}
+	if manifest["digest"] != rebuilt["digest"] {
+		t.Fatalf("digest changed across equivalent builds: %s != %s", manifest["digest"], rebuilt["digest"])
+	}
 	if digest := manifestDigest(manifest); digest != manifest["digest"] {
 		t.Fatalf("digest = %s manifest digest = %s", digest, manifest["digest"])
+	}
+	if manifest["runPolicy"] == nil {
+		t.Fatalf("manifest = %#v, want typed runPolicy", manifest)
 	}
 	if itemIDs := manifest["datasetItemIds"].([]string); len(itemIDs) != 2 || itemIDs[0] != "item-1" {
 		t.Fatalf("dataset item ids = %#v", itemIDs)
 	}
-	if scorerRefs := manifest["scorerRefs"].([]map[string]any); len(scorerRefs) != 1 || scorerRefs[0]["version"] != 3 {
+	if scorerRefs := manifest["scorerRefs"].([]map[string]any); len(scorerRefs) != 2 || scorerRefs[0]["id"] != "scorer-1" || scorerRefs[0]["version"] != 3 {
 		t.Fatalf("scorer refs = %#v", scorerRefs)
 	}
+}
+
+func TestOnlinePolicyValidationWarningsAndRunPolicy(t *testing.T) {
+	if err := validateOnlinePolicyTarget(contracts.OnlinePolicyTarget{
+		Attributes: []contracts.OnlinePolicyAttributeFilter{{Key: "prompt.raw", Operator: contracts.AttributeFilterOperator("eq"), Value: "secret"}},
+	}); err == nil {
+		t.Fatal("validateOnlinePolicyTarget accepted raw content attribute")
+	}
+	if onlineScorerAllowedByPolicy(onlineScorerRow{kind: "llm_judge", version: 1, contentRequirements: []string{"prompt"}}, map[string]any{}) {
+		t.Fatal("llm judge scorer requiring prompt content should be disallowed without policy allowance")
+	}
+	policy := defaultEvalRunPolicy()
+	if policy == nil || policy.MaxParallelRequests != 10 || policy.TokenBudget == nil || policy.Retry == nil {
+		t.Fatalf("run policy = %#v, want default typed run policy", policy)
+	}
+}
+
+func mustAiEvalCursorForTest(t *testing.T, value map[string]any) string {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return base64.RawURLEncoding.EncodeToString(data)
+}
+
+func mustDecodeAiEvalCursorForTest(t *testing.T, cursor string) map[string]any {
+	t.Helper()
+	data, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(data, &value); err != nil {
+		t.Fatal(err)
+	}
+	return value
 }

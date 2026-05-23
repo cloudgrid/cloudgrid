@@ -128,7 +128,7 @@ func TestStoreOrchestrationMapsQueryFailures(t *testing.T) {
 		t.Fatalf("SearchTraces() error = %v, want storage mapping", err)
 	}
 
-	_, err = store.QueryAiEval(context.Background(), storage.SubjectEvalDatasetSearch, map[string]any{})
+	_, err = store.QueryAiEval(context.Background(), storage.SubjectEvalDatasetSearch, map[string]any{}, nil)
 	if err == nil || !strings.Contains(err.Error(), "ERR-006") {
 		t.Fatalf("QueryAiEval() error = %v, want storage mapping", err)
 	}
@@ -165,7 +165,7 @@ func TestStoreAiEvalReadOrchestrationSuccessPaths(t *testing.T) {
 	t.Cleanup(func() { queryRowsOverride = nil })
 
 	store := Store{}
-	data, err := store.QueryAiEval(context.Background(), storage.SubjectEvalDatasetSearch, map[string]any{})
+	data, err := store.QueryAiEval(context.Background(), storage.SubjectEvalDatasetSearch, map[string]any{}, nil)
 	if err != nil {
 		t.Fatalf("QueryAiEval(dataset list) error = %v", err)
 	}
@@ -174,7 +174,7 @@ func TestStoreAiEvalReadOrchestrationSuccessPaths(t *testing.T) {
 		t.Fatalf("dataset data = %#v", data)
 	}
 
-	export, err := store.QueryAiEval(context.Background(), storage.SubjectEvalDatasetExportStart, map[string]any{"datasetId": "dataset-1", "format": "jsonl"})
+	export, err := store.QueryAiEval(context.Background(), storage.SubjectEvalDatasetExportStart, map[string]any{"datasetId": "dataset-1", "format": "jsonl"}, nil)
 	if err != nil {
 		t.Fatalf("QueryAiEval(dataset export) error = %v", err)
 	}
@@ -182,7 +182,7 @@ func TestStoreAiEvalReadOrchestrationSuccessPaths(t *testing.T) {
 		t.Fatalf("export = %#v", export)
 	}
 
-	health, err := store.QueryAiEval(context.Background(), storage.SubjectEvalDatasetHealth, map[string]any{"datasetId": "dataset-1"})
+	health, err := store.QueryAiEval(context.Background(), storage.SubjectEvalDatasetHealth, map[string]any{"datasetId": "dataset-1"}, nil)
 	if err != nil {
 		t.Fatalf("QueryAiEval(dataset health) error = %v", err)
 	}
@@ -190,7 +190,7 @@ func TestStoreAiEvalReadOrchestrationSuccessPaths(t *testing.T) {
 		t.Fatalf("health = %#v", health)
 	}
 
-	quality, err := store.QueryAiEval(context.Background(), storage.SubjectEvalQualityOverview, map[string]any{"projectId": "default"})
+	quality, err := store.QueryAiEval(context.Background(), storage.SubjectEvalQualityOverview, map[string]any{"projectId": "default"}, nil)
 	if err != nil {
 		t.Fatalf("QueryAiEval(quality) error = %v", err)
 	}

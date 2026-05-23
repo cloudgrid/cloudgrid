@@ -791,6 +791,7 @@ function validateAiEvalContractAlignment() {
   const backendValidation = read("apps/backend/src/validation.ts");
   const backendBridge = read("apps/backend/src/bridge.ts");
   const asyncApiSource = read("specs/03-contracts/messages/message-bridge.asyncapi.yaml");
+  const optimizerValues = ["bootstrap_fewshot", "critic_mutate_judge_pick"];
 
   for (const symbol of [
     "EvalSolverRef",
@@ -799,6 +800,11 @@ function validateAiEvalContractAlignment() {
     "BootstrapFewshotConfig",
     "CriticMutateJudgePickConfig",
     "EvalRunPolicy",
+    "DatasetCandidate",
+    "DatasetCandidatesData",
+    "DatasetCandidatesResponse",
+    "ExperimentManifest",
+    "ExperimentRunSummary",
   ]) {
     if (!goSource.includes(`type ${symbol} struct`)) {
       throw new Error(`go contracts missing typed AI Eval contract ${symbol}`);
@@ -824,10 +830,49 @@ function validateAiEvalContractAlignment() {
     ExperimentRunControlRequest: ["experimentRunId", "command"],
     OptimizationStartRequest: ["config", "runPolicy"],
     ExperimentManifestResolveRequest: ["basePromptVersionId", "optimizationConfig"],
-    OnlinePolicyMatchesResolveData: ["runPolicy"],
     DatasetCandidatesPrepareRequest: ["sources", "contentTreatment", "anonymizationPolicyVersion"],
     DatasetCandidatesSearchRequest: ["datasetId", "status", "cursor"],
     DatasetCandidatesCommitRequest: ["datasetId", "expectedDatasetVersion", "candidateIds"],
+    DatasetCandidate: [
+      "id",
+      "status",
+      "sourceKind",
+      "source",
+      "targetShape",
+      "metadata",
+      "split",
+      "reviewStatus",
+      "contentTreatment",
+      "reason",
+      "warnings",
+      "createdAt",
+      "updatedAt",
+    ],
+    DatasetCandidatesData: ["items", "nextCursor"],
+    DatasetCandidatesResponse: ["data"],
+    ExperimentManifest: [
+      "schema",
+      "version",
+      "digest",
+      "experimentRunId",
+      "experimentId",
+      "datasetId",
+      "datasetVersion",
+      "splitSelector",
+      "datasetItemIds",
+      "scorerRefs",
+      "solverRef",
+      "promptVersionRefs",
+      "skillSnapshotRefs",
+      "toolSnapshotRefs",
+      "providerProfileRefs",
+      "budget",
+      "concurrency",
+      "runPolicy",
+      "createdAt",
+    ],
+    ExperimentRunSummary: ["itemCounts", "scoreSummaries", "problemCounts", "budgetUsage"],
+    OnlinePolicyMatchesResolveData: ["matches", "projection", "runPolicy", "warnings"],
   })) {
     const body = goStructBody(goSource, structName);
     if (!body) {
@@ -838,6 +883,125 @@ function validateAiEvalContractAlignment() {
         throw new Error(`go AI Eval struct ${structName} missing JSON field ${field}`);
       }
     }
+  }
+
+  for (const [structName, fields] of Object.entries({
+    DatasetCandidate: [
+      "id",
+      "status",
+      "sourceKind",
+      "source",
+      "targetShape",
+      "metadata",
+      "split",
+      "reviewStatus",
+      "contentTreatment",
+      "reason",
+      "warnings",
+      "createdAt",
+      "updatedAt",
+    ],
+    DatasetCandidatesData: ["items"],
+    ExperimentManifest: [
+      "schema",
+      "version",
+      "digest",
+      "experimentRunId",
+      "experimentId",
+      "datasetId",
+      "datasetVersion",
+      "splitSelector",
+      "datasetItemIds",
+      "scorerRefs",
+      "solverRef",
+      "promptVersionRefs",
+      "skillSnapshotRefs",
+      "toolSnapshotRefs",
+      "providerProfileRefs",
+      "budget",
+      "concurrency",
+      "runPolicy",
+      "createdAt",
+    ],
+    ExperimentRunSummary: [
+      "itemCounts",
+      "scoreSummaries",
+      "problemCounts",
+      "budgetUsage",
+      "regressions",
+    ],
+    OnlinePolicyMatchesResolveData: ["matches", "projection", "warnings"],
+  })) {
+    const body = goStructBody(goSource, structName);
+    for (const field of fields) {
+      if (goJsonFieldHasOmitEmpty(body, field)) {
+        throw new Error(`go AI Eval struct ${structName}.${field} must not be omitempty`);
+      }
+    }
+  }
+
+  if (!goSource.includes("Data      *DatasetCandidatesData")) {
+    throw new Error("go DatasetCandidatesResponse.data must use typed DatasetCandidatesData");
+  }
+  if (!goSource.includes("Items      []DatasetCandidate")) {
+    throw new Error("go DatasetCandidatesData.items must use typed DatasetCandidate items");
+  }
+  if (!goSource.includes("Data      *ExperimentManifestData")) {
+    throw new Error(
+      "go ExperimentManifestResolveResponse.data must use typed ExperimentManifestData",
+    );
+  }
+  if (!goSource.includes("Manifest ExperimentManifest")) {
+    throw new Error("go ExperimentManifestData.manifest must use typed ExperimentManifest");
+  }
+
+  assertExactOptimizerValues(
+    "GraphQL OptimizerKind",
+    graphqlEnumValues("OptimizerKind"),
+    optimizerValues,
+  );
+  assertExactOptimizerValues(
+    "AsyncAPI OptimizationStartRequest.optimizerKind",
+    asyncApi.components?.schemas?.OptimizationStartRequest?.allOf?.[1]?.properties?.optimizerKind
+      ?.enum,
+    optimizerValues,
+  );
+  assertExactOptimizerValues(
+    "ui OptimizerKind",
+    tsStringUnionValues(uiSource, "OptimizerKind"),
+    optimizerValues,
+  );
+  assertExactOptimizerValues(
+    "backend validation optimizerKindSchema",
+    zodEnumValues(backendValidation, "optimizerKindSchema"),
+    optimizerValues,
+  );
+  assertExactOptimizerValues(
+    "backend bridge optimizerKindSchema",
+    zodEnumValues(backendBridge, "optimizerKindSchema"),
+    optimizerValues,
+  );
+  assertExactOptimizerValues(
+    "go OptimizerKind constants",
+    goStringConstValues(goSource, "OptimizerKind"),
+    optimizerValues,
+  );
+
+  const onlinePolicyData =
+    asyncApi.components?.schemas?.OnlinePolicyMatchesResolveResponse?.properties?.data;
+  if (!onlinePolicyData?.required?.includes("projection")) {
+    throw new Error("AsyncAPI OnlinePolicyMatchesResolveResponse.data must require projection");
+  }
+  if (
+    onlinePolicyData?.properties?.projection?.$ref !==
+    "#/components/schemas/OnlinePolicyProjectionReadModel"
+  ) {
+    throw new Error(
+      "AsyncAPI OnlinePolicyMatchesResolveResponse.data.projection must use OnlinePolicyProjectionReadModel",
+    );
+  }
+  if (asyncApi.components?.schemas?.OnlinePolicyMatch?.properties?.projection) {
+    throw new Error("AsyncAPI OnlinePolicyMatch must not nest projection; use data.projection");
   }
 
   for (const forbidden of [
@@ -901,6 +1065,48 @@ function validateAiEvalContractAlignment() {
   if (!uiSource.includes("summary: ExperimentRunSummary")) {
     throw new Error("ui contracts ExperimentRun.summary must use ExperimentRunSummary");
   }
+}
+
+function assertExactOptimizerValues(location, actualValues, expectedValues) {
+  const actual = [...(actualValues ?? [])].sort();
+  const expected = [...expectedValues].sort();
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(`${location} optimizer values must be exactly ${expected.join(", ")}`);
+  }
+}
+
+function graphqlEnumValues(enumName) {
+  const type = graphqlSchema.getType(enumName);
+  return typeof type?.getValues === "function" ? type.getValues().map((value) => value.name) : [];
+}
+
+function tsStringUnionValues(source, typeName) {
+  const match = source.match(new RegExp(`export\\s+type\\s+${typeName}\\s*=\\s*([^;]+);`));
+  return [...(match?.[1]?.matchAll(/"([^"]+)"/g) ?? [])].map((value) => value[1]);
+}
+
+function zodEnumValues(source, constName) {
+  const match = source.match(
+    new RegExp(`const\\s+${constName}\\s*=\\s*z\\.enum\\(\\[([^\\]]+)\\]\\)`),
+  );
+  return [...(match?.[1]?.matchAll(/"([^"]+)"/g) ?? [])].map((value) => value[1]);
+}
+
+function goStringConstValues(source, typeName) {
+  const values = [];
+  const constBlocks = source.matchAll(/const\s*\(([\s\S]*?)\n\)/g);
+  for (const block of constBlocks) {
+    const pattern = new RegExp(`\\b\\w+\\s+${typeName}\\s*=\\s*"([^"]+)"`, "g");
+    for (const match of block[1].matchAll(pattern)) {
+      values.push(match[1]);
+    }
+  }
+  return values;
+}
+
+function goJsonFieldHasOmitEmpty(structBody, fieldName) {
+  const tagMatch = structBody.match(new RegExp(`\`json:"${fieldName}([^\`]*)"\``));
+  return tagMatch?.[1]?.includes("omitempty") ?? false;
 }
 
 function extractTemplateLiteralExports(source) {

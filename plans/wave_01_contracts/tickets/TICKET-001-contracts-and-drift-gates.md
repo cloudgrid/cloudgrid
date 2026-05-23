@@ -2,7 +2,7 @@
 id: TICKET-001
 title: AI Eval contracts and drift gates
 wave: 1
-status: ready
+status: done
 parallel_group: contracts_serial
 depends_on: []
 blocked_by: []

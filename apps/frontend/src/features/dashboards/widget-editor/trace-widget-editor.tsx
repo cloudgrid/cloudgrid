@@ -88,7 +88,9 @@ export function TraceWidgetEditor({
         <SearchInput
           disabled={disabled}
           id={`${widget.id}-trace-query`}
-          onChange={(event) => updateTraceWidget(widget, { query: stringOrNull(event.target.value) }, onWidgetChange)}
+          onChange={(event) =>
+            updateTraceWidget(widget, { query: stringOrNull(event.target.value) }, onWidgetChange)
+          }
           placeholder={t("filters.placeholder.query")}
           value={widget.traces.query ?? ""}
         />
@@ -98,7 +100,9 @@ export function TraceWidgetEditor({
         <Input
           disabled={disabled}
           id={`${widget.id}-trace-service`}
-          onChange={(event) => updateTraceWidget(widget, { service: stringOrNull(event.target.value) }, onWidgetChange)}
+          onChange={(event) =>
+            updateTraceWidget(widget, { service: stringOrNull(event.target.value) }, onWidgetChange)
+          }
           placeholder={t("filters.placeholder.service")}
           value={widget.traces.service ?? ""}
         />
@@ -115,7 +119,9 @@ export function TraceWidgetEditor({
           disabled={disabled}
           id={`${widget.id}-trace-limit`}
           min={1}
-          onChange={(event) => updateTraceWidget(widget, { limit: numberOrNull(event.target.value) }, onWidgetChange)}
+          onChange={(event) =>
+            updateTraceWidget(widget, { limit: numberOrNull(event.target.value) }, onWidgetChange)
+          }
           type="number"
           value={widget.traces.limit ?? ""}
         />

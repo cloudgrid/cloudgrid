@@ -2,7 +2,7 @@
 id: TICKET-004
 title: Runner AI Eval orchestration
 wave: 3
-status: ready
+status: done
 parallel_group: runner_harness_parallel
 depends_on: [TICKET-002, TICKET-003]
 blocked_by: []

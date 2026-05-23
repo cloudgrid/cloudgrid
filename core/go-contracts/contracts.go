@@ -2433,6 +2433,53 @@ type DatasetCandidatesCommitRequest struct {
 	ReviewStatus           *string  `json:"reviewStatus,omitempty"`
 }
 
+type DatasetCandidate struct {
+	ID               string                          `json:"id"`
+	DatasetID        *string                         `json:"datasetId,omitempty"`
+	Status           string                          `json:"status"`
+	SourceKind       string                          `json:"sourceKind"`
+	Source           map[string]any                  `json:"source"`
+	TargetShape      string                          `json:"targetShape"`
+	Input            any                             `json:"input,omitempty"`
+	Expected         any                             `json:"expected,omitempty"`
+	Metadata         map[string]any                  `json:"metadata"`
+	Split            string                          `json:"split"`
+	ReviewStatus     string                          `json:"reviewStatus"`
+	ContentTreatment string                          `json:"contentTreatment"`
+	Anonymization    *DatasetAnonymizationProvenance `json:"anonymization,omitempty"`
+	Reason           string                          `json:"reason"`
+	ClusterID        *string                         `json:"clusterId,omitempty"`
+	Warnings         []string                        `json:"warnings"`
+	CreatedAt        time.Time                       `json:"createdAt"`
+	UpdatedAt        time.Time                       `json:"updatedAt"`
+}
+
+type DatasetAnonymizationProvenance struct {
+	PolicyID          string                   `json:"policyId"`
+	PolicyVersion     int                      `json:"policyVersion"`
+	TransformedAt     time.Time                `json:"transformedAt"`
+	ConsistencyScope  string                   `json:"consistencyScope"`
+	TransformedFields []DatasetAnonymizedField `json:"transformedFields"`
+}
+
+type DatasetAnonymizedField struct {
+	Path       string `json:"path"`
+	EntityType string `json:"entityType"`
+	Strategy   string `json:"strategy"`
+}
+
+type DatasetCandidatesData struct {
+	Items      []DatasetCandidate `json:"items"`
+	NextCursor *string            `json:"nextCursor,omitempty"`
+}
+
+type DatasetCandidatesResponse struct {
+	RequestID string                 `json:"requestId"`
+	OK        bool                   `json:"ok"`
+	Data      *DatasetCandidatesData `json:"data,omitempty"`
+	Error     *BridgeError           `json:"error,omitempty"`
+}
+
 type VersionedRef struct {
 	ID      string `json:"id"`
 	Version int    `json:"version"`
@@ -2480,8 +2527,15 @@ type CriticMutateJudgePickConfig struct {
 	KeepTopK             *int     `json:"keepTopK,omitempty"`
 }
 
+type OptimizerKind string
+
+const (
+	OptimizerKindBootstrapFewshot      OptimizerKind = "bootstrap_fewshot"
+	OptimizerKindCriticMutateJudgePick OptimizerKind = "critic_mutate_judge_pick"
+)
+
 type OptimizationConfig struct {
-	OptimizerKind         string                       `json:"optimizerKind,omitempty"`
+	OptimizerKind         OptimizerKind                `json:"optimizerKind"`
 	BootstrapFewshot      *BootstrapFewshotConfig      `json:"bootstrapFewshot,omitempty"`
 	CriticMutateJudgePick *CriticMutateJudgePickConfig `json:"criticMutateJudgePick,omitempty"`
 }
@@ -2525,7 +2579,7 @@ type ExperimentRunControlRequest struct {
 type OptimizationStartRequest struct {
 	BridgeEnvelope
 	ExperimentID        string              `json:"experimentId"`
-	OptimizerKind       string              `json:"optimizerKind"`
+	OptimizerKind       OptimizerKind       `json:"optimizerKind"`
 	BasePromptVersionID string              `json:"basePromptVersionId"`
 	SplitSelector       map[string]any      `json:"splitSelector,omitempty"`
 	Config              *OptimizationConfig `json:"config,omitempty"`
@@ -2601,16 +2655,101 @@ type ExperimentManifestResolveRequest struct {
 	ExperimentRunID     string              `json:"experimentRunId"`
 	ExperimentID        string              `json:"experimentId"`
 	SplitSelector       map[string]any      `json:"splitSelector,omitempty"`
-	OptimizerKind       *string             `json:"optimizerKind,omitempty"`
+	OptimizerKind       *OptimizerKind      `json:"optimizerKind,omitempty"`
 	BasePromptVersionID *string             `json:"basePromptVersionId,omitempty"`
 	OptimizationConfig  *OptimizationConfig `json:"optimizationConfig,omitempty"`
 }
 
 type ExperimentManifestResolveResponse struct {
-	RequestID string         `json:"requestId"`
-	OK        bool           `json:"ok"`
-	Data      map[string]any `json:"data,omitempty"`
-	Error     *BridgeError   `json:"error,omitempty"`
+	RequestID string                  `json:"requestId"`
+	OK        bool                    `json:"ok"`
+	Data      *ExperimentManifestData `json:"data,omitempty"`
+	Error     *BridgeError            `json:"error,omitempty"`
+}
+
+type ExperimentManifestData struct {
+	Manifest ExperimentManifest `json:"manifest"`
+}
+
+type ExperimentManifest struct {
+	Schema              string               `json:"schema"`
+	Version             int                  `json:"version"`
+	Digest              string               `json:"digest"`
+	ExperimentRunID     string               `json:"experimentRunId"`
+	ExperimentID        string               `json:"experimentId"`
+	DatasetID           string               `json:"datasetId"`
+	DatasetVersion      int                  `json:"datasetVersion"`
+	SplitSelector       DatasetSplitSelector `json:"splitSelector"`
+	DatasetItemIDs      []string             `json:"datasetItemIds"`
+	ScorerRefs          []VersionedRef       `json:"scorerRefs"`
+	BaselineRef         *EvalBaselineRef     `json:"baselineRef,omitempty"`
+	SolverRef           EvalSolverRef        `json:"solverRef"`
+	OptimizationConfig  *OptimizationConfig  `json:"optimizationConfig,omitempty"`
+	PromptVersionRefs   []string             `json:"promptVersionRefs"`
+	SkillSnapshotRefs   []string             `json:"skillSnapshotRefs"`
+	ToolSnapshotRefs    []string             `json:"toolSnapshotRefs"`
+	ProviderProfileRefs []string             `json:"providerProfileRefs"`
+	Budget              map[string]any       `json:"budget"`
+	Concurrency         map[string]any       `json:"concurrency"`
+	RunPolicy           EvalRunPolicy        `json:"runPolicy"`
+	CreatedAt           time.Time            `json:"createdAt"`
+}
+
+type ExperimentRunSummary struct {
+	ItemCounts     EvalItemCounts          `json:"itemCounts"`
+	ScoreSummaries []EvalScoreSummary      `json:"scoreSummaries"`
+	ProblemCounts  EvalProblemCounts       `json:"problemCounts"`
+	BudgetUsage    EvalBudgetUsage         `json:"budgetUsage"`
+	Latency        *EvalLatencySummary     `json:"latency,omitempty"`
+	Regressions    []EvalRegressionSummary `json:"regressions"`
+}
+
+type EvalItemCounts struct {
+	Total       int `json:"total"`
+	Passed      int `json:"passed"`
+	Failed      int `json:"failed"`
+	Errored     int `json:"errored"`
+	Skipped     int `json:"skipped"`
+	NeedsReview int `json:"needsReview"`
+	Quarantined int `json:"quarantined"`
+}
+
+type EvalScoreSummary struct {
+	ScorerID      string         `json:"scorerId"`
+	ScorerVersion int            `json:"scorerVersion"`
+	ResultKind    *string        `json:"resultKind,omitempty"`
+	PassRate      float64        `json:"passRate"`
+	MeanScore     float64        `json:"meanScore"`
+	P50           *float64       `json:"p50,omitempty"`
+	P95           *float64       `json:"p95,omitempty"`
+	Support       int            `json:"support"`
+	Visualization map[string]any `json:"visualization,omitempty"`
+}
+
+type EvalProblemCounts struct {
+	ModelQuality   int `json:"modelQuality"`
+	ItemQuality    int `json:"itemQuality"`
+	ScorerConfig   int `json:"scorerConfig"`
+	Infrastructure int `json:"infrastructure"`
+}
+
+type EvalBudgetUsage struct {
+	InputTokens  int     `json:"inputTokens"`
+	OutputTokens int     `json:"outputTokens"`
+	TotalTokens  int     `json:"totalTokens"`
+	EstimatedUSD float64 `json:"estimatedUsd"`
+}
+
+type EvalLatencySummary struct {
+	P50Ms *float64 `json:"p50Ms,omitempty"`
+	P95Ms *float64 `json:"p95Ms,omitempty"`
+	MaxMs *float64 `json:"maxMs,omitempty"`
+}
+
+type EvalRegressionSummary struct {
+	Kind    string `json:"kind"`
+	Count   int    `json:"count"`
+	Blocker *bool  `json:"blocker,omitempty"`
 }
 
 type OnlinePolicyMatchesResolveRequest struct {
@@ -2631,20 +2770,20 @@ type OnlinePolicyMatchesResolveResponse struct {
 }
 
 type OnlinePolicyMatchesResolveData struct {
-	Matches   []OnlinePolicyMatch `json:"matches"`
-	RunPolicy *EvalRunPolicy      `json:"runPolicy,omitempty"`
-	Warnings  []string            `json:"warnings"`
+	Matches    []OnlinePolicyMatch             `json:"matches"`
+	Projection OnlinePolicyProjectionReadModel `json:"projection"`
+	RunPolicy  *EvalRunPolicy                  `json:"runPolicy,omitempty"`
+	Warnings   []string                        `json:"warnings"`
 }
 
 type OnlinePolicyMatch struct {
-	PolicyID      string                          `json:"policyId"`
-	PolicyVersion int                             `json:"policyVersion"`
-	PolicyName    string                          `json:"policyName"`
-	Target        OnlinePolicyTarget              `json:"target"`
-	SampleRate    float64                         `json:"sampleRate"`
-	MaxDailyRuns  *int                            `json:"maxDailyRuns,omitempty"`
-	ScorerRefs    []OnlinePolicyScorerRef         `json:"scorerRefs"`
-	Projection    OnlinePolicyProjectionReadModel `json:"projection"`
+	PolicyID      string                  `json:"policyId"`
+	PolicyVersion int                     `json:"policyVersion"`
+	PolicyName    string                  `json:"policyName"`
+	Target        OnlinePolicyTarget      `json:"target"`
+	SampleRate    float64                 `json:"sampleRate"`
+	MaxDailyRuns  *int                    `json:"maxDailyRuns,omitempty"`
+	ScorerRefs    []OnlinePolicyScorerRef `json:"scorerRefs"`
 }
 
 type OnlinePolicyScorerRef struct {

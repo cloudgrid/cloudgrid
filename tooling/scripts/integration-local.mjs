@@ -832,30 +832,42 @@ async function main(args = process.argv.slice(2)) {
     await assertAiEvalScenario(bffPort, natsUrl, runID, runTraceFixture);
 
     console.log("Asserting collector failure mappings...");
-    await assertCollectorProblem(otlpPort, {
-      path: "/v1/traces",
-      body: "{}",
-      contentType: "text/plain",
-      status: 415,
-      id: "ERR-002",
-      code: "UNSUPPORTED_MEDIA_TYPE",
-    }, fixtureBearerToken);
-    await assertCollectorProblem(otlpPort, {
-      path: "/v1/logs",
-      body: "{",
-      contentType: "application/json",
-      status: 400,
-      id: "ERR-008",
-      code: "OTLP_DECODE_FAILED",
-    }, fixtureBearerToken);
-    await assertCollectorProblem(otlpPort, {
-      path: "/v1/logs",
-      body: Buffer.from([0xff]),
-      contentType: "application/x-protobuf",
-      status: 400,
-      id: "ERR-008",
-      code: "OTLP_DECODE_FAILED",
-    }, fixtureBearerToken);
+    await assertCollectorProblem(
+      otlpPort,
+      {
+        path: "/v1/traces",
+        body: "{}",
+        contentType: "text/plain",
+        status: 415,
+        id: "ERR-002",
+        code: "UNSUPPORTED_MEDIA_TYPE",
+      },
+      fixtureBearerToken,
+    );
+    await assertCollectorProblem(
+      otlpPort,
+      {
+        path: "/v1/logs",
+        body: "{",
+        contentType: "application/json",
+        status: 400,
+        id: "ERR-008",
+        code: "OTLP_DECODE_FAILED",
+      },
+      fixtureBearerToken,
+    );
+    await assertCollectorProblem(
+      otlpPort,
+      {
+        path: "/v1/logs",
+        body: Buffer.from([0xff]),
+        contentType: "application/x-protobuf",
+        status: 400,
+        id: "ERR-008",
+        code: "OTLP_DECODE_FAILED",
+      },
+      fixtureBearerToken,
+    );
     await assertCollectorNatsStartupFailure(serviceEnv, await freePort());
 
     console.log("Asserting duplicate JetStream command handling...");
@@ -2688,10 +2700,7 @@ async function assertHealthStatus(url, expectedStatus) {
   try {
     const response = await fetch(url, { signal: controller.signal });
     const body = await response.json();
-    assert(
-      body.status === expectedStatus,
-      `${url} status ${body.status}, want ${expectedStatus}`,
-    );
+    assert(body.status === expectedStatus, `${url} status ${body.status}, want ${expectedStatus}`);
   } finally {
     clearTimeout(timeout);
   }

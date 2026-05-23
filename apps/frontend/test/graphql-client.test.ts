@@ -764,6 +764,34 @@ describe("GraphQL client", () => {
         tags: [],
         items: { items: [], nextCursor: null },
       };
+      const datasetCandidate = {
+        id: "candidate-1",
+        datasetId: "dataset-1",
+        status: "suggested",
+        sourceKind: "trace",
+        source: { traceId: "trace-1" },
+        targetShape: "single_turn",
+        input: { prompt: "How should checkout fail gracefully?" },
+        expected: { answer: "Show a retryable payment error." },
+        metadata: { service: "checkout" },
+        split: "validation",
+        reviewStatus: "unreviewed",
+        contentTreatment: "realistic_anonymized",
+        anonymization: {
+          policyId: "default-realistic",
+          policyVersion: 3,
+          transformedAt: "2026-05-17T08:01:00.000Z",
+          consistencyScope: "dataset",
+          transformedFields: [
+            { path: "$.customer.email", entityType: "email", strategy: "replace" },
+          ],
+        },
+        reason: "failed production measurement",
+        clusterId: "cluster-1",
+        warnings: [],
+        createdAt: "2026-05-17T08:00:00.000Z",
+        updatedAt: "2026-05-17T08:05:00.000Z",
+      };
       const scorer = {
         id: "scorer-1",
         name: "Contains answer",
@@ -868,6 +896,18 @@ describe("GraphQL client", () => {
         CreateScorer: { createScorer: scorer },
         CreateExperiment: { createExperiment: experiment },
         StartExperimentRun: { startExperimentRun: experimentRun },
+        PauseExperimentRun: { pauseExperimentRun: { ...experimentRun, status: "paused" } },
+        ResumeExperimentRun: { resumeExperimentRun: { ...experimentRun, status: "running" } },
+        CancelExperimentRun: { cancelExperimentRun: { ...experimentRun, status: "cancelled" } },
+        DatasetCandidates: {
+          datasetCandidates: { items: [datasetCandidate], nextCursor: null },
+        },
+        PrepareDatasetCandidates: {
+          prepareDatasetCandidates: { items: [datasetCandidate], nextCursor: null },
+        },
+        CommitDatasetCandidates: {
+          commitDatasetCandidates: { ...dataset, version: 2, itemCount: 1 },
+        },
         PrepareDatasetImport: { prepareDatasetImport: importJob },
         CommitDatasetImport: { commitDatasetImport: importJob },
         StartDatasetExport: { startDatasetExport: exportJob },
@@ -923,6 +963,36 @@ describe("GraphQL client", () => {
     ).resolves.toMatchObject({
       id: "run-1",
     });
+    await expect(client.pauseExperimentRun("run-1")).resolves.toMatchObject({
+      id: "run-1",
+      status: "paused",
+    });
+    await expect(client.resumeExperimentRun("run-1")).resolves.toMatchObject({
+      id: "run-1",
+      status: "running",
+    });
+    await expect(client.cancelExperimentRun("run-1")).resolves.toMatchObject({
+      id: "run-1",
+      status: "cancelled",
+    });
+    await expect(
+      client.searchDatasetCandidates({ datasetId: "dataset-1", status: "suggested" }),
+    ).resolves.toMatchObject({
+      items: [{ id: "candidate-1", contentTreatment: "realistic_anonymized" }],
+    });
+    await expect(
+      client.prepareDatasetCandidates({
+        datasetId: "dataset-1",
+        sources: [{ sourceKind: "trace", traceId: "trace-1" }],
+      }),
+    ).resolves.toMatchObject({ items: [{ id: "candidate-1" }] });
+    await expect(
+      client.commitDatasetCandidates({
+        datasetId: "dataset-1",
+        expectedDatasetVersion: 1,
+        candidateIds: ["candidate-1"],
+      }),
+    ).resolves.toMatchObject({ id: "dataset-1", version: 2 });
     await expect(
       client.prepareDatasetImport({
         datasetId: "dataset-1",
@@ -951,6 +1021,12 @@ describe("GraphQL client", () => {
       "CreateScorer",
       "CreateExperiment",
       "StartExperimentRun",
+      "PauseExperimentRun",
+      "ResumeExperimentRun",
+      "CancelExperimentRun",
+      "DatasetCandidates",
+      "PrepareDatasetCandidates",
+      "CommitDatasetCandidates",
       "PrepareDatasetImport",
       "CommitDatasetImport",
       "StartDatasetExport",

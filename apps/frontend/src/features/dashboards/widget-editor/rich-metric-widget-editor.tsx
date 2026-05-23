@@ -247,7 +247,10 @@ export function RichMetricWidgetEditor({
                   updateQuery({
                     formulas: (query.formulas ?? []).map((candidate) =>
                       candidate.id === formula.id
-                        ? { ...candidate, label: stringOrNull(event.target.value) ?? candidate.label }
+                        ? {
+                            ...candidate,
+                            label: stringOrNull(event.target.value) ?? candidate.label,
+                          }
                         : candidate,
                     ),
                   })
@@ -258,7 +261,9 @@ export function RichMetricWidgetEditor({
             </Field>
             <div className="grid grid-cols-[80px_minmax(0,1fr)] gap-2 text-sm">
               <dt className="text-muted-foreground">Formula</dt>
-              <dd className="min-w-0 break-words">{describeFormulaExpression(formula.expression)}</dd>
+              <dd className="min-w-0 break-words">
+                {describeFormulaExpression(formula.expression)}
+              </dd>
             </div>
           </div>
         ))}
@@ -326,7 +331,9 @@ function RichMetricQueryRowEditor({
         <Input
           disabled={disabled}
           id={`${row.id}-label`}
-          onChange={(event) => onChange({ ...row, label: stringOrNull(event.target.value) ?? row.label })}
+          onChange={(event) =>
+            onChange({ ...row, label: stringOrNull(event.target.value) ?? row.label })
+          }
           placeholder="Label"
           value={row.label}
         />

@@ -62,11 +62,7 @@ export function MetricWidgetEditor({
         <Select
           disabled={disabled}
           onValueChange={(value) =>
-            updateMetricWidget(
-              widget,
-              { aggregation: value as MetricAggregation },
-              onWidgetChange,
-            )
+            updateMetricWidget(widget, { aggregation: value as MetricAggregation }, onWidgetChange)
           }
           value={widget.metric.aggregation}
         >
@@ -100,9 +96,7 @@ export function MetricWidgetEditor({
       </div>
       <div className="grid grid-cols-[80px_minmax(0,1fr)] gap-2 text-sm">
         <dt className="text-muted-foreground">{t("dashboards.editor.interval")}</dt>
-        <dd className="min-w-0 break-words">
-          {widget.metric.interval ?? t("dashboards.default")}
-        </dd>
+        <dd className="min-w-0 break-words">{widget.metric.interval ?? t("dashboards.default")}</dd>
       </div>
     </FieldGroup>
   );

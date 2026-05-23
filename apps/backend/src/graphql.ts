@@ -14,11 +14,13 @@ import type {
   AppendDatasetItemsInput,
   ApproveAiChatActionInput,
   CommitDatasetImportInput,
+  CommitDatasetCandidatesInput,
   CreateAiChatConversationInput,
   CreateDatasetInput,
   CreateExperimentInput,
   CreateScorerInput,
   Dataset,
+  DatasetCandidateSearchInput,
   DatasetItemSearchInput,
   DatasetSearchInput,
   EvalResultSearchInput,
@@ -27,6 +29,7 @@ import type {
   ExperimentSearchInput,
   LiveExperimentRunInput,
   PrepareDatasetImportInput,
+  PrepareDatasetCandidatesInput,
   PromotePromptVersionInput,
   PromoteSpanToDatasetItemInput,
   ResolveAnnotationInput,
@@ -92,17 +95,20 @@ import {
   validateAppendDatasetItemsInput,
   validateApproveAiChatActionInput,
   validateCommitDatasetImportInput,
+  validateCommitDatasetCandidatesInput,
   validateCreateAiChatConversationInput,
   validateCreateDatasetInput,
   validateCreateExperimentInput,
   validateCreateScorerInput,
   validateDatasetItemSearchInput,
+  validateDatasetCandidateSearchInput,
   validateDatasetSearchInput,
   validateEvalResultSearchInput,
   validateExperimentSearchInput,
   validateId,
   validateLiveExperimentRunInput,
   validatePrepareDatasetImportInput,
+  validatePrepareDatasetCandidatesInput,
   validatePromotePromptVersionInput,
   validatePromoteSpanToDatasetItemInput,
   validateResolveAnnotationInput,
@@ -603,6 +609,17 @@ export function createCloudGridSchema() {
               await authContext(context),
             ),
           ),
+        datasetCandidates: async (
+          _parent,
+          args: { input?: DatasetCandidateSearchInput },
+          context,
+        ) =>
+          logGraphQLOperation(context, "datasetCandidates", async () =>
+            requireAiEvalBridge(context).datasetCandidates(
+              validateDatasetCandidateSearchInput(args.input ?? {}),
+              await authContext(context),
+            ),
+          ),
         scorers: async (_parent, args: { input?: ScorerSearchInput }, context) =>
           logGraphQLOperation(context, "scorers", async () =>
             requireAiEvalBridge(context).scorers(
@@ -723,6 +740,28 @@ export function createCloudGridSchema() {
               await authContext(context),
             ),
           ),
+        prepareDatasetCandidates: async (
+          _parent,
+          args: { input: PrepareDatasetCandidatesInput },
+          context,
+        ) =>
+          logGraphQLOperation(context, "prepareDatasetCandidates", async () =>
+            requireAiEvalBridge(context).prepareDatasetCandidates(
+              validatePrepareDatasetCandidatesInput(args.input),
+              await authContext(context),
+            ),
+          ),
+        commitDatasetCandidates: async (
+          _parent,
+          args: { input: CommitDatasetCandidatesInput },
+          context,
+        ) =>
+          logGraphQLOperation(context, "commitDatasetCandidates", async () =>
+            requireAiEvalBridge(context).commitDatasetCandidates(
+              validateCommitDatasetCandidatesInput(args.input),
+              await authContext(context),
+            ),
+          ),
         promoteSpanToDatasetItem: async (
           _parent,
           args: { input: PromoteSpanToDatasetItemInput },
@@ -758,6 +797,20 @@ export function createCloudGridSchema() {
         cancelExperimentRun: async (_parent, args: { id: string }, context) =>
           logGraphQLOperation(context, "cancelExperimentRun", async () =>
             requireAiEvalBridge(context).cancelExperimentRun(
+              validateId(args.id, "experiment run id"),
+              await authContext(context),
+            ),
+          ),
+        pauseExperimentRun: async (_parent, args: { id: string }, context) =>
+          logGraphQLOperation(context, "pauseExperimentRun", async () =>
+            requireAiEvalBridge(context).pauseExperimentRun(
+              validateId(args.id, "experiment run id"),
+              await authContext(context),
+            ),
+          ),
+        resumeExperimentRun: async (_parent, args: { id: string }, context) =>
+          logGraphQLOperation(context, "resumeExperimentRun", async () =>
+            requireAiEvalBridge(context).resumeExperimentRun(
               validateId(args.id, "experiment run id"),
               await authContext(context),
             ),

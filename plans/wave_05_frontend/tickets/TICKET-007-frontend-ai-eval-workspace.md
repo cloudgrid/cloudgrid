@@ -2,7 +2,7 @@
 id: TICKET-007
 title: Frontend AI Eval workspace
 wave: 5
-status: ready
+status: done
 parallel_group: frontend_serial
 depends_on: [TICKET-006]
 blocked_by: []

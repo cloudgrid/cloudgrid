@@ -27,12 +27,74 @@ func TestSubjectHandlersExposeApprovedRunnerSubjects(t *testing.T) {
 
 	want := []string{
 		SubjectExperimentStart,
+		SubjectExperimentPause,
+		SubjectExperimentResume,
 		SubjectExperimentCancel,
 		SubjectOptimizationStart,
 		SubjectPersistedProjections,
 	}
 	if !sameStringSet(subjects, want) {
 		t.Fatalf("subjects = %#v, want %#v", subjects, want)
+	}
+}
+
+func TestExperimentPauseAndResumeHandlersUseControlRequest(t *testing.T) {
+	runner := orchestrator.NewRunner(orchestrator.RunnerConfig{
+		StorageReader:     &runtimeReader{manifest: ports.ExperimentManifest{Digest: "manifest-digest-1"}},
+		StorageWriter:     &runtimeWriter{},
+		HarnessAdapter:    &runtimeHarness{},
+		ProgressPublisher: &runtimePublisher{},
+		Clock:             func() time.Time { return time.Date(2026, 5, 16, 10, 0, 0, 0, time.UTC) },
+	})
+	service := NewRunnerService(runner, nil)
+
+	pauseMsg := newRuntimeMessage(SubjectExperimentPause, contracts.ExperimentRunControlRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{
+			RequestID: "req-pause",
+			IssuedAt:  time.Date(2026, 5, 16, 9, 0, 0, 0, time.UTC),
+		},
+		ExperimentRunID: "run-1",
+		Command:         "pause",
+	})
+	service.SubjectHandlers()[SubjectExperimentPause](pauseMsg)
+	var pauseResponse contracts.EvalMutationResponse
+	decodeRuntimeResponse(t, pauseMsg.response, &pauseResponse)
+	if !pauseResponse.OK || pauseResponse.Data["status"] != ports.ExperimentRunStatusPaused {
+		t.Fatalf("pause response = %#v", pauseResponse)
+	}
+
+	expectedDigest := "manifest-digest-1"
+	resumeMsg := newRuntimeMessage(SubjectExperimentResume, contracts.ExperimentRunControlRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{
+			RequestID: "req-resume",
+			IssuedAt:  time.Date(2026, 5, 16, 9, 1, 0, 0, time.UTC),
+		},
+		ExperimentRunID:        "run-1",
+		Command:                "resume",
+		ExpectedManifestDigest: &expectedDigest,
+	})
+	service.SubjectHandlers()[SubjectExperimentResume](resumeMsg)
+	var resumeResponse contracts.EvalMutationResponse
+	decodeRuntimeResponse(t, resumeMsg.response, &resumeResponse)
+	if !resumeResponse.OK || resumeResponse.Data["status"] != ports.ExperimentRunStatusRunning {
+		t.Fatalf("resume response = %#v", resumeResponse)
+	}
+
+	staleDigest := "stale-digest"
+	staleMsg := newRuntimeMessage(SubjectExperimentResume, contracts.ExperimentRunControlRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{
+			RequestID: "req-resume-stale",
+			IssuedAt:  time.Date(2026, 5, 16, 9, 2, 0, 0, time.UTC),
+		},
+		ExperimentRunID:        "run-1",
+		Command:                "resume",
+		ExpectedManifestDigest: &staleDigest,
+	})
+	service.SubjectHandlers()[SubjectExperimentResume](staleMsg)
+	var staleResponse contracts.EvalMutationResponse
+	decodeRuntimeResponse(t, staleMsg.response, &staleResponse)
+	if staleResponse.OK || staleResponse.Error == nil || staleResponse.Error.ID != "ERR-AIE-002" || staleResponse.Error.Retryable {
+		t.Fatalf("stale resume response = %#v", staleResponse)
 	}
 }
 
@@ -170,6 +232,13 @@ func TestNATSAdaptersUseApprovedBoundarySubjects(t *testing.T) {
 			SubjectResultsPersist:       contracts.EvalMutationResponse{RequestID: "req", OK: true, Data: map[string]any{}},
 			SubjectControlAISettingsGet: contracts.ProjectAiSettingsGetResponse{RequestID: "req", OK: true, Data: map[string]any{"settings": map[string]any{"projectId": "project-1", "budget": map[string]any{"dailyUsd": 10}}}},
 			SubjectOnlinePolicyResolve: contracts.OnlinePolicyMatchesResolveResponse{RequestID: "req-online", OK: true, Data: &contracts.OnlinePolicyMatchesResolveData{
+				Projection: contracts.OnlinePolicyProjectionReadModel{
+					ProjectID:      "project-1",
+					TraceID:        "trace-1",
+					ProjectionID:   "agent-run-1",
+					Kind:           contracts.AiProjectionKindAgentRun,
+					SafeAttributes: map[string]any{"answer": "ok"},
+				},
 				Matches: []contracts.OnlinePolicyMatch{{
 					PolicyID:      "policy-1",
 					PolicyVersion: 1,
@@ -180,13 +249,6 @@ func TestNATSAdaptersUseApprovedBoundarySubjects(t *testing.T) {
 						ScorerVersion: 2,
 						Kind:          "deterministic",
 					}},
-					Projection: contracts.OnlinePolicyProjectionReadModel{
-						ProjectID:      "project-1",
-						TraceID:        "trace-1",
-						ProjectionID:   "agent-run-1",
-						Kind:           contracts.AiProjectionKindAgentRun,
-						SafeAttributes: map[string]any{"answer": "ok"},
-					},
 				}},
 				Warnings: []string{},
 			}},
@@ -390,6 +452,26 @@ type runtimeHarness struct {
 	runRequests      []ports.HarnessRunRequest
 	scoreRequests    []ports.HarnessScoreRequest
 	optimizeRequests []ports.HarnessOptimizeRequest
+}
+
+func (harness *runtimeHarness) StartSandbox(_ context.Context, request ports.SandboxLifecycleRequest) (ports.SandboxLifecycleResult, error) {
+	return ports.SandboxLifecycleResult{SandboxRef: "sandbox-" + request.ExperimentRunID + "-" + request.AttemptID, SandboxProfile: request.SandboxProfile, CleanupRequired: true}, nil
+}
+
+func (harness *runtimeHarness) PauseSandbox(_ context.Context, request ports.SandboxLifecycleRequest) (ports.SandboxLifecycleResult, error) {
+	return ports.SandboxLifecycleResult{SandboxRef: request.SandboxRef, SandboxProfile: request.SandboxProfile}, nil
+}
+
+func (harness *runtimeHarness) ResumeSandbox(_ context.Context, request ports.SandboxLifecycleRequest) (ports.SandboxLifecycleResult, error) {
+	return ports.SandboxLifecycleResult{SandboxRef: request.SandboxRef, SandboxProfile: request.SandboxProfile}, nil
+}
+
+func (harness *runtimeHarness) AbortSandbox(_ context.Context, request ports.SandboxLifecycleRequest) (ports.SandboxLifecycleResult, error) {
+	return ports.SandboxLifecycleResult{SandboxRef: request.SandboxRef, SandboxProfile: request.SandboxProfile}, nil
+}
+
+func (harness *runtimeHarness) CleanupSandbox(_ context.Context, request ports.SandboxLifecycleRequest) (ports.SandboxLifecycleResult, error) {
+	return ports.SandboxLifecycleResult{SandboxRef: request.SandboxRef, SandboxProfile: request.SandboxProfile}, nil
 }
 
 func (harness *runtimeHarness) Run(_ context.Context, request ports.HarnessRunRequest) (ports.HarnessRunResult, error) {

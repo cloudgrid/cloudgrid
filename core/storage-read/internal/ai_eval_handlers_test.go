@@ -12,6 +12,7 @@ import (
 )
 
 func TestAiEvalQueryHandlerRoutesDeclaredQuerySubjects(t *testing.T) {
+	allowed := true
 	store := &aiEvalStoreForTest{
 		responses: map[string]map[string]any{
 			SubjectEvalDatasetSearch: {
@@ -20,8 +21,11 @@ func TestAiEvalQueryHandlerRoutesDeclaredQuerySubjects(t *testing.T) {
 		},
 	}
 	request := contracts.EvalQueryRequest{
-		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-dataset-search"},
-		Input:          map[string]any{"query": "checkout", "limit": float64(5)},
+		BridgeEnvelope: contracts.BridgeEnvelope{
+			RequestID:   "req-dataset-search",
+			AuthContext: &contracts.AuthContext{ProjectID: ptr("project-1"), ReadAllowed: &allowed},
+		},
+		Input: map[string]any{"query": "checkout", "limit": float64(5)},
 	}
 	message := bridgeMessageForTest(SubjectEvalDatasetSearch, mustMarshalNATSHandlerTest(t, request))
 
@@ -36,6 +40,9 @@ func TestAiEvalQueryHandlerRoutesDeclaredQuerySubjects(t *testing.T) {
 	if store.calls[0].input["query"] != "checkout" {
 		t.Fatalf("query input = %#v, want original GraphQL-ready input", store.calls[0].input)
 	}
+	if store.calls[0].auth == nil || store.calls[0].auth.ProjectID == nil || *store.calls[0].auth.ProjectID != "project-1" {
+		t.Fatalf("query auth = %#v, want request auth context threaded to store", store.calls[0].auth)
+	}
 	var response contracts.EvalQueryResponse
 	if err := json.Unmarshal(message.response, &response); err != nil {
 		t.Fatalf("response is not eval query JSON: %v", err)
@@ -45,6 +52,56 @@ func TestAiEvalQueryHandlerRoutesDeclaredQuerySubjects(t *testing.T) {
 	}
 	if len(response.Data["items"].([]any)) != 1 {
 		t.Fatalf("response data = %#v, want GraphQL-ready items", response.Data)
+	}
+}
+
+func TestDatasetCandidatesSearchHandlerRoutesTypedRequestAndAuthContext(t *testing.T) {
+	allowed := true
+	datasetID := "dataset-1"
+	status := "ready"
+	limit := 25
+	cursor := "cursor-1"
+	store := &aiEvalStoreForTest{
+		responses: map[string]map[string]any{
+			SubjectEvalDatasetCandidatesSearch: {
+				"items":      []any{map[string]any{"id": "candidate-1"}},
+				"nextCursor": "cursor-2",
+			},
+		},
+	}
+	request := contracts.DatasetCandidatesSearchRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{
+			RequestID:   "req-candidates",
+			AuthContext: &contracts.AuthContext{ProjectID: ptr("project-1"), ReadAllowed: &allowed},
+		},
+		DatasetID: &datasetID,
+		Status:    &status,
+		Limit:     &limit,
+		Cursor:    &cursor,
+	}
+	message := bridgeMessageForTest(SubjectEvalDatasetCandidatesSearch, mustMarshalNATSHandlerTest(t, request))
+
+	handleDatasetCandidatesSearch(store, nil, defaultQueryTimeout)(message)
+
+	if len(store.calls) != 1 {
+		t.Fatalf("candidate search calls = %d, want one", len(store.calls))
+	}
+	call := store.calls[0]
+	if call.subject != SubjectEvalDatasetCandidatesSearch {
+		t.Fatalf("candidate subject = %q, want %q", call.subject, SubjectEvalDatasetCandidatesSearch)
+	}
+	if call.input["datasetId"] != "dataset-1" || call.input["status"] != "ready" || call.input["limit"] != 25 || call.input["cursor"] != "cursor-1" {
+		t.Fatalf("candidate input = %#v, want typed request fields", call.input)
+	}
+	if call.auth == nil || call.auth.ProjectID == nil || *call.auth.ProjectID != "project-1" {
+		t.Fatalf("candidate auth = %#v, want request auth context", call.auth)
+	}
+	var response contracts.EvalQueryResponse
+	if err := json.Unmarshal(message.response, &response); err != nil {
+		t.Fatalf("response is not candidate search JSON: %v", err)
+	}
+	if !response.OK || response.RequestID != "req-candidates" || response.Data["nextCursor"] != "cursor-2" {
+		t.Fatalf("response = %#v, want candidate response data", response)
 	}
 }
 
@@ -131,14 +188,14 @@ func TestOnlinePolicyMatchesResolveHandlerRoutesTypedRequest(t *testing.T) {
 					ScorerVersion: 1,
 					Kind:          "deterministic",
 				}},
-				Projection: contracts.OnlinePolicyProjectionReadModel{
-					ProjectID:      "project-1",
-					TraceID:        "trace-1",
-					ProjectionID:   "agent-run-1",
-					Kind:           contracts.AiProjectionKindAgentRun,
-					SafeAttributes: map[string]any{"answer": "helpful"},
-				},
 			}},
+			Projection: contracts.OnlinePolicyProjectionReadModel{
+				ProjectID:      "project-1",
+				TraceID:        "trace-1",
+				ProjectionID:   "agent-run-1",
+				Kind:           contracts.AiProjectionKindAgentRun,
+				SafeAttributes: map[string]any{"answer": "helpful"},
+			},
 			Warnings: []string{"ignored disabled policy"},
 		},
 	}
@@ -262,12 +319,11 @@ func TestExperimentManifestResolveHandlerRoutesTypedRequest(t *testing.T) {
 	if err := json.Unmarshal(message.response, &response); err != nil {
 		t.Fatalf("response is not manifest JSON: %v", err)
 	}
-	if !response.OK || response.RequestID != "req-manifest" || response.Data["manifest"] == nil {
+	if !response.OK || response.RequestID != "req-manifest" || response.Data == nil {
 		t.Fatalf("response = %#v, want manifest", response)
 	}
-	manifest := response.Data["manifest"].(map[string]any)
-	if manifest["digest"] != "digest-for-run-1" {
-		t.Fatalf("manifest = %#v", manifest)
+	if response.Data.Manifest.Digest != "digest-for-run-1" {
+		t.Fatalf("manifest = %#v", response.Data.Manifest)
 	}
 }
 
@@ -384,6 +440,7 @@ func TestAiEvalStorageReadSubjectsExcludeMutationSubjects(t *testing.T) {
 	for _, subject := range []string{
 		SubjectEvalAgentRunsSearch,
 		SubjectEvalDatasetSearch,
+		SubjectEvalDatasetCandidatesSearch,
 		SubjectEvalDatasetTransferGet,
 		SubjectEvalDatasetHealth,
 		SubjectEvalScorerSearch,
@@ -421,6 +478,7 @@ func TestAiEvalStorageReadSubjectsExcludeMutationSubjects(t *testing.T) {
 type aiEvalQueryCallForTest struct {
 	subject string
 	input   map[string]any
+	auth    *contracts.AuthContext
 }
 
 type aiEvalStoreForTest struct {
@@ -431,9 +489,9 @@ type aiEvalStoreForTest struct {
 	err                   error
 }
 
-func (store *aiEvalStoreForTest) QueryAiEval(ctx context.Context, subject string, input map[string]any) (map[string]any, error) {
+func (store *aiEvalStoreForTest) QueryAiEval(ctx context.Context, subject string, input map[string]any, authContext *contracts.AuthContext) (map[string]any, error) {
 	_ = ctx
-	store.calls = append(store.calls, aiEvalQueryCallForTest{subject: subject, input: input})
+	store.calls = append(store.calls, aiEvalQueryCallForTest{subject: subject, input: input, auth: authContext})
 	if store.err != nil {
 		return nil, store.err
 	}
@@ -462,11 +520,25 @@ func (store *aiEvalStoreForTest) ResolveExperimentManifest(ctx context.Context, 
 		return nil, store.err
 	}
 	return map[string]any{
-		"schema":          "cloudgrid.ai-eval.experiment-manifest.v1",
-		"version":         1,
-		"digest":          "digest-for-" + request.ExperimentRunID,
-		"experimentRunId": request.ExperimentRunID,
-		"experimentId":    request.ExperimentID,
+		"schema":              "cloudgrid.ai-eval.experiment-manifest.v1",
+		"version":             1,
+		"digest":              "digest-for-" + request.ExperimentRunID,
+		"experimentRunId":     request.ExperimentRunID,
+		"experimentId":        request.ExperimentID,
+		"datasetId":           "dataset-1",
+		"datasetVersion":      1,
+		"splitSelector":       map[string]any{"splits": []string{"validation"}, "reviewedOnly": true, "includeSynthetic": false},
+		"datasetItemIds":      []string{"item-1"},
+		"scorerRefs":          []map[string]any{{"id": "scorer-1", "version": 1}},
+		"solverRef":           map[string]any{"kind": "agent", "name": "solver"},
+		"promptVersionRefs":   []string{},
+		"skillSnapshotRefs":   []string{},
+		"toolSnapshotRefs":    []string{},
+		"providerProfileRefs": []string{},
+		"budget":              map[string]any{},
+		"concurrency":         map[string]any{},
+		"runPolicy":           map[string]any{"maxParallelRequests": 10},
+		"createdAt":           "2026-05-18T11:00:00Z",
 	}, nil
 }
 

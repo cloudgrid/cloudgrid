@@ -2567,12 +2567,14 @@ components:
         data:
           type: object
           additionalProperties: false
-          required: [matches, warnings]
+          required: [matches, projection, warnings]
           properties:
             matches:
               type: array
               items:
                 $ref: "#/components/schemas/OnlinePolicyMatch"
+            projection:
+              $ref: "#/components/schemas/OnlinePolicyProjectionReadModel"
             runPolicy:
               $ref: "../entities/ai/eval-run-policy.schema.json"
             warnings:
@@ -2585,7 +2587,7 @@ components:
       type: object
       additionalProperties: false
       required:
-        [policyId, policyVersion, policyName, target, sampleRate, scorerRefs, projection]
+        [policyId, policyVersion, policyName, target, sampleRate, scorerRefs]
       properties:
         policyId:
           type: string
@@ -2608,8 +2610,6 @@ components:
           minItems: 1
           items:
             $ref: "#/components/schemas/OnlinePolicyScorerRef"
-        projection:
-          $ref: "#/components/schemas/OnlinePolicyProjectionReadModel"
     OnlinePolicyScorerRef:
       type: object
       additionalProperties: false

@@ -16,11 +16,15 @@ const (
 )
 
 const (
-	ExperimentRunStatusQueued    = "queued"
-	ExperimentRunStatusRunning   = "running"
-	ExperimentRunStatusCancelled = "cancelled"
-	ExperimentRunStatusFailed    = "failed"
-	ExperimentRunStatusFinished  = "completed"
+	ExperimentRunStatusQueued     = "queued"
+	ExperimentRunStatusRunning    = "running"
+	ExperimentRunStatusPausing    = "pausing"
+	ExperimentRunStatusPaused     = "paused"
+	ExperimentRunStatusResuming   = "resuming"
+	ExperimentRunStatusCancelling = "cancelling"
+	ExperimentRunStatusCancelled  = "cancelled"
+	ExperimentRunStatusFailed     = "failed"
+	ExperimentRunStatusFinished   = "completed"
 )
 
 const (
@@ -67,6 +71,7 @@ type ExperimentManifest struct {
 	ProviderProfileRefs []string
 	Budget              map[string]any
 	Concurrency         map[string]any
+	RunPolicy           map[string]any
 }
 
 type ManifestResolveRequest struct {
@@ -218,6 +223,11 @@ type StorageWriter interface {
 }
 
 type HarnessAdapter interface {
+	StartSandbox(ctx context.Context, request SandboxLifecycleRequest) (SandboxLifecycleResult, error)
+	PauseSandbox(ctx context.Context, request SandboxLifecycleRequest) (SandboxLifecycleResult, error)
+	ResumeSandbox(ctx context.Context, request SandboxLifecycleRequest) (SandboxLifecycleResult, error)
+	AbortSandbox(ctx context.Context, request SandboxLifecycleRequest) (SandboxLifecycleResult, error)
+	CleanupSandbox(ctx context.Context, request SandboxLifecycleRequest) (SandboxLifecycleResult, error)
 	Run(ctx context.Context, request HarnessRunRequest) (HarnessRunResult, error)
 	Score(ctx context.Context, request HarnessScoreRequest) (HarnessScoreResult, error)
 	Optimize(ctx context.Context, request HarnessOptimizeRequest) (HarnessOptimizeResult, error)
@@ -227,11 +237,47 @@ type ProgressPublisher interface {
 	PublishExperimentProgress(ctx context.Context, progress ExperimentProgress) error
 }
 
+const (
+	SandboxProfileEphemeralEvalItem              = "ephemeral_eval_item"
+	SandboxProfileEphemeralOptimizationCandidate = "ephemeral_optimization_candidate"
+	SandboxProfileDurableReplayWorkspace         = "durable_replay_workspace"
+)
+
+type SandboxLifecycleRequest struct {
+	ExperimentRunID string
+	DatasetItemID   string
+	ScorerID        string
+	CandidateID     string
+	AttemptID       string
+	ManifestDigest  string
+	SandboxProfile  string
+	SandboxRef      string
+	CheckpointRef   string
+	RunPolicy       map[string]any
+	CleanupRetry    map[string]any
+	TraceContext    map[string]string
+}
+
+type SandboxLifecycleResult struct {
+	SandboxRef          string
+	SandboxProfile      string
+	CheckpointSupported bool
+	CheckpointRef       string
+	CleanupRequired     bool
+	CleanupDeadline     string
+	CleanupSummary      map[string]any
+	Warnings            []string
+}
+
 type HarnessRunRequest struct {
 	ExperimentRunID string
 	DatasetItemID   string
 	Input           map[string]any
 	SolverRef       map[string]any
+	ManifestDigest  string
+	RunPolicy       map[string]any
+	SandboxProfile  string
+	SandboxRef      string
 	TraceContext    map[string]string
 }
 
@@ -242,14 +288,18 @@ type HarnessRunResult struct {
 }
 
 type HarnessScoreRequest struct {
-	ScorerID      string
-	ScorerVersion int
-	TargetKind    string
-	TargetID      string
-	Input         map[string]any
-	Output        map[string]any
-	Expected      map[string]any
-	TraceContext  map[string]string
+	ScorerID       string
+	ScorerVersion  int
+	TargetKind     string
+	TargetID       string
+	Input          map[string]any
+	Output         map[string]any
+	Expected       map[string]any
+	ManifestDigest string
+	RunPolicy      map[string]any
+	SandboxProfile string
+	SandboxRef     string
+	TraceContext   map[string]string
 }
 
 type HarnessScoreResult struct {
@@ -261,9 +311,14 @@ type HarnessScoreResult struct {
 
 type HarnessOptimizeRequest struct {
 	ExperimentRunID     string
+	ExperimentID        string
 	BasePromptVersionID string
 	OptimizerKind       string
 	Config              map[string]any
+	ManifestDigest      string
+	RunPolicy           map[string]any
+	SandboxProfile      string
+	SandboxRef          string
 	TraceContext        map[string]string
 }
 

@@ -34,7 +34,9 @@ export function LogWidgetPreview({ result }: { result: LogSearchResult }) {
           <Badge variant="outline">{log.severityText ?? log.severityNumber ?? "-"}</Badge>
           <span className="min-w-0">
             <span className="block truncate">{log.serviceName ?? t("value.unknown")}</span>
-            <code className="block truncate text-muted-foreground">{jsonPreview(log.body as JSONValue)}</code>
+            <code className="block truncate text-muted-foreground">
+              {jsonPreview(log.body as JSONValue)}
+            </code>
           </span>
         </div>
       ))}

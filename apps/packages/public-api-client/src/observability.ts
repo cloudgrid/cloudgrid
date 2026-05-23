@@ -350,7 +350,17 @@ const evalResultFields = `
   experimentRunId
   score
   passed
+  runMode
+  resultKind
+  metrics
+  breakdown
+  visualization {
+    kind
+    title
+    data
+  }
   evidence
+  problem
   judgeRunRef
   producedAt
 `;
@@ -877,6 +887,30 @@ export const startExperimentRunOperation = `
   }
 `;
 
+export const pauseExperimentRunOperation = `
+  mutation PauseExperimentRun($id: ID!) {
+    pauseExperimentRun(id: $id) {
+      ${experimentRunFields}
+    }
+  }
+`;
+
+export const resumeExperimentRunOperation = `
+  mutation ResumeExperimentRun($id: ID!) {
+    resumeExperimentRun(id: $id) {
+      ${experimentRunFields}
+    }
+  }
+`;
+
+export const cancelExperimentRunOperation = `
+  mutation CancelExperimentRun($id: ID!) {
+    cancelExperimentRun(id: $id) {
+      ${experimentRunFields}
+    }
+  }
+`;
+
 export const experimentRunOperation = `
   query ExperimentRun($id: ID!) {
     experimentRun(id: $id) {
@@ -995,6 +1029,93 @@ export const datasetExportOperation = `
   query DatasetExport($id: ID!) {
     datasetExport(id: $id) {
       ${datasetExportJobFields}
+    }
+  }
+`;
+
+const datasetCandidateFields = `
+  id
+  datasetId
+  status
+  sourceKind
+  source
+  targetShape
+  input
+  expected
+  metadata
+  split
+  reviewStatus
+  contentTreatment
+  anonymization {
+    policyId
+    policyVersion
+    transformedAt
+    consistencyScope
+    transformedFields {
+      path
+      entityType
+      strategy
+    }
+  }
+  reason
+  clusterId
+  warnings
+  createdAt
+  updatedAt
+`;
+
+export const datasetCandidatesOperation = `
+  query DatasetCandidates($input: DatasetCandidateSearchInput) {
+    datasetCandidates(input: $input) {
+      items {
+        ${datasetCandidateFields}
+      }
+      nextCursor
+    }
+  }
+`;
+
+export const prepareDatasetCandidatesOperation = `
+  mutation PrepareDatasetCandidates($input: PrepareDatasetCandidatesInput!) {
+    prepareDatasetCandidates(input: $input) {
+      items {
+        ${datasetCandidateFields}
+      }
+      nextCursor
+    }
+  }
+`;
+
+export const commitDatasetCandidatesOperation = `
+  mutation CommitDatasetCandidates($input: CommitDatasetCandidatesInput!) {
+    commitDatasetCandidates(input: $input) {
+      id
+      name
+      description
+      version
+      createdAt
+      itemCount
+      reviewedItemCount
+      splitCounts
+      health {
+        status
+        reviewedItemCount
+        totalItemCount
+        splitCounts
+        duplicateCandidateCount
+        leakageWarningCount
+        missingExpectedCount
+        schemaIssueCount
+        smallDataset
+        warnings
+      }
+      tags
+      items {
+        items {
+          ${datasetItemFields}
+        }
+        nextCursor
+      }
     }
   }
 `;
