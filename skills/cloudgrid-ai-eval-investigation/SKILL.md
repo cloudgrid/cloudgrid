@@ -1,75 +1,80 @@
 ---
 name: cloudgrid-ai-eval-investigation
-description: Investigates CloudGrid AI Eval through AI Chat, AI Eval views, BFF GraphQL, storage-read query paths, or harness-adapter evidence. Use when inspecting runs, scorers, datasets, optimization, or regression evidence without leaking prompts or bypassing contracts.
+description: Explains, configures, uses, and investigates CloudGrid AI Eval datasets, dataset candidates, scorers, experiments, run controls, result analytics, optimization, and production quality. Use when the user asks how to set up AI Eval, create or manage datasets/scorers/evals, interpret product-quality results, troubleshoot runs, or change AI Eval behavior without drifting from specs.
 ---
 
-# CloudGrid AI Eval Investigation
+# CloudGrid AI Eval
 
-Use this skill when investigating or implementing AI Eval behavior for AI Chat,
-AI Eval workspaces, agent runs, scorers, datasets, experiment runs,
-optimization runs, regression summaries, or evaluation evidence artifacts.
+Use this skill for both user-facing AI Eval guidance and implementation work:
+setup, datasets, dataset candidates, scorers, experiments, run controls,
+result analytics, optimization, production quality, troubleshooting, and
+privacy-safe investigation.
 
 ## Source Order
 
-Read these before changing behavior:
+Read only what the task needs. Specs are authoritative for implementation;
+website docs are the user-facing explanation.
 
-1. `specs/spec.md`
-2. `specs/00-conventions.md`
-3. `specs/01-domains/ai-eval.md`
-4. `specs/04-backend/ai-chat.md`
-5. `specs/04-backend/ai-runtime-structure.md`
-6. `specs/04-backend/ai-eval-runner.md`
-7. `specs/04-backend/ai-eval-query-semantics.md`
-8. `specs/04-backend/ai-eval-message-contracts.md`
-9. `specs/05-frontend/ai-eval-views.md`
-10. `specs/05-frontend/ai-eval-ux-concept.md`
-11. `specs/02-flows/ai-chat/chat-run.md`
-12. `specs/03-contracts/graphql/public-schema.graphql`
-13. `specs/03-contracts/messages/message-bridge.asyncapi.yaml`
-14. `specs/03-contracts/errors.yaml`
+1. User docs: `website/src/content/handbook/guides/ai-eval.md`.
+2. Product and UI: `specs/01-domains/ai-eval.md`,
+   `specs/05-frontend/ai-eval-views.md`,
+   `specs/05-frontend/ai-eval-ux-concept.md`.
+3. Backend: `specs/04-backend/ai-eval-runner.md`,
+   `specs/04-backend/ai-eval-query-semantics.md`,
+   `specs/04-backend/ai-eval-message-contracts.md`,
+   `specs/04-backend/ai-runtime-structure.md`.
+4. Contracts: `specs/03-contracts/graphql/public-schema.graphql`,
+   `specs/03-contracts/messages/message-bridge.asyncapi.yaml`,
+   `specs/03-contracts/errors.yaml`.
 
 If the behavior is not specified, update the relevant spec first. Do not invent
 GraphQL fields, runner endpoints, harness adapter fields, NATS subjects,
 scorer statuses, optimization states, or error codes.
 
-## Investigation Rules
+## Reference Guide
 
-- Keep AI Eval analysis grounded in CloudGrid evidence: experiment summaries,
-  agent run metadata, scorer results, dataset items, annotations, and
-  optimization records.
-- Use `aiEval.searchAgentRuns`, `aiEval.searchDatasets`,
-  `aiEval.searchScorers`, `aiEval.searchExperiments`, and
-  `aiEval.searchEvalResults` in AI Chat.
-- Prefer `table`, `key_value`, `status_summary`, `diff`, `json_tree`, and
-  `metric_timeseries` json-render artifacts for assistant output.
-- Do not expose raw prompts, completions, tool parameters, retrieved document
-  content, provider credentials, or harness request bodies.
-- Summaries must cite run IDs, dataset IDs, scorer IDs, artifact IDs, row
-  ranges, or CloudGrid route links. Do not fabricate missing eval evidence.
+- For user explanations and workflows, read `references/user-workflows.md`.
+- For configuration and operator troubleshooting, read
+  `references/configuration-operations.md`.
+- For implementation boundaries and tests, read
+  `references/implementation-boundaries.md`.
 
-## Boundaries
+## Answering Users
 
-- CloudGrid stores and queries AI Eval evidence. Harness executes model calls,
-  scorers, and optimization loops through the approved adapter surface.
-- BFF must not call model providers directly or bypass the harness adapter for
-  eval execution.
-- Storage-read owns AI Eval query semantics for search and detail views.
-- Control-plane owns project AI settings and provider profile resolution.
-- Do not query SurrealDB directly from frontend, BFF, AI Chat tools, sandbox
-  scripts, docs examples, or skill output.
-- Do not leak provider tokens, raw Authorization headers, hidden model prompts,
-  raw provider responses, or captured sensitive content.
+- Start from the user's role: evaluator, app developer, project admin, or
+  operator.
+- Explain the smallest working path first: enable AI Eval, configure harness or
+  provider profile, create dataset, create scorer, create experiment, run,
+  review results, then enable production policy.
+- Use exact route names, GraphQL operations, env vars, and service boundaries.
+- If asked for implementation details, name the owning service before the
+  files: storage-write mutates, storage-read derives/query-shapes, runner
+  executes through harness, BFF bridges GraphQL to NATS, frontend renders view
+  models.
+- State when a capability is v1-limited. Production quality is monitoring, not
+  realtime alerting. Durable replay is out of scope for AI Eval v1.
 
-## Working Checklist
+## Privacy Rules
 
-1. Read the source specs for the AI Eval route, tool, or contract being
-   touched.
-2. Identify whether the change is runner execution, storage-read query
-   semantics, BFF mapping, frontend presentation, or AI Chat artifact output.
-3. Keep execution through harness adapter contracts and query semantics in
-   storage-read.
-4. Render evidence with approved json-render catalog keys.
-5. Add focused tests for query mapping, artifact validation, privacy, or UI
-   state.
-6. Run the narrowest relevant checks; contract changes require
-   `bun run contracts:check`.
+- Do not expose raw provider credentials, bearer tokens, cookies, Authorization
+  headers, raw harness request bodies, raw provider responses, hidden model
+  prompts, or sensitive captured content.
+- Prefer IDs, summaries, bounded excerpts, and route links over raw prompts,
+  completions, tool arguments, or retrieved documents.
+- For AI Chat output, prefer approved json-render artifacts: `table`,
+  `key_value`, `status_summary`, `diff`, `json_tree`, and `metric_timeseries`.
+
+## Implementation Checklist
+
+1. Read the relevant source docs and specs.
+2. Identify the owner: contracts, storage-write, storage-read, runner,
+   harness adapter, BFF, frontend, public API client, docs, or integration.
+3. Add or update tests before implementation when behavior changes.
+4. Keep query semantics out of BFF/frontend and execution out of storage/BFF.
+5. Run focused checks plus required gates:
+   - contracts: `bun run contracts:check`
+   - backend: `bun test --coverage apps/backend/src`
+   - frontend: `bun run --cwd apps/frontend test`
+   - Go services: `go test -tags surrealdb ./core/...` with the narrowed
+     packages when possible
+   - skills: `bun run skills:check`

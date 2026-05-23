@@ -98,6 +98,19 @@
         "Keeps telemetry query semantics in storage-read",
         "Mentions bun run contracts:check and bun run skills:check"
       ]
+    },
+    {
+      "id": 9,
+      "prompt": "Explain how a project admin should enable AI Eval, create a dataset, add candidates and scorers, run an experiment, and use production quality monitoring without leaking provider secrets or inventing unsupported alerting.",
+      "expected_output": "Uses cloudgrid-ai-eval-investigation, follows the website AI Eval guide and specs, explains the setup-to-run workflow, names production quality as monitoring rather than realtime alerting, and keeps secrets private.",
+      "files": [],
+      "assertions": [
+        "Mentions website/src/content/handbook/guides/ai-eval.md",
+        "Mentions datasets, dataset candidates, scorers, and experiments",
+        "Says production quality is monitoring, not realtime alerting",
+        "Does not expose raw provider credentials or bearer tokens",
+        "Does not invent unsupported AI Eval routes, GraphQL fields, or alerting behavior"
+      ]
     }
   ]
 }

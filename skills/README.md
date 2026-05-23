@@ -20,7 +20,7 @@ If the needed behavior is missing, update the relevant spec first.
 | `cloudgrid-trace-investigation` | AI Chat and UI trace investigation, waterfalls, critical path evidence, trace-to-log pivots, and trace renderer guidance. |
 | `cloudgrid-logs-investigation` | AI Chat and UI log investigation, severity, correlation, log clusters, trace pivots, and log renderer guidance. |
 | `cloudgrid-metrics-investigation` | AI Chat and UI metric investigation, series comparison, aggregations, exemplars, and metric renderer guidance. |
-| `cloudgrid-ai-eval-investigation` | AI Chat and AI Eval investigation, runs, scorers, datasets, optimization evidence, and privacy-safe eval artifacts. |
+| `cloudgrid-ai-eval-investigation` | AI Eval setup, datasets, candidates, scorers, experiments, production-quality monitoring, optimization evidence, troubleshooting, and privacy-safe eval artifacts. |
 | `cloudgrid-json-render-artifacts` | AI Chat JSON-render artifacts, Markdown sanitation, renderer catalog validation, and action approval cards. |
 | `ai-harness` | PURISTA harness agents, workflows, tools, model aliases, provider adapters, state, sandbox, telemetry, and tests. |
 
