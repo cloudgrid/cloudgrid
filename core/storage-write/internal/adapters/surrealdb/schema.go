@@ -335,6 +335,7 @@ func Statements() []string {
 			"DEFINE FIELD OVERWRITE costEstimate ON "+table+" TYPE option<object> FLEXIBLE",
 			"DEFINE FIELD OVERWRITE definition ON "+table+" TYPE option<object> FLEXIBLE",
 			"DEFINE FIELD OVERWRITE solverRef ON "+table+" TYPE option<object> FLEXIBLE",
+			"DEFINE FIELD OVERWRITE runPolicy ON "+table+" TYPE option<object> FLEXIBLE",
 			"DEFINE FIELD OVERWRITE summary ON "+table+" TYPE option<object> FLEXIBLE",
 			"DEFINE FIELD OVERWRITE variableSchema ON "+table+" TYPE option<object> FLEXIBLE",
 			"DEFINE FIELD IF NOT EXISTS input ON "+table+" TYPE any",

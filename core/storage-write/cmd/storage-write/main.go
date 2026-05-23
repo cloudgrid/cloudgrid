@@ -193,7 +193,7 @@ func runWithRuntime(runtime storageWriteRuntime) int {
 func storageWriteHealthChecks(bridge messageBridgeAdapter, adapter telemetryWriteAdapter) health.Checker {
 	return func(ctx context.Context) map[string]health.Check {
 		checks := map[string]health.Check{}
-		if bridge.IsClosed() {
+		if err := bridge.CheckReady(ctx); err != nil {
 			checks["nats"] = health.Unavailable("ERR-013", "MESSAGE_BRIDGE_UNAVAILABLE", "message bridge is unavailable")
 		} else {
 			checks["nats"] = health.OK()
@@ -267,7 +267,7 @@ type telemetryWriteAdapter struct {
 
 type messageBridgeAdapter struct {
 	RunConsumer func(context.Context) error
-	IsClosed    func() bool
+	CheckReady  func(context.Context) error
 	Drain       func() error
 	Close       func()
 }

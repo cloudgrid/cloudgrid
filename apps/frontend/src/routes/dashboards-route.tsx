@@ -1,35 +1,24 @@
 import type {
-  AlertEvent,
-  AlertSummary,
   AlertSummaryInput,
-  JSONValue,
-  LiveTraceInput,
   LogSearchInput,
-  MetricAggregation,
-  MetricChartType,
   MetricDescriptor,
-  MetricNameSearchInput,
   MetricSeriesInput,
   RichMetricSeriesInput,
   TraceSearchInput,
 } from "@cloudgrid/ui-contracts";
-import {
-  METRIC_AGGREGATIONS,
-  METRIC_CHART_TYPES,
-  buildDashboardListInput,
-} from "@cloudgrid/ui-contracts";
+import { buildDashboardListInput } from "@cloudgrid/ui-contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChart3,
   Bell,
   CalendarDays,
-  Check,
-  ChevronsUpDown,
   Clock,
   Copy,
   CopyPlus,
   Edit3,
+  FileSearch,
   GripVertical,
+  History,
   LineChart,
   ListTree,
   Maximize2,
@@ -42,8 +31,6 @@ import {
   Table2,
   Trash2,
   X,
-  FileSearch,
-  History,
 } from "lucide-react";
 import { type KeyboardEvent, type PointerEvent, type ReactNode, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -52,15 +39,7 @@ import { SearchInput } from "../components/search-input";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Calendar } from "../components/ui/calendar";
-import { Checkbox } from "../components/ui/checkbox";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "../components/ui/command";
+import { Command, CommandGroup, CommandItem, CommandList } from "../components/ui/command";
 import {
   Dialog,
   DialogClose,
@@ -98,14 +77,13 @@ import {
   SheetHeader,
   SheetTitle,
 } from "../components/ui/sheet";
+import { Textarea } from "../components/ui/textarea";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../components/ui/table";
+  type DashboardDraftState,
+  dashboardDraftReducer,
+  startDashboardDraft,
+  toDashboardSaveInput,
+} from "../features/dashboards/dashboard-draft-reducer";
 import {
   compactDashboardLayout,
   DASHBOARD_GRID_COLUMNS,
@@ -114,17 +92,30 @@ import {
   sortDashboardWidgetsForSave,
 } from "../features/dashboards/dashboard-layout";
 import {
-  dashboardDraftReducer,
-  startDashboardDraft,
-  toDashboardSaveInput,
-  type DashboardDraftState,
-} from "../features/dashboards/dashboard-draft-reducer";
-import { TelemetryChart, type TelemetryChartKind } from "../features/telemetry/telemetry-chart";
+  defaultRichMetricQuery,
+  isRichMetricEditingEnabled,
+} from "../features/dashboards/widget-editor/rich-metric-widget-editor";
+import { WidgetEditorGroups } from "../features/dashboards/widget-editor/widget-editor-groups";
+import {
+  AlertEvidenceWidgetPreview,
+  AlertHistoryWidgetPreview,
+  AlertStatusWidgetPreview,
+} from "../features/dashboards/widget-renderers/alert-widget-renderers";
+import { LiveTraceWidgetPreview } from "../features/dashboards/widget-renderers/live-trace-widget-renderer";
+import { LogWidgetPreview } from "../features/dashboards/widget-renderers/log-widget-renderer";
+import { MetricWidgetPreview } from "../features/dashboards/widget-renderers/metric-widget-renderer";
+import { RichMetricWidgetPreview } from "../features/dashboards/widget-renderers/rich-metric-widget-renderer";
+import { TraceWidgetPreview } from "../features/dashboards/widget-renderers/trace-widget-renderer";
+import {
+  mapAlertSummaryInput,
+  mapLiveTraceInput,
+  mapLogSearchInput,
+  mapMetricSeriesInput,
+  mapRichMetricSeriesInput,
+  mapTraceSearchInput,
+} from "../features/dashboards/widget-source-mappers";
 import type {
   Dashboard,
-  DashboardMetricFormulaInput,
-  DashboardMetricQueryInput,
-  DashboardMetricQueryRowInput,
   DashboardVisibility,
   DashboardWidget,
   DashboardWidgetInput,
@@ -132,22 +123,13 @@ import type {
   SaveDashboardInput,
 } from "../lib/dashboard-contracts";
 import { notifyMutationError, notifyMutationSuccess } from "../lib/feedback";
-import { formatDateTime, formatDuration, jsonPreview, statusVariant } from "../lib/format";
+import { formatDateTime } from "../lib/format";
 import { t } from "../lib/i18n";
 import { queryKeys } from "../lib/query-keys";
 import { useAppSession } from "../providers/app-session-provider";
 import { useTelemetryClient } from "../providers/telemetry-client-provider";
 
 const EMPTY_METRIC_NAME = "gen_ai.client.token.usage";
-const RICH_METRIC_EDITING_ENABLED = false;
-
-const metricChartTypes: MetricChartType[] = [...METRIC_CHART_TYPES];
-
-const metricAggregations: MetricAggregation[] = [...METRIC_AGGREGATIONS];
-
-function isRichMetricEditingEnabled() {
-  return RICH_METRIC_EDITING_ENABLED;
-}
 
 export function DashboardsRoute() {
   const { client } = useAppSession();
@@ -159,6 +141,7 @@ export function DashboardsRoute() {
   const [inspectorWidgetId, setInspectorWidgetId] = useState<string | null>(null);
   const [pendingDashboardId, setPendingDashboardId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [settingsSheetOpen, setSettingsSheetOpen] = useState(false);
   const dashboardId = searchParams.get("dashboard");
   const [fallbackRange] = useState(defaultDashboardRange);
   const dashboardListInput = buildDashboardListInput({ query });
@@ -361,35 +344,68 @@ export function DashboardsRoute() {
       return params;
     });
   };
+  const enterEditMode = () => {
+    if (!selectedDashboard) {
+      return;
+    }
+    setDraftState(startDraftForSelectedDashboard(selectedDashboard));
+  };
+  const discardChanges = () => {
+    setDraftState(null);
+    setInspectorWidgetId(null);
+  };
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
       <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b pb-2">
-        <div className="min-w-0">
-          {draft ? (
-            <Input
-              aria-label={t("dashboards.name")}
-              className="h-9 max-w-xl border-transparent px-0 text-xl font-semibold shadow-none focus-visible:border-input focus-visible:px-3"
-              onChange={(event) =>
-                setDraftState((current) =>
-                  current
-                    ? dashboardDraftReducer(current, {
-                        type: "update_metadata",
-                        patch: { name: event.target.value },
-                      })
-                    : current,
-                )
+        <div className="flex min-w-0 items-center gap-2">
+          {selectedDashboard ? (
+            <Button
+              aria-label={selectedDashboard.pinned ? t("dashboards.unpin") : t("dashboards.pin")}
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+              onClick={() =>
+                void pinMutation.mutate({
+                  dashboardId: selectedDashboard.id,
+                  pinned: !selectedDashboard.pinned,
+                })
               }
-              value={draft.name}
-            />
-          ) : (
-            <h1 className="truncate text-xl font-semibold tracking-normal">
-              {selectedDashboard?.name ?? t("dashboards.title")}
-            </h1>
-          )}
-          {!selectedDashboard && !draft ? (
-            <p className="text-sm text-muted-foreground">{t("dashboards.description")}</p>
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              {selectedDashboard.pinned ? (
+                <StarOff className="size-4" />
+              ) : (
+                <Star className="size-4" />
+              )}
+            </Button>
           ) : null}
+          <div className="min-w-0">
+            {draft ? (
+              <Input
+                aria-label={t("dashboards.name")}
+                className="h-9 max-w-xl border-transparent px-0 text-xl font-semibold shadow-none focus-visible:border-input focus-visible:px-3"
+                onChange={(event) =>
+                  setDraftState((current) =>
+                    current
+                      ? dashboardDraftReducer(current, {
+                          type: "update_metadata",
+                          patch: { name: event.target.value },
+                        })
+                      : current,
+                  )
+                }
+                value={draft.name}
+              />
+            ) : (
+              <h1 className="truncate text-xl font-semibold tracking-normal">
+                {selectedDashboard?.name ?? t("dashboards.title")}
+              </h1>
+            )}
+            {!selectedDashboard && !draft ? (
+              <p className="text-sm text-muted-foreground">{t("dashboards.description")}</p>
+            ) : null}
+          </div>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <DashboardDateRangeControl onRangeChange={updateRange} range={range} />
@@ -402,31 +418,66 @@ export function DashboardsRoute() {
           >
             <RefreshCw />
           </Button>
+          {draft ? (
+            <>
+              <Badge data-dashboard-dirty="true" variant="secondary">
+                {t("dashboards.unsavedChanges")}
+              </Badge>
+              <Button onClick={discardChanges} type="button" variant="outline">
+                <X data-icon="inline-start" />
+                {t("dashboards.discardChanges")}
+              </Button>
+              <Button
+                disabled={saveMutation.isPending}
+                onClick={() => void saveMutation.mutate(prepareDashboardSaveInput(draft))}
+              >
+                <Save data-icon="inline-start" />
+                {t("dashboards.save")}
+              </Button>
+            </>
+          ) : null}
           {selectedDashboard ? (
-            <Button onClick={duplicateDashboard} type="button" variant="outline">
-              <Copy data-icon="inline-start" />
-              {t("dashboards.duplicate")}
-            </Button>
-          ) : null}
-          {draft ? (
-            <Badge data-dashboard-dirty="true" variant="secondary">
-              {t("dashboards.unsavedChanges")}
-            </Badge>
-          ) : null}
-          {draft ? (
-            <Button
-              disabled={saveMutation.isPending}
-              onClick={() => void saveMutation.mutate(prepareDashboardSaveInput(draft))}
-            >
-              <Save data-icon="inline-start" />
-              {t("dashboards.save")}
-            </Button>
-          ) : null}
-          {selectedDashboard && selectedDashboard.visibility !== "builtin" ? (
-            <Button onClick={() => setDeleteDialogOpen(true)} type="button" variant="outline">
-              <Trash2 data-icon="inline-start" />
-              {t("dashboards.delete")}
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  aria-label={t("dashboards.widget.more")}
+                  size="icon"
+                  type="button"
+                  variant="outline"
+                >
+                  <MoreHorizontal />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {!draft ? (
+                  <DropdownMenuItem onSelect={enterEditMode}>
+                    <Edit3 data-icon="inline-start" />
+                    {t("dashboards.editDashboard")}
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuItem onSelect={() => setSettingsSheetOpen(true)}>
+                  <MoreHorizontal data-icon="inline-start" />
+                  {t("dashboards.settings")}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={duplicateDashboard}>
+                  <Copy data-icon="inline-start" />
+                  {t("dashboards.duplicate")}
+                </DropdownMenuItem>
+                {selectedDashboard.visibility !== "builtin" ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={() => setDeleteDialogOpen(true)}
+                      variant="destructive"
+                    >
+                      <Trash2 data-icon="inline-start" />
+                      {t("dashboards.delete")}
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : null}
         </div>
       </header>
@@ -449,8 +500,8 @@ export function DashboardsRoute() {
           queryError={dashboardsQuery.error}
         />
       ) : (
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <main className="min-h-0 min-w-0 overflow-auto bg-background">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <main className="min-h-0 flex-1 overflow-auto bg-background p-4">
             {dashboardsQuery.isLoading ? <LoadingRows /> : null}
             {dashboardsQuery.isError ? (
               <ErrorPanel
@@ -478,11 +529,6 @@ export function DashboardsRoute() {
           <WidgetEditorSheet
             dashboard={selectedDashboard}
             draft={draft}
-            onDraftChange={(nextDraft) =>
-              setDraftState((current) =>
-                current ? syncDraftStateFromSaveInput(current, nextDraft) : current,
-              )
-            }
             onOpenChange={(open) => {
               if (!open) {
                 setInspectorWidgetId(null);
@@ -493,6 +539,17 @@ export function DashboardsRoute() {
             range={range}
             telemetryClient={telemetryClient}
             widget={inspectorWidget}
+          />
+          <DashboardSettingsSheet
+            draft={draft}
+            onDraftChange={(nextDraft) =>
+              setDraftState((current) =>
+                current ? syncDraftStateFromSaveInput(current, nextDraft) : current,
+              )
+            }
+            onOpenChange={setSettingsSheetOpen}
+            open={settingsSheetOpen}
+            selectedDashboard={selectedDashboard}
           />
         </div>
       )}
@@ -586,8 +643,7 @@ function DashboardOverview({
   query: string;
   queryError: unknown;
 }) {
-  const groups: Array<[string, DashboardVisibility | "pinned"]> = [
-    [t("dashboards.rail.pinned"), "pinned"],
+  const groups: Array<[string, DashboardVisibility]> = [
     [t("dashboards.rail.builtin"), "builtin"],
     [t("dashboards.rail.personal"), "personal"],
     [t("dashboards.rail.project"), "project"],
@@ -622,8 +678,8 @@ function DashboardOverview({
           />
         ) : null}
         {groups.map(([title, visibility]) => {
-          const groupDashboards = dashboards.filter((dashboard) =>
-            visibility === "pinned" ? dashboard.pinned : dashboard.visibility === visibility,
+          const groupDashboards = dashboards.filter(
+            (dashboard) => dashboard.visibility === visibility,
           );
           if (groupDashboards.length === 0) {
             return null;
@@ -858,21 +914,20 @@ function DashboardCanvas({
 }) {
   return (
     <div className="flex min-h-full flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <AddWidgetButton onAddWidget={onAddWidget} />
-      </div>
+      {isEditing ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <AddWidgetButton onAddWidget={onAddWidget} />
+        </div>
+      ) : null}
       {widgets.length === 0 ? (
         <EmptyDashboardCanvas
-          actionLabel={t("dashboards.widget.addMetric")}
+          actionLabel={isEditing ? t("dashboards.widget.addMetric") : undefined}
           description={t("dashboards.empty.noWidgets.description")}
-          onCreate={() => onAddWidget("metric_timeseries")}
+          onCreate={isEditing ? () => onAddWidget("metric_timeseries") : undefined}
           title={t("dashboards.empty.noWidgets.title")}
         />
       ) : (
-        <div
-          className="grid auto-rows-[72px] grid-cols-12 gap-3 overflow-auto"
-          data-dashboard-canvas
-        >
+        <div className="grid auto-rows-[72px] grid-cols-12 gap-3" data-dashboard-canvas>
           {widgets.map((widget) => (
             <DashboardWidgetFrame
               isEditing={isEditing}
@@ -926,7 +981,7 @@ function DashboardWidgetFrame({
   const richMetric = widget.richMetric;
   const logs = widget.logs;
   const traces = widget.traces;
-  const liveTraces = widget.liveTraces;
+  const _liveTraces = widget.liveTraces;
   const alert = widget.alert;
   const pointerDrag = (event: PointerEvent<HTMLElement>, mode: "move" | "resize") => {
     if (!isEditing) {
@@ -990,80 +1045,13 @@ function DashboardWidgetFrame({
       onMove(delta[0], delta[1]);
     }
   };
-  const metricInput: MetricSeriesInput | null = metric
-    ? {
-        metricName: metric.metricName,
-        from: range.from,
-        to: range.to,
-        aggregation: metric.aggregation,
-        groupBy: metric.groupBy ?? [],
-        filters: metric.filters ?? [],
-        limit: metric.maxSeries ?? 1000,
-        ...(metric.interval ? { interval: metric.interval } : {}),
-      }
-    : null;
-  const logInput: LogSearchInput | null = logs
-    ? {
-        service: logs.service ?? null,
-        traceId: logs.traceId ?? null,
-        spanId: logs.spanId ?? null,
-        severity: logs.severity ?? null,
-        from: range.from,
-        to: range.to,
-        search: logs.search ?? null,
-        attributes: logs.attributes ?? [],
-        sort: logs.sort ?? "timestamp_desc",
-        limit: logs.limit ?? 50,
-      }
-    : null;
-  const traceInput: TraceSearchInput | null = traces
-    ? {
-        service: traces.service ?? null,
-        query: traces.query ?? null,
-        operationName: traces.operationName ?? null,
-        spanName: traces.spanName ?? null,
-        from: range.from,
-        to: range.to,
-        status: traces.status ?? null,
-        minDurationMs: traces.minDurationMs ?? null,
-        maxDurationMs: traces.maxDurationMs ?? null,
-        attributes: traces.attributes ?? [],
-        sort: traces.sort ?? "startedAt_desc",
-        limit: traces.limit ?? 50,
-      }
-    : null;
-  const liveTraceInput: LiveTraceInput | null = liveTraces
-    ? {
-        service: liveTraces.service ?? null,
-        query: liveTraces.query ?? null,
-        operationName: liveTraces.operationName ?? null,
-        spanName: liveTraces.spanName ?? null,
-        from: range.from,
-        status: liveTraces.status ?? null,
-        minDurationMs: liveTraces.minDurationMs ?? null,
-        maxDurationMs: liveTraces.maxDurationMs ?? null,
-        attributes: liveTraces.attributes ?? [],
-        limit: liveTraces.limit ?? 50,
-      }
-    : null;
-  const richMetricInput: RichMetricSeriesInput | null = richMetric
-    ? {
-        from: range.from,
-        to: range.to,
-        query: richMetric.query,
-      }
-    : null;
-  const alertSummaryInput: AlertSummaryInput | null =
-    alert && widget.kind === "alert_status"
-      ? {
-          ruleIds: alert.ruleIds ?? [],
-          states: alert.states ?? [],
-          severities: alert.severities ?? [],
-          signals: alert.signals ?? [],
-          timeWindow: alert.timeWindow ?? "PT1H",
-          limit: alert.limit ?? 20,
-        }
-      : null;
+  const widgetInput = toWidgetInput(widget);
+  const metricInput = mapMetricSeriesInput(widgetInput, range);
+  const logInput = mapLogSearchInput(widgetInput, range);
+  const traceInput = mapTraceSearchInput(widgetInput, range);
+  const liveTraceInput = mapLiveTraceInput(widgetInput, range);
+  const richMetricInput = mapRichMetricSeriesInput(widgetInput, range);
+  const alertSummaryInput = mapAlertSummaryInput(widgetInput);
   const alertHistoryRuleId = alert?.ruleIds?.[0] ?? null;
   const alertHistoryLimit = alert?.limit ?? (widget.kind === "alert_evidence" ? 1 : 20);
   const metricQuery = useQuery({
@@ -1126,6 +1114,7 @@ function DashboardWidgetFrame({
           {isEditing ? (
             <Button
               aria-label="Move widget"
+              className="cursor-grab active:cursor-grabbing"
               onKeyDown={handleKeyboard}
               onPointerDown={(event) => pointerDrag(event, "move")}
               size="icon-sm"
@@ -1135,50 +1124,14 @@ function DashboardWidgetFrame({
               <GripVertical />
             </Button>
           ) : null}
-          <div className="min-w-0">
-            <h3 className="truncate text-sm font-semibold">{widget.title}</h3>
-            <p className="text-xs text-muted-foreground">{widget.kind}</p>
-          </div>
+          <h3 className="min-w-0 truncate text-sm font-semibold">{widget.title}</h3>
         </div>
-        <div className="flex items-center gap-1">
-          <Button
-            aria-label={t("dashboards.widget.edit")}
-            onClick={onEdit}
-            size="icon-sm"
-            type="button"
-            variant="ghost"
-          >
-            <Edit3 />
-          </Button>
-          {isEditing ? (
-            <>
-              <Button
-                aria-label={t("dashboards.duplicate")}
-                onClick={onDuplicate}
-                size="icon-sm"
-                type="button"
-                variant="ghost"
-              >
-                <CopyPlus />
-              </Button>
-              <Button
-                aria-label={t("dashboards.delete")}
-                onClick={onRemove}
-                size="icon-sm"
-                type="button"
-                variant="ghost"
-              >
-                <Trash2 />
-              </Button>
-            </>
-          ) : null}
-          <WidgetActionMenu
-            isEditing={isEditing}
-            onDuplicate={onDuplicate}
-            onEdit={onEdit}
-            onRemove={onRemove}
-          />
-        </div>
+        <WidgetActionMenu
+          isEditing={isEditing}
+          onDuplicate={onDuplicate}
+          onEdit={onEdit}
+          onRemove={onRemove}
+        />
       </header>
       <div className="min-h-0 flex-1 overflow-auto p-3">
         {metric ? (
@@ -1268,13 +1221,13 @@ function DashboardWidgetFrame({
           </QueryWidgetState>
         ) : null}
         {!metric && !richMetric && !logs && !traces && !liveTraceInput && !alert ? (
-          <WidgetSummary widget={widget} />
+          <p className="text-sm text-muted-foreground">{t("dashboards.widget.noDataSource")}</p>
         ) : null}
       </div>
       {isEditing ? (
         <Button
           aria-label="Resize widget"
-          className="absolute right-1 bottom-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+          className="absolute right-1 bottom-1 cursor-se-resize opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
           data-resize-handle="corner"
           onKeyDown={handleKeyboard}
           onPointerDown={(event) => pointerDrag(event, "resize")}
@@ -1378,524 +1331,104 @@ function getDashboardPointerCell(target: HTMLElement) {
   };
 }
 
-function AlertStatusWidgetPreview({ summary }: { summary: AlertSummary }) {
-  return (
-    <div className="grid gap-3">
-      <div>
-        <div className="text-2xl font-semibold">{summary.totalCount}</div>
-        <div className="text-xs text-muted-foreground">matching alert events</div>
-      </div>
-      <div className="grid gap-2 sm:grid-cols-3">
-        <AlertCountGroup
-          label="State"
-          rows={summary.byState.map((row) => [row.state, row.count])}
-        />
-        <AlertCountGroup
-          label="Severity"
-          rows={summary.bySeverity.map((row) => [row.severity, row.count])}
-        />
-        <AlertCountGroup
-          label="Signal"
-          rows={summary.bySignal.map((row) => [row.signal, row.count])}
-        />
-      </div>
-    </div>
-  );
-}
-
-function AlertCountGroup({ label, rows }: { label: string; rows: Array<[string, number]> }) {
-  return (
-    <div className="grid content-start gap-1 border p-2">
-      <div className="text-xs font-medium text-muted-foreground">{label}</div>
-      {rows.length > 0 ? (
-        rows.map(([name, count]) => (
-          <div className="flex items-center justify-between gap-2 text-sm" key={name}>
-            <span className="truncate">{name}</span>
-            <span className="font-mono">{count}</span>
-          </div>
-        ))
-      ) : (
-        <div className="text-sm text-muted-foreground">{t("dashboards.empty.noData")}</div>
-      )}
-    </div>
-  );
-}
-
-function AlertHistoryWidgetPreview({ events }: { events: AlertEvent[] }) {
-  if (events.length === 0) {
-    return <p className="text-sm text-muted-foreground">{t("dashboards.empty.noData")}</p>;
-  }
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Created</TableHead>
-          <TableHead>State</TableHead>
-          <TableHead>Severity</TableHead>
-          <TableHead>Summary</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {events.map((event) => (
-          <TableRow key={event.id}>
-            <TableCell className="whitespace-nowrap font-mono text-xs">
-              {formatDateTime(event.createdAt)}
-            </TableCell>
-            <TableCell>
-              <Badge variant={event.state === "FIRING" ? "destructive" : "secondary"}>
-                {event.state}
-              </Badge>
-            </TableCell>
-            <TableCell>{event.severity}</TableCell>
-            <TableCell className="max-w-[18rem] truncate">{event.summary}</TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
-}
-
-function AlertEvidenceWidgetPreview({ event }: { event: AlertEvent | null }) {
-  if (!event) {
-    return <p className="text-sm text-muted-foreground">{t("dashboards.empty.noData")}</p>;
-  }
-  return (
-    <div className="grid gap-3 text-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={event.state === "FIRING" ? "destructive" : "secondary"}>
-          {event.state}
-        </Badge>
-        <Badge variant="outline">{event.severity}</Badge>
-      </div>
-      <p>{event.summary}</p>
-      <dl className="grid gap-2">
-        <SummaryRow label="Rule">
-          <a
-            className="text-primary underline-offset-4 hover:underline"
-            href={`/alerts?ruleId=${event.ruleId}`}
-          >
-            {event.ruleId}
-          </a>
-        </SummaryRow>
-        {event.evidenceTraceId ? (
-          <SummaryRow label="Trace">
-            <a
-              className="text-primary underline-offset-4 hover:underline"
-              href={`/traces/${event.evidenceTraceId}`}
-            >
-              {event.evidenceTraceId}
-            </a>
-          </SummaryRow>
-        ) : null}
-        {event.evidenceLogId ? <SummaryRow label="Log">{event.evidenceLogId}</SummaryRow> : null}
-        {event.evidenceMetricName ? (
-          <SummaryRow label="Metric">{event.evidenceMetricName}</SummaryRow>
-        ) : null}
-      </dl>
-    </div>
-  );
-}
-
-function MetricWidgetPreview({
-  result,
-  visualization,
+function DashboardSettingsSheet({
+  draft,
+  onDraftChange,
+  onOpenChange,
+  open,
+  selectedDashboard,
 }: {
-  result: Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["getMetricSeries"]>>;
-  visualization: MetricChartType;
+  draft: SaveDashboardInput | null;
+  onDraftChange: (draft: SaveDashboardInput | null) => void;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  selectedDashboard: Dashboard | null;
 }) {
-  if (result.series.length === 0) {
-    return <p className="text-sm text-muted-foreground">{t("dashboards.metric.noSeries")}</p>;
-  }
-
-  if (visualization === "stat") {
-    const latest = latestMetricPoint(result);
-    return (
-      <div className="flex h-full min-h-40 flex-col justify-center gap-2">
-        <span className="text-sm text-muted-foreground">{result.metric.name}</span>
-        <span className="text-3xl font-semibold tabular-nums">
-          {latest ? latest.value.toLocaleString() : t("value.none")}
-        </span>
-        <span className="text-xs text-muted-foreground">
-          {latest?.timestamp ?? result.metric.lastSeenAt}
-        </span>
-      </div>
-    );
-  }
-
-  if (visualization === "table") {
-    return (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{t("metrics.groupBy")}</TableHead>
-            <TableHead>{t("metrics.series.timestamp")}</TableHead>
-            <TableHead>{t("metrics.series.value")}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {result.series.slice(0, 8).map((series) => {
-            const point = series.points.at(-1);
-            return (
-              <TableRow key={JSON.stringify(series.labels)}>
-                <TableCell className="max-w-48 truncate font-mono text-xs">
-                  {seriesLabel(series.labels)}
-                </TableCell>
-                <TableCell>{point?.timestamp ?? t("value.none")}</TableCell>
-                <TableCell className="font-mono">{point?.value ?? t("value.none")}</TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    );
-  }
-
-  const chart = buildMetricChartData(result, visualization);
-
+  const isEditing = Boolean(draft);
+  const name = draft?.name ?? selectedDashboard?.name ?? "";
+  const visibility = draft?.visibility ?? selectedDashboard?.visibility ?? "personal";
+  const description = draft?.description ?? selectedDashboard?.description ?? "";
   return (
-    <TelemetryChart
-      chartClassName="h-60 min-h-60"
-      data={chart.data}
-      emptyMessage={t("dashboards.metric.noSeries")}
-      kind={chart.kind}
-      series={chart.series}
-      summary={`${result.metric.name} ${visualization} chart with ${result.series.length} ${t(
-        "dashboards.metric.series",
-      )}.`}
-    />
-  );
-}
-
-function RichMetricWidgetPreview({
-  result,
-  visualization,
-}: {
-  result: Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["getRichMetricSeries"]>>;
-  visualization: MetricChartType;
-}) {
-  const visibleIds = new Set(
-    result.displaySeries.filter((series) => series.visible).map((series) => series.sourceId),
-  );
-  const visibleSeries = visibleIds.size
-    ? result.series.filter((series) => visibleIds.has(series.id) || visibleIds.has(series.sourceId))
-    : result.series;
-
-  if (visibleSeries.length === 0) {
-    return <p className="text-sm text-muted-foreground">{t("dashboards.metric.noSeries")}</p>;
-  }
-
-  if (visualization === "stat" || visualization === "radial") {
-    const latest = visibleSeries
-      .flatMap((series) => series.points.map((point) => ({ ...point, label: series.label })))
-      .toSorted((left, right) => left.timestamp.localeCompare(right.timestamp))
-      .at(-1);
-    return (
-      <div className="flex h-full min-h-40 flex-col justify-center gap-2">
-        <span className="text-sm text-muted-foreground">{latest?.label ?? t("value.none")}</span>
-        <span className="text-3xl font-semibold tabular-nums">
-          {latest ? latest.value.toLocaleString() : t("value.none")}
-        </span>
-        <span className="text-xs text-muted-foreground">
-          {latest?.timestamp ?? result.interval}
-        </span>
-      </div>
-    );
-  }
-
-  if (visualization === "table") {
-    return (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Display series</TableHead>
-            <TableHead>{t("metrics.series.timestamp")}</TableHead>
-            <TableHead>{t("metrics.series.value")}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {visibleSeries.slice(0, 12).map((series) => {
-            const point = series.points.at(-1);
-            return (
-              <TableRow key={series.id}>
-                <TableCell className="max-w-48 truncate text-xs">{series.label}</TableCell>
-                <TableCell>{point?.timestamp ?? t("value.none")}</TableCell>
-                <TableCell className="font-mono">{point?.value ?? t("value.none")}</TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    );
-  }
-
-  const chart = buildRichMetricChartData(visibleSeries, visualization);
-  return (
-    <TelemetryChart
-      chartClassName="h-60 min-h-60"
-      data={chart.data}
-      emptyMessage={t("dashboards.metric.noSeries")}
-      kind={chart.kind}
-      series={chart.series}
-      summary={`Rich metric ${visualization} chart with ${visibleSeries.length} ${t(
-        "dashboards.metric.series",
-      )}.`}
-    />
-  );
-}
-
-type MetricSeriesResultData = Awaited<
-  ReturnType<ReturnType<typeof useTelemetryClient>["getMetricSeries"]>
->;
-
-function latestMetricPoint(result: MetricSeriesResultData) {
-  return result.series
-    .flatMap((series) => series.points)
-    .toSorted((left, right) => left.timestamp.localeCompare(right.timestamp))
-    .at(-1);
-}
-
-function seriesLabel(labels: JSONValue) {
-  if (!labels || (typeof labels === "object" && Object.keys(labels).length === 0)) {
-    return t("value.all");
-  }
-  if (typeof labels === "object" && !Array.isArray(labels)) {
-    const entries = Object.entries(labels);
-    if (entries.length === 1) {
-      return String(entries[0]?.[1] ?? t("value.none"));
-    }
-    return entries.map(([key, value]) => `${key}: ${String(value)}`).join(", ");
-  }
-  return jsonPreview(labels);
-}
-
-function buildMetricChartData(result: MetricSeriesResultData, visualization: MetricChartType) {
-  if (visualization === "pie" || visualization === "donut" || visualization === "radar") {
-    return {
-      kind: "pie" as TelemetryChartKind,
-      data: result.series.map((series) => ({
-        label: seriesLabel(series.labels),
-        value: series.points.at(-1)?.value ?? 0,
-      })),
-      series: [{ key: "value", label: result.metric.name }],
-    };
-  }
-
-  const timestamps = Array.from(
-    new Set(result.series.flatMap((series) => series.points.map((point) => point.timestamp))),
-  ).sort();
-  const series = result.series.slice(0, 8).map((metricSeries, index) => ({
-    key: `series_${index}`,
-    label: seriesLabel(metricSeries.labels),
-  }));
-  const data = timestamps.map((timestamp) => {
-    const row: Record<string, number | string | null> = { label: timestamp };
-    result.series.slice(0, 8).forEach((metricSeries, index) => {
-      row[`series_${index}`] =
-        metricSeries.points.find((point) => point.timestamp === timestamp)?.value ?? null;
-    });
-    return row as { label: string } & Record<string, number | string | null>;
-  });
-
-  return {
-    kind: normalizeChartKind(visualization),
-    data,
-    series,
-  };
-}
-
-function buildRichMetricChartData(
-  richSeries: Awaited<
-    ReturnType<ReturnType<typeof useTelemetryClient>["getRichMetricSeries"]>
-  >["series"],
-  visualization: MetricChartType,
-) {
-  if (visualization === "pie" || visualization === "donut" || visualization === "radar") {
-    return {
-      kind: "pie" as TelemetryChartKind,
-      data: richSeries.slice(0, 12).map((series) => ({
-        label: series.label,
-        value: series.points.at(-1)?.value ?? 0,
-      })),
-      series: [{ key: "value", label: t("metrics.series.value") }],
-    };
-  }
-  const timestamps = Array.from(
-    new Set(richSeries.flatMap((series) => series.points.map((point) => point.timestamp))),
-  ).sort();
-  const series = richSeries.slice(0, 20).map((metricSeries) => ({
-    key: metricSeries.id,
-    label: metricSeries.label,
-  }));
-  const data = timestamps.map((timestamp) => {
-    const row: Record<string, number | string | null> = { label: timestamp };
-    richSeries.slice(0, 20).forEach((metricSeries) => {
-      row[metricSeries.id] =
-        metricSeries.points.find((point) => point.timestamp === timestamp)?.value ?? null;
-    });
-    return row as { label: string } & Record<string, number | string | null>;
-  });
-  return { kind: normalizeChartKind(visualization), data, series };
-}
-
-function normalizeChartKind(visualization: MetricChartType): TelemetryChartKind {
-  if (visualization === "area") {
-    return "area";
-  }
-  if (visualization === "bar" || visualization === "heatmap" || visualization === "histogram") {
-    return "bar";
-  }
-  if (visualization === "pie" || visualization === "donut" || visualization === "radar") {
-    return "pie";
-  }
-  return "line";
-}
-
-function LogWidgetPreview({
-  result,
-}: {
-  result: Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchLogs"]>>;
-}) {
-  if (result.items.length === 0) {
-    return <p className="text-sm text-muted-foreground">{t("state.empty.filtered.title")}</p>;
-  }
-
-  return (
-    <div className="grid gap-2 text-xs">
-      {result.items.slice(0, 8).map((log) => (
-        <div
-          className="grid grid-cols-[7.5rem_5rem_minmax(0,1fr)] gap-2 border-b pb-2"
-          key={log.id}
-        >
-          <span className="truncate text-muted-foreground" title={log.timestamp}>
-            {formatDateTime(log.timestamp)}
-          </span>
-          <Badge variant="outline">{log.severityText ?? log.severityNumber ?? "-"}</Badge>
-          <span className="min-w-0">
-            <span className="block truncate">{log.serviceName ?? t("value.unknown")}</span>
-            <code className="block truncate text-muted-foreground">{jsonPreview(log.body)}</code>
-          </span>
+    <Sheet onOpenChange={onOpenChange} open={open}>
+      <SheetContent className="w-full overflow-auto sm:max-w-[480px]" side="right">
+        <SheetHeader>
+          <SheetTitle>{t("dashboards.settings")}</SheetTitle>
+          <SheetDescription>
+            {selectedDashboard?.name ?? t("dashboards.empty.noSelection.title")}
+          </SheetDescription>
+        </SheetHeader>
+        <div className="grid flex-1 gap-4 px-4">
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="settings-dashboard-name">{t("dashboards.name")}</FieldLabel>
+              <Input
+                disabled={!isEditing}
+                id="settings-dashboard-name"
+                onChange={(event) => {
+                  if (draft) {
+                    onDraftChange({ ...draft, name: event.target.value });
+                  }
+                }}
+                value={name}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="settings-dashboard-visibility">
+                {t("dashboards.visibility")}
+              </FieldLabel>
+              <Select
+                disabled={!isEditing}
+                onValueChange={(value) => {
+                  if (draft) {
+                    onDraftChange({ ...draft, visibility: value as "personal" | "project" });
+                  }
+                }}
+                value={visibility === "builtin" ? "project" : visibility}
+              >
+                <SelectTrigger id="settings-dashboard-visibility">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="personal">{t("dashboards.rail.personal")}</SelectItem>
+                    <SelectItem value="project">{t("dashboards.rail.project")}</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="settings-dashboard-description">
+                {t("dashboards.descriptionField")}
+              </FieldLabel>
+              <Textarea
+                disabled={!isEditing}
+                id="settings-dashboard-description"
+                onChange={(event) => {
+                  if (draft) {
+                    onDraftChange({ ...draft, description: event.target.value || null });
+                  }
+                }}
+                placeholder={t("dashboards.descriptionPlaceholder")}
+                rows={4}
+                value={description}
+              />
+            </Field>
+          </FieldGroup>
         </div>
-      ))}
-    </div>
-  );
-}
-
-function TraceWidgetPreview({
-  result,
-}: {
-  result: Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchTraces"]>>;
-}) {
-  if (result.items.length === 0) {
-    return <p className="text-sm text-muted-foreground">{t("state.empty.filtered.title")}</p>;
-  }
-
-  return (
-    <div className="grid gap-2 text-xs">
-      {result.items.slice(0, 8).map((trace) => (
-        <div
-          className="grid grid-cols-[minmax(0,1fr)_5rem_5rem] items-center gap-2 border-b pb-2"
-          key={trace.id}
-        >
-          <span className="min-w-0">
-            <span className="block truncate">{trace.serviceName ?? t("value.unknown")}</span>
-            <code className="block truncate text-muted-foreground">{trace.id}</code>
-          </span>
-          <span className="font-mono">{formatDuration(trace.durationMs)}</span>
-          <Badge variant={statusVariant(trace.status)}>{trace.status ?? t("value.unknown")}</Badge>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function LiveTraceWidgetPreview({
-  input,
-  telemetryClient,
-}: {
-  input: LiveTraceInput;
-  telemetryClient: ReturnType<typeof useTelemetryClient>;
-}) {
-  const inputKey = JSON.stringify(input);
-  const [rows, setRows] = useState<
-    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchTraces"]>>["items"]
-  >([]);
-  const [connectionState, setConnectionState] = useState("connecting");
-  const [subscriptionError, setSubscriptionError] = useState<unknown>(null);
-  const [retryNonce, setRetryNonce] = useState(0);
-
-  useEffect(() => {
-    void retryNonce;
-    const subscriptionInput = JSON.parse(inputKey) as LiveTraceInput;
-    const limit = subscriptionInput.limit ?? 50;
-    setRows([]);
-    setConnectionState("connecting");
-    setSubscriptionError(null);
-
-    const subscription = telemetryClient.subscribeLiveTraces(subscriptionInput, {
-      onStateChange: setConnectionState,
-      onEvent(event) {
-        if (event.type === "heartbeat" || !event.trace) {
-          return;
-        }
-        const trace = event.trace;
-        setRows((current) => {
-          const deduped = current.filter((candidate) => candidate.id !== trace.id);
-          return [trace, ...deduped].slice(0, limit);
-        });
-      },
-      onError(error) {
-        setSubscriptionError(error);
-        setConnectionState("error");
-      },
-    });
-
-    return () => subscription.unsubscribe();
-  }, [inputKey, retryNonce, telemetryClient]);
-
-  if (subscriptionError) {
-    return (
-      <ErrorPanel
-        error={subscriptionError}
-        onRetry={() => setRetryNonce((current) => current + 1)}
-      />
-    );
-  }
-
-  return (
-    <div className="grid gap-2 text-xs">
-      <div className="flex items-center justify-between gap-2">
-        <Badge variant="outline">{connectionState}</Badge>
-        <Badge variant="secondary">
-          {rows.length} {t("traces.title")}
-        </Badge>
-      </div>
-      {rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t("live.empty")}</p>
-      ) : (
-        rows.slice(0, 8).map((trace) => (
-          <div
-            className="grid grid-cols-[minmax(0,1fr)_5rem_5rem] items-center gap-2 border-b pb-2"
-            key={trace.id}
-          >
-            <span className="min-w-0">
-              <span className="block truncate">{trace.serviceName ?? t("value.unknown")}</span>
-              <code className="block truncate text-muted-foreground">{trace.id}</code>
-            </span>
-            <span className="font-mono">{formatDuration(trace.durationMs)}</span>
-            <Badge variant={statusVariant(trace.status)}>
-              {trace.status ?? t("value.unknown")}
-            </Badge>
-          </div>
-        ))
-      )}
-    </div>
+        <SheetFooter className="px-4">
+          <Button onClick={() => onOpenChange(false)} type="button" variant="outline">
+            <X data-icon="inline-start" />
+            {t("actions.close")}
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }
 
 function WidgetEditorSheet({
   dashboard,
   draft,
-  onDraftChange,
   onOpenChange,
   onWidgetChange,
   open,
@@ -1905,7 +1438,6 @@ function WidgetEditorSheet({
 }: {
   dashboard: Dashboard | null;
   draft: SaveDashboardInput | null;
-  onDraftChange: (draft: SaveDashboardInput | null) => void;
   onOpenChange: (open: boolean) => void;
   onWidgetChange: (widget: DashboardWidgetInput) => void;
   open: boolean;
@@ -1922,45 +1454,14 @@ function WidgetEditorSheet({
         side="right"
       >
         <SheetHeader>
-          <SheetTitle>{t("dashboards.details")}</SheetTitle>
+          <SheetTitle>{editableWidget?.title ?? t("dashboards.details")}</SheetTitle>
           <SheetDescription>
-            {draft
-              ? t("dashboards.editingDraft")
+            {editableWidget
+              ? widgetKindLabel(editableWidget.kind)
               : (dashboard?.name ?? t("dashboards.empty.noSelection.title"))}
           </SheetDescription>
         </SheetHeader>
         <div className="grid flex-1 gap-4 px-4">
-          {draft ? (
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="dashboard-name">{t("dashboards.name")}</FieldLabel>
-                <Input
-                  id="dashboard-name"
-                  onChange={(event) => onDraftChange({ ...draft, name: event.target.value })}
-                  value={draft.name}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="dashboard-visibility">{t("dashboards.visibility")}</FieldLabel>
-                <Select
-                  onValueChange={(value) =>
-                    onDraftChange({ ...draft, visibility: value as "personal" | "project" })
-                  }
-                  value={draft.visibility ?? "personal"}
-                >
-                  <SelectTrigger id="dashboard-visibility">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="personal">personal</SelectItem>
-                      <SelectItem value="project">project</SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </Field>
-            </FieldGroup>
-          ) : null}
           {editableWidget ? (
             <WidgetEditorGroups
               disabled={!draft}
@@ -2071,1103 +1572,15 @@ function AddWidgetButton({ onAddWidget }: { onAddWidget: (kind: DashboardWidgetK
   );
 }
 
-function WidgetEditorGroups({
-  disabled,
-  onWidgetChange,
-  range,
-  telemetryClient,
-  widget,
-}: {
-  disabled: boolean;
-  onWidgetChange: (widget: DashboardWidgetInput) => void;
-  range: { from: string; to: string };
-  telemetryClient: ReturnType<typeof useTelemetryClient>;
-  widget: DashboardWidgetInput;
-}) {
-  return (
-    <div className="flex flex-col gap-4">
-      <EditorGroup title={t("dashboards.editor.data")}>
-        {widget.metric ? (
-          <FieldGroup>
-            <Field data-disabled={disabled}>
-              <FieldLabel htmlFor={`${widget.id}-metric-name`}>
-                {t("dashboards.editor.metricName")}
-              </FieldLabel>
-              <MetricNameCombobox
-                disabled={disabled}
-                id={`${widget.id}-metric-name`}
-                onChange={(value) =>
-                  updateMetricWidget(widget, { metricName: value }, onWidgetChange)
-                }
-                range={range}
-                telemetryClient={telemetryClient}
-                value={widget.metric.metricName}
-              />
-            </Field>
-            <Field data-disabled={disabled}>
-              <FieldLabel htmlFor={`${widget.id}-metric-aggregation`}>
-                {t("dashboards.editor.aggregation")}
-              </FieldLabel>
-              <Select
-                disabled={disabled}
-                onValueChange={(value) =>
-                  updateMetricWidget(
-                    widget,
-                    {
-                      aggregation: value as NonNullable<typeof widget.metric>["aggregation"],
-                    },
-                    onWidgetChange,
-                  )
-                }
-                value={widget.metric.aggregation}
-              >
-                <SelectTrigger id={`${widget.id}-metric-aggregation`}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {metricAggregations.map((aggregation) => (
-                      <SelectItem key={aggregation} value={aggregation}>
-                        {aggregation}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-            <SummaryRow label={t("dashboards.editor.groupBy")}>
-              {(widget.metric.groupBy ?? []).join(", ") || t("dashboards.noneConfigured")}
-            </SummaryRow>
-            <SummaryRow label={t("dashboards.editor.filters")}>
-              {widget.metric.filters?.length
-                ? `${widget.metric.filters.length} ${t("filters.title")}`
-                : t("dashboards.noneConfigured")}
-            </SummaryRow>
-            <SummaryRow label={t("dashboards.editor.interval")}>
-              {widget.metric.interval ?? t("dashboards.default")}
-            </SummaryRow>
-          </FieldGroup>
-        ) : widget.richMetric ? (
-          !isRichMetricEditingEnabled() ? (
-            <RichMetricUnsupportedState />
-          ) : (
-            <RichMetricWidgetEditor
-              disabled={disabled}
-              onWidgetChange={onWidgetChange}
-              range={range}
-              telemetryClient={telemetryClient}
-              widget={widget}
-            />
-          )
-        ) : widget.logs ? (
-          <LogWidgetEditor disabled={disabled} onWidgetChange={onWidgetChange} widget={widget} />
-        ) : widget.traces ? (
-          <TraceWidgetEditor disabled={disabled} onWidgetChange={onWidgetChange} widget={widget} />
-        ) : widget.liveTraces ? (
-          <LiveTraceWidgetEditor
-            disabled={disabled}
-            onWidgetChange={onWidgetChange}
-            widget={widget}
-          />
-        ) : widget.alert ? (
-          <AlertWidgetEditor disabled={disabled} onWidgetChange={onWidgetChange} widget={widget} />
-        ) : (
-          <p className="text-sm text-muted-foreground">{t("dashboards.widget.noDataSource")}</p>
-        )}
-      </EditorGroup>
-      <EditorGroup title={t("dashboards.editor.display")}>
-        <FieldGroup>
-          <Field data-disabled={disabled}>
-            <FieldLabel htmlFor={`${widget.id}-title`}>{t("dashboards.editor.title")}</FieldLabel>
-            <Input
-              disabled={disabled}
-              id={`${widget.id}-title`}
-              onChange={(event) => onWidgetChange({ ...widget, title: event.target.value })}
-              value={widget.title}
-            />
-          </Field>
-          {widget.metric || widget.richMetric ? (
-            <Field data-disabled={disabled}>
-              <FieldLabel htmlFor={`${widget.id}-visualization`}>
-                {t("dashboards.editor.chartType")}
-              </FieldLabel>
-              <Select
-                disabled={disabled}
-                onValueChange={(value) => {
-                  if (widget.metric) {
-                    updateMetricWidget(
-                      widget,
-                      {
-                        visualization: value as NonNullable<typeof widget.metric>["visualization"],
-                      },
-                      onWidgetChange,
-                    );
-                    return;
-                  }
-                  updateRichMetricWidget(
-                    widget,
-                    {
-                      visualization: value as NonNullable<
-                        typeof widget.richMetric
-                      >["visualization"],
-                    },
-                    onWidgetChange,
-                  );
-                }}
-                value={widget.metric?.visualization ?? widget.richMetric?.visualization ?? "line"}
-              >
-                <SelectTrigger id={`${widget.id}-visualization`}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {metricChartTypes.map((chartType) => (
-                      <SelectItem key={chartType} value={chartType}>
-                        {chartType}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-          ) : widget.alert ? (
-            <SummaryRow label={t("dashboards.editor.mode")}>{widget.kind}</SummaryRow>
-          ) : (
-            <SummaryRow label={t("dashboards.editor.mode")}>
-              {t("dashboards.editor.compactTable")}
-            </SummaryRow>
-          )}
-          <SummaryRow label={t("dashboards.editor.layout")}>
-            x {widget.layout.x}, y {widget.layout.y}, w {widget.layout.w}, h {widget.layout.h}
-          </SummaryRow>
-        </FieldGroup>
-      </EditorGroup>
-      <EditorGroup title={t("dashboards.editor.thresholds")}>
-        {widget.metric || widget.richMetric ? (
-          <WidgetSummary widget={widget} />
-        ) : widget.alert ? (
-          <p className="text-sm text-muted-foreground">
-            {t("dashboards.editor.thresholdsUnavailable")}
-          </p>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            {t("dashboards.editor.thresholdsUnavailable")}
-          </p>
-        )}
-      </EditorGroup>
-    </div>
-  );
-}
-
-function RichMetricUnsupportedState() {
-  return (
-    <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-      Rich metric widgets can render saved data, but creation and editing stay disabled until the
-      complete rich metric implementation gate passes.
-    </div>
-  );
-}
-
-function EditorGroup({ children, title }: { children: ReactNode; title: string }) {
-  return (
-    <section className="flex flex-col gap-2 border-t pt-3">
-      <h2 className="text-sm font-semibold">{title}</h2>
-      {children}
-    </section>
-  );
-}
-
-function updateMetricWidget(
-  widget: DashboardWidgetInput,
-  patch: Partial<NonNullable<DashboardWidgetInput["metric"]>>,
-  onWidgetChange: (widget: DashboardWidgetInput) => void,
-) {
-  if (!widget.metric) {
-    return;
-  }
-  onWidgetChange({
-    ...widget,
-    metric: {
-      ...widget.metric,
-      ...patch,
-    },
-  });
-}
-
-function updateRichMetricWidget(
-  widget: DashboardWidgetInput,
-  patch: Partial<NonNullable<DashboardWidgetInput["richMetric"]>>,
-  onWidgetChange: (widget: DashboardWidgetInput) => void,
-) {
-  if (!widget.richMetric) {
-    return;
-  }
-  onWidgetChange({
-    ...widget,
-    richMetric: {
-      ...widget.richMetric,
-      ...patch,
-    },
-  });
-}
-
-function MetricNameCombobox({
-  disabled,
-  id,
-  onChange,
-  range,
-  telemetryClient,
-  value,
-}: {
-  disabled: boolean;
-  id: string;
-  onChange: (value: string) => void;
-  range: { from: string; to: string };
-  telemetryClient: ReturnType<typeof useTelemetryClient>;
-  value: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState(value);
-  const namesInput: MetricNameSearchInput = {
-    query: query || null,
-    from: range.from,
-    to: range.to,
-    limit: 20,
-  };
-  const namesQuery = useQuery({
-    enabled: open && !disabled,
-    queryKey: queryKeys.metricNames(namesInput),
-    queryFn: () => telemetryClient.getMetricNames(namesInput),
-  });
-  const descriptors = namesQuery.data?.items ?? [];
-  const hasTypedValue =
-    query.trim().length > 0 && descriptors.every((descriptor) => descriptor.name !== query.trim());
-
-  useEffect(() => {
-    setQuery(value);
-  }, [value]);
-
-  return (
-    <Popover onOpenChange={setOpen} open={open}>
-      <PopoverTrigger asChild>
-        <Button
-          aria-expanded={open}
-          className="w-full justify-between"
-          disabled={disabled}
-          id={id}
-          role="combobox"
-          type="button"
-          variant="outline"
-        >
-          <span className="truncate font-mono text-xs">
-            {value || t("dashboards.metric.select")}
-          </span>
-          <ChevronsUpDown data-icon="inline-end" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-[min(32rem,calc(100vw-2rem))] p-0">
-        <Command shouldFilter={false}>
-          <CommandInput
-            onValueChange={setQuery}
-            placeholder={t("dashboards.metric.search")}
-            value={query}
-          />
-          <CommandList>
-            <CommandEmpty>
-              {namesQuery.isLoading ? t("state.loading") : t("dashboards.metric.noMatches")}
-            </CommandEmpty>
-            <CommandGroup>
-              {descriptors.map((descriptor) => (
-                <CommandItem
-                  key={descriptor.name}
-                  onSelect={() => {
-                    onChange(descriptor.name);
-                    setOpen(false);
-                  }}
-                  value={descriptor.name}
-                >
-                  <Check
-                    className={descriptor.name === value ? "opacity-100" : "opacity-0"}
-                    data-icon="inline-start"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-mono text-xs">{descriptor.name}</span>
-                    <span className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span>{descriptor.kind}</span>
-                      {descriptor.unit ? <span>{descriptor.unit}</span> : null}
-                      <span>{formatDateTime(descriptor.lastSeenAt)}</span>
-                    </span>
-                  </span>
-                </CommandItem>
-              ))}
-              {hasTypedValue ? (
-                <CommandItem
-                  onSelect={() => {
-                    onChange(query.trim());
-                    setOpen(false);
-                  }}
-                  value={query.trim()}
-                >
-                  <Plus data-icon="inline-start" />
-                  <span className="truncate font-mono text-xs">{query.trim()}</span>
-                </CommandItem>
-              ) : null}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function RichMetricWidgetEditor({
-  disabled,
-  onWidgetChange,
-  range,
-  telemetryClient,
-  widget,
-}: {
-  disabled: boolean;
-  onWidgetChange: (widget: DashboardWidgetInput) => void;
-  range: { from: string; to: string };
-  telemetryClient: ReturnType<typeof useTelemetryClient>;
-  widget: DashboardWidgetInput;
-}) {
-  if (!widget.richMetric) {
-    return null;
-  }
-  const query = widget.richMetric.query;
-  const updateQuery = (patch: Partial<DashboardMetricQueryInput>) =>
-    updateRichMetricWidget(widget, { query: { ...query, ...patch } }, onWidgetChange);
-  return (
-    <FieldGroup>
-      <Field data-disabled={disabled}>
-        <FieldLabel htmlFor={`${widget.id}-rich-interval`}>
-          {t("dashboards.editor.interval")}
-        </FieldLabel>
-        <Input
-          disabled={disabled}
-          id={`${widget.id}-rich-interval`}
-          onChange={(event) => updateQuery({ interval: stringOrNull(event.target.value) })}
-          value={query.interval ?? ""}
-        />
-      </Field>
-      <div className="grid gap-3">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-medium">Queries</h3>
-          <Button
-            disabled={disabled}
-            onClick={() => updateQuery(addRichMetricQueryRow(query))}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            <Plus data-icon="inline-start" />
-            Add query
-          </Button>
-        </div>
-        {(query.queries ?? []).map((row, index) => (
-          <RichMetricQueryRowEditor
-            disabled={disabled}
-            key={row.id}
-            onChange={(nextRow) =>
-              updateQuery({
-                queries: query.queries.map((candidate) =>
-                  candidate.id === row.id ? nextRow : candidate,
-                ),
-              })
-            }
-            onRemove={() =>
-              updateQuery({
-                queries: (query.queries ?? []).filter((candidate) => candidate.id !== row.id),
-                displaySeries: (query.displaySeries ?? []).filter(
-                  (series) => series.sourceId !== row.id,
-                ),
-              })
-            }
-            range={range}
-            row={row}
-            rowNumber={index + 1}
-            telemetryClient={telemetryClient}
-          />
-        ))}
-      </div>
-      <div className="grid gap-3">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-medium">Formulas</h3>
-          <Button
-            disabled={disabled}
-            onClick={() =>
-              updateQuery({ formulas: addRichMetricFormula(query.formulas ?? [], query.queries) })
-            }
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            <Plus data-icon="inline-start" />
-            Add formula
-          </Button>
-        </div>
-        {(query.formulas ?? []).map((formula) => (
-          <div className="grid gap-2 border p-2" key={formula.id}>
-            <TextWidgetField
-              disabled={disabled}
-              id={`${widget.id}-${formula.id}-label`}
-              label="Label"
-              onChange={(value) =>
-                updateQuery({
-                  formulas: (query.formulas ?? []).map((candidate) =>
-                    candidate.id === formula.id
-                      ? { ...candidate, label: value ?? candidate.label }
-                      : candidate,
-                  ),
-                })
-              }
-              placeholder="Label"
-              value={formula.label}
-            />
-            <SummaryRow label="Formula">{describeFormulaExpression(formula.expression)}</SummaryRow>
-          </div>
-        ))}
-      </div>
-      <div className="grid gap-2">
-        <h3 className="text-sm font-medium">Display series</h3>
-        {(query.displaySeries ?? []).map((series) => (
-          <div className="flex items-center gap-2 text-sm" key={series.id}>
-            <Checkbox
-              aria-label={series.label}
-              checked={series.visible ?? true}
-              disabled={disabled}
-              onCheckedChange={(checked) =>
-                updateQuery({
-                  displaySeries: (query.displaySeries ?? []).map((candidate) =>
-                    candidate.id === series.id
-                      ? { ...candidate, visible: checked === true }
-                      : candidate,
-                  ),
-                })
-              }
-            />
-            <span>{series.label}</span>
-          </div>
-        ))}
-      </div>
-    </FieldGroup>
-  );
-}
-
-function RichMetricQueryRowEditor({
-  disabled,
-  onChange,
-  onRemove,
-  range,
-  row,
-  rowNumber,
-  telemetryClient,
-}: {
-  disabled: boolean;
-  onChange: (row: DashboardMetricQueryRowInput) => void;
-  onRemove: () => void;
-  range: { from: string; to: string };
-  row: DashboardMetricQueryRowInput;
-  rowNumber: number;
-  telemetryClient: ReturnType<typeof useTelemetryClient>;
-}) {
-  return (
-    <div className="grid gap-2 border p-2">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-medium text-muted-foreground">Query {rowNumber}</div>
-        <Button
-          aria-label={t("dashboards.editor.removeQuery")}
-          disabled={disabled}
-          onClick={onRemove}
-          size="icon-xs"
-          type="button"
-          variant="ghost"
-        >
-          <Trash2 />
-        </Button>
-      </div>
-      <TextWidgetField
-        disabled={disabled}
-        id={`${row.id}-label`}
-        label="Label"
-        onChange={(value) => onChange({ ...row, label: value ?? row.label })}
-        placeholder="Label"
-        value={row.label}
-      />
-      <Field data-disabled={disabled}>
-        <FieldLabel htmlFor={`${row.id}-metric`}>{t("dashboards.editor.metricName")}</FieldLabel>
-        <MetricNameCombobox
-          disabled={disabled}
-          id={`${row.id}-metric`}
-          onChange={(value) => onChange({ ...row, metricName: value })}
-          range={range}
-          telemetryClient={telemetryClient}
-          value={row.metricName}
-        />
-      </Field>
-      <Field data-disabled={disabled}>
-        <FieldLabel htmlFor={`${row.id}-aggregation`}>
-          {t("dashboards.editor.aggregation")}
-        </FieldLabel>
-        <Select
-          disabled={disabled}
-          onValueChange={(value) => onChange({ ...row, aggregation: value as MetricAggregation })}
-          value={row.aggregation}
-        >
-          <SelectTrigger id={`${row.id}-aggregation`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {metricAggregations.map((aggregation) => (
-                <SelectItem key={aggregation} value={aggregation}>
-                  {aggregation}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </Field>
-      <TextWidgetField
-        disabled={disabled}
-        id={`${row.id}-group-by`}
-        label={t("dashboards.editor.groupBy")}
-        onChange={(value) => onChange({ ...row, groupBy: csvToList(value) })}
-        placeholder="service.name, http.route"
-        value={(row.groupBy ?? []).join(", ")}
-      />
-      <NumberWidgetField
-        disabled={disabled}
-        id={`${row.id}-max-series`}
-        label="Max series"
-        onChange={(value) => onChange({ ...row, maxSeries: value })}
-        value={row.maxSeries}
-      />
-    </div>
-  );
-}
-
-function LogWidgetEditor({
-  disabled,
-  onWidgetChange,
-  widget,
-}: {
-  disabled: boolean;
-  onWidgetChange: (widget: DashboardWidgetInput) => void;
-  widget: DashboardWidgetInput;
-}) {
-  if (!widget.logs) {
-    return null;
-  }
-
-  return (
-    <FieldGroup>
-      <TextWidgetField
-        disabled={disabled}
-        id={`${widget.id}-log-query`}
-        label={t("filters.query")}
-        onChange={(value) => updateLogWidget(widget, { search: value }, onWidgetChange)}
-        placeholder={t("filters.placeholder.search")}
-        search
-        value={widget.logs.search}
-      />
-      <TextWidgetField
-        disabled={disabled}
-        id={`${widget.id}-log-service`}
-        label={t("filters.service")}
-        onChange={(value) => updateLogWidget(widget, { service: value }, onWidgetChange)}
-        placeholder={t("filters.placeholder.service")}
-        value={widget.logs.service}
-      />
-      <TextWidgetField
-        disabled={disabled}
-        id={`${widget.id}-log-severity`}
-        label={t("filters.severity")}
-        onChange={(value) => updateLogWidget(widget, { severity: value }, onWidgetChange)}
-        placeholder={t("filters.placeholder.severity")}
-        value={widget.logs.severity}
-      />
-      <NumberWidgetField
-        disabled={disabled}
-        id={`${widget.id}-log-limit`}
-        label="Limit"
-        onChange={(value) => updateLogWidget(widget, { limit: value }, onWidgetChange)}
-        value={widget.logs.limit}
-      />
-      <Field data-disabled={disabled}>
-        <FieldLabel htmlFor={`${widget.id}-log-sort`}>{t("filters.sort")}</FieldLabel>
-        <Select
-          disabled={disabled}
-          onValueChange={(value) =>
-            updateLogWidget(
-              widget,
-              { sort: value as NonNullable<NonNullable<typeof widget.logs>["sort"]> },
-              onWidgetChange,
-            )
-          }
-          value={widget.logs.sort ?? "timestamp_desc"}
-        >
-          <SelectTrigger id={`${widget.id}-log-sort`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value="timestamp_desc">timestamp_desc</SelectItem>
-              <SelectItem value="timestamp_asc">timestamp_asc</SelectItem>
-              <SelectItem value="severity_desc">severity_desc</SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </Field>
-    </FieldGroup>
-  );
-}
-
-function TraceWidgetEditor({
-  disabled,
-  onWidgetChange,
-  widget,
-}: {
-  disabled: boolean;
-  onWidgetChange: (widget: DashboardWidgetInput) => void;
-  widget: DashboardWidgetInput;
-}) {
-  if (!widget.traces) {
-    return null;
-  }
-
-  return (
-    <FieldGroup>
-      <TextWidgetField
-        disabled={disabled}
-        id={`${widget.id}-trace-query`}
-        label={t("filters.query")}
-        onChange={(value) => updateTraceWidget(widget, { query: value }, onWidgetChange)}
-        placeholder={t("filters.placeholder.query")}
-        search
-        value={widget.traces.query}
-      />
-      <TextWidgetField
-        disabled={disabled}
-        id={`${widget.id}-trace-service`}
-        label={t("filters.service")}
-        onChange={(value) => updateTraceWidget(widget, { service: value }, onWidgetChange)}
-        placeholder={t("filters.placeholder.service")}
-        value={widget.traces.service}
-      />
-      <StatusWidgetField
-        disabled={disabled}
-        id={`${widget.id}-trace-status`}
-        onChange={(value) => updateTraceWidget(widget, { status: value }, onWidgetChange)}
-        value={widget.traces.status}
-      />
-      <NumberWidgetField
-        disabled={disabled}
-        id={`${widget.id}-trace-limit`}
-        label="Limit"
-        onChange={(value) => updateTraceWidget(widget, { limit: value }, onWidgetChange)}
-        value={widget.traces.limit}
-      />
-      <Field data-disabled={disabled}>
-        <FieldLabel htmlFor={`${widget.id}-trace-sort`}>{t("filters.sort")}</FieldLabel>
-        <Select
-          disabled={disabled}
-          onValueChange={(value) =>
-            updateTraceWidget(
-              widget,
-              {
-                sort: value as NonNullable<NonNullable<typeof widget.traces>["sort"]>,
-              },
-              onWidgetChange,
-            )
-          }
-          value={widget.traces.sort ?? "startedAt_desc"}
-        >
-          <SelectTrigger id={`${widget.id}-trace-sort`}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value="startedAt_desc">startedAt_desc</SelectItem>
-              <SelectItem value="startedAt_asc">startedAt_asc</SelectItem>
-              <SelectItem value="duration_desc">duration_desc</SelectItem>
-              <SelectItem value="duration_asc">duration_asc</SelectItem>
-              <SelectItem value="errorFirst">errorFirst</SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      </Field>
-    </FieldGroup>
-  );
-}
-
-function LiveTraceWidgetEditor({
-  disabled,
-  onWidgetChange,
-  widget,
-}: {
-  disabled: boolean;
-  onWidgetChange: (widget: DashboardWidgetInput) => void;
-  widget: DashboardWidgetInput;
-}) {
-  if (!widget.liveTraces) {
-    return null;
-  }
-
-  return (
-    <FieldGroup>
-      <TextWidgetField
-        disabled={disabled}
-        id={`${widget.id}-live-query`}
-        label={t("filters.query")}
-        onChange={(value) => updateLiveTraceWidget(widget, { query: value }, onWidgetChange)}
-        placeholder={t("filters.placeholder.query")}
-        search
-        value={widget.liveTraces.query}
-      />
-      <TextWidgetField
-        disabled={disabled}
-        id={`${widget.id}-live-service`}
-        label={t("filters.service")}
-        onChange={(value) => updateLiveTraceWidget(widget, { service: value }, onWidgetChange)}
-        placeholder={t("filters.placeholder.service")}
-        value={widget.liveTraces.service}
-      />
-      <StatusWidgetField
-        disabled={disabled}
-        id={`${widget.id}-live-status`}
-        onChange={(value) => updateLiveTraceWidget(widget, { status: value }, onWidgetChange)}
-        value={widget.liveTraces.status}
-      />
-      <NumberWidgetField
-        disabled={disabled}
-        id={`${widget.id}-live-limit`}
-        label="Limit"
-        onChange={(value) => updateLiveTraceWidget(widget, { limit: value }, onWidgetChange)}
-        value={widget.liveTraces.limit}
-      />
-    </FieldGroup>
-  );
-}
-
-function AlertWidgetEditor({
-  disabled,
-  onWidgetChange,
-  widget,
-}: {
-  disabled: boolean;
-  onWidgetChange: (widget: DashboardWidgetInput) => void;
-  widget: DashboardWidgetInput;
-}) {
-  if (!widget.alert) {
-    return null;
-  }
-
-  return (
-    <FieldGroup>
-      <TextWidgetField
-        disabled={disabled}
-        id={`${widget.id}-alert-rule-ids`}
-        label="Rule IDs"
-        onChange={(value) =>
-          updateAlertWidget(widget, { ruleIds: csvToList(value) }, onWidgetChange)
-        }
-        placeholder="rule-1, rule-2"
-        value={(widget.alert.ruleIds ?? []).join(", ")}
-      />
-      <TextWidgetField
-        disabled={disabled}
-        id={`${widget.id}-alert-states`}
-        label="States"
-        onChange={(value) =>
-          updateAlertWidget(
-            widget,
-            { states: csvToList(value) as NonNullable<NonNullable<typeof widget.alert>["states"]> },
-            onWidgetChange,
-          )
-        }
-        placeholder="FIRING, RESOLVED"
-        value={(widget.alert.states ?? []).join(", ")}
-      />
-      <TextWidgetField
-        disabled={disabled}
-        id={`${widget.id}-alert-severities`}
-        label="Severities"
-        onChange={(value) =>
-          updateAlertWidget(
-            widget,
-            {
-              severities: csvToList(value) as NonNullable<
-                NonNullable<typeof widget.alert>["severities"]
-              >,
-            },
-            onWidgetChange,
-          )
-        }
-        placeholder="ERROR, CRITICAL"
-        value={(widget.alert.severities ?? []).join(", ")}
-      />
-      <TextWidgetField
-        disabled={disabled}
-        id={`${widget.id}-alert-signals`}
-        label="Signals"
-        onChange={(value) =>
-          updateAlertWidget(
-            widget,
-            {
-              signals: csvToList(value) as NonNullable<NonNullable<typeof widget.alert>["signals"]>,
-            },
-            onWidgetChange,
-          )
-        }
-        placeholder="METRIC, LOG, TRACE"
-        value={(widget.alert.signals ?? []).join(", ")}
-      />
-      <TextWidgetField
-        disabled={disabled}
-        id={`${widget.id}-alert-window`}
-        label="Time window"
-        onChange={(value) => updateAlertWidget(widget, { timeWindow: value }, onWidgetChange)}
-        placeholder="PT1H"
-        value={widget.alert.timeWindow}
-      />
-      <NumberWidgetField
-        disabled={disabled}
-        id={`${widget.id}-alert-limit`}
-        label="Limit"
-        onChange={(value) => updateAlertWidget(widget, { limit: value }, onWidgetChange)}
-        value={widget.alert.limit}
-      />
-    </FieldGroup>
-  );
-}
-
-function TextWidgetField({
-  disabled,
-  id,
-  label,
-  onChange,
-  placeholder,
-  search = false,
-  value,
-}: {
-  disabled: boolean;
-  id: string;
-  label: string;
-  onChange: (value: string | null) => void;
-  placeholder: string;
-  search?: boolean;
-  value?: string | null | undefined;
-}) {
-  const Control = search ? SearchInput : Input;
-  return (
-    <Field data-disabled={disabled}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <Control
-        disabled={disabled}
-        id={id}
-        onChange={(event) => onChange(stringOrNull(event.target.value))}
-        placeholder={placeholder}
-        value={value ?? ""}
-      />
-    </Field>
-  );
-}
-
-function NumberWidgetField({
-  disabled,
-  id,
-  label,
-  onChange,
-  value,
-}: {
-  disabled: boolean;
-  id: string;
-  label: string;
-  onChange: (value: number | null) => void;
-  value?: number | null | undefined;
-}) {
-  return (
-    <Field data-disabled={disabled}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <Input
-        disabled={disabled}
-        id={id}
-        min={1}
-        onChange={(event) => onChange(numberOrNull(event.target.value))}
-        type="number"
-        value={value ?? ""}
-      />
-    </Field>
-  );
-}
-
-function StatusWidgetField({
-  disabled,
-  id,
-  onChange,
-  value,
-}: {
-  disabled: boolean;
-  id: string;
-  onChange: (value: "ok" | "error" | "unset" | null) => void;
-  value?: "ok" | "error" | "unset" | null | undefined;
-}) {
-  return (
-    <Field data-disabled={disabled}>
-      <FieldLabel htmlFor={id}>{t("filters.status")}</FieldLabel>
-      <Select
-        disabled={disabled}
-        onValueChange={(nextValue) =>
-          onChange(nextValue === "all" ? null : (nextValue as "ok" | "error" | "unset"))
-        }
-        value={value ?? "all"}
-      >
-        <SelectTrigger id={id}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectGroup>
-            <SelectItem value="all">{t("filters.allStatuses")}</SelectItem>
-            <SelectItem value="ok">ok</SelectItem>
-            <SelectItem value="error">error</SelectItem>
-            <SelectItem value="unset">unset</SelectItem>
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-    </Field>
-  );
-}
-
-function updateLogWidget(
-  widget: DashboardWidgetInput,
-  patch: Partial<NonNullable<DashboardWidgetInput["logs"]>>,
-  onWidgetChange: (widget: DashboardWidgetInput) => void,
-) {
-  if (!widget.logs) {
-    return;
-  }
-  onWidgetChange({
-    ...widget,
-    logs: {
-      ...widget.logs,
-      ...patch,
-    },
-  });
-}
-
-function updateTraceWidget(
-  widget: DashboardWidgetInput,
-  patch: Partial<NonNullable<DashboardWidgetInput["traces"]>>,
-  onWidgetChange: (widget: DashboardWidgetInput) => void,
-) {
-  if (!widget.traces) {
-    return;
-  }
-  onWidgetChange({
-    ...widget,
-    traces: {
-      ...widget.traces,
-      ...patch,
-    },
-  });
-}
-
-function updateLiveTraceWidget(
-  widget: DashboardWidgetInput,
-  patch: Partial<NonNullable<DashboardWidgetInput["liveTraces"]>>,
-  onWidgetChange: (widget: DashboardWidgetInput) => void,
-) {
-  if (!widget.liveTraces) {
-    return;
-  }
-  onWidgetChange({
-    ...widget,
-    liveTraces: {
-      ...widget.liveTraces,
-      ...patch,
-    },
-  });
-}
-
-function updateAlertWidget(
-  widget: DashboardWidgetInput,
-  patch: Partial<NonNullable<DashboardWidgetInput["alert"]>>,
-  onWidgetChange: (widget: DashboardWidgetInput) => void,
-) {
-  if (!widget.alert) {
-    return;
-  }
-  onWidgetChange({
-    ...widget,
-    alert: {
-      ...widget.alert,
-      ...patch,
-    },
-  });
-}
-
-function WidgetSummary({
-  widget,
-}: {
-  widget: DashboardWidget | SaveDashboardInput["widgets"][number];
-}) {
-  return (
-    <dl className="grid gap-2 text-sm">
-      <SummaryRow label={t("dashboards.editor.title")}>{widget.title}</SummaryRow>
-      <SummaryRow label={t("dashboards.kind")}>{widget.kind}</SummaryRow>
-      {widget.metric ? (
-        <SummaryRow label={t("dashboards.metric.label")}>{widget.metric.metricName}</SummaryRow>
-      ) : null}
-      {widget.richMetric ? (
-        <SummaryRow label="Rich metric">
-          {widget.richMetric.query.queries.map((query) => query.label).join(", ")}
-        </SummaryRow>
-      ) : null}
-      {widget.logs ? (
-        <SummaryRow label={t("logs.title")}>
-          {widget.logs.search ?? widget.logs.service ?? t("dashboards.table")}
-        </SummaryRow>
-      ) : null}
-      {widget.traces ? (
-        <SummaryRow label={t("traces.title")}>
-          {widget.traces.query ?? widget.traces.service ?? t("dashboards.table")}
-        </SummaryRow>
-      ) : null}
-      {widget.liveTraces ? (
-        <SummaryRow label={t("traces.mode.live")}>
-          {widget.liveTraces.service ?? t("dashboards.stream")}
-        </SummaryRow>
-      ) : null}
-      {widget.alert ? (
-        <SummaryRow label={t("alerts.title")}>
-          {widget.alert.ruleIds?.join(", ") || widget.kind}
-        </SummaryRow>
-      ) : null}
-    </dl>
-  );
-}
-
-function SummaryRow({ children, label }: { children: ReactNode; label: string }) {
-  return (
-    <div className="grid grid-cols-[80px_minmax(0,1fr)] gap-2">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 break-words">{children}</dd>
-    </div>
-  );
-}
-
 function EmptyDashboardCanvas({
   actionLabel,
   description,
   onCreate,
   title,
 }: {
-  actionLabel: string;
+  actionLabel?: string | undefined;
   description: string;
-  onCreate: () => void;
+  onCreate?: (() => void) | undefined;
   title: string;
 }) {
   return (
@@ -3176,10 +1589,12 @@ function EmptyDashboardCanvas({
         <h2 className="font-semibold">{title}</h2>
         <p className="max-w-md text-sm text-muted-foreground">{description}</p>
       </div>
-      <Button onClick={onCreate} type="button">
-        <Plus data-icon="inline-start" />
-        {actionLabel}
-      </Button>
+      {onCreate && actionLabel ? (
+        <Button onClick={onCreate} type="button">
+          <Plus data-icon="inline-start" />
+          {actionLabel}
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -3227,7 +1642,7 @@ function createDashboardWidget(kind: DashboardWidgetKind, index: number): Dashbo
   const layout = defaultDashboardWidgetLayout(kind, index);
   const base = {
     id: `widget-${index}`,
-    title: widgetTitle(kind),
+    title: widgetKindLabel(kind),
     kind,
     layout,
   };
@@ -3336,7 +1751,7 @@ function widgetFromBase(
   };
 }
 
-function widgetTitle(kind: DashboardWidgetKind) {
+function widgetKindLabel(kind: DashboardWidgetKind) {
   switch (kind) {
     case "metric_stat":
       return t("dashboards.widget.metricStat");
@@ -3405,100 +1820,6 @@ function duplicateWidgetInput(widgets: DashboardWidgetInput[], widgetId: string)
       y: source.layout.y + source.layout.h,
     },
   };
-}
-
-function defaultRichMetricQuery(): DashboardMetricQueryInput {
-  const query = defaultRichMetricQueryRow(1);
-  return {
-    timeWindow: "PT1H",
-    interval: "PT1M",
-    queries: [query],
-    formulas: [],
-    displaySeries: [
-      { id: "display-query-a", label: query.label, sourceId: query.id, visible: true },
-    ],
-  };
-}
-
-function defaultRichMetricQueryRow(index: number): DashboardMetricQueryRowInput {
-  const suffix = String.fromCharCode(96 + index);
-  return {
-    id: `query-${suffix}`,
-    label: `Query ${suffix.toUpperCase()}`,
-    metricName: EMPTY_METRIC_NAME,
-    aggregation: "sum",
-    groupBy: [],
-    filters: [],
-    maxSeries: 20,
-  };
-}
-
-function addRichMetricQueryRow(
-  query: DashboardMetricQueryInput,
-): Partial<DashboardMetricQueryInput> {
-  const row = defaultRichMetricQueryRow((query.queries ?? []).length + 1);
-  return {
-    queries: [...(query.queries ?? []), row],
-    displaySeries: [
-      ...(query.displaySeries ?? []),
-      {
-        id: `display-${row.id}`,
-        label: row.label,
-        sourceId: row.id,
-        visible: true,
-      },
-    ],
-  };
-}
-
-function addRichMetricFormula(
-  formulas: DashboardMetricFormulaInput[],
-  queries: DashboardMetricQueryRowInput[],
-) {
-  const left = queries[0]?.id ?? "query-a";
-  const right = queries[1]?.id ?? left;
-  const formula: DashboardMetricFormulaInput = {
-    id: `formula-${formulas.length + 1}`,
-    label: `Formula ${formulas.length + 1}`,
-    expression: {
-      kind: "function",
-      function: "ratio",
-      arguments: [
-        { kind: "ref", refId: left },
-        { kind: "ref", refId: right },
-      ],
-    },
-  };
-  return [...formulas, formula];
-}
-
-function describeFormulaExpression(expression: DashboardMetricFormulaInput["expression"]): string {
-  if (expression.kind === "ref") {
-    return expression.refId ?? t("value.none");
-  }
-  if (expression.kind === "number") {
-    return String(expression.value ?? 0);
-  }
-  if (expression.kind === "function") {
-    return `${expression.function ?? "function"}(${(expression.arguments ?? [])
-      .map(describeFormulaExpression)
-      .join(", ")})`;
-  }
-  if (expression.kind === "binary") {
-    return `${describeFormulaExpression(expression.left ?? { kind: "number", value: 0 })} ${
-      expression.operator ?? "add"
-    } ${describeFormulaExpression(expression.right ?? { kind: "number", value: 0 })}`;
-  }
-  return expression.kind;
-}
-
-function csvToList(value: string | null) {
-  return (
-    value
-      ?.split(",")
-      .map((item) => item.trim())
-      .filter(Boolean) ?? []
-  );
 }
 
 function updateParam(
@@ -3590,18 +1911,4 @@ function withTime(date: Date, value: string) {
   const next = new Date(date);
   next.setHours(Number(hours), Number(minutes), 0, 0);
   return next;
-}
-
-function stringOrNull(value: string | null) {
-  const normalized = value?.trim();
-  return normalized ? normalized : null;
-}
-
-function numberOrNull(value: string | null) {
-  const normalized = stringOrNull(value);
-  if (!normalized) {
-    return null;
-  }
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
 }

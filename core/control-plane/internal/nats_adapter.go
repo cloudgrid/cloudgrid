@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 
@@ -28,7 +29,7 @@ func SubscribeControlHandlersWithOptions(nc *nats.Conn, service *Service, logger
 	handlers := controlHandlers(service, publisher, logger, options.SelfObservability)
 	subscriptions := make([]*nats.Subscription, 0, len(handlers))
 	for subject, handler := range handlers {
-		subscription, err := nc.Subscribe(subject, adaptNATSHandler(adaptBridgeHandlerWithSelfObservability(subject, handler, options.SelfObservability)))
+		subscription, err := nc.Subscribe(subject, adaptNATSHandler(recoverControlHandlerPanic(subject, logger, adaptBridgeHandlerWithSelfObservability(subject, handler, options.SelfObservability))))
 		if err != nil {
 			return nil, fmt.Errorf("ERR-013 MESSAGE_BRIDGE_UNAVAILABLE: NATS subscribe failed")
 		}
@@ -134,4 +135,58 @@ func adaptNATSHandler(handler bridgeMessageHandler) nats.MsgHandler {
 	return func(msg *nats.Msg) {
 		handler(natsBridgeMessage{msg: msg})
 	}
+}
+
+func recoverControlHandlerPanic(subject string, logger *slog.Logger, handler bridgeMessageHandler) bridgeMessageHandler {
+	return func(message BridgeMessage) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				if logger != nil {
+					logger.Error("nats_handler_panic_recovered",
+						"subject", subject,
+						"error_id", "ERR-013",
+						"error_code", "MESSAGE_BRIDGE_UNAVAILABLE",
+					)
+				}
+				_ = message.Respond(canonicalPanicBridgeResponse(message.Data()))
+			}
+		}()
+		handler(message)
+	}
+}
+
+func canonicalPanicBridgeResponse(data []byte) []byte {
+	requestID := requestIDFromJSON(data)
+	response := struct {
+		RequestID string `json:"requestId"`
+		OK        bool   `json:"ok"`
+		Error     struct {
+			ID        string `json:"id"`
+			Code      string `json:"code"`
+			Message   string `json:"message"`
+			Retryable bool   `json:"retryable"`
+		} `json:"error"`
+	}{
+		RequestID: requestID,
+		OK:        false,
+	}
+	response.Error.ID = "ERR-013"
+	response.Error.Code = "MESSAGE_BRIDGE_UNAVAILABLE"
+	response.Error.Message = "Message bridge is unavailable"
+	response.Error.Retryable = true
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		return []byte(`{"requestId":"","ok":false,"error":{"id":"ERR-013","code":"MESSAGE_BRIDGE_UNAVAILABLE","message":"Message bridge is unavailable","retryable":true}}`)
+	}
+	return encoded
+}
+
+func requestIDFromJSON(data []byte) string {
+	var envelope struct {
+		RequestID string `json:"requestId"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return ""
+	}
+	return envelope.RequestID
 }

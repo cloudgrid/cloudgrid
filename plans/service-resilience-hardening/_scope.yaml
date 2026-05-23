@@ -1,0 +1,99 @@
+plan: service_resilience_hardening
+global_read_scope:
+  - specs/spec.md
+  - specs/00-vision.md
+  - specs/00-conventions.md
+  - specs/04-backend/backend-architecture.md
+  - specs/04-backend/runtime-configuration.md
+  - specs/06-nfr/service-resilience-self-healing.md
+  - specs/06-nfr/reliability-ingest-failure.md
+  - specs/06-nfr/integration-test-suite.md
+  - specs/03-contracts/errors.yaml
+  - specs/03-contracts/messages/message-bridge.asyncapi.yaml
+  - .agent/IMPLEMENTATION.md
+boundaries:
+  resilience-contract-agent:
+    write_scope:
+      - specs/06-nfr/service-resilience-self-healing.md
+      - specs/04-backend/runtime-configuration.md
+      - specs/03-contracts/errors.yaml
+      - specs/_registry.yaml
+      - specs/spec.md
+      - plans/service-resilience-hardening
+    must_not_write:
+      - apps
+      - core
+  go-nats-agent:
+    write_scope:
+      - core/go-runtime
+      - core/otlp-collector
+      - core/control-plane
+      - core/storage-read
+      - core/storage-write
+    must_not_write:
+      - apps/backend
+      - apps/frontend
+      - specs/03-contracts
+  surrealdb-agent:
+    write_scope:
+      - core/control-plane/internal/adapters/surrealdb
+      - core/storage-read/internal/adapters/surrealdb
+      - core/storage-write/internal/adapters/surrealdb
+      - core/control-plane/cmd/control-plane
+      - core/storage-read/cmd/storage-read
+      - core/storage-write/cmd/storage-write
+    must_not_write:
+      - apps
+      - specs/03-contracts
+  storage-write-agent:
+    write_scope:
+      - core/storage-write
+      - core/go-runtime
+    must_not_write:
+      - apps
+      - core/storage-read
+      - core/control-plane
+      - specs/03-contracts
+  bff-agent:
+    write_scope:
+      - apps/backend/src
+      - apps/packages/runtime
+      - apps/packages/definition
+      - plans/service-resilience-hardening/_status.yaml
+    must_not_write:
+      - core
+      - apps/frontend
+      - specs/03-contracts
+  integration-agent:
+    write_scope:
+      - tooling
+      - apps/packages/integration-scenarios
+      - apps/backend/test
+      - core/*/*_test.go
+      - plans/service-resilience-hardening/_status.yaml
+    must_not_write:
+      - specs/03-contracts
+  lifecycle-agent:
+    write_scope:
+      - apps/backend/src
+      - core/otlp-collector/cmd/otlp-collector
+      - core/control-plane/cmd/control-plane
+      - core/storage-read/cmd/storage-read
+      - core/storage-write/cmd/storage-write
+      - core/go-runtime
+      - tooling
+    must_not_write:
+      - apps/frontend
+      - specs/03-contracts
+  async-saturation-agent:
+    write_scope:
+      - apps/backend/src
+      - core/go-runtime
+      - core/otlp-collector
+      - core/control-plane
+      - core/storage-read
+      - core/storage-write
+      - plans/service-resilience-hardening/_status.yaml
+    must_not_write:
+      - apps/frontend
+      - specs/03-contracts

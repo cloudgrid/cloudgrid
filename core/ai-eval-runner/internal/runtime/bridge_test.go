@@ -69,7 +69,7 @@ func TestExperimentStartHandlerRoutesToRunnerAndRespondsWithRunData(t *testing.T
 	var response contracts.EvalMutationResponse
 	decodeRuntimeResponse(t, msg.response, &response)
 	if !response.OK || response.Data["id"] != "run-1" || response.Data["status"] != ports.ExperimentRunStatusFinished {
-		t.Fatalf("response = %#v, want finished run", response)
+		t.Fatalf("response = %#v, want completed run", response)
 	}
 	if !reflect.DeepEqual(reader.experimentSearches, []string{"experiment-1"}) {
 		t.Fatalf("experiment searches = %#v", reader.experimentSearches)

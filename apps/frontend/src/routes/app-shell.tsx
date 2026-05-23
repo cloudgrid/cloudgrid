@@ -1,13 +1,17 @@
 import type { Dashboard, Organization } from "@cloudgrid/ui-contracts";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   Bot,
   Building2,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Command,
+  Database,
+  FlaskConical,
   FolderOpen,
+  Gauge,
   HelpCircle,
   LayoutDashboard,
   LineChart,
@@ -19,6 +23,7 @@ import {
   Sparkles,
   Sun,
   TerminalSquare,
+  Trophy,
   UserCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -56,6 +61,7 @@ import {
   isCompanyAiChatProviderConfigured,
 } from "../features/ai-chat/view-model";
 import { CommandPalette } from "../features/navigation/command-palette";
+import { notifyMutationError, notifyMutationSuccess } from "../lib/feedback";
 import { t } from "../lib/i18n";
 import { queryKeys } from "../lib/query-keys";
 import {
@@ -186,21 +192,49 @@ export function AppShell() {
     showProjectWorkspace &&
     (selectedOrganization?.role === "admin" ||
       isCompanyAiChatProviderConfigured(aiChatProviderQuery.data));
+  const queryClient = useQueryClient();
+  const reorderPinsMutation = useMutation({
+    mutationFn: client.reorderDashboardPins,
+    onSuccess: () => {
+      notifyMutationSuccess(t("dashboards.pinOrder.updated"));
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboards({ includeBuiltins: true }),
+      });
+    },
+    onError: (error) => {
+      notifyMutationError(error, t("dashboards.pinOrder.error"));
+    },
+  });
   const visibleDashboards = dashboardsQuery.data?.items ?? [];
-  const pinnedDashboards = (dashboardsQuery.data?.pinnedDashboardIds ?? [])
+  const pinnedDashboardIds = dashboardsQuery.data?.pinnedDashboardIds ?? [];
+  const pinnedDashboards = pinnedDashboardIds
     .map((dashboardId) => visibleDashboards.find((dashboard) => dashboard.id === dashboardId))
     .filter((dashboard) => dashboard !== undefined)
     .slice(0, 5);
   const customDashboards = visibleDashboards.filter(
     (dashboard) => dashboard.visibility !== "builtin",
   );
+  const handleReorderPin = (dashboardId: string, direction: "up" | "down") => {
+    const index = pinnedDashboardIds.indexOf(dashboardId);
+    if (index === -1) return;
+    const next = [...pinnedDashboardIds];
+    const swapIndex = direction === "up" ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= next.length) return;
+    const aId = next[index] as string;
+    const bId = next[swapIndex] as string;
+    next[index] = bId;
+    next[swapIndex] = aId;
+    void reorderPinsMutation.mutate({ dashboardIds: next });
+  };
   const projectSidebarContext =
     showProjectWorkspace && selectedProject
       ? {
           customDashboards,
           dashboardsExpanded,
           onDashboardsExpandedChange: setDashboardsExpanded,
+          onReorderPin: handleReorderPin,
           pinnedDashboards,
+          pinnedDashboardIds,
           showAiChatNav,
         }
       : null;
@@ -632,23 +666,35 @@ function ProjectSidebarNav({
   dashboardsExpanded,
   onDashboardsExpandedChange,
   onNavigate,
+  onReorderPin,
   pinnedDashboards,
+  pinnedDashboardIds,
   showAiChatNav,
 }: {
   customDashboards: Pick<Dashboard, "id" | "name">[];
   dashboardsExpanded: boolean;
   onDashboardsExpandedChange: (expanded: boolean) => void;
   onNavigate?: () => void;
+  onReorderPin: (dashboardId: string, direction: "up" | "down") => void;
   pinnedDashboards: Pick<Dashboard, "id" | "name">[];
+  pinnedDashboardIds: string[];
   showAiChatNav: boolean;
 }) {
+  const location = useLocation();
+  const aiEvalTab =
+    location.pathname === "/ai-eval"
+      ? (new URLSearchParams(location.search).get("tab") ?? "datasets")
+      : null;
   const aiChatNavItem = showAiChatNav
     ? { to: "/ai-chat", label: t("nav.aiChat"), icon: Sparkles }
     : null;
-  const enabledNavItems = [
-    ...projectNavItems,
-    ...(aiEvalEnabled ? [{ to: "/ai-eval", label: t("nav.aiEval"), icon: Bot }] : []),
+  const aiEvalSubItems: Array<{ tab: string; label: string; icon: typeof Database }> = [
+    { tab: "datasets", label: t("nav.aiEvalDatasets"), icon: Database },
+    { tab: "scorers", label: t("nav.aiEvalScorers"), icon: FlaskConical },
+    { tab: "experiments", label: t("nav.aiEvalExperiments"), icon: Trophy },
+    { tab: "production", label: t("nav.aiEvalProduction"), icon: Gauge },
   ];
+  const enabledNavItems = [...projectNavItems];
 
   return (
     <div className="flex flex-col gap-1">
@@ -665,17 +711,45 @@ function ProjectSidebarNav({
           <p className="px-3 py-1 text-xs font-medium text-muted-foreground">
             {t("dashboards.pinned")}
           </p>
-          {pinnedDashboards.map((dashboard) => (
-            <NavLink
-              className={sidebarLinkClass}
-              key={`pinned-${dashboard.id}`}
-              onClick={onNavigate}
-              to={`/dashboards?dashboard=${encodeURIComponent(dashboard.id)}`}
-            >
-              <LayoutDashboard className="size-4" aria-hidden />
-              <span className="truncate">{dashboard.name}</span>
-            </NavLink>
-          ))}
+          {pinnedDashboards.map((dashboard, index) => {
+            const fullIndex = pinnedDashboardIds.indexOf(dashboard.id);
+            return (
+              <div className="flex items-center gap-1" key={`pinned-${dashboard.id}`}>
+                <NavLink
+                  className={cn(sidebarLinkClass({ isActive: false }), "min-w-0 flex-1")}
+                  onClick={onNavigate}
+                  to={`/dashboards?dashboard=${encodeURIComponent(dashboard.id)}`}
+                >
+                  <LayoutDashboard className="size-4" aria-hidden />
+                  <span className="truncate">{dashboard.name}</span>
+                </NavLink>
+                <div className="flex shrink-0 flex-col">
+                  <Button
+                    aria-label={t("dashboards.pin.moveUp")}
+                    className="size-4"
+                    disabled={index === 0}
+                    onClick={() => onReorderPin(dashboard.id, "up")}
+                    size="icon-sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <ChevronUp className="size-3" />
+                  </Button>
+                  <Button
+                    aria-label={t("dashboards.pin.moveDown")}
+                    className="size-4"
+                    disabled={fullIndex >= pinnedDashboardIds.length - 1}
+                    onClick={() => onReorderPin(dashboard.id, "down")}
+                    size="icon-sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <ChevronDown className="size-3" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : null}
       {enabledNavItems.map((item) => {
@@ -726,6 +800,32 @@ function ProjectSidebarNav({
           </div>
         );
       })}
+      {aiEvalEnabled ? (
+        <div className="flex flex-col gap-1">
+          <NavLink
+            className={({ isActive }) => sidebarLinkClass({ isActive })}
+            end
+            onClick={onNavigate}
+            to="/ai-eval"
+          >
+            <Bot className="size-4" aria-hidden />
+            <span className="truncate">{t("nav.aiEval")}</span>
+          </NavLink>
+          <div className="ml-6 flex flex-col gap-1">
+            {aiEvalSubItems.map((subItem) => (
+              <Link
+                className={sidebarLinkClass({ isActive: aiEvalTab === subItem.tab })}
+                key={subItem.tab}
+                onClick={onNavigate}
+                to={`/ai-eval?tab=${subItem.tab}`}
+              >
+                <subItem.icon className="size-4" aria-hidden />
+                <span className="truncate">{subItem.label}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

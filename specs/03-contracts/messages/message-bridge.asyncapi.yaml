@@ -2458,7 +2458,7 @@ components:
       properties:
         type:
           type: string
-          enum: [started, item_completed, progress, heartbeat, cancelled, failed, finished]
+          enum: [started, item_completed, progress, heartbeat, cancelled, failed, completed]
         seq:
           type: integer
           minimum: 1
@@ -2484,7 +2484,7 @@ components:
           type: string
         type:
           type: string
-          enum: [started, item_completed, progress, cancelled, failed, finished]
+          enum: [started, item_completed, progress, cancelled, failed, completed]
         datasetItemRunId:
           type: string
         occurredAt:

@@ -16,14 +16,19 @@ import (
 	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/health"
 	storage "github.com/cloudgrid-dev/cloudgrid/core/storage-read/internal"
 	"github.com/cloudgrid-dev/cloudgrid/core/storage-read/internal/ports"
+	"github.com/nats-io/nats.go"
 )
 
 type fakeStorageReadNATS struct {
-	closed bool
+	readyErr error
 }
 
-func (fake fakeStorageReadNATS) IsClosed() bool {
-	return fake.closed
+func (fake fakeStorageReadNATS) CheckReady(context.Context) error {
+	return fake.readyErr
+}
+
+func (fakeStorageReadNATS) NATSConn() *nats.Conn {
+	return nil
 }
 
 func (fakeStorageReadNATS) Close() {}
@@ -161,7 +166,11 @@ func TestStorageReadHealthServerUsesConfiguredAddressAndTimeout(t *testing.T) {
 
 func TestStorageReadHealthChecksReportNATSAndAdapterReadiness(t *testing.T) {
 	var readinessCalls int
-	checks := storageReadHealthChecks(func() bool { return false }, telemetryReadAdapter{
+	var natsReadyCalls int
+	checks := storageReadHealthChecks(func(context.Context) error {
+		natsReadyCalls++
+		return nil
+	}, telemetryReadAdapter{
 		Name: "surrealdb",
 		CheckReadiness: func(context.Context) error {
 			readinessCalls++
@@ -174,10 +183,13 @@ func TestStorageReadHealthChecksReportNATSAndAdapterReadiness(t *testing.T) {
 	if readinessCalls != 1 {
 		t.Fatalf("readiness calls = %d, want 1", readinessCalls)
 	}
+	if natsReadyCalls != 1 {
+		t.Fatalf("nats readiness calls = %d, want 1", natsReadyCalls)
+	}
 }
 
 func TestStorageReadHealthChecksUseFallbackStorageNameAndUnavailableStates(t *testing.T) {
-	checks := storageReadHealthChecks(func() bool { return true }, telemetryReadAdapter{
+	checks := storageReadHealthChecks(func(context.Context) error { return errors.New("nats down") }, telemetryReadAdapter{
 		CheckReadiness: func(context.Context) error {
 			return errors.New("provider down")
 		},

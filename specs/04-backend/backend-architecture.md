@@ -179,6 +179,30 @@ Production scaling is defined in `06-nfr/performance-and-scaling.md`. Implementa
 - Startup failures sanitize provider errors before logging unless the failure is configuration or validation.
 - Request/reply handlers preserve `request_id` from the bridge envelope when available.
 
+## Runtime Resilience
+
+Service resilience requirements are defined by
+`06-nfr/service-resilience-self-healing.md`.
+
+- Invalid requests, invalid NATS messages, response contract validation
+  failures, retryable NATS outages, retryable SurrealDB outages, and handler
+  panics are operation-scoped runtime failures. They must not permanently wedge
+  the process or require manual restart after the local dependency recovers.
+- Startup remains fail-fast for invalid configuration, listener bind failure,
+  missing required startup schema, incompatible compiled adapter selection, and
+  other fatal composition errors.
+- `/livez` is process liveness only. `/readyz` reports local dependencies
+  directly owned by the service and must not call another CloudGrid service's
+  health endpoint.
+- NATS adapters own connection state, reconnect logging, subscription
+  readiness, and callback panic containment.
+- SurrealDB adapters own reconnect, reauthentication, namespace/database
+  selection, readiness recovery, and storage error classification behind their
+  service ports.
+- BFF bridge response validation failures must not be mapped as message-bridge
+  transport outages unless the underlying failure is actually NATS
+  unavailability.
+
 ## Parallel Implementation Boundaries
 
 - Agent A can implement `apps/backend` GraphQL and message bridge adapter/client against message contracts.

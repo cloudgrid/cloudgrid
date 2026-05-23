@@ -26,6 +26,8 @@ var softDeleteTables = []string{"trace", "span", "log_event", "metric_descriptor
 
 var requiredSoftDeleteFields = []string{"deletedAt", "deletedByRetentionPolicyId", "finalDeleteAfter"}
 
+var readinessLock = newSDKOperationLock()
+
 type DatabaseInfo struct {
 	Tables map[string]string `json:"tables"`
 }
@@ -118,6 +120,21 @@ func CheckSchemaReadinessReport(dbInfo DatabaseInfo, tableInfo map[string]TableI
 }
 
 func CheckReadiness(ctx context.Context, db *sdk.DB) error {
+	if manager := managerForDB(db); manager != nil {
+		return manager.checkReadiness(ctx)
+	}
+	release, err := readinessLock.acquire(ctx)
+	if err != nil {
+		return storageUnavailableError()
+	}
+	defer release()
+	// The SurrealDB SDK client keeps namespace/database selection as mutable
+	// connection state, so Use and readiness queries are serialized for
+	// unmanaged test clients without holding the lock beyond the context budget.
+	return checkReadinessWithDB(ctx, db)
+}
+
+func checkReadinessWithDB(ctx context.Context, db *sdk.DB) error {
 	target, err := ResolveTelemetryTarget(nil)
 	if err != nil {
 		return err

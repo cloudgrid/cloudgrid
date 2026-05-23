@@ -34,6 +34,8 @@ func newTelemetryReadAdapter(ctx context.Context, cfg storage.Config) (telemetry
 		CheckReadiness: func(ctx context.Context) error {
 			return surrealdb.CheckReadiness(ctx, db)
 		},
-		Close: db.Close,
+		Close: func(ctx context.Context) error {
+			return surrealdb.Close(ctx, db)
+		},
 	}, nil
 }

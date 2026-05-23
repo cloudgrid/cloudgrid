@@ -81,6 +81,7 @@ const aiChatModelToolIds = new Set([
   "aiEval.searchScorers",
   "aiEval.searchExperiments",
   "aiEval.searchEvalResults",
+  "aiEval.qualityOverview",
   "project.get",
 ]);
 

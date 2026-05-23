@@ -184,8 +184,8 @@ func TestStorageWriteRunWithRuntimeCoversStartupFailureBranches(t *testing.T) {
 		RunConsumer: func(context.Context) error {
 			select {}
 		},
-		IsClosed: func() bool {
-			return false
+		CheckReady: func(context.Context) error {
+			return nil
 		},
 		Drain: func() error {
 			return nil
@@ -330,7 +330,7 @@ func TestStorageWriteRunWithRuntimeCoversGracefulSignalShutdown(t *testing.T) {
 				RunConsumer: func(context.Context) error {
 					select {}
 				},
-				IsClosed: func() bool { return false },
+				CheckReady: func(context.Context) error { return nil },
 				Drain: func() error {
 					drained = true
 					return nil
@@ -386,7 +386,7 @@ func TestStorageWriteRunWithRuntimeCoversExpectedHealthStopAndCanceledConsumer(t
 			newBridge: func(string, ports.TelemetryWriteStore, *slog.Logger, ingest.MetricsRecorder, ingest.TraceLogRecorder, config.ConsumerConfig) (messageBridgeAdapter, error) {
 				return messageBridgeAdapter{
 					RunConsumer: func(context.Context) error { select {} },
-					IsClosed:    func() bool { return false },
+					CheckReady:  func(context.Context) error { return nil },
 					Drain:       func() error { return nil },
 					Close:       func() {},
 				}, nil
@@ -415,7 +415,7 @@ func TestStorageWriteRunWithRuntimeCoversExpectedHealthStopAndCanceledConsumer(t
 		runtime.newBridge = func(string, ports.TelemetryWriteStore, *slog.Logger, ingest.MetricsRecorder, ingest.TraceLogRecorder, config.ConsumerConfig) (messageBridgeAdapter, error) {
 			return messageBridgeAdapter{
 				RunConsumer: func(context.Context) error { return context.Canceled },
-				IsClosed:    func() bool { return false },
+				CheckReady:  func(context.Context) error { return nil },
 				Drain:       func() error { return nil },
 				Close:       func() {},
 			}, nil
@@ -452,8 +452,12 @@ func TestStorageWriteHealthServerUsesConfiguredAddressAndTimeout(t *testing.T) {
 
 func TestStorageWriteHealthChecksReportBridgeAndAdapterReadiness(t *testing.T) {
 	var readinessCalls int
+	var natsReadyCalls int
 	checks := storageWriteHealthChecks(messageBridgeAdapter{
-		IsClosed: func() bool { return false },
+		CheckReady: func(context.Context) error {
+			natsReadyCalls++
+			return nil
+		},
 	}, telemetryWriteAdapter{
 		Name: "surrealdb",
 		CheckReadiness: func(context.Context) error {
@@ -467,11 +471,14 @@ func TestStorageWriteHealthChecksReportBridgeAndAdapterReadiness(t *testing.T) {
 	if readinessCalls != 1 {
 		t.Fatalf("readiness calls = %d, want 1", readinessCalls)
 	}
+	if natsReadyCalls != 1 {
+		t.Fatalf("nats readiness calls = %d, want 1", natsReadyCalls)
+	}
 }
 
 func TestStorageWriteHealthChecksUseFallbackStorageNameAndUnavailableStates(t *testing.T) {
 	checks := storageWriteHealthChecks(messageBridgeAdapter{
-		IsClosed: func() bool { return true },
+		CheckReady: func(context.Context) error { return errors.New("nats down") },
 	}, telemetryWriteAdapter{
 		CheckReadiness: func(context.Context) error {
 			return errors.New("provider down")

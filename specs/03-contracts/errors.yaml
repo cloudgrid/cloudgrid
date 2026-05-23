@@ -224,6 +224,16 @@ errors:
     terminal_action: retry
     retry_preconditions: ["SMTP provider health and invitation email configuration are valid"]
     description: Invitation email could not be enqueued or delivered through the configured email provider.
+  ERR-023:
+    code: RESPONSE_CONTRACT_INVALID
+    category: contract
+    http_status: 502
+    retryable: false
+    user_visible: false
+    message_template: "Private service response did not match the message contract"
+    terminal_action: reject
+    retry_preconditions: []
+    description: A private service response reached the BFF but did not match the expected AsyncAPI or GraphQL bridge schema. This indicates contract drift or a service bug, not a NATS transport outage.
   ERR-AIE-001:
     code: EVAL_DATASET_NOT_FOUND
     category: not_found

@@ -16,6 +16,10 @@ export interface RuntimeConfig {
   port: number;
   natsUrl: string;
   requestTimeoutMs: number;
+  natsOperationFlushTimeoutMs: number;
+  healthCheckTimeoutMs: number;
+  serviceMaxInFlightRequests: number;
+  logStateChangeMinIntervalMs: number;
   graphqlMaxDepth: number;
   graphqlMaxComplexity: number;
   graphqlResponseMediaType: GraphQLResponseMediaType;
@@ -47,6 +51,34 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
       minMessageBridgeRequestTimeoutMs,
       maxMessageBridgeRequestTimeoutMs,
       "CLOUDGRID_MESSAGE_BRIDGE_REQUEST_TIMEOUT_MS",
+    ),
+    natsOperationFlushTimeoutMs: parseIntegerEnv(
+      env.CLOUDGRID_NATS_OPERATION_FLUSH_TIMEOUT_MS,
+      1000,
+      100,
+      5000,
+      "CLOUDGRID_NATS_OPERATION_FLUSH_TIMEOUT_MS",
+    ),
+    healthCheckTimeoutMs: parseIntegerEnv(
+      env.CLOUDGRID_HEALTH_CHECK_TIMEOUT_MS,
+      1000,
+      100,
+      5000,
+      "CLOUDGRID_HEALTH_CHECK_TIMEOUT_MS",
+    ),
+    serviceMaxInFlightRequests: parseIntegerEnv(
+      env.CLOUDGRID_SERVICE_MAX_IN_FLIGHT_REQUESTS,
+      1000,
+      1,
+      100_000,
+      "CLOUDGRID_SERVICE_MAX_IN_FLIGHT_REQUESTS",
+    ),
+    logStateChangeMinIntervalMs: parseIntegerEnv(
+      env.CLOUDGRID_LOG_STATE_CHANGE_MIN_INTERVAL_MS,
+      30_000,
+      1000,
+      300_000,
+      "CLOUDGRID_LOG_STATE_CHANGE_MIN_INTERVAL_MS",
     ),
     graphqlMaxDepth: parseIntegerEnv(
       env.CLOUDGRID_GRAPHQL_MAX_DEPTH,

@@ -157,6 +157,16 @@ interface BridgeResponse<Data> {
   error?: BridgeError;
 }
 
+const responseContractInvalidError = {
+  id: "ERR-023",
+  code: "RESPONSE_CONTRACT_INVALID",
+  message: "Private service response did not match the message contract",
+  retryable: false,
+} satisfies BridgeErrorLike;
+
+const maxLoggedValidationIssues = 5;
+const maxLoggedValidationPathDepth = 6;
+
 export interface TelemetryQueryBridge {
   searchTraces(
     input: TraceSearchInput,
@@ -2049,15 +2059,13 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     const parsed = schema.safeParse(data);
     if (!parsed.success) {
       this.#logger.error("nats_response_validation_failed", {
+        request_id: requestIdFromPayload(payload),
+        error_id: responseContractInvalidError.id,
+        error_code: responseContractInvalidError.code,
         operation_or_subject: subject,
-        issues: parsed.error.issues,
+        issues: boundedValidationIssues(parsed.error.issues),
       });
-      throw graphQLErrorFromBridge({
-        id: "ERR-013",
-        code: "MESSAGE_BRIDGE_UNAVAILABLE",
-        message: "Message bridge returned an invalid response",
-        retryable: true,
-      });
+      throw graphQLErrorFromBridge(responseContractInvalidError, requestIdFromPayload(payload));
     }
     return parsed.data;
   }
@@ -2071,7 +2079,8 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
         timeoutMs: this.#timeoutMs,
         headers: traceContextHeaders(traceContext),
       });
-      const response = parseBridgeResponse<Data>(decodeJson(data));
+      const responseValue = decodeBridgeResponsePayload(data);
+      const response = parseBridgeResponse<Data>(responseValue);
       if (!response.ok) {
         this.#logRequest(
           "warn",
@@ -2115,12 +2124,19 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
       if (error instanceof GraphQLError) {
         throw error;
       }
-      const bridgeError = {
-        id: "ERR-014",
-        code: "MESSAGE_BRIDGE_TIMEOUT",
-        message: "Message bridge request timed out",
-        retryable: true,
-      } satisfies BridgeErrorLike;
+      const bridgeError =
+        error instanceof BridgeResponseContractError
+          ? responseContractInvalidError
+          : bridgeErrorFromTransportError(error);
+      if (error instanceof BridgeResponseContractError) {
+        this.#logger.error("nats_response_validation_failed", {
+          request_id: requestId,
+          error_id: bridgeError.id,
+          error_code: bridgeError.code,
+          operation_or_subject: subject,
+          issues: error.issues,
+        });
+      }
       this.#logRequest("error", subject, requestId, start, "error", traceContext, bridgeError);
       throw graphQLErrorFromBridge(bridgeError, requestId);
     }
@@ -2220,10 +2236,19 @@ export class NATSTelemetryQueryBridge extends MessageBridgeCloudGridBridge {
     connection: ConstructorParameters<typeof NATSRequestReplyClient>[0],
     timeoutMs: number,
     logger: CloudGridLogger,
-    options: BridgeOptions & { pubSub?: EphemeralPubSub; lifecycle?: MessageBridgeLifecycle } = {},
+    options: BridgeOptions & {
+      pubSub?: EphemeralPubSub;
+      lifecycle?: MessageBridgeLifecycle;
+      natsOperationFlushTimeoutMs?: number;
+    } = {},
   ) {
     const requestReply = new NATSRequestReplyClient(connection);
-    const lifecycle = new NATSBridgeLifecycle(connection);
+    const lifecycle = new NATSBridgeLifecycle(
+      connection,
+      options.natsOperationFlushTimeoutMs === undefined
+        ? {}
+        : { flushTimeoutMs: options.natsOperationFlushTimeoutMs },
+    );
     super(requestReply, timeoutMs, logger, {
       ...options,
       pubSub: options.pubSub ?? new NATSEphemeralPubSub(connection),
@@ -2236,7 +2261,11 @@ export async function createNATSTelemetryQueryBridge(
   servers: string,
   timeoutMs: number,
   logger: CloudGridLogger,
-  options: BridgeOptions & { pubSub?: EphemeralPubSub; lifecycle?: MessageBridgeLifecycle } = {},
+  options: BridgeOptions & {
+    pubSub?: EphemeralPubSub;
+    lifecycle?: MessageBridgeLifecycle;
+    natsOperationFlushTimeoutMs?: number;
+  } = {},
 ): Promise<NATSTelemetryQueryBridge> {
   const connection = await connectNATSWithStartupRetry({ servers, name: "cloudgrid-bff" });
   return new NATSTelemetryQueryBridge(connection, timeoutMs, logger, options);
@@ -2383,6 +2412,79 @@ function requestIdFromPayload(payload: unknown): string {
   return "";
 }
 
+function boundedValidationIssues(issues: z.ZodIssue[]): Array<{
+  code: string;
+  path: string;
+  message: string;
+}> {
+  return issues.slice(0, maxLoggedValidationIssues).map((issue) => ({
+    code: issue.code,
+    path: issue.path.slice(0, maxLoggedValidationPathDepth).map(String).join(".") || "$",
+    message: issue.message,
+  }));
+}
+
+function bridgeErrorFromTransportError(error: unknown): BridgeErrorLike {
+  const code = errorCode(error);
+  if (isNatsTimeoutCode(code)) {
+    return {
+      id: "ERR-014",
+      code: "MESSAGE_BRIDGE_TIMEOUT",
+      message: "Message bridge request timed out",
+      retryable: true,
+    };
+  }
+  if (isNatsUnavailableCode(code)) {
+    return {
+      id: "ERR-013",
+      code: "MESSAGE_BRIDGE_UNAVAILABLE",
+      message: "Message bridge is unavailable",
+      retryable: true,
+    };
+  }
+  if (error instanceof SyntaxError) {
+    return responseContractInvalidError;
+  }
+  return {
+    id: "ERR-013",
+    code: "MESSAGE_BRIDGE_UNAVAILABLE",
+    message: "Message bridge is unavailable",
+    retryable: true,
+  };
+}
+
+function errorCode(error: unknown): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string"
+  ) {
+    return error.code;
+  }
+  return "";
+}
+
+function isNatsTimeoutCode(code: string): boolean {
+  return code === "TIMEOUT" || code === "408" || code === "CONNECTION_TIMEOUT";
+}
+
+function isNatsUnavailableCode(code: string): boolean {
+  return (
+    code === "503" ||
+    code === "CONNECTION_CLOSED" ||
+    code === "CONNECTION_DRAINING" ||
+    code === "CONNECTION_REFUSED" ||
+    code === "DISCONNECT" ||
+    code === "REQUEST_ERROR" ||
+    code === "PERMISSIONS_VIOLATION" ||
+    code === "AUTHORIZATION_VIOLATION" ||
+    code === "AUTHENTICATION_EXPIRED" ||
+    code === "AUTHENTICATION_TIMEOUT" ||
+    code === "ACCOUNT_EXPIRED"
+  );
+}
+
 const cloudGridErrorIdSchema = z.enum([
   "ERR-001",
   "ERR-002",
@@ -2406,6 +2508,7 @@ const cloudGridErrorIdSchema = z.enum([
   "ERR-020",
   "ERR-021",
   "ERR-022",
+  "ERR-023",
 ]);
 
 const bridgeErrorSchema = z.object({
@@ -2423,17 +2526,39 @@ const bridgeResponseSchema = z.object({
   error: bridgeErrorSchema.optional(),
 });
 
-function parseBridgeResponse<Data>(value: unknown): BridgeResponse<Data> {
-  try {
-    return parseWithZod(bridgeResponseSchema, value, "bridge response") as BridgeResponse<Data>;
-  } catch {
-    throw graphQLErrorFromBridge({
-      id: "ERR-013",
-      code: "MESSAGE_BRIDGE_UNAVAILABLE",
-      message: "Message bridge returned an invalid response",
-      retryable: true,
-    });
+class BridgeResponseContractError extends Error {
+  issues: Array<{ code: string; path: string; message: string }>;
+
+  constructor(message: string, issues: Array<{ code: string; path: string; message: string }>) {
+    super(message);
+    this.name = "BridgeResponseContractError";
+    this.issues = issues;
   }
+}
+
+function decodeBridgeResponsePayload(value: Uint8Array): unknown {
+  try {
+    return decodeJson(value);
+  } catch {
+    throw new BridgeResponseContractError("Bridge response payload is not valid JSON", [
+      {
+        code: "invalid_json",
+        path: "$",
+        message: "Bridge response payload is not valid JSON",
+      },
+    ]);
+  }
+}
+
+function parseBridgeResponse<Data>(value: unknown): BridgeResponse<Data> {
+  const parsed = bridgeResponseSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new BridgeResponseContractError(
+      "Bridge response envelope did not match the message contract",
+      boundedValidationIssues(parsed.error.issues),
+    );
+  }
+  return parsed.data as BridgeResponse<Data>;
 }
 
 const dateTimeSchema = z.string().datetime({ offset: true });
@@ -2535,7 +2660,17 @@ const scorerKindSchema = z.enum([
   "composite",
 ]);
 const evalTargetKindSchema = z.enum(["agentRun", "span", "datasetItemRun"]);
-const experimentRunStatusSchema = z.enum(["queued", "running", "cancelled", "failed", "finished"]);
+const experimentRunStatusSchema = z.enum([
+  "queued",
+  "running",
+  "pausing",
+  "paused",
+  "resuming",
+  "cancelling",
+  "cancelled",
+  "failed",
+  "completed",
+]);
 const annotationStatusSchema = z.enum(["open", "in_review", "resolved", "dismissed"]);
 const evalSolverKindSchema = z.enum(["prompt", "agent", "workflow", "skill", "tool"]);
 const evalBaselineKindSchema = z.enum(["experiment_run", "prompt_version", "solver_ref", "none"]);
@@ -3334,10 +3469,10 @@ const alertSeveritySchema = z.enum(["INFO", "WARNING", "ERROR", "CRITICAL"]);
 const alertStateSchema = z.enum(["OK", "PENDING", "FIRING", "RESOLVED", "SILENCED", "ERROR"]);
 const alertSignalSchema = z.enum(["METRIC", "LOG", "TRACE"]);
 const dashboardAlertWidgetSchema = z.object({
-  ruleIds: z.array(z.string()),
-  states: z.array(alertStateSchema),
-  severities: z.array(alertSeveritySchema),
-  signals: z.array(alertSignalSchema),
+  ruleIds: z.array(z.string()).default([]),
+  states: z.array(alertStateSchema).default([]),
+  severities: z.array(alertSeveritySchema).default([]),
+  signals: z.array(alertSignalSchema).default([]),
   timeWindow: z.string().min(1),
   limit: z.number().int().min(1).max(100),
 });
@@ -3435,7 +3570,7 @@ const experimentRunEventSchema = z.object({
     "heartbeat",
     "cancelled",
     "failed",
-    "finished",
+    "completed",
   ]),
   seq: z.number().int().min(1),
   receivedAt: dateTimeSchema,
@@ -3484,12 +3619,7 @@ function parseLiveTraceEvent(value: unknown): LiveTraceEvent {
   try {
     return parseWithZod(liveTraceEventSchema, value, "live trace event") as LiveTraceEvent;
   } catch {
-    throw graphQLErrorFromBridge({
-      id: "ERR-013",
-      code: "MESSAGE_BRIDGE_UNAVAILABLE",
-      message: "Message bridge returned an invalid live trace event",
-      retryable: true,
-    });
+    throw graphQLErrorFromBridge(responseContractInvalidError);
   }
 }
 
@@ -3501,12 +3631,7 @@ function parseExperimentRunEvent(value: unknown): ExperimentRunEvent {
       "live experiment event",
     ) as ExperimentRunEvent;
   } catch {
-    throw graphQLErrorFromBridge({
-      id: "ERR-013",
-      code: "MESSAGE_BRIDGE_UNAVAILABLE",
-      message: "Message bridge returned an invalid live experiment event",
-      retryable: true,
-    });
+    throw graphQLErrorFromBridge(responseContractInvalidError);
   }
 }
 

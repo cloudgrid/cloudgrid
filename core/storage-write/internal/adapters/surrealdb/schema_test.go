@@ -110,6 +110,7 @@ func TestStatementsDefineAiEvalRelationshipFields(t *testing.T) {
 	for _, want := range []string{
 		"DEFINE FIELD IF NOT EXISTS datasetId ON ai_dataset_item TYPE option<string>",
 		"DEFINE FIELD IF NOT EXISTS experimentId ON ai_experiment_run TYPE option<string>",
+		"DEFINE FIELD OVERWRITE runPolicy ON ai_experiment_run TYPE option<object> FLEXIBLE",
 		"DEFINE FIELD IF NOT EXISTS experimentRunId ON ai_dataset_item_run TYPE option<string>",
 		"DEFINE FIELD IF NOT EXISTS scorerId ON ai_eval_result TYPE option<string>",
 	} {

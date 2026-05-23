@@ -133,6 +133,15 @@ func TestResolveProjectTelemetryTargetUsesExplicitProjectAndAuthTenant(t *testin
 	}
 }
 
+func TestProjectTelemetryOverviewSchemaDetectionTreatsEmptyProjectAsNoTelemetry(t *testing.T) {
+	if hasAnyRequiredTelemetryTable(DatabaseInfo{Tables: map[string]string{}}) {
+		t.Fatalf("empty database was detected as having telemetry schema")
+	}
+	if !hasAnyRequiredTelemetryTable(DatabaseInfo{Tables: map[string]string{"trace": "DEFINE TABLE trace"}}) {
+		t.Fatalf("database with required telemetry table was not detected")
+	}
+}
+
 func TestResolveProjectTelemetryTargetUsesLocalNamespaceForLocalAuth(t *testing.T) {
 	target, err := ResolveProjectTelemetryTarget(contracts.ProjectTelemetryOverviewTarget{
 		CompanyID: "local",

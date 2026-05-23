@@ -45,6 +45,7 @@ Every telemetry record still stores `tenantId` and `projectId` as defense-in-dep
 - `service`
 - `ingest_command`
 - Optional AI evaluation tables when `CLOUDGRID_AI_EVAL_ENABLED=true`: `ai_agent_run`, `ai_llm_call`, `ai_tool_call`, `ai_retrieval_event`, `ai_dataset`, `ai_dataset_item`, `ai_scorer`, `ai_eval_result`, `ai_experiment`, `ai_experiment_run`, `ai_dataset_item_run`, `ai_prompt_version`, and `ai_annotation_queue_item`.
+- `ai_experiment_run` persists the resolved `runPolicy` object from the evaluation run policy contract so GraphQL `ExperimentRun.runPolicy`, storage-read responses, and runner responses stay field-aligned.
 
 `span_event` remains embedded in `span.events` for MVP.
 
@@ -155,6 +156,8 @@ Trace summary counters are denormalized on `trace`. Trace-list and live-candidat
 ```
 
 `searchText` is a storage-owned full-text projection for metric-name search. Storage-write populates it from metric name, unit, kind, description, and attribute keys. Public read contracts do not expose it.
+
+Metric descriptor writes are monotonic for query-critical metadata. Storage-write must enrich a descriptor with the filtered metric point attribute keys observed for the same metric in the same command. When storage-write receives another descriptor for an existing metric name, it must keep the union of previously observed and newly observed `attributeKeys`, preserve the earliest `firstSeenAt`, and advance `lastSeenAt` to the latest observed value. This prevents later narrower OTLP batches from removing group-by keys that are still valid for persisted metric points.
 
 ## Metric Point Record
 

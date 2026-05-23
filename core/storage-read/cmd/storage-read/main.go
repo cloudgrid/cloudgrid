@@ -40,11 +40,15 @@ func run() int {
 		},
 		newAdapter: newTelemetryReadAdapter,
 		connectNATS: func(url string) (storageReadNATSConnection, error) {
-			return storage.ConnectNATS(url)
+			nc, err := storage.ConnectNATS(url)
+			if err != nil {
+				return nil, err
+			}
+			return storageReadNATSAdapter{conn: nc}, nil
 		},
 		subscribeHandlers: func(conn storageReadNATSConnection, store ports.TelemetryReadStore, logger *slog.Logger, recorder storage.MetricsRecorder, traceLogRecorder storage.TraceLogRecorder, limits storage.RuntimeLimits) error {
-			nc, ok := conn.(*nats.Conn)
-			if !ok {
+			nc := conn.NATSConn()
+			if nc == nil {
 				return errors.New("ERR-013 MESSAGE_BRIDGE_UNAVAILABLE: invalid NATS connection")
 			}
 			_, err := storage.SubscribeTelemetryHandlersWithOptions(nc, store, logger, recorder, traceLogRecorder, limits)
@@ -56,9 +60,30 @@ func run() int {
 }
 
 type storageReadNATSConnection interface {
-	IsClosed() bool
+	CheckReady(context.Context) error
+	NATSConn() *nats.Conn
 	Close()
 	Drain() error
+}
+
+type storageReadNATSAdapter struct {
+	conn *nats.Conn
+}
+
+func (adapter storageReadNATSAdapter) CheckReady(ctx context.Context) error {
+	return checkNATSReady(ctx, adapter.conn)
+}
+
+func (adapter storageReadNATSAdapter) NATSConn() *nats.Conn {
+	return adapter.conn
+}
+
+func (adapter storageReadNATSAdapter) Close() {
+	adapter.conn.Close()
+}
+
+func (adapter storageReadNATSAdapter) Drain() error {
+	return adapter.conn.Drain()
 }
 
 type storageReadRuntime struct {
@@ -140,7 +165,7 @@ func runWithRuntime(runtime storageReadRuntime) int {
 		return 1
 	}
 
-	probes := health.NewState("storage-read", storageReadHealthChecks(nc.IsClosed, adapter))
+	probes := health.NewState("storage-read", storageReadHealthChecks(nc.CheckReady, adapter))
 	healthServer := storageReadHealthServer(cfg, probes.Handler())
 	probes.SetReady(true)
 	healthErrors := make(chan error, 1)
@@ -192,10 +217,10 @@ func runWithRuntime(runtime storageReadRuntime) int {
 	return 0
 }
 
-func storageReadHealthChecks(natsClosed func() bool, adapter telemetryReadAdapter) health.Checker {
+func storageReadHealthChecks(checkNATSReady func(context.Context) error, adapter telemetryReadAdapter) health.Checker {
 	return func(ctx context.Context) map[string]health.Check {
 		checks := map[string]health.Check{}
-		if natsClosed() {
+		if err := checkNATSReady(ctx); err != nil {
 			checks["nats"] = health.Unavailable("ERR-013", "MESSAGE_BRIDGE_UNAVAILABLE", "message bridge is unavailable")
 		} else {
 			checks["nats"] = health.OK()
@@ -211,6 +236,19 @@ func storageReadHealthChecks(natsClosed func() bool, adapter telemetryReadAdapte
 		}
 		return checks
 	}
+}
+
+func checkNATSReady(ctx context.Context, nc *nats.Conn) error {
+	if nc == nil || nc.IsClosed() || nc.IsDraining() {
+		return errors.New("ERR-013 MESSAGE_BRIDGE_UNAVAILABLE: invalid NATS connection")
+	}
+	timeout := time.Second
+	if deadline, ok := ctx.Deadline(); ok {
+		if remaining := time.Until(deadline); remaining > 0 && remaining < timeout {
+			timeout = remaining
+		}
+	}
+	return nc.FlushTimeout(timeout)
 }
 
 func storageReadHealthServer(cfg storage.Config, handler http.Handler) *http.Server {

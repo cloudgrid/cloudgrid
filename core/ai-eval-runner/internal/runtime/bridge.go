@@ -113,6 +113,7 @@ func (service *RunnerService) handleExperimentStart() Handler {
 			ProjectID:    projectID(request.AuthContext),
 			ExperimentID: request.ExperimentID,
 			SolverRef:    objectFromTypedContract(request.SolverRef),
+			RunPolicy:    objectFromTypedContract(request.RunPolicy),
 			TraceContext: traceContext(request.TraceContext),
 		})
 		if err != nil {
@@ -319,6 +320,7 @@ func experimentRunData(run ports.ExperimentRun) map[string]any {
 		"id":           run.ID,
 		"experimentId": run.ExperimentID,
 		"solverRef":    run.SolverRef,
+		"runPolicy":    run.RunPolicy,
 		"status":       run.Status,
 		"startedAt":    run.StartedAt,
 		"endedAt":      run.EndedAt,

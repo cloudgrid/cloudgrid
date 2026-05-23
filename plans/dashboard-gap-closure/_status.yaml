@@ -1,66 +1,109 @@
 plan: dashboard_gap_closure
-updated: 2026-05-22
+updated: 2026-05-23
 summary:
   total: 7
-  ready: 7
+  ready: 0
   in_progress: 0
   review: 0
-  done: 0
+  done: 7
   blocked: 0
 tickets:
   TICKET-101:
     wave: wave_01_frontend_foundation
-    status: ready
+    status: done
     owner: dashboard-foundation-agent
     depends_on: []
     blocked_by: []
-    evidence: []
-    next: run foundation ticket
+    evidence:
+      - bun test apps/frontend/test/dashboard-layout.test.ts — 10 pass
+      - bun test apps/frontend/test/dashboard-draft-reducer.test.ts — pass
+      - bun run --cwd apps/frontend typecheck — clean
+      - apps/frontend/src/features/dashboards/dashboard-layout.ts extracted
+      - apps/frontend/src/features/dashboards/dashboard-draft-reducer.ts extracted
+    next: done
   TICKET-102:
     wave: wave_02_frontend_parallel
-    status: ready
+    status: done
     owner: dashboard-route-agent
     depends_on: [TICKET-101]
     blocked_by: []
-    evidence: []
-    next: wait for TICKET-101 completion
+    evidence:
+      - apps/frontend/src/routes/dashboards-route.tsx refactored to composition layer
+      - route reduced from ~3607 to ~1834 lines
+      - bun run --cwd apps/frontend typecheck — clean
+      - bun run --cwd apps/frontend build — success
+    next: done
   TICKET-103:
     wave: wave_02_frontend_parallel
-    status: ready
+    status: done
     owner: metric-controls-agent
     depends_on: [TICKET-101]
     blocked_by: []
-    evidence: []
-    next: wait for TICKET-101 completion
+    evidence:
+      - apps/frontend/src/features/metrics/metric-query-controls.tsx — MetricNameCombobox
+      - apps/frontend/src/features/dashboards/widget-editor/metric-widget-editor.tsx
+      - apps/frontend/src/features/dashboards/widget-editor/log-widget-editor.tsx
+      - apps/frontend/src/features/dashboards/widget-editor/trace-widget-editor.tsx
+      - apps/frontend/src/features/dashboards/widget-editor/live-trace-widget-editor.tsx
+      - apps/frontend/src/features/dashboards/widget-editor/alert-widget-editor.tsx
+      - apps/frontend/src/features/dashboards/widget-editor/rich-metric-widget-editor.tsx — RICH_METRIC_EDITING_ENABLED=false gate
+      - apps/frontend/src/features/dashboards/widget-editor/widget-editor-groups.tsx
+      - bun run --cwd apps/frontend typecheck — clean
+    next: done
   TICKET-104:
     wave: wave_02_frontend_parallel
-    status: ready
+    status: done
     owner: dashboard-renderers-agent
     depends_on: [TICKET-101]
     blocked_by: []
-    evidence: []
-    next: wait for TICKET-101 completion
+    evidence:
+      - apps/frontend/src/features/dashboards/widget-source-mappers.ts — 6 mapper functions
+      - apps/frontend/src/features/dashboards/widget-renderers/metric-widget-renderer.tsx
+      - apps/frontend/src/features/dashboards/widget-renderers/rich-metric-widget-renderer.tsx
+      - apps/frontend/src/features/dashboards/widget-renderers/log-widget-renderer.tsx
+      - apps/frontend/src/features/dashboards/widget-renderers/trace-widget-renderer.tsx
+      - apps/frontend/src/features/dashboards/widget-renderers/live-trace-widget-renderer.tsx
+      - apps/frontend/src/features/dashboards/widget-renderers/alert-widget-renderers.tsx
+      - bun test apps/frontend/test/dashboard-widget-mappers.test.ts — 22 pass
+      - bun run --cwd apps/frontend typecheck — clean
+    next: done
   TICKET-105:
     wave: wave_03_pins_and_integration
-    status: ready
+    status: done
     owner: dashboard-foundation-agent
     depends_on: [TICKET-101, TICKET-102]
     blocked_by: []
-    evidence: []
-    next: wait for TICKET-101 and TICKET-102 completion
+    evidence:
+      - bun test apps/frontend/test/dashboard-layout.test.ts — 10 pass (stacked, projection, reorder)
+      - bun test apps/frontend/test/dashboards-ux.test.ts — "supports WYSIWYG layout editing" pass
+      - pointer drag and keyboard move/resize in dashboards-route.tsx
+      - aria-label="Move widget", aria-label="Resize widget", data-resize-handle present
+      - bun run --cwd apps/frontend typecheck — clean
+    next: done
   TICKET-106:
     wave: wave_03_pins_and_integration
-    status: ready
+    status: done
     owner: dashboard-pins-agent
     depends_on: [TICKET-102]
     blocked_by: []
-    evidence: []
-    next: wait for TICKET-102 completion
+    evidence:
+      - apps/frontend/src/routes/app-shell.tsx — reorderDashboardPins mutation added
+      - accessible up/down reorder buttons in ProjectSidebarNav
+      - pinnedDashboards capped at .slice(0, 5)
+      - no localStorage/sessionStorage usage
+      - bun test apps/frontend/test/dashboards-ux.test.ts — 3 new pin tests pass
+      - bun run --cwd apps/frontend typecheck — clean
+    next: done
   TICKET-107:
     wave: wave_04_rich_metric_gate
-    status: ready
+    status: done
     owner: rich-metric-gate-agent
     depends_on: [TICKET-102, TICKET-103, TICKET-104]
     blocked_by: []
-    evidence: []
-    next: wait for TICKET-102 TICKET-103 and TICKET-104 completion
+    evidence:
+      - RICH_METRIC_EDITING_ENABLED=false in rich-metric-widget-editor.tsx
+      - isRichMetricEditingEnabled() gate used in route and widget-editor-groups.tsx
+      - RichMetricUnsupportedState rendered when gate is closed
+      - bun test apps/frontend/test/dashboards-ux.test.ts — "gates rich metric" pass
+      - bun run --cwd apps/frontend typecheck — clean
+    next: done

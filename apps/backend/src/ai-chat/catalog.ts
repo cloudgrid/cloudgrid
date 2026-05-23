@@ -280,6 +280,17 @@ export const AI_CHAT_TOOLS = [
       hardLimit: 200,
     },
   ),
+  tool(
+    "aiEval.qualityOverview",
+    "storage-read",
+    "AI Eval GraphQL quality overview",
+    "Loading AI Eval quality",
+    {
+      defaultWindow: "P7D",
+      defaultLimit: 50,
+      hardLimit: 200,
+    },
+  ),
   tool("project.get", "control-plane", "Query.viewer selected project", "Loading project"),
   analysisTool("analysis.summarizeTrace", "Summarizing trace"),
   analysisTool("analysis.summarizeLogs", "Summarizing logs"),

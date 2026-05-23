@@ -13,6 +13,34 @@ provenance: inferred-draft
 ## Shared Environment Variables
 
 - `CLOUDGRID_NATS_URL`, default `nats://localhost:4222`.
+- `CLOUDGRID_NATS_RECONNECT_MAX_ATTEMPTS`, default `-1`; `-1` means keep
+  retrying while the process is running, `0` disables reconnect attempts, and a
+  positive integer bounds reconnect attempts before the NATS client closes.
+- `CLOUDGRID_NATS_RECONNECT_WAIT_MS`, default `1000`; minimum `100`, maximum
+  `30000`; base wait between NATS reconnect attempts. Implementations may add
+  jitter but must not spin without sleep.
+- `CLOUDGRID_NATS_OPERATION_FLUSH_TIMEOUT_MS`, default `1000`; minimum `100`,
+  maximum `5000`; readiness flush timeout for services that own NATS
+  request/reply subscriptions or JetStream consumers.
+- `CLOUDGRID_DEPENDENCY_RECOVERY_MAX_BACKOFF_MS`, default `30000`; minimum
+  `1000`, maximum `300000`; maximum backoff for service-owned reconnect loops
+  such as SurrealDB client managers.
+- `CLOUDGRID_SERVICE_MAX_IN_FLIGHT_REQUESTS`, default `1000`; minimum `1`,
+  maximum `100000`; per-process guard for private request/reply handler work
+  when a service transport can otherwise dispatch unbounded callbacks.
+- `CLOUDGRID_HEALTH_CHECK_TIMEOUT_MS`, default `1000`; minimum `100`, maximum
+  `5000`; service health check budget. Health checks must not exceed this
+  timeout or perform heavy work.
+- `CLOUDGRID_LOG_STATE_CHANGE_MIN_INTERVAL_MS`, default `30000`; minimum
+  `1000`, maximum `300000`; minimum interval for repeated dependency-degraded
+  or retry-loop warning logs for the same dependency state.
+- `CLOUDGRID_RUNTIME_STARTUP_DEPENDENCY_MODE`, default `fail-fast`; allowed
+  values are `fail-fast` and `wait-for-ready`. `fail-fast` exits non-zero when
+  required startup dependencies cannot be reached or initialized.
+  `wait-for-ready` keeps the process live, reports readiness degraded, and keeps
+  retrying required dependency setup with bounded backoff. Local development
+  may opt into `wait-for-ready`; deployed packaging must document the selected
+  mode.
 - `CLOUDGRID_DEPLOYMENT_MODE`, default `local`; allowed values are `local` and `deployed`.
 - `CLOUDGRID_LOG_LEVEL`, default `info`; allowed values are `debug`, `info`, `warn`, `warning`, and `error`. Successful hot-path completion events are debug-only.
 - `CLOUDGRID_SELF_OBSERVABILITY_ENABLED`, default `true` when `CLOUDGRID_DEPLOYMENT_MODE=local`, default `false` when `CLOUDGRID_DEPLOYMENT_MODE=deployed`.
@@ -164,6 +192,16 @@ The command must not print full token values to stdout or logs.
 - `CLOUDGRID_SURREALDB_DATABASE`, default `dev`.
 - `CLOUDGRID_SURREALDB_USERNAME`, optional.
 - `CLOUDGRID_SURREALDB_PASSWORD`, optional.
+- `CLOUDGRID_SURREALDB_CONNECT_TIMEOUT_MS`, default `5000`; minimum `100`,
+  maximum `30000`; bounds initial SurrealDB connect, namespace/database
+  selection, and authentication.
+- `CLOUDGRID_SURREALDB_READINESS_TIMEOUT_MS`, default `1000`; minimum `100`,
+  maximum `5000`; bounds health readiness checks.
+- `CLOUDGRID_SURREALDB_RECONNECT_ENABLED`, default `true`; when true, services
+  that use SurrealDB keep running after runtime disconnects, degrade readiness,
+  and reconnect with bounded backoff. When false, runtime disconnects are
+  treated as ordinary operation failures but no service-owned reconnect loop is
+  started.
 
 ## Validation
 
@@ -181,6 +219,12 @@ Invalid combinations:
 - `CLOUDGRID_DEPLOYMENT_MODE=deployed` with invitation email mode `disabled` and `CLOUDGRID_INVITATION_EMAIL_REQUIRE_DELIVERY=true`.
 - `CLOUDGRID_DEPLOYMENT_MODE=deployed` with `CLOUDGRID_SELF_OBSERVABILITY_ENABLED=true` and missing `CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID`, `CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID`, `CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT`, or `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN`.
 - `CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS` outside `1..300`.
+- NATS reconnect, flush, dependency-recovery backoff, or SurrealDB timeout
+  variables outside their documented bounds.
+- Service in-flight, health timeout, or state-change log interval variables
+  outside their documented bounds.
+- `CLOUDGRID_RUNTIME_STARTUP_DEPENDENCY_MODE` outside `fail-fast` or
+  `wait-for-ready`.
 - `CLOUDGRID_AI_CHAT_ENABLED=true` with malformed AI Chat sandbox byte limits.
 - Any `CLOUDGRID_AI_CHAT_PROVIDER_KIND` outside the supported provider kinds.
 - Local-mode AI Chat provider bootstrap with missing provider-specific required

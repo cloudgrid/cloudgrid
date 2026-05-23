@@ -96,7 +96,10 @@ describe("AI-eval bridge", () => {
     );
 
     await expect(bridge.agentRuns({ limit: 10 })).rejects.toMatchObject({
-      extensions: { code: "MESSAGE_BRIDGE_UNAVAILABLE" },
+      extensions: {
+        code: "RESPONSE_CONTRACT_INVALID",
+        problem: { id: "ERR-023", retryable: false },
+      },
     });
   });
 

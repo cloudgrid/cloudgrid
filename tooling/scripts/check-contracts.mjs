@@ -242,6 +242,7 @@ for (const id of [
   "ERR-020",
   "ERR-021",
   "ERR-022",
+  "ERR-023",
 ]) {
   if (!errors.errors?.[id]?.code || errors.errors[id].retryable === undefined) {
     throw new Error(`errors.yaml is missing ${id}`);

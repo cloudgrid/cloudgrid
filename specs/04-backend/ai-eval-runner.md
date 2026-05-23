@@ -320,7 +320,7 @@ Run statuses:
 - `failed`;
 - `completed`.
 
-Pause stops scheduling new work and checkpoints finished item/scorer state.
+Pause stops scheduling new work and checkpoints completed item/scorer state.
 Resume validates the persisted manifest digest and continues unfinished eligible
 items in fresh sandboxes. Cancel stops future work and makes already persisted
 item runs queryable.

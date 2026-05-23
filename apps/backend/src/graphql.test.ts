@@ -259,6 +259,7 @@ describe("BFF GraphQL telemetry resolvers", () => {
       from: "2026-05-08T10:00:00.000Z",
       to: "2026-05-08T11:00:00.000Z",
       service: "api",
+      signal: "traces",
       search: "checkout",
       limit: 10,
     });

@@ -34,6 +34,7 @@ describe("AI Chat runtime catalog", () => {
       "aiEval.searchScorers",
       "aiEval.searchExperiments",
       "aiEval.searchEvalResults",
+      "aiEval.qualityOverview",
       "project.get",
       "analysis.summarizeTrace",
       "analysis.summarizeLogs",

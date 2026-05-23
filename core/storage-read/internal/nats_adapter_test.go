@@ -1,10 +1,31 @@
 package internal
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/nats-io/nats.go"
 )
+
+type captureStorageReadBridgeMessage struct {
+	subject   string
+	data      []byte
+	responses [][]byte
+	err       error
+}
+
+func (message *captureStorageReadBridgeMessage) Subject() string {
+	return message.subject
+}
+
+func (message *captureStorageReadBridgeMessage) Data() []byte {
+	return message.data
+}
+
+func (message *captureStorageReadBridgeMessage) Respond(response []byte) error {
+	message.responses = append(message.responses, append([]byte(nil), response...))
+	return message.err
+}
 
 func TestNATSBridgeMessageAdaptsSubjectHeadersDataAndRespondErrors(t *testing.T) {
 	msg := &nats.Msg{
@@ -39,6 +60,38 @@ func TestAdaptNATSHandlerPassesBridgeMessage(t *testing.T) {
 
 	if captured == nil || captured.Subject() != "telemetry.logs.search" || string(captured.Data()) != "payload" {
 		t.Fatalf("captured message = %#v", captured)
+	}
+}
+
+func TestRecoverStorageReadHandlerPanicRespondsCanonicalBridgeError(t *testing.T) {
+	msg := &captureStorageReadBridgeMessage{
+		subject: "telemetry.traces.search",
+		data:    []byte(`{"requestId":"req-panic"}`),
+	}
+	handler := recoverStorageReadHandlerPanic(nil, func(BridgeMessage) {
+		panic("handler failed")
+	})
+
+	handler(msg)
+
+	if len(msg.responses) != 1 {
+		t.Fatalf("responses = %d, want 1", len(msg.responses))
+	}
+	var response struct {
+		RequestID string `json:"requestId"`
+		OK        bool   `json:"ok"`
+		Error     *struct {
+			ID        string `json:"id"`
+			Code      string `json:"code"`
+			Retryable bool   `json:"retryable"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(msg.responses[0], &response); err != nil {
+		t.Fatalf("panic response is not JSON: %v", err)
+	}
+	if response.RequestID != "req-panic" || response.OK || response.Error == nil ||
+		response.Error.ID != "ERR-013" || response.Error.Code != "MESSAGE_BRIDGE_UNAVAILABLE" || !response.Error.Retryable {
+		t.Fatalf("panic response = %#v", response)
 	}
 }
 

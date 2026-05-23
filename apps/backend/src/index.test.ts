@@ -34,7 +34,7 @@ describe("BFF server wiring", () => {
           return { operations: new Map() };
         },
         message() {},
-        close() {},
+        async close() {},
       },
     );
 
@@ -64,7 +64,7 @@ describe("BFF server wiring", () => {
           return { operations: new Map() };
         },
         message() {},
-        close() {},
+        async close() {},
       },
     );
 
@@ -96,7 +96,7 @@ describe("BFF server wiring", () => {
           return { operations: new Map() };
         },
         message() {},
-        close() {},
+        async close() {},
       },
       {
         debug(event, fields) {
@@ -142,7 +142,7 @@ describe("BFF server wiring", () => {
           return { operations: new Map() };
         },
         message() {},
-        close() {},
+        async close() {},
       },
       {
         debug() {},

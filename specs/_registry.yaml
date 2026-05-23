@@ -19,7 +19,7 @@ counters:
   FLW-AIC: 3
   ENT: 23
   ADR: 5
-  NFR: 8
+  NFR: 9
   OPR-OTLP: 2
   OPR-API: 1
   GQL: 5
@@ -248,6 +248,12 @@ ids:
     file: specs/02-flows/observability/live-trace-subscription.md
     status: draft
     depends_on: [GQL-Subscription-liveTraces, MSG-telemetry-traces-live-start, MSG-telemetry-traces-live-stop, MSG-telemetry-traces-live-events, MSG-telemetry-persisted-traces]
+    deprecated_by: null
+  NFR-009:
+    slug: service-resilience-self-healing
+    file: specs/06-nfr/service-resilience-self-healing.md
+    status: draft
+    depends_on: [TEC-BE-001, TEC-BE-005, NFR-002]
     deprecated_by: null
   ENT-001:
     slug: trace

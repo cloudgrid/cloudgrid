@@ -30,6 +30,10 @@ describe("BFF runtime config", () => {
         metricsEnabled: true,
       },
       requestTimeoutMs: 12000,
+      natsOperationFlushTimeoutMs: 1000,
+      healthCheckTimeoutMs: 1000,
+      serviceMaxInFlightRequests: 1000,
+      logStateChangeMinIntervalMs: 30000,
       graphqlMaxDepth: 12,
       graphqlMaxComplexity: 500,
       graphqlResponseMediaType: "compatible",
@@ -47,6 +51,39 @@ describe("BFF runtime config", () => {
     });
 
     expect(config.requestTimeoutMs).toBe(7500);
+  });
+
+  test("configures shared resilience budgets", () => {
+    const config = loadConfig({
+      ...localSelfObservabilityEnv,
+      CLOUDGRID_NATS_OPERATION_FLUSH_TIMEOUT_MS: "750",
+      CLOUDGRID_HEALTH_CHECK_TIMEOUT_MS: "900",
+      CLOUDGRID_SERVICE_MAX_IN_FLIGHT_REQUESTS: "25",
+      CLOUDGRID_LOG_STATE_CHANGE_MIN_INTERVAL_MS: "1500",
+    });
+
+    expect(config.natsOperationFlushTimeoutMs).toBe(750);
+    expect(config.healthCheckTimeoutMs).toBe(900);
+    expect(config.serviceMaxInFlightRequests).toBe(25);
+    expect(config.logStateChangeMinIntervalMs).toBe(1500);
+  });
+
+  test("rejects invalid shared resilience budgets", () => {
+    expect(() =>
+      loadConfig({
+        ...localSelfObservabilityEnv,
+        CLOUDGRID_NATS_OPERATION_FLUSH_TIMEOUT_MS: "99",
+      }),
+    ).toThrow("ERR-009 CONFIG_INVALID");
+    expect(() =>
+      loadConfig({ ...localSelfObservabilityEnv, CLOUDGRID_HEALTH_CHECK_TIMEOUT_MS: "5001" }),
+    ).toThrow("ERR-009 CONFIG_INVALID");
+    expect(() =>
+      loadConfig({ ...localSelfObservabilityEnv, CLOUDGRID_SERVICE_MAX_IN_FLIGHT_REQUESTS: "0" }),
+    ).toThrow("ERR-009 CONFIG_INVALID");
+    expect(() =>
+      loadConfig({ ...localSelfObservabilityEnv, CLOUDGRID_LOG_STATE_CHANGE_MIN_INTERVAL_MS: "999" }),
+    ).toThrow("ERR-009 CONFIG_INVALID");
   });
 
   test("keeps the default bridge timeout above the default storage-read query timeout", () => {

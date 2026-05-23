@@ -36,15 +36,12 @@ import {
   AlertCircle,
   ArrowLeft,
   CheckCircle2,
-  Database,
   Download,
   FileText,
   FlaskConical,
-  Gauge,
   Plus,
   Settings,
   Trash2,
-  Trophy,
   Upload,
   XCircle,
 } from "lucide-react";
@@ -52,6 +49,7 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { EmptyState, ErrorPanel, LoadingRows } from "../components/query-state";
+import { RouteBreadcrumb } from "../components/route-breadcrumb";
 import { SearchInput } from "../components/search-input";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -84,7 +82,6 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
 import {
   experimentScoreboardRows,
@@ -229,6 +226,22 @@ export function AiEvalRoute() {
     experimentsQuery.data?.items[0] ??
     null;
 
+  const onDatasetCreated = (dataset: Dataset) => {
+    setSelected("dataset", dataset.id);
+    void datasetsQuery.refetch();
+  };
+  const onScorerCreated = (scorer: Scorer) => {
+    setSelected("scorer", scorer.id);
+    void scorersQuery.refetch();
+  };
+  const onExperimentCreated = (experiment: Experiment) => {
+    setSelected("experiment", experiment.id);
+    void experimentsQuery.refetch();
+    void datasetsQuery.refetch();
+    void scorersQuery.refetch();
+  };
+  const onStartImport = (datasetId: string) => setDatasetImportWorkflow(datasetId);
+
   if (!aiEvalEnabled) {
     return (
       <EmptyState
@@ -244,203 +257,288 @@ export function AiEvalRoute() {
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
-      <div className="shrink-0">
-        <h1 className="text-xl font-semibold tracking-normal">{t("aiEval.title")}</h1>
-        <p className="text-sm text-muted-foreground">
-          Build datasets, define scorers, run experiments, and monitor production quality.
-        </p>
-      </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
-        {tab !== "production" ? (
-          <SearchInput
-            aria-label={t("filters.query")}
-            className="max-w-72"
-            onChange={(event) => setParam("query", event.target.value)}
-            placeholder={
-              tab === "datasets"
-                ? "Search datasets"
-                : tab === "scorers"
-                  ? "Search scorers"
-                  : "Search experiments"
-            }
-            value={query}
+      <AiEvalPageHeader
+        datasets={datasetsQuery.data?.items ?? []}
+        onDatasetCreated={onDatasetCreated}
+        onExperimentCreated={onExperimentCreated}
+        onQueryChange={(value) => setParam("query", value)}
+        onScorerCreated={onScorerCreated}
+        onStartImport={onStartImport}
+        onStatusChange={(value) => setParam("status", value === "all" ? "" : value)}
+        projectName={selectedProject?.name ?? t("projects.select")}
+        query={query}
+        scorers={scorersQuery.data?.items ?? []}
+        selectedDataset={selectedDataset}
+        selectedProjectId={projectId}
+        status={status}
+        tab={tab}
+        workflow={workflow}
+      />
+      <main className="min-h-0 flex-1 overflow-auto" data-ai-eval-main-workspace="true">
+        {tab === "datasets" ? (
+          workflow === "dataset-import" && selectedDataset ? (
+            <DatasetImportWorkflow
+              dataset={selectedDataset}
+              onBack={clearWorkflow}
+              onImported={() => void datasetsQuery.refetch()}
+              projectId={projectId}
+            />
+          ) : (
+            <DatasetsView
+              onCreated={onDatasetCreated}
+              onSelect={(id) => setSelected("dataset", id)}
+              query={datasetsQuery}
+              selectedId={selectedDataset?.id ?? null}
+            />
+          )
+        ) : null}
+        {tab === "scorers" ? (
+          <ScorersView
+            onCreated={onScorerCreated}
+            onSelect={(id) => setSelected("scorer", id)}
+            query={scorersQuery}
+            selectedId={selectedScorer?.id ?? null}
           />
         ) : null}
-        {tab === "experiments" && (
-          <Select
-            aria-label={t("filters.status")}
-            onValueChange={(value) => setParam("status", value === "all" ? "" : value)}
-            value={status || "all"}
-          >
-            <SelectTrigger className="w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem value="all">{t("filters.allStatuses")}</SelectItem>
-                {["queued", "running", "failed", "finished"].map((candidate) => (
-                  <SelectItem key={candidate} value={candidate}>
-                    {aiEvalStatusLabel(candidate)}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        )}
-      </div>
-      <AiEvalWorkflowStrip activeTab={tab} onSelect={(value) => setParam("tab", value)} />
-      <div className="grid min-h-0 flex-1 grid-cols-[220px_minmax(0,1fr)] overflow-hidden border">
-        <Tabs className="contents" onValueChange={(value) => setParam("tab", value)} value={tab}>
-          <aside
-            className="min-h-0 overflow-auto border-r bg-background p-3"
-            data-ai-eval-left-rail="true"
-          >
-            <TabsList className="grid h-auto gap-1 bg-transparent p-0" variant="line">
-              <TabsTrigger className="justify-start" value="datasets">
-                <Database />
-                {t("aiEval.datasets")}
-              </TabsTrigger>
-              <TabsTrigger className="justify-start" value="scorers">
-                <FlaskConical />
-                {t("aiEval.scorers")}
-              </TabsTrigger>
-              <TabsTrigger className="justify-start" value="experiments">
-                <Trophy />
-                {t("aiEval.experiments")}
-              </TabsTrigger>
-              <TabsTrigger className="justify-start" value="production">
-                <Gauge />
-                Production quality
-              </TabsTrigger>
-            </TabsList>
-          </aside>
-          <main className="min-h-0 overflow-auto p-3" data-ai-eval-main-workspace="true">
-            <TabsContent className="m-0 min-h-0" value="datasets">
-              {workflow === "dataset-import" && selectedDataset ? (
-                <DatasetImportWorkflow
-                  dataset={selectedDataset}
-                  onBack={clearWorkflow}
-                  onImported={() => void datasetsQuery.refetch()}
-                  projectId={projectId}
-                />
-              ) : (
-                <DatasetsView
-                  onImport={setDatasetImportWorkflow}
-                  onSelect={(id) => setSelected("dataset", id)}
-                  query={datasetsQuery}
-                  selectedId={selectedDataset?.id ?? null}
-                />
-              )}
-            </TabsContent>
-            <TabsContent className="m-0 min-h-0" value="scorers">
-              <ScorersView
-                onSelect={(id) => setSelected("scorer", id)}
-                query={scorersQuery}
-                selectedId={selectedScorer?.id ?? null}
-              />
-            </TabsContent>
-            <TabsContent className="m-0 min-h-0" value="experiments">
-              <ExperimentsView
-                datasets={datasetsQuery.data?.items ?? []}
-                onChanged={() => {
-                  void experimentsQuery.refetch();
-                  void datasetsQuery.refetch();
-                  void scorersQuery.refetch();
-                }}
-                onSelect={(id) => setSelected("experiment", id)}
-                query={experimentsQuery}
-                scorers={scorersQuery.data?.items ?? []}
-                selectedId={selectedExperiment?.id ?? null}
-              />
-            </TabsContent>
-            <TabsContent className="m-0 min-h-0" value="production">
-              <ProductionView
-                qualityQuery={qualityQuery}
-                selectedProjectId={projectId}
-                settingsQuery={settingsQuery}
-              />
-            </TabsContent>
-          </main>
-        </Tabs>
-      </div>
+        {tab === "experiments" ? (
+          <ExperimentsView
+            datasets={datasetsQuery.data?.items ?? []}
+            onChanged={() => {
+              void experimentsQuery.refetch();
+              void datasetsQuery.refetch();
+              void scorersQuery.refetch();
+            }}
+            onCreated={onExperimentCreated}
+            onSelect={(id) => setSelected("experiment", id)}
+            query={experimentsQuery}
+            scorers={scorersQuery.data?.items ?? []}
+            selectedId={selectedExperiment?.id ?? null}
+          />
+        ) : null}
+        {tab === "production" ? (
+          <ProductionView
+            qualityQuery={qualityQuery}
+            selectedProjectId={projectId}
+            settingsQuery={settingsQuery}
+          />
+        ) : null}
+      </main>
     </section>
+  );
+}
+
+function AiEvalPageHeader({
+  datasets,
+  onDatasetCreated,
+  onExperimentCreated,
+  onQueryChange,
+  onScorerCreated,
+  onStartImport,
+  onStatusChange,
+  projectName,
+  query,
+  scorers,
+  selectedDataset,
+  selectedProjectId,
+  status,
+  tab,
+  workflow,
+}: {
+  datasets: Dataset[];
+  onDatasetCreated: (dataset: Dataset) => void;
+  onExperimentCreated: (experiment: Experiment) => void;
+  onQueryChange: (value: string) => void;
+  onScorerCreated: (scorer: Scorer) => void;
+  onStartImport: (datasetId: string) => void;
+  onStatusChange: (value: string) => void;
+  projectName: string;
+  query: string;
+  scorers: Scorer[];
+  selectedDataset: Dataset | null;
+  selectedProjectId: string;
+  status: string;
+  tab: AiEvalTab;
+  workflow: string | null;
+}) {
+  let backTo: string;
+  let breadcrumbItems: Array<{ label: string; to?: string }>;
+  let title: string;
+  let description: string | null;
+  let actions: ReactNode;
+
+  if (tab === "datasets" && workflow === "dataset-import" && selectedDataset) {
+    backTo = `/ai-eval?tab=datasets&dataset=${selectedDataset.id}`;
+    breadcrumbItems = [
+      { label: projectName, to: "/projects" },
+      { label: t("nav.aiEval"), to: "/ai-eval" },
+      { label: t("nav.aiEvalDatasets"), to: "/ai-eval?tab=datasets" },
+      {
+        label: selectedDataset.name,
+        to: `/ai-eval?tab=datasets&dataset=${selectedDataset.id}`,
+      },
+      { label: "Import rows" },
+    ];
+    title = "Import rows";
+    description = `Stage a file, map fields, preview, then commit to ${selectedDataset.name}.`;
+    actions = null;
+  } else if (tab === "datasets" && selectedDataset) {
+    backTo = "/ai-eval?tab=datasets";
+    breadcrumbItems = [
+      { label: projectName, to: "/projects" },
+      { label: t("nav.aiEval"), to: "/ai-eval" },
+      { label: t("nav.aiEvalDatasets"), to: "/ai-eval?tab=datasets" },
+      { label: selectedDataset.name },
+    ];
+    title = selectedDataset.name;
+    description = `v${selectedDataset.version} · ${selectedDataset.itemCount} items · ${selectedDataset.reviewedItemCount} reviewed`;
+    actions = (
+      <>
+        <Button
+          onClick={() => onStartImport(selectedDataset.id)}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          <Upload data-icon="inline-start" />
+          Import
+        </Button>
+        <DatasetExportDialog dataset={selectedDataset} />
+        <AddDatasetRowDialog dataset={selectedDataset} />
+      </>
+    );
+  } else if (tab === "datasets") {
+    backTo = "/ai-eval";
+    breadcrumbItems = [
+      { label: projectName, to: "/projects" },
+      { label: t("nav.aiEval"), to: "/ai-eval" },
+      { label: t("nav.aiEvalDatasets") },
+    ];
+    title = t("nav.aiEvalDatasets");
+    description =
+      "Create and manage versioned example sets for scorer calibration and experiment runs.";
+    actions = (
+      <>
+        <SearchInput
+          aria-label={t("filters.query")}
+          className="max-w-72"
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="Search datasets"
+          value={query}
+        />
+        <CreateDatasetDialog onCreated={onDatasetCreated} />
+      </>
+    );
+  } else if (tab === "scorers") {
+    backTo = "/ai-eval";
+    breadcrumbItems = [
+      { label: projectName, to: "/projects" },
+      { label: t("nav.aiEval"), to: "/ai-eval" },
+      { label: t("nav.aiEvalScorers") },
+    ];
+    title = t("nav.aiEvalScorers");
+    description = "Register deterministic or judge-based scorers used by experiments.";
+    actions = (
+      <>
+        <SearchInput
+          aria-label={t("filters.query")}
+          className="max-w-72"
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="Search scorers"
+          value={query}
+        />
+        <CreateScorerDialog onCreated={onScorerCreated} />
+      </>
+    );
+  } else if (tab === "experiments") {
+    backTo = "/ai-eval";
+    breadcrumbItems = [
+      { label: projectName, to: "/projects" },
+      { label: t("nav.aiEval"), to: "/ai-eval" },
+      { label: t("nav.aiEvalExperiments") },
+    ];
+    title = t("nav.aiEvalExperiments");
+    description = "Pair a dataset version with scorers, run evaluations, and compare results.";
+    actions = (
+      <>
+        <SearchInput
+          aria-label={t("filters.query")}
+          className="max-w-72"
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="Search experiments"
+          value={query}
+        />
+        <Select
+          aria-label={t("filters.status")}
+          onValueChange={onStatusChange}
+          value={status || "all"}
+        >
+          <SelectTrigger className="w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectItem value="all">{t("filters.allStatuses")}</SelectItem>
+              {["queued", "running", "failed", "finished"].map((candidate) => (
+                <SelectItem key={candidate} value={candidate}>
+                  {aiEvalStatusLabel(candidate)}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        <CreateExperimentDialog
+          datasets={datasets}
+          onCreated={onExperimentCreated}
+          scorers={scorers}
+        />
+      </>
+    );
+  } else {
+    // production
+    backTo = "/ai-eval";
+    breadcrumbItems = [
+      { label: projectName, to: "/projects" },
+      { label: t("nav.aiEval"), to: "/ai-eval" },
+      { label: t("nav.aiEvalProduction") },
+    ];
+    title = t("nav.aiEvalProduction");
+    description = "Track online policy results and production quality regressions.";
+    actions = (
+      <Button asChild size="sm" variant="outline">
+        <Link to={`/projects/${encodeURIComponent(selectedProjectId)}/settings/ai-eval`}>
+          <Settings data-icon="inline-start" />
+          Settings
+        </Link>
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex shrink-0 flex-col gap-3 border-b pb-3 lg:flex-row lg:items-end lg:justify-between">
+      <div className="min-w-0 space-y-2">
+        <RouteBreadcrumb backLabel={t("actions.back")} backTo={backTo} items={breadcrumbItems} />
+        <h1 className="text-xl font-semibold tracking-normal">{title}</h1>
+        {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
+      </div>
+      {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
+    </div>
   );
 }
 
 type QueryResult<T> = UseQueryResult<T, Error>;
 
-const aiEvalWorkflowSteps: Array<{
-  tab: AiEvalTab;
-  label: string;
-  description: string;
-}> = [
-  {
-    tab: "datasets",
-    label: "Curate datasets",
-    description: "Create, import, review, and export examples.",
-  },
-  {
-    tab: "scorers",
-    label: "Define scorers",
-    description: "Register deterministic or judge-based checks.",
-  },
-  {
-    tab: "experiments",
-    label: "Run evaluations",
-    description: "Create experiments and execute evaluation runs.",
-  },
-  {
-    tab: "production",
-    label: "Monitor quality",
-    description: "Track online policy results and regressions.",
-  },
-];
-
-function AiEvalWorkflowStrip({
-  activeTab,
-  onSelect,
-}: {
-  activeTab: AiEvalTab;
-  onSelect: (tab: AiEvalTab) => void;
-}) {
-  return (
-    <div className="grid shrink-0 gap-2 border bg-background p-2 xl:grid-cols-4">
-      {aiEvalWorkflowSteps.map((step, index) => (
-        <Button
-          className="grid h-auto min-h-16 justify-start gap-1 rounded-none border-l px-3 py-2 text-left text-sm first:border-l-0 hover:bg-muted/40 data-[active=true]:bg-muted"
-          data-active={activeTab === step.tab}
-          key={step.tab}
-          onClick={() => onSelect(step.tab)}
-          type="button"
-          variant="ghost"
-        >
-          <CheckCircle2 className="sr-only" aria-hidden />
-          <span className="font-medium">
-            {index + 1}. {step.label}
-          </span>
-          <span className="text-xs text-muted-foreground">{step.description}</span>
-        </Button>
-      ))}
-    </div>
-  );
-}
-
 function DatasetsView({
   query,
-  onImport,
+  onCreated,
   onSelect,
   selectedId,
 }: {
   query: QueryResult<Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchDatasets"]>>>;
-  onImport: (datasetId: string) => void;
+  onCreated: (dataset: Dataset) => void;
   onSelect: (id: string) => void;
   selectedId: string | null;
 }) {
   const selected = query.data?.items.find((dataset) => dataset.id === selectedId) ?? null;
-  const onCreated = (dataset: Dataset) => {
-    onSelect(dataset.id);
-    void query.refetch();
-  };
 
   if (query.isLoading) {
     return <LoadingRows />;
@@ -451,28 +549,9 @@ function DatasetsView({
 
   return (
     <div className="flex min-h-0 flex-col gap-3">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b pb-3">
-        <div>
-          <h2 className="text-sm font-medium">{selected ? selected.name : "Datasets"}</h2>
-          <p className="text-sm text-muted-foreground">
-            {selected
-              ? "Manage rows, imports, exports, answer shape, and review state for this dataset."
-              : "Create and select versioned example sets for scorer calibration and experiment runs."}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {selected ? (
-            <Button onClick={() => onSelect("")} size="sm" type="button" variant="outline">
-              <ArrowLeft data-icon="inline-start" />
-              All datasets
-            </Button>
-          ) : null}
-          <CreateDatasetDialog onCreated={onCreated} />
-        </div>
-      </div>
       {query.data && query.data.items.length > 0 ? (
         selected ? (
-          <DatasetItems dataset={selected} onImport={() => onImport(selected.id)} />
+          <DatasetItems dataset={selected} />
         ) : (
           <div className="min-h-0 overflow-auto border">
             <Table>
@@ -611,35 +690,11 @@ function CreateDatasetDialog({
   );
 }
 
-function DatasetItems({ dataset, onImport }: { dataset: Dataset; onImport: () => void }) {
+function DatasetItems({ dataset }: { dataset: Dataset }) {
   const items = dataset.items?.items ?? [];
 
   return (
     <section className="min-h-0" data-ai-eval-dataset-workbench="true">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h2 className="text-sm font-medium">{dataset.name}</h2>
-          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span>v{dataset.version}</span>
-            <span>{dataset.itemCount} items</span>
-            <span>{dataset.reviewedItemCount} reviewed</span>
-            <span>{dataset.health.status}</span>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={onImport} size="sm" type="button" variant="outline">
-            <Upload data-icon="inline-start" />
-            Import
-          </Button>
-          <DatasetExportDialog dataset={dataset} />
-        </div>
-      </div>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-y py-2">
-        <p className="text-sm text-muted-foreground">
-          Review rows here before using them in experiments.
-        </p>
-        <AddDatasetRowDialog dataset={dataset} />
-      </div>
       <Table>
         <TableHeader>
           <TableRow>
@@ -681,10 +736,6 @@ function DatasetItems({ dataset, onImport }: { dataset: Dataset; onImport: () =>
           <p className="mt-1 text-sm text-muted-foreground">
             Import examples to create a reviewed dataset version for experiments.
           </p>
-          <Button className="mt-3" onClick={onImport} type="button">
-            <Upload data-icon="inline-start" />
-            Import rows
-          </Button>
         </div>
       ) : null}
     </section>
@@ -1988,18 +2039,15 @@ function DatasetExportDialog({ dataset }: { dataset: Dataset }) {
 
 function ScorersView({
   query,
+  onCreated,
   onSelect,
   selectedId,
 }: {
   query: QueryResult<Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchScorers"]>>>;
+  onCreated: (scorer: Scorer) => void;
   onSelect: (id: string) => void;
   selectedId: string | null;
 }) {
-  const onCreated = (scorer: Scorer) => {
-    onSelect(scorer.id);
-    void query.refetch();
-  };
-
   if (query.isLoading) {
     return <LoadingRows />;
   }
@@ -2009,15 +2057,6 @@ function ScorersView({
 
   return (
     <div className="flex min-h-0 flex-col gap-3">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b pb-3">
-        <div>
-          <h2 className="text-sm font-medium">Scorer registry</h2>
-          <p className="text-sm text-muted-foreground">
-            Create scorer definitions that experiments use to evaluate dataset items.
-          </p>
-        </div>
-        <CreateScorerDialog onCreated={onCreated} />
-      </div>
       {query.data && query.data.items.length > 0 ? (
         <Table>
           <TableHeader>
@@ -2286,6 +2325,7 @@ function CreateScorerDialog({
 function ExperimentsView({
   datasets,
   onChanged,
+  onCreated,
   query,
   onSelect,
   scorers,
@@ -2293,6 +2333,7 @@ function ExperimentsView({
 }: {
   datasets: Dataset[];
   onChanged: () => void;
+  onCreated: (experiment: Experiment) => void;
   query: QueryResult<
     Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchExperiments"]>>
   >;
@@ -2302,10 +2343,6 @@ function ExperimentsView({
 }) {
   const runs = query.data?.items.flatMap((experiment) => experiment.runs?.items ?? []) ?? [];
   const rows = experimentScoreboardRows(runs);
-  const onCreated = (experiment: Experiment) => {
-    onSelect(experiment.id);
-    onChanged();
-  };
   const onRunStarted = () => {
     onChanged();
   };
@@ -2319,15 +2356,6 @@ function ExperimentsView({
 
   return (
     <div className="flex min-h-0 flex-col gap-3">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b pb-3">
-        <div>
-          <h2 className="text-sm font-medium">Evaluation experiments</h2>
-          <p className="text-sm text-muted-foreground">
-            Pair a dataset version with scorers, then run an evaluation and compare results.
-          </p>
-        </div>
-        <CreateExperimentDialog datasets={datasets} onCreated={onCreated} scorers={scorers} />
-      </div>
       {datasets.length === 0 || scorers.length === 0 ? (
         <div className="flex flex-wrap items-center justify-between gap-3 border px-3 py-2 text-sm">
           <div className="flex gap-2 text-muted-foreground">
@@ -2396,7 +2424,10 @@ function ExperimentsView({
           primaryAction={
             <CreateExperimentDialog
               datasets={datasets}
-              onCreated={onCreated}
+              onCreated={(experiment) => {
+                onSelect(experiment.id);
+                onCreated(experiment);
+              }}
               scorers={scorers}
               triggerVariant="default"
             />
@@ -2753,15 +2784,6 @@ function ProductionView({
   return (
     <div className="grid gap-4">
       <section>
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <h2 className="text-sm font-medium">Online policies</h2>
-          <Button asChild size="sm" variant="outline">
-            <Link to={`/projects/${encodeURIComponent(selectedProjectId)}/settings/ai-eval`}>
-              <Settings data-icon="inline-start" />
-              Settings
-            </Link>
-          </Button>
-        </div>
         {(settingsQuery.data?.onlinePolicies ?? []).length > 0 ? (
           <Table>
             <TableHeader>
@@ -2876,19 +2898,6 @@ function readTab(value: string | null): AiEvalTab {
     return value;
   }
   return "datasets";
-}
-
-function readExperimentStatus(value: string | null) {
-  if (
-    value === "queued" ||
-    value === "running" ||
-    value === "cancelled" ||
-    value === "failed" ||
-    value === "finished"
-  ) {
-    return value;
-  }
-  return null;
 }
 
 function aiEvalStatusLabel(status: string) {

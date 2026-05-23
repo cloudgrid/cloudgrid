@@ -150,6 +150,22 @@ The BFF must reject GraphQL operations above configured depth or complexity befo
 
 Storage-read must push supported filters, cursors, sorting, counts, and bounded facets into SurrealDB. It must not fetch broad raw rows into Go to perform filtering that SurrealDB can execute with indexed predicates.
 
+## Runtime Saturation And Blocking
+
+Performance work must include saturation behavior, not only happy-path latency.
+
+- The BFF must reject oversized HTTP/GraphQL bodies before expensive parsing and
+  must bound response validation logging for malformed bridge replies.
+- Go services must bound goroutine fan-out, SDK-client lock wait, NATS callback
+  work, and SurrealDB query concurrency.
+- Health checks must be minimal and must not contend with hot-path database
+  locks long enough to inflate p99 user-facing latency.
+- Retry loops must use jittered backoff and state-change logging to avoid CPU
+  spin and log storms during outages.
+- Benchmarks must include at least one saturation profile that measures behavior
+  at configured queue/concurrency limits and verifies bounded rejection or
+  retryable errors instead of unbounded latency growth.
+
 ## SurrealDB Query Plan Gates
 
 Add an opt-in integration test suite enabled only when:

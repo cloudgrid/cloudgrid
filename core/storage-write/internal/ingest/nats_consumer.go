@@ -89,11 +89,31 @@ func RunConsumerWithOptions(ctx context.Context, js PullSubscriberJetStream, nc 
 			if errors.Is(err, nats.ErrTimeout) {
 				continue
 			}
+			if isRetryableFetchError(err) {
+				wait := options.PullMaxWait
+				if wait <= 0 {
+					wait = 250 * time.Millisecond
+				}
+				select {
+				case <-time.After(wait):
+					continue
+				case <-ctx.Done():
+					return nil
+				}
+			}
 			return err
 		}
 
 		processFetchedMessages(ctx, messages, store, aiPublisher, notificationPublisher, logger, recorder, traceLogRecorder, options.Concurrency)
 	}
+}
+
+func isRetryableFetchError(err error) bool {
+	return errors.Is(err, nats.ErrFetchDisconnected) ||
+		errors.Is(err, nats.ErrDisconnected) ||
+		errors.Is(err, nats.ErrConnectionClosed) ||
+		errors.Is(err, nats.ErrNoResponders) ||
+		errors.Is(err, context.DeadlineExceeded)
 }
 
 func processFetchedMessages(ctx context.Context, messages []*nats.Msg, store ports.TelemetryWriteStore, aiPublisher natsAIEventPublisher, notificationPublisher ports.TraceNotificationPublisher, logger *slog.Logger, recorder MetricsRecorder, traceLogRecorder TraceLogRecorder, concurrency int) {

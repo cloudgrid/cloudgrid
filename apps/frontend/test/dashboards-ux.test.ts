@@ -2,8 +2,38 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const routeSource = readFileSync(
-  join(import.meta.dir, "../src/routes/dashboards-route.tsx"),
+const src = (rel: string) => readFileSync(join(import.meta.dir, "../src", rel), "utf8");
+
+const routeSource = src("routes/dashboards-route.tsx");
+const metricRendererSource = src(
+  "features/dashboards/widget-renderers/metric-widget-renderer.tsx",
+);
+const richMetricRendererSource = src(
+  "features/dashboards/widget-renderers/rich-metric-widget-renderer.tsx",
+);
+const widgetEditorGroupsSource = src(
+  "features/dashboards/widget-editor/widget-editor-groups.tsx",
+);
+const metricWidgetEditorSource = src(
+  "features/dashboards/widget-editor/metric-widget-editor.tsx",
+);
+const richMetricEditorSource = src(
+  "features/dashboards/widget-editor/rich-metric-widget-editor.tsx",
+);
+const logEditorSource = src("features/dashboards/widget-editor/log-widget-editor.tsx");
+const traceEditorSource = src("features/dashboards/widget-editor/trace-widget-editor.tsx");
+const liveTraceEditorSource = src(
+  "features/dashboards/widget-editor/live-trace-widget-editor.tsx",
+);
+const alertEditorSource = src("features/dashboards/widget-editor/alert-widget-editor.tsx");
+const liveTraceRendererSource = src(
+  "features/dashboards/widget-renderers/live-trace-widget-renderer.tsx",
+);
+const metricQueryControlsSource = src("features/metrics/metric-query-controls.tsx");
+const sourceMappersSource = src("features/dashboards/widget-source-mappers.ts");
+const appShellSource = src("routes/app-shell.tsx");
+const uiContractsTelemetrySource = readFileSync(
+  join(import.meta.dir, "../../packages/ui-contracts/src/telemetry-query.ts"),
   "utf8",
 );
 
@@ -44,9 +74,9 @@ describe("dashboards UX migration", () => {
     expect(routeSource).toContain("../components/ui/popover");
     expect(routeSource).toContain('t("dashboards.widget.add")');
     expect(routeSource).not.toContain("RouteBreadcrumb");
-    expect(routeSource).toContain('t("dashboards.editor.data")');
-    expect(routeSource).toContain('t("dashboards.editor.display")');
-    expect(routeSource).toContain('t("dashboards.editor.thresholds")');
+    expect(widgetEditorGroupsSource).toContain('t("dashboards.editor.data")');
+    expect(widgetEditorGroupsSource).toContain('t("dashboards.editor.display")');
+    expect(widgetEditorGroupsSource).toContain('t("dashboards.editor.thresholds")');
     expect(routeSource).toContain('t("dashboards.name")');
     expect(routeSource).toContain("startDraftForSelectedDashboard");
     expect(routeSource).toContain('"metric_timeseries"');
@@ -60,7 +90,8 @@ describe("dashboards UX migration", () => {
   test("renders dashboard rail groups and visible dirty draft state", () => {
     expect(routeSource).toContain("Star");
     expect(routeSource).toContain("StarOff");
-    expect(routeSource).toContain('t("dashboards.rail.pinned")');
+    // pinned overview group is removed — dashboards appear in their visibility group with a star icon
+    expect(routeSource).not.toContain('"pinned"');
     expect(routeSource).toContain('t("dashboards.rail.builtin")');
     expect(routeSource).toContain('t("dashboards.rail.personal")');
     expect(routeSource).toContain('t("dashboards.rail.project")');
@@ -70,24 +101,24 @@ describe("dashboards UX migration", () => {
   });
 
   test("renders typed dashboard widget data instead of metric-only summaries", () => {
-    expect(routeSource).toContain("TelemetryChart");
-    expect(routeSource).toContain("buildMetricChartData");
-    expect(routeSource).toContain("entries.length === 1");
-    expect(routeSource).toContain('visualization === "pie"');
-    expect(routeSource).toContain("metricChartTypes.map");
+    expect(metricRendererSource).toContain("TelemetryChart");
+    expect(metricRendererSource).toContain("buildMetricChartData");
+    expect(metricRendererSource).toContain("entries.length === 1");
+    expect(metricRendererSource).toContain('visualization === "pie"');
+    expect(widgetEditorGroupsSource).toContain("metricChartTypes.map");
     expect(routeSource).toContain("LogWidgetPreview");
     expect(routeSource).toContain("TraceWidgetPreview");
     expect(routeSource).toContain("LiveTraceWidgetPreview");
-    expect(routeSource).toContain("MetricNameCombobox");
+    expect(metricWidgetEditorSource).toContain("MetricNameCombobox");
     expect(routeSource).not.toContain("metricDescriptorQuery");
     expect(routeSource).not.toContain("metricDescriptorExists");
-    expect(routeSource).toContain("telemetryClient.getMetricNames");
+    expect(metricQueryControlsSource).toContain("telemetryClient.getMetricNames");
     expect(routeSource).toContain("telemetryClient.searchLogs");
     expect(routeSource).toContain("telemetryClient.searchTraces");
-    expect(routeSource).toContain("telemetryClient.subscribeLiveTraces");
-    expect(routeSource).toContain("updateLogWidget");
-    expect(routeSource).toContain("updateTraceWidget");
-    expect(routeSource).toContain("updateLiveTraceWidget");
+    expect(liveTraceRendererSource).toContain("telemetryClient.subscribeLiveTraces");
+    expect(logEditorSource).toContain("updateLogWidget");
+    expect(traceEditorSource).toContain("updateTraceWidget");
+    expect(liveTraceEditorSource).toContain("updateLiveTraceWidget");
   });
 
   test("supports alert dashboard widgets through typed contract fields", () => {
@@ -97,16 +128,18 @@ describe("dashboards UX migration", () => {
     expect(routeSource).toContain("AlertStatusWidgetPreview");
     expect(routeSource).toContain("AlertHistoryWidgetPreview");
     expect(routeSource).toContain("AlertEvidenceWidgetPreview");
-    expect(routeSource).toContain("AlertWidgetEditor");
-    expect(routeSource).toContain("updateAlertWidget");
+    expect(widgetEditorGroupsSource).toContain("AlertWidgetEditor");
+    expect(alertEditorSource).toContain("updateAlertWidget");
     expect(routeSource).toContain("getAlertSummary");
     expect(routeSource).toContain("queryKeys.alertSummary");
     expect(routeSource).toContain("getAlertHistory");
   });
 
   test("does not send null optional metric intervals from dashboard widgets", () => {
-    expect(routeSource).toContain("...(metric.interval ? { interval: metric.interval } : {})");
-    expect(routeSource).not.toContain("interval: metric.interval ?? null");
+    expect(sourceMappersSource).toContain(
+      "...(metric.interval ? { interval: metric.interval } : {})",
+    );
+    expect(sourceMappersSource).not.toContain("interval: metric.interval ?? null");
   });
 
   test("uses shadcn select instead of the native select wrapper", () => {
@@ -149,24 +182,27 @@ describe("dashboards UX migration", () => {
     expect(routeSource).toContain("richMetric");
     expect(routeSource).toContain("getRichMetricSeries");
     expect(routeSource).toContain("queryKeys.richMetricSeries");
-    expect(routeSource).toContain("RichMetricWidgetEditor");
-    expect(routeSource).toContain("addRichMetricQueryRow");
-    expect(routeSource).toContain("addRichMetricFormula");
-    expect(routeSource).toContain("displaySeries");
+    expect(widgetEditorGroupsSource).toContain("RichMetricWidgetEditor");
+    expect(richMetricEditorSource).toContain("addRichMetricQueryRow");
+    expect(richMetricEditorSource).toContain("addRichMetricFormula");
+    expect(richMetricRendererSource).toContain("displaySeries");
     expect(routeSource).not.toContain("eval(");
     expect(routeSource).not.toContain("new Function");
+    expect(richMetricEditorSource).not.toContain("eval(");
+    expect(richMetricEditorSource).not.toContain("new Function");
   });
 
   test("gates rich metric creation and editing until the implementation wave is complete", () => {
-    expect(routeSource).toContain("RICH_METRIC_EDITING_ENABLED");
+    expect(richMetricEditorSource).toContain("RICH_METRIC_EDITING_ENABLED");
     expect(routeSource).toContain("isRichMetricEditingEnabled");
-    expect(routeSource).toContain("RichMetricUnsupportedState");
+    expect(widgetEditorGroupsSource).toContain("RichMetricUnsupportedState");
     expect(routeSource).toContain("...(isRichMetricEditingEnabled()");
-    expect(routeSource).toContain("!isRichMetricEditingEnabled() ? (");
+    expect(widgetEditorGroupsSource).toContain("!isRichMetricEditingEnabled() ? (");
   });
 
   test("offers the full dashboard chart catalog", () => {
-    expect(routeSource).toContain("const metricChartTypes: MetricChartType[]");
+    expect(widgetEditorGroupsSource).toContain("const metricChartTypes: MetricChartType[]");
+    expect(widgetEditorGroupsSource).toContain("METRIC_CHART_TYPES");
     for (const chartType of [
       "line",
       "area",
@@ -180,7 +216,7 @@ describe("dashboards UX migration", () => {
       "histogram",
       "table",
     ]) {
-      expect(routeSource).toContain(`"${chartType}"`);
+      expect(uiContractsTelemetrySource).toContain(`"${chartType}"`);
     }
   });
 
@@ -189,10 +225,33 @@ describe("dashboards UX migration", () => {
     expect(routeSource).toContain("../components/ui/calendar");
     expect(routeSource).toContain("../components/ui/command");
     expect(routeSource).toContain("../components/ui/dropdown-menu");
-    expect(routeSource).toContain("MetricNameCombobox");
+    expect(metricWidgetEditorSource).toContain("MetricNameCombobox");
     expect(routeSource).toContain("WidgetActionMenu");
     expect(routeSource).not.toContain('id="dashboard-from"');
     expect(routeSource).not.toContain('id="dashboard-to"');
     expect(routeSource).not.toContain("metricDescriptorExists");
+  });
+
+  test("persisted pin shortcuts use only GraphQL contract data with no browser storage", () => {
+    expect(appShellSource).not.toContain("localStorage");
+    expect(appShellSource).not.toContain("sessionStorage");
+    expect(appShellSource).toContain("pinnedDashboardIds");
+    expect(appShellSource).toContain("client.reorderDashboardPins");
+    expect(routeSource).toContain("client.setDashboardPinned");
+    expect(routeSource).not.toContain("localStorage");
+    expect(routeSource).not.toContain("sessionStorage");
+  });
+
+  test("caps visible pinned shortcuts at five", () => {
+    expect(appShellSource).toContain(".slice(0, 5)");
+  });
+
+  test("exposes accessible reorder controls for pinned shortcuts", () => {
+    expect(appShellSource).toContain("reorderDashboardPins");
+    expect(appShellSource).toContain("onReorderPin");
+    expect(appShellSource).toContain('"up"');
+    expect(appShellSource).toContain('"down"');
+    expect(appShellSource).toContain('t("dashboards.pin.moveUp")');
+    expect(appShellSource).toContain('t("dashboards.pin.moveDown")');
   });
 });

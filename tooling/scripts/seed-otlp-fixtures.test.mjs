@@ -200,6 +200,43 @@ describe("seed OTLP fixtures script", () => {
     ).toBe(true);
   });
 
+  test("supports bounded generated fixture batches for integration orchestration", () => {
+    const seedContext = { ...createSeedRunContext(Date.UTC(2026, 4, 18, 12, 0, 0, 0)), pointCount: 3 };
+    const defaultTraces = generatedFixture("rich-traces", createSeedRunContext(Date.UTC(2026, 4, 18, 12, 0, 0, 0)));
+    const boundedTraces = generatedFixture("rich-traces", seedContext);
+    const boundedMetrics = generatedFixture("rich-metrics", seedContext);
+    const defaultSpanCount = defaultTraces.resourceSpans.reduce(
+      (sum, resourceSpan) =>
+        sum +
+        resourceSpan.scopeSpans.reduce(
+          (scopeSum, scopeSpan) => scopeSum + scopeSpan.spans.length,
+          0,
+        ),
+      0,
+    );
+    const boundedSpanCount = boundedTraces.resourceSpans.reduce(
+      (sum, resourceSpan) =>
+        sum +
+        resourceSpan.scopeSpans.reduce(
+          (scopeSum, scopeSpan) => scopeSum + scopeSpan.spans.length,
+          0,
+        ),
+      0,
+    );
+    const metricPointCount = boundedMetrics.resourceMetrics[0].scopeMetrics[0].metrics.reduce(
+      (sum, metric) =>
+        sum +
+        Object.values(metric)
+          .filter((value) => value && typeof value === "object" && "dataPoints" in value)
+          .reduce((pointSum, value) => pointSum + value.dataPoints.length, 0),
+      0,
+    );
+
+    expect(boundedSpanCount).toBeLessThan(defaultSpanCount);
+    expect(boundedSpanCount).toBeGreaterThan(0);
+    expect(metricPointCount).toBeGreaterThanOrEqual(15);
+  });
+
   test("continuous mode posts fresh generated telemetry batches", async () => {
     const decoder = new TextDecoder();
     const postedTraceBodies = [];

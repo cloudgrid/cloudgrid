@@ -51,6 +51,7 @@ export async function startServer() {
 
       try {
         server.stop(false);
+        await graphQLWebSocket.shutdown();
         await bridge.close();
         await selfObservability?.shutdown();
         clearTimeout(timeout);
@@ -152,7 +153,7 @@ export function createServeOptions(
         graphQLWebSocket.message(socket, message);
       },
       close(socket: Parameters<typeof graphQLWebSocket.close>[0]) {
-        graphQLWebSocket.close(socket);
+        void graphQLWebSocket.close(socket);
       },
     },
   };

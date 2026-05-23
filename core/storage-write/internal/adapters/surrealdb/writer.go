@@ -375,20 +375,9 @@ func BuildMetricsPersistQuery(command contracts.PersistMetricsCommand, subject s
 
 	cardinality := map[string]metricCardinalityRecord{}
 	cardinalityBudget := newMetricCardinalityBudget()
-	for i, descriptor := range command.Descriptors {
-		if strings.TrimSpace(descriptor.Name) == "" {
-			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: metric descriptor name is required")
-		}
-		if descriptor.Kind == "" {
-			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: metric descriptor kind is required")
-		}
-		key := fmt.Sprintf("descriptor%d", i)
-		vars[key+"_id"] = metricRecordSlug(descriptor.Name)
-		vars[key+"_record"] = metricDescriptorRecord(descriptor, target)
-		builder.WriteString(fmt.Sprintf("UPSERT type::record('metric_descriptor', $%s_id) CONTENT $%s_record;\n", key, key))
-	}
-
-	for i, point := range command.Points {
+	filteredPoints := make([]contracts.MetricPoint, 0, len(command.Points))
+	observedMetricAttributeKeys := map[string]map[string]struct{}{}
+	for _, point := range command.Points {
 		if strings.TrimSpace(point.MetricName) == "" {
 			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: metric point metricName is required")
 		}
@@ -400,6 +389,31 @@ func BuildMetricsPersistQuery(command contracts.PersistMetricsCommand, subject s
 		}
 		filtered := applyMetricPointPolicy(point, cardinalityBudget)
 		mergeMetricCardinality(cardinality, filtered)
+		filteredPoints = append(filteredPoints, filtered)
+		if observedMetricAttributeKeys[filtered.MetricName] == nil {
+			observedMetricAttributeKeys[filtered.MetricName] = map[string]struct{}{}
+		}
+		for attributeKey := range filtered.Attributes {
+			observedMetricAttributeKeys[filtered.MetricName][attributeKey] = struct{}{}
+		}
+	}
+	for i, descriptor := range command.Descriptors {
+		if strings.TrimSpace(descriptor.Name) == "" {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: metric descriptor name is required")
+		}
+		if descriptor.Kind == "" {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: metric descriptor kind is required")
+		}
+		key := fmt.Sprintf("descriptor%d", i)
+		attributeKeys := metricDescriptorAttributeKeys(descriptor.AttributeKeys, observedMetricAttributeKeys[descriptor.Name])
+		descriptor.AttributeKeys = attributeKeys
+		vars[key+"_id"] = metricRecordSlug(descriptor.Name)
+		vars[key+"_record"] = metricDescriptorRecord(descriptor, target)
+		vars[key+"_attribute_keys"] = stringArrayRecord(attributeKeys)
+		builder.WriteString(metricDescriptorUpsertStatement(key))
+	}
+
+	for i, filtered := range filteredPoints {
 		key := fmt.Sprintf("point%d", i)
 		vars[key+"_id"] = metricPointRecordID(filtered)
 		vars[key+"_record"] = metricPointRecord(filtered, target)
@@ -905,6 +919,32 @@ func metricDescriptorRecord(descriptor contracts.MetricDescriptor, target Teleme
 	}
 	addOwnership(record, target)
 	return record
+}
+
+func metricDescriptorUpsertStatement(key string) string {
+	return fmt.Sprintf("UPSERT type::record('metric_descriptor', $%[1]s_id) SET tenantId = $%[1]s_record.tenantId, companyId = $%[1]s_record.companyId, projectId = $%[1]s_record.projectId, metricName = $%[1]s_record.metricName, description = $%[1]s_record.description, unit = $%[1]s_record.unit, kind = $%[1]s_record.kind, aggregationTemporality = $%[1]s_record.aggregationTemporality, monotonic = $%[1]s_record.monotonic, attributeKeys = array::sort(array::distinct(array::concat(IF attributeKeys = NONE THEN [] ELSE attributeKeys END, $%[1]s_attribute_keys))), firstSeenAt = IF firstSeenAt = NONE OR $%[1]s_record.firstSeenAt < firstSeenAt THEN $%[1]s_record.firstSeenAt ELSE firstSeenAt END, lastSeenAt = IF lastSeenAt = NONE OR $%[1]s_record.lastSeenAt > lastSeenAt THEN $%[1]s_record.lastSeenAt ELSE lastSeenAt END, searchText = string::concat($%[1]s_record.metricName, ' ', $%[1]s_record.unit, ' ', $%[1]s_record.kind, ' ', $%[1]s_record.description, ' ', array::sort(array::distinct(array::concat(IF attributeKeys = NONE THEN [] ELSE attributeKeys END, $%[1]s_attribute_keys))));\n", key)
+}
+
+func metricDescriptorAttributeKeys(declared []string, observed map[string]struct{}) []string {
+	seen := map[string]struct{}{}
+	for _, key := range declared {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		seen[key] = struct{}{}
+	}
+	for key := range observed {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		seen[key] = struct{}{}
+	}
+	keys := make([]string, 0, len(seen))
+	for key := range seen {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func metricPointRecord(point contracts.MetricPoint, target TelemetryTarget) map[string]any {

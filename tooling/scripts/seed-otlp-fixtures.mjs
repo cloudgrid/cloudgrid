@@ -193,6 +193,7 @@ export function createSeedRunContext(nowMs = Date.now()) {
   return {
     baseUnixNano: BigInt(windowStartMs) * 1_000_000n,
     windowEndUnixNano: BigInt(windowEndMs) * 1_000_000n,
+    pointCount: 61,
     runId,
   };
 }
@@ -320,7 +321,7 @@ function buildRichLogFixture(seedContext) {
 
 function buildRichMetricFixture(seedContext) {
   const base = seedContext.baseUnixNano;
-  const metricBases = timelineUnixNanos(seedContext, 61);
+  const metricBases = timelineUnixNanos(seedContext, seedPointCount(seedContext));
   const serviceNames = services();
   const metrics = [
     {
@@ -447,7 +448,7 @@ function buildRichMetricFixture(seedContext) {
 
 function generatedTraceSpans(seedContext) {
   const scenarioDefinitions = scenarios();
-  const traceCount = scenarioDefinitions.length * 61;
+  const traceCount = scenarioDefinitions.length * seedPointCount(seedContext);
   return Array.from({ length: traceCount }, (_, traceIndex) => {
     const scenario = scenarioDefinitions[traceIndex % scenarioDefinitions.length];
     const traceId = idBytes(traceIdHex(seedContext, traceIndex));
@@ -487,6 +488,10 @@ function generatedTraceSpans(seedContext) {
       };
     });
   }).flat();
+}
+
+function seedPointCount(seedContext) {
+  return Math.max(1, Math.min(61, Number(seedContext.pointCount ?? 61)));
 }
 
 function twoMonthsBeforeMs(valueMs) {

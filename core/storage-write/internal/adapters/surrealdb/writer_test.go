@@ -5,6 +5,7 @@ package surrealdb
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -701,7 +702,10 @@ func TestBuildMetricsPersistQueryAppliesMetricPolicyAndRecordsCommand(t *testing
 
 	for _, want := range []string{
 		"BEGIN TRANSACTION",
-		"UPSERT type::record('metric_descriptor', $descriptor0_id) CONTENT $descriptor0_record",
+		"UPSERT type::record('metric_descriptor', $descriptor0_id) SET",
+		"attributeKeys = array::sort(array::distinct(array::concat(IF attributeKeys = NONE THEN [] ELSE attributeKeys END, $descriptor0_attribute_keys)))",
+		"firstSeenAt = IF firstSeenAt = NONE OR $descriptor0_record.firstSeenAt < firstSeenAt THEN $descriptor0_record.firstSeenAt ELSE firstSeenAt END",
+		"lastSeenAt = IF lastSeenAt = NONE OR $descriptor0_record.lastSeenAt > lastSeenAt THEN $descriptor0_record.lastSeenAt ELSE lastSeenAt END",
 		"UPSERT type::record('metric_point', $point0_id) CONTENT $point0_record",
 		"UPSERT type::record('metric_ingest_cardinality', $cardinality0_id) MERGE $cardinality0_record",
 		"CREATE type::record('ingest_command', $ingest_command_id) CONTENT $ingest_command_record",
@@ -723,6 +727,9 @@ func TestBuildMetricsPersistQueryAppliesMetricPolicyAndRecordsCommand(t *testing
 	}
 	if pointRecord["droppedAttributeCount"] != 3 {
 		t.Fatalf("droppedAttributeCount = %#v, want 3", pointRecord["droppedAttributeCount"])
+	}
+	if !reflect.DeepEqual(vars["descriptor0_attribute_keys"], []string{"route"}) {
+		t.Fatalf("descriptor attribute keys = %#v, want [route]", vars["descriptor0_attribute_keys"])
 	}
 	if len(pointRecord["exemplars"].([]map[string]any)) != 16 {
 		t.Fatalf("exemplar count = %d, want capped 16", len(pointRecord["exemplars"].([]map[string]any)))

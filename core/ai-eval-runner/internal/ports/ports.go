@@ -20,7 +20,7 @@ const (
 	ExperimentRunStatusRunning   = "running"
 	ExperimentRunStatusCancelled = "cancelled"
 	ExperimentRunStatusFailed    = "failed"
-	ExperimentRunStatusFinished  = "finished"
+	ExperimentRunStatusFinished  = "completed"
 )
 
 const (
@@ -29,7 +29,7 @@ const (
 	ExperimentProgressProgress      = "progress"
 	ExperimentProgressCancelled     = "cancelled"
 	ExperimentProgressFailed        = "failed"
-	ExperimentProgressFinished      = "finished"
+	ExperimentProgressFinished      = "completed"
 )
 
 type Experiment struct {
@@ -85,6 +85,7 @@ type ExperimentRun struct {
 	ID           string
 	ExperimentID string
 	SolverRef    map[string]any
+	RunPolicy    map[string]any
 	Status       string
 	StartedAt    string
 	EndedAt      string

@@ -177,8 +177,9 @@ export async function createApp(config = loadConfig(), logger = createLogger("bf
           metricsRecorder: selfObservability,
           traceRecorder: selfObservability,
           logRecorder: selfObservability,
+          natsOperationFlushTimeoutMs: config.natsOperationFlushTimeoutMs,
         }
-      : {},
+      : { natsOperationFlushTimeoutMs: config.natsOperationFlushTimeoutMs },
   );
   return {
     ...createAppWithBridge(

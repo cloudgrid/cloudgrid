@@ -641,7 +641,7 @@ func TestRunConsumerWithSelfObservabilityRoutesAIProjectionMessagesToAIStore(t *
 	}
 }
 
-func TestRunConsumerWithSelfObservabilityContinuesAfterFetchTimeoutAndReturnsNonTimeoutFetchError(t *testing.T) {
+func TestRunConsumerWithSelfObservabilityClassifiesFetchErrors(t *testing.T) {
 	t.Run("timeout then canceled context", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		js := &fakePullSubscriber{
@@ -660,16 +660,37 @@ func TestRunConsumerWithSelfObservabilityContinuesAfterFetchTimeoutAndReturnsNon
 		}
 	})
 
-	t.Run("non-timeout fetch error", func(t *testing.T) {
+	t.Run("retryable fetch error then canceled context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		subscription := &fakePullSubscription{
+			errors: []error{nats.ErrFetchDisconnected},
+		}
+		subscription.afterFetch = func() {
+			if subscription.fetchCalls >= 2 {
+				cancel()
+			}
+		}
+		js := &fakePullSubscriber{subscription: subscription}
+
+		err := RunConsumerWithOptions(ctx, js, &fakeNotificationNATS{}, &fakeTraceNotificationPublisher{}, &fakeStore{}, testLogger(t), nil, nil, ConsumerOptions{PullBatchSize: 1, PullMaxWait: 10 * time.Millisecond, Concurrency: 1})
+		if err != nil {
+			t.Fatalf("RunConsumerWithOptions() error = %v", err)
+		}
+		if js.subscription.fetchCalls < 2 {
+			t.Fatalf("fetch calls = %d, want retry after disconnected fetch", js.subscription.fetchCalls)
+		}
+	})
+
+	t.Run("fatal fetch error", func(t *testing.T) {
 		js := &fakePullSubscriber{
-			subscription: &fakePullSubscription{errors: []error{errors.New("consumer unavailable")}},
+			subscription: &fakePullSubscription{errors: []error{errors.New("consumer configuration conflict")}},
 		}
 
 		err := RunConsumerWithSelfObservability(context.Background(), js, &fakeNotificationNATS{}, &fakeTraceNotificationPublisher{}, &fakeStore{}, testLogger(t), nil, nil)
 		if err == nil {
 			t.Fatal("RunConsumerWithSelfObservability() error = nil")
 		}
-		if !strings.Contains(err.Error(), "consumer unavailable") {
+		if !strings.Contains(err.Error(), "consumer configuration conflict") {
 			t.Fatalf("RunConsumerWithSelfObservability() error = %v", err)
 		}
 	})

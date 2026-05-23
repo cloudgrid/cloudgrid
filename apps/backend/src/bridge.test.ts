@@ -4,7 +4,7 @@ import type { RetentionRuleInput } from "@cloudgrid/ui-contracts";
 import { JSONCodec, type NatsConnection } from "nats";
 import { localAuthContext } from "./auth";
 import { MessageBridgeCloudGridBridge, NATSTelemetryQueryBridge } from "./bridge";
-import { NATSRequestReplyClient } from "./bridge/adapters/nats";
+import { NATSBridgeLifecycle, NATSRequestReplyClient } from "./bridge/adapters/nats";
 
 describe("NATS telemetry query bridge", () => {
   test("injects W3C trace context as NATS request headers", async () => {
@@ -101,7 +101,155 @@ describe("NATS telemetry query bridge", () => {
     } as unknown as NatsConnection;
     const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
 
-    await expect(bridge.searchTraces({})).rejects.toThrow("Message bridge is unavailable");
+    await expect(bridge.searchTraces({})).rejects.toMatchObject({
+      extensions: {
+        code: "RESPONSE_CONTRACT_INVALID",
+        problem: {
+          id: "ERR-023",
+          retryable: false,
+        },
+      },
+    });
+  });
+
+  test("classifies malformed bridge envelopes as response contract failures", async () => {
+    const codec = JSONCodec<unknown>();
+    const requestReply = {
+      async request() {
+        return codec.encode({
+          ok: true,
+          data: { items: [], nextCursor: null },
+        });
+      },
+    };
+    const bridge = new MessageBridgeCloudGridBridge(requestReply, 2000, createLogger("bff"));
+
+    await expect(bridge.searchTraces({})).rejects.toMatchObject({
+      extensions: {
+        code: "RESPONSE_CONTRACT_INVALID",
+        problem: {
+          id: "ERR-023",
+          retryable: false,
+        },
+      },
+    });
+  });
+
+  test("classifies bridge response payload decode failures as response contract failures", async () => {
+    const requestReply = {
+      async request() {
+        return new TextEncoder().encode("{not-json");
+      },
+    };
+    const bridge = new MessageBridgeCloudGridBridge(requestReply, 2000, createLogger("bff"));
+
+    await expect(bridge.searchTraces({})).rejects.toMatchObject({
+      extensions: {
+        code: "RESPONSE_CONTRACT_INVALID",
+        problem: {
+          id: "ERR-023",
+          retryable: false,
+        },
+      },
+    });
+  });
+
+  test("keeps NATS no responders and timeout errors classified separately", async () => {
+    const bridgeUnavailable = new MessageBridgeCloudGridBridge(
+      {
+        async request() {
+          throw Object.assign(new Error("no responders"), { code: "503" });
+        },
+      },
+      2000,
+      createLogger("bff"),
+    );
+    const bridgeTimeout = new MessageBridgeCloudGridBridge(
+      {
+        async request() {
+          throw Object.assign(new Error("timeout"), { code: "TIMEOUT" });
+        },
+      },
+      2000,
+      createLogger("bff"),
+    );
+
+    await expect(bridgeUnavailable.searchTraces({})).rejects.toMatchObject({
+      extensions: { code: "MESSAGE_BRIDGE_UNAVAILABLE", problem: { id: "ERR-013" } },
+    });
+    await expect(bridgeTimeout.searchTraces({})).rejects.toMatchObject({
+      extensions: { code: "MESSAGE_BRIDGE_TIMEOUT", problem: { id: "ERR-014" } },
+    });
+  });
+
+  test("caps response validation issue logging without raw payload data", async () => {
+    const codec = JSONCodec<unknown>();
+    const logged: Array<{ event: string; fields: Record<string, unknown> }> = [];
+    const logger = {
+      debug() {},
+      info() {},
+      warn() {},
+      error(event: string, fields?: Record<string, unknown>) {
+        logged.push({ event, fields: fields ?? {} });
+      },
+    };
+    const requestReply = {
+      async request(_subject: string, data: Uint8Array) {
+        const payload = codec.decode(data);
+        return codec.encode({
+          requestId: requestId(payload),
+          ok: true,
+          data: {
+            items: Array.from({ length: 20 }, (_, index) => ({
+              id: `trace-${index}`,
+              serviceName: "api",
+              secret: "do-not-log-this-payload-value",
+            })),
+            nextCursor: null,
+          },
+        });
+      },
+    };
+    const bridge = new MessageBridgeCloudGridBridge(requestReply, 2000, logger);
+
+    await expect(bridge.searchTraces({})).rejects.toMatchObject({
+      extensions: { code: "RESPONSE_CONTRACT_INVALID" },
+    });
+
+    const validationLog = logged.find((entry) => entry.event === "nats_response_validation_failed");
+    expect(validationLog?.fields).toMatchObject({
+      error_id: "ERR-023",
+      error_code: "RESPONSE_CONTRACT_INVALID",
+      operation_or_subject: "telemetry.traces.search",
+    });
+    const issues = validationLog?.fields.issues as Array<{ path: string }> | undefined;
+    expect(issues?.length).toBeLessThanOrEqual(5);
+    expect(JSON.stringify(validationLog)).not.toContain("do-not-log-this-payload-value");
+    expect(issues?.every((issue) => issue.path.split(".").length <= 6)).toBe(true);
+  });
+
+  test("NATS lifecycle health requires an operational flush", async () => {
+    const lifecycle = new NATSBridgeLifecycle({
+      isClosed: () => false,
+      isDraining: () => false,
+      flush: async () => {
+        throw new Error("flush failed");
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection);
+
+    await expect(lifecycle.health()).resolves.toBe("unavailable");
+  });
+
+  test("NATS lifecycle health is unavailable while draining", async () => {
+    const lifecycle = new NATSBridgeLifecycle({
+      isClosed: () => false,
+      isDraining: () => true,
+      flush: async () => {},
+      drain: async () => {},
+    } as unknown as NatsConnection);
+
+    await expect(lifecycle.health()).resolves.toBe("unavailable");
   });
 
   test("sends telemetry facet requests to telemetry.facets", async () => {

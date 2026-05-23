@@ -133,10 +133,10 @@ func TestStartOfflineExperimentFallsBackToManifestSolverRef(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartOfflineExperiment returned error: %v", err)
 	}
-	if !reflect.DeepEqual(writer.experimentRuns[0].SolverRef, map[string]any{"kind": "manifest-solver"}) {
+	if !reflect.DeepEqual(writer.experimentRuns[0].SolverRef, map[string]any{"kind": "agent", "name": "local"}) {
 		t.Fatalf("persisted solverRef = %#v", writer.experimentRuns[0].SolverRef)
 	}
-	if !reflect.DeepEqual(harness.runRequests[0].SolverRef, map[string]any{"kind": "manifest-solver"}) {
+	if !reflect.DeepEqual(harness.runRequests[0].SolverRef, map[string]any{"kind": "agent", "name": "local"}) {
 		t.Fatalf("harness solverRef = %#v", harness.runRequests[0].SolverRef)
 	}
 }
@@ -236,7 +236,7 @@ func TestStartOptimizationDelegatesToHarnessAdapterAndPublishesProgress(t *testi
 		t.Fatalf("expected storage-write progress update")
 	}
 	if last := publisher.progress[len(publisher.progress)-1]; last.Type != ports.ExperimentProgressFinished {
-		t.Fatalf("expected finished progress, got %#v", last)
+		t.Fatalf("expected completed progress, got %#v", last)
 	}
 }
 

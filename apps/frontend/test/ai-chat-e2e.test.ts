@@ -7,7 +7,15 @@ import type {
   MetricSeriesResult,
   TraceSearchResult,
 } from "@cloudgrid/ui-contracts";
-import type { ModelProvider, TextRequest, TextResponse, TextStreamChunk } from "@purista/harness";
+import type {
+  JsonValue,
+  ModelProvider,
+  ObjectRequest,
+  ObjectResponse,
+  TextRequest,
+  TextResponse,
+  TextStreamChunk,
+} from "@purista/harness";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createControlPlaneGraphQLClient } from "../../packages/public-api-client/src";
@@ -82,8 +90,8 @@ describe("AI Chat end-to-end stream integration", () => {
         .filter((event) => event.type === "message.created" || event.type === "text.delta")
         .map((event) => event.payload);
       expect(messagePayloads.every((payload) => typeof payload.messageId === "string")).toBe(true);
-      expect(provider.textStreamRequests).toHaveLength(1);
-      expect(provider.textStreamRequests[0]?.model).toBe("gpt-5-mini");
+      expect(provider.objectRequests).toHaveLength(1);
+      expect(provider.objectRequests[0]?.model).toBe("gpt-5-mini");
 
       const view = events.reduce(
         applyAiChatStreamEvent,
@@ -131,7 +139,20 @@ describe("AI Chat end-to-end stream integration", () => {
             return runFixture({ status: input.status });
           },
         }),
-        { aiChatHarness: createAiChatHarness("provider") ?? undefined },
+        {
+          aiChatHarness:
+            createAiChatHarness("provider", {
+              providerFactory: () =>
+                toolCallingProvider({
+                  call: {
+                    id: "call-traces",
+                    name: "telemetry_searchTraces",
+                    arguments: { limit: 10, status: "error" },
+                  },
+                  finalAnswer: "Found failing traces.",
+                }),
+            }) ?? undefined,
+        },
       );
 
       const events = await withAppFetch(app, async () => {
@@ -187,10 +208,11 @@ describe("AI Chat end-to-end stream integration", () => {
       const cases = [
         {
           name: "metrics",
-          prompt: "show gen_ai.client.token.usage metrics for the last hour",
+          prompt: "query token usage metrics for the last hour",
           expectedTool: "telemetry.queryMetrics",
           expectedRenderer: "metric_timeseries",
           expectedMarkup: ["gen_ai.client.token.usage", "input", "42"],
+          toolArguments: { metricName: "gen_ai.client.token.usage" },
           bridgeOverrides: {
             async metricSeries() {
               return metricSeriesResult();
@@ -203,6 +225,7 @@ describe("AI Chat end-to-end stream integration", () => {
           expectedTool: "telemetry.searchLogs",
           expectedRenderer: "log_list",
           expectedMarkup: ["storage is unavailable", "checkout-api", "ERROR"],
+          toolArguments: {},
           bridgeOverrides: {
             async searchLogs() {
               return logSearchResult();
@@ -215,6 +238,7 @@ describe("AI Chat end-to-end stream integration", () => {
           expectedTool: "aiEval.qualityOverview",
           expectedRenderer: "status_summary",
           expectedMarkup: ["Production quality", "0.92", "1"],
+          toolArguments: {},
           bridgeOverrides: {
             async aiQualityOverview(input: { projectId: string }) {
               return aiQualityOverview(input.projectId);
@@ -248,7 +272,20 @@ describe("AI Chat end-to-end stream integration", () => {
               });
             },
           }),
-          { aiChatHarness: createAiChatHarness("provider") ?? undefined },
+          {
+            aiChatHarness:
+              createAiChatHarness("provider", {
+                providerFactory: () =>
+                  toolCallingProvider({
+                    call: {
+                      id: `call-${item.name}`,
+                      name: item.expectedTool.replaceAll(".", "_"),
+                      arguments: item.toolArguments,
+                    },
+                    finalAnswer: "Done.",
+                  }),
+              }) ?? undefined,
+          },
         );
 
         const events = await withAppFetch(app, async () => {
@@ -332,13 +369,18 @@ async function withAppFetch<T>(
 }
 
 function recordingProvider(chunks: TextStreamChunk[]) {
-  const requests: TextRequest[] = [];
-  const provider: ModelProvider & { textStreamRequests: TextRequest[] } = {
+  const textStreamRequests: TextRequest[] = [];
+  const objectRequests: ObjectRequest[] = [];
+  const provider: ModelProvider & {
+    textStreamRequests: TextRequest[];
+    objectRequests: ObjectRequest[];
+  } = {
     id: "recording",
     genAiSystem: "recording",
-    textStreamRequests: requests,
+    textStreamRequests,
+    objectRequests,
     async text(request: TextRequest): Promise<TextResponse> {
-      requests.push(request);
+      textStreamRequests.push(request);
       return {
         content: chunks
           .filter(
@@ -351,10 +393,62 @@ function recordingProvider(chunks: TextStreamChunk[]) {
       };
     },
     async *textStream(request: TextRequest): AsyncIterable<TextStreamChunk> {
-      requests.push(request);
+      textStreamRequests.push(request);
       for (const chunk of chunks) {
         yield chunk;
       }
+    },
+    async object<T extends JsonValue>(request: ObjectRequest<T>): Promise<ObjectResponse<T>> {
+      objectRequests.push(request);
+      return {
+        object: {
+          answer:
+            chunks
+              .filter(
+                (chunk): chunk is Extract<TextStreamChunk, { kind: "delta" }> =>
+                  chunk.kind === "delta",
+              )
+              .map((chunk) => chunk.text)
+              .join("") || "done",
+        } as unknown as T,
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        finishReason: "stop",
+      };
+    },
+  };
+  return provider;
+}
+
+function toolCallingProvider(input: {
+  call: { id: string; name: string; arguments: Record<string, unknown> };
+  finalAnswer: string;
+}) {
+  const objectRequests: ObjectRequest[] = [];
+  const provider: ModelProvider & { objectRequests: ObjectRequest[] } = {
+    id: "tool-calling",
+    genAiSystem: "recording",
+    objectRequests,
+    async text(): Promise<TextResponse> {
+      throw new Error("text should not be called");
+    },
+    async *textStream() {
+      throw new Error("textStream should not be called");
+    },
+    async object<T extends JsonValue>(request: ObjectRequest<T>): Promise<ObjectResponse<T>> {
+      objectRequests.push(request);
+      if (objectRequests.length === 1) {
+        return {
+          object: { answer: "" } as unknown as T,
+          toolCalls: [input.call],
+          usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          finishReason: "tool_calls",
+        };
+      }
+      return {
+        object: { answer: input.finalAnswer } as unknown as T,
+        usage: { inputTokens: 2, outputTokens: 3, totalTokens: 5 },
+        finishReason: "stop",
+      };
     },
   };
   return provider;

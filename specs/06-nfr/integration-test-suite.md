@@ -16,6 +16,9 @@ GraphQL requests from TypeScript, and tears all processes down at the end.
 The suite must verify at least:
 
 - readiness for every public service;
+- liveness and readiness semantics for every service, including local
+  dependency degradation and recovery without cascading across other service
+  health endpoints;
 - local viewer bootstrap and project selection through public GraphQL;
 - organization, project, invitation, member, project settings, retention,
   ingest credential, alerting, and project AI settings GraphQL workflows through
@@ -31,6 +34,11 @@ The suite must verify at least:
   storage-read, and storage-write services;
 - collector error mappings for invalid public requests;
 - duplicate JetStream ingest command handling.
+- resilience scenarios for NATS disconnect/reconnect, SurrealDB
+  disconnect/reconnect, malformed private NATS requests, recovered handler
+  panic via fakes, storage-write redelivery behavior, duplicate prevention after
+  uncertain write outcomes, BFF response-contract validation mapping, bounded
+  queue/concurrency saturation, event-loop protection, and graceful shutdown.
 
 ## Coverage Expansion Contract
 
@@ -124,3 +132,36 @@ The default `bun run test` command must not require Docker. Docker-backed
 integration scenarios run through `bun run integration:local`; CI may promote
 them into a separate required job once service image startup replaces local
 `go run`/`bun run` service startup.
+
+## Resilience And Chaos Scenarios
+
+Resilience scenarios are owned by
+`06-nfr/service-resilience-self-healing.md`. Default local integration must
+cover stable degradation/recovery flows. Destructive chaos scenarios that stop
+and restart NATS or SurrealDB repeatedly, inject network partitions, or force
+handler panics through test-only fakes are opt-in until stable:
+
+```sh
+CLOUDGRID_ENABLE_RESILIENCE_CHAOS_TESTS=true bun run integration:local
+```
+
+When the flag is absent, chaos scenarios must skip explicitly and report the
+skip reason. Root/default CI commands must not require Docker-backed chaos
+tests.
+
+The opt-in local chaos path must run against isolated disposable infrastructure
+and cover at least one NATS dependency transition without restarting services:
+
+- pause the NATS container and assert service liveness remains healthy while
+  readiness for NATS-dependent services degrades;
+- unpause NATS and assert every readiness endpoint recovers within bounded
+  retries;
+- verify a public GraphQL viewer request succeeds after recovery;
+- send malformed private request/reply messages to control-plane and
+  storage-read subjects and assert bounded validation errors are returned
+  without crashing handlers.
+
+Chaos scenarios must include deterministic maximum durations and must fail with
+diagnostic artifacts rather than hanging. Required artifacts are service
+process-exit status, last readiness payload per service, bounded logs around
+dependency transitions, and the scenario step that failed.

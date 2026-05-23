@@ -51,7 +51,7 @@ func TestNatsAIEventPublisherBranches(t *testing.T) {
 	if err := emptyPublisher.PublishExperimentProgress(context.Background(), contracts.ExperimentProgressNotification{
 		RequestID:       "req-progress-1",
 		ExperimentRunID: "run-1",
-		Type:            "finished",
+		Type:            "completed",
 		OccurredAt:      fixedClock(),
 	}); err != nil {
 		t.Fatalf("PublishExperimentProgress(nil js) error = %v", err)

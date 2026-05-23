@@ -114,6 +114,7 @@ This directory is the implementation specification for the MVP. The original sin
 - [Metric ingest flow](./02-flows/metrics/metric-ingest.md)
 - [Dashboard query flow](./02-flows/metrics/dashboard-query.md)
 - [Performance and scaling](./06-nfr/performance-and-scaling.md)
+- [Service resilience and self-healing](./06-nfr/service-resilience-self-healing.md)
 - [Integration test suite](./06-nfr/integration-test-suite.md)
 - [Release, CI/CD, and distribution](./06-nfr/release-distribution.md)
 - [AI evaluation content capture](./06-nfr/ai-eval-content-capture.md)

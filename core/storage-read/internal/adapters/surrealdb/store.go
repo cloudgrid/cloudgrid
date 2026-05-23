@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
@@ -19,7 +18,7 @@ type Store struct {
 	DB *sdk.DB
 }
 
-var queryRowsMu sync.Mutex
+var queryRowsLock = newSDKOperationLock()
 var queryRowsOverride func(context.Context, *sdk.DB, QueryStatement, any) error
 
 func (store Store) GetProjectTelemetryOverviews(ctx context.Context, request contracts.ProjectTelemetryOverviewRequest) (contracts.ProjectTelemetryOverviewData, error) {
@@ -28,6 +27,14 @@ func (store Store) GetProjectTelemetryOverviews(ctx context.Context, request con
 		target, err := ResolveProjectTelemetryTarget(project, request.AuthContext)
 		if err != nil {
 			return contracts.ProjectTelemetryOverviewData{}, err
+		}
+		hasTelemetrySchema, err := store.targetHasTelemetrySchema(ctx, target)
+		if err != nil {
+			return contracts.ProjectTelemetryOverviewData{}, storageError()
+		}
+		if !hasTelemetrySchema {
+			items = append(items, projectTelemetryOverviewItem(target, contracts.ProjectTelemetryOverview{}))
+			continue
 		}
 		queries := BuildProjectTelemetryOverviewQueries(target)
 		traceCount, err := store.queryCount(ctx, queries["traces"])
@@ -50,20 +57,24 @@ func (store Store) GetProjectTelemetryOverviews(ctx context.Context, request con
 		if err != nil {
 			return contracts.ProjectTelemetryOverviewData{}, storageError()
 		}
-		items = append(items, contracts.ProjectTelemetryOverviewItem{
-			TenantID:  target.TenantID,
-			CompanyID: target.CompanyID,
-			ProjectID: target.ProjectID,
-			Telemetry: contracts.ProjectTelemetryOverview{
-				LastIngestAt: lastIngestAt,
-				TraceCount:   traceCount,
-				LogCount:     logCount,
-				MetricCount:  metricCount,
-				ServiceCount: serviceCount,
-			},
-		})
+		items = append(items, projectTelemetryOverviewItem(target, contracts.ProjectTelemetryOverview{
+			LastIngestAt: lastIngestAt,
+			TraceCount:   traceCount,
+			LogCount:     logCount,
+			MetricCount:  metricCount,
+			ServiceCount: serviceCount,
+		}))
 	}
 	return contracts.ProjectTelemetryOverviewData{Items: items}, nil
+}
+
+func projectTelemetryOverviewItem(target TelemetryTarget, telemetry contracts.ProjectTelemetryOverview) contracts.ProjectTelemetryOverviewItem {
+	return contracts.ProjectTelemetryOverviewItem{
+		TenantID:  target.TenantID,
+		CompanyID: target.CompanyID,
+		ProjectID: target.ProjectID,
+		Telemetry: telemetry,
+	}
 }
 
 func (store Store) SearchTraces(ctx context.Context, query contracts.TraceSearchQuery, authContext *contracts.AuthContext) (contracts.TraceSearchData, error) {
@@ -352,6 +363,61 @@ func (store Store) queryLastIngestAt(ctx context.Context, stmt QueryStatement) (
 	return rows[0].LastIngestAt, nil
 }
 
+func (store Store) targetHasTelemetrySchema(ctx context.Context, target TelemetryTarget) (bool, error) {
+	if queryRowsOverride != nil {
+		return true, nil
+	}
+	if store.DB == nil {
+		return false, storageUnavailableError()
+	}
+	if manager := managerForDB(store.DB); manager != nil {
+		if err := manager.state.operationReady(); err != nil {
+			return false, err
+		}
+		release, err := manager.lock.acquire(ctx)
+		if err != nil {
+			manager.state.markDegraded()
+			return false, storageUnavailableError()
+		}
+		defer release()
+		if manager.db == nil {
+			manager.state.markDegraded()
+			return false, storageUnavailableError()
+		}
+		hasSchema, err := targetHasTelemetrySchemaWithDB(ctx, manager.db, target)
+		if err != nil {
+			return false, manager.state.observeOperationError(err)
+		}
+		return hasSchema, nil
+	}
+	release, err := queryRowsLock.acquire(ctx)
+	if err != nil {
+		return false, storageUnavailableError()
+	}
+	defer release()
+	return targetHasTelemetrySchemaWithDB(ctx, store.DB, target)
+}
+
+func targetHasTelemetrySchemaWithDB(ctx context.Context, db *sdk.DB, target TelemetryTarget) (bool, error) {
+	if err := db.Use(ctx, target.Namespace, target.Database); err != nil {
+		return false, storageUnavailableError()
+	}
+	dbInfo, err := queryOne[DatabaseInfo](ctx, db, "INFO FOR DB;", nil)
+	if err != nil {
+		return false, storageUnavailableError()
+	}
+	return hasAnyRequiredTelemetryTable(dbInfo), nil
+}
+
+func hasAnyRequiredTelemetryTable(dbInfo DatabaseInfo) bool {
+	for _, table := range requiredTables {
+		if _, ok := dbInfo.Tables[table]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 type countRow struct {
 	Count int `json:"count"`
 }
@@ -549,16 +615,24 @@ func queryRows[T any](ctx context.Context, db *sdk.DB, stmt QueryStatement) ([]T
 	if db == nil {
 		return nil, fmt.Errorf("storage database is not configured")
 	}
-	queryRowsMu.Lock()
-	defer queryRowsMu.Unlock()
+	if manager := managerForDB(db); manager != nil {
+		return queryRowsWithManager[T](ctx, manager, stmt)
+	}
+	release, err := queryRowsLock.acquire(ctx)
+	if err != nil {
+		return nil, storageUnavailableError()
+	}
+	defer release()
+	// The SurrealDB SDK client keeps namespace/database selection as mutable
+	// connection state, so Use and Query are serialized for unmanaged test clients.
 	if stmt.Target.Namespace != "" || stmt.Target.Database != "" {
 		if err := db.Use(ctx, stmt.Target.Namespace, stmt.Target.Database); err != nil {
-			return nil, err
+			return nil, storageUnavailableError()
 		}
 	}
 	results, err := sdk.Query[[]T](ctx, db, stmt.SQL, stmt.Params)
 	if err != nil {
-		return nil, err
+		return nil, storageUnavailableError()
 	}
 	if results == nil || len(*results) == 0 {
 		return nil, fmt.Errorf("empty SurrealDB query result")

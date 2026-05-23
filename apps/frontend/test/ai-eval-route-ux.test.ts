@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const routeSource = readFileSync(join(import.meta.dir, "../src/routes/ai-eval-route.tsx"), "utf8");
+const appShellSource = readFileSync(join(import.meta.dir, "../src/routes/app-shell.tsx"), "utf8");
 
 describe("AI Eval route UX migration", () => {
   test("uses URL selected state and avoids route-primary Card surfaces", () => {
@@ -15,21 +16,33 @@ describe("AI Eval route UX migration", () => {
     expect(routeSource).not.toContain('searchParams.get("annotation")');
   });
 
-  test("keeps route frame, left rail tabs, and main workspace without a permanent inspector", () => {
-    expect(routeSource).toContain("ai-eval-left-rail");
+  test("navigation is in the main sidebar, not an inner left rail", () => {
+    // inner left rail removed — navigation lives in the app-shell sidebar
+    expect(routeSource).not.toContain("ai-eval-left-rail");
     expect(routeSource).toContain("ai-eval-main-workspace");
     expect(routeSource).not.toContain("ai-eval-right-inspector");
     expect(routeSource).not.toContain("Select a row to inspect details");
+    // route uses RouteBreadcrumb and AiEvalPageHeader for page-level navigation
+    expect(routeSource).toContain("RouteBreadcrumb");
+    expect(routeSource).toContain("AiEvalPageHeader");
+    // sidebar renders sub-items via a dynamic link template
+    expect(appShellSource).toContain("aiEvalSubItems");
+    expect(appShellSource).toContain("/ai-eval?tab=");
+    expect(appShellSource).toContain('t("nav.aiEvalDatasets")');
+    expect(appShellSource).toContain('t("nav.aiEvalScorers")');
+    expect(appShellSource).toContain('t("nav.aiEvalExperiments")');
+    expect(appShellSource).toContain('t("nav.aiEvalProduction")');
   });
 
   test("covers only the approved AI Eval sections and links settings without route-local GraphQL", () => {
     for (const section of ["datasets", "scorers", "experiments", "production"]) {
-      expect(routeSource).toContain(`value="${section}"`);
+      // sections are selected by URL tab param — not by Tabs component value attributes
+      expect(routeSource).toContain(`tab === "${section}"`);
     }
-    expect(routeSource).not.toContain('value="runs"');
-    expect(routeSource).not.toContain('value="annotations"');
-    expect(routeSource).not.toContain('value="overview"');
-    expect(routeSource).not.toContain('value="optimizations"');
+    expect(routeSource).not.toContain('tab === "runs"');
+    expect(routeSource).not.toContain('tab === "annotations"');
+    expect(routeSource).not.toContain('tab === "overview"');
+    expect(routeSource).not.toContain('tab === "optimizations"');
     expect(routeSource).toContain("/settings/ai-eval");
     expect(routeSource).toContain("controlClient.getProjectAiSettings");
     expect(routeSource).toContain("telemetryClient.getAiQualityOverview");
@@ -91,7 +104,7 @@ describe("AI Eval route UX migration", () => {
     expect(routeSource).toContain("Input prompt");
     expect(routeSource).toContain("Expected answer");
     expect(routeSource).toContain("Expected JSON shape");
-    expect(routeSource).toContain("All datasets");
+    expect(routeSource).toContain('t("nav.aiEvalDatasets")');
     expect(routeSource).not.toContain("needs the dataset item mutation contract");
     expect(routeSource).toContain("CreateScorerDialog");
     expect(routeSource).toContain("telemetryClient.createScorer");

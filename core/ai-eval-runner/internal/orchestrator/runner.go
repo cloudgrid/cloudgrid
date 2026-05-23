@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/cloudgrid-dev/cloudgrid/core/ai-eval-runner/internal/idempotency"
@@ -37,6 +38,7 @@ type StartExperimentRequest struct {
 	ProjectID    string
 	ExperimentID string
 	SolverRef    map[string]any
+	RunPolicy    map[string]any
 	TraceContext map[string]string
 }
 
@@ -120,14 +122,17 @@ func (r *Runner) StartOfflineExperiment(ctx context.Context, request StartExperi
 	if len(solverRef) == 0 {
 		solverRef = manifest.SolverRef
 	}
+	solverRef = normalizeSolverRef(solverRef)
+	runPolicy := normalizeRunPolicy(request.RunPolicy)
 
 	run := ports.ExperimentRun{
 		ID:           candidateRunID,
 		ExperimentID: experiment.ID,
 		SolverRef:    solverRef,
+		RunPolicy:    runPolicy,
 		Status:       ports.ExperimentRunStatusRunning,
 		StartedAt:    r.now(),
-		Summary:      map[string]any{"totalItems": len(items), "completedItems": 0},
+		Summary:      experimentRunSummary(len(items), 0, ports.ExperimentRunStatusRunning),
 	}
 	if err := r.writer.PersistExperimentRun(ctx, run); err != nil {
 		return StartExperimentResult{}, err
@@ -551,7 +556,7 @@ func boolSetting(values map[string]any, key string) bool {
 func (r *Runner) finishRun(ctx context.Context, run ports.ExperimentRun, status string, completedItems int, totalItems int) (ports.ExperimentRun, error) {
 	run.Status = status
 	run.EndedAt = r.now()
-	run.Summary = map[string]any{"totalItems": totalItems, "completedItems": completedItems}
+	run.Summary = experimentRunSummary(totalItems, completedItems, status)
 	progressType := ports.ExperimentProgressFinished
 	if status == ports.ExperimentRunStatusCancelled {
 		progressType = ports.ExperimentProgressCancelled
@@ -568,6 +573,85 @@ func (r *Runner) finishRun(ctx context.Context, run ports.ExperimentRun, status 
 func (r *Runner) failRun(ctx context.Context, experimentRunID string, cause error) error {
 	_ = r.publishProgress(ctx, experimentRunID, ports.ExperimentProgressFailed, "", ports.ExperimentRunStatusFailed, map[string]any{"error": cause.Error()})
 	return cause
+}
+
+func normalizeSolverRef(value map[string]any) map[string]any {
+	kind, _ := value["kind"].(string)
+	name, _ := value["name"].(string)
+	switch strings.TrimSpace(kind) {
+	case "prompt", "agent", "workflow", "skill", "tool":
+	default:
+		kind = "agent"
+	}
+	if strings.TrimSpace(name) == "" {
+		if id, _ := value["id"].(string); strings.TrimSpace(id) != "" {
+			name = id
+		} else {
+			name = "local"
+		}
+	}
+	normalized := map[string]any{}
+	for key, entry := range value {
+		normalized[key] = entry
+	}
+	normalized["kind"] = kind
+	normalized["name"] = name
+	return normalized
+}
+
+func normalizeRunPolicy(value map[string]any) map[string]any {
+	normalized := map[string]any{}
+	for key, entry := range value {
+		normalized[key] = entry
+	}
+	if _, ok := normalized["maxParallelRequests"]; !ok {
+		normalized["maxParallelRequests"] = 10
+	}
+	return normalized
+}
+
+func experimentRunSummary(totalItems int, completedItems int, status string) map[string]any {
+	passed := completedItems
+	errored := 0
+	skipped := 0
+	if status == ports.ExperimentRunStatusCancelled {
+		skipped = totalItems - completedItems
+		if skipped < 0 {
+			skipped = 0
+		}
+	}
+	if status == ports.ExperimentRunStatusFailed {
+		passed = 0
+		errored = totalItems - completedItems
+		if errored < 1 {
+			errored = 1
+		}
+	}
+	return map[string]any{
+		"itemCounts": map[string]any{
+			"total":       totalItems,
+			"passed":      passed,
+			"failed":      0,
+			"errored":     errored,
+			"skipped":     skipped,
+			"needsReview": 0,
+			"quarantined": 0,
+		},
+		"scoreSummaries": []any{},
+		"problemCounts": map[string]any{
+			"modelQuality":   0,
+			"itemQuality":    0,
+			"scorerConfig":   0,
+			"infrastructure": 0,
+		},
+		"budgetUsage": map[string]any{
+			"inputTokens":  0,
+			"outputTokens": 0,
+			"totalTokens":  0,
+			"estimatedUsd": 0,
+		},
+		"regressions": []any{},
+	}
 }
 
 func (r *Runner) publishProgress(ctx context.Context, runID string, progressType string, itemRunID string, status string, summary map[string]any) error {

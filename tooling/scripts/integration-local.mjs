@@ -300,6 +300,7 @@ async function main(args = process.argv.slice(2)) {
   const surrealDatabase = externalInfra ? baseEnv.CLOUDGRID_SURREALDB_DATABASE || "dev" : "control";
   const surrealUsername = baseEnv.CLOUDGRID_SURREALDB_USERNAME || "root";
   const surrealPassword = baseEnv.CLOUDGRID_SURREALDB_PASSWORD || "root";
+  const fixtureBearerToken = integrationFixtureBearerToken(baseEnv);
   const datasetTransferDir = resolve(
     repoRoot,
     ".cloudgrid",
@@ -696,10 +697,10 @@ async function main(args = process.argv.slice(2)) {
     const liveTraceSubscription = await openLiveTraceSubscription(bffPort, runTraceFixture);
 
     console.log("Posting OTLP JSON and protobuf fixtures...");
-    await postTraceJson(otlpPort, runTraceFixture);
-    await postLogProtobuf(otlpPort);
-    await postMetricJson(otlpPort, runMetricFixture);
-    await postGeneratedFixtures(otlpPort);
+    await postTraceJson(otlpPort, runTraceFixture, fixtureBearerToken);
+    await postLogProtobuf(otlpPort, fixtureBearerToken);
+    await postMetricJson(otlpPort, runMetricFixture, fixtureBearerToken);
+    await postGeneratedFixtures(otlpPort, fixtureBearerToken);
 
     console.log("Asserting GraphQL live trace delivery...");
     await liveTraceSubscription.waitForTrace(runTraceFixture.traceIdHex, 20_000);
@@ -838,7 +839,7 @@ async function main(args = process.argv.slice(2)) {
       status: 415,
       id: "ERR-002",
       code: "UNSUPPORTED_MEDIA_TYPE",
-    });
+    }, fixtureBearerToken);
     await assertCollectorProblem(otlpPort, {
       path: "/v1/logs",
       body: "{",
@@ -846,7 +847,7 @@ async function main(args = process.argv.slice(2)) {
       status: 400,
       id: "ERR-008",
       code: "OTLP_DECODE_FAILED",
-    });
+    }, fixtureBearerToken);
     await assertCollectorProblem(otlpPort, {
       path: "/v1/logs",
       body: Buffer.from([0xff]),
@@ -854,11 +855,23 @@ async function main(args = process.argv.slice(2)) {
       status: 400,
       id: "ERR-008",
       code: "OTLP_DECODE_FAILED",
-    });
+    }, fixtureBearerToken);
     await assertCollectorNatsStartupFailure(serviceEnv, await freePort());
 
     console.log("Asserting duplicate JetStream command handling...");
     await assertDuplicateCommandDoesNotRewrite(natsUrl, bffPort);
+
+    if (baseEnv.CLOUDGRID_ENABLE_RESILIENCE_CHAOS_TESTS === "true") {
+      await assertResilienceChaosScenarios({
+        bffPort,
+        natsUrl,
+        natsContainerName: externalInfra ? "" : `cloudgrid-${runID}-nats`,
+        storageWriteHealthPort,
+        storageReadHealthPort,
+        controlPlaneHealthPort,
+        otlpPort,
+      });
+    }
 
     console.log("Local integration checks passed.");
     console.log(
@@ -1015,13 +1028,51 @@ async function collect(stream, name, lines) {
   }
 }
 
-async function postTraceJson(port, fixture) {
+export function integrationFixtureBearerToken(env) {
+  const explicit =
+    stringsTrim(env.CLOUDGRID_PROJECT_API_KEY) || stringsTrim(env.CLOUDGRID_OTLP_BEARER_TOKEN);
+  if (explicit) {
+    return explicit;
+  }
+  const tokenMapSource = stringsTrim(env.CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS);
+  if (!tokenMapSource) {
+    return "";
+  }
+  let tokenMap;
+  try {
+    tokenMap = JSON.parse(tokenMapSource);
+  } catch {
+    throw new Error("CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS must be valid JSON for integration");
+  }
+  for (const [token, projectId] of Object.entries(tokenMap)) {
+    if (projectId === "default" && stringsTrim(token)) {
+      return stringsTrim(token);
+    }
+  }
+  throw new Error(
+    "CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS is configured but no token is mapped to default",
+  );
+}
+
+function stringsTrim(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function otlpHeaders(contentType, requestId, bearerToken) {
+  const headers = {
+    "content-type": contentType,
+    "x-request-id": requestId,
+  };
+  if (bearerToken) {
+    headers.authorization = `Bearer ${bearerToken}`;
+  }
+  return headers;
+}
+
+async function postTraceJson(port, fixture, bearerToken) {
   const response = await fetch(`http://127.0.0.1:${port}/v1/traces`, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-request-id": "integration-trace-json",
-    },
+    headers: otlpHeaders("application/json", "integration-trace-json", bearerToken),
     body: JSON.stringify(buildTraceJsonFixture(fixture)),
   });
   assert(
@@ -1030,13 +1081,10 @@ async function postTraceJson(port, fixture) {
   );
 }
 
-async function postLogProtobuf(port) {
+async function postLogProtobuf(port, bearerToken) {
   const response = await fetch(`http://127.0.0.1:${port}/v1/logs`, {
     method: "POST",
-    headers: {
-      "content-type": "application/x-protobuf",
-      "x-request-id": "integration-log-protobuf",
-    },
+    headers: otlpHeaders("application/x-protobuf", "integration-log-protobuf", bearerToken),
     body: protobufLogFixture,
   });
   assert(
@@ -1045,13 +1093,10 @@ async function postLogProtobuf(port) {
   );
 }
 
-async function postMetricJson(port, fixture) {
+async function postMetricJson(port, fixture, bearerToken) {
   const response = await fetch(`http://127.0.0.1:${port}/v1/metrics`, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-request-id": "integration-metric-json",
-    },
+    headers: otlpHeaders("application/json", "integration-metric-json", bearerToken),
     body: JSON.stringify(buildMetricJsonFixture(fixture)),
   });
   assert(
@@ -1060,18 +1105,50 @@ async function postMetricJson(port, fixture) {
   );
 }
 
-async function postGeneratedFixtures(port) {
-  const requests = buildFixtureRequests({
-    endpoint: `http://127.0.0.1:${port}`,
-    fixtureSet: "generated",
-    format: "json",
-    signal: "all",
-    seedContext: createSeedRunContext(),
-    token: null,
-  });
+async function postGeneratedFixtures(port, bearerToken) {
+  const requests = buildGeneratedIntegrationFixtureRequests(
+    `http://127.0.0.1:${port}`,
+    bearerToken,
+    { ...createSeedRunContext(), pointCount: 3 },
+  );
   for (const request of requests) {
     await postFixture(request);
   }
+}
+
+export function buildGeneratedIntegrationFixtureRequests(endpoint, bearerToken, seedContext) {
+  return ["metrics", "logs", "traces"].flatMap((signal) =>
+    buildFixtureRequests({
+      endpoint,
+      fixtureSet: "generated",
+      format: "json",
+      signal,
+      seedContext,
+      token: bearerToken || null,
+    }),
+  );
+}
+
+async function assertBuiltinDashboardMetricDescriptors(port, from, to) {
+  const required = ["http.server.request.duration", "gen_ai.client.token.usage"];
+  await eventually(async () => {
+    const metricNames = await graphql(
+      port,
+      metricNamesOperation,
+      {
+        input: {
+          from,
+          to,
+          limit: 200,
+        },
+      },
+      "MetricNames",
+    );
+    const names = new Set(metricNames.data?.metricNames?.items?.map((item) => item.name) ?? []);
+    for (const metricName of required) {
+      assert(names.has(metricName), `generated fixture metric descriptor ${metricName} is missing`);
+    }
+  }, 30_000);
 }
 
 export function dashboardWidgetRuntimeRequests(dashboard, range) {
@@ -1195,6 +1272,7 @@ async function assertDashboardWidgetRuntimeScenario(
   port,
   { dashboardId, dashboardName, from, to },
 ) {
+  await assertBuiltinDashboardMetricDescriptors(port, from, to);
   const dashboards = await graphql(
     port,
     dashboardsOperation,
@@ -2323,10 +2401,10 @@ async function openLiveTraceSubscription(port, fixture) {
   };
 }
 
-async function assertCollectorProblem(port, scenario) {
+async function assertCollectorProblem(port, scenario, bearerToken) {
   const response = await fetch(`http://127.0.0.1:${port}${scenario.path}`, {
     method: "POST",
-    headers: { "content-type": scenario.contentType },
+    headers: otlpHeaders(scenario.contentType, "integration-collector-problem", bearerToken),
     body: scenario.body,
   });
   const body = await response.json();
@@ -2400,6 +2478,87 @@ async function assertDuplicateCommandDoesNotRewrite(natsUrl, bffPort) {
   } finally {
     await nc.drain();
   }
+}
+
+async function assertResilienceChaosScenarios({
+  bffPort,
+  natsUrl,
+  natsContainerName,
+  storageWriteHealthPort,
+  storageReadHealthPort,
+  controlPlaneHealthPort,
+  otlpPort,
+}) {
+  assert(
+    natsContainerName,
+    "CLOUDGRID_ENABLE_RESILIENCE_CHAOS_TESTS requires isolated Docker infrastructure",
+  );
+  console.log("Asserting resilience chaos scenarios...");
+
+  await assertJsonStatus(`http://127.0.0.1:${bffPort}/livez`, "ok");
+  await assertJsonStatus(`http://127.0.0.1:${storageWriteHealthPort}/livez`, "ok");
+  await assertJsonStatus(`http://127.0.0.1:${storageReadHealthPort}/livez`, "ok");
+  await assertJsonStatus(`http://127.0.0.1:${controlPlaneHealthPort}/livez`, "ok");
+  await assertJsonStatus(`http://127.0.0.1:${otlpPort}/livez`, "ok");
+
+  await dockerContainerCommand("pause", natsContainerName);
+  try {
+    await eventually(
+      () => assertHealthStatus(`http://127.0.0.1:${bffPort}/readyz`, "degraded"),
+      10_000,
+    );
+    await assertJsonStatus(`http://127.0.0.1:${bffPort}/livez`, "ok");
+    await assertJsonStatus(`http://127.0.0.1:${storageWriteHealthPort}/livez`, "ok");
+    await assertJsonStatus(`http://127.0.0.1:${storageReadHealthPort}/livez`, "ok");
+    await assertJsonStatus(`http://127.0.0.1:${controlPlaneHealthPort}/livez`, "ok");
+    await assertJsonStatus(`http://127.0.0.1:${otlpPort}/livez`, "ok");
+  } finally {
+    await dockerContainerCommand("unpause", natsContainerName);
+  }
+
+  await eventually(async () => {
+    await assertNatsReady(natsUrl);
+    await assertJsonStatus(`http://127.0.0.1:${bffPort}/readyz`, "ok");
+    await assertJsonStatus(`http://127.0.0.1:${storageWriteHealthPort}/readyz`, "ok");
+    await assertJsonStatus(`http://127.0.0.1:${storageReadHealthPort}/readyz`, "ok");
+    await assertJsonStatus(`http://127.0.0.1:${controlPlaneHealthPort}/readyz`, "ok");
+    await assertJsonStatus(`http://127.0.0.1:${otlpPort}/readyz`, "ok");
+  }, 20_000);
+
+  const viewer = await graphql(bffPort, viewerOperation, {}, "Viewer");
+  assert(viewer.data?.viewer?.user?.id === "local-user", "viewer failed after NATS recovery");
+  await assertMalformedPrivateNatsRequest(natsUrl, "control.viewer.get");
+  await assertMalformedPrivateNatsRequest(natsUrl, "telemetry.traces.search");
+  await assertJsonStatus(`http://127.0.0.1:${bffPort}/readyz`, "ok");
+}
+
+async function assertMalformedPrivateNatsRequest(natsUrl, subject) {
+  const { StringCodec, connect } = await loadNatsClient();
+  const sc = StringCodec();
+  const nc = await connect({ servers: natsUrl, name: "cloudgrid-integration-malformed-request" });
+  try {
+    const response = await nc.request(subject, sc.encode("{"), { timeout: 2_000 });
+    const body = JSON.parse(sc.decode(response.data));
+    assert(body.ok === false, `${subject} malformed request unexpectedly succeeded`);
+    assert(
+      body.error?.id === "ERR-001" || body.error?.code === "VALIDATION_FAILED",
+      `${subject} malformed request returned ${JSON.stringify(body.error)}`,
+    );
+  } finally {
+    await nc.drain();
+  }
+}
+
+async function dockerContainerCommand(command, name) {
+  const proc = Bun.spawn({
+    cmd: ["docker", command, name],
+    cwd: repoRoot,
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  const stderr = await new Response(proc.stderr).text();
+  const code = await proc.exited;
+  assert(code === 0, `docker ${command} ${name} failed: ${stderr}`);
 }
 
 function persistTraceCommand({
@@ -2521,6 +2680,21 @@ async function assertJsonStatus(url, expectedStatus) {
   assert(response.ok, `${url} returned ${response.status}`);
   const body = await response.json();
   assert(body.status === expectedStatus, `${url} status ${body.status}`);
+}
+
+async function assertHealthStatus(url, expectedStatus) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2_000);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    const body = await response.json();
+    assert(
+      body.status === expectedStatus,
+      `${url} status ${body.status}, want ${expectedStatus}`,
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function waitForSocketOpen(socket, timeoutMs) {

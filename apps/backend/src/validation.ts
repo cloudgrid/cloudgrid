@@ -562,7 +562,17 @@ const scorerKindSchema = z.enum([
   "composite",
 ]);
 const evalTargetKindSchema = z.enum(["agentRun", "span", "datasetItemRun"]);
-const experimentRunStatusSchema = z.enum(["queued", "running", "cancelled", "failed", "finished"]);
+const experimentRunStatusSchema = z.enum([
+  "queued",
+  "running",
+  "pausing",
+  "paused",
+  "resuming",
+  "cancelling",
+  "cancelled",
+  "failed",
+  "completed",
+]);
 const annotationStatusSchema = z.enum(["open", "in_review", "resolved", "dismissed"]);
 const optimizerKindSchema = z.enum(["bootstrap_fewshot", "critic_mutate_judge_pick"]);
 const evalSolverKindSchema = z.enum(["prompt", "agent", "workflow", "skill", "tool"]);
