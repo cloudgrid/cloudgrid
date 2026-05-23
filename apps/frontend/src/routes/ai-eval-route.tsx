@@ -3442,28 +3442,124 @@ function buildScorerDefinition({
   threshold: string;
 }): JSONValue {
   const expected = coerceScorerExpectedValue(expectedValue, expectedValueType);
+  const requirements = scorerRequirementsForTemplate(template);
+  const actualPath = scorerFieldToJsonPointer(matchField);
+  const expectedPath = "/expected/answer";
   if (template === "exact") {
-    return { type: "exact_match", field: matchField.trim(), expected };
+    return {
+      type: "exact_match",
+      resultKind: "deterministic",
+      requirements,
+      expectedPath,
+      actualPath,
+      caseSensitive: true,
+    };
   }
   if (template === "json_schema") {
-    return { type: "json_schema", schemaRef: schemaName.trim() };
+    return {
+      type: "json_schema",
+      resultKind: "json_schema",
+      requirements,
+      actualPath,
+      schema: {
+        title: schemaName.trim() || "Expected answer",
+        type: "object",
+        additionalProperties: true,
+      },
+    };
   }
   if (template === "semantic") {
     return {
       type: "semantic_similarity",
-      field: matchField.trim(),
-      expected,
+      resultKind: "semantic_similarity",
+      requirements,
+      expectedPath,
+      actualPath,
+      embeddingModelAlias: "default-embedding",
       threshold: Number.parseFloat(threshold) || 0.8,
     };
   }
   if (template === "llm_judge") {
     return {
       type: "llm_judge",
-      providerAlias: providerAlias.trim(),
-      rubric: rubric.trim(),
+      resultKind: "llm_judge",
+      requirements,
+      judgeModelAlias: providerAlias.trim() || "default-judge",
+      rubric: [
+        {
+          name: "overall",
+          description: rubric.trim() || "Answer is correct, complete, and grounded.",
+          weight: 1,
+        },
+      ],
+      facts: [
+        {
+          id: "expected-answer",
+          text:
+            typeof expected === "string" && expected.trim() ? expected.trim() : "Expected answer",
+          importance: "primary",
+        },
+      ],
     };
   }
-  return { type: "contains", field: matchField.trim(), expected };
+  return {
+    type: "contains",
+    resultKind: "deterministic",
+    requirements,
+    actualPath,
+    value: String(expectedValue || expected || "ok"),
+    caseSensitive: false,
+  };
+}
+
+function scorerRequirementsForTemplate(template: ScorerTemplateId): Record<string, JSONValue> {
+  if (template === "llm_judge") {
+    return {
+      executionLocation: "model_backed_harness",
+      contentClass: "dataset_content",
+      latencyClass: "batch",
+      costClass: "medium",
+      allowedRunModes: ["offline_experiment", "optimization", "ci_regression_gate"],
+    };
+  }
+  if (template === "semantic") {
+    return {
+      executionLocation: "harness_scorer",
+      contentClass: "dataset_content",
+      latencyClass: "batch",
+      costClass: "low",
+      allowedRunModes: ["offline_experiment", "optimization", "ci_regression_gate"],
+    };
+  }
+  return {
+    executionLocation: "local_deterministic",
+    contentClass: "dataset_content",
+    latencyClass: "inline",
+    costClass: "free",
+    allowedRunModes: [
+      "offline_experiment",
+      "optimization",
+      "continuous_measurement",
+      "dataset_backfill",
+      "ci_regression_gate",
+      "realtime_alerting",
+    ],
+  };
+}
+
+function scorerFieldToJsonPointer(field: string): string {
+  const normalized = field.trim();
+  if (!normalized) {
+    return "/output/answer";
+  }
+  if (normalized.startsWith("/")) {
+    return normalized;
+  }
+  return `/${normalized
+    .split(".")
+    .filter(Boolean)
+    .map((part) => part.replaceAll("~", "~0").replaceAll("/", "~1"))
+    .join("/")}`;
 }
 
 function coerceScorerExpectedValue(value: string, valueType: ScorerExpectedValueType): JSONValue {
@@ -3491,19 +3587,24 @@ function describeScorerDefinition(scorer: Scorer) {
   }
   const record = definition as Record<string, unknown>;
   if (record.type === "contains") {
-    return `${String(record.field ?? "field")} contains ${String(record.expected ?? "value")}`;
+    return `${String(record.actualPath ?? "field")} contains ${String(record.value ?? "value")}`;
   }
   if (record.type === "exact_match") {
-    return `${String(record.field ?? "field")} equals ${String(record.expected ?? "value")}`;
+    return `${String(record.actualPath ?? "field")} equals ${String(record.expectedPath ?? "expected")}`;
   }
   if (record.type === "json_schema") {
-    return `Schema ${String(record.schemaRef ?? "configured")}`;
+    const schema = record.schema;
+    const schemaName =
+      schema && typeof schema === "object" && !Array.isArray(schema)
+        ? String((schema as Record<string, unknown>).title ?? "configured")
+        : "configured";
+    return `Schema ${schemaName}`;
   }
   if (record.type === "semantic_similarity") {
     return `Semantic match at ${String(record.threshold ?? "threshold")}`;
   }
   if (record.type === "llm_judge") {
-    return `Judge rubric via ${String(record.providerAlias ?? "provider")}`;
+    return `Judge rubric via ${String(record.judgeModelAlias ?? "provider")}`;
   }
   return scorer.kind;
 }

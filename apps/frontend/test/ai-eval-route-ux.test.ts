@@ -113,6 +113,12 @@ describe("AI Eval route UX migration", () => {
     expect(routeSource).toContain("scorerMatchFields");
     expect(routeSource).toContain("Value type");
     expect(routeSource).toContain("Expected value");
+    expect(routeSource).toContain("resultKind");
+    expect(routeSource).toContain("scorerRequirementsForTemplate");
+    expect(routeSource).toContain("scorerFieldToJsonPointer");
+    expect(routeSource).toContain("actualPath");
+    expect(routeSource).toContain("expectedPath");
+    expect(routeSource).toContain("judgeModelAlias");
     expect(routeSource).not.toContain("Definition JSON");
     expect(routeSource).toContain("CreateExperimentDialog");
     expect(routeSource).toContain("telemetryClient.createExperiment");
