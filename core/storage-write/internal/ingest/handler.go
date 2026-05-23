@@ -51,6 +51,9 @@ func HandleMessage(ctx context.Context, msg Message, store ports.TelemetryWriteS
 }
 
 func HandleMessageWithMetrics(ctx context.Context, msg Message, store ports.TelemetryWriteStore, publisher ports.TraceNotificationPublisher, logger *slog.Logger, now func() time.Time, recorder MetricsRecorder) {
+	if isSelfObservabilityIngestMessage(msg.Subject(), msg.Data()) {
+		recorder = nil
+	}
 	recorder = metricsRecorderOrNoop(recorder)
 	start := now()
 	subject := msg.Subject()

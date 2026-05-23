@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
 	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/selfobs"
 	"github.com/cloudgrid-dev/cloudgrid/core/storage-write/internal/ports"
 	"log/slog"
@@ -78,6 +79,10 @@ func (recorder *InMemoryTraceLogRecorder) Snapshot() TraceLogSnapshot {
 }
 
 func HandleMessageWithSelfObservability(ctx context.Context, msg Message, store ports.TelemetryWriteStore, publisher ports.TraceNotificationPublisher, logger *slog.Logger, now func() time.Time, metricsRecorder MetricsRecorder, traceLogRecorder TraceLogRecorder) {
+	if isSelfObservabilityIngestMessage(msg.Subject(), msg.Data()) {
+		HandleMessageWithMetrics(ctx, msg, store, publisher, logger, now, nil)
+		return
+	}
 	if traceLogRecorder == nil {
 		HandleMessageWithMetrics(ctx, msg, store, publisher, logger, now, metricsRecorder)
 		return
@@ -140,4 +145,66 @@ func (message *selfObservabilityMessage) Ack() error {
 func (message *selfObservabilityMessage) NakWithDelay(delay time.Duration) error {
 	message.naked = true
 	return message.Message.NakWithDelay(delay)
+}
+
+func isSelfObservabilityIngestMessage(subject string, data []byte) bool {
+	switch subject {
+	case TraceSubject, LogSubject:
+		command, err := decodeCommand(data)
+		if err != nil {
+			return false
+		}
+		return isSelfObservabilityTelemetryCommand(command)
+	case MetricSubject:
+		command, err := decodeMetricsCommand(data)
+		if err != nil {
+			return false
+		}
+		return isSelfObservabilityMetricsCommand(command)
+	default:
+		return false
+	}
+}
+
+func isSelfObservabilityTelemetryCommand(command contracts.PersistTelemetryCommand) bool {
+	for _, trace := range command.Traces {
+		if hasSelfObservabilityAttribute(trace.Attributes) {
+			return true
+		}
+	}
+	for _, span := range command.Spans {
+		if hasSelfObservabilityAttribute(span.Attributes) {
+			return true
+		}
+	}
+	for _, log := range command.Logs {
+		if hasSelfObservabilityAttribute(log.Attributes) {
+			return true
+		}
+	}
+	return false
+}
+
+func isSelfObservabilityMetricsCommand(command contracts.PersistMetricsCommand) bool {
+	for _, point := range command.Points {
+		if hasSelfObservabilityAttribute(point.Attributes) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasSelfObservabilityAttribute(attributes contracts.Attributes) bool {
+	if attributes == nil {
+		return false
+	}
+	for _, key := range []string{
+		"cloudgrid.self_observability.project_id",
+		"cloudgrid.self_observability.company_id",
+	} {
+		if _, ok := attributes[key]; ok {
+			return true
+		}
+	}
+	return false
 }
