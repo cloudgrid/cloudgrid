@@ -1,6 +1,6 @@
 ---
 name: cloudgrid-ai-eval-investigation
-description: Explains, configures, uses, and investigates CloudGrid AI Eval datasets, dataset candidates, scorers, experiments, run controls, result analytics, optimization, and production quality. Use when the user asks how to set up AI Eval, create or manage datasets/scorers/evals, interpret product-quality results, troubleshoot runs, or change AI Eval behavior without drifting from specs.
+description: Explains, configures, uses, and investigates CloudGrid AI Eval datasets, dataset candidates, scorers, experiments, run controls, result analytics, optimization, and production quality. Use when the user asks how to set up AI Eval, create or manage datasets/scorers/evals, interpret product-quality results, troubleshoot runs, or change AI Eval behavior without drifting from implemented contracts.
 ---
 
 # CloudGrid AI Eval
@@ -12,22 +12,18 @@ privacy-safe investigation.
 
 ## Source Order
 
-Read only what the task needs. Specs are authoritative for implementation;
-website docs are the user-facing explanation.
+Read only what the task needs. Website docs are the user-facing explanation;
+generated contracts and source ownership are the implementation guardrails.
 
 1. User docs: `website/src/content/handbook/guides/ai-eval.md`.
-2. Product and UI: `specs/01-domains/ai-eval.md`,
-   `specs/05-frontend/ai-eval-views.md`,
-   `specs/05-frontend/ai-eval-ux-concept.md`.
-3. Backend: `specs/04-backend/ai-eval-runner.md`,
-   `specs/04-backend/ai-eval-query-semantics.md`,
-   `specs/04-backend/ai-eval-message-contracts.md`,
-   `specs/04-backend/ai-runtime-structure.md`.
-4. Contracts: `specs/03-contracts/graphql/public-schema.graphql`,
-   `specs/03-contracts/messages/message-bridge.asyncapi.yaml`,
-   `specs/03-contracts/errors.yaml`.
+2. Frontend: `apps/frontend/src/routes/ai-eval-route.tsx`.
+3. BFF and public client: `apps/backend/src`, `apps/packages/public-api-client`,
+   and `apps/packages/ui-contracts`.
+4. Private services: `core/storage-read`, `core/storage-write`,
+   `core/ai-eval-runner`, and `core/go-contracts`.
+5. Harness adapter: `apps/packages/cloudgrid-harness-adapter`.
 
-If the behavior is not specified, update the relevant spec first. Do not invent
+If behavior is not documented or implemented, report it as a product gap. Do not invent
 GraphQL fields, runner endpoints, harness adapter fields, NATS subjects,
 scorer statuses, optimization states, or error codes.
 
@@ -66,7 +62,7 @@ scorer statuses, optimization states, or error codes.
 
 ## Implementation Checklist
 
-1. Read the relevant source docs and specs.
+1. Read the relevant docs, generated contracts, and source files.
 2. Identify the owner: contracts, storage-write, storage-read, runner,
    harness adapter, BFF, frontend, public API client, docs, or integration.
 3. Add or update tests before implementation when behavior changes.

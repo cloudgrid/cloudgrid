@@ -6,26 +6,16 @@ description: Use when creating, validating, reviewing, or rendering CloudGrid AI
 # CloudGrid JSON-Render Artifacts
 
 Use this skill when working on AI Chat assistant rendering, json-render catalog
-specs, artifact validation, Markdown message rendering, action approval cards,
+artifacts, artifact validation, Markdown message rendering, action approval cards,
 Mermaid diagrams, trace waterfalls, metric charts, log lists, tables, diffs, or
 JSON trees.
 
 ## Source Order
 
-Read these before changing behavior:
+Read the AI Chat route, BFF artifact validation, generated contracts, public
+docs, and related tests before changing behavior.
 
-1. `specs/spec.md`
-2. `specs/00-conventions.md`
-3. `specs/04-backend/ai-chat.md`
-4. `specs/05-frontend/ai-chat-views.md`
-5. `specs/02-capabilities/ai-chat/use-ai-chat.md`
-6. `specs/02-flows/ai-chat/chat-run.md`
-7. `specs/03-contracts/entities/ai/ai-chat.schema.json`
-8. `specs/03-contracts/entities/ai/ai-chat-stream.schema.json`
-9. `specs/03-contracts/graphql/public-schema.graphql`
-10. `specs/03-contracts/errors.yaml`
-
-If the behavior is not specified, update the relevant spec first. Do not invent
+If the behavior is not documented or implemented, report it as a product gap. Do not invent
 renderer keys, artifact action handlers, executable UI schemas, route actions,
 or error codes.
 
@@ -50,7 +40,7 @@ or error codes.
 ## Boundaries
 
 - Frontend renders BFF-validated artifacts only.
-- BFF validates render specs before streaming or persisting them.
+- BFF validates render artifacts before streaming or persisting them.
 - AI Chat tools and sandbox scripts may prepare data but must not call
   SurrealDB, NATS, model providers, arbitrary URLs, host paths, or frontend
   mutation shortcuts.
@@ -60,7 +50,7 @@ or error codes.
 
 ## Working Checklist
 
-1. Read the AI Chat backend, frontend, capability, and flow specs.
+1. Read the AI Chat backend, frontend, generated contract, and public docs.
 2. Choose an approved renderer key for every structured output.
 3. Keep Markdown for explanation and json-render artifacts for evidence.
 4. Validate size caps, row caps, chart point caps, and route-link approval in

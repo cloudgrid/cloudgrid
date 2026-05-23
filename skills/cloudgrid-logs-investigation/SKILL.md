@@ -11,22 +11,10 @@ clusters, or log evidence artifacts.
 
 ## Source Order
 
-Read these before changing behavior:
+Read the current route, public docs, generated contracts, and owning service code
+before changing behavior.
 
-1. `specs/spec.md`
-2. `specs/00-conventions.md`
-3. `specs/04-backend/backend-architecture.md`
-4. `specs/04-backend/ai-chat.md`
-5. `specs/04-backend/ai-runtime-structure.md`
-6. `specs/04-backend/log-ingestion-boundary.md`
-7. `specs/05-frontend/ai-chat-views.md`
-8. `specs/05-frontend/logs-metrics-dashboards-ux-concept.md`
-9. `specs/02-flows/ai-chat/chat-run.md`
-10. `specs/03-contracts/graphql/public-schema.graphql`
-11. `specs/03-contracts/messages/message-bridge.asyncapi.yaml`
-12. `specs/03-contracts/errors.yaml`
-
-If the behavior is not specified, update the relevant spec first. Do not invent
+If the behavior is not documented or implemented, report it as a product gap. Do not invent
 GraphQL fields, routes, log filters, NATS subjects, storage fields, or error
 codes.
 
@@ -57,7 +45,7 @@ codes.
 
 ## Working Checklist
 
-1. Read the source specs for the log route, tool, or contract being touched.
+1. Read the log route, tool, generated contract, or service code being touched.
 2. Confirm whether the change belongs in frontend presentation, BFF mapping, or
    storage-read query semantics.
 3. Use CloudGrid GraphQL or AI Chat read tools, never direct storage access.

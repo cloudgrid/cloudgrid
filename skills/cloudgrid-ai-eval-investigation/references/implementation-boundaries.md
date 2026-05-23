@@ -7,8 +7,8 @@ belongs in a specific service.
 
 | Surface | Owner | Notes |
 | --- | --- | --- |
-| GraphQL SDL | `specs/03-contracts/graphql/public-schema.graphql` | Public BFF contract |
-| Message subjects | `specs/03-contracts/messages/message-bridge.asyncapi.yaml` | NATS request/reply and progress contracts |
+| GraphQL operations and generated types | `apps/packages/public-api-client`, `apps/packages/ui-contracts` | Public BFF contract |
+| Message subjects and Go structs | `core/go-contracts` plus BFF bridge code | NATS request/reply and progress contracts |
 | UI contracts | `apps/packages/ui-contracts` | Generated/typed frontend view models |
 | Go contracts | `core/go-contracts` | Shared request/response structs |
 | BFF GraphQL | `apps/backend` | Validates inputs, routes to approved NATS subjects |

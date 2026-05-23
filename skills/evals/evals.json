@@ -8,7 +8,7 @@
       "files": [],
       "assertions": [
         "Mentions deploy/compose/cloudgrid-local.sh",
-        "Mentions release Compose or specs/06-nfr/release-distribution.md",
+        "Mentions release Compose docs or deploy/compose files",
         "Does not recommend mutable latest image tags",
         "Includes a verification step"
       ]
@@ -16,11 +16,11 @@
     {
       "id": 2,
       "prompt": "We need GitHub SSO plus SMTP invites in deployed mode. Check what env vars are valid and explain the onboarding flow without inventing magic links.",
-      "expected_output": "Uses cloudgrid-setup-configuration, reads runtime and invitation specs, explains SSO identity plus invite acceptance, and names only specified env vars.",
+      "expected_output": "Uses cloudgrid-setup-configuration, reads runtime and invitation docs/code, explains SSO identity plus invite acceptance, and names only implemented env vars.",
       "files": [],
       "assertions": [
-        "Mentions specs/04-backend/runtime-configuration.md",
-        "Mentions specs/04-backend/organization-invitations.md or invitation-email-delivery.md",
+        "Mentions checked-in environment variable docs or runtime validation",
+        "Mentions invitation lifecycle or SMTP invitation email docs",
         "Does not invent undocumented environment variables",
         "Does not invent magic-link behavior"
       ]
@@ -40,10 +40,10 @@
     {
       "id": 4,
       "prompt": "Add a new dashboard widget backed by public GraphQL and make sure the frontend and integration scenarios don't drift.",
-      "expected_output": "Uses cloudgrid-observability-ui and cloudgrid-extension-development, updates specs/contracts first if needed, uses public API client operations, and requires contracts:check.",
+      "expected_output": "Uses cloudgrid-observability-ui and cloudgrid-extension-development, updates contracts/docs first if needed, uses public API client operations, and requires contracts:check.",
       "files": [],
       "assertions": [
-        "Mentions specs before implementation for missing behavior",
+        "Reports missing behavior as a product gap before implementation",
         "Mentions public GraphQL schema or generated UI contracts",
         "Mentions public API client or integration scenarios",
         "Requires bun run contracts:check"
@@ -52,10 +52,10 @@
     {
       "id": 5,
       "prompt": "Our release workflow failed while building Docker images. Review what should be produced for a release and what checks to run before we retry.",
-      "expected_output": "Uses cloudgrid-operations-maintenance, follows release-distribution spec, checks image/artifact requirements, and uses release validation without adding long-lived registry secrets.",
+      "expected_output": "Uses cloudgrid-operations-maintenance, follows release docs and workflow files, checks image/artifact requirements, and uses release validation without adding long-lived registry secrets.",
       "files": [],
       "assertions": [
-        "Mentions specs/06-nfr/release-distribution.md",
+        "Mentions release docs, deploy files, or release workflow files",
         "Mentions release artifact or Docker image validation",
         "Mentions bun run release:validate",
         "Does not add long-lived registry secrets"
@@ -89,11 +89,11 @@
     {
       "id": 8,
       "prompt": "I want to add a new AI Chat tool that reads telemetry and a new specialist skill for it. Outline the source files and checks without adding a generic GraphQL tool.",
-      "expected_output": "Uses cloudgrid-ai-chat-operations, reads AI Chat runtime and implementation contract specs, keeps telemetry semantics in storage-read, updates the runtime catalog and skill evals, and requires contracts and skills checks.",
+      "expected_output": "Uses cloudgrid-ai-chat-operations, reads AI Chat runtime code and generated contracts, keeps telemetry semantics in storage-read, updates the runtime catalog and skill evals, and requires contracts and skills checks.",
       "files": [],
       "assertions": [
-        "Mentions specs/04-backend/ai-chat.md",
-        "Mentions specs/04-backend/ai-chat-implementation-contract.md",
+        "Mentions AI Chat route, BFF code, or public docs",
+        "Mentions generated contracts or public API client operations",
         "Rejects a generic GraphQL tool",
         "Keeps telemetry query semantics in storage-read",
         "Mentions bun run contracts:check and bun run skills:check"
@@ -102,7 +102,7 @@
     {
       "id": 9,
       "prompt": "Explain how a project admin should enable AI Eval, create a dataset, add candidates and scorers, run an experiment, and use production quality monitoring without leaking provider secrets or inventing unsupported alerting.",
-      "expected_output": "Uses cloudgrid-ai-eval-investigation, follows the website AI Eval guide and specs, explains the setup-to-run workflow, names production quality as monitoring rather than realtime alerting, and keeps secrets private.",
+      "expected_output": "Uses cloudgrid-ai-eval-investigation, follows the website AI Eval guide and implemented contracts, explains the setup-to-run workflow, names production quality as monitoring rather than realtime alerting, and keeps secrets private.",
       "files": [],
       "assertions": [
         "Mentions website/src/content/handbook/guides/ai-eval.md",

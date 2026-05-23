@@ -11,23 +11,10 @@ group-by analysis, aggregation compatibility, or exemplar pivots.
 
 ## Source Order
 
-Read these before changing behavior:
+Read the current route, public docs, generated contracts, and owning service code
+before changing behavior.
 
-1. `specs/spec.md`
-2. `specs/00-conventions.md`
-3. `specs/04-backend/backend-architecture.md`
-4. `specs/04-backend/ai-chat.md`
-5. `specs/04-backend/metrics-signal.md`
-6. `specs/05-frontend/ai-chat-views.md`
-7. `specs/05-frontend/logs-metrics-dashboards-ux-concept.md`
-8. `specs/02-capabilities/metrics/query-metrics.md`
-9. `specs/02-flows/metrics/dashboard-query.md`
-10. `specs/02-flows/ai-chat/chat-run.md`
-11. `specs/03-contracts/graphql/public-schema.graphql`
-12. `specs/03-contracts/messages/message-bridge.asyncapi.yaml`
-13. `specs/03-contracts/errors.yaml`
-
-If the behavior is not specified, update the relevant spec first. Do not invent
+If the behavior is not documented or implemented, report it as a product gap. Do not invent
 GraphQL fields, metric aggregations, rollups, grouping rules, NATS subjects, or
 error codes.
 
@@ -37,7 +24,7 @@ error codes.
   Datadog, Jaeger, Zipkin, Prometheus, or another external product when
   CloudGrid has the project data.
 - Use `telemetry.queryMetrics` in AI Chat and `Query.metricSeries` or the
-  spec-approved rich metric query path in BFF/frontend work.
+  approved rich metric query path in BFF/frontend work.
 - Use `metric_timeseries`, `metric_bar`, `table`, `key_value`, and
   `status_summary` json-render artifacts for assistant evidence.
 - Store large tool results as bounded sandbox JSON or JSONL files and pass only
@@ -59,7 +46,8 @@ error codes.
 
 ## Working Checklist
 
-1. Read the source specs for the metric surface being touched.
+1. Read the route, generated contract, or service code for the metric surface
+   being touched.
 2. Identify whether the change is metric semantics, BFF mapping, frontend
    rendering, dashboard composition, or AI Chat artifact output.
 3. Keep query semantics in storage-read and UI behavior in frontend.

@@ -6,26 +6,23 @@ description: Operates, documents, verifies, or extends CloudGrid AI Chat provide
 # CloudGrid AI Chat Operations
 
 Use this skill for AI Chat setup, operations, documentation, and focused
-extension work. Keep answers grounded in specs and checked-in docs.
+extension work. Keep answers grounded in checked-in docs, source code, and
+generated contracts.
 
 ## Source Order
 
 Read only what the task needs:
 
-1. `specs/spec.md`
-2. `specs/04-backend/ai-chat.md`
-3. `specs/04-backend/ai-provider-settings.md`
-4. `specs/04-backend/ai-runtime-structure.md`
-5. `specs/04-backend/ai-chat-implementation-contract.md`
-6. `specs/05-frontend/ai-chat-views.md`
-7. `specs/02-capabilities/ai-chat/use-ai-chat.md`
-8. `specs/02-flows/ai-chat/chat-run.md`
-9. `specs/02-flows/ai-chat/action-approval.md`
-10. `specs/02-flows/ai-chat/conversation-compaction.md`
-11. `website/src/content/handbook/guides/ai-chat.md`
-12. `skills/README.md`
+1. `website/src/content/handbook/guides/ai-chat.md`
+2. `website/src/content/handbook/configuration/deployed/provider-secrets.md`
+3. `apps/frontend/src/routes/ai-chat-route.tsx`
+4. `apps/frontend/src/routes/control-plane-routes.tsx`
+5. `apps/backend/src`
+6. `apps/packages/public-api-client`
+7. `apps/packages/ui-contracts`
+8. `skills/README.md`
 
-If behavior is not specified, update the relevant spec first. Do not invent
+If behavior is not documented or implemented, report it as a product gap. Do not invent
 routes, provider kinds, tool IDs, renderer keys, action kinds, environment
 variables, retry rules, or error codes.
 
@@ -43,7 +40,8 @@ variables, retry rules, or error codes.
   harness adapters are installed and registered.
 - Local bootstrap uses `CLOUDGRID_AI_CHAT_PROVIDER_KIND`,
   `CLOUDGRID_AI_CHAT_MODEL`, `CLOUDGRID_AI_CHAT_CREDENTIAL_REF`, and the
-  provider-specific metadata variables defined in the provider settings spec.
+  provider-specific metadata variables in checked-in environment docs and
+  runtime validation.
 
 ## Runtime Boundaries
 
@@ -83,7 +81,7 @@ variables, retry rules, or error codes.
 - Trusted `cloudgrid-json-render:<renderer>` fenced blocks are transcript
   serialization only when backed by persisted BFF artifact parts.
 - Action approval must use server-issued `AiChatActionProposal` IDs and the
-  allowlisted action kinds in `ai-chat.md`.
+  allowlisted action kinds implemented by the BFF.
 - Secret-returning actions are excluded from AI Chat v1.
 
 ## Related Skills
@@ -118,5 +116,4 @@ bun run skills:check
 ```
 
 For AI Chat contract or implementation changes, add the mandatory checks from
-`specs/04-backend/ai-chat-implementation-contract.md`, including
-`bun run contracts:check`.
+the touched surface, including `bun run contracts:check`.

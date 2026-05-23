@@ -53,7 +53,8 @@ The runner calls the trusted-network harness adapter over HTTP:
 - `GET /v1/agents`
 
 The sandbox profile for v1 AI Eval is ephemeral. Durable replay is out of
-scope for v1 and must not be described as enabled unless the specs change.
+scope for v1 and must not be described as enabled unless product behavior
+changes.
 
 ## Safe Defaults
 

@@ -6,25 +6,23 @@ description: Sets up and configures CloudGrid local and deployed runtimes. Use w
 # CloudGrid Setup And Configuration
 
 Use this skill for setup and runtime configuration tasks. Keep the work grounded
-in specs and checked-in deployment files; do not invent environment variables or
-operator behavior.
+in checked-in handbook pages, runtime validation code, and deployment files; do
+not invent environment variables or operator behavior.
 
 ## Source Order
 
 Read only the files needed for the requested setup path:
 
-1. `specs/spec.md`
-2. `specs/04-backend/runtime-configuration.md`
-3. `specs/04-backend/authentication-authorization.md` for SSO/session work
-4. `specs/04-backend/organization-invitations.md` for invite lifecycle work
-5. `specs/04-backend/invitation-email-delivery.md` for SMTP/email work
-6. `specs/04-backend/self-observability.md` for self-observability
-7. `specs/06-nfr/release-distribution.md` for release Compose, Docker, Helm, and tags
-8. `deploy/compose/cloudgrid-local.sh`, `deploy/compose/cloudgrid.compose.yaml`, and `deploy/compose/cloudgrid.env.example` for released local runtime
-9. `website/src/content/handbook/configuration/` and `website/src/content/handbook/getting-started/` when public docs need updates
+1. `website/src/content/handbook/getting-started/`
+2. `website/src/content/handbook/configuration/`
+3. `website/src/content/handbook/reference/environment-variables.md`
+4. `.env.example` and `apps/packages/definition/src/index.ts`
+5. `deploy/compose/cloudgrid-local.sh`, `deploy/compose/cloudgrid.compose.yaml`, and `deploy/compose/cloudgrid.env.example`
+6. `tooling/scripts/setup-local.mjs` and `tooling/scripts/dev-all.mjs`
+7. `compose.yaml` for source development infrastructure
 
 If a needed config key, auth mode, setup path, or validation rule is missing,
-update the spec before implementing or documenting it.
+report it as a product gap before implementing or documenting it.
 
 ## Choose The Setup Path
 
@@ -63,7 +61,7 @@ bun run dev:all
 
 1. Use `deploy/compose/cloudgrid-local.sh` as the single local release entrypoint.
 2. Keep `deploy/compose/cloudgrid.env.example` explicit and versioned. Do not
-   switch examples to mutable `latest` unless the release spec changes.
+   switch examples to mutable `latest` unless release policy changes.
 3. Run or document:
 
 ```sh
@@ -73,7 +71,7 @@ cd deploy/compose
 ./cloudgrid-local.sh down
 ```
 
-4. Keep NATS and SurrealDB private to the compose network unless a spec says
+4. Keep NATS and SurrealDB private to the compose network unless product docs say
    otherwise.
 5. Verify compose file changes with `bun run release:validate`.
 
@@ -100,8 +98,8 @@ CLOUDGRID_INVITATION_EMAIL_REQUIRE_DELIVERY=true
 ```
 
 For GitHub, Google, or Azure, use only the provider variables defined in
-`runtime-configuration.md`. Do not add magic-link, password-login, invite-token,
-SCIM, or provider-directory sync behavior unless the specs add it.
+checked-in runtime validation and environment reference docs. Do not add magic-link, password-login, invite-token,
+SCIM, or provider-directory sync behavior unless product behavior adds it.
 
 ## SMTP Invitation Email
 
@@ -119,7 +117,7 @@ invitation creation must fail when outbox state cannot be durably recorded.
 
 Before finishing:
 
-1. Confirm every env var exists in the runtime config spec.
+1. Confirm every env var exists in runtime validation and environment docs.
 2. Confirm docs and examples use the single intended setup path for the scenario.
 3. Confirm no full token, SMTP password, session secret, provider secret, or
    SurrealDB credential appears in output.

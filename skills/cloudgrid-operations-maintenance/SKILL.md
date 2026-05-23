@@ -11,15 +11,13 @@ reviewing production readiness.
 
 ## Source Order
 
-1. `specs/spec.md`
-2. `specs/04-backend/backend-architecture.md`
-3. `specs/04-backend/runtime-configuration.md`
-4. `specs/06-nfr/release-distribution.md`
-5. `specs/06-nfr/integration-test-suite.md`
-6. `specs/04-backend/data-retention-policy.md` for retention
-7. `specs/04-backend/alerting.md` for alerting
-8. `website/src/content/handbook/operations/`, `website/src/content/handbook/reference/commands.md`, and `website/src/content/handbook/reference/ports.md`
-9. `.github/workflows/verify.yml`, `.github/workflows/release.yml`, `deploy/`, and `charts/`
+1. `website/src/content/handbook/operations/`
+2. `website/src/content/handbook/reference/commands.md`
+3. `website/src/content/handbook/reference/ports.md`
+4. `website/src/content/handbook/reference/environment-variables.md`
+5. `.github/workflows/verify.yml` and `.github/workflows/release.yml`
+6. `deploy/`, `charts/`, `.env.example`, and `compose.yaml`
+7. Runtime entrypoints and health handlers in the owning service directory
 
 If behavior is not specified, report it as an operational gap instead of
 inventing a workaround.
@@ -32,7 +30,7 @@ inventing a workaround.
    private service readiness.
 4. Follow the service boundary. Do not debug by adding public NATS, public
    SurrealDB, direct frontend storage calls, or BFF telemetry aggregation.
-5. Map failures to canonical errors from `specs/03-contracts/errors.yaml`.
+5. Map failures to canonical errors returned by the owning service.
 6. Verify with the narrowest command that proves the fix.
 
 ## Common Commands
@@ -91,13 +89,12 @@ Release work must preserve:
 - BFF as the only image containing built frontend assets;
 - non-root hardened runtime images;
 - immutable release and commit tags;
-- no mutable `latest` in beta examples unless the release spec changes;
+- no mutable `latest` in beta examples unless release policy changes;
 - signed checksums, SBOM/provenance, vulnerability reports, and release manifest
   in the workflow.
 
 GitHub Actions should use the repository token or OIDC where available. Do not
-add long-lived registry credentials unless the release spec and repository
-secrets policy change.
+add long-lived registry credentials unless repository secrets policy changes.
 
 ## Retention And Alerting Boundaries
 
@@ -109,8 +106,8 @@ Do not invent:
 - external notification adapters;
 - hidden alert widgets;
 - direct frontend rule execution;
-- broad storage deletes outside the retention spec;
-- scheduler behavior not covered by specs.
+- broad storage deletes outside the documented retention behavior;
+- scheduler behavior not covered by checked-in code or docs.
 
 ## Troubleshooting Checklist
 
@@ -122,5 +119,5 @@ Before finishing:
    exposed in logs, docs, generated files, or final output.
 4. Run focused checks first, then broader gates when shared code or contracts
    changed.
-5. If the issue is a documented production gap, say so and link the spec/doc
+5. If the issue is a documented production gap, say so and link the doc/source
    area instead of claiming it is implemented.
