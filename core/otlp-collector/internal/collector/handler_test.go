@@ -155,6 +155,52 @@ func TestTraceJSONDecodeNormalizePublishAndResponseEncoding(t *testing.T) {
 	}
 }
 
+func TestHTTPHandlerSuppressesRecursiveSelfObservabilityForSelfObservabilityPayloads(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		payload proto.Message
+	}{
+		{name: "traces", path: "/v1/traces", payload: selfObservabilityTraceRequest()},
+		{name: "logs", path: "/v1/logs", payload: selfObservabilityLogsRequest()},
+		{name: "metrics", path: "/v1/metrics", payload: selfObservabilityMetricsRequest()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			publisher := &recordingPublisher{}
+			metrics := NewInMemoryMetricsRecorder()
+			selfobs := NewInMemorySelfObservabilityRecorder()
+			handler := NewHandlerWithOptions(publisher, NewDiscardLogger(), HandlerOptions{
+				MetricsRecorder:   metrics,
+				SelfObservability: selfobs,
+			})
+
+			request := httptest.NewRequest(http.MethodPost, tt.path, bytes.NewReader(mustProtoJSON(t, tt.payload)))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("X-Request-Id", "req-selfobs-"+tt.name)
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d body = %s, want 200", response.Code, response.Body.String())
+			}
+			if publisher.callCount() != 1 {
+				t.Fatalf("publisher calls = %d, want 1", publisher.callCount())
+			}
+			if got := metrics.Records(); len(got) != 0 {
+				t.Fatalf("metrics = %#v, want no recursive collector metrics", got)
+			}
+			if got := selfobs.Spans(); len(got) != 0 {
+				t.Fatalf("spans = %#v, want no recursive collector spans", got)
+			}
+			if got := selfobs.Logs(); len(got) != 0 {
+				t.Fatalf("logs = %#v, want no recursive collector logs", got)
+			}
+		})
+	}
+}
+
 func TestTraceNormalizePreservesSpanLinksWithoutDirection(t *testing.T) {
 	publisher := &recordingPublisher{}
 	handler := NewHandler(publisher, NewDiscardLogger())
@@ -987,6 +1033,33 @@ func metricsRequest() *collectormetricspb.ExportMetricsServiceRequest {
 			}},
 		}},
 	}
+}
+
+func selfObservabilityTraceRequest() *collectortracepb.ExportTraceServiceRequest {
+	request := proto.Clone(traceRequest()).(*collectortracepb.ExportTraceServiceRequest)
+	request.ResourceSpans[0].Resource.Attributes = append(
+		request.ResourceSpans[0].Resource.Attributes,
+		stringAttr("cloudgrid.self_observability.project_id", "cloudgrid-system"),
+	)
+	return request
+}
+
+func selfObservabilityLogsRequest() *collectorlogspb.ExportLogsServiceRequest {
+	request := proto.Clone(logsRequest()).(*collectorlogspb.ExportLogsServiceRequest)
+	request.ResourceLogs[0].Resource.Attributes = append(
+		request.ResourceLogs[0].Resource.Attributes,
+		stringAttr("cloudgrid.self_observability.project_id", "cloudgrid-system"),
+	)
+	return request
+}
+
+func selfObservabilityMetricsRequest() *collectormetricspb.ExportMetricsServiceRequest {
+	request := proto.Clone(metricsRequest()).(*collectormetricspb.ExportMetricsServiceRequest)
+	request.ResourceMetrics[0].Resource.Attributes = append(
+		request.ResourceMetrics[0].Resource.Attributes,
+		stringAttr("cloudgrid.self_observability.project_id", "cloudgrid-system"),
+	)
+	return request
 }
 
 func ptrFloat64(value float64) *float64 {

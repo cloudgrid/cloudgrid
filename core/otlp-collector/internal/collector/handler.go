@@ -20,11 +20,14 @@ import (
 	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	collectormetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	collectortracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
 var errRequestBodyTooLarge = errors.New("request body exceeds configured limit")
+
+type suppressSelfObservabilityContextKey struct{}
 
 const (
 	SubjectTraceIngest        = "telemetry.ingest.traces"
@@ -70,10 +73,11 @@ type handler struct {
 
 type completionResponseWriter struct {
 	http.ResponseWriter
-	status    int
-	requestID string
-	errorID   string
-	errorCode string
+	status                    int
+	requestID                 string
+	errorID                   string
+	errorCode                 string
+	suppressSelfObservability bool
 }
 
 func (w *completionResponseWriter) WriteHeader(status int) {
@@ -183,8 +187,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(recorder, r)
 	}
-	h.recordHTTPSpan(r, recorder, start)
-	h.recordHTTPIngestMetrics(r, recorder, requestBodyBytes(r, bodyCounter))
+	if !recorder.suppressSelfObservability {
+		h.recordHTTPSpan(r, recorder, start)
+		h.recordHTTPIngestMetrics(r, recorder, requestBodyBytes(r, bodyCounter))
+	}
 	h.logCompletion(r, recorder, h.now().Sub(start))
 }
 
@@ -235,6 +241,11 @@ func (h *handler) handleTraces(w http.ResponseWriter, r *http.Request) {
 		h.writeProblem(w, r, decodeProblem(err.Error()))
 		return
 	}
+	publishContext := r.Context()
+	if traceRequestIsSelfObservability(&request) {
+		suppressCompletionSelfObservability(w)
+		publishContext = contextWithSuppressedSelfObservability(publishContext)
+	}
 	if problem := h.validateTraceCount(&request); problem != nil {
 		h.writeProblem(w, r, *problem)
 		return
@@ -245,12 +256,12 @@ func (h *handler) handleTraces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setCompletionRequestID(w, command.RequestID)
-	if err := h.publish(r.Context(), SubjectTraceIngest, command); err != nil {
+	if err := h.publish(publishContext, SubjectTraceIngest, command); err != nil {
 		h.writeProblem(w, r, messageBridgeProblem())
 		return
 	}
 	for _, projection := range ai.ExtractProjections(command.Spans, command.BridgeEnvelope, nil) {
-		if err := h.publishJSON(r.Context(), SubjectAIProjectionIngest, projection); err != nil {
+		if err := h.publishJSON(publishContext, SubjectAIProjectionIngest, projection); err != nil {
 			h.writeProblem(w, r, messageBridgeProblem())
 			return
 		}
@@ -286,6 +297,11 @@ func (h *handler) handleLogs(w http.ResponseWriter, r *http.Request) {
 		h.writeProblem(w, r, decodeProblem(err.Error()))
 		return
 	}
+	publishContext := r.Context()
+	if logRequestIsSelfObservability(&request) {
+		suppressCompletionSelfObservability(w)
+		publishContext = contextWithSuppressedSelfObservability(publishContext)
+	}
 	if problem := h.validateLogCount(&request); problem != nil {
 		h.writeProblem(w, r, *problem)
 		return
@@ -296,7 +312,7 @@ func (h *handler) handleLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setCompletionRequestID(w, command.RequestID)
-	if err := h.publish(r.Context(), SubjectLogIngest, command); err != nil {
+	if err := h.publish(publishContext, SubjectLogIngest, command); err != nil {
 		h.writeProblem(w, r, messageBridgeProblem())
 		return
 	}
@@ -331,6 +347,11 @@ func (h *handler) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		h.writeProblem(w, r, decodeProblem(err.Error()))
 		return
 	}
+	publishContext := r.Context()
+	if metricRequestIsSelfObservability(&request) {
+		suppressCompletionSelfObservability(w)
+		publishContext = contextWithSuppressedSelfObservability(publishContext)
+	}
 	if problem := h.validateMetricPointCount(&request); problem != nil {
 		h.writeProblem(w, r, *problem)
 		return
@@ -341,7 +362,7 @@ func (h *handler) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setCompletionRequestID(w, command.RequestID)
-	if err := h.publishJSON(r.Context(), SubjectMetricIngest, command); err != nil {
+	if err := h.publishJSON(publishContext, SubjectMetricIngest, command); err != nil {
 		h.writeProblem(w, r, messageBridgeProblem())
 		return
 	}
@@ -450,8 +471,10 @@ func (h *handler) publishJSON(ctx context.Context, subject string, command any) 
 	}
 	publishCtx = selfobs.ContextWithTraceContext(publishCtx, traceContext)
 	err = h.publisher.Publish(publishCtx, subject, payload)
-	h.recordPublishSpan(subject, err, start, traceContext)
-	h.recordPublish(subject, err, h.now().Sub(start))
+	if !selfObservabilitySuppressed(ctx) {
+		h.recordPublishSpan(subject, err, start, traceContext)
+		h.recordPublish(subject, err, h.now().Sub(start))
+	}
 	return err
 }
 
@@ -571,7 +594,7 @@ func (h *handler) writeOTLPResponse(w http.ResponseWriter, r *http.Request, enco
 
 func (h *handler) writeProblem(w http.ResponseWriter, r *http.Request, problem problemDetails) {
 	setCompletionProblem(w, requestID(r, ""), problem.ID, problem.Code)
-	if h.selfObservability != nil {
+	if h.selfObservability != nil && !completionSelfObservabilitySuppressed(w) {
 		h.selfObservability.RecordLog(SelfObservabilityLog{
 			Timestamp:    h.now(),
 			SeverityText: "WARN",
@@ -716,6 +739,65 @@ func setCompletionProblem(w http.ResponseWriter, requestID string, errorID strin
 		recorder.errorID = errorID
 		recorder.errorCode = errorCode
 	}
+}
+
+func suppressCompletionSelfObservability(w http.ResponseWriter) {
+	if recorder, ok := w.(*completionResponseWriter); ok {
+		recorder.suppressSelfObservability = true
+	}
+}
+
+func completionSelfObservabilitySuppressed(w http.ResponseWriter) bool {
+	recorder, ok := w.(*completionResponseWriter)
+	return ok && recorder.suppressSelfObservability
+}
+
+func contextWithSuppressedSelfObservability(ctx context.Context) context.Context {
+	return context.WithValue(ctx, suppressSelfObservabilityContextKey{}, true)
+}
+
+func selfObservabilitySuppressed(ctx context.Context) bool {
+	suppressed, _ := ctx.Value(suppressSelfObservabilityContextKey{}).(bool)
+	return suppressed
+}
+
+func traceRequestIsSelfObservability(request *collectortracepb.ExportTraceServiceRequest) bool {
+	for _, resourceSpans := range request.GetResourceSpans() {
+		if attributesIncludeSelfObservabilityMarker(resourceSpans.GetResource().GetAttributes()) {
+			return true
+		}
+	}
+	return false
+}
+
+func logRequestIsSelfObservability(request *collectorlogspb.ExportLogsServiceRequest) bool {
+	for _, resourceLogs := range request.GetResourceLogs() {
+		if attributesIncludeSelfObservabilityMarker(resourceLogs.GetResource().GetAttributes()) {
+			return true
+		}
+	}
+	return false
+}
+
+func metricRequestIsSelfObservability(request *collectormetricspb.ExportMetricsServiceRequest) bool {
+	for _, resourceMetrics := range request.GetResourceMetrics() {
+		if attributesIncludeSelfObservabilityMarker(resourceMetrics.GetResource().GetAttributes()) {
+			return true
+		}
+	}
+	return false
+}
+
+func attributesIncludeSelfObservabilityMarker(attributes []*commonpb.KeyValue) bool {
+	for _, attribute := range attributes {
+		switch attribute.GetKey() {
+		case "cloudgrid.self_observability.project_id", "cloudgrid.self_observability.company_id":
+			if strings.TrimSpace(attribute.GetValue().GetStringValue()) != "" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type payloadEncoding int

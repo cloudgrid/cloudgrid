@@ -60,6 +60,34 @@ func TestGRPCTraceExportRecordsSelfObservabilitySpan(t *testing.T) {
 	}
 }
 
+func TestGRPCTraceExportSuppressesRecursiveSelfObservabilityForSelfObservabilityPayload(t *testing.T) {
+	metrics := NewInMemoryMetricsRecorder()
+	recorder := NewInMemorySelfObservabilityRecorder()
+	publisher, conn := newGRPCTestServer(t, HandlerOptions{
+		MetricsRecorder:   metrics,
+		SelfObservability: recorder,
+	})
+	client := collectortracepb.NewTraceServiceClient(conn)
+	ctx := metadata.AppendToOutgoingContext(context.Background(), "x-request-id", "req-grpc-recursive-selfobs")
+
+	if _, err := client.Export(ctx, selfObservabilityTraceRequest()); err != nil {
+		t.Fatalf("TraceService.Export returned error: %v", err)
+	}
+
+	if publisher.callCount() != 1 {
+		t.Fatalf("publisher calls = %d, want 1", publisher.callCount())
+	}
+	if got := metrics.Records(); len(got) != 0 {
+		t.Fatalf("metrics = %#v, want no recursive collector metrics", got)
+	}
+	if got := recorder.Spans(); len(got) != 0 {
+		t.Fatalf("spans = %#v, want no recursive collector spans", got)
+	}
+	if got := recorder.Logs(); len(got) != 0 {
+		t.Fatalf("logs = %#v, want no recursive collector logs", got)
+	}
+}
+
 func TestGRPCLogsAndMetricsExportPublishSupportedSignals(t *testing.T) {
 	tests := []struct {
 		name        string

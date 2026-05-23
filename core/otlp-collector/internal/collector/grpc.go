@@ -129,9 +129,15 @@ func grpcAuthContext(ctx context.Context) *contracts.AuthContext {
 func (server *grpcTraceServer) Export(ctx context.Context, request *collectortracepb.ExportTraceServiceRequest) (*collectortracepb.ExportTraceServiceResponse, error) {
 	start := server.handler.now()
 	result := "accepted"
+	suppressSelfObservability := traceRequestIsSelfObservability(request)
+	if suppressSelfObservability {
+		ctx = contextWithSuppressedSelfObservability(ctx)
+	}
 	defer func() {
-		server.handler.recordGRPCIngestMetrics("traces", result, int64(proto.Size(request)))
-		server.handler.recordGRPCSpan("traces", grpcRequestID(ctx), result, start)
+		if !suppressSelfObservability {
+			server.handler.recordGRPCIngestMetrics("traces", result, int64(proto.Size(request)))
+			server.handler.recordGRPCSpan("traces", grpcRequestID(ctx), result, start)
+		}
 	}()
 	if err := server.validateSize(request); err != nil {
 		result = "rejected"
@@ -162,9 +168,15 @@ func (server *grpcTraceServer) Export(ctx context.Context, request *collectortra
 func (server *grpcLogsServer) Export(ctx context.Context, request *collectorlogspb.ExportLogsServiceRequest) (*collectorlogspb.ExportLogsServiceResponse, error) {
 	start := server.handler.now()
 	result := "accepted"
+	suppressSelfObservability := logRequestIsSelfObservability(request)
+	if suppressSelfObservability {
+		ctx = contextWithSuppressedSelfObservability(ctx)
+	}
 	defer func() {
-		server.handler.recordGRPCIngestMetrics("logs", result, int64(proto.Size(request)))
-		server.handler.recordGRPCSpan("logs", grpcRequestID(ctx), result, start)
+		if !suppressSelfObservability {
+			server.handler.recordGRPCIngestMetrics("logs", result, int64(proto.Size(request)))
+			server.handler.recordGRPCSpan("logs", grpcRequestID(ctx), result, start)
+		}
 	}()
 	if err := server.validateSize(request); err != nil {
 		result = "rejected"
@@ -189,9 +201,15 @@ func (server *grpcLogsServer) Export(ctx context.Context, request *collectorlogs
 func (server *grpcMetricsServer) Export(ctx context.Context, request *collectormetricspb.ExportMetricsServiceRequest) (*collectormetricspb.ExportMetricsServiceResponse, error) {
 	start := server.handler.now()
 	result := "accepted"
+	suppressSelfObservability := metricRequestIsSelfObservability(request)
+	if suppressSelfObservability {
+		ctx = contextWithSuppressedSelfObservability(ctx)
+	}
 	defer func() {
-		server.handler.recordGRPCIngestMetrics("metrics", result, int64(proto.Size(request)))
-		server.handler.recordGRPCSpan("metrics", grpcRequestID(ctx), result, start)
+		if !suppressSelfObservability {
+			server.handler.recordGRPCIngestMetrics("metrics", result, int64(proto.Size(request)))
+			server.handler.recordGRPCSpan("metrics", grpcRequestID(ctx), result, start)
+		}
 	}()
 	if err := server.validateSize(request); err != nil {
 		result = "rejected"
