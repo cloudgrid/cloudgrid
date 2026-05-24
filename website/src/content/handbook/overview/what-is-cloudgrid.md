@@ -20,7 +20,7 @@ Primary users:
 | Local developer | Run CloudGrid locally, create a project, send OTLP data, and inspect traces, logs, and metrics. |
 | Team engineer | Select a project, investigate telemetry, pivot between evidence, and share URLs. |
 | Platform admin | Manage projects, members, ingest credentials, retention policies, and alert rules. |
-| AI-agent engineer | Inspect agent runs, datasets, scorers, experiments, and AI quality signals when AI eval is enabled. |
+| AI-agent engineer | Inspect agent runs, datasets, dataset evaluations, metric results, comparisons, and optimization evidence when AI Eval is enabled. |
 
 ## What CloudGrid Does Today
 

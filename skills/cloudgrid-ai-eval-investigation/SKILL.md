@@ -1,14 +1,14 @@
 ---
 name: cloudgrid-ai-eval-investigation
-description: Explains, configures, uses, and investigates CloudGrid AI Eval datasets, dataset candidates, scorers, experiments, run controls, result analytics, optimization, and production quality. Use when the user asks how to set up AI Eval, create or manage datasets/scorers/evals, interpret product-quality results, troubleshoot runs, or change AI Eval behavior without drifting from implemented contracts.
+description: Explains, configures, uses, and investigates CloudGrid AI Eval v2 datasets, dataset rows, dataset evaluations, run controls, metric results, comparisons, optimization, target snapshots, promotion, trace import, and external adapters. Use when the user asks how to set up AI Eval, manage datasets/evaluations, interpret results, troubleshoot runs, or change AI Eval behavior without drifting from implemented contracts.
 ---
 
 # CloudGrid AI Eval
 
 Use this skill for both user-facing AI Eval guidance and implementation work:
-setup, datasets, dataset candidates, scorers, experiments, run controls,
-result analytics, optimization, production quality, troubleshooting, and
-privacy-safe investigation.
+setup, datasets, dataset rows, evaluations, run controls, metric results,
+comparisons, optimization, target snapshots, promotion, trace import, external
+adapters, troubleshooting, and privacy-safe investigation.
 
 ## Source Order
 
@@ -21,11 +21,12 @@ generated contracts and source ownership are the implementation guardrails.
    and `apps/packages/ui-contracts`.
 4. Private services: `core/storage-read`, `core/storage-write`,
    `core/ai-eval-runner`, and `core/go-contracts`.
-5. Harness adapter: `apps/packages/cloudgrid-harness-adapter`.
+5. External adapter and harness behavior: `specs/04-backend/ai-eval-runner.md`
+   and `skills/ai-harness`.
 
 If behavior is not documented or implemented, report it as a product gap. Do not invent
-GraphQL fields, runner endpoints, harness adapter fields, NATS subjects,
-scorer statuses, optimization states, or error codes.
+GraphQL fields, runner endpoints, adapter fields, NATS subjects, curation
+statuses, optimization states, promotion rules, or error codes.
 
 ## Reference Guide
 
@@ -39,16 +40,18 @@ scorer statuses, optimization states, or error codes.
 
 - Start from the user's role: evaluator, app developer, project admin, or
   operator.
-- Explain the smallest working path first: enable AI Eval, configure harness or
-  provider profile, create dataset, create scorer, create experiment, run,
-  review results, then enable production policy.
+- Explain the smallest working path first: enable AI Eval, create a schema
+  defined dataset, add or import ready rows, create an evaluation, start a run,
+  review metric results, compare candidates, then optimize and explicitly
+  promote a target snapshot.
 - Use exact route names, GraphQL operations, env vars, and service boundaries.
 - If asked for implementation details, name the owning service before the
   files: storage-write mutates, storage-read derives/query-shapes, runner
   executes through harness, BFF bridges GraphQL to NATS, frontend renders view
   models.
-- State when a capability is v1-limited. Production quality is monitoring, not
-  realtime alerting. Durable replay is out of scope for AI Eval v1.
+- State when a capability is backlog. Production measurement is backlog for AI
+  Eval v2. Quick-shot optimization is exploratory and cannot be final promotion
+  evidence.
 
 ## Privacy Rules
 

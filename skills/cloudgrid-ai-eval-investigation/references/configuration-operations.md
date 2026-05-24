@@ -5,105 +5,86 @@ troubleshooting.
 
 ## Feature Flags And Routes
 
-Enable AI Eval surfaces and runner integration:
+Enable AI Eval surfaces:
 
 ```sh
 CLOUDGRID_AI_EVAL_ENABLED=true
-CLOUDGRID_AI_EVAL_HARNESS_URL=http://localhost:8090
+VITE_CLOUDGRID_AI_EVAL_ENABLED=true
 ```
-
-The frontend may also use `VITE_CLOUDGRID_AI_EVAL_ENABLED` where the build-time
-surface requires it.
 
 Routes:
 
 - `/ai-eval?tab=datasets`
-- `/ai-eval?tab=scorers`
-- `/ai-eval?tab=experiments`
-- `/ai-eval?tab=production`
+- `/ai-eval?tab=evaluations`
 - `/projects/:projectId/settings/ai-eval`
-- `/projects/:projectId/settings/ai-providers`
+
+Production measurement is backlog and is not a primary AI Eval v2 tab.
 
 ## Service Boundary
 
-AI Eval follows the same CloudGrid private-service model:
+AI Eval follows the CloudGrid private-service model:
 
 - Frontend talks only to the TypeScript BFF.
 - BFF talks to private services through NATS message contracts.
 - storage-write is the only AI Eval persistence mutator.
-- storage-read owns query semantics, manifest resolution, policy matching,
-  aggregates, cursors, and live fanout.
-- runner owns experiment lifecycle and calls the harness adapter.
-- harness adapter owns model/provider execution and sandbox lifecycle.
+- storage-read owns query semantics, aggregates, cursors, and live fanout.
+- runner owns evaluation and optimization lifecycle.
+- external adapters or harness deployments own black-box agent/workflow
+  execution.
 - control-plane owns project AI settings and provider profile metadata.
 
-## Harness Adapter
+## External Adapter
 
-The runner calls the trusted-network harness adapter over HTTP:
+Simple targets can run inside the AI harness. Complex agents and workflows can
+use an adapter URL. The runner calls the adapter with the dataset input and
+OpenTelemetry trace context, then records the returned or webhook-reported final
+output as evaluation evidence.
 
-- `POST /v1/run`
-- `POST /v1/score`
-- `POST /v1/optimize`
-- `POST /v1/sandboxes/start`
-- `POST /v1/sandboxes/pause`
-- `POST /v1/sandboxes/resume`
-- `POST /v1/sandboxes/abort`
-- `POST /v1/sandboxes/cleanup`
-- `GET /healthz`
-- `GET /v1/agents`
+Adapter defaults:
 
-The sandbox profile for v1 AI Eval is ephemeral. Durable replay is out of
-scope for v1 and must not be described as enabled unless product behavior
-changes.
+- propagate trace context;
+- bound request timeouts;
+- return schema-valid output;
+- report adapter timeout as evaluation evidence;
+- keep provider credentials outside CloudGrid.
 
 ## Safe Defaults
 
-Recommend safe defaults before production policies:
+Recommend safe defaults:
 
-- deterministic scorer first;
-- low sample rate for online scoring;
-- daily and per-run budget limits;
-- max parallel request cap;
-- timeout and retry policy;
-- explicit target filters before enabling online policies;
-- no automatic dataset commit from candidates.
+- start with a small validation split;
+- keep JSON Schema strict enough to catch invalid expected output;
+- keep quick-shot sample sizes small and persisted;
+- require full validation evidence before promotion;
+- keep `test` split out of candidate generation;
+- retain durable metrics, comparisons, target snapshots, and promotion records.
 
 ## Troubleshooting
 
 AI Eval entry missing:
 
 - Check `CLOUDGRID_AI_EVAL_ENABLED`.
-- Check frontend build flag if the UI hides feature-gated routes.
+- Check `VITE_CLOUDGRID_AI_EVAL_ENABLED` for frontend builds.
 - Confirm a project is selected.
+
+Dataset row rejected:
+
+- Validate raw JSON syntax.
+- Validate expected output against dataset JSON Schema.
+- Use only `training`, `validation`, or `test` split values.
+- Use only v2 curation statuses.
 
 Run does not start:
 
-- Dataset must exist and have a usable version.
-- At least one scorer must exist.
-- Solver and provider/model refs must be valid.
-- Runner must reach storage-read, storage-write, control-plane, and harness.
-- Harness URL must be set when AI Eval is enabled.
+- Dataset must have ready rows in the selected split.
+- Target ref, metric settings, and run policy must be valid.
+- Runner must reach storage-read, storage-write, and any external adapter.
 
-Candidate commit fails:
+Promotion disabled:
 
-- Reload dataset for current version.
-- Confirm candidates are ready and belong to the project.
-- Check anonymization provenance and stale policy versions.
-- Do not retry by bypassing `expectedDatasetVersion`.
-
-Production quality empty:
-
-- Confirm the policy is enabled.
-- Check target filters and sample rate.
-- Check skipped reasons returned by `aiQualityOverview`.
-- Confirm runner and storage-read are reachable through the message bridge.
-
-Privacy issue suspected:
-
-- Do not print raw prompts, completions, provider payloads, tokens, cookies,
-  Authorization headers, or raw retrieved documents.
-- Use IDs, summaries, bounded excerpts, and route links.
-- Check logs for canonical error IDs, not raw provider errors.
+- A selected candidate target snapshot is required.
+- A comparison is required.
+- Full validation evidence is required; quick-shot alone is not enough.
 
 ## Verification Commands
 
@@ -111,9 +92,8 @@ Use the narrowest relevant checks plus contract gates for interface changes:
 
 ```sh
 bun run contracts:check
-bun test --coverage apps/backend/src
-bun run --cwd apps/frontend test
-bun run --cwd apps/frontend smoke -- ai-eval.e2e.ts
+bun run --cwd apps/frontend test -- ai-eval
+bun run --cwd apps/packages/integration-scenarios test
 bun run --cwd website build
 go test -tags surrealdb ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/...
 bun run skills:check

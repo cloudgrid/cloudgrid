@@ -1,218 +1,249 @@
 ---
 title: "AI Evaluation"
-description: "AI evaluation is an optional CloudGrid enhancement for teams that emit OpenTelemetry from AI agents."
+description: "AI evaluation is an optional CloudGrid workspace for versioned datasets, dataset evaluations, comparisons, and prompt optimization."
 order: 7
 accent: violet
 eyebrow: "Handbook - Guides"
-updated: 2026-05-23
+updated: 2026-05-24
 ---
 
-AI evaluation is an optional CloudGrid enhancement for teams that emit OpenTelemetry from AI agents.
+AI evaluation helps teams turn known inputs, expected outputs, and production
+trace evidence into repeatable quality measurements. In this release the
+product focuses on dataset curation, dataset evaluation, comparisons, prompt
+optimization, target snapshots, and explicit promotion. Production measurement
+remains backlog until dataset evaluation and optimization are stable.
 
-Enable surfaces and runner integration with:
+Enable the workspace with:
 
 ```sh
 CLOUDGRID_AI_EVAL_ENABLED=true
-CLOUDGRID_AI_EVAL_HARNESS_URL=http://localhost:8090
+VITE_CLOUDGRID_AI_EVAL_ENABLED=true
 ```
 
-The AI Eval sidebar entry appears after Dashboards when enabled. The route is
-project scoped; select a project before opening `/ai-eval`.
+The AI Eval entry appears in the selected-project sidebar after Dashboards. The
+primary tabs are Datasets and Evaluations.
 
-## What It Adds
+## Mental Model
 
-CloudGrid keeps the core trace/log/metric explorer intact and adds AI-specific workflows:
+| Object | What it means |
+| --- | --- |
+| Dataset | A project-scoped, versioned set of rows. Every row follows the dataset input and expected-output shape. |
+| Dataset row | One input, one expected output, optional observed output, optional reason, split, curation status, metadata, and source refs. |
+| Evaluation | A reusable definition that binds a dataset version policy, split selector, target ref, metric settings, and run policy. |
+| Evaluation run | One execution of an evaluation. It produces metric results, aggregates, item rows, trace refs, trajectory summaries, and important steps. |
+| Comparison | A metric and example comparison between a baseline run and a candidate run. |
+| Optimization | A loop around dataset evaluation that proposes candidate target snapshots, runs quick-shot and validation evaluations, and records evidence. |
+| Promotion | An explicit action that promotes one candidate target snapshot using comparison and evaluation-run evidence. |
 
-- agent run, model call, tool call, and retrieval projections from OTel GenAI and OpenInference attributes;
-- datasets built from observed traces and spans;
-- scorers for deterministic checks, RAG metrics, LLM judges, and human review;
-- offline experiment runs through a configured harness adapter;
-- prompt optimization through harness workflows;
-- annotation queues for turning failures into regression cases.
-
-## Runner Boundary
-
-`core/ai-eval-runner` is optional and stays behind the private message bridge.
-
-```mermaid
-flowchart LR
-  Runner["ai-eval-runner"] --> Read["storage-read\nrequest/reply"]
-  Runner --> Write["storage-write\ncommands"]
-  Runner --> Harness["harness adapter\nHTTP /v1/run /v1/score /v1/optimize"]
-  Runner --> Progress["experiment progress notifications"]
-  Progress --> Live["storage-read live fanout"]
-```
-
-The runner must not import SurrealDB clients, storage adapters, model-provider SDKs, provider credentials, or public HTTP handlers.
-
-## Project Settings
-
-Project-level AI Eval configuration lives at:
-
-```text
-/projects/:projectId/settings/ai-eval
-```
-
-Settings use `Query.projectAiSettings` and `Mutation.updateProjectAiSettings` for project enablement, provider profile metadata, model aliases, online policy, and daily budget state.
-
-Raw provider API keys, bearer tokens, refresh tokens, cookies, Authorization
-headers, and provider secret JSON must not be returned, logged, or bundled.
-Project provider profiles may use encrypted `managed:` credential references
-when configured through CloudGrid. Offline harness provider credentials remain
-owned by the harness deployment.
+Evaluation produces results, metrics, and comparisons. It does not create gates
+or alert rules by itself.
 
 ## First Setup
 
-Use this order for a new project:
+1. Enable AI Eval in Project Settings.
+2. Open `/ai-eval?tab=datasets`.
+3. Create a dataset with input type, expected-output type, and optional JSON
+   Schema for each JSON value.
+4. Add rows manually or import JSONL, JSON array, CSV, or ZIP files.
+5. Mark rows `ready` when the input, expected output, and optional reason have
+   been reviewed.
+6. Open `/ai-eval?tab=evaluations`.
+7. Create an evaluation that selects the dataset, split, target, metric, and run
+   policy.
+8. Start a run, review metric results, then compare or optimize candidate
+   targets.
 
-1. Enable AI Eval in Project Settings / AI Eval.
-2. Add or confirm a harness/provider profile for offline runs.
-3. Create a dataset in `/ai-eval?tab=datasets`.
-4. Add rows manually, import a file, or review dataset candidates.
-5. Create at least one scorer in `/ai-eval?tab=scorers`.
-6. Create an experiment in `/ai-eval?tab=experiments` and run it.
-7. Add an online production policy only after deterministic offline runs are useful.
+## Dataset Settings
 
-Local development can use the bundled dev harness:
+Dataset settings keep row handling predictable:
 
-```sh
-bun tooling/scripts/ai-eval-dev-harness.mjs
-```
+- `inputType`: `text` or `json`.
+- `expectedType`: `text` or `json`.
+- JSON Schema for input and expected output when the corresponding type is
+  `json`.
+- Evaluation family, for example classification, extraction, generation, or
+  workflow.
+- Default metric.
+- Trace extraction settings for importing traces or spans.
+- Anonymization mode and content treatment defaults.
 
-The harness keeps model or provider credentials outside the BFF and frontend.
+Rows are edited as raw text or raw JSON. CloudGrid validates raw JSON values
+against the dataset schema before accepting a row. There is no UI JSON builder;
+copy and paste is the intended workflow.
 
-## Dataset Import And Export
+## Row Curation
+
+Every row should contain:
+
+- input;
+- expected output;
+- optional observed output from a failed or interesting production trace;
+- optional reason explaining why the expected output is correct;
+- split;
+- curation status;
+- optional metadata and source refs.
+
+Use these split values:
+
+| Split | Use |
+| --- | --- |
+| `training` | Candidate generation and optimization input. |
+| `validation` | Iterative evaluation and candidate selection. |
+| `test` | Explicit final confidence checks. Optimizers must not read it during candidate generation. |
+
+Use these curation statuses:
+
+| Status | Use |
+| --- | --- |
+| `draft` | Row is being authored. |
+| `needs_expected` | Input or observed output exists, but expected output is missing. |
+| `needs_review` | Expected output exists but still needs human or programmatic review. |
+| `ready` | Row can be used by evaluations. |
+| `rejected` | Row should stay out of evaluation inputs. |
+
+The default reason is an empty string. Add a reason when it helps future
+reviewers or optimizers understand the expected output.
+
+## Import And Export
 
 Dataset import is staged:
 
 1. Upload `.jsonl`, `.json`, `.csv`, or `.zip` through the BFF upload endpoint.
-2. Select included files when a ZIP contains multiple supported files.
-3. Map columns or JSON paths to dataset fields.
-4. Preview with `Mutation.prepareDatasetImport`.
-5. Commit with `Mutation.commitDatasetImport`.
+2. Map file fields to v2 row fields: input, expected, observed output, reason,
+   split, curation status, metadata, and source refs.
+3. Preview with `Mutation.prepareDatasetImport`.
+4. Commit with `Mutation.commitDatasetImport`.
 
-Dataset export:
+The BFF only transfers bytes. Storage-write parses, maps, validates, previews,
+and commits rows. Invalid rows block commit unless the user explicitly selects a
+partial commit mode.
 
-1. Choose `jsonl`, `json_array`, or `csv`.
-2. Filter by split or review status when needed.
-3. Start with `Mutation.startDatasetExport`.
-4. Download from the returned same-origin `downloadUrl`.
+Dataset export starts with `Mutation.startDatasetExport` and downloads through
+the same-origin export URL returned by the BFF.
 
-The frontend does not parse uploaded rows into dataset items, infer mappings, deduplicate records, or compute dataset health.
+## Trace To Dataset
 
-## Dataset Candidates
+Trace import is dataset-driven. Datasets with extraction settings can appear in
+the trace detail and trace overview import picker. This avoids asking users to
+choose extraction paths every time.
 
-Dataset candidates are review items created from production measurements,
-failed experiment items, coverage gaps, health issues, failure clusters, or
-selected traces. They are never committed automatically.
+An imported trace row can start as `needs_expected` or `needs_review` when the
+observed output is useful but the correct expected output still needs curation.
+Store the observed output value itself when it helps explain the failure; do not
+add a separate success/failure flag.
 
-Candidate review shows the source, reason, proposed input and expected output,
-target shape, split, review status, duplicate/cluster context, and content
-treatment. Realistic anonymization displays policy id/version and transformed
-field classes such as email, phone, URL, id, or address. Original sensitive
-values should not appear after transformation.
+## Evaluation Runs
 
-Use:
+An evaluation definition selects:
 
-- `Query.datasetCandidates` to list suggested candidates.
-- `Mutation.prepareDatasetCandidates` to prepare candidates from approved sources.
-- `Mutation.commitDatasetCandidates` to append selected candidates to the next dataset version.
+- dataset and dataset version policy;
+- split selector and curation status selector;
+- target reference;
+- metric settings;
+- run policy;
+- retention profile.
 
-Commit requires the current dataset version. If another user or import changes
-the dataset first, reload the dataset and retry with the new version.
+Starting a run creates normal evaluation evidence. Storage-read returns the run
+detail view model; the frontend must not recompute metrics, aggregates, dataset
+health, or trajectory summaries.
 
-## Scorers
+Use run detail to inspect:
 
-Create scorers from typed templates instead of raw JSON. Common v1 templates
-include exact/contains/regex checks, JSON schema validation, semantic similarity,
-RAG faithfulness, LLM judge rubrics, tool correctness, trajectory/workflow
-completion, human review, and composites.
+- metric aggregates and per-item metric results;
+- item run status;
+- trajectory summary;
+- important steps;
+- trace and span links;
+- retention role and retention expiry.
 
-Deterministic scorers are the safest first choice because they can run offline
-and can be used by production online policies in v1. LLM judge and semantic
-scorers require provider profiles, budget, timeout, and latency allowances.
+## Optimization
 
-## Experiment Runs
+Optimization is the loop around dataset evaluation:
 
-Experiments bind a dataset version, scorers, and a solver reference. Starting a
-run creates an immutable run manifest. The UI shows returned run summaries,
-score visualizations, item counts, latency, cost/token budget use, regression
-markers, and model-quality versus item-quality problem counts.
+1. Start from an evaluation and a baseline target snapshot.
+2. Choose an objective: primary metric, secondary metrics, constraints,
+   tradeoffs, ranking policy, tie-breakers, and minimum evidence.
+3. Optionally run a quick-shot phase over a small, recorded subset.
+4. Validate candidates with normal evaluation runs.
+5. Compare baseline and candidate runs.
+6. Promote only through `Mutation.promoteTargetSnapshot`.
 
-Run controls are status-aware:
+Quick-shot is exploratory. It can prune candidates, but it is not final
+promotion evidence. Promotion requires explicit validation evidence and records
+the baseline snapshot, candidate snapshot, comparison, target ref, evidence run
+IDs, notes, and promoter metadata.
 
-- queued/running/resuming runs can be cancelled;
-- running/resuming runs can be paused;
-- paused runs can be resumed;
-- completed, cancelled, and failed runs are historical records.
+## External Adapters
 
-Pause and resume are idempotent run-control requests. Repeating the same action
-should not create a second logical control operation.
+Simple classification and extraction targets can run inside the CloudGrid AI
+harness. Complex agents and workflows can instead expose an adapter endpoint.
+The runner calls the adapter with dataset input and trace context, and the
+adapter returns or later reports the final output through the configured
+protocol.
 
-## Production Quality
+Adapter rules:
 
-Production quality is read-only monitoring in the AI Eval workspace. Policy
-setup lives in Project Settings / AI Eval. Online scoring is inactive by default
-and each policy must be explicitly enabled with a target filter, sample rate,
-scorers, and limits.
+- Treat the evaluated system as a black box behind a defined interface.
+- Propagate the provided OpenTelemetry trace context.
+- Return bounded, schema-valid outputs.
+- Report timeouts and failures as evaluation evidence.
+- Keep provider credentials and private tool configuration outside CloudGrid.
 
-The production view reads `Query.aiQualityOverview` and displays returned
-segments, skipped reasons, quality trend, cost trend, latency trend, regression
-counts, and candidate suggestions. It does not create alert rules or annotation
-queue items automatically in v1.
+Opt-in external adapter tests point the runner at an adapter:
 
-## Operational Limits
+```sh
+CLOUDGRID_AI_EVAL_HARNESS_URL=http://127.0.0.1:8088 bun run --cwd apps/packages/integration-scenarios test
+```
 
-Default verification and local integration should be hermetic. They must not
-require external provider credentials, durable replay services, cloud storage,
-or production deployments.
+Default repository checks stay hermetic and do not require external providers.
 
-Recommended operator limits:
+## Retention
 
-- keep online sample rates low until scorer cost and latency are known;
-- set daily and per-run budget limits before enabling provider-backed scorers;
-- cap max parallel experiment items to protect harness and provider quotas;
-- use deterministic scorers for production policies unless provider-backed
-  scorer requirements are explicitly satisfied;
-- treat dataset imports as versioned commits, not in-place edits.
+Evaluation can produce large artifacts. CloudGrid stores durable evidence and
+keeps bulky execution detail according to retention profiles:
+
+- keep dataset rows, dataset versions, target snapshots, metric results,
+  aggregates, comparisons, and promotion records as durable evidence;
+- keep full per-row traces only where source telemetry retention still allows
+  it;
+- keep optimizer scratch data only as long as it is useful for the active
+  optimization and audit trail;
+- prefer bounded trajectory summaries and important steps in evaluation views.
+
+Retention is configured by project policy and by evaluation retention profile.
+Do not rely on transient optimizer scratch data as the only promotion evidence.
 
 ## Troubleshooting
 
 AI Eval entry is missing:
 
-- Check `CLOUDGRID_AI_EVAL_ENABLED` and `VITE_CLOUDGRID_AI_EVAL_ENABLED`.
+- Check `CLOUDGRID_AI_EVAL_ENABLED`.
+- Check `VITE_CLOUDGRID_AI_EVAL_ENABLED` for frontend builds.
 - Confirm a project is selected.
 
-Experiment run does not start:
+Dataset row is rejected:
 
-- Confirm the dataset has a version and at least one usable item.
-- Confirm at least one scorer exists.
-- Check Project Settings / AI Eval for provider or budget warnings.
-- Check runner and harness logs; the BFF only bridges GraphQL to NATS.
+- Confirm raw JSON parses.
+- Confirm the value matches the dataset JSON Schema.
+- Confirm the row uses `training`, `validation`, or `test`.
+- Confirm the curation status is one of the v2 statuses.
 
-Candidate commit fails:
+Run does not start:
 
-- Reload the dataset and retry with the latest dataset version.
-- Check candidate status; committed or dismissed candidates should not be reused.
+- Confirm the dataset has ready rows in the selected split.
+- Confirm the target ref and metric settings are valid.
+- Check runner, storage-read, storage-write, and NATS availability.
 
-Production quality is empty:
+Adapter-backed run times out:
 
-- Confirm an online policy is enabled.
-- Check policy target filters and sample rate.
-- Look for skipped reasons in `aiQualityOverview`.
-- Confirm storage-read and the runner are available through the message bridge.
+- Check adapter health and timeout settings.
+- Confirm trace context propagation.
+- Confirm the adapter returns a final output in the expected shape.
+- Treat the timeout as evidence; do not auto-promote a candidate after timeout.
 
-## Offline Runner Tests
+Promotion is disabled:
 
-Runner-only scaffold tests:
-
-```sh
-cd core/ai-eval-runner
-GOWORK=off go test ./...
-```
-
-Use `GOWORK=off` because the root `go.work` may not include the runner module in all implementation waves.
-
-## Next Step
-
-Read the implementation specs for AI eval before adding behavior: [AI eval domain](/handbook/reference/contracts).
+- Confirm a candidate target snapshot is selected.
+- Confirm a comparison exists.
+- Confirm full validation evidence exists. Quick-shot evidence alone is not
+  enough.

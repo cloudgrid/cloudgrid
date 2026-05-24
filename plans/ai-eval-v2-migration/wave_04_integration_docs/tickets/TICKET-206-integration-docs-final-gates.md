@@ -2,10 +2,10 @@
 id: TICKET-206
 title: AI Eval v2 integration docs and final gates
 wave: 4
-status: ready
+status: blocked
 parallel_group: ai_eval_v2_integration_serial
 depends_on: [TICKET-202, TICKET-203, TICKET-204, TICKET-205]
-blocked_by: []
+blocked_by: [runtime_v2_dataset_shape_drift]
 spec_refs:
   - specs/01-domains/ai-eval.md
   - specs/02-capabilities/ai-eval/curate-datasets.md
@@ -134,5 +134,39 @@ CLOUDGRID_EVAL_EXTERNAL_ADAPTER_TEST=1 bun run --cwd apps/packages/integration-s
 
 ## Handoff
 
-The feature can be marked implementation-complete after all default gates pass
-and readiness evidence is updated.
+The feature can be marked implementation-complete after the local integration
+runtime returns v2 dataset shapes through storage-read and the browser/API
+end-to-end path no longer fails on missing `Dataset.currentVersionId`.
+
+## Completion Evidence
+
+Completed scope:
+
+- AI Eval v2 handbook page rewritten for datasets, evaluations, comparisons,
+  optimization, target snapshots, adapters, and retention.
+- AI Eval investigation skill updated to v2 vocabulary and service boundaries.
+- Integration scenario package now contains AI Eval v2 dataset-evaluation and
+  optimization quick-shot fixtures, including invalid expected JSON and adapter
+  timeout failure cases.
+- Readiness report records the remaining runtime drift.
+
+Passing commands:
+
+- `PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/integration-scenarios test`
+- `PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/integration-scenarios typecheck`
+- `PATH="$HOME/.bun/bin:$PATH" bun run contracts:check`
+- `PATH="$HOME/.bun/bin:$PATH" bun run typecheck`
+- `PATH="$HOME/.bun/bin:$PATH" bun run skills:check`
+- `PATH="$HOME/.bun/bin:$PATH" bun --bun run --cwd website build`
+- `PATH="/opt/homebrew/bin:/usr/local/go/bin:$HOME/.bun/bin:$PATH" go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/...`
+- `node /Users/sebastianwessel/.agents/skills/spec-architect/scripts/check_specs.mjs specs`
+- `node /Users/sebastianwessel/.agents/skills/implementation-planner/references/check_plan.mjs . plans/ai-eval-v2-migration specs`
+- `git diff --check -- apps/packages/integration-scenarios apps/packages/public-api-client website skills specs plans/ai-eval-v2-migration`
+
+Blocked evidence:
+
+- Browser verification against the current BFF schema renders the desktop and
+  mobile AI Eval shell, but the local bridge/runtime data path returns legacy
+  dataset rows without v2 `currentVersionId`, causing GraphQL to reject
+  `Dataset.currentVersionId` as non-null. This prevents honestly claiming the
+  complete local end-to-end acceptance path.

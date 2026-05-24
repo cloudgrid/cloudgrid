@@ -72,6 +72,7 @@ export const publicGraphQLOperationNames = [
   "EvaluationComparisons",
   "CreateEvaluationComparison",
   "StartOptimizationRun",
+  "OptimizationRuns",
   "PromoteTargetSnapshot",
   "DatasetCandidates",
   "PrepareDatasetCandidates",

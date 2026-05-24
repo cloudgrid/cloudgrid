@@ -20,8 +20,8 @@ ai_eval_v2_spec_rewrite:
     - Legacy Scorers, Checks, Gates, Experiments, row-level target shapes, dev/optimization/regression/holdout splits, and reviewStatus are explicitly forbidden or mapped to v2 concepts.
     - Production quality and online measurement are backlog until dataset evaluation and optimization are implemented.
   blockers_for_implementation:
-    - Runtime DTOs, bridge parsers, resolver methods, storage-read/write handlers, Go runner orchestration, and frontend route code still need the v2 object model migration.
-    - Several legacy method names remain as compatibility shells and must be removed or replaced during implementation, even though registered subjects now pass contract drift checks.
+    - Final local integration must prove that the running bridge/storage services return v2 dataset fields such as currentVersionId and item revisions.
+    - Several legacy compatibility shell names remain in public client/runtime code and must be removed or replaced after integration proves no callers need them.
   no_agent_decision_rules:
     - Agents must not implement AI Eval v2 against legacy Scorer, Experiment, ExperimentRun, EvalSolverRef, reviewStatus, targetShape, dev, optimization, regression, or holdout contracts.
     - Agents must update GraphQL, AsyncAPI, entity schemas, generated TypeScript contracts, generated Go contracts, and contract tests before implementation work starts.
@@ -185,9 +185,18 @@ deterministic_checks:
     status: pass_no_matches
   - command: ruby -e 'require "yaml"; YAML.load_file("specs/.readiness-report.yaml"); YAML.load_file("specs/_registry.yaml")'
     status: pass
+  - command: bun run --cwd apps/packages/integration-scenarios test
+    status: pass
+    evidence: AI Eval v2 dataset evaluation and optimization fixture coverage tests pass on 2026-05-24.
+  - command: bun run --cwd website build
+    status: pass_with_bun_runtime
+    evidence: "`bun --bun run --cwd website build` passed on 2026-05-24 after AI Eval v2 handbook update. Plain Node-backed build remains affected by local Rollup native binding code-signature state."
+  - command: browser verification of /ai-eval against current BFF schema
+    status: partial_runtime_drift_found
+    evidence: Desktop and mobile route shell render; local bridge/runtime returned legacy dataset rows missing currentVersionId, so end-to-end data path remains a TICKET-206 blocker.
 confidence: high
 risks:
-  - Current implementation contains an earlier AI-eval scaffold and must not be treated as complete for the expanded product concept.
+  - Current local runtime data path still needs end-to-end proof that storage-read returns v2 dataset shapes to the BFF.
   - The implementation wave is broad and must be split by ownership boundary to avoid cross-agent drift.
   - Provider credential handling must remain outside CloudGrid v1 unless a separate secret-management spec is approved.
   - Online LLM-judge, RAG, tool, trajectory, automatic annotation routing, and

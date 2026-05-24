@@ -12,6 +12,21 @@ export interface IntegrationScenario {
   covers: readonly PublicGraphQLOperationName[];
 }
 
+export interface IntegrationScenarioStep {
+  operation: PublicGraphQLOperationName;
+  purpose: string;
+  expected: string;
+}
+
+export interface IntegrationScenarioFixture {
+  id: string;
+  scenarioId: string;
+  description: string;
+  defaultExecution: "hermetic" | "opt-in-external-adapter";
+  steps: readonly IntegrationScenarioStep[];
+  failureCases: readonly IntegrationScenarioStep[];
+}
+
 export const integrationScenarios = [
   {
     id: "control.viewer-and-project-selection",
@@ -121,7 +136,7 @@ export const integrationScenarios = [
     id: "ai-eval.workspace",
     mode: "local-e2e",
     description:
-      "Exercises AI Eval workspace reads, dataset import/export, quality overview, and live subscription startup through the local stack.",
+      "Exercises AI Eval v2 dataset curation, dataset evaluation, comparison, optimization, import/export, and live run reads through the local stack.",
     covers: [
       "AgentRuns",
       "AgentRun",
@@ -143,17 +158,26 @@ export const integrationScenarios = [
       "EvaluationComparisons",
       "CreateEvaluationComparison",
       "StartOptimizationRun",
+      "OptimizationRuns",
       "PromoteTargetSnapshot",
-      "DatasetCandidates",
-      "PrepareDatasetCandidates",
-      "CommitDatasetCandidates",
-      "AnnotationQueue",
       "PrepareDatasetImport",
       "CommitDatasetImport",
       "StartDatasetExport",
       "DatasetExport",
-      "AiQualityOverview",
       "LiveEvaluationRun",
+    ],
+  },
+  {
+    id: "ai-eval.backlog-compatibility",
+    mode: "local-e2e",
+    description:
+      "Tracks public GraphQL operations that remain in the contract for backlog or compatibility surfaces but are not primary AI Eval v2 workspace concepts.",
+    covers: [
+      "DatasetCandidates",
+      "PrepareDatasetCandidates",
+      "CommitDatasetCandidates",
+      "AnnotationQueue",
+      "AiQualityOverview",
     ],
   },
   {
@@ -173,8 +197,100 @@ export const integrationScenarios = [
   },
 ] as const satisfies readonly IntegrationScenario[];
 
+export const aiEvalV2ScenarioFixtures = [
+  {
+    id: "ai-eval.dataset-evaluation.classification",
+    scenarioId: "ai-eval.workspace",
+    description:
+      "Creates one schema-defined classification dataset, imports and appends curated rows, creates an evaluation, starts a run, and compares a candidate run against a baseline run.",
+    defaultExecution: "hermetic",
+    steps: [
+      {
+        operation: "CreateDataset",
+        purpose: "Create a per-dataset input/expected-output schema with v2 split and curation defaults.",
+        expected: "Dataset has a current version, ready item counts, split counts, and health metadata.",
+      },
+      {
+        operation: "PrepareDatasetImport",
+        purpose: "Preview JSONL rows mapped to input, expected, observedOutput, reason, metadata, source refs, split, and curationStatus.",
+        expected: "Preview validates raw JSON values against dataset settings before commit.",
+      },
+      {
+        operation: "CommitDatasetImport",
+        purpose: "Commit valid preview rows into exactly one new dataset version.",
+        expected: "Commit records the committed dataset version id and preserves source refs.",
+      },
+      {
+        operation: "AppendDatasetItems",
+        purpose: "Add one manual row with input, expected output, optional reason, validation split, and ready curation status.",
+        expected: "The row creates an item revision and the dataset version changes.",
+      },
+      {
+        operation: "CreateEvaluationDefinition",
+        purpose: "Bind the dataset, ready validation split, target ref, metric settings, and run policy.",
+        expected: "Evaluation definition persists immutable target and metric configuration.",
+      },
+      {
+        operation: "StartEvaluationRun",
+        purpose: "Execute the dataset evaluation against the configured target.",
+        expected: "Run returns normal metric aggregates, item results, trajectory summaries, and trace refs.",
+      },
+      {
+        operation: "EvaluationRun",
+        purpose: "Read run detail without recomputing metrics in the caller.",
+        expected: "Storage-read returns aggregates, item run rows, important steps, and bounded summaries.",
+      },
+      {
+        operation: "CreateEvaluationComparison",
+        purpose: "Compare baseline and candidate runs.",
+        expected: "Comparison records metric deltas, target diff, examples, and summary text.",
+      },
+    ],
+    failureCases: [
+      {
+        operation: "AppendDatasetItems",
+        purpose: "Submit expected JSON that violates the dataset expected-output schema.",
+        expected: "Storage-write rejects the row with a validation error and no dataset version is committed.",
+      },
+    ],
+  },
+  {
+    id: "ai-eval.optimization.quick-shot",
+    scenarioId: "ai-eval.workspace",
+    description:
+      "Starts optimization around a dataset evaluation with quick-shot selection, validates candidate evidence, and keeps promotion explicit.",
+    defaultExecution: "hermetic",
+    steps: [
+      {
+        operation: "StartOptimizationRun",
+        purpose: "Start optimization with explicit objective, baseline target snapshot, validation split selector, and quick-shot policy.",
+        expected: "Optimization run stores objective, budget snapshot, quick-shot policy, candidate snapshot ids, and caused evaluation run ids.",
+      },
+      {
+        operation: "OptimizationRuns",
+        purpose: "Read optimization progress and candidate evidence.",
+        expected: "Progress exposes candidate snapshots, comparison ids, selected candidate, and promotion record state.",
+      },
+      {
+        operation: "PromoteTargetSnapshot",
+        purpose: "Promote only after full validation evidence exists.",
+        expected: "Promotion writes a PromotionRecord with baseline, candidate, comparison, target ref, and evidence run ids.",
+      },
+    ],
+    failureCases: [
+      {
+        operation: "StartEvaluationRun",
+        purpose: "Run through an opt-in external adapter that exceeds the configured timeout.",
+        expected: "Runner records bounded adapter timeout failure evidence without auto-promoting or mutating the target.",
+      },
+    ],
+  },
+] as const satisfies readonly IntegrationScenarioFixture[];
+
 export function coveredPublicGraphQLOperationNames() {
-  return new Set(integrationScenarios.flatMap((scenario) => scenario.covers));
+  return new Set<PublicGraphQLOperationName>(
+    integrationScenarios.flatMap((scenario) => scenario.covers),
+  );
 }
 
 export function uncoveredPublicGraphQLOperationNames(

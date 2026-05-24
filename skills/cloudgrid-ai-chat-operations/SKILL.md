@@ -93,7 +93,7 @@ Use the specialist skill when the task narrows:
 | Trace evidence, waterfalls, critical path | `cloudgrid-trace-investigation` |
 | Log evidence, clusters, severity, pivots | `cloudgrid-logs-investigation` |
 | Metric charts, aggregations, dashboards | `cloudgrid-metrics-investigation` |
-| AI Eval runs, datasets, scorers, optimization | `cloudgrid-ai-eval-investigation` |
+| AI Eval runs, datasets, evaluations, optimization | `cloudgrid-ai-eval-investigation` |
 | Renderer catalog, Markdown sanitation, approval cards | `cloudgrid-json-render-artifacts` |
 | PURISTA harness implementation details | `ai-harness` |
 

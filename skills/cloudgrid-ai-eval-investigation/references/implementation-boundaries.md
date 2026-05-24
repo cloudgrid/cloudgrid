@@ -1,7 +1,7 @@
 # AI Eval Implementation Boundaries
 
-Use this reference when changing AI Eval code or explaining why a behavior
-belongs in a specific service.
+Use this reference when changing AI Eval code or explaining why behavior belongs
+in a specific service.
 
 ## Ownership Map
 
@@ -9,15 +9,12 @@ belongs in a specific service.
 | --- | --- | --- |
 | GraphQL operations and generated types | `apps/packages/public-api-client`, `apps/packages/ui-contracts` | Public BFF contract |
 | Message subjects and Go structs | `core/go-contracts` plus BFF bridge code | NATS request/reply and progress contracts |
-| UI contracts | `apps/packages/ui-contracts` | Generated/typed frontend view models |
-| Go contracts | `core/go-contracts` | Shared request/response structs |
 | BFF GraphQL | `apps/backend` | Validates inputs, routes to approved NATS subjects |
 | Frontend | `apps/frontend` | Renders GraphQL view models and route state only |
-| Public API client | `apps/packages/public-api-client` | Public GraphQL operations only |
-| storage-write | `core/storage-write` | Dataset, candidate, scorer, experiment, result persistence |
-| storage-read | `core/storage-read` | Search, cursors, manifests, policy matches, aggregates |
-| runner | `core/ai-eval-runner` | Run lifecycle, policy enforcement, harness calls |
-| harness adapter | `apps/packages/cloudgrid-harness-adapter` | Execution/scoring/optimization/sandbox lifecycle |
+| storage-write | `core/storage-write` | Dataset versions, item revisions, evaluation runs, metrics, comparisons, target snapshots, optimization runs, and promotions |
+| storage-read | `core/storage-read` | Search, cursors, aggregates, run detail view models, comparison view models, and live fanout |
+| runner | `core/ai-eval-runner` | Evaluation lifecycle, optimization lifecycle, quick-shot, adapter invocation, retention roles |
+| external adapter or harness | deployment-specific | Black-box target execution and provider credentials |
 
 ## Do Not Drift
 
@@ -30,42 +27,43 @@ belongs in a specific service.
   storage-write ownership.
 - Do not let the runner import storage adapters, SurrealDB clients, provider
   SDKs, or BFF code.
-- Do not let the frontend call NATS, harness, SurrealDB, or provider SDKs.
+- Do not let the frontend call NATS, adapters, SurrealDB, or provider SDKs.
+- Do not reintroduce primary Scorer, Experiment, Check, Gate, or Production
+  Quality concepts into AI Eval v2 UX.
 
 ## Required Behavior
 
 Storage-write:
 
-- handles dataset item update, candidate prepare, candidate commit, scorer
-  create, experiment create, result persist, and prompt promotion subjects;
-- validates scorer definitions and eval result payloads;
-- enforces expected dataset version and idempotency;
-- rejects non-ready, cross-project, or stale-anonymization candidates.
+- validates dataset schemas and row values;
+- creates immutable dataset item revisions and dataset versions;
+- persists evaluation runs, item runs, metric results, aggregates, comparisons,
+  target snapshots, optimization runs, and promotion records;
+- enforces expected dataset version and idempotency.
 
 Storage-read:
 
-- owns candidate search ordering and cursor pagination;
-- returns GraphQL-ready aggregate summaries;
-- resolves stable experiment manifests with schema, version, digest, canonical
-  snapshot, and run policy;
-- resolves online policy matches and warnings;
+- owns filtering, sorting, pagination, grouping, counts, and bounded facets;
+- returns GraphQL-ready aggregate summaries and run detail view models;
+- returns comparison and optimization progress view models;
 - threads auth context through read queries.
 
 Runner:
 
-- handles start, pause, resume, cancel, optimization, and online projections;
-- uses idempotent run-control requests;
-- rejects terminal resume with `ERR-AIE-001`;
-- rejects stale manifest digest with `ERR-AIE-002`;
-- starts, aborts, and cleans up harness sandboxes;
+- handles start, pause, resume, cancel, and optimization;
+- records quick-shot selected item revision IDs and seed;
+- invokes external adapters with trace context;
+- rejects use of `test` split during candidate generation;
 - persists only through storage-write subjects.
 
 Frontend:
 
 - uses public GraphQL operations only;
-- shows dataset candidates, scorer templates, experiment run controls, result
-  visualizations, production quality summaries, and settings links;
-- renders returned view models without local score or health derivation.
+- exposes Datasets and Evaluations primary tabs;
+- edits JSON schemas as raw JSON text;
+- validates row input locally where possible and relies on storage-write for
+  authoritative validation;
+- renders returned view models without local metric or health derivation.
 
 ## Test Expectations
 
@@ -73,11 +71,11 @@ Add focused tests in the owning layer:
 
 - contract drift: `tooling/scripts/check-contracts.mjs`;
 - BFF subject routing and validation: `apps/backend/src/ai-eval.test.ts`;
-- frontend route/client behavior: `apps/frontend/test` and `apps/frontend/e2e`;
-- fake-service integration: `tooling/scripts/ai-eval-fake-service-integration.test.mjs`;
+- frontend route/client behavior: `apps/frontend/test`;
+- integration scenario fixtures: `apps/packages/integration-scenarios`;
 - storage query/persistence: Go tests under `core/storage-read` and
   `core/storage-write`;
-- runner and harness lifecycle: Go runner tests plus Bun harness adapter tests.
+- runner and adapter lifecycle: Go runner tests plus opt-in adapter tests.
 
 Before claiming completion, run the plan-level gates from
-`plans/implementation-plan.md`.
+`plans/ai-eval-v2-migration/implementation-plan.md`.

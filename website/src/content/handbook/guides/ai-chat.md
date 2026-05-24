@@ -126,7 +126,8 @@ AI Chat can use bounded read tools for CloudGrid data:
 
 - traces, trace details, logs, metrics, and telemetry facets;
 - dashboards, alerts, alert history, and project metadata;
-- AI Eval runs, datasets, scorers, experiments, and results.
+- AI Eval runs, datasets, dataset evaluations, comparisons, optimization
+  evidence, and results.
 
 It can also use a restricted sandbox to transform bounded tool output into
 small JSON, JSONL, CSV, and render data files. The sandbox has no network, no
@@ -182,7 +183,7 @@ Risk levels:
 | Risk | Behavior |
 | --- | --- |
 | `low` | Read-only navigation suggestions, filter suggestions, or draft-only artifact creation. Approval is not required. |
-| `medium` | Non-destructive project artifacts such as dashboards, datasets, scorers, and alert rules. Approval is required. |
+| `medium` | Non-destructive project artifacts such as dashboards, datasets, evaluations, and alert rules. Approval is required. |
 | `high` | Retention, provider, budget, policy, project, or membership changes. Approval is required and changed fields must be visible. |
 | `destructive` | Delete, revoke, disable, archive, or removal actions. Approval is required through destructive confirmation. |
 
