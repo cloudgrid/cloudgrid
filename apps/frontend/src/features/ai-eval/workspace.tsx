@@ -1359,6 +1359,7 @@ function CreateEvaluationDialog({
   const [targetName, setTargetName] = useState("Prompt candidate");
   const [targetRef, setTargetRef] = useState("prompt://current");
   const [targetSnapshotId, setTargetSnapshotId] = useState("");
+  const [modelAlias, setModelAlias] = useState("default");
   const [metricId, setMetricId] = useState("extraction.exact_json_match");
   const [split, setSplit] = useState<DatasetSplit>("validation");
   const [retentionProfile, setRetentionProfile] = useState<RetentionProfile>("balanced");
@@ -1387,7 +1388,7 @@ function CreateEvaluationDialog({
           ...(trimmedTargetRef ? { targetRef: trimmedTargetRef } : {}),
           ...(trimmedTargetSnapshotId ? { targetSnapshotId: trimmedTargetSnapshotId } : {}),
           displayName: targetName.trim(),
-          metadata: {},
+          metadata: modelAlias.trim() ? { modelAlias: modelAlias.trim() } : {},
         },
         metricSettings: [{ metricId: metricId.trim() || "extraction.exact_json_match" }],
         runPolicy: { maxParallelRequests: 4 },
@@ -1486,6 +1487,10 @@ function CreateEvaluationDialog({
               placeholder="Optional"
               value={targetSnapshotId}
             />
+          </Field>
+          <Field>
+            <FieldLabel>Model alias</FieldLabel>
+            <Input onChange={(event) => setModelAlias(event.target.value)} value={modelAlias} />
           </Field>
           <Field>
             <FieldLabel>Metric</FieldLabel>
@@ -2289,8 +2294,12 @@ function DatasetSettingsDialog({ dataset }: { dataset: Dataset }) {
               </Select>
             </Field>
             <Field>
-              <FieldLabel>Default metric</FieldLabel>
-              <Input onChange={(event) => setMetricId(event.target.value)} value={metricId} />
+              <FieldLabel htmlFor="dataset-settings-default-metric">Default metric</FieldLabel>
+              <Input
+                id="dataset-settings-default-metric"
+                onChange={(event) => setMetricId(event.target.value)}
+                value={metricId}
+              />
             </Field>
           </div>
           {mutation.error ? (

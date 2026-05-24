@@ -112,8 +112,13 @@ type ManifestResolveRequest struct {
 }
 
 type ProjectAISettings struct {
-	ProjectID string
-	Budget    map[string]any
+	ProjectID                 string
+	DefaultProviderProfileID  string
+	DefaultJudgeProfileID     string
+	DefaultOptimizerProfileID string
+	ProviderProfiles          []map[string]any
+	ModelAliases              []map[string]any
+	Budget                    map[string]any
 }
 
 type ExperimentRun struct {
@@ -417,18 +422,19 @@ const (
 )
 
 type SandboxLifecycleRequest struct {
-	ExperimentRunID string
-	DatasetItemID   string
-	ScorerID        string
-	CandidateID     string
-	AttemptID       string
-	ManifestDigest  string
-	SandboxProfile  string
-	SandboxRef      string
-	CheckpointRef   string
-	RunPolicy       map[string]any
-	CleanupRetry    map[string]any
-	TraceContext    map[string]string
+	ExperimentRunID     string
+	DatasetItemID       string
+	ScorerID            string
+	CandidateID         string
+	AttemptID           string
+	ManifestDigest      string
+	ProviderProfileRefs []string
+	SandboxProfile      string
+	SandboxRef          string
+	CheckpointRef       string
+	RunPolicy           map[string]any
+	CleanupRetry        map[string]any
+	TraceContext        map[string]string
 }
 
 type SandboxLifecycleResult struct {
@@ -443,15 +449,16 @@ type SandboxLifecycleResult struct {
 }
 
 type HarnessRunRequest struct {
-	ExperimentRunID string
-	DatasetItemID   string
-	Input           map[string]any
-	SolverRef       map[string]any
-	ManifestDigest  string
-	RunPolicy       map[string]any
-	SandboxProfile  string
-	SandboxRef      string
-	TraceContext    map[string]string
+	ExperimentRunID     string
+	DatasetItemID       string
+	Input               map[string]any
+	SolverRef           map[string]any
+	ManifestDigest      string
+	ProviderProfileRefs []string
+	RunPolicy           map[string]any
+	SandboxProfile      string
+	SandboxRef          string
+	TraceContext        map[string]string
 }
 
 type HarnessRunResult struct {
@@ -461,18 +468,19 @@ type HarnessRunResult struct {
 }
 
 type HarnessScoreRequest struct {
-	ScorerID       string
-	ScorerVersion  int
-	TargetKind     string
-	TargetID       string
-	Input          map[string]any
-	Output         map[string]any
-	Expected       map[string]any
-	ManifestDigest string
-	RunPolicy      map[string]any
-	SandboxProfile string
-	SandboxRef     string
-	TraceContext   map[string]string
+	ScorerID            string
+	ScorerVersion       int
+	TargetKind          string
+	TargetID            string
+	Input               map[string]any
+	Output              map[string]any
+	Expected            map[string]any
+	ManifestDigest      string
+	ProviderProfileRefs []string
+	RunPolicy           map[string]any
+	SandboxProfile      string
+	SandboxRef          string
+	TraceContext        map[string]string
 }
 
 type HarnessScoreResult struct {
@@ -489,6 +497,7 @@ type HarnessOptimizeRequest struct {
 	OptimizerKind       string
 	Config              map[string]any
 	ManifestDigest      string
+	ProviderProfileRefs []string
 	RunPolicy           map[string]any
 	SandboxProfile      string
 	SandboxRef          string

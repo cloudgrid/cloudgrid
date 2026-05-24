@@ -765,7 +765,10 @@ func buildAIEvalV2PersistQuery(subject string, request contracts.EvalMutationReq
 		sql := "BEGIN TRANSACTION;\n" +
 			"LET $dataset = SELECT currentVersion, version, currentVersionId FROM type::record('ai_dataset', $dataset_id) LIMIT 1;\n" +
 			"IF array::len($dataset) = 0 OR (($expected_dataset_version_id != '' AND $dataset[0].currentVersionId != $expected_dataset_version_id) OR ($expected_dataset_version_id = '' AND ($dataset[0].currentVersion ?? $dataset[0].version) != $expected_dataset_version)) { THROW 'ERR-001 VALIDATION_FAILED: stale dataset version'; };\n" +
+			"LET $parent_version = SELECT itemRevisionIds FROM type::record('ai_dataset_version', $expected_dataset_version_id) LIMIT 1;\n" +
+			"LET $parent_item_revision_ids = IF array::len($parent_version) > 0 { $parent_version[0].itemRevisionIds ?? [] } ELSE { [] };\n" +
 			"UPSERT type::record('ai_dataset_version', $dataset_version_id) CONTENT $dataset_version_record;\n" +
+			"UPDATE type::record('ai_dataset_version', $dataset_version_id) SET itemRevisionIds = $parent_item_revision_ids;\n" +
 			"UPDATE type::record('ai_dataset', $dataset_id) SET settings = $settings, version = $new_dataset_version, currentVersion = $new_dataset_version, currentVersionId = $dataset_version_id, currentDigest = $dataset_digest, updatedAt = $occurred_at, updatedBy = $record.updatedBy;\n" +
 			idempotencySQL + "\nCOMMIT TRANSACTION;"
 		return sql, vars, true

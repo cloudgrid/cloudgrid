@@ -434,9 +434,13 @@ func TestNATSAdaptersPropagateAuthContext(t *testing.T) {
 func TestHarnessHTTPAdapterCallsHarnessOnlyWithTraceContext(t *testing.T) {
 	var gotPath string
 	var gotTraceparent string
+	var gotBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotTraceparent = r.Header.Get("traceparent")
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"harnessRunId": "harness-run-1",
 			"output":       map[string]any{"answer": "4"},
@@ -450,7 +454,10 @@ func TestHarnessHTTPAdapterCallsHarnessOnlyWithTraceContext(t *testing.T) {
 		ExperimentRunID: "run-1",
 		DatasetItemID:   "item-1",
 		Input:           map[string]any{"question": "2+2"},
-		TraceContext:    map[string]string{"traceparent": "00-test"},
+		ProviderProfileRefs: []string{
+			"provider-openai",
+		},
+		TraceContext: map[string]string{"traceparent": "00-test"},
 	})
 
 	if err != nil {
@@ -461,6 +468,9 @@ func TestHarnessHTTPAdapterCallsHarnessOnlyWithTraceContext(t *testing.T) {
 	}
 	if result.HarnessRunID != "harness-run-1" {
 		t.Fatalf("result = %#v", result)
+	}
+	if !reflect.DeepEqual(gotBody["providerProfileRefs"], []any{"provider-openai"}) {
+		t.Fatalf("providerProfileRefs body = %#v", gotBody["providerProfileRefs"])
 	}
 }
 

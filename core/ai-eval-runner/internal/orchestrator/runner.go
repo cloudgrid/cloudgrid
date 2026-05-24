@@ -172,6 +172,14 @@ func (r *Runner) StartEvaluationRun(ctx context.Context, request StartEvaluation
 	if err != nil {
 		return StartEvaluationRunResult{}, err
 	}
+	projectSettings, err := r.projectAISettings(ctx, request.ProjectID)
+	if err != nil {
+		return StartEvaluationRunResult{}, err
+	}
+	if boolSetting(projectSettings.Budget, "exhausted") || boolSetting(projectSettings.Budget, "budgetExhausted") {
+		return StartEvaluationRunResult{}, errors.New("ERR-AIE-004: evaluation budget exhausted")
+	}
+	providerProfileRefs := providerProfileRefsForTarget(targetSnapshot, projectSettings, "default")
 	selectedRevisionIDs := selectedItemRevisionIDs(request.SelectedItemRevisionIDs, datasetVersion.ItemRevisionIDs)
 	items, err := r.reader.SearchDatasetItemRevisions(ctx, datasetVersion.ID, selectedRevisionIDs)
 	if err != nil {
@@ -222,7 +230,7 @@ func (r *Runner) StartEvaluationRun(ctx context.Context, request StartEvaluation
 			itemRuns = append(itemRuns, r.cancelledEvaluationItemRun(run, item, targetSnapshot))
 			break
 		}
-		itemRun, itemMetrics := r.executeEvaluationItem(ctx, run, item, targetSnapshot, request)
+		itemRun, itemMetrics := r.executeEvaluationItem(ctx, run, item, targetSnapshot, providerProfileRefs, request)
 		if itemRun.Status == ports.EvaluationItemRunStatusCompleted {
 			completed++
 		} else {
@@ -333,39 +341,42 @@ func (r *Runner) StartOfflineExperiment(ctx context.Context, request StartExperi
 		}
 
 		sandbox, err := r.harness.StartSandbox(ctx, ports.SandboxLifecycleRequest{
-			ExperimentRunID: run.ID,
-			DatasetItemID:   item.ID,
-			AttemptID:       item.ID,
-			ManifestDigest:  manifest.Digest,
-			SandboxProfile:  ports.SandboxProfileEphemeralEvalItem,
-			RunPolicy:       runPolicy,
-			TraceContext:    request.TraceContext,
+			ExperimentRunID:     run.ID,
+			DatasetItemID:       item.ID,
+			AttemptID:           item.ID,
+			ManifestDigest:      manifest.Digest,
+			ProviderProfileRefs: manifest.ProviderProfileRefs,
+			SandboxProfile:      ports.SandboxProfileEphemeralEvalItem,
+			RunPolicy:           runPolicy,
+			TraceContext:        request.TraceContext,
 		})
 		if err != nil {
 			return StartExperimentResult{}, r.failRun(ctx, run.ID, err)
 		}
 		activeSandbox := ports.SandboxLifecycleRequest{
-			ExperimentRunID: run.ID,
-			DatasetItemID:   item.ID,
-			AttemptID:       item.ID,
-			ManifestDigest:  manifest.Digest,
-			SandboxProfile:  ports.SandboxProfileEphemeralEvalItem,
-			SandboxRef:      sandbox.SandboxRef,
-			RunPolicy:       runPolicy,
-			TraceContext:    request.TraceContext,
+			ExperimentRunID:     run.ID,
+			DatasetItemID:       item.ID,
+			AttemptID:           item.ID,
+			ManifestDigest:      manifest.Digest,
+			ProviderProfileRefs: manifest.ProviderProfileRefs,
+			SandboxProfile:      ports.SandboxProfileEphemeralEvalItem,
+			SandboxRef:          sandbox.SandboxRef,
+			RunPolicy:           runPolicy,
+			TraceContext:        request.TraceContext,
 		}
 		r.trackSandbox(run.ID, activeSandbox)
 
 		runResult, err := r.harness.Run(ctx, ports.HarnessRunRequest{
-			ExperimentRunID: run.ID,
-			DatasetItemID:   item.ID,
-			Input:           item.Input,
-			SolverRef:       solverRef,
-			ManifestDigest:  manifest.Digest,
-			RunPolicy:       runPolicy,
-			SandboxProfile:  ports.SandboxProfileEphemeralEvalItem,
-			SandboxRef:      sandbox.SandboxRef,
-			TraceContext:    request.TraceContext,
+			ExperimentRunID:     run.ID,
+			DatasetItemID:       item.ID,
+			Input:               item.Input,
+			SolverRef:           solverRef,
+			ManifestDigest:      manifest.Digest,
+			ProviderProfileRefs: manifest.ProviderProfileRefs,
+			RunPolicy:           runPolicy,
+			SandboxProfile:      ports.SandboxProfileEphemeralEvalItem,
+			SandboxRef:          sandbox.SandboxRef,
+			TraceContext:        request.TraceContext,
 		})
 		if err != nil {
 			return StartExperimentResult{}, r.failRun(ctx, run.ID, err)
@@ -388,7 +399,7 @@ func (r *Runner) StartOfflineExperiment(ctx context.Context, request StartExperi
 		}
 
 		for _, scorer := range scorers {
-			result, err := r.scoreDatasetItemRun(ctx, scorer, item, itemRun, manifest.Digest, runPolicy, ports.SandboxProfileEphemeralEvalItem, sandbox.SandboxRef, request.TraceContext)
+			result, err := r.scoreDatasetItemRun(ctx, scorer, item, itemRun, manifest.Digest, manifest.ProviderProfileRefs, runPolicy, ports.SandboxProfileEphemeralEvalItem, sandbox.SandboxRef, request.TraceContext)
 			if err != nil {
 				return StartExperimentResult{}, r.failRun(ctx, run.ID, err)
 			}
@@ -675,13 +686,14 @@ func (r *Runner) StartOptimization(ctx context.Context, request StartOptimizatio
 	}
 	runPolicy := normalizeRunPolicy(manifest.RunPolicy)
 	sandbox, err := r.harness.StartSandbox(ctx, ports.SandboxLifecycleRequest{
-		ExperimentRunID: runID,
-		CandidateID:     runID,
-		AttemptID:       runID,
-		ManifestDigest:  manifest.Digest,
-		SandboxProfile:  ports.SandboxProfileEphemeralOptimizationCandidate,
-		RunPolicy:       runPolicy,
-		TraceContext:    request.TraceContext,
+		ExperimentRunID:     runID,
+		CandidateID:         runID,
+		AttemptID:           runID,
+		ManifestDigest:      manifest.Digest,
+		ProviderProfileRefs: manifest.ProviderProfileRefs,
+		SandboxProfile:      ports.SandboxProfileEphemeralOptimizationCandidate,
+		RunPolicy:           runPolicy,
+		TraceContext:        request.TraceContext,
 	})
 	if err != nil {
 		return StartOptimizationResult{}, r.failRun(ctx, runID, err)
@@ -693,6 +705,7 @@ func (r *Runner) StartOptimization(ctx context.Context, request StartOptimizatio
 		OptimizerKind:       request.OptimizerKind,
 		Config:              request.Config,
 		ManifestDigest:      manifest.Digest,
+		ProviderProfileRefs: manifest.ProviderProfileRefs,
 		RunPolicy:           runPolicy,
 		SandboxProfile:      ports.SandboxProfileEphemeralOptimizationCandidate,
 		SandboxRef:          sandbox.SandboxRef,
@@ -704,7 +717,7 @@ func (r *Runner) StartOptimization(ctx context.Context, request StartOptimizatio
 	if err := r.publishProgress(ctx, runID, ports.ExperimentProgressFinished, "", ports.ExperimentRunStatusFinished, result.Summary); err != nil {
 		return StartOptimizationResult{}, err
 	}
-	_, _ = r.harness.CleanupSandbox(ctx, ports.SandboxLifecycleRequest{ExperimentRunID: runID, CandidateID: runID, AttemptID: runID, ManifestDigest: manifest.Digest, SandboxProfile: ports.SandboxProfileEphemeralOptimizationCandidate, SandboxRef: sandbox.SandboxRef, RunPolicy: runPolicy, TraceContext: request.TraceContext})
+	_, _ = r.harness.CleanupSandbox(ctx, ports.SandboxLifecycleRequest{ExperimentRunID: runID, CandidateID: runID, AttemptID: runID, ManifestDigest: manifest.Digest, ProviderProfileRefs: manifest.ProviderProfileRefs, SandboxProfile: ports.SandboxProfileEphemeralOptimizationCandidate, SandboxRef: sandbox.SandboxRef, RunPolicy: runPolicy, TraceContext: request.TraceContext})
 	return StartOptimizationResult{
 		ExperimentRunID:    runID,
 		CandidatePromptIDs: result.CandidatePromptIDs,
@@ -726,13 +739,14 @@ func (r *Runner) startV2Optimization(ctx context.Context, request StartOptimizat
 	now := r.now()
 	runPolicy := mapDefault(request.RunPolicy, objectMap(request.Config, "runPolicy"))
 	sandbox, err := r.harness.StartSandbox(ctx, ports.SandboxLifecycleRequest{
-		ExperimentRunID: runID,
-		CandidateID:     runID,
-		AttemptID:       runID,
-		ManifestDigest:  stableDigest(request.Config),
-		SandboxProfile:  ports.SandboxProfileEphemeralOptimizationCandidate,
-		RunPolicy:       runPolicy,
-		TraceContext:    request.TraceContext,
+		ExperimentRunID:     runID,
+		CandidateID:         runID,
+		AttemptID:           runID,
+		ManifestDigest:      stableDigest(request.Config),
+		ProviderProfileRefs: stringRefsFromValue(request.Config["providerProfileRefs"]),
+		SandboxProfile:      ports.SandboxProfileEphemeralOptimizationCandidate,
+		RunPolicy:           runPolicy,
+		TraceContext:        request.TraceContext,
 	})
 	if err != nil {
 		return StartOptimizationResult{}, err
@@ -744,6 +758,7 @@ func (r *Runner) startV2Optimization(ctx context.Context, request StartOptimizat
 		OptimizerKind:       "critic_mutate_judge_pick",
 		Config:              request.Config,
 		ManifestDigest:      stableDigest(request.Config),
+		ProviderProfileRefs: stringRefsFromValue(request.Config["providerProfileRefs"]),
 		RunPolicy:           runPolicy,
 		SandboxProfile:      ports.SandboxProfileEphemeralOptimizationCandidate,
 		SandboxRef:          sandbox.SandboxRef,
@@ -752,7 +767,7 @@ func (r *Runner) startV2Optimization(ctx context.Context, request StartOptimizat
 	if err != nil {
 		return StartOptimizationResult{}, err
 	}
-	_, _ = r.harness.CleanupSandbox(ctx, ports.SandboxLifecycleRequest{ExperimentRunID: runID, CandidateID: runID, AttemptID: runID, ManifestDigest: stableDigest(request.Config), SandboxProfile: ports.SandboxProfileEphemeralOptimizationCandidate, SandboxRef: sandbox.SandboxRef, RunPolicy: runPolicy, TraceContext: request.TraceContext})
+	_, _ = r.harness.CleanupSandbox(ctx, ports.SandboxLifecycleRequest{ExperimentRunID: runID, CandidateID: runID, AttemptID: runID, ManifestDigest: stableDigest(request.Config), ProviderProfileRefs: stringRefsFromValue(request.Config["providerProfileRefs"]), SandboxProfile: ports.SandboxProfileEphemeralOptimizationCandidate, SandboxRef: sandbox.SandboxRef, RunPolicy: runPolicy, TraceContext: request.TraceContext})
 	endedAt := r.now()
 	optimizationRun := map[string]any{
 		"id":                               runID,
@@ -790,7 +805,7 @@ func (r *Runner) startV2Optimization(ctx context.Context, request StartOptimizat
 	}, nil
 }
 
-func (r *Runner) executeEvaluationItem(ctx context.Context, run ports.EvaluationRun, item ports.DatasetItemRevision, target ports.TargetSnapshot, request StartEvaluationRunRequest) (ports.EvaluationItemRun, []ports.MetricResult) {
+func (r *Runner) executeEvaluationItem(ctx context.Context, run ports.EvaluationRun, item ports.DatasetItemRevision, target ports.TargetSnapshot, providerProfileRefs []string, request StartEvaluationRunRequest) (ports.EvaluationItemRun, []ports.MetricResult) {
 	startedAt := r.now()
 	itemRunID := r.idGenerator()
 	traceID := stringDefault(traceValue(request.TraceContext, "traceparent"), "trace-"+itemRunID)
@@ -841,14 +856,15 @@ func (r *Runner) executeEvaluationItem(ctx context.Context, run ports.Evaluation
 		}
 	} else {
 		result, err := r.harness.Run(ctx, ports.HarnessRunRequest{
-			ExperimentRunID: run.ID,
-			DatasetItemID:   item.DatasetItemID,
-			Input:           item.Input,
-			SolverRef:       target.TargetRef,
-			ManifestDigest:  target.Digest,
-			RunPolicy:       run.RunPolicySnapshot,
-			SandboxProfile:  ports.SandboxProfileEphemeralEvalItem,
-			TraceContext:    request.TraceContext,
+			ExperimentRunID:     run.ID,
+			DatasetItemID:       item.DatasetItemID,
+			Input:               item.Input,
+			SolverRef:           target.TargetRef,
+			ManifestDigest:      target.Digest,
+			ProviderProfileRefs: providerProfileRefs,
+			RunPolicy:           run.RunPolicySnapshot,
+			SandboxProfile:      ports.SandboxProfileEphemeralEvalItem,
+			TraceContext:        request.TraceContext,
 		})
 		if err != nil {
 			problems = append(problems, problemForError(err))
@@ -892,7 +908,7 @@ func (r *Runner) executeEvaluationItem(ctx context.Context, run ports.Evaluation
 	return itemRun, metrics
 }
 
-func (r *Runner) scoreDatasetItemRun(ctx context.Context, scorer ports.Scorer, item ports.DatasetItem, itemRun ports.DatasetItemRun, manifestDigest string, runPolicy map[string]any, sandboxProfile string, sandboxRef string, traceContext map[string]string) (ports.EvalResult, error) {
+func (r *Runner) scoreDatasetItemRun(ctx context.Context, scorer ports.Scorer, item ports.DatasetItem, itemRun ports.DatasetItemRun, manifestDigest string, providerProfileRefs []string, runPolicy map[string]any, sandboxProfile string, sandboxRef string, traceContext map[string]string) (ports.EvalResult, error) {
 	result := ports.EvalResult{
 		ScorerID:      scorer.ID,
 		ScorerVersion: scorer.Version,
@@ -911,18 +927,19 @@ func (r *Runner) scoreDatasetItemRun(ctx context.Context, scorer ports.Scorer, i
 	}
 
 	score, err := r.harness.Score(ctx, ports.HarnessScoreRequest{
-		ScorerID:       scorer.ID,
-		ScorerVersion:  scorer.Version,
-		TargetKind:     ports.EvalTargetKindDatasetItemRun,
-		TargetID:       itemRun.ID,
-		Input:          item.Input,
-		Output:         itemRun.Output,
-		Expected:       item.Expected,
-		ManifestDigest: manifestDigest,
-		RunPolicy:      runPolicy,
-		SandboxProfile: sandboxProfile,
-		SandboxRef:     sandboxRef,
-		TraceContext:   traceContext,
+		ScorerID:            scorer.ID,
+		ScorerVersion:       scorer.Version,
+		TargetKind:          ports.EvalTargetKindDatasetItemRun,
+		TargetID:            itemRun.ID,
+		Input:               item.Input,
+		Output:              itemRun.Output,
+		Expected:            item.Expected,
+		ManifestDigest:      manifestDigest,
+		ProviderProfileRefs: providerProfileRefs,
+		RunPolicy:           runPolicy,
+		SandboxProfile:      sandboxProfile,
+		SandboxRef:          sandboxRef,
+		TraceContext:        traceContext,
 	})
 	if err != nil {
 		return ports.EvalResult{}, err
@@ -1090,7 +1107,7 @@ func (r *Runner) enforceProjectBudget(ctx context.Context, projectID string, man
 		return errors.New("ERR-AIE-004: evaluation budget exhausted")
 	}
 	if projectID != "" && r.control != nil {
-		settings, err := r.control.GetProjectAISettings(ctx, projectID)
+		settings, err := r.projectAISettings(ctx, projectID)
 		if err != nil {
 			return err
 		}
@@ -1099,6 +1116,86 @@ func (r *Runner) enforceProjectBudget(ctx context.Context, projectID string, man
 		}
 	}
 	return nil
+}
+
+func (r *Runner) projectAISettings(ctx context.Context, projectID string) (ports.ProjectAISettings, error) {
+	if projectID == "" || r.control == nil {
+		return ports.ProjectAISettings{}, nil
+	}
+	return r.control.GetProjectAISettings(ctx, projectID)
+}
+
+func providerProfileRefsForTarget(target ports.TargetSnapshot, settings ports.ProjectAISettings, purpose string) []string {
+	refs := stringRefsFromValue(target.Metadata["providerProfileRefs"])
+	if len(refs) > 0 {
+		return refs
+	}
+	if ref := stringValueFromMap(target.TargetRef, "providerProfileId"); ref != "" {
+		return []string{ref}
+	}
+	if metadata := objectMap(target.TargetRef, "metadata"); len(metadata) > 0 {
+		if refs := stringRefsFromValue(metadata["providerProfileRefs"]); len(refs) > 0 {
+			return refs
+		}
+		if ref := stringValueFromMap(metadata, "providerProfileId"); ref != "" {
+			return []string{ref}
+		}
+	}
+	alias := firstNonEmptyString(
+		stringValueFromMap(target.TargetRef, "modelAlias"),
+		stringValueFromMap(target.TargetRef, "modelAliasId"),
+		stringValueFromMap(objectMap(target.TargetRef, "metadata"), "modelAlias"),
+		stringValueFromMap(objectMap(target.TargetRef, "metadata"), "modelAliasId"),
+	)
+	if alias != "" {
+		if providerProfileID := providerProfileIDForAlias(settings.ModelAliases, alias, purpose); providerProfileID != "" {
+			return []string{providerProfileID}
+		}
+	}
+	if settings.DefaultProviderProfileID != "" {
+		return []string{settings.DefaultProviderProfileID}
+	}
+	return nil
+}
+
+func providerProfileIDForAlias(aliases []map[string]any, alias string, purpose string) string {
+	for _, item := range aliases {
+		if stringValueFromMap(item, "id") == alias || stringValueFromMap(item, "name") == alias {
+			return stringValueFromMap(item, "providerProfileId")
+		}
+	}
+	for _, item := range aliases {
+		if stringValueFromMap(item, "purpose") == purpose {
+			return stringValueFromMap(item, "providerProfileId")
+		}
+	}
+	return ""
+}
+
+func stringRefsFromValue(value any) []string {
+	switch typed := value.(type) {
+	case []string:
+		return append([]string(nil), typed...)
+	case []any:
+		result := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if value, ok := item.(string); ok && value != "" {
+				result = append(result, value)
+			}
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func rejectHoldoutOptimization(manifest ports.ExperimentManifest) error {

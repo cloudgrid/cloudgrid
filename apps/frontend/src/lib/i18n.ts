@@ -445,6 +445,7 @@ const en = {
   "dashboards.descriptionPlaceholder": "Describe what this dashboard helps the project monitor.",
   "dashboards.from": "From",
   "dashboards.to": "To",
+  "dashboards.actions": "Dashboard actions",
   "dashboards.refresh": "Refresh dashboards",
   "dashboards.duplicate": "Duplicate",
   "dashboards.save": "Save",

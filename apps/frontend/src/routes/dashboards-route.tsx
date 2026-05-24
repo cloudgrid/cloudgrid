@@ -440,7 +440,7 @@ export function DashboardsRoute() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
-                  aria-label={t("dashboards.widget.more")}
+                  aria-label={t("dashboards.actions")}
                   size="icon"
                   type="button"
                   variant="outline"
@@ -501,7 +501,7 @@ export function DashboardsRoute() {
         />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <main className="min-h-0 flex-1 overflow-auto bg-background p-4">
+          <div className="min-h-0 flex-1 overflow-auto bg-background p-4">
             {dashboardsQuery.isLoading ? <LoadingRows /> : null}
             {dashboardsQuery.isError ? (
               <ErrorPanel
@@ -524,7 +524,7 @@ export function DashboardsRoute() {
                 widgets={widgets}
               />
             ) : null}
-          </main>
+          </div>
 
           <WidgetEditorSheet
             dashboard={selectedDashboard}
@@ -650,7 +650,7 @@ function DashboardOverview({
   ];
 
   return (
-    <main className="min-h-0 flex-1 overflow-auto">
+    <section className="min-h-0 flex-1 overflow-auto">
       <div className="mx-auto flex max-w-6xl flex-col gap-4">
         <div className="flex flex-col gap-3 border-b pb-4 lg:flex-row lg:items-end lg:justify-between">
           <Field className="max-w-md">
@@ -734,7 +734,7 @@ function DashboardOverview({
           );
         })}
       </div>
-    </main>
+    </section>
   );
 }
 

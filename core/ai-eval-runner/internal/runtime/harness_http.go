@@ -49,15 +49,16 @@ func (adapter HarnessHTTPAdapter) Run(ctx context.Context, request ports.Harness
 		Summary      map[string]any `json:"summary"`
 	}
 	if err := adapter.post(ctx, "/v1/run", map[string]any{
-		"experimentRunId": request.ExperimentRunID,
-		"datasetItemId":   request.DatasetItemID,
-		"input":           request.Input,
-		"solverRef":       request.SolverRef,
-		"manifestDigest":  request.ManifestDigest,
-		"runPolicy":       request.RunPolicy,
-		"sandboxProfile":  request.SandboxProfile,
-		"sandboxRef":      request.SandboxRef,
-		"traceContext":    request.TraceContext,
+		"experimentRunId":     request.ExperimentRunID,
+		"datasetItemId":       request.DatasetItemID,
+		"input":               request.Input,
+		"solverRef":           request.SolverRef,
+		"manifestDigest":      request.ManifestDigest,
+		"providerProfileRefs": request.ProviderProfileRefs,
+		"runPolicy":           request.RunPolicy,
+		"sandboxProfile":      request.SandboxProfile,
+		"sandboxRef":          request.SandboxRef,
+		"traceContext":        request.TraceContext,
 	}, &response); err != nil {
 		return ports.HarnessRunResult{}, err
 	}
@@ -90,11 +91,12 @@ func (adapter HarnessHTTPAdapter) Score(ctx context.Context, request ports.Harne
 			"expected": request.Expected,
 			"metadata": map[string]any{"input": request.Input},
 		},
-		"manifestDigest": request.ManifestDigest,
-		"runPolicy":      request.RunPolicy,
-		"sandboxProfile": request.SandboxProfile,
-		"sandboxRef":     request.SandboxRef,
-		"traceContext":   request.TraceContext,
+		"manifestDigest":      request.ManifestDigest,
+		"providerProfileRefs": request.ProviderProfileRefs,
+		"runPolicy":           request.RunPolicy,
+		"sandboxProfile":      request.SandboxProfile,
+		"sandboxRef":          request.SandboxRef,
+		"traceContext":        request.TraceContext,
 	}, &response); err != nil {
 		return ports.HarnessScoreResult{}, err
 	}
@@ -111,13 +113,14 @@ func (adapter HarnessHTTPAdapter) Optimize(ctx context.Context, request ports.Ha
 			"text": request.BasePromptVersionID,
 			"hash": request.BasePromptVersionID,
 		},
-		"optimizerKind":  request.OptimizerKind,
-		"config":         request.Config,
-		"manifestDigest": request.ManifestDigest,
-		"runPolicy":      request.RunPolicy,
-		"sandboxProfile": request.SandboxProfile,
-		"sandboxRef":     request.SandboxRef,
-		"traceContext":   request.TraceContext,
+		"optimizerKind":       request.OptimizerKind,
+		"config":              request.Config,
+		"manifestDigest":      request.ManifestDigest,
+		"providerProfileRefs": request.ProviderProfileRefs,
+		"runPolicy":           request.RunPolicy,
+		"sandboxProfile":      request.SandboxProfile,
+		"sandboxRef":          request.SandboxRef,
+		"traceContext":        request.TraceContext,
 	})
 	if err != nil {
 		return ports.HarnessOptimizeResult{}, err
@@ -128,18 +131,19 @@ func (adapter HarnessHTTPAdapter) Optimize(ctx context.Context, request ports.Ha
 func (adapter HarnessHTTPAdapter) sandboxLifecycle(ctx context.Context, path string, request ports.SandboxLifecycleRequest) (ports.SandboxLifecycleResult, error) {
 	var response ports.SandboxLifecycleResult
 	if err := adapter.post(ctx, path, map[string]any{
-		"experimentRunId": request.ExperimentRunID,
-		"datasetItemId":   request.DatasetItemID,
-		"scorerId":        request.ScorerID,
-		"candidateId":     request.CandidateID,
-		"attemptId":       request.AttemptID,
-		"manifestDigest":  request.ManifestDigest,
-		"sandboxProfile":  request.SandboxProfile,
-		"sandboxRef":      request.SandboxRef,
-		"checkpointRef":   request.CheckpointRef,
-		"runPolicy":       request.RunPolicy,
-		"cleanupRetry":    request.CleanupRetry,
-		"traceContext":    request.TraceContext,
+		"experimentRunId":     request.ExperimentRunID,
+		"datasetItemId":       request.DatasetItemID,
+		"scorerId":            request.ScorerID,
+		"candidateId":         request.CandidateID,
+		"attemptId":           request.AttemptID,
+		"manifestDigest":      request.ManifestDigest,
+		"providerProfileRefs": request.ProviderProfileRefs,
+		"sandboxProfile":      request.SandboxProfile,
+		"sandboxRef":          request.SandboxRef,
+		"checkpointRef":       request.CheckpointRef,
+		"runPolicy":           request.RunPolicy,
+		"cleanupRetry":        request.CleanupRetry,
+		"traceContext":        request.TraceContext,
 	}, &response); err != nil {
 		return ports.SandboxLifecycleResult{}, err
 	}

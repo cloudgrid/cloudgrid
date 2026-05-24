@@ -132,9 +132,35 @@ const pinnedDashboard = {
   updatedBy: null,
 };
 
-const emptyMetricSeriesResult = { items: [], total: 0 };
+const metricDescriptor = {
+  id: "metric-http-requests",
+  name: "http.requests",
+  description: null,
+  unit: "1",
+  kind: "sum",
+  aggregationTemporality: "delta",
+  monotonic: true,
+  attributeKeys: [],
+  firstSeenAt: timestamp,
+  lastSeenAt: timestamp,
+};
+
+const emptyMetricNamesResult = { items: [metricDescriptor], nextCursor: null };
+const emptyMetricSeriesResult = {
+  metric: metricDescriptor,
+  aggregation: "sum",
+  interval: "PT1M",
+  groupBy: [],
+  series: [],
+  warnings: [],
+};
 const emptyLogSearchResult = { items: [], nextCursor: null };
-const emptyAlertSummaryResult = { items: [], total: 0 };
+const emptyAlertSummaryResult = {
+  totalCount: 0,
+  byState: [],
+  bySeverity: [],
+  bySignal: [],
+};
 const emptyAlertHistoryResult = { items: [], nextCursor: null };
 
 async function mockDashboards(
@@ -258,6 +284,14 @@ async function mockDashboards(
       return;
     }
 
+    if (op === "MetricNames") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: { data: { metricNames: emptyMetricNamesResult } },
+      });
+      return;
+    }
+
     if (op === "RichMetricSeries") {
       await route.fulfill({
         contentType: "application/json",
@@ -368,8 +402,9 @@ test.describe("/dashboards", () => {
 
     await page.goto("/dashboards");
 
-    await expect(page.getByText("Service Overview")).toBeVisible();
-    await expect(page.getByText("project")).toBeVisible();
+    const card = page.getByRole("button", { name: /service overview/i });
+    await expect(card).toBeVisible();
+    await expect(card.getByText("project", { exact: true })).toBeVisible();
   });
 
   test("navigates to dashboard detail on selection", async ({ page }) => {
@@ -379,7 +414,7 @@ test.describe("/dashboards", () => {
 
     await page.getByRole("button", { name: /service overview/i }).click();
     await expect(page).toHaveURL(/\?dashboard=dash-overview-01/);
-    await expect(page.getByText("Service Overview")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Service Overview" })).toBeVisible();
   });
 
   test("renders dashboard canvas with widget cards", async ({ page }) => {
@@ -442,9 +477,32 @@ test.describe("/dashboards", () => {
         return;
       }
 
-      if (op === "MetricSeries" || op === "LogSearch" || op === "AlertSummary") {
+      if (op === "MetricNames") {
+        await route.fulfill({
+          contentType: "application/json",
+          json: { data: { metricNames: emptyMetricNamesResult } },
+        });
+        return;
+      }
+
+      if (op === "MetricSeries") {
         await pendingWidgetData;
-        await route.fulfill({ contentType: "application/json", json: { data: {} } });
+        await route.fulfill({
+          contentType: "application/json",
+          json: { data: { metricSeries: emptyMetricSeriesResult } },
+        });
+        return;
+      }
+
+      if (op === "LogSearch" || op === "AlertSummary") {
+        await pendingWidgetData;
+        await route.fulfill({
+          contentType: "application/json",
+          json:
+            op === "AlertSummary"
+              ? { data: { alertSummary: emptyAlertSummaryResult } }
+              : { data: { logs: emptyLogSearchResult } },
+        });
         return;
       }
 
@@ -466,7 +524,8 @@ test.describe("/dashboards", () => {
     await expect(page.getByRole("heading", { name: "Request rate" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Move widget" }).first()).toBeHidden();
 
-    await page.getByRole("button", { name: /edit/i, exact: false }).first().click();
+    await page.getByRole("button", { name: /dashboard actions/i }).click();
+    await page.getByRole("menuitem", { name: /edit dashboard/i }).click();
     await expect(page.getByRole("button", { name: "Move widget" }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Resize widget" }).first()).toBeVisible();
   });
@@ -478,9 +537,10 @@ test.describe("/dashboards", () => {
 
     await expect(page.getByRole("heading", { name: "Request rate" })).toBeVisible();
     await page
-      .getByRole("button", { name: /edit.*widget|widget.*edit/i })
-      .first()
+      .getByRole("button", { name: /more widget actions/i })
+      .nth(1)
       .click();
+    await page.getByRole("menuitem", { name: /edit/i }).click();
 
     await expect(
       page.getByRole("dialog").or(page.locator("[data-dashboard-inspector]")),
@@ -495,7 +555,9 @@ test.describe("/dashboards", () => {
 
     await page.goto("/dashboards");
 
-    await expect(page.getByRole("navigation").getByText("Pinned Dashboard")).toBeVisible();
+    await expect(
+      page.getByRole("navigation").getByRole("link", { name: "Pinned Dashboard" }),
+    ).toBeVisible();
   });
 
   test("shows accessible reorder controls for pinned dashboards in sidebar", async ({ page }) => {
@@ -545,7 +607,8 @@ test.describe("/dashboards", () => {
     await page.goto(`/dashboards?dashboard=${overviewDashboard.id}`);
 
     await expect(page.getByRole("button", { name: /discard/i })).toHaveCount(0);
-    await page.getByRole("button", { name: /edit/i, exact: false }).first().click();
+    await page.getByRole("button", { name: /dashboard actions/i }).click();
+    await page.getByRole("menuitem", { name: /edit dashboard/i }).click();
 
     await expect(page.getByRole("button", { name: /discard/i })).toBeVisible();
     await expect(page.getByRole("button", { name: /save/i })).toBeVisible();
@@ -556,10 +619,7 @@ test.describe("/dashboards", () => {
 
     await page.goto(`/dashboards?dashboard=${overviewDashboard.id}`);
 
-    await page
-      .getByRole("button", { name: /more|actions/i })
-      .first()
-      .click();
+    await page.getByRole("button", { name: /dashboard actions/i }).click();
     const deleteItem = page.getByRole("menuitem", { name: /delete/i });
     if (await deleteItem.isVisible()) {
       await deleteItem.click();
@@ -572,10 +632,7 @@ test.describe("/dashboards", () => {
 
     await page.goto(`/dashboards?dashboard=${overviewDashboard.id}`);
 
-    await page
-      .getByRole("button", { name: /more|actions/i })
-      .first()
-      .click();
+    await page.getByRole("button", { name: /dashboard actions/i }).click();
     await page.getByRole("menuitem", { name: /dashboard settings/i }).click();
 
     const sheet = page.getByRole("dialog").or(page.locator("[data-state='open']")).first();

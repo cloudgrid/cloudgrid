@@ -364,7 +364,15 @@ func (control NATSControlPlane) GetProjectAISettings(ctx context.Context, projec
 		return ports.ProjectAISettings{}, errorFromBridge(response.Error)
 	}
 	settings, _ := response.Data["settings"].(map[string]any)
-	return ports.ProjectAISettings{ProjectID: stringValue(settings, "projectId"), Budget: objectValue(settings, "budget")}, nil
+	return ports.ProjectAISettings{
+		ProjectID:                 stringValue(settings, "projectId"),
+		DefaultProviderProfileID:  stringValue(settings, "defaultProviderProfileId"),
+		DefaultJudgeProfileID:     stringValue(settings, "defaultJudgeProfileId"),
+		DefaultOptimizerProfileID: stringValue(settings, "defaultOptimizerProfileId"),
+		ProviderProfiles:          mapArrayValue(settings, "providerProfiles"),
+		ModelAliases:              mapArrayValue(settings, "modelAliases"),
+		Budget:                    objectValue(settings, "budget"),
+	}, nil
 }
 
 func (control NATSControlPlane) timeout() time.Duration {

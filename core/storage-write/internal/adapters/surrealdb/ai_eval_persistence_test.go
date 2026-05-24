@@ -123,11 +123,21 @@ func TestBuildEvalMutationPersistQueryDatasetSettingsUpdateCreatesVersion(t *tes
 		t.Fatalf("BuildEvalMutationPersistQuery() error = %v", err)
 	}
 
-	if !strings.Contains(sql, "stale dataset version") || !strings.Contains(sql, "settings = $settings") {
-		t.Fatalf("sql = %s, want version guard and settings update", sql)
+	for _, want := range []string{
+		"stale dataset version",
+		"settings = $settings",
+		"ai_dataset_version",
+		"itemRevisionIds = $parent_item_revision_ids",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("sql = %s, want %q for settings update version membership preservation", sql, want)
+		}
 	}
 	if vars["dataset_version_id"] != "dataset-1:version:2" {
 		t.Fatalf("dataset_version_id = %#v, want dataset-1:version:2", vars["dataset_version_id"])
+	}
+	if vars["expected_dataset_version_id"] != "dataset-1:version:1" {
+		t.Fatalf("expected_dataset_version_id = %#v, want parent version id", vars["expected_dataset_version_id"])
 	}
 	if data["currentVersionId"] != "dataset-1:version:2" || data["settings"] == nil {
 		t.Fatalf("data = %#v, want settings update data", data)

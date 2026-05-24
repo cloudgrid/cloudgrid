@@ -750,6 +750,88 @@ describe("NATS telemetry query bridge", () => {
     expect(dataset.settings.inputType).toBe("text");
   });
 
+  test("applies all dataset item updates instead of dropping later batch entries", async () => {
+    const codec = JSONCodec<unknown>();
+    const subjects: string[] = [];
+    const payloads: unknown[] = [];
+    const connection = {
+      request: async (requestedSubject: string, data: Uint8Array) => {
+        subjects.push(requestedSubject);
+        payloads.push(codec.decode(data));
+        const version = subjects.length + 1;
+        return {
+          data: codec.encode({
+            requestId: requestId(payloads.at(-1)),
+            ok: true,
+            data: {
+              id: "dataset-1",
+              projectId: "project-1",
+              name: "Dataset",
+              description: null,
+              currentVersionId: `dataset-1:version:${version}`,
+              currentVersion: {
+                id: `dataset-1:version:${version}`,
+                version,
+                digest: `digest-${version}`,
+                createdAt: "2026-05-17T10:00:00.000Z",
+              },
+              settings: {
+                evaluationFamily: "classification",
+                inputType: "json",
+                expectedType: "json",
+                defaultSplit: "validation",
+                intakePolicy: {},
+                defaultMetricSettings: [],
+                retentionProfile: "balanced",
+              },
+              createdAt: "2026-05-17T10:00:00.000Z",
+              createdBy: "user-1",
+              updatedAt: "2026-05-17T10:00:00.000Z",
+              updatedBy: "user-1",
+              itemCount: 2,
+              readyItemCount: 2,
+              splitCounts: { validation: 2 },
+              health: null,
+              tags: [],
+            },
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+
+    const dataset = await bridge.updateDatasetItems(
+      {
+        datasetId: "dataset-1",
+        expectedDatasetVersionId: "dataset-1:version:1",
+        updates: [
+          { id: "item-1", operation: "edit", input: { q: "one" } },
+          { id: "item-2", operation: "edit", input: { q: "two" } },
+        ],
+        idempotencyKey: "dataset-items-1",
+      },
+      { mode: "authenticated", authMode: "sso", principalId: "user-1", projectId: "project-1" },
+    );
+
+    expect(subjects).toEqual(["eval.dataset.item.update", "eval.dataset.item.update"]);
+    expect(payloads).toMatchObject([
+      {
+        datasetId: "dataset-1",
+        datasetItemId: "item-1",
+        expectedDatasetVersionId: "dataset-1:version:1",
+        idempotencyKey: "dataset-items-1:1",
+      },
+      {
+        datasetId: "dataset-1",
+        datasetItemId: "item-2",
+        expectedDatasetVersionId: "dataset-1:version:2",
+        idempotencyKey: "dataset-items-1:2",
+      },
+    ]);
+    expect(dataset.currentVersionId).toBe("dataset-1:version:3");
+  });
+
   test("normalizes lean experiment create responses to the public GraphQL experiment shape", async () => {
     const codec = JSONCodec<unknown>();
     let subject = "";

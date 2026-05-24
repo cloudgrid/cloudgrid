@@ -12,8 +12,8 @@ import { AlertsRoute } from "./routes/alerts-route";
 import { AppShell } from "./routes/app-shell";
 import { AuthCallbackRoute, AuthGate, LoginRoute, RootRedirect } from "./routes/auth-routes";
 import {
-  OrganizationMembersRoute,
   OrganizationAiProviderRoute,
+  OrganizationMembersRoute,
   OrganizationOverviewRoute,
   OrganizationProjectsRoute,
   OrganizationsRoute,
@@ -91,10 +91,16 @@ function App() {
                       path="/projects/:projectId/settings/retention"
                     />
                     {aiEvalEnabled ? (
-                      <Route
-                        element={<ProjectSettingsRoute />}
-                        path="/projects/:projectId/settings/ai-eval"
-                      />
+                      <>
+                        <Route
+                          element={<ProjectSettingsRoute />}
+                          path="/projects/:projectId/settings/ai-providers"
+                        />
+                        <Route
+                          element={<ProjectSettingsRoute />}
+                          path="/projects/:projectId/settings/ai-eval"
+                        />
+                      </>
                     ) : null}
                     <Route
                       element={<ProjectSettingsRoute />}

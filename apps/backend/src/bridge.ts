@@ -1842,27 +1842,36 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     input: UpdateDatasetItemsInput,
     authContext?: NormalizedAuthContext,
   ): Promise<Dataset> {
-    const [firstUpdate] = input.updates;
-    return this.#requestParsed(
-      subjects.datasetItemUpdate,
-      {
-        ...envelope(authContext),
-        projectId: authContext?.projectId ?? "",
-        datasetId: input.datasetId,
-        datasetItemId: firstUpdate?.id ?? "",
-        expectedDatasetVersionId: input.expectedDatasetVersionId,
-        idempotencyKey: input.idempotencyKey,
-        input: {
-          ...firstUpdate,
-          itemId: firstUpdate?.id ?? "",
-          datasetId: input.datasetId,
-          expectedDatasetVersionId: input.expectedDatasetVersionId,
-          idempotencyKey: input.idempotencyKey,
+    let expectedDatasetVersionId = input.expectedDatasetVersionId;
+    let dataset: Dataset | null = null;
+    for (const [index, update] of input.updates.entries()) {
+      dataset = await this.#requestParsed(
+        subjects.datasetItemUpdate,
+        {
+          ...envelope(authContext),
           projectId: authContext?.projectId ?? "",
+          datasetId: input.datasetId,
+          datasetItemId: update.id,
+          expectedDatasetVersionId,
+          idempotencyKey: `${input.idempotencyKey}:${index + 1}`,
+          input: {
+            ...update,
+            itemId: update.id,
+            datasetId: input.datasetId,
+            expectedDatasetVersionId,
+            idempotencyKey: `${input.idempotencyKey}:${index + 1}`,
+            projectId: authContext?.projectId ?? "",
+          },
         },
-      },
-      typedDatasetSchema,
-    );
+        typedDatasetSchema,
+      );
+      expectedDatasetVersionId =
+        dataset.currentVersionId || dataset.currentVersion?.id || expectedDatasetVersionId;
+    }
+    if (!dataset) {
+      throw new Error("Dataset item update requires at least one update");
+    }
+    return dataset;
   }
 
   async prepareDatasetImport(

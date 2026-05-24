@@ -9,7 +9,13 @@ const project = {
   name: "AI Eval E2E project",
   slug: "ai-eval-e2e",
   status: "active",
-  telemetry: { traceCount: 1, logCount: 0, metricCount: 0, serviceCount: 1, lastIngestAt: timestamp },
+  telemetry: {
+    traceCount: 1,
+    logCount: 0,
+    metricCount: 0,
+    serviceCount: 1,
+    lastIngestAt: timestamp,
+  },
   createdAt: timestamp,
   updatedAt: timestamp,
 };
@@ -149,10 +155,12 @@ const metricAggregate = {
 test.describe("/ai-eval", () => {
   test("renders v2 dataset rows and controls evaluation runs", async ({ page }) => {
     const calls: string[] = [];
+    const payloads: Array<{ operationName?: string; variables?: Record<string, unknown> }> = [];
     let runStatus = "running";
     await mockAiEval(
       page,
       calls,
+      payloads,
       () => runStatus,
       (next) => {
         runStatus = next;
@@ -163,6 +171,20 @@ test.describe("/ai-eval", () => {
     await expect(page.getByRole("heading", { name: "Checkout regression" })).toBeVisible();
     await expect(page.getByText("Regression example from checkout trace")).toBeVisible();
     await expect(page.locator('a[href="/traces/trace-1"]')).toBeVisible();
+    await page.getByRole("button", { name: /dataset settings/i }).click();
+    await page.getByLabel("Default metric").fill("classification.accuracy");
+    await page.getByRole("button", { name: /save settings/i }).click();
+    await expect.poll(() => calls).toContain("UpdateDatasetSettings");
+    const settingsPayload = payloads.find(
+      (payload) => payload.operationName === "UpdateDatasetSettings",
+    );
+    expect(settingsPayload?.variables?.input).toMatchObject({
+      datasetId: "dataset-1",
+      expectedDatasetVersionId: "dataset-version-1",
+      settings: {
+        defaultMetricSettings: [{ metricId: "classification.accuracy", options: {} }],
+      },
+    });
 
     await page.goto("/ai-eval?tab=evaluations&evaluation=evaluation-1");
     await expect(page.getByText("Checkout baseline · Checkout regression")).toBeVisible();
@@ -182,14 +204,19 @@ test.describe("/ai-eval", () => {
 async function mockAiEval(
   page: Page,
   calls: string[],
+  payloads: Array<{ operationName?: string; variables?: Record<string, unknown> }>,
   getRunStatus: () => string,
   setRunStatus: (status: string) => void,
 ) {
   await page.route("**/graphql", async (route) => {
-    const requestBody = route.request().postDataJSON() as { operationName?: string };
+    const requestBody = route.request().postDataJSON() as {
+      operationName?: string;
+      variables?: Record<string, unknown>;
+    };
     const op = requestBody.operationName;
     if (op) {
       calls.push(op);
+      payloads.push(requestBody);
     }
 
     if (op === "Viewer" || op === "SelectProject") {
@@ -256,13 +283,25 @@ async function mockAiEval(
     const responseByOperation: Record<string, unknown> = {
       Dashboards: { dashboards: { items: [], nextCursor: null } },
       Datasets: { datasets: { items: [dataset], nextCursor: null } },
-      EvaluationDefinitions: { evaluationDefinitions: { items: [evaluationDefinition], nextCursor: null } },
+      EvaluationDefinitions: {
+        evaluationDefinitions: { items: [evaluationDefinition], nextCursor: null },
+      },
       EvaluationRuns: { evaluationRuns: { items: [run], nextCursor: null } },
       EvaluationComparisons: { evaluationComparisons: { items: [], nextCursor: null } },
       OptimizationRuns: { optimizationRuns: { items: [], nextCursor: null } },
       PauseEvaluationRun: { pauseEvaluationRun: evaluationRun("paused") },
       ResumeEvaluationRun: { resumeEvaluationRun: evaluationRun("running") },
       CancelEvaluationRun: { cancelEvaluationRun: evaluationRun("cancelled") },
+      UpdateDatasetSettings: {
+        updateDatasetSettings: {
+          ...dataset,
+          currentVersionId: "dataset-version-2",
+          settings: {
+            ...datasetSettings,
+            defaultMetricSettings: [{ metricId: "classification.accuracy", options: {} }],
+          },
+        },
+      },
     };
 
     await route.fulfill({

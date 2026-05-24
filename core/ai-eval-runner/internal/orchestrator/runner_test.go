@@ -127,7 +127,7 @@ func TestStartEvaluationRunPersistsV2ItemRunsAndMetricResults(t *testing.T) {
 		}},
 		targetSnapshot: ports.TargetSnapshot{
 			ID:        "snapshot-1",
-			TargetRef: map[string]any{"kind": "prompt", "name": "test"},
+			TargetRef: map[string]any{"kind": "prompt", "name": "test", "modelAlias": "judge-fast"},
 			Digest:    "target-digest",
 		},
 	}
@@ -139,8 +139,17 @@ func TestStartEvaluationRunPersistsV2ItemRunsAndMetricResults(t *testing.T) {
 		LatencyMs:    42,
 	}}
 	runner := NewRunner(RunnerConfig{
-		StorageReader:     reader,
-		StorageWriter:     writer,
+		StorageReader: reader,
+		StorageWriter: writer,
+		ControlPlane: &fakeControlPlane{settings: ports.ProjectAISettings{
+			ProjectID: "project-1",
+			Budget:    map[string]any{"dailyUsd": 10.0},
+			ModelAliases: []map[string]any{{
+				"id":                "judge-fast",
+				"name":              "judge-fast",
+				"providerProfileId": "provider-openai",
+			}},
+		}},
 		HarnessAdapter:    harness,
 		ProgressPublisher: publisher,
 		Clock:             fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)),
@@ -178,6 +187,9 @@ func TestStartEvaluationRunPersistsV2ItemRunsAndMetricResults(t *testing.T) {
 	}
 	if len(harness.runRequests) != 1 || harness.runRequests[0].TraceContext["traceparent"] != "00-test" {
 		t.Fatalf("harness run requests = %#v", harness.runRequests)
+	}
+	if !reflect.DeepEqual(harness.runRequests[0].ProviderProfileRefs, []string{"provider-openai"}) {
+		t.Fatalf("harness provider refs = %#v, want provider-openai from project model alias", harness.runRequests[0].ProviderProfileRefs)
 	}
 	if len(writer.evaluationResults) != 1 {
 		t.Fatalf("evaluation result persists = %d, want 1", len(writer.evaluationResults))

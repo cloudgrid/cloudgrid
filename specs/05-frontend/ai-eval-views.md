@@ -83,7 +83,10 @@ Frontend must not call legacy `createScorer`, `scorers`, `createExperiment`,
 - Links from evaluation detail to the source dataset are plain object links back
   to dataset detail, not nested dataset navigation.
 - Evaluation creation uses dataset, dataset version policy, split selector,
-  target, metric settings, and run policy controls.
+  target, model alias, metric settings, retention profile, and run policy
+  controls. The model alias is stored in
+  `EvaluationTargetRef.metadata.modelAlias` and is resolved through project AI
+  provider settings by the runner.
 - Run start uses `startEvaluationRun`.
 - Run control buttons are visible only for valid lifecycle states.
 - Run detail renders storage-read aggregates and item rows as returned.

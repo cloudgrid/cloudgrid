@@ -87,6 +87,12 @@ Live and settings subjects:
 - Dataset settings updates are full replacements in v2. Partial settings
   patches are not supported, so every update sends the complete
   `DatasetSettingsInput` shape.
+- AI Eval runner execution resolves target model aliases from
+  `EvaluationTargetRef.metadata.modelAlias`, `TargetSnapshot.targetRef`, or
+  target snapshot provider metadata against project AI provider settings before
+  calling the harness adapter. Harness run, score, optimization, and sandbox
+  lifecycle requests carry `providerProfileRefs`; raw provider credentials stay
+  in control-plane secret resolution and are not persisted in AI Eval results.
 - Runner-originated persistence payloads mirror entity JSON schemas.
 - Responses use `{ requestId, ok, data?, error? }`.
 - `error.code` must come from `specs/03-contracts/errors.yaml`.
