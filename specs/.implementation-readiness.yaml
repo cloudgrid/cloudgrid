@@ -1,6 +1,6 @@
 source: implementation-ready-completion-pass
 status: implementation_ready
-updated: 2026-05-19
+updated: 2026-05-24
 notes:
   - Current CloudGrid specs and contracts are sufficient for MVP closure implementation.
   - Formal implementation-planner gate file specs/.readiness-report.yaml exists and records the current verification state.
@@ -9,6 +9,7 @@ notes:
   - Production-scale performance work now has explicit implementation constraints in specs/06-nfr/performance-and-scaling.md.
   - Remaining production gaps are specified implementation requirements, not open product-decision gaps.
   - Per-item completion status is tracked in specs/implementation-ready.md.
+  - AI Eval v2 is now tracked as IR-010 with an implementation-ready migration plan and first completed BFF foundation ticket.
 blocking_gaps: []
 implementation_ready_status:
   IR-001:
@@ -90,6 +91,21 @@ implementation_ready_status:
     remaining:
       - Complete full-service log event coverage evidence across BFF, collector, control-plane, storage-read, storage-write, and AI-eval runner.
       - Complete normal Logs UI inspection evidence for the self-observability project.
+  IR-010:
+    status: partial
+    evidence:
+      - AI Eval v2 product, backend, frontend, NFR, GraphQL, AsyncAPI, entity schema, generated TypeScript, and generated Go contracts are aligned.
+      - BFF v2 bridge validation and resolver foundation is complete in TICKET-201.
+      - plans/ai-eval-v2-migration is implementation-ready with TICKET-202 through TICKET-206 ready and dependency-scoped.
+      - bun run contracts:check passes.
+      - bun run typecheck passes.
+      - spec check, plan lint, and wave readiness checks pass.
+    remaining:
+      - Complete TICKET-202 storage-write AI Eval v2 persistence.
+      - Complete TICKET-203 storage-read AI Eval v2 query semantics.
+      - Complete TICKET-204 AI Eval runner v2 evaluation orchestration.
+      - Complete TICKET-205 frontend AI Eval v2 workspace.
+      - Complete TICKET-206 AI Eval v2 integration docs and final gates.
 implemented_surfaces:
   - metrics ingest, storage-write persistence, storage-read metric names/series/rich-series query, BFF GraphQL resolvers, and frontend metric explorer/dashboard widget surfaces
   - grpc otlp ingest on standard port 4317 for traces, logs, and metrics
@@ -98,6 +114,7 @@ implemented_surfaces:
   - project-scoped alert rule, alert silence, and alert history contracts plus control-plane storage/service/NATS handlers, BFF GraphQL bridge, and alert management UI
   - organization invitations and invitation email delivery contracts/control-plane/BFF/frontend/docs
   - live trace subscriptions through BFF GraphQL, storage-read live sessions, and storage-write post-persist notifications
+  - AI Eval v2 contracts, BFF bridge validation/resolver foundation, and implementation-ready migration plan
 explicit_deferrals:
   - production-scale backpressure and benchmark implementation
   - storage-maintenance retention deletion worker and retention audit execution

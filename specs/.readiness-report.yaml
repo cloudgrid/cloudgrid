@@ -4,7 +4,7 @@ scope: multi_scope_parallel_agent_readiness
 human_approval:
   status: approved
   approved_by: user
-  approval_basis: User approved dashboard specs as ready and requested an autonomous parallel-agent implementation plan; previous AI Evaluation approval remains preserved.
+  approval_basis: User approved the AI Eval v2 concept, requested autonomous cleanup and implementation-ready specs, and approved the resulting migration plan for agent execution; dashboard and AI Chat approvals remain preserved.
 blocking_decisions: []
 open_decisions: []
 gate_simulation:

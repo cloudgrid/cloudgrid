@@ -4,7 +4,7 @@ title: Implementation-ready feature and improvement index
 layer: foundation
 status: active
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-19
+updated: 2026-05-24
 provenance: user-directed
 ---
 
@@ -41,6 +41,7 @@ Status values:
 | IR-007 | complete | No dedicated `core/log-ingest` service is specified for this wave; the collector still serves `POST /v1/logs`, publishes `telemetry.ingest.logs`, and storage-write receives the existing durable log command contract. | None unless a future backend ingestion wave explicitly introduces `core/log-ingest`. |
 | IR-008 | complete | Website handbook now covers Helm install, external NATS/SurrealDB, image customization, private registry/air-gapped installs, release verification, upgrade/rollback, and sizing. `bun run --cwd website build` passes. | None for documentation scope. Environment-specific values and verified release assets are produced outside the docs pass. |
 | IR-009 | partial | Shared Go OTLP trace/log exporter now supports per-signal toggles, bounded sanitized log records, trace/span IDs, severity numbers, observed timestamps, log scope naming, dropped-buffer metrics, rate-limited exporter failure warnings, and sanitization tests. AI-eval runner now wires exporter startup, NATS handler spans/failure logs, and shutdown flush. `go test -tags surrealdb ./core/go-runtime/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/...` passes. | Complete full-service log event coverage evidence across BFF, collector, control-plane, storage-read, storage-write, and AI-eval runner, plus normal Logs UI inspection evidence for the self-observability project. |
+| IR-010 | partial | AI Eval v2 product, backend, frontend, NFR, GraphQL, AsyncAPI, entity schema, generated TypeScript, generated Go, and BFF foundation contracts are aligned. `plans/ai-eval-v2-migration` is implementation-ready, `TICKET-201` is complete, and `bun run contracts:check`, `bun run typecheck`, the spec check, plan lint, and wave readiness checks pass. | Complete `TICKET-202` through `TICKET-206`: storage-write persistence, storage-read query semantics, runner orchestration, frontend workspace, integration fixtures, docs, and final verification gates. |
 
 ## IR-001: Production SurrealDB Retention Adapter
 
@@ -491,6 +492,72 @@ bun run typecheck
 bun run test
 go test -tags surrealdb ./core/go-runtime/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/...
 bun run smoke:frontend
+```
+
+## IR-010: AI Eval v2 Implementation Migration
+
+Goal: replace legacy Scorer/Experiment behavior with the v2 Dataset,
+Evaluation, Metric, Target, Comparison, and Optimization model while preserving
+CloudGrid service boundaries and leaving production measurement as backlog-only
+product scope.
+
+Source specs:
+
+- [AI Eval domain](./01-domains/ai-eval.md)
+- [AI Eval v2 contract rewrite](./03-contracts/ai-eval-v2-contract-rewrite.md)
+- [AI Eval message contracts](./04-backend/ai-eval-message-contracts.md)
+- [AI Eval query semantics](./04-backend/ai-eval-query-semantics.md)
+- [AI Eval runner](./04-backend/ai-eval-runner.md)
+- [AI Eval UX concept](./05-frontend/ai-eval-ux-concept.md)
+- [AI Eval views](./05-frontend/ai-eval-views.md)
+- [AI Eval content capture](./06-nfr/ai-eval-content-capture.md)
+- [AI Eval cost bounds](./06-nfr/ai-eval-cost-bounds.md)
+
+Implementation plan:
+
+- [AI Eval v2 migration plan](../plans/ai-eval-v2-migration/implementation-plan.md)
+
+Required implementation:
+
+- Storage-write persists v2 datasets, immutable dataset versions, item
+  revisions, evaluation runs, item runs, metric results, aggregates,
+  comparisons, target snapshots, optimization runs, and promotion records.
+- Storage-read owns all AI Eval v2 query filtering, pagination, aggregates, and
+  live matching semantics for GraphQL-facing view models.
+- The AI Eval runner executes dataset evaluations through target snapshots,
+  optional external adapters, OpenTelemetry trace context, quick-shot subsets,
+  row-level summaries, metric results, retention roles, and deterministic
+  failure semantics.
+- The frontend exposes Dataset Evaluations and Optimization flows, raw JSON
+  schema editing and validation, dataset row curation, trace-to-dataset import
+  for datasets with extraction settings, run detail, comparisons, and
+  optimization progress without primary Scorer, Check, Gate, Experiment, or
+  Production Quality v2 tabs.
+- Integration fixtures, handbook docs, and final gates prove the end-to-end
+  dataset evaluation and optimization path.
+
+Acceptance:
+
+- no public v2 route, GraphQL field, AsyncAPI subject, entity schema, generated
+  type, frontend tab, or handbook page reintroduces legacy Scorer/Experiment
+  product concepts;
+- BFF access to private AI Eval behavior stays behind NATS request/reply;
+- storage-write remains the only AI Eval persistence mutator and storage-read
+  remains the only AI Eval query owner;
+- dataset versions and target snapshots provide durable replay semantics for
+  future prompt, skill, tool, workflow, and adapter optimization;
+- production measurement remains backlog-only until dataset evaluation and
+  optimization are implemented.
+
+Verification:
+
+```sh
+bun run contracts:check
+bun run typecheck
+node /Users/sebastianwessel/.agents/skills/spec-architect/scripts/check_specs.mjs specs
+node /Users/sebastianwessel/.agents/skills/implementation-planner/references/check_plan.mjs . plans/ai-eval-v2-migration specs
+node /Users/sebastianwessel/.agents/skills/implementation-planner/references/check_wave_readiness.mjs . wave_02_parallel_services plans/ai-eval-v2-migration specs
+node /Users/sebastianwessel/.agents/skills/implementation-planner/references/check_wave_readiness.mjs . wave_03_runner_frontend plans/ai-eval-v2-migration specs
 ```
 
 ## Cross-Cutting Rules
