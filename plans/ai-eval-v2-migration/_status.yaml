@@ -71,10 +71,10 @@ tickets:
       - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/public-api-client typecheck
       - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/public-api-client lint
       - git diff --check -- apps/frontend apps/packages/public-api-client apps/packages/ui-contracts plans/ai-eval-v2-migration
-      - Browser verification against current BFF schema on desktop and mobile; live data blocked by local bridge/runtime dataset v2 drift
+      - Browser route shell verification completed; TICKET-206 later resolved runtime v2 dataset shape drift and added Playwright acceptance.
     next: TICKET-206 may start
   TICKET-206:
-    status: in_progress
+    status: done
     wave: wave_04_integration_docs
     depends_on: [TICKET-202, TICKET-203, TICKET-204, TICKET-205]
     blocked_by: []
@@ -91,4 +91,5 @@ tickets:
       - node /Users/sebastianwessel/.agents/skills/implementation-planner/references/check_plan.mjs . plans/ai-eval-v2-migration specs
       - git diff --check -- apps/packages/integration-scenarios apps/packages/public-api-client website skills specs plans/ai-eval-v2-migration
       - PATH="$HOME/.bun/bin:$PATH" bun test apps/backend/src/ai-eval.test.ts apps/backend/src/bridge.test.ts apps/backend/src/ai-chat-stream.test.ts
-    next: rerun Go workspace tests and browser end-to-end acceptance in an environment with Go and browser automation available
+      - PATH="$HOME/.bun/bin:$PATH" bun --bun run --cwd apps/frontend smoke -- ai-eval.e2e.ts
+    next: AI Eval v2 migration is complete

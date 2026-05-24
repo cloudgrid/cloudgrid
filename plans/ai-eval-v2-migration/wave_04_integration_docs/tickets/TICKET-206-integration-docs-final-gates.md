@@ -2,7 +2,7 @@
 id: TICKET-206
 title: AI Eval v2 integration docs and final gates
 wave: 4
-status: in_progress
+status: done
 parallel_group: ai_eval_v2_integration_serial
 depends_on: [TICKET-202, TICKET-203, TICKET-204, TICKET-205]
 blocked_by: []
@@ -134,10 +134,9 @@ CLOUDGRID_EVAL_EXTERNAL_ADAPTER_TEST=1 bun run --cwd apps/packages/integration-s
 
 ## Handoff
 
-The runtime v2 dataset shape drift has a BFF/storage-read compatibility fix.
-The feature can be marked implementation-complete after Go workspace tests and
-browser/API end-to-end acceptance are rerun in an environment with Go and
-browser automation available.
+The runtime v2 dataset shape drift has a BFF/storage-read compatibility fix,
+Go workspace verification passes, and browser/API acceptance covers the v2 AI
+Eval route.
 
 ## Completion Evidence
 
@@ -149,7 +148,7 @@ Completed scope:
 - Integration scenario package now contains AI Eval v2 dataset-evaluation and
   optimization quick-shot fixtures, including invalid expected JSON and adapter
   timeout failure cases.
-- Readiness report records the remaining verification gap.
+- Readiness report records final verification evidence.
 
 Passing commands:
 
@@ -160,15 +159,15 @@ Passing commands:
 - `PATH="$HOME/.bun/bin:$PATH" bun run skills:check`
 - `PATH="$HOME/.bun/bin:$PATH" bun --bun run --cwd website build`
 - `PATH="/opt/homebrew/bin:/usr/local/go/bin:$HOME/.bun/bin:$PATH" go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/...`
+- `PATH="$HOME/.bun/bin:$PATH" bun --bun run --cwd apps/frontend smoke -- ai-eval.e2e.ts`
 - `node /Users/sebastianwessel/.agents/skills/spec-architect/scripts/check_specs.mjs specs`
 - `node /Users/sebastianwessel/.agents/skills/implementation-planner/references/check_plan.mjs . plans/ai-eval-v2-migration specs`
 - `git diff --check -- apps/packages/integration-scenarios apps/packages/public-api-client website skills specs plans/ai-eval-v2-migration`
 
-Blocked evidence:
+Final evidence:
 
 - The runtime dataset shape drift has been addressed by normalizing v2 dataset
   versions, settings, ready counts, and item revisions at the BFF/storage-read
   boundary.
-- Current shell environment has no `go`/`gofmt` binary on PATH, and the
-  node-repl browser check cannot import Playwright. This prevents honestly
-  claiming the complete Go and browser end-to-end acceptance path in this turn.
+- Go workspace tests pass with Go from `/opt/homebrew/bin`.
+- Browser/API acceptance passes with the frontend Playwright smoke test.

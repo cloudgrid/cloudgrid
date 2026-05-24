@@ -155,7 +155,7 @@ documents.
 - `PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/public-api-client lint`
 - `git diff --check -- apps/frontend apps/packages/public-api-client apps/packages/ui-contracts plans/ai-eval-v2-migration`
 - Browser verification against current BFF schema on desktop and mobile:
-  route shell renders; live data is blocked by local bridge/runtime drift where
-  available dataset rows omit v2 `currentVersionId`.
+  route shell renders. TICKET-206 later resolved the runtime v2 dataset shape
+  drift and added Playwright acceptance for v2 dataset/evaluation flows.
 
 Completed at: 2026-05-24T14:21:08Z

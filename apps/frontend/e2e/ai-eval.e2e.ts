@@ -9,29 +9,59 @@ const project = {
   name: "AI Eval E2E project",
   slug: "ai-eval-e2e",
   status: "active",
-  telemetry: {
-    traceCount: 1,
-    logCount: 0,
-    metricCount: 0,
-    serviceCount: 1,
-    lastIngestAt: timestamp,
-  },
+  telemetry: { traceCount: 1, logCount: 0, metricCount: 0, serviceCount: 1, lastIngestAt: timestamp },
   createdAt: timestamp,
   updatedAt: timestamp,
 };
 
+const datasetSettings = {
+  evaluationFamily: "classification",
+  inputType: "json",
+  expectedType: "json",
+  inputJsonSchema: { type: "object" },
+  expectedJsonSchema: { type: "object" },
+  defaultSplit: "validation",
+  intakePolicy: {
+    manualDefaultStatus: "draft",
+    importDefaultStatus: "needs_review",
+    traceDefaultStatus: "needs_expected",
+  },
+  traceExtractionSettings: null,
+  anonymizationPolicy: null,
+  defaultMetricSettings: [{ metricId: "exact_match", options: {} }],
+  retentionProfile: "balanced",
+};
+
 const dataset = {
   id: "dataset-1",
+  projectId,
   name: "Checkout regression",
   description: null,
-  version: 1,
+  currentVersionId: "dataset-version-1",
+  currentVersion: {
+    id: "dataset-version-1",
+    datasetId: "dataset-1",
+    version: 1,
+    digest: "digest-1",
+    createdAt: timestamp,
+    createdBy: "local-user",
+    settingsSnapshot: datasetSettings,
+    itemRevisionIds: ["item-revision-1"],
+    parentVersionId: null,
+    changeSummary: "Initial dataset",
+    source: "manual",
+  },
+  settings: datasetSettings,
   createdAt: timestamp,
+  createdBy: "local-user",
+  updatedAt: timestamp,
+  updatedBy: "local-user",
   itemCount: 1,
-  reviewedItemCount: 1,
+  readyItemCount: 1,
   splitCounts: { validation: 1 },
   health: {
     status: "ready",
-    reviewedItemCount: 1,
+    readyItemCount: 1,
     totalItemCount: 1,
     splitCounts: { validation: 1 },
     duplicateCandidateCount: 0,
@@ -47,79 +77,77 @@ const dataset = {
       {
         id: "item-1",
         datasetId: "dataset-1",
-        version: 1,
-        input: { prompt: "Checkout failed" },
-        expected: { answer: "Return retryable payment error" },
-        metadata: {},
-        sourceTraceId: "trace-1",
-        sourceSpanId: "span-1",
-        split: "validation",
-        reviewStatus: "reviewed",
-        synthetic: false,
-        duplicateOfItemId: null,
-        leakageWarnings: [],
+        latestRevisionId: "item-revision-1",
+        latestRevision: {
+          id: "item-revision-1",
+          datasetItemId: "item-1",
+          datasetId: "dataset-1",
+          input: { prompt: "Checkout failed" },
+          expected: { answer: "Return retryable payment error" },
+          observedOutput: { answer: "Card declined" },
+          reason: "Regression example from checkout trace",
+          metadata: {},
+          sourceRefs: [{ kind: "trace", traceId: "trace-1", spanId: "span-1", metadata: {} }],
+          split: "validation",
+          curationStatus: "ready",
+          curationNote: null,
+          contentTreatment: "original",
+          anonymizationProvenance: null,
+          createdAt: timestamp,
+          createdBy: "local-user",
+          updatedAt: timestamp,
+          updatedBy: "local-user",
+        },
+        createdAt: timestamp,
+        createdBy: "local-user",
+        updatedAt: timestamp,
+        updatedBy: "local-user",
       },
     ],
     nextCursor: null,
   },
 };
 
-const candidate = {
-  id: "candidate-1",
+const evaluationDefinition = {
+  id: "evaluation-1",
+  projectId,
+  name: "Checkout baseline",
   datasetId: "dataset-1",
-  status: "suggested",
-  sourceKind: "production_measurement",
-  source: { policyId: "policy-1", traceId: "trace-1" },
-  targetShape: "single_turn",
-  input: { prompt: "Customer email was transformed" },
-  expected: { answer: "Return retryable payment error" },
-  metadata: { service: "checkout" },
-  split: "validation",
-  reviewStatus: "unreviewed",
-  contentTreatment: "realistic_anonymized",
-  anonymization: {
-    policyId: "default-realistic",
-    policyVersion: 3,
-    transformedAt: timestamp,
-    consistencyScope: "dataset",
-    transformedFields: [{ path: "$.customer.email", entityType: "email", strategy: "replace" }],
+  datasetVersionPolicy: "pinned",
+  pinnedDatasetVersionId: "dataset-version-1",
+  splitSelector: { splits: ["validation"], curationStatuses: ["ready"] },
+  targetRef: {
+    kind: "prompt",
+    targetId: "prompt-1",
+    targetSnapshotId: "snapshot-1",
+    targetRef: "checkout-agent",
+    displayName: "Checkout agent prompt",
+    metadata: {},
   },
-  reason: "failed production measurement",
-  clusterId: "cluster-1",
-  warnings: [],
+  metricSettings: [{ metricId: "exact_match", metricVersion: "1", options: {} }],
+  runPolicy: { maxParallelRequests: 2 },
+  retentionProfile: "balanced",
   createdAt: timestamp,
+  createdBy: "local-user",
   updatedAt: timestamp,
-};
-
-const scorer = {
-  id: "scorer-1",
-  name: "Intent scorer",
-  kind: "deterministic",
-  definition: { type: "contains" },
-  judgeModelRef: null,
+  updatedBy: "local-user",
   version: 1,
 };
 
-const experiment = {
-  id: "experiment-1",
-  name: "Checkout baseline",
-  datasetId: "dataset-1",
-  datasetVersion: 1,
-  scorerIds: ["scorer-1"],
-  splitSelector: { splits: ["validation"], reviewedOnly: false, includeSynthetic: false },
-  baselineRef: null,
-  promptVersionRefs: [],
-  skillSnapshotRefs: [],
-  toolSnapshotRefs: [],
-  providerProfileRefs: [],
-  createdAt: timestamp,
-  tags: [],
+const metricAggregate = {
+  metricId: "exact_match",
+  metricVersion: "1",
+  scope: "evaluation_run",
+  subjectId: "run-1",
+  payload: { kind: "scalar", value: 0.82 },
+  unit: "score",
+  direction: "higher_is_better",
+  support: 1,
+  problemCount: 0,
 };
 
 test.describe("/ai-eval", () => {
-  test("reviews candidates and controls experiment runs with returned visualizations", async ({
-    page,
-  }) => {
+  test("renders v2 dataset rows and controls evaluation runs", async ({ page }) => {
     const calls: string[] = [];
     let runStatus = "running";
     await mockAiEval(
@@ -132,21 +160,22 @@ test.describe("/ai-eval", () => {
     );
 
     await page.goto("/ai-eval?tab=datasets&dataset=dataset-1");
-    await expect(page.getByText("Dataset candidates")).toBeVisible();
-    await expect(page.getByText("realistic_anonymized")).toBeVisible();
-    await expect(page.getByText("default-realistic v3 · email")).toBeVisible();
-    await page.getByRole("button", { name: /commit/i }).click();
-    await expect.poll(() => calls).toContain("CommitDatasetCandidates");
+    await expect(page.getByRole("heading", { name: "Checkout regression" })).toBeVisible();
+    await expect(page.getByText("Regression example from checkout trace")).toBeVisible();
+    await expect(page.locator('a[href="/traces/trace-1"]')).toBeVisible();
 
-    await page.goto("/ai-eval?tab=experiments");
-    await expect(page.getByText("Intent confusion")).toBeVisible();
+    await page.goto("/ai-eval?tab=evaluations&evaluation=evaluation-1");
+    await expect(page.getByText("Checkout baseline · Checkout regression")).toBeVisible();
+    await expect(page.getByRole("cell", { name: "exact_match · 0.82" })).toBeVisible();
+    await expect(page.getByText("Model answered directly without tool calls.")).toBeVisible();
+
     await page.getByRole("button", { name: /pause/i }).click();
-    await expect.poll(() => calls).toContain("PauseExperimentRun");
+    await expect.poll(() => calls).toContain("PauseEvaluationRun");
     await expect(page.getByRole("button", { name: /resume/i })).toBeVisible();
     await page.getByRole("button", { name: /resume/i }).click();
-    await expect.poll(() => calls).toContain("ResumeExperimentRun");
+    await expect.poll(() => calls).toContain("ResumeEvaluationRun");
     await page.getByRole("button", { name: /cancel/i }).click();
-    await expect.poll(() => calls).toContain("CancelExperimentRun");
+    await expect.poll(() => calls).toContain("CancelEvaluationRun");
   });
 });
 
@@ -213,34 +242,28 @@ async function mockAiEval(
       return;
     }
 
-    const run = experimentRun(getRunStatus());
-    const responseByOperation: Record<string, unknown> = {
-      Datasets: { datasets: { items: [dataset], nextCursor: null } },
-      Scorers: { scorers: { items: [scorer], nextCursor: null } },
-      Experiments: {
-        experiments: {
-          items: [{ ...experiment, runs: { items: [run], nextCursor: null } }],
-          nextCursor: null,
-        },
-      },
-      DatasetCandidates: { datasetCandidates: { items: [candidate], nextCursor: null } },
-      CommitDatasetCandidates: {
-        commitDatasetCandidates: { ...dataset, version: 2, itemCount: 2 },
-      },
-      PauseExperimentRun: { pauseExperimentRun: experimentRun("paused") },
-      ResumeExperimentRun: { resumeExperimentRun: experimentRun("running") },
-      CancelExperimentRun: { cancelExperimentRun: experimentRun("cancelled") },
-    };
-
-    if (op === "PauseExperimentRun") {
+    if (op === "PauseEvaluationRun") {
       setRunStatus("paused");
     }
-    if (op === "ResumeExperimentRun") {
+    if (op === "ResumeEvaluationRun") {
       setRunStatus("running");
     }
-    if (op === "CancelExperimentRun") {
+    if (op === "CancelEvaluationRun") {
       setRunStatus("cancelled");
     }
+
+    const run = evaluationRun(getRunStatus());
+    const responseByOperation: Record<string, unknown> = {
+      Dashboards: { dashboards: { items: [], nextCursor: null } },
+      Datasets: { datasets: { items: [dataset], nextCursor: null } },
+      EvaluationDefinitions: { evaluationDefinitions: { items: [evaluationDefinition], nextCursor: null } },
+      EvaluationRuns: { evaluationRuns: { items: [run], nextCursor: null } },
+      EvaluationComparisons: { evaluationComparisons: { items: [], nextCursor: null } },
+      OptimizationRuns: { optimizationRuns: { items: [], nextCursor: null } },
+      PauseEvaluationRun: { pauseEvaluationRun: evaluationRun("paused") },
+      ResumeEvaluationRun: { resumeEvaluationRun: evaluationRun("running") },
+      CancelEvaluationRun: { cancelEvaluationRun: evaluationRun("cancelled") },
+    };
 
     await route.fulfill({
       contentType: "application/json",
@@ -249,55 +272,78 @@ async function mockAiEval(
   });
 }
 
-function experimentRun(status: string) {
+function evaluationRun(status: string) {
   return {
     id: "run-1",
-    experimentId: "experiment-1",
-    solverRef: { kind: "agent", name: "checkout-agent" },
-    manifest: null,
-    baselineRunId: null,
+    projectId,
+    evaluationDefinitionId: "evaluation-1",
+    kind: "dataset_evaluation",
     status,
-    runPolicy: { maxParallelRequests: 2 },
+    datasetId: "dataset-1",
+    datasetVersionId: "dataset-version-1",
+    datasetDigest: "digest-1",
+    selectedItemRevisionIds: ["item-revision-1"],
+    splitSelector: { splits: ["validation"], curationStatuses: ["ready"] },
+    targetSnapshotId: "snapshot-1",
+    metricSettingsSnapshot: [{ metricId: "exact_match", metricVersion: "1", options: {} }],
+    runPolicySnapshot: { maxParallelRequests: 2 },
+    retentionProfile: "balanced",
+    retentionRole: "candidate",
     startedAt: timestamp,
     endedAt: status === "cancelled" ? timestamp : null,
     summary: {
-      itemCounts: {
-        total: 2,
-        passed: 1,
-        failed: 1,
-        errored: 0,
-        skipped: 0,
-        needsReview: 0,
-        quarantined: 0,
-      },
-      scoreSummaries: [
-        {
-          scorerId: "scorer-1",
-          scorerVersion: 1,
-          resultKind: "classification",
-          passRate: 0.5,
-          meanScore: 0.7,
-          p50: 0.7,
-          p95: 0.9,
-          support: 2,
-          visualization: {
-            kind: "classification_confusion_matrix",
-            title: "Intent confusion",
-            data: {
-              labels: ["pass", "fail"],
-              matrix: [
-                [1, 0],
-                [1, 0],
-              ],
-            },
-          },
-        },
-      ],
-      problemCounts: { modelQuality: 1, itemQuality: 0, scorerConfig: 0, infrastructure: 0 },
+      itemCounts: { total: 1, completed: status === "running" ? 0 : 1, failed: 0 },
+      metricAggregates: [metricAggregate],
+      problemCounts: {},
       budgetUsage: { inputTokens: 120, outputTokens: 60, totalTokens: 180, estimatedUsd: 0.02 },
       latency: { p50Ms: 120, p95Ms: 240, maxMs: 260 },
-      regressions: [{ kind: "score_drop", count: 1, blocker: true }],
     },
-    itemRuns: { items: [], nextCursor: null },
+    problem: null,
+    itemRuns: {
+      items: [
+        {
+          id: "item-run-1",
+          evaluationRunId: "run-1",
+          datasetItemId: "item-1",
+          datasetItemRevisionId: "item-revision-1",
+          targetSnapshotId: "snapshot-1",
+          status: "completed",
+          actualOutput: { answer: "Return retryable payment error" },
+          actualOutputType: "json",
+          traceId: "trace-1",
+          rootSpanId: "span-1",
+          metricResultIds: ["metric-result-1"],
+          metricResults: [
+            {
+              id: "metric-result-1",
+              evaluationRunId: "run-1",
+              evaluationItemRunId: "item-run-1",
+              metricId: "exact_match",
+              metricVersion: "1",
+              scope: "item_run",
+              subjectId: "item-run-1",
+              payload: { kind: "boolean", value: true },
+              unit: "score",
+              direction: "higher_is_better",
+              problem: null,
+              producedAt: timestamp,
+            },
+          ],
+          problems: [],
+          trajectorySummary: "Model answered directly without tool calls.",
+          summaryEvidenceRefs: [],
+          importantSteps: [],
+          conversationRef: null,
+          summaryDigest: "summary-1",
+          summaryGeneratedAt: timestamp,
+          retentionRole: "candidate",
+          startedAt: timestamp,
+          endedAt: timestamp,
+        },
+      ],
+      nextCursor: null,
+    },
+    metricResults: [],
+    metricAggregates: [metricAggregate],
   };
 }

@@ -92,7 +92,7 @@ implementation_ready_status:
       - Complete full-service log event coverage evidence across BFF, collector, control-plane, storage-read, storage-write, and AI-eval runner.
       - Complete normal Logs UI inspection evidence for the self-observability project.
   IR-010:
-    status: partial
+    status: complete
     evidence:
       - AI Eval v2 product, backend, frontend, NFR, GraphQL, AsyncAPI, entity schema, generated TypeScript, and generated Go contracts are aligned.
       - BFF v2 bridge validation and resolver foundation is complete in TICKET-201.
@@ -100,14 +100,13 @@ implementation_ready_status:
       - Storage-read AI Eval v2 query semantics are complete in TICKET-203.
       - AI Eval runner v2 evaluation orchestration is complete in TICKET-204.
       - Frontend AI Eval v2 workspace is complete in TICKET-205.
-      - TICKET-206 integration fixtures, docs, and runtime v2 dataset shape normalization are complete enough to unblock final verification.
+      - TICKET-206 integration fixtures, docs, runtime v2 dataset shape normalization, Go workspace verification, and browser/API acceptance are complete.
       - bun run contracts:check passes.
       - bun run typecheck passes.
-      - go test -tags surrealdb ./core/storage-read/... ./core/storage-write/... passes.
+      - go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/... passes.
+      - bun --bun run --cwd apps/frontend smoke -- ai-eval.e2e.ts passes.
       - spec check, plan lint, and wave readiness checks pass.
-    remaining:
-      - Complete TICKET-206 final Go workspace verification in an environment with Go available.
-      - Complete TICKET-206 browser/API end-to-end acceptance in an environment with browser automation available.
+    remaining: []
 implemented_surfaces:
   - metrics ingest, storage-write persistence, storage-read metric names/series/rich-series query, BFF GraphQL resolvers, and frontend metric explorer/dashboard widget surfaces
   - grpc otlp ingest on standard port 4317 for traces, logs, and metrics

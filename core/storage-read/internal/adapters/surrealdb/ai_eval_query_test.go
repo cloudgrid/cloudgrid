@@ -485,11 +485,15 @@ func TestShapeAiEvalItemsReturnsGraphQLReadyRows(t *testing.T) {
 		"reviewedItemCount": uint64(1),
 	}})
 	dataset := items[0]
-	if dataset["version"] != 2 || dataset["itemCount"] != 1 || dataset["reviewedItemCount"] != 1 {
+	currentVersion, ok := dataset["currentVersion"].(map[string]any)
+	if !ok {
+		t.Fatalf("dataset currentVersion = %#v, want v2 version object", dataset["currentVersion"])
+	}
+	if currentVersion["version"] != 2 || dataset["currentVersionId"] != "dataset-1:version:2" || dataset["itemCount"] != 1 || dataset["readyItemCount"] != 1 {
 		t.Fatalf("dataset row = %#v, want SurrealDB unsigned counts normalized", dataset)
 	}
 	health, ok := dataset["health"].(map[string]any)
-	if !ok || health["status"] != "needs_review" || health["totalItemCount"] != 1 || health["reviewedItemCount"] != 1 {
+	if !ok || health["status"] != "needs_review" || health["totalItemCount"] != 1 || health["readyItemCount"] != 1 {
 		t.Fatalf("dataset health = %#v, want GraphQL health", dataset["health"])
 	}
 	if tags, ok := dataset["tags"].([]string); !ok || len(tags) != 0 {
@@ -502,8 +506,8 @@ func TestShapeAiEvalItemsReturnsGraphQLReadyRows(t *testing.T) {
 		"input":     map[string]any{"prompt": "hi"},
 	}})
 	item := datasetItems[0]
-	if item["revision"] != 1 || item["split"] != "validation" || item["curationStatus"] != "draft" {
-		t.Fatalf("dataset item = %#v, want defaulted item fields", item)
+	if item["id"] != "item-1" || item["split"] != "validation" || item["curationStatus"] != "draft" {
+		t.Fatalf("dataset item revision = %#v, want defaulted revision fields", item)
 	}
 
 	agentRuns := shapeAiEvalItems(storage.SubjectEvalAgentRunsSearch, map[string]any{}, []map[string]any{{

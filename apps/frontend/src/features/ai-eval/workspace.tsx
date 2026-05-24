@@ -1409,15 +1409,36 @@ function EvaluationRunControls({ run }: { run: EvaluationRun }) {
   return (
     <div className="flex flex-wrap gap-1">
       {run.status === "paused" ? (
-        <Button onClick={() => void controlMutation.mutateAsync("resume")} size="sm" type="button" variant="outline">
+        <Button
+          aria-label="Resume evaluation run"
+          onClick={() => void controlMutation.mutateAsync("resume")}
+          size="sm"
+          title="Resume evaluation run"
+          type="button"
+          variant="outline"
+        >
           <Play />
         </Button>
       ) : (
-        <Button onClick={() => void controlMutation.mutateAsync("pause")} size="sm" type="button" variant="outline">
+        <Button
+          aria-label="Pause evaluation run"
+          onClick={() => void controlMutation.mutateAsync("pause")}
+          size="sm"
+          title="Pause evaluation run"
+          type="button"
+          variant="outline"
+        >
           <Pause />
         </Button>
       )}
-      <Button onClick={() => void controlMutation.mutateAsync("cancel")} size="sm" type="button" variant="outline">
+      <Button
+        aria-label="Cancel evaluation run"
+        onClick={() => void controlMutation.mutateAsync("cancel")}
+        size="sm"
+        title="Cancel evaluation run"
+        type="button"
+        variant="outline"
+      >
         <XCircle />
       </Button>
     </div>
