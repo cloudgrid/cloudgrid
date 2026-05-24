@@ -334,7 +334,12 @@ export type DatasetValueType = "text" | "json";
 
 export type DatasetSplit = "training" | "validation" | "test";
 
-export type DatasetCurationStatus = "draft" | "needs_expected" | "needs_review" | "ready" | "rejected";
+export type DatasetCurationStatus =
+  | "draft"
+  | "needs_expected"
+  | "needs_review"
+  | "ready"
+  | "rejected";
 
 export type DatasetReviewStatus = DatasetCurationStatus | "unreviewed" | "reviewed";
 
@@ -436,11 +441,7 @@ export type TargetSnapshotSource =
   | "evaluation_run"
   | "optimization_candidate"
   | "promotion";
-export type TargetReproducibility =
-  | "exact"
-  | "same_inputs"
-  | "best_effort"
-  | "not_reproducible";
+export type TargetReproducibility = "exact" | "same_inputs" | "best_effort" | "not_reproducible";
 
 export type AiEvalSourceRefKind =
   | "trace"
@@ -2255,6 +2256,7 @@ export interface DatasetImportRowIssue {
 export interface DatasetExportJob {
   id: string;
   datasetId: string;
+  datasetVersionId: string;
   datasetVersion: number;
   status: DatasetExportStatus;
   format: DatasetExportFormat;

@@ -356,6 +356,36 @@ func TestHandleEvalMutationRequestSupportsDatasetAppendPromoteAndPromptPromotion
 	}
 }
 
+func TestHandleEvalMutationRequestAcceptsV2DatasetAppendVersionId(t *testing.T) {
+	store := &fakeAIWriteStore{}
+	request := contracts.EvalMutationRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-v2-append", IssuedAt: fixedClock()},
+		Input: map[string]any{
+			"projectId":                "project-1",
+			"datasetId":                "dataset-1",
+			"expectedDatasetVersionId": "dataset-version-1",
+			"idempotencyKey":           "append-v2-1",
+			"items": []any{map[string]any{
+				"input":          map[string]any{"text": "refund"},
+				"expected":       map[string]any{"category": "billing"},
+				"observedOutput": map[string]any{"category": "shipping"},
+				"reason":         "Refunds belong to billing.",
+				"split":          "validation",
+				"curationStatus": "ready",
+			}},
+		},
+	}
+
+	response := HandleEvalMutationRequest(context.Background(), EvalDatasetItemsAppendSubject, request, store, &fakeAIEventPublisher{}, fixedClock)
+
+	if !response.OK || response.Error != nil {
+		t.Fatalf("response = %#v, want ok", response)
+	}
+	if response.Data["datasetId"] != "dataset-1" || response.Data["expectedDatasetVersionId"] != "dataset-version-1" {
+		t.Fatalf("response data = %#v, want v2 dataset append fields", response.Data)
+	}
+}
+
 func TestRegisterEvalMutationRespondersIncludesDatasetUpdateAndCandidateSubjects(t *testing.T) {
 	nc := &fakeSubscribeNATS{}
 

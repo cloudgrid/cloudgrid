@@ -255,6 +255,14 @@ func TestProjectAiSettingsDefaultAndUpdate(t *testing.T) {
 	if settings["projectId"] != LocalProjectID || settings["enabled"] != false || settings["version"] != 1 {
 		t.Fatalf("default settings = %#v, want disabled v1 local project", settings)
 	}
+	defaultSampling := settings["sampling"].(map[string]any)
+	if defaultSampling["maxConcurrentEvaluationItems"] != 4 {
+		t.Fatalf("default sampling = %#v, want maxConcurrentEvaluationItems", defaultSampling)
+	}
+	defaultDatasetDefaults := settings["datasetDefaults"].(map[string]any)
+	if defaultDatasetDefaults["smallDatasetReadyThreshold"] != 30 || defaultDatasetDefaults["requireReadyForTest"] != true {
+		t.Fatalf("default dataset defaults = %#v, want GraphQL-required ready defaults", defaultDatasetDefaults)
+	}
 
 	updated, err := service.UpdateProjectAiSettings(ctx, contracts.ProjectAiSettingsUpdateRequest{
 		BridgeEnvelope: admin,
@@ -278,10 +286,13 @@ func TestProjectAiSettingsDefaultAndUpdate(t *testing.T) {
 				"defaultOnlineSampleRate":             0.1,
 				"maxOnlineSampleRate":                 1,
 				"maxConcurrentExperimentItems":        4,
+				"maxConcurrentEvaluationItems":        8,
 				"maxConcurrentOptimizationCandidates": 2,
 			},
 			"datasetDefaults": map[string]any{
 				"splitAllocation":               map[string]any{},
+				"smallDatasetReadyThreshold":    12,
+				"requireReadyForTest":           false,
 				"smallDatasetReviewedThreshold": 30,
 				"requireReviewForRegression":    true,
 			},
@@ -293,6 +304,14 @@ func TestProjectAiSettingsDefaultAndUpdate(t *testing.T) {
 	}
 	if updated["enabled"] != true || updated["version"] != 2 {
 		t.Fatalf("updated settings = %#v, want enabled v2", updated)
+	}
+	updatedSampling := updated["sampling"].(map[string]any)
+	if updatedSampling["maxConcurrentEvaluationItems"] != 8 {
+		t.Fatalf("updated sampling = %#v, want provided maxConcurrentEvaluationItems", updatedSampling)
+	}
+	updatedDatasetDefaults := updated["datasetDefaults"].(map[string]any)
+	if updatedDatasetDefaults["smallDatasetReadyThreshold"] != 12 || updatedDatasetDefaults["requireReadyForTest"] != false {
+		t.Fatalf("updated dataset defaults = %#v, want provided ready defaults", updatedDatasetDefaults)
 	}
 	profiles := updated["providerProfiles"].([]any)
 	if len(profiles) != 1 || profiles[0].(map[string]any)["projectId"] != LocalProjectID {

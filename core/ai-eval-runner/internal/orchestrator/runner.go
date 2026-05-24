@@ -113,10 +113,14 @@ type ExperimentRunControlResult struct {
 type StartOptimizationRequest struct {
 	RequestID           string
 	ProjectID           string
+	DatasetVersionID    string
+	TargetSnapshotID    string
+	IdempotencyKey      string
 	ExperimentID        string
 	OptimizerKind       string
 	BasePromptVersionID string
 	Config              map[string]any
+	RunPolicy           map[string]any
 	TraceContext        map[string]string
 }
 
@@ -204,7 +208,7 @@ func (r *Runner) StartEvaluationRun(ctx context.Context, request StartEvaluation
 		RetentionProfile:        stringDefault(request.RetentionProfile, ports.EvaluationRetentionProfileBalanced),
 		RetentionRole:           retentionRole,
 		StartedAt:               now,
-		Summary:                 evaluationRunSummary(len(items), 0, 0, 0, 0),
+		Summary:                 evaluationRunSummary(len(items), 0, 0, nil),
 	}
 	r.rememberEvaluationRun(run)
 	_ = r.publishEvaluationProgress(ctx, run, nil, ports.ExperimentProgressStarted)
@@ -238,7 +242,7 @@ func (r *Runner) StartEvaluationRun(ctx context.Context, request StartEvaluation
 	} else {
 		run.Status = ports.ExperimentRunStatusFinished
 	}
-	run.Summary = evaluationRunSummary(len(items), completed, failed, len(metricResults), len(problemMetricResults(metricResults)))
+	run.Summary = evaluationRunSummary(len(items), completed, failed, metricResults)
 	r.rememberEvaluationRun(run)
 	if err := r.writer.PersistEvaluationResults(ctx, ports.EvaluationResultsPersist{
 		ProjectID:        request.ProjectID,
@@ -636,6 +640,9 @@ func (r *Runner) StartOptimization(ctx context.Context, request StartOptimizatio
 	if err := r.requireConfigured(); err != nil {
 		return StartOptimizationResult{}, err
 	}
+	if request.TargetSnapshotID != "" {
+		return r.startV2Optimization(ctx, request)
+	}
 	if request.ExperimentID == "" {
 		return StartOptimizationResult{}, errors.New("experimentId is required")
 	}
@@ -698,6 +705,84 @@ func (r *Runner) StartOptimization(ctx context.Context, request StartOptimizatio
 		return StartOptimizationResult{}, err
 	}
 	_, _ = r.harness.CleanupSandbox(ctx, ports.SandboxLifecycleRequest{ExperimentRunID: runID, CandidateID: runID, AttemptID: runID, ManifestDigest: manifest.Digest, SandboxProfile: ports.SandboxProfileEphemeralOptimizationCandidate, SandboxRef: sandbox.SandboxRef, RunPolicy: runPolicy, TraceContext: request.TraceContext})
+	return StartOptimizationResult{
+		ExperimentRunID:    runID,
+		CandidatePromptIDs: result.CandidatePromptIDs,
+		Summary:            result.Summary,
+	}, nil
+}
+
+func (r *Runner) startV2Optimization(ctx context.Context, request StartOptimizationRequest) (StartOptimizationResult, error) {
+	if request.ProjectID == "" {
+		return StartOptimizationResult{}, errors.New("projectId is required")
+	}
+	if request.TargetSnapshotID == "" {
+		return StartOptimizationResult{}, errors.New("targetSnapshotId is required")
+	}
+	if request.IdempotencyKey == "" {
+		return StartOptimizationResult{}, errors.New("idempotencyKey is required")
+	}
+	runID := r.idGenerator()
+	now := r.now()
+	runPolicy := mapDefault(request.RunPolicy, objectMap(request.Config, "runPolicy"))
+	sandbox, err := r.harness.StartSandbox(ctx, ports.SandboxLifecycleRequest{
+		ExperimentRunID: runID,
+		CandidateID:     runID,
+		AttemptID:       runID,
+		ManifestDigest:  stableDigest(request.Config),
+		SandboxProfile:  ports.SandboxProfileEphemeralOptimizationCandidate,
+		RunPolicy:       runPolicy,
+		TraceContext:    request.TraceContext,
+	})
+	if err != nil {
+		return StartOptimizationResult{}, err
+	}
+	result, err := r.harness.Optimize(ctx, ports.HarnessOptimizeRequest{
+		ExperimentRunID:     runID,
+		ExperimentID:        stringValueFromMap(request.Config, "validationEvaluationDefinitionId"),
+		BasePromptVersionID: request.TargetSnapshotID,
+		OptimizerKind:       "critic_mutate_judge_pick",
+		Config:              request.Config,
+		ManifestDigest:      stableDigest(request.Config),
+		RunPolicy:           runPolicy,
+		SandboxProfile:      ports.SandboxProfileEphemeralOptimizationCandidate,
+		SandboxRef:          sandbox.SandboxRef,
+		TraceContext:        request.TraceContext,
+	})
+	if err != nil {
+		return StartOptimizationResult{}, err
+	}
+	_, _ = r.harness.CleanupSandbox(ctx, ports.SandboxLifecycleRequest{ExperimentRunID: runID, CandidateID: runID, AttemptID: runID, ManifestDigest: stableDigest(request.Config), SandboxProfile: ports.SandboxProfileEphemeralOptimizationCandidate, SandboxRef: sandbox.SandboxRef, RunPolicy: runPolicy, TraceContext: request.TraceContext})
+	endedAt := r.now()
+	optimizationRun := map[string]any{
+		"id":                               runID,
+		"projectId":                        request.ProjectID,
+		"status":                           ports.ExperimentRunStatusFinished,
+		"baselineTargetSnapshotId":         request.TargetSnapshotID,
+		"objective":                        objectMap(request.Config, "objective"),
+		"trainingEvaluationDefinitionId":   stringValueFromMap(request.Config, "trainingEvaluationDefinitionId"),
+		"trainingSplitSelector":            objectMap(request.Config, "trainingSplitSelector"),
+		"validationEvaluationDefinitionId": stringValueFromMap(request.Config, "validationEvaluationDefinitionId"),
+		"validationSplitSelector":          objectMap(request.Config, "validationSplitSelector"),
+		"testEvaluationDefinitionId":       stringValueFromMap(request.Config, "testEvaluationDefinitionId"),
+		"candidateTargetSnapshotIds":       result.CandidatePromptIDs,
+		"causedEvaluationRunIds":           []string{},
+		"quickShotPolicy":                  objectMap(request.Config, "quickShotPolicy"),
+		"comparisonIds":                    []string{},
+		"selectedCandidateSnapshotId":      firstString(result.CandidatePromptIDs),
+		"budgetSnapshot":                   map[string]any{},
+		"createdAt":                        now,
+		"startedAt":                        now,
+		"endedAt":                          endedAt,
+		"summary":                          result.Summary,
+	}
+	if err := r.writer.PersistEvaluationResults(ctx, ports.EvaluationResultsPersist{
+		ProjectID:       request.ProjectID,
+		IdempotencyKey:  request.IdempotencyKey,
+		OptimizationRun: optimizationRun,
+	}); err != nil {
+		return StartOptimizationResult{}, err
+	}
 	return StartOptimizationResult{
 		ExperimentRunID:    runID,
 		CandidatePromptIDs: result.CandidatePromptIDs,
@@ -1149,24 +1234,20 @@ func experimentRunSummary(totalItems int, completedItems int, status string) map
 	}
 }
 
-func evaluationRunSummary(totalItems int, completedItems int, failedItems int, metricResults int, problemResults int) map[string]any {
+func evaluationRunSummary(totalItems int, completedItems int, failedItems int, metricResults []ports.MetricResult) map[string]any {
+	problemCounts := evaluationProblemCounts(metricResults)
 	return map[string]any{
 		"itemCounts": map[string]any{
 			"total":       totalItems,
-			"passed":      completedItems,
+			"queued":      0,
+			"running":     0,
+			"completed":   completedItems,
 			"failed":      failedItems,
-			"errored":     0,
-			"skipped":     0,
-			"needsReview": 0,
+			"cancelled":   0,
 			"quarantined": 0,
 		},
-		"metricResultCount": metricResults,
-		"problemCounts": map[string]any{
-			"modelQuality":   0,
-			"itemQuality":    0,
-			"scorerConfig":   problemResults,
-			"infrastructure": 0,
-		},
+		"metricAggregates": []any{},
+		"problemCounts":    problemCounts,
 		"budgetUsage": map[string]any{
 			"inputTokens":  0,
 			"outputTokens": 0,
@@ -1174,6 +1255,37 @@ func evaluationRunSummary(totalItems int, completedItems int, failedItems int, m
 			"estimatedUsd": 0,
 		},
 	}
+}
+
+func evaluationProblemCounts(results []ports.MetricResult) map[string]any {
+	counts := map[string]any{
+		"invalidActualOutput":   0,
+		"invalidExpectedOutput": 0,
+		"missingEvidence":       0,
+		"adapterFailure":        0,
+		"timeout":               0,
+		"providerFailure":       0,
+		"contentRedacted":       0,
+		"notApplicable":         0,
+		"metricConfigInvalid":   0,
+		"internalError":         0,
+	}
+	for _, result := range problemMetricResults(results) {
+		code, _ := result.Problem["code"].(string)
+		switch code {
+		case ports.EvaluationProblemInvalidActualOutput:
+			counts["invalidActualOutput"] = counts["invalidActualOutput"].(int) + 1
+		case ports.EvaluationProblemAdapterFailure:
+			counts["adapterFailure"] = counts["adapterFailure"].(int) + 1
+		case ports.EvaluationProblemTimeout:
+			counts["timeout"] = counts["timeout"].(int) + 1
+		case ports.EvaluationProblemMetricConfigInvalid:
+			counts["metricConfigInvalid"] = counts["metricConfigInvalid"].(int) + 1
+		default:
+			counts["internalError"] = counts["internalError"].(int) + 1
+		}
+	}
+	return counts
 }
 
 func exactJSONMetricResult(id string, itemRun ports.EvaluationItemRun, expected map[string]any, actual any, problems []map[string]any, producedAt string) ports.MetricResult {
@@ -1397,6 +1509,33 @@ func mapDefault(value map[string]any, fallback map[string]any) map[string]any {
 		return fallback
 	}
 	return value
+}
+
+func objectMap(value map[string]any, key string) map[string]any {
+	if value == nil {
+		return map[string]any{}
+	}
+	if nested, ok := value[key].(map[string]any); ok {
+		return nested
+	}
+	return map[string]any{}
+}
+
+func stringValueFromMap(value map[string]any, key string) string {
+	if value == nil {
+		return ""
+	}
+	if text, ok := value[key].(string); ok {
+		return strings.TrimSpace(text)
+	}
+	return ""
+}
+
+func firstString(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
 }
 
 func traceValue(values map[string]string, key string) string {

@@ -174,7 +174,7 @@ func BuildEvalMutationRecord(subject string, request contracts.EvalMutationReque
 	case EvalDatasetCreateSubject:
 		id := stableID("dataset", request.RequestID, stringValue(request.Input, "name"))
 		if stringValue(request.Input, "projectId") != "" {
-			versionID := stableID("dataset-version", id, "1", stringValue(request.Input, "idempotencyKey"))
+			versionID := datasetVersionID(id, 1)
 			settings := objectValueWithDefault(request.Input, "settings")
 			digest := stableDigest(map[string]any{"settings": settings, "itemRevisionIds": []string{}})
 			return map[string]any{
@@ -212,7 +212,7 @@ func BuildEvalMutationRecord(subject string, request contracts.EvalMutationReque
 		item := firstMap(items)
 		if stringValue(request.Input, "projectId") != "" {
 			datasetID := stringValue(request.Input, "datasetId")
-			expectedVersion := intValue(request.Input, "expectedDatasetVersion")
+			expectedVersion := datasetVersionNumberFromInput(request.Input)
 			itemID := stringValue(item, "datasetItemId")
 			if itemID == "" {
 				itemID = stringValue(item, "id")
@@ -223,12 +223,15 @@ func BuildEvalMutationRecord(subject string, request contracts.EvalMutationReque
 			revisionID := stableID("dataset-item-revision", itemID, fmt.Sprintf("%d", expectedVersion+1), stringValue(request.Input, "idempotencyKey"))
 			revision := datasetItemRevisionRecord(request, item, datasetID, itemID, revisionID, 1, now)
 			return map[string]any{
-				"id":                  datasetID,
-				"datasetId":           datasetID,
-				"version":             expectedVersion + 1,
-				"datasetItemId":       itemID,
-				"datasetItemRevision": revision,
-				"itemRevisionIds":     []any{revisionID},
+				"id":                       datasetID,
+				"datasetId":                datasetID,
+				"version":                  expectedVersion + 1,
+				"currentVersion":           expectedVersion + 1,
+				"currentVersionId":         datasetVersionID(datasetID, expectedVersion+1),
+				"expectedDatasetVersionId": stringValue(request.Input, "expectedDatasetVersionId"),
+				"datasetItemId":            itemID,
+				"datasetItemRevision":      revision,
+				"itemRevisionIds":          []any{revisionID},
 			}, nil
 		}
 		id := stringValue(item, "id")
@@ -651,8 +654,8 @@ func validateEvalMutationRequest(subject string, request contracts.EvalMutationR
 		if err := requireNonBlank(request.Input, "importId"); err != nil {
 			return err
 		}
-		if intValue(request.Input, "expectedDatasetVersion") < 1 {
-			return fmt.Errorf("ERR-001 VALIDATION_FAILED: expectedDatasetVersion must be at least 1")
+		if intValue(request.Input, "expectedDatasetVersion") < 1 && stringValue(request.Input, "expectedDatasetVersionId") == "" {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: expectedDatasetVersionId is required")
 		}
 		return nil
 	case EvalDatasetCreateSubject:
@@ -674,8 +677,8 @@ func validateEvalMutationRequest(subject string, request contracts.EvalMutationR
 			if err := requireNonBlank(request.Input, "idempotencyKey"); err != nil {
 				return err
 			}
-			if intValue(request.Input, "expectedDatasetVersion") < 1 {
-				return fmt.Errorf("ERR-001 VALIDATION_FAILED: expectedDatasetVersion must be at least 1")
+			if intValue(request.Input, "expectedDatasetVersion") < 1 && stringValue(request.Input, "expectedDatasetVersionId") == "" {
+				return fmt.Errorf("ERR-001 VALIDATION_FAILED: expectedDatasetVersionId is required")
 			}
 			for _, item := range arrayValue(request.Input, "items") {
 				itemMap, ok := item.(map[string]any)
@@ -1033,6 +1036,36 @@ func datasetItemRevisionRecord(request contracts.EvalMutationRequest, item map[s
 
 func emptySplitCounts() map[string]any {
 	return map[string]any{"training": 0, "validation": 0, "test": 0}
+}
+
+func datasetVersionID(datasetID string, version int) string {
+	return fmt.Sprintf("%s:version:%d", datasetID, maxInt(1, version))
+}
+
+func datasetVersionNumberFromInput(input map[string]any) int {
+	if version := intValue(input, "expectedDatasetVersion"); version > 0 {
+		return version
+	}
+	versionID := stringValue(input, "expectedDatasetVersionId")
+	if versionID == "" {
+		versionID = stringValue(input, "currentVersionId")
+	}
+	prefix := ":version:"
+	index := strings.LastIndex(versionID, prefix)
+	if index < 0 {
+		return 1
+	}
+	version := 0
+	for _, char := range versionID[index+len(prefix):] {
+		if char < '0' || char > '9' {
+			break
+		}
+		version = version*10 + int(char-'0')
+	}
+	if version < 1 {
+		return 1
+	}
+	return version
 }
 
 func firstNonEmptyArray(input map[string]any, keys ...string) []any {

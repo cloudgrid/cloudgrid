@@ -3438,6 +3438,7 @@ func defaultProjectAiSettings(projectID string, now time.Time, actor string, ver
 			"defaultOnlineSampleRate":             0,
 			"maxOnlineSampleRate":                 1,
 			"maxConcurrentExperimentItems":        4,
+			"maxConcurrentEvaluationItems":        4,
 			"maxConcurrentOptimizationCandidates": 2,
 		},
 		"datasetDefaults": map[string]any{
@@ -3450,6 +3451,8 @@ func defaultProjectAiSettings(projectID string, now time.Time, actor string, ver
 			},
 			"smallDatasetReviewedThreshold": 30,
 			"requireReviewForRegression":    true,
+			"smallDatasetReadyThreshold":    30,
+			"requireReadyForTest":           true,
 		},
 		"effective": map[string]any{
 			"warnings":                 []any{},
@@ -3958,6 +3961,7 @@ func normalizeProjectAiSettingsInput(input map[string]any, projectID string, now
 			"defaultOnlineSampleRate":             numberFromMap(sampling, "defaultOnlineSampleRate", 0),
 			"maxOnlineSampleRate":                 numberFromMap(sampling, "maxOnlineSampleRate", 1),
 			"maxConcurrentExperimentItems":        intNumberFromMap(sampling, "maxConcurrentExperimentItems", 4),
+			"maxConcurrentEvaluationItems":        intNumberFromMap(sampling, "maxConcurrentEvaluationItems", 4),
 			"maxConcurrentOptimizationCandidates": intNumberFromMap(sampling, "maxConcurrentOptimizationCandidates", 2),
 		}
 	}
@@ -3967,6 +3971,8 @@ func normalizeProjectAiSettingsInput(input map[string]any, projectID string, now
 			"splitAllocation":               split,
 			"smallDatasetReviewedThreshold": intNumberFromMap(defaults, "smallDatasetReviewedThreshold", 30),
 			"requireReviewForRegression":    boolFromMapDefault(defaults, "requireReviewForRegression", true),
+			"smallDatasetReadyThreshold":    intNumberFromMap(defaults, "smallDatasetReadyThreshold", 30),
+			"requireReadyForTest":           boolFromMapDefault(defaults, "requireReadyForTest", true),
 		}
 	}
 	settings["effective"] = effectiveProjectAiSettings(settings)

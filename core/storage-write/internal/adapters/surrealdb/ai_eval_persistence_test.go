@@ -7,6 +7,68 @@ import (
 	"testing"
 )
 
+func TestBuildEvalMutationPersistQueryDatasetVersionSourceMatchesSchema(t *testing.T) {
+	createRequest := validEvalRequest(map[string]any{
+		"projectId":      "project-1",
+		"name":           "classification cases",
+		"settings":       map[string]any{"inputType": "json", "expectedType": "json"},
+		"idempotencyKey": "dataset-1",
+	})
+
+	_, createVars, _, err := BuildEvalMutationPersistQuery("eval.dataset.create", createRequest, fixedWriterTime())
+	if err != nil {
+		t.Fatalf("BuildEvalMutationPersistQuery(create) error = %v", err)
+	}
+	createVersion := createVars["version_record"].(map[string]any)
+	if source, ok := createVersion["source"].(map[string]any); !ok || source["kind"] != "manual" {
+		t.Fatalf("create version source = %#v, want object source", createVersion["source"])
+	}
+
+	appendRequest := validEvalRequest(map[string]any{
+		"projectId":                "project-1",
+		"datasetId":                "dataset-1",
+		"expectedDatasetVersionId": "dataset-1:version:1",
+		"idempotencyKey":           "append-1",
+		"source":                   "trace_import",
+		"items":                    []any{map[string]any{"input": map[string]any{"text": "refund"}, "expected": map[string]any{"category": "billing"}}},
+	})
+
+	_, appendVars, _, err := BuildEvalMutationPersistQuery("eval.dataset.items.append", appendRequest, fixedWriterTime())
+	if err != nil {
+		t.Fatalf("BuildEvalMutationPersistQuery(append) error = %v", err)
+	}
+	appendVersion := appendVars["dataset_version_record"].(map[string]any)
+	if source, ok := appendVersion["source"].(map[string]any); !ok || source["kind"] != "trace_import" {
+		t.Fatalf("append version source = %#v, want object source", appendVersion["source"])
+	}
+}
+
+func TestBuildEvalMutationPersistQueryTargetSnapshotSourceMatchesSchema(t *testing.T) {
+	request := validEvalRequest(map[string]any{
+		"projectId":      "project-1",
+		"idempotencyKey": "snapshot-1",
+		"targetRef": map[string]any{
+			"kind":        "external_adapter",
+			"targetRef":   "adapter://local",
+			"displayName": "Local adapter",
+		},
+		"input": map[string]any{
+			"kind":   "external_adapter",
+			"name":   "Local adapter",
+			"source": "evaluation_run_start",
+		},
+	})
+
+	_, vars, _, err := BuildEvalMutationPersistQuery("eval.target.snapshot.create", request, fixedWriterTime())
+	if err != nil {
+		t.Fatalf("BuildEvalMutationPersistQuery() error = %v", err)
+	}
+	record := vars["record"].(map[string]any)
+	if source, ok := record["source"].(map[string]any); !ok || source["kind"] != "evaluation_run_start" {
+		t.Fatalf("target snapshot source = %#v, want object source", record["source"])
+	}
+}
+
 func TestBuildEvalMutationPersistQueryDatasetItemUpdateGuardsExpectedVersion(t *testing.T) {
 	request := validEvalRequest(map[string]any{
 		"datasetId":              "dataset-1",
@@ -110,6 +172,33 @@ func TestBuildEvalMutationPersistQueryCandidatePreparePersistsCandidateRecord(t 
 	anonymization := record["anonymization"].(map[string]any)
 	if anonymization["policyId"] != "policy-1" || anonymization["policyVersion"] != 2 {
 		t.Fatalf("anonymization = %#v", anonymization)
+	}
+}
+
+func TestBuildEvalMutationPersistQueryEvaluationCreateSetsVersion(t *testing.T) {
+	request := validEvalRequest(map[string]any{
+		"projectId":        "project-1",
+		"name":             "classification evaluation",
+		"datasetId":        "dataset-1",
+		"idempotencyKey":   "evaluation-1",
+		"targetRef":        map[string]any{"kind": "external_adapter", "targetRef": "adapter://local"},
+		"metricSettings":   []any{map[string]any{"metricId": "classification.exact_label_match"}},
+		"splitSelector":    map[string]any{"splits": []any{"validation"}},
+		"runPolicy":        map[string]any{"maxParallelRequests": 1},
+		"retentionProfile": "balanced",
+	})
+
+	_, vars, data, err := BuildEvalMutationPersistQuery("eval.evaluation.create", request, fixedWriterTime())
+	if err != nil {
+		t.Fatalf("BuildEvalMutationPersistQuery() error = %v", err)
+	}
+	record := vars["record"].(map[string]any)
+	metricSettings, ok := record["metricSettings"].([]any)
+	if !ok || len(metricSettings) != 1 {
+		t.Fatalf("record metricSettings = %#v, want preserved metric settings array", record["metricSettings"])
+	}
+	if record["version"] != 1 || data["version"] != 1 {
+		t.Fatalf("record=%#v data=%#v, want version 1", record, data)
 	}
 }
 

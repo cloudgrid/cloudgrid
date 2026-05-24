@@ -37,7 +37,7 @@ const (
 	SubjectResultsPersist        = "eval.results.persist"
 	SubjectExperimentProgress    = "eval.live.events.*.*"
 	SubjectManifestResolve       = "eval.target.snapshot.get"
-	SubjectOnlinePolicyResolve   = "eval.live.start"
+	SubjectOnlinePolicyResolve   = "eval.online.policy_matches.resolve"
 	SubjectControlAISettingsGet  = "control.ai_settings.get"
 	validationErrorID            = "ERR-001"
 	validationErrorCode          = "VALIDATION_FAILED"
@@ -73,6 +73,32 @@ type Handler func(BridgeMessage)
 
 type RunnerServiceOptions struct {
 	SelfObservability selfobs.TraceLogRecorder
+}
+
+type evaluationRunStartMessage struct {
+	contracts.BridgeEnvelope
+	ProjectID               string           `json:"projectId"`
+	EvaluationDefinitionID  string           `json:"evaluationDefinitionId,omitempty"`
+	Kind                    string           `json:"kind,omitempty"`
+	DatasetVersionID        string           `json:"datasetVersionId"`
+	TargetSnapshotID        string           `json:"targetSnapshotId"`
+	SelectedItemRevisionIDs []string         `json:"selectedItemRevisionIds,omitempty"`
+	SplitSelector           map[string]any   `json:"splitSelector,omitempty"`
+	MetricSettings          []map[string]any `json:"metricSettings,omitempty"`
+	RunPolicy               map[string]any   `json:"runPolicy,omitempty"`
+	RetentionProfile        string           `json:"retentionProfile,omitempty"`
+	RetentionRole           string           `json:"retentionRole,omitempty"`
+	IdempotencyKey          string           `json:"idempotencyKey"`
+}
+
+type optimizationStartMessage struct {
+	contracts.BridgeEnvelope
+	ProjectID        string         `json:"projectId"`
+	DatasetVersionID string         `json:"datasetVersionId"`
+	TargetSnapshotID string         `json:"targetSnapshotId"`
+	IdempotencyKey   string         `json:"idempotencyKey"`
+	Config           map[string]any `json:"config,omitempty"`
+	RunPolicy        map[string]any `json:"runPolicy,omitempty"`
 }
 
 func NewRunnerService(runner *orchestrator.Runner, logger *slog.Logger) *RunnerService {
@@ -142,7 +168,7 @@ func (service *RunnerService) handleEvaluationRunControl(command string) Handler
 
 func (service *RunnerService) handleEvaluationRunStart() Handler {
 	return func(msg BridgeMessage) {
-		var request contracts.EvaluationRunStartRequest
+		var request evaluationRunStartMessage
 		if err := decodeStrict(msg.Data(), &request); err != nil {
 			respond(msg, mutationErrorResponse("", validationBridgeError("invalid evaluation run start request JSON")))
 			return
@@ -170,12 +196,20 @@ func (service *RunnerService) handleEvaluationRunStart() Handler {
 			project = projectID(request.AuthContext)
 		}
 		result, err := service.runner.StartEvaluationRun(ctx, orchestrator.StartEvaluationRunRequest{
-			RequestID:        request.RequestID,
-			ProjectID:        project,
-			DatasetVersionID: request.DatasetVersionID,
-			TargetSnapshotID: request.TargetSnapshotID,
-			IdempotencyKey:   request.IdempotencyKey,
-			TraceContext:     traceContext(request.TraceContext),
+			RequestID:               request.RequestID,
+			ProjectID:               project,
+			EvaluationDefinitionID:  request.EvaluationDefinitionID,
+			Kind:                    request.Kind,
+			DatasetVersionID:        request.DatasetVersionID,
+			TargetSnapshotID:        request.TargetSnapshotID,
+			SelectedItemRevisionIDs: request.SelectedItemRevisionIDs,
+			SplitSelector:           request.SplitSelector,
+			MetricSettings:          request.MetricSettings,
+			RunPolicy:               request.RunPolicy,
+			RetentionProfile:        request.RetentionProfile,
+			RetentionRole:           request.RetentionRole,
+			IdempotencyKey:          request.IdempotencyKey,
+			TraceContext:            traceContext(request.TraceContext),
 		})
 		if err != nil {
 			respond(msg, mutationErrorResponse(request.RequestID, bridgeErrorFromError(err)))
@@ -219,39 +253,51 @@ func (service *RunnerService) handleEvaluationRunCancel() Handler {
 
 func (service *RunnerService) handleOptimizationStart() Handler {
 	return func(msg BridgeMessage) {
-		var request contracts.OptimizationStartRequest
+		var request optimizationStartMessage
 		if err := decodeStrict(msg.Data(), &request); err != nil {
+			if service.logger != nil {
+				service.logger.Warn("optimization start request decode failed", "service", "ai-eval-runner", "event", "optimization_start_failed", "error", err.Error())
+			}
 			respond(msg, mutationErrorResponse("", validationBridgeError("invalid optimization start request JSON")))
 			return
 		}
 		if err := validateEnvelope(request.BridgeEnvelope); err != nil {
+			if service.logger != nil {
+				service.logger.Warn("optimization start envelope validation failed", "service", "ai-eval-runner", "event", "optimization_start_failed", "request_id", request.RequestID, "error", err.Error())
+			}
 			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError(err.Error())))
 			return
 		}
-		if strings.TrimSpace(request.ExperimentID) == "" {
-			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("experimentId is required")))
+		if strings.TrimSpace(request.TargetSnapshotID) == "" {
+			if service.logger != nil {
+				service.logger.Warn("optimization start target validation failed", "service", "ai-eval-runner", "event", "optimization_start_failed", "request_id", request.RequestID, "error", "targetSnapshotId is required")
+			}
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("targetSnapshotId is required")))
 			return
 		}
-		if strings.TrimSpace(string(request.OptimizerKind)) == "" {
-			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("optimizerKind is required")))
-			return
-		}
-		if strings.TrimSpace(request.BasePromptVersionID) == "" {
-			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("basePromptVersionId is required")))
+		if strings.TrimSpace(request.IdempotencyKey) == "" {
+			if service.logger != nil {
+				service.logger.Warn("optimization start idempotency validation failed", "service", "ai-eval-runner", "event", "optimization_start_failed", "request_id", request.RequestID, "error", "idempotencyKey is required")
+			}
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("idempotencyKey is required")))
 			return
 		}
 		ctx, cancel := context.WithTimeout(contextWithAuth(request.AuthContext), defaultRequestTimeout)
 		defer cancel()
 		result, err := service.runner.StartOptimization(ctx, orchestrator.StartOptimizationRequest{
-			RequestID:           request.RequestID,
-			ProjectID:           projectID(request.AuthContext),
-			ExperimentID:        request.ExperimentID,
-			OptimizerKind:       string(request.OptimizerKind),
-			BasePromptVersionID: request.BasePromptVersionID,
-			Config:              objectFromTypedContract(request.Config),
-			TraceContext:        traceContext(request.TraceContext),
+			RequestID:        request.RequestID,
+			ProjectID:        projectIDFromMessage(request.ProjectID, request.AuthContext),
+			DatasetVersionID: request.DatasetVersionID,
+			TargetSnapshotID: request.TargetSnapshotID,
+			IdempotencyKey:   request.IdempotencyKey,
+			Config:           request.Config,
+			RunPolicy:        request.RunPolicy,
+			TraceContext:     traceContext(request.TraceContext),
 		})
 		if err != nil {
+			if service.logger != nil {
+				service.logger.Warn("optimization start failed", "service", "ai-eval-runner", "event", "optimization_start_failed", "request_id", request.RequestID, "error", err.Error())
+			}
 			respond(msg, mutationErrorResponse(request.RequestID, bridgeErrorFromError(err)))
 			return
 		}
@@ -259,12 +305,24 @@ func (service *RunnerService) handleOptimizationStart() Handler {
 			RequestID: request.RequestID,
 			OK:        true,
 			Data: map[string]any{
-				"id":                 result.ExperimentRunID,
-				"experimentRunId":    result.ExperimentRunID,
-				"experimentId":       request.ExperimentID,
-				"status":             ports.ExperimentRunStatusFinished,
-				"candidatePromptIds": result.CandidatePromptIDs,
-				"summary":            result.Summary,
+				"id":                       result.ExperimentRunID,
+				"projectId":                projectIDFromMessage(request.ProjectID, request.AuthContext),
+				"status":                   ports.ExperimentRunStatusFinished,
+				"baselineTargetSnapshotId": request.TargetSnapshotID,
+				"objective":                objectFromMap(request.Config, "objective"),
+				"validationEvaluationDefinitionId": stringFromMap(
+					request.Config,
+					"validationEvaluationDefinitionId",
+				),
+				"validationSplitSelector":    objectFromMap(request.Config, "validationSplitSelector"),
+				"candidateTargetSnapshotIds": result.CandidatePromptIDs,
+				"causedEvaluationRunIds":     []string{},
+				"quickShotPolicy":            objectFromMap(request.Config, "quickShotPolicy"),
+				"comparisonIds":              []string{},
+				"budgetSnapshot":             map[string]any{},
+				"createdAt":                  time.Now().UTC().Format(time.RFC3339),
+				"startedAt":                  time.Now().UTC().Format(time.RFC3339),
+				"endedAt":                    time.Now().UTC().Format(time.RFC3339),
 			},
 		})
 	}
@@ -345,6 +403,9 @@ func bridgeErrorFromError(err error) contracts.BridgeError {
 		id := strings.SplitN(message, ":", 2)[0]
 		return contracts.BridgeError{ID: id, Code: "AI_EVAL_RUNNER_REJECTED", Message: message, Retryable: false}
 	}
+	if strings.HasPrefix(message, "harness adapter returned status") {
+		return contracts.BridgeError{ID: "ERR-001", Code: "VALIDATION_FAILED", Message: message, Retryable: false}
+	}
 	if strings.HasPrefix(message, "ERR-013") {
 		return messageBridgeError()
 	}
@@ -356,6 +417,13 @@ func projectID(authContext *contracts.AuthContext) string {
 		return ""
 	}
 	return *authContext.ProjectID
+}
+
+func projectIDFromMessage(projectIDValue string, authContext *contracts.AuthContext) string {
+	if strings.TrimSpace(projectIDValue) != "" {
+		return strings.TrimSpace(projectIDValue)
+	}
+	return projectID(authContext)
 }
 
 func traceContext(values map[string]any) map[string]string {
@@ -402,6 +470,8 @@ func evaluationRunData(run ports.EvaluationRun) map[string]any {
 		"retentionRole":           run.RetentionRole,
 		"startedAt":               run.StartedAt,
 		"summary":                 run.Summary,
+		"metricResults":           []any{},
+		"metricAggregates":        []any{},
 	}
 	if run.EvaluationDefinitionID != "" {
 		data["evaluationDefinitionId"] = run.EvaluationDefinitionID
@@ -540,6 +610,26 @@ func objectFromTypedContract(value any) map[string]any {
 		}
 	}
 	return decoded
+}
+
+func objectFromMap(value map[string]any, key string) map[string]any {
+	if value == nil {
+		return map[string]any{}
+	}
+	if nested, ok := value[key].(map[string]any); ok {
+		return nested
+	}
+	return map[string]any{}
+}
+
+func stringFromMap(value map[string]any, key string) string {
+	if value == nil {
+		return ""
+	}
+	if text, ok := value[key].(string); ok {
+		return strings.TrimSpace(text)
+	}
+	return ""
 }
 
 func boundedRunnerSubject(subject string) string {

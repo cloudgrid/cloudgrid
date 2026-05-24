@@ -470,7 +470,7 @@ func shapeAgentRunRow(row map[string]any) map[string]any {
 	if _, ok := item["startedAt"]; !ok || item["startedAt"] == nil {
 		item["startedAt"] = fallbackTime()
 	}
-	for _, key := range []string{"transcript", "llmCalls", "toolCalls", "retrievalEvents", "evalResults"} {
+	for _, key := range []string{"transcript", "llmCalls", "toolCalls", "retrievalEvents", "evalResults", "metricResults"} {
 		if _, ok := item[key]; !ok || item[key] == nil {
 			item[key] = []any{}
 		}
@@ -1123,7 +1123,9 @@ func BuildAiEvalQuery(subject string, input map[string]any, authContext ...*cont
 			params["datasetId"] = datasetID
 		}
 		if aiEvalDatasetSearchReturnsItems(input) {
-			addStringFilter(&conditions, params, input, "datasetVersionId", "datasetVersionId")
+			if !addRecordIDListFilter(&conditions, params, input, "itemRevisionIds") {
+				addStringFilter(&conditions, params, input, "datasetVersionId", "datasetVersionId")
+			}
 			addStringFilter(&conditions, params, input, "split", "split")
 			addStringFilter(&conditions, params, input, "curationStatus", "curationStatus")
 			addStringFilter(&conditions, params, input, "sourceTraceId", "sourceRefs.traceId")
@@ -1348,11 +1350,16 @@ func BuildDatasetExportItemsQuery(input map[string]any, authContext ...*contract
 	params := map[string]any{"datasetId": datasetID}
 	addOwnershipParams(params, target)
 	conditions := append(retentionVisibleConditions(), "datasetId = $datasetId")
+	if _, ok := stringInput(input, "datasetVersionId"); ok {
+		addStringFilter(&conditions, params, input, "datasetVersionId", "datasetVersionId")
+	} else {
+		conditions = append(conditions, "datasetVersionId = (SELECT currentVersionId FROM type::record('ai_dataset', $datasetId) LIMIT 1)[0].currentVersionId")
+	}
 	addStringFilter(&conditions, params, input, "split", "split")
 	addStringFilter(&conditions, params, input, "curationStatus", "curationStatus")
 	return QueryStatement{
 		SQL: strings.Join([]string{
-			"SELECT id, input, expected, datasetItemId, observedOutput, reason, metadata, sourceRefs, split, curationStatus, contentTreatment",
+			"SELECT id, input, expected, datasetItemId, datasetVersionId, observedOutput, reason, metadata, sourceRefs, split, curationStatus, contentTreatment",
 			"FROM ai_dataset_item_revision",
 			whereClause(conditions),
 			"ORDER BY id ASC LIMIT 50000;",
@@ -1608,6 +1615,9 @@ func aiEvalDatasetSearchReturnsItems(input map[string]any) bool {
 	if _, ok := stringInput(input, "datasetVersionId"); ok {
 		return true
 	}
+	if len(stringsFromAny(input["itemRevisionIds"])) > 0 {
+		return true
+	}
 	if _, ok := stringInput(input, "sourceTraceId"); ok {
 		return true
 	}
@@ -1820,6 +1830,16 @@ func addRecordIDFilter(conditions *[]string, params map[string]any, input map[st
 	}
 	*conditions = append(*conditions, "record::id(id) = $"+inputKey)
 	params[inputKey] = value
+}
+
+func addRecordIDListFilter(conditions *[]string, params map[string]any, input map[string]any, inputKey string) bool {
+	values := stringsFromAny(input[inputKey])
+	if len(values) == 0 {
+		return false
+	}
+	*conditions = append(*conditions, "record::id(id) IN $"+inputKey)
+	params[inputKey] = values
+	return true
 }
 
 func addBoolFilter(conditions *[]string, params map[string]any, input map[string]any, inputKey string, field string) {

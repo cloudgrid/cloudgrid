@@ -669,7 +669,7 @@ func buildAIEvalV2PersistQuery(subject string, request contracts.EvalMutationReq
 			"settingsSnapshot": data["settings"],
 			"itemRevisionIds":  []string{},
 			"changeSummary":    "initial dataset version",
-			"source":           "manual",
+			"source":           datasetVersionSourceObject(request.Input, "manual"),
 		}
 		vars["version_record_id"] = data["currentVersionId"]
 		vars["version_record"] = versionRecord
@@ -680,9 +680,9 @@ func buildAIEvalV2PersistQuery(subject string, request contracts.EvalMutationReq
 		return sql, vars, true
 	case "eval.dataset.items.append", "eval.dataset.item.update":
 		datasetID := mapStringValue(request.Input, "datasetId")
-		expectedVersion := mapIntValue(request.Input, "expectedDatasetVersion")
+		expectedVersion := datasetVersionNumberFromInput(request.Input)
 		newVersion := expectedVersion + 1
-		versionID := stableRecordID("dataset-version", datasetID, fmt.Sprintf("%d", newVersion), idempotencyKey)
+		versionID := datasetVersionID(datasetID, newVersion)
 		digest := stableJSONDigest(data)
 		itemID := mapStringValue(record, "datasetItemId")
 		itemRecord := map[string]any{
@@ -706,12 +706,13 @@ func buildAIEvalV2PersistQuery(subject string, request contracts.EvalMutationReq
 			"createdBy":        requestActorID(request),
 			"settingsSnapshot": mapObjectValueWithDefault(request.Input, "settingsSnapshot"),
 			"itemRevisionIds":  []string{fmt.Sprint(recordID)},
-			"parentVersionId":  mapStringValue(request.Input, "currentVersionId"),
+			"parentVersionId":  firstMapStringValue(request.Input, "expectedDatasetVersionId", "currentVersionId"),
 			"changeSummary":    mapStringValueWithDefault(request.Input, "changeSummary", "dataset item revision update"),
-			"source":           mapStringValueWithDefault(request.Input, "source", "manual"),
+			"source":           datasetVersionSourceObject(request.Input, "manual"),
 		}
 		vars["dataset_id"] = datasetID
 		vars["expected_dataset_version"] = expectedVersion
+		vars["expected_dataset_version_id"] = firstMapStringValue(request.Input, "expectedDatasetVersionId", "currentVersionId")
 		vars["new_dataset_version"] = newVersion
 		vars["dataset_version_id"] = versionID
 		vars["dataset_digest"] = digest
@@ -719,8 +720,8 @@ func buildAIEvalV2PersistQuery(subject string, request contracts.EvalMutationReq
 		vars["dataset_item_record"] = itemRecord
 		vars["dataset_version_record"] = versionRecord
 		sql := "BEGIN TRANSACTION;\n" +
-			"LET $dataset = SELECT currentVersion, version FROM type::record('ai_dataset', $dataset_id) LIMIT 1;\n" +
-			"IF array::len($dataset) = 0 OR (($dataset[0].currentVersion ?? $dataset[0].version) != $expected_dataset_version) { THROW 'ERR-001 VALIDATION_FAILED: stale dataset version'; };\n" +
+			"LET $dataset = SELECT currentVersion, version, currentVersionId FROM type::record('ai_dataset', $dataset_id) LIMIT 1;\n" +
+			"IF array::len($dataset) = 0 OR (($expected_dataset_version_id != '' AND $dataset[0].currentVersionId != $expected_dataset_version_id) OR ($expected_dataset_version_id = '' AND ($dataset[0].currentVersion ?? $dataset[0].version) != $expected_dataset_version)) { THROW 'ERR-001 VALIDATION_FAILED: stale dataset version'; };\n" +
 			"UPSERT type::record('ai_dataset_item_revision', $record_id) CONTENT $record;\n" +
 			"UPSERT type::record('ai_dataset_item', $dataset_item_id) CONTENT $dataset_item_record;\n" +
 			"UPSERT type::record('ai_dataset_version', $dataset_version_id) CONTENT $dataset_version_record;\n" +
@@ -785,7 +786,7 @@ func evalMutationRecord(subject string, request contracts.EvalMutationRequest, o
 				return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: settings is required")
 			}
 			datasetID := stableRecordID("dataset", request.RequestID, name)
-			versionID := stableRecordID("dataset-version", datasetID, "1", mapStringValue(request.Input, "idempotencyKey"))
+			versionID := datasetVersionID(datasetID, 1)
 			digest := stableJSONDigest(map[string]any{"settings": settings, "itemRevisionIds": []string{}})
 			record := map[string]any{
 				"id":               datasetID,
@@ -823,7 +824,7 @@ func evalMutationRecord(subject string, request contracts.EvalMutationRequest, o
 		datasetID := mapStringValue(request.Input, "datasetId")
 		version := mapIntValue(request.Input, "version")
 		if version < 1 {
-			version = mapIntValue(request.Input, "expectedDatasetVersion") + 1
+			version = datasetVersionNumberFromInput(request.Input) + 1
 		}
 		items := mapArrayValue(request.Input, "items")
 		item := firstObject(items)
@@ -831,7 +832,7 @@ func evalMutationRecord(subject string, request contracts.EvalMutationRequest, o
 			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: dataset item append input is invalid")
 		}
 		if mapStringValue(request.Input, "projectId") != "" {
-			if mapStringValue(request.Input, "idempotencyKey") == "" || mapIntValue(request.Input, "expectedDatasetVersion") < 1 {
+			if mapStringValue(request.Input, "idempotencyKey") == "" || (mapIntValue(request.Input, "expectedDatasetVersion") < 1 && mapStringValue(request.Input, "expectedDatasetVersionId") == "") {
 				return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: dataset item append input is invalid")
 			}
 			itemID := mapStringValue(item, "datasetItemId")
@@ -980,10 +981,11 @@ func evalMutationRecord(subject string, request contracts.EvalMutationRequest, o
 			"description":      mapStringValue(request.Input, "description"),
 			"datasetId":        mapStringValue(request.Input, "datasetId"),
 			"targetRef":        mapObjectValueWithDefault(request.Input, "targetRef"),
-			"metricSettings":   mapObjectValueWithDefault(request.Input, "metricSettings"),
+			"metricSettings":   mapArrayValue(request.Input, "metricSettings"),
 			"splitSelector":    mapObjectValueWithDefault(request.Input, "splitSelector"),
 			"runPolicy":        mapObjectValueWithDefault(request.Input, "runPolicy"),
 			"retentionProfile": mapStringValueWithDefault(request.Input, "retentionProfile", "balanced"),
+			"version":          1,
 			"createdAt":        occurredAt.UTC(),
 			"createdBy":        requestActorID(request),
 			"updatedAt":        occurredAt.UTC(),
@@ -1138,7 +1140,7 @@ func evalMutationRecord(subject string, request contracts.EvalMutationRequest, o
 			"digest":          stableJSONDigest(input),
 			"createdAt":       occurredAt.UTC(),
 			"createdBy":       requestActorID(request),
-			"source":          mapStringValueWithDefault(input, "source", "manual"),
+			"source":          aiEvalSourceObject(input, "manual"),
 			"parts":           mapArrayValue(input, "parts"),
 			"metadata":        mapObjectValueWithDefault(input, "metadata"),
 			"reproducibility": mapStringValueWithDefault(input, "reproducibility", "full"),
@@ -1810,6 +1812,15 @@ func mapStringValue(input map[string]any, key string) string {
 	}
 }
 
+func firstMapStringValue(input map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value := mapStringValue(input, key); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func putMapString(record map[string]any, recordKey string, input map[string]any, inputKey string) {
 	value := mapStringValue(input, inputKey)
 	if value != "" {
@@ -1873,6 +1884,18 @@ func mapStringValueWithDefault(input map[string]any, key string, fallback string
 	return value
 }
 
+func datasetVersionSourceObject(input map[string]any, fallbackKind string) map[string]any {
+	return aiEvalSourceObject(input, fallbackKind)
+}
+
+func aiEvalSourceObject(input map[string]any, fallbackKind string) map[string]any {
+	if source := mapObjectValue(input, "source"); len(source) > 0 {
+		return cloneMap(source)
+	}
+	kind := mapStringValueWithDefault(input, "source", fallbackKind)
+	return map[string]any{"kind": kind}
+}
+
 func mapBoolValue(input map[string]any, key string) bool {
 	value, ok := input[key]
 	if !ok || value == nil {
@@ -1897,6 +1920,33 @@ func mapIntValue(input map[string]any, key string) int {
 	default:
 		return 0
 	}
+}
+
+func datasetVersionID(datasetID string, version int) string {
+	return fmt.Sprintf("%s:version:%d", datasetID, maxInt(1, version))
+}
+
+func datasetVersionNumberFromInput(input map[string]any) int {
+	if version := mapIntValue(input, "expectedDatasetVersion"); version > 0 {
+		return version
+	}
+	versionID := firstMapStringValue(input, "expectedDatasetVersionId", "currentVersionId")
+	prefix := ":version:"
+	index := strings.LastIndex(versionID, prefix)
+	if index < 0 {
+		return 1
+	}
+	version := 0
+	for _, char := range versionID[index+len(prefix):] {
+		if char < '0' || char > '9' {
+			break
+		}
+		version = version*10 + int(char-'0')
+	}
+	if version < 1 {
+		return 1
+	}
+	return version
 }
 
 func sortedMapStringValues(items []any) []string {

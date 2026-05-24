@@ -1482,7 +1482,10 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     return data.snapshot ?? null;
   }
 
-  async targetDiff(input: TargetDiffInput, authContext?: NormalizedAuthContext): Promise<TargetDiff> {
+  async targetDiff(
+    input: TargetDiffInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<TargetDiff> {
     return this.#requestParsed(
       subjects.targetDiff,
       { ...envelope(authContext), ...compactInput(input as unknown as Record<string, unknown>) },
@@ -1787,7 +1790,11 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<Dataset> {
     return this.#requestParsed(
       subjects.datasetItemsAppend,
-      { ...envelope(authContext), input },
+      {
+        ...envelope(authContext),
+        projectId: authContext?.projectId ?? "",
+        input: { ...input, projectId: authContext?.projectId ?? "" },
+      },
       typedDatasetSchema,
     );
   }
@@ -1928,16 +1935,46 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     input: StartEvaluationRunInput,
     authContext?: NormalizedAuthContext,
   ): Promise<EvaluationRun> {
+    const targetSnapshotId =
+      input.targetSnapshotId ??
+      input.targetRef?.targetSnapshotId ??
+      (input.targetRef
+        ? (
+            await this.#requestParsed(
+              subjects.targetSnapshotCreate,
+              {
+                ...envelope(authContext),
+                projectId: input.projectId,
+                idempotencyKey: `${input.idempotencyKey}:target-snapshot`,
+                targetRef: input.targetRef,
+                input: {
+                  kind: input.targetRef.kind,
+                  name: input.targetRef.displayName,
+                  targetRef: input.targetRef,
+                  targetRefValue: input.targetRef.targetRef,
+                  metadata: input.targetRef.metadata ?? {},
+                  source: "evaluation_run_start",
+                },
+              },
+              targetSnapshotSchema,
+            )
+          ).id
+        : "");
     return this.#requestParsed(
       subjects.evaluationRunStart,
       {
         ...envelope(authContext),
         projectId: input.projectId,
         evaluationDefinitionId: input.evaluationDefinitionId,
+        kind: input.kind,
         datasetVersionId: input.datasetVersionId,
-        targetSnapshotId: input.targetSnapshotId ?? input.targetRef?.targetSnapshotId ?? "",
+        targetSnapshotId,
+        selectedItemRevisionIds: input.selectedItemRevisionIds,
         splitSelector: input.splitSelector,
+        metricSettings: input.metricSettings,
         runPolicy: input.runPolicy,
+        retentionProfile: input.retentionProfile,
+        retentionRole: input.retentionRole,
         idempotencyKey: input.idempotencyKey,
       },
       evaluationRunSchema,
@@ -2053,7 +2090,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     input: CreateEvaluationComparisonInput,
     authContext?: NormalizedAuthContext,
   ): Promise<EvaluationComparison> {
-    return this.#requestParsed(
+    const comparison = await this.#requestParsed(
       subjects.evaluationComparisonCreate,
       {
         ...envelope(authContext),
@@ -2064,6 +2101,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
       },
       evaluationComparisonSchema,
     );
+    return normalizeEvaluationComparison(comparison);
   }
 
   async promotePromptVersion(
@@ -2865,6 +2903,19 @@ function compactNullish(value: object) {
   );
 }
 
+function normalizeEvaluationComparison(comparison: EvaluationComparison): EvaluationComparison {
+  const row = comparison as unknown as Record<string, unknown>;
+  const summary = row.summary;
+  return {
+    ...comparison,
+    baselineRunId: String(row.baselineRunId ?? row.baselineEvaluationRunId ?? ""),
+    candidateRunId: String(row.candidateRunId ?? row.candidateEvaluationRunId ?? ""),
+    metricResults: Array.isArray(row.metricResults) ? row.metricResults : [],
+    metricAggregates: Array.isArray(row.metricAggregates) ? row.metricAggregates : [],
+    summary: typeof summary === "string" ? summary : JSON.stringify(summary ?? {}),
+  } as EvaluationComparison;
+}
+
 export function elapsedMilliseconds(start: number): number {
   return Math.max(0, Math.round(performance.now() - start));
 }
@@ -3440,6 +3491,7 @@ const agentRunSchema = z.object({
     }),
   ),
   evalResults: z.array(evalResultSchema),
+  metricResults: z.array(z.record(z.string(), z.unknown())).default([]),
 });
 
 const aiEvalSourceRefSchema = z.object({
@@ -3581,20 +3633,31 @@ const datasetImportIssueSchema = z.object({
   message: z.string().min(1),
   path: z.string().optional().nullable(),
 });
-const datasetItemPreviewSchema = z.object({
-  input: z.unknown(),
-  expected: z.unknown().optional().nullable(),
-  observedOutput: z.unknown().optional().nullable(),
-  reason: z.string().optional(),
-  metadata: z.unknown(),
-  split: datasetSplitSchema,
-  reviewStatus: datasetReviewStatusSchema.optional(),
-  curationStatus: datasetReviewStatusSchema.optional(),
-  sourceTraceId: z.string().optional().nullable(),
-  sourceSpanId: z.string().optional().nullable(),
-  sourceRefs: z.array(z.unknown()).optional(),
-  synthetic: z.boolean().optional(),
-});
+const datasetItemPreviewSchema = z.preprocess(
+  (value) => {
+    const item = value && typeof value === "object" ? compactNullish(value) : {};
+    return {
+      input: item.input ?? {},
+      expected: item.expected ?? null,
+      observedOutput: item.observedOutput ?? null,
+      reason: typeof item.reason === "string" ? item.reason : "",
+      metadata: item.metadata ?? {},
+      split: item.split ?? "validation",
+      curationStatus: item.curationStatus ?? item.reviewStatus ?? "needs_review",
+      sourceRefs: Array.isArray(item.sourceRefs) ? item.sourceRefs : [],
+    };
+  },
+  z.object({
+    input: z.unknown(),
+    expected: z.unknown().optional().nullable(),
+    observedOutput: z.unknown().optional().nullable(),
+    reason: z.string(),
+    metadata: z.unknown(),
+    split: datasetSplitSchema,
+    curationStatus: datasetCurationStatusSchema,
+    sourceRefs: z.array(aiEvalSourceRefSchema),
+  }),
+);
 const datasetImportJobSchema = z.object({
   id: z.string().min(1),
   datasetId: z.string().min(1),
@@ -3628,19 +3691,40 @@ const datasetImportJobSchema = z.object({
   expiresAt: dateTimeSchema,
   committedDatasetVersion: z.number().int().optional().nullable(),
 });
-const datasetExportJobSchema = z.object({
-  id: z.string().min(1),
-  datasetId: z.string().min(1),
-  datasetVersion: z.number().int().min(1),
-  status: datasetExportStatusSchema,
-  format: datasetExportFormatSchema,
-  rowCount: z.number().int().min(0),
-  sizeBytes: z.number().int().min(0).optional().nullable(),
-  sha256: z.string().optional().nullable(),
-  downloadUrl: z.string().optional().nullable(),
-  createdAt: dateTimeSchema,
-  expiresAt: dateTimeSchema,
-});
+const datasetExportJobSchema = z.preprocess(
+  (value) => {
+    if (!value || typeof value !== "object") {
+      return value;
+    }
+    const job = value as Record<string, unknown>;
+    const datasetId = typeof job.datasetId === "string" ? job.datasetId : "";
+    const datasetVersion =
+      typeof job.datasetVersion === "number" && Number.isInteger(job.datasetVersion)
+        ? job.datasetVersion
+        : 1;
+    return {
+      ...job,
+      datasetVersionId:
+        typeof job.datasetVersionId === "string" && job.datasetVersionId.length > 0
+          ? job.datasetVersionId
+          : `${datasetId}:version:${datasetVersion}`,
+    };
+  },
+  z.object({
+    id: z.string().min(1),
+    datasetId: z.string().min(1),
+    datasetVersionId: z.string().min(1),
+    datasetVersion: z.number().int().min(1),
+    status: datasetExportStatusSchema,
+    format: datasetExportFormatSchema,
+    rowCount: z.number().int().min(0),
+    sizeBytes: z.number().int().min(0).optional().nullable(),
+    sha256: z.string().optional().nullable(),
+    downloadUrl: z.string().optional().nullable(),
+    createdAt: dateTimeSchema,
+    expiresAt: dateTimeSchema,
+  }),
+);
 
 const datasetHealthSchema = z.preprocess(
   (value) => ({
@@ -3773,11 +3857,12 @@ const datasetSchema = z.preprocess(
         : typeof dataset.reviewedItemCount === "number"
           ? dataset.reviewedItemCount
           : 0;
-    const version = typeof dataset.currentVersion === "number"
-      ? dataset.currentVersion
-      : typeof dataset.version === "number"
-        ? dataset.version
-        : 1;
+    const version =
+      typeof dataset.currentVersion === "number"
+        ? dataset.currentVersion
+        : typeof dataset.version === "number"
+          ? dataset.version
+          : 1;
     const currentVersionId =
       typeof dataset.currentVersionId === "string" && dataset.currentVersionId.length > 0
         ? dataset.currentVersionId
@@ -4061,13 +4146,11 @@ const experimentRunSchema = z.object({
 });
 
 const aiEvalObjectSchema = z.object({}).passthrough() as z.ZodType<Record<string, unknown>>;
-const evaluationDefinitionSchema =
-  aiEvalObjectSchema as unknown as z.ZodType<EvaluationDefinition>;
+const evaluationDefinitionSchema = aiEvalObjectSchema as unknown as z.ZodType<EvaluationDefinition>;
 const evaluationRunSchema = aiEvalObjectSchema as unknown as z.ZodType<EvaluationRun>;
 const evaluationItemRunSchema = aiEvalObjectSchema as unknown as z.ZodType<EvaluationItemRun>;
 const metricResultSchema = aiEvalObjectSchema as unknown as z.ZodType<MetricResult>;
-const evaluationComparisonSchema =
-  aiEvalObjectSchema as unknown as z.ZodType<EvaluationComparison>;
+const evaluationComparisonSchema = aiEvalObjectSchema as unknown as z.ZodType<EvaluationComparison>;
 const optimizationRunSchema = aiEvalObjectSchema as unknown as z.ZodType<OptimizationRun>;
 const targetSnapshotSchema = aiEvalObjectSchema as unknown as z.ZodType<TargetSnapshot>;
 const targetDiffSchema = aiEvalObjectSchema as unknown as z.ZodType<TargetDiff>;

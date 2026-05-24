@@ -92,6 +92,37 @@ describe("AI-eval bridge", () => {
     ]);
   });
 
+  test("normalizes evaluation comparison create replies to the public GraphQL shape", async () => {
+    const bridge = new MessageBridgeCloudGridBridge(
+      requestReply(() => ({
+        id: "comparison-1",
+        projectId: "project-1",
+        baselineEvaluationRunId: "run-a",
+        candidateEvaluationRunId: "run-b",
+        summary: { outcome: "unchanged" },
+        createdAt: "2026-05-12T10:00:00.000Z",
+      })),
+      2000,
+      createLogger("bff"),
+    );
+
+    const result = await bridge.createEvaluationComparison({
+      projectId: "project-1",
+      baselineRunId: "run-a",
+      candidateRunId: "run-b",
+      idempotencyKey: "comparison-1",
+    });
+
+    expect(result).toMatchObject({
+      id: "comparison-1",
+      baselineRunId: "run-a",
+      candidateRunId: "run-b",
+      metricResults: [],
+      metricAggregates: [],
+      summary: '{"outcome":"unchanged"}',
+    });
+  });
+
   test("rejects invalid AI-eval bridge replies before GraphQL mapping", async () => {
     const bridge = new MessageBridgeCloudGridBridge(
       requestReply(() => ({ items: [{ id: "agent-run-1" }], nextCursor: null })),
@@ -322,6 +353,74 @@ describe("AI-eval bridge", () => {
         }),
       },
     ]);
+  });
+
+  test("creates a target snapshot before starting a v2 evaluation run from a target ref", async () => {
+    const requests: Array<{ subject: string; payload: Record<string, unknown> }> = [];
+    const bridge = new MessageBridgeCloudGridBridge(
+      requestReply((subject, payload) => {
+        requests.push({ subject, payload });
+        if (subject === "eval.target.snapshot.create") {
+          return {
+            id: "target-snapshot-created",
+            projectId: "project-1",
+            targetRef: { kind: "prompt", targetRef: "prompt://current", displayName: "Current" },
+            kind: "prompt",
+            name: "Current",
+            version: 1,
+            digest: "sha256:target",
+            createdAt: "2026-05-12T10:00:00.000Z",
+            source: "manual",
+            parts: [],
+            metadata: {},
+            reproducibility: "full",
+          };
+        }
+        return { ...evaluationRun(), targetSnapshotId: "target-snapshot-created" };
+      }),
+      2000,
+      createLogger("bff"),
+    );
+
+    await expect(
+      bridge.startEvaluationRun({
+        evaluationDefinitionId: "evaluation-1",
+        projectId: "project-1",
+        kind: "dataset_evaluation",
+        datasetId: "dataset-1",
+        datasetVersionId: "dataset-version-1",
+        splitSelector: { splits: ["validation"], curationStatuses: ["ready"] },
+        targetRef: { kind: "prompt", targetRef: "prompt://current", displayName: "Current" },
+        metricSettings: [{ metricId: "classification.exact_label_match", options: {} }],
+        runPolicy: { maxParallelRequests: 1 },
+        retentionProfile: "balanced",
+        retentionRole: "baseline",
+        idempotencyKey: "run-1",
+      }),
+    ).resolves.toMatchObject({ targetSnapshotId: "target-snapshot-created" });
+
+    expect(requests.map((request) => request.subject)).toEqual([
+      "eval.target.snapshot.create",
+      "eval.evaluation.run.start",
+    ]);
+    expect(requests[0]?.payload).toMatchObject({
+      projectId: "project-1",
+      idempotencyKey: "run-1:target-snapshot",
+      targetRef: { kind: "prompt", targetRef: "prompt://current", displayName: "Current" },
+      input: {
+        kind: "prompt",
+        name: "Current",
+        targetRef: { kind: "prompt", targetRef: "prompt://current", displayName: "Current" },
+        targetRefValue: "prompt://current",
+        metadata: {},
+        source: "evaluation_run_start",
+      },
+    });
+    expect(requests[1]?.payload).toMatchObject({
+      targetSnapshotId: "target-snapshot-created",
+      evaluationDefinitionId: "evaluation-1",
+      metricSettings: [{ metricId: "classification.exact_label_match", options: {} }],
+    });
   });
 });
 
@@ -1587,6 +1686,7 @@ function datasetExportJob(): DatasetExportJob {
   return {
     id: "export-1",
     datasetId: "dataset-1",
+    datasetVersionId: "dataset-1:version:1",
     datasetVersion: 1,
     status: "ready",
     format: "jsonl",

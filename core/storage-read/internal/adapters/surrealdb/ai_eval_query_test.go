@@ -89,6 +89,32 @@ func TestAiEvalCursorEncodingAndPageShaping(t *testing.T) {
 	}
 }
 
+func TestBuildAiEvalQuerySearchesDatasetItemRevisionsByRevisionIds(t *testing.T) {
+	stmt, err := BuildAiEvalQuery(storage.SubjectEvalDatasetSearch, map[string]any{
+		"datasetVersionId": "dataset-1:version:2",
+		"itemRevisionIds":  []any{"revision-1", "revision-2"},
+		"limit":            10,
+	})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery(dataset item revisions) returned error: %v", err)
+	}
+
+	for _, want := range []string{
+		"FROM ai_dataset_item_revision",
+		"record::id(id) IN $itemRevisionIds",
+	} {
+		if !strings.Contains(stmt.SQL, want) {
+			t.Fatalf("SQL = %s, missing %q", stmt.SQL, want)
+		}
+	}
+	if _, exists := stmt.Params["datasetVersionId"]; exists {
+		t.Fatalf("params unexpectedly include datasetVersionId: %#v", stmt.Params)
+	}
+	if strings.Contains(stmt.SQL, "datasetVersionId = $datasetVersionId") {
+		t.Fatalf("SQL = %s, want revision id lookup without datasetVersionId field predicate", stmt.SQL)
+	}
+}
+
 func TestBuildAiEvalQueryCoversAgentRunSearchPushdown(t *testing.T) {
 	from := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
 	to := time.Date(2026, 5, 2, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)

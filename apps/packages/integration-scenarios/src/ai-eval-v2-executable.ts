@@ -61,23 +61,27 @@ export async function runAiEvalV2FakeAdapterScenario(
     }),
     "appendDatasetItems",
   );
-  const currentVersionId = stringField(appendedDataset, "currentVersionId");
+  let currentVersionId = stringField(appendedDataset, "currentVersionId");
 
-  await context.graphql.request("AppendDatasetItems", {
-    input: {
-      datasetId,
-      expectedDatasetVersionId: currentVersionId,
-      items: [
-        {
-          input: { text: "invalid expected" },
-          expected: "not-json-object",
-          split: "validation",
-          curationStatus: "ready",
-        },
-      ],
-      idempotencyKey: `append-invalid-${context.runId}`,
-    },
-  });
+  const invalidAppendDataset = readField<Record<string, unknown>>(
+    await context.graphql.request("AppendDatasetItems", {
+      input: {
+        datasetId,
+        expectedDatasetVersionId: currentVersionId,
+        items: [
+          {
+            input: { text: "invalid expected" },
+            expected: "not-json-object",
+            split: "validation",
+            curationStatus: "ready",
+          },
+        ],
+        idempotencyKey: `append-invalid-${context.runId}`,
+      },
+    }),
+    "appendDatasetItems",
+  );
+  currentVersionId = stringField(invalidAppendDataset, "currentVersionId");
 
   const evaluationDefinition = readField<Record<string, unknown>>(
     await context.graphql.request("CreateEvaluationDefinition", {
@@ -113,7 +117,12 @@ export async function runAiEvalV2FakeAdapterScenario(
         datasetId,
         datasetVersionId: currentVersionId,
         splitSelector: { splits: ["validation"], curationStatuses: ["ready"] },
-        targetSnapshotId: `target-snapshot-${context.runId}`,
+        targetRef: {
+          kind: "external_adapter",
+          targetRef: "adapter://cloudgrid-local-harness",
+          displayName: "Local deterministic harness",
+          metadata: {},
+        },
         metricSettings: [{ metricId: "classification.exact_label_match", options: {} }],
         runPolicy: { maxParallelRequests: 1 },
         retentionProfile: "balanced",
@@ -124,6 +133,7 @@ export async function runAiEvalV2FakeAdapterScenario(
     "startEvaluationRun",
   );
   const evaluationRunId = stringField(evaluationRun, "id");
+  const targetSnapshotId = stringField(evaluationRun, "targetSnapshotId");
 
   await context.graphql.request("EvaluationRun", { id: evaluationRunId });
   await context.graphql.request("EvaluationResults", {
@@ -148,7 +158,7 @@ export async function runAiEvalV2FakeAdapterScenario(
     await context.graphql.request("StartOptimizationRun", {
       input: {
         projectId: context.projectId,
-        baselineTargetSnapshotId: `target-snapshot-${context.runId}`,
+        baselineTargetSnapshotId: targetSnapshotId,
         objective: {
           primaryMetricId: "classification.exact_label_match",
           minimumEvidence: { rows: 1 },
@@ -162,9 +172,6 @@ export async function runAiEvalV2FakeAdapterScenario(
           selectedItemRevisionIds: [],
           minimumSampleSize: 1,
           metricSettingsSnapshot: [{ metricId: "classification.exact_label_match", options: {} }],
-          documentCount: 1,
-          latencyMs: 10,
-          documentDigests: [`digest-${context.runId}`],
         },
         runPolicy: { maxParallelRequests: 1 },
         idempotencyKey: `optimization-${context.runId}`,
@@ -179,8 +186,9 @@ export async function runAiEvalV2FakeAdapterScenario(
   });
 
   const capturedRequests = (await context.readHarnessCapturedRequests?.()) ?? [];
-  const harnessTraceparent = capturedRequests.find((request) => request.path === "/v1/run")
-    ?.traceparent;
+  const harnessTraceparent = capturedRequests.find(
+    (request) => request.path === "/v1/run",
+  )?.traceparent;
 
   return {
     datasetId,

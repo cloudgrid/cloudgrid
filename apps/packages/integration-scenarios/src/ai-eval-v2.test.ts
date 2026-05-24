@@ -92,7 +92,9 @@ function fakeGraphQLData(operationName: string): Record<string, unknown> {
     return { createEvaluationDefinition: { id: "evaluation-definition-1" } };
   }
   if (operationName === "StartEvaluationRun") {
-    return { startEvaluationRun: { id: "evaluation-run-1" } };
+    return {
+      startEvaluationRun: { id: "evaluation-run-1", targetSnapshotId: "target-snapshot-1" },
+    };
   }
   if (operationName === "EvaluationRun") {
     return { evaluationRun: { id: "evaluation-run-1", status: "completed" } };

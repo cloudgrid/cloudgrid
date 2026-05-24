@@ -1829,10 +1829,10 @@ async function assertAiEvalScenario(port, natsUrl, runID, traceFixture, aiEvalHa
           split: "validation",
           curationStatus: "ready",
           metadata: { source: "integration-local" },
-          synthetic: false,
           allowPartialCommit: false,
         },
         previewLimit: 10,
+        idempotencyKey: `dataset-import-prepare-${runID}`,
       },
     },
     "PrepareDatasetImport",
@@ -1877,6 +1877,7 @@ async function assertAiEvalScenario(port, natsUrl, runID, traceFixture, aiEvalHa
             curationStatus: "ready",
           },
         ],
+        idempotencyKey: `dataset-import-followup-append-${runID}`,
       },
     },
     "AppendDatasetItems",
@@ -1938,7 +1939,14 @@ async function assertAiEvalScenario(port, natsUrl, runID, traceFixture, aiEvalHa
   const exportJob = await graphql(
     port,
     startDatasetExportOperation,
-    { input: { datasetId: dataset.id, format: "jsonl", includeMetadata: true } },
+    {
+      input: {
+        datasetId: dataset.id,
+        format: "jsonl",
+        includeMetadata: true,
+        idempotencyKey: `dataset-export-${runID}`,
+      },
+    },
     "StartDatasetExport",
   );
   assert(

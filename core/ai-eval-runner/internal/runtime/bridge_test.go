@@ -129,6 +129,51 @@ func TestExperimentStartHandlerRoutesToRunnerAndRespondsWithRunData(t *testing.T
 	}
 }
 
+func TestEvaluationRunStartHandlerPassesV2RunShapeToRunner(t *testing.T) {
+	reader := &runtimeReader{
+		datasetVersion: ports.DatasetVersion{ID: "version-1", DatasetID: "dataset-1", Digest: "digest-1", ItemRevisionIDs: []string{"revision-1", "revision-2"}},
+		itemRevisions: []ports.DatasetItemRevision{
+			{ID: "revision-1", DatasetItemID: "item-1", DatasetID: "dataset-1", Input: map[string]any{"q": "skip"}, Expected: map[string]any{"a": "skip"}, CurationStatus: "ready"},
+			{ID: "revision-2", DatasetItemID: "item-2", DatasetID: "dataset-1", Input: map[string]any{"q": "run"}, Expected: map[string]any{"a": "run"}, CurationStatus: "ready"},
+		},
+		targetSnapshot: ports.TargetSnapshot{ID: "snapshot-1", TargetRef: map[string]any{"kind": "prompt"}, Digest: "target-digest"},
+	}
+	harness := &runtimeHarness{runResult: ports.HarnessRunResult{HarnessRunID: "harness-run-1", Output: map[string]any{"a": "run"}, LatencyMs: 12}}
+	writer := &runtimeWriter{}
+	runner := orchestrator.NewRunner(orchestrator.RunnerConfig{
+		StorageReader:     reader,
+		StorageWriter:     writer,
+		HarnessAdapter:    harness,
+		ProgressPublisher: &runtimePublisher{},
+		Clock:             func() time.Time { return time.Date(2026, 5, 16, 10, 0, 0, 0, time.UTC) },
+		IDGenerator:       sequenceRuntimeIDs("run-1", "item-run-1", "metric-exact-1", "metric-latency-1"),
+	})
+	msg := &runtimeMessage{
+		subject: SubjectExperimentStart,
+		data:    []byte(`{"requestId":"req-start-v2","issuedAt":"2026-05-16T09:00:00Z","projectId":"project-1","evaluationDefinitionId":"evaluation-1","kind":"quick_shot","datasetVersionId":"version-1","targetSnapshotId":"snapshot-1","selectedItemRevisionIds":["revision-2"],"splitSelector":{"splits":["validation"],"curationStatuses":["ready"]},"metricSettings":[{"metricId":"classification.exact_label_match","options":{}}],"runPolicy":{"maxParallelRequests":1},"retentionProfile":"balanced","retentionRole":"quick_shot","idempotencyKey":"start-v2-1","traceContext":{"traceparent":"00-test"}}`),
+	}
+
+	NewRunnerService(runner, nil).SubjectHandlers()[SubjectExperimentStart](msg)
+
+	var response contracts.EvalMutationResponse
+	decodeRuntimeResponse(t, msg.response, &response)
+	if !response.OK || response.Data["id"] != "run-1" || response.Data["kind"] != ports.EvaluationRunKindQuickShot {
+		t.Fatalf("response = %#v, want quick-shot evaluation run", response)
+	}
+	if _, ok := response.Data["metricResults"].([]any); !ok {
+		t.Fatalf("response metricResults = %#v, want default list", response.Data["metricResults"])
+	}
+	if _, ok := response.Data["metricAggregates"].([]any); !ok {
+		t.Fatalf("response metricAggregates = %#v, want default list", response.Data["metricAggregates"])
+	}
+	if len(harness.runRequests) != 1 || harness.runRequests[0].DatasetItemID != "item-2" {
+		t.Fatalf("harness run requests = %#v, want selected revision only", harness.runRequests)
+	}
+	if len(writer.evaluationResults) != 1 || writer.evaluationResults[0].EvaluationRun.EvaluationDefinitionID != "evaluation-1" {
+		t.Fatalf("persisted evaluation results = %#v", writer.evaluationResults)
+	}
+}
+
 func TestExperimentStartHandlerRejectsInvalidPayloadBeforeBoundaryCalls(t *testing.T) {
 	harness := &runtimeHarness{}
 	runner := orchestrator.NewRunner(orchestrator.RunnerConfig{
@@ -179,6 +224,43 @@ func TestPersistedProjectionHandlerValidatesNotificationWithoutHarnessCall(t *te
 	}
 	if len(harness.runRequests)+len(harness.scoreRequests)+len(harness.optimizeRequests) != 0 {
 		t.Fatalf("harness was called for projection notification")
+	}
+}
+
+func TestOptimizationStartHandlerAcceptsV2OptimizationRunRequest(t *testing.T) {
+	harness := &runtimeHarness{optimizeResult: ports.HarnessOptimizeResult{
+		CandidatePromptIDs: []string{"target-candidate-1"},
+		Summary:            map[string]any{"evaluatedSubset": true},
+	}}
+	writer := &runtimeWriter{}
+	runner := orchestrator.NewRunner(orchestrator.RunnerConfig{
+		StorageReader:     &runtimeReader{},
+		StorageWriter:     writer,
+		HarnessAdapter:    harness,
+		ProgressPublisher: &runtimePublisher{},
+		Clock:             func() time.Time { return time.Date(2026, 5, 16, 10, 0, 0, 0, time.UTC) },
+		IDGenerator:       sequenceRuntimeIDs("optimization-run-1"),
+	})
+	msg := &runtimeMessage{
+		subject: SubjectOptimizationStart,
+		data:    []byte(`{"requestId":"req-opt-v2","issuedAt":"2026-05-16T09:00:00Z","projectId":"project-1","datasetVersionId":"version-1","targetSnapshotId":"snapshot-1","idempotencyKey":"optimization-v2-1","config":{"projectId":"project-1","baselineTargetSnapshotId":"snapshot-1","objective":{"primaryMetricId":"classification.exact_label_match","minimumEvidence":{"rows":1}},"validationEvaluationDefinitionId":"evaluation-1","validationSplitSelector":{"splits":["validation"],"curationStatuses":["ready"]},"quickShotPolicy":{"sourceDatasetVersionId":"version-1","split":"validation","minimumSampleSize":1},"runPolicy":{"maxParallelRequests":1},"idempotencyKey":"optimization-v2-1"},"traceContext":{"traceparent":"00-test"}}`),
+	}
+
+	NewRunnerService(runner, nil).SubjectHandlers()[SubjectOptimizationStart](msg)
+
+	var response contracts.EvalMutationResponse
+	decodeRuntimeResponse(t, msg.response, &response)
+	if !response.OK || response.Data["id"] != "optimization-run-1" || response.Data["baselineTargetSnapshotId"] != "snapshot-1" {
+		t.Fatalf("response = %#v, want v2 optimization run", response)
+	}
+	if len(harness.optimizeRequests) != 1 || harness.optimizeRequests[0].TraceContext["traceparent"] != "00-test" {
+		t.Fatalf("harness optimize requests = %#v", harness.optimizeRequests)
+	}
+	if harness.optimizeRequests[0].OptimizerKind != "critic_mutate_judge_pick" {
+		t.Fatalf("optimizer kind = %q, want contract-supported v2 default", harness.optimizeRequests[0].OptimizerKind)
+	}
+	if len(writer.evaluationResults) != 1 || writer.evaluationResults[0].OptimizationRun["id"] != "optimization-run-1" {
+		t.Fatalf("persisted optimization results = %#v", writer.evaluationResults)
 	}
 }
 

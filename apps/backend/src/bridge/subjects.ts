@@ -72,6 +72,7 @@ export const bridgeSubjects = {
   evaluationRunGet: "eval.evaluation.run.get",
   evaluationComparisonCreate: "eval.evaluation.comparison.create",
   evaluationComparisonSearch: "eval.evaluation.comparison.search",
+  targetSnapshotCreate: "eval.target.snapshot.create",
   targetSnapshotGet: "eval.target.snapshot.get",
   targetDiff: "eval.target.diff",
   targetPromote: "eval.target.promote",

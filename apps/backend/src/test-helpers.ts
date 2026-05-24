@@ -1038,6 +1038,7 @@ function datasetExportJob(): DatasetExportJob {
   return {
     id: "export-1",
     datasetId: "dataset-1",
+    datasetVersionId: "dataset-1:version:1",
     datasetVersion: 1,
     status: "ready",
     format: "jsonl",

@@ -113,6 +113,13 @@ func TestStatementsDefineAiEvalRelationshipFields(t *testing.T) {
 		"DEFINE FIELD OVERWRITE runPolicy ON ai_experiment_run TYPE option<object> FLEXIBLE",
 		"DEFINE FIELD IF NOT EXISTS experimentRunId ON ai_dataset_item_run TYPE option<string>",
 		"DEFINE FIELD IF NOT EXISTS scorerId ON ai_eval_result TYPE option<string>",
+		"DEFINE FIELD IF NOT EXISTS selectedCandidateSnapshotId ON ai_optimization_run TYPE option<string>",
+		"DEFINE FIELD IF NOT EXISTS trainingEvaluationDefinitionId ON ai_optimization_run TYPE option<string>",
+		"DEFINE FIELD IF NOT EXISTS validationEvaluationDefinitionId ON ai_optimization_run TYPE option<string>",
+		"DEFINE FIELD IF NOT EXISTS testEvaluationDefinitionId ON ai_optimization_run TYPE option<string>",
+		"DEFINE FIELD OVERWRITE trainingSplitSelector ON ai_optimization_run TYPE option<object> FLEXIBLE",
+		"DEFINE FIELD OVERWRITE validationSplitSelector ON ai_optimization_run TYPE option<object> FLEXIBLE",
+		"DEFINE FIELD OVERWRITE testSplitSelector ON ai_optimization_run TYPE option<object> FLEXIBLE",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("schema missing %q in:\n%s", want, got)
@@ -166,6 +173,48 @@ func TestStatementsDefineIngestCommandFields(t *testing.T) {
 		"DEFINE FIELD IF NOT EXISTS spanCount ON ingest_command TYPE int",
 		"DEFINE FIELD IF NOT EXISTS logCount ON ingest_command TYPE int",
 		"DEFINE FIELD IF NOT EXISTS completedAt ON ingest_command TYPE datetime",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("schema missing %q in:\n%s", want, got)
+		}
+	}
+}
+
+func TestStatementsDefineDatasetVersionAuditFields(t *testing.T) {
+	got := strings.Join(Statements(), "\n")
+
+	for _, want := range []string{
+		"DEFINE FIELD IF NOT EXISTS changeSummary ON ai_dataset_version TYPE option<string>",
+		"DEFINE FIELD IF NOT EXISTS parentVersionId ON ai_dataset_version TYPE option<string>",
+		"DEFINE FIELD OVERWRITE source ON ai_dataset_version TYPE option<object> FLEXIBLE",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("schema missing %q in:\n%s", want, got)
+		}
+	}
+}
+
+func TestStatementsDefineEvaluationMetricSettingsAsLists(t *testing.T) {
+	got := strings.Join(Statements(), "\n")
+
+	for _, want := range []string{
+		"DEFINE FIELD OVERWRITE metricSettings ON ai_evaluation_definition TYPE option<array<object>>",
+		"DEFINE FIELD OVERWRITE metricSettings[*] ON ai_evaluation_definition TYPE object FLEXIBLE",
+		"DEFINE FIELD OVERWRITE metricSettingsSnapshot ON ai_evaluation_run TYPE option<array<object>>",
+		"DEFINE FIELD OVERWRITE metricSettingsSnapshot[*] ON ai_evaluation_run TYPE object FLEXIBLE",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("schema missing %q in:\n%s", want, got)
+		}
+	}
+}
+
+func TestStatementsDefineEvaluationItemRunSummaryFields(t *testing.T) {
+	got := strings.Join(Statements(), "\n")
+
+	for _, want := range []string{
+		"DEFINE FIELD IF NOT EXISTS trajectorySummary ON ai_evaluation_item_run TYPE option<string>",
+		"DEFINE FIELD IF NOT EXISTS summaryDigest ON ai_evaluation_item_run TYPE option<string>",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("schema missing %q in:\n%s", want, got)

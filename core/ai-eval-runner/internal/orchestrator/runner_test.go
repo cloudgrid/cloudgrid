@@ -162,6 +162,14 @@ func TestStartEvaluationRunPersistsV2ItemRunsAndMetricResults(t *testing.T) {
 	if result.Run.ID != "eval-run-1" || result.Run.Status != ports.ExperimentRunStatusFinished {
 		t.Fatalf("unexpected evaluation run result: %#v", result.Run)
 	}
+	itemCounts, _ := result.Run.Summary["itemCounts"].(map[string]any)
+	if itemCounts["queued"] != 0 || itemCounts["running"] != 0 || itemCounts["completed"] != 1 || itemCounts["cancelled"] != 0 {
+		t.Fatalf("evaluation run item counts = %#v, want GraphQL EvaluationItemCounts shape", itemCounts)
+	}
+	problemCounts, _ := result.Run.Summary["problemCounts"].(map[string]any)
+	if _, ok := problemCounts["invalidActualOutput"]; !ok {
+		t.Fatalf("evaluation run problem counts = %#v, want GraphQL EvaluationProblemCounts shape", problemCounts)
+	}
 	if !reflect.DeepEqual(reader.datasetVersionGets, []string{"version-1"}) {
 		t.Fatalf("dataset version lookups = %#v", reader.datasetVersionGets)
 	}

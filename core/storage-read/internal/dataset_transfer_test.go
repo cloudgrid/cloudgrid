@@ -46,10 +46,13 @@ func TestStartDatasetExportWritesCanonicalFormats(t *testing.T) {
 				t.Fatal(err)
 			}
 			text := string(artifact)
-			for _, want := range []string{"input", "expected", "metadata", "split", "reviewStatus", "synthetic"} {
+			for _, want := range []string{"input", "expected", "metadata", "split", "curationStatus", "contentTreatment"} {
 				if !strings.Contains(text, want) {
 					t.Fatalf("%s artifact = %s, missing %q", format, text, want)
 				}
+			}
+			if strings.Contains(text, "reviewStatus") || strings.Contains(text, "synthetic") || strings.Contains(text, "dev") {
+				t.Fatalf("%s artifact = %s, leaked legacy dataset vocabulary", format, text)
 			}
 			if strings.Contains(text, "hiddenInternal") {
 				t.Fatalf("%s artifact = %s, leaked non-canonical field", format, text)

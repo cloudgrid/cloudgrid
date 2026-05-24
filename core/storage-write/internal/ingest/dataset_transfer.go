@@ -147,6 +147,7 @@ func CommitDatasetImport(ctx context.Context, root string, request contracts.Eva
 	importID := stringValue(request.Input, "importId")
 	job["status"] = "committed"
 	job["committedDatasetVersion"] = expectedVersion + 1
+	job["committedDatasetVersionId"] = datasetVersionID(stringValue(job, "datasetId"), expectedVersion+1)
 	job["validRows"] = intValue(job, "validRows")
 	job["errorRows"] = intValue(job, "errorRows")
 	job["totalRows"] = intValue(job, "totalRows")
@@ -226,9 +227,9 @@ func validatedDatasetImportCommit(root string, request contracts.EvalMutationReq
 	if errorRows > 0 && (mode != "valid_rows_only" || !partialAllowed) {
 		return nil, 0, fmt.Errorf("ERR-001 VALIDATION_FAILED: import has row errors")
 	}
-	expectedVersion := intValue(request.Input, "expectedDatasetVersion")
+	expectedVersion := datasetVersionNumberFromInput(request.Input)
 	if expectedVersion < 1 {
-		return nil, 0, fmt.Errorf("ERR-001 VALIDATION_FAILED: expectedDatasetVersion must be at least 1")
+		return nil, 0, fmt.Errorf("ERR-001 VALIDATION_FAILED: expectedDatasetVersionId must be provided")
 	}
 	return job, expectedVersion, nil
 }
@@ -448,14 +449,17 @@ func readZipEntry(file *zip.File) ([]byte, error) {
 
 func normalizeImportRow(row map[string]any, mapping map[string]any, defaults map[string]any, format string) (map[string]any, []map[string]any) {
 	item := map[string]any{
-		"input":         map[string]any{},
-		"expected":      nil,
-		"metadata":      objectValueWithDefault(defaults, "metadata"),
-		"sourceTraceId": nil,
-		"sourceSpanId":  nil,
-		"split":         stringValueWithDefault(defaults, "split", "dev"),
-		"reviewStatus":  stringValueWithDefault(defaults, "reviewStatus", "unreviewed"),
-		"synthetic":     boolValue(defaults, "synthetic"),
+		"input":            map[string]any{},
+		"expected":         nil,
+		"observedOutput":   nil,
+		"reason":           stringValueWithDefault(defaults, "reason", ""),
+		"metadata":         objectValueWithDefault(defaults, "metadata"),
+		"sourceTraceId":    nil,
+		"sourceSpanId":     nil,
+		"sourceRefs":       []any{},
+		"split":            stringValueWithDefault(defaults, "split", "validation"),
+		"curationStatus":   stringValueWithDefault(defaults, "curationStatus", stringValueWithDefault(defaults, "reviewStatus", "needs_review")),
+		"contentTreatment": "original",
 	}
 	applyFieldMappings(item["input"].(map[string]any), row, fieldMappings(mapping, "input"), format)
 	expected := map[string]any{}
@@ -463,12 +467,22 @@ func normalizeImportRow(row map[string]any, mapping map[string]any, defaults map
 	if len(expected) > 0 {
 		item["expected"] = expected
 	}
+	observedOutput := map[string]any{}
+	applyFieldMappings(observedOutput, row, fieldMappings(mapping, "observedOutput"), format)
+	if len(observedOutput) > 0 {
+		item["observedOutput"] = observedOutput
+	}
 	applyFieldMappings(item["metadata"].(map[string]any), row, fieldMappings(mapping, "metadata"), format)
-	for _, key := range []string{"sourceTraceId", "sourceSpanId", "split", "reviewStatus"} {
+	for _, key := range []string{"reason", "sourceTraceId", "sourceSpanId", "split", "curationStatus"} {
 		if source, ok := mapping[key].(map[string]any); ok {
 			if value, exists := sourceValue(row, source, format); exists {
 				item[key] = value
 			}
+		}
+	}
+	if source, ok := mapping["reviewStatus"].(map[string]any); ok {
+		if value, exists := sourceValue(row, source, format); exists {
+			item["curationStatus"] = value
 		}
 	}
 	issues := []map[string]any{}
@@ -482,8 +496,8 @@ func normalizeImportRow(row map[string]any, mapping map[string]any, defaults map
 	if !validSplit(stringValue(item, "split")) {
 		issues = append(issues, issue("split_invalid", "Mapped split is invalid", "split"))
 	}
-	if !validReviewStatus(stringValue(item, "reviewStatus")) {
-		issues = append(issues, issue("review_status_invalid", "Mapped review status is invalid", "reviewStatus"))
+	if !validCurationStatus(stringValue(item, "curationStatus")) {
+		issues = append(issues, issue("curation_status_invalid", "Mapped curation status is invalid", "curationStatus"))
 	}
 	return item, issues
 }
@@ -627,16 +641,16 @@ func issue(code string, message string, path string) map[string]any {
 
 func validSplit(value string) bool {
 	switch value {
-	case "dev", "optimization", "validation", "regression", "holdout":
+	case "training", "validation", "test":
 		return true
 	default:
 		return false
 	}
 }
 
-func validReviewStatus(value string) bool {
+func validCurationStatus(value string) bool {
 	switch value {
-	case "unreviewed", "reviewed", "rejected":
+	case "draft", "needs_expected", "needs_review", "ready", "rejected":
 		return true
 	default:
 		return false

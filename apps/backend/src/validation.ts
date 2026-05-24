@@ -912,7 +912,15 @@ const createDatasetInputSchema = z.object({
   idempotencyKey: z.string().min(1),
 });
 const aiEvalSourceRefInputSchema = z.object({
-  kind: z.enum(["trace", "span", "evaluation_run", "evaluation_item_run", "import", "candidate", "manual"]),
+  kind: z.enum([
+    "trace",
+    "span",
+    "evaluation_run",
+    "evaluation_item_run",
+    "import",
+    "candidate",
+    "manual",
+  ]),
   traceId: z.string().min(1).optional().nullable(),
   spanId: z.string().min(1).optional().nullable(),
   evaluationRunId: z.string().min(1).optional().nullable(),
@@ -955,10 +963,13 @@ const datasetImportFieldMappingInputSchema = z.object({
 const datasetImportMappingInputSchema = z.object({
   input: z.array(datasetImportFieldMappingInputSchema).min(1),
   expected: z.array(datasetImportFieldMappingInputSchema).optional().nullable(),
+  observedOutput: z.array(datasetImportFieldMappingInputSchema).optional().nullable(),
+  reason: datasetImportScalarMappingInputSchema.optional().nullable(),
   metadata: z.array(datasetImportFieldMappingInputSchema).optional().nullable(),
   sourceTraceId: datasetImportScalarMappingInputSchema.optional().nullable(),
   sourceSpanId: datasetImportScalarMappingInputSchema.optional().nullable(),
   split: datasetImportScalarMappingInputSchema.optional().nullable(),
+  curationStatus: datasetImportScalarMappingInputSchema.optional().nullable(),
   reviewStatus: datasetImportScalarMappingInputSchema.optional().nullable(),
 });
 const prepareDatasetImportInputSchema = z.object({
@@ -976,8 +987,9 @@ const prepareDatasetImportInputSchema = z.object({
   defaults: z
     .object({
       split: datasetSplitSchema.optional().nullable(),
-      curationStatus: datasetReviewStatusSchema.optional().nullable(),
+      curationStatus: datasetCurationStatusSchema.optional().nullable(),
       metadata: jsonObjectSchema.optional().nullable(),
+      reason: z.string().optional().nullable(),
       allowPartialCommit: z.boolean().optional().nullable(),
     })
     .optional()

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -107,7 +108,7 @@ func (adapter HarnessHTTPAdapter) Optimize(ctx context.Context, request ports.Ha
 		"basePromptVersion": map[string]any{
 			"id":   request.BasePromptVersionID,
 			"name": request.BasePromptVersionID,
-			"text": "",
+			"text": request.BasePromptVersionID,
 			"hash": request.BasePromptVersionID,
 		},
 		"optimizerKind":  request.OptimizerKind,
@@ -208,7 +209,8 @@ func (adapter HarnessHTTPAdapter) postNDJSON(ctx context.Context, path string, p
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return ports.HarnessOptimizeResult{}, fmt.Errorf("harness adapter returned status %d", response.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+		return ports.HarnessOptimizeResult{}, fmt.Errorf("harness adapter returned status %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
 	}
 	result := ports.HarnessOptimizeResult{Summary: map[string]any{}}
 	scanner := bufio.NewScanner(response.Body)
