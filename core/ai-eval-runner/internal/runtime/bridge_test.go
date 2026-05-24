@@ -48,13 +48,14 @@ func TestExperimentPauseAndResumeHandlersUseControlRequest(t *testing.T) {
 	})
 	service := NewRunnerService(runner, nil)
 
-	pauseMsg := newRuntimeMessage(SubjectExperimentPause, contracts.ExperimentRunControlRequest{
+	pauseMsg := newRuntimeMessage(SubjectExperimentPause, contracts.EvaluationRunControlRequest{
 		BridgeEnvelope: contracts.BridgeEnvelope{
 			RequestID: "req-pause",
 			IssuedAt:  time.Date(2026, 5, 16, 9, 0, 0, 0, time.UTC),
 		},
-		ExperimentRunID: "run-1",
-		Command:         "pause",
+		ProjectID:       "project-1",
+		EvaluationRunID: "run-1",
+		IdempotencyKey:  "pause-1",
 	})
 	service.SubjectHandlers()[SubjectExperimentPause](pauseMsg)
 	var pauseResponse contracts.EvalMutationResponse
@@ -63,15 +64,14 @@ func TestExperimentPauseAndResumeHandlersUseControlRequest(t *testing.T) {
 		t.Fatalf("pause response = %#v", pauseResponse)
 	}
 
-	expectedDigest := "manifest-digest-1"
-	resumeMsg := newRuntimeMessage(SubjectExperimentResume, contracts.ExperimentRunControlRequest{
+	resumeMsg := newRuntimeMessage(SubjectExperimentResume, contracts.EvaluationRunControlRequest{
 		BridgeEnvelope: contracts.BridgeEnvelope{
 			RequestID: "req-resume",
 			IssuedAt:  time.Date(2026, 5, 16, 9, 1, 0, 0, time.UTC),
 		},
-		ExperimentRunID:        "run-1",
-		Command:                "resume",
-		ExpectedManifestDigest: &expectedDigest,
+		ProjectID:       "project-1",
+		EvaluationRunID: "run-1",
+		IdempotencyKey:  "resume-1",
 	})
 	service.SubjectHandlers()[SubjectExperimentResume](resumeMsg)
 	var resumeResponse contracts.EvalMutationResponse
@@ -79,30 +79,13 @@ func TestExperimentPauseAndResumeHandlersUseControlRequest(t *testing.T) {
 	if !resumeResponse.OK || resumeResponse.Data["status"] != ports.ExperimentRunStatusRunning {
 		t.Fatalf("resume response = %#v", resumeResponse)
 	}
-
-	staleDigest := "stale-digest"
-	staleMsg := newRuntimeMessage(SubjectExperimentResume, contracts.ExperimentRunControlRequest{
-		BridgeEnvelope: contracts.BridgeEnvelope{
-			RequestID: "req-resume-stale",
-			IssuedAt:  time.Date(2026, 5, 16, 9, 2, 0, 0, time.UTC),
-		},
-		ExperimentRunID:        "run-1",
-		Command:                "resume",
-		ExpectedManifestDigest: &staleDigest,
-	})
-	service.SubjectHandlers()[SubjectExperimentResume](staleMsg)
-	var staleResponse contracts.EvalMutationResponse
-	decodeRuntimeResponse(t, staleMsg.response, &staleResponse)
-	if staleResponse.OK || staleResponse.Error == nil || staleResponse.Error.ID != "ERR-AIE-002" || staleResponse.Error.Retryable {
-		t.Fatalf("stale resume response = %#v", staleResponse)
-	}
 }
 
 func TestExperimentStartHandlerRoutesToRunnerAndRespondsWithRunData(t *testing.T) {
 	reader := &runtimeReader{
-		experiments: []ports.Experiment{{ID: "experiment-1", DatasetID: "dataset-1", DatasetVersion: 1, ScorerIDs: []string{"scorer-1"}}},
-		items:       []ports.DatasetItem{{ID: "item-1", Input: map[string]any{"q": "x"}, Expected: map[string]any{"a": "y"}}},
-		scorers:     []ports.Scorer{{ID: "scorer-1", Kind: ports.ScorerKindDeterministic, Version: 1}},
+		datasetVersion: ports.DatasetVersion{ID: "version-1", DatasetID: "dataset-1", Digest: "digest-1", ItemRevisionIDs: []string{"revision-1"}},
+		itemRevisions:  []ports.DatasetItemRevision{{ID: "revision-1", DatasetItemID: "item-1", DatasetID: "dataset-1", Input: map[string]any{"q": "x"}, Expected: map[string]any{"a": "y"}, CurationStatus: "ready"}},
+		targetSnapshot: ports.TargetSnapshot{ID: "snapshot-1", TargetRef: map[string]any{"kind": "prompt"}, Digest: "target-digest"},
 	}
 	harness := &runtimeHarness{runResult: ports.HarnessRunResult{HarnessRunID: "harness-run-1", Output: map[string]any{"a": "y"}, LatencyMs: 12}}
 	writer := &runtimeWriter{}
@@ -113,17 +96,19 @@ func TestExperimentStartHandlerRoutesToRunnerAndRespondsWithRunData(t *testing.T
 		HarnessAdapter:    harness,
 		ProgressPublisher: publisher,
 		Clock:             func() time.Time { return time.Date(2026, 5, 16, 10, 0, 0, 0, time.UTC) },
-		IDGenerator:       sequenceRuntimeIDs("run-1", "item-run-1", "eval-result-1"),
+		IDGenerator:       sequenceRuntimeIDs("run-1", "item-run-1", "metric-exact-1", "metric-latency-1"),
 	})
-	msg := newRuntimeMessage(SubjectExperimentStart, contracts.ExperimentStartRequest{
+	msg := newRuntimeMessage(SubjectExperimentStart, contracts.EvaluationRunStartRequest{
 		BridgeEnvelope: contracts.BridgeEnvelope{
 			RequestID:    "req-start",
 			IssuedAt:     time.Date(2026, 5, 16, 9, 0, 0, 0, time.UTC),
 			TraceContext: map[string]any{"traceparent": "00-test"},
 			AuthContext:  &contracts.AuthContext{ProjectID: stringPtr("project-1")},
 		},
-		ExperimentID: "experiment-1",
-		SolverRef:    &contracts.EvalSolverRef{Kind: "agent", Name: "harness"},
+		ProjectID:        "project-1",
+		DatasetVersionID: "version-1",
+		TargetSnapshotID: "snapshot-1",
+		IdempotencyKey:   "start-1",
 	})
 
 	NewRunnerService(runner, nil).SubjectHandlers()[SubjectExperimentStart](msg)
@@ -133,14 +118,14 @@ func TestExperimentStartHandlerRoutesToRunnerAndRespondsWithRunData(t *testing.T
 	if !response.OK || response.Data["id"] != "run-1" || response.Data["status"] != ports.ExperimentRunStatusFinished {
 		t.Fatalf("response = %#v, want completed run", response)
 	}
-	if !reflect.DeepEqual(reader.experimentSearches, []string{"experiment-1"}) {
-		t.Fatalf("experiment searches = %#v", reader.experimentSearches)
+	if !reflect.DeepEqual(reader.datasetVersionGets, []string{"version-1"}) {
+		t.Fatalf("dataset version gets = %#v", reader.datasetVersionGets)
 	}
 	if len(harness.runRequests) != 1 || harness.runRequests[0].TraceContext["traceparent"] != "00-test" {
 		t.Fatalf("harness run requests = %#v", harness.runRequests)
 	}
-	if len(writer.persistedResults) != 1 {
-		t.Fatalf("eval results persisted = %d, want 1", len(writer.persistedResults))
+	if len(writer.evaluationResults) != 1 {
+		t.Fatalf("evaluation results persisted = %d, want 1", len(writer.evaluationResults))
 	}
 }
 
@@ -155,7 +140,7 @@ func TestExperimentStartHandlerRejectsInvalidPayloadBeforeBoundaryCalls(t *testi
 	})
 	msg := &runtimeMessage{
 		subject: SubjectExperimentStart,
-		data:    []byte(`{"requestId":"req-invalid","issuedAt":"2026-05-16T09:00:00Z","experimentId":"experiment-1","unexpected":true}`),
+		data:    []byte(`{"requestId":"req-invalid","issuedAt":"2026-05-16T09:00:00Z","projectId":"project-1","datasetVersionId":"version-1","targetSnapshotId":"snapshot-1","idempotencyKey":"start-1","unexpected":true}`),
 	}
 
 	NewRunnerService(runner, nil).SubjectHandlers()[SubjectExperimentStart](msg)
@@ -208,12 +193,12 @@ func TestRunnerHandlerRecordsSelfObservabilityFailureLog(t *testing.T) {
 	})
 	msg := &runtimeMessage{
 		subject: SubjectExperimentStart,
-		data:    []byte(`{"requestId":"req-invalid","issuedAt":"2026-05-16T09:00:00Z","experimentId":"experiment-1","unexpected":true}`),
+		data:    []byte(`{"requestId":"req-invalid","issuedAt":"2026-05-16T09:00:00Z","projectId":"project-1","datasetVersionId":"version-1","targetSnapshotId":"snapshot-1","idempotencyKey":"start-1","unexpected":true}`),
 	}
 
 	NewRunnerServiceWithOptions(runner, nil, RunnerServiceOptions{SelfObservability: recorder}).SubjectHandlers()[SubjectExperimentStart](msg)
 
-	if len(recorder.spans) != 1 || recorder.spans[0].Attributes["cloudgrid.operation"] != "experiment_start" {
+	if len(recorder.spans) != 1 || recorder.spans[0].Attributes["cloudgrid.operation"] != "evaluation_run_start" {
 		t.Fatalf("spans = %#v", recorder.spans)
 	}
 	if len(recorder.logs) != 1 {
@@ -289,6 +274,45 @@ func TestNATSAdaptersUseApprovedBoundarySubjects(t *testing.T) {
 	}
 	if !reflect.DeepEqual(requester.publishSubjects, []string{SubjectExperimentProgress}) {
 		t.Fatalf("publish subjects = %#v", requester.publishSubjects)
+	}
+}
+
+func TestNATSStorageWriterPersistsEvaluationResultsWithV2PayloadWrapper(t *testing.T) {
+	requester := &recordingRequester{
+		responses: map[string]any{
+			SubjectResultsPersist: contracts.EvalMutationResponse{RequestID: "req", OK: true, Data: map[string]any{}},
+		},
+	}
+	writer := NATSStorageWriter{Requester: requester}
+
+	err := writer.PersistEvaluationResults(context.Background(), ports.EvaluationResultsPersist{
+		ProjectID:       "project-1",
+		EvaluationRunID: "eval-run-1",
+		IdempotencyKey:  "persist-key",
+		EvaluationRun:   ports.EvaluationRun{ID: "eval-run-1", ProjectID: "project-1", Kind: ports.EvaluationRunKindDatasetEvaluation, Status: ports.ExperimentRunStatusFinished},
+		ItemRuns:        []ports.EvaluationItemRun{{ID: "item-run-1", EvaluationRunID: "eval-run-1", Status: ports.EvaluationItemRunStatusCompleted}},
+		MetricResults:   []ports.MetricResult{{ID: "metric-1", MetricID: "extraction.exact_json_match", SubjectID: "item-run-1"}},
+	})
+
+	if err != nil {
+		t.Fatalf("PersistEvaluationResults() error = %v", err)
+	}
+	if !reflect.DeepEqual(requester.requestSubjects, []string{SubjectResultsPersist}) {
+		t.Fatalf("request subjects = %#v", requester.requestSubjects)
+	}
+	payload := requester.requestPayloads[0]
+	if payload["projectId"] != "project-1" || payload["evaluationRunId"] != "eval-run-1" || payload["idempotencyKey"] != "persist-key" {
+		t.Fatalf("top-level persist payload = %#v", payload)
+	}
+	wrapped, ok := payload["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("persist request missing payload wrapper: %#v", payload)
+	}
+	if _, exists := payload["evaluationRun"]; exists {
+		t.Fatalf("evaluationRun must be inside payload wrapper: %#v", payload)
+	}
+	if wrapped["evaluationRun"] == nil || len(wrapped["itemRuns"].([]any)) != 1 || len(wrapped["metricResults"].([]any)) != 1 {
+		t.Fatalf("wrapped payload = %#v", wrapped)
 	}
 }
 
@@ -395,10 +419,14 @@ func (message *runtimeMessage) Respond(response []byte) error {
 type runtimeReader struct {
 	experiments           []ports.Experiment
 	items                 []ports.DatasetItem
+	datasetVersion        ports.DatasetVersion
+	itemRevisions         []ports.DatasetItemRevision
+	targetSnapshot        ports.TargetSnapshot
 	scorers               []ports.Scorer
 	manifest              ports.ExperimentManifest
 	onlineMatches         ports.OnlinePolicyMatches
 	experimentSearches    []string
+	datasetVersionGets    []string
 	onlineResolveRequests []ports.OnlinePolicyResolveRequest
 }
 
@@ -415,6 +443,38 @@ func (reader *runtimeReader) SearchScorers(_ context.Context, _ []string) ([]por
 	return reader.scorers, nil
 }
 
+func (reader *runtimeReader) GetDatasetVersion(_ context.Context, datasetVersionID string) (ports.DatasetVersion, error) {
+	reader.datasetVersionGets = append(reader.datasetVersionGets, datasetVersionID)
+	if reader.datasetVersion.ID != "" {
+		return reader.datasetVersion, nil
+	}
+	return ports.DatasetVersion{ID: datasetVersionID, DatasetID: "dataset-1", ItemRevisionIDs: []string{}}, nil
+}
+
+func (reader *runtimeReader) SearchDatasetItemRevisions(_ context.Context, _ string, itemRevisionIDs []string) ([]ports.DatasetItemRevision, error) {
+	if len(itemRevisionIDs) == 0 {
+		return reader.itemRevisions, nil
+	}
+	results := make([]ports.DatasetItemRevision, 0, len(itemRevisionIDs))
+	wanted := map[string]bool{}
+	for _, id := range itemRevisionIDs {
+		wanted[id] = true
+	}
+	for _, item := range reader.itemRevisions {
+		if wanted[item.ID] {
+			results = append(results, item)
+		}
+	}
+	return results, nil
+}
+
+func (reader *runtimeReader) GetTargetSnapshot(_ context.Context, targetSnapshotID string) (ports.TargetSnapshot, error) {
+	if reader.targetSnapshot.ID != "" {
+		return reader.targetSnapshot, nil
+	}
+	return ports.TargetSnapshot{ID: targetSnapshotID, TargetRef: map[string]any{"kind": "prompt"}, Digest: "target-digest"}, nil
+}
+
 func (reader *runtimeReader) ResolveManifest(_ context.Context, _ ports.ManifestResolveRequest) (ports.ExperimentManifest, error) {
 	return reader.manifest, nil
 }
@@ -425,7 +485,8 @@ func (reader *runtimeReader) ResolveOnlinePolicyMatches(_ context.Context, reque
 }
 
 type runtimeWriter struct {
-	persistedResults []ports.EvalResult
+	persistedResults  []ports.EvalResult
+	evaluationResults []ports.EvaluationResultsPersist
 }
 
 func (writer *runtimeWriter) PersistExperimentRun(_ context.Context, _ ports.ExperimentRun) error {
@@ -438,6 +499,11 @@ func (writer *runtimeWriter) PersistDatasetItemRun(_ context.Context, _ string, 
 
 func (writer *runtimeWriter) PersistEvalResult(_ context.Context, _ string, result ports.EvalResult) error {
 	writer.persistedResults = append(writer.persistedResults, result)
+	return nil
+}
+
+func (writer *runtimeWriter) PersistEvaluationResults(_ context.Context, result ports.EvaluationResultsPersist) error {
+	writer.evaluationResults = append(writer.evaluationResults, result)
 	return nil
 }
 
@@ -492,6 +558,10 @@ func (harness *runtimeHarness) Optimize(_ context.Context, request ports.Harness
 type runtimePublisher struct{}
 
 func (publisher *runtimePublisher) PublishExperimentProgress(_ context.Context, _ ports.ExperimentProgress) error {
+	return nil
+}
+
+func (publisher *runtimePublisher) PublishEvaluationProgress(_ context.Context, _ ports.ExperimentProgress) error {
 	return nil
 }
 

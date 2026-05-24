@@ -24,7 +24,7 @@ tickets:
   TICKET-204:
     title: AI Eval runner v2 evaluation orchestration
     wave: 3
-    status: ready
+    status: done
     file: plans/ai-eval-v2-migration/wave_03_runner_frontend/tickets/TICKET-204-runner-v2-evaluation-orchestration.md
     depends_on: [TICKET-202, TICKET-203]
     blocked_by: []

@@ -2,7 +2,7 @@
 id: TICKET-204
 title: AI Eval runner v2 evaluation orchestration
 wave: 3
-status: ready
+status: done
 parallel_group: ai_eval_v2_runner_frontend_parallel
 depends_on: [TICKET-202, TICKET-203]
 blocked_by: []
@@ -133,3 +133,9 @@ CLOUDGRID_EVAL_EXTERNAL_ADAPTER_TEST=1 go test -tags surrealdb ./core/ai-eval-ru
 
 Integration agents can rely on completed v2 run lifecycle, persisted results,
 and live event stream behavior.
+
+## Completion Evidence
+
+- `PATH="/opt/homebrew/bin:/usr/local/go/bin:$HOME/.bun/bin:$PATH" go test -tags surrealdb ./core/ai-eval-runner/...`
+- `PATH="$HOME/.bun/bin:$PATH" bun run contracts:check`
+- `git diff --check -- core/ai-eval-runner core/go-contracts`

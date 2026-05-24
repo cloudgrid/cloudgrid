@@ -28,6 +28,36 @@ const (
 )
 
 const (
+	EvaluationRunKindDatasetEvaluation      = "dataset_evaluation"
+	EvaluationRunKindQuickShot              = "quick_shot"
+	EvaluationRunKindOptimizationValidation = "optimization_validation"
+	EvaluationRunKindTest                   = "test"
+	EvaluationRetentionRoleBaseline         = "baseline"
+	EvaluationRetentionRoleQuickShot        = "quick_shot"
+	EvaluationRetentionRoleValidation       = "validation"
+	EvaluationRetentionProfileBalanced      = "balanced"
+	EvaluationMetricScopeItemRun            = "item_run"
+	EvaluationMetricFamilyExtraction        = "extraction"
+	EvaluationMetricFamilyTrajectory        = "trajectory"
+	EvaluationMetricDirectionHigherIsBetter = "higher_is_better"
+	EvaluationMetricDirectionLowerIsBetter  = "lower_is_better"
+	EvaluationMetricDirectionInformational  = "informational"
+	EvaluationMetricUnitRatio               = "ratio"
+	EvaluationMetricUnitMs                  = "ms"
+	EvaluationMetricUnitCount               = "count"
+	EvaluationMetricUnitNone                = "none"
+	EvaluationItemRunStatusCompleted        = "completed"
+	EvaluationItemRunStatusFailed           = "failed"
+	EvaluationItemRunStatusCancelled        = "cancelled"
+	EvaluationActualOutputTypeJSON          = "json"
+	EvaluationActualOutputTypeText          = "text"
+	EvaluationProblemInvalidActualOutput    = "invalid_actual_output"
+	EvaluationProblemAdapterFailure         = "adapter_failure"
+	EvaluationProblemTimeout                = "timeout"
+	EvaluationProblemMetricConfigInvalid    = "metric_config_invalid"
+)
+
+const (
 	ExperimentProgressStarted       = "started"
 	ExperimentProgressItemCompleted = "item_completed"
 	ExperimentProgressProgress      = "progress"
@@ -101,6 +131,112 @@ type DatasetItem struct {
 	ID       string
 	Input    map[string]any
 	Expected map[string]any
+}
+
+type DatasetVersion struct {
+	ID              string
+	DatasetID       string
+	Version         int
+	Digest          string
+	ItemRevisionIDs []string
+	Settings        map[string]any
+}
+
+type DatasetItemRevision struct {
+	ID             string
+	DatasetItemID  string
+	DatasetID      string
+	Revision       int
+	Input          map[string]any
+	Expected       map[string]any
+	Reason         string
+	Split          string
+	CurationStatus string
+	Metadata       map[string]any
+}
+
+type TargetSnapshot struct {
+	ID        string
+	TargetRef map[string]any
+	Kind      string
+	Name      string
+	Version   int
+	Digest    string
+	Parts     []map[string]any
+	Metadata  map[string]any
+}
+
+type EvaluationRun struct {
+	ID                      string
+	ProjectID               string
+	EvaluationDefinitionID  string
+	Kind                    string
+	Status                  string
+	DatasetID               string
+	DatasetVersionID        string
+	DatasetDigest           string
+	SelectedItemRevisionIDs []string
+	SplitSelector           map[string]any
+	TargetSnapshotID        string
+	MetricSettingsSnapshot  []map[string]any
+	RunPolicySnapshot       map[string]any
+	RetentionProfile        string
+	RetentionRole           string
+	StartedAt               string
+	EndedAt                 string
+	Summary                 map[string]any
+	Problem                 map[string]any
+}
+
+type EvaluationItemRun struct {
+	ID                    string
+	EvaluationRunID       string
+	DatasetItemID         string
+	DatasetItemRevisionID string
+	TargetSnapshotID      string
+	Status                string
+	ActualOutput          any
+	ActualOutputType      string
+	TraceID               string
+	RootSpanID            string
+	MetricResultIDs       []string
+	Problems              []map[string]any
+	TrajectorySummary     string
+	SummaryEvidenceRefs   []map[string]any
+	ImportantSteps        []map[string]any
+	ConversationRef       string
+	SummaryDigest         string
+	SummaryGeneratedAt    string
+	RetentionRole         string
+	StartedAt             string
+	EndedAt               string
+}
+
+type MetricResult struct {
+	ID            string
+	MetricID      string
+	MetricVersion int
+	Scope         string
+	SubjectID     string
+	Family        string
+	Payload       map[string]any
+	Unit          string
+	Direction     string
+	Problem       map[string]any
+	EvidenceRefs  []map[string]any
+	Metadata      map[string]any
+	ProducedAt    string
+}
+
+type EvaluationResultsPersist struct {
+	ProjectID        string
+	EvaluationRunID  string
+	IdempotencyKey   string
+	EvaluationRun    EvaluationRun
+	ItemRuns         []EvaluationItemRun
+	MetricResults    []MetricResult
+	MetricAggregates []map[string]any
+	OptimizationRun  map[string]any
 }
 
 type Scorer struct {
@@ -185,12 +321,17 @@ type OnlinePolicyProjection struct {
 }
 
 type ExperimentProgress struct {
-	ExperimentRunID  string
-	Type             string
-	Status           string
-	DatasetItemRunID string
-	OccurredAt       string
-	Summary          map[string]any
+	ExperimentRunID     string
+	ProjectID           string
+	Type                string
+	Status              string
+	DatasetItemRunID    string
+	EvaluationRunID     string
+	EvaluationItemRunID string
+	OccurredAt          string
+	Summary             map[string]any
+	Run                 map[string]any
+	ItemRun             map[string]any
 }
 
 type PersistedProjectionNotification struct {
@@ -208,6 +349,9 @@ type StorageReader interface {
 	SearchDatasetItems(ctx context.Context, datasetID string, datasetVersion int) ([]DatasetItem, error)
 	SearchScorers(ctx context.Context, scorerIDs []string) ([]Scorer, error)
 	ResolveManifest(ctx context.Context, request ManifestResolveRequest) (ExperimentManifest, error)
+	GetDatasetVersion(ctx context.Context, datasetVersionID string) (DatasetVersion, error)
+	SearchDatasetItemRevisions(ctx context.Context, datasetVersionID string, itemRevisionIDs []string) ([]DatasetItemRevision, error)
+	GetTargetSnapshot(ctx context.Context, targetSnapshotID string) (TargetSnapshot, error)
 	ResolveOnlinePolicyMatches(ctx context.Context, request OnlinePolicyResolveRequest) (OnlinePolicyMatches, error)
 }
 
@@ -219,6 +363,7 @@ type StorageWriter interface {
 	PersistExperimentRun(ctx context.Context, run ExperimentRun) error
 	PersistDatasetItemRun(ctx context.Context, idempotencyKey string, run DatasetItemRun) error
 	PersistEvalResult(ctx context.Context, idempotencyKey string, result EvalResult) error
+	PersistEvaluationResults(ctx context.Context, result EvaluationResultsPersist) error
 	UpdateExperimentProgress(ctx context.Context, progress ExperimentProgress) error
 }
 
@@ -233,8 +378,36 @@ type HarnessAdapter interface {
 	Optimize(ctx context.Context, request HarnessOptimizeRequest) (HarnessOptimizeResult, error)
 }
 
+type ExternalAdapter interface {
+	RunEvaluationItem(ctx context.Context, request ExternalAdapterRunRequest) (ExternalAdapterRunResult, error)
+}
+
+type ExternalAdapterRunRequest struct {
+	RequestID       string
+	IdempotencyKey  string
+	EvaluationRunID string
+	ItemRevisionID  string
+	Input           map[string]any
+	TargetRef       map[string]any
+	TraceContext    map[string]string
+	Timeout         string
+}
+
+type ExternalAdapterRunResult struct {
+	ActualOutput     any
+	ActualOutputType string
+	TraceID          string
+	RootSpanID       string
+	ConversationRef  string
+	ImportantSteps   []map[string]any
+	Summary          string
+	Problems         []map[string]any
+	LatencyMs        float64
+}
+
 type ProgressPublisher interface {
 	PublishExperimentProgress(ctx context.Context, progress ExperimentProgress) error
+	PublishEvaluationProgress(ctx context.Context, progress ExperimentProgress) error
 }
 
 const (

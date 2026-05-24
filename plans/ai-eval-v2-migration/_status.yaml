@@ -47,13 +47,16 @@ tickets:
       - git diff --check -- core/storage-read
     next: TICKET-204 and TICKET-205 may use storage-read v2 query semantics
   TICKET-204:
-    status: ready
+    status: done
     wave: wave_03_runner_frontend
     depends_on: [TICKET-202, TICKET-203]
     blocked_by: []
     owner: runner-agent
-    evidence: []
-    next: implement
+    evidence:
+      - PATH="/opt/homebrew/bin:/usr/local/go/bin:$HOME/.bun/bin:$PATH" go test -tags surrealdb ./core/ai-eval-runner/...
+      - PATH="$HOME/.bun/bin:$PATH" bun run contracts:check
+      - git diff --check -- core/ai-eval-runner core/go-contracts
+    next: TICKET-206 may use runner v2 orchestration after TICKET-205 completes
   TICKET-205:
     status: ready
     wave: wave_03_runner_frontend

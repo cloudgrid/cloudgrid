@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -105,6 +106,301 @@ func TestStartOfflineExperimentRunsDatasetItemsAndPersistsDeterministicResults(t
 		ports.ExperimentProgressFinished,
 	}) {
 		t.Fatalf("unexpected published progress: %#v", progressTypes)
+	}
+}
+
+func TestStartEvaluationRunPersistsV2ItemRunsAndMetricResults(t *testing.T) {
+	reader := &fakeReader{
+		datasetVersion: ports.DatasetVersion{
+			ID:              "version-1",
+			DatasetID:       "dataset-1",
+			Digest:          "digest-1",
+			ItemRevisionIDs: []string{"revision-1"},
+		},
+		itemRevisions: []ports.DatasetItemRevision{{
+			ID:             "revision-1",
+			DatasetItemID:  "item-1",
+			DatasetID:      "dataset-1",
+			Input:          map[string]any{"question": "2+2"},
+			Expected:       map[string]any{"answer": "4"},
+			CurationStatus: "ready",
+		}},
+		targetSnapshot: ports.TargetSnapshot{
+			ID:        "snapshot-1",
+			TargetRef: map[string]any{"kind": "prompt", "name": "test"},
+			Digest:    "target-digest",
+		},
+	}
+	writer := &fakeWriter{}
+	publisher := &fakePublisher{}
+	harness := &fakeHarness{runResult: ports.HarnessRunResult{
+		HarnessRunID: "harness-run-1",
+		Output:       map[string]any{"answer": "4"},
+		LatencyMs:    42,
+	}}
+	runner := NewRunner(RunnerConfig{
+		StorageReader:     reader,
+		StorageWriter:     writer,
+		HarnessAdapter:    harness,
+		ProgressPublisher: publisher,
+		Clock:             fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)),
+		IDGenerator:       sequenceIDs("eval-run-1", "item-run-1", "metric-exact-1", "metric-latency-1"),
+	})
+
+	result, err := runner.StartEvaluationRun(context.Background(), StartEvaluationRunRequest{
+		RequestID:        "request-1",
+		ProjectID:        "project-1",
+		DatasetVersionID: "version-1",
+		TargetSnapshotID: "snapshot-1",
+		IdempotencyKey:   "start-1",
+		TraceContext:     map[string]string{"traceparent": "00-test"},
+	})
+
+	if err != nil {
+		t.Fatalf("StartEvaluationRun returned error: %v", err)
+	}
+	if result.Run.ID != "eval-run-1" || result.Run.Status != ports.ExperimentRunStatusFinished {
+		t.Fatalf("unexpected evaluation run result: %#v", result.Run)
+	}
+	if !reflect.DeepEqual(reader.datasetVersionGets, []string{"version-1"}) {
+		t.Fatalf("dataset version lookups = %#v", reader.datasetVersionGets)
+	}
+	if !reflect.DeepEqual(reader.targetSnapshotGets, []string{"snapshot-1"}) {
+		t.Fatalf("target snapshot lookups = %#v", reader.targetSnapshotGets)
+	}
+	if len(harness.runRequests) != 1 || harness.runRequests[0].TraceContext["traceparent"] != "00-test" {
+		t.Fatalf("harness run requests = %#v", harness.runRequests)
+	}
+	if len(writer.evaluationResults) != 1 {
+		t.Fatalf("evaluation result persists = %d, want 1", len(writer.evaluationResults))
+	}
+	persisted := writer.evaluationResults[0]
+	if persisted.EvaluationRun.RetentionRole != ports.EvaluationRetentionRoleBaseline || persisted.EvaluationRun.DatasetDigest != "digest-1" {
+		t.Fatalf("persisted evaluation run = %#v", persisted.EvaluationRun)
+	}
+	if len(persisted.ItemRuns) != 1 || persisted.ItemRuns[0].Status != ports.EvaluationItemRunStatusCompleted {
+		t.Fatalf("persisted item runs = %#v", persisted.ItemRuns)
+	}
+	if persisted.ItemRuns[0].TrajectorySummary == "" || len(persisted.ItemRuns[0].ImportantSteps) == 0 {
+		t.Fatalf("item run missing trajectory summary or important steps: %#v", persisted.ItemRuns[0])
+	}
+	if len(persisted.MetricResults) != 2 || persisted.MetricResults[0].MetricID != "extraction.exact_json_match" || persisted.MetricResults[1].MetricID != "trajectory.duration_ms" {
+		t.Fatalf("metric results = %#v", persisted.MetricResults)
+	}
+	if len(writer.progressUpdates) != 0 || len(publisher.progress) != 0 {
+		t.Fatalf("v2 evaluation run emitted legacy progress writer=%#v publisher=%#v", writer.progressUpdates, publisher.progress)
+	}
+	if !reflect.DeepEqual(collectProgressTypes(publisher.evaluationProgress), []string{
+		ports.ExperimentProgressStarted,
+		ports.ExperimentProgressItemCompleted,
+		ports.ExperimentProgressFinished,
+	}) {
+		t.Fatalf("evaluation progress = %#v", collectProgressTypes(publisher.evaluationProgress))
+	}
+}
+
+func TestStartEvaluationRunInvalidActualOutputCreatesProblemMetric(t *testing.T) {
+	reader := &fakeReader{
+		datasetVersion: ports.DatasetVersion{ID: "version-1", DatasetID: "dataset-1", ItemRevisionIDs: []string{"revision-1"}},
+		itemRevisions: []ports.DatasetItemRevision{{
+			ID:             "revision-1",
+			DatasetItemID:  "item-1",
+			DatasetID:      "dataset-1",
+			Input:          map[string]any{"q": "run"},
+			Expected:       map[string]any{"a": "run"},
+			CurationStatus: "ready",
+		}},
+		targetSnapshot: ports.TargetSnapshot{ID: "snapshot-1", TargetRef: map[string]any{"kind": "prompt"}, Digest: "target-digest"},
+	}
+	writer := &fakeWriter{}
+	runner := NewRunner(RunnerConfig{
+		StorageReader:     reader,
+		StorageWriter:     writer,
+		HarnessAdapter:    &fakeHarness{runResult: ports.HarnessRunResult{LatencyMs: 5}},
+		ProgressPublisher: &fakePublisher{},
+		Clock:             fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)),
+		IDGenerator:       sequenceIDs("eval-run-1", "item-run-1", "metric-exact-1", "metric-latency-1"),
+	})
+
+	_, err := runner.StartEvaluationRun(context.Background(), StartEvaluationRunRequest{
+		RequestID:        "request-1",
+		ProjectID:        "project-1",
+		DatasetVersionID: "version-1",
+		TargetSnapshotID: "snapshot-1",
+		IdempotencyKey:   "start-1",
+	})
+
+	if err != nil {
+		t.Fatalf("StartEvaluationRun returned error: %v", err)
+	}
+	persisted := writer.evaluationResults[0]
+	if !hasProblemCode(persisted.ItemRuns[0].Problems, ports.EvaluationProblemInvalidActualOutput) {
+		t.Fatalf("item run problems = %#v", persisted.ItemRuns[0].Problems)
+	}
+	if persisted.MetricResults[0].Problem["code"] != ports.EvaluationProblemInvalidActualOutput {
+		t.Fatalf("metric problem = %#v", persisted.MetricResults[0].Problem)
+	}
+}
+
+func TestStartEvaluationRunSupportsQuickShotSubsetAndMetricConfigProblems(t *testing.T) {
+	reader := &fakeReader{
+		datasetVersion: ports.DatasetVersion{
+			ID:              "version-1",
+			DatasetID:       "dataset-1",
+			ItemRevisionIDs: []string{"revision-1", "revision-2"},
+		},
+		itemRevisions: []ports.DatasetItemRevision{
+			{ID: "revision-1", DatasetItemID: "item-1", DatasetID: "dataset-1", Input: map[string]any{"q": "skip"}, Expected: map[string]any{"a": "skip"}, CurationStatus: "ready"},
+			{ID: "revision-2", DatasetItemID: "item-2", DatasetID: "dataset-1", Input: map[string]any{"q": "run"}, Expected: map[string]any{"a": "run"}, CurationStatus: "ready"},
+		},
+		targetSnapshot: ports.TargetSnapshot{ID: "snapshot-1", TargetRef: map[string]any{"kind": "prompt"}, Digest: "target-digest"},
+	}
+	writer := &fakeWriter{}
+	runner := NewRunner(RunnerConfig{
+		StorageReader:     reader,
+		StorageWriter:     writer,
+		HarnessAdapter:    &fakeHarness{runResult: ports.HarnessRunResult{Output: map[string]any{"a": "run"}, LatencyMs: 5}},
+		ProgressPublisher: &fakePublisher{},
+		Clock:             fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)),
+		IDGenerator:       sequenceIDs("eval-run-1", "item-run-1", "metric-exact-1", "metric-latency-1"),
+	})
+
+	_, err := runner.StartEvaluationRun(context.Background(), StartEvaluationRunRequest{
+		RequestID:               "request-1",
+		ProjectID:               "project-1",
+		DatasetVersionID:        "version-1",
+		TargetSnapshotID:        "snapshot-1",
+		IdempotencyKey:          "start-1",
+		Kind:                    ports.EvaluationRunKindQuickShot,
+		SelectedItemRevisionIDs: []string{"revision-2"},
+		MetricSettings:          []map[string]any{{}},
+	})
+
+	if err != nil {
+		t.Fatalf("StartEvaluationRun returned error: %v", err)
+	}
+	if len(writer.evaluationResults) != 1 || len(writer.evaluationResults[0].ItemRuns) != 1 {
+		t.Fatalf("evaluation results = %#v", writer.evaluationResults)
+	}
+	itemRun := writer.evaluationResults[0].ItemRuns[0]
+	if itemRun.DatasetItemRevisionID != "revision-2" || itemRun.RetentionRole != ports.EvaluationRetentionRoleQuickShot {
+		t.Fatalf("quick-shot item run = %#v", itemRun)
+	}
+	if !hasProblemCode(itemRun.Problems, ports.EvaluationProblemMetricConfigInvalid) {
+		t.Fatalf("item run problems = %#v, want metric config problem", itemRun.Problems)
+	}
+	if writer.evaluationResults[0].MetricResults[0].Problem["code"] != ports.EvaluationProblemMetricConfigInvalid {
+		t.Fatalf("metric problem = %#v", writer.evaluationResults[0].MetricResults[0].Problem)
+	}
+	if !reflect.DeepEqual(reader.itemRevisionSearches, []itemRevisionSearch{{datasetVersionID: "version-1", itemRevisionIDs: []string{"revision-2"}}}) {
+		t.Fatalf("item revision searches = %#v", reader.itemRevisionSearches)
+	}
+}
+
+func TestStartEvaluationRunExternalAdapterFailureCreatesProblemMetric(t *testing.T) {
+	reader := &fakeReader{
+		datasetVersion: ports.DatasetVersion{ID: "version-1", DatasetID: "dataset-1", ItemRevisionIDs: []string{"revision-1"}},
+		itemRevisions: []ports.DatasetItemRevision{{
+			ID:             "revision-1",
+			DatasetItemID:  "item-1",
+			DatasetID:      "dataset-1",
+			Input:          map[string]any{"q": "run"},
+			Expected:       map[string]any{"a": "run"},
+			CurationStatus: "ready",
+		}},
+		targetSnapshot: ports.TargetSnapshot{ID: "snapshot-1", TargetRef: map[string]any{"kind": "external_adapter", "adapterUrl": "https://adapter.example/eval-runs"}, Digest: "target-digest"},
+	}
+	writer := &fakeWriter{}
+	runner := NewRunner(RunnerConfig{
+		StorageReader:     reader,
+		StorageWriter:     writer,
+		HarnessAdapter:    &fakeHarness{},
+		ExternalAdapter:   &fakeExternalAdapter{err: context.DeadlineExceeded},
+		ProgressPublisher: &fakePublisher{},
+		Clock:             fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)),
+		IDGenerator:       sequenceIDs("eval-run-1", "item-run-1", "metric-exact-1", "metric-latency-1"),
+	})
+
+	result, err := runner.StartEvaluationRun(context.Background(), StartEvaluationRunRequest{
+		RequestID:        "request-1",
+		ProjectID:        "project-1",
+		DatasetVersionID: "version-1",
+		TargetSnapshotID: "snapshot-1",
+		IdempotencyKey:   "start-1",
+		TraceContext:     map[string]string{"traceparent": "00-test"},
+	})
+
+	if err != nil {
+		t.Fatalf("StartEvaluationRun returned error: %v", err)
+	}
+	if result.Run.Status != ports.ExperimentRunStatusFailed {
+		t.Fatalf("run status = %q, want failed", result.Run.Status)
+	}
+	persisted := writer.evaluationResults[0]
+	if len(persisted.ItemRuns) != 1 || !hasProblemCode(persisted.ItemRuns[0].Problems, ports.EvaluationProblemTimeout) {
+		t.Fatalf("item run problems = %#v", persisted.ItemRuns)
+	}
+	if persisted.MetricResults[0].Problem["code"] != ports.EvaluationProblemTimeout {
+		t.Fatalf("metric problem = %#v", persisted.MetricResults[0].Problem)
+	}
+}
+
+func TestEvaluationRunControlPersistsPauseResumeAndRejectsTerminalResume(t *testing.T) {
+	writer := &fakeWriter{}
+	publisher := &fakePublisher{}
+	runner := NewRunner(RunnerConfig{
+		StorageReader:     &fakeReader{},
+		StorageWriter:     writer,
+		HarnessAdapter:    &fakeHarness{},
+		ProgressPublisher: publisher,
+		Clock:             fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)),
+	})
+
+	paused, err := runner.PauseEvaluationRun(context.Background(), EvaluationRunControlRequest{
+		RequestID:       "pause-1",
+		ProjectID:       "project-1",
+		EvaluationRunID: "eval-run-1",
+		IdempotencyKey:  "pause-key",
+	})
+	if err != nil {
+		t.Fatalf("PauseEvaluationRun returned error: %v", err)
+	}
+	resumed, err := runner.ResumeEvaluationRun(context.Background(), EvaluationRunControlRequest{
+		RequestID:       "resume-1",
+		ProjectID:       "project-1",
+		EvaluationRunID: "eval-run-1",
+		IdempotencyKey:  "resume-key",
+	})
+	if err != nil {
+		t.Fatalf("ResumeEvaluationRun returned error: %v", err)
+	}
+	if paused.Run.Status != ports.ExperimentRunStatusPaused || resumed.Run.Status != ports.ExperimentRunStatusRunning {
+		t.Fatalf("control statuses paused=%q resumed=%q", paused.Run.Status, resumed.Run.Status)
+	}
+	if len(writer.evaluationResults) != 2 || writer.evaluationResults[0].IdempotencyKey != "pause-key" || writer.evaluationResults[1].IdempotencyKey != "resume-key" {
+		t.Fatalf("control persists = %#v", writer.evaluationResults)
+	}
+	if !reflect.DeepEqual(collectProgressTypes(publisher.evaluationProgress), []string{ports.ExperimentProgressProgress, ports.ExperimentProgressProgress}) {
+		t.Fatalf("control progress = %#v", collectProgressTypes(publisher.evaluationProgress))
+	}
+
+	_, err = runner.CancelEvaluationRun(context.Background(), EvaluationRunControlRequest{
+		RequestID:       "cancel-1",
+		ProjectID:       "project-1",
+		EvaluationRunID: "eval-run-1",
+		IdempotencyKey:  "cancel-key",
+	})
+	if err != nil {
+		t.Fatalf("CancelEvaluationRun returned error: %v", err)
+	}
+	_, err = runner.ResumeEvaluationRun(context.Background(), EvaluationRunControlRequest{
+		RequestID:       "resume-terminal",
+		ProjectID:       "project-1",
+		EvaluationRunID: "eval-run-1",
+		IdempotencyKey:  "resume-terminal-key",
+	})
+	if err == nil || err.Error() != "ERR-AIE-001: cannot resume terminal evaluation run" {
+		t.Fatalf("terminal resume error = %v", err)
 	}
 }
 
@@ -740,6 +1036,11 @@ type datasetSearch struct {
 	version   int
 }
 
+type itemRevisionSearch struct {
+	datasetVersionID string
+	itemRevisionIDs  []string
+}
+
 type manifestResolveRequest struct {
 	experimentRunID string
 	experimentID    string
@@ -748,11 +1049,17 @@ type manifestResolveRequest struct {
 type fakeReader struct {
 	experiments             []ports.Experiment
 	items                   []ports.DatasetItem
+	datasetVersion          ports.DatasetVersion
+	itemRevisions           []ports.DatasetItemRevision
+	targetSnapshot          ports.TargetSnapshot
 	scorers                 []ports.Scorer
 	manifest                ports.ExperimentManifest
 	onlineMatches           ports.OnlinePolicyMatches
 	experimentSearches      []string
 	datasetSearches         []datasetSearch
+	datasetVersionGets      []string
+	itemRevisionSearches    []itemRevisionSearch
+	targetSnapshotGets      []string
 	scorerSearches          [][]string
 	manifestResolveRequests []manifestResolveRequest
 	onlineResolveRequests   []ports.OnlinePolicyResolveRequest
@@ -771,6 +1078,40 @@ func (r *fakeReader) SearchDatasetItems(ctx context.Context, datasetID string, d
 func (r *fakeReader) SearchScorers(ctx context.Context, scorerIDs []string) ([]ports.Scorer, error) {
 	r.scorerSearches = append(r.scorerSearches, append([]string(nil), scorerIDs...))
 	return r.scorers, nil
+}
+
+func (r *fakeReader) GetDatasetVersion(ctx context.Context, datasetVersionID string) (ports.DatasetVersion, error) {
+	r.datasetVersionGets = append(r.datasetVersionGets, datasetVersionID)
+	if r.datasetVersion.ID != "" {
+		return r.datasetVersion, nil
+	}
+	itemRevisionIDs := make([]string, 0, len(r.itemRevisions))
+	for _, item := range r.itemRevisions {
+		itemRevisionIDs = append(itemRevisionIDs, item.ID)
+	}
+	return ports.DatasetVersion{ID: datasetVersionID, DatasetID: "dataset-1", Digest: "digest-1", ItemRevisionIDs: itemRevisionIDs}, nil
+}
+
+func (r *fakeReader) SearchDatasetItemRevisions(ctx context.Context, datasetVersionID string, itemRevisionIDs []string) ([]ports.DatasetItemRevision, error) {
+	r.itemRevisionSearches = append(r.itemRevisionSearches, itemRevisionSearch{datasetVersionID: datasetVersionID, itemRevisionIDs: append([]string(nil), itemRevisionIDs...)})
+	if len(itemRevisionIDs) == 0 {
+		return r.itemRevisions, nil
+	}
+	results := make([]ports.DatasetItemRevision, 0, len(itemRevisionIDs))
+	for _, item := range r.itemRevisions {
+		if slices.Contains(itemRevisionIDs, item.ID) {
+			results = append(results, item)
+		}
+	}
+	return results, nil
+}
+
+func (r *fakeReader) GetTargetSnapshot(ctx context.Context, targetSnapshotID string) (ports.TargetSnapshot, error) {
+	r.targetSnapshotGets = append(r.targetSnapshotGets, targetSnapshotID)
+	if r.targetSnapshot.ID != "" {
+		return r.targetSnapshot, nil
+	}
+	return ports.TargetSnapshot{ID: targetSnapshotID, TargetRef: map[string]any{"kind": "prompt"}, Digest: "target-digest"}, nil
 }
 
 func (r *fakeReader) ResolveManifest(ctx context.Context, request ports.ManifestResolveRequest) (ports.ExperimentManifest, error) {
@@ -805,6 +1146,7 @@ type fakeWriter struct {
 	experimentRuns    []ports.ExperimentRun
 	persistedRuns     []persistedRun
 	persistedResults  []persistedResult
+	evaluationResults []ports.EvaluationResultsPersist
 	progressUpdates   []ports.ExperimentProgress
 	progressErrByType map[string]error
 }
@@ -821,6 +1163,11 @@ func (w *fakeWriter) PersistDatasetItemRun(ctx context.Context, idempotencyKey s
 
 func (w *fakeWriter) PersistEvalResult(ctx context.Context, idempotencyKey string, result ports.EvalResult) error {
 	w.persistedResults = append(w.persistedResults, persistedResult{key: idempotencyKey, result: result})
+	return nil
+}
+
+func (w *fakeWriter) PersistEvaluationResults(ctx context.Context, result ports.EvaluationResultsPersist) error {
+	w.evaluationResults = append(w.evaluationResults, result)
 	return nil
 }
 
@@ -891,9 +1238,24 @@ func (h *fakeHarness) Optimize(ctx context.Context, request ports.HarnessOptimiz
 	return h.optimizeResult, nil
 }
 
-type fakePublisher struct {
-	progress []ports.ExperimentProgress
+type fakeExternalAdapter struct {
+	result   ports.ExternalAdapterRunResult
 	err      error
+	requests []ports.ExternalAdapterRunRequest
+}
+
+func (adapter *fakeExternalAdapter) RunEvaluationItem(ctx context.Context, request ports.ExternalAdapterRunRequest) (ports.ExternalAdapterRunResult, error) {
+	adapter.requests = append(adapter.requests, request)
+	if adapter.err != nil {
+		return ports.ExternalAdapterRunResult{}, adapter.err
+	}
+	return adapter.result, nil
+}
+
+type fakePublisher struct {
+	progress           []ports.ExperimentProgress
+	evaluationProgress []ports.ExperimentProgress
+	err                error
 }
 
 func (p *fakePublisher) PublishExperimentProgress(ctx context.Context, progress ports.ExperimentProgress) error {
@@ -901,6 +1263,14 @@ func (p *fakePublisher) PublishExperimentProgress(ctx context.Context, progress 
 		return p.err
 	}
 	p.progress = append(p.progress, progress)
+	return nil
+}
+
+func (p *fakePublisher) PublishEvaluationProgress(ctx context.Context, progress ports.ExperimentProgress) error {
+	if p.err != nil {
+		return p.err
+	}
+	p.evaluationProgress = append(p.evaluationProgress, progress)
 	return nil
 }
 
@@ -926,4 +1296,13 @@ func collectProgressTypes(progress []ports.ExperimentProgress) []string {
 		types = append(types, item.Type)
 	}
 	return types
+}
+
+func hasProblemCode(problems []map[string]any, code string) bool {
+	for _, problem := range problems {
+		if problem["code"] == code {
+			return true
+		}
+	}
+	return false
 }

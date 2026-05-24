@@ -70,6 +70,7 @@ func run() int {
 		StorageWriter:     runnerruntime.NATSStorageWriter{Requester: requester},
 		ControlPlane:      runnerruntime.NATSControlPlane{Requester: requester},
 		HarnessAdapter:    runnerruntime.HarnessHTTPAdapter{BaseURL: cfg.HarnessURL},
+		ExternalAdapter:   runnerruntime.ExternalHTTPAdapter{},
 		ProgressPublisher: runnerruntime.NATSProgressPublisher{Publisher: requester},
 	})
 	if _, err := runnerruntime.SubscribeRunnerHandlersWithOptions(nc, runner, logger, runnerruntime.RunnerServiceOptions{SelfObservability: traceLogExporter}); err != nil {

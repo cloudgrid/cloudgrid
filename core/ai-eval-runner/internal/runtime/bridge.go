@@ -19,15 +19,21 @@ import (
 )
 
 const (
-	SubjectExperimentStart       = "eval.evaluation.run.start"
-	SubjectExperimentPause       = "eval.evaluation.run.pause"
-	SubjectExperimentResume      = "eval.evaluation.run.resume"
-	SubjectExperimentCancel      = "eval.evaluation.run.cancel"
+	SubjectEvaluationRunStart    = "eval.evaluation.run.start"
+	SubjectEvaluationRunPause    = "eval.evaluation.run.pause"
+	SubjectEvaluationRunResume   = "eval.evaluation.run.resume"
+	SubjectEvaluationRunCancel   = "eval.evaluation.run.cancel"
+	SubjectExperimentStart       = SubjectEvaluationRunStart
+	SubjectExperimentPause       = SubjectEvaluationRunPause
+	SubjectExperimentResume      = SubjectEvaluationRunResume
+	SubjectExperimentCancel      = SubjectEvaluationRunCancel
 	SubjectOptimizationStart     = "eval.optimization.start"
 	SubjectPersistedProjections  = "ai.persisted.projections"
 	SubjectExperimentSearch      = "eval.evaluation.run.search"
 	SubjectDatasetSearch         = "eval.dataset.search"
 	SubjectScorerSearch          = "eval.evaluation.search"
+	SubjectDatasetVersionGet     = "eval.dataset.version.get"
+	SubjectTargetSnapshotGet     = "eval.target.snapshot.get"
 	SubjectResultsPersist        = "eval.results.persist"
 	SubjectExperimentProgress    = "eval.live.events.*.*"
 	SubjectManifestResolve       = "eval.target.snapshot.get"
@@ -79,10 +85,10 @@ func NewRunnerServiceWithOptions(runner *orchestrator.Runner, logger *slog.Logge
 
 func (service *RunnerService) SubjectHandlers() map[string]Handler {
 	handlers := map[string]Handler{
-		SubjectExperimentStart:      service.handleExperimentStart(),
-		SubjectExperimentPause:      service.handleExperimentControl("pause"),
-		SubjectExperimentResume:     service.handleExperimentControl("resume"),
-		SubjectExperimentCancel:     service.handleExperimentCancel(),
+		SubjectEvaluationRunStart:   service.handleEvaluationRunStart(),
+		SubjectEvaluationRunPause:   service.handleEvaluationRunControl("pause"),
+		SubjectEvaluationRunResume:  service.handleEvaluationRunControl("resume"),
+		SubjectEvaluationRunCancel:  service.handleEvaluationRunCancel(),
 		SubjectOptimizationStart:    service.handleOptimizationStart(),
 		SubjectPersistedProjections: service.handlePersistedProjections(),
 	}
@@ -95,121 +101,119 @@ func (service *RunnerService) SubjectHandlers() map[string]Handler {
 	return handlers
 }
 
-func (service *RunnerService) handleExperimentControl(command string) Handler {
+func (service *RunnerService) handleEvaluationRunControl(command string) Handler {
 	return func(msg BridgeMessage) {
-		var request contracts.ExperimentRunControlRequest
+		var request contracts.EvaluationRunControlRequest
 		if err := decodeStrict(msg.Data(), &request); err != nil {
-			respond(msg, mutationErrorResponse("", validationBridgeError("invalid experiment control request JSON")))
+			respond(msg, mutationErrorResponse("", validationBridgeError("invalid evaluation control request JSON")))
 			return
 		}
 		if err := validateEnvelope(request.BridgeEnvelope); err != nil {
 			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError(err.Error())))
 			return
 		}
-		if strings.TrimSpace(request.ExperimentRunID) == "" {
-			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("experimentRunId is required")))
-			return
-		}
-		if request.Command != command {
-			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("command must be "+command)))
+		if strings.TrimSpace(request.EvaluationRunID) == "" {
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("evaluationRunId is required")))
 			return
 		}
 		ctx, cancel := context.WithTimeout(contextWithAuth(request.AuthContext), defaultRequestTimeout)
 		defer cancel()
-		controlRequest := orchestrator.ExperimentRunControlRequest{
+		controlRequest := orchestrator.EvaluationRunControlRequest{
 			RequestID:       request.RequestID,
-			ExperimentRunID: request.ExperimentRunID,
-			Command:         request.Command,
+			ProjectID:       request.ProjectID,
+			EvaluationRunID: request.EvaluationRunID,
+			Command:         command,
+			IdempotencyKey:  request.IdempotencyKey,
 		}
-		if request.ExpectedManifestDigest != nil {
-			controlRequest.ExpectedManifestDigest = *request.ExpectedManifestDigest
-		}
-		if request.IdempotencyKey != nil {
-			controlRequest.IdempotencyKey = *request.IdempotencyKey
-		}
-		var result orchestrator.ExperimentRunControlResult
+		var result orchestrator.EvaluationRunControlResult
 		var err error
 		if command == "pause" {
-			result, err = service.runner.PauseExperimentRun(ctx, controlRequest)
+			result, err = service.runner.PauseEvaluationRun(ctx, controlRequest)
 		} else {
-			result, err = service.runner.ResumeExperimentRun(ctx, controlRequest)
+			result, err = service.runner.ResumeEvaluationRun(ctx, controlRequest)
 		}
 		if err != nil {
 			respond(msg, mutationErrorResponse(request.RequestID, bridgeErrorFromError(err)))
 			return
 		}
-		respond(msg, contracts.EvalMutationResponse{RequestID: request.RequestID, OK: true, Data: experimentRunData(result.Run)})
+		respond(msg, contracts.EvalMutationResponse{RequestID: request.RequestID, OK: true, Data: evaluationRunData(result.Run)})
 	}
 }
 
-func (service *RunnerService) handleExperimentStart() Handler {
+func (service *RunnerService) handleEvaluationRunStart() Handler {
 	return func(msg BridgeMessage) {
-		var request contracts.ExperimentStartRequest
+		var request contracts.EvaluationRunStartRequest
 		if err := decodeStrict(msg.Data(), &request); err != nil {
-			respond(msg, mutationErrorResponse("", validationBridgeError("invalid experiment start request JSON")))
+			respond(msg, mutationErrorResponse("", validationBridgeError("invalid evaluation run start request JSON")))
 			return
 		}
 		if err := validateEnvelope(request.BridgeEnvelope); err != nil {
 			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError(err.Error())))
 			return
 		}
-		if strings.TrimSpace(request.ExperimentID) == "" {
-			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("experimentId is required")))
+		if strings.TrimSpace(request.DatasetVersionID) == "" {
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("datasetVersionId is required")))
+			return
+		}
+		if strings.TrimSpace(request.TargetSnapshotID) == "" {
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("targetSnapshotId is required")))
+			return
+		}
+		if strings.TrimSpace(request.IdempotencyKey) == "" {
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("idempotencyKey is required")))
 			return
 		}
 		ctx, cancel := context.WithTimeout(contextWithAuth(request.AuthContext), defaultRequestTimeout)
 		defer cancel()
-		result, err := service.runner.StartOfflineExperiment(ctx, orchestrator.StartExperimentRequest{
-			RequestID:    request.RequestID,
-			ProjectID:    projectID(request.AuthContext),
-			ExperimentID: request.ExperimentID,
-			SolverRef:    objectFromTypedContract(request.SolverRef),
-			RunPolicy:    objectFromTypedContract(request.RunPolicy),
-			TraceContext: traceContext(request.TraceContext),
+		project := request.ProjectID
+		if project == "" {
+			project = projectID(request.AuthContext)
+		}
+		result, err := service.runner.StartEvaluationRun(ctx, orchestrator.StartEvaluationRunRequest{
+			RequestID:        request.RequestID,
+			ProjectID:        project,
+			DatasetVersionID: request.DatasetVersionID,
+			TargetSnapshotID: request.TargetSnapshotID,
+			IdempotencyKey:   request.IdempotencyKey,
+			TraceContext:     traceContext(request.TraceContext),
 		})
 		if err != nil {
 			respond(msg, mutationErrorResponse(request.RequestID, bridgeErrorFromError(err)))
 			return
 		}
-		respond(msg, contracts.EvalMutationResponse{RequestID: request.RequestID, OK: true, Data: experimentRunData(result.Run)})
+		respond(msg, contracts.EvalMutationResponse{RequestID: request.RequestID, OK: true, Data: evaluationRunData(result.Run)})
 	}
 }
 
-func (service *RunnerService) handleExperimentCancel() Handler {
+func (service *RunnerService) handleEvaluationRunCancel() Handler {
 	return func(msg BridgeMessage) {
-		var request contracts.ExperimentCancelRequest
+		var request contracts.EvaluationRunControlRequest
 		if err := decodeStrict(msg.Data(), &request); err != nil {
-			respond(msg, mutationErrorResponse("", validationBridgeError("invalid experiment cancel request JSON")))
+			respond(msg, mutationErrorResponse("", validationBridgeError("invalid evaluation cancel request JSON")))
 			return
 		}
 		if err := validateEnvelope(request.BridgeEnvelope); err != nil {
 			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError(err.Error())))
 			return
 		}
-		if strings.TrimSpace(request.ExperimentRunID) == "" {
-			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("experimentRunId is required")))
+		if strings.TrimSpace(request.EvaluationRunID) == "" {
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("evaluationRunId is required")))
 			return
 		}
 		ctx, cancel := context.WithTimeout(contextWithAuth(request.AuthContext), defaultRequestTimeout)
 		defer cancel()
-		result, err := service.runner.CancelExperimentRun(ctx, orchestrator.CancelExperimentRequest{
+		result, err := service.runner.CancelEvaluationRun(ctx, orchestrator.EvaluationRunControlRequest{
 			RequestID:       request.RequestID,
-			ExperimentRunID: request.ExperimentRunID,
+			ProjectID:       request.ProjectID,
+			EvaluationRunID: request.EvaluationRunID,
+			IdempotencyKey:  request.IdempotencyKey,
+			Command:         "cancel",
 		})
 		if err != nil {
 			respond(msg, mutationErrorResponse(request.RequestID, bridgeErrorFromError(err)))
 			return
 		}
-		respond(msg, contracts.EvalMutationResponse{
-			RequestID: request.RequestID,
-			OK:        true,
-			Data: map[string]any{
-				"id":              result.ExperimentRunID,
-				"experimentRunId": result.ExperimentRunID,
-				"status":          ports.ExperimentRunStatusCancelled,
-				"summary":         map[string]any{"cancelled": result.Cancelled},
-			},
-		})
+		respond(msg, contracts.EvalMutationResponse{RequestID: request.RequestID, OK: true, Data: evaluationRunData(result.Run)})
 	}
 }
 
@@ -380,6 +384,37 @@ func experimentRunData(run ports.ExperimentRun) map[string]any {
 	}
 }
 
+func evaluationRunData(run ports.EvaluationRun) map[string]any {
+	data := map[string]any{
+		"id":                      run.ID,
+		"projectId":               run.ProjectID,
+		"kind":                    run.Kind,
+		"status":                  run.Status,
+		"datasetId":               run.DatasetID,
+		"datasetVersionId":        run.DatasetVersionID,
+		"datasetDigest":           run.DatasetDigest,
+		"selectedItemRevisionIds": run.SelectedItemRevisionIDs,
+		"splitSelector":           run.SplitSelector,
+		"targetSnapshotId":        run.TargetSnapshotID,
+		"metricSettingsSnapshot":  run.MetricSettingsSnapshot,
+		"runPolicySnapshot":       run.RunPolicySnapshot,
+		"retentionProfile":        run.RetentionProfile,
+		"retentionRole":           run.RetentionRole,
+		"startedAt":               run.StartedAt,
+		"summary":                 run.Summary,
+	}
+	if run.EvaluationDefinitionID != "" {
+		data["evaluationDefinitionId"] = run.EvaluationDefinitionID
+	}
+	if run.EndedAt != "" {
+		data["endedAt"] = run.EndedAt
+	}
+	if len(run.Problem) > 0 {
+		data["problem"] = run.Problem
+	}
+	return data
+}
+
 func projectionKinds(kinds []contracts.AiProjectionKind) []string {
 	result := make([]string, 0, len(kinds))
 	for _, kind := range kinds {
@@ -519,13 +554,13 @@ func boundedRunnerSubject(subject string) string {
 func boundedRunnerOperation(subject string) string {
 	switch subject {
 	case SubjectExperimentStart:
-		return "experiment_start"
+		return "evaluation_run_start"
 	case SubjectExperimentCancel:
-		return "experiment_cancel"
+		return "evaluation_run_cancel"
 	case SubjectExperimentPause:
-		return "experiment_pause"
+		return "evaluation_run_pause"
 	case SubjectExperimentResume:
-		return "experiment_resume"
+		return "evaluation_run_resume"
 	case SubjectOptimizationStart:
 		return "optimization_start"
 	case SubjectPersistedProjections:
