@@ -58,13 +58,21 @@ tickets:
       - git diff --check -- core/ai-eval-runner core/go-contracts
     next: TICKET-206 may use runner v2 orchestration after TICKET-205 completes
   TICKET-205:
-    status: ready
+    status: done
     wave: wave_03_runner_frontend
     depends_on: [TICKET-201]
     blocked_by: []
     owner: frontend-agent
-    evidence: []
-    next: implement
+    evidence:
+      - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/frontend typecheck
+      - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/frontend test -- ai-eval
+      - PATH="$HOME/.bun/bin:$PATH" bun run contracts:check
+      - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/frontend lint
+      - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/public-api-client typecheck
+      - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/public-api-client lint
+      - git diff --check -- apps/frontend apps/packages/public-api-client apps/packages/ui-contracts plans/ai-eval-v2-migration
+      - Browser verification against current BFF schema on desktop and mobile; live data blocked by local bridge/runtime dataset v2 drift
+    next: TICKET-206 may start
   TICKET-206:
     status: ready
     wave: wave_04_integration_docs

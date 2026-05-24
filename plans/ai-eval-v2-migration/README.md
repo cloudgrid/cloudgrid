@@ -4,9 +4,10 @@ Status: contract-ready, implementation migration required
 
 This plan tracks the remaining work required to implement AI Eval v2. The
 machine-readable contracts now pass drift checks; BFF foundation, storage-write
-persistence, and storage-read query semantics are complete. The remaining work
-is runner, frontend, integration, and documentation migration from legacy
-Scorer/Experiment behavior to the v2 Dataset/Evaluation/Metric/Target model.
+persistence, storage-read query semantics, runner orchestration, and frontend
+workspace behavior are complete. The remaining work is integration and
+documentation migration from legacy Scorer/Experiment behavior to the v2
+Dataset/Evaluation/Metric/Target model.
 
 ## Current Readiness
 
@@ -19,20 +20,20 @@ Scorer/Experiment behavior to the v2 Dataset/Evaluation/Metric/Target model.
   optimization refs, and dataset item runs were removed from the spec contract
   tree.
 - `bun run contracts:check` passes.
-- `TICKET-201`, `TICKET-202`, and `TICKET-203` are complete.
+- `TICKET-201`, `TICKET-202`, `TICKET-203`, `TICKET-204`, and `TICKET-205` are
+  complete.
 
 ## Remaining Runtime Drift
 
-Contract drift checks pass, but legacy method names and behavior remain in:
+Contract drift checks pass, and the implementation migration is now limited to
+final integration fixtures, docs, and any runtime environment drift found by
+those gates.
 
-- `apps/backend/src/bridge/subjects.ts`
-- `apps/backend/src/bridge.ts`
-- `apps/backend/src/validation.ts`
-- `apps/backend/src/graphql.ts`
-- `core/ai-eval-runner/internal/runtime/bridge.go`
-- `core/ai-eval-runner/internal/orchestrator`
-- storage-read/write AI Eval persistence/query code
-- `apps/frontend/src/routes/ai-eval-route.tsx`
+Browser verification of `TICKET-205` found one local runtime drift signal: the
+current BFF schema expects v2 dataset fields such as `currentVersionId`, but the
+locally available bridge/runtime data returned older dataset objects. `TICKET-206`
+should make this visible in integration fixtures before declaring end-to-end
+completion.
 
 The removed product concepts are:
 
@@ -68,6 +69,7 @@ The removed product concepts are:
      results, and retention roles.
    - Implement quick-shot selection and external adapter invocation exactly as
      specified.
+   - Status: complete.
 
 4. BFF bridge and GraphQL
    - Replace legacy resolver methods and validation schemas with v2 operations.
@@ -79,6 +81,7 @@ The removed product concepts are:
      Dataset workspace views.
    - Keep production measurement out of primary navigation.
    - Keep trace-to-dataset import limited to datasets with extraction settings.
+   - Status: complete.
 
 6. Integration and docs
    - Add end-to-end dataset evaluation and optimization fixtures.

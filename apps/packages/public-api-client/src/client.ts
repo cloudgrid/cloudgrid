@@ -47,13 +47,11 @@ import type {
   CreateEvaluationDefinitionInput,
   CreateEvaluationDefinitionMutationData,
   CreateExperimentInput,
-  CreateExperimentMutationData,
   CreateIngestCredentialInput,
   CreateIngestCredentialMutationData,
   CreateProjectInput,
   CreateProjectMutationData,
   CreateScorerInput,
-  CreateScorerMutationData,
   Dataset,
   DatasetCandidateSearchInput,
   DatasetCandidateSearchResult,
@@ -80,7 +78,6 @@ import type {
   EvaluationRunsQueryData,
   ExperimentRun,
   ExperimentRunEvent,
-  ExperimentRunQueryData,
   ExperimentSearchInput,
   ExperimentsQueryData,
   IngestCredential,
@@ -91,7 +88,6 @@ import type {
   InviteProjectMemberInput,
   InviteProjectMemberMutationData,
   LiveExperimentRunInput,
-  LiveExperimentRunSubscriptionData,
   LiveEvaluationRunInput,
   LiveEvaluationRunSubscriptionData,
   LiveTraceEvent,
@@ -141,9 +137,10 @@ import type {
   StartEvaluationRunInput,
   StartEvaluationRunMutationData,
   StartExperimentRunInput,
-  StartExperimentRunMutationData,
   StartOptimizationRunInput,
   StartOptimizationRunMutationData,
+  OptimizationRunSearchInput,
+  OptimizationRunsQueryData,
   PromoteTargetSnapshotInput,
   PromoteTargetSnapshotMutationData,
   TelemetryFacetInput,
@@ -166,6 +163,7 @@ import type {
   UpdateProjectMemberMutationData,
   UpdateRetentionPolicyInput,
   UpdateRetentionPolicyMutationData,
+  UpdateDatasetItemsInput,
   Viewer,
   ViewerQueryData,
 } from "@cloudgrid/ui-contracts";
@@ -247,25 +245,21 @@ import {
   aiQualityOverviewOperation,
   annotationQueueOperation,
   appendDatasetItemsOperation,
+  updateDatasetItemsOperation,
   commitDatasetImportOperation,
   commitDatasetCandidatesOperation,
   createDatasetOperation,
   createEvaluationComparisonOperation,
   createEvaluationDefinitionOperation,
-  createExperimentOperation,
-  createScorerOperation,
   datasetExportOperation,
   datasetCandidatesOperation,
   datasetOperation,
   datasetsOperation,
-  experimentRunOperation,
-  experimentsOperation,
   evaluationComparisonsOperation,
   evaluationDefinitionsOperation,
   evaluationResultsOperation,
   evaluationRunOperation,
   evaluationRunsOperation,
-  liveExperimentRunSubscriptionOperation,
   liveEvaluationRunSubscriptionOperation,
   liveTraceSubscriptionOperation,
   logSearchOperation,
@@ -274,18 +268,14 @@ import {
   prepareDatasetImportOperation,
   prepareDatasetCandidatesOperation,
   richMetricSeriesOperation,
-  scorersOperation,
   startDatasetExportOperation,
   startEvaluationRunOperation,
-  startExperimentRunOperation,
   startOptimizationRunOperation,
+  optimizationRunsOperation,
   promoteTargetSnapshotOperation,
   cancelEvaluationRunOperation,
   pauseEvaluationRunOperation,
   resumeEvaluationRunOperation,
-  cancelExperimentRunOperation,
-  pauseExperimentRunOperation,
-  resumeExperimentRunOperation,
   telemetryFacetsOperation,
   traceDetailOperation,
   traceSearchOperation,
@@ -309,6 +299,7 @@ export interface TelemetryGraphQLClient {
   getDataset: (id: string) => Promise<Dataset | null>;
   createDataset: (input: CreateDatasetInput) => Promise<Dataset>;
   appendDatasetItems: (input: AppendDatasetItemsInput) => Promise<Dataset>;
+  updateDatasetItems: (input: UpdateDatasetItemsInput) => Promise<Dataset>;
   searchEvaluationDefinitions: (
     input: EvaluationDefinitionSearchInput,
   ) => Promise<EvaluationDefinitionsQueryData["evaluationDefinitions"]>;
@@ -335,6 +326,9 @@ export interface TelemetryGraphQLClient {
   startOptimizationRun: (
     input: StartOptimizationRunInput,
   ) => Promise<StartOptimizationRunMutationData["startOptimizationRun"]>;
+  searchOptimizationRuns: (
+    input: OptimizationRunSearchInput,
+  ) => Promise<OptimizationRunsQueryData["optimizationRuns"]>;
   promoteTargetSnapshot: (
     input: PromoteTargetSnapshotInput,
   ) => Promise<PromoteTargetSnapshotMutationData["promoteTargetSnapshot"]>;
@@ -611,6 +605,15 @@ export function createTelemetryGraphQLClient(endpoint = "/graphql"): TelemetryGr
       );
       return data.appendDatasetItems;
     },
+    async updateDatasetItems(input) {
+      const data = await requestGraphQL<{ updateDatasetItems: Dataset }>(
+        endpoint,
+        "UpdateDatasetItems",
+        updateDatasetItemsOperation,
+        { input },
+      );
+      return data.updateDatasetItems;
+    },
     async searchEvaluationDefinitions(input) {
       const data = await requestGraphQL<EvaluationDefinitionsQueryData>(
         endpoint,
@@ -718,6 +721,15 @@ export function createTelemetryGraphQLClient(endpoint = "/graphql"): TelemetryGr
         { input },
       );
       return data.startOptimizationRun;
+    },
+    async searchOptimizationRuns(input) {
+      const data = await requestGraphQL<OptimizationRunsQueryData>(
+        endpoint,
+        "OptimizationRuns",
+        optimizationRunsOperation,
+        { input },
+      );
+      return data.optimizationRuns;
     },
     async promoteTargetSnapshot(input) {
       const data = await requestGraphQL<PromoteTargetSnapshotMutationData>(

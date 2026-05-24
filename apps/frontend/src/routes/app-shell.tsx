@@ -9,9 +9,7 @@ import {
   ChevronUp,
   Command,
   Database,
-  FlaskConical,
   FolderOpen,
-  Gauge,
   HelpCircle,
   LayoutDashboard,
   LineChart,
@@ -23,7 +21,6 @@ import {
   Sparkles,
   Sun,
   TerminalSquare,
-  Trophy,
   UserCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -690,9 +687,7 @@ function ProjectSidebarNav({
     : null;
   const aiEvalSubItems: Array<{ tab: string; label: string; icon: typeof Database }> = [
     { tab: "datasets", label: t("nav.aiEvalDatasets"), icon: Database },
-    { tab: "scorers", label: t("nav.aiEvalScorers"), icon: FlaskConical },
-    { tab: "experiments", label: t("nav.aiEvalExperiments"), icon: Trophy },
-    { tab: "production", label: t("nav.aiEvalProduction"), icon: Gauge },
+    { tab: "evaluations", label: t("nav.aiEvalEvaluations"), icon: Activity },
   ];
   const enabledNavItems = [...projectNavItems];
 

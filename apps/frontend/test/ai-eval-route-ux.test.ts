@@ -3,130 +3,102 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const routeSource = readFileSync(join(import.meta.dir, "../src/routes/ai-eval-route.tsx"), "utf8");
+const workspaceSource = readFileSync(
+  join(import.meta.dir, "../src/features/ai-eval/workspace.tsx"),
+  "utf8",
+);
+const viewModelSource = readFileSync(
+  join(import.meta.dir, "../src/features/ai-eval/view-model-v2.ts"),
+  "utf8",
+);
 const appShellSource = readFileSync(join(import.meta.dir, "../src/routes/app-shell.tsx"), "utf8");
 
-describe("AI Eval route UX migration", () => {
-  test("uses URL selected state and avoids route-primary Card surfaces", () => {
-    expect(routeSource).not.toContain("../components/ui/card");
-    expect(routeSource).toContain('searchParams.get("workflow")');
-    expect(routeSource).toContain('searchParams.get("dataset")');
-    expect(routeSource).toContain('searchParams.get("scorer")');
-    expect(routeSource).toContain('searchParams.get("experiment")');
-    expect(routeSource).not.toContain('searchParams.get("run")');
-    expect(routeSource).not.toContain('searchParams.get("annotation")');
+describe("AI Eval v2 route UX", () => {
+  test("keeps route composition thin and avoids route-primary card surfaces", () => {
+    expect(routeSource).toContain("AiEvalWorkspace");
+    expect(workspaceSource).not.toContain("../components/ui/card");
+    expect(workspaceSource).toContain("ai-eval-main-workspace");
+    expect(workspaceSource).toContain('searchParams.get("dataset")');
+    expect(workspaceSource).toContain('searchParams.get("evaluation")');
+    expect(workspaceSource).toContain('searchParams.get("run")');
+    expect(workspaceSource).not.toContain('searchParams.get("scorer")');
+    expect(workspaceSource).not.toContain('searchParams.get("experiment")');
   });
 
-  test("navigation is in the main sidebar, not an inner left rail", () => {
-    // inner left rail removed — navigation lives in the app-shell sidebar
-    expect(routeSource).not.toContain("ai-eval-left-rail");
-    expect(routeSource).toContain("ai-eval-main-workspace");
-    expect(routeSource).not.toContain("ai-eval-right-inspector");
-    expect(routeSource).not.toContain("Select a row to inspect details");
-    // route uses RouteBreadcrumb and AiEvalPageHeader for page-level navigation
-    expect(routeSource).toContain("RouteBreadcrumb");
-    expect(routeSource).toContain("AiEvalPageHeader");
-    // sidebar renders sub-items via a dynamic link template
+  test("navigation exposes only Datasets and Evaluations", () => {
     expect(appShellSource).toContain("aiEvalSubItems");
     expect(appShellSource).toContain("/ai-eval?tab=");
     expect(appShellSource).toContain('t("nav.aiEvalDatasets")');
-    expect(appShellSource).toContain('t("nav.aiEvalScorers")');
-    expect(appShellSource).toContain('t("nav.aiEvalExperiments")');
-    expect(appShellSource).toContain('t("nav.aiEvalProduction")');
+    expect(appShellSource).toContain('t("nav.aiEvalEvaluations")');
+    expect(appShellSource).not.toContain('t("nav.aiEvalScorers")');
+    expect(appShellSource).not.toContain('t("nav.aiEvalExperiments")');
+    expect(appShellSource).not.toContain('t("nav.aiEvalProduction")');
+    expect(workspaceSource).toContain('section === "datasets"');
+    expect(workspaceSource).toContain('section === "evaluations"');
+    expect(workspaceSource).not.toContain('section === "production"');
   });
 
-  test("covers only the approved AI Eval sections and links settings without route-local GraphQL", () => {
-    for (const section of ["datasets", "scorers", "experiments", "production"]) {
-      // sections are selected by URL tab param — not by Tabs component value attributes
-      expect(routeSource).toContain(`tab === "${section}"`);
-    }
-    expect(routeSource).not.toContain('tab === "runs"');
-    expect(routeSource).not.toContain('tab === "annotations"');
-    expect(routeSource).not.toContain('tab === "overview"');
-    expect(routeSource).not.toContain('tab === "optimizations"');
-    expect(routeSource).toContain("/settings/ai-eval");
-    expect(routeSource).toContain("controlClient.getProjectAiSettings");
-    expect(routeSource).toContain("telemetryClient.getAiQualityOverview");
-    expect(routeSource).not.toContain("requestAiEvalGraphQL");
-    expect(routeSource).not.toContain("Project AI Eval settings");
-    expect(routeSource).not.toContain("localStorage");
-  });
-
-  test("uses shared AI Eval query builders for route data inputs", () => {
-    expect(routeSource).toContain("buildDatasetSearchInput");
-    expect(routeSource).toContain("buildScorerSearchInput");
-    expect(routeSource).toContain("buildExperimentSearchInput");
-    expect(routeSource).toContain("buildAiQualityOverviewInput");
-    expect(routeSource).toContain("@cloudgrid/ui-contracts");
-  });
-
-  test("wires dataset import through a dedicated workflow with staged upload, preview, and commit only", () => {
-    expect(routeSource).toContain("DatasetImportWorkflow");
-    expect(routeSource).toContain("data-ai-eval-dataset-import-workflow");
-    expect(routeSource).not.toContain("DatasetImportSheet");
-    expect(routeSource).toContain('"/api/ai-eval/dataset-imports/uploads"');
-    expect(routeSource).toContain('formData.append("projectId"');
-    expect(routeSource).toContain('formData.append("file"');
-    expect(routeSource).toContain("telemetryClient.prepareDatasetImport");
-    expect(routeSource).toContain("telemetryClient.commitDatasetImport");
-    expect(routeSource).toContain("allowPartialCommit");
-    expect(routeSource).toContain("valid_rows_only");
-    expect(routeSource).toContain("reject_if_any_error");
-  });
-
-  test("keeps dataset import mapping explicit and export same-origin", () => {
-    for (const mappingTarget of [
-      "input",
-      "expected",
-      "metadata",
-      "sourceTraceId",
-      "sourceSpanId",
-      "split",
-      "reviewStatus",
+  test("uses v2 GraphQL client methods directly", () => {
+    for (const method of [
+      "searchEvaluationDefinitions",
+      "createEvaluationDefinition",
+      "searchEvaluationRuns",
+      "startEvaluationRun",
+      "searchEvaluationComparisons",
+      "createEvaluationComparison",
+      "searchOptimizationRuns",
+      "startOptimizationRun",
+      "promoteTargetSnapshot",
+      "updateDatasetItems",
     ]) {
-      expect(routeSource).toContain(mappingTarget);
+      expect(workspaceSource).toContain(`telemetryClient.${method}`);
     }
-    for (const sourceKind of ["column", "jsonPath", "constant", "defaultValue"]) {
-      expect(routeSource).toContain(sourceKind);
+    for (const legacyMethod of [
+      "searchScorers",
+      "createScorer",
+      "searchExperiments",
+      "createExperiment",
+      "startExperimentRun",
+      "getAiQualityOverview",
+    ]) {
+      expect(workspaceSource).not.toContain(`telemetryClient.${legacyMethod}`);
     }
-    expect(routeSource).toContain("DatasetExportDialog");
-    expect(routeSource).toContain("telemetryClient.startDatasetExport");
-    expect(routeSource).toContain("telemetryClient.getDatasetExport");
-    expect(routeSource).toContain("downloadSameOriginExport");
-    expect(routeSource).toContain("new URL(job.downloadUrl, window.location.origin)");
   });
 
-  test("exposes real dataset, scorer, and experiment administration actions", () => {
-    expect(routeSource).toContain("CreateDatasetDialog");
-    expect(routeSource).toContain("data-ai-eval-dataset-workbench");
-    expect(routeSource).toContain("telemetryClient.createDataset");
-    expect(routeSource).toContain("AddDatasetRowDialog");
-    expect(routeSource).toContain("telemetryClient.appendDatasetItems");
-    expect(routeSource).toContain("Input prompt");
-    expect(routeSource).toContain("Expected answer");
-    expect(routeSource).toContain("Expected JSON shape");
-    expect(routeSource).toContain('t("nav.aiEvalDatasets")');
-    expect(routeSource).not.toContain("needs the dataset item mutation contract");
-    expect(routeSource).toContain("CreateScorerDialog");
-    expect(routeSource).toContain("telemetryClient.createScorer");
-    expect(routeSource).toContain("Scorer template");
-    expect(routeSource).toContain("Match field");
-    expect(routeSource).toContain("scorerMatchFields");
-    expect(routeSource).toContain("Value type");
-    expect(routeSource).toContain("Expected value");
-    expect(routeSource).toContain("resultKind");
-    expect(routeSource).toContain("scorerRequirementsForTemplate");
-    expect(routeSource).toContain("scorerFieldToJsonPointer");
-    expect(routeSource).toContain("actualPath");
-    expect(routeSource).toContain("expectedPath");
-    expect(routeSource).toContain("judgeModelAlias");
-    expect(routeSource).not.toContain("Definition JSON");
-    expect(routeSource).toContain("CreateExperimentDialog");
-    expect(routeSource).toContain("telemetryClient.createExperiment");
-    expect(routeSource).toContain("Solver kind");
-    expect(routeSource).toContain("Solver name");
-    expect(routeSource).not.toContain("Solver reference JSON");
-    expect(routeSource).toContain("StartExperimentRunButton");
-    expect(routeSource).toContain("telemetryClient.startExperimentRun");
-    expect(routeSource).toContain("Run evaluation");
+  test("supports raw JSON schema and row validation without a JSON builder", () => {
+    expect(workspaceSource).toContain("Input JSON schema");
+    expect(workspaceSource).toContain("Expected JSON schema");
+    expect(workspaceSource).toContain("parseAndValidateValue");
+    expect(viewModelSource).toContain("validateAgainstJsonSchema");
+    expect(workspaceSource).not.toContain("Expected JSON shape");
+    expect(workspaceSource).not.toContain("buildExpectedJsonValue");
+  });
+
+  test("keeps dataset import, export, split, curation, and trace picker v2-shaped", () => {
+    expect(workspaceSource).toContain("DatasetImportDialog");
+    expect(workspaceSource).toContain("data-ai-eval-dataset-import-workflow");
+    expect(workspaceSource).toContain("telemetryClient.prepareDatasetImport");
+    expect(workspaceSource).toContain("telemetryClient.commitDatasetImport");
+    expect(workspaceSource).toContain("telemetryClient.startDatasetExport");
+    expect(workspaceSource).toContain("valid_rows_only");
+    expect(workspaceSource).toContain("reject_if_any_error");
+    expect(workspaceSource).toContain("sourceTraceId");
+    expect(workspaceSource).toContain("sourceSpanId");
+    expect(workspaceSource).toContain("DATASET_SPLITS");
+    expect(workspaceSource).toContain("DATASET_CURATION_STATUSES");
+    expect(viewModelSource).toContain("compatibleTraceImportDatasets");
+    expect(viewModelSource).toContain("datasetHasExtractionSettings");
+  });
+
+  test("renders run detail, comparison, optimization, and promotion surfaces", () => {
+    expect(workspaceSource).toContain("EvaluationRunDetail");
+    expect(workspaceSource).toContain("trajectorySummary");
+    expect(workspaceSource).toContain("importantSteps");
+    expect(workspaceSource).toContain("ComparisonView");
+    expect(workspaceSource).toContain("OptimizationRunDetailView");
+    expect(workspaceSource).toContain("TargetPromotionDialog");
+    expect(workspaceSource).toContain("Quick-shot phase");
+    expect(viewModelSource).toContain("quick-shot");
+    expect(workspaceSource).toContain("Promote");
   });
 });

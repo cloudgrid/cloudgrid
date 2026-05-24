@@ -480,7 +480,7 @@ const solverRefFields = `
   providerProfileId
 `;
 
-const baselineRefFields = `
+const _baselineRefFields = `
   kind
   experimentRunId
   promptVersion {
@@ -491,7 +491,7 @@ const baselineRefFields = `
   }
 `;
 
-const optimizationConfigFields = `
+const _optimizationConfigFields = `
   optimizerKind
   bootstrapFewshot {
     candidateCount
@@ -844,6 +844,41 @@ export const appendDatasetItemsOperation = `
   }
 `;
 
+export const updateDatasetItemsOperation = `
+  mutation UpdateDatasetItems($input: UpdateDatasetItemsInput!) {
+    updateDatasetItems(input: $input) {
+      id
+      name
+      description
+      currentVersionId
+      currentVersion { id version digest createdAt }
+      createdAt
+      itemCount
+      readyItemCount
+      splitCounts
+      health {
+        status
+        readyItemCount
+        totalItemCount
+        splitCounts
+        duplicateCandidateCount
+        leakageWarningCount
+        missingExpectedCount
+        schemaIssueCount
+        smallDataset
+        warnings
+      }
+      tags
+      items {
+        items {
+          ${datasetItemFields}
+        }
+        nextCursor
+      }
+    }
+  }
+`;
+
 export const evaluationDefinitionsOperation = `
   query EvaluationDefinitions($input: EvaluationDefinitionSearchInput) {
     evaluationDefinitions(input: $input) {
@@ -1018,6 +1053,29 @@ export const startOptimizationRunOperation = `
       createdAt
       startedAt
       endedAt
+    }
+  }
+`;
+
+export const optimizationRunsOperation = `
+  query OptimizationRuns($input: OptimizationRunSearchInput) {
+    optimizationRuns(input: $input) {
+      items {
+        id
+        projectId
+        status
+        baselineTargetSnapshotId
+        candidateTargetSnapshotIds
+        causedEvaluationRunIds
+        comparisonIds
+        selectedCandidateSnapshotId
+        promotionRecordId
+        budgetSnapshot
+        createdAt
+        startedAt
+        endedAt
+      }
+      nextCursor
     }
   }
 `;

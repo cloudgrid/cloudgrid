@@ -31,7 +31,7 @@ tickets:
   TICKET-205:
     title: Frontend AI Eval v2 workspace
     wave: 3
-    status: ready
+    status: done
     file: plans/ai-eval-v2-migration/wave_03_runner_frontend/tickets/TICKET-205-frontend-v2-workspace.md
     depends_on: [TICKET-201]
     blocked_by: []

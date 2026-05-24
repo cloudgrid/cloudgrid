@@ -2,7 +2,7 @@
 id: TICKET-205
 title: Frontend AI Eval v2 workspace
 wave: 3
-status: ready
+status: done
 parallel_group: ai_eval_v2_runner_frontend_parallel
 depends_on: [TICKET-201]
 blocked_by: []
@@ -13,8 +13,10 @@ spec_refs:
   - specs/05-frontend/product-ux-concept.md
   - specs/03-contracts/graphql/public-schema.graphql
 write_scope:
+  - apps/frontend/src/routes/app-shell.tsx
   - apps/frontend/src/routes/ai-eval-route.tsx
   - apps/frontend/src/features/ai-eval
+  - apps/frontend/src/lib/i18n.ts
   - apps/frontend/test
   - apps/packages/public-api-client/src
   - apps/packages/ui-contracts/src
@@ -141,3 +143,19 @@ Then open the local app and verify desktop and mobile AI Eval views.
 
 Integration agents can rely on v2 user flows and stable frontend operation
 documents.
+
+## Completion Evidence
+
+- `PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/frontend typecheck`
+- `PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/frontend test -- ai-eval`
+- `PATH="$HOME/.bun/bin:$PATH" bun run contracts:check`
+- `PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/frontend lint` (passes with
+  pre-existing AI Chat non-null assertion warnings outside this ticket)
+- `PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/public-api-client typecheck`
+- `PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/public-api-client lint`
+- `git diff --check -- apps/frontend apps/packages/public-api-client apps/packages/ui-contracts plans/ai-eval-v2-migration`
+- Browser verification against current BFF schema on desktop and mobile:
+  route shell renders; live data is blocked by local bridge/runtime drift where
+  available dataset rows omit v2 `currentVersionId`.
+
+Completed at: 2026-05-24T14:21:08Z
