@@ -721,6 +721,22 @@ const datasetCurationStatusSchema = z.enum([
   "rejected",
 ]);
 const datasetReviewStatusSchema = datasetCurationStatusSchema;
+const evaluationFamilySchema = z.enum([
+  "classification",
+  "extraction",
+  "freeform_answer",
+  "tool_use",
+  "agent_loop",
+  "workflow",
+  "skill",
+]);
+const datasetValueTypeSchema = z.enum(["text", "json"]);
+const retentionProfileSchema = z.enum([
+  "balanced",
+  "fast_iteration",
+  "audit_friendly",
+  "minimal_storage",
+]);
 const providerKindSchema = z.enum([
   "openai",
   "anthropic",
@@ -848,24 +864,80 @@ const annotationQueueSearchInputSchema = aiSearchPageSchema.extend({
   scorerId: z.string().min(1).optional(),
   targetKind: evalTargetKindSchema.optional(),
 });
+const datasetMetricSettingInputSchema = z.object({
+  metricId: z.string().min(1),
+  metricVersion: z.string().min(1).optional().nullable(),
+  options: z.unknown().optional(),
+});
+const datasetSettingsInputSchema = z.object({
+  evaluationFamily: evaluationFamilySchema,
+  inputType: datasetValueTypeSchema,
+  expectedType: datasetValueTypeSchema,
+  inputJsonSchema: z.unknown().optional().nullable(),
+  expectedJsonSchema: z.unknown().optional().nullable(),
+  defaultSplit: datasetSplitSchema,
+  intakePolicy: z.object({
+    manualDefaultStatus: datasetCurationStatusSchema.optional().nullable(),
+    importDefaultStatus: datasetCurationStatusSchema.optional().nullable(),
+    traceDefaultStatus: datasetCurationStatusSchema.optional().nullable(),
+  }),
+  traceExtractionSettings: z
+    .object({
+      inputPath: z.string().min(1),
+      expectedPath: z.string().min(1).optional().nullable(),
+      observedOutputPath: z.string().min(1).optional().nullable(),
+      metadataPaths: z.array(z.string().min(1)).optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+  anonymizationPolicy: z
+    .object({
+      mode: z.enum(["off", "realistic", "redact"]),
+      policyId: z.string().min(1).optional().nullable(),
+      policyVersion: z.number().int().min(1).optional().nullable(),
+      consistencyScope: z.enum(["project", "dataset"]).optional().nullable(),
+      blockedEntityTypes: z.array(z.string().min(1)).optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+  defaultMetricSettings: z.array(datasetMetricSettingInputSchema),
+  retentionProfile: retentionProfileSchema,
+});
 const createDatasetInputSchema = z.object({
+  projectId: z.string().min(1),
   name: z.string().min(1),
-  description: z.string().min(1).optional(),
-  tags: z.array(z.string().min(1)).optional(),
+  description: z.string().min(1).optional().nullable(),
+  tags: z.array(z.string().min(1)).optional().nullable(),
+  settings: datasetSettingsInputSchema,
+  idempotencyKey: z.string().min(1),
+});
+const aiEvalSourceRefInputSchema = z.object({
+  kind: z.enum(["trace", "span", "evaluation_run", "evaluation_item_run", "import", "candidate", "manual"]),
+  traceId: z.string().min(1).optional().nullable(),
+  spanId: z.string().min(1).optional().nullable(),
+  evaluationRunId: z.string().min(1).optional().nullable(),
+  evaluationItemRunId: z.string().min(1).optional().nullable(),
+  importJobId: z.string().min(1).optional().nullable(),
+  candidateId: z.string().min(1).optional().nullable(),
+  metadata: z.unknown().optional(),
 });
 const datasetItemInputSchema = z.object({
   input: z.unknown(),
   expected: z.unknown().optional().nullable(),
+  observedOutput: z.unknown().optional().nullable(),
+  reason: z.string().optional().nullable(),
   metadata: z.unknown().optional(),
-  sourceTraceId: z.string().min(1).optional(),
-  sourceSpanId: z.string().min(1).optional(),
-  split: datasetSplitSchema.optional(),
-  reviewStatus: datasetReviewStatusSchema.optional(),
+  sourceRefs: z.array(aiEvalSourceRefInputSchema).optional().nullable(),
+  split: datasetSplitSchema.optional().nullable(),
+  curationStatus: datasetCurationStatusSchema.optional().nullable(),
+  contentTreatment: datasetContentTreatmentSchema.optional().nullable(),
+  anonymizationProvenance: z.unknown().optional().nullable(),
 });
 const appendDatasetItemsInputSchema = z.object({
   datasetId: z.string().min(1),
-  expectedDatasetVersion: z.number().int().min(1),
+  expectedDatasetVersionId: z.string().min(1).optional().nullable(),
   items: z.array(datasetItemInputSchema).min(1).max(500),
+  idempotencyKey: z.string().min(1),
 });
 const datasetImportFormatSchema = z.enum(["jsonl", "json_array", "csv", "zip"]);
 const datasetExportFormatSchema = z.enum(["jsonl", "json_array", "csv"]);

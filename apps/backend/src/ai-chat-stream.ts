@@ -1867,9 +1867,9 @@ function datasetTableArtifact(result: DatasetSearchResult): PendingAiChatArtifac
     "AI Eval datasets table",
     result.items.map((dataset) => ({
       dataset: dataset.name,
-      version: dataset.version,
+      version: dataset.currentVersion.version,
       items: dataset.itemCount,
-      reviewed: dataset.reviewedItemCount,
+      ready: dataset.readyItemCount,
       health: dataset.health.status,
       tags: dataset.tags.join(", "),
     })),
@@ -2271,9 +2271,9 @@ function agentRunRow(run: AgentRunSearchResult["items"][number]) {
 function datasetRow(dataset: DatasetSearchResult["items"][number]) {
   return [
     markdownTableCell(dataset.name),
-    String(dataset.version),
+    String(dataset.currentVersion.version),
     String(dataset.itemCount),
-    String(dataset.reviewedItemCount),
+    String(dataset.readyItemCount),
     markdownTableCell(dataset.health.status),
     markdownTableCell(dataset.tags.join(", ") || "-"),
   ].join(" | ");

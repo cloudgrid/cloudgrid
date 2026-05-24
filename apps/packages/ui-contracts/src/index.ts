@@ -352,6 +352,13 @@ export type RetentionRole =
 
 export type EvaluationDatasetVersionPolicy = "latest_ready" | "pinned";
 
+export type DatasetVersionSource =
+  | "manual"
+  | "import"
+  | "trace_import"
+  | "optimization"
+  | "candidate_commit";
+
 export type EvaluationTargetKind =
   | "prompt"
   | "external_adapter"
@@ -2040,21 +2047,28 @@ export interface AgentRun {
 
 export interface Dataset {
   id: string;
+  projectId: string;
   name: string;
   description?: string | null;
-  version: number;
+  currentVersionId: string;
+  currentVersion: DatasetVersion;
+  settings: DatasetSettings;
   createdAt: DateTime;
+  createdBy: string;
+  updatedAt: DateTime;
+  updatedBy: string;
   itemCount: number;
-  reviewedItemCount: number;
+  readyItemCount: number;
   splitCounts: JSONValue;
   health: DatasetHealth;
   tags: string[];
   items?: DatasetItemSearchResult;
+  versions?: DatasetVersionSearchResult;
 }
 
 export interface DatasetHealth {
   status: DatasetHealthStatus;
-  reviewedItemCount: number;
+  readyItemCount: number;
   totalItemCount: number;
   splitCounts: JSONValue;
   duplicateCandidateCount: number;
@@ -2068,22 +2082,88 @@ export interface DatasetHealth {
 export interface DatasetItem {
   id: string;
   datasetId: string;
+  latestRevisionId: string;
+  latestRevision: DatasetItemRevision;
+  createdAt: DateTime;
+  createdBy: string;
+  updatedAt: DateTime;
+  updatedBy: string;
+}
+
+export interface DatasetVersion {
+  id: string;
+  datasetId: string;
   version: number;
+  digest: string;
+  createdAt: DateTime;
+  createdBy: string;
+  settingsSnapshot: DatasetSettings;
+  itemRevisionIds: string[];
+  parentVersionId?: string | null;
+  changeSummary?: string | null;
+  source: DatasetVersionSource;
+}
+
+export interface DatasetSettings {
+  evaluationFamily: EvaluationFamily;
+  inputType: DatasetValueType;
+  expectedType: DatasetValueType;
+  inputJsonSchema?: JSONValue;
+  expectedJsonSchema?: JSONValue;
+  defaultSplit: DatasetSplit;
+  intakePolicy: DatasetIntakePolicy;
+  traceExtractionSettings?: DatasetTraceExtractionSettings | null;
+  anonymizationPolicy?: DatasetAnonymizationPolicy | null;
+  defaultMetricSettings: MetricSetting[];
+  retentionProfile: RetentionProfile;
+}
+
+export interface DatasetIntakePolicy {
+  manualDefaultStatus: DatasetCurationStatus;
+  importDefaultStatus: DatasetCurationStatus;
+  traceDefaultStatus: DatasetCurationStatus;
+}
+
+export interface DatasetTraceExtractionSettings {
+  inputPath: string;
+  expectedPath?: string | null;
+  observedOutputPath?: string | null;
+  metadataPaths: string[];
+}
+
+export interface DatasetAnonymizationPolicy {
+  mode: DatasetAnonymizationMode;
+  policyId?: string | null;
+  policyVersion?: number | null;
+  consistencyScope: DatasetAnonymizationConsistencyScope;
+  blockedEntityTypes: string[];
+}
+
+export interface MetricSetting {
+  metricId: string;
+  metricVersion?: string | null;
+  options: JSONValue;
+}
+
+export interface DatasetItemRevision {
+  id: string;
+  datasetItemId: string;
+  datasetId: string;
   input: JSONValue;
   expected?: JSONValue;
+  observedOutput?: JSONValue;
+  reason: string;
   metadata: JSONValue;
-  sourceTraceId?: string | null;
-  sourceSpanId?: string | null;
+  sourceRefs: AiEvalSourceRef[];
   split: DatasetSplit;
-  reviewStatus: DatasetReviewStatus;
-  synthetic: boolean;
-  targetShape: DatasetTargetShape;
+  curationStatus: DatasetCurationStatus;
+  curationNote?: string | null;
   contentTreatment: DatasetContentTreatment;
-  anonymization?: DatasetAnonymizationProvenance | null;
-  quarantineStatus: DatasetItemQuarantineStatus;
-  removedAt?: DateTime | null;
-  duplicateOfItemId?: string | null;
-  leakageWarnings: string[];
+  anonymizationProvenance?: DatasetAnonymizationProvenance | null;
+  createdAt: DateTime;
+  createdBy: string;
+  updatedAt: DateTime;
+  updatedBy: string;
 }
 
 export interface DatasetAnonymizationProvenance {
@@ -3057,6 +3137,10 @@ export interface DatasetSearchResult {
 }
 export interface DatasetItemSearchResult {
   items: DatasetItem[];
+  nextCursor?: string | null;
+}
+export interface DatasetVersionSearchResult {
+  items: DatasetVersion[];
   nextCursor?: string | null;
 }
 export interface DatasetCandidateSearchResult {

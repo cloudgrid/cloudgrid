@@ -16,8 +16,10 @@ import type {
   CreateAiChatConversationInput,
   CreateIngestCredentialInput,
   CreateProjectInput,
+  Dataset,
   DatasetExportJob,
   DatasetImportJob,
+  DatasetItem,
   EvaluationDefinition,
   EvaluationRun,
   ExperimentRun,
@@ -494,30 +496,10 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
       return aiQualityOverview(input.projectId);
     },
     async createDataset() {
-      return {
-        id: "dataset-1",
-        name: "Regression",
-        version: 1,
-        createdAt: "2026-05-12T10:00:00.000Z",
-        itemCount: 0,
-        reviewedItemCount: 0,
-        splitCounts: {},
-        health: datasetHealth(),
-        tags: [],
-      };
+      return datasetShape();
     },
     async appendDatasetItems() {
-      return {
-        id: "dataset-1",
-        name: "Regression",
-        version: 1,
-        createdAt: "2026-05-12T10:00:00.000Z",
-        itemCount: 0,
-        reviewedItemCount: 0,
-        splitCounts: {},
-        health: datasetHealth(),
-        tags: [],
-      };
+      return datasetShape();
     },
     async prepareDatasetImport() {
       return datasetImportJob();
@@ -532,33 +514,21 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
       return { items: [], nextCursor: null };
     },
     async commitDatasetCandidates() {
-      return {
-        id: "dataset-1",
-        name: "Regression",
-        version: 2,
-        createdAt: "2026-05-12T10:00:00.000Z",
+      return datasetShape({
+        currentVersionId: "dataset-version-2",
+        currentVersion: {
+          ...datasetVersionShape(),
+          id: "dataset-version-2",
+          version: 2,
+          itemRevisionIds: ["dataset-item-revision-1"],
+        },
         itemCount: 1,
-        reviewedItemCount: 1,
+        readyItemCount: 1,
         splitCounts: { validation: 1 },
-        health: datasetHealth(),
-        tags: [],
-      };
+      });
     },
     async promoteSpanToDatasetItem() {
-      return {
-        id: "dataset-item-1",
-        datasetId: "dataset-1",
-        version: 1,
-        input: {},
-        metadata: {},
-        split: "training" as const,
-        reviewStatus: "unreviewed" as const,
-        synthetic: false,
-        targetShape: "single_turn" as const,
-        contentTreatment: "original" as const,
-        quarantineStatus: "none" as const,
-        leakageWarnings: [],
-      };
+      return datasetItemShape();
     },
     async createScorer() {
       return {
@@ -945,7 +915,7 @@ function projectMember(overrides: Partial<ProjectMember> = {}): ProjectMember {
 function datasetHealth() {
   return {
     status: "needs_review" as const,
-    reviewedItemCount: 0,
+    readyItemCount: 0,
     totalItemCount: 0,
     splitCounts: {},
     duplicateCandidateCount: 0,
@@ -954,6 +924,94 @@ function datasetHealth() {
     schemaIssueCount: 0,
     smallDataset: true,
     warnings: [],
+  };
+}
+
+function datasetSettingsShape() {
+  return {
+    evaluationFamily: "classification" as const,
+    inputType: "json" as const,
+    expectedType: "json" as const,
+    inputJsonSchema: {},
+    expectedJsonSchema: {},
+    defaultSplit: "validation" as const,
+    intakePolicy: {
+      manualDefaultStatus: "draft" as const,
+      importDefaultStatus: "needs_review" as const,
+      traceDefaultStatus: "needs_expected" as const,
+    },
+    traceExtractionSettings: null,
+    anonymizationPolicy: null,
+    defaultMetricSettings: [],
+    retentionProfile: "balanced" as const,
+  };
+}
+
+function datasetVersionShape() {
+  return {
+    id: "dataset-version-1",
+    datasetId: "dataset-1",
+    version: 1,
+    digest: "digest-1",
+    itemRevisionIds: [],
+    settingsSnapshot: datasetSettingsShape(),
+    changeSummary: "Initial dataset version",
+    source: "manual" as const,
+    createdAt: "2026-05-12T10:00:00.000Z",
+    createdBy: "user-1",
+  };
+}
+
+function datasetShape(overrides: Partial<Dataset> = {}): Dataset {
+  return {
+    id: "dataset-1",
+    projectId: "project-1",
+    name: "Regression",
+    description: null,
+    currentVersionId: "dataset-version-1",
+    currentVersion: datasetVersionShape(),
+    settings: datasetSettingsShape(),
+    createdAt: "2026-05-12T10:00:00.000Z",
+    createdBy: "user-1",
+    updatedAt: "2026-05-12T10:00:00.000Z",
+    updatedBy: "user-1",
+    itemCount: 0,
+    readyItemCount: 0,
+    splitCounts: {},
+    health: datasetHealth(),
+    tags: [],
+    ...overrides,
+  };
+}
+
+function datasetItemShape(): DatasetItem {
+  return {
+    id: "dataset-item-1",
+    datasetId: "dataset-1",
+    latestRevisionId: "dataset-item-revision-1",
+    latestRevision: {
+      id: "dataset-item-revision-1",
+      datasetItemId: "dataset-item-1",
+      datasetId: "dataset-1",
+      input: {},
+      expected: null,
+      observedOutput: null,
+      reason: "",
+      metadata: {},
+      sourceRefs: [],
+      split: "training" as const,
+      curationStatus: "draft" as const,
+      contentTreatment: "original" as const,
+      anonymizationProvenance: null,
+      createdAt: "2026-05-12T10:00:00.000Z",
+      createdBy: "user-1",
+      updatedAt: "2026-05-12T10:00:00.000Z",
+      updatedBy: "user-1",
+    },
+    createdAt: "2026-05-12T10:00:00.000Z",
+    createdBy: "user-1",
+    updatedAt: "2026-05-12T10:00:00.000Z",
+    updatedBy: "user-1",
   };
 }
 

@@ -484,10 +484,34 @@ func shapeDatasetRow(row map[string]any) map[string]any {
 	itemCount := intValueFromAny(item["itemCount"])
 	readyItemCount := intValueFromAny(defaultAny(item["readyItemCount"], item["reviewedItemCount"]))
 	reviewedItemCount := intValueFromAny(defaultAny(item["reviewedItemCount"], readyItemCount))
-	item["version"] = maxIntValue(intValueFromAny(item["version"]), 1)
+	currentVersion := objectMap(item["currentVersion"])
+	version := maxIntValue(intValueFromAny(defaultAny(currentVersion["version"], defaultAny(item["currentVersion"], item["version"]))), 1)
 	item["itemCount"] = itemCount
 	item["readyItemCount"] = readyItemCount
 	item["reviewedItemCount"] = reviewedItemCount
+	datasetID := aiEvalStringValue(item, "id", "")
+	settings := mapDefault(defaultAny(item["settings"], defaultDatasetSettings()))
+	currentVersionID := aiEvalStringValue(item, "currentVersionId", "")
+	if currentVersionID == "" && datasetID != "" {
+		currentVersionID = datasetID + ":version:" + strconv.Itoa(version)
+	}
+	item["currentVersionId"] = currentVersionID
+	currentVersion["id"] = aiEvalStringValue(currentVersion, "id", currentVersionID)
+	currentVersion["datasetId"] = aiEvalStringValue(currentVersion, "datasetId", datasetID)
+	currentVersion["version"] = version
+	currentVersion["digest"] = aiEvalStringValue(currentVersion, "digest", aiEvalStringValue(item, "currentDigest", "digest-unknown"))
+	currentVersion["createdAt"] = aiEvalStringValue(currentVersion, "createdAt", aiEvalStringValue(item, "createdAt", fallbackTime()))
+	currentVersion["createdBy"] = aiEvalStringValue(currentVersion, "createdBy", aiEvalStringValue(item, "createdBy", "system"))
+	currentVersion["settingsSnapshot"] = defaultAny(currentVersion["settingsSnapshot"], settings)
+	currentVersion["itemRevisionIds"] = stringsFromAny(defaultAny(currentVersion["itemRevisionIds"], item["itemRevisionIds"]))
+	currentVersion["parentVersionId"] = defaultAny(currentVersion["parentVersionId"], item["parentVersionId"])
+	currentVersion["changeSummary"] = defaultAny(currentVersion["changeSummary"], item["changeSummary"])
+	currentVersion["source"] = aiEvalStringValue(currentVersion, "source", aiEvalStringValue(item, "source", "manual"))
+	item["currentVersion"] = currentVersion
+	item["settings"] = settings
+	item["createdBy"] = aiEvalStringValue(item, "createdBy", "system")
+	item["updatedAt"] = aiEvalStringValue(item, "updatedAt", aiEvalStringValue(item, "createdAt", fallbackTime()))
+	item["updatedBy"] = aiEvalStringValue(item, "updatedBy", aiEvalStringValue(item, "createdBy", "system"))
 	splitCounts := objectMap(item["splitCounts"])
 	if len(splitCounts) == 0 {
 		splitCounts = map[string]any{}
@@ -518,7 +542,7 @@ func shapeDatasetRow(row map[string]any) map[string]any {
 func shapeDatasetItemRow(row map[string]any) map[string]any {
 	item := cloneParams(row)
 	applyRecordID(item)
-	item["version"] = maxIntValue(intValueFromAny(item["version"]), 1)
+	itemID := aiEvalStringValue(item, "id", aiEvalStringValue(item, "datasetItemId", "item-unknown"))
 	if _, ok := item["metadata"]; !ok || item["metadata"] == nil {
 		item["metadata"] = map[string]any{}
 	}
@@ -530,19 +554,52 @@ func shapeDatasetItemRow(row map[string]any) map[string]any {
 	}
 	item["synthetic"] = boolFromAny(item["synthetic"])
 	item["leakageWarnings"] = stringsFromAny(item["leakageWarnings"])
+	latestRevision := mapDefault(item["latestRevision"])
+	if len(latestRevision) == 0 {
+		latestRevision = shapeDatasetItemRevisionRow(map[string]any{
+			"id":                      aiEvalStringValue(item, "latestRevisionId", itemID+":revision:1"),
+			"datasetItemId":           itemID,
+			"datasetId":               item["datasetId"],
+			"input":                   item["input"],
+			"expected":                item["expected"],
+			"observedOutput":          item["observedOutput"],
+			"reason":                  item["reason"],
+			"metadata":                item["metadata"],
+			"sourceRefs":              item["sourceRefs"],
+			"split":                   item["split"],
+			"curationStatus":          defaultAny(item["curationStatus"], item["reviewStatus"]),
+			"contentTreatment":        item["contentTreatment"],
+			"anonymizationProvenance": item["anonymizationProvenance"],
+			"createdAt":               item["createdAt"],
+			"createdBy":               item["createdBy"],
+			"updatedAt":               item["updatedAt"],
+			"updatedBy":               item["updatedBy"],
+		})
+	}
+	item["id"] = itemID
+	item["latestRevision"] = latestRevision
+	item["latestRevisionId"] = aiEvalStringValue(item, "latestRevisionId", aiEvalStringValue(latestRevision, "id", itemID+":revision:1"))
+	item["createdAt"] = aiEvalStringValue(item, "createdAt", fallbackTime())
+	item["createdBy"] = aiEvalStringValue(item, "createdBy", "system")
+	item["updatedAt"] = aiEvalStringValue(item, "updatedAt", item["createdAt"].(string))
+	item["updatedBy"] = aiEvalStringValue(item, "updatedBy", item["createdBy"].(string))
 	return item
 }
 
 func shapeDatasetItemRevisionRow(row map[string]any) map[string]any {
 	item := cloneParams(row)
 	applyRecordID(item)
-	item["revision"] = maxIntValue(intValueFromAny(item["revision"]), 1)
+	item["datasetId"] = aiEvalStringValue(item, "datasetId", "")
 	item["reason"] = aiEvalStringValue(item, "reason", "")
 	item["sourceRefs"] = arrayDefault(item["sourceRefs"])
 	item["metadata"] = mapDefault(item["metadata"])
 	item["split"] = enumDefault(item, "split", "validation")
 	item["curationStatus"] = enumDefault(item, "curationStatus", "draft")
 	item["contentTreatment"] = enumDefault(item, "contentTreatment", "original")
+	item["createdAt"] = aiEvalStringValue(item, "createdAt", fallbackTime())
+	item["createdBy"] = aiEvalStringValue(item, "createdBy", "system")
+	item["updatedAt"] = aiEvalStringValue(item, "updatedAt", item["createdAt"].(string))
+	item["updatedBy"] = aiEvalStringValue(item, "updatedBy", item["createdBy"].(string))
 	return item
 }
 
@@ -555,6 +612,22 @@ func shapeDatasetVersionRow(row map[string]any) map[string]any {
 	item["changeSummary"] = aiEvalStringValue(item, "changeSummary", "")
 	item["source"] = enumDefault(item, "source", "manual")
 	return item
+}
+
+func defaultDatasetSettings() map[string]any {
+	return map[string]any{
+		"evaluationFamily": "classification",
+		"inputType":        "json",
+		"expectedType":     "json",
+		"defaultSplit":     "validation",
+		"intakePolicy": map[string]any{
+			"manualDefaultStatus": "draft",
+			"importDefaultStatus": "needs_review",
+			"traceDefaultStatus":  "needs_expected",
+		},
+		"defaultMetricSettings": []any{},
+		"retentionProfile":      "balanced",
+	}
 }
 
 func shapeScorerRow(row map[string]any) map[string]any {

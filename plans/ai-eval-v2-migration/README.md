@@ -26,14 +26,14 @@ Dataset/Evaluation/Metric/Target model.
 ## Remaining Runtime Drift
 
 Contract drift checks pass, and the implementation migration is now limited to
-final integration fixtures, docs, and any runtime environment drift found by
-those gates.
+final Go and browser/API acceptance evidence.
 
 Browser verification of `TICKET-205` found one local runtime drift signal: the
 current BFF schema expects v2 dataset fields such as `currentVersionId`, but the
 locally available bridge/runtime data returned older dataset objects. `TICKET-206`
-should make this visible in integration fixtures before declaring end-to-end
-completion.
+now normalizes v2 dataset versions, settings, ready counts, and item revisions
+at the BFF/storage-read boundary; final completion still needs Go workspace and
+browser/API end-to-end evidence in an environment with those tools available.
 
 The removed product concepts are:
 

@@ -36,13 +36,13 @@ export function datasetCurrentVersionId(dataset: Dataset) {
     currentVersionId?: string | null;
     currentVersion?: { id?: string | null };
   };
-  return value.currentVersionId ?? value.currentVersion?.id ?? String(dataset.version);
+  return value.currentVersionId ?? value.currentVersion?.id ?? "";
 }
 
 export function datasetReadyItemCount(dataset: Dataset) {
   const value = dataset as Dataset & { readyItemCount?: number | null };
   const health = dataset.health as typeof dataset.health & { readyItemCount?: number | null };
-  return value.readyItemCount ?? health.readyItemCount ?? dataset.reviewedItemCount ?? 0;
+  return value.readyItemCount ?? health.readyItemCount ?? 0;
 }
 
 export function datasetHasExtractionSettings(dataset: Dataset) {

@@ -98,15 +98,16 @@ implementation_ready_status:
       - BFF v2 bridge validation and resolver foundation is complete in TICKET-201.
       - Storage-write AI Eval v2 persistence is complete in TICKET-202.
       - Storage-read AI Eval v2 query semantics are complete in TICKET-203.
-      - plans/ai-eval-v2-migration is implementation-ready with TICKET-204 through TICKET-206 ready and dependency-scoped.
+      - AI Eval runner v2 evaluation orchestration is complete in TICKET-204.
+      - Frontend AI Eval v2 workspace is complete in TICKET-205.
+      - TICKET-206 integration fixtures, docs, and runtime v2 dataset shape normalization are complete enough to unblock final verification.
       - bun run contracts:check passes.
       - bun run typecheck passes.
       - go test -tags surrealdb ./core/storage-read/... ./core/storage-write/... passes.
       - spec check, plan lint, and wave readiness checks pass.
     remaining:
-      - Complete TICKET-204 AI Eval runner v2 evaluation orchestration.
-      - Complete TICKET-205 frontend AI Eval v2 workspace.
-      - Complete TICKET-206 AI Eval v2 integration docs and final gates.
+      - Complete TICKET-206 final Go workspace verification in an environment with Go available.
+      - Complete TICKET-206 browser/API end-to-end acceptance in an environment with browser automation available.
 implemented_surfaces:
   - metrics ingest, storage-write persistence, storage-read metric names/series/rich-series query, BFF GraphQL resolvers, and frontend metric explorer/dashboard widget surfaces
   - grpc otlp ingest on standard port 4317 for traces, logs, and metrics

@@ -2,10 +2,10 @@
 id: TICKET-206
 title: AI Eval v2 integration docs and final gates
 wave: 4
-status: blocked
+status: in_progress
 parallel_group: ai_eval_v2_integration_serial
 depends_on: [TICKET-202, TICKET-203, TICKET-204, TICKET-205]
-blocked_by: [runtime_v2_dataset_shape_drift]
+blocked_by: []
 spec_refs:
   - specs/01-domains/ai-eval.md
   - specs/02-capabilities/ai-eval/curate-datasets.md
@@ -134,9 +134,10 @@ CLOUDGRID_EVAL_EXTERNAL_ADAPTER_TEST=1 bun run --cwd apps/packages/integration-s
 
 ## Handoff
 
-The feature can be marked implementation-complete after the local integration
-runtime returns v2 dataset shapes through storage-read and the browser/API
-end-to-end path no longer fails on missing `Dataset.currentVersionId`.
+The runtime v2 dataset shape drift has a BFF/storage-read compatibility fix.
+The feature can be marked implementation-complete after Go workspace tests and
+browser/API end-to-end acceptance are rerun in an environment with Go and
+browser automation available.
 
 ## Completion Evidence
 
@@ -148,7 +149,7 @@ Completed scope:
 - Integration scenario package now contains AI Eval v2 dataset-evaluation and
   optimization quick-shot fixtures, including invalid expected JSON and adapter
   timeout failure cases.
-- Readiness report records the remaining runtime drift.
+- Readiness report records the remaining verification gap.
 
 Passing commands:
 
@@ -165,8 +166,9 @@ Passing commands:
 
 Blocked evidence:
 
-- Browser verification against the current BFF schema renders the desktop and
-  mobile AI Eval shell, but the local bridge/runtime data path returns legacy
-  dataset rows without v2 `currentVersionId`, causing GraphQL to reject
-  `Dataset.currentVersionId` as non-null. This prevents honestly claiming the
-  complete local end-to-end acceptance path.
+- The runtime dataset shape drift has been addressed by normalizing v2 dataset
+  versions, settings, ready counts, and item revisions at the BFF/storage-read
+  boundary.
+- Current shell environment has no `go`/`gofmt` binary on PATH, and the
+  node-repl browser check cannot import Playwright. This prevents honestly
+  claiming the complete Go and browser end-to-end acceptance path in this turn.

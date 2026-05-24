@@ -3220,13 +3220,37 @@ const bootstrapFewshotDiversityStrategySchema = z.enum([
   "by_cluster",
   "by_failure_mode",
 ]);
+const evaluationFamilySchema = z.enum([
+  "classification",
+  "extraction",
+  "freeform_answer",
+  "tool_use",
+  "agent_loop",
+  "workflow",
+  "skill",
+]);
+const datasetValueTypeSchema = z.enum(["text", "json"]);
 const datasetSplitSchema = z.enum(["training", "validation", "test"]);
-const datasetReviewStatusSchema = z.enum([
+const datasetCurationStatusSchema = z.enum([
   "draft",
   "needs_expected",
   "needs_review",
   "ready",
   "rejected",
+]);
+const datasetReviewStatusSchema = datasetCurationStatusSchema;
+const retentionProfileSchema = z.enum([
+  "balanced",
+  "fast_iteration",
+  "audit_friendly",
+  "minimal_storage",
+]);
+const datasetVersionSourceSchema = z.enum([
+  "manual",
+  "import",
+  "trace_import",
+  "optimization",
+  "candidate_commit",
 ]);
 const datasetTargetShapeSchema = z.enum([
   "single_turn",
@@ -3418,21 +3442,93 @@ const agentRunSchema = z.object({
   evalResults: z.array(evalResultSchema),
 });
 
-const datasetItemSchema = z.object({
-  id: z.string().min(1),
-  datasetId: z.string().min(1),
-  version: z.number().int(),
-  input: z.unknown(),
-  expected: z.unknown().optional().nullable(),
+const aiEvalSourceRefSchema = z.object({
+  kind: z.string().min(1),
+  traceId: z.string().optional().nullable(),
+  spanId: z.string().optional().nullable(),
+  evaluationRunId: z.string().optional().nullable(),
+  evaluationItemRunId: z.string().optional().nullable(),
+  importJobId: z.string().optional().nullable(),
+  candidateId: z.string().optional().nullable(),
   metadata: z.unknown(),
-  sourceTraceId: z.string().optional().nullable(),
-  sourceSpanId: z.string().optional().nullable(),
-  split: datasetSplitSchema,
-  reviewStatus: datasetReviewStatusSchema,
-  synthetic: z.boolean(),
-  duplicateOfItemId: z.string().optional().nullable(),
-  leakageWarnings: z.array(z.string()),
 });
+const datasetItemRevisionSchema = z.preprocess(
+  (value) => {
+    const item = value && typeof value === "object" ? compactNullish(value) : {};
+    const now = "1970-01-01T00:00:00.000Z";
+    return {
+      id: item.id ?? "revision-unknown",
+      datasetItemId: item.datasetItemId ?? item.id ?? "item-unknown",
+      datasetId: item.datasetId ?? "",
+      input: item.input ?? {},
+      expected: item.expected ?? null,
+      observedOutput: item.observedOutput ?? null,
+      reason: typeof item.reason === "string" ? item.reason : "",
+      metadata: item.metadata ?? {},
+      sourceRefs: Array.isArray(item.sourceRefs) ? item.sourceRefs : [],
+      split: item.split ?? "validation",
+      curationStatus: item.curationStatus ?? item.reviewStatus ?? "draft",
+      curationNote: item.curationNote ?? null,
+      contentTreatment: item.contentTreatment ?? "original",
+      anonymizationProvenance: item.anonymizationProvenance ?? item.anonymization ?? null,
+      createdAt: item.createdAt ?? now,
+      createdBy: item.createdBy ?? "system",
+      updatedAt: item.updatedAt ?? item.createdAt ?? now,
+      updatedBy: item.updatedBy ?? item.createdBy ?? "system",
+    };
+  },
+  z.object({
+    id: z.string().min(1),
+    datasetItemId: z.string().min(1),
+    datasetId: z.string().min(1),
+    input: z.unknown(),
+    expected: z.unknown().optional().nullable(),
+    observedOutput: z.unknown().optional().nullable(),
+    reason: z.string(),
+    metadata: z.unknown(),
+    sourceRefs: z.array(aiEvalSourceRefSchema),
+    split: datasetSplitSchema,
+    curationStatus: datasetCurationStatusSchema,
+    curationNote: z.string().optional().nullable(),
+    contentTreatment: datasetContentTreatmentSchema,
+    anonymizationProvenance: z.unknown().optional().nullable(),
+    createdAt: dateTimeSchema,
+    createdBy: z.string().min(1),
+    updatedAt: dateTimeSchema,
+    updatedBy: z.string().min(1),
+  }),
+);
+const datasetItemSchema = z.preprocess(
+  (value) => {
+    const item = value && typeof value === "object" ? compactNullish(value) : {};
+    const now = "1970-01-01T00:00:00.000Z";
+    const latestRevision = item.latestRevision ?? {
+      ...item,
+      id: item.latestRevisionId ?? item.id ?? "revision-unknown",
+      datasetItemId: item.id ?? item.datasetItemId ?? "item-unknown",
+    };
+    return {
+      id: item.id ?? item.datasetItemId ?? "item-unknown",
+      datasetId: item.datasetId ?? "",
+      latestRevisionId: item.latestRevisionId ?? latestRevision.id ?? item.id ?? "revision-unknown",
+      latestRevision,
+      createdAt: item.createdAt ?? latestRevision.createdAt ?? now,
+      createdBy: item.createdBy ?? latestRevision.createdBy ?? "system",
+      updatedAt: item.updatedAt ?? latestRevision.updatedAt ?? item.createdAt ?? now,
+      updatedBy: item.updatedBy ?? latestRevision.updatedBy ?? item.createdBy ?? "system",
+    };
+  },
+  z.object({
+    id: z.string().min(1),
+    datasetId: z.string().min(1),
+    latestRevisionId: z.string().min(1),
+    latestRevision: datasetItemRevisionSchema,
+    createdAt: dateTimeSchema,
+    createdBy: z.string().min(1),
+    updatedAt: dateTimeSchema,
+    updatedBy: z.string().min(1),
+  }),
+);
 
 const datasetCandidateSchema = z.object({
   id: z.string().min(1),
@@ -3553,7 +3649,7 @@ const datasetHealthSchema = z.preprocess(
   }),
   z.object({
     status: datasetHealthStatusSchema,
-    reviewedItemCount: z.number().int(),
+    readyItemCount: z.number().int(),
     totalItemCount: z.number().int(),
     splitCounts: z.unknown(),
     duplicateCandidateCount: z.number().int(),
@@ -3568,7 +3664,7 @@ const datasetHealthSchema = z.preprocess(
 function defaultDatasetHealth() {
   return {
     status: "needs_review",
-    reviewedItemCount: 0,
+    readyItemCount: 0,
     totalItemCount: 0,
     splitCounts: {},
     duplicateCandidateCount: 0,
@@ -3580,23 +3676,152 @@ function defaultDatasetHealth() {
   };
 }
 
+const datasetSettingsSchema = z.preprocess(
+  (value) => {
+    const defaults = defaultDatasetSettings();
+    const settings = value && typeof value === "object" ? compactNullish(value) : {};
+    const intakePolicy =
+      settings.intakePolicy && typeof settings.intakePolicy === "object"
+        ? compactNullish(settings.intakePolicy)
+        : {};
+    return {
+      ...defaults,
+      ...settings,
+      intakePolicy: {
+        ...defaults.intakePolicy,
+        ...intakePolicy,
+      },
+      defaultMetricSettings: Array.isArray(settings.defaultMetricSettings)
+        ? settings.defaultMetricSettings
+        : defaults.defaultMetricSettings,
+    };
+  },
+  z.object({
+    evaluationFamily: evaluationFamilySchema,
+    inputType: datasetValueTypeSchema,
+    expectedType: datasetValueTypeSchema,
+    inputJsonSchema: z.unknown().optional().nullable(),
+    expectedJsonSchema: z.unknown().optional().nullable(),
+    defaultSplit: datasetSplitSchema,
+    intakePolicy: z.object({
+      manualDefaultStatus: datasetCurationStatusSchema,
+      importDefaultStatus: datasetCurationStatusSchema,
+      traceDefaultStatus: datasetCurationStatusSchema,
+    }),
+    traceExtractionSettings: z.unknown().optional().nullable(),
+    anonymizationPolicy: z.unknown().optional().nullable(),
+    defaultMetricSettings: z.array(z.unknown()),
+    retentionProfile: retentionProfileSchema,
+  }),
+);
+
+function defaultDatasetSettings() {
+  return {
+    evaluationFamily: "classification",
+    inputType: "json",
+    expectedType: "json",
+    defaultSplit: "validation",
+    intakePolicy: {
+      manualDefaultStatus: "draft",
+      importDefaultStatus: "needs_review",
+      traceDefaultStatus: "needs_expected",
+    },
+    defaultMetricSettings: [],
+    retentionProfile: "balanced",
+  };
+}
+
+const datasetVersionSchema = z.preprocess(
+  (value) => {
+    const version = value && typeof value === "object" ? compactNullish(value) : {};
+    return {
+      id: version.id ?? "version-1",
+      datasetId: version.datasetId ?? "",
+      version: typeof version.version === "number" ? version.version : 1,
+      digest: typeof version.digest === "string" ? version.digest : "digest-unknown",
+      createdAt: version.createdAt ?? "1970-01-01T00:00:00.000Z",
+      createdBy: version.createdBy ?? "system",
+      settingsSnapshot: version.settingsSnapshot ?? defaultDatasetSettings(),
+      itemRevisionIds: Array.isArray(version.itemRevisionIds) ? version.itemRevisionIds : [],
+      parentVersionId: version.parentVersionId ?? null,
+      changeSummary: version.changeSummary ?? null,
+      source: version.source ?? "manual",
+    };
+  },
+  z.object({
+    id: z.string().min(1),
+    datasetId: z.string(),
+    version: z.number().int().min(1),
+    digest: z.string().min(1),
+    createdAt: dateTimeSchema,
+    createdBy: z.string().min(1),
+    settingsSnapshot: datasetSettingsSchema,
+    itemRevisionIds: z.array(z.string()),
+    parentVersionId: z.string().optional().nullable(),
+    changeSummary: z.string().optional().nullable(),
+    source: datasetVersionSourceSchema,
+  }),
+);
+
 const datasetSchema = z.preprocess(
   (value) => {
     const dataset = value && typeof value === "object" ? compactNullish(value) : {};
     const itemCount = typeof dataset.itemCount === "number" ? dataset.itemCount : 0;
-    const reviewedItemCount =
-      typeof dataset.reviewedItemCount === "number" ? dataset.reviewedItemCount : 0;
+    const readyItemCount =
+      typeof dataset.readyItemCount === "number"
+        ? dataset.readyItemCount
+        : typeof dataset.reviewedItemCount === "number"
+          ? dataset.reviewedItemCount
+          : 0;
+    const version = typeof dataset.currentVersion === "number"
+      ? dataset.currentVersion
+      : typeof dataset.version === "number"
+        ? dataset.version
+        : 1;
+    const currentVersionId =
+      typeof dataset.currentVersionId === "string" && dataset.currentVersionId.length > 0
+        ? dataset.currentVersionId
+        : `${String(dataset.id ?? "dataset")}:version:${version}`;
+    const createdAt =
+      typeof dataset.createdAt === "string" ? dataset.createdAt : "1970-01-01T00:00:00.000Z";
     const splitCounts =
       dataset.splitCounts && typeof dataset.splitCounts === "object" ? dataset.splitCounts : {};
+    const settings = dataset.settings ?? defaultDatasetSettings();
     return {
       ...dataset,
+      projectId: typeof dataset.projectId === "string" ? dataset.projectId : "",
+      currentVersionId,
+      currentVersion: {
+        id: currentVersionId,
+        datasetId: typeof dataset.id === "string" ? dataset.id : "",
+        version,
+        digest:
+          typeof dataset.currentDigest === "string"
+            ? dataset.currentDigest
+            : typeof dataset.digest === "string"
+              ? dataset.digest
+              : "digest-unknown",
+        createdAt,
+        createdBy: typeof dataset.createdBy === "string" ? dataset.createdBy : "system",
+        settingsSnapshot: settings,
+        itemRevisionIds: Array.isArray(dataset.itemRevisionIds) ? dataset.itemRevisionIds : [],
+        source: "manual",
+        ...(dataset.currentVersion && typeof dataset.currentVersion === "object"
+          ? compactNullish(dataset.currentVersion)
+          : {}),
+      },
+      settings,
+      createdAt,
+      createdBy: typeof dataset.createdBy === "string" ? dataset.createdBy : "system",
+      updatedAt: typeof dataset.updatedAt === "string" ? dataset.updatedAt : createdAt,
+      updatedBy: typeof dataset.updatedBy === "string" ? dataset.updatedBy : "system",
       itemCount,
-      reviewedItemCount,
+      readyItemCount,
       splitCounts,
       health: {
         ...defaultDatasetHealth(),
         totalItemCount: itemCount,
-        reviewedItemCount,
+        readyItemCount,
         splitCounts,
         ...(dataset.health && typeof dataset.health === "object"
           ? compactNullish(dataset.health)
@@ -3607,12 +3832,18 @@ const datasetSchema = z.preprocess(
   },
   z.object({
     id: z.string().min(1),
+    projectId: z.string(),
     name: z.string().min(1),
     description: z.string().optional().nullable(),
-    version: z.number().int(),
+    currentVersionId: z.string().min(1),
+    currentVersion: datasetVersionSchema,
+    settings: datasetSettingsSchema,
     createdAt: dateTimeSchema,
+    createdBy: z.string().min(1),
+    updatedAt: dateTimeSchema,
+    updatedBy: z.string().min(1),
     itemCount: z.number().int(),
-    reviewedItemCount: z.number().int(),
+    readyItemCount: z.number().int(),
     splitCounts: z.unknown(),
     health: datasetHealthSchema,
     tags: z.array(z.string()),

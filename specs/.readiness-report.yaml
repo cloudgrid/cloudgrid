@@ -192,11 +192,12 @@ deterministic_checks:
     status: pass_with_bun_runtime
     evidence: "`bun --bun run --cwd website build` passed on 2026-05-24 after AI Eval v2 handbook update. Plain Node-backed build remains affected by local Rollup native binding code-signature state."
   - command: browser verification of /ai-eval against current BFF schema
-    status: partial_runtime_drift_found
-    evidence: Desktop and mobile route shell render; local bridge/runtime returned legacy dataset rows missing currentVersionId, so end-to-end data path remains a TICKET-206 blocker.
+    status: pending_environment
+    evidence: Runtime v2 dataset shape drift was addressed at the BFF/storage-read boundary on 2026-05-24; current shell has no Playwright-capable browser automation available to rerun the end-to-end browser path.
 confidence: high
 risks:
-  - Current local runtime data path still needs end-to-end proof that storage-read returns v2 dataset shapes to the BFF.
+  - Current local runtime data path still needs browser end-to-end proof that storage-read returns v2 dataset shapes to the BFF.
+  - Current shell has no `go` or `gofmt` binary on PATH, so Go workspace tests for the storage-read shape adjustment must be rerun in a Go-enabled environment.
   - The implementation wave is broad and must be split by ownership boundary to avoid cross-agent drift.
   - Provider credential handling must remain outside CloudGrid v1 unless a separate secret-management spec is approved.
   - Online LLM-judge, RAG, tool, trajectory, automatic annotation routing, and

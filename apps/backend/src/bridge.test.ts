@@ -646,17 +646,18 @@ describe("NATS telemetry query bridge", () => {
       id: "dataset-1",
       name: "Regression",
       itemCount: 0,
-      reviewedItemCount: 0,
+      readyItemCount: 0,
       splitCounts: {},
       tags: [],
       health: {
         status: "needs_review",
-        reviewedItemCount: 0,
+        readyItemCount: 0,
         totalItemCount: 0,
         splitCounts: {},
         warnings: [],
       },
     });
+    expect(dataset.currentVersion).toMatchObject({ version: 1, datasetId: "dataset-1" });
   });
 
   test("normalizes lean experiment create responses to the public GraphQL experiment shape", async () => {
@@ -695,7 +696,7 @@ describe("NATS telemetry query bridge", () => {
       solverRef: { kind: "agent", name: "integration" },
     });
 
-    expect(subject).toBe("eval.experiment.create");
+    expect(subject).toBe("eval.evaluation.create");
     expect(payload).toMatchObject({
       input: {
         name: "Regression",

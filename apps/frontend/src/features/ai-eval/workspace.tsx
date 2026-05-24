@@ -383,7 +383,7 @@ function DatasetsListView({
                 {String(datasetSetting(dataset, "inputType") ?? "json")} /{" "}
                 {String(datasetSetting(dataset, "expectedType") ?? "json")}
               </TableCell>
-              <TableCell>{dataset.version}</TableCell>
+              <TableCell>{dataset.currentVersion.version}</TableCell>
               <TableCell>{datasetReadyItemCount(dataset)}</TableCell>
               <TableCell className="max-w-80 truncate">
                 {splitCoverageLabel(dataset.splitCounts)}
@@ -437,19 +437,19 @@ function DatasetDetailView({ dataset, projectId }: { dataset: Dataset; projectId
           <TableBody>
             {items.map((item) => (
               <TableRow key={item.id}>
-                <TableCell>{item.split}</TableCell>
-                <TableCell>{item.reviewStatus}</TableCell>
-                <TableCell className="max-w-64 truncate">{jsonPreview(item.input)}</TableCell>
-                <TableCell className="max-w-64 truncate">{jsonPreview(item.expected)}</TableCell>
+                <TableCell>{item.latestRevision.split}</TableCell>
+                <TableCell>{item.latestRevision.curationStatus}</TableCell>
+                <TableCell className="max-w-64 truncate">{jsonPreview(item.latestRevision.input)}</TableCell>
+                <TableCell className="max-w-64 truncate">{jsonPreview(item.latestRevision.expected)}</TableCell>
                 <TableCell className="max-w-56 truncate">
                   {String(itemValue(item, "reason") ?? "")}
                 </TableCell>
                 <TableCell>{itemValue(item, "observedOutput") ? "stored" : "empty"}</TableCell>
                 <TableCell>
-                  {item.sourceTraceId ? (
+                  {sourceTraceId(item) ? (
                     <Link
                       className="text-primary underline-offset-4 hover:underline"
-                      to={`/traces/${item.sourceTraceId}`}
+                      to={`/traces/${sourceTraceId(item)}`}
                     >
                       trace
                     </Link>
@@ -458,7 +458,7 @@ function DatasetDetailView({ dataset, projectId }: { dataset: Dataset; projectId
                   )}
                 </TableCell>
                 <TableCell>
-                  {item.reviewStatus === "ready" ? (
+                  {item.latestRevision.curationStatus === "ready" ? (
                     <Badge variant="secondary">valid</Badge>
                   ) : (
                     <Badge variant="outline">curation</Badge>
@@ -502,7 +502,7 @@ function DatasetDetailView({ dataset, projectId }: { dataset: Dataset; projectId
         </dl>
         <h3 className="mt-5 text-sm font-medium">Versions</h3>
         <div className="mt-2 border px-3 py-2 text-sm">
-          Current version {dataset.version} · {datasetCurrentVersionId(dataset)}
+          Current version {dataset.currentVersion.version} · {datasetCurrentVersionId(dataset)}
         </div>
       </aside>
     </div>
@@ -1076,15 +1076,15 @@ function DatasetRowDialog({
   const [open, setOpen] = useState(false);
   const inputType = (datasetSetting(dataset, "inputType") ?? "json") as DatasetValueType;
   const expectedType = (datasetSetting(dataset, "expectedType") ?? "json") as DatasetValueType;
-  const [inputText, setInputText] = useState(() => initialRawValue(item?.input, inputType));
-  const [expectedText, setExpectedText] = useState(() => initialRawValue(item?.expected, expectedType));
+  const [inputText, setInputText] = useState(() => initialRawValue(item?.latestRevision.input, inputType));
+  const [expectedText, setExpectedText] = useState(() => initialRawValue(item?.latestRevision.expected, expectedType));
   const [observedOutputText, setObservedOutputText] = useState(() => initialRawValue(itemValue(item, "observedOutput"), expectedType));
   const [reason, setReason] = useState(() => String(itemValue(item, "reason") ?? ""));
-  const [split, setSplit] = useState<DatasetSplit>(item?.split ?? "training");
+  const [split, setSplit] = useState<DatasetSplit>(item?.latestRevision.split ?? "training");
   const [curationStatus, setCurationStatus] = useState<DatasetCurationStatus>(
-    (item?.reviewStatus === "reviewed" ? "ready" : item?.reviewStatus === "unreviewed" ? "draft" : item?.reviewStatus) ?? "draft",
+    item?.latestRevision.curationStatus ?? "draft",
   );
-  const [metadata, setMetadata] = useState(() => metadataText(item?.metadata));
+  const [metadata, setMetadata] = useState(() => metadataText(item?.latestRevision.metadata));
   const [error, setError] = useState<string | null>(null);
   const mutation = useMutation({
     mutationFn: () => {
@@ -1955,7 +1955,14 @@ function itemValue(item: DatasetItem | undefined, key: string): JSONValue | unde
   if (!item) {
     return undefined;
   }
-  return (item as DatasetItem & Record<string, JSONValue | undefined>)[key];
+  return (
+    (item.latestRevision as typeof item.latestRevision & Record<string, JSONValue | undefined>)[key] ??
+    (item as DatasetItem & Record<string, JSONValue | undefined>)[key]
+  );
+}
+
+function sourceTraceId(item: DatasetItem) {
+  return item.latestRevision.sourceRefs.find((source) => source.traceId)?.traceId ?? null;
 }
 
 function parseAndValidateValue(text: string, type: DatasetValueType, schema: JSONValue | undefined) {
