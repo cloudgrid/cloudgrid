@@ -110,6 +110,83 @@ describe("cloudgrid harness adapter server", () => {
     expect(span?.traceState).toBe("vendor=value");
   });
 
+  test("records bounded request metadata for scenario assertions", async () => {
+    const server = createHarnessAdapterServer({ captureRequests: true });
+
+    const response = await server.fetch(
+      new Request("http://adapter.test/v1/run", {
+        method: "POST",
+        headers: {
+          ...jsonHeaders,
+          traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+          tracestate: "vendor=value",
+        },
+        body: JSON.stringify({
+          experimentRunId: "run-1",
+          datasetItemId: "item-1",
+          solverRef: { kind: "agent", id: "agent-local" },
+          input: { prompt: "hello" },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(server.capturedRequests()).toEqual([
+      expect.objectContaining({
+        method: "POST",
+        path: "/v1/run",
+        traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+        tracestate: "vendor=value",
+        body: expect.objectContaining({
+          experimentRunId: "run-1",
+          datasetItemId: "item-1",
+        }),
+      }),
+    ]);
+  });
+
+  test("POST /v1/run exposes deterministic validation-failure and timeout fixture modes", async () => {
+    const validationServer = createHarnessAdapterServer({
+      fixtureMode: "validation_failure",
+    });
+    const validationResponse = await validationServer.fetch(
+      new Request("http://adapter.test/v1/run", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          experimentRunId: "run-1",
+          datasetItemId: "item-1",
+          solverRef: { kind: "agent", id: "agent-local" },
+          input: { prompt: "hello" },
+        }),
+      }),
+    );
+    expect(validationResponse.status).toBe(422);
+    expect(await readJson(validationResponse)).toMatchObject({
+      code: "EVAL_OUTPUT_VALIDATION_FAILED",
+      retryable: false,
+    });
+
+    const timeoutServer = createHarnessAdapterServer({ fixtureMode: "timeout" });
+    const timeoutResponse = await timeoutServer.fetch(
+      new Request("http://adapter.test/v1/run", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          experimentRunId: "run-1",
+          datasetItemId: "item-1",
+          solverRef: { kind: "agent", id: "agent-local" },
+          input: { prompt: "hello" },
+        }),
+      }),
+    );
+    expect(timeoutResponse.status).toBe(504);
+    expect(await readJson(timeoutResponse)).toMatchObject({
+      code: "EVAL_ADAPTER_TIMEOUT",
+      retryable: true,
+    });
+  });
+
   test("sandbox lifecycle endpoints expose adapter-switchable control calls", async () => {
     const server = createHarnessAdapterServer();
 
@@ -307,6 +384,51 @@ describe("cloudgrid harness adapter server", () => {
       scorerId: "regex-ticket",
       score: 1,
       passed: true,
+    });
+  });
+
+  test("POST /v1/optimize emits quick-shot candidate events from fixture mode", async () => {
+    const server = createHarnessAdapterServer({ fixtureMode: "quick_shot" });
+
+    const response = await server.fetch(
+      new Request("http://adapter.test/v1/optimize", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          experimentRunId: "run-1",
+          experimentId: "evaluation-1",
+          manifestDigest: "manifest-digest-1",
+          optimizerKind: "critic_mutate_judge_pick",
+          basePromptVersion: {
+            id: "target-snapshot-1",
+            name: "Baseline target",
+            text: "Classify the input.",
+            hash: "sha256:baseline",
+          },
+          config: { maxCandidates: 2 },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const events = (await response.text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(events).toHaveLength(3);
+    expect(events[0]).toMatchObject({
+      type: "candidate",
+      summary: {
+        retentionRole: "quick_shot",
+        evaluatedSubset: true,
+      },
+    });
+    expect(events[2]).toMatchObject({
+      type: "summary",
+      summary: {
+        retentionRole: "quick_shot",
+        candidateCount: 2,
+      },
     });
   });
 

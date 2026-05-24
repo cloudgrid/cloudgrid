@@ -1,12 +1,20 @@
-import type { TelemetryFacetResult, TraceSearchInput } from "@cloudgrid/ui-contracts";
-import { TRACE_SEARCH_DEFAULT_LIMIT } from "@cloudgrid/ui-contracts";
+import type { Dataset, TelemetryFacetResult, TraceSearchInput } from "@cloudgrid/ui-contracts";
+import { buildDatasetSearchInput, TRACE_SEARCH_DEFAULT_LIMIT } from "@cloudgrid/ui-contracts";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { ClipboardCopy, Clock, Radio, SlidersHorizontal, X } from "lucide-react";
+import { ClipboardCopy, Clock, FileJson, Radio, SlidersHorizontal, X } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { InfiniteScrollSentinel } from "../components/infinite-scroll-sentinel";
 import { EmptyState, ErrorPanel, LoadingRows } from "../components/query-state";
 import { RouteBreadcrumb } from "../components/route-breadcrumb";
 import { Button } from "../components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../components/ui/dialog";
 import {
   Sheet,
   SheetContent,
@@ -15,6 +23,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "../components/ui/sheet";
+import { compatibleTraceImportDatasets } from "../features/ai-eval/view-model-v2";
 import { FacetPanel } from "../features/telemetry/facet-panel";
 import { TraceFilters } from "../features/traces/trace-filters";
 import { TraceTable } from "../features/traces/trace-table";
@@ -29,6 +38,7 @@ import { LiveRoute } from "./live-route";
 export function TracesRoute() {
   const client = useTelemetryClient();
   const { viewer } = useAppSession();
+  const projectId = viewer?.selectedProject?.id ?? "";
   const ingestSettingsHref = viewer?.selectedProject
     ? `/projects/${encodeURIComponent(viewer.selectedProject.id)}/settings/ingest`
     : "/projects";
@@ -57,6 +67,15 @@ export function TracesRoute() {
     queryFn: () => client.getTelemetryFacets(debouncedFacetInput),
     enabled: traceMode === "history",
   });
+  const datasetsQuery = useQuery({
+    queryKey: ["Datasets", "trace-import", projectId],
+    queryFn: () =>
+      client.searchDatasets({
+        ...buildDatasetSearchInput({ limit: 50 }),
+        projectId,
+      }),
+    enabled: Boolean(projectId) && traceMode === "history",
+  });
 
   const setTraceMode = (mode: "history" | "live") => {
     setRouteSearchParams((params) => {
@@ -79,6 +98,7 @@ export function TracesRoute() {
     return (
       <section className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
         <TraceModeHeader
+          datasets={[]}
           mode={traceMode}
           onModeChange={setTraceMode}
           projectName={viewer?.selectedProject?.name ?? t("projects.select")}
@@ -91,6 +111,7 @@ export function TracesRoute() {
   return (
     <section className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
       <TraceModeHeader
+        datasets={datasetsQuery.data?.items ?? []}
         mode={traceMode}
         onModeChange={setTraceMode}
         projectName={viewer?.selectedProject?.name ?? t("projects.select")}
@@ -288,10 +309,12 @@ function TraceFacetsContent({
 }
 
 function TraceModeHeader({
+  datasets,
   mode,
   onModeChange,
   projectName,
 }: {
+  datasets: Dataset[];
   mode: "history" | "live";
   onModeChange: (mode: "history" | "live") => void;
   projectName: string;
@@ -311,26 +334,61 @@ function TraceModeHeader({
         <h1 className="text-xl font-semibold tracking-normal">{t("traces.title")}</h1>
         <p className="text-sm text-muted-foreground">{t("traces.description")}</p>
       </div>
-      <div className="flex items-center gap-1 rounded-md border p-1">
-        <Button
-          onClick={() => onModeChange("history")}
-          size="sm"
-          type="button"
-          variant={mode === "history" ? "secondary" : "ghost"}
-        >
-          <Clock data-icon="inline-start" />
-          {t("traces.mode.history")}
-        </Button>
-        <Button
-          onClick={() => onModeChange("live")}
-          size="sm"
-          type="button"
-          variant={mode === "live" ? "secondary" : "ghost"}
-        >
-          <Radio data-icon="inline-start" />
-          {t("traces.mode.live")}
-        </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        {mode === "history" ? <TraceToDatasetImportPicker datasets={datasets} /> : null}
+        <div className="flex items-center gap-1 rounded-md border p-1">
+          <Button
+            onClick={() => onModeChange("history")}
+            size="sm"
+            type="button"
+            variant={mode === "history" ? "secondary" : "ghost"}
+          >
+            <Clock data-icon="inline-start" />
+            {t("traces.mode.history")}
+          </Button>
+          <Button
+            onClick={() => onModeChange("live")}
+            size="sm"
+            type="button"
+            variant={mode === "live" ? "secondary" : "ghost"}
+          >
+            <Radio data-icon="inline-start" />
+            {t("traces.mode.live")}
+          </Button>
+        </div>
       </div>
     </div>
+  );
+}
+
+function TraceToDatasetImportPicker({ datasets }: { datasets: Dataset[] }) {
+  const compatible = compatibleTraceImportDatasets(datasets);
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button size="sm" type="button" variant="outline">
+          <FileJson data-icon="inline-start" />
+          Add trace to dataset
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add trace to dataset</DialogTitle>
+          <DialogDescription>Only datasets with extraction settings are shown.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-2">
+          {compatible.map((dataset) => (
+            <div className="border px-3 py-2 text-sm" key={dataset.id}>
+              {dataset.name}
+            </div>
+          ))}
+          {compatible.length === 0 ? (
+            <div className="border border-dashed p-3 text-sm text-muted-foreground">
+              No dataset has compatible extraction settings.
+            </div>
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

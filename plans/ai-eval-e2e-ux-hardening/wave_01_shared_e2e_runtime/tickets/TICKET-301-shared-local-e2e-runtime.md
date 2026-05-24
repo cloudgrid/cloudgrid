@@ -2,7 +2,7 @@
 id: TICKET-301
 title: Shared local E2E runtime and deterministic AI harness adapter
 wave: 1
-status: ready
+status: done
 parallel_group: ai_eval_e2e_foundation
 depends_on: []
 blocked_by: []
@@ -152,3 +152,12 @@ bun run integration:local
 
 `TICKET-302` can rely on shared harness adapter startup, fixture modes, and
 captured metadata in local E2E runtime context.
+
+## Completion Evidence
+
+- `PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/cloudgrid-harness-adapter test`
+- `PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/cloudgrid-harness-adapter typecheck`
+- `PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/integration-scenarios test`
+- `PATH="$HOME/.bun/bin:$PATH" bun run contracts:check`
+- `PATH="$HOME/.bun/bin:$PATH" bun run typecheck`
+- `git diff --check`

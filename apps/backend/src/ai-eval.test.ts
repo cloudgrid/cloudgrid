@@ -17,7 +17,6 @@ import type {
   EvaluationRunEvent,
   ExperimentRun,
   ExperimentRunEvent,
-  LiveExperimentRunInput,
   ProjectAiSettings,
   UpdateProjectAiSettingsInput,
 } from "@cloudgrid/ui-contracts";

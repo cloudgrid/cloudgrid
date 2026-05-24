@@ -1,52 +1,50 @@
 #!/usr/bin/env bun
 import { createServer } from "node:http";
+import { createHarnessAdapterServer } from "../../apps/packages/cloudgrid-harness-adapter/src/index.ts";
 
 const defaultURL = "http://127.0.0.1:8090";
 const listenURL = new URL(process.env.CLOUDGRID_AI_EVAL_HARNESS_URL || defaultURL);
 const host = listenURL.hostname || "127.0.0.1";
 const port = Number(listenURL.port || "8090");
+const adapter = createHarnessAdapterServer({
+  captureRequests: true,
+  fixtureMode: fixtureMode(process.env.AI_EVAL_HARNESS_FIXTURE_MODE),
+});
 
 const server = createServer(async (request, response) => {
   const path = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`)
     .pathname;
   if (request.method === "GET" && (path === "/readyz" || path === "/livez")) {
-    sendJson(response, 200, { status: "ok" });
+    sendJson(response, 200, {
+      status: "ok",
+      capturedRequestCount: adapter.capturedRequests().length,
+    });
     return;
   }
-  if (request.method !== "POST") {
-    sendJson(response, 405, { error: "method_not_allowed" });
+  if (request.method === "GET" && path === "/debug/captured-requests") {
+    sendJson(response, 200, { requests: adapter.capturedRequests() });
     return;
   }
 
-  const payload = await readJson(request);
-  if (path === "/v1/run") {
-    sendJson(response, 200, {
-      harnessRunId: `local-${payload.experimentRunId || "run"}-${payload.datasetItemId || "item"}`,
-      output: {
-        answer: expectedAnswer(payload.input),
-        source: "cloudgrid-local-eval-harness",
-      },
-      latencyMs: 12,
-    });
-    return;
+  const body = request.method === "GET" || request.method === "HEAD" ? undefined : await readBody(request);
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(request.headers)) {
+    if (typeof value === "string") {
+      headers.set(key, value);
+    } else if (Array.isArray(value)) {
+      headers.set(key, value.join(","));
+    }
   }
-  if (path === "/v1/score") {
-    sendJson(response, 200, {
-      score: 1,
-      passed: true,
-      evidence: { reason: "local deterministic harness accepted the output" },
-      judgeRunRef: "local-deterministic-judge",
-    });
-    return;
-  }
-  if (path === "/v1/optimize") {
-    sendJson(response, 200, {
-      candidatePromptIds: [],
-      summary: { optimized: false, reason: "local deterministic harness" },
-    });
-    return;
-  }
-  sendJson(response, 404, { error: "not_found" });
+  const adapterResponse = await adapter.fetch(
+    new Request(`http://adapter.local${path}`, {
+      method: request.method,
+      headers,
+      body,
+    }),
+  );
+
+  response.writeHead(adapterResponse.status, Object.fromEntries(adapterResponse.headers.entries()));
+  response.end(Buffer.from(await adapterResponse.arrayBuffer()));
 });
 
 server.listen(port, host, () => {
@@ -67,25 +65,27 @@ process.once("SIGTERM", () => {
   server.close(() => process.exit(0));
 });
 
-function expectedAnswer(input) {
-  if (input && typeof input === "object" && "question" in input) {
-    return "ok";
-  }
-  return "ok";
-}
-
-async function readJson(request) {
+async function readBody(request) {
   const chunks = [];
   for await (const chunk of request) {
     chunks.push(chunk);
   }
-  if (chunks.length === 0) {
-    return {};
-  }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  return chunks.length === 0 ? undefined : Buffer.concat(chunks);
 }
 
 function sendJson(response, status, body) {
   response.writeHead(status, { "content-type": "application/json" });
   response.end(JSON.stringify(body));
+}
+
+function fixtureMode(value) {
+  if (
+    value === "validation_failure" ||
+    value === "timeout" ||
+    value === "quick_shot" ||
+    value === "success"
+  ) {
+    return value;
+  }
+  return "success";
 }

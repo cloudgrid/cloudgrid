@@ -792,22 +792,37 @@ describe("GraphQL client", () => {
         createdAt: "2026-05-17T08:00:00.000Z",
         updatedAt: "2026-05-17T08:05:00.000Z",
       };
-      const scorer = {
-        id: "scorer-1",
-        name: "Contains answer",
-        kind: "deterministic",
-        definition: { type: "contains" },
-        judgeModelRef: null,
-        version: 1,
+      const evaluationDefinition = {
+        id: "evaluation-1",
+        projectId: "project-1",
+        name: "Baseline",
+        description: null,
+        datasetId: "dataset-1",
+        datasetVersionPolicy: "pinned",
+        pinnedDatasetVersionId: "version-1",
+        splitSelector: { splits: ["validation"], curationStatuses: ["ready"] },
+        targetRef: { kind: "prompt", targetRef: "prompt://checkout", displayName: "Checkout" },
+        metricSettings: [{ metricId: "classification.exact_label_match", options: {} }],
+        runPolicy: { maxParallelRequests: 10 },
+        retentionProfile: "balanced",
+        createdAt: "2026-05-17T08:00:00.000Z",
+        updatedAt: "2026-05-17T08:00:00.000Z",
       };
-      const experimentRun = {
+      const evaluationRun = {
         id: "run-1",
-        experimentId: "experiment-1",
+        evaluationDefinitionId: "evaluation-1",
+        projectId: "project-1",
+        kind: "dataset_evaluation",
+        datasetId: "dataset-1",
+        datasetVersionId: "version-1",
+        targetSnapshotId: "snapshot-1",
         solverRef: { kind: "agent", name: "local" },
         manifest: null,
         baselineRunId: null,
         status: "queued",
         runPolicy: { maxParallelRequests: 10 },
+        retentionProfile: "balanced",
+        retentionRole: "validation",
         startedAt: "2026-05-17T08:00:00.000Z",
         endedAt: null,
         summary: {
@@ -838,21 +853,28 @@ describe("GraphQL client", () => {
         },
         itemRuns: { items: [], nextCursor: null },
       };
-      const experiment = {
-        id: "experiment-1",
-        name: "Baseline",
-        datasetId: "dataset-1",
-        datasetVersion: 1,
-        scorerIds: ["scorer-1"],
-        splitSelector: { splits: ["validation"], reviewedOnly: false, includeSynthetic: false },
-        baselineRef: null,
-        promptVersionRefs: [],
-        skillSnapshotRefs: [],
-        toolSnapshotRefs: [],
-        providerProfileRefs: [],
+      const evaluationComparison = {
+        id: "comparison-1",
+        projectId: "project-1",
+        baselineRunId: "run-1",
+        candidateRunId: "run-1",
+        metricIds: ["classification.exact_label_match"],
+        result: { better: [], worse: [], unchanged: [] },
         createdAt: "2026-05-17T08:00:00.000Z",
-        tags: [],
-        runs: { items: [experimentRun], nextCursor: null },
+      };
+      const optimizationRun = {
+        id: "optimization-1",
+        projectId: "project-1",
+        status: "running",
+        baselineTargetSnapshotId: "snapshot-1",
+        selectedCandidateSnapshotId: null,
+        causedEvaluationRunIds: ["run-1"],
+        comparisonIds: ["comparison-1"],
+        objective: { primaryMetricId: "classification.exact_label_match" },
+        quickShotPolicy: null,
+        startedAt: "2026-05-17T08:00:00.000Z",
+        endedAt: null,
+        summary: {},
       };
       const dataByOperation: Record<string, unknown> = {
         AiQualityOverview: {
@@ -893,12 +915,16 @@ describe("GraphQL client", () => {
             },
           },
         },
-        CreateScorer: { createScorer: scorer },
-        CreateExperiment: { createExperiment: experiment },
-        StartExperimentRun: { startExperimentRun: experimentRun },
-        PauseExperimentRun: { pauseExperimentRun: { ...experimentRun, status: "paused" } },
-        ResumeExperimentRun: { resumeExperimentRun: { ...experimentRun, status: "running" } },
-        CancelExperimentRun: { cancelExperimentRun: { ...experimentRun, status: "cancelled" } },
+        CreateEvaluationDefinition: { createEvaluationDefinition: evaluationDefinition },
+        StartEvaluationRun: { startEvaluationRun: evaluationRun },
+        PauseEvaluationRun: { pauseEvaluationRun: { ...evaluationRun, status: "paused" } },
+        ResumeEvaluationRun: { resumeEvaluationRun: { ...evaluationRun, status: "running" } },
+        CancelEvaluationRun: { cancelEvaluationRun: { ...evaluationRun, status: "cancelled" } },
+        EvaluationRun: { evaluationRun },
+        EvaluationResults: { evaluationResults: { items: [], nextCursor: null } },
+        CreateEvaluationComparison: { createEvaluationComparison: evaluationComparison },
+        StartOptimizationRun: { startOptimizationRun: optimizationRun },
+        OptimizationRuns: { optimizationRuns: { items: [optimizationRun], nextCursor: null } },
         DatasetCandidates: {
           datasetCandidates: { items: [datasetCandidate], nextCursor: null },
         },
@@ -930,51 +956,91 @@ describe("GraphQL client", () => {
     await expect(
       client.appendDatasetItems({
         datasetId: "dataset-1",
-        expectedDatasetVersion: 1,
+        expectedDatasetVersionId: "version-1",
         items: [
           {
             input: { prompt: "Check answer" },
             expected: { answer: "42" },
+            reason: "",
             metadata: {},
             split: "validation",
-            reviewStatus: "reviewed",
+            curationStatus: "ready",
           },
         ],
       }),
     ).resolves.toMatchObject({ id: "dataset-1", itemCount: 1 });
     await expect(
-      client.createScorer({
-        name: "Contains answer",
-        kind: "deterministic",
-        definition: { type: "contains" },
-      }),
-    ).resolves.toMatchObject({ id: "scorer-1" });
-    await expect(
-      client.createExperiment({
+      client.createEvaluationDefinition({
+        projectId: "project-1",
         name: "Baseline",
         datasetId: "dataset-1",
-        datasetVersion: 1,
-        scorerIds: ["scorer-1"],
-        solverRef: { kind: "agent", name: "local" },
+        datasetVersionPolicy: "pinned",
+        pinnedDatasetVersionId: "version-1",
+        splitSelector: { splits: ["validation"], curationStatuses: ["ready"] },
+        targetRef: { kind: "prompt", targetRef: "prompt://checkout", displayName: "Checkout" },
+        metricSettings: [{ metricId: "classification.exact_label_match", options: {} }],
+        runPolicy: { maxParallelRequests: 10 },
+        retentionProfile: "balanced",
       }),
-    ).resolves.toMatchObject({ id: "experiment-1" });
+    ).resolves.toMatchObject({ id: "evaluation-1" });
     await expect(
-      client.startExperimentRun({ experimentId: "experiment-1" }),
+      client.startEvaluationRun({
+        evaluationDefinitionId: "evaluation-1",
+        projectId: "project-1",
+        kind: "dataset_evaluation",
+        datasetId: "dataset-1",
+        datasetVersionId: "version-1",
+        targetSnapshotId: "snapshot-1",
+        metricSettings: [{ metricId: "classification.exact_label_match", options: {} }],
+        runPolicy: { maxParallelRequests: 10 },
+        retentionProfile: "balanced",
+        retentionRole: "validation",
+      }),
     ).resolves.toMatchObject({
       id: "run-1",
     });
-    await expect(client.pauseExperimentRun("run-1")).resolves.toMatchObject({
+    await expect(
+      client.pauseEvaluationRun({ evaluationRunId: "run-1", idempotencyKey: "pause-1" }),
+    ).resolves.toMatchObject({
       id: "run-1",
       status: "paused",
     });
-    await expect(client.resumeExperimentRun("run-1")).resolves.toMatchObject({
+    await expect(
+      client.resumeEvaluationRun({ evaluationRunId: "run-1", idempotencyKey: "resume-1" }),
+    ).resolves.toMatchObject({
       id: "run-1",
       status: "running",
     });
-    await expect(client.cancelExperimentRun("run-1")).resolves.toMatchObject({
+    await expect(
+      client.cancelEvaluationRun({ evaluationRunId: "run-1", idempotencyKey: "cancel-1" }),
+    ).resolves.toMatchObject({
       id: "run-1",
       status: "cancelled",
     });
+    await expect(client.getEvaluationRun("run-1")).resolves.toMatchObject({ id: "run-1" });
+    await expect(
+      client.searchEvaluationResults({ evaluationRunId: "run-1", limit: 25 }),
+    ).resolves.toMatchObject({ items: [] });
+    await expect(
+      client.createEvaluationComparison({
+        projectId: "project-1",
+        baselineRunId: "run-1",
+        candidateRunId: "run-1",
+        metricIds: ["classification.exact_label_match"],
+      }),
+    ).resolves.toMatchObject({ id: "comparison-1" });
+    await expect(
+      client.startOptimizationRun({
+        projectId: "project-1",
+        baselineTargetSnapshotId: "snapshot-1",
+        objective: { primaryMetricId: "classification.exact_label_match" },
+        validationEvaluationDefinitionId: "evaluation-1",
+        validationSplitSelector: { splits: ["validation"], curationStatuses: ["ready"] },
+      }),
+    ).resolves.toMatchObject({ id: "optimization-1" });
+    await expect(
+      client.searchOptimizationRuns({ projectId: "project-1", limit: 25 }),
+    ).resolves.toMatchObject({ items: [{ id: "optimization-1" }] });
     await expect(
       client.searchDatasetCandidates({ datasetId: "dataset-1", status: "suggested" }),
     ).resolves.toMatchObject({
@@ -1018,12 +1084,16 @@ describe("GraphQL client", () => {
       "AiQualityOverview",
       "CreateDataset",
       "AppendDatasetItems",
-      "CreateScorer",
-      "CreateExperiment",
-      "StartExperimentRun",
-      "PauseExperimentRun",
-      "ResumeExperimentRun",
-      "CancelExperimentRun",
+      "CreateEvaluationDefinition",
+      "StartEvaluationRun",
+      "PauseEvaluationRun",
+      "ResumeEvaluationRun",
+      "CancelEvaluationRun",
+      "EvaluationRun",
+      "EvaluationResults",
+      "CreateEvaluationComparison",
+      "StartOptimizationRun",
+      "OptimizationRuns",
       "DatasetCandidates",
       "PrepareDatasetCandidates",
       "CommitDatasetCandidates",

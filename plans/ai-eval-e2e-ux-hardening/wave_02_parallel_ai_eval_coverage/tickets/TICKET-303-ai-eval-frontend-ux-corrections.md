@@ -2,7 +2,7 @@
 id: TICKET-303
 title: AI Eval frontend UX label and action placement corrections
 wave: 2
-status: ready
+status: done
 parallel_group: ai_eval_e2e_wave2
 depends_on: [TICKET-301]
 blocked_by: []
@@ -171,3 +171,11 @@ placement.
 
 The frontend AI Eval and Traces UX matches the spec language and is ready for
 the AI Eval v2 E2E coverage to exercise the corrected surfaces.
+
+## Completion Evidence
+
+- `PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/frontend typecheck`
+- `PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/frontend test -- ai-eval`
+- `PATH="$HOME/.bun/bin:$PATH" bun --bun run --cwd apps/frontend smoke -- ai-eval.e2e.ts`
+- `PATH="$HOME/.bun/bin:$PATH" bun run contracts:check`
+- `git diff --check`

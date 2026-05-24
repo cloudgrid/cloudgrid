@@ -43,7 +43,7 @@ describe("metrics route helpers", () => {
     expect(routeSource).not.toContain("h-[calc(100vh-5.5rem)]");
     expect(routeSource).not.toContain("Dashboard");
     expect(routeSource).toContain('t("metrics.title")');
-    expect(routeSource).not.toContain("RouteBreadcrumb");
+    expect(routeSource).toContain("RouteBreadcrumb");
     expect(routeSource).toContain("MetricTimeRangePopover");
     expect(routeSource).toContain("withMetricDescriptorDefaults");
     expect(routeSource).toContain("@cloudgrid/ui-contracts");

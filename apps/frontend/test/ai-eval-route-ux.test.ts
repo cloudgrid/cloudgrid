@@ -12,6 +12,7 @@ const viewModelSource = readFileSync(
   "utf8",
 );
 const appShellSource = readFileSync(join(import.meta.dir, "../src/routes/app-shell.tsx"), "utf8");
+const tracesRouteSource = readFileSync(join(import.meta.dir, "../src/routes/traces-route.tsx"), "utf8");
 
 describe("AI Eval v2 route UX", () => {
   test("keeps route composition thin and avoids route-primary card surfaces", () => {
@@ -74,7 +75,7 @@ describe("AI Eval v2 route UX", () => {
     expect(workspaceSource).not.toContain("buildExpectedJsonValue");
   });
 
-  test("keeps dataset import, export, split, curation, and trace picker v2-shaped", () => {
+  test("keeps dataset import, export, split, and curation v2-shaped", () => {
     expect(workspaceSource).toContain("DatasetImportDialog");
     expect(workspaceSource).toContain("data-ai-eval-dataset-import-workflow");
     expect(workspaceSource).toContain("telemetryClient.prepareDatasetImport");
@@ -86,6 +87,17 @@ describe("AI Eval v2 route UX", () => {
     expect(workspaceSource).toContain("sourceSpanId");
     expect(workspaceSource).toContain("DATASET_SPLITS");
     expect(workspaceSource).toContain("DATASET_CURATION_STATUSES");
+  });
+
+  test("places trace-to-dataset import only in Traces and keeps dataset settings explicit", () => {
+    expect(workspaceSource).toContain("New dataset");
+    expect(workspaceSource).toContain("Dataset settings");
+    expect(workspaceSource).toContain("Add row");
+    expect(workspaceSource).toContain("Create evaluation from dataset");
+    expect(workspaceSource).not.toContain("Add trace to dataset");
+    expect(workspaceSource).not.toContain("Add dataset");
+    expect(tracesRouteSource).toContain("Add trace to dataset");
+    expect(tracesRouteSource).toContain("TraceToDatasetImportPicker");
     expect(viewModelSource).toContain("compatibleTraceImportDatasets");
     expect(viewModelSource).toContain("datasetHasExtractionSettings");
   });
@@ -95,9 +107,13 @@ describe("AI Eval v2 route UX", () => {
     expect(workspaceSource).toContain("trajectorySummary");
     expect(workspaceSource).toContain("importantSteps");
     expect(workspaceSource).toContain("ComparisonView");
+    expect(workspaceSource).toContain("Create comparison");
     expect(workspaceSource).toContain("OptimizationRunDetailView");
     expect(workspaceSource).toContain("TargetPromotionDialog");
     expect(workspaceSource).toContain("Quick-shot phase");
+    expect(workspaceSource).toContain("New evaluation");
+    expect(workspaceSource).toContain("Run evaluation");
+    expect(workspaceSource).toContain("Start optimization");
     expect(viewModelSource).toContain("quick-shot");
     expect(workspaceSource).toContain("Promote");
   });

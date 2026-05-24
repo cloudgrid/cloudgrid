@@ -2,6 +2,12 @@ import {
   type PublicGraphQLOperationName,
   publicGraphQLOperationNames,
 } from "@cloudgrid/public-api-client/operations";
+export {
+  aiEvalV2ScenarioOperationNames,
+  runAiEvalV2FakeAdapterScenario,
+  type AiEvalV2ScenarioContext,
+  type CapturedHarnessRequest,
+} from "./ai-eval-v2-executable";
 
 export type ScenarioExecutionMode = "local-e2e";
 

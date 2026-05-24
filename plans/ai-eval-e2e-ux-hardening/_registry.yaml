@@ -3,21 +3,21 @@ tickets:
   TICKET-301:
     title: Shared local E2E runtime and deterministic AI harness adapter
     wave: 1
-    status: ready
+    status: done
     file: plans/ai-eval-e2e-ux-hardening/wave_01_shared_e2e_runtime/tickets/TICKET-301-shared-local-e2e-runtime.md
     depends_on: []
     blocked_by: []
   TICKET-302:
     title: AI Eval v2 full-stack fake adapter scenario
     wave: 2
-    status: ready
+    status: done
     file: plans/ai-eval-e2e-ux-hardening/wave_02_parallel_ai_eval_coverage/tickets/TICKET-302-ai-eval-v2-full-stack-fake-adapter.md
     depends_on: [TICKET-301]
     blocked_by: []
   TICKET-303:
     title: AI Eval frontend UX label and action placement corrections
     wave: 2
-    status: ready
+    status: done
     file: plans/ai-eval-e2e-ux-hardening/wave_02_parallel_ai_eval_coverage/tickets/TICKET-303-ai-eval-frontend-ux-corrections.md
     depends_on: [TICKET-301]
     blocked_by: []

@@ -3,15 +3,16 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { integrationScenarios } from "../../apps/packages/integration-scenarios/src/index.ts";
+import {
+  integrationScenarios,
+  runAiEvalV2FakeAdapterScenario,
+} from "../../apps/packages/integration-scenarios/src/index.ts";
 import {
   agentRunOperation,
   agentRunsOperation,
-  aiQualityOverviewOperation,
   alertHistoryOperation,
   alertRulesOperation,
   alertSilencesOperation,
-  annotationQueueOperation,
   appendDatasetItemsOperation,
   aiChatHistoryOperation,
   commitDatasetImportOperation,
@@ -20,10 +21,10 @@ import {
   createAlertSilenceOperation,
   createAiChatConversationOperation,
   createDatasetOperation,
-  createExperimentOperation,
+  createEvaluationComparisonOperation,
+  createEvaluationDefinitionOperation,
   createIngestCredentialOperation,
   createProjectOperation,
-  createScorerOperation,
   dashboardsOperation,
   datasetExportOperation,
   datasetOperation,
@@ -31,15 +32,15 @@ import {
   deleteAlertRuleOperation,
   deleteAlertSilenceOperation,
   deleteDashboardOperation,
-  experimentRunOperation,
-  experimentsOperation,
+  evaluationResultsOperation,
+  evaluationRunOperation,
   ingestCredentialsOperation,
   inviteOrganizationMemberOperation,
-  liveExperimentRunSubscriptionOperation,
   liveTraceSubscriptionOperation,
   logSearchOperation,
   metricNamesOperation,
   metricSeriesOperation,
+  optimizationRunsOperation,
   organizationInvitationsOperation,
   organizationMembersOperation,
   organizationOperation,
@@ -57,11 +58,11 @@ import {
   revokeOrganizationInvitationOperation,
   richMetricSeriesOperation,
   saveDashboardOperation,
-  scorersOperation,
   selectProjectOperation,
   setDashboardPinnedOperation,
   startDatasetExportOperation,
-  startExperimentRunOperation,
+  startEvaluationRunOperation,
+  startOptimizationRunOperation,
   telemetryFacetsOperation,
   traceDetailOperation,
   traceSearchOperation,
@@ -829,7 +830,7 @@ async function main(args = process.argv.slice(2)) {
       "DeleteDashboard did not delete saved dashboard",
     );
 
-    await assertAiEvalScenario(bffPort, natsUrl, runID, runTraceFixture);
+    await assertAiEvalScenario(bffPort, natsUrl, runID, runTraceFixture, aiEvalHarnessURL);
 
     console.log("Asserting collector failure mappings...");
     await assertCollectorProblem(
@@ -1777,66 +1778,38 @@ async function assertAlertingScenario(port, projectId, metricName) {
   assert(deletedRule.data?.deleteAlertRule === true, "DeleteAlertRule did not delete");
 }
 
-async function assertAiEvalScenario(port, natsUrl, runID, traceFixture) {
+async function assertAiEvalScenario(port, natsUrl, runID, traceFixture, aiEvalHarnessURL) {
   console.log("Asserting public GraphQL AI Eval workspace workflows...");
-  const datasetResult = await graphql(
-    port,
-    createDatasetOperation,
-    {
-      input: {
-        name: `Integration dataset ${runID}`,
-        description: "Dataset created by the local integration runner",
-        tags: ["integration", runID],
+  const scenarioResult = await runAiEvalV2FakeAdapterScenario({
+    projectId: "default",
+    runId: runID,
+    graphql: {
+      async request(operationName, variables) {
+        const response = await graphql(
+          port,
+          aiEvalOperation(operationName),
+          variables,
+          operationName,
+        );
+        return response.data ?? {};
       },
     },
-    "CreateDataset",
-  );
-  const dataset = datasetResult.data?.createDataset;
-  assert(dataset?.id, "CreateDataset did not return a dataset id");
-
-  const scorerResult = await graphql(
-    port,
-    createScorerOperation,
-    {
-      input: {
-        name: `Integration deterministic scorer ${runID}`,
-        kind: "deterministic",
-        definition: { type: "contains", field: "answer", expected: "ok" },
-      },
+    async readHarnessCapturedRequests() {
+      const response = await fetch(`${aiEvalHarnessURL}/debug/captured-requests`);
+      if (!response.ok) {
+        return [];
+      }
+      const body = await response.json();
+      return Array.isArray(body.requests) ? body.requests : [];
     },
-    "CreateScorer",
-  );
-  const scorer = scorerResult.data?.createScorer;
-  assert(scorer?.id, "CreateScorer did not return a scorer id");
-
-  const experimentResult = await graphql(
-    port,
-    createExperimentOperation,
-    {
-      input: {
-        name: `Integration experiment ${runID}`,
-        datasetId: dataset.id,
-        datasetVersion: dataset.version,
-        scorerIds: [scorer.id],
-        solverRef: { kind: "agent", name: "cloudgrid-e2e" },
-        tags: ["integration"],
-      },
-    },
-    "CreateExperiment",
-  );
-  const experiment = experimentResult.data?.createExperiment;
-  assert(experiment?.id, "CreateExperiment did not return an experiment id");
-
-  const experimentRun = await graphql(
-    port,
-    startExperimentRunOperation,
-    { input: { experimentId: experiment.id } },
-    "StartExperimentRun",
-  );
+  });
+  assert(scenarioResult.datasetId, "CreateDataset did not return a dataset id");
   assert(
-    experimentRun.data?.startExperimentRun?.experimentId === experiment.id,
-    "StartExperimentRun did not return a run for the created experiment",
+    scenarioResult.evaluationRunId,
+    "StartEvaluationRun did not return a run for the created evaluation",
   );
+
+  const dataset = { id: scenarioResult.datasetId };
 
   const upload = await uploadDatasetImport(port, dataset.id, runID);
   const preparedImport = await graphql(
@@ -1854,7 +1827,7 @@ async function assertAiEvalScenario(port, natsUrl, runID, traceFixture) {
         },
         defaults: {
           split: "validation",
-          reviewStatus: "reviewed",
+          curationStatus: "ready",
           metadata: { source: "integration-local" },
           synthetic: false,
           allowPartialCommit: false,
@@ -1874,8 +1847,9 @@ async function assertAiEvalScenario(port, natsUrl, runID, traceFixture) {
     {
       input: {
         importId: importJob.id,
-        expectedDatasetVersion: 1,
+        expectedDatasetVersionId: scenarioResult.datasetVersionId,
         mode: "valid_rows_only",
+        idempotencyKey: `dataset-import-commit-${runID}`,
       },
     },
     "CommitDatasetImport",
@@ -1891,14 +1865,16 @@ async function assertAiEvalScenario(port, natsUrl, runID, traceFixture) {
     {
       input: {
         datasetId: dataset.id,
-        expectedDatasetVersion: committedImport.data.commitDatasetImport.committedDatasetVersion,
+        expectedDatasetVersionId:
+          committedImport.data.commitDatasetImport.committedDatasetVersionId ??
+          scenarioResult.datasetVersionId,
         items: [
           {
             input: { prompt: `manual integration row ${runID}` },
             expected: { answer: "ok" },
             metadata: { source: "integration-local", mode: "manual-append" },
             split: "validation",
-            reviewStatus: "reviewed",
+            curationStatus: "ready",
           },
         ],
       },
@@ -1959,68 +1935,6 @@ async function assertAiEvalScenario(port, natsUrl, runID, traceFixture) {
     "Dataset.items did not return committed import rows",
   );
 
-  const scorers = await graphql(
-    port,
-    scorersOperation,
-    { input: { query: "Integration deterministic", limit: 10 } },
-    "Scorers",
-  );
-  assert(
-    scorers.data?.scorers?.items?.some((item) => item.id === scorer.id),
-    "Scorers did not return the created scorer",
-  );
-
-  const experiments = await graphql(
-    port,
-    experimentsOperation,
-    { input: { datasetId: dataset.id, limit: 10 } },
-    "Experiments",
-  );
-  assert(
-    experiments.data?.experiments?.items?.some((item) => item.id === experiment.id),
-    "Experiments did not return the created experiment",
-  );
-
-  const missingExperimentRun = await graphql(
-    port,
-    experimentRunOperation,
-    { id: `experiment-run-${runID}` },
-    "ExperimentRun",
-  );
-  assert(
-    missingExperimentRun.data?.experimentRun === null,
-    "ExperimentRun should be nullable for a missing run",
-  );
-
-  const annotationQueue = await graphql(
-    port,
-    annotationQueueOperation,
-    { input: { status: "open", limit: 10 } },
-    "AnnotationQueue",
-  );
-  assert(
-    Array.isArray(annotationQueue.data?.annotationQueue?.items),
-    "AnnotationQueue did not return a search result",
-  );
-
-  const quality = await graphql(
-    port,
-    aiQualityOverviewOperation,
-    {
-      input: {
-        projectId: "default",
-        agentName: "checkout-agent",
-        service: traceFixture.serviceName,
-        limit: 10,
-      },
-    },
-    "AiQualityOverview",
-  );
-  assert(
-    quality.data?.aiQualityOverview?.segments?.some((segment) => segment.runCount >= 1),
-    "AiQualityOverview did not aggregate the persisted AI projection",
-  );
-
   const exportJob = await graphql(
     port,
     startDatasetExportOperation,
@@ -2042,10 +1956,25 @@ async function assertAiEvalScenario(port, natsUrl, runID, traceFixture) {
     exportLookup.data?.datasetExport?.id === exportJob.data.startDatasetExport.id,
     "DatasetExport did not return the ready export",
   );
+}
 
-  const liveExperiment = await openLiveExperimentRunSubscription(port, `experiment-run-${runID}`);
-  await liveExperiment.waitForHeartbeat(10_000);
-  await liveExperiment.close();
+function aiEvalOperation(operationName) {
+  const operations = {
+    CreateDataset: createDatasetOperation,
+    AppendDatasetItems: appendDatasetItemsOperation,
+    CreateEvaluationDefinition: createEvaluationDefinitionOperation,
+    StartEvaluationRun: startEvaluationRunOperation,
+    EvaluationRun: evaluationRunOperation,
+    EvaluationResults: evaluationResultsOperation,
+    CreateEvaluationComparison: createEvaluationComparisonOperation,
+    StartOptimizationRun: startOptimizationRunOperation,
+    OptimizationRuns: optimizationRunsOperation,
+  };
+  const operation = operations[operationName];
+  if (!operation) {
+    throw new Error(`Unsupported AI Eval v2 integration operation ${operationName}`);
+  }
+  return operation;
 }
 
 function projectAiSettingsUpdateInput(settings) {
@@ -2088,19 +2017,17 @@ function projectAiSettingsUpdateInput(settings) {
     sampling: {
       defaultOnlineSampleRate: 0,
       maxOnlineSampleRate: 1,
-      maxConcurrentExperimentItems: 4,
+      maxConcurrentEvaluationItems: 4,
       maxConcurrentOptimizationCandidates: 2,
     },
     datasetDefaults: {
       splitAllocation: settings.datasetDefaults?.splitAllocation ?? {
-        dev: 0.2,
-        optimization: 0.4,
+        training: 0.7,
         validation: 0.2,
-        regression: 0.15,
-        holdout: 0.05,
+        test: 0.1,
       },
-      smallDatasetReviewedThreshold: settings.datasetDefaults?.smallDatasetReviewedThreshold ?? 30,
-      requireReviewForRegression: settings.datasetDefaults?.requireReviewForRegression ?? true,
+      smallDatasetReadyThreshold: settings.datasetDefaults?.smallDatasetReadyThreshold ?? 30,
+      requireReadyForTest: settings.datasetDefaults?.requireReadyForTest ?? true,
     },
     expectedVersion: settings.version,
   };
@@ -2227,75 +2154,6 @@ function describeError(error) {
   } catch {
     return String(error);
   }
-}
-
-async function openLiveExperimentRunSubscription(port, experimentRunId) {
-  if (!globalThis.WebSocket) {
-    throw new Error("Bun WebSocket client is required for live experiment integration checks");
-  }
-  const messages = [];
-  let completed = false;
-  const operationId = `live-experiment-${Date.now()}`;
-  const socket = new globalThis.WebSocket(`ws://127.0.0.1:${port}/graphql`, "graphql-transport-ws");
-
-  socket.addEventListener("message", (message) => {
-    const parsed = parseSocketMessage(message.data);
-    if (parsed) {
-      messages.push(parsed);
-    }
-  });
-  socket.addEventListener("error", () => {
-    messages.push({ type: "error", payload: "WebSocket client error" });
-  });
-
-  await waitForSocketOpen(socket, 10_000);
-  socket.send(JSON.stringify({ type: "connection_init" }));
-  await eventually(() => {
-    assert(
-      messages.some((message) => message.type === "connection_ack"),
-      "GraphQL WebSocket did not acknowledge live experiment connection",
-    );
-  }, 10_000);
-
-  socket.send(
-    JSON.stringify({
-      id: operationId,
-      type: "subscribe",
-      payload: {
-        query: liveExperimentRunSubscriptionOperation,
-        variables: { input: { experimentRunId } },
-      },
-    }),
-  );
-
-  return {
-    async waitForHeartbeat(timeoutMs) {
-      await eventually(() => {
-        assert(
-          !messages.some((message) => message.type === "error" || message.payload?.errors?.length),
-          "liveExperimentRun subscription returned an error",
-        );
-        assert(
-          messages.some(
-            (message) =>
-              message.id === operationId &&
-              message.type === "next" &&
-              message.payload?.data?.liveExperimentRun?.type === "heartbeat",
-          ),
-          "liveExperimentRun subscription did not receive a heartbeat",
-        );
-      }, timeoutMs);
-    },
-    async close() {
-      if (completed) {
-        return;
-      }
-      completed = true;
-      socket.send(JSON.stringify({ id: operationId, type: "complete" }));
-      await sleep(250);
-      socket.close();
-    },
-  };
 }
 
 function bridgeEnvelope(requestId) {

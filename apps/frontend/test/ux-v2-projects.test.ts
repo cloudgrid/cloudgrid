@@ -206,13 +206,13 @@ function controlPlaneMarkup(
     sampling: {
       defaultOnlineSampleRate: 0.1,
       maxOnlineSampleRate: 1,
-      maxConcurrentExperimentItems: 4,
+      maxConcurrentEvaluationItems: 4,
       maxConcurrentOptimizationCandidates: 2,
     },
     datasetDefaults: {
-      splitAllocation: { train: 0.8, validation: 0.2 },
-      smallDatasetReviewedThreshold: 25,
-      requireReviewForRegression: true,
+      splitAllocation: { training: 0.8, validation: 0.2 },
+      smallDatasetReadyThreshold: 25,
+      requireReadyForTest: true,
     },
     effective: {
       warnings: [],
@@ -610,7 +610,7 @@ describe("UX v2 project models", () => {
 
     expect(source).toContain('name="defaultProviderProfileId"');
     expect(source).toContain('name="budgetDailyUsd"');
-    expect(source).toContain('name="maxConcurrentExperimentItems"');
+    expect(source).toContain('name="maxConcurrentEvaluationItems"');
     expect(source).toContain("maxConcurrency");
     expect(source).toContain("Provider profiles");
   });

@@ -17,10 +17,23 @@ import {
 
 export interface HarnessAdapterServer {
   fetch(request: Request): Promise<Response>;
+  capturedRequests(): CapturedHarnessRequest[];
+}
+
+export type HarnessAdapterFixtureMode = "success" | "validation_failure" | "timeout" | "quick_shot";
+
+export interface CapturedHarnessRequest {
+  method: string;
+  path: string;
+  traceparent?: string | undefined;
+  tracestate?: string | undefined;
+  body: unknown;
 }
 
 export interface HarnessAdapterServerOptions {
   agents?: z.infer<typeof agentsResponseSchema>["agents"];
+  captureRequests?: boolean;
+  fixtureMode?: HarnessAdapterFixtureMode;
   otlp?: {
     endpoint?: string;
     fetch?: (request: Request) => Promise<Response>;
@@ -40,6 +53,8 @@ const serviceName = "cloudgrid-harness-adapter";
 export function createHarnessAdapterServer(
   options: HarnessAdapterServerOptions = {},
 ): HarnessAdapterServer {
+  const capturedRequests: CapturedHarnessRequest[] = [];
+  const fixtureMode = options.fixtureMode ?? "success";
   const otlp = {
     endpoint: options.otlp?.endpoint ?? Bun.env.CLOUDGRID_HARNESS_ADAPTER_OTLP_ENDPOINT,
     fetch: options.otlp?.fetch ?? ((request: Request) => fetch(request)),
@@ -57,6 +72,12 @@ export function createHarnessAdapterServer(
     }).agents;
 
   return {
+    capturedRequests(): CapturedHarnessRequest[] {
+      return capturedRequests.map((captured) => ({
+        ...captured,
+        body: cloneJsonValue(captured.body),
+      }));
+    },
     async fetch(request: Request): Promise<Response> {
       const url = new URL(request.url);
 
@@ -79,7 +100,11 @@ export function createHarnessAdapterServer(
       }
 
       if (request.method === "POST" && url.pathname === "/v1/run") {
-        return handleRun(request, otlp);
+        return handleRun(request, otlp, {
+          captureRequests: options.captureRequests === true,
+          capturedRequests,
+          fixtureMode,
+        });
       }
 
       if (
@@ -100,7 +125,7 @@ export function createHarnessAdapterServer(
       }
 
       if (request.method === "POST" && url.pathname === "/v1/optimize") {
-        return handleOptimize(request, otlp);
+        return handleOptimize(request, otlp, fixtureMode);
       }
 
       return json(problem("ERR-005", "METHOD_NOT_ALLOWED", 405, "Route is not supported"), 405);
@@ -149,7 +174,17 @@ async function handleSandboxLifecycle(request: Request, path: string): Promise<R
   );
 }
 
-async function handleRun(request: Request, otlp: OtlpConfig): Promise<Response> {
+interface RunHandlerOptions {
+  captureRequests: boolean;
+  capturedRequests: CapturedHarnessRequest[];
+  fixtureMode: HarnessAdapterFixtureMode;
+}
+
+async function handleRun(
+  request: Request,
+  otlp: OtlpConfig,
+  options: RunHandlerOptions,
+): Promise<Response> {
   const parsed = await parseJson(request, runRequestSchema);
   if (!parsed.success) {
     return parsed.response;
@@ -157,6 +192,34 @@ async function handleRun(request: Request, otlp: OtlpConfig): Promise<Response> 
 
   const started = performance.now();
   const body = parsed.data;
+  captureRequest(options, request, "/v1/run", body);
+
+  if (options.fixtureMode === "validation_failure") {
+    return json(
+      problem(
+        "ERR-AIE-010",
+        "EVAL_OUTPUT_VALIDATION_FAILED",
+        422,
+        "Deterministic fixture produced output that violates the configured schema",
+        false,
+      ),
+      422,
+    );
+  }
+
+  if (options.fixtureMode === "timeout") {
+    return json(
+      problem(
+        "ERR-AIE-011",
+        "EVAL_ADAPTER_TIMEOUT",
+        504,
+        "Deterministic fixture simulated an adapter timeout",
+        true,
+      ),
+      504,
+    );
+  }
+
   const response = runResponseSchema.parse({
     experimentRunId: body.experimentRunId,
     datasetItemId: body.datasetItemId,
@@ -235,7 +298,11 @@ async function handleScore(request: Request, otlp: OtlpConfig): Promise<Response
   return json(response);
 }
 
-async function handleOptimize(request: Request, otlp: OtlpConfig): Promise<Response> {
+async function handleOptimize(
+  request: Request,
+  otlp: OtlpConfig,
+  fixtureMode: HarnessAdapterFixtureMode,
+): Promise<Response> {
   const parsed = await parseJson(request, optimizeRequestSchema);
   if (!parsed.success) {
     return parsed.response;
@@ -268,6 +335,12 @@ async function handleOptimize(request: Request, otlp: OtlpConfig): Promise<Respo
       summary: {
         candidateNumber,
         optimizerKind: body.optimizerKind,
+        ...(fixtureMode === "quick_shot"
+          ? {
+              retentionRole: "quick_shot",
+              evaluatedSubset: true,
+            }
+          : {}),
       },
     });
   });
@@ -279,6 +352,12 @@ async function handleOptimize(request: Request, otlp: OtlpConfig): Promise<Respo
       summary: {
         candidateCount: maxCandidates,
         optimizerKind: body.optimizerKind,
+        ...(fixtureMode === "quick_shot"
+          ? {
+              retentionRole: "quick_shot",
+              evaluatedSubset: true,
+            }
+          : {}),
       },
     }),
   );
@@ -365,6 +444,31 @@ function json(payload: unknown, status = 200): Response {
     status,
     headers: jsonHeaders,
   });
+}
+
+function captureRequest(
+  options: RunHandlerOptions,
+  request: Request,
+  path: string,
+  body: unknown,
+): void {
+  if (!options.captureRequests) {
+    return;
+  }
+  options.capturedRequests.push({
+    method: request.method,
+    path,
+    traceparent: request.headers.get("traceparent") ?? undefined,
+    tracestate: request.headers.get("tracestate") ?? undefined,
+    body: cloneJsonValue(body),
+  });
+}
+
+function cloneJsonValue(value: unknown): unknown {
+  if (value === undefined) {
+    return undefined;
+  }
+  return JSON.parse(JSON.stringify(value));
 }
 
 async function emitOtlpSpan(

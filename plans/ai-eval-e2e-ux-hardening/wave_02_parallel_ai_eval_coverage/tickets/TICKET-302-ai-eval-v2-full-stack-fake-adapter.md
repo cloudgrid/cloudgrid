@@ -2,7 +2,7 @@
 id: TICKET-302
 title: AI Eval v2 full-stack fake adapter scenario
 wave: 2
-status: ready
+status: done
 parallel_group: ai_eval_e2e_wave2
 depends_on: [TICKET-301]
 blocked_by: []
@@ -172,3 +172,12 @@ bun run integration:local
 
 The project has executable AI Eval v2 full-stack coverage for fake adapter
 evaluation and optimization quick-shot basics.
+
+## Completion Evidence
+
+- `PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/integration-scenarios test`
+- `PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/integration-scenarios typecheck`
+- `PATH="$HOME/.bun/bin:$PATH" bun test tooling/scripts/ai-eval-fake-service-integration.test.mjs`
+- `PATH="$HOME/.bun/bin:$PATH" bun run contracts:check`
+- `PATH="$HOME/.bun/bin:$PATH" bun run typecheck`
+- `git diff --check`

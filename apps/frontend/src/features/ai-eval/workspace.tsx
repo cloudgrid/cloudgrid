@@ -25,8 +25,10 @@ import {
 import { type UseQueryResult, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
+  ClipboardCheck,
+  Database,
   Download,
-  FileJson,
+  Eye,
   GitCompareArrows,
   Pause,
   Play,
@@ -77,7 +79,6 @@ import { t } from "../../lib/i18n";
 import { useAppSession } from "../../providers/app-session-provider";
 import { useTelemetryClient } from "../../providers/telemetry-client-provider";
 import {
-  compatibleTraceImportDatasets,
   DATASET_CURATION_STATUSES,
   DATASET_SPLITS,
   datasetCurrentVersionId,
@@ -258,8 +259,8 @@ function AiEvalHeader({
 }) {
   const title =
     section === "datasets"
-      ? selectedDataset?.name ?? "Datasets"
-      : selectedEvaluation?.name ?? "Evaluations";
+      ? (selectedDataset?.name ?? "Datasets")
+      : (selectedEvaluation?.name ?? "Evaluations");
   const description =
     section === "datasets"
       ? "Create versioned examples with raw JSON/text values, curation status, split, and optional reason."
@@ -290,6 +291,7 @@ function AiEvalHeader({
             type="button"
             variant={section === "datasets" ? "secondary" : "ghost"}
           >
+            <Database data-icon="inline-start" />
             Datasets
           </Button>
           <Button
@@ -299,6 +301,7 @@ function AiEvalHeader({
             type="button"
             variant={section === "evaluations" ? "secondary" : "ghost"}
           >
+            <ClipboardCheck data-icon="inline-start" />
             Evaluations
           </Button>
         </div>
@@ -310,14 +313,15 @@ function AiEvalHeader({
           value={query}
         />
         {section === "datasets" ? (
-          <>
-            <CreateDatasetDialog projectId={projectId} />
-            <TraceImportPicker datasets={datasets} />
-          </>
+          <CreateDatasetDialog projectId={projectId} />
         ) : (
           <>
             <CreateEvaluationDialog datasets={datasets} projectId={projectId} />
-            <StartOptimizationDialog datasets={datasets} evaluations={evaluations} projectId={projectId} />
+            <StartOptimizationDialog
+              datasets={datasets}
+              evaluations={evaluations}
+              projectId={projectId}
+            />
           </>
         )}
       </div>
@@ -378,7 +382,9 @@ function DatasetsListView({
                 <div className="font-medium">{dataset.name}</div>
                 <div className="text-xs text-muted-foreground">{dataset.description}</div>
               </TableCell>
-              <TableCell>{String(datasetSetting(dataset, "evaluationFamily") ?? "classification")}</TableCell>
+              <TableCell>
+                {String(datasetSetting(dataset, "evaluationFamily") ?? "classification")}
+              </TableCell>
               <TableCell>
                 {String(datasetSetting(dataset, "inputType") ?? "json")} /{" "}
                 {String(datasetSetting(dataset, "expectedType") ?? "json")}
@@ -415,6 +421,11 @@ function DatasetDetailView({ dataset, projectId }: { dataset: Dataset; projectId
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <CreateEvaluationDialog
+              datasets={[dataset]}
+              projectId={projectId}
+              triggerLabel="Create evaluation from dataset"
+            />
             <DatasetImportDialog dataset={dataset} projectId={projectId} />
             <DatasetExportDialog dataset={dataset} />
             <DatasetRowDialog dataset={dataset} mode="add" />
@@ -439,8 +450,12 @@ function DatasetDetailView({ dataset, projectId }: { dataset: Dataset; projectId
               <TableRow key={item.id}>
                 <TableCell>{item.latestRevision.split}</TableCell>
                 <TableCell>{item.latestRevision.curationStatus}</TableCell>
-                <TableCell className="max-w-64 truncate">{jsonPreview(item.latestRevision.input)}</TableCell>
-                <TableCell className="max-w-64 truncate">{jsonPreview(item.latestRevision.expected)}</TableCell>
+                <TableCell className="max-w-64 truncate">
+                  {jsonPreview(item.latestRevision.input)}
+                </TableCell>
+                <TableCell className="max-w-64 truncate">
+                  {jsonPreview(item.latestRevision.expected)}
+                </TableCell>
                 <TableCell className="max-w-56 truncate">
                   {String(itemValue(item, "reason") ?? "")}
                 </TableCell>
@@ -478,7 +493,10 @@ function DatasetDetailView({ dataset, projectId }: { dataset: Dataset; projectId
         ) : null}
       </section>
       <aside className="min-h-0 overflow-auto border p-4">
-        <h2 className="text-sm font-medium">Settings</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-medium">Dataset settings</h2>
+          <DatasetSettingsDialog dataset={dataset} />
+        </div>
         <dl className="mt-3 grid gap-3 text-sm">
           <div>
             <dt className="text-muted-foreground">Value shape</dt>
@@ -521,14 +539,22 @@ function EvaluationsWorkspace({
   selectedEvaluation,
   selectedRun,
 }: {
-  comparisonsQuery: QueryResult<Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchEvaluationComparisons"]>>>;
+  comparisonsQuery: QueryResult<
+    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchEvaluationComparisons"]>>
+  >;
   datasets: Dataset[];
-  evaluationsQuery: QueryResult<Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchEvaluationDefinitions"]>>>;
+  evaluationsQuery: QueryResult<
+    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchEvaluationDefinitions"]>>
+  >;
   onRunSelect: (id: string) => void;
   onSelect: (id: string) => void;
-  optimizationsQuery: QueryResult<Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchOptimizationRuns"]>>>;
+  optimizationsQuery: QueryResult<
+    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchOptimizationRuns"]>>
+  >;
   projectId: string;
-  runsQuery: QueryResult<Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchEvaluationRuns"]>>>;
+  runsQuery: QueryResult<
+    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchEvaluationRuns"]>>
+  >;
   selectedEvaluation: EvaluationDefinition | null;
   selectedRun: EvaluationRun | null;
 }) {
@@ -536,7 +562,9 @@ function EvaluationsWorkspace({
     return <LoadingRows />;
   }
   if (evaluationsQuery.isError) {
-    return <ErrorPanel error={evaluationsQuery.error} onRetry={() => void evaluationsQuery.refetch()} />;
+    return (
+      <ErrorPanel error={evaluationsQuery.error} onRetry={() => void evaluationsQuery.refetch()} />
+    );
   }
   const evaluations = evaluationsQuery.data?.items ?? [];
   if (evaluations.length === 0) {
@@ -544,7 +572,13 @@ function EvaluationsWorkspace({
       <EmptyState
         description="Create an evaluation from an eligible dataset, then start a baseline run."
         filtered={false}
-        primaryAction={<CreateEvaluationDialog datasets={datasets} projectId={projectId} triggerVariant="default" />}
+        primaryAction={
+          <CreateEvaluationDialog
+            datasets={datasets}
+            projectId={projectId}
+            triggerVariant="default"
+          />
+        }
         title="No evaluations yet"
       />
     );
@@ -608,12 +642,18 @@ function EvaluationDetailView({
   runsQuery,
   selectedRun,
 }: {
-  comparisonsQuery: QueryResult<Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchEvaluationComparisons"]>>>;
+  comparisonsQuery: QueryResult<
+    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchEvaluationComparisons"]>>
+  >;
   datasets: Dataset[];
   definition: EvaluationDefinition;
   onRunSelect: (id: string) => void;
-  optimizationsQuery: QueryResult<Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchOptimizationRuns"]>>>;
-  runsQuery: QueryResult<Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchEvaluationRuns"]>>>;
+  optimizationsQuery: QueryResult<
+    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchOptimizationRuns"]>>
+  >;
+  runsQuery: QueryResult<
+    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchEvaluationRuns"]>>
+  >;
   selectedRun: EvaluationRun | null;
 }) {
   const runs = runsQuery.data?.items ?? [];
@@ -631,10 +671,15 @@ function EvaluationDetailView({
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <EvaluationRunsTable onRunSelect={onRunSelect} query={runsQuery} runs={runs} />
-        {selectedRun || runs[0] ? <EvaluationRunDetail run={(selectedRun || runs[0]) as EvaluationRun} /> : null}
+        {selectedRun || runs[0] ? (
+          <EvaluationRunDetail run={(selectedRun || runs[0]) as EvaluationRun} />
+        ) : null}
       </div>
       <ComparisonView comparisonsQuery={comparisonsQuery} runs={runs} />
-      <OptimizationRunDetailView optimizationsQuery={optimizationsQuery} projectId={definition.projectId} />
+      <OptimizationRunDetailView
+        optimizationsQuery={optimizationsQuery}
+        projectId={definition.projectId}
+      />
     </div>
   );
 }
@@ -645,7 +690,9 @@ function EvaluationRunsTable({
   runs,
 }: {
   onRunSelect: (id: string) => void;
-  query: QueryResult<Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchEvaluationRuns"]>>>;
+  query: QueryResult<
+    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchEvaluationRuns"]>>
+  >;
   runs: EvaluationRun[];
 }) {
   if (query.isLoading) {
@@ -671,7 +718,9 @@ function EvaluationRunsTable({
               <TableCell>{run.status}</TableCell>
               <TableCell>{runProgressLabel(run)}</TableCell>
               <TableCell>
-                {run.metricAggregates[0] ? metricAggregateLabel(run.metricAggregates[0]) : "pending"}
+                {run.metricAggregates[0]
+                  ? metricAggregateLabel(run.metricAggregates[0])
+                  : "pending"}
               </TableCell>
               <TableCell>
                 <EvaluationRunControls run={run} />
@@ -715,7 +764,10 @@ function EvaluationRunDetail({ run }: { run: EvaluationRun }) {
           {run.metricAggregates.length ? (
             <ul className="grid gap-2">
               {run.metricAggregates.map((aggregate) => (
-                <li className="border px-3 py-2" key={`${aggregate.metricId}:${aggregate.subjectId}`}>
+                <li
+                  className="border px-3 py-2"
+                  key={`${aggregate.metricId}:${aggregate.subjectId}`}
+                >
                   {metricAggregateLabel(aggregate)}
                 </li>
               ))}
@@ -751,7 +803,10 @@ function EvaluationRunDetail({ run }: { run: EvaluationRun }) {
                     <TableCell>{itemRun.importantSteps.length}</TableCell>
                     <TableCell>
                       {itemRun.traceId ? (
-                        <Link className="text-primary hover:underline" to={`/traces/${itemRun.traceId}`}>
+                        <Link
+                          className="text-primary hover:underline"
+                          to={`/traces/${itemRun.traceId}`}
+                        >
                           trace
                         </Link>
                       ) : (
@@ -771,7 +826,13 @@ function EvaluationRunDetail({ run }: { run: EvaluationRun }) {
         </div>
         <details className="border px-3 py-2">
           <summary className="cursor-pointer text-sm font-medium">Advanced</summary>
-          <JsonViewer value={{ targetSnapshotId: run.targetSnapshotId, datasetDigest: run.datasetDigest, retentionRole: run.retentionRole }} />
+          <JsonViewer
+            value={{
+              targetSnapshotId: run.targetSnapshotId,
+              datasetDigest: run.datasetDigest,
+              retentionRole: run.retentionRole,
+            }}
+          />
         </details>
       </div>
     </div>
@@ -782,7 +843,9 @@ function ComparisonView({
   comparisonsQuery,
   runs,
 }: {
-  comparisonsQuery: QueryResult<Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchEvaluationComparisons"]>>>;
+  comparisonsQuery: QueryResult<
+    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchEvaluationComparisons"]>>
+  >;
   runs: EvaluationRun[];
 }) {
   const telemetryClient = useTelemetryClient();
@@ -843,7 +906,7 @@ function ComparisonView({
           variant="outline"
         >
           <GitCompareArrows data-icon="inline-start" />
-          Compare
+          Create comparison
         </Button>
       </div>
       <div className="mt-3 grid gap-2">
@@ -869,7 +932,9 @@ function OptimizationRunDetailView({
   optimizationsQuery,
   projectId,
 }: {
-  optimizationsQuery: QueryResult<Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchOptimizationRuns"]>>>;
+  optimizationsQuery: QueryResult<
+    Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchOptimizationRuns"]>>
+  >;
   projectId: string;
 }) {
   const runs = optimizationsQuery.data?.items ?? [];
@@ -885,7 +950,8 @@ function OptimizationRunDetailView({
             <Badge variant="outline">{run.status}</Badge>
             <span className="font-medium">{optimizationPhaseLabel(run)}</span>
             <span className="text-muted-foreground">
-              {run.candidateTargetSnapshotIds.length} candidates · {run.causedEvaluationRunIds.length} runs
+              {run.candidateTargetSnapshotIds.length} candidates ·{" "}
+              {run.causedEvaluationRunIds.length} runs
             </span>
             <TargetPromotionDialog projectId={projectId} run={run} />
           </div>
@@ -918,7 +984,9 @@ function CreateDatasetDialog({
   const [metricId, setMetricId] = useState("extraction.exact_json_match");
   const [inputPath, setInputPath] = useState("$.input");
   const [expectedPath, setExpectedPath] = useState("$.expected");
-  const [anonymizationMode, setAnonymizationMode] = useState<"off" | "realistic" | "redact">("redact");
+  const [anonymizationMode, setAnonymizationMode] = useState<"off" | "realistic" | "redact">(
+    "redact",
+  );
   const [error, setError] = useState<string | null>(null);
   const mutation = useMutation({
     mutationFn: () => {
@@ -974,13 +1042,15 @@ function CreateDatasetDialog({
       <DialogTrigger asChild>
         <Button size="sm" type="button" variant={triggerVariant}>
           <Plus data-icon="inline-start" />
-          Create dataset
+          New dataset
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create dataset</DialogTitle>
-          <DialogDescription>Configure one input and expected-output shape for every row.</DialogDescription>
+          <DialogTitle>New dataset</DialogTitle>
+          <DialogDescription>
+            Configure one input and expected-output shape for every row.
+          </DialogDescription>
         </DialogHeader>
         <FieldGroup>
           <Field>
@@ -993,11 +1063,17 @@ function CreateDatasetDialog({
           </div>
           <Field>
             <FieldLabel>Input JSON schema</FieldLabel>
-            <Textarea onChange={(event) => setInputSchema(event.target.value)} value={inputSchema} />
+            <Textarea
+              onChange={(event) => setInputSchema(event.target.value)}
+              value={inputSchema}
+            />
           </Field>
           <Field>
             <FieldLabel>Expected JSON schema</FieldLabel>
-            <Textarea onChange={(event) => setExpectedSchema(event.target.value)} value={expectedSchema} />
+            <Textarea
+              onChange={(event) => setExpectedSchema(event.target.value)}
+              value={expectedSchema}
+            />
           </Field>
           <Field>
             <FieldLabel>Default metric</FieldLabel>
@@ -1010,12 +1086,20 @@ function CreateDatasetDialog({
             </Field>
             <Field>
               <FieldLabel>Trace expected path</FieldLabel>
-              <Input onChange={(event) => setExpectedPath(event.target.value)} value={expectedPath} />
+              <Input
+                onChange={(event) => setExpectedPath(event.target.value)}
+                value={expectedPath}
+              />
             </Field>
           </div>
           <Field>
             <FieldLabel>Anonymization</FieldLabel>
-            <Select onValueChange={(value) => setAnonymizationMode(value as "off" | "realistic" | "redact")} value={anonymizationMode}>
+            <Select
+              onValueChange={(value) =>
+                setAnonymizationMode(value as "off" | "realistic" | "redact")
+              }
+              value={anonymizationMode}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -1054,7 +1138,7 @@ function CreateDatasetDialog({
             type="button"
           >
             <Plus data-icon="inline-start" />
-            Create
+            New dataset
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1076,9 +1160,15 @@ function DatasetRowDialog({
   const [open, setOpen] = useState(false);
   const inputType = (datasetSetting(dataset, "inputType") ?? "json") as DatasetValueType;
   const expectedType = (datasetSetting(dataset, "expectedType") ?? "json") as DatasetValueType;
-  const [inputText, setInputText] = useState(() => initialRawValue(item?.latestRevision.input, inputType));
-  const [expectedText, setExpectedText] = useState(() => initialRawValue(item?.latestRevision.expected, expectedType));
-  const [observedOutputText, setObservedOutputText] = useState(() => initialRawValue(itemValue(item, "observedOutput"), expectedType));
+  const [inputText, setInputText] = useState(() =>
+    initialRawValue(item?.latestRevision.input, inputType),
+  );
+  const [expectedText, setExpectedText] = useState(() =>
+    initialRawValue(item?.latestRevision.expected, expectedType),
+  );
+  const [observedOutputText, setObservedOutputText] = useState(() =>
+    initialRawValue(itemValue(item, "observedOutput"), expectedType),
+  );
   const [reason, setReason] = useState(() => String(itemValue(item, "reason") ?? ""));
   const [split, setSplit] = useState<DatasetSplit>(item?.latestRevision.split ?? "training");
   const [curationStatus, setCurationStatus] = useState<DatasetCurationStatus>(
@@ -1088,8 +1178,16 @@ function DatasetRowDialog({
   const [error, setError] = useState<string | null>(null);
   const mutation = useMutation({
     mutationFn: () => {
-      const inputValue = parseAndValidateValue(inputText, inputType, datasetSetting(dataset, "inputJsonSchema"));
-      const expectedValue = parseAndValidateValue(expectedText, expectedType, datasetSetting(dataset, "expectedJsonSchema"));
+      const inputValue = parseAndValidateValue(
+        inputText,
+        inputType,
+        datasetSetting(dataset, "inputJsonSchema"),
+      );
+      const expectedValue = parseAndValidateValue(
+        expectedText,
+        expectedType,
+        datasetSetting(dataset, "expectedJsonSchema"),
+      );
       const observedOutput =
         observedOutputText.trim() === ""
           ? { value: null as JSONValue, error: null as string | null }
@@ -1149,14 +1247,20 @@ function DatasetRowDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button size="sm" type="button" variant="outline">
-          {mode === "add" ? <Plus data-icon="inline-start" /> : <SlidersHorizontal data-icon="inline-start" />}
+          {mode === "add" ? (
+            <Plus data-icon="inline-start" />
+          ) : (
+            <SlidersHorizontal data-icon="inline-start" />
+          )}
           {mode === "add" ? "Add row" : "Edit"}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{mode === "add" ? "Add dataset row" : "Edit dataset row"}</DialogTitle>
-          <DialogDescription>Paste raw values and validate them against the dataset shape.</DialogDescription>
+          <DialogTitle>{mode === "add" ? "Add row" : "Edit row"}</DialogTitle>
+          <DialogDescription>
+            Paste raw values and validate them against the dataset shape.
+          </DialogDescription>
         </DialogHeader>
         <FieldGroup>
           <Field>
@@ -1165,11 +1269,17 @@ function DatasetRowDialog({
           </Field>
           <Field>
             <FieldLabel>Expected output</FieldLabel>
-            <Textarea onChange={(event) => setExpectedText(event.target.value)} value={expectedText} />
+            <Textarea
+              onChange={(event) => setExpectedText(event.target.value)}
+              value={expectedText}
+            />
           </Field>
           <Field>
             <FieldLabel>Observed output</FieldLabel>
-            <Textarea onChange={(event) => setObservedOutputText(event.target.value)} value={observedOutputText} />
+            <Textarea
+              onChange={(event) => setObservedOutputText(event.target.value)}
+              value={observedOutputText}
+            />
           </Field>
           <Field>
             <FieldLabel>Reason</FieldLabel>
@@ -1181,7 +1291,11 @@ function DatasetRowDialog({
           </div>
           <Field>
             <FieldLabel>Metadata</FieldLabel>
-            <Textarea onChange={(event) => setMetadata(event.target.value)} placeholder="key=value" value={metadata} />
+            <Textarea
+              onChange={(event) => setMetadata(event.target.value)}
+              placeholder="key=value"
+              value={metadata}
+            />
           </Field>
           {error || mutation.error ? (
             <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -1191,7 +1305,10 @@ function DatasetRowDialog({
         </FieldGroup>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">Cancel</Button>
+            <Button variant="outline">
+              <XCircle data-icon="inline-start" />
+              Cancel
+            </Button>
           </DialogClose>
           <Button
             disabled={mutation.isPending}
@@ -1217,10 +1334,12 @@ function DatasetRowDialog({
 function CreateEvaluationDialog({
   datasets,
   projectId,
+  triggerLabel = "New evaluation",
   triggerVariant = "outline",
 }: {
   datasets: Dataset[];
   projectId: string;
+  triggerLabel?: string;
   triggerVariant?: "default" | "outline";
 }) {
   const telemetryClient = useTelemetryClient();
@@ -1270,13 +1389,15 @@ function CreateEvaluationDialog({
       <DialogTrigger asChild>
         <Button size="sm" type="button" variant={triggerVariant}>
           <Plus data-icon="inline-start" />
-          Create evaluation
+          {triggerLabel}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create evaluation</DialogTitle>
-          <DialogDescription>Select a dataset, split, target, metric, and run policy.</DialogDescription>
+          <DialogTitle>{triggerLabel}</DialogTitle>
+          <DialogDescription>
+            Select a dataset, split, target, metric, and run policy.
+          </DialogDescription>
         </DialogHeader>
         <FieldGroup>
           <Field>
@@ -1319,7 +1440,10 @@ function CreateEvaluationDialog({
         </FieldGroup>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">Cancel</Button>
+            <Button variant="outline">
+              <XCircle data-icon="inline-start" />
+              Cancel
+            </Button>
           </DialogClose>
           <Button
             disabled={mutation.isPending}
@@ -1334,7 +1458,7 @@ function CreateEvaluationDialog({
             type="button"
           >
             <Plus data-icon="inline-start" />
-            Create
+            {triggerLabel}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1378,7 +1502,12 @@ function StartEvaluationRunButton({
     },
   });
   return (
-    <Button disabled={mutation.isPending || !dataset} onClick={() => void mutation.mutateAsync()} size="sm" type="button">
+    <Button
+      disabled={mutation.isPending || !dataset}
+      onClick={() => void mutation.mutateAsync()}
+      size="sm"
+      type="button"
+    >
       <Play data-icon="inline-start" />
       Run evaluation
     </Button>
@@ -1390,7 +1519,10 @@ function EvaluationRunControls({ run }: { run: EvaluationRun }) {
   const queryClient = useQueryClient();
   const controlMutation = useMutation({
     mutationFn: (action: "pause" | "resume" | "cancel") => {
-      const input = { evaluationRunId: run.id, idempotencyKey: `${run.id}-${action}-${Date.now()}` };
+      const input = {
+        evaluationRunId: run.id,
+        idempotencyKey: `${run.id}-${action}-${Date.now()}`,
+      };
       if (action === "pause") {
         return telemetryClient.pauseEvaluationRun(input);
       }
@@ -1539,15 +1671,24 @@ function StartOptimizationDialog({
           </Field>
           <Field>
             <FieldLabel>Baseline target snapshot</FieldLabel>
-            <Input onChange={(event) => setBaselineSnapshotId(event.target.value)} value={baselineSnapshotId} />
+            <Input
+              onChange={(event) => setBaselineSnapshotId(event.target.value)}
+              value={baselineSnapshotId}
+            />
           </Field>
           <Field>
             <FieldLabel>Primary metric</FieldLabel>
-            <Input onChange={(event) => setPrimaryMetricId(event.target.value)} value={primaryMetricId} />
+            <Input
+              onChange={(event) => setPrimaryMetricId(event.target.value)}
+              value={primaryMetricId}
+            />
           </Field>
           <Field>
             <FieldLabel>Quick-shot phase</FieldLabel>
-            <Select onValueChange={(value) => setQuickShot(value as "enabled" | "disabled")} value={quickShot}>
+            <Select
+              onValueChange={(value) => setQuickShot(value as "enabled" | "disabled")}
+              value={quickShot}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -1565,11 +1706,18 @@ function StartOptimizationDialog({
         </FieldGroup>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">Cancel</Button>
+            <Button variant="outline">
+              <XCircle data-icon="inline-start" />
+              Cancel
+            </Button>
           </DialogClose>
-          <Button disabled={!evaluationId || !baselineSnapshotId || mutation.isPending} onClick={() => void mutation.mutateAsync()} type="button">
+          <Button
+            disabled={!evaluationId || !baselineSnapshotId || mutation.isPending}
+            onClick={() => void mutation.mutateAsync()}
+            type="button"
+          >
             <RefreshCw data-icon="inline-start" />
-            Start
+            Start optimization
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1584,7 +1732,9 @@ function DatasetImportDialog({ dataset, projectId }: { dataset: Dataset; project
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadId, setUploadId] = useState("");
   const [format, setFormat] = useState<"jsonl" | "json_array" | "csv" | "zip">("jsonl");
-  const [commitMode, setCommitMode] = useState<"valid_rows_only" | "reject_if_any_error">("valid_rows_only");
+  const [commitMode, setCommitMode] = useState<"valid_rows_only" | "reject_if_any_error">(
+    "valid_rows_only",
+  );
   const [importId, setImportId] = useState("");
   const uploadMutation = useMutation({
     mutationFn: async () => {
@@ -1671,7 +1821,9 @@ function DatasetImportDialog({ dataset, projectId }: { dataset: Dataset; project
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Import rows</DialogTitle>
-          <DialogDescription>Prepare, preview, then commit server-side import rows.</DialogDescription>
+          <DialogDescription>
+            Prepare, preview, then commit server-side import rows.
+          </DialogDescription>
         </DialogHeader>
         <FieldGroup data-ai-eval-dataset-import-workflow="true">
           <Field>
@@ -1698,11 +1850,17 @@ function DatasetImportDialog({ dataset, projectId }: { dataset: Dataset; project
               <Upload data-icon="inline-start" />
               Upload file
             </Button>
-            {uploadId ? <span className="font-mono text-xs text-muted-foreground">{uploadId}</span> : null}
+            {uploadId ? (
+              <span className="font-mono text-xs text-muted-foreground">{uploadId}</span>
+            ) : null}
           </div>
           <Field>
             <FieldLabel>Upload id</FieldLabel>
-            <Input onChange={(event) => setUploadId(event.target.value)} placeholder="Paste an existing upload id" value={uploadId} />
+            <Input
+              onChange={(event) => setUploadId(event.target.value)}
+              placeholder="Paste an existing upload id"
+              value={uploadId}
+            />
           </Field>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field>
@@ -1721,7 +1879,10 @@ function DatasetImportDialog({ dataset, projectId }: { dataset: Dataset; project
             </Field>
             <Field>
               <FieldLabel>Commit mode</FieldLabel>
-              <Select onValueChange={(value) => setCommitMode(value as typeof commitMode)} value={commitMode}>
+              <Select
+                onValueChange={(value) => setCommitMode(value as typeof commitMode)}
+                value={commitMode}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -1740,15 +1901,28 @@ function DatasetImportDialog({ dataset, projectId }: { dataset: Dataset; project
           ) : null}
           {uploadMutation.error || prepareMutation.error || commitMutation.error ? (
             <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {uploadMutation.error?.message ?? prepareMutation.error?.message ?? commitMutation.error?.message}
+              {uploadMutation.error?.message ??
+                prepareMutation.error?.message ??
+                commitMutation.error?.message}
             </div>
           ) : null}
         </FieldGroup>
         <DialogFooter>
-          <Button disabled={!uploadId || prepareMutation.isPending} onClick={() => void prepareMutation.mutateAsync()} type="button" variant="outline">
+          <Button
+            disabled={!uploadId || prepareMutation.isPending}
+            onClick={() => void prepareMutation.mutateAsync()}
+            type="button"
+            variant="outline"
+          >
+            <Eye data-icon="inline-start" />
             Preview
           </Button>
-          <Button disabled={!importId || commitMutation.isPending} onClick={() => void commitMutation.mutateAsync()} type="button">
+          <Button
+            disabled={!importId || commitMutation.isPending}
+            onClick={() => void commitMutation.mutateAsync()}
+            type="button"
+          >
+            <CheckCircle2 data-icon="inline-start" />
             Commit
           </Button>
         </DialogFooter>
@@ -1785,7 +1959,9 @@ function DatasetExportDialog({ dataset }: { dataset: Dataset }) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Export dataset</DialogTitle>
-          <DialogDescription>Start a server-side export for the current dataset version.</DialogDescription>
+          <DialogDescription>
+            Start a server-side export for the current dataset version.
+          </DialogDescription>
         </DialogHeader>
         <Field>
           <FieldLabel>Format</FieldLabel>
@@ -1811,7 +1987,11 @@ function DatasetExportDialog({ dataset }: { dataset: Dataset }) {
           </div>
         ) : null}
         <DialogFooter>
-          <Button disabled={mutation.isPending} onClick={() => void mutation.mutateAsync()} type="button">
+          <Button
+            disabled={mutation.isPending}
+            onClick={() => void mutation.mutateAsync()}
+            type="button"
+          >
             <Download data-icon="inline-start" />
             Start export
           </Button>
@@ -1821,33 +2001,48 @@ function DatasetExportDialog({ dataset }: { dataset: Dataset }) {
   );
 }
 
-function TraceImportPicker({ datasets }: { datasets: Dataset[] }) {
-  const compatible = compatibleTraceImportDatasets(datasets);
+function DatasetSettingsDialog({ dataset }: { dataset: Dataset }) {
   return (
     <Dialog>
       <DialogTrigger asChild>
         <Button size="sm" type="button" variant="outline">
-          <FileJson data-icon="inline-start" />
-          Add trace to dataset
+          <Settings data-icon="inline-start" />
+          Dataset settings
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add trace to dataset</DialogTitle>
-          <DialogDescription>Only datasets with extraction settings are shown.</DialogDescription>
+          <DialogTitle>Dataset settings</DialogTitle>
+          <DialogDescription>
+            Dataset-level shape, curation, extraction, anonymization, and retention.
+          </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-2">
-          {compatible.map((dataset) => (
-            <div className="border px-3 py-2 text-sm" key={dataset.id}>
-              {dataset.name}
-            </div>
-          ))}
-          {compatible.length === 0 ? (
-            <div className="border border-dashed p-3 text-sm text-muted-foreground">
-              No dataset has compatible extraction settings.
-            </div>
-          ) : null}
-        </div>
+        <dl className="grid gap-3 text-sm">
+          <div>
+            <dt className="text-muted-foreground">Input type</dt>
+            <dd>{String(datasetSetting(dataset, "inputType") ?? "json")}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Expected output type</dt>
+            <dd>{String(datasetSetting(dataset, "expectedType") ?? "json")}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Default split</dt>
+            <dd>{String(datasetSetting(dataset, "defaultSplit") ?? "training")}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Extraction settings</dt>
+            <dd>{datasetHasExtractionSettings(dataset) ? "configured" : "not configured"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Anonymization and PII policy</dt>
+            <dd>{jsonPreview(datasetSetting(dataset, "anonymizationPolicy"), 160) || "default"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Retention</dt>
+            <dd>{String(datasetSetting(dataset, "retentionProfile") ?? "balanced")}</dd>
+          </div>
+        </dl>
       </DialogContent>
     </Dialog>
   );
@@ -1881,12 +2076,15 @@ function TargetPromotionDialog({
   });
   return (
     <Button
-      disabled={!run.selectedCandidateSnapshotId || run.comparisonIds.length === 0 || mutation.isPending}
+      disabled={
+        !run.selectedCandidateSnapshotId || run.comparisonIds.length === 0 || mutation.isPending
+      }
       onClick={() => void mutation.mutateAsync()}
       size="sm"
       type="button"
       variant="outline"
     >
+      <CheckCircle2 data-icon="inline-start" />
       Promote
     </Button>
   );
@@ -1917,7 +2115,13 @@ function ValueTypeField({
   );
 }
 
-function SplitField({ onChange, value }: { onChange: (value: DatasetSplit) => void; value: DatasetSplit }) {
+function SplitField({
+  onChange,
+  value,
+}: {
+  onChange: (value: DatasetSplit) => void;
+  value: DatasetSplit;
+}) {
   return (
     <Field>
       <FieldLabel>Split</FieldLabel>
@@ -1977,8 +2181,9 @@ function itemValue(item: DatasetItem | undefined, key: string): JSONValue | unde
     return undefined;
   }
   return (
-    (item.latestRevision as typeof item.latestRevision & Record<string, JSONValue | undefined>)[key] ??
-    (item as DatasetItem & Record<string, JSONValue | undefined>)[key]
+    (item.latestRevision as typeof item.latestRevision & Record<string, JSONValue | undefined>)[
+      key
+    ] ?? (item as DatasetItem & Record<string, JSONValue | undefined>)[key]
   );
 }
 
@@ -1986,7 +2191,11 @@ function sourceTraceId(item: DatasetItem) {
   return item.latestRevision.sourceRefs.find((source) => source.traceId)?.traceId ?? null;
 }
 
-function parseAndValidateValue(text: string, type: DatasetValueType, schema: JSONValue | undefined) {
+function parseAndValidateValue(
+  text: string,
+  type: DatasetValueType,
+  schema: JSONValue | undefined,
+) {
   const parsed = parseRawValue(text, type);
   if (parsed.error) {
     throw new Error(parsed.error);
