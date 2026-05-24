@@ -44,7 +44,19 @@ Frontend must not call legacy `createScorer`, `scorers`, `createExperiment`,
 
 ## Dataset View Requirements
 
+- The AI Eval route-level navigation contains only `Datasets` and
+  `Evaluations`; it must not contain a nested Datasets-to-Evaluations tab set.
 - Dataset list and dataset detail are separate route states.
+- Dataset list primary action label is `New dataset`.
+- Dataset detail manages rows and dataset settings only. Its row creation action
+  label is `Add row`; `Add dataset` must not appear inside an existing dataset
+  detail view.
+- Dataset settings are available from dataset detail through a `Dataset
+  settings` action. Settings are not hidden in import/export flows. The settings
+  surface edits only configured dataset-level behavior from the domain contract:
+  input value type/schema, expected output value type/schema, default split,
+  curation defaults, extraction settings, anonymization/PII policy, retention,
+  and metric defaults when those fields exist in the GraphQL contract.
 - Row data uses storage-read cursor pagination.
 - Frontend passes filters and sort options to GraphQL; it does not load all rows
   and filter locally.
@@ -54,9 +66,22 @@ Frontend must not call legacy `createScorer`, `scorers`, `createExperiment`,
 - Import files go through prepare/preview/commit. Frontend must not parse upload
   files into row mutation payloads.
 - Export starts a server-side export job.
+- Dataset detail can show an explicit `Create evaluation from dataset` action
+  for an eligible dataset. This action opens the evaluation creation flow with
+  the dataset preselected; it is not route-local navigation to a separate
+  Evaluations tab.
+- `Add trace to dataset` is not a dataset-list or dataset-detail action. Trace
+  import actions live in Traces views where the user has trace/span context:
+  trace detail, span context actions, and trace overview bulk actions. The
+  dataset picker in Traces lists only datasets that have extraction settings.
 
 ## Evaluation View Requirements
 
+- Evaluation definitions list primary action label is `New evaluation`.
+- Evaluation detail uses `Run evaluation` for starting a run. It must not use
+  `Add evaluation` inside an existing evaluation detail.
+- Links from evaluation detail to the source dataset are plain object links back
+  to dataset detail, not nested dataset navigation.
 - Evaluation creation uses dataset, dataset version policy, split selector,
   target, metric settings, and run policy controls.
 - Run start uses `startEvaluationRun`.
@@ -64,10 +89,12 @@ Frontend must not call legacy `createScorer`, `scorers`, `createExperiment`,
 - Run detail renders storage-read aggregates and item rows as returned.
 - Item rows show bounded previews and trace links, not full trace payloads.
 - Comparison views render metric deltas and examples from storage-read.
+- Comparison creation label is `Create comparison`.
 
 ## Optimization View Requirements
 
 - Start optimization from evaluation/run/comparison.
+- Optimization start label is `Start optimization`.
 - Show resolved objective before start.
 - Show quick-shot as an explicit phase when present.
 - Show candidate target snapshots and target diffs.

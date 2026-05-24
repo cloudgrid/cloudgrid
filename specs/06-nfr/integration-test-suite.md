@@ -29,9 +29,11 @@ The suite must verify at least:
 - OTLP trace, log, and metric ingest through public collector endpoints;
 - GraphQL trace search/detail, log search, metric name search, and metric series
   reads through the BFF;
-- AI Eval workspace reads, dataset import upload/preview/commit, dataset export,
-  quality overview, and live experiment subscription startup through the BFF,
-  storage-read, and storage-write services;
+- AI Eval workspace reads, dataset settings, dataset row creation, dataset
+  import upload/preview/commit, dataset export, evaluation definition creation,
+  evaluation run start/control/live updates, evaluation result reads,
+  comparison reads, optimization quick-shot startup, and target snapshot reads
+  through the BFF, AI Eval runner, storage-read, and storage-write services;
 - collector error mappings for invalid public requests;
 - duplicate JetStream ingest command handling.
 - resilience scenarios for NATS disconnect/reconnect, SurrealDB
@@ -102,10 +104,47 @@ Next required public endpoint coverage:
   matching trace through OTLP, assert `added`/`updated` live event delivery from
   storage-read, then stop the subscription and assert no direct BFF ingest or
   persisted-notification subscription is used.
-- AI-eval transfer and GraphQL workflows: dataset import upload, unsafe upload
-  rejection, import preview/commit, export lookup/download states, dataset,
-  scorer, experiment, annotation, quality overview, live experiment heartbeat,
-  and project AI settings.
+- AI-eval v2 GraphQL workflows: dataset create/settings/read, manual row
+  append with text and JSON values, invalid row JSON/schema rejection, dataset
+  import upload, unsafe upload rejection, import preview/commit, export
+  lookup/download states, evaluation definition create/read, evaluation run
+  start/control/live update delivery, result item and metric reads, comparison
+  reads, optimization quick-shot startup, target snapshot reads, and project AI
+  settings.
+
+## Shared End-to-End Runtime
+
+Domain integration scenarios must share one local end-to-end runtime instead of
+adding domain-specific process orchestration. `tooling/scripts/integration-local.mjs`
+starts disposable infrastructure and CloudGrid services only. Executable
+scenario modules own domain actions, assertions, fixtures, and diagnostics.
+
+AI Eval scenarios that need deterministic model or adapter behavior use the
+shared CloudGrid harness adapter package from
+`apps/packages/cloudgrid-harness-adapter`. Long-term AI Eval integration tests
+must not duplicate fake LLM/provider behavior in separate scripts. The adapter
+fixtures must be deterministic, support successful text/JSON outputs, validation
+failures, adapter timeouts, and optimization quick-shot candidate behavior, and
+must expose captured request metadata for assertions.
+
+The AI Eval full-stack scenario must prove all of these through public
+entrypoints:
+
+- a dataset is created with text and JSON schema settings;
+- a manual row is added with input, expected output, optional reason, split,
+  curation status, and source metadata;
+- a trace or span can be imported only from Traces UI/API flow entrypoints and
+  only into datasets with extraction settings;
+- an evaluation definition is created for a selected dataset version and target
+  snapshot;
+- the runner calls the deterministic harness adapter with W3C trace context;
+- item runs, actual output, bounded trajectory summary, metric results,
+  aggregate metrics, trace refs, and run events are persisted and readable
+  through GraphQL;
+- invalid raw JSON and adapter timeout produce typed public errors or typed
+  failed item/run states without hanging the scenario;
+- a quick-shot optimization run evaluates only its configured subset and stores
+  quick-shot retention-role data separately from full validation evidence.
 
 ## Fixture Requirements
 
@@ -125,8 +164,10 @@ Integration fixtures must be realistic enough to prove query semantics:
   routes, and environments for group-by and filtering;
 - control-plane data for multiple projects, members, invitations, ingest
   credentials, dashboards, pins, retention, and alert rules;
-- AI-eval datasets, dataset items, scorers, experiments, prompt versions,
-  annotation queue items, JSONL/CSV/ZIP import files, and export artifacts.
+- AI-eval datasets, dataset rows, dataset item revisions, extraction settings,
+  evaluation definitions, evaluation runs, item runs, metric results, target
+  snapshots, optimization runs, JSONL/CSV/ZIP import files, export artifacts,
+  and deterministic harness adapter responses.
 
 The default `bun run test` command must not require Docker. Docker-backed
 integration scenarios run through `bun run integration:local`; CI may promote

@@ -1,0 +1,14 @@
+plan: ai_eval_e2e_ux_hardening
+tickets:
+  TICKET-301:
+    depends_on: []
+    blocked_by: []
+    unblocks: [TICKET-302, TICKET-303]
+  TICKET-302:
+    depends_on: [TICKET-301]
+    blocked_by: []
+    unblocks: []
+  TICKET-303:
+    depends_on: [TICKET-301]
+    blocked_by: []
+    unblocks: []

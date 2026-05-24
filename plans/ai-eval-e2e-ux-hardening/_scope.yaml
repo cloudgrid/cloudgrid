@@ -1,0 +1,23 @@
+plan: ai_eval_e2e_ux_hardening
+parallel_boundaries:
+  wave_01_shared_e2e_runtime:
+    - owner: integration-agent
+      write_scope:
+        - tooling/scripts/integration-local.mjs
+        - tooling/scripts/ai-eval-dev-harness.mjs
+        - apps/packages/cloudgrid-harness-adapter
+        - apps/packages/integration-scenarios
+  wave_02_parallel_ai_eval_coverage:
+    - owner: integration-agent
+      write_scope:
+        - tooling/scripts/ai-eval-fake-service-integration.test.mjs
+        - apps/packages/integration-scenarios
+        - apps/packages/public-api-client/src
+    - owner: frontend-agent
+      write_scope:
+        - apps/frontend/src/routes/ai-eval-route.tsx
+        - apps/frontend/src/features/ai-eval
+        - apps/frontend/src/routes/traces-route.tsx
+        - apps/frontend/src/features/traces
+        - apps/frontend/src/lib/i18n.ts
+        - apps/frontend/test

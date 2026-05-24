@@ -1,0 +1,28 @@
+plan: ai_eval_e2e_ux_hardening
+status: ready
+updated: 2026-05-24
+tickets:
+  TICKET-301:
+    status: ready
+    wave: wave_01_shared_e2e_runtime
+    depends_on: []
+    blocked_by: []
+    owner: integration-agent
+    evidence: []
+    next: TICKET-302 and TICKET-303 may start after shared E2E runtime hooks are ready
+  TICKET-302:
+    status: ready
+    wave: wave_02_parallel_ai_eval_coverage
+    depends_on: [TICKET-301]
+    blocked_by: []
+    owner: integration-agent
+    evidence: []
+    next: AI Eval v2 integration coverage complete
+  TICKET-303:
+    status: ready
+    wave: wave_02_parallel_ai_eval_coverage
+    depends_on: [TICKET-301]
+    blocked_by: []
+    owner: frontend-agent
+    evidence: []
+    next: AI Eval frontend UX feedback complete
