@@ -152,10 +152,10 @@ export function AlertsRoute() {
         eyebrow={
           <RouteBreadcrumb
             backLabel={t("actions.back")}
-            backTo="/dashboards"
+            backTo="/projects"
             items={[
               { label: t("nav.projects"), to: "/projects" },
-              { label: selectedProject.name, to: `/projects/${selectedProject.id}` },
+              { label: selectedProject.name, to: "/projects" },
               { label: t("alerts.title") },
             ]}
           />
@@ -244,15 +244,15 @@ function RouteHeader({
   description: string;
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      {eyebrow}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0">
+    <div className="flex shrink-0 flex-col gap-3 border-b pb-3 lg:flex-row lg:items-end lg:justify-between">
+      <div className="min-w-0 space-y-2">
+        {eyebrow}
+        <div>
           <h1 className="text-xl font-semibold tracking-normal">{title}</h1>
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
-        {action ? <div className="shrink-0">{action}</div> : null}
       </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
     </div>
   );
 }

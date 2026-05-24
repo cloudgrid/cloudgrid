@@ -4,108 +4,28 @@
   "title": "DatasetItem",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "datasetId", "version", "input", "metadata"],
+  "required": [
+    "id",
+    "projectId",
+    "datasetId",
+    "latestRevisionId",
+    "latestRevisionVersion",
+    "latestRevisionDigest",
+    "createdAt",
+    "createdBy",
+    "updatedAt",
+    "updatedBy"
+  ],
   "properties": {
     "id": { "type": "string" },
+    "projectId": { "type": "string" },
     "datasetId": { "type": "string" },
-    "version": { "type": "integer", "minimum": 1 },
-    "payload": { "$ref": "./dataset-item-shape.schema.json" },
-    "input": true,
-    "expected": true,
-    "metadata": {
-      "type": "object",
-      "additionalProperties": true,
-      "properties": {
-        "shapeSchemaVersion": { "type": "integer", "const": 1 },
-        "sourceKind": {
-          "type": "string",
-          "enum": [
-            "manual",
-            "import",
-            "trace_promotion",
-            "candidate_commit",
-            "synthetic_generation"
-          ]
-        }
-      }
-    },
-    "sourceTraceId": { "type": "string" },
-    "sourceSpanId": { "type": "string" },
-    "split": {
-      "type": "string",
-      "enum": ["dev", "optimization", "validation", "regression", "holdout"],
-      "default": "dev"
-    },
-    "reviewStatus": {
-      "type": "string",
-      "enum": ["unreviewed", "reviewed", "rejected"],
-      "default": "unreviewed"
-    },
-    "targetShape": {
-      "type": "string",
-      "enum": [
-        "single_turn",
-        "conversation",
-        "tool_call",
-        "agent_trajectory",
-        "workflow_trace",
-        "retrieval_case",
-        "production_trace_ref"
-      ],
-      "default": "single_turn"
-    },
-    "contentTreatment": {
-      "type": "string",
-      "enum": ["original", "realistic_anonymized", "redacted", "synthetic"],
-      "default": "original"
-    },
-    "anonymization": { "$ref": "#/$defs/anonymization" },
-    "quarantineStatus": {
-      "type": "string",
-      "enum": ["none", "needs_review", "quarantined"],
-      "default": "none"
-    },
-    "removedAt": { "type": "string", "format": "date-time" },
-    "synthetic": { "type": "boolean", "default": false },
-    "duplicateOfItemId": { "type": "string" },
-    "leakageWarnings": { "type": "array", "items": { "type": "string" }, "default": [] },
-    "annotations": {
-      "type": "array",
-      "items": { "type": "object", "additionalProperties": true },
-      "default": []
-    }
-  },
-  "$defs": {
-    "anonymization": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "policyId",
-        "policyVersion",
-        "transformedAt",
-        "consistencyScope",
-        "transformedFields"
-      ],
-      "properties": {
-        "policyId": { "type": "string" },
-        "policyVersion": { "type": "integer", "minimum": 1 },
-        "transformedAt": { "type": "string", "format": "date-time" },
-        "consistencyScope": { "type": "string", "enum": ["project", "dataset"] },
-        "transformedFields": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["path", "entityType", "strategy"],
-            "properties": {
-              "path": { "type": "string" },
-              "entityType": { "type": "string" },
-              "strategy": { "type": "string" }
-            }
-          },
-          "default": []
-        }
-      }
-    }
+    "latestRevisionId": { "type": "string" },
+    "latestRevisionVersion": { "type": "integer", "minimum": 1 },
+    "latestRevisionDigest": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "createdBy": { "type": "string" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "updatedBy": { "type": "string" }
   }
 }

@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-105",
+  "title": "EvaluationItemRun",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "evaluationRunId",
+    "datasetItemId",
+    "datasetItemRevisionId",
+    "targetSnapshotId",
+    "status",
+    "actualOutputType",
+    "traceId",
+    "rootSpanId",
+    "metricResultIds",
+    "problems",
+    "trajectorySummary",
+    "summaryEvidenceRefs",
+    "importantSteps",
+    "summaryDigest",
+    "summaryGeneratedAt",
+    "retentionRole",
+    "startedAt"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "evaluationRunId": { "type": "string" },
+    "datasetItemId": { "type": "string" },
+    "datasetItemRevisionId": { "type": "string" },
+    "targetSnapshotId": { "type": "string" },
+    "status": { "type": "string", "enum": ["queued", "running", "completed", "failed", "cancelled", "quarantined"] },
+    "actualOutput": true,
+    "actualOutputType": { "type": "string", "enum": ["text", "json"] },
+    "traceId": { "type": "string" },
+    "rootSpanId": { "type": "string" },
+    "metricResultIds": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "problems": { "type": "array", "items": { "$ref": "#/$defs/problem" }, "default": [] },
+    "trajectorySummary": { "type": "string" },
+    "summaryEvidenceRefs": { "type": "array", "items": { "$ref": "#/$defs/evidenceRef" }, "default": [] },
+    "importantSteps": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/importantStep" }, "default": [] },
+    "conversationRef": { "type": "string" },
+    "summaryDigest": { "type": "string", "minLength": 1 },
+    "summaryGeneratedAt": { "type": "string", "format": "date-time" },
+    "retentionRole": {
+      "type": "string",
+      "enum": ["scratch", "quick_shot", "candidate", "baseline", "validation", "test", "promoted", "pinned"]
+    },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "endedAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "problem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "invalid_actual_output",
+            "invalid_expected_output",
+            "missing_evidence",
+            "adapter_failure",
+            "timeout",
+            "provider_failure",
+            "content_redacted",
+            "not_applicable",
+            "metric_config_invalid",
+            "internal_error"
+          ]
+        },
+        "message": { "type": "string" },
+        "details": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["trace", "span", "log", "metric_result", "artifact", "conversation"] },
+        "id": { "type": "string" },
+        "traceId": { "type": "string" },
+        "spanId": { "type": "string" }
+      }
+    },
+    "importantStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "status"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["model_call", "tool_call", "retrieval", "handoff", "workflow_step", "other"] },
+        "name": { "type": "string" },
+        "status": { "type": "string" },
+        "inputPreview": { "type": "string", "maxLength": 2000 },
+        "outputPreview": { "type": "string", "maxLength": 2000 },
+        "spanRef": { "$ref": "#/$defs/evidenceRef" },
+        "problem": { "$ref": "#/$defs/problem" }
+      }
+    }
+  }
+}

@@ -5,78 +5,62 @@ domain: ai-eval
 layer: capability
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-16
+updated: 2026-05-24
 provenance: from-user
 traits:
   interaction: http
   sync_async: async
   visibility: user
   authentication: prepared
-depends_on: [CAP-AIE-001, CAP-AIE-005, CAP-AIE-006, CAP-AIE-007]
+depends_on: [DOM-006, CAP-AIE-007]
 implements:
-  api: [GQL-Mutation-startExperimentRun, GQL-Subscription-liveExperimentRun, MSG-eval-experiment-start]
+  api: [GQL-Mutation-startEvaluationRun, GQL-Subscription-liveEvaluationRun, MSG-eval-evaluation-run-start]
 ---
 
 # Evaluate Offline Datasets
 
 ## Business Intent
 
-Run a versioned dataset split through a harness agent or workflow and compare
-scored outputs across immutable experiment manifests. Offline evaluation is one
-run mode over reusable scorer capabilities; scorer definitions are not
-duplicated for offline versus production use.
+Run a dataset version against a target, produce metric results and trajectory
+evidence, and make comparisons reproducible.
 
-## Behavior
+## Required Behavior
 
-- A user creates an `Experiment` from a dataset version, split selector, scorer
-  set, baseline reference, and solver reference.
-- `Mutation.startExperimentRun` starts `core/ai-eval-runner` through `eval.experiment.start`.
-- The run resolves an `EvalRunPolicy` before any harness call. The policy
-  includes max parallel requests, token budget, cost budget, rate limits,
-  backpressure behavior, retry policy, timeout policy, failure budget,
-  checkpoint cadence, and item quarantine rules. The default
-  `maxParallelRequests` is `10`.
-- Runner creates an immutable manifest before execution. The manifest snapshots
-  dataset version, split selector, scorer versions, provider profile references,
-  prompt version refs, skill/tool snapshot refs, budget caps, and harness
-  adapter refs.
-- Runner loads dataset items through storage-read, calls harness `/v1/run` for
-  each item, calls `/v1/score` when needed, and persists `DatasetItemRun`,
-  `EvalResult`, and `ExperimentRun.summary` through storage-write.
-- Progress is streamed through `Subscription.liveExperimentRun`.
-- Runs support `queued`, `running`, `pausing`, `paused`, `resuming`,
-  `cancelling`, `cancelled`, `failed`, and `completed` states. Pause drains or
-  checkpoints active item work according to policy; resume reuses the persisted
-  manifest digest and starts only unfinished eligible items.
-- Dataset item execution state is tracked independently from run state. Item
-  states include `pending`, `running`, `passed`, `failed`, `errored`, `skipped`,
-  `needs_review`, and `quarantined`.
-- Dataset validation errors, token-limit failures, invalid JSON, unsupported
-  target shape, missing expected data, or repeated item-specific technical
-  failures mark the item `needs_review` or `quarantined` according to policy and
-  do not count as model-quality regressions.
-- Provider throttling, harness timeouts, queue pressure, and storage backpressure
-  trigger policy-defined pacing, retries, pause, or run failure instead of being
-  recorded as model-quality failures.
-- The BFF does not compute scoreboards. Storage-read returns scoreboard summaries as GraphQL-ready view models.
-- Offline runs may use `dev`, `optimization`, `validation`, and `regression`
-  splits. `holdout` requires explicit holdout evaluation mode and must not be
-  used during optimization.
+- Users create `EvaluationDefinition`, not `Experiment`.
+- A run resolves dataset version, selected item revisions, target snapshot,
+  metric settings, run policy, and retention role before execution.
+- Runner creates an `EvaluationRun` and one `EvaluationItemRun` per selected
+  item revision.
+- Every item run is trace-backed, including simple classification and
+  extraction.
+- Runner persists item runs, metric results, summaries, and problems only
+  through storage-write.
+- Storage-read returns aggregate metrics, comparisons, run detail view models,
+  and live run fanout.
+- BFF validates GraphQL input, sends message bridge commands, validates replies,
+  and maps errors. BFF does not compute metrics or aggregates.
+- Run statuses and item-run fields are exactly those in `DOM-006`.
+- Dataset validation errors, invalid actual output, adapter failure, timeout,
+  missing evidence, provider failure, and content redaction are metric/item-run
+  problems. They are not silently counted as quality failures unless the metric
+  capability explicitly defines that behavior.
+- Full traces remain in telemetry storage. Evaluation records keep refs,
+  bounded summaries, capped important-step previews, metric results, and
+  digests.
+
+## Target Execution
+
+- `prompt` targets execute through the CloudGrid harness/runtime abstraction.
+- `external_adapter` targets execute through the adapter protocol in `DOM-006`.
+- `expected` is never sent to external adapters by default.
 
 ## Acceptance Criteria
 
-- Given a 10-item dataset and two scorers, an experiment run produces 10 DatasetItemRun records, scorer results, and a summary with count, mean score, p50, p95, and pass rate per scorer.
-- Given harness is unreachable, start fails or the run transitions to `failed` with `ERR-AIE-003`.
-- Given a canceled run, no further dataset items start and already persisted item runs remain queryable.
-- Given a paused run, active checkpointed work remains queryable and a later
-  resume continues from the same manifest digest without duplicating completed
-  item runs.
-- Given `maxParallelRequests` is omitted, runner schedules at most 10 concurrent
-  harness or scorer requests for that run.
-- Given a dataset item exceeds the configured input token limit before harness
-  execution, the item is marked `needs_review` or `quarantined` and remaining
-  eligible items continue while the failure budget permits.
-- Given the split selector includes `holdout` during optimization, run start
-  fails before harness execution.
-- Given a baseline run is configured, storage-read returns regression deltas by
-  scorer, item, segment, latency, and cost.
+- Starting a run against a pinned dataset version keeps using that version after
+  later dataset edits.
+- A completed run contains aggregate metrics and per-item metric results.
+- A failed adapter call creates item-run problems and metric problems without
+  requiring frontend special cases.
+- Repeated cancel/pause/resume commands are idempotent.
+- Live run updates are delivered through storage-read fanout, not runner-to-BFF
+  direct subscriptions.

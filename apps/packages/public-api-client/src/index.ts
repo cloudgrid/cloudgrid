@@ -6,6 +6,7 @@ export type {
 } from "./ai-chat";
 export type {
   ControlPlaneGraphQLClient,
+  LiveEvaluationRunObserver,
   LiveExperimentRunObserver,
   LiveTraceObserver,
   TelemetryGraphQLClient,

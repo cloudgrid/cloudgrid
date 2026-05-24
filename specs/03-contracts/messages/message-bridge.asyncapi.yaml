@@ -120,94 +120,101 @@ channels:
   eval.dataset.create:
     address: eval.dataset.create
     messages:
-      EvalMutationRequest:
-        $ref: "#/components/messages/EvalMutationRequest"
-      EvalMutationResponse:
-        $ref: "#/components/messages/EvalMutationResponse"
+      DatasetCreateRequest:
+        $ref: "#/components/messages/DatasetCreateRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.dataset.search:
     address: eval.dataset.search
     messages:
-      EvalQueryRequest:
-        $ref: "#/components/messages/EvalQueryRequest"
-      EvalQueryResponse:
-        $ref: "#/components/messages/EvalQueryResponse"
+      DatasetSearchRequest:
+        $ref: "#/components/messages/DatasetSearchRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.dataset.items.append:
     address: eval.dataset.items.append
     messages:
-      EvalMutationRequest:
-        $ref: "#/components/messages/EvalMutationRequest"
-      EvalMutationResponse:
-        $ref: "#/components/messages/EvalMutationResponse"
+      DatasetItemsAppendRequest:
+        $ref: "#/components/messages/DatasetItemsAppendRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.dataset.item.promote:
     address: eval.dataset.item.promote
     messages:
-      EvalMutationRequest:
-        $ref: "#/components/messages/EvalMutationRequest"
-      EvalMutationResponse:
-        $ref: "#/components/messages/EvalMutationResponse"
+      DatasetItemPromoteRequest:
+        $ref: "#/components/messages/DatasetItemPromoteRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.dataset.item.update:
     address: eval.dataset.item.update
     messages:
-      EvalMutationRequest:
-        $ref: "#/components/messages/EvalMutationRequest"
-      EvalMutationResponse:
-        $ref: "#/components/messages/EvalMutationResponse"
+      DatasetItemUpdateRequest:
+        $ref: "#/components/messages/DatasetItemUpdateRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
+  eval.dataset.version.get:
+    address: eval.dataset.version.get
+    messages:
+      DatasetVersionGetRequest:
+        $ref: "#/components/messages/DatasetVersionGetRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.dataset.candidates.prepare:
     address: eval.dataset.candidates.prepare
     messages:
       DatasetCandidatesPrepareRequest:
         $ref: "#/components/messages/DatasetCandidatesPrepareRequest"
-      DatasetCandidatesResponse:
-        $ref: "#/components/messages/DatasetCandidatesResponse"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.dataset.candidates.search:
     address: eval.dataset.candidates.search
     messages:
       DatasetCandidatesSearchRequest:
         $ref: "#/components/messages/DatasetCandidatesSearchRequest"
-      DatasetCandidatesResponse:
-        $ref: "#/components/messages/DatasetCandidatesResponse"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.dataset.candidates.commit:
     address: eval.dataset.candidates.commit
     messages:
       DatasetCandidatesCommitRequest:
         $ref: "#/components/messages/DatasetCandidatesCommitRequest"
-      EvalMutationResponse:
-        $ref: "#/components/messages/EvalMutationResponse"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.dataset.import.prepare:
     address: eval.dataset.import.prepare
     messages:
-      EvalMutationRequest:
-        $ref: "#/components/messages/EvalMutationRequest"
-      EvalMutationResponse:
-        $ref: "#/components/messages/EvalMutationResponse"
+      DatasetImportPrepareRequest:
+        $ref: "#/components/messages/DatasetImportPrepareRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.dataset.import.commit:
     address: eval.dataset.import.commit
     messages:
-      EvalMutationRequest:
-        $ref: "#/components/messages/EvalMutationRequest"
-      EvalMutationResponse:
-        $ref: "#/components/messages/EvalMutationResponse"
+      DatasetImportCommitRequest:
+        $ref: "#/components/messages/DatasetImportCommitRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.dataset.export.start:
     address: eval.dataset.export.start
     messages:
-      EvalMutationRequest:
-        $ref: "#/components/messages/EvalMutationRequest"
-      EvalMutationResponse:
-        $ref: "#/components/messages/EvalMutationResponse"
+      DatasetExportStartRequest:
+        $ref: "#/components/messages/DatasetExportStartRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.dataset.transfer.get:
     address: eval.dataset.transfer.get
     messages:
-      EvalQueryRequest:
-        $ref: "#/components/messages/EvalQueryRequest"
-      EvalQueryResponse:
-        $ref: "#/components/messages/EvalQueryResponse"
+      DatasetTransferGetRequest:
+        $ref: "#/components/messages/DatasetTransferGetRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.dataset.health:
     address: eval.dataset.health
     messages:
-      EvalQueryRequest:
-        $ref: "#/components/messages/EvalQueryRequest"
-      EvalQueryResponse:
-        $ref: "#/components/messages/EvalQueryResponse"
+      DatasetHealthRequest:
+        $ref: "#/components/messages/DatasetHealthRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.agent_runs.search:
     address: eval.agent_runs.search
     messages:
@@ -215,149 +222,165 @@ channels:
         $ref: "#/components/messages/EvalQueryRequest"
       EvalQueryResponse:
         $ref: "#/components/messages/EvalQueryResponse"
-  eval.scorer.create:
-    address: eval.scorer.create
+  eval.evaluation.create:
+    address: eval.evaluation.create
     messages:
-      EvalMutationRequest:
-        $ref: "#/components/messages/EvalMutationRequest"
-      EvalMutationResponse:
-        $ref: "#/components/messages/EvalMutationResponse"
-  eval.scorer.search:
-    address: eval.scorer.search
+      EvaluationCreateRequest:
+        $ref: "#/components/messages/EvaluationCreateRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
+  eval.evaluation.update:
+    address: eval.evaluation.update
     messages:
-      EvalQueryRequest:
-        $ref: "#/components/messages/EvalQueryRequest"
-      EvalQueryResponse:
-        $ref: "#/components/messages/EvalQueryResponse"
-  eval.experiment.create:
-    address: eval.experiment.create
+      EvaluationUpdateRequest:
+        $ref: "#/components/messages/EvaluationUpdateRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
+  eval.evaluation.search:
+    address: eval.evaluation.search
     messages:
-      EvalMutationRequest:
-        $ref: "#/components/messages/EvalMutationRequest"
-      EvalMutationResponse:
-        $ref: "#/components/messages/EvalMutationResponse"
-  eval.experiment.start:
-    address: eval.experiment.start
+      EvaluationSearchRequest:
+        $ref: "#/components/messages/EvaluationSearchRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
+  eval.evaluation.run.start:
+    address: eval.evaluation.run.start
     messages:
-      ExperimentStartRequest:
-        $ref: "#/components/messages/ExperimentStartRequest"
-      ExperimentStartResponse:
-        $ref: "#/components/messages/ExperimentStartResponse"
-  eval.experiment.cancel:
-    address: eval.experiment.cancel
+      EvaluationRunStartRequest:
+        $ref: "#/components/messages/EvaluationRunStartRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
+  eval.evaluation.run.cancel:
+    address: eval.evaluation.run.cancel
     messages:
-      ExperimentCancelRequest:
-        $ref: "#/components/messages/ExperimentCancelRequest"
-      ExperimentStartResponse:
-        $ref: "#/components/messages/ExperimentStartResponse"
-  eval.experiment.pause:
-    address: eval.experiment.pause
+      EvaluationRunCancelRequest:
+        $ref: "#/components/messages/EvaluationRunCancelRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
+  eval.evaluation.run.pause:
+    address: eval.evaluation.run.pause
     messages:
-      ExperimentRunControlRequest:
-        $ref: "#/components/messages/ExperimentRunControlRequest"
-      ExperimentStartResponse:
-        $ref: "#/components/messages/ExperimentStartResponse"
-  eval.experiment.resume:
-    address: eval.experiment.resume
+      EvaluationRunPauseRequest:
+        $ref: "#/components/messages/EvaluationRunPauseRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
+  eval.evaluation.run.resume:
+    address: eval.evaluation.run.resume
     messages:
-      ExperimentRunControlRequest:
-        $ref: "#/components/messages/ExperimentRunControlRequest"
-      ExperimentStartResponse:
-        $ref: "#/components/messages/ExperimentStartResponse"
+      EvaluationRunResumeRequest:
+        $ref: "#/components/messages/EvaluationRunResumeRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.optimization.start:
     address: eval.optimization.start
     messages:
       OptimizationStartRequest:
         $ref: "#/components/messages/OptimizationStartRequest"
-      ExperimentStartResponse:
-        $ref: "#/components/messages/ExperimentStartResponse"
-  eval.experiment.search:
-    address: eval.experiment.search
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
+  eval.evaluation.run.search:
+    address: eval.evaluation.run.search
     messages:
-      EvalQueryRequest:
-        $ref: "#/components/messages/EvalQueryRequest"
-      EvalQueryResponse:
-        $ref: "#/components/messages/EvalQueryResponse"
+      EvaluationRunSearchRequest:
+        $ref: "#/components/messages/EvaluationRunSearchRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
+  eval.evaluation.run.get:
+    address: eval.evaluation.run.get
+    messages:
+      EvaluationRunGetRequest:
+        $ref: "#/components/messages/EvaluationRunGetRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.results.search:
     address: eval.results.search
     messages:
-      EvalQueryRequest:
-        $ref: "#/components/messages/EvalQueryRequest"
-      EvalQueryResponse:
-        $ref: "#/components/messages/EvalQueryResponse"
+      EvaluationResultsSearchRequest:
+        $ref: "#/components/messages/EvaluationResultsSearchRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.results.persist:
     address: eval.results.persist
     messages:
-      EvalMutationRequest:
-        $ref: "#/components/messages/EvalMutationRequest"
-      EvalMutationResponse:
-        $ref: "#/components/messages/EvalMutationResponse"
-  eval.online.policy_matches.resolve:
-    address: eval.online.policy_matches.resolve
+      EvaluationResultsPersistRequest:
+        $ref: "#/components/messages/EvaluationResultsPersistRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
+  eval.evaluation.comparison.create:
+    address: eval.evaluation.comparison.create
     messages:
-      OnlinePolicyMatchesResolveRequest:
-        $ref: "#/components/messages/OnlinePolicyMatchesResolveRequest"
-      OnlinePolicyMatchesResolveResponse:
-        $ref: "#/components/messages/OnlinePolicyMatchesResolveResponse"
+      EvaluationComparisonCreateRequest:
+        $ref: "#/components/messages/EvaluationComparisonCreateRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
+  eval.evaluation.comparison.search:
+    address: eval.evaluation.comparison.search
+    messages:
+      EvaluationComparisonSearchRequest:
+        $ref: "#/components/messages/EvaluationComparisonSearchRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
+  eval.target.snapshot.create:
+    address: eval.target.snapshot.create
+    messages:
+      TargetSnapshotCreateRequest:
+        $ref: "#/components/messages/TargetSnapshotCreateRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
+  eval.target.snapshot.get:
+    address: eval.target.snapshot.get
+    messages:
+      TargetSnapshotGetRequest:
+        $ref: "#/components/messages/TargetSnapshotGetRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
+  eval.target.diff:
+    address: eval.target.diff
+    messages:
+      TargetDiffRequest:
+        $ref: "#/components/messages/TargetDiffRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
+  eval.optimization.search:
+    address: eval.optimization.search
+    messages:
+      OptimizationSearchRequest:
+        $ref: "#/components/messages/OptimizationSearchRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
+  eval.optimization.get:
+    address: eval.optimization.get
+    messages:
+      OptimizationGetRequest:
+        $ref: "#/components/messages/OptimizationGetRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
+  eval.target.promote:
+    address: eval.target.promote
+    messages:
+      TargetPromoteRequest:
+        $ref: "#/components/messages/TargetPromoteRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.live.start:
     address: eval.live.start
     messages:
       EvalLiveStartRequest:
         $ref: "#/components/messages/EvalLiveStartRequest"
-      EvalLiveStartResponse:
-        $ref: "#/components/messages/EvalLiveStartResponse"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.live.stop:
     address: eval.live.stop
     messages:
       EvalLiveStopRequest:
         $ref: "#/components/messages/EvalLiveStopRequest"
-      EvalLiveStopResponse:
-        $ref: "#/components/messages/EvalLiveStopResponse"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.live.events:
     address: eval.live.events.*.*
     messages:
-      ExperimentRunEvent:
-        $ref: "#/components/messages/ExperimentRunEvent"
-  eval.experiment.progress:
-    address: eval.experiment.progress
-    messages:
-      ExperimentProgressNotification:
-        $ref: "#/components/messages/ExperimentProgressNotification"
-  eval.manifest.resolve:
-    address: eval.manifest.resolve
-    messages:
-      ExperimentManifestResolveRequest:
-        $ref: "#/components/messages/ExperimentManifestResolveRequest"
-      ExperimentManifestResolveResponse:
-        $ref: "#/components/messages/ExperimentManifestResolveResponse"
-  eval.quality.overview:
-    address: eval.quality.overview
-    messages:
-      EvalQueryRequest:
-        $ref: "#/components/messages/EvalQueryRequest"
-      EvalQueryResponse:
-        $ref: "#/components/messages/EvalQueryResponse"
-  eval.prompt_version.promote:
-    address: eval.prompt_version.promote
-    messages:
-      EvalMutationRequest:
-        $ref: "#/components/messages/EvalMutationRequest"
-      EvalMutationResponse:
-        $ref: "#/components/messages/EvalMutationResponse"
-  annotation.queue.search:
-    address: annotation.queue.search
-    messages:
-      EvalQueryRequest:
-        $ref: "#/components/messages/EvalQueryRequest"
-      EvalQueryResponse:
-        $ref: "#/components/messages/EvalQueryResponse"
-  annotation.item.update:
-    address: annotation.item.update
-    messages:
-      EvalMutationRequest:
-        $ref: "#/components/messages/EvalMutationRequest"
-      EvalMutationResponse:
-        $ref: "#/components/messages/EvalMutationResponse"
+      EvaluationRunEvent:
+        $ref: "#/components/messages/EvaluationRunEvent"
   control.viewer.get:
     address: control.viewer.get
     messages:
@@ -1480,6 +1503,54 @@ components:
       name: EvalMutationResponse
       payload:
         $ref: "#/components/schemas/EvalMutationResponse"
+    AiEvalResponse:
+      name: AiEvalResponse
+      payload:
+        $ref: "#/components/schemas/AiEvalResponse"
+    DatasetCreateRequest:
+      name: DatasetCreateRequest
+      payload:
+        $ref: "#/components/schemas/DatasetCreateRequest"
+    DatasetSearchRequest:
+      name: DatasetSearchRequest
+      payload:
+        $ref: "#/components/schemas/DatasetSearchRequest"
+    DatasetItemsAppendRequest:
+      name: DatasetItemsAppendRequest
+      payload:
+        $ref: "#/components/schemas/DatasetItemsAppendRequest"
+    DatasetItemPromoteRequest:
+      name: DatasetItemPromoteRequest
+      payload:
+        $ref: "#/components/schemas/DatasetItemPromoteRequest"
+    DatasetItemUpdateRequest:
+      name: DatasetItemUpdateRequest
+      payload:
+        $ref: "#/components/schemas/DatasetItemUpdateRequest"
+    DatasetVersionGetRequest:
+      name: DatasetVersionGetRequest
+      payload:
+        $ref: "#/components/schemas/DatasetVersionGetRequest"
+    DatasetHealthRequest:
+      name: DatasetHealthRequest
+      payload:
+        $ref: "#/components/schemas/DatasetHealthRequest"
+    DatasetImportPrepareRequest:
+      name: DatasetImportPrepareRequest
+      payload:
+        $ref: "#/components/schemas/DatasetImportPrepareRequest"
+    DatasetImportCommitRequest:
+      name: DatasetImportCommitRequest
+      payload:
+        $ref: "#/components/schemas/DatasetImportCommitRequest"
+    DatasetExportStartRequest:
+      name: DatasetExportStartRequest
+      payload:
+        $ref: "#/components/schemas/DatasetExportStartRequest"
+    DatasetTransferGetRequest:
+      name: DatasetTransferGetRequest
+      payload:
+        $ref: "#/components/schemas/DatasetTransferGetRequest"
     DatasetCandidatesPrepareRequest:
       name: DatasetCandidatesPrepareRequest
       payload:
@@ -1492,70 +1563,98 @@ components:
       name: DatasetCandidatesCommitRequest
       payload:
         $ref: "#/components/schemas/DatasetCandidatesCommitRequest"
-    DatasetCandidatesResponse:
-      name: DatasetCandidatesResponse
+    EvaluationCreateRequest:
+      name: EvaluationCreateRequest
       payload:
-        $ref: "#/components/schemas/DatasetCandidatesResponse"
-    ExperimentStartRequest:
-      name: ExperimentStartRequest
+        $ref: "#/components/schemas/EvaluationCreateRequest"
+    EvaluationUpdateRequest:
+      name: EvaluationUpdateRequest
       payload:
-        $ref: "#/components/schemas/ExperimentStartRequest"
-    ExperimentCancelRequest:
-      name: ExperimentCancelRequest
+        $ref: "#/components/schemas/EvaluationUpdateRequest"
+    EvaluationSearchRequest:
+      name: EvaluationSearchRequest
       payload:
-        $ref: "#/components/schemas/ExperimentCancelRequest"
-    ExperimentRunControlRequest:
-      name: ExperimentRunControlRequest
+        $ref: "#/components/schemas/EvaluationSearchRequest"
+    EvaluationRunStartRequest:
+      name: EvaluationRunStartRequest
       payload:
-        $ref: "#/components/schemas/ExperimentRunControlRequest"
+        $ref: "#/components/schemas/EvaluationRunStartRequest"
+    EvaluationRunCancelRequest:
+      name: EvaluationRunCancelRequest
+      payload:
+        $ref: "#/components/schemas/EvaluationRunCancelRequest"
+    EvaluationRunPauseRequest:
+      name: EvaluationRunPauseRequest
+      payload:
+        $ref: "#/components/schemas/EvaluationRunPauseRequest"
+    EvaluationRunResumeRequest:
+      name: EvaluationRunResumeRequest
+      payload:
+        $ref: "#/components/schemas/EvaluationRunResumeRequest"
+    EvaluationRunSearchRequest:
+      name: EvaluationRunSearchRequest
+      payload:
+        $ref: "#/components/schemas/EvaluationRunSearchRequest"
+    EvaluationRunGetRequest:
+      name: EvaluationRunGetRequest
+      payload:
+        $ref: "#/components/schemas/EvaluationRunGetRequest"
+    EvaluationResultsSearchRequest:
+      name: EvaluationResultsSearchRequest
+      payload:
+        $ref: "#/components/schemas/EvaluationResultsSearchRequest"
+    EvaluationResultsPersistRequest:
+      name: EvaluationResultsPersistRequest
+      payload:
+        $ref: "#/components/schemas/EvaluationResultsPersistRequest"
+    EvaluationComparisonCreateRequest:
+      name: EvaluationComparisonCreateRequest
+      payload:
+        $ref: "#/components/schemas/EvaluationComparisonCreateRequest"
+    EvaluationComparisonSearchRequest:
+      name: EvaluationComparisonSearchRequest
+      payload:
+        $ref: "#/components/schemas/EvaluationComparisonSearchRequest"
+    TargetSnapshotCreateRequest:
+      name: TargetSnapshotCreateRequest
+      payload:
+        $ref: "#/components/schemas/TargetSnapshotCreateRequest"
+    TargetSnapshotGetRequest:
+      name: TargetSnapshotGetRequest
+      payload:
+        $ref: "#/components/schemas/TargetSnapshotGetRequest"
+    TargetDiffRequest:
+      name: TargetDiffRequest
+      payload:
+        $ref: "#/components/schemas/TargetDiffRequest"
     OptimizationStartRequest:
       name: OptimizationStartRequest
       payload:
         $ref: "#/components/schemas/OptimizationStartRequest"
-    ExperimentStartResponse:
-      name: ExperimentStartResponse
+    OptimizationSearchRequest:
+      name: OptimizationSearchRequest
       payload:
-        $ref: "#/components/schemas/EvalMutationResponse"
+        $ref: "#/components/schemas/OptimizationSearchRequest"
+    OptimizationGetRequest:
+      name: OptimizationGetRequest
+      payload:
+        $ref: "#/components/schemas/OptimizationGetRequest"
+    TargetPromoteRequest:
+      name: TargetPromoteRequest
+      payload:
+        $ref: "#/components/schemas/TargetPromoteRequest"
     EvalLiveStartRequest:
       name: EvalLiveStartRequest
       payload:
         $ref: "#/components/schemas/EvalLiveStartRequest"
-    EvalLiveStartResponse:
-      name: EvalLiveStartResponse
-      payload:
-        $ref: "#/components/schemas/EvalMutationResponse"
     EvalLiveStopRequest:
       name: EvalLiveStopRequest
       payload:
         $ref: "#/components/schemas/EvalLiveStopRequest"
-    EvalLiveStopResponse:
-      name: EvalLiveStopResponse
+    EvaluationRunEvent:
+      name: EvaluationRunEvent
       payload:
-        $ref: "#/components/schemas/EvalMutationResponse"
-    ExperimentRunEvent:
-      name: ExperimentRunEvent
-      payload:
-        $ref: "#/components/schemas/ExperimentRunEvent"
-    ExperimentProgressNotification:
-      name: ExperimentProgressNotification
-      payload:
-        $ref: "#/components/schemas/ExperimentProgressNotification"
-    ExperimentManifestResolveRequest:
-      name: ExperimentManifestResolveRequest
-      payload:
-        $ref: "#/components/schemas/ExperimentManifestResolveRequest"
-    ExperimentManifestResolveResponse:
-      name: ExperimentManifestResolveResponse
-      payload:
-        $ref: "#/components/schemas/ExperimentManifestResolveResponse"
-    OnlinePolicyMatchesResolveRequest:
-      name: OnlinePolicyMatchesResolveRequest
-      payload:
-        $ref: "#/components/schemas/OnlinePolicyMatchesResolveRequest"
-    OnlinePolicyMatchesResolveResponse:
-      name: OnlinePolicyMatchesResolveResponse
-      payload:
-        $ref: "#/components/schemas/OnlinePolicyMatchesResolveResponse"
+        $ref: "#/components/schemas/EvaluationRunEvent"
     ViewerGetRequest:
       name: ViewerGetRequest
       payload:
@@ -2196,19 +2295,7 @@ components:
               type: object
               additionalProperties: true
     EvalQueryResponse:
-      type: object
-      additionalProperties: false
-      required: [requestId, ok]
-      properties:
-        requestId:
-          type: string
-        ok:
-          type: boolean
-        data:
-          type: object
-          additionalProperties: true
-        error:
-          $ref: "#/components/schemas/BridgeError"
+      $ref: "#/components/schemas/AiEvalResponse"
     EvalMutationRequest:
       allOf:
         - $ref: "#/components/schemas/BridgeEnvelope"
@@ -2220,6 +2307,8 @@ components:
               type: object
               additionalProperties: true
     EvalMutationResponse:
+      $ref: "#/components/schemas/AiEvalResponse"
+    AiEvalResponse:
       type: object
       additionalProperties: false
       required: [requestId, ok]
@@ -2233,13 +2322,136 @@ components:
           additionalProperties: true
         error:
           $ref: "#/components/schemas/BridgeError"
+    DatasetCreateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, idempotencyKey, input]
+          properties:
+            projectId:
+              type: string
+            idempotencyKey:
+              type: string
+            input:
+              $ref: "#/components/schemas/AiEvalObjectPayload"
+    DatasetSearchRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId]
+          properties:
+            projectId:
+              type: string
+            query:
+              type: string
+            limit:
+              type: integer
+              minimum: 1
+              maximum: 200
+            cursor:
+              type: string
+    DatasetItemsAppendRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required:
+            [projectId, datasetId, expectedDatasetVersion, idempotencyKey, input]
+          properties:
+            projectId:
+              type: string
+            datasetId:
+              type: string
+            expectedDatasetVersion:
+              type: integer
+              minimum: 1
+            idempotencyKey:
+              type: string
+            input:
+              $ref: "#/components/schemas/AiEvalObjectPayload"
+    DatasetItemPromoteRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, datasetId, sourceRef, idempotencyKey]
+          properties:
+            projectId:
+              type: string
+            datasetId:
+              type: string
+            sourceRef:
+              $ref: "#/components/schemas/AiEvalSourceRef"
+            split:
+              $ref: "#/components/schemas/DatasetSplit"
+            idempotencyKey:
+              type: string
+    DatasetItemUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required:
+            [
+              projectId,
+              datasetId,
+              datasetItemId,
+              expectedDatasetVersion,
+              idempotencyKey,
+              input
+            ]
+          properties:
+            projectId:
+              type: string
+            datasetId:
+              type: string
+            datasetItemId:
+              type: string
+            expectedDatasetVersion:
+              type: integer
+              minimum: 1
+            idempotencyKey:
+              type: string
+            input:
+              $ref: "#/components/schemas/AiEvalObjectPayload"
+    DatasetVersionGetRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, datasetVersionId]
+          properties:
+            projectId:
+              type: string
+            datasetVersionId:
+              type: string
+            includeItemRevisions:
+              type: boolean
+              default: false
+    DatasetHealthRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, datasetId]
+          properties:
+            projectId:
+              type: string
+            datasetId:
+              type: string
+            datasetVersionId:
+              type: string
     DatasetCandidatesPrepareRequest:
       allOf:
         - $ref: "#/components/schemas/BridgeEnvelope"
         - type: object
           additionalProperties: false
-          required: [sources]
+          required: [projectId, sources, idempotencyKey]
           properties:
+            projectId:
+              type: string
             datasetId:
               type: string
             sources:
@@ -2248,37 +2460,31 @@ components:
               maxItems: 500
               items:
                 $ref: "#/components/schemas/DatasetCandidateSource"
-            targetShape:
-              $ref: "#/components/schemas/DatasetTargetShape"
             split:
               $ref: "#/components/schemas/DatasetSplit"
-            reviewStatus:
-              $ref: "#/components/schemas/DatasetReviewStatus"
+            curationStatus:
+              $ref: "#/components/schemas/DatasetCurationStatus"
             contentTreatment:
               $ref: "#/components/schemas/DatasetContentTreatment"
-            anonymizationPolicyId:
+            idempotencyKey:
               type: string
-            anonymizationPolicyVersion:
-              type: integer
-              minimum: 1
     DatasetCandidatesSearchRequest:
       allOf:
         - $ref: "#/components/schemas/BridgeEnvelope"
         - type: object
           additionalProperties: false
+          required: [projectId]
           properties:
+            projectId:
+              type: string
             datasetId:
               type: string
             status:
               $ref: "#/components/schemas/DatasetCandidateStatus"
             sourceKind:
               $ref: "#/components/schemas/DatasetCandidateSourceKind"
-            targetShape:
-              $ref: "#/components/schemas/DatasetTargetShape"
             contentTreatment:
               $ref: "#/components/schemas/DatasetContentTreatment"
-            clusterId:
-              type: string
             query:
               type: string
             limit:
@@ -2293,8 +2499,17 @@ components:
         - $ref: "#/components/schemas/BridgeEnvelope"
         - type: object
           additionalProperties: false
-          required: [datasetId, expectedDatasetVersion, candidateIds]
+          required:
+            [
+              projectId,
+              datasetId,
+              expectedDatasetVersion,
+              candidateIds,
+              idempotencyKey
+            ]
           properties:
+            projectId:
+              type: string
             datasetId:
               type: string
             expectedDatasetVersion:
@@ -2308,30 +2523,424 @@ components:
                 type: string
             split:
               $ref: "#/components/schemas/DatasetSplit"
-            reviewStatus:
-              $ref: "#/components/schemas/DatasetReviewStatus"
-    DatasetCandidatesResponse:
+            curationStatus:
+              $ref: "#/components/schemas/DatasetCurationStatus"
+            idempotencyKey:
+              type: string
+    DatasetImportPrepareRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, datasetId, stagedUploadId, idempotencyKey]
+          properties:
+            projectId:
+              type: string
+            datasetId:
+              type: string
+            stagedUploadId:
+              type: string
+            idempotencyKey:
+              type: string
+            input:
+              $ref: "#/components/schemas/AiEvalObjectPayload"
+    DatasetImportCommitRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required:
+            [projectId, datasetId, importJobId, expectedDatasetVersion, idempotencyKey]
+          properties:
+            projectId:
+              type: string
+            datasetId:
+              type: string
+            importJobId:
+              type: string
+            expectedDatasetVersion:
+              type: integer
+              minimum: 1
+            idempotencyKey:
+              type: string
+    DatasetExportStartRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, datasetId, datasetVersionId, idempotencyKey]
+          properties:
+            projectId:
+              type: string
+            datasetId:
+              type: string
+            datasetVersionId:
+              type: string
+            format:
+              type: string
+              enum: [jsonl, json, csv, zip]
+            idempotencyKey:
+              type: string
+    DatasetTransferGetRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, transferId, transferKind]
+          properties:
+            projectId:
+              type: string
+            transferId:
+              type: string
+            transferKind:
+              type: string
+              enum: [import, export]
+    EvaluationCreateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, idempotencyKey, input]
+          properties:
+            projectId:
+              type: string
+            idempotencyKey:
+              type: string
+            input:
+              $ref: "#/components/schemas/AiEvalObjectPayload"
+    EvaluationUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, evaluationDefinitionId, idempotencyKey, input]
+          properties:
+            projectId:
+              type: string
+            evaluationDefinitionId:
+              type: string
+            idempotencyKey:
+              type: string
+            input:
+              $ref: "#/components/schemas/AiEvalObjectPayload"
+    EvaluationSearchRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId]
+          properties:
+            projectId:
+              type: string
+            query:
+              type: string
+            limit:
+              type: integer
+              minimum: 1
+              maximum: 200
+            cursor:
+              type: string
+    EvaluationRunStartRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, datasetVersionId, targetSnapshotId, idempotencyKey]
+          properties:
+            projectId:
+              type: string
+            evaluationDefinitionId:
+              type: string
+            adHocRunSpecDigest:
+              type: string
+            datasetVersionId:
+              type: string
+            targetSnapshotId:
+              type: string
+            splitSelector:
+              $ref: "#/components/schemas/DatasetSplitSelector"
+            runPolicy:
+              $ref: "../entities/ai/eval-run-policy.schema.json"
+            idempotencyKey:
+              type: string
+    EvaluationRunCancelRequest:
+      $ref: "#/components/schemas/EvaluationRunControlRequest"
+    EvaluationRunPauseRequest:
+      $ref: "#/components/schemas/EvaluationRunControlRequest"
+    EvaluationRunResumeRequest:
+      $ref: "#/components/schemas/EvaluationRunControlRequest"
+    EvaluationRunControlRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, evaluationRunId, idempotencyKey]
+          properties:
+            projectId:
+              type: string
+            evaluationRunId:
+              type: string
+            expectedRunStatus:
+              type: string
+            idempotencyKey:
+              type: string
+    EvaluationRunSearchRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId]
+          properties:
+            projectId:
+              type: string
+            evaluationDefinitionId:
+              type: string
+            status:
+              type: string
+            limit:
+              type: integer
+              minimum: 1
+              maximum: 200
+            cursor:
+              type: string
+    EvaluationRunGetRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, evaluationRunId]
+          properties:
+            projectId:
+              type: string
+            evaluationRunId:
+              type: string
+    EvaluationResultsSearchRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, evaluationRunId]
+          properties:
+            projectId:
+              type: string
+            evaluationRunId:
+              type: string
+            metricId:
+              type: string
+            limit:
+              type: integer
+              minimum: 1
+              maximum: 500
+            cursor:
+              type: string
+    EvaluationResultsPersistRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, evaluationRunId, idempotencyKey, payload]
+          properties:
+            projectId:
+              type: string
+            evaluationRunId:
+              type: string
+            idempotencyKey:
+              type: string
+            payload:
+              $ref: "#/components/schemas/AiEvalObjectPayload"
+    EvaluationComparisonCreateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required:
+            [projectId, baselineRunId, candidateRunId, idempotencyKey]
+          properties:
+            projectId:
+              type: string
+            baselineRunId:
+              type: string
+            candidateRunId:
+              type: string
+            idempotencyKey:
+              type: string
+    EvaluationComparisonSearchRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId]
+          properties:
+            projectId:
+              type: string
+            evaluationDefinitionId:
+              type: string
+            limit:
+              type: integer
+              minimum: 1
+              maximum: 200
+            cursor:
+              type: string
+    TargetSnapshotCreateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, targetRef, idempotencyKey, input]
+          properties:
+            projectId:
+              type: string
+            targetRef:
+              $ref: "#/components/schemas/AiEvalObjectPayload"
+            idempotencyKey:
+              type: string
+            input:
+              $ref: "#/components/schemas/AiEvalObjectPayload"
+    TargetSnapshotGetRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, targetSnapshotId]
+          properties:
+            projectId:
+              type: string
+            targetSnapshotId:
+              type: string
+    TargetDiffRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, baselineSnapshotId, candidateSnapshotId]
+          properties:
+            projectId:
+              type: string
+            baselineSnapshotId:
+              type: string
+            candidateSnapshotId:
+              type: string
+    OptimizationStartRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, datasetVersionId, targetSnapshotId, idempotencyKey]
+          properties:
+            projectId:
+              type: string
+            evaluationDefinitionId:
+              type: string
+            datasetVersionId:
+              type: string
+            targetSnapshotId:
+              type: string
+            comparisonId:
+              type: string
+            splitSelector:
+              $ref: "#/components/schemas/DatasetSplitSelector"
+            config:
+              $ref: "#/components/schemas/AiEvalObjectPayload"
+            idempotencyKey:
+              type: string
+    OptimizationSearchRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId]
+          properties:
+            projectId:
+              type: string
+            evaluationDefinitionId:
+              type: string
+            limit:
+              type: integer
+              minimum: 1
+              maximum: 200
+            cursor:
+              type: string
+    OptimizationGetRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, optimizationRunId]
+          properties:
+            projectId:
+              type: string
+            optimizationRunId:
+              type: string
+    TargetPromoteRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required:
+            [
+              projectId,
+              targetRef,
+              candidateSnapshotId,
+              comparisonId,
+              idempotencyKey
+            ]
+          properties:
+            projectId:
+              type: string
+            targetRef:
+              $ref: "#/components/schemas/AiEvalObjectPayload"
+            candidateSnapshotId:
+              type: string
+            comparisonId:
+              type: string
+            idempotencyKey:
+              type: string
+    EvalLiveStartRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [subscriptionId, evaluationRunId, sinkSubject]
+          properties:
+            subscriptionId:
+              type: string
+            evaluationRunId:
+              type: string
+            sinkSubject:
+              type: string
+    EvalLiveStopRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [subscriptionId]
+          properties:
+            subscriptionId:
+              type: string
+    EvaluationRunEvent:
       type: object
       additionalProperties: false
-      required: [requestId, ok]
+      required: [requestId, evaluationRunId, type, occurredAt]
       properties:
         requestId:
           type: string
-        ok:
-          type: boolean
-        data:
+        evaluationRunId:
+          type: string
+        type:
+          type: string
+          enum: [started, item_completed, progress, heartbeat, cancelled, failed, completed]
+        seq:
+          type: integer
+          minimum: 1
+        occurredAt:
+          type: string
+          format: date-time
+        run:
           type: object
-          additionalProperties: false
-          required: [items]
-          properties:
-            items:
-              type: array
-              items:
-                $ref: "../entities/ai/dataset-candidate.schema.json"
-            nextCursor:
-              type: string
-        error:
-          $ref: "#/components/schemas/BridgeError"
+          additionalProperties: true
+        itemRun:
+          type: object
+          additionalProperties: true
     DatasetCandidateSource:
       type: object
       additionalProperties: false
@@ -2343,11 +2952,11 @@ components:
           type: string
         spanId:
           type: string
-        evalResultId:
+        metricResultId:
           type: string
-        experimentRunId:
+        evaluationItemRunId:
           type: string
-        policyId:
+        productionMeasurementId:
           type: string
         coverageGapId:
           type: string
@@ -2361,392 +2970,51 @@ components:
     DatasetCandidateSourceKind:
       type: string
       enum:
-        [trace, eval_result, experiment_item_run, production_measurement, coverage_gap, health_issue, failure_cluster, manual]
-    DatasetTargetShape:
-      type: string
-      enum:
-        [single_turn, conversation, tool_call, agent_trajectory, workflow_trace, retrieval_case, production_trace_ref]
+        [trace, metric_result, evaluation_item_run, production_measurement, coverage_gap, health_issue, failure_cluster, manual]
     DatasetContentTreatment:
       type: string
       enum: [original, realistic_anonymized, redacted, synthetic]
-    ExperimentStartRequest:
-      allOf:
-        - $ref: "#/components/schemas/BridgeEnvelope"
-        - type: object
-          additionalProperties: false
-          required: [experimentId]
-          properties:
-            experimentId:
-              type: string
-            solverRef:
-              $ref: "../entities/ai/eval-solver-ref.schema.json"
-            splitSelector:
-              $ref: "#/components/schemas/DatasetSplitSelector"
-            runPolicy:
-              $ref: "../entities/ai/eval-run-policy.schema.json"
-    ExperimentCancelRequest:
-      allOf:
-        - $ref: "#/components/schemas/BridgeEnvelope"
-        - type: object
-          additionalProperties: false
-          required: [experimentRunId]
-          properties:
-            experimentRunId:
-              type: string
-    ExperimentRunControlRequest:
-      allOf:
-        - $ref: "#/components/schemas/BridgeEnvelope"
-        - type: object
-          additionalProperties: false
-          required: [experimentRunId, command]
-          properties:
-            experimentRunId:
-              type: string
-            command:
-              type: string
-              enum: [pause, resume]
-            expectedManifestDigest:
-              type: string
-            idempotencyKey:
-              type: string
-    OptimizationStartRequest:
-      allOf:
-        - $ref: "#/components/schemas/BridgeEnvelope"
-        - type: object
-          additionalProperties: false
-          required: [experimentId, optimizerKind, basePromptVersionId]
-          properties:
-            experimentId:
-              type: string
-            optimizerKind:
-              type: string
-              enum: [bootstrap_fewshot, critic_mutate_judge_pick]
-            basePromptVersionId:
-              type: string
-            splitSelector:
-              $ref: "#/components/schemas/DatasetSplitSelector"
-            config:
-              $ref: "../entities/ai/optimization-config.schema.json"
-            runPolicy:
-              $ref: "../entities/ai/eval-run-policy.schema.json"
-    EvalLiveStartRequest:
-      allOf:
-        - $ref: "#/components/schemas/BridgeEnvelope"
-        - type: object
-          additionalProperties: false
-          required: [subscriptionId, experimentRunId, sinkSubject]
-          properties:
-            subscriptionId:
-              type: string
-            experimentRunId:
-              type: string
-            sinkSubject:
-              type: string
-    EvalLiveStopRequest:
-      allOf:
-        - $ref: "#/components/schemas/BridgeEnvelope"
-        - type: object
-          additionalProperties: false
-          required: [subscriptionId]
-          properties:
-            subscriptionId:
-              type: string
-    ExperimentRunEvent:
-      type: object
-      additionalProperties: false
-      required: [type, seq, receivedAt]
-      properties:
-        type:
-          type: string
-          enum: [started, item_completed, progress, heartbeat, cancelled, failed, completed]
-        seq:
-          type: integer
-          minimum: 1
-        receivedAt:
-          type: string
-          format: date-time
-        experimentRunId:
-          type: string
-        run:
-          type: object
-          additionalProperties: true
-        itemRun:
-          type: object
-          additionalProperties: true
-    ExperimentProgressNotification:
-      type: object
-      additionalProperties: false
-      required: [requestId, experimentRunId, type, occurredAt]
-      properties:
-        requestId:
-          type: string
-        experimentRunId:
-          type: string
-        type:
-          type: string
-          enum: [started, item_completed, progress, cancelled, failed, completed]
-        datasetItemRunId:
-          type: string
-        occurredAt:
-          type: string
-          format: date-time
-    ExperimentManifestResolveRequest:
-      allOf:
-        - $ref: "#/components/schemas/BridgeEnvelope"
-        - type: object
-          additionalProperties: false
-          required: [experimentRunId, experimentId]
-          properties:
-            experimentRunId:
-              type: string
-            experimentId:
-              type: string
-            splitSelector:
-              $ref: "#/components/schemas/DatasetSplitSelector"
-            optimizerKind:
-              type: string
-            basePromptVersionId:
-              type: string
-            optimizationConfig:
-              $ref: "../entities/ai/optimization-config.schema.json"
-    ExperimentManifestResolveResponse:
-      type: object
-      additionalProperties: false
-      required: [requestId, ok]
-      properties:
-        requestId:
-          type: string
-        ok:
-          type: boolean
-        data:
-          type: object
-          additionalProperties: false
-          required: [manifest]
-          properties:
-            manifest:
-              $ref: "../entities/ai/experiment-manifest.schema.json"
-        error:
-          $ref: "#/components/schemas/BridgeError"
-    OnlinePolicyMatchesResolveRequest:
-      allOf:
-        - $ref: "#/components/schemas/BridgeEnvelope"
-        - type: object
-          additionalProperties: false
-          required: [projectId, traceId, projectionIds, kinds, persistedAt]
-          properties:
-            projectId:
-              type: string
-            traceId:
-              type: string
-            projectionIds:
-              type: array
-              minItems: 1
-              items:
-                type: string
-            spanIds:
-              type: array
-              items:
-                type: string
-            kinds:
-              type: array
-              minItems: 1
-              items:
-                $ref: "#/components/schemas/AiProjectionKind"
-            persistedAt:
-              type: string
-              format: date-time
-    OnlinePolicyMatchesResolveResponse:
-      type: object
-      additionalProperties: false
-      required: [requestId, ok]
-      properties:
-        requestId:
-          type: string
-        ok:
-          type: boolean
-        data:
-          type: object
-          additionalProperties: false
-          required: [matches, projection, warnings]
-          properties:
-            matches:
-              type: array
-              items:
-                $ref: "#/components/schemas/OnlinePolicyMatch"
-            projection:
-              $ref: "#/components/schemas/OnlinePolicyProjectionReadModel"
-            runPolicy:
-              $ref: "../entities/ai/eval-run-policy.schema.json"
-            warnings:
-              type: array
-              items:
-                type: string
-        error:
-          $ref: "#/components/schemas/BridgeError"
-    OnlinePolicyMatch:
-      type: object
-      additionalProperties: false
-      required:
-        [policyId, policyVersion, policyName, target, sampleRate, scorerRefs]
-      properties:
-        policyId:
-          type: string
-        policyVersion:
-          type: integer
-          minimum: 1
-        policyName:
-          type: string
-        target:
-          $ref: "#/components/schemas/OnlinePolicyTarget"
-        sampleRate:
-          type: number
-          minimum: 0
-          maximum: 1
-        maxDailyRuns:
-          type: integer
-          minimum: 1
-        scorerRefs:
-          type: array
-          minItems: 1
-          items:
-            $ref: "#/components/schemas/OnlinePolicyScorerRef"
-    OnlinePolicyScorerRef:
-      type: object
-      additionalProperties: false
-      required: [scorerId, scorerVersion, kind]
-      properties:
-        scorerId:
-          type: string
-        scorerVersion:
-          type: integer
-          minimum: 1
-        kind:
-          type: string
-          enum:
-            [
-              deterministic,
-              schema_json,
-              semantic,
-              rag,
-              llm_judge,
-              pairwise_judge,
-              tool_correctness,
-              trajectory,
-              workflow,
-              human,
-              composite
-            ]
-    OnlinePolicyTarget:
+    DatasetCurationStatus:
+      type: string
+      enum: [draft, needs_expected, needs_review, ready, rejected]
+    AiEvalSourceRef:
       type: object
       additionalProperties: false
       minProperties: 1
       properties:
-        agentId:
-          type: string
-        agentName:
-          type: string
-        environment:
-          type: string
-        serviceName:
-          type: string
-        route:
-          type: string
-        routePrefix:
-          type: string
-        toolName:
-          type: string
-        retrievalSource:
-          type: string
-        model:
-          type: string
-        promptVersionId:
-          type: string
-        experimentRunId:
-          type: string
-        attributes:
-          type: array
-          items:
-            $ref: "#/components/schemas/OnlinePolicyAttributeFilter"
-    OnlinePolicyAttributeFilter:
-      type: object
-      additionalProperties: false
-      required: [key, operator]
-      properties:
-        key:
-          type: string
-        operator:
-          type: string
-          enum: [eq, neq, contains, exists, gt, gte, lt, lte, in, not_in]
-        value:
-          oneOf:
-            - type: string
-            - type: number
-            - type: boolean
-            - type: array
-              items:
-                oneOf:
-                  - type: string
-                  - type: number
-                  - type: boolean
-    OnlinePolicyProjectionReadModel:
-      type: object
-      additionalProperties: false
-      required: [projectId, traceId, projectionId, kind, safeAttributes]
-      properties:
-        projectId:
-          type: string
         traceId:
           type: string
         spanId:
           type: string
-        projectionId:
+        evaluationRunId:
           type: string
-        kind:
-          $ref: "#/components/schemas/AiProjectionKind"
-        agentId:
+        evaluationItemRunId:
           type: string
-        agentName:
+        importJobId:
           type: string
-        environment:
+        candidateId:
           type: string
-        serviceName:
-          type: string
-        route:
-          type: string
-        toolName:
-          type: string
-        retrievalSource:
-          type: string
-        model:
-          type: string
-        promptVersionId:
-          type: string
-        experimentRunId:
-          type: string
-        safeAttributes:
-          type: object
-          additionalProperties: true
+    AiEvalObjectPayload:
+      type: object
+      additionalProperties: true
     DatasetSplit:
       type: string
-      enum: [dev, optimization, validation, regression, holdout]
-    DatasetReviewStatus:
-      type: string
-      enum: [unreviewed, reviewed, rejected]
+      enum: [training, validation, test]
     DatasetSplitSelector:
       type: object
       additionalProperties: false
-      required: [splits, reviewedOnly, includeSynthetic]
+      required: [splits]
       properties:
         splits:
           type: array
           items:
             $ref: "#/components/schemas/DatasetSplit"
-        reviewedOnly:
-          type: boolean
-          default: true
-        includeSynthetic:
-          type: boolean
-          default: false
+        curationStatus:
+          $ref: "#/components/schemas/DatasetCurationStatus"
+        itemRevisionIds:
+          type: array
+          items:
+            type: string
     CompanyRole:
       type: string
       enum: [admin, user]

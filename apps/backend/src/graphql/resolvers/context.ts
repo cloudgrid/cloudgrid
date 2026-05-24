@@ -112,12 +112,18 @@ export function requireAiEvalBridge(context: ResolverContext): AiEvalBridge {
     !bridge.datasetExport ||
     !bridge.datasetItems ||
     !bridge.datasetCandidates ||
-    !bridge.scorers ||
-    !bridge.experiments ||
-    !bridge.experimentRun ||
-    !bridge.experimentRuns ||
-    !bridge.datasetItemRuns ||
-    !bridge.evalResults ||
+    !bridge.evaluationDefinitions ||
+    !bridge.evaluationDefinition ||
+    !bridge.evaluationRuns ||
+    !bridge.evaluationRun ||
+    !bridge.evaluationItemRuns ||
+    !bridge.evaluationResults ||
+    !bridge.evaluationComparisons ||
+    !bridge.evaluationComparison ||
+    !bridge.optimizationRuns ||
+    !bridge.optimizationRun ||
+    !bridge.targetSnapshot ||
+    !bridge.targetDiff ||
     !bridge.annotationQueue ||
     !bridge.projectAiSettings ||
     !bridge.aiQualityOverview ||
@@ -129,17 +135,18 @@ export function requireAiEvalBridge(context: ResolverContext): AiEvalBridge {
     !bridge.prepareDatasetCandidates ||
     !bridge.commitDatasetCandidates ||
     !bridge.promoteSpanToDatasetItem ||
-    !bridge.createScorer ||
-    !bridge.createExperiment ||
-    !bridge.startExperimentRun ||
-    !bridge.cancelExperimentRun ||
-    !bridge.pauseExperimentRun ||
-    !bridge.resumeExperimentRun ||
+    !bridge.createEvaluationDefinition ||
+    !bridge.updateEvaluationDefinition ||
+    !bridge.startEvaluationRun ||
+    !bridge.cancelEvaluationRun ||
+    !bridge.pauseEvaluationRun ||
+    !bridge.resumeEvaluationRun ||
     !bridge.startOptimizationRun ||
-    !bridge.promotePromptVersion ||
+    !bridge.createEvaluationComparison ||
+    !bridge.promoteTargetSnapshot ||
     !bridge.resolveAnnotation ||
     !bridge.updateProjectAiSettings ||
-    !bridge.subscribeLiveExperimentRun
+    !bridge.subscribeLiveEvaluationRun
   ) {
     throw authGraphQLError("ERR-016");
   }

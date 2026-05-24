@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-107",
+  "title": "MetricResult",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "metricId",
+    "metricVersion",
+    "scope",
+    "subjectId",
+    "family",
+    "payload",
+    "unit",
+    "direction",
+    "evidenceRefs",
+    "metadata",
+    "producedAt"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "metricId": { "type": "string", "minLength": 1 },
+    "metricVersion": { "type": "integer", "minimum": 1 },
+    "scope": { "type": "string", "enum": ["item_run", "evaluation_run", "comparison", "optimization_run"] },
+    "subjectId": { "type": "string" },
+    "family": {
+      "type": "string",
+      "enum": ["classification", "extraction", "freeform_answer", "tool_use", "agent_loop", "workflow", "skill", "trajectory", "cost"]
+    },
+    "payload": { "$ref": "#/$defs/metricPayload" },
+    "unit": { "type": "string", "enum": ["ratio", "count", "ms", "tokens", "currency", "label", "none"] },
+    "direction": { "type": "string", "enum": ["higher_is_better", "lower_is_better", "informational"] },
+    "problem": { "$ref": "#/$defs/problem" },
+    "evidenceRefs": { "type": "array", "items": { "$ref": "#/$defs/evidenceRef" }, "default": [] },
+    "metadata": { "type": "object", "additionalProperties": true, "default": {} },
+    "producedAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "metricPayload": {
+      "oneOf": [
+        { "$ref": "#/$defs/numberPayload" },
+        { "$ref": "#/$defs/booleanPayload" },
+        { "$ref": "#/$defs/labelPayload" },
+        { "$ref": "#/$defs/confusionMatrixPayload" },
+        { "$ref": "#/$defs/fieldBreakdownPayload" },
+        { "$ref": "#/$defs/distributionPayload" }
+      ]
+    },
+    "numberPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "value"],
+      "properties": { "kind": { "const": "number" }, "value": { "type": "number" } }
+    },
+    "booleanPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "value"],
+      "properties": { "kind": { "const": "boolean" }, "value": { "type": "boolean" } }
+    },
+    "labelPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "value"],
+      "properties": { "kind": { "const": "label" }, "value": { "type": "string" } }
+    },
+    "confusionMatrixPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "labels", "cells"],
+      "properties": {
+        "kind": { "const": "confusion_matrix" },
+        "labels": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "cells": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["expected", "actual", "count"],
+            "properties": {
+              "expected": { "type": "string" },
+              "actual": { "type": "string" },
+              "count": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "default": []
+        }
+      }
+    },
+    "fieldBreakdownPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "fields"],
+      "properties": {
+        "kind": { "const": "field_breakdown" },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "matched", "missing", "extra", "typeMismatch"],
+            "properties": {
+              "path": { "type": "string" },
+              "matched": { "type": "integer", "minimum": 0 },
+              "missing": { "type": "integer", "minimum": 0 },
+              "extra": { "type": "integer", "minimum": 0 },
+              "typeMismatch": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "default": []
+        }
+      }
+    },
+    "distributionPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "count", "min", "max", "mean", "p50", "p95"],
+      "properties": {
+        "kind": { "const": "distribution" },
+        "count": { "type": "integer", "minimum": 0 },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "mean": { "type": "number" },
+        "p50": { "type": "number" },
+        "p95": { "type": "number" }
+      }
+    },
+    "problem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "invalid_actual_output",
+            "invalid_expected_output",
+            "missing_evidence",
+            "adapter_failure",
+            "timeout",
+            "provider_failure",
+            "content_redacted",
+            "not_applicable",
+            "metric_config_invalid",
+            "internal_error"
+          ]
+        },
+        "message": { "type": "string" },
+        "details": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["dataset_item_revision", "evaluation_item_run", "trace", "span", "artifact"] },
+        "id": { "type": "string" },
+        "traceId": { "type": "string" },
+        "spanId": { "type": "string" }
+      }
+    }
+  }
+}

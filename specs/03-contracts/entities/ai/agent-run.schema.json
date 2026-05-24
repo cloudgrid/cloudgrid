@@ -18,7 +18,7 @@
     "outputDigest": { "type": "string" },
     "tokenTotals": { "$ref": "#/$defs/TokenTotals" },
     "costEstimate": { "$ref": "#/$defs/Money" },
-    "experimentRunId": { "type": "string" },
+    "evaluationRunId": { "type": "string" },
     "normalizationWarnings": { "type": "array", "items": { "type": "string" }, "default": [] }
   },
   "$defs": {

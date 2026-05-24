@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-112",
+  "title": "TargetDiff",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "baselineTargetSnapshotId",
+    "candidateTargetSnapshotId",
+    "status",
+    "partDiffs",
+    "summary",
+    "createdAt"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "baselineTargetSnapshotId": { "type": "string" },
+    "candidateTargetSnapshotId": { "type": "string" },
+    "status": { "type": "string", "enum": ["ready", "degraded", "failed"] },
+    "partDiffs": { "type": "array", "items": { "$ref": "#/$defs/partDiff" }, "default": [] },
+    "summary": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "partDiff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["partKind", "changeKind", "baselineDigest", "candidateDigest"],
+      "properties": {
+        "partKind": {
+          "type": "string",
+          "enum": ["prompt", "examples", "model_config", "tool_config", "skill", "workflow", "agent_config", "adapter_metadata"]
+        },
+        "changeKind": { "type": "string", "enum": ["added", "removed", "changed", "unchanged"] },
+        "baselineDigest": { "type": ["string", "null"] },
+        "candidateDigest": { "type": ["string", "null"] },
+        "textDiffRef": { "type": "string" },
+        "structuredDiff": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

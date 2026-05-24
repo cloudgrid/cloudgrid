@@ -71,7 +71,7 @@
       "additionalProperties": false,
       "properties": {
         "itemTimeoutMs": { "type": "integer", "minimum": 1 },
-        "scorerTimeoutMs": { "type": "integer", "minimum": 1 },
+        "metricTimeoutMs": { "type": "integer", "minimum": 1 },
         "adapterCallTimeoutMs": { "type": "integer", "minimum": 1 },
         "runTimeoutMs": { "type": "integer", "minimum": 1 },
         "cleanupTimeoutMs": { "type": "integer", "minimum": 1 }
@@ -81,10 +81,10 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "maxModelFailures": { "type": "integer", "minimum": 0 },
+        "maxTargetFailures": { "type": "integer", "minimum": 0 },
         "maxTechnicalErrors": { "type": "integer", "minimum": 0 },
         "maxItemQualityFailures": { "type": "integer", "minimum": 0 },
-        "maxScorerConfigFailures": { "type": "integer", "minimum": 0 }
+        "maxMetricConfigFailures": { "type": "integer", "minimum": 0 }
       }
     },
     "backpressurePolicy": {
@@ -106,7 +106,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "cadence": { "type": "string", "enum": ["item", "scorer", "batch"], "default": "item" },
+        "cadence": { "type": "string", "enum": ["item", "metric", "batch"], "default": "item" },
         "batchSize": { "type": "integer", "minimum": 1 },
         "persistSandboxRefs": { "type": "boolean", "default": false }
       }

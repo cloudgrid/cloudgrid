@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-109",
+  "title": "EvaluationComparison",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "projectId",
+    "baselineEvaluationRunId",
+    "candidateEvaluationRunId",
+    "baselineTargetSnapshotId",
+    "candidateTargetSnapshotId",
+    "metricResultIds",
+    "metricAggregateIds",
+    "targetDiffId",
+    "summary",
+    "createdAt",
+    "createdBy"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "projectId": { "type": "string" },
+    "baselineEvaluationRunId": { "type": "string" },
+    "candidateEvaluationRunId": { "type": "string" },
+    "baselineTargetSnapshotId": { "type": "string" },
+    "candidateTargetSnapshotId": { "type": "string" },
+    "metricResultIds": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "metricAggregateIds": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "targetDiffId": { "type": "string" },
+    "summary": { "$ref": "#/$defs/comparisonSummary" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "createdBy": { "type": "string" }
+  },
+  "$defs": {
+    "comparisonSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outcome", "metricDeltas", "problemDeltas"],
+      "properties": {
+        "outcome": { "type": "string", "enum": ["improved", "regressed", "mixed", "unchanged", "inconclusive"] },
+        "metricDeltas": { "type": "array", "items": { "$ref": "#/$defs/metricDelta" }, "default": [] },
+        "problemDeltas": { "type": "object", "additionalProperties": { "type": "integer" }, "default": {} },
+        "notes": { "type": "string" }
+      }
+    },
+    "metricDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metricId", "direction", "baseline", "candidate", "delta"],
+      "properties": {
+        "metricId": { "type": "string" },
+        "direction": { "type": "string", "enum": ["higher_is_better", "lower_is_better", "informational"] },
+        "baseline": { "type": "number" },
+        "candidate": { "type": "number" },
+        "delta": { "type": "number" }
+      }
+    }
+  }
+}

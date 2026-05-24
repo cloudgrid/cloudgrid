@@ -2,7 +2,7 @@ import type {
   AgentRunSearchInput,
   AgentRunStatus,
   AiQualityOverviewInput,
-  DatasetReviewStatus,
+  DatasetCurationStatus,
   DatasetSearchInput,
   DatasetSplit,
   ExperimentRunStatus,
@@ -15,8 +15,14 @@ export const AI_EVAL_SEARCH_DEFAULT_LIMIT = 50;
 export const AI_EVAL_SEARCH_HARD_LIMIT = 200;
 
 const AGENT_RUN_STATUSES = ["ok", "error", "unset", "cancelled"] as const;
-const DATASET_SPLITS = ["dev", "optimization", "validation", "regression", "holdout"] as const;
-const DATASET_REVIEW_STATUSES = ["unreviewed", "reviewed", "rejected"] as const;
+const DATASET_SPLITS = ["training", "validation", "test"] as const;
+const DATASET_CURATION_STATUSES = [
+  "draft",
+  "needs_expected",
+  "needs_review",
+  "ready",
+  "rejected",
+] as const;
 const SCORER_KINDS = [
   "deterministic",
   "schema_json",
@@ -49,7 +55,7 @@ export interface AgentRunSearchDefaultsInput {
   status?: string | null;
   from?: string | null;
   to?: string | null;
-  experimentRunId?: string | null;
+  evaluationRunId?: string | null;
   query?: string | null;
   limit?: number | null;
   cursor?: string | null;
@@ -60,7 +66,7 @@ export interface DatasetSearchDefaultsInput {
   query?: string | null;
   tag?: string | null;
   split?: string | null;
-  reviewStatus?: string | null;
+  curationStatus?: string | null;
   limit?: number | null;
   cursor?: string | null;
 }
@@ -110,7 +116,7 @@ export function buildAgentRunSearchInput(
     status: agentRunStatusOrNull(input.status),
     from: stringOrNull(input.from),
     to: stringOrNull(input.to),
-    experimentRunId: stringOrNull(input.experimentRunId),
+    evaluationRunId: stringOrNull(input.evaluationRunId),
     query: stringOrNull(input.query),
     limit: boundedAiEvalSearchLimit(input.limit),
     cursor: stringOrNull(input.cursor),
@@ -125,7 +131,7 @@ export function buildDatasetSearchInput(
     query: stringOrNull(input.query),
     tag: stringOrNull(input.tag),
     split: datasetSplitOrNull(input.split),
-    reviewStatus: datasetReviewStatusOrNull(input.reviewStatus),
+    curationStatus: datasetCurationStatusOrNull(input.curationStatus),
     limit: boundedAiEvalSearchLimit(input.limit),
     cursor: stringOrNull(input.cursor),
   };
@@ -191,9 +197,9 @@ function datasetSplitOrNull(value: string | null | undefined): DatasetSplit | nu
   return DATASET_SPLITS.includes(value as DatasetSplit) ? (value as DatasetSplit) : null;
 }
 
-function datasetReviewStatusOrNull(value: string | null | undefined): DatasetReviewStatus | null {
-  return DATASET_REVIEW_STATUSES.includes(value as DatasetReviewStatus)
-    ? (value as DatasetReviewStatus)
+function datasetCurationStatusOrNull(value: string | null | undefined): DatasetCurationStatus | null {
+  return DATASET_CURATION_STATUSES.includes(value as DatasetCurationStatus)
+    ? (value as DatasetCurationStatus)
     : null;
 }
 

@@ -1280,7 +1280,7 @@ async function executeAiChatTool({
           query: intent.query ?? null,
           limit: intent.limit,
           cursor: stringArg(args.cursor),
-          experimentRunId: stringArg(args.experimentRunId),
+          evaluationRunId: stringArg(args.evaluationRunId ?? args.experimentRunId),
         }),
         authContext,
       );
@@ -1301,7 +1301,7 @@ async function executeAiChatTool({
           query: stringArg(args.query ?? args.search),
           tag: stringArg(args.tag),
           split: stringArg(args.split),
-          reviewStatus: stringArg(args.reviewStatus),
+          curationStatus: stringArg(args.curationStatus ?? args.reviewStatus),
           limit: boundedIntegerArg(args.limit, AI_EVAL_SEARCH_DEFAULT_LIMIT, 1, 200),
           cursor: stringArg(args.cursor),
         }),
@@ -1366,11 +1366,8 @@ async function executeAiChatTool({
       const project = await aiChatSelectedProjectContext(bridge, authContext, input.projectId);
       const result = await bridge.evalResults(
         {
-          scorerId: stringArg(args.scorerId),
-          experimentRunId: stringArg(args.experimentRunId),
-          targetKind: evalTargetKindArg(args.targetKind),
-          targetId: stringArg(args.targetId),
-          passed: booleanArg(args.passed),
+          metricId: stringArg(args.metricId ?? args.scorerId),
+          evaluationRunId: stringArg(args.evaluationRunId ?? args.experimentRunId),
           limit: boundedIntegerArg(args.limit, AI_EVAL_SEARCH_DEFAULT_LIMIT, 1, 200),
           cursor: stringArg(args.cursor),
         },

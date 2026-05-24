@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-113",
+  "title": "PromotionRecord",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "projectId",
+    "targetRef",
+    "baselineTargetSnapshotId",
+    "candidateTargetSnapshotId",
+    "evidenceEvaluationRunIds",
+    "comparisonId",
+    "summary",
+    "promotedBy",
+    "promotedAt",
+    "notes"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "projectId": { "type": "string" },
+    "targetRef": { "$ref": "./evaluation-target-ref.schema.json" },
+    "baselineTargetSnapshotId": { "type": "string" },
+    "candidateTargetSnapshotId": { "type": "string" },
+    "evidenceEvaluationRunIds": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "comparisonId": { "type": "string" },
+    "summary": { "type": "string" },
+    "promotedBy": { "type": "string" },
+    "promotedAt": { "type": "string", "format": "date-time" },
+    "notes": { "type": "string" }
+  }
+}

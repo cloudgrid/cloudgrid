@@ -1775,10 +1775,10 @@ function ProjectAiEvalSettings({
               <Field>
                 <FieldLabel htmlFor="ai-eval-max-items">Max parallel eval items</FieldLabel>
                 <Input
-                  defaultValue={settingsQuery.data.sampling.maxConcurrentExperimentItems}
+                  defaultValue={settingsQuery.data.sampling.maxConcurrentEvaluationItems}
                   id="ai-eval-max-items"
                   min="1"
-                  name="maxConcurrentExperimentItems"
+                  name="maxConcurrentEvaluationItems"
                   step="1"
                   type="number"
                 />
@@ -2997,7 +2997,7 @@ function toProjectAiSettingsInput(
       enabled: policy.enabled,
       name: policy.name,
       target: policy.target,
-      scorerIds: policy.scorerIds,
+      metricIds: policy.metricIds,
       sampleRate: policy.sampleRate,
       maxDailyRuns: policy.maxDailyRuns ?? null,
       annotationRules: policy.annotationRules.map((rule) => ({
@@ -3014,9 +3014,9 @@ function toProjectAiSettingsInput(
     },
     sampling: {
       ...settings.sampling,
-      maxConcurrentExperimentItems:
-        numberField(form.get("maxConcurrentExperimentItems")) ??
-        settings.sampling.maxConcurrentExperimentItems,
+      maxConcurrentEvaluationItems:
+        numberField(form.get("maxConcurrentEvaluationItems")) ??
+        settings.sampling.maxConcurrentEvaluationItems,
     },
     datasetDefaults: settings.datasetDefaults,
     expectedVersion: settings.version,

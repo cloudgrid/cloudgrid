@@ -42,6 +42,10 @@ import type {
   CreateDatasetInput,
   CreateDatasetMutationData,
   CreatedIngestCredential,
+  CreateEvaluationComparisonInput,
+  CreateEvaluationComparisonMutationData,
+  CreateEvaluationDefinitionInput,
+  CreateEvaluationDefinitionMutationData,
   CreateExperimentInput,
   CreateExperimentMutationData,
   CreateIngestCredentialInput,
@@ -61,6 +65,19 @@ import type {
   DeleteAlertRuleMutationData,
   DeleteAlertSilenceMutationData,
   DeleteAiChatConversationMutationData,
+  EvaluationComparisonSearchInput,
+  EvaluationComparisonsQueryData,
+  EvaluationDefinition,
+  EvaluationDefinitionSearchInput,
+  EvaluationDefinitionsQueryData,
+  EvaluationResultsQueryData,
+  EvaluationResultsSearchInput,
+  EvaluationRun,
+  EvaluationRunControlInput,
+  EvaluationRunEvent,
+  EvaluationRunQueryData,
+  EvaluationRunSearchInput,
+  EvaluationRunsQueryData,
   ExperimentRun,
   ExperimentRunEvent,
   ExperimentRunQueryData,
@@ -75,6 +92,8 @@ import type {
   InviteProjectMemberMutationData,
   LiveExperimentRunInput,
   LiveExperimentRunSubscriptionData,
+  LiveEvaluationRunInput,
+  LiveEvaluationRunSubscriptionData,
   LiveTraceEvent,
   LiveTraceInput,
   LiveTraceSubscriptionData,
@@ -119,8 +138,14 @@ import type {
   ScorersQueryData,
   SelectProjectMutationData,
   StartDatasetExportInput,
+  StartEvaluationRunInput,
+  StartEvaluationRunMutationData,
   StartExperimentRunInput,
   StartExperimentRunMutationData,
+  StartOptimizationRunInput,
+  StartOptimizationRunMutationData,
+  PromoteTargetSnapshotInput,
+  PromoteTargetSnapshotMutationData,
   TelemetryFacetInput,
   TelemetryFacetQueryData,
   TelemetryFacetResult,
@@ -225,6 +250,8 @@ import {
   commitDatasetImportOperation,
   commitDatasetCandidatesOperation,
   createDatasetOperation,
+  createEvaluationComparisonOperation,
+  createEvaluationDefinitionOperation,
   createExperimentOperation,
   createScorerOperation,
   datasetExportOperation,
@@ -233,7 +260,13 @@ import {
   datasetsOperation,
   experimentRunOperation,
   experimentsOperation,
+  evaluationComparisonsOperation,
+  evaluationDefinitionsOperation,
+  evaluationResultsOperation,
+  evaluationRunOperation,
+  evaluationRunsOperation,
   liveExperimentRunSubscriptionOperation,
+  liveEvaluationRunSubscriptionOperation,
   liveTraceSubscriptionOperation,
   logSearchOperation,
   metricNamesOperation,
@@ -243,7 +276,13 @@ import {
   richMetricSeriesOperation,
   scorersOperation,
   startDatasetExportOperation,
+  startEvaluationRunOperation,
   startExperimentRunOperation,
+  startOptimizationRunOperation,
+  promoteTargetSnapshotOperation,
+  cancelEvaluationRunOperation,
+  pauseEvaluationRunOperation,
+  resumeEvaluationRunOperation,
   cancelExperimentRunOperation,
   pauseExperimentRunOperation,
   resumeExperimentRunOperation,
@@ -270,6 +309,35 @@ export interface TelemetryGraphQLClient {
   getDataset: (id: string) => Promise<Dataset | null>;
   createDataset: (input: CreateDatasetInput) => Promise<Dataset>;
   appendDatasetItems: (input: AppendDatasetItemsInput) => Promise<Dataset>;
+  searchEvaluationDefinitions: (
+    input: EvaluationDefinitionSearchInput,
+  ) => Promise<EvaluationDefinitionsQueryData["evaluationDefinitions"]>;
+  createEvaluationDefinition: (
+    input: CreateEvaluationDefinitionInput,
+  ) => Promise<EvaluationDefinition>;
+  searchEvaluationRuns: (
+    input: EvaluationRunSearchInput,
+  ) => Promise<EvaluationRunsQueryData["evaluationRuns"]>;
+  startEvaluationRun: (input: StartEvaluationRunInput) => Promise<EvaluationRun>;
+  pauseEvaluationRun: (input: EvaluationRunControlInput) => Promise<EvaluationRun>;
+  resumeEvaluationRun: (input: EvaluationRunControlInput) => Promise<EvaluationRun>;
+  cancelEvaluationRun: (input: EvaluationRunControlInput) => Promise<EvaluationRun>;
+  getEvaluationRun: (id: string) => Promise<EvaluationRun | null>;
+  searchEvaluationResults: (
+    input: EvaluationResultsSearchInput,
+  ) => Promise<EvaluationResultsQueryData["evaluationResults"]>;
+  searchEvaluationComparisons: (
+    input: EvaluationComparisonSearchInput,
+  ) => Promise<EvaluationComparisonsQueryData["evaluationComparisons"]>;
+  createEvaluationComparison: (
+    input: CreateEvaluationComparisonInput,
+  ) => Promise<CreateEvaluationComparisonMutationData["createEvaluationComparison"]>;
+  startOptimizationRun: (
+    input: StartOptimizationRunInput,
+  ) => Promise<StartOptimizationRunMutationData["startOptimizationRun"]>;
+  promoteTargetSnapshot: (
+    input: PromoteTargetSnapshotInput,
+  ) => Promise<PromoteTargetSnapshotMutationData["promoteTargetSnapshot"]>;
   searchScorers: (input: ScorerSearchInput) => Promise<ScorersQueryData["scorers"]>;
   createScorer: (input: CreateScorerInput) => Promise<Scorer>;
   searchExperiments: (input: ExperimentSearchInput) => Promise<ExperimentsQueryData["experiments"]>;
@@ -297,6 +365,10 @@ export interface TelemetryGraphQLClient {
   subscribeLiveExperimentRun: (
     input: LiveExperimentRunInput,
     observer: LiveExperimentRunObserver,
+  ) => LiveTraceSubscription;
+  subscribeLiveEvaluationRun: (
+    input: LiveEvaluationRunInput,
+    observer: LiveEvaluationRunObserver,
   ) => LiveTraceSubscription;
 }
 
@@ -378,6 +450,12 @@ export interface LiveTraceObserver {
 export interface LiveExperimentRunObserver {
   onStateChange?: (state: LiveTraceConnectionState) => void;
   onEvent: (event: ExperimentRunEvent) => void;
+  onError?: (error: Error) => void;
+}
+
+export interface LiveEvaluationRunObserver {
+  onStateChange?: (state: LiveTraceConnectionState) => void;
+  onEvent: (event: EvaluationRunEvent) => void;
   onError?: (error: Error) => void;
 }
 
@@ -533,83 +611,168 @@ export function createTelemetryGraphQLClient(endpoint = "/graphql"): TelemetryGr
       );
       return data.appendDatasetItems;
     },
+    async searchEvaluationDefinitions(input) {
+      const data = await requestGraphQL<EvaluationDefinitionsQueryData>(
+        endpoint,
+        "EvaluationDefinitions",
+        evaluationDefinitionsOperation,
+        { input },
+      );
+      return data.evaluationDefinitions;
+    },
+    async createEvaluationDefinition(input) {
+      const data = await requestGraphQL<CreateEvaluationDefinitionMutationData>(
+        endpoint,
+        "CreateEvaluationDefinition",
+        createEvaluationDefinitionOperation,
+        { input },
+      );
+      return data.createEvaluationDefinition;
+    },
+    async searchEvaluationRuns(input) {
+      const data = await requestGraphQL<EvaluationRunsQueryData>(
+        endpoint,
+        "EvaluationRuns",
+        evaluationRunsOperation,
+        { input },
+      );
+      return data.evaluationRuns;
+    },
+    async startEvaluationRun(input) {
+      const data = await requestGraphQL<StartEvaluationRunMutationData>(
+        endpoint,
+        "StartEvaluationRun",
+        startEvaluationRunOperation,
+        { input },
+      );
+      return data.startEvaluationRun;
+    },
+    async pauseEvaluationRun(input) {
+      const data = await requestGraphQL<{ pauseEvaluationRun: EvaluationRun }>(
+        endpoint,
+        "PauseEvaluationRun",
+        pauseEvaluationRunOperation,
+        { input },
+      );
+      return data.pauseEvaluationRun;
+    },
+    async resumeEvaluationRun(input) {
+      const data = await requestGraphQL<{ resumeEvaluationRun: EvaluationRun }>(
+        endpoint,
+        "ResumeEvaluationRun",
+        resumeEvaluationRunOperation,
+        { input },
+      );
+      return data.resumeEvaluationRun;
+    },
+    async cancelEvaluationRun(input) {
+      const data = await requestGraphQL<{ cancelEvaluationRun: EvaluationRun }>(
+        endpoint,
+        "CancelEvaluationRun",
+        cancelEvaluationRunOperation,
+        { input },
+      );
+      return data.cancelEvaluationRun;
+    },
+    async getEvaluationRun(id) {
+      const data = await requestGraphQL<EvaluationRunQueryData>(
+        endpoint,
+        "EvaluationRun",
+        evaluationRunOperation,
+        { id },
+      );
+      return data.evaluationRun ?? null;
+    },
+    async searchEvaluationResults(input) {
+      const data = await requestGraphQL<EvaluationResultsQueryData>(
+        endpoint,
+        "EvaluationResults",
+        evaluationResultsOperation,
+        { input },
+      );
+      return data.evaluationResults;
+    },
+    async searchEvaluationComparisons(input) {
+      const data = await requestGraphQL<EvaluationComparisonsQueryData>(
+        endpoint,
+        "EvaluationComparisons",
+        evaluationComparisonsOperation,
+        { input },
+      );
+      return data.evaluationComparisons;
+    },
+    async createEvaluationComparison(input) {
+      const data = await requestGraphQL<CreateEvaluationComparisonMutationData>(
+        endpoint,
+        "CreateEvaluationComparison",
+        createEvaluationComparisonOperation,
+        { input },
+      );
+      return data.createEvaluationComparison;
+    },
+    async startOptimizationRun(input) {
+      const data = await requestGraphQL<StartOptimizationRunMutationData>(
+        endpoint,
+        "StartOptimizationRun",
+        startOptimizationRunOperation,
+        { input },
+      );
+      return data.startOptimizationRun;
+    },
+    async promoteTargetSnapshot(input) {
+      const data = await requestGraphQL<PromoteTargetSnapshotMutationData>(
+        endpoint,
+        "PromoteTargetSnapshot",
+        promoteTargetSnapshotOperation,
+        { input },
+      );
+      return data.promoteTargetSnapshot;
+    },
     async searchScorers(input) {
-      const data = await requestGraphQL<ScorersQueryData>(endpoint, "Scorers", scorersOperation, {
-        input,
-      });
-      return data.scorers;
+      return (await this.searchEvaluationDefinitions(
+        input as unknown as EvaluationDefinitionSearchInput,
+      )) as unknown as ScorersQueryData["scorers"];
     },
     async createScorer(input) {
-      const data = await requestGraphQL<CreateScorerMutationData>(
-        endpoint,
-        "CreateScorer",
-        createScorerOperation,
-        { input },
-      );
-      return data.createScorer;
+      return (await this.createEvaluationDefinition(
+        input as unknown as CreateEvaluationDefinitionInput,
+      )) as unknown as Scorer;
     },
     async searchExperiments(input) {
-      const data = await requestGraphQL<ExperimentsQueryData>(
-        endpoint,
-        "Experiments",
-        experimentsOperation,
-        { input },
-      );
-      return data.experiments;
+      return (await this.searchEvaluationDefinitions(
+        input as unknown as EvaluationDefinitionSearchInput,
+      )) as unknown as ExperimentsQueryData["experiments"];
     },
     async createExperiment(input) {
-      const data = await requestGraphQL<CreateExperimentMutationData>(
-        endpoint,
-        "CreateExperiment",
-        createExperimentOperation,
-        { input },
-      );
-      return data.createExperiment;
+      return (await this.createEvaluationDefinition(
+        input as unknown as CreateEvaluationDefinitionInput,
+      )) as unknown as ExperimentsQueryData["experiments"]["items"][number];
     },
     async startExperimentRun(input) {
-      const data = await requestGraphQL<StartExperimentRunMutationData>(
-        endpoint,
-        "StartExperimentRun",
-        startExperimentRunOperation,
-        { input },
-      );
-      return data.startExperimentRun;
+      return (await this.startEvaluationRun(
+        input as unknown as StartEvaluationRunInput,
+      )) as unknown as ExperimentRun;
     },
     async pauseExperimentRun(id) {
-      const data = await requestGraphQL<{ pauseExperimentRun: ExperimentRun }>(
-        endpoint,
-        "PauseExperimentRun",
-        pauseExperimentRunOperation,
-        { id },
-      );
-      return data.pauseExperimentRun;
+      return (await this.pauseEvaluationRun({
+        evaluationRunId: id,
+        idempotencyKey: `${id}:pause`,
+      })) as unknown as ExperimentRun;
     },
     async resumeExperimentRun(id) {
-      const data = await requestGraphQL<{ resumeExperimentRun: ExperimentRun }>(
-        endpoint,
-        "ResumeExperimentRun",
-        resumeExperimentRunOperation,
-        { id },
-      );
-      return data.resumeExperimentRun;
+      return (await this.resumeEvaluationRun({
+        evaluationRunId: id,
+        idempotencyKey: `${id}:resume`,
+      })) as unknown as ExperimentRun;
     },
     async cancelExperimentRun(id) {
-      const data = await requestGraphQL<{ cancelExperimentRun: ExperimentRun }>(
-        endpoint,
-        "CancelExperimentRun",
-        cancelExperimentRunOperation,
-        { id },
-      );
-      return data.cancelExperimentRun;
+      return (await this.cancelEvaluationRun({
+        evaluationRunId: id,
+        idempotencyKey: `${id}:cancel`,
+      })) as unknown as ExperimentRun;
     },
     async getExperimentRun(id) {
-      const data = await requestGraphQL<ExperimentRunQueryData>(
-        endpoint,
-        "ExperimentRun",
-        experimentRunOperation,
-        { id },
-      );
-      return data.experimentRun ?? null;
+      return (await this.getEvaluationRun(id)) as unknown as ExperimentRun | null;
     },
     async searchDatasetCandidates(input) {
       const data = await requestGraphQL<{ datasetCandidates: DatasetCandidateSearchResult }>(
@@ -689,14 +852,14 @@ export function createTelemetryGraphQLClient(endpoint = "/graphql"): TelemetryGr
       );
       return data.datasetExport ?? null;
     },
-    subscribeLiveExperimentRun(input, observer) {
+    subscribeLiveEvaluationRun(input, observer) {
       const subscriptionObserver: {
         onStateChange?: (state: LiveTraceConnectionState) => void;
-        onData: (data: LiveExperimentRunSubscriptionData) => void;
+        onData: (data: LiveEvaluationRunSubscriptionData) => void;
         onError?: (error: Error) => void;
       } = {
         onData(data) {
-          observer.onEvent(data.liveExperimentRun);
+          observer.onEvent(data.liveEvaluationRun);
         },
       };
       if (observer.onStateChange) {
@@ -706,12 +869,18 @@ export function createTelemetryGraphQLClient(endpoint = "/graphql"): TelemetryGr
         subscriptionObserver.onError = observer.onError;
       }
 
-      return subscribeGraphQL<LiveExperimentRunSubscriptionData>(
+      return subscribeGraphQL<LiveEvaluationRunSubscriptionData>(
         graphqlWebSocketEndpoint(endpoint),
-        "LiveExperimentRun",
-        liveExperimentRunSubscriptionOperation,
+        "LiveEvaluationRun",
+        liveEvaluationRunSubscriptionOperation,
         { input },
         subscriptionObserver,
+      );
+    },
+    subscribeLiveExperimentRun(input, observer) {
+      return this.subscribeLiveEvaluationRun(
+        { evaluationRunId: input.experimentRunId },
+        observer as unknown as LiveEvaluationRunObserver,
       );
     },
   };

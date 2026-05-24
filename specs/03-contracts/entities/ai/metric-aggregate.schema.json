@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-108",
+  "title": "MetricAggregate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "metricId",
+    "metricVersion",
+    "scope",
+    "subjectId",
+    "group",
+    "payload",
+    "support",
+    "sourceMetricResultIds",
+    "computedAt"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "metricId": { "type": "string", "minLength": 1 },
+    "metricVersion": { "type": "integer", "minimum": 1 },
+    "scope": { "type": "string", "enum": ["evaluation_run", "comparison", "optimization_run"] },
+    "subjectId": { "type": "string" },
+    "group": { "type": "object", "additionalProperties": true, "default": {} },
+    "payload": { "$ref": "./metric-result.schema.json#/$defs/metricPayload" },
+    "support": { "type": "integer", "minimum": 0 },
+    "sourceMetricResultIds": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "computedAt": { "type": "string", "format": "date-time" }
+  }
+}

@@ -5,54 +5,47 @@ domain: ai-eval
 layer: capability
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-16
+updated: 2026-05-24
 provenance: from-user
 traits:
   interaction: http
   sync_async: sync
   visibility: user
   authentication: prepared
-depends_on: [CAP-AIE-001, CAP-AIE-007]
+depends_on: [DOM-006, CAP-AIE-007]
 implements:
-  api: [GQL-Mutation-promoteSpanToDatasetItem, GQL-Query-annotationQueue]
+  api: [GQL-Mutation-promoteSpanToDatasetItem]
 ---
 
 # Annotate Traces Into Datasets
 
 ## Business Intent
 
-Turn observed production or local failures into durable evaluation cases and
-reviewable dataset candidates.
+Turn useful traces, spans, failed outputs, and edge cases into curated dataset
+rows without inventing ground truth.
 
-## Behavior
+## Required Behavior
 
-- Users can promote a trace or span into a reviewed or unreviewed
-  `DatasetItem`.
-- The dataset item stores input, expected output, metadata, source trace/span
-  pointers, review status, split assignment, target shape, content treatment,
-  anonymization provenance, and annotations.
-- If content capture is off, promotion can store metadata and source pointers, but cannot fabricate missing prompt or completion content.
-- Promotion may first create a `DatasetCandidate` rather than a committed
-  `DatasetItem` when project policy requires review, realistic anonymization,
-  clustering, or expected-output authoring.
-- Realistic anonymization replaces sensitive values with safe fake values before
-  candidate commit when enabled. It must preserve useful semantics and
-  repeated-reference consistency while recording policy provenance.
-- Annotation queue items are created by online scoring rules or by `Mutation.resolveAnnotation` when the user reopens or reassigns a review item.
-- Storage-read owns annotation queue filtering and facets.
-- Annotation resolution can create a new dataset item or update an existing item
-  in a new dataset version. It must not mutate an immutable run manifest.
+- Trace detail and trace overview expose `Add to dataset`.
+- The picker lists only datasets whose `traceExtractionSettings` are compatible
+  with the selected trace/span.
+- Storage-write creates dataset rows or candidates using the v2 row model:
+  `input`, `expected`, optional `observedOutput`, optional `reason`,
+  `curationStatus`, `split`, source refs, and content treatment.
+- If the observed output is trusted and validates, it may be copied into
+  `expected`.
+- If the observed output is wrong, incomplete, or untrusted, it is stored as
+  `observedOutput`, and the row remains `needs_expected` or `needs_review`.
+- Missing captured content requires explicit user-provided input or expected
+  value before commit.
+- Anonymization/PII policy runs before commit when configured.
+- Commit creates a new item revision and dataset version.
 
 ## Acceptance Criteria
 
-- Given a source span with captured input and output content, promotion creates a dataset item with source pointers and user-provided expected output.
-- Given missing content, promotion requires explicit user-supplied input before creating a dataset item.
-- Given project policy requires candidate review, promotion creates a
-  `DatasetCandidate` and waits for explicit commit before changing the dataset
-  version.
-- Given realistic anonymization is enabled, committed dataset content contains
-  safe fake names, emails, payment values, phone numbers, addresses, URLs, and
-  other detected sensitive fields, not the original sensitive values.
-- Given a resolved queue item, storage-write links it to the created dataset item and storage-read removes it from open queue results.
-- Given a user assigns `holdout`, the item becomes unavailable to optimization
-  manifests.
+- A wrong production classification can be added with observed output preserved
+  and corrected expected output supplied by the user.
+- Rows imported from traces are not eligible for evaluation until `ready`.
+- Source refs include trace ID and span ID when available.
+- Assigning `test` makes the row unavailable to optimization candidate
+  generation.

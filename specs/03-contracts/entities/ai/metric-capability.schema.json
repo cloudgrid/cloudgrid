@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-106",
+  "title": "MetricCapability",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "metricId",
+    "metricVersion",
+    "displayName",
+    "supportedFamilies",
+    "supportedInputTypes",
+    "supportedExpectedTypes",
+    "requiredEvidence",
+    "executionKind",
+    "providerRequirements",
+    "perItemResultSchema",
+    "aggregationBehavior",
+    "comparisonBehavior",
+    "visualizationKind"
+  ],
+  "properties": {
+    "metricId": { "type": "string", "minLength": 1 },
+    "metricVersion": { "type": "integer", "minimum": 1 },
+    "displayName": { "type": "string", "minLength": 1 },
+    "supportedFamilies": {
+      "type": "array",
+      "items": { "$ref": "./dataset.schema.json#/$defs/evaluationFamily" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "supportedInputTypes": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["text", "json"] },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "supportedExpectedTypes": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["text", "json"] },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "requiredEvidence": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["input", "expected", "actual_output", "trace", "trajectory_summary", "important_steps", "metadata"] },
+      "default": []
+    },
+    "executionKind": {
+      "type": "string",
+      "enum": ["deterministic", "trace_derived", "semantic_model_backed", "judge_backed", "aggregate_only"]
+    },
+    "providerRequirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "purposes"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "purposes": { "type": "array", "items": { "type": "string", "enum": ["judge", "optimizer", "embedding", "replay", "default"] }, "default": [] }
+      }
+    },
+    "perItemResultSchema": { "type": "object", "additionalProperties": true },
+    "aggregationBehavior": { "type": "object", "additionalProperties": true },
+    "comparisonBehavior": { "type": "object", "additionalProperties": true },
+    "visualizationKind": { "type": "string", "enum": ["scalar", "boolean", "label", "confusion_matrix", "field_breakdown", "distribution", "none"] }
+  }
+}

@@ -6,13 +6,13 @@
   "additionalProperties": false,
   "required": [
     "id",
+    "projectId",
     "status",
     "sourceKind",
     "source",
-    "targetShape",
     "metadata",
     "split",
-    "reviewStatus",
+    "curationStatus",
     "contentTreatment",
     "reason",
     "warnings",
@@ -21,6 +21,7 @@
   ],
   "properties": {
     "id": { "type": "string" },
+    "projectId": { "type": "string" },
     "datasetId": { "type": "string" },
     "status": {
       "type": "string",
@@ -30,9 +31,9 @@
       "type": "string",
       "enum": [
         "trace",
-        "eval_result",
-        "experiment_item_run",
-        "production_measurement",
+        "metric_result",
+        "evaluation_item_run",
+        "import",
         "coverage_gap",
         "health_issue",
         "failure_cluster",
@@ -40,38 +41,49 @@
       ]
     },
     "source": { "type": "object", "additionalProperties": true },
-    "targetShape": {
-      "type": "string",
-      "enum": [
-        "single_turn",
-        "conversation",
-        "tool_call",
-        "agent_trajectory",
-        "workflow_trace",
-        "retrieval_case",
-        "production_trace_ref"
-      ]
-    },
     "input": true,
     "expected": true,
-    "metadata": { "type": "object", "additionalProperties": true },
-    "split": {
+    "observedOutput": true,
+    "metadata": { "type": "object", "additionalProperties": true, "default": {} },
+    "split": { "type": "string", "enum": ["training", "validation", "test"] },
+    "curationStatus": {
       "type": "string",
-      "enum": ["dev", "optimization", "validation", "regression", "holdout"]
-    },
-    "reviewStatus": {
-      "type": "string",
-      "enum": ["unreviewed", "reviewed", "rejected"]
+      "enum": ["draft", "needs_expected", "needs_review", "ready", "rejected"]
     },
     "contentTreatment": {
       "type": "string",
       "enum": ["original", "realistic_anonymized", "redacted", "synthetic"]
     },
-    "anonymization": { "$ref": "./dataset-item.schema.json#/$defs/anonymization" },
-    "reason": { "type": "string" },
+    "anonymizationProvenance": {
+      "$ref": "./dataset-item-revision.schema.json#/$defs/anonymizationProvenance"
+    },
+    "reason": { "type": "string", "default": "" },
     "clusterId": { "type": "string" },
+    "sourceRefs": {
+      "type": "array",
+      "items": { "$ref": "./dataset-item-revision.schema.json#/$defs/sourceRef" },
+      "default": []
+    },
     "warnings": { "type": "array", "items": { "type": "string" }, "default": [] },
     "createdAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "curationStatus": { "const": "ready" } },
+        "required": ["curationStatus"]
+      },
+      "then": { "required": ["expected"] }
+    },
+    {
+      "if": {
+        "properties": {
+          "contentTreatment": { "enum": ["realistic_anonymized", "redacted"] }
+        },
+        "required": ["contentTreatment"]
+      },
+      "then": { "required": ["anonymizationProvenance"] }
+    }
+  ]
 }

@@ -2387,6 +2387,219 @@ type EvalMutationResponse struct {
 	Error     *BridgeError   `json:"error,omitempty"`
 }
 
+type DatasetCreateRequest struct {
+	BridgeEnvelope
+	ProjectID      string         `json:"projectId"`
+	IdempotencyKey string         `json:"idempotencyKey"`
+	Input          map[string]any `json:"input"`
+}
+
+type DatasetSearchRequest struct {
+	BridgeEnvelope
+	ProjectID string `json:"projectId"`
+}
+
+type DatasetItemsAppendRequest struct {
+	BridgeEnvelope
+	ProjectID              string           `json:"projectId"`
+	DatasetID              string           `json:"datasetId"`
+	ExpectedDatasetVersion int              `json:"expectedDatasetVersion"`
+	IdempotencyKey         string           `json:"idempotencyKey"`
+	Input                  []map[string]any `json:"input"`
+}
+
+type DatasetItemPromoteRequest struct {
+	BridgeEnvelope
+	ProjectID      string         `json:"projectId"`
+	DatasetID      string         `json:"datasetId"`
+	SourceRef      map[string]any `json:"sourceRef"`
+	IdempotencyKey string         `json:"idempotencyKey"`
+}
+
+type DatasetItemUpdateRequest struct {
+	BridgeEnvelope
+	ProjectID              string         `json:"projectId"`
+	DatasetID              string         `json:"datasetId"`
+	DatasetItemID          string         `json:"datasetItemId"`
+	ExpectedDatasetVersion int            `json:"expectedDatasetVersion"`
+	IdempotencyKey         string         `json:"idempotencyKey"`
+	Input                  map[string]any `json:"input"`
+}
+
+type DatasetVersionGetRequest struct {
+	BridgeEnvelope
+	ProjectID        string `json:"projectId"`
+	DatasetVersionID string `json:"datasetVersionId"`
+}
+
+type DatasetHealthRequest struct {
+	BridgeEnvelope
+	ProjectID string `json:"projectId"`
+	DatasetID string `json:"datasetId"`
+}
+
+type DatasetImportPrepareRequest struct {
+	BridgeEnvelope
+	ProjectID      string `json:"projectId"`
+	DatasetID      string `json:"datasetId"`
+	StagedUploadID string `json:"stagedUploadId"`
+	IdempotencyKey string `json:"idempotencyKey"`
+}
+
+type DatasetImportCommitRequest struct {
+	BridgeEnvelope
+	ProjectID              string `json:"projectId"`
+	DatasetID              string `json:"datasetId"`
+	ImportJobID            string `json:"importJobId"`
+	ExpectedDatasetVersion int    `json:"expectedDatasetVersion"`
+	IdempotencyKey         string `json:"idempotencyKey"`
+}
+
+type DatasetExportStartRequest struct {
+	BridgeEnvelope
+	ProjectID        string `json:"projectId"`
+	DatasetID        string `json:"datasetId"`
+	DatasetVersionID string `json:"datasetVersionId"`
+	IdempotencyKey   string `json:"idempotencyKey"`
+}
+
+type DatasetTransferGetRequest struct {
+	BridgeEnvelope
+	ProjectID     string `json:"projectId"`
+	TransferID    string `json:"transferId"`
+	TransferKind  string `json:"transferKind"`
+}
+
+type EvaluationCreateRequest struct {
+	BridgeEnvelope
+	ProjectID      string         `json:"projectId"`
+	IdempotencyKey string         `json:"idempotencyKey"`
+	Input          map[string]any `json:"input"`
+}
+
+type EvaluationUpdateRequest struct {
+	BridgeEnvelope
+	ProjectID              string         `json:"projectId"`
+	EvaluationDefinitionID string         `json:"evaluationDefinitionId"`
+	IdempotencyKey         string         `json:"idempotencyKey"`
+	Input                  map[string]any `json:"input"`
+}
+
+type EvaluationSearchRequest struct {
+	BridgeEnvelope
+	ProjectID string `json:"projectId"`
+}
+
+type EvaluationRunStartRequest struct {
+	BridgeEnvelope
+	ProjectID        string `json:"projectId"`
+	DatasetVersionID string `json:"datasetVersionId"`
+	TargetSnapshotID string `json:"targetSnapshotId"`
+	IdempotencyKey   string `json:"idempotencyKey"`
+}
+
+type EvaluationRunControlRequest struct {
+	BridgeEnvelope
+	ProjectID      string `json:"projectId"`
+	EvaluationRunID string `json:"evaluationRunId"`
+	IdempotencyKey string `json:"idempotencyKey"`
+}
+
+type EvaluationRunSearchRequest struct {
+	BridgeEnvelope
+	ProjectID string `json:"projectId"`
+}
+
+type EvaluationRunGetRequest struct {
+	BridgeEnvelope
+	ProjectID       string `json:"projectId"`
+	EvaluationRunID string `json:"evaluationRunId"`
+}
+
+type EvaluationResultsSearchRequest struct {
+	BridgeEnvelope
+	ProjectID       string `json:"projectId"`
+	EvaluationRunID string `json:"evaluationRunId"`
+}
+
+type EvaluationResultsPersistRequest struct {
+	BridgeEnvelope
+	ProjectID       string         `json:"projectId"`
+	EvaluationRunID string         `json:"evaluationRunId"`
+	IdempotencyKey  string         `json:"idempotencyKey"`
+	Payload         map[string]any `json:"payload"`
+}
+
+type EvaluationComparisonCreateRequest struct {
+	BridgeEnvelope
+	ProjectID      string `json:"projectId"`
+	BaselineRunID  string `json:"baselineRunId"`
+	CandidateRunID string `json:"candidateRunId"`
+	IdempotencyKey string `json:"idempotencyKey"`
+}
+
+type EvaluationComparisonSearchRequest struct {
+	BridgeEnvelope
+	ProjectID string `json:"projectId"`
+}
+
+type TargetSnapshotCreateRequest struct {
+	BridgeEnvelope
+	ProjectID      string         `json:"projectId"`
+	TargetRef      map[string]any `json:"targetRef"`
+	IdempotencyKey string         `json:"idempotencyKey"`
+	Input          map[string]any `json:"input"`
+}
+
+type TargetSnapshotGetRequest struct {
+	BridgeEnvelope
+	ProjectID        string `json:"projectId"`
+	TargetSnapshotID string `json:"targetSnapshotId"`
+}
+
+type TargetDiffRequest struct {
+	BridgeEnvelope
+	ProjectID           string `json:"projectId"`
+	BaselineSnapshotID  string `json:"baselineSnapshotId"`
+	CandidateSnapshotID string `json:"candidateSnapshotId"`
+}
+
+type OptimizationSearchRequest struct {
+	BridgeEnvelope
+	ProjectID string `json:"projectId"`
+}
+
+type OptimizationGetRequest struct {
+	BridgeEnvelope
+	ProjectID         string `json:"projectId"`
+	OptimizationRunID string `json:"optimizationRunId"`
+}
+
+type TargetPromoteRequest struct {
+	BridgeEnvelope
+	ProjectID           string         `json:"projectId"`
+	TargetRef           map[string]any `json:"targetRef"`
+	CandidateSnapshotID string         `json:"candidateSnapshotId"`
+	ComparisonID        string         `json:"comparisonId"`
+	IdempotencyKey      string         `json:"idempotencyKey"`
+}
+
+type IngestCredentialListRequest struct {
+	BridgeEnvelope
+	ProjectID string `json:"projectId"`
+}
+
+type IngestCredentialCreateRequest struct {
+	BridgeEnvelope
+	ProjectID string `json:"projectId"`
+	Title     string `json:"title"`
+}
+
+type IngestCredentialRevokeRequest struct {
+	BridgeEnvelope
+	CredentialID string `json:"credentialId"`
+}
+
 type DatasetCandidateSource struct {
 	SourceKind      string  `json:"sourceKind"`
 	TraceID         *string `json:"traceId,omitempty"`
@@ -2401,6 +2614,7 @@ type DatasetCandidateSource struct {
 
 type DatasetCandidatesPrepareRequest struct {
 	BridgeEnvelope
+	ProjectID                  string                   `json:"projectId"`
 	DatasetID                  *string                  `json:"datasetId,omitempty"`
 	Sources                    []DatasetCandidateSource `json:"sources"`
 	TargetShape                *string                  `json:"targetShape,omitempty"`
@@ -2409,10 +2623,12 @@ type DatasetCandidatesPrepareRequest struct {
 	ContentTreatment           *string                  `json:"contentTreatment,omitempty"`
 	AnonymizationPolicyID      *string                  `json:"anonymizationPolicyId,omitempty"`
 	AnonymizationPolicyVersion *int                     `json:"anonymizationPolicyVersion,omitempty"`
+	IdempotencyKey             string                   `json:"idempotencyKey"`
 }
 
 type DatasetCandidatesSearchRequest struct {
 	BridgeEnvelope
+	ProjectID        string  `json:"projectId"`
 	DatasetID        *string `json:"datasetId,omitempty"`
 	Status           *string `json:"status,omitempty"`
 	SourceKind       *string `json:"sourceKind,omitempty"`
@@ -2426,11 +2642,13 @@ type DatasetCandidatesSearchRequest struct {
 
 type DatasetCandidatesCommitRequest struct {
 	BridgeEnvelope
+	ProjectID              string   `json:"projectId"`
 	DatasetID              string   `json:"datasetId"`
 	ExpectedDatasetVersion int      `json:"expectedDatasetVersion"`
 	CandidateIDs           []string `json:"candidateIds"`
 	Split                  *string  `json:"split,omitempty"`
 	ReviewStatus           *string  `json:"reviewStatus,omitempty"`
+	IdempotencyKey         string   `json:"idempotencyKey"`
 }
 
 type DatasetCandidate struct {
@@ -2578,6 +2796,10 @@ type ExperimentRunControlRequest struct {
 
 type OptimizationStartRequest struct {
 	BridgeEnvelope
+	ProjectID           string              `json:"projectId"`
+	DatasetVersionID    string              `json:"datasetVersionId"`
+	TargetSnapshotID    string              `json:"targetSnapshotId"`
+	IdempotencyKey      string              `json:"idempotencyKey"`
 	ExperimentID        string              `json:"experimentId"`
 	OptimizerKind       OptimizerKind       `json:"optimizerKind"`
 	BasePromptVersionID string              `json:"basePromptVersionId"`
@@ -2601,6 +2823,7 @@ type ExperimentStartResponse struct {
 type EvalLiveStartRequest struct {
 	BridgeEnvelope
 	SubscriptionID  string `json:"subscriptionId"`
+	EvaluationRunID string `json:"evaluationRunId"`
 	ExperimentRunID string `json:"experimentRunId"`
 	SinkSubject     string `json:"sinkSubject"`
 }

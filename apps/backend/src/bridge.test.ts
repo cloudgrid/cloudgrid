@@ -622,7 +622,21 @@ describe("NATS telemetry query bridge", () => {
     } as unknown as NatsConnection;
     const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
 
-    const dataset = await bridge.createDataset({ name: "Regression", tags: ["nightly"] });
+    const dataset = await bridge.createDataset({
+      projectId: "project-1",
+      name: "Regression",
+      tags: ["nightly"],
+      settings: {
+        evaluationFamily: "classification",
+        inputType: "json",
+        expectedType: "json",
+        defaultSplit: "training",
+        intakePolicy: {},
+        defaultMetricSettings: [{ metricId: "exact_match" }],
+        retentionProfile: "balanced",
+      },
+      idempotencyKey: "dataset-create-1",
+    });
 
     expect(subject).toBe("eval.dataset.create");
     expect(payload).toMatchObject({

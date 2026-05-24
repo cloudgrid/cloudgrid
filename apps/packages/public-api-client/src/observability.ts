@@ -343,59 +343,122 @@ export const richMetricSeriesOperation = `
 
 const evalResultFields = `
   id
-  scorerId
-  scorerVersion
-  targetKind
-  targetId
-  experimentRunId
-  score
-  passed
-  runMode
-  resultKind
-  metrics
-  breakdown
-  visualization {
+  metricId
+  metricVersion
+  scope
+  subjectId
+  family
+  payload {
     kind
-    title
-    data
+    numberValue
+    booleanValue
+    labelValue
+    confusionMatrix {
+      labels
+      cells {
+        expected
+        actual
+        count
+      }
+    }
+    fieldBreakdown {
+      fields {
+        path
+        matched
+        missing
+        extra
+        typeMismatch
+      }
+    }
+    distribution {
+      count
+      min
+      max
+      mean
+      p50
+      p95
+    }
   }
-  evidence
-  problem
-  judgeRunRef
-  producedAt
+  unit
+  direction
+  problem {
+    code
+    message
+    details
+  }
+  evidenceRefs {
+    kind
+    traceId
+    spanId
+    evaluationRunId
+    evaluationItemRunId
+    importJobId
+    candidateId
+    metadata
+  }
+  metadata
 `;
 
 const datasetItemFields = `
   id
   datasetId
-  version
-  input
-  expected
-  metadata
-  sourceTraceId
-  sourceSpanId
-  split
-  reviewStatus
-  synthetic
-  duplicateOfItemId
-  leakageWarnings
+  latestRevisionId
+  latestRevision {
+    id
+    datasetItemId
+    datasetId
+    input
+    expected
+    observedOutput
+    reason
+    metadata
+    split
+    curationStatus
+    curationNote
+    contentTreatment
+    sourceRefs {
+      kind
+      traceId
+      spanId
+      metadata
+    }
+    createdAt
+    createdBy
+    updatedAt
+    updatedBy
+  }
+  createdAt
+  createdBy
+  updatedAt
+  updatedBy
 `;
 
 const datasetItemRunFields = `
   id
-  experimentRunId
+  evaluationRunId
   datasetItemId
-  harnessRunId
-  output
-  latencyMs
-  tokenTotals {
-    input
-    output
-    total
-  }
-  evalResults {
+  datasetItemRevisionId
+  targetSnapshotId
+  status
+  actualOutput
+  actualOutputType
+  traceId
+  rootSpanId
+  metricResultIds
+  metricResults {
     ${evalResultFields}
   }
+  problems {
+    code
+    message
+    details
+  }
+  trajectorySummary
+  summaryDigest
+  summaryGeneratedAt
+  retentionRole
+  startedAt
+  endedAt
 `;
 
 const versionedRefFields = `
@@ -454,33 +517,40 @@ const runPolicyFields = `
 const experimentRunSummaryFields = `
   itemCounts {
     total
-    passed
+    queued
+    running
+    completed
     failed
-    errored
-    skipped
-    needsReview
+    cancelled
     quarantined
   }
-  scoreSummaries {
-    scorerId
-    scorerVersion
-    resultKind
-    passRate
-    meanScore
-    p50
-    p95
-    support
-    visualization {
+  metricAggregates {
+    metricId
+    metricVersion
+    scope
+    subjectId
+    payload {
       kind
-      title
-      data
+      numberValue
+      booleanValue
+      labelValue
     }
+    unit
+    direction
+    support
+    problemCount
   }
   problemCounts {
-    modelQuality
-    itemQuality
-    scorerConfig
-    infrastructure
+    invalidActualOutput
+    invalidExpectedOutput
+    missingEvidence
+    adapterFailure
+    timeout
+    providerFailure
+    contentRedacted
+    notApplicable
+    metricConfigInvalid
+    internalError
   }
   budgetUsage {
     inputTokens
@@ -493,64 +563,51 @@ const experimentRunSummaryFields = `
     p95Ms
     maxMs
   }
-  regressions {
-    kind
-    count
-    blocker
-  }
 `;
 
 const experimentRunFields = `
   id
-  experimentId
-  solverRef {
-    ${solverRefFields}
-  }
-  manifest {
-    digest
-    datasetId
-    datasetVersion
-    splitSelector {
-      splits
-      reviewedOnly
-      includeSynthetic
-    }
-    scorerRefs {
-      id
-      version
-    }
-    baselineRef {
-      ${baselineRefFields}
-    }
-    solverRef {
-      ${solverRefFields}
-    }
-    optimizationConfig {
-      ${optimizationConfigFields}
-    }
-    promptVersionRefs
-    skillSnapshotRefs
-    toolSnapshotRefs
-    providerProfileRefs
-    budget
-    concurrency
-    createdAt
-  }
-  baselineRunId
+  projectId
+  evaluationDefinitionId
+  kind
   status
-  runPolicy {
+  datasetId
+  datasetVersionId
+  datasetDigest
+  selectedItemRevisionIds
+  splitSelector {
+    splits
+    curationStatuses
+  }
+  targetSnapshotId
+  metricSettingsSnapshot {
+    metricId
+    metricVersion
+    options
+  }
+  runPolicySnapshot {
     ${runPolicyFields}
   }
+  retentionProfile
+  retentionRole
   startedAt
   endedAt
   summary {
     ${experimentRunSummaryFields}
+  }
+  problem {
+    code
+    message
+    details
   }
   itemRuns {
     items {
       ${datasetItemRunFields}
     }
     nextCursor
+  }
+  metricResults {
+    ${evalResultFields}
   }
 `;
 
@@ -620,7 +677,7 @@ const agentRunFields = `
     latencyMs
     documentDigests
   }
-  evalResults {
+  metricResults {
     ${evalResultFields}
   }
 `;
@@ -651,14 +708,15 @@ export const datasetsOperation = `
         id
         name
         description
-        version
+        currentVersionId
+        currentVersion { id version digest createdAt }
         createdAt
         itemCount
-        reviewedItemCount
+        readyItemCount
         splitCounts
         health {
           status
-          reviewedItemCount
+          readyItemCount
           totalItemCount
           splitCounts
           duplicateCandidateCount
@@ -687,14 +745,15 @@ export const datasetOperation = `
       id
       name
       description
-      version
+      currentVersionId
+      currentVersion { id version digest createdAt }
       createdAt
       itemCount
-      reviewedItemCount
+      readyItemCount
       splitCounts
       health {
         status
-        reviewedItemCount
+        readyItemCount
         totalItemCount
         splitCounts
         duplicateCandidateCount
@@ -721,14 +780,15 @@ export const createDatasetOperation = `
       id
       name
       description
-      version
+      currentVersionId
+      currentVersion { id version digest createdAt }
       createdAt
       itemCount
-      reviewedItemCount
+      readyItemCount
       splitCounts
       health {
         status
-        reviewedItemCount
+        readyItemCount
         totalItemCount
         splitCounts
         duplicateCandidateCount
@@ -755,14 +815,15 @@ export const appendDatasetItemsOperation = `
       id
       name
       description
-      version
+      currentVersionId
+      currentVersion { id version digest createdAt }
       createdAt
       itemCount
-      reviewedItemCount
+      readyItemCount
       splitCounts
       health {
         status
-        reviewedItemCount
+        readyItemCount
         totalItemCount
         splitCounts
         duplicateCandidateCount
@@ -783,15 +844,16 @@ export const appendDatasetItemsOperation = `
   }
 `;
 
-export const scorersOperation = `
-  query Scorers($input: ScorerSearchInput) {
-    scorers(input: $input) {
+export const evaluationDefinitionsOperation = `
+  query EvaluationDefinitions($input: EvaluationDefinitionSearchInput) {
+    evaluationDefinitions(input: $input) {
       items {
         id
+        projectId
         name
-        kind
-        definition
-        judgeModelRef
+        datasetId
+        datasetVersionPolicy
+        pinnedDatasetVersionId
         version
       }
       nextCursor
@@ -799,122 +861,181 @@ export const scorersOperation = `
   }
 `;
 
-export const createScorerOperation = `
-  mutation CreateScorer($input: CreateScorerInput!) {
-    createScorer(input: $input) {
+export const evaluationDefinitionOperation = `
+  query EvaluationDefinition($id: ID!) {
+    evaluationDefinition(id: $id) {
       id
+      projectId
       name
-      kind
-      definition
-      judgeModelRef
+      datasetId
+      datasetVersionPolicy
+      pinnedDatasetVersionId
       version
     }
   }
 `;
 
-export const experimentsOperation = `
-  query Experiments($input: ExperimentSearchInput) {
-    experiments(input: $input) {
+export const createEvaluationDefinitionOperation = `
+  mutation CreateEvaluationDefinition($input: CreateEvaluationDefinitionInput!) {
+    createEvaluationDefinition(input: $input) {
+      id
+      projectId
+      name
+      datasetId
+      version
+    }
+  }
+`;
+
+export const updateEvaluationDefinitionOperation = `
+  mutation UpdateEvaluationDefinition($input: UpdateEvaluationDefinitionInput!) {
+    updateEvaluationDefinition(input: $input) {
+      id
+      projectId
+      name
+      datasetId
+      datasetVersionPolicy
+      pinnedDatasetVersionId
+      version
+    }
+  }
+`;
+
+export const evaluationRunsOperation = `
+  query EvaluationRuns($input: EvaluationRunSearchInput) {
+    evaluationRuns(input: $input) {
       items {
-        id
-        name
-        datasetId
-        datasetVersion
-        scorerIds
-        splitSelector {
-          splits
-          reviewedOnly
-          includeSynthetic
-        }
-        baselineRef {
-          ${baselineRefFields}
-        }
-        promptVersionRefs
-        skillSnapshotRefs
-        toolSnapshotRefs
-        providerProfileRefs
-        createdAt
-        tags
-        runs {
-          items {
-            ${experimentRunFields}
-          }
-          nextCursor
-        }
+        ${experimentRunFields}
       }
       nextCursor
     }
   }
 `;
 
-export const createExperimentOperation = `
-  mutation CreateExperiment($input: CreateExperimentInput!) {
-    createExperiment(input: $input) {
+export const startEvaluationRunOperation = `
+  mutation StartEvaluationRun($input: StartEvaluationRunInput!) {
+    startEvaluationRun(input: $input) {
+      ${experimentRunFields}
+    }
+  }
+`;
+
+export const pauseEvaluationRunOperation = `
+  mutation PauseEvaluationRun($input: EvaluationRunControlInput!) {
+    pauseEvaluationRun(input: $input) {
+      ${experimentRunFields}
+    }
+  }
+`;
+
+export const resumeEvaluationRunOperation = `
+  mutation ResumeEvaluationRun($input: EvaluationRunControlInput!) {
+    resumeEvaluationRun(input: $input) {
+      ${experimentRunFields}
+    }
+  }
+`;
+
+export const cancelEvaluationRunOperation = `
+  mutation CancelEvaluationRun($input: EvaluationRunControlInput!) {
+    cancelEvaluationRun(input: $input) {
+      ${experimentRunFields}
+    }
+  }
+`;
+
+export const evaluationRunOperation = `
+  query EvaluationRun($id: ID!) {
+    evaluationRun(id: $id) {
+      ${experimentRunFields}
+    }
+  }
+`;
+
+export const scorersOperation = evaluationDefinitionsOperation;
+export const createScorerOperation = createEvaluationDefinitionOperation;
+export const experimentsOperation = evaluationDefinitionsOperation;
+export const createExperimentOperation = createEvaluationDefinitionOperation;
+export const startExperimentRunOperation = startEvaluationRunOperation;
+export const pauseExperimentRunOperation = pauseEvaluationRunOperation;
+export const resumeExperimentRunOperation = resumeEvaluationRunOperation;
+export const cancelExperimentRunOperation = cancelEvaluationRunOperation;
+export const experimentRunOperation = evaluationRunOperation;
+
+export const evaluationResultsOperation = `
+  query EvaluationResults($input: EvaluationResultsSearchInput) {
+    evaluationResults(input: $input) {
+      items {
+        ${evalResultFields}
+      }
+      nextCursor
+    }
+  }
+`;
+
+export const createEvaluationComparisonOperation = `
+  mutation CreateEvaluationComparison($input: CreateEvaluationComparisonInput!) {
+    createEvaluationComparison(input: $input) {
       id
-      name
-      datasetId
-      datasetVersion
-      scorerIds
-      splitSelector {
-        splits
-        reviewedOnly
-        includeSynthetic
-      }
-      baselineRef {
-        ${baselineRefFields}
-      }
-      promptVersionRefs
-      skillSnapshotRefs
-      toolSnapshotRefs
-      providerProfileRefs
+      projectId
+      baselineRunId
+      candidateRunId
+      summary
       createdAt
-      tags
-      runs {
-        items {
-          ${experimentRunFields}
-        }
-        nextCursor
+    }
+  }
+`;
+
+export const evaluationComparisonsOperation = `
+  query EvaluationComparisons($input: EvaluationComparisonSearchInput) {
+    evaluationComparisons(input: $input) {
+      items {
+        id
+        projectId
+        baselineRunId
+        candidateRunId
+        summary
+        createdAt
       }
+      nextCursor
     }
   }
 `;
 
-export const startExperimentRunOperation = `
-  mutation StartExperimentRun($input: StartExperimentRunInput!) {
-    startExperimentRun(input: $input) {
-      ${experimentRunFields}
+export const startOptimizationRunOperation = `
+  mutation StartOptimizationRun($input: StartOptimizationRunInput!) {
+    startOptimizationRun(input: $input) {
+      id
+      projectId
+      status
+      baselineTargetSnapshotId
+      candidateTargetSnapshotIds
+      causedEvaluationRunIds
+      comparisonIds
+      selectedCandidateSnapshotId
+      promotionRecordId
+      budgetSnapshot
+      createdAt
+      startedAt
+      endedAt
     }
   }
 `;
 
-export const pauseExperimentRunOperation = `
-  mutation PauseExperimentRun($id: ID!) {
-    pauseExperimentRun(id: $id) {
-      ${experimentRunFields}
-    }
-  }
-`;
-
-export const resumeExperimentRunOperation = `
-  mutation ResumeExperimentRun($id: ID!) {
-    resumeExperimentRun(id: $id) {
-      ${experimentRunFields}
-    }
-  }
-`;
-
-export const cancelExperimentRunOperation = `
-  mutation CancelExperimentRun($id: ID!) {
-    cancelExperimentRun(id: $id) {
-      ${experimentRunFields}
-    }
-  }
-`;
-
-export const experimentRunOperation = `
-  query ExperimentRun($id: ID!) {
-    experimentRun(id: $id) {
-      ${experimentRunFields}
+export const promoteTargetSnapshotOperation = `
+  mutation PromoteTargetSnapshot($input: PromoteTargetSnapshotInput!) {
+    promoteTargetSnapshot(input: $input) {
+      id
+      projectId
+      targetRef
+      baselineTargetSnapshotId
+      candidateTargetSnapshotId
+      evidenceEvaluationRunIds
+      comparisonId
+      summary
+      promotedBy
+      promotedAt
+      notes
     }
   }
 `;
@@ -931,7 +1052,7 @@ export const annotationQueueOperation = `
         status
         createdAt
         resolvedDatasetItemId
-        scorerId
+        metricId
         score
         evidence
       }
@@ -960,12 +1081,17 @@ const datasetImportJobFields = `
     item {
       input
       expected
+      observedOutput
+      reason
       metadata
-      sourceTraceId
-      sourceSpanId
       split
-      reviewStatus
-      synthetic
+      curationStatus
+      sourceRefs {
+        kind
+        traceId
+        spanId
+        metadata
+      }
     }
     errors {
       code
@@ -984,13 +1110,13 @@ const datasetImportJobFields = `
   warnings
   createdAt
   expiresAt
-  committedDatasetVersion
+  committedDatasetVersionId
 `;
 
 const datasetExportJobFields = `
   id
   datasetId
-  datasetVersion
+  datasetVersionId
   status
   format
   rowCount
@@ -1039,14 +1165,15 @@ const datasetCandidateFields = `
   status
   sourceKind
   source
-  targetShape
   input
   expected
+  observedOutput
   metadata
   split
-  reviewStatus
+  curationStatus
+  curationNote
   contentTreatment
-  anonymization {
+  anonymizationProvenance {
     policyId
     policyVersion
     transformedAt
@@ -1058,6 +1185,12 @@ const datasetCandidateFields = `
     }
   }
   reason
+  sourceRefs {
+    kind
+    traceId
+    spanId
+    metadata
+  }
   clusterId
   warnings
   createdAt
@@ -1092,14 +1225,15 @@ export const commitDatasetCandidatesOperation = `
       id
       name
       description
-      version
+      currentVersionId
+      currentVersion { id version digest createdAt }
       createdAt
       itemCount
-      reviewedItemCount
+      readyItemCount
       splitCounts
       health {
         status
-        reviewedItemCount
+        readyItemCount
         totalItemCount
         splitCounts
         duplicateCandidateCount
@@ -1139,7 +1273,7 @@ export const aiQualityOverviewOperation = `
         p50LatencyMs
         p95LatencyMs
         costUsd
-        regressionCount
+        problemCount
       }
     }
   }
@@ -1169,9 +1303,9 @@ export const liveTraceSubscriptionOperation = `
   }
 `;
 
-export const liveExperimentRunSubscriptionOperation = `
-  subscription LiveExperimentRun($input: LiveExperimentRunInput!) {
-    liveExperimentRun(input: $input) {
+export const liveEvaluationRunSubscriptionOperation = `
+  subscription LiveEvaluationRun($input: LiveEvaluationRunInput!) {
+    liveEvaluationRun(input: $input) {
       type
       seq
       receivedAt
@@ -1184,3 +1318,5 @@ export const liveExperimentRunSubscriptionOperation = `
     }
   }
 `;
+
+export const liveExperimentRunSubscriptionOperation = liveEvaluationRunSubscriptionOperation;

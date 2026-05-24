@@ -25,6 +25,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { InfiniteScrollSentinel } from "../components/infinite-scroll-sentinel";
 import { ErrorPanel, LoadingRows } from "../components/query-state";
+import { RouteBreadcrumb } from "../components/route-breadcrumb";
 import { Button } from "../components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
 import { Input } from "../components/ui/input";
@@ -108,6 +109,7 @@ export function MetricsRoute() {
   const state = defaultMetricQueryState(searchParams);
   const metricNameSort = metricNameSortOrDefault(searchParams.get("sort"));
   const inspectorTab = metricInspectorTabOrDefault(searchParams.get("tab"));
+  const projectName = viewer?.selectedProject?.name ?? t("projects.select");
   const ingestSettingsHref = viewer?.selectedProject
     ? `/projects/${encodeURIComponent(viewer.selectedProject.id)}/settings/ingest`
     : "/projects";
@@ -234,14 +236,21 @@ export function MetricsRoute() {
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b pb-2">
-        <div className="min-w-0">
+      <header className="flex shrink-0 flex-col gap-3 border-b pb-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0 space-y-2">
+          <RouteBreadcrumb
+            backLabel={t("actions.back")}
+            backTo="/projects"
+            items={[
+              { label: t("nav.projects"), to: "/projects" },
+              { label: projectName, to: "/projects" },
+              { label: t("metrics.title") },
+            ]}
+          />
           <h1 className="text-xl font-semibold tracking-normal">{t("metrics.title")}</h1>
-          {state.metricName ? (
-            <p className="truncate text-sm text-muted-foreground">{state.metricName}</p>
-          ) : null}
+          <p className="text-sm text-muted-foreground">{t("metrics.description")}</p>
         </div>
-        <div className="flex items-end gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <MetricTimeRangePopover
             from={effectiveState.from}
             onChange={setParam}

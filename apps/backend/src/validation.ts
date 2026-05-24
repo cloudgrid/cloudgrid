@@ -14,6 +14,8 @@ import type {
   CreateAlertRuleInput,
   CreateAlertSilenceInput,
   CreateDatasetInput,
+  CreateEvaluationComparisonInput,
+  CreateEvaluationDefinitionInput,
   CreateExperimentInput,
   CreateIngestCredentialInput,
   CreateProjectInput,
@@ -23,19 +25,28 @@ import type {
   DatasetCandidateSearchInput,
   DatasetSearchInput,
   EvalResultSearchInput,
+  EvaluationComparisonSearchInput,
+  EvaluationDefinitionSearchInput,
+  EvaluationItemRunSearchInput,
+  EvaluationResultsSearchInput,
+  EvaluationRunControlInput,
+  EvaluationRunSearchInput,
   ExperimentSearchInput,
   InviteOrganizationMemberInput,
   InviteProjectMemberInput,
   LiveExperimentRunInput,
+  LiveEvaluationRunInput,
   LiveTraceInput,
   LogSearchInput,
   MetricNameSearchInput,
   MetricSeriesInput,
+  OptimizationRunSearchInput,
   PrepareDatasetImportInput,
   PrepareDatasetCandidatesInput,
   ProjectListInput,
   ProjectRole,
   PromotePromptVersionInput,
+  PromoteTargetSnapshotInput,
   PromoteSpanToDatasetItemInput,
   RemoveOrganizationMemberInput,
   ReorderDashboardPinsInput,
@@ -45,8 +56,10 @@ import type {
   ScorerSearchInput,
   SetDashboardPinnedInput,
   StartDatasetExportInput,
+  StartEvaluationRunInput,
   StartExperimentRunInput,
   StartOptimizationRunInput,
+  TargetDiffInput,
   TelemetryFacetInput,
   TraceDetailInput,
   TraceSearchInput,
@@ -57,6 +70,7 @@ import type {
   UpdateProjectAiSettingsInput,
   UpdateProjectInput,
   UpdateRetentionPolicyInput,
+  UpdateEvaluationDefinitionInput,
 } from "@cloudgrid/ui-contracts";
 import { compactInput, graphQLErrorFromBridge } from "./bridge";
 
@@ -698,8 +712,15 @@ const evalRunPolicyInputSchema = z
     cleanupRetry: jsonObjectSchema.optional().nullable(),
   })
   .strict();
-const datasetSplitSchema = z.enum(["dev", "optimization", "validation", "regression", "holdout"]);
-const datasetReviewStatusSchema = z.enum(["unreviewed", "reviewed", "rejected"]);
+const datasetSplitSchema = z.enum(["training", "validation", "test"]);
+const datasetCurationStatusSchema = z.enum([
+  "draft",
+  "needs_expected",
+  "needs_review",
+  "ready",
+  "rejected",
+]);
+const datasetReviewStatusSchema = datasetCurationStatusSchema;
 const providerKindSchema = z.enum([
   "openai",
   "anthropic",
@@ -732,8 +753,7 @@ const aiSearchPageSchema = z.object({
 });
 const datasetSplitSelectorInputSchema = z.object({
   splits: z.array(datasetSplitSchema).min(1),
-  reviewedOnly: z.boolean().optional(),
-  includeSynthetic: z.boolean().optional(),
+  curationStatuses: z.array(datasetCurationStatusSchema).optional().nullable(),
 });
 const agentRunSearchInputSchema = withTimeRange(
   aiSearchPageSchema.extend({
@@ -747,10 +767,12 @@ const agentRunSearchInputSchema = withTimeRange(
   }),
 );
 const datasetSearchInputSchema = aiSearchPageSchema.extend({
+  projectId: z.string().min(1).optional(),
   query: z.string().min(1).optional(),
   tag: z.string().min(1).optional(),
+  evaluationFamily: z.string().min(1).optional(),
   split: datasetSplitSchema.optional(),
-  reviewStatus: datasetReviewStatusSchema.optional(),
+  curationStatus: datasetCurationStatusSchema.optional(),
 });
 const datasetTargetShapeSchema = z.enum([
   "single_turn",
@@ -882,27 +904,30 @@ const prepareDatasetImportInputSchema = z.object({
   defaults: z
     .object({
       split: datasetSplitSchema.optional().nullable(),
-      reviewStatus: datasetReviewStatusSchema.optional().nullable(),
+      curationStatus: datasetReviewStatusSchema.optional().nullable(),
       metadata: jsonObjectSchema.optional().nullable(),
-      synthetic: z.boolean().optional().nullable(),
       allowPartialCommit: z.boolean().optional().nullable(),
     })
     .optional()
     .nullable(),
   previewLimit: z.number().int().min(1).max(100).optional().nullable(),
+  idempotencyKey: z.string().min(1),
 });
 const commitDatasetImportInputSchema = z.object({
   importId: z.string().min(1),
-  expectedDatasetVersion: z.number().int().min(1),
+  expectedDatasetVersionId: z.string().min(1).optional().nullable(),
   mode: datasetImportCommitModeSchema.optional().nullable(),
+  idempotencyKey: z.string().min(1),
 });
 const startDatasetExportInputSchema = z.object({
   datasetId: z.string().min(1),
+  datasetVersionId: z.string().min(1).optional().nullable(),
   format: datasetExportFormatSchema,
   split: datasetSplitSchema.optional().nullable(),
-  reviewStatus: datasetReviewStatusSchema.optional().nullable(),
+  curationStatus: datasetReviewStatusSchema.optional().nullable(),
   includeMetadata: z.boolean().optional().nullable(),
   includeSourcePointers: z.boolean().optional().nullable(),
+  idempotencyKey: z.string().min(1),
 });
 const datasetCandidateSourceInputSchema = z.object({
   sourceKind: datasetCandidateSourceKindSchema,
@@ -920,17 +945,19 @@ const prepareDatasetCandidatesInputSchema = z.object({
   sources: z.array(datasetCandidateSourceInputSchema).min(1).max(500),
   targetShape: datasetTargetShapeSchema.optional().nullable(),
   split: datasetSplitSchema.optional().nullable(),
-  reviewStatus: datasetReviewStatusSchema.optional().nullable(),
+  curationStatus: datasetReviewStatusSchema.optional().nullable(),
   contentTreatment: datasetContentTreatmentSchema.optional().nullable(),
   anonymizationPolicyId: z.string().min(1).optional().nullable(),
   anonymizationPolicyVersion: z.number().int().min(1).optional().nullable(),
+  idempotencyKey: z.string().min(1),
 });
 const commitDatasetCandidatesInputSchema = z.object({
   datasetId: z.string().min(1),
-  expectedDatasetVersion: z.number().int().min(1),
+  expectedDatasetVersionId: z.string().min(1).optional().nullable(),
   candidateIds: z.array(z.string().min(1)).min(1).max(500),
   split: datasetSplitSchema.optional().nullable(),
-  reviewStatus: datasetReviewStatusSchema.optional().nullable(),
+  curationStatus: datasetReviewStatusSchema.optional().nullable(),
+  idempotencyKey: z.string().min(1),
 });
 const promoteSpanToDatasetItemInputSchema = z.object({
   datasetId: z.string().min(1),
@@ -947,6 +974,107 @@ const createScorerInputSchema = z.object({
   kind: scorerKindSchema,
   definition: z.unknown(),
   judgeModelRef: z.string().min(1).optional(),
+});
+const evaluationDefinitionSearchInputSchema = aiSearchPageSchema.extend({
+  projectId: z.string().min(1).optional(),
+  datasetId: z.string().min(1).optional(),
+  targetKind: z.string().min(1).optional(),
+  query: z.string().min(1).optional(),
+});
+const evaluationRunStatusSchema = z.enum([
+  "queued",
+  "running",
+  "pausing",
+  "paused",
+  "resuming",
+  "cancelling",
+  "cancelled",
+  "failed",
+  "completed",
+]);
+const evaluationRunKindSchema = z.enum([
+  "dataset_evaluation",
+  "quick_shot",
+  "optimization_validation",
+  "test",
+]);
+const evaluationRunSearchInputSchema = aiSearchPageSchema.extend({
+  projectId: z.string().min(1).optional(),
+  evaluationDefinitionId: z.string().min(1).optional(),
+  datasetId: z.string().min(1).optional(),
+  datasetVersionId: z.string().min(1).optional(),
+  status: evaluationRunStatusSchema.optional(),
+  kind: evaluationRunKindSchema.optional(),
+  split: datasetSplitSchema.optional(),
+  targetSnapshotId: z.string().min(1).optional(),
+  query: z.string().min(1).optional(),
+});
+const evaluationItemRunSearchInputSchema = aiSearchPageSchema.extend({
+  evaluationRunId: z.string().min(1).optional(),
+  datasetItemId: z.string().min(1).optional(),
+  datasetItemRevisionId: z.string().min(1).optional(),
+  status: z.string().min(1).optional(),
+});
+const evaluationResultsSearchInputSchema = aiSearchPageSchema.extend({
+  projectId: z.string().min(1).optional(),
+  evaluationRunId: z.string().min(1).optional(),
+  evaluationItemRunId: z.string().min(1).optional(),
+  metricId: z.string().min(1).optional(),
+  scope: z.string().min(1).optional(),
+});
+const evaluationComparisonSearchInputSchema = aiSearchPageSchema.extend({
+  projectId: z.string().min(1).optional(),
+  baselineRunId: z.string().min(1).optional(),
+  candidateRunId: z.string().min(1).optional(),
+  metricId: z.string().min(1).optional(),
+});
+const optimizationRunSearchInputSchema = aiSearchPageSchema.extend({
+  projectId: z.string().min(1).optional(),
+  status: evaluationRunStatusSchema.optional(),
+  baselineTargetSnapshotId: z.string().min(1).optional(),
+  selectedCandidateSnapshotId: z.string().min(1).optional(),
+});
+const targetDiffInputSchema = z.object({
+  projectId: z.string().min(1),
+  baselineSnapshotId: z.string().min(1),
+  candidateSnapshotId: z.string().min(1),
+});
+const evaluationTargetRefInputSchema = z.object({
+  kind: z.string().min(1),
+  targetId: z.string().min(1).optional().nullable(),
+  targetSnapshotId: z.string().min(1).optional().nullable(),
+  targetRef: z.string().min(1).optional().nullable(),
+  displayName: z.string().min(1),
+  metadata: z.unknown().optional(),
+});
+const metricSettingInputSchema = z.object({
+  metricId: z.string().min(1),
+  metricVersion: z.string().min(1).optional().nullable(),
+  options: z.unknown().optional(),
+});
+const createEvaluationDefinitionInputSchema = z.object({
+  projectId: z.string().min(1),
+  name: z.string().min(1),
+  datasetId: z.string().min(1),
+  datasetVersionPolicy: z.enum(["latest_ready", "pinned"]),
+  pinnedDatasetVersionId: z.string().min(1).optional().nullable(),
+  splitSelector: datasetSplitSelectorInputSchema,
+  targetRef: evaluationTargetRefInputSchema,
+  metricSettings: z.array(metricSettingInputSchema).min(1),
+  runPolicy: evalRunPolicyInputSchema.optional().nullable(),
+  retentionProfile: z.string().min(1).optional().nullable(),
+  idempotencyKey: z.string().min(1),
+});
+const updateEvaluationDefinitionInputSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  splitSelector: datasetSplitSelectorInputSchema.optional().nullable(),
+  targetRef: evaluationTargetRefInputSchema.optional().nullable(),
+  metricSettings: z.array(metricSettingInputSchema).min(1).optional().nullable(),
+  runPolicy: evalRunPolicyInputSchema.optional().nullable(),
+  retentionProfile: z.string().min(1).optional().nullable(),
+  expectedVersion: z.number().int().min(1),
+  idempotencyKey: z.string().min(1),
 });
 const createExperimentInputSchema = z.object({
   name: z.string().min(1),
@@ -968,35 +1096,69 @@ const startExperimentRunInputSchema = z.object({
   splitSelector: datasetSplitSelectorInputSchema.optional().nullable(),
   runPolicy: evalRunPolicyInputSchema.optional().nullable(),
 });
+const startEvaluationRunInputSchema = z.object({
+  evaluationDefinitionId: z.string().min(1).optional().nullable(),
+  projectId: z.string().min(1),
+  kind: evaluationRunKindSchema.optional().nullable(),
+  datasetId: z.string().min(1),
+  datasetVersionId: z.string().min(1),
+  selectedItemRevisionIds: z.array(z.string().min(1)).optional().nullable(),
+  splitSelector: datasetSplitSelectorInputSchema,
+  targetRef: evaluationTargetRefInputSchema.optional().nullable(),
+  targetSnapshotId: z.string().min(1).optional().nullable(),
+  metricSettings: z.array(metricSettingInputSchema).min(1).optional().nullable(),
+  runPolicy: evalRunPolicyInputSchema.optional().nullable(),
+  retentionProfile: z.string().min(1).optional().nullable(),
+  retentionRole: z.string().min(1).optional().nullable(),
+  idempotencyKey: z.string().min(1),
+});
+const evaluationRunControlInputSchema = z.object({
+  evaluationRunId: z.string().min(1),
+  idempotencyKey: z.string().min(1),
+});
+const createEvaluationComparisonInputSchema = z.object({
+  projectId: z.string().min(1),
+  baselineRunId: z.string().min(1),
+  candidateRunId: z.string().min(1),
+  metricIds: z.array(z.string().min(1)).optional().nullable(),
+  idempotencyKey: z.string().min(1),
+});
 const startOptimizationRunInputSchema = z
   .object({
-    experimentId: z.string().min(1),
-    optimizerKind: optimizerKindSchema,
-    basePromptVersionId: z.string().min(1),
-    splitSelector: datasetSplitSelectorInputSchema.optional(),
-    config: optimizationConfigInputSchema.optional().nullable(),
+    projectId: z.string().min(1),
+    baselineTargetSnapshotId: z.string().min(1),
+    objective: z.object({
+      primaryMetricId: z.string().min(1),
+      secondaryMetricIds: z.array(z.string().min(1)).optional().nullable(),
+      constraints: z.unknown().optional(),
+      tradeoffMetricIds: z.array(z.string().min(1)).optional().nullable(),
+      rankingPolicy: z.unknown().optional(),
+      tieBreakers: z.array(z.string().min(1)).optional().nullable(),
+      minimumEvidence: z.unknown().optional(),
+    }),
+    trainingEvaluationDefinitionId: z.string().min(1).optional().nullable(),
+    trainingSplitSelector: datasetSplitSelectorInputSchema.optional().nullable(),
+    validationEvaluationDefinitionId: z.string().min(1).optional().nullable(),
+    validationSplitSelector: datasetSplitSelectorInputSchema.optional().nullable(),
+    testEvaluationDefinitionId: z.string().min(1).optional().nullable(),
+    quickShotPolicy: z.unknown().optional().nullable(),
     runPolicy: evalRunPolicyInputSchema.optional().nullable(),
+    idempotencyKey: z.string().min(1),
   })
-  .superRefine((value, context) => {
-    if (!value.config) {
-      return;
-    }
-    if (value.optimizerKind === "bootstrap_fewshot" && !value.config.bootstrapFewshot) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "bootstrapFewshot config is required for bootstrap_fewshot",
-      });
-    }
-    if (value.optimizerKind === "critic_mutate_judge_pick" && !value.config.criticMutateJudgePick) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "criticMutateJudgePick config is required for critic_mutate_judge_pick",
-      });
-    }
-  });
+  .strict();
 const promotePromptVersionInputSchema = z.object({
   promptVersionId: z.string().min(1),
   tag: z.string().min(1),
+});
+const promoteTargetSnapshotInputSchema = z.object({
+  projectId: z.string().min(1),
+  targetRef: z.string().min(1),
+  baselineTargetSnapshotId: z.string().min(1),
+  candidateTargetSnapshotId: z.string().min(1),
+  evidenceEvaluationRunIds: z.array(z.string().min(1)),
+  comparisonId: z.string().min(1),
+  notes: z.string().optional().nullable(),
+  idempotencyKey: z.string().min(1),
 });
 const resolveAnnotationInputSchema = z.object({
   annotationQueueItemId: z.string().min(1),
@@ -1005,6 +1167,9 @@ const resolveAnnotationInputSchema = z.object({
 });
 const liveExperimentRunInputSchema = z.object({
   experimentRunId: z.string().min(1),
+});
+const liveEvaluationRunInputSchema = z.object({
+  evaluationRunId: z.string().min(1),
 });
 const aiQualityOverviewInputSchema = withTimeRange(
   z.object({
@@ -1141,7 +1306,8 @@ const onlineEvaluationPolicyInputSchema = z.object({
   enabled: z.boolean(),
   name: z.string().min(1),
   target: z.unknown(),
-  scorerIds: z.array(z.string().min(1)),
+  scorerIds: z.array(z.string().min(1)).optional(),
+  metricIds: z.array(z.string().min(1)).optional(),
   sampleRate: z.number().min(0).max(1),
   maxDailyRuns: z.number().int().min(1).optional().nullable(),
   annotationRules: z.array(annotationRuleInputSchema).optional(),
@@ -1164,13 +1330,16 @@ const updateProjectAiSettingsInputSchema = z.object({
   sampling: z.object({
     defaultOnlineSampleRate: z.number().min(0).max(1),
     maxOnlineSampleRate: z.number().min(0).max(1),
-    maxConcurrentExperimentItems: z.number().int().min(1),
+    maxConcurrentExperimentItems: z.number().int().min(1).optional(),
+    maxConcurrentEvaluationItems: z.number().int().min(1).optional(),
     maxConcurrentOptimizationCandidates: z.number().int().min(1),
   }),
   datasetDefaults: z.object({
     splitAllocation: z.unknown(),
     smallDatasetReviewedThreshold: z.number().int().min(1).optional().nullable(),
     requireReviewForRegression: z.boolean().optional().nullable(),
+    smallDatasetReadyThreshold: z.number().int().min(1).optional().nullable(),
+    requireReadyForTest: z.boolean().optional().nullable(),
   }),
   expectedVersion: z.number().int().min(1),
 });
@@ -1618,6 +1787,70 @@ export function validateEvalResultSearchInput(input: EvalResultSearchInput): Eva
   );
 }
 
+export function validateEvaluationDefinitionSearchInput(
+  input: EvaluationDefinitionSearchInput,
+): EvaluationDefinitionSearchInput {
+  return validateAiInput<EvaluationDefinitionSearchInput>(
+    evaluationDefinitionSearchInputSchema,
+    input,
+    "Evaluation definition search input",
+  );
+}
+
+export function validateEvaluationRunSearchInput(
+  input: EvaluationRunSearchInput,
+): EvaluationRunSearchInput {
+  return validateAiInput<EvaluationRunSearchInput>(
+    evaluationRunSearchInputSchema,
+    input,
+    "Evaluation run search input",
+  );
+}
+
+export function validateEvaluationItemRunSearchInput(
+  input: EvaluationItemRunSearchInput,
+): EvaluationItemRunSearchInput {
+  return validateAiInput<EvaluationItemRunSearchInput>(
+    evaluationItemRunSearchInputSchema,
+    input,
+    "Evaluation item run search input",
+  );
+}
+
+export function validateEvaluationResultsSearchInput(
+  input: EvaluationResultsSearchInput,
+): EvaluationResultsSearchInput {
+  return validateAiInput<EvaluationResultsSearchInput>(
+    evaluationResultsSearchInputSchema,
+    input,
+    "Evaluation results search input",
+  );
+}
+
+export function validateEvaluationComparisonSearchInput(
+  input: EvaluationComparisonSearchInput,
+): EvaluationComparisonSearchInput {
+  return validateAiInput<EvaluationComparisonSearchInput>(
+    evaluationComparisonSearchInputSchema,
+    input,
+    "Evaluation comparison search input",
+  );
+}
+
+export function validateOptimizationRunSearchInput(
+  input: OptimizationRunSearchInput,
+): OptimizationRunSearchInput {
+  return validateAiInput<OptimizationRunSearchInput>(
+    optimizationRunSearchInputSchema,
+    input,
+    "Optimization run search input",
+  );
+}
+
+export function validateTargetDiffInput(input: TargetDiffInput): TargetDiffInput {
+  return validateAiInput<TargetDiffInput>(targetDiffInputSchema, input, "Target diff input");
+}
+
 export function validateAnnotationQueueSearchInput(
   input: AnnotationQueueSearchInput,
 ): AnnotationQueueSearchInput {
@@ -1710,6 +1943,26 @@ export function validateCreateScorerInput(input: CreateScorerInput): CreateScore
   return validateAiInput<CreateScorerInput>(createScorerInputSchema, input, "Create scorer input");
 }
 
+export function validateCreateEvaluationDefinitionInput(
+  input: CreateEvaluationDefinitionInput,
+): CreateEvaluationDefinitionInput {
+  return validateAiInput<CreateEvaluationDefinitionInput>(
+    createEvaluationDefinitionInputSchema,
+    input,
+    "Create evaluation definition input",
+  );
+}
+
+export function validateUpdateEvaluationDefinitionInput(
+  input: UpdateEvaluationDefinitionInput,
+): UpdateEvaluationDefinitionInput {
+  return validateAiInput<UpdateEvaluationDefinitionInput>(
+    updateEvaluationDefinitionInputSchema,
+    input,
+    "Update evaluation definition input",
+  );
+}
+
 export function validateCreateExperimentInput(input: CreateExperimentInput): CreateExperimentInput {
   return validateAiInput<CreateExperimentInput>(
     createExperimentInputSchema,
@@ -1725,6 +1978,36 @@ export function validateStartExperimentRunInput(
     startExperimentRunInputSchema,
     input,
     "Start experiment run input",
+  );
+}
+
+export function validateStartEvaluationRunInput(
+  input: StartEvaluationRunInput,
+): StartEvaluationRunInput {
+  return validateAiInput<StartEvaluationRunInput>(
+    startEvaluationRunInputSchema,
+    input,
+    "Start evaluation run input",
+  );
+}
+
+export function validateEvaluationRunControlInput(
+  input: EvaluationRunControlInput,
+): EvaluationRunControlInput {
+  return validateAiInput<EvaluationRunControlInput>(
+    evaluationRunControlInputSchema,
+    input,
+    "Evaluation run control input",
+  );
+}
+
+export function validateCreateEvaluationComparisonInput(
+  input: CreateEvaluationComparisonInput,
+): CreateEvaluationComparisonInput {
+  return validateAiInput<CreateEvaluationComparisonInput>(
+    createEvaluationComparisonInputSchema,
+    input,
+    "Create evaluation comparison input",
   );
 }
 
@@ -1748,6 +2031,16 @@ export function validatePromotePromptVersionInput(
   );
 }
 
+export function validatePromoteTargetSnapshotInput(
+  input: PromoteTargetSnapshotInput,
+): PromoteTargetSnapshotInput {
+  return validateAiInput<PromoteTargetSnapshotInput>(
+    promoteTargetSnapshotInputSchema,
+    input,
+    "Promote target snapshot input",
+  );
+}
+
 export function validateResolveAnnotationInput(
   input: ResolveAnnotationInput,
 ): ResolveAnnotationInput {
@@ -1765,6 +2058,16 @@ export function validateLiveExperimentRunInput(
     liveExperimentRunInputSchema,
     input,
     "Live experiment run input",
+  );
+}
+
+export function validateLiveEvaluationRunInput(
+  input: LiveEvaluationRunInput,
+): LiveEvaluationRunInput {
+  return validateAiInput<LiveEvaluationRunInput>(
+    liveEvaluationRunInputSchema,
+    input,
+    "Live evaluation run input",
   );
 }
 

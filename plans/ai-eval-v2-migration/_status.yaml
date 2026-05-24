@@ -1,0 +1,64 @@
+plan: ai_eval_v2_implementation_migration
+status: ready
+updated: 2026-05-24
+current_gate_evidence:
+  contracts_check: pass
+  typecheck: pass
+  spec_check: pass_with_warning_no_specs_03_flows_directory
+tickets:
+  TICKET-201:
+    status: done
+    wave: wave_01_backend_foundation
+    depends_on: []
+    blocked_by: []
+    owner: bff-agent
+    evidence:
+      - PATH="$HOME/.bun/bin:$PATH" bun test apps/backend/src/ai-eval.test.ts
+      - PATH="$HOME/.bun/bin:$PATH" bun run contracts:check
+      - node node_modules/.bin/tsc --noEmit -p apps/backend/tsconfig.json
+      - node node_modules/.bin/tsc --noEmit -p apps/frontend/tsconfig.json
+      - node node_modules/.bin/tsc --noEmit -p apps/packages/public-api-client/tsconfig.json
+      - node node_modules/.bin/tsc --noEmit -p apps/packages/ui-contracts/tsconfig.json
+      - node node_modules/.bin/tsc --noEmit -p apps/packages/integration-scenarios/tsconfig.json
+      - git diff --check
+    next: TICKET-202 and TICKET-203 may start
+  TICKET-202:
+    status: ready
+    wave: wave_02_parallel_services
+    depends_on: [TICKET-201]
+    blocked_by: []
+    owner: storage-write-agent
+    evidence: []
+    next: implement
+  TICKET-203:
+    status: ready
+    wave: wave_02_parallel_services
+    depends_on: [TICKET-201]
+    blocked_by: []
+    owner: storage-read-agent
+    evidence: []
+    next: implement
+  TICKET-204:
+    status: ready
+    wave: wave_03_runner_frontend
+    depends_on: [TICKET-202, TICKET-203]
+    blocked_by: []
+    owner: runner-agent
+    evidence: []
+    next: implement
+  TICKET-205:
+    status: ready
+    wave: wave_03_runner_frontend
+    depends_on: [TICKET-201]
+    blocked_by: []
+    owner: frontend-agent
+    evidence: []
+    next: implement
+  TICKET-206:
+    status: ready
+    wave: wave_04_integration_docs
+    depends_on: [TICKET-202, TICKET-203, TICKET-204, TICKET-205]
+    blocked_by: []
+    owner: integration-docs-agent
+    evidence: []
+    next: implement

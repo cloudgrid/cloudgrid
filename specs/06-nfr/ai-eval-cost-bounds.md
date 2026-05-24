@@ -13,23 +13,23 @@ depends_on: [DOM-006, TEC-BE-024]
 
 ## Requirement
 
-Continuous production measurement, offline scoring, backfill, CI gates, and
-optimization must have explicit cost, token, concurrency, rate-limit,
-backpressure, retry, and timeout bounds before calling harness or a model-backed
-scorer.
+Dataset evaluations, optimization, external adapter calls, and future
+production measurement must have explicit cost, token, concurrency, rate-limit,
+backpressure, retry, and timeout bounds before calling the harness, external
+adapter, or model-backed metric.
 
 ## Defaults
 
 - Production measurement is disabled until configured.
-- One run executes at most 10 concurrent harness/model/scorer requests by
+- One run executes at most 10 concurrent harness/model/metric/adapter requests by
   default unless a lower project or run policy is configured.
 - A project-level daily evaluation budget stops additional harness calls with `ERR-AIE-004` when the configured budget is exhausted.
 - Project AI settings may lower these defaults. They must not raise global
   hard caps unless a later scaling/commercial spec explicitly changes the cap.
-- Deterministic local scorers consume concurrency but not provider budget.
-- Budget checks occur before every harness `/v1/run`, `/v1/score`, and
-  `/v1/optimize` call.
-- Token budget checks occur before every item execution and scorer execution
+- Deterministic local metrics consume concurrency but not provider budget.
+- Budget checks occur before every harness, model-backed metric, optimizer, and
+  external adapter call.
+- Token budget checks occur before every item execution and metric execution
   when the required evidence can be measured before scheduling. Oversized items
   are marked `needs_review` or `quarantined` according to policy rather than
   being counted as model-quality failures.

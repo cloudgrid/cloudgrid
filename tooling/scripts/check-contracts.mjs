@@ -786,284 +786,210 @@ function validateAsyncApiRequestStructs(document) {
 }
 
 function validateAiEvalContractAlignment() {
-  const goSource = read("core/go-contracts/contracts.go");
-  const uiSource = read("apps/packages/ui-contracts/src/index.ts");
-  const backendValidation = read("apps/backend/src/validation.ts");
-  const backendBridge = read("apps/backend/src/bridge.ts");
   const asyncApiSource = read("specs/03-contracts/messages/message-bridge.asyncapi.yaml");
-  const optimizerValues = ["bootstrap_fewshot", "critic_mutate_judge_pick"];
-
-  for (const symbol of [
-    "EvalSolverRef",
-    "EvalBaselineRef",
-    "OptimizationConfig",
-    "BootstrapFewshotConfig",
-    "CriticMutateJudgePickConfig",
-    "EvalRunPolicy",
-    "DatasetCandidate",
-    "DatasetCandidatesData",
-    "DatasetCandidatesResponse",
-    "ExperimentManifest",
-    "ExperimentRunSummary",
-  ]) {
-    if (!goSource.includes(`type ${symbol} struct`)) {
-      throw new Error(`go contracts missing typed AI Eval contract ${symbol}`);
-    }
-    if (!uiSource.includes(`interface ${symbol}`)) {
-      throw new Error(`ui contracts missing typed AI Eval contract ${symbol}`);
-    }
-  }
-
-  for (const symbol of [
-    "DatasetCandidatesPrepareRequest",
-    "DatasetCandidatesSearchRequest",
-    "DatasetCandidatesCommitRequest",
-    "ExperimentRunControlRequest",
-  ]) {
-    if (!goSource.includes(`type ${symbol} struct`)) {
-      throw new Error(`go contracts missing typed AI Eval request contract ${symbol}`);
-    }
-  }
-
-  for (const [structName, fields] of Object.entries({
-    ExperimentStartRequest: ["solverRef", "splitSelector", "runPolicy"],
-    ExperimentRunControlRequest: ["experimentRunId", "command"],
-    OptimizationStartRequest: ["config", "runPolicy"],
-    ExperimentManifestResolveRequest: ["basePromptVersionId", "optimizationConfig"],
-    DatasetCandidatesPrepareRequest: ["sources", "contentTreatment", "anonymizationPolicyVersion"],
-    DatasetCandidatesSearchRequest: ["datasetId", "status", "cursor"],
-    DatasetCandidatesCommitRequest: ["datasetId", "expectedDatasetVersion", "candidateIds"],
-    DatasetCandidate: [
-      "id",
-      "status",
-      "sourceKind",
-      "source",
-      "targetShape",
-      "metadata",
-      "split",
-      "reviewStatus",
-      "contentTreatment",
-      "reason",
-      "warnings",
-      "createdAt",
-      "updatedAt",
-    ],
-    DatasetCandidatesData: ["items", "nextCursor"],
-    DatasetCandidatesResponse: ["data"],
-    ExperimentManifest: [
-      "schema",
-      "version",
-      "digest",
-      "experimentRunId",
-      "experimentId",
-      "datasetId",
-      "datasetVersion",
-      "splitSelector",
-      "datasetItemIds",
-      "scorerRefs",
-      "solverRef",
-      "promptVersionRefs",
-      "skillSnapshotRefs",
-      "toolSnapshotRefs",
-      "providerProfileRefs",
-      "budget",
-      "concurrency",
-      "runPolicy",
-      "createdAt",
-    ],
-    ExperimentRunSummary: ["itemCounts", "scoreSummaries", "problemCounts", "budgetUsage"],
-    OnlinePolicyMatchesResolveData: ["matches", "projection", "runPolicy", "warnings"],
-  })) {
-    const body = goStructBody(goSource, structName);
-    if (!body) {
-      throw new Error(`go contracts missing AI Eval struct ${structName}`);
-    }
-    for (const field of fields) {
-      if (!body.includes(`json:"${field}`)) {
-        throw new Error(`go AI Eval struct ${structName} missing JSON field ${field}`);
-      }
-    }
-  }
-
-  for (const [structName, fields] of Object.entries({
-    DatasetCandidate: [
-      "id",
-      "status",
-      "sourceKind",
-      "source",
-      "targetShape",
-      "metadata",
-      "split",
-      "reviewStatus",
-      "contentTreatment",
-      "reason",
-      "warnings",
-      "createdAt",
-      "updatedAt",
-    ],
-    DatasetCandidatesData: ["items"],
-    ExperimentManifest: [
-      "schema",
-      "version",
-      "digest",
-      "experimentRunId",
-      "experimentId",
-      "datasetId",
-      "datasetVersion",
-      "splitSelector",
-      "datasetItemIds",
-      "scorerRefs",
-      "solverRef",
-      "promptVersionRefs",
-      "skillSnapshotRefs",
-      "toolSnapshotRefs",
-      "providerProfileRefs",
-      "budget",
-      "concurrency",
-      "runPolicy",
-      "createdAt",
-    ],
-    ExperimentRunSummary: [
-      "itemCounts",
-      "scoreSummaries",
-      "problemCounts",
-      "budgetUsage",
-      "regressions",
-    ],
-    OnlinePolicyMatchesResolveData: ["matches", "projection", "warnings"],
-  })) {
-    const body = goStructBody(goSource, structName);
-    for (const field of fields) {
-      if (goJsonFieldHasOmitEmpty(body, field)) {
-        throw new Error(`go AI Eval struct ${structName}.${field} must not be omitempty`);
-      }
-    }
-  }
-
-  if (!goSource.includes("Data      *DatasetCandidatesData")) {
-    throw new Error("go DatasetCandidatesResponse.data must use typed DatasetCandidatesData");
-  }
-  if (!goSource.includes("Items      []DatasetCandidate")) {
-    throw new Error("go DatasetCandidatesData.items must use typed DatasetCandidate items");
-  }
-  if (!goSource.includes("Data      *ExperimentManifestData")) {
-    throw new Error(
-      "go ExperimentManifestResolveResponse.data must use typed ExperimentManifestData",
-    );
-  }
-  if (!goSource.includes("Manifest ExperimentManifest")) {
-    throw new Error("go ExperimentManifestData.manifest must use typed ExperimentManifest");
-  }
-
-  assertExactOptimizerValues(
-    "GraphQL OptimizerKind",
-    graphqlEnumValues("OptimizerKind"),
-    optimizerValues,
-  );
-  assertExactOptimizerValues(
-    "AsyncAPI OptimizationStartRequest.optimizerKind",
-    asyncApi.components?.schemas?.OptimizationStartRequest?.allOf?.[1]?.properties?.optimizerKind
-      ?.enum,
-    optimizerValues,
-  );
-  assertExactOptimizerValues(
-    "ui OptimizerKind",
-    tsStringUnionValues(uiSource, "OptimizerKind"),
-    optimizerValues,
-  );
-  assertExactOptimizerValues(
-    "backend validation optimizerKindSchema",
-    zodEnumValues(backendValidation, "optimizerKindSchema"),
-    optimizerValues,
-  );
-  assertExactOptimizerValues(
-    "backend bridge optimizerKindSchema",
-    zodEnumValues(backendBridge, "optimizerKindSchema"),
-    optimizerValues,
-  );
-  assertExactOptimizerValues(
-    "go OptimizerKind constants",
-    goStringConstValues(goSource, "OptimizerKind"),
-    optimizerValues,
-  );
-
-  const onlinePolicyData =
-    asyncApi.components?.schemas?.OnlinePolicyMatchesResolveResponse?.properties?.data;
-  if (!onlinePolicyData?.required?.includes("projection")) {
-    throw new Error("AsyncAPI OnlinePolicyMatchesResolveResponse.data must require projection");
-  }
-  if (
-    onlinePolicyData?.properties?.projection?.$ref !==
-    "#/components/schemas/OnlinePolicyProjectionReadModel"
-  ) {
-    throw new Error(
-      "AsyncAPI OnlinePolicyMatchesResolveResponse.data.projection must use OnlinePolicyProjectionReadModel",
-    );
-  }
-  if (asyncApi.components?.schemas?.OnlinePolicyMatch?.properties?.projection) {
-    throw new Error("AsyncAPI OnlinePolicyMatch must not nest projection; use data.projection");
-  }
-
-  for (const forbidden of [
-    "mipro-v2",
-    "reflective-text-gradient",
-    "mipro_v2",
-    "reflective_text_gradient",
-  ]) {
-    if (asyncApiSource.includes(forbidden) || backendValidation.includes(forbidden)) {
-      throw new Error(
-        `v1 executable optimizer contracts must not include roadmap optimizer ${forbidden}`,
-      );
-    }
-  }
-
-  for (const required of [
-    "DatasetCandidatesPrepareRequest",
-    "DatasetCandidatesSearchRequest",
-    "DatasetCandidatesCommitRequest",
-    "DatasetCandidatesResponse",
-    "ExperimentRunControlRequest",
+  const generatedTs = read("apps/packages/ui-contracts/src/generated.ts");
+  const generatedGo = read("core/go-contracts/generated_contracts.go");
+  const requiredSubjects = [
+    "eval.dataset.create",
+    "eval.dataset.items.append",
+    "eval.dataset.item.promote",
+    "eval.dataset.version.get",
+    "eval.dataset.search",
+    "eval.dataset.health",
     "eval.dataset.candidates.prepare",
     "eval.dataset.candidates.search",
     "eval.dataset.candidates.commit",
-    "eval.experiment.pause",
-    "eval.experiment.resume",
-  ]) {
-    if (!asyncApiSource.includes(required)) {
-      throw new Error(`AsyncAPI missing AI Eval executable contract token ${required}`);
+    "eval.dataset.import.prepare",
+    "eval.dataset.import.commit",
+    "eval.dataset.export.start",
+    "eval.dataset.transfer.get",
+    "eval.agent_runs.search",
+    "eval.evaluation.create",
+    "eval.evaluation.update",
+    "eval.evaluation.search",
+    "eval.evaluation.run.start",
+    "eval.evaluation.run.cancel",
+    "eval.evaluation.run.pause",
+    "eval.evaluation.run.resume",
+    "eval.evaluation.run.search",
+    "eval.evaluation.run.get",
+    "eval.results.search",
+    "eval.results.persist",
+    "eval.evaluation.comparison.create",
+    "eval.evaluation.comparison.search",
+    "eval.target.snapshot.create",
+    "eval.target.snapshot.get",
+    "eval.target.diff",
+    "eval.optimization.start",
+    "eval.optimization.search",
+    "eval.optimization.get",
+    "eval.target.promote",
+    "eval.live.start",
+    "eval.live.stop",
+    "eval.live.events.*.*",
+  ];
+
+  for (const subject of requiredSubjects) {
+    if (!MESSAGE_BRIDGE_SUBJECTS.includes(subject)) {
+      throw new Error(`definition MESSAGE_BRIDGE_SUBJECTS missing AI Eval v2 subject ${subject}`);
+    }
+    const hasChannelKey = asyncApiSource.includes(`${subject}:`) || subject.includes("*");
+    if (!hasChannelKey || !asyncApiSource.includes(`address: ${subject}`)) {
+      throw new Error(`AsyncAPI missing AI Eval v2 channel ${subject}`);
+    }
+    if (!generatedTs.includes(`"${subject}"`)) {
+      throw new Error(`generated UI contracts missing AI Eval v2 subject ${subject}`);
+    }
+    if (!generatedGo.includes(`"${subject}"`)) {
+      throw new Error(`generated Go contracts missing AI Eval v2 subject ${subject}`);
     }
   }
 
-  for (const required of [
-    "const evalSolverRefInputSchema",
-    "const evalBaselineRefInputSchema",
-    "const optimizationConfigInputSchema",
-    "const evalRunPolicyInputSchema",
-    "bootstrap_fewshot",
-    "critic_mutate_judge_pick",
+  for (const forbidden of [
+    "eval.scorer.",
+    "eval.experiment.",
+    "eval.manifest.resolve",
+    "eval.prompt_version.promote",
+    "eval.quality.overview",
+    "eval.online.policy_matches.resolve",
+    "annotation.queue.",
+    "annotation.item.",
   ]) {
-    if (!backendValidation.includes(required)) {
-      throw new Error(`backend validation missing AI Eval alignment token ${required}`);
+    if (MESSAGE_BRIDGE_SUBJECTS.some((subject) => subject.includes(forbidden))) {
+      throw new Error(`definition MESSAGE_BRIDGE_SUBJECTS must not expose legacy AI Eval subject ${forbidden}`);
+    }
+    if (asyncApiSource.includes(forbidden)) {
+      throw new Error(`AsyncAPI must not expose legacy AI Eval subject ${forbidden}`);
+    }
+    if (generatedTs.includes(forbidden)) {
+      throw new Error(`generated UI contracts must not expose legacy AI Eval subject ${forbidden}`);
+    }
+    if (generatedGo.includes(forbidden)) {
+      throw new Error(`generated Go contracts must not expose legacy AI Eval subject ${forbidden}`);
     }
   }
 
-  for (const required of [
-    "const evalSolverRefSchema",
-    "const evalBaselineRefSchema",
-    "const optimizationConfigSchema",
-    "const evalRunPolicySchema",
-    "const experimentRunSummarySchema",
+  const queryType = graphqlSchema.getQueryType();
+  const mutationType = graphqlSchema.getMutationType();
+  const subscriptionType = graphqlSchema.getSubscriptionType();
+  for (const field of [
+    "datasets",
+    "dataset",
+    "datasetVersion",
+    "datasetCandidates",
+    "evaluationDefinitions",
+    "evaluationRuns",
+    "evaluationRun",
+    "evaluationResults",
+    "evaluationComparisons",
+    "targetSnapshot",
+    "targetDiff",
+    "optimizationRuns",
+    "optimizationRun",
   ]) {
-    if (!backendBridge.includes(required)) {
-      throw new Error(`backend bridge parser missing AI Eval alignment token ${required}`);
+    if (!queryType?.getFields?.()[field]) {
+      throw new Error(`GraphQL Query missing AI Eval v2 field ${field}`);
+    }
+  }
+  for (const field of [
+    "createDataset",
+    "appendDatasetItems",
+    "promoteSpanToDatasetItem",
+    "updateDatasetItems",
+    "prepareDatasetCandidates",
+    "commitDatasetCandidates",
+    "prepareDatasetImport",
+    "startDatasetExport",
+    "createEvaluationDefinition",
+    "updateEvaluationDefinition",
+    "startEvaluationRun",
+    "cancelEvaluationRun",
+    "pauseEvaluationRun",
+    "resumeEvaluationRun",
+    "createEvaluationComparison",
+    "startOptimizationRun",
+    "promoteTargetSnapshot",
+  ]) {
+    if (!mutationType?.getFields?.()[field]) {
+      throw new Error(`GraphQL Mutation missing AI Eval v2 field ${field}`);
+    }
+  }
+  if (!subscriptionType?.getFields?.().liveEvaluationRun) {
+    throw new Error("GraphQL Subscription missing liveEvaluationRun");
+  }
+
+  for (const forbidden of [
+    "scorers",
+    "scorer",
+    "experiments",
+    "experiment",
+    "experimentRuns",
+    "experimentRun",
+    "createScorer",
+    "createExperiment",
+    "startExperimentRun",
+    "liveExperimentRun",
+  ]) {
+    if (
+      queryType?.getFields?.()[forbidden] ||
+      mutationType?.getFields?.()[forbidden] ||
+      subscriptionType?.getFields?.()[forbidden]
+    ) {
+      throw new Error(`GraphQL public schema must not expose legacy AI Eval field ${forbidden}`);
     }
   }
 
-  if (!graphqlSchemaSource.includes("summary: ExperimentRunSummary!")) {
-    throw new Error("GraphQL ExperimentRun.summary must use the typed ExperimentRunSummary object");
+  for (const enumName of ["DatasetSplit", "DatasetCurationStatus"]) {
+    if (!graphqlSchema.getType(enumName)) {
+      throw new Error(`GraphQL schema missing AI Eval enum ${enumName}`);
+    }
   }
-  if (!uiSource.includes("summary: ExperimentRunSummary")) {
-    throw new Error("ui contracts ExperimentRun.summary must use ExperimentRunSummary");
+  const splitValues = graphqlEnumValues("DatasetSplit").sort();
+  if (JSON.stringify(splitValues) !== JSON.stringify(["test", "training", "validation"])) {
+    throw new Error("GraphQL DatasetSplit must be exactly training, validation, test");
+  }
+
+  for (const schemaFile of [
+    "dataset-item-revision.schema.json",
+    "dataset-version.schema.json",
+    "evaluation-definition.schema.json",
+    "evaluation-run.schema.json",
+    "evaluation-item-run.schema.json",
+    "metric-result.schema.json",
+    "metric-aggregate.schema.json",
+    "evaluation-comparison.schema.json",
+    "evaluation-target-ref.schema.json",
+    "target-snapshot.schema.json",
+    "target-diff.schema.json",
+    "optimization-run.schema.json",
+    "promotion-record.schema.json",
+    "metric-capability.schema.json",
+  ]) {
+    const schemaPath = `specs/03-contracts/entities/ai/${schemaFile}`;
+    try {
+      const content = read(schemaPath);
+      JSON.parse(content);
+    } catch (error) {
+      throw new Error(`AI Eval v2 entity schema ${schemaPath} is missing or invalid: ${error.message}`);
+    }
+  }
+
+  for (const legacySchemaFile of [
+    "eval-solver-ref.schema.json",
+    "scorer-definition.schema.json",
+    "scorer.schema.json",
+    "experiment.schema.json",
+    "experiment-run.schema.json",
+    "experiment-manifest.schema.json",
+  ]) {
+    try {
+      read(`specs/03-contracts/entities/ai/${legacySchemaFile}`);
+      throw new Error(`legacy AI Eval entity schema must be removed: ${legacySchemaFile}`);
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        throw error;
+      }
+    }
   }
 }
 

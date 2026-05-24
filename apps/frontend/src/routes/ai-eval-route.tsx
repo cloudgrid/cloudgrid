@@ -14,6 +14,7 @@ import type {
   DatasetImportJob,
   DatasetImportScalarMappingInput,
   DatasetItemInput,
+  DatasetCurationStatus,
   DatasetReviewStatus,
   DatasetSplit,
   EvalSolverKind,
@@ -293,6 +294,7 @@ export function AiEvalRoute() {
             <DatasetsView
               onCreated={onDatasetCreated}
               onSelect={(id) => setSelected("dataset", id)}
+              projectId={projectId}
               query={datasetsQuery}
               selectedId={selectedDataset?.id ?? null}
             />
@@ -375,6 +377,7 @@ function AiEvalPageHeader({
   if (tab === "datasets" && workflow === "dataset-import" && selectedDataset) {
     backTo = `/ai-eval?tab=datasets&dataset=${selectedDataset.id}`;
     breadcrumbItems = [
+      { label: t("nav.projects"), to: "/projects" },
       { label: projectName, to: "/projects" },
       { label: t("nav.aiEval"), to: "/ai-eval" },
       { label: t("nav.aiEvalDatasets"), to: "/ai-eval?tab=datasets" },
@@ -390,6 +393,7 @@ function AiEvalPageHeader({
   } else if (tab === "datasets" && selectedDataset) {
     backTo = "/ai-eval?tab=datasets";
     breadcrumbItems = [
+      { label: t("nav.projects"), to: "/projects" },
       { label: projectName, to: "/projects" },
       { label: t("nav.aiEval"), to: "/ai-eval" },
       { label: t("nav.aiEvalDatasets"), to: "/ai-eval?tab=datasets" },
@@ -415,6 +419,7 @@ function AiEvalPageHeader({
   } else if (tab === "datasets") {
     backTo = "/ai-eval";
     breadcrumbItems = [
+      { label: t("nav.projects"), to: "/projects" },
       { label: projectName, to: "/projects" },
       { label: t("nav.aiEval"), to: "/ai-eval" },
       { label: t("nav.aiEvalDatasets") },
@@ -431,12 +436,13 @@ function AiEvalPageHeader({
           placeholder="Search datasets"
           value={query}
         />
-        <CreateDatasetDialog onCreated={onDatasetCreated} />
+        <CreateDatasetDialog onCreated={onDatasetCreated} projectId={selectedProjectId} />
       </>
     );
   } else if (tab === "scorers") {
     backTo = "/ai-eval";
     breadcrumbItems = [
+      { label: t("nav.projects"), to: "/projects" },
       { label: projectName, to: "/projects" },
       { label: t("nav.aiEval"), to: "/ai-eval" },
       { label: t("nav.aiEvalScorers") },
@@ -458,6 +464,7 @@ function AiEvalPageHeader({
   } else if (tab === "experiments") {
     backTo = "/ai-eval";
     breadcrumbItems = [
+      { label: t("nav.projects"), to: "/projects" },
       { label: projectName, to: "/projects" },
       { label: t("nav.aiEval"), to: "/ai-eval" },
       { label: t("nav.aiEvalExperiments") },
@@ -503,6 +510,7 @@ function AiEvalPageHeader({
     // production
     backTo = "/ai-eval";
     breadcrumbItems = [
+      { label: t("nav.projects"), to: "/projects" },
       { label: projectName, to: "/projects" },
       { label: t("nav.aiEval"), to: "/ai-eval" },
       { label: t("nav.aiEvalProduction") },
@@ -537,11 +545,13 @@ function DatasetsView({
   query,
   onCreated,
   onSelect,
+  projectId,
   selectedId,
 }: {
   query: QueryResult<Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchDatasets"]>>>;
   onCreated: (dataset: Dataset) => void;
   onSelect: (id: string) => void;
+  projectId: string;
   selectedId: string | null;
 }) {
   const selected = query.data?.items.find((dataset) => dataset.id === selectedId) ?? null;
@@ -588,7 +598,13 @@ function DatasetsView({
         <EmptyState
           description="Create a dataset first, then import JSONL, JSON, CSV, or ZIP examples for evaluation runs."
           filtered={false}
-          primaryAction={<CreateDatasetDialog onCreated={onCreated} triggerVariant="default" />}
+          primaryAction={
+            <CreateDatasetDialog
+              onCreated={onCreated}
+              projectId={projectId}
+              triggerVariant="default"
+            />
+          }
           title="No datasets yet"
         />
       )}
@@ -598,9 +614,11 @@ function DatasetsView({
 
 function CreateDatasetDialog({
   onCreated,
+  projectId,
   triggerVariant = "outline",
 }: {
   onCreated: (dataset: Dataset) => void;
+  projectId: string;
   triggerVariant?: "default" | "outline";
 }) {
   const telemetryClient = useTelemetryClient();
@@ -612,12 +630,23 @@ function CreateDatasetDialog({
   const mutation = useMutation({
     mutationFn: () => {
       const input: CreateDatasetInput = {
+        projectId,
         name: name.trim(),
         description: description.trim() || null,
         tags: tags
           .split(",")
           .map((tag) => tag.trim())
           .filter(Boolean),
+        settings: {
+          evaluationFamily: "classification",
+          inputType: "json",
+          expectedType: "json",
+          defaultSplit: "training",
+          intakePolicy: {},
+          defaultMetricSettings: [{ metricId: "exact_match" }],
+          retentionProfile: "balanced",
+        },
+        idempotencyKey: `dataset-${Date.now()}`,
       };
       return telemetryClient.createDataset(input);
     },
@@ -765,10 +794,11 @@ function DatasetCandidateReview({ dataset }: { dataset: Dataset }) {
     mutationFn: (candidate: DatasetCandidate) =>
       telemetryClient.commitDatasetCandidates({
         datasetId: dataset.id,
-        expectedDatasetVersion: dataset.version,
+        expectedDatasetVersionId: String(dataset.version),
         candidateIds: [candidate.id],
         split: candidate.split,
-        reviewStatus: "reviewed",
+        curationStatus: "ready",
+        idempotencyKey: `candidate-${candidate.id}`,
       }),
     onSuccess() {
       void queryClient.invalidateQueries({ queryKey: ["Datasets"] });
@@ -780,8 +810,8 @@ function DatasetCandidateReview({ dataset }: { dataset: Dataset }) {
       telemetryClient.prepareDatasetCandidates({
         datasetId: dataset.id,
         sources: [{ sourceKind: "trace", traceId }],
-        targetShape: "single_turn",
         contentTreatment: "realistic_anonymized",
+        idempotencyKey: `trace-${traceId}`,
       }),
     onSuccess() {
       void queryClient.invalidateQueries({ queryKey: ["DatasetCandidates", dataset.id] });
@@ -921,8 +951,8 @@ function AddDatasetRowDialog({ dataset }: { dataset: Dataset }) {
   const [expectedJsonFields, setExpectedJsonFields] = useState<ExpectedJsonField[]>([
     { id: "answer", name: "answer", type: "text", value: "" },
   ]);
-  const [split, setSplit] = useState<DatasetSplit>("dev");
-  const [reviewStatus, setReviewStatus] = useState<DatasetReviewStatus>("unreviewed");
+  const [split, setSplit] = useState<DatasetSplit>("training");
+  const [reviewStatus, setReviewStatus] = useState<DatasetCurationStatus>("draft");
   const [sourceTraceId, setSourceTraceId] = useState("");
   const [sourceSpanId, setSourceSpanId] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
@@ -937,15 +967,23 @@ function AddDatasetRowDialog({ dataset }: { dataset: Dataset }) {
               ? { answer: expectedText.trim() }
               : null,
         metadata: {},
-        sourceTraceId: sourceTraceId.trim() || null,
-        sourceSpanId: sourceSpanId.trim() || null,
+        sourceRefs: sourceTraceId.trim()
+          ? [
+              {
+                kind: sourceSpanId.trim() ? "span" : "trace",
+                traceId: sourceTraceId.trim(),
+                spanId: sourceSpanId.trim() || null,
+              },
+            ]
+          : [],
         split,
-        reviewStatus,
+        curationStatus: reviewStatus,
       };
       const input: AppendDatasetItemsInput = {
         datasetId: dataset.id,
-        expectedDatasetVersion: dataset.version,
+        expectedDatasetVersionId: String(dataset.version),
         items: [item],
+        idempotencyKey: `dataset-item-${Date.now()}`,
       };
       return telemetryClient.appendDatasetItems(input);
     },
@@ -1034,7 +1072,7 @@ function AddDatasetRowDialog({ dataset }: { dataset: Dataset }) {
             <Field>
               <FieldLabel>Review status</FieldLabel>
               <Select
-                onValueChange={(value) => setReviewStatus(value as DatasetReviewStatus)}
+                onValueChange={(value) => setReviewStatus(value as DatasetCurationStatus)}
                 value={reviewStatus}
               >
                 <SelectTrigger>
@@ -1228,14 +1266,14 @@ type ScalarMappingDraft = {
 
 const datasetImportFormats: DatasetImportFormat[] = ["jsonl", "json_array", "csv", "zip"];
 const datasetExportFormats: DatasetExportFormat[] = ["jsonl", "json_array", "csv"];
-const datasetSplits: DatasetSplit[] = [
-  "dev",
-  "optimization",
-  "validation",
-  "regression",
-  "holdout",
+const datasetSplits: DatasetSplit[] = ["training", "validation", "test"];
+const datasetReviewStatuses: DatasetCurationStatus[] = [
+  "draft",
+  "needs_expected",
+  "needs_review",
+  "ready",
+  "rejected",
 ];
-const datasetReviewStatuses: DatasetReviewStatus[] = ["unreviewed", "reviewed", "rejected"];
 const mappingSourceKinds: MappingSourceKind[] = ["column", "jsonPath", "constant", "defaultValue"];
 type ScorerTemplateId = "contains" | "exact" | "json_schema" | "semantic" | "llm_judge";
 
@@ -1323,8 +1361,8 @@ function DatasetImportWorkflow({
   const [reviewStatusMapping, setReviewStatusMapping] = useState<ScalarMappingDraft>(
     emptyScalarMapping(),
   );
-  const [defaultSplit, setDefaultSplit] = useState<DatasetSplit>("dev");
-  const [defaultReviewStatus, setDefaultReviewStatus] = useState<DatasetReviewStatus>("unreviewed");
+  const [defaultSplit, setDefaultSplit] = useState<DatasetSplit>("training");
+  const [defaultReviewStatus, setDefaultReviewStatus] = useState<DatasetCurationStatus>("draft");
   const [allowPartialCommit, setAllowPartialCommit] = useState(false);
   const [previewJob, setPreviewJob] = useState<DatasetImportJob | null>(null);
   const [committedJob, setCommittedJob] = useState<DatasetImportJob | null>(null);
@@ -1381,8 +1419,9 @@ function DatasetImportWorkflow({
       }
       return telemetryClient.commitDatasetImport({
         importId: previewJob.id,
-        expectedDatasetVersion: dataset.version,
+        expectedDatasetVersionId: String(dataset.version),
         mode,
+        idempotencyKey: `import-${previewJob.id}-${mode}`,
       });
     },
     onSuccess(job) {
@@ -1619,7 +1658,7 @@ function DatasetImportWorkflow({
             <Field>
               <FieldLabel>Default review status</FieldLabel>
               <Select
-                onValueChange={(value) => setDefaultReviewStatus(value as DatasetReviewStatus)}
+                onValueChange={(value) => setDefaultReviewStatus(value as DatasetCurationStatus)}
                 value={defaultReviewStatus}
               >
                 <SelectTrigger>
@@ -2001,7 +2040,7 @@ function DatasetExportDialog({ dataset }: { dataset: Dataset }) {
   const [open, setOpen] = useState(false);
   const [format, setFormat] = useState<DatasetExportFormat>("jsonl");
   const [split, setSplit] = useState<DatasetSplit | "all">("all");
-  const [reviewStatus, setReviewStatus] = useState<DatasetReviewStatus | "all">("all");
+  const [reviewStatus, setReviewStatus] = useState<DatasetCurationStatus | "all">("all");
   const [includeMetadata, setIncludeMetadata] = useState(true);
   const [includeSourcePointers, setIncludeSourcePointers] = useState(true);
   const [job, setJob] = useState<DatasetExportJob | null>(null);
@@ -2013,9 +2052,10 @@ function DatasetExportDialog({ dataset }: { dataset: Dataset }) {
         datasetId: dataset.id,
         format,
         split: split === "all" ? null : split,
-        reviewStatus: reviewStatus === "all" ? null : reviewStatus,
+        curationStatus: reviewStatus === "all" ? null : reviewStatus,
         includeMetadata,
         includeSourcePointers,
+        idempotencyKey: `export-${dataset.id}-${Date.now()}`,
       }),
     onSuccess(nextJob) {
       setJob(nextJob);
@@ -2113,7 +2153,7 @@ function DatasetExportDialog({ dataset }: { dataset: Dataset }) {
             <Field>
               <FieldLabel>Review status</FieldLabel>
               <Select
-                onValueChange={(value) => setReviewStatus(value as DatasetReviewStatus | "all")}
+                onValueChange={(value) => setReviewStatus(value as DatasetCurationStatus | "all")}
                 value={reviewStatus}
               >
                 <SelectTrigger>
@@ -2654,7 +2694,7 @@ function CreateExperimentDialog({
         name: name.trim(),
         datasetId: selectedDataset.id,
         datasetVersion: selectedDataset.version,
-        splitSelector: { splits: [split], reviewedOnly: false, includeSynthetic: false },
+        splitSelector: { splits: [split], curationStatuses: ["ready"] },
         scorerIds: [scorerId],
         solverRef: { kind: solverKind, name: solverName },
         tags: [],
@@ -3091,7 +3131,7 @@ function ProductionView({
                     <StatusBadge status={policy.enabled ? "enabled" : "disabled"} />
                   </TableCell>
                   <TableCell>{formatPercent(policy.sampleRate)}</TableCell>
-                  <TableCell>{policy.scorerIds.length}</TableCell>
+                  <TableCell>{policy.metricIds.length}</TableCell>
                   <TableCell>{policy.maxDailyRuns ?? t("value.none")}</TableCell>
                   <TableCell className="max-w-80 truncate">
                     {describePolicyTarget(policy.target)}
@@ -3336,7 +3376,7 @@ function buildPrepareDatasetImportInput({
 }: {
   allowPartialCommit: boolean;
   dataset: Dataset;
-  defaultReviewStatus: DatasetReviewStatus;
+  defaultReviewStatus: DatasetCurationStatus;
   defaultSplit: DatasetSplit;
   expectedMappings: FieldMappingDraft[];
   format: DatasetImportFormat;
@@ -3368,15 +3408,15 @@ function buildPrepareDatasetImportInput({
       sourceTraceId: scalarMappingFromDraft(sourceTraceId),
       sourceSpanId: scalarMappingFromDraft(sourceSpanId),
       split: scalarMappingFromDraft(splitMapping),
-      reviewStatus: scalarMappingFromDraft(reviewStatusMapping),
+      curationStatus: scalarMappingFromDraft(reviewStatusMapping),
     },
     defaults: {
       split: defaultSplit,
-      reviewStatus: defaultReviewStatus,
+      curationStatus: defaultReviewStatus,
       metadata: {},
-      synthetic: false,
       allowPartialCommit,
     },
+    idempotencyKey: `import-preview-${Date.now()}`,
     previewLimit: 100,
   };
 }

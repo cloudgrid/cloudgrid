@@ -1,67 +1,75 @@
 ---
 id: CAP-AIE-004
-title: Optimize prompts through harness workflows
+title: Optimize prompts and examples
 domain: ai-eval
 layer: capability
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-16
+updated: 2026-05-24
 provenance: from-user
 traits:
   interaction: http
   sync_async: async
   visibility: user
   authentication: prepared
-depends_on: [CAP-AIE-003, ADR-0006, ADR-0007]
+depends_on: [DOM-006, CAP-AIE-003]
 implements:
   api: [GQL-Mutation-startOptimizationRun, MSG-eval-optimization-start]
 ---
 
-# Optimize Prompts Through Harness Workflows
+# Optimize Prompts And Examples
 
 ## Business Intent
 
-Use scored datasets to propose better prompt versions and harness-side skill or
-tool configuration snapshots while keeping optimization algorithms and provider
-calls outside CloudGrid services.
+Improve a target through reproducible candidate snapshots and metric
+comparisons, while keeping promotion explicit.
 
-## Behavior
+## Required Behavior
 
-- Optimization is represented as an `ExperimentRun` with an immutable optimizer
-  manifest.
-- Implemented v1 optimizer kinds are `bootstrap_fewshot` and
-  `critic_mutate_judge_pick`.
-- Roadmapped optimizer families are `mipro_v2` and
-  `reflective_text_gradient`/GEPA-style reflective improvement. They may appear
-  as documented future capability names, but implementation must not execute
-  them until the harness adapter advertises support and the run manifest
-  captures their search budget, seed/randomization, candidate count,
-  reproducibility, trace evidence, and promotion constraints.
-- Runner delegates optimization to harness `/v1/optimize` and persists streamed
-  candidate `PromptVersion` records, candidate skill/tool snapshot refs, and
-  child experiment summaries.
-- CloudGrid never auto-promotes a candidate. `promotePromptVersion` is an explicit user mutation.
-- Python-based optimizers are not part of the deployable surface.
-- Optimizers may read `optimization` and `validation` splits. They must not
-  read `holdout`.
-- Optimizers use the same run lifecycle and `EvalRunPolicy` as offline
-  experiments, including max parallel requests default `10`, token and cost
-  budgets, rate limiting, backpressure, retry, pause/resume/cancel, and item
-  quarantine.
-- Optimization targets may be single prompts, harness-side skill snapshots,
-  tool configuration snapshots, agent trajectories, or multi-agent workflow
-  snapshots. The manifest must distinguish which artifact type changed so the
-  comparison UI does not collapse prompt, skill, and tool changes into one
-  opaque diff.
-- Small-dataset optimizations are allowed but the resulting candidate confidence
-  must be marked low until configured regression and holdout thresholds pass.
+- Optimization is an `OptimizationRun`, not an Experiment.
+- V1 optimization may change prompt text and few-shot/example selection.
+- Model config may change only when it is already represented as a
+  `TargetPartSnapshot`.
+- Skill, tool, workflow, and agent optimization are postponed. The snapshot
+  schema supports their future parts, but v1 must not execute those flows.
+- Every candidate is a new immutable `TargetSnapshot`.
+- Every evaluation caused by optimization is a normal `EvaluationRun` with kind
+  `quick_shot`, `optimization_validation`, or `test`.
+- The objective is explicit and stored: primary metric, secondary metrics,
+  constraints, tradeoff metrics, ranking policy, tie-breakers, and minimum
+  evidence.
+- Candidate generation may use `training`.
+- Candidate validation uses `validation`.
+- Candidate generation and prompt search must not read `test`.
+- Quick-shot is explicit, stores exact selected item revision IDs, and cannot be
+  final promotion evidence.
+- Promotion creates `PromotionRecord`; CloudGrid never auto-promotes.
+
+## Default Objective
+
+- Primary metric is the family default quality metric.
+- Hard constraints: no extraction schema-validity regression, no increased
+  problem rate, and no `test` usage during candidate generation.
+- Tradeoffs: latency, token count, cost.
+- Tie-breakers: lower cost, then lower latency.
+
+## Quick-Shot Defaults
+
+- Minimum sample size is 20 rows when the split has at least 20 eligible rows.
+- Use all eligible rows when fewer than 20 exist.
+- Classification includes at least 3 rows per affected label when available.
+- Extraction includes at least 3 rows per weak or missing field path when
+  available.
+- Previous-run optimization includes all regressed rows plus a stratified sample
+  of unchanged/passed rows.
+- Persist seed and selected item revision IDs for any random sample.
 
 ## Acceptance Criteria
 
-- Given a dataset and base prompt version, `bootstrap_fewshot` produces at least one candidate PromptVersion with selected demonstrations captured as metadata.
-- Given a winning candidate, users can promote it to a tag through GraphQL.
-- Given optimization exceeds configured cost limits, the run stops with `ERR-AIE-004`.
-- Given an optimizer attempts to use holdout items, the runner rejects the
-  manifest before harness execution.
-- Given a tool or skill snapshot changes, the candidate comparison shows prompt,
-  skill, and tool changes separately.
+- Starting optimization without an objective uses the default objective and
+  stores the resolved objective on the run.
+- A quick-shot run can prune a candidate but cannot be used as promotion
+  evidence.
+- A candidate diff shows prompt and example changes separately.
+- A selected candidate can be promoted only through an explicit mutation.
+- Any attempt to use `test` during candidate generation fails before execution.

@@ -347,7 +347,7 @@ const projectAiSettingsFields = `
     enabled
     name
     target
-    scorerIds
+    metricIds
     sampleRate
     maxDailyRuns
     annotationRules {
@@ -368,13 +368,13 @@ const projectAiSettingsFields = `
   sampling {
     defaultOnlineSampleRate
     maxOnlineSampleRate
-    maxConcurrentExperimentItems
+    maxConcurrentEvaluationItems
     maxConcurrentOptimizationCandidates
   }
   datasetDefaults {
     splitAllocation
-    smallDatasetReviewedThreshold
-    requireReviewForRegression
+    smallDatasetReadyThreshold
+    requireReadyForTest
   }
   effective {
     warnings

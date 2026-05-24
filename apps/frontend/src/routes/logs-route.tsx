@@ -94,7 +94,7 @@ export function LogsRoute() {
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
-      <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 border-b pb-3">
+      <div className="flex shrink-0 flex-col gap-3 border-b pb-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0 space-y-2">
           <RouteBreadcrumb
             backLabel={t("actions.back")}
@@ -108,7 +108,7 @@ export function LogsRoute() {
           <h1 className="text-xl font-semibold tracking-normal">{t("logs.title")}</h1>
           <p className="text-sm text-muted-foreground">{t("logs.description")}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Button
             aria-label={t("logs.refresh")}
             onClick={() => void query.refetch()}

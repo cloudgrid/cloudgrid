@@ -4,443 +4,202 @@ title: AI evaluation UX concept
 layer: frontend
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-17
+updated: 2026-05-24
 provenance: from-user
-depends_on: [TEC-FE-007, TEC-BE-024, TEC-BE-015, DSY-001]
+depends_on: [DOM-006, TEC-FE-007, DSY-001]
 ---
 
 # AI Evaluation UX Concept
 
 ## Purpose
 
-The AI Eval UI must make advanced evaluation workflows understandable without
-turning CloudGrid into a wizard-heavy product. Users should understand the loop:
+The AI Eval UI must make the evaluation loop easy to use:
 
-> Observe production evidence, curate datasets, score runs, improve prompts and
-> skills, then monitor production quality.
+1. Create or import a dataset.
+2. Add rows with input, expected output, and optional reason.
+3. Run a dataset evaluation against a target.
+4. Inspect metrics, item results, and trace-backed summaries.
+5. Optimize prompts/examples when useful.
+6. Compare candidates and explicitly promote one.
 
-The UI follows `specs/05-frontend/product-ux-concept.md` and `DESIGN.md`.
+Do not expose implementation vocabulary as the primary UX. Users should see
+datasets, evaluations, runs, metrics, comparisons, optimization, and targets.
+They should not need to understand scorer entities, checks, gates, experiment
+manifests, digests, or target parts for normal work.
 
 ## Navigation
 
-AI Eval is a project-scoped route shown in the left project/domain sidebar when
-the selected project has AI Eval enabled or setup is allowed. The frontend
-feature is enabled by default and may be explicitly disabled with
-`CLOUDGRID_AI_EVAL_ENABLED=false` or `VITE_CLOUDGRID_AI_EVAL_ENABLED=false`.
+AI Eval is available at `/ai-eval` when enabled for the selected project.
 
-The app-wide 56px topbar remains the only app-wide navigation surface.
-
-Inside `/ai-eval`, use a route-local left rail with only the user jobs that are
-owned by AI Eval:
+Route-local sections are exactly:
 
 1. `Datasets`
-2. `Scorers`
-3. `Experiments`
-4. `Production quality`
+2. `Evaluations`
 
-Do not add `Overview`, `Runs`, `Agent runs`, `Annotations`, or `Optimizations`
-as route-local rail entries in v1. Production and experiment evidence must link
-to `/traces` when the user needs to inspect execution detail. Annotation work is
-surfaced from production quality or experiment result actions only when the
-approved mutation and queue contracts support the action.
+Do not add route-local primary entries for `Scorers`, `Checks`,
+`Experiments`, `Runs`, `Annotations`, or `Production quality` in v2.
 
-Project AI settings are not a primary AI Eval rail item. They live under the
-admin settings shell at `/projects/:projectId/settings/ai-eval` and are linked
-from empty states and admin actions.
+Project AI Eval settings remain in
+`/projects/:projectId/settings/ai-eval` and are linked from setup/empty states.
 
 ## Layout Rules
 
-- Route header, AI Eval rail, and main workspace are independent scroll
-  containers.
-- Primary data surfaces are not wrapped in cards.
-- Use flat, border-led shadcn/Tailwind components.
-- Use tables for datasets, dataset items, scorers, experiments, production
-  policy lists, and quality segments.
-- Do not render a permanent inspector that says "select a row" when no useful
-  detail is selected. Details live inline in the current workspace. If another
-  detail surface needs an inspector, it opens only after a selection, is
-  resizable on desktop, becomes a sheet on mobile, and does not duplicate facts
-  already visible in the table.
-- Do not add hero sections, marketing copy, nested cards, decorative gradients,
-  or dashboard-like global stats outside project context.
-- Do not show data that is not actionable in the current context. Repeated
-  values may appear once in the most useful place, not again in a side panel.
-
-## First-Use Flow
-
-The first-use screen is an operational setup checklist in the main workspace.
-It is not a landing page.
-
-Checklist rows:
-
-1. `Dataset`: creates a dataset or imports JSONL, JSON array, CSV, or ZIP
-   files.
-2. `Scorer`: creates a scorer from templates.
-3. `Baseline experiment`: starts a baseline run when dataset and scorer exist.
-4. `Production policy`: optional online scoring policy setup in Project
-   Settings / AI Eval.
-
-Each row has one primary action and one status. The UI must not require users to
-understand NATS subjects, harness internals, trace IDs, scorer versions, or
-provider credential plumbing before their first deterministic eval.
-
-The first-use flow may surface dataset suggestions when production evidence
-already exists. Suggestions are reviewable work items, not automatic dataset
-mutations.
-
-## Trace Evidence
-
-AI Eval does not duplicate Traces as an `Agent runs` page. Any production or
-experiment evidence row that needs execution inspection links to the existing
-Traces route with the right trace/span context. The AI Eval route only shows the
-evaluation assets and decisions around that evidence.
-
-## Datasets
-
-Datasets are managed as durable project assets.
-
-Primary workspace:
-
-- dataset list with name, version, item count, reviewed count, split coverage,
-  last updated, tags, and health status;
-- selected dataset item table with split, review status, input preview,
-  expected preview, source trace/span, duplicate/leakage flags, and last result.
-
-The dataset list and single-dataset workbench are separate route states. The
-Datasets section first shows a full-width dataset overview table. Selecting a
-dataset opens a dedicated dataset workbench that uses the available workspace
-width for row management, import/export, and review. The row editor must feel
-like a compact spreadsheet: visible columns for split, review status, input,
-expected output, source trace/span, and validation state. Users can create rows
-with structured controls, import bulk rows, and export datasets in v1. Product
-UI must not expose dead controls or internal implementation phrases such as
-`needs contract`.
-
-Dataset item tables must handle large datasets through backed search, filters,
-sorting, and cursor-based pagination or infinite scrolling. The frontend must
-not compute dataset health, duplicate warnings, leakage, coverage gaps,
-quarantine status, or token-limit status locally.
-
-Users can manually add, edit, remove, review, reject, assign splits, and update
-metadata for dataset items. Every mutation uses the current dataset version.
-Removal excludes the item from the next version and must not imply historical
-manifest mutation.
-
-Expected answers support two primary modes:
-
-- text answer: one text field stored under the canonical `answer` key;
-- JSON answer: users define expected output fields with name, type, and value
-  controls. Scorer creation can target known paths without asking users to
-  guess raw JSON paths.
-
-Dataset split colors must be stable and non-dominant. Split labels are text plus
-small swatches, not large badges.
-
-### Dataset Suggestions And Anonymization
-
-Dataset suggestions are part of the Datasets workspace. They help users improve
-eval data from production measurement failures, failed offline item runs,
-coverage gaps, duplicate clusters, invalid/oversized items, and selected
-traces. Suggestions are never committed automatically.
-
-Candidate review shows:
-
-- source trace/span or result reference;
-- reason: failure, gap, duplicate, leakage, oversized, invalid, flaky, or manual
-  selection;
-- proposed target shape: single turn, conversation, tool call, agent trajectory,
-  workflow trace, retrieval case, or production trace reference;
-- proposed input, expected output, metadata, split, and review status;
-- duplicate or cluster membership;
-- content treatment and anonymization policy provenance.
-
-Realistic anonymization is displayed as a content treatment, not as synthetic
-data. The UI may show that names, emails, payment values, addresses, phone
-numbers, URLs, IDs, or other sensitive classes were transformed, but it must not
-show original sensitive values after transformation. Users can commit, edit,
-dismiss, or supersede candidates.
-
-### Dataset Import
-
-Dataset import is a dedicated Datasets workflow view, reachable from the
-selected dataset toolbar and represented in the URL with route state. It must
-not be squeezed into a narrow side sheet.
-
-Flow:
-
-1. Upload file.
-2. Review detected files.
-3. Map fields.
-4. Preview rows.
-5. Commit.
-
-Upload step:
-
-- accepts `.jsonl`, `.json`, `.csv`, and `.zip`;
-- shows file name, size, detected format, and upload expiry;
-- shows ZIP contents in a dense table when applicable.
-
-Mapping step:
-
-- uses form controls and presets, not raw JSON editing, for common mappings;
-- shows CSV columns or JSON path examples from previewable source fields;
-- maps into `input`, `expected`, `metadata`, source pointers, split, and review
-  status;
-- exposes constants/defaults as explicit controls;
-- does not offer arbitrary scripts, templates, regex replacements, or computed
-  transforms in v1.
-
-Preview step:
-
-- shows total rows, valid rows, error rows, warnings, and sampled preview rows;
-- shows source file path and row number for every issue;
-- disables commit when errors exist unless the user explicitly chooses partial
-  commit.
-
-Commit step:
-
-- shows resulting dataset version and links to dataset health.
-
-### Dataset Export
-
-Export is a small dialog from the selected dataset toolbar. It supports JSONL,
-JSON array, and CSV. The UI must describe exports as canonical CloudGrid
-dataset-item data, not a recreation of the original uploaded file layout.
-
-## Scorers
-
-Scorer creation starts from templates:
-
-- exact match;
-- JSON schema;
-- contains/regex;
-- semantic similarity;
-- RAG faithfulness/context recall;
-- LLM judge rubric;
-- tool correctness;
-- trajectory/task completion;
-- human review.
-
-The scorer editor uses progressive disclosure:
-
-1. name and scorer kind;
-2. template-specific required fields;
-3. calibration dataset/split;
-4. thresholds;
-5. judge provider alias when needed.
-
-The UI must show scorer version and calibration state. Common templates must be
-configured through form fields such as match field, expected value type,
-expected value, threshold, rubric text, and provider alias. Match field must be
-a selectable known path from expected/model output shapes, not a free-text
-input. Expected values support text, number, boolean, and JSON values. The
-primary create/edit path must not expose a raw JSON text field. A read-only
-technical definition preview may be available only when it helps debugging and
-does not become the main input surface.
-
-## Experiments
-
-Experiments compare immutable run manifests.
-
-Primary workspace:
-
-- experiment list;
-- selected experiment scoreboard;
-- baseline versus candidate comparison;
-- segment breakdown;
-- per-item diff table.
-
-Scoreboard columns:
-
-- run;
-- solver/prompt/skill snapshot;
-- status;
-- pass rate;
-- mean score;
-- p50/p95 latency;
-- cost;
-- regression count;
-- item count;
-- started/ended.
-
-Below the common scoreboard, selected scorer details render the visualization
-declared by storage-read:
-
-- classification: overall accuracy, per-category accuracy, category support,
-  confusion matrix, and representative false-positive/false-negative examples;
-- JSON/schema: validity rate, invalid path counts, missing fields, and bounded
-  invalid-output examples;
-- LLM judge: overall score, pass/fail, rubric criteria, primary fact coverage,
-  secondary/background fact coverage, missing critical facts, unsupported
-  claims, bounded quotes, and sanitized judge rationale;
-- RAG: faithfulness, context recall, answer relevance, citation/support
-  coverage, unsupported claims, and missing expected evidence;
-- tool correctness: expected versus actual tool calls, argument issues, order
-  violations, missing/extra calls, retry/fallback behavior;
-- trajectory/workflow: required/forbidden step outcomes, handoff correctness,
-  loop/retry bounds, and final outcome;
-- human review: label/rating distribution and unresolved reviews;
-- composite: child scorer weights, gates, blockers, and final pass/fail reason.
-
-The frontend must not derive confusion matrices, fact coverage, per-category
-accuracy, rubric summaries, or composite gate status from raw result rows. It
-renders GraphQL view models and bounded evidence only.
-
-Run details show lifecycle and reliability state:
-
-- status: queued, running, pausing, paused, resuming, cancelling, cancelled,
-  failed, or completed;
-- progress by item and scorer;
-- max parallel requests, defaulting to 10 when not overridden;
-- token and cost budget usage;
-- rate-limit/backpressure warnings;
-- retry and timeout summaries;
-- model-quality failures separately from item-quality issues;
-- quarantined, skipped, oversized, invalid, and flaky item counts.
-
-Pause, resume, cancel, and retry controls appear only when backed by the
-GraphQL contract and current status permits the action.
-
-Candidate promotion is always explicit. The UI must show why a candidate cannot
-be promoted: missing holdout, budget exceeded, quality regression, latency
-regression, cost regression, failed required scorer, or stale baseline.
-
-Experiment creation uses structured controls for solver kind/name, dataset
-version, split, and scorer selection. It must not require the user to author a
-solver JSON object.
-
-## Optimizations
-
-Optimizations are experiment runs with optimizer manifests and are not a
-separate AI Eval rail entry until the contract is complete.
-
-Supported UX:
-
-- select dataset and allowed splits;
-- select base prompt version or skill snapshot;
-- select optimizer kind;
-- select scorer set and baseline;
-- preview budget;
-- start run;
-- compare candidates;
-- promote selected candidate to a tag.
-
-Small-dataset mode must explain confidence limits in concise operational copy
-and must prevent using `holdout` as optimizer input.
-
-## Production
-
-Production shows online scoring policies and live quality signals.
-
-Primary workspace:
-
-- policy list with target, sample rate, scorers, budget use, last match, and
-  enabled state;
-- quality trend by agent, environment, route, tool, retrieval source, and model;
-- cost and latency trend;
-- alert/regression state when alerting contracts exist.
-
-Policy editing belongs in an inspector or settings drawer. The frontend never
-evaluates policy matches locally.
-
-Production quality is asynchronous continuous measurement. It is not a
-near-realtime alerting surface in the approved scope. Failed or low-quality
-segments can feed dataset suggestions and review actions.
-
-## Annotations
-
-Annotations turn failures into dataset improvements.
-
-Queue table columns:
-
-- created time;
-- reason;
-- target trace/span;
-- scorer;
-- score;
-- agent;
-- assigned user;
-- status;
-- proposed dataset.
-
-The inspector supports:
-
-- view source trace;
-- compare input/output;
-- set expected output;
-- assign split;
-- create or update dataset item;
-- dismiss with reason;
-- reopen.
-
-If captured content is missing, the UI must ask for explicit user input rather
-than fabricating prompt, completion, tool, or retrieval content.
-
-## Project AI Settings
-
-Project Settings / AI Eval contains:
-
-- enable AI Eval toggle;
-- provider profiles;
-- model aliases;
-- default judge, optimizer, embedding, and replay models;
-- harness adapter reference;
-- budget and sampling defaults;
-- online scoring policies;
-- dataset split defaults.
-
-The settings page uses the existing admin settings shell. It does not introduce
-another global navigation surface.
-
-## Empty And Error States
-
-Required empty states:
-
-- AI Eval feature disabled;
-- project AI Eval disabled but user can configure it;
-- no AI telemetry detected;
-- no provider profile;
-- no dataset;
-- no reviewed dataset items;
-- no scorer;
-- no baseline run;
-- no online policies;
-- no annotations.
-
-Required error states:
-
-- harness unavailable;
-- provider profile missing or disabled;
-- budget exhausted;
-- scorer validation failed;
-- dataset split leakage detected;
-- content capture disabled or missing;
-- unauthorized settings mutation;
-- stale settings version.
-
-Each state has one primary next action and one secondary learn-more or pivot
-action at most.
-
-## Accessibility And Simplicity
-
-- Every interactive table supports keyboard row focus and inspector open.
-- Action buttons use clear icons with tooltips.
-- Template forms expose only required fields first.
-- Advanced JSON configuration is available but never the default path.
-- Long JSON values use bounded previews and copy actions.
-- No control relies on color alone for split, pass/fail, or regression status.
-
-## Verification
-
-Required frontend tests:
-
-- Evaluations nav appears when the frontend feature is enabled and disappears when
-  explicitly disabled;
-- first-use checklist routes to correct project settings and AI Eval sections;
-- no route-primary data surface is wrapped in cards;
-- dataset split controls do not mutate local-only truth;
-- scorer templates render required fields without raw JSON first;
-- experiment scoreboard uses GraphQL summary values only;
-- promotion disabled reasons render for every blocker;
-- content-missing promotion requires user-supplied input;
-- mobile rail and inspector behavior remains usable.
+- Follow `specs/05-frontend/product-ux-concept.md` and `DESIGN.md`.
+- Use the global topbar and project/domain sidebar only as defined by product UX.
+- AI Eval route header, local section rail/tabs, main workspace, and optional
+  detail drawer are independent scroll containers.
+- Primary data surfaces are tables or full-width workspaces, not cards wrapped
+  in cards.
+- Use shadcn/ui and Tailwind semantic tokens with flat, border-led styling.
+- Do not add hero sections, decorative gradients, marketing copy, or global
+  stats dashboards.
+- Advanced/debug details may use drawers or sheets. They must not be required
+  for first-run success.
+
+## First Use
+
+The first-use screen is an operational checklist:
+
+- create or import a dataset;
+- add at least one `ready` row;
+- create an evaluation;
+- run baseline evaluation;
+- optionally start optimization.
+
+The checklist must not mention NATS, SurrealDB, harness internals, target
+snapshot digests, metric capability IDs, or provider credential plumbing.
+
+## Datasets Section
+
+Datasets list columns:
+
+- name;
+- evaluation family;
+- input/expected type;
+- current version;
+- ready item count;
+- split coverage;
+- schema health;
+- last updated.
+
+Dataset detail contains:
+
+- settings;
+- health;
+- versions;
+- rows;
+- import/export.
+
+Row table columns:
+
+- split;
+- curation status;
+- input preview;
+- expected preview;
+- reason preview;
+- observed output indicator;
+- source;
+- validation state;
+- updated at.
+
+Row editor:
+
+- text area for text values;
+- raw JSON text area for JSON values;
+- schema validation errors inline;
+- optional reason text area;
+- curation status selector;
+- split selector;
+- metadata editor for simple key/value strings only in v2.
+
+Do not build a visual JSON builder. Raw JSON plus schema validation is the v2
+path.
+
+Trace import:
+
+- Trace detail and overview show `Add to dataset` where AI Eval is enabled.
+- Picker lists only datasets with compatible extraction settings.
+- Import preview shows extracted input, observed output, proposed expected
+  value when trusted, curation status, split, and anonymization treatment.
+- User can edit before commit.
+
+## Evaluations Section
+
+Evaluation list columns:
+
+- name;
+- dataset;
+- split selector;
+- target;
+- last run status;
+- primary metric;
+- last updated.
+
+Create evaluation requires:
+
+- dataset;
+- dataset version policy: latest ready or pinned;
+- split selector;
+- target;
+- metric settings, defaulted from dataset;
+- run policy, defaulted from project settings.
+
+Run detail shows:
+
+- status and progress;
+- aggregate metrics;
+- metric breakdowns;
+- item run table;
+- actual/expected preview;
+- trajectory summary;
+- important steps;
+- problems;
+- trace links;
+- retention expiry in advanced details.
+
+Comparison view shows:
+
+- baseline run;
+- candidate run;
+- target diff summary;
+- metric deltas;
+- hard constraint results;
+- regression examples;
+- improvement examples;
+- tradeoff metrics.
+
+Optimization flow:
+
+- starts from an evaluation, run, or comparison;
+- shows objective defaults before start;
+- shows quick-shot phase as an explicit phase when used;
+- marks quick-shot results as exploratory;
+- requires full validation before promotion evidence;
+- shows prompt/example diffs separately;
+- uses explicit `Promote` action.
+
+## Advanced Details
+
+Advanced views may show:
+
+- dataset version ID and digest;
+- item revision ID;
+- target snapshot ID and digest;
+- target parts;
+- metric capability IDs;
+- adapter request status and runRef;
+- retention role and expiry.
+
+These details are for debugging/audit. They must not be part of the normal
+happy path.
+
+## Acceptance Criteria
+
+- A first-time user can create a dataset, add a row, create an evaluation, and
+  start a run without seeing Scorers or Experiments.
+- JSON expected output is edited as raw JSON and validated against the dataset
+  schema.
+- The trace `Add to dataset` picker shows only compatible datasets.
+- Run detail links to trace detail instead of duplicating full traces.
+- Optimization candidate review shows what changed and why it is better or
+  worse according to visible metrics.

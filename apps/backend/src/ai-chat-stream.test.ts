@@ -2189,7 +2189,7 @@ function experimentShape(overrides: Partial<Experiment> = {}): Experiment {
     name: "Checkout baseline",
     datasetId: "dataset-1",
     datasetVersion: 1,
-    splitSelector: { splits: ["regression"], reviewedOnly: true, includeSynthetic: false },
+    splitSelector: { splits: ["test"], reviewedOnly: true, includeSynthetic: false },
     scorerIds: ["scorer-1"],
     baselineRef: null,
     promptVersionRefs: [],

@@ -42,7 +42,8 @@ Primary users:
 - Local developer: runs CloudGrid locally, creates a `Personal` project, sends OTLP data, and debugs a local service or agent.
 - Team engineer: belongs to one or more companies, switches projects, investigates trace/log/metric evidence, and shares URLs with teammates.
 - Platform/admin user: creates projects, manages members, checks ingestion setup, and protects company/project boundaries.
-- AI-agent engineer: inspects agent runs, datasets, scorers, experiments, regressions, annotations, and optimization output.
+- AI-agent engineer: inspects datasets, evaluations, runs, metrics,
+  comparisons, trace-backed evidence, and optimization output.
 
 Primary jobs in priority order:
 
@@ -559,15 +560,21 @@ Entry: `/ai-eval` when enabled.
 Layout:
 
 - Header: workspace title, feature status, create/run action when supported.
-- Left rail or tabs: Runs, Experiments, Datasets, Scorers, Annotations.
+- Left rail or tabs: Datasets, Evaluations.
 - Main surface: selected list/detail workspace.
-- Right inspector drawer: run detail, scorer definition, annotation detail, or experiment item diff.
+- Right inspector drawer: optional advanced run, item, adapter, target snapshot,
+  or comparison detail.
 
 Steps:
 
-1. User selects a run or experiment.
-2. UI renders GraphQL-provided timelines, transcript, scoreboard, and result summaries.
-3. User pivots to trace detail from run/span links.
+1. User creates or opens a dataset.
+2. User adds/imports rows with input, expected output, optional reason, split,
+   and curation status.
+3. User creates an evaluation for a dataset, split selector, target, and metric
+   defaults.
+4. UI renders GraphQL-provided metrics, item runs, comparisons, and trajectory
+   summaries.
+5. User pivots to trace detail from run/span links.
 4. User promotes traces/spans to dataset items when supported.
 5. User opens annotation items and updates status when supported.
 

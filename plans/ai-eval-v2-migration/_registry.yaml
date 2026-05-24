@@ -1,0 +1,44 @@
+plan: ai_eval_v2_implementation_migration
+tickets:
+  TICKET-201:
+    title: BFF AI Eval v2 bridge validation and resolvers
+    wave: 1
+    status: done
+    file: plans/ai-eval-v2-migration/wave_01_backend_foundation/tickets/TICKET-201-bff-v2-bridge-validation-resolvers.md
+    depends_on: []
+    blocked_by: []
+  TICKET-202:
+    title: Storage-write AI Eval v2 persistence
+    wave: 2
+    status: ready
+    file: plans/ai-eval-v2-migration/wave_02_parallel_services/tickets/TICKET-202-storage-write-v2-persistence.md
+    depends_on: [TICKET-201]
+    blocked_by: []
+  TICKET-203:
+    title: Storage-read AI Eval v2 query semantics
+    wave: 2
+    status: ready
+    file: plans/ai-eval-v2-migration/wave_02_parallel_services/tickets/TICKET-203-storage-read-v2-query-semantics.md
+    depends_on: [TICKET-201]
+    blocked_by: []
+  TICKET-204:
+    title: AI Eval runner v2 evaluation orchestration
+    wave: 3
+    status: ready
+    file: plans/ai-eval-v2-migration/wave_03_runner_frontend/tickets/TICKET-204-runner-v2-evaluation-orchestration.md
+    depends_on: [TICKET-202, TICKET-203]
+    blocked_by: []
+  TICKET-205:
+    title: Frontend AI Eval v2 workspace
+    wave: 3
+    status: ready
+    file: plans/ai-eval-v2-migration/wave_03_runner_frontend/tickets/TICKET-205-frontend-v2-workspace.md
+    depends_on: [TICKET-201]
+    blocked_by: []
+  TICKET-206:
+    title: AI Eval v2 integration docs and final gates
+    wave: 4
+    status: ready
+    file: plans/ai-eval-v2-migration/wave_04_integration_docs/tickets/TICKET-206-integration-docs-final-gates.md
+    depends_on: [TICKET-202, TICKET-203, TICKET-204, TICKET-205]
+    blocked_by: []

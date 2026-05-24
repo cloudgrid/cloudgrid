@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-101",
+  "title": "DatasetVersion",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "datasetId",
+    "version",
+    "digest",
+    "createdAt",
+    "createdBy",
+    "settingsSnapshot",
+    "itemRevisionIds",
+    "changeSummary",
+    "source"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "datasetId": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "digest": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "createdBy": { "type": "string" },
+    "settingsSnapshot": { "$ref": "./dataset.schema.json#/$defs/datasetSettings" },
+    "itemRevisionIds": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "parentVersionId": { "type": "string" },
+    "changeSummary": { "type": "string" },
+    "source": {
+      "type": "string",
+      "enum": ["manual", "import", "trace_import", "candidate_commit", "bulk_edit", "system"]
+    }
+  }
+}

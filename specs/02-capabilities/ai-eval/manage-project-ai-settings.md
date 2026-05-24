@@ -5,14 +5,14 @@ domain: ai-eval
 layer: capability
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-18
+updated: 2026-05-24
 provenance: from-user
 traits:
   interaction: http
   sync_async: sync
   visibility: user
   authentication: prepared
-depends_on: [DOM-006, TEC-BE-024, TEC-BE-028]
+depends_on: [DOM-006, TEC-BE-024]
 implements:
   api: [GQL-Query-projectAiSettings, GQL-Mutation-updateProjectAiSettings, MSG-control-ai-settings-get, MSG-control-ai-settings-update]
 ---
@@ -21,46 +21,29 @@ implements:
 
 ## Business Intent
 
-Let project admins configure AI-eval defaults, provider references, budgets,
-online policies, and dataset defaults without exposing raw provider secrets to
-CloudGrid services. Reusable provider profiles and model aliases are managed on
-the dedicated Project AI Providers settings page.
+Let project admins configure AI Eval enablement, provider references, budgets,
+run defaults, dataset defaults, anonymization defaults, and external adapters
+without exposing secrets to frontend or BFF logs.
 
-## Behavior
+## Required Behavior
 
-- Project admins enable or disable AI Eval for the selected project.
-- Project admins select default provider profiles and model aliases from
-  Project AI Providers.
-- Project admins configure budget, sampling, concurrency, and dataset split
-  defaults.
-- Project admins configure production measurement policies, but policies are
-  disabled by default, must target at least one explicit production segment, and
-  may reference only scorers whose declared content, provider, budget, latency,
-  and production-safety requirements are satisfied by the policy.
-- Project admins may configure manual annotation defaults for online policies.
-  These defaults do not create annotation queue items automatically; they are
-  used only when a user explicitly triggers annotation item creation after
-  reviewing filtered online results.
-- Control-plane validates and persists settings with optimistic concurrency.
-- The BFF exposes only GraphQL request/reply mappings. It does not merge or
-  derive effective settings locally.
-- Runner uses settings only through storage-read/control-plane bridge ports,
-  resolves provider references through project AI provider settings, and passes
-  provider profile references to harness; it never reads provider credentials.
+- Control-plane owns project AI settings.
+- Project AI provider profiles and model aliases are referenced by ID.
+- Settings include run policy defaults, dataset defaults, dataset pipeline
+  defaults, retention defaults, and external adapter configs.
+- Production measurement policies are backlog and must not be implemented from
+  the old scorer model.
+- BFF exposes settings through GraphQL and does not derive effective settings
+  locally.
+- Runner reads settings through control-plane/storage-read bridge ports and
+  never reads raw provider or adapter secrets.
+- Raw API key-like fields in settings input are rejected unless they are written
+  through an approved secret reference mechanism.
 
 ## Acceptance Criteria
 
-- Given no provider profile, no-provider local evaluation can still be enabled
-  when selected scorer capabilities do not require a model/provider call.
-- Given an LLM judge scorer without a judge profile, experiment creation or run
-  start fails with a validation error before harness execution.
-- Given an enabled production measurement policy references a scorer whose
-  requirements are not allowed by policy or project settings, the settings
-  update fails with `ERR-001`.
-- Given an enabled online policy has an empty target, unsupported target key, or
-  secret-looking attribute selector, the settings update fails with `ERR-001`.
-- Given a raw API key-like field in settings input, control-plane rejects the
-  update with `ERR-001`.
-- Given a viewer attempts to update settings, the mutation fails with `ERR-016`.
-- Given valid settings, `Query.projectAiSettings` returns a redacted effective
-  view with warnings for disabled profiles, missing aliases, and budget state.
+- A project admin can enable AI Eval and set dataset defaults using
+  `training`, `validation`, or `test`.
+- A viewer cannot update settings.
+- External adapter settings return redacted secret refs only.
+- Invalid legacy split defaults are rejected.
