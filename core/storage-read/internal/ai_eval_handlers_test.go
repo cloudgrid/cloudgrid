@@ -55,6 +55,50 @@ func TestAiEvalQueryHandlerRoutesDeclaredQuerySubjects(t *testing.T) {
 	}
 }
 
+func TestAiEvalQueryHandlerRoutesV2TopLevelRequests(t *testing.T) {
+	allowed := true
+	store := &aiEvalStoreForTest{
+		responses: map[string]map[string]any{
+			SubjectEvalEvaluationRunGet: {
+				"run": map[string]any{"id": "run-1"},
+			},
+		},
+	}
+	request := map[string]any{
+		"requestId":       "req-run-get",
+		"projectId":       "project-1",
+		"evaluationRunId": "run-1",
+		"authContext": map[string]any{
+			"projectId":   "project-1",
+			"readAllowed": allowed,
+		},
+	}
+	message := bridgeMessageForTest(SubjectEvalEvaluationRunGet, mustMarshalNATSHandlerTest(t, request))
+
+	handleAiEvalQuery(store, nil, defaultQueryTimeout)(message)
+
+	if len(store.calls) != 1 {
+		t.Fatalf("query calls = %d, want one call", len(store.calls))
+	}
+	call := store.calls[0]
+	if call.subject != SubjectEvalEvaluationRunGet {
+		t.Fatalf("query subject = %q, want %q", call.subject, SubjectEvalEvaluationRunGet)
+	}
+	if call.input["projectId"] != "project-1" || call.input["evaluationRunId"] != "run-1" {
+		t.Fatalf("query input = %#v, want top-level typed request fields", call.input)
+	}
+	if call.auth == nil || call.auth.ProjectID == nil || *call.auth.ProjectID != "project-1" {
+		t.Fatalf("query auth = %#v, want request auth context", call.auth)
+	}
+	var response contracts.EvalQueryResponse
+	if err := json.Unmarshal(message.response, &response); err != nil {
+		t.Fatalf("response is not eval query JSON: %v", err)
+	}
+	if !response.OK || response.RequestID != "req-run-get" {
+		t.Fatalf("response = %#v, want ok req-run-get", response)
+	}
+}
+
 func TestDatasetCandidatesSearchHandlerRoutesTypedRequestAndAuthContext(t *testing.T) {
 	allowed := true
 	datasetID := "dataset-1"
@@ -442,10 +486,19 @@ func TestAiEvalStorageReadSubjectsExcludeMutationSubjects(t *testing.T) {
 		SubjectEvalDatasetSearch,
 		SubjectEvalDatasetCandidatesSearch,
 		SubjectEvalDatasetTransferGet,
+		SubjectEvalDatasetVersionGet,
 		SubjectEvalDatasetHealth,
 		SubjectEvalScorerSearch,
 		SubjectEvalExperimentSearch,
+		SubjectEvalEvaluationSearch,
+		SubjectEvalEvaluationRunSearch,
+		SubjectEvalEvaluationRunGet,
 		SubjectEvalResultsSearch,
+		SubjectEvalEvaluationComparisonSearch,
+		SubjectEvalTargetSnapshotGet,
+		SubjectEvalTargetDiff,
+		SubjectEvalOptimizationSearch,
+		SubjectEvalOptimizationGet,
 		SubjectEvalQualityOverview,
 		SubjectEvalDatasetExportStart,
 		SubjectEvalManifestResolve,

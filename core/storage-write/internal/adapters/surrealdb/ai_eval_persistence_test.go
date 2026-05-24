@@ -113,6 +113,48 @@ func TestBuildEvalMutationPersistQueryCandidatePreparePersistsCandidateRecord(t 
 	}
 }
 
+func TestBuildEvalMutationPersistQueryResultsPersistStoresOptimizationRun(t *testing.T) {
+	request := validEvalRequest(map[string]any{
+		"projectId":       "project-1",
+		"evaluationRunId": "run-1",
+		"idempotencyKey":  "persist-optimization-1",
+		"optimizationRun": map[string]any{
+			"id":                       "optimization-1",
+			"status":                   "running",
+			"baselineTargetSnapshotId": "snapshot-baseline",
+			"candidateTargetSnapshotIds": []any{
+				"snapshot-candidate",
+			},
+			"causedEvaluationRunIds": []any{"run-1"},
+			"comparisonIds":          []any{},
+			"objective":              map[string]any{"primaryMetricId": "accuracy"},
+			"quickShotPolicy":        map[string]any{"split": "training"},
+			"budgetSnapshot":         map[string]any{"maxRuns": 3},
+		},
+	})
+
+	sql, vars, data, err := BuildEvalMutationPersistQuery("eval.results.persist", request, fixedWriterTime())
+	if err != nil {
+		t.Fatalf("BuildEvalMutationPersistQuery() error = %v", err)
+	}
+
+	for _, want := range []string{
+		"UPSERT type::record('ai_optimization_run', $optimization_run.id)",
+		"UPSERT type::record('ai_eval_idempotency'",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("query missing %q in:\n%s", want, sql)
+		}
+	}
+	optimizationRun := vars["optimization_run"].(map[string]any)
+	if optimizationRun["id"] != "optimization-1" || optimizationRun["projectId"] != "default" {
+		t.Fatalf("optimization run vars = %#v", optimizationRun)
+	}
+	if data["optimizationRun"] == nil {
+		t.Fatalf("data = %#v, want optimizationRun echo", data)
+	}
+}
+
 func TestBuildEvalMutationPersistQueryRejectsInvalidScorerDefinitionAndResultPayload(t *testing.T) {
 	tests := []struct {
 		name    string

@@ -2,7 +2,7 @@
 id: TICKET-202
 title: Storage-write AI Eval v2 persistence
 wave: 2
-status: ready
+status: done
 parallel_group: ai_eval_v2_services_parallel
 depends_on: [TICKET-201]
 blocked_by: []
@@ -94,7 +94,9 @@ version behavior.
 2. Implement dataset create, item append, item update, candidate commit, import
    commit, and version creation as transactional mutations.
 3. Implement evaluation result persistence for run, item run, metric result,
-   aggregate, comparison, target snapshot, optimization, and promotion records.
+   aggregate, comparison, target snapshot, optimization run state, and promotion
+   records. Optimization run state is carried in the runner-owned
+   `eval.results.persist` payload.
 4. Add duplicate idempotency-key tests.
 5. Remove storage-write dependencies on legacy scorer/experiment record shapes.
 
@@ -120,6 +122,14 @@ Default:
 ```sh
 bun run contracts:check
 go test -tags surrealdb ./core/storage-write/...
+```
+
+Completed evidence:
+
+```sh
+PATH="/opt/homebrew/bin:/usr/local/go/bin:$HOME/.bun/bin:$PATH" go test -tags surrealdb ./core/storage-write/...
+PATH="$HOME/.bun/bin:$PATH" bun run contracts:check
+PATH="$HOME/.bun/bin:$PATH" bun run typecheck
 ```
 
 ## Non-goals

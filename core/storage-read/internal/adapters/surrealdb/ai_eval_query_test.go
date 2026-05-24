@@ -122,6 +122,153 @@ func TestBuildAiEvalQueryCoversAgentRunSearchPushdown(t *testing.T) {
 	}
 }
 
+func TestBuildAiEvalV2QuerySubjectsUseStorageReadTablesAndFilters(t *testing.T) {
+	definitions, err := BuildAiEvalQuery(storage.SubjectEvalEvaluationSearch, map[string]any{
+		"datasetId":  "dataset-1",
+		"targetKind": "prompt",
+		"query":      "checkout",
+		"limit":      20,
+	})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery(evaluation search) error = %v", err)
+	}
+	for _, want := range []string{"FROM ai_evaluation_definition", "datasetId = $datasetId", "targetRef.kind = $targetKind", "string::lowercase(name) CONTAINS $query"} {
+		if !strings.Contains(definitions.SQL, want) {
+			t.Fatalf("definition SQL = %s, missing %q", definitions.SQL, want)
+		}
+	}
+
+	runs, err := BuildAiEvalQuery(storage.SubjectEvalEvaluationRunSearch, map[string]any{
+		"evaluationDefinitionId": "eval-1",
+		"datasetVersionId":       "version-1",
+		"status":                 "completed",
+		"kind":                   "dataset_evaluation",
+		"targetSnapshotId":       "snapshot-1",
+	})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery(run search) error = %v", err)
+	}
+	for _, want := range []string{"FROM ai_evaluation_run", "evaluationDefinitionId = $evaluationDefinitionId", "datasetVersionId = $datasetVersionId", "status = $status", "kind = $kind", "targetSnapshotId = $targetSnapshotId", "ORDER BY startedAt DESC, id ASC"} {
+		if !strings.Contains(runs.SQL, want) {
+			t.Fatalf("run SQL = %s, missing %q", runs.SQL, want)
+		}
+	}
+
+	itemRuns, err := BuildAiEvalQuery(storage.SubjectEvalEvaluationRunSearch, map[string]any{
+		"evaluationRunId":       "run-1",
+		"datasetItemRevisionId": "revision-1",
+		"status":                "failed",
+		"itemRuns":              true,
+	})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery(item run search) error = %v", err)
+	}
+	for _, want := range []string{"FROM ai_evaluation_item_run", "evaluationRunId = $evaluationRunId", "datasetItemRevisionId = $datasetItemRevisionId", "status = $status"} {
+		if !strings.Contains(itemRuns.SQL, want) {
+			t.Fatalf("item run SQL = %s, missing %q", itemRuns.SQL, want)
+		}
+	}
+
+	results, err := BuildAiEvalQuery(storage.SubjectEvalResultsSearch, map[string]any{
+		"evaluationRunId": "run-1",
+		"metricId":        "exact_match",
+		"scope":           "item_run",
+	})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery(results search) error = %v", err)
+	}
+	for _, want := range []string{"FROM ai_metric_result", "evaluationRunId = $evaluationRunId", "metricId = $metricId", "scope = $scope", "ORDER BY producedAt DESC, id ASC"} {
+		if !strings.Contains(results.SQL, want) {
+			t.Fatalf("results SQL = %s, missing %q", results.SQL, want)
+		}
+	}
+
+	comparisons, err := BuildAiEvalQuery(storage.SubjectEvalEvaluationComparisonSearch, map[string]any{
+		"baselineRunId":  "run-a",
+		"candidateRunId": "run-b",
+		"metricId":       "accuracy",
+	})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery(comparison search) error = %v", err)
+	}
+	for _, want := range []string{"FROM ai_evaluation_comparison", "baselineRunId = $baselineRunId", "candidateRunId = $candidateRunId", "metricIds CONTAINS $metricId"} {
+		if !strings.Contains(comparisons.SQL, want) {
+			t.Fatalf("comparison SQL = %s, missing %q", comparisons.SQL, want)
+		}
+	}
+}
+
+func TestBuildAiEvalV2SingleReadAndOptimizationQueries(t *testing.T) {
+	version, err := BuildAiEvalQuery(storage.SubjectEvalDatasetVersionGet, map[string]any{"datasetVersionId": "version-1"})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery(version get) error = %v", err)
+	}
+	if !strings.Contains(version.SQL, "FROM ai_dataset_version") || !strings.Contains(version.SQL, "record::id(id) = $datasetVersionId") {
+		t.Fatalf("version SQL = %s", version.SQL)
+	}
+
+	run, err := BuildAiEvalQuery(storage.SubjectEvalEvaluationRunGet, map[string]any{"evaluationRunId": "run-1"})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery(run get) error = %v", err)
+	}
+	if !strings.Contains(run.SQL, "FROM ai_evaluation_run") || !strings.Contains(run.SQL, "record::id(id) = $evaluationRunId") {
+		t.Fatalf("run get SQL = %s", run.SQL)
+	}
+
+	diff, err := BuildAiEvalQuery(storage.SubjectEvalTargetDiff, map[string]any{"baselineSnapshotId": "snapshot-a", "candidateSnapshotId": "snapshot-b"})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery(target diff) error = %v", err)
+	}
+	if !strings.Contains(diff.SQL, "FROM ai_target_diff") || !strings.Contains(diff.SQL, "baselineTargetSnapshotId = $baselineSnapshotId") || !strings.Contains(diff.SQL, "candidateTargetSnapshotId = $candidateSnapshotId") {
+		t.Fatalf("target diff SQL = %s", diff.SQL)
+	}
+
+	optimizations, err := BuildAiEvalQuery(storage.SubjectEvalOptimizationSearch, map[string]any{
+		"status":                      "running",
+		"baselineTargetSnapshotId":    "snapshot-a",
+		"selectedCandidateSnapshotId": "snapshot-b",
+	})
+	if err != nil {
+		t.Fatalf("BuildAiEvalQuery(optimization search) error = %v", err)
+	}
+	for _, want := range []string{"FROM ai_optimization_run", "status = $status", "baselineTargetSnapshotId = $baselineTargetSnapshotId", "selectedCandidateSnapshotId = $selectedCandidateSnapshotId"} {
+		if !strings.Contains(optimizations.SQL, want) {
+			t.Fatalf("optimization SQL = %s, missing %q", optimizations.SQL, want)
+		}
+	}
+}
+
+func TestBuildMetricAggregateQueryGroupsInStorageRead(t *testing.T) {
+	stmt, err := BuildMetricAggregateQuery(storage.SubjectEvalEvaluationRunSearch, []string{"run-1", "run-2"})
+	if err != nil {
+		t.Fatalf("BuildMetricAggregateQuery returned error: %v", err)
+	}
+	for _, want := range []string{"FROM ai_metric_aggregate", "subjectId IN $subjectIds", "scope = 'evaluation_run'", "ORDER BY metricId ASC"} {
+		if !strings.Contains(stmt.SQL, want) {
+			t.Fatalf("aggregate SQL = %s, missing %q", stmt.SQL, want)
+		}
+	}
+}
+
+func TestBuildAiEvalV2RejectsUnsupportedFilterValues(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		subject string
+		input   map[string]any
+	}{
+		{name: "split", subject: storage.SubjectEvalDatasetSearch, input: map[string]any{"split": "holdout"}},
+		{name: "curation", subject: storage.SubjectEvalDatasetSearch, input: map[string]any{"curationStatus": "reviewed"}},
+		{name: "run status", subject: storage.SubjectEvalEvaluationRunSearch, input: map[string]any{"status": "done"}},
+		{name: "scope", subject: storage.SubjectEvalResultsSearch, input: map[string]any{"evaluationRunId": "run-1", "scope": "experiment"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := BuildAiEvalQuery(tt.subject, tt.input); err == nil {
+				t.Fatal("expected validation error")
+			}
+		})
+	}
+}
+
 func TestBuildAiEvalQueryUsesDeclaredSubjectTableAndFilters(t *testing.T) {
 	stmt, err := BuildAiEvalQuery(storage.SubjectAnnotationQueueSearch, map[string]any{
 		"status":     "open",
@@ -208,7 +355,7 @@ func TestBuildDatasetListCountsQueryBatchesDatasetCounts(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"FROM ai_dataset_item",
+		"FROM ai_dataset_item_revision",
 		"datasetId IN $datasetIds",
 		"GROUP BY datasetId",
 		"count() AS itemCount",
@@ -228,7 +375,7 @@ func TestBuildDatasetExportItemsQuerySelectsOrderField(t *testing.T) {
 
 	for _, want := range []string{
 		"SELECT id, input, expected",
-		"FROM ai_dataset_item",
+		"FROM ai_dataset_item_revision",
 		"datasetId = $datasetId",
 		"ORDER BY id ASC",
 	} {
@@ -355,11 +502,8 @@ func TestShapeAiEvalItemsReturnsGraphQLReadyRows(t *testing.T) {
 		"input":     map[string]any{"prompt": "hi"},
 	}})
 	item := datasetItems[0]
-	if item["version"] != 1 || item["split"] != "dev" || item["reviewStatus"] != "unreviewed" {
+	if item["revision"] != 1 || item["split"] != "validation" || item["curationStatus"] != "draft" {
 		t.Fatalf("dataset item = %#v, want defaulted item fields", item)
-	}
-	if warnings, ok := item["leakageWarnings"].([]string); !ok || len(warnings) != 0 {
-		t.Fatalf("leakage warnings = %#v, want empty string slice", item["leakageWarnings"])
 	}
 
 	agentRuns := shapeAiEvalItems(storage.SubjectEvalAgentRunsSearch, map[string]any{}, []map[string]any{{
@@ -535,7 +679,7 @@ func TestAiEvalQueryBuildersCoverDatasetScorerResultsAndQualityFilters(t *testin
 	if err != nil {
 		t.Fatalf("BuildAiEvalQuery(dataset items) error = %v", err)
 	}
-	if !strings.Contains(datasetItems.SQL, "FROM ai_dataset_item") || !strings.Contains(datasetItems.SQL, "datasetId = $datasetId") {
+	if !strings.Contains(datasetItems.SQL, "FROM ai_dataset_item_revision") || !strings.Contains(datasetItems.SQL, "datasetId = $datasetId") {
 		t.Fatalf("dataset items SQL = %s", datasetItems.SQL)
 	}
 
@@ -557,7 +701,7 @@ func TestAiEvalQueryBuildersCoverDatasetScorerResultsAndQualityFilters(t *testin
 	if err != nil {
 		t.Fatalf("BuildAiEvalQuery(results) error = %v", err)
 	}
-	for _, want := range []string{"FROM ai_eval_result", "scorerId = $scorerId", "experimentRunId = $experimentRunId", "targetKind = $targetKind", "targetId = $targetId", "passed = $passed"} {
+	for _, want := range []string{"FROM ai_metric_result", "scorerId = $scorerId", "experimentRunId = $experimentRunId", "targetKind = $targetKind", "targetId = $targetId", "passed = $passed"} {
 		if !strings.Contains(results.SQL, want) {
 			t.Fatalf("results SQL = %s, missing %q", results.SQL, want)
 		}

@@ -989,6 +989,8 @@ Targets and optimization:
 - `eval.optimization.start`;
 - `eval.optimization.search`;
 - `eval.optimization.get`;
+- `eval.target.promote`;
+- `eval.optimization.get`;
 - `eval.target.promote`.
 
 Live fanout:

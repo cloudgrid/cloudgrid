@@ -143,11 +143,11 @@ func TestStoreAiEvalReadOrchestrationSuccessPaths(t *testing.T) {
 			return fmt.Errorf("unexpected output %T", out)
 		}
 		switch {
-		case strings.Contains(stmt.SQL, "FROM ai_dataset_item") && strings.Contains(stmt.SQL, "GROUP BY datasetId"):
+		case strings.Contains(stmt.SQL, "FROM ai_dataset_item_revision") && strings.Contains(stmt.SQL, "GROUP BY datasetId"):
 			*rows = []map[string]any{{"datasetId": "dataset-1", "itemCount": 2, "reviewedItemCount": 1}}
-		case strings.Contains(stmt.SQL, "FROM ai_dataset_item") && strings.Contains(stmt.SQL, "ORDER BY id ASC"):
+		case strings.Contains(stmt.SQL, "FROM ai_dataset_item_revision") && strings.Contains(stmt.SQL, "ORDER BY id ASC"):
 			*rows = []map[string]any{{"id": "item-1", "input": map[string]any{"q": "?"}, "expected": map[string]any{"a": "!"}}}
-		case strings.Contains(stmt.SQL, "FROM ai_dataset_item") && strings.Contains(stmt.SQL, "GROUP ALL"):
+		case strings.Contains(stmt.SQL, "FROM ai_dataset_item_revision") && strings.Contains(stmt.SQL, "GROUP ALL"):
 			*rows = []map[string]any{{"totalItemCount": 2, "reviewedItemCount": 1, "missingExpectedCount": 1}}
 		case strings.Contains(stmt.SQL, "GROUP BY split"):
 			*rows = []map[string]any{{"split": "validation", "count": 1}}
@@ -196,5 +196,42 @@ func TestStoreAiEvalReadOrchestrationSuccessPaths(t *testing.T) {
 	}
 	if quality["summary"] == nil || quality["segments"] == nil {
 		t.Fatalf("quality = %#v", quality)
+	}
+}
+
+func TestStoreAiEvalEvaluationRunsAttachStorageReadAggregates(t *testing.T) {
+	queryRowsOverride = func(_ context.Context, _ *sdk.DB, stmt QueryStatement, out any) error {
+		rows, ok := out.(*[]map[string]any)
+		if !ok {
+			return fmt.Errorf("unexpected output %T", out)
+		}
+		switch {
+		case strings.Contains(stmt.SQL, "FROM ai_evaluation_run"):
+			*rows = []map[string]any{{"id": "run-1", "startedAt": "2026-05-20T10:00:00Z", "status": "completed"}}
+		case strings.Contains(stmt.SQL, "FROM ai_metric_aggregate"):
+			*rows = []map[string]any{{"id": "aggregate-1", "subjectId": "run-1", "metricId": "accuracy", "metricVersion": 1, "scope": "evaluation_run", "support": 10, "payload": map[string]any{"kind": "number", "value": 0.9}}}
+		default:
+			return fmt.Errorf("unexpected query %s", stmt.SQL)
+		}
+		return nil
+	}
+	t.Cleanup(func() { queryRowsOverride = nil })
+
+	store := Store{}
+	data, err := store.QueryAiEval(context.Background(), storage.SubjectEvalEvaluationRunSearch, map[string]any{"status": "completed"}, nil)
+	if err != nil {
+		t.Fatalf("QueryAiEval(evaluation runs) error = %v", err)
+	}
+	items := data["items"].([]map[string]any)
+	if len(items) != 1 {
+		t.Fatalf("items = %#v, want one run", items)
+	}
+	aggregates := items[0]["metricAggregates"].([]any)
+	if len(aggregates) != 1 {
+		t.Fatalf("aggregates = %#v, want storage-read attached aggregate", aggregates)
+	}
+	summary := items[0]["summary"].(map[string]any)
+	if len(summary["metricAggregates"].([]any)) != 1 {
+		t.Fatalf("summary = %#v, want storage-read aggregate in summary", summary)
 	}
 }

@@ -23,8 +23,10 @@ preserving CloudGrid service boundaries.
 - `bun run contracts:check` passes.
 - `bun run typecheck` passes.
 - Legacy subject literals are removed from the contract registry gate.
-- Remaining work is behavioral migration in BFF, storage services, runner,
-  frontend, tests, and docs.
+- Remaining work is behavioral migration in runner, frontend, integration
+  tests, and docs.
+- `TICKET-202` and `TICKET-203` are complete; wave 03 can start from durable
+  storage-write v2 persistence and storage-read v2 query semantics.
 
 ## Waves
 

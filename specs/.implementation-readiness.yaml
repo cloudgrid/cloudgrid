@@ -9,7 +9,7 @@ notes:
   - Production-scale performance work now has explicit implementation constraints in specs/06-nfr/performance-and-scaling.md.
   - Remaining production gaps are specified implementation requirements, not open product-decision gaps.
   - Per-item completion status is tracked in specs/implementation-ready.md.
-  - AI Eval v2 is now tracked as IR-010 with an implementation-ready migration plan and first completed BFF foundation ticket.
+  - AI Eval v2 is now tracked as IR-010 with an implementation-ready migration plan and completed BFF plus storage service foundation tickets.
 blocking_gaps: []
 implementation_ready_status:
   IR-001:
@@ -96,13 +96,14 @@ implementation_ready_status:
     evidence:
       - AI Eval v2 product, backend, frontend, NFR, GraphQL, AsyncAPI, entity schema, generated TypeScript, and generated Go contracts are aligned.
       - BFF v2 bridge validation and resolver foundation is complete in TICKET-201.
-      - plans/ai-eval-v2-migration is implementation-ready with TICKET-202 through TICKET-206 ready and dependency-scoped.
+      - Storage-write AI Eval v2 persistence is complete in TICKET-202.
+      - Storage-read AI Eval v2 query semantics are complete in TICKET-203.
+      - plans/ai-eval-v2-migration is implementation-ready with TICKET-204 through TICKET-206 ready and dependency-scoped.
       - bun run contracts:check passes.
       - bun run typecheck passes.
+      - go test -tags surrealdb ./core/storage-read/... ./core/storage-write/... passes.
       - spec check, plan lint, and wave readiness checks pass.
     remaining:
-      - Complete TICKET-202 storage-write AI Eval v2 persistence.
-      - Complete TICKET-203 storage-read AI Eval v2 query semantics.
       - Complete TICKET-204 AI Eval runner v2 evaluation orchestration.
       - Complete TICKET-205 frontend AI Eval v2 workspace.
       - Complete TICKET-206 AI Eval v2 integration docs and final gates.
@@ -114,7 +115,7 @@ implemented_surfaces:
   - project-scoped alert rule, alert silence, and alert history contracts plus control-plane storage/service/NATS handlers, BFF GraphQL bridge, and alert management UI
   - organization invitations and invitation email delivery contracts/control-plane/BFF/frontend/docs
   - live trace subscriptions through BFF GraphQL, storage-read live sessions, and storage-write post-persist notifications
-  - AI Eval v2 contracts, BFF bridge validation/resolver foundation, and implementation-ready migration plan
+  - AI Eval v2 contracts, BFF bridge validation/resolver foundation, storage service persistence/query semantics, and implementation-ready migration plan
 explicit_deferrals:
   - production-scale backpressure and benchmark implementation
   - storage-maintenance retention deletion worker and retention audit execution

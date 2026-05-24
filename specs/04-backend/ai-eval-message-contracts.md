@@ -52,7 +52,7 @@ Evaluation subjects:
 | `eval.evaluation.run.resume` | BFF | runner | Resume paused run. |
 | `eval.evaluation.run.search` | BFF, runner | storage-read | Search runs. |
 | `eval.evaluation.run.get` | BFF, runner | storage-read | Read run detail. |
-| `eval.results.persist` | runner | storage-write | Persist item runs, metric results, summaries, and problems. |
+| `eval.results.persist` | runner | storage-write | Persist evaluation run state, item runs, metric results, summaries, problems, and optimization run state. |
 | `eval.results.search` | BFF, runner | storage-read | Search metric results and item runs. |
 | `eval.evaluation.comparison.create` | BFF, runner | storage-read then storage-write | Create comparison from existing runs. |
 | `eval.evaluation.comparison.search` | BFF | storage-read | Search comparisons. |

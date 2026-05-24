@@ -3,9 +3,10 @@
 Status: contract-ready, implementation migration required
 
 This plan tracks the remaining work required to implement AI Eval v2. The
-machine-readable contracts now pass drift checks; the remaining work is service,
-runner, BFF, and frontend migration from legacy Scorer/Experiment behavior to
-the v2 Dataset/Evaluation/Metric/Target model.
+machine-readable contracts now pass drift checks; BFF foundation, storage-write
+persistence, and storage-read query semantics are complete. The remaining work
+is runner, frontend, integration, and documentation migration from legacy
+Scorer/Experiment behavior to the v2 Dataset/Evaluation/Metric/Target model.
 
 ## Current Readiness
 
@@ -18,6 +19,7 @@ the v2 Dataset/Evaluation/Metric/Target model.
   optimization refs, and dataset item runs were removed from the spec contract
   tree.
 - `bun run contracts:check` passes.
+- `TICKET-201`, `TICKET-202`, and `TICKET-203` are complete.
 
 ## Remaining Runtime Drift
 
@@ -58,6 +60,7 @@ The removed product concepts are:
      promotion records.
    - Update storage-read query semantics to return GraphQL view models without
      BFF-side aggregation.
+   - Status: complete.
 
 3. Runner and adapter
    - Replace experiment run handlers with evaluation run handlers.

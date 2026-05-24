@@ -23,12 +23,21 @@ const (
 	subjectEvalAgentRunsSearch         = "eval.agent_runs.search"
 	subjectEvalDatasetSearch           = "eval.dataset.search"
 	subjectEvalDatasetCandidatesSearch = "eval.dataset.candidates.search"
+	subjectEvalDatasetVersionGet       = "eval.dataset.version.get"
 	subjectEvalDatasetExportStart      = "eval.dataset.export.start"
 	subjectEvalDatasetTransferGet      = "eval.dataset.transfer.get"
 	subjectEvalDatasetHealth           = "eval.dataset.health"
 	subjectEvalScorerSearch            = "eval.scorer.search"
 	subjectEvalExperimentSearch        = "eval.experiment.search"
+	subjectEvalEvaluationSearch        = "eval.evaluation.search"
+	subjectEvalEvaluationRunSearch     = "eval.evaluation.run.search"
+	subjectEvalEvaluationRunGet        = "eval.evaluation.run.get"
 	subjectEvalResultsSearch           = "eval.results.search"
+	subjectEvalComparisonSearch        = "eval.evaluation.comparison.search"
+	subjectEvalTargetSnapshotGet       = "eval.target.snapshot.get"
+	subjectEvalTargetDiff              = "eval.target.diff"
+	subjectEvalOptimizationSearch      = "eval.optimization.search"
+	subjectEvalOptimizationGet         = "eval.optimization.get"
 	subjectEvalQualityOverview         = "eval.quality.overview"
 	subjectAnnotationQueueSearch       = "annotation.queue.search"
 	aiEvalDefaultPageLimit             = 50
@@ -45,6 +54,8 @@ func (store Store) QueryAiEval(ctx context.Context, subject string, input map[st
 		return store.queryDatasetHealth(ctx, input, authContext)
 	case subjectEvalQualityOverview:
 		return store.queryAiQualityOverview(ctx, input, authContext)
+	case subjectEvalDatasetVersionGet, subjectEvalEvaluationRunGet, subjectEvalTargetSnapshotGet, subjectEvalTargetDiff, subjectEvalOptimizationGet:
+		return store.queryAiEvalSingle(ctx, subject, input, authContext)
 	}
 	stmt, err := BuildAiEvalQuery(subject, input, authContext)
 	if err != nil {
@@ -55,15 +66,68 @@ func (store Store) QueryAiEval(ctx context.Context, subject string, input map[st
 		return nil, storageError()
 	}
 	if subject == subjectEvalDatasetSearch {
-		if _, ok := stringInput(input, "datasetId"); !ok {
+		if !aiEvalDatasetSearchReturnsItems(input) {
 			items, err = store.withDatasetListCounts(ctx, items, authContext)
 			if err != nil {
 				return nil, storageError()
 			}
 		}
 	}
+	if shouldAttachMetricAggregates(subject, input) {
+		items, err = store.withMetricAggregates(ctx, subject, items, authContext)
+		if err != nil {
+			return nil, storageError()
+		}
+	}
 	shaped, nextCursor := shapeAiEvalPage(subject, input, items)
 	return map[string]any{"items": shaped, "nextCursor": nextCursor}, nil
+}
+
+func (store Store) queryAiEvalSingle(ctx context.Context, subject string, input map[string]any, authContext *contracts.AuthContext) (map[string]any, error) {
+	stmt, err := BuildAiEvalQuery(subject, input, authContext)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := queryRows[map[string]any](ctx, store.DB, stmt)
+	if err != nil {
+		return nil, storageError()
+	}
+	shaped := shapeAiEvalItems(subject, input, firstN(rows, 1))
+	var item map[string]any
+	if len(shaped) > 0 {
+		item = shaped[0]
+	}
+	switch subject {
+	case subjectEvalDatasetVersionGet:
+		return map[string]any{"version": item}, nil
+	case subjectEvalEvaluationRunGet:
+		if item != nil {
+			withAggregates, err := store.withMetricAggregates(ctx, subject, []map[string]any{item}, authContext)
+			if err != nil {
+				return nil, storageError()
+			}
+			item = withAggregates[0]
+		}
+		return map[string]any{"run": item}, nil
+	case subjectEvalTargetSnapshotGet:
+		return map[string]any{"snapshot": item}, nil
+	case subjectEvalOptimizationGet:
+		return map[string]any{"run": item}, nil
+	case subjectEvalTargetDiff:
+		if item == nil {
+			item = emptyTargetDiff(input)
+		}
+		return item, nil
+	default:
+		return map[string]any{"item": item}, nil
+	}
+}
+
+func firstN(rows []map[string]any, count int) []map[string]any {
+	if len(rows) <= count {
+		return rows
+	}
+	return rows[:count]
 }
 
 func (store Store) withDatasetListCounts(ctx context.Context, rows []map[string]any, authContext *contracts.AuthContext) ([]map[string]any, error) {
@@ -96,9 +160,76 @@ func (store Store) withDatasetListCounts(ctx context.Context, rows []map[string]
 			continue
 		}
 		row["itemCount"] = count["itemCount"]
+		row["readyItemCount"] = count["readyItemCount"]
 		row["reviewedItemCount"] = count["reviewedItemCount"]
 	}
 	return rows, nil
+}
+
+func shouldAttachMetricAggregates(subject string, input map[string]any) bool {
+	if subject == subjectEvalEvaluationRunGet {
+		return true
+	}
+	if subject == subjectEvalEvaluationRunSearch && !aiEvalEvaluationRunSearchReturnsItemRuns(input) {
+		return true
+	}
+	if subject == subjectEvalComparisonSearch {
+		return true
+	}
+	return false
+}
+
+func (store Store) withMetricAggregates(ctx context.Context, subject string, rows []map[string]any, authContext *contracts.AuthContext) ([]map[string]any, error) {
+	if len(rows) == 0 {
+		return rows, nil
+	}
+	subjectIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if id := aiEvalRecordID(row); id != "" {
+			subjectIDs = append(subjectIDs, id)
+		}
+	}
+	if len(subjectIDs) == 0 {
+		return rows, nil
+	}
+	stmt, err := BuildMetricAggregateQuery(subject, subjectIDs, authContext)
+	if err != nil {
+		return nil, err
+	}
+	aggregates, err := queryRows[map[string]any](ctx, store.DB, stmt)
+	if err != nil {
+		return nil, err
+	}
+	bySubject := map[string][]any{}
+	for _, aggregate := range aggregates {
+		shaped := shapeMetricAggregateRow(aggregate)
+		subjectID := aiEvalStringValue(shaped, "subjectId", "")
+		if subjectID == "" {
+			continue
+		}
+		bySubject[subjectID] = append(bySubject[subjectID], shaped)
+	}
+	for _, row := range rows {
+		id := aiEvalRecordID(row)
+		aggregates := bySubject[id]
+		if aggregates == nil {
+			aggregates = []any{}
+		}
+		row["metricAggregates"] = aggregates
+		summary := mapDefault(row["summary"])
+		summary["metricAggregates"] = aggregates
+		row["summary"] = summary
+	}
+	return rows, nil
+}
+
+func shapeMetricAggregateRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	item["payload"] = shapeMetricPayload(mapDefault(item["payload"]))
+	item["support"] = intValueFromAny(item["support"])
+	item["problemCount"] = intValueFromAny(item["problemCount"])
+	return item
 }
 
 func (store Store) startDatasetExport(ctx context.Context, input map[string]any, authContext *contracts.AuthContext) (map[string]any, error) {
@@ -146,7 +277,10 @@ func (store Store) queryDatasetHealth(ctx context.Context, input map[string]any,
 	}
 	health["splitCounts"] = splitCounts
 	health["duplicateCandidateCount"] = len(duplicateRows)
-	health["smallDataset"] = numericValue(health["reviewedItemCount"]) < 30
+	if _, ok := health["readyItemCount"]; !ok {
+		health["readyItemCount"] = health["reviewedItemCount"]
+	}
+	health["smallDataset"] = numericValue(health["readyItemCount"]) < 30
 	health["warnings"] = datasetHealthWarnings(health)
 	if numericValue(health["leakageWarningCount"]) > 0 {
 		health["status"] = "leakage_warning"
@@ -228,14 +362,20 @@ func shapeAiEvalItems(subject string, input map[string]any, rows []map[string]an
 			items = append(items, shapeAgentRunRow(row))
 		case subjectEvalDatasetSearch:
 			if _, ok := stringInput(input, "datasetId"); ok {
-				items = append(items, shapeDatasetItemRow(row))
+				items = append(items, shapeDatasetItemRevisionRow(row))
+			} else if _, ok := stringInput(input, "datasetVersionId"); ok {
+				items = append(items, shapeDatasetItemRevisionRow(row))
 			} else {
 				items = append(items, shapeDatasetRow(row))
 			}
 		case subjectEvalDatasetCandidatesSearch:
 			items = append(items, shapeDatasetCandidateRow(row))
+		case subjectEvalDatasetVersionGet:
+			items = append(items, shapeDatasetVersionRow(row))
 		case subjectEvalScorerSearch:
 			items = append(items, shapeScorerRow(row))
+		case subjectEvalEvaluationSearch:
+			items = append(items, shapeEvaluationDefinitionRow(row))
 		case subjectEvalExperimentSearch:
 			if aiEvalExperimentSearchReturnsDatasetItemRuns(input) {
 				items = append(items, shapeDatasetItemRunRow(row))
@@ -244,8 +384,22 @@ func shapeAiEvalItems(subject string, input map[string]any, rows []map[string]an
 			} else {
 				items = append(items, shapeExperimentRow(row))
 			}
+		case subjectEvalEvaluationRunSearch, subjectEvalEvaluationRunGet:
+			if aiEvalEvaluationRunSearchReturnsItemRuns(input) {
+				items = append(items, shapeEvaluationItemRunRow(row))
+			} else {
+				items = append(items, shapeEvaluationRunRow(row))
+			}
 		case subjectEvalResultsSearch:
-			items = append(items, shapeEvalResultRow(row))
+			items = append(items, shapeMetricResultRow(row))
+		case subjectEvalComparisonSearch:
+			items = append(items, shapeEvaluationComparisonRow(row))
+		case subjectEvalTargetSnapshotGet:
+			items = append(items, shapeTargetSnapshotRow(row))
+		case subjectEvalTargetDiff:
+			items = append(items, shapeTargetDiffRow(row))
+		case subjectEvalOptimizationSearch, subjectEvalOptimizationGet:
+			items = append(items, shapeOptimizationRunRow(row))
 		case subjectAnnotationQueueSearch:
 			items = append(items, shapeAnnotationQueueRow(row))
 		default:
@@ -328,9 +482,11 @@ func shapeDatasetRow(row map[string]any) map[string]any {
 	item := cloneParams(row)
 	applyRecordID(item)
 	itemCount := intValueFromAny(item["itemCount"])
-	reviewedItemCount := intValueFromAny(item["reviewedItemCount"])
+	readyItemCount := intValueFromAny(defaultAny(item["readyItemCount"], item["reviewedItemCount"]))
+	reviewedItemCount := intValueFromAny(defaultAny(item["reviewedItemCount"], readyItemCount))
 	item["version"] = maxIntValue(intValueFromAny(item["version"]), 1)
 	item["itemCount"] = itemCount
+	item["readyItemCount"] = readyItemCount
 	item["reviewedItemCount"] = reviewedItemCount
 	splitCounts := objectMap(item["splitCounts"])
 	if len(splitCounts) == 0 {
@@ -343,6 +499,7 @@ func shapeDatasetRow(row map[string]any) map[string]any {
 		health = map[string]any{}
 	}
 	health["reviewedItemCount"] = intValueFromAny(defaultAny(health["reviewedItemCount"], reviewedItemCount))
+	health["readyItemCount"] = intValueFromAny(defaultAny(health["readyItemCount"], readyItemCount))
 	health["totalItemCount"] = intValueFromAny(defaultAny(health["totalItemCount"], itemCount))
 	health["splitCounts"] = defaultAny(health["splitCounts"], splitCounts)
 	health["duplicateCandidateCount"] = intValueFromAny(health["duplicateCandidateCount"])
@@ -376,6 +533,30 @@ func shapeDatasetItemRow(row map[string]any) map[string]any {
 	return item
 }
 
+func shapeDatasetItemRevisionRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	item["revision"] = maxIntValue(intValueFromAny(item["revision"]), 1)
+	item["reason"] = aiEvalStringValue(item, "reason", "")
+	item["sourceRefs"] = arrayDefault(item["sourceRefs"])
+	item["metadata"] = mapDefault(item["metadata"])
+	item["split"] = enumDefault(item, "split", "validation")
+	item["curationStatus"] = enumDefault(item, "curationStatus", "draft")
+	item["contentTreatment"] = enumDefault(item, "contentTreatment", "original")
+	return item
+}
+
+func shapeDatasetVersionRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	item["version"] = maxIntValue(intValueFromAny(item["version"]), 1)
+	item["itemRevisionIds"] = stringsFromAny(item["itemRevisionIds"])
+	item["settingsSnapshot"] = mapDefault(item["settingsSnapshot"])
+	item["changeSummary"] = aiEvalStringValue(item, "changeSummary", "")
+	item["source"] = enumDefault(item, "source", "manual")
+	return item
+}
+
 func shapeScorerRow(row map[string]any) map[string]any {
 	item := cloneParams(row)
 	applyRecordID(item)
@@ -383,6 +564,18 @@ func shapeScorerRow(row map[string]any) map[string]any {
 	if _, ok := item["definition"]; !ok || item["definition"] == nil {
 		item["definition"] = map[string]any{}
 	}
+	return item
+}
+
+func shapeEvaluationDefinitionRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	item["metricSettings"] = arrayDefault(item["metricSettings"])
+	item["splitSelector"] = mapDefault(item["splitSelector"])
+	item["targetRef"] = mapDefault(item["targetRef"])
+	item["runPolicy"] = mapDefault(item["runPolicy"])
+	item["retentionProfile"] = enumDefault(item, "retentionProfile", "balanced")
+	item["version"] = maxIntValue(intValueFromAny(item["version"]), 1)
 	return item
 }
 
@@ -434,13 +627,125 @@ func shapeDatasetItemRunRow(row map[string]any) map[string]any {
 	return item
 }
 
-func shapeEvalResultRow(row map[string]any) map[string]any {
+func shapeEvaluationRunRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	item["status"] = enumDefault(item, "status", "queued")
+	item["kind"] = enumDefault(item, "kind", "dataset_evaluation")
+	item["selectedItemRevisionIds"] = stringsFromAny(item["selectedItemRevisionIds"])
+	item["splitSelector"] = mapDefault(item["splitSelector"])
+	item["metricSettingsSnapshot"] = arrayDefault(item["metricSettingsSnapshot"])
+	item["runPolicySnapshot"] = mapDefault(item["runPolicySnapshot"])
+	item["summary"] = shapeEvaluationRunSummary(mapDefault(item["summary"]))
+	item["metricResults"] = arrayDefault(item["metricResults"])
+	item["metricAggregates"] = arrayDefault(item["metricAggregates"])
+	item["retentionProfile"] = enumDefault(item, "retentionProfile", "balanced")
+	item["retentionRole"] = enumDefault(item, "retentionRole", "baseline")
+	return item
+}
+
+func shapeEvaluationItemRunRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	item["status"] = enumDefault(item, "status", "queued")
+	item["metricResultIds"] = stringsFromAny(item["metricResultIds"])
+	item["metricResults"] = arrayDefault(item["metricResults"])
+	item["problems"] = arrayDefault(item["problems"])
+	item["summaryEvidenceRefs"] = arrayDefault(item["summaryEvidenceRefs"])
+	item["importantSteps"] = arrayDefault(item["importantSteps"])
+	item["retentionRole"] = enumDefault(item, "retentionRole", "baseline")
+	return item
+}
+
+func shapeMetricResultRow(row map[string]any) map[string]any {
 	item := cloneParams(row)
 	applyRecordID(item)
 	if _, ok := item["producedAt"]; !ok || item["producedAt"] == nil {
 		item["producedAt"] = fallbackTime()
 	}
+	item["payload"] = shapeMetricPayload(mapDefault(item["payload"]))
+	item["evidenceRefs"] = arrayDefault(item["evidenceRefs"])
+	item["metadata"] = mapDefault(item["metadata"])
 	return item
+}
+
+func shapeEvaluationComparisonRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	item["baselineRunId"] = firstString(item, "baselineRunId", "baselineEvaluationRunId")
+	item["candidateRunId"] = firstString(item, "candidateRunId", "candidateEvaluationRunId")
+	item["metricResults"] = arrayDefault(item["metricResults"])
+	item["metricAggregates"] = arrayDefault(item["metricAggregates"])
+	item["summary"] = stringOrJSONSummary(item["summary"])
+	return item
+}
+
+func shapeTargetSnapshotRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	item["parts"] = arrayDefault(item["parts"])
+	item["metadata"] = mapDefault(item["metadata"])
+	item["reproducibility"] = enumDefault(item, "reproducibility", "full")
+	return item
+}
+
+func shapeTargetDiffRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	if _, ok := item["changedParts"]; !ok {
+		item["changedParts"] = arrayDefault(item["partDiffs"])
+	}
+	item["summary"] = aiEvalStringValue(item, "summary", "")
+	return item
+}
+
+func emptyTargetDiff(input map[string]any) map[string]any {
+	return map[string]any{
+		"baselineTargetSnapshotId":  aiEvalStringValue(input, "baselineSnapshotId", ""),
+		"candidateTargetSnapshotId": aiEvalStringValue(input, "candidateSnapshotId", ""),
+		"changedParts":              []any{},
+		"summary":                   "",
+	}
+}
+
+func shapeOptimizationRunRow(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	item["status"] = enumDefault(item, "status", "queued")
+	item["objective"] = mapDefault(item["objective"])
+	item["candidateTargetSnapshotIds"] = stringsFromAny(item["candidateTargetSnapshotIds"])
+	item["causedEvaluationRunIds"] = stringsFromAny(item["causedEvaluationRunIds"])
+	item["comparisonIds"] = stringsFromAny(item["comparisonIds"])
+	item["budgetSnapshot"] = mapDefault(item["budgetSnapshot"])
+	return item
+}
+
+func shapeEvaluationRunSummary(summary map[string]any) map[string]any {
+	summary["itemCounts"] = mapDefault(summary["itemCounts"])
+	summary["metricAggregates"] = arrayDefault(summary["metricAggregates"])
+	summary["problemCounts"] = mapDefault(summary["problemCounts"])
+	summary["budgetUsage"] = mapDefault(summary["budgetUsage"])
+	return summary
+}
+
+func shapeMetricPayload(payload map[string]any) map[string]any {
+	if kind, ok := stringInput(payload, "kind"); ok {
+		switch kind {
+		case "number":
+			if _, ok := payload["numberValue"]; !ok {
+				payload["numberValue"] = numericValue(payload["value"])
+			}
+		case "boolean":
+			if _, ok := payload["booleanValue"]; !ok {
+				payload["booleanValue"], _ = payload["value"].(bool)
+			}
+		case "label":
+			if _, ok := payload["labelValue"]; !ok {
+				payload["labelValue"] = aiEvalStringValue(payload, "value", "")
+			}
+		}
+	}
+	return payload
 }
 
 func shapeAnnotationQueueRow(row map[string]any) map[string]any {
@@ -710,6 +1015,9 @@ func BuildOnlinePolicyMatchesResolveQueries(request contracts.OnlinePolicyMatche
 }
 
 func BuildAiEvalQuery(subject string, input map[string]any, authContext ...*contracts.AuthContext) (QueryStatement, error) {
+	if err := validateAiEvalQueryInput(subject, input); err != nil {
+		return QueryStatement{}, err
+	}
 	table, err := aiEvalTableForSubject(subject, input)
 	if err != nil {
 		return QueryStatement{}, err
@@ -741,8 +1049,20 @@ func BuildAiEvalQuery(subject string, input map[string]any, authContext ...*cont
 			conditions = append(conditions, "datasetId = $datasetId")
 			params["datasetId"] = datasetID
 		}
-		addStringFilter(&conditions, params, input, "tag", "tags")
-		addTextSearch(&conditions, params, input, []string{"id", "name", "description"})
+		if aiEvalDatasetSearchReturnsItems(input) {
+			addStringFilter(&conditions, params, input, "datasetVersionId", "datasetVersionId")
+			addStringFilter(&conditions, params, input, "split", "split")
+			addStringFilter(&conditions, params, input, "curationStatus", "curationStatus")
+			addStringFilter(&conditions, params, input, "sourceTraceId", "sourceRefs.traceId")
+			addBoolFilter(&conditions, params, input, "synthetic", "synthetic")
+			addTextSearch(&conditions, params, input, []string{"id", "datasetItemId", "reason"})
+		} else {
+			addStringFilter(&conditions, params, input, "evaluationFamily", "settings.evaluationFamily")
+			addPositiveCountFilter(&conditions, params, input, "split", "splitCounts")
+			addPositiveCountFilter(&conditions, params, input, "curationStatus", "curationCounts")
+			addStringFilter(&conditions, params, input, "tag", "tags")
+			addTextSearch(&conditions, params, input, []string{"id", "name", "description"})
+		}
 	case subjectEvalDatasetCandidatesSearch:
 		addStringFilter(&conditions, params, input, "datasetId", "datasetId")
 		addStringFilter(&conditions, params, input, "sourceKind", "source.kind")
@@ -760,6 +1080,10 @@ func BuildAiEvalQuery(subject string, input map[string]any, authContext ...*cont
 	case subjectEvalScorerSearch:
 		addStringFilter(&conditions, params, input, "kind", "kind")
 		addTextSearch(&conditions, params, input, []string{"id", "name"})
+	case subjectEvalEvaluationSearch:
+		addStringFilter(&conditions, params, input, "datasetId", "datasetId")
+		addStringFilter(&conditions, params, input, "targetKind", "targetRef.kind")
+		addTextSearch(&conditions, params, input, []string{"id", "name", "description"})
 	case subjectEvalExperimentSearch:
 		if aiEvalExperimentSearchReturnsDatasetItemRuns(input) {
 			addStringFilter(&conditions, params, input, "experimentRunId", "experimentRunId")
@@ -774,12 +1098,52 @@ func BuildAiEvalQuery(subject string, input map[string]any, authContext ...*cont
 		if !aiEvalExperimentSearchReturnsRuns(input) {
 			addTextSearch(&conditions, params, input, []string{"id", "name"})
 		}
+	case subjectEvalEvaluationRunSearch:
+		if aiEvalEvaluationRunSearchReturnsItemRuns(input) {
+			addStringFilter(&conditions, params, input, "evaluationRunId", "evaluationRunId")
+			addStringFilter(&conditions, params, input, "datasetItemId", "datasetItemId")
+			addStringFilter(&conditions, params, input, "datasetItemRevisionId", "datasetItemRevisionId")
+		} else {
+			addStringFilter(&conditions, params, input, "evaluationDefinitionId", "evaluationDefinitionId")
+			addStringFilter(&conditions, params, input, "datasetId", "datasetId")
+			addStringFilter(&conditions, params, input, "datasetVersionId", "datasetVersionId")
+			addStringFilter(&conditions, params, input, "kind", "kind")
+			addStringFilter(&conditions, params, input, "split", "splitSelector.splits")
+			addStringFilter(&conditions, params, input, "targetSnapshotId", "targetSnapshotId")
+			addTextSearch(&conditions, params, input, []string{"id", "evaluationDefinitionId", "datasetId", "targetSnapshotId"})
+		}
+		addStringFilter(&conditions, params, input, "status", "status")
 	case subjectEvalResultsSearch:
+		addStringFilter(&conditions, params, input, "metricId", "metricId")
+		addStringFilter(&conditions, params, input, "evaluationRunId", "evaluationRunId")
+		addStringFilter(&conditions, params, input, "evaluationItemRunId", "evaluationItemRunId")
+		addStringFilter(&conditions, params, input, "scope", "scope")
 		addStringFilter(&conditions, params, input, "scorerId", "scorerId")
 		addStringFilter(&conditions, params, input, "experimentRunId", "experimentRunId")
 		addStringFilter(&conditions, params, input, "targetKind", "targetKind")
 		addStringFilter(&conditions, params, input, "targetId", "targetId")
 		addBoolFilter(&conditions, params, input, "passed", "passed")
+	case subjectEvalComparisonSearch:
+		addStringFilter(&conditions, params, input, "evaluationDefinitionId", "evaluationDefinitionId")
+		addStringFilter(&conditions, params, input, "baselineRunId", "baselineRunId")
+		addStringFilter(&conditions, params, input, "candidateRunId", "candidateRunId")
+		addArrayContainsFilter(&conditions, params, input, "metricId", "metricIds")
+	case subjectEvalOptimizationSearch:
+		addStringFilter(&conditions, params, input, "evaluationDefinitionId", "evaluationDefinitionId")
+		addStringFilter(&conditions, params, input, "status", "status")
+		addStringFilter(&conditions, params, input, "baselineTargetSnapshotId", "baselineTargetSnapshotId")
+		addStringFilter(&conditions, params, input, "selectedCandidateSnapshotId", "selectedCandidateSnapshotId")
+	case subjectEvalDatasetVersionGet:
+		addRecordIDFilter(&conditions, params, input, "datasetVersionId")
+	case subjectEvalEvaluationRunGet:
+		addRecordIDFilter(&conditions, params, input, "evaluationRunId")
+	case subjectEvalTargetSnapshotGet:
+		addRecordIDFilter(&conditions, params, input, "targetSnapshotId")
+	case subjectEvalTargetDiff:
+		addStringFilter(&conditions, params, input, "baselineSnapshotId", "baselineTargetSnapshotId")
+		addStringFilter(&conditions, params, input, "candidateSnapshotId", "candidateTargetSnapshotId")
+	case subjectEvalOptimizationGet:
+		addRecordIDFilter(&conditions, params, input, "optimizationRunId")
 	case subjectAnnotationQueueSearch:
 		addStringFilter(&conditions, params, input, "status", "status")
 		addStringFilter(&conditions, params, input, "reason", "reason")
@@ -819,8 +1183,8 @@ func BuildDatasetHealthQueries(input map[string]any, authContext ...*contracts.A
 	return map[string]QueryStatement{
 		"summary": {
 			SQL: strings.Join([]string{
-				"SELECT count() AS totalItemCount, math::sum(IF reviewStatus = 'reviewed' THEN 1 ELSE 0 END) AS reviewedItemCount, math::sum(IF expected = NONE THEN 1 ELSE 0 END) AS missingExpectedCount, math::sum(IF array::len(leakageWarnings) > 0 THEN 1 ELSE 0 END) AS leakageWarningCount, 0 AS schemaIssueCount",
-				"FROM ai_dataset_item",
+				"SELECT count() AS totalItemCount, math::sum(IF curationStatus = 'ready' THEN 1 ELSE 0 END) AS readyItemCount, math::sum(IF curationStatus = 'ready' THEN 1 ELSE 0 END) AS reviewedItemCount, math::sum(IF expected = NONE THEN 1 ELSE 0 END) AS missingExpectedCount, math::sum(IF array::len(leakageWarnings) > 0 THEN 1 ELSE 0 END) AS leakageWarningCount, 0 AS schemaIssueCount",
+				"FROM ai_dataset_item_revision",
 				whereClause(conditions),
 				"GROUP ALL;",
 			}, " "),
@@ -830,7 +1194,7 @@ func BuildDatasetHealthQueries(input map[string]any, authContext ...*contracts.A
 		"splitCounts": {
 			SQL: strings.Join([]string{
 				"SELECT split, count() AS count",
-				"FROM ai_dataset_item",
+				"FROM ai_dataset_item_revision",
 				whereClause(conditions),
 				"GROUP BY split;",
 			}, " "),
@@ -840,7 +1204,7 @@ func BuildDatasetHealthQueries(input map[string]any, authContext ...*contracts.A
 		"duplicates": {
 			SQL: strings.Join([]string{
 				"SELECT id, duplicateOfItemId",
-				"FROM ai_dataset_item",
+				"FROM ai_dataset_item_revision",
 				whereClause(append(conditions, "duplicateOfItemId != NONE")),
 				"LIMIT 200;",
 			}, " "),
@@ -860,10 +1224,39 @@ func BuildDatasetListCountsQuery(datasetIDs []string, authContext ...*contracts.
 	conditions := append(retentionVisibleConditions(), "datasetId IN $datasetIds")
 	return QueryStatement{
 		SQL: strings.Join([]string{
-			"SELECT datasetId, count() AS itemCount, math::sum(IF reviewStatus = 'reviewed' THEN 1 ELSE 0 END) AS reviewedItemCount",
-			"FROM ai_dataset_item",
+			"SELECT datasetId, count() AS itemCount, math::sum(IF curationStatus = 'ready' THEN 1 ELSE 0 END) AS readyItemCount, math::sum(IF curationStatus = 'ready' THEN 1 ELSE 0 END) AS reviewedItemCount",
+			"FROM ai_dataset_item_revision",
 			whereClause(conditions),
 			"GROUP BY datasetId;",
+		}, " "),
+		Params: params,
+		Target: target,
+	}, nil
+}
+
+func BuildMetricAggregateQuery(subject string, subjectIDs []string, authContext ...*contracts.AuthContext) (QueryStatement, error) {
+	if len(subjectIDs) == 0 {
+		return QueryStatement{}, validationError("subjectIds are required")
+	}
+	target, err := ResolveTelemetryTarget(firstAuthContext(authContext))
+	if err != nil {
+		return QueryStatement{}, err
+	}
+	params := map[string]any{"subjectIds": subjectIDs}
+	addOwnershipParams(params, target)
+	conditions := append(retentionVisibleConditions(), "subjectId IN $subjectIds")
+	switch subject {
+	case subjectEvalEvaluationRunSearch, subjectEvalEvaluationRunGet:
+		conditions = append(conditions, "scope = 'evaluation_run'")
+	case subjectEvalComparisonSearch:
+		conditions = append(conditions, "scope = 'comparison'")
+	}
+	return QueryStatement{
+		SQL: strings.Join([]string{
+			"SELECT *, record::id(id) AS recordId",
+			"FROM ai_metric_aggregate",
+			whereClause(conditions),
+			"ORDER BY metricId ASC, metricVersion ASC, id ASC LIMIT 1000;",
 		}, " "),
 		Params: params,
 		Target: target,
@@ -883,11 +1276,11 @@ func BuildDatasetExportItemsQuery(input map[string]any, authContext ...*contract
 	addOwnershipParams(params, target)
 	conditions := append(retentionVisibleConditions(), "datasetId = $datasetId")
 	addStringFilter(&conditions, params, input, "split", "split")
-	addStringFilter(&conditions, params, input, "reviewStatus", "reviewStatus")
+	addStringFilter(&conditions, params, input, "curationStatus", "curationStatus")
 	return QueryStatement{
 		SQL: strings.Join([]string{
-			"SELECT id, input, expected, metadata, sourceTraceId, sourceSpanId, split, reviewStatus, synthetic",
-			"FROM ai_dataset_item",
+			"SELECT id, input, expected, datasetItemId, observedOutput, reason, metadata, sourceRefs, split, curationStatus, contentTreatment",
+			"FROM ai_dataset_item_revision",
 			whereClause(conditions),
 			"ORDER BY id ASC LIMIT 50000;",
 		}, " "),
@@ -1052,14 +1445,18 @@ func aiEvalTableForSubject(subject string, input map[string]any) (string, error)
 	case subjectEvalAgentRunsSearch:
 		return "ai_agent_run", nil
 	case subjectEvalDatasetSearch:
-		if _, ok := stringInput(input, "datasetId"); ok {
-			return "ai_dataset_item", nil
+		if aiEvalDatasetSearchReturnsItems(input) {
+			return "ai_dataset_item_revision", nil
 		}
 		return "ai_dataset", nil
 	case subjectEvalDatasetCandidatesSearch:
 		return "ai_dataset_candidate", nil
+	case subjectEvalDatasetVersionGet:
+		return "ai_dataset_version", nil
 	case subjectEvalScorerSearch:
 		return "ai_scorer", nil
+	case subjectEvalEvaluationSearch:
+		return "ai_evaluation_definition", nil
 	case subjectEvalExperimentSearch:
 		if aiEvalExperimentSearchReturnsDatasetItemRuns(input) {
 			return "ai_dataset_item_run", nil
@@ -1068,8 +1465,23 @@ func aiEvalTableForSubject(subject string, input map[string]any) (string, error)
 			return "ai_experiment_run", nil
 		}
 		return "ai_experiment", nil
+	case subjectEvalEvaluationRunSearch:
+		if aiEvalEvaluationRunSearchReturnsItemRuns(input) {
+			return "ai_evaluation_item_run", nil
+		}
+		return "ai_evaluation_run", nil
+	case subjectEvalEvaluationRunGet:
+		return "ai_evaluation_run", nil
 	case subjectEvalResultsSearch:
-		return "ai_eval_result", nil
+		return "ai_metric_result", nil
+	case subjectEvalComparisonSearch:
+		return "ai_evaluation_comparison", nil
+	case subjectEvalTargetSnapshotGet:
+		return "ai_target_snapshot", nil
+	case subjectEvalTargetDiff:
+		return "ai_target_diff", nil
+	case subjectEvalOptimizationSearch, subjectEvalOptimizationGet:
+		return "ai_optimization_run", nil
 	case subjectAnnotationQueueSearch:
 		return "ai_annotation_queue_item", nil
 	default:
@@ -1081,12 +1493,24 @@ func aiEvalOrderByForSubject(subject string) string {
 	if subject == subjectEvalDatasetCandidatesSearch {
 		return "updatedAt DESC, id ASC"
 	}
+	if subject == subjectEvalEvaluationRunSearch || subject == subjectEvalOptimizationSearch {
+		return "startedAt DESC, id ASC"
+	}
+	if subject == subjectEvalResultsSearch {
+		return "producedAt DESC, id ASC"
+	}
 	return "createdAt DESC, id ASC"
 }
 
 func aiEvalSortForSubject(subject string) string {
 	if subject == subjectEvalDatasetCandidatesSearch {
 		return "updatedAt_desc_id_asc"
+	}
+	if subject == subjectEvalEvaluationRunSearch || subject == subjectEvalOptimizationSearch {
+		return "startedAt_desc_id_asc"
+	}
+	if subject == subjectEvalResultsSearch {
+		return "producedAt_desc_id_asc"
 	}
 	return "createdAt_desc_id_asc"
 }
@@ -1095,7 +1519,27 @@ func aiEvalCursorFieldForSubject(subject string) string {
 	if subject == subjectEvalDatasetCandidatesSearch {
 		return "updatedAt"
 	}
+	if subject == subjectEvalEvaluationRunSearch || subject == subjectEvalOptimizationSearch {
+		return "startedAt"
+	}
+	if subject == subjectEvalResultsSearch {
+		return "producedAt"
+	}
 	return "createdAt"
+}
+
+func aiEvalDatasetSearchReturnsItems(input map[string]any) bool {
+	if _, ok := stringInput(input, "datasetId"); ok {
+		return true
+	}
+	if _, ok := stringInput(input, "datasetVersionId"); ok {
+		return true
+	}
+	if _, ok := stringInput(input, "sourceTraceId"); ok {
+		return true
+	}
+	_, hasSynthetic := input["synthetic"].(bool)
+	return hasSynthetic
 }
 
 func aiEvalExperimentSearchReturnsRuns(input map[string]any) bool {
@@ -1116,6 +1560,19 @@ func aiEvalExperimentSearchReturnsDatasetItemRuns(input map[string]any) bool {
 	return ok && value
 }
 
+func aiEvalEvaluationRunSearchReturnsItemRuns(input map[string]any) bool {
+	value, ok := input["itemRuns"].(bool)
+	if ok && value {
+		return true
+	}
+	for _, key := range []string{"evaluationRunId", "datasetItemId", "datasetItemRevisionId"} {
+		if _, ok := stringInput(input, key); ok {
+			return true
+		}
+	}
+	return false
+}
+
 func aiEvalProjectionForSubject(subject string, input map[string]any) string {
 	if subject == subjectEvalDatasetSearch {
 		if _, ok := stringInput(input, "datasetId"); !ok {
@@ -1123,6 +1580,72 @@ func aiEvalProjectionForSubject(subject string, input map[string]any) string {
 		}
 	}
 	return "*, record::id(id) AS recordId"
+}
+
+func validateAiEvalQueryInput(subject string, input map[string]any) error {
+	if value, ok := stringInput(input, "split"); ok && !stringSetContains([]string{"training", "validation", "test"}, value) {
+		return validationError("split is unsupported")
+	}
+	if value, ok := stringInput(input, "curationStatus"); ok && !stringSetContains([]string{"draft", "needs_expected", "needs_review", "ready", "rejected"}, value) {
+		return validationError("curationStatus is unsupported")
+	}
+	if value, ok := stringInput(input, "status"); ok {
+		switch subject {
+		case subjectEvalDatasetCandidatesSearch:
+			if !stringSetContains([]string{"suggested", "ready", "committed", "dismissed", "failed"}, value) {
+				return validationError("status is unsupported")
+			}
+		case subjectEvalEvaluationRunSearch, subjectEvalOptimizationSearch:
+			if !stringSetContains([]string{"queued", "running", "pausing", "paused", "cancelling", "cancelled", "completed", "failed"}, value) {
+				return validationError("status is unsupported")
+			}
+		}
+	}
+	if value, ok := stringInput(input, "evaluationFamily"); ok && !stringSetContains([]string{"classification", "extraction", "freeform_answer", "tool_use", "agent_loop", "workflow", "skill"}, value) {
+		return validationError("evaluationFamily is unsupported")
+	}
+	if value, ok := stringInput(input, "scope"); ok && !stringSetContains([]string{"item_run", "evaluation_run", "comparison", "optimization_run"}, value) {
+		return validationError("scope is unsupported")
+	}
+	for _, required := range requiredAiEvalQueryInputs(subject) {
+		if _, ok := stringInput(input, required); !ok {
+			return validationError(required + " is required")
+		}
+	}
+	if subject == subjectEvalResultsSearch {
+		if _, ok := stringInput(input, "evaluationRunId"); !ok {
+			if _, legacyOK := stringInput(input, "experimentRunId"); !legacyOK {
+				return validationError("evaluationRunId is required")
+			}
+		}
+	}
+	return nil
+}
+
+func requiredAiEvalQueryInputs(subject string) []string {
+	switch subject {
+	case subjectEvalDatasetVersionGet:
+		return []string{"datasetVersionId"}
+	case subjectEvalEvaluationRunGet:
+		return []string{"evaluationRunId"}
+	case subjectEvalTargetSnapshotGet:
+		return []string{"targetSnapshotId"}
+	case subjectEvalTargetDiff:
+		return []string{"baselineSnapshotId", "candidateSnapshotId"}
+	case subjectEvalOptimizationGet:
+		return []string{"optimizationRunId"}
+	default:
+		return nil
+	}
+}
+
+func stringSetContains(allowed []string, value string) bool {
+	for _, item := range allowed {
+		if item == value {
+			return true
+		}
+	}
+	return false
 }
 
 func aiEvalLimit(input map[string]any) (int, error) {
@@ -1188,6 +1711,10 @@ func encodeAiEvalCursor(sortValue string, row map[string]any) (string, error) {
 	field := "createdAt"
 	if sortValue == "updatedAt_desc_id_asc" {
 		field = "updatedAt"
+	} else if sortValue == "startedAt_desc_id_asc" {
+		field = "startedAt"
+	} else if sortValue == "producedAt_desc_id_asc" {
+		field = "producedAt"
 	}
 	cursor := aiEvalCursor{
 		Sort:      sortValue,
@@ -1228,6 +1755,25 @@ func addBoolFilter(conditions *[]string, params map[string]any, input map[string
 		return
 	}
 	*conditions = append(*conditions, field+" = $"+inputKey)
+	params[inputKey] = value
+}
+
+func addPositiveCountFilter(conditions *[]string, params map[string]any, input map[string]any, inputKey string, field string) {
+	value, ok := stringInput(input, inputKey)
+	if !ok {
+		return
+	}
+	paramKey := inputKey + "CountKey"
+	*conditions = append(*conditions, field+"[$"+paramKey+"] > 0")
+	params[paramKey] = value
+}
+
+func addArrayContainsFilter(conditions *[]string, params map[string]any, input map[string]any, inputKey string, field string) {
+	value, ok := stringInput(input, inputKey)
+	if !ok {
+		return
+	}
+	*conditions = append(*conditions, field+" CONTAINS $"+inputKey)
 	params[inputKey] = value
 }
 
@@ -1381,6 +1927,72 @@ func defaultAny(value any, fallback any) any {
 		return fallback
 	}
 	return value
+}
+
+func mapDefault(value any) map[string]any {
+	values, ok := value.(map[string]any)
+	if !ok || values == nil {
+		return map[string]any{}
+	}
+	return values
+}
+
+func arrayDefault(value any) []any {
+	switch typed := value.(type) {
+	case []any:
+		if typed == nil {
+			return []any{}
+		}
+		return typed
+	case []map[string]any:
+		values := make([]any, 0, len(typed))
+		for _, item := range typed {
+			values = append(values, item)
+		}
+		return values
+	case []string:
+		values := make([]any, 0, len(typed))
+		for _, item := range typed {
+			values = append(values, item)
+		}
+		return values
+	default:
+		return []any{}
+	}
+}
+
+func enumDefault(input map[string]any, key string, fallback string) string {
+	return aiEvalStringValue(input, key, fallback)
+}
+
+func firstString(input map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := stringInput(input, key); ok {
+			return value
+		}
+	}
+	return ""
+}
+
+func stringOrJSONSummary(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case map[string]any:
+		if notes, ok := stringInput(typed, "notes"); ok {
+			return notes
+		}
+		if outcome, ok := stringInput(typed, "outcome"); ok {
+			return outcome
+		}
+		data, err := json.Marshal(typed)
+		if err == nil {
+			return string(data)
+		}
+		return ""
+	default:
+		return ""
+	}
 }
 
 func stringsFromAny(value any) []string {

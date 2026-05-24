@@ -10,14 +10,14 @@ tickets:
   TICKET-202:
     title: Storage-write AI Eval v2 persistence
     wave: 2
-    status: ready
+    status: done
     file: plans/ai-eval-v2-migration/wave_02_parallel_services/tickets/TICKET-202-storage-write-v2-persistence.md
     depends_on: [TICKET-201]
     blocked_by: []
   TICKET-203:
     title: Storage-read AI Eval v2 query semantics
     wave: 2
-    status: ready
+    status: done
     file: plans/ai-eval-v2-migration/wave_02_parallel_services/tickets/TICKET-203-storage-read-v2-query-semantics.md
     depends_on: [TICKET-201]
     blocked_by: []

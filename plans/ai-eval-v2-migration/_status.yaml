@@ -23,21 +23,29 @@ tickets:
       - git diff --check
     next: TICKET-202 and TICKET-203 may start
   TICKET-202:
-    status: ready
+    status: done
     wave: wave_02_parallel_services
     depends_on: [TICKET-201]
     blocked_by: []
     owner: storage-write-agent
-    evidence: []
-    next: implement
+    evidence:
+      - PATH="/opt/homebrew/bin:/usr/local/go/bin:$HOME/.bun/bin:$PATH" go test -tags surrealdb ./core/storage-write/...
+      - PATH="$HOME/.bun/bin:$PATH" bun run contracts:check
+      - PATH="$HOME/.bun/bin:$PATH" bun run typecheck
+      - git diff --check -- core/storage-write
+    next: TICKET-204 may use storage-write v2 persistence
   TICKET-203:
-    status: ready
+    status: done
     wave: wave_02_parallel_services
     depends_on: [TICKET-201]
     blocked_by: []
     owner: storage-read-agent
-    evidence: []
-    next: implement
+    evidence:
+      - PATH="/opt/homebrew/bin:/usr/local/go/bin:$HOME/.bun/bin:$PATH" go test -tags surrealdb ./core/storage-read/...
+      - PATH="$HOME/.bun/bin:$PATH" bun run contracts:check
+      - PATH="$HOME/.bun/bin:$PATH" bun run typecheck
+      - git diff --check -- core/storage-read
+    next: TICKET-204 and TICKET-205 may use storage-read v2 query semantics
   TICKET-204:
     status: ready
     wave: wave_03_runner_frontend

@@ -16,10 +16,19 @@ const (
 	SubjectEvalAgentRunsSearch            = "eval.agent_runs.search"
 	SubjectEvalDatasetSearch              = "eval.dataset.search"
 	SubjectEvalDatasetCandidatesSearch    = "eval.dataset.candidates.search"
+	SubjectEvalDatasetVersionGet          = "eval.dataset.version.get"
 	SubjectEvalDatasetHealth              = "eval.dataset.health"
 	SubjectEvalScorerSearch               = "eval.scorer.search"
 	SubjectEvalExperimentSearch           = "eval.experiment.search"
+	SubjectEvalEvaluationSearch           = "eval.evaluation.search"
+	SubjectEvalEvaluationRunSearch        = "eval.evaluation.run.search"
+	SubjectEvalEvaluationRunGet           = "eval.evaluation.run.get"
 	SubjectEvalResultsSearch              = "eval.results.search"
+	SubjectEvalEvaluationComparisonSearch = "eval.evaluation.comparison.search"
+	SubjectEvalTargetSnapshotGet          = "eval.target.snapshot.get"
+	SubjectEvalTargetDiff                 = "eval.target.diff"
+	SubjectEvalOptimizationSearch         = "eval.optimization.search"
+	SubjectEvalOptimizationGet            = "eval.optimization.get"
 	SubjectEvalManifestResolve            = "eval.manifest.resolve"
 	SubjectEvalOnlinePolicyMatchesResolve = "eval.online.policy_matches.resolve"
 	SubjectEvalQualityOverview            = "eval.quality.overview"
@@ -226,10 +235,19 @@ func aiEvalReadSubjectHandlers(store AiEvalQueryStore, registry *EvalLiveRegistr
 		SubjectEvalDatasetSearch:              queryHandler,
 		SubjectEvalDatasetCandidatesSearch:    handleDatasetCandidatesSearch(store, logger, timeout),
 		SubjectEvalDatasetTransferGet:         queryHandler,
+		SubjectEvalDatasetVersionGet:          queryHandler,
 		SubjectEvalDatasetHealth:              queryHandler,
 		SubjectEvalScorerSearch:               queryHandler,
 		SubjectEvalExperimentSearch:           queryHandler,
+		SubjectEvalEvaluationSearch:           queryHandler,
+		SubjectEvalEvaluationRunSearch:        queryHandler,
+		SubjectEvalEvaluationRunGet:           queryHandler,
 		SubjectEvalResultsSearch:              queryHandler,
+		SubjectEvalEvaluationComparisonSearch: queryHandler,
+		SubjectEvalTargetSnapshotGet:          queryHandler,
+		SubjectEvalTargetDiff:                 queryHandler,
+		SubjectEvalOptimizationSearch:         queryHandler,
+		SubjectEvalOptimizationGet:            queryHandler,
 		SubjectEvalQualityOverview:            queryHandler,
 		SubjectEvalDatasetExportStart:         handleAiEvalMutationQuery(store, logger, timeout),
 		SubjectEvalManifestResolve:            handleExperimentManifestResolve(store, logger, timeout),
@@ -276,7 +294,18 @@ func handleAiEvalQuery(store AiEvalQueryStore, logger *slog.Logger, timeout time
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var request contracts.EvalQueryRequest
-		if err := json.Unmarshal(msg.Data(), &request); err != nil {
+		var raw map[string]any
+		if err := json.Unmarshal(msg.Data(), &raw); err != nil {
+			response := contracts.EvalQueryResponse{
+				RequestID: "",
+				OK:        false,
+				Error:     ptr(bridgeErrorFromError(validationError("invalid AI eval query request JSON"))),
+			}
+			respond(msg, response)
+			logHandlerCompletion(logger, msg.Subject(), response.RequestID, false, start, response.Error)
+			return
+		}
+		if data, err := json.Marshal(raw); err != nil || json.Unmarshal(data, &request) != nil {
 			response := contracts.EvalQueryResponse{
 				RequestID: "",
 				OK:        false,
@@ -288,7 +317,8 @@ func handleAiEvalQuery(store AiEvalQueryStore, logger *slog.Logger, timeout time
 		}
 		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
-		data, err := store.QueryAiEval(ctx, msg.Subject(), request.Input, request.AuthContext)
+		input := aiEvalQueryInputFromRequest(raw, request.Input)
+		data, err := store.QueryAiEval(ctx, msg.Subject(), input, request.AuthContext)
 		if err != nil {
 			response := contracts.EvalQueryResponse{RequestID: request.RequestID, OK: false, Error: ptr(bridgeErrorFromError(err))}
 			respond(msg, response)
@@ -299,6 +329,24 @@ func handleAiEvalQuery(store AiEvalQueryStore, logger *slog.Logger, timeout time
 		respond(msg, response)
 		logHandlerCompletion(logger, msg.Subject(), request.RequestID, true, start, nil)
 	}
+}
+
+func aiEvalQueryInputFromRequest(raw map[string]any, nested map[string]any) map[string]any {
+	input := map[string]any{}
+	for key, value := range nested {
+		input[key] = value
+	}
+	for key, value := range raw {
+		switch key {
+		case "requestId", "issuedAt", "authContext", "traceContext", "input":
+			continue
+		default:
+			if _, exists := input[key]; !exists {
+				input[key] = value
+			}
+		}
+	}
+	return input
 }
 
 func handleDatasetCandidatesSearch(store AiEvalQueryStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {

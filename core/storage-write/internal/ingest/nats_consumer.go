@@ -47,9 +47,12 @@ func RegisterEvalMutationResponders(nc interface {
 		EvalDatasetCandidatesCommitSubject,
 		EvalDatasetImportPrepareSubject,
 		EvalDatasetImportCommitSubject,
-		EvalScorerCreateSubject,
-		EvalExperimentCreateSubject,
+		EvalEvaluationCreateSubject,
+		EvalEvaluationUpdateSubject,
+		EvalEvaluationComparisonCreateSubject,
 		EvalResultsPersistSubject,
+		EvalTargetSnapshotCreateSubject,
+		EvalTargetPromoteSubject,
 		AnnotationItemUpdateSubject,
 	} {
 		subject := subject

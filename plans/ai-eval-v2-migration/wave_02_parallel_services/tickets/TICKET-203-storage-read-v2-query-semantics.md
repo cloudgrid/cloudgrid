@@ -2,7 +2,7 @@
 id: TICKET-203
 title: Storage-read AI Eval v2 query semantics
 wave: 2
-status: ready
+status: done
 parallel_group: ai_eval_v2_services_parallel
 depends_on: [TICKET-201]
 blocked_by: []
@@ -111,6 +111,14 @@ Default:
 ```sh
 bun run contracts:check
 go test -tags surrealdb ./core/storage-read/...
+```
+
+Completed evidence:
+
+```sh
+PATH="/opt/homebrew/bin:/usr/local/go/bin:$HOME/.bun/bin:$PATH" go test -tags surrealdb ./core/storage-read/...
+PATH="$HOME/.bun/bin:$PATH" bun run contracts:check
+PATH="$HOME/.bun/bin:$PATH" bun run typecheck
 ```
 
 ## Non-goals
