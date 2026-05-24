@@ -1,6 +1,8 @@
 import type { CloudGridErrorId } from "@cloudgrid/runtime";
 import type { ModelProvider } from "@purista/harness";
 import { anthropic } from "@purista/harness-anthropic";
+import { azureFoundry } from "@purista/harness-azure-foundry";
+import { bedrock } from "@purista/harness-bedrock";
 import { openai } from "@purista/harness-openai";
 
 type AiChatCapability = "text_stream" | "tool_use" | "object" | "embeddings" | "rerank";
@@ -433,6 +435,16 @@ export const AI_CHAT_PROVIDER_ADAPTERS = {
     supportsBaseUrl: false,
     factory: anthropic,
   },
+  azure_foundry: {
+    packageName: "@purista/harness-azure-foundry",
+    supportsBaseUrl: true,
+    factory: azureFoundry,
+  },
+  aws_bedrock: {
+    packageName: "@purista/harness-bedrock",
+    supportsBaseUrl: false,
+    factory: bedrock,
+  },
 } as const;
 
 export type AiChatCatalogSnapshot = {
@@ -457,6 +469,7 @@ export function createAiChatProviderAdapter(options: {
   providerKind: string;
   apiKey: string;
   baseUrl?: string | null;
+  region?: string | null;
 }): ModelProvider {
   switch (options.providerKind as AiChatProviderKind) {
     case "openai":
@@ -471,6 +484,21 @@ export function createAiChatProviderAdapter(options: {
       });
     case "anthropic":
       return AI_CHAT_PROVIDER_ADAPTERS.anthropic.factory({ apiKey: options.apiKey });
+    case "azure_foundry":
+      if (!options.baseUrl) {
+        throw new Error("Azure AI Foundry providers require baseUrl");
+      }
+      return AI_CHAT_PROVIDER_ADAPTERS.azure_foundry.factory({
+        endpoint: options.baseUrl,
+        apiKey: options.apiKey,
+      });
+    case "aws_bedrock":
+      if (!options.region) {
+        throw new Error("AWS Bedrock providers require region");
+      }
+      return AI_CHAT_PROVIDER_ADAPTERS.aws_bedrock.factory({
+        region: options.region,
+      });
     default:
       throw new Error(
         `Unsupported AI Chat provider kind for installed PURISTA harness adapters: ${options.providerKind}`,

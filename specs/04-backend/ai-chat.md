@@ -73,9 +73,10 @@ AI Chat provider execution must use PURISTA harness model provider adapters
 through the harness model boundary. The BFF must not implement provider-specific
 HTTP clients, streaming parsers, retry semantics, or credential handling outside
 that boundary. The bundled AI Chat runtime supports `openai`,
-`openai_compatible` through the OpenAI-compatible PURISTA adapter base URL, and
-`anthropic`. Provider kinds without an installed PURISTA harness adapter must
-fail setup with a bounded provider error until the adapter is added.
+`openai_compatible` through the OpenAI-compatible PURISTA adapter base URL,
+`anthropic`, `azure_foundry`, and `aws_bedrock`. Provider kinds without an
+installed PURISTA harness adapter must fail setup with a bounded provider error
+until the adapter is added.
 
 ## Public Runtime Surface
 

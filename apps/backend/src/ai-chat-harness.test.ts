@@ -153,7 +153,7 @@ describe("AI Chat provider harness", () => {
     ]);
   });
 
-  test("fails unsupported provider kinds through the bounded provider error path", async () => {
+  test("fails provider adapter configuration errors through the bounded provider error path", async () => {
     const harness = createAiChatHarness("provider");
 
     if (!harness) {
@@ -164,9 +164,9 @@ describe("AI Chat provider harness", () => {
     for await (const event of harness.streamChat(
       providerRequest({
         provider: {
-          providerKind: "azure_foundry",
-          model: "deployment-a",
-          baseUrl: "https://azure.example.test",
+          providerKind: "aws_bedrock",
+          model: "anthropic.claude-3-5-sonnet-20240620-v1:0",
+          baseUrl: null,
           parameters: { extras: {} },
         },
       }),
@@ -177,8 +177,7 @@ describe("AI Chat provider harness", () => {
     expect(events).toEqual([
       {
         kind: "provider_error",
-        message:
-          "Unsupported AI Chat provider kind for installed PURISTA harness adapters: azure_foundry",
+        message: "AWS Bedrock providers require region",
         retryable: false,
       },
     ]);

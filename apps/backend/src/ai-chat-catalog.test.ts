@@ -3,6 +3,7 @@ import {
   AI_CHAT_ACTIONS,
   AI_CHAT_BUDGETS,
   AI_CHAT_MODEL_ALIASES,
+  AI_CHAT_PROVIDER_ADAPTERS,
   AI_CHAT_RENDERERS,
   AI_CHAT_SKILLS,
   AI_CHAT_TOOLS,
@@ -78,6 +79,20 @@ describe("AI Chat runtime catalog", () => {
       renderSpecMaxBytes: 524_288,
       sandboxScriptWallClockMs: 15_000,
     });
+  });
+
+  test("registers every supported provider settings kind with an installed harness adapter", () => {
+    expect(Object.keys(AI_CHAT_PROVIDER_ADAPTERS).sort()).toEqual([
+      "anthropic",
+      "aws_bedrock",
+      "azure_foundry",
+      "openai",
+      "openai_compatible",
+    ]);
+    expect(AI_CHAT_PROVIDER_ADAPTERS.azure_foundry.packageName).toBe(
+      "@purista/harness-azure-foundry",
+    );
+    expect(AI_CHAT_PROVIDER_ADAPTERS.aws_bedrock.packageName).toBe("@purista/harness-bedrock");
   });
 
   test("tool status payloads are derived from safe catalog labels only", () => {

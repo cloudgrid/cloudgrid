@@ -444,10 +444,12 @@ function conversationMessagesForAgent(request: AiChatHarnessRequest) {
 }
 
 function providerFromAiChatSettings(request: AiChatHarnessRequest): ModelProvider {
+  const extras = objectExtras(request.provider.parameters.extras);
   return createAiChatProviderAdapter({
     providerKind: request.provider.providerKind,
     apiKey: request.credential.value,
     ...(request.provider.baseUrl !== undefined ? { baseUrl: request.provider.baseUrl } : {}),
+    ...(typeof extras.region === "string" ? { region: extras.region } : {}),
   });
 }
 
@@ -457,7 +459,9 @@ function isRetryableHarnessError(error: unknown) {
   }
   return !(
     error.message.startsWith("Unsupported AI Chat provider kind") ||
-    error.message === "OpenAI-compatible AI Chat providers require baseUrl"
+    error.message === "OpenAI-compatible AI Chat providers require baseUrl" ||
+    error.message === "Azure AI Foundry providers require baseUrl" ||
+    error.message === "AWS Bedrock providers require region"
   );
 }
 
