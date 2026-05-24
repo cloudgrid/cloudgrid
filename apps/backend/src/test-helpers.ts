@@ -11,9 +11,9 @@ import type {
   AlertSilence,
   ApproveAiChatActionInput,
   CompanyAiProviderSettings,
+  CreateAiChatConversationInput,
   CreateAlertRuleInput,
   CreateAlertSilenceInput,
-  CreateAiChatConversationInput,
   CreateIngestCredentialInput,
   CreateProjectInput,
   Dataset,
@@ -29,10 +29,10 @@ import type {
   LiveTraceEvent,
   LiveTraceInput,
   LogSearchInput,
+  OptimizationRun,
   Organization,
   OrganizationInvitation,
   OrganizationMember,
-  OptimizationRun,
   Project,
   ProjectAiProviderSettings,
   ProjectAiSettings,
@@ -47,8 +47,8 @@ import type {
   TraceDetail,
   TraceDetailInput,
   TraceSearchInput,
-  UpdateCompanyAiProviderSettingsInput,
   UpdateAlertRuleInput,
+  UpdateCompanyAiProviderSettingsInput,
   UpdateOrganizationMemberInput,
   UpdateProjectAiProviderSettingsInput,
   UpdateProjectAiSettingsInput,
@@ -498,7 +498,13 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
     async createDataset() {
       return datasetShape();
     },
+    async updateDatasetSettings() {
+      return datasetShape();
+    },
     async appendDatasetItems() {
+      return datasetShape();
+    },
+    async updateDatasetItems() {
       return datasetShape();
     },
     async prepareDatasetImport() {

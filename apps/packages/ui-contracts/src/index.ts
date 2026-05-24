@@ -998,6 +998,13 @@ export interface DatasetSettingsInput {
   retentionProfile: RetentionProfile;
 }
 
+export interface UpdateDatasetSettingsInput {
+  datasetId: string;
+  expectedDatasetVersionId: string;
+  settings: DatasetSettingsInput;
+  idempotencyKey: string;
+}
+
 export interface DatasetIntakePolicyInput {
   manualDefaultStatus?: DatasetCurationStatus | null;
   importDefaultStatus?: DatasetCurationStatus | null;

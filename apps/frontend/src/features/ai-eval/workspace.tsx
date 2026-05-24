@@ -8,14 +8,18 @@ import type {
   DatasetItem,
   DatasetSplit,
   DatasetValueType,
+  EvaluationDatasetVersionPolicy,
   EvaluationDefinition,
   EvaluationRun,
+  EvaluationTargetKind,
   JSONValue,
   MetricSettingInput,
+  RetentionProfile,
   StartDatasetExportInput,
   StartEvaluationRunInput,
   StartOptimizationRunInput,
   UpdateDatasetItemsInput,
+  UpdateDatasetSettingsInput,
 } from "@cloudgrid/ui-contracts";
 import {
   buildDatasetSearchInput,
@@ -41,8 +45,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { EmptyState, ErrorPanel, LoadingRows } from "../../components/query-state";
 import { JsonViewer } from "../../components/json-viewer";
+import { EmptyState, ErrorPanel, LoadingRows } from "../../components/query-state";
 import { RouteBreadcrumb } from "../../components/route-breadcrumb";
 import { SearchInput } from "../../components/search-input";
 import { Badge } from "../../components/ui/badge";
@@ -1348,33 +1352,46 @@ function CreateEvaluationDialog({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [datasetId, setDatasetId] = useState(firstDataset?.id ?? "");
+  const [datasetVersionPolicy, setDatasetVersionPolicy] =
+    useState<EvaluationDatasetVersionPolicy>("latest_ready");
+  const [targetKind, setTargetKind] =
+    useState<Extract<EvaluationTargetKind, "prompt" | "external_adapter">>("prompt");
   const [targetName, setTargetName] = useState("Prompt candidate");
   const [targetRef, setTargetRef] = useState("prompt://current");
+  const [targetSnapshotId, setTargetSnapshotId] = useState("");
   const [metricId, setMetricId] = useState("extraction.exact_json_match");
   const [split, setSplit] = useState<DatasetSplit>("validation");
+  const [retentionProfile, setRetentionProfile] = useState<RetentionProfile>("balanced");
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (!datasetId && firstDataset?.id) {
       setDatasetId(firstDataset.id);
     }
   }, [datasetId, firstDataset?.id]);
+  const selectedDataset = datasets.find((dataset) => dataset.id === datasetId);
   const mutation = useMutation({
     mutationFn: () => {
+      const trimmedTargetRef = targetRef.trim();
+      const trimmedTargetSnapshotId = targetSnapshotId.trim();
       const input: CreateEvaluationDefinitionInput = {
         projectId,
         name: name.trim(),
         datasetId,
-        datasetVersionPolicy: "latest_ready",
+        datasetVersionPolicy,
+        ...(datasetVersionPolicy === "pinned"
+          ? { pinnedDatasetVersionId: selectedDataset?.currentVersionId ?? null }
+          : {}),
         splitSelector: { splits: [split], curationStatuses: ["ready"] },
         targetRef: {
-          kind: "prompt",
-          targetRef: targetRef.trim(),
+          kind: targetKind,
+          ...(trimmedTargetRef ? { targetRef: trimmedTargetRef } : {}),
+          ...(trimmedTargetSnapshotId ? { targetSnapshotId: trimmedTargetSnapshotId } : {}),
           displayName: targetName.trim(),
           metadata: {},
         },
         metricSettings: [{ metricId: metricId.trim() || "extraction.exact_json_match" }],
         runPolicy: { maxParallelRequests: 4 },
-        retentionProfile: "balanced",
+        retentionProfile,
         idempotencyKey: `evaluation-${Date.now()}`,
       };
       return telemetryClient.createEvaluationDefinition(input);
@@ -1419,9 +1436,43 @@ function CreateEvaluationDialog({
               </SelectContent>
             </Select>
           </Field>
+          <Field>
+            <FieldLabel>Dataset version policy</FieldLabel>
+            <Select
+              onValueChange={(value) =>
+                setDatasetVersionPolicy(value as EvaluationDatasetVersionPolicy)
+              }
+              value={datasetVersionPolicy}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select version policy" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="latest_ready">Latest ready</SelectItem>
+                <SelectItem value="pinned">Pinned current version</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
           <SplitField onChange={setSplit} value={split} />
           <Field>
-            <FieldLabel>Target</FieldLabel>
+            <FieldLabel>Target kind</FieldLabel>
+            <Select
+              onValueChange={(value) =>
+                setTargetKind(value as Extract<EvaluationTargetKind, "prompt" | "external_adapter">)
+              }
+              value={targetKind}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select target kind" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="prompt">Prompt</SelectItem>
+                <SelectItem value="external_adapter">External adapter</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel>Target display name</FieldLabel>
             <Input onChange={(event) => setTargetName(event.target.value)} value={targetName} />
           </Field>
           <Field>
@@ -1429,8 +1480,33 @@ function CreateEvaluationDialog({
             <Input onChange={(event) => setTargetRef(event.target.value)} value={targetRef} />
           </Field>
           <Field>
+            <FieldLabel>Target snapshot ID</FieldLabel>
+            <Input
+              onChange={(event) => setTargetSnapshotId(event.target.value)}
+              placeholder="Optional"
+              value={targetSnapshotId}
+            />
+          </Field>
+          <Field>
             <FieldLabel>Metric</FieldLabel>
             <Input onChange={(event) => setMetricId(event.target.value)} value={metricId} />
+          </Field>
+          <Field>
+            <FieldLabel>Retention profile</FieldLabel>
+            <Select
+              onValueChange={(value) => setRetentionProfile(value as RetentionProfile)}
+              value={retentionProfile}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select retention profile" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="balanced">Balanced</SelectItem>
+                <SelectItem value="fast_iteration">Fast iteration</SelectItem>
+                <SelectItem value="audit_friendly">Audit friendly</SelectItem>
+                <SelectItem value="minimal_storage">Minimal storage</SelectItem>
+              </SelectContent>
+            </Select>
           </Field>
           {error || mutation.error ? (
             <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -1451,6 +1527,14 @@ function CreateEvaluationDialog({
               setError(null);
               if (!name.trim() || !datasetId || !targetName.trim()) {
                 setError("Name, dataset, and target are required.");
+                return;
+              }
+              if (!targetRef.trim() && !targetSnapshotId.trim()) {
+                setError("Target ref or target snapshot ID is required.");
+                return;
+              }
+              if (datasetVersionPolicy === "pinned" && !selectedDataset?.currentVersionId) {
+                setError("Selected dataset does not have a current version to pin.");
                 return;
               }
               void mutation.mutateAsync();
@@ -2002,6 +2086,100 @@ function DatasetExportDialog({ dataset }: { dataset: Dataset }) {
 }
 
 function DatasetSettingsDialog({ dataset }: { dataset: Dataset }) {
+  const telemetryClient = useTelemetryClient();
+  const queryClient = useQueryClient();
+  const settings = dataset.settings;
+  const [inputType, setInputType] = useState<DatasetValueType>(settings.inputType);
+  const [expectedType, setExpectedType] = useState<DatasetValueType>(settings.expectedType);
+  const [inputSchema, setInputSchema] = useState(
+    settings.inputJsonSchema ? JSON.stringify(settings.inputJsonSchema, null, 2) : "",
+  );
+  const [expectedSchema, setExpectedSchema] = useState(
+    settings.expectedJsonSchema ? JSON.stringify(settings.expectedJsonSchema, null, 2) : "",
+  );
+  const [defaultSplit, setDefaultSplit] = useState<DatasetSplit>(settings.defaultSplit);
+  const [manualDefaultStatus, setManualDefaultStatus] = useState<DatasetCurationStatus>(
+    settings.intakePolicy.manualDefaultStatus,
+  );
+  const [importDefaultStatus, setImportDefaultStatus] = useState<DatasetCurationStatus>(
+    settings.intakePolicy.importDefaultStatus,
+  );
+  const [traceDefaultStatus, setTraceDefaultStatus] = useState<DatasetCurationStatus>(
+    settings.intakePolicy.traceDefaultStatus,
+  );
+  const [inputPath, setInputPath] = useState(settings.traceExtractionSettings?.inputPath ?? "");
+  const [expectedPath, setExpectedPath] = useState(
+    settings.traceExtractionSettings?.expectedPath ?? "",
+  );
+  const [observedOutputPath, setObservedOutputPath] = useState(
+    settings.traceExtractionSettings?.observedOutputPath ?? "",
+  );
+  const [anonymizationMode, setAnonymizationMode] = useState(
+    settings.anonymizationPolicy?.mode ?? "off",
+  );
+  const [retentionProfile, setRetentionProfile] = useState<RetentionProfile>(
+    settings.retentionProfile,
+  );
+  const [metricId, setMetricId] = useState(settings.defaultMetricSettings[0]?.metricId ?? "");
+  const mutation = useMutation({
+    mutationFn: () => {
+      const parsedInputSchema =
+        inputType === "json" && inputSchema.trim()
+          ? parseRawValue(inputSchema, "json")
+          : { value: null as JSONValue, error: null as string | null };
+      const parsedExpectedSchema =
+        expectedType === "json" && expectedSchema.trim()
+          ? parseRawValue(expectedSchema, "json")
+          : { value: null as JSONValue, error: null as string | null };
+      if (parsedInputSchema.error) {
+        throw new Error(`Input JSON schema is invalid: ${parsedInputSchema.error}`);
+      }
+      if (parsedExpectedSchema.error) {
+        throw new Error(`Expected JSON schema is invalid: ${parsedExpectedSchema.error}`);
+      }
+      const input: UpdateDatasetSettingsInput = {
+        datasetId: dataset.id,
+        expectedDatasetVersionId: datasetCurrentVersionId(dataset),
+        settings: {
+          evaluationFamily: settings.evaluationFamily,
+          inputType,
+          expectedType,
+          inputJsonSchema: inputType === "json" ? parsedInputSchema.value : null,
+          expectedJsonSchema: expectedType === "json" ? parsedExpectedSchema.value : null,
+          defaultSplit,
+          intakePolicy: {
+            manualDefaultStatus,
+            importDefaultStatus,
+            traceDefaultStatus,
+          },
+          traceExtractionSettings: inputPath.trim()
+            ? {
+                inputPath: inputPath.trim(),
+                expectedPath: expectedPath.trim() || null,
+                observedOutputPath: observedOutputPath.trim() || null,
+                metadataPaths: settings.traceExtractionSettings?.metadataPaths ?? [],
+              }
+            : null,
+          anonymizationPolicy: {
+            mode: anonymizationMode,
+            policyId: settings.anonymizationPolicy?.policyId ?? null,
+            policyVersion: settings.anonymizationPolicy?.policyVersion ?? null,
+            consistencyScope: settings.anonymizationPolicy?.consistencyScope ?? "dataset",
+            blockedEntityTypes: settings.anonymizationPolicy?.blockedEntityTypes ?? [],
+          },
+          defaultMetricSettings: metricId.trim()
+            ? [{ metricId: metricId.trim(), options: {} }]
+            : settings.defaultMetricSettings,
+          retentionProfile,
+        },
+        idempotencyKey: `dataset-settings-${dataset.id}-${Date.now()}`,
+      };
+      return telemetryClient.updateDatasetSettings(input);
+    },
+    onSuccess() {
+      void queryClient.invalidateQueries({ queryKey: ["Datasets"] });
+    },
+  });
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -2017,32 +2195,120 @@ function DatasetSettingsDialog({ dataset }: { dataset: Dataset }) {
             Dataset-level shape, curation, extraction, anonymization, and retention.
           </DialogDescription>
         </DialogHeader>
-        <dl className="grid gap-3 text-sm">
-          <div>
-            <dt className="text-muted-foreground">Input type</dt>
-            <dd>{String(datasetSetting(dataset, "inputType") ?? "json")}</dd>
+        <FieldGroup>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ValueTypeField label="Input type" onChange={setInputType} value={inputType} />
+            <ValueTypeField label="Expected type" onChange={setExpectedType} value={expectedType} />
           </div>
-          <div>
-            <dt className="text-muted-foreground">Expected output type</dt>
-            <dd>{String(datasetSetting(dataset, "expectedType") ?? "json")}</dd>
+          <Field>
+            <FieldLabel>Input JSON schema</FieldLabel>
+            <Textarea
+              onChange={(event) => setInputSchema(event.target.value)}
+              value={inputSchema}
+            />
+          </Field>
+          <Field>
+            <FieldLabel>Expected JSON schema</FieldLabel>
+            <Textarea
+              onChange={(event) => setExpectedSchema(event.target.value)}
+              value={expectedSchema}
+            />
+          </Field>
+          <SplitField label="Default split" onChange={setDefaultSplit} value={defaultSplit} />
+          <div className="grid gap-3 sm:grid-cols-3">
+            <CurationStatusField
+              label="Manual rows"
+              onChange={setManualDefaultStatus}
+              value={manualDefaultStatus}
+            />
+            <CurationStatusField
+              label="Imported rows"
+              onChange={setImportDefaultStatus}
+              value={importDefaultStatus}
+            />
+            <CurationStatusField
+              label="Trace rows"
+              onChange={setTraceDefaultStatus}
+              value={traceDefaultStatus}
+            />
           </div>
-          <div>
-            <dt className="text-muted-foreground">Default split</dt>
-            <dd>{String(datasetSetting(dataset, "defaultSplit") ?? "training")}</dd>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field>
+              <FieldLabel>Trace input path</FieldLabel>
+              <Input onChange={(event) => setInputPath(event.target.value)} value={inputPath} />
+            </Field>
+            <Field>
+              <FieldLabel>Trace expected path</FieldLabel>
+              <Input
+                onChange={(event) => setExpectedPath(event.target.value)}
+                value={expectedPath}
+              />
+            </Field>
+            <Field>
+              <FieldLabel>Trace observed path</FieldLabel>
+              <Input
+                onChange={(event) => setObservedOutputPath(event.target.value)}
+                value={observedOutputPath}
+              />
+            </Field>
           </div>
-          <div>
-            <dt className="text-muted-foreground">Extraction settings</dt>
-            <dd>{datasetHasExtractionSettings(dataset) ? "configured" : "not configured"}</dd>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field>
+              <FieldLabel>Anonymization</FieldLabel>
+              <Select
+                onValueChange={(value) =>
+                  setAnonymizationMode(value as "off" | "realistic" | "redact")
+                }
+                value={anonymizationMode}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="off">Off</SelectItem>
+                  <SelectItem value="realistic">Realistic</SelectItem>
+                  <SelectItem value="redact">Redact</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Retention</FieldLabel>
+              <Select
+                onValueChange={(value) => setRetentionProfile(value as RetentionProfile)}
+                value={retentionProfile}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="balanced">Balanced</SelectItem>
+                  <SelectItem value="fast_iteration">Fast iteration</SelectItem>
+                  <SelectItem value="audit_friendly">Audit friendly</SelectItem>
+                  <SelectItem value="minimal_storage">Minimal storage</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Default metric</FieldLabel>
+              <Input onChange={(event) => setMetricId(event.target.value)} value={metricId} />
+            </Field>
           </div>
-          <div>
-            <dt className="text-muted-foreground">Anonymization and PII policy</dt>
-            <dd>{jsonPreview(datasetSetting(dataset, "anonymizationPolicy"), 160) || "default"}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Retention</dt>
-            <dd>{String(datasetSetting(dataset, "retentionProfile") ?? "balanced")}</dd>
-          </div>
-        </dl>
+          {mutation.error ? (
+            <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {mutation.error.message}
+            </div>
+          ) : null}
+        </FieldGroup>
+        <DialogFooter>
+          <Button
+            disabled={mutation.isPending}
+            onClick={() => void mutation.mutateAsync()}
+            type="button"
+          >
+            <Settings data-icon="inline-start" />
+            Save settings
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -2116,15 +2382,17 @@ function ValueTypeField({
 }
 
 function SplitField({
+  label = "Split",
   onChange,
   value,
 }: {
+  label?: string;
   onChange: (value: DatasetSplit) => void;
   value: DatasetSplit;
 }) {
   return (
     <Field>
-      <FieldLabel>Split</FieldLabel>
+      <FieldLabel>{label}</FieldLabel>
       <Select onValueChange={(next) => onChange(next as DatasetSplit)} value={value}>
         <SelectTrigger>
           <SelectValue />
@@ -2142,15 +2410,17 @@ function SplitField({
 }
 
 function CurationStatusField({
+  label = "Curation status",
   onChange,
   value,
 }: {
+  label?: string;
   onChange: (value: DatasetCurationStatus) => void;
   value: DatasetCurationStatus;
 }) {
   return (
     <Field>
-      <FieldLabel>Curation status</FieldLabel>
+      <FieldLabel>{label}</FieldLabel>
       <Select onValueChange={(next) => onChange(next as DatasetCurationStatus)} value={value}>
         <SelectTrigger>
           <SelectValue />

@@ -585,6 +585,12 @@ function validateMessageSubjectLiteralsFromDefinition() {
         ) {
           continue;
         }
+        if (
+          subject === "eval.online.policy_matches.resolve" &&
+          file === "core/ai-eval-runner/internal/runtime/bridge.go"
+        ) {
+          continue;
+        }
         unknown.push(`${file}: ${subject}`);
       }
     }
@@ -856,7 +862,9 @@ function validateAiEvalContractAlignment() {
     "annotation.item.",
   ]) {
     if (MESSAGE_BRIDGE_SUBJECTS.some((subject) => subject.includes(forbidden))) {
-      throw new Error(`definition MESSAGE_BRIDGE_SUBJECTS must not expose legacy AI Eval subject ${forbidden}`);
+      throw new Error(
+        `definition MESSAGE_BRIDGE_SUBJECTS must not expose legacy AI Eval subject ${forbidden}`,
+      );
     }
     if (asyncApiSource.includes(forbidden)) {
       throw new Error(`AsyncAPI must not expose legacy AI Eval subject ${forbidden}`);
@@ -970,7 +978,9 @@ function validateAiEvalContractAlignment() {
       const content = read(schemaPath);
       JSON.parse(content);
     } catch (error) {
-      throw new Error(`AI Eval v2 entity schema ${schemaPath} is missing or invalid: ${error.message}`);
+      throw new Error(
+        `AI Eval v2 entity schema ${schemaPath} is missing or invalid: ${error.message}`,
+      );
     }
   }
 

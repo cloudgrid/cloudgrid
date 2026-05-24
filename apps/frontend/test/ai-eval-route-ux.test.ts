@@ -12,7 +12,10 @@ const viewModelSource = readFileSync(
   "utf8",
 );
 const appShellSource = readFileSync(join(import.meta.dir, "../src/routes/app-shell.tsx"), "utf8");
-const tracesRouteSource = readFileSync(join(import.meta.dir, "../src/routes/traces-route.tsx"), "utf8");
+const tracesRouteSource = readFileSync(
+  join(import.meta.dir, "../src/routes/traces-route.tsx"),
+  "utf8",
+);
 
 describe("AI Eval v2 route UX", () => {
   test("keeps route composition thin and avoids route-primary card surfaces", () => {
@@ -100,6 +103,22 @@ describe("AI Eval v2 route UX", () => {
     expect(tracesRouteSource).toContain("TraceToDatasetImportPicker");
     expect(viewModelSource).toContain("compatibleTraceImportDatasets");
     expect(viewModelSource).toContain("datasetHasExtractionSettings");
+  });
+
+  test("exposes v2 evaluation creation controls without contract drift", () => {
+    expect(workspaceSource).toContain('triggerLabel = "New evaluation"');
+    expect(workspaceSource).toContain("Dataset version policy");
+    expect(workspaceSource).toContain("latest_ready");
+    expect(workspaceSource).toContain("pinnedDatasetVersionId");
+    expect(workspaceSource).toContain("Target kind");
+    expect(workspaceSource).toContain("external_adapter");
+    expect(workspaceSource).toContain("Target display name");
+    expect(workspaceSource).toContain("Target ref");
+    expect(workspaceSource).toContain("Target snapshot ID");
+    expect(workspaceSource).toContain("Retention profile");
+    expect(workspaceSource).toContain("fast_iteration");
+    expect(workspaceSource).toContain("audit_friendly");
+    expect(workspaceSource).toContain("minimal_storage");
   });
 
   test("renders run detail, comparison, optimization, and promotion surfaces", () => {

@@ -53,10 +53,10 @@ Frontend must not call legacy `createScorer`, `scorers`, `createExperiment`,
   detail view.
 - Dataset settings are available from dataset detail through a `Dataset
   settings` action. Settings are not hidden in import/export flows. The settings
-  surface edits only configured dataset-level behavior from the domain contract:
-  input value type/schema, expected output value type/schema, default split,
-  curation defaults, extraction settings, anonymization/PII policy, retention,
-  and metric defaults when those fields exist in the GraphQL contract.
+  surface edits configured dataset-level behavior as a full settings replacement
+  guarded by `expectedDatasetVersionId`: input value type/schema, expected
+  output value type/schema, default split, curation defaults, extraction
+  settings, anonymization/PII policy, retention, and metric defaults.
 - Row data uses storage-read cursor pagination.
 - Frontend passes filters and sort options to GraphQL; it does not load all rows
   and filter locally.

@@ -386,6 +386,36 @@ func TestHandleEvalMutationRequestAcceptsV2DatasetAppendVersionId(t *testing.T) 
 	}
 }
 
+func TestHandleEvalMutationRequestAcceptsDatasetSettingsUpdate(t *testing.T) {
+	store := &fakeAIWriteStore{}
+	request := contracts.EvalMutationRequest{
+		BridgeEnvelope: contracts.BridgeEnvelope{RequestID: "req-settings-update", IssuedAt: fixedClock()},
+		Input: map[string]any{
+			"projectId":                "project-1",
+			"datasetId":                "dataset-1",
+			"expectedDatasetVersionId": "dataset-1:version:1",
+			"idempotencyKey":           "settings-update-1",
+			"settings": map[string]any{
+				"evaluationFamily": "classification",
+				"inputType":        "text",
+				"expectedType":     "json",
+				"defaultSplit":     "validation",
+				"intakePolicy":     map[string]any{},
+				"retentionProfile": "balanced",
+			},
+		},
+	}
+
+	response := HandleEvalMutationRequest(context.Background(), EvalDatasetSettingsUpdateSubject, request, store, &fakeAIEventPublisher{}, fixedClock)
+
+	if !response.OK || response.Error != nil {
+		t.Fatalf("response = %#v, want ok", response)
+	}
+	if response.Data["datasetId"] != "dataset-1" || response.Data["currentVersionId"] != "dataset-1:version:2" {
+		t.Fatalf("response data = %#v, want dataset settings update fields", response.Data)
+	}
+}
+
 func TestRegisterEvalMutationRespondersIncludesDatasetUpdateAndCandidateSubjects(t *testing.T) {
 	nc := &fakeSubscribeNATS{}
 
@@ -394,6 +424,7 @@ func TestRegisterEvalMutationRespondersIncludesDatasetUpdateAndCandidateSubjects
 	}
 
 	for _, subject := range []string{
+		EvalDatasetSettingsUpdateSubject,
 		EvalDatasetItemUpdateSubject,
 		EvalDatasetCandidatesPrepareSubject,
 		EvalDatasetCandidatesCommitSubject,

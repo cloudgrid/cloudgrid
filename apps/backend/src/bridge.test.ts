@@ -640,7 +640,9 @@ describe("NATS telemetry query bridge", () => {
 
     expect(subject).toBe("eval.dataset.create");
     expect(payload).toMatchObject({
-      input: { name: "Regression", tags: ["nightly"] },
+      projectId: "project-1",
+      idempotencyKey: "dataset-create-1",
+      input: { name: "Regression", tags: ["nightly"], projectId: "project-1" },
     });
     expect(dataset).toMatchObject({
       id: "dataset-1",
@@ -658,6 +660,94 @@ describe("NATS telemetry query bridge", () => {
       },
     });
     expect(dataset.currentVersion).toMatchObject({ version: 1, datasetId: "dataset-1" });
+  });
+
+  test("updates dataset settings through the v2 storage-write subject", async () => {
+    const codec = JSONCodec<unknown>();
+    let subject = "";
+    let payload: unknown;
+    const connection = {
+      request: async (requestedSubject: string, data: Uint8Array) => {
+        subject = requestedSubject;
+        payload = codec.decode(data);
+        return {
+          data: codec.encode({
+            requestId: requestId(payload),
+            ok: true,
+            data: {
+              id: "dataset-1",
+              projectId: "project-1",
+              name: "Regression",
+              description: null,
+              currentVersionId: "dataset-1:version:2",
+              currentVersion: {
+                id: "dataset-1:version:2",
+                version: 2,
+                digest: "digest-2",
+                createdAt: "2026-05-17T10:00:00.000Z",
+              },
+              settings: {
+                evaluationFamily: "classification",
+                inputType: "text",
+                expectedType: "json",
+                defaultSplit: "validation",
+                intakePolicy: {
+                  manualDefaultStatus: "draft",
+                  importDefaultStatus: "needs_review",
+                  traceDefaultStatus: "needs_expected",
+                },
+                defaultMetricSettings: [],
+                retentionProfile: "balanced",
+              },
+              createdAt: "2026-05-17T10:00:00.000Z",
+              createdBy: "user-1",
+              updatedAt: "2026-05-17T10:01:00.000Z",
+              updatedBy: "user-1",
+              itemCount: 0,
+              readyItemCount: 0,
+              splitCounts: {},
+              health: null,
+              tags: [],
+            },
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+
+    const dataset = await bridge.updateDatasetSettings(
+      {
+        datasetId: "dataset-1",
+        expectedDatasetVersionId: "dataset-1:version:1",
+        settings: {
+          evaluationFamily: "classification",
+          inputType: "text",
+          expectedType: "json",
+          defaultSplit: "validation",
+          intakePolicy: {
+            manualDefaultStatus: "draft",
+            importDefaultStatus: "needs_review",
+            traceDefaultStatus: "needs_expected",
+          },
+          defaultMetricSettings: [],
+          retentionProfile: "balanced",
+        },
+        idempotencyKey: "dataset-settings-1",
+      },
+      { mode: "authenticated", authMode: "sso", principalId: "user-1", projectId: "project-1" },
+    );
+
+    expect(subject).toBe("eval.dataset.settings.update");
+    expect(payload).toMatchObject({
+      projectId: "project-1",
+      datasetId: "dataset-1",
+      expectedDatasetVersionId: "dataset-1:version:1",
+      idempotencyKey: "dataset-settings-1",
+      input: { settings: { inputType: "text" }, projectId: "project-1" },
+    });
+    expect(dataset.currentVersionId).toBe("dataset-1:version:2");
+    expect(dataset.settings.inputType).toBe("text");
   });
 
   test("normalizes lean experiment create responses to the public GraphQL experiment shape", async () => {

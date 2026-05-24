@@ -83,6 +83,7 @@ type Mutation {
   createAlertSilence(input: CreateAlertSilenceInput!): AlertSilence!
   deleteAlertSilence(id: ID!): Boolean!
   createDataset(input: CreateDatasetInput!): Dataset!
+  updateDatasetSettings(input: UpdateDatasetSettingsInput!): Dataset!
   appendDatasetItems(input: AppendDatasetItemsInput!): Dataset!
   updateDatasetItems(input: UpdateDatasetItemsInput!): Dataset!
   promoteSpanToDatasetItem(input: PromoteSpanToDatasetItemInput!): DatasetItem!
@@ -643,6 +644,13 @@ input DatasetSettingsInput {
   anonymizationPolicy: DatasetAnonymizationPolicyInput
   defaultMetricSettings: [MetricSettingInput!]!
   retentionProfile: RetentionProfile!
+}
+
+input UpdateDatasetSettingsInput {
+  datasetId: ID!
+  expectedDatasetVersionId: ID!
+  settings: DatasetSettingsInput!
+  idempotencyKey: String!
 }
 
 input DatasetIntakePolicyInput {

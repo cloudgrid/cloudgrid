@@ -404,6 +404,63 @@ export const updateProjectAiSettingsOperation = `
   }
 `;
 
+const projectAiProviderSettingsFields = `
+  projectId
+  providerProfiles {
+    id
+    ownerScope
+    ownerId
+    label
+    providerKind
+    baseUrl
+    credentialRef
+    models
+    parameters
+    timeoutMs
+    maxConcurrency
+    disabledAt
+  }
+  modelAliases {
+    id
+    name
+    providerProfileId
+    model
+    purpose
+    parameters {
+      temperature
+      topP
+      maxOutputTokens
+      reasoningEffort
+      extras
+    }
+  }
+  effective {
+    warnings
+    missingProviderProfiles
+    disabledProviderProfiles
+    missingChatProvider
+  }
+  version
+  updatedAt
+  updatedByUserId
+`;
+
+export const projectAiProviderSettingsOperation = `
+  query ProjectAiProviderSettings($projectId: ID!) {
+    projectAiProviderSettings(projectId: $projectId) {
+      ${projectAiProviderSettingsFields}
+    }
+  }
+`;
+
+export const updateProjectAiProviderSettingsOperation = `
+  mutation UpdateProjectAiProviderSettings($input: UpdateProjectAiProviderSettingsInput!) {
+    updateProjectAiProviderSettings(input: $input) {
+      ${projectAiProviderSettingsFields}
+    }
+  }
+`;
+
 const alertRuleFields = `
   id
   projectId

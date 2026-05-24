@@ -2408,6 +2408,15 @@ type DatasetItemsAppendRequest struct {
 	Input                  []map[string]any `json:"input"`
 }
 
+type DatasetSettingsUpdateRequest struct {
+	BridgeEnvelope
+	ProjectID                string         `json:"projectId"`
+	DatasetID                string         `json:"datasetId"`
+	ExpectedDatasetVersionID string         `json:"expectedDatasetVersionId"`
+	IdempotencyKey           string         `json:"idempotencyKey"`
+	Input                    map[string]any `json:"input"`
+}
+
 type DatasetItemPromoteRequest struct {
 	BridgeEnvelope
 	ProjectID      string         `json:"projectId"`
@@ -2465,9 +2474,9 @@ type DatasetExportStartRequest struct {
 
 type DatasetTransferGetRequest struct {
 	BridgeEnvelope
-	ProjectID     string `json:"projectId"`
-	TransferID    string `json:"transferId"`
-	TransferKind  string `json:"transferKind"`
+	ProjectID    string `json:"projectId"`
+	TransferID   string `json:"transferId"`
+	TransferKind string `json:"transferKind"`
 }
 
 type EvaluationCreateRequest struct {
@@ -2500,9 +2509,9 @@ type EvaluationRunStartRequest struct {
 
 type EvaluationRunControlRequest struct {
 	BridgeEnvelope
-	ProjectID      string `json:"projectId"`
+	ProjectID       string `json:"projectId"`
 	EvaluationRunID string `json:"evaluationRunId"`
-	IdempotencyKey string `json:"idempotencyKey"`
+	IdempotencyKey  string `json:"idempotencyKey"`
 }
 
 type EvaluationRunSearchRequest struct {

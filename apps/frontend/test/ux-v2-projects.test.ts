@@ -4,6 +4,7 @@ import type {
   CompanyAiProviderSettings,
   Organization,
   Project,
+  ProjectAiProviderSettings,
   Viewer,
 } from "@cloudgrid/ui-contracts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -93,6 +94,51 @@ const companyAiProviderSettings: CompanyAiProviderSettings = {
     purpose: "chat",
     parameters: { extras: {} },
   },
+  effective: {
+    warnings: [],
+    missingProviderProfiles: [],
+    disabledProviderProfiles: [],
+    missingChatProvider: false,
+  },
+  version: 1,
+  updatedAt: "2026-05-15T08:00:00.000Z",
+  updatedByUserId: "user-1",
+};
+
+const projectAiProviderSettings: ProjectAiProviderSettings = {
+  projectId: "project-checkout",
+  providerProfiles: [
+    {
+      id: "project-openai",
+      ownerScope: "project",
+      ownerId: "project-checkout",
+      label: "Project OpenAI",
+      providerKind: "openai",
+      baseUrl: null,
+      credentialRef: "env:OPENAI_API_KEY",
+      models: { judge: ["gpt-5-mini"], default: ["gpt-5-mini"] },
+      parameters: {},
+      timeoutMs: 30000,
+      maxConcurrency: 4,
+      disabledAt: null,
+    },
+  ],
+  modelAliases: [
+    {
+      id: "judge",
+      name: "judge",
+      providerProfileId: "project-openai",
+      model: "gpt-5-mini",
+      purpose: "judge",
+      parameters: {
+        temperature: 0,
+        topP: null,
+        maxOutputTokens: 2048,
+        reasoningEffort: null,
+        extras: {},
+      },
+    },
+  ],
   effective: {
     warnings: [],
     missingProviderProfiles: [],
@@ -229,6 +275,9 @@ function controlPlaneMarkup(
     ["CompanyAiProviderSettings", "org-example"],
     options.companyAiProviderSettings ?? companyAiProviderSettings,
   );
+  queryClient.setQueryData(["ProjectAiProviderSettings", "project-checkout"], {
+    ...projectAiProviderSettings,
+  });
   queryClient.setQueryData(
     ["ProjectMembers", "project-checkout"],
     [
@@ -731,6 +780,23 @@ describe("UX v2 project models", () => {
     expect(markup).toContain("Save AI Eval settings");
     expect(markup).toContain("Open AI Eval workspace");
     expect(markup).not.toContain("AI Eval settings could not be loaded.");
+  });
+
+  test("renders project AI provider settings editor from the GraphQL provider contract", () => {
+    const markup = controlPlaneMarkup("/projects/project-checkout/settings/ai-providers");
+
+    expect(markup).toContain(">AI Providers<");
+    expect(markup).toContain("Project OpenAI");
+    expect(markup).toContain("env:OPENAI_API_KEY");
+    expect(markup).toContain("gpt-5-mini");
+    expect(markup).toContain("Provider kind");
+    expect(markup).toContain("Model aliases");
+    expect(markup).toContain("Add provider");
+    expect(markup).toContain("Add alias");
+    expect(markup).toContain("Save AI providers");
+    expect(markup).toContain("AI Eval policy");
+    expect(markup).not.toContain("AI provider settings could not be loaded.");
+    expect(markup).not.toContain('name="secret"');
   });
 
   test("disables retention fields that do not apply to the selected retention mode", () => {

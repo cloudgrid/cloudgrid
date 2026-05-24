@@ -1,5 +1,8 @@
 import type {
+  AiModelAlias,
+  AiModelPurpose,
   AiProviderKind,
+  AiProviderProfile,
   CompanyAiProviderSettings,
   CreatedIngestCredential,
   IngestCredentialListResult,
@@ -7,6 +10,7 @@ import type {
   OrganizationInvitation,
   OrganizationMember,
   Project,
+  ProjectAiProviderSettings,
   ProjectAiSettings,
   ProjectMember,
   ProjectRole,
@@ -14,6 +18,7 @@ import type {
   RetentionMode,
   RetentionRule,
   UpdateCompanyAiProviderSettingsInput,
+  UpdateProjectAiProviderSettingsInput,
   UpdateProjectAiSettingsInput,
 } from "@cloudgrid/ui-contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -35,6 +40,7 @@ import {
   Save,
   Settings,
   Shield,
+  SlidersHorizontal,
   TerminalSquare,
   Trash2,
   X,
@@ -1550,7 +1556,19 @@ function ProjectSettingsShell({
   children: ReactNode;
   project: Project;
 }) {
-  const sections = buildProjectSettingsSections(project.id, { aiEvalEnabled });
+  const base = `/projects/${encodeURIComponent(project.id)}/settings`;
+  const sections = buildProjectSettingsSections(project.id, { aiEvalEnabled }).flatMap((section) =>
+    section.id === "ai-eval"
+      ? [
+          {
+            id: "ai-providers" as const,
+            href: `${base}/ai-providers`,
+            labelKey: "projects.settings.aiProviders" as const,
+          },
+          section,
+        ]
+      : [section],
+  );
 
   return (
     <section className="grid h-full min-h-0 gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
@@ -1610,6 +1628,10 @@ function ProjectSettingsContent({
     return <ProjectRetentionSettings client={client} project={project} />;
   }
 
+  if (activeSection === "ai-providers") {
+    return <ProjectAiProviderSettingsEditor client={client} project={project} />;
+  }
+
   if (activeSection === "ai-eval") {
     return <ProjectAiEvalSettings client={client} project={project} />;
   }
@@ -1619,6 +1641,564 @@ function ProjectSettingsContent({
   }
 
   return null;
+}
+
+type ProjectAiProviderProfileDraft = {
+  draftId: string;
+  id: string;
+  label: string;
+  providerKind: AiProviderKind;
+  baseUrl: string;
+  credentialRef: string;
+  credentialValue: string;
+  deployment: string;
+  region: string;
+  timeoutMs: string;
+  maxConcurrency: string;
+  disabled: boolean;
+};
+
+type ProjectAiModelAliasDraft = {
+  draftId: string;
+  id: string;
+  name: string;
+  providerProfileId: string;
+  model: string;
+  purpose: AiModelPurpose;
+  temperature: string;
+  maxOutputTokens: string;
+};
+
+function ProjectAiProviderSettingsEditor({
+  client,
+  project,
+}: {
+  client: ReturnType<typeof useAppSession>["client"];
+  project: Project;
+}) {
+  const queryClient = useQueryClient();
+  const [saved, setSaved] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [draftsLoadedVersion, setDraftsLoadedVersion] = useState<number | null>(null);
+  const [profileDrafts, setProfileDrafts] = useState<ProjectAiProviderProfileDraft[]>([]);
+  const [aliasDrafts, setAliasDrafts] = useState<ProjectAiModelAliasDraft[]>([]);
+  const settingsQuery = useQuery({
+    queryKey: projectAiProviderSettingsQueryKey(project.id),
+    queryFn: () => client.getProjectAiProviderSettings(project.id),
+  });
+  const updateMutation = useMutation({
+    mutationFn: client.updateProjectAiProviderSettings,
+    async onSuccess(settings) {
+      setSaved(true);
+      queryClient.setQueryData(projectAiProviderSettingsQueryKey(settings.projectId), settings);
+      await queryClient.invalidateQueries({
+        queryKey: projectAiProviderSettingsQueryKey(settings.projectId),
+      });
+    },
+  });
+
+  useEffect(() => {
+    if (!settingsQuery.data) {
+      return;
+    }
+    setProfileDrafts(settingsQuery.data.providerProfiles.map(toProjectProviderProfileDraft));
+    setAliasDrafts(settingsQuery.data.modelAliases.map(toProjectModelAliasDraft));
+    setDraftsLoadedVersion(settingsQuery.data.version);
+  }, [settingsQuery.data]);
+
+  const profileRows =
+    settingsQuery.data && draftsLoadedVersion !== settingsQuery.data.version
+      ? settingsQuery.data.providerProfiles.map(toProjectProviderProfileDraft)
+      : profileDrafts;
+  const aliasRows =
+    settingsQuery.data && draftsLoadedVersion !== settingsQuery.data.version
+      ? settingsQuery.data.modelAliases.map(toProjectModelAliasDraft)
+      : aliasDrafts;
+
+  function addProfile() {
+    const id = `provider-${profileRows.length + 1}`;
+    setProfileDrafts((drafts) => [
+      ...drafts,
+      {
+        draftId: `new-profile-${Date.now()}`,
+        id,
+        label: "New provider",
+        providerKind: "openai",
+        baseUrl: "",
+        credentialRef: "",
+        credentialValue: "",
+        deployment: "",
+        region: "",
+        timeoutMs: "30000",
+        maxConcurrency: "",
+        disabled: false,
+      },
+    ]);
+    setFormError(null);
+    setSaved(false);
+  }
+
+  function removeProfile(draftId: string) {
+    const profile = profileRows.find((draft) => draft.draftId === draftId);
+    setProfileDrafts((drafts) => drafts.filter((draft) => draft.draftId !== draftId));
+    if (profile) {
+      setAliasDrafts((drafts) => drafts.filter((draft) => draft.providerProfileId !== profile.id));
+    }
+    setSaved(false);
+  }
+
+  function updateProfile(draftId: string, patch: Partial<ProjectAiProviderProfileDraft>) {
+    setProfileDrafts((drafts) =>
+      drafts.map((draft) => (draft.draftId === draftId ? { ...draft, ...patch } : draft)),
+    );
+    setSaved(false);
+  }
+
+  function addAlias() {
+    const providerProfileId = profileRows[0]?.id ?? "";
+    setAliasDrafts((drafts) => [
+      ...drafts,
+      {
+        draftId: `new-alias-${Date.now()}`,
+        id: `alias-${drafts.length + 1}`,
+        name: "default",
+        providerProfileId,
+        model: "gpt-5-mini",
+        purpose: "default",
+        temperature: "",
+        maxOutputTokens: "",
+      },
+    ]);
+    setFormError(null);
+    setSaved(false);
+  }
+
+  function removeAlias(draftId: string) {
+    setAliasDrafts((drafts) => drafts.filter((draft) => draft.draftId !== draftId));
+    setSaved(false);
+  }
+
+  function updateAlias(draftId: string, patch: Partial<ProjectAiModelAliasDraft>) {
+    setAliasDrafts((drafts) =>
+      drafts.map((draft) => (draft.draftId === draftId ? { ...draft, ...patch } : draft)),
+    );
+    setSaved(false);
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const settings = settingsQuery.data;
+    if (!settings) {
+      return;
+    }
+    const input = toProjectAiProviderSettingsInput(settings, profileRows, aliasRows);
+    if (!input) {
+      setFormError(
+        "Provider profiles require a label and credential reference or new credential value. Model aliases require a name, provider, and model.",
+      );
+      return;
+    }
+    setFormError(null);
+    setSaved(false);
+    updateMutation.mutate(input);
+  }
+
+  return (
+    <SettingsFormSurface>
+      {settingsQuery.isError ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-destructive">AI provider settings could not be loaded.</p>
+          <Button
+            onClick={() => void settingsQuery.refetch()}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <RefreshCw data-icon="inline-start" />
+            {t("actions.retry")}
+          </Button>
+        </div>
+      ) : null}
+      <form className="grid max-w-5xl gap-6" onSubmit={submit}>
+        <section className="grid gap-3 border-y py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium">Provider profiles</h3>
+              <p className="text-sm text-muted-foreground">
+                Configure project-scoped provider profiles used by AI Eval model aliases.
+              </p>
+            </div>
+            <Button
+              disabled={!settingsQuery.data || updateMutation.isPending}
+              onClick={addProfile}
+              type="button"
+              variant="outline"
+            >
+              <Plus data-icon="inline-start" />
+              Add provider
+            </Button>
+          </div>
+          {profileRows.length > 0 ? (
+            <div className="grid gap-3">
+              {profileRows.map((profile) => (
+                <div className="grid gap-3 border p-3" key={profile.draftId}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{profile.label}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {profile.id} · {aiProviderKindLabel(profile.providerKind)}
+                      </p>
+                    </div>
+                    <Button
+                      aria-label={`Remove ${profile.label}`}
+                      disabled={updateMutation.isPending}
+                      onClick={() => removeProfile(profile.draftId)}
+                      size="icon"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <Trash2 aria-hidden />
+                    </Button>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <Field>
+                      <FieldLabel htmlFor={`project-ai-provider-label-${profile.draftId}`}>
+                        Label
+                      </FieldLabel>
+                      <Input
+                        id={`project-ai-provider-label-${profile.draftId}`}
+                        onChange={(event) =>
+                          updateProfile(profile.draftId, { label: event.target.value })
+                        }
+                        value={profile.label}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor={`project-ai-provider-kind-${profile.draftId}`}>
+                        Provider kind
+                      </FieldLabel>
+                      <Select
+                        onValueChange={(value) =>
+                          updateProfile(profile.draftId, {
+                            providerKind: value as AiProviderKind,
+                          })
+                        }
+                        value={profile.providerKind}
+                      >
+                        <SelectTrigger id={`project-ai-provider-kind-${profile.draftId}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {aiProviderKinds.map((kind) => (
+                              <SelectItem key={kind} value={kind}>
+                                {aiProviderKindLabel(kind)}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor={`project-ai-provider-credential-${profile.draftId}`}>
+                        Credential value
+                      </FieldLabel>
+                      <Input
+                        autoComplete="off"
+                        id={`project-ai-provider-credential-${profile.draftId}`}
+                        onChange={(event) =>
+                          updateProfile(profile.draftId, { credentialValue: event.target.value })
+                        }
+                        placeholder={
+                          profile.credentialRef
+                            ? t("companies.aiProvider.credentialValuePlaceholderExisting")
+                            : "sk-..."
+                        }
+                        type="password"
+                        value={profile.credentialValue}
+                      />
+                      <input name="credentialRef" type="hidden" value={profile.credentialRef} />
+                      <FieldDescription>
+                        {profile.credentialRef
+                          ? `Existing reference: ${profile.credentialRef}`
+                          : t("companies.aiProvider.credentialRefDescription")}
+                      </FieldDescription>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor={`project-ai-provider-timeout-${profile.draftId}`}>
+                        Timeout ms
+                      </FieldLabel>
+                      <Input
+                        id={`project-ai-provider-timeout-${profile.draftId}`}
+                        min="1000"
+                        onChange={(event) =>
+                          updateProfile(profile.draftId, { timeoutMs: event.target.value })
+                        }
+                        step="1000"
+                        type="number"
+                        value={profile.timeoutMs}
+                      />
+                    </Field>
+                    {profile.providerKind === "azure_foundry" ||
+                    profile.providerKind === "openai_compatible" ? (
+                      <Field>
+                        <FieldLabel htmlFor={`project-ai-provider-base-url-${profile.draftId}`}>
+                          {t("companies.aiProvider.baseUrl")}
+                        </FieldLabel>
+                        <Input
+                          id={`project-ai-provider-base-url-${profile.draftId}`}
+                          onChange={(event) =>
+                            updateProfile(profile.draftId, { baseUrl: event.target.value })
+                          }
+                          placeholder="https://example.openai.azure.com"
+                          type="url"
+                          value={profile.baseUrl}
+                        />
+                      </Field>
+                    ) : null}
+                    {profile.providerKind === "azure_foundry" ? (
+                      <Field>
+                        <FieldLabel htmlFor={`project-ai-provider-deployment-${profile.draftId}`}>
+                          {t("companies.aiProvider.deployment")}
+                        </FieldLabel>
+                        <Input
+                          id={`project-ai-provider-deployment-${profile.draftId}`}
+                          onChange={(event) =>
+                            updateProfile(profile.draftId, { deployment: event.target.value })
+                          }
+                          value={profile.deployment}
+                        />
+                      </Field>
+                    ) : null}
+                    {profile.providerKind === "aws_bedrock" ? (
+                      <Field>
+                        <FieldLabel htmlFor={`project-ai-provider-region-${profile.draftId}`}>
+                          {t("companies.aiProvider.region")}
+                        </FieldLabel>
+                        <Input
+                          id={`project-ai-provider-region-${profile.draftId}`}
+                          onChange={(event) =>
+                            updateProfile(profile.draftId, { region: event.target.value })
+                          }
+                          placeholder="us-east-1"
+                          value={profile.region}
+                        />
+                      </Field>
+                    ) : null}
+                    <Field>
+                      <FieldLabel htmlFor={`project-ai-provider-concurrency-${profile.draftId}`}>
+                        Max parallel
+                      </FieldLabel>
+                      <Input
+                        id={`project-ai-provider-concurrency-${profile.draftId}`}
+                        min="1"
+                        onChange={(event) =>
+                          updateProfile(profile.draftId, { maxConcurrency: event.target.value })
+                        }
+                        step="1"
+                        type="number"
+                        value={profile.maxConcurrency}
+                      />
+                    </Field>
+                    <Label className="flex items-center gap-2 text-sm font-medium">
+                      <Checkbox
+                        checked={profile.disabled}
+                        onCheckedChange={(checked) =>
+                          updateProfile(profile.draftId, { disabled: checked === true })
+                        }
+                      />
+                      Disabled
+                    </Label>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="border border-dashed px-3 py-2 text-sm text-muted-foreground">
+              No project provider profiles exist yet.
+            </p>
+          )}
+        </section>
+
+        <section className="grid gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium">Model aliases</h3>
+              <p className="text-sm text-muted-foreground">
+                Map AI Eval purposes to project provider models.
+              </p>
+            </div>
+            <Button
+              disabled={!settingsQuery.data || updateMutation.isPending || profileRows.length === 0}
+              onClick={addAlias}
+              type="button"
+              variant="outline"
+            >
+              <Plus data-icon="inline-start" />
+              Add alias
+            </Button>
+          </div>
+          {aliasRows.length > 0 ? (
+            <div className="grid gap-3">
+              {aliasRows.map((alias) => (
+                <div
+                  className="grid gap-3 border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_10rem_2.5rem]"
+                  key={alias.draftId}
+                >
+                  <Field>
+                    <FieldLabel htmlFor={`project-ai-alias-name-${alias.draftId}`}>
+                      Alias name
+                    </FieldLabel>
+                    <Input
+                      id={`project-ai-alias-name-${alias.draftId}`}
+                      onChange={(event) => updateAlias(alias.draftId, { name: event.target.value })}
+                      value={alias.name}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor={`project-ai-alias-model-${alias.draftId}`}>
+                      Model
+                    </FieldLabel>
+                    <Input
+                      id={`project-ai-alias-model-${alias.draftId}`}
+                      onChange={(event) =>
+                        updateAlias(alias.draftId, { model: event.target.value })
+                      }
+                      placeholder="gpt-5-mini"
+                      value={alias.model}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor={`project-ai-alias-purpose-${alias.draftId}`}>
+                      Purpose
+                    </FieldLabel>
+                    <Select
+                      onValueChange={(value) =>
+                        updateAlias(alias.draftId, { purpose: value as AiModelPurpose })
+                      }
+                      value={alias.purpose}
+                    >
+                      <SelectTrigger id={`project-ai-alias-purpose-${alias.draftId}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {aiModelPurposes.map((purpose) => (
+                            <SelectItem key={purpose} value={purpose}>
+                              {purpose}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Button
+                    aria-label={`Remove ${alias.name}`}
+                    className="self-end"
+                    disabled={updateMutation.isPending}
+                    onClick={() => removeAlias(alias.draftId)}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Trash2 aria-hidden />
+                  </Button>
+                  <Field>
+                    <FieldLabel htmlFor={`project-ai-alias-provider-${alias.draftId}`}>
+                      Provider profile
+                    </FieldLabel>
+                    <Select
+                      onValueChange={(value) =>
+                        updateAlias(alias.draftId, { providerProfileId: value })
+                      }
+                      value={alias.providerProfileId}
+                    >
+                      <SelectTrigger id={`project-ai-alias-provider-${alias.draftId}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {profileRows.map((profile) => (
+                            <SelectItem key={profile.draftId} value={profile.id}>
+                              {profile.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor={`project-ai-alias-temperature-${alias.draftId}`}>
+                      Temperature
+                    </FieldLabel>
+                    <Input
+                      id={`project-ai-alias-temperature-${alias.draftId}`}
+                      max="2"
+                      min="0"
+                      onChange={(event) =>
+                        updateAlias(alias.draftId, { temperature: event.target.value })
+                      }
+                      step="0.1"
+                      type="number"
+                      value={alias.temperature}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor={`project-ai-alias-output-${alias.draftId}`}>
+                      Max output tokens
+                    </FieldLabel>
+                    <Input
+                      id={`project-ai-alias-output-${alias.draftId}`}
+                      min="1"
+                      onChange={(event) =>
+                        updateAlias(alias.draftId, { maxOutputTokens: event.target.value })
+                      }
+                      step="1"
+                      type="number"
+                      value={alias.maxOutputTokens}
+                    />
+                  </Field>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="border border-dashed px-3 py-2 text-sm text-muted-foreground">
+              No model aliases exist yet.
+            </p>
+          )}
+        </section>
+
+        {settingsQuery.data?.effective.warnings.length ? (
+          <Alert>
+            <AlertTitle>{t("projects.settings.aiEvalWarnings")}</AlertTitle>
+            <AlertDescription>{settingsQuery.data.effective.warnings.join(", ")}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button disabled={!settingsQuery.data || updateMutation.isPending} type="submit">
+            <Save data-icon="inline-start" />
+            Save AI providers
+          </Button>
+          <Button asChild type="button" variant="outline">
+            <Link to={`/projects/${encodeURIComponent(project.id)}/settings/ai-eval`}>
+              <SlidersHorizontal data-icon="inline-start" />
+              AI Eval policy
+            </Link>
+          </Button>
+          {saved ? (
+            <span className="text-sm text-muted-foreground">AI providers saved.</span>
+          ) : null}
+          {formError ? <span className="text-sm text-destructive">{formError}</span> : null}
+          {updateMutation.isError ? (
+            <span className="text-sm text-destructive">
+              AI provider settings could not be saved.
+            </span>
+          ) : null}
+        </div>
+      </form>
+    </SettingsFormSurface>
+  );
 }
 
 function ProjectAiEvalSettings({
@@ -2638,6 +3218,19 @@ const aiProviderKinds: AiProviderKind[] = [
   "openai_compatible",
 ];
 
+const aiModelPurposes: AiModelPurpose[] = [
+  "default",
+  "chat",
+  "judge",
+  "optimizer",
+  "embedding",
+  "replay",
+];
+
+function projectAiProviderSettingsQueryKey(projectId: string) {
+  return ["ProjectAiProviderSettings", projectId] as const;
+}
+
 function aiProviderKindLabel(kind: AiProviderKind) {
   switch (kind) {
     case "anthropic":
@@ -2714,6 +3307,127 @@ function providerParametersForKind(
     extras.region = values.region;
   }
   return extras;
+}
+
+function toProjectProviderProfileDraft(profile: AiProviderProfile): ProjectAiProviderProfileDraft {
+  const parameters = readJsonObject(profile.parameters);
+  return {
+    draftId: profile.id,
+    id: profile.id,
+    label: profile.label,
+    providerKind: profile.providerKind,
+    baseUrl: profile.baseUrl ?? "",
+    credentialRef: isAllowedAiCredentialRef(profile.credentialRef) ? profile.credentialRef : "",
+    credentialValue: "",
+    deployment: readString(parameters.deployment),
+    region: readString(parameters.region),
+    timeoutMs: String(profile.timeoutMs),
+    maxConcurrency: profile.maxConcurrency ? String(profile.maxConcurrency) : "",
+    disabled: !!profile.disabledAt,
+  };
+}
+
+function toProjectModelAliasDraft(alias: AiModelAlias): ProjectAiModelAliasDraft {
+  return {
+    draftId: alias.id,
+    id: alias.id,
+    name: alias.name,
+    providerProfileId: alias.providerProfileId,
+    model: alias.model,
+    purpose: alias.purpose,
+    temperature: alias.parameters.temperature == null ? "" : String(alias.parameters.temperature),
+    maxOutputTokens:
+      alias.parameters.maxOutputTokens == null ? "" : String(alias.parameters.maxOutputTokens),
+  };
+}
+
+function toProjectAiProviderSettingsInput(
+  settings: ProjectAiProviderSettings,
+  profileDrafts: ProjectAiProviderProfileDraft[],
+  aliasDrafts: ProjectAiModelAliasDraft[],
+): UpdateProjectAiProviderSettingsInput | null {
+  const providerProfiles = profileDrafts.map((profile) => {
+    const label = profile.label.trim();
+    const credentialRef =
+      profile.credentialRef && isAllowedAiCredentialRef(profile.credentialRef)
+        ? profile.credentialRef
+        : null;
+    const credentialValue = profile.credentialValue.trim() || null;
+    const timeoutMs = numberField(profile.timeoutMs) ?? 30000;
+    if (!label || (!credentialRef && !credentialValue)) {
+      return null;
+    }
+    return {
+      id: profile.id,
+      label,
+      providerKind: profile.providerKind,
+      baseUrl:
+        profile.providerKind === "azure_foundry" || profile.providerKind === "openai_compatible"
+          ? profile.baseUrl.trim() || null
+          : null,
+      credentialRef,
+      credentialValue,
+      models: modelsForProfile(profile.id, aliasDrafts),
+      parameters: providerParametersForKind(profile.providerKind, {
+        deployment: profile.deployment.trim() || null,
+        region: profile.region.trim() || null,
+      }),
+      timeoutMs,
+      maxConcurrency: numberField(profile.maxConcurrency),
+      disabled: profile.disabled,
+    };
+  });
+  if (providerProfiles.some((profile) => !profile)) {
+    return null;
+  }
+  const modelAliases = aliasDrafts.map((alias) => {
+    const name = alias.name.trim();
+    const providerProfileId = alias.providerProfileId.trim();
+    const model = alias.model.trim();
+    if (!name || !providerProfileId || !model) {
+      return null;
+    }
+    return {
+      id: alias.id,
+      name,
+      providerProfileId,
+      model,
+      purpose: alias.purpose,
+      parameters: {
+        temperature: numberField(alias.temperature),
+        topP: null,
+        maxOutputTokens: numberField(alias.maxOutputTokens),
+        reasoningEffort: null,
+        extras: {},
+      },
+    };
+  });
+  if (modelAliases.some((alias) => !alias)) {
+    return null;
+  }
+  return {
+    projectId: settings.projectId,
+    providerProfiles: providerProfiles as UpdateProjectAiProviderSettingsInput["providerProfiles"],
+    modelAliases: modelAliases as UpdateProjectAiProviderSettingsInput["modelAliases"],
+    expectedVersion: settings.version,
+  };
+}
+
+function modelsForProfile(
+  profileId: string,
+  aliasDrafts: ProjectAiModelAliasDraft[],
+): Record<string, string[]> {
+  return aliasDrafts.reduce<Record<string, string[]>>((models, alias) => {
+    if (alias.providerProfileId !== profileId || !alias.model.trim()) {
+      return models;
+    }
+    const purposeModels = models[alias.purpose] ?? [];
+    if (!purposeModels.includes(alias.model.trim())) {
+      purposeModels.push(alias.model.trim());
+    }
+    models[alias.purpose] = purposeModels;
+    return models;
+  }, {});
 }
 
 function isAllowedAiCredentialRef(value: string) {
@@ -2942,7 +3656,7 @@ function formatProjectCardLastIngest(value: string | null | undefined) {
   return value ? formatDateTime(value) : t("projects.noIngestYet");
 }
 
-function numberField(value: FormDataEntryValue | null) {
+function numberField(value: FormDataEntryValue | string | null) {
   if (typeof value !== "string" || value.trim() === "") {
     return null;
   }
@@ -3063,7 +3777,15 @@ function adminNavLabel(id: "organization" | "projects" | "members" | "ai-provide
   return t("companies.title");
 }
 
-function projectSettingsNavLabel(id: "general" | "ingest" | "retention" | "ai-eval" | "members") {
+type ProjectSettingsSectionId =
+  | "general"
+  | "ingest"
+  | "retention"
+  | "ai-providers"
+  | "ai-eval"
+  | "members";
+
+function projectSettingsNavLabel(id: ProjectSettingsSectionId) {
   if (id === "general") {
     return t("projects.settings.general");
   }
@@ -3072,6 +3794,9 @@ function projectSettingsNavLabel(id: "general" | "ingest" | "retention" | "ai-ev
   }
   if (id === "retention") {
     return t("projects.settings.retention");
+  }
+  if (id === "ai-providers") {
+    return "AI Providers";
   }
   if (id === "ai-eval") {
     return t("projects.settings.aiEval");
@@ -3082,7 +3807,7 @@ function projectSettingsNavLabel(id: "general" | "ingest" | "retention" | "ai-ev
   return t("projects.settings.general");
 }
 
-function projectSettingsTitle(id: "general" | "ingest" | "retention" | "ai-eval" | "members") {
+function projectSettingsTitle(id: ProjectSettingsSectionId) {
   if (id === "general") {
     return t("projects.settings.general");
   }
@@ -3091,6 +3816,9 @@ function projectSettingsTitle(id: "general" | "ingest" | "retention" | "ai-eval"
   }
   if (id === "retention") {
     return t("projects.settings.retention");
+  }
+  if (id === "ai-providers") {
+    return "AI Providers";
   }
   if (id === "ai-eval") {
     return t("projects.settings.aiEval");
@@ -3101,14 +3829,15 @@ function projectSettingsTitle(id: "general" | "ingest" | "retention" | "ai-eval"
   return t("projects.settings.general");
 }
 
-function projectSettingsDescription(
-  id: "general" | "ingest" | "retention" | "ai-eval" | "members",
-) {
+function projectSettingsDescription(id: ProjectSettingsSectionId) {
   if (id === "ingest") {
     return t("projects.settings.setupDescription");
   }
   if (id === "retention") {
     return t("projects.settings.retentionDescription");
+  }
+  if (id === "ai-providers") {
+    return "Project-scoped provider profiles and model aliases for AI Eval.";
   }
   if (id === "ai-eval") {
     return t("projects.settings.aiEvalDescription");
@@ -3128,6 +3857,9 @@ function projectSettingsSectionFromPath(pathname: string) {
   }
   if (pathname.endsWith("/retention")) {
     return "retention" as const;
+  }
+  if (pathname.endsWith("/ai-providers")) {
+    return "ai-providers" as const;
   }
   if (pathname.endsWith("/ai-eval")) {
     return "ai-eval" as const;

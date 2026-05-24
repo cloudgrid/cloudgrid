@@ -8,8 +8,8 @@ import type {
   AnnotationQueueSearchInput,
   AppendDatasetItemsInput,
   ApproveAiChatActionInput,
-  CommitDatasetImportInput,
   CommitDatasetCandidatesInput,
+  CommitDatasetImportInput,
   CreateAiChatConversationInput,
   CreateAlertRuleInput,
   CreateAlertSilenceInput,
@@ -21,8 +21,8 @@ import type {
   CreateProjectInput,
   CreateScorerInput,
   DashboardListInput,
-  DatasetItemSearchInput,
   DatasetCandidateSearchInput,
+  DatasetItemSearchInput,
   DatasetSearchInput,
   EvalResultSearchInput,
   EvaluationComparisonSearchInput,
@@ -34,20 +34,20 @@ import type {
   ExperimentSearchInput,
   InviteOrganizationMemberInput,
   InviteProjectMemberInput,
-  LiveExperimentRunInput,
   LiveEvaluationRunInput,
+  LiveExperimentRunInput,
   LiveTraceInput,
   LogSearchInput,
   MetricNameSearchInput,
   MetricSeriesInput,
   OptimizationRunSearchInput,
-  PrepareDatasetImportInput,
   PrepareDatasetCandidatesInput,
+  PrepareDatasetImportInput,
   ProjectListInput,
   ProjectRole,
   PromotePromptVersionInput,
-  PromoteTargetSnapshotInput,
   PromoteSpanToDatasetItemInput,
+  PromoteTargetSnapshotInput,
   RemoveOrganizationMemberInput,
   ReorderDashboardPinsInput,
   ResolveAnnotationInput,
@@ -65,12 +65,14 @@ import type {
   TraceSearchInput,
   UpdateAlertRuleInput,
   UpdateCompanyAiProviderSettingsInput,
+  UpdateDatasetItemsInput,
+  UpdateDatasetSettingsInput,
+  UpdateEvaluationDefinitionInput,
   UpdateOrganizationMemberInput,
   UpdateProjectAiProviderSettingsInput,
   UpdateProjectAiSettingsInput,
   UpdateProjectInput,
   UpdateRetentionPolicyInput,
-  UpdateEvaluationDefinitionInput,
 } from "@cloudgrid/ui-contracts";
 import { compactInput, graphQLErrorFromBridge } from "./bridge";
 
@@ -591,7 +593,7 @@ const experimentRunStatusSchema = z.enum([
   "completed",
 ]);
 const annotationStatusSchema = z.enum(["open", "in_review", "resolved", "dismissed"]);
-const optimizerKindSchema = z.enum(["bootstrap_fewshot", "critic_mutate_judge_pick"]);
+const _optimizerKindSchema = z.enum(["bootstrap_fewshot", "critic_mutate_judge_pick"]);
 const evalSolverKindSchema = z.enum(["prompt", "agent", "workflow", "skill", "tool"]);
 const evalBaselineKindSchema = z.enum(["experiment_run", "prompt_version", "solver_ref", "none"]);
 const bootstrapFewshotDiversityStrategySchema = z.enum([
@@ -642,7 +644,7 @@ const criticMutateJudgePickConfigInputSchema = z
     keepTopK: z.number().int().min(1).max(20).optional().nullable(),
   })
   .strict();
-const optimizationConfigInputSchema = z
+const _optimizationConfigInputSchema = z
   .object({
     bootstrapFewshot: bootstrapFewshotConfigInputSchema.optional().nullable(),
     criticMutateJudgePick: criticMutateJudgePickConfigInputSchema.optional().nullable(),
@@ -911,6 +913,12 @@ const createDatasetInputSchema = z.object({
   settings: datasetSettingsInputSchema,
   idempotencyKey: z.string().min(1),
 });
+const updateDatasetSettingsInputSchema = z.object({
+  datasetId: z.string().min(1),
+  expectedDatasetVersionId: z.string().min(1),
+  settings: datasetSettingsInputSchema,
+  idempotencyKey: z.string().min(1),
+});
 const aiEvalSourceRefInputSchema = z.object({
   kind: z.enum([
     "trace",
@@ -945,6 +953,36 @@ const appendDatasetItemsInputSchema = z.object({
   datasetId: z.string().min(1),
   expectedDatasetVersionId: z.string().min(1).optional().nullable(),
   items: z.array(datasetItemInputSchema).min(1).max(500),
+  idempotencyKey: z.string().min(1),
+});
+const datasetItemUpdateOperationSchema = z.enum([
+  "edit",
+  "remove",
+  "mark_ready",
+  "reject",
+  "split_change",
+  "metadata_update",
+  "curation_update",
+]);
+const datasetItemUpdateInputSchema = z.object({
+  id: z.string().min(1),
+  operation: datasetItemUpdateOperationSchema,
+  input: z.unknown().optional().nullable(),
+  expected: z.unknown().optional().nullable(),
+  observedOutput: z.unknown().optional().nullable(),
+  reason: z.string().optional().nullable(),
+  metadata: z.unknown().optional().nullable(),
+  sourceRefs: z.array(aiEvalSourceRefInputSchema).optional().nullable(),
+  split: datasetSplitSchema.optional().nullable(),
+  curationStatus: datasetCurationStatusSchema.optional().nullable(),
+  curationNote: z.string().optional().nullable(),
+  contentTreatment: datasetContentTreatmentSchema.optional().nullable(),
+  anonymizationProvenance: z.unknown().optional().nullable(),
+});
+const updateDatasetItemsInputSchema = z.object({
+  datasetId: z.string().min(1),
+  expectedDatasetVersionId: z.string().min(1).optional().nullable(),
+  updates: z.array(datasetItemUpdateInputSchema).min(1).max(500),
   idempotencyKey: z.string().min(1),
 });
 const datasetImportFormatSchema = z.enum(["jsonl", "json_array", "csv", "zip"]);
@@ -1960,6 +1998,26 @@ export function validateAppendDatasetItemsInput(
     appendDatasetItemsInputSchema,
     input,
     "Append dataset items input",
+  );
+}
+
+export function validateUpdateDatasetSettingsInput(
+  input: UpdateDatasetSettingsInput,
+): UpdateDatasetSettingsInput {
+  return validateAiInput<UpdateDatasetSettingsInput>(
+    updateDatasetSettingsInputSchema,
+    input,
+    "Update dataset settings input",
+  );
+}
+
+export function validateUpdateDatasetItemsInput(
+  input: UpdateDatasetItemsInput,
+): UpdateDatasetItemsInput {
+  return validateAiInput<UpdateDatasetItemsInput>(
+    updateDatasetItemsInputSchema,
+    input,
+    "Update dataset items input",
   );
 }
 

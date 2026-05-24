@@ -433,6 +433,39 @@ const datasetItemFields = `
   updatedBy
 `;
 
+const datasetSettingsFields = `
+  evaluationFamily
+  inputType
+  expectedType
+  inputJsonSchema
+  expectedJsonSchema
+  defaultSplit
+  intakePolicy {
+    manualDefaultStatus
+    importDefaultStatus
+    traceDefaultStatus
+  }
+  traceExtractionSettings {
+    inputPath
+    expectedPath
+    observedOutputPath
+    metadataPaths
+  }
+  anonymizationPolicy {
+    mode
+    policyId
+    policyVersion
+    consistencyScope
+    blockedEntityTypes
+  }
+  defaultMetricSettings {
+    metricId
+    metricVersion
+    options
+  }
+  retentionProfile
+`;
+
 const datasetItemRunFields = `
   id
   evaluationRunId
@@ -710,6 +743,9 @@ export const datasetsOperation = `
         description
         currentVersionId
         currentVersion { id version digest createdAt }
+        settings {
+          ${datasetSettingsFields}
+        }
         createdAt
         itemCount
         readyItemCount
@@ -747,6 +783,9 @@ export const datasetOperation = `
       description
       currentVersionId
       currentVersion { id version digest createdAt }
+      settings {
+        ${datasetSettingsFields}
+      }
       createdAt
       itemCount
       readyItemCount
@@ -782,6 +821,47 @@ export const createDatasetOperation = `
       description
       currentVersionId
       currentVersion { id version digest createdAt }
+      settings {
+        ${datasetSettingsFields}
+      }
+      createdAt
+      itemCount
+      readyItemCount
+      splitCounts
+      health {
+        status
+        readyItemCount
+        totalItemCount
+        splitCounts
+        duplicateCandidateCount
+        leakageWarningCount
+        missingExpectedCount
+        schemaIssueCount
+        smallDataset
+        warnings
+      }
+      tags
+      items {
+        items {
+          ${datasetItemFields}
+        }
+        nextCursor
+      }
+    }
+  }
+`;
+
+export const updateDatasetSettingsOperation = `
+  mutation UpdateDatasetSettings($input: UpdateDatasetSettingsInput!) {
+    updateDatasetSettings(input: $input) {
+      id
+      name
+      description
+      currentVersionId
+      currentVersion { id version digest createdAt }
+      settings {
+        ${datasetSettingsFields}
+      }
       createdAt
       itemCount
       readyItemCount
@@ -817,6 +897,9 @@ export const appendDatasetItemsOperation = `
       description
       currentVersionId
       currentVersion { id version digest createdAt }
+      settings {
+        ${datasetSettingsFields}
+      }
       createdAt
       itemCount
       readyItemCount
@@ -852,6 +935,9 @@ export const updateDatasetItemsOperation = `
       description
       currentVersionId
       currentVersion { id version digest createdAt }
+      settings {
+        ${datasetSettingsFields}
+      }
       createdAt
       itemCount
       readyItemCount
@@ -1285,6 +1371,9 @@ export const commitDatasetCandidatesOperation = `
       description
       currentVersionId
       currentVersion { id version digest createdAt }
+      settings {
+        ${datasetSettingsFields}
+      }
       createdAt
       itemCount
       readyItemCount

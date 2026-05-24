@@ -29,16 +29,16 @@ import type {
   AppendDatasetItemsMutationData,
   ApproveAiChatActionInput,
   ApproveAiChatActionMutationData,
-  CommitDatasetImportInput,
   CommitDatasetCandidatesInput,
+  CommitDatasetImportInput,
   CompanyAiProviderSettings,
   CompanyAiProviderSettingsQueryData,
+  CreateAiChatConversationInput,
+  CreateAiChatConversationMutationData,
   CreateAlertRuleInput,
   CreateAlertRuleMutationData,
   CreateAlertSilenceInput,
   CreateAlertSilenceMutationData,
-  CreateAiChatConversationInput,
-  CreateAiChatConversationMutationData,
   CreateDatasetInput,
   CreateDatasetMutationData,
   CreatedIngestCredential,
@@ -60,9 +60,9 @@ import type {
   DatasetQueryData,
   DatasetSearchInput,
   DatasetsQueryData,
+  DeleteAiChatConversationMutationData,
   DeleteAlertRuleMutationData,
   DeleteAlertSilenceMutationData,
-  DeleteAiChatConversationMutationData,
   EvaluationComparisonSearchInput,
   EvaluationComparisonsQueryData,
   EvaluationDefinition,
@@ -87,9 +87,9 @@ import type {
   InviteOrganizationMemberMutationData,
   InviteProjectMemberInput,
   InviteProjectMemberMutationData,
-  LiveExperimentRunInput,
   LiveEvaluationRunInput,
   LiveEvaluationRunSubscriptionData,
+  LiveExperimentRunInput,
   LiveTraceEvent,
   LiveTraceInput,
   LiveTraceSubscriptionData,
@@ -100,6 +100,8 @@ import type {
   MetricNameSearchResult,
   MetricSeriesInput,
   MetricSeriesResult,
+  OptimizationRunSearchInput,
+  OptimizationRunsQueryData,
   Organization,
   OrganizationInvitation,
   OrganizationInvitationsQueryData,
@@ -107,9 +109,11 @@ import type {
   OrganizationMembersQueryData,
   OrganizationQueryData,
   OrganizationsQueryData,
-  PrepareDatasetImportInput,
   PrepareDatasetCandidatesInput,
+  PrepareDatasetImportInput,
   Project,
+  ProjectAiProviderSettings,
+  ProjectAiProviderSettingsQueryData,
   ProjectAiSettings,
   ProjectAiSettingsQueryData,
   ProjectInvitationResult,
@@ -119,14 +123,16 @@ import type {
   ProjectQueryData,
   ProjectRole,
   ProjectsQueryData,
+  PromoteTargetSnapshotInput,
+  PromoteTargetSnapshotMutationData,
   RemoveOrganizationMemberInput,
   RemoveOrganizationMemberMutationData,
   RemoveProjectMemberMutationData,
+  ResendOrganizationInvitationMutationData,
   RetentionPolicy,
   RetentionPolicyQueryData,
   RevokeIngestCredentialMutationData,
   RevokeOrganizationInvitationMutationData,
-  ResendOrganizationInvitationMutationData,
   RichMetricSeriesInput,
   RichMetricSeriesResult,
   Scorer,
@@ -139,10 +145,6 @@ import type {
   StartExperimentRunInput,
   StartOptimizationRunInput,
   StartOptimizationRunMutationData,
-  OptimizationRunSearchInput,
-  OptimizationRunsQueryData,
-  PromoteTargetSnapshotInput,
-  PromoteTargetSnapshotMutationData,
   TelemetryFacetInput,
   TelemetryFacetQueryData,
   TelemetryFacetResult,
@@ -154,40 +156,34 @@ import type {
   TraceSearchResult,
   UpdateAlertRuleInput,
   UpdateAlertRuleMutationData,
-  UpdateOrganizationMemberInput,
-  UpdateOrganizationMemberMutationData,
-  UpdateProjectAiSettingsInput,
-  UpdateProjectAiSettingsMutationData,
   UpdateCompanyAiProviderSettingsInput,
   UpdateCompanyAiProviderSettingsMutationData,
+  UpdateDatasetItemsInput,
+  UpdateDatasetSettingsInput,
+  UpdateOrganizationMemberInput,
+  UpdateOrganizationMemberMutationData,
+  UpdateProjectAiProviderSettingsInput,
+  UpdateProjectAiProviderSettingsMutationData,
+  UpdateProjectAiSettingsInput,
+  UpdateProjectAiSettingsMutationData,
   UpdateProjectMemberMutationData,
   UpdateRetentionPolicyInput,
   UpdateRetentionPolicyMutationData,
-  UpdateDatasetItemsInput,
   Viewer,
   ViewerQueryData,
 } from "@cloudgrid/ui-contracts";
-import type {
-  Dashboard,
-  DashboardListInput,
-  DashboardListResult,
-  DashboardPreferences,
-  ReorderDashboardPinsInput,
-  SaveDashboardInput,
-  SetDashboardPinnedInput,
-} from "./dashboard-contracts";
 import {
-  approveAiChatActionOperation,
+  type AiChatStreamEvent,
+  type AiChatStreamOptions,
+  type AiChatStreamRequest,
   aiChatConversationOperation,
   aiChatHistoryOperation,
+  approveAiChatActionOperation,
   companyAiProviderSettingsOperation,
   createAiChatConversationOperation,
   deleteAiChatConversationOperation,
   streamAiChatRun,
   updateCompanyAiProviderSettingsOperation,
-  type AiChatStreamEvent,
-  type AiChatStreamOptions,
-  type AiChatStreamRequest,
 } from "./ai-chat";
 import {
   alertHistoryOperation,
@@ -207,6 +203,7 @@ import {
   organizationMembersOperation,
   organizationOperation,
   organizationsOperation,
+  projectAiProviderSettingsOperation,
   projectAiSettingsOperation,
   projectMembersOperation,
   projectOperation,
@@ -220,11 +217,21 @@ import {
   selectProjectOperation,
   updateAlertRuleOperation,
   updateOrganizationMemberOperation,
+  updateProjectAiProviderSettingsOperation,
   updateProjectAiSettingsOperation,
   updateProjectMemberOperation,
   updateRetentionPolicyOperation,
   viewerOperation,
 } from "./control-plane";
+import type {
+  Dashboard,
+  DashboardListInput,
+  DashboardListResult,
+  DashboardPreferences,
+  ReorderDashboardPinsInput,
+  SaveDashboardInput,
+  SetDashboardPinnedInput,
+} from "./dashboard-contracts";
 import {
   dashboardsOperation,
   deleteDashboardOperation,
@@ -234,10 +241,10 @@ import {
 } from "./dashboards";
 import {
   graphqlWebSocketEndpoint,
-  requestGraphQL,
-  subscribeGraphQL,
   type LiveTraceConnectionState,
   type LiveTraceSubscription,
+  requestGraphQL,
+  subscribeGraphQL,
 } from "./graphql-transport";
 import {
   agentRunOperation,
@@ -245,14 +252,14 @@ import {
   aiQualityOverviewOperation,
   annotationQueueOperation,
   appendDatasetItemsOperation,
-  updateDatasetItemsOperation,
-  commitDatasetImportOperation,
+  cancelEvaluationRunOperation,
   commitDatasetCandidatesOperation,
+  commitDatasetImportOperation,
   createDatasetOperation,
   createEvaluationComparisonOperation,
   createEvaluationDefinitionOperation,
-  datasetExportOperation,
   datasetCandidatesOperation,
+  datasetExportOperation,
   datasetOperation,
   datasetsOperation,
   evaluationComparisonsOperation,
@@ -265,20 +272,21 @@ import {
   logSearchOperation,
   metricNamesOperation,
   metricSeriesOperation,
-  prepareDatasetImportOperation,
+  optimizationRunsOperation,
+  pauseEvaluationRunOperation,
   prepareDatasetCandidatesOperation,
+  prepareDatasetImportOperation,
+  promoteTargetSnapshotOperation,
+  resumeEvaluationRunOperation,
   richMetricSeriesOperation,
   startDatasetExportOperation,
   startEvaluationRunOperation,
   startOptimizationRunOperation,
-  optimizationRunsOperation,
-  promoteTargetSnapshotOperation,
-  cancelEvaluationRunOperation,
-  pauseEvaluationRunOperation,
-  resumeEvaluationRunOperation,
   telemetryFacetsOperation,
   traceDetailOperation,
   traceSearchOperation,
+  updateDatasetItemsOperation,
+  updateDatasetSettingsOperation,
 } from "./observability";
 
 export interface TelemetryGraphQLClient {
@@ -298,6 +306,7 @@ export interface TelemetryGraphQLClient {
   searchDatasets: (input: DatasetSearchInput) => Promise<DatasetsQueryData["datasets"]>;
   getDataset: (id: string) => Promise<Dataset | null>;
   createDataset: (input: CreateDatasetInput) => Promise<Dataset>;
+  updateDatasetSettings: (input: UpdateDatasetSettingsInput) => Promise<Dataset>;
   appendDatasetItems: (input: AppendDatasetItemsInput) => Promise<Dataset>;
   updateDatasetItems: (input: UpdateDatasetItemsInput) => Promise<Dataset>;
   searchEvaluationDefinitions: (
@@ -403,6 +412,10 @@ export interface ControlPlaneGraphQLClient {
   updateRetentionPolicy: (input: UpdateRetentionPolicyInput) => Promise<RetentionPolicy>;
   getProjectAiSettings: (projectId: string) => Promise<ProjectAiSettings>;
   updateProjectAiSettings: (input: UpdateProjectAiSettingsInput) => Promise<ProjectAiSettings>;
+  getProjectAiProviderSettings: (projectId: string) => Promise<ProjectAiProviderSettings>;
+  updateProjectAiProviderSettings: (
+    input: UpdateProjectAiProviderSettingsInput,
+  ) => Promise<ProjectAiProviderSettings>;
   getCompanyAiProviderSettings: (companyId: string) => Promise<CompanyAiProviderSettings>;
   updateCompanyAiProviderSettings: (
     input: UpdateCompanyAiProviderSettingsInput,
@@ -595,6 +608,15 @@ export function createTelemetryGraphQLClient(endpoint = "/graphql"): TelemetryGr
         { input },
       );
       return data.createDataset;
+    },
+    async updateDatasetSettings(input) {
+      const data = await requestGraphQL<{ updateDatasetSettings: Dataset }>(
+        endpoint,
+        "UpdateDatasetSettings",
+        updateDatasetSettingsOperation,
+        { input },
+      );
+      return data.updateDatasetSettings;
     },
     async appendDatasetItems(input) {
       const data = await requestGraphQL<AppendDatasetItemsMutationData>(
@@ -1173,6 +1195,24 @@ export function createControlPlaneGraphQLClient(endpoint = "/graphql"): ControlP
         { input },
       );
       return data.updateProjectAiSettings;
+    },
+    async getProjectAiProviderSettings(projectId) {
+      const data = await requestGraphQL<ProjectAiProviderSettingsQueryData>(
+        endpoint,
+        "ProjectAiProviderSettings",
+        projectAiProviderSettingsOperation,
+        { projectId },
+      );
+      return data.projectAiProviderSettings;
+    },
+    async updateProjectAiProviderSettings(input) {
+      const data = await requestGraphQL<UpdateProjectAiProviderSettingsMutationData>(
+        endpoint,
+        "UpdateProjectAiProviderSettings",
+        updateProjectAiProviderSettingsOperation,
+        { input },
+      );
+      return data.updateProjectAiProviderSettings;
     },
     async getCompanyAiProviderSettings(companyId) {
       const data = await requestGraphQL<CompanyAiProviderSettingsQueryData>(

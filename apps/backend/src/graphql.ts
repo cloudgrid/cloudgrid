@@ -13,8 +13,8 @@ import type {
   AnnotationQueueSearchInput,
   AppendDatasetItemsInput,
   ApproveAiChatActionInput,
-  CommitDatasetImportInput,
   CommitDatasetCandidatesInput,
+  CommitDatasetImportInput,
   CreateAiChatConversationInput,
   CreateDatasetInput,
   CreateEvaluationComparisonInput,
@@ -32,16 +32,18 @@ import type {
   EvaluationRunSearchInput,
   LiveEvaluationRunInput,
   OptimizationRunSearchInput,
-  PrepareDatasetImportInput,
   PrepareDatasetCandidatesInput,
-  PromoteTargetSnapshotInput,
+  PrepareDatasetImportInput,
   PromoteSpanToDatasetItemInput,
+  PromoteTargetSnapshotInput,
   ResolveAnnotationInput,
   StartDatasetExportInput,
   StartEvaluationRunInput,
   StartOptimizationRunInput,
   TargetDiffInput,
   UpdateCompanyAiProviderSettingsInput,
+  UpdateDatasetItemsInput,
+  UpdateDatasetSettingsInput,
   UpdateEvaluationDefinitionInput,
   UpdateProjectAiProviderSettingsInput,
   UpdateProjectAiSettingsInput,
@@ -99,14 +101,14 @@ import {
   validateAnnotationQueueSearchInput,
   validateAppendDatasetItemsInput,
   validateApproveAiChatActionInput,
-  validateCommitDatasetImportInput,
   validateCommitDatasetCandidatesInput,
+  validateCommitDatasetImportInput,
   validateCreateAiChatConversationInput,
   validateCreateDatasetInput,
   validateCreateEvaluationComparisonInput,
   validateCreateEvaluationDefinitionInput,
-  validateDatasetItemSearchInput,
   validateDatasetCandidateSearchInput,
+  validateDatasetItemSearchInput,
   validateDatasetSearchInput,
   validateEvaluationComparisonSearchInput,
   validateEvaluationDefinitionSearchInput,
@@ -117,16 +119,18 @@ import {
   validateId,
   validateLiveEvaluationRunInput,
   validateOptimizationRunSearchInput,
-  validatePrepareDatasetImportInput,
   validatePrepareDatasetCandidatesInput,
-  validatePromoteTargetSnapshotInput,
+  validatePrepareDatasetImportInput,
   validatePromoteSpanToDatasetItemInput,
+  validatePromoteTargetSnapshotInput,
   validateResolveAnnotationInput,
   validateStartDatasetExportInput,
   validateStartEvaluationRunInput,
   validateStartOptimizationRunInput,
   validateTargetDiffInput,
   validateUpdateCompanyAiProviderSettingsInput,
+  validateUpdateDatasetItemsInput,
+  validateUpdateDatasetSettingsInput,
   validateUpdateEvaluationDefinitionInput,
   validateUpdateProjectAiProviderSettingsInput,
   validateUpdateProjectAiSettingsInput,
@@ -780,10 +784,28 @@ export function createCloudGridSchema() {
               await authContext(context),
             ),
           ),
+        updateDatasetSettings: async (
+          _parent,
+          args: { input: UpdateDatasetSettingsInput },
+          context,
+        ) =>
+          logGraphQLOperation(context, "updateDatasetSettings", async () =>
+            requireAiEvalBridge(context).updateDatasetSettings(
+              validateUpdateDatasetSettingsInput(args.input),
+              await authContext(context),
+            ),
+          ),
         appendDatasetItems: async (_parent, args: { input: AppendDatasetItemsInput }, context) =>
           logGraphQLOperation(context, "appendDatasetItems", async () =>
             requireAiEvalBridge(context).appendDatasetItems(
               validateAppendDatasetItemsInput(args.input),
+              await authContext(context),
+            ),
+          ),
+        updateDatasetItems: async (_parent, args: { input: UpdateDatasetItemsInput }, context) =>
+          logGraphQLOperation(context, "updateDatasetItems", async () =>
+            requireAiEvalBridge(context).updateDatasetItems(
+              validateUpdateDatasetItemsInput(args.input),
               await authContext(context),
             ),
           ),
@@ -867,44 +889,28 @@ export function createCloudGridSchema() {
               await authContext(context),
             ),
           ),
-        startEvaluationRun: async (
-          _parent,
-          args: { input: StartEvaluationRunInput },
-          context,
-        ) =>
+        startEvaluationRun: async (_parent, args: { input: StartEvaluationRunInput }, context) =>
           logGraphQLOperation(context, "startEvaluationRun", async () =>
             requireAiEvalBridge(context).startEvaluationRun(
               validateStartEvaluationRunInput(args.input),
               await authContext(context),
             ),
           ),
-        cancelEvaluationRun: async (
-          _parent,
-          args: { input: EvaluationRunControlInput },
-          context,
-        ) =>
+        cancelEvaluationRun: async (_parent, args: { input: EvaluationRunControlInput }, context) =>
           logGraphQLOperation(context, "cancelEvaluationRun", async () =>
             requireAiEvalBridge(context).cancelEvaluationRun(
               validateEvaluationRunControlInput(args.input),
               await authContext(context),
             ),
           ),
-        pauseEvaluationRun: async (
-          _parent,
-          args: { input: EvaluationRunControlInput },
-          context,
-        ) =>
+        pauseEvaluationRun: async (_parent, args: { input: EvaluationRunControlInput }, context) =>
           logGraphQLOperation(context, "pauseEvaluationRun", async () =>
             requireAiEvalBridge(context).pauseEvaluationRun(
               validateEvaluationRunControlInput(args.input),
               await authContext(context),
             ),
           ),
-        resumeEvaluationRun: async (
-          _parent,
-          args: { input: EvaluationRunControlInput },
-          context,
-        ) =>
+        resumeEvaluationRun: async (_parent, args: { input: EvaluationRunControlInput }, context) =>
           logGraphQLOperation(context, "resumeEvaluationRun", async () =>
             requireAiEvalBridge(context).resumeEvaluationRun(
               validateEvaluationRunControlInput(args.input),

@@ -154,12 +154,12 @@ func (p Persister) PersistEvalMutation(ctx context.Context, subject string, requ
 	if err := p.DB.QueryInTarget(ctx, target, sql, vars); err != nil {
 		return nil, err
 	}
-	if subject == "eval.dataset.items.append" {
+	if subject == "eval.dataset.items.append" || subject == "eval.dataset.settings.update" || subject == "eval.dataset.item.update" {
 		queryer, ok := p.DB.(targetRowsQueryer)
 		if !ok {
 			return data, nil
 		}
-		rows, err := queryer.QueryRowsInTarget(ctx, target, "SELECT meta::id(id) AS id, name, description, version, createdAt, itemCount, tags FROM type::record('ai_dataset', $dataset_id) LIMIT 1;", map[string]any{
+		rows, err := queryer.QueryRowsInTarget(ctx, target, "SELECT meta::id(id) AS id, projectId, name, description, settings, currentVersion, currentVersionId, currentDigest, version, createdAt, createdBy, updatedAt, updatedBy, itemCount, readyItemCount, splitCounts, health, tags FROM type::record('ai_dataset', $dataset_id) LIMIT 1;", map[string]any{
 			"dataset_id": mapStringValue(request.Input, "datasetId"),
 		})
 		if err != nil {
@@ -728,6 +728,47 @@ func buildAIEvalV2PersistQuery(subject string, request contracts.EvalMutationReq
 			"UPDATE type::record('ai_dataset', $dataset_id) SET version = $new_dataset_version, currentVersion = $new_dataset_version, currentVersionId = $dataset_version_id, currentDigest = $dataset_digest, itemCount = (SELECT count() AS count FROM ai_dataset_item WHERE tenantId = $tenant_id AND companyId = $company_id AND projectId = $project_id AND datasetId = $dataset_id GROUP ALL)[0].count, readyItemCount = (SELECT count() AS count FROM ai_dataset_item_revision WHERE tenantId = $tenant_id AND companyId = $company_id AND projectId = $project_id AND datasetId = $dataset_id AND curationStatus = 'ready' GROUP ALL)[0].count;\n" +
 			idempotencySQL + "\nCOMMIT TRANSACTION;"
 		return sql, vars, true
+	case "eval.dataset.settings.update":
+		datasetID := mapStringValue(request.Input, "datasetId")
+		expectedVersion := datasetVersionNumberFromInput(request.Input)
+		newVersion := expectedVersion + 1
+		versionID := datasetVersionID(datasetID, newVersion)
+		settings := mapObjectValueWithDefault(request.Input, "settings")
+		digest := stableJSONDigest(map[string]any{
+			"settings":          settings,
+			"parentVersionId":   firstMapStringValue(request.Input, "expectedDatasetVersionId", "currentVersionId"),
+			"datasetVersionFor": "settings_update",
+		})
+		versionRecord := map[string]any{
+			"tenantId":         target.TenantID,
+			"companyId":        target.CompanyID,
+			"projectId":        target.ProjectID,
+			"datasetId":        datasetID,
+			"version":          newVersion,
+			"digest":           digest,
+			"createdAt":        occurredAt.UTC(),
+			"createdBy":        requestActorID(request),
+			"settingsSnapshot": settings,
+			"itemRevisionIds":  []string{},
+			"parentVersionId":  firstMapStringValue(request.Input, "expectedDatasetVersionId", "currentVersionId"),
+			"changeSummary":    "dataset settings update",
+			"source":           datasetVersionSourceObject(request.Input, "manual"),
+		}
+		vars["dataset_id"] = datasetID
+		vars["expected_dataset_version"] = expectedVersion
+		vars["expected_dataset_version_id"] = firstMapStringValue(request.Input, "expectedDatasetVersionId", "currentVersionId")
+		vars["new_dataset_version"] = newVersion
+		vars["dataset_version_id"] = versionID
+		vars["dataset_digest"] = digest
+		vars["settings"] = settings
+		vars["dataset_version_record"] = versionRecord
+		sql := "BEGIN TRANSACTION;\n" +
+			"LET $dataset = SELECT currentVersion, version, currentVersionId FROM type::record('ai_dataset', $dataset_id) LIMIT 1;\n" +
+			"IF array::len($dataset) = 0 OR (($expected_dataset_version_id != '' AND $dataset[0].currentVersionId != $expected_dataset_version_id) OR ($expected_dataset_version_id = '' AND ($dataset[0].currentVersion ?? $dataset[0].version) != $expected_dataset_version)) { THROW 'ERR-001 VALIDATION_FAILED: stale dataset version'; };\n" +
+			"UPSERT type::record('ai_dataset_version', $dataset_version_id) CONTENT $dataset_version_record;\n" +
+			"UPDATE type::record('ai_dataset', $dataset_id) SET settings = $settings, version = $new_dataset_version, currentVersion = $new_dataset_version, currentVersionId = $dataset_version_id, currentDigest = $dataset_digest, updatedAt = $occurred_at, updatedBy = $record.updatedBy;\n" +
+			idempotencySQL + "\nCOMMIT TRANSACTION;"
+		return sql, vars, true
 	case "eval.results.persist":
 		evaluationRun := mapObjectValueWithDefault(request.Input, "evaluationRun")
 		optimizationRun := mapObjectValueWithDefault(request.Input, "optimizationRun")
@@ -863,6 +904,30 @@ func evalMutationRecord(subject string, request contracts.EvalMutationRequest, o
 		putMapString(record, "sourceTraceId", item, "sourceTraceId")
 		putMapString(record, "sourceSpanId", item, "sourceSpanId")
 		return "ai_dataset_item", record, nil
+	case "eval.dataset.settings.update":
+		datasetID := mapStringValue(request.Input, "datasetId")
+		expectedVersion := datasetVersionNumberFromInput(request.Input)
+		settings := mapObjectValueWithDefault(request.Input, "settings")
+		if datasetID == "" || expectedVersion < 1 || len(settings) == 0 || mapStringValue(request.Input, "idempotencyKey") == "" {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: dataset settings update input is invalid")
+		}
+		versionID := datasetVersionID(datasetID, expectedVersion+1)
+		digest := stableJSONDigest(map[string]any{
+			"settings":        settings,
+			"parentVersionId": firstMapStringValue(request.Input, "expectedDatasetVersionId", "currentVersionId"),
+		})
+		return "ai_dataset", map[string]any{
+			"id":                       datasetID,
+			"datasetId":                datasetID,
+			"projectId":                mapStringValue(request.Input, "projectId"),
+			"settings":                 settings,
+			"currentVersion":           expectedVersion + 1,
+			"currentVersionId":         versionID,
+			"currentDigest":            digest,
+			"expectedDatasetVersionId": firstMapStringValue(request.Input, "expectedDatasetVersionId", "currentVersionId"),
+			"updatedAt":                occurredAt.UTC(),
+			"updatedBy":                requestActorID(request),
+		}, nil
 	case "eval.dataset.item.promote":
 		datasetID := mapStringValue(request.Input, "datasetId")
 		sourceTraceID := mapStringValue(request.Input, "sourceTraceId")

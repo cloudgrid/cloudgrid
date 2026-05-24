@@ -23,6 +23,7 @@ const (
 	AiProjectionPersistedSubject          = "ai.persisted.projections"
 	EvalDatasetCreateSubject              = "eval.dataset.create"
 	EvalDatasetItemsAppendSubject         = "eval.dataset.items.append"
+	EvalDatasetSettingsUpdateSubject      = "eval.dataset.settings.update"
 	EvalDatasetItemPromoteSubject         = "eval.dataset.item.promote"
 	EvalDatasetItemUpdateSubject          = "eval.dataset.item.update"
 	EvalDatasetCandidatesPrepareSubject   = "eval.dataset.candidates.prepare"
@@ -250,6 +251,24 @@ func BuildEvalMutationRecord(subject string, request contracts.EvalMutationReque
 			"split":         stringValueWithDefault(item, "split", "dev"),
 			"reviewStatus":  stringValueWithDefault(item, "reviewStatus", "unreviewed"),
 			"synthetic":     boolValue(item, "synthetic"),
+		}, nil
+	case EvalDatasetSettingsUpdateSubject:
+		datasetID := stringValue(request.Input, "datasetId")
+		expectedVersion := datasetVersionNumberFromInput(request.Input)
+		settings := objectValueWithDefault(request.Input, "settings")
+		versionID := datasetVersionID(datasetID, expectedVersion+1)
+		digest := stableDigest(map[string]any{"settings": settings, "parentVersionId": stringValue(request.Input, "expectedDatasetVersionId")})
+		return map[string]any{
+			"id":                       datasetID,
+			"datasetId":                datasetID,
+			"projectId":                stringValue(request.Input, "projectId"),
+			"settings":                 settings,
+			"currentVersion":           expectedVersion + 1,
+			"currentVersionId":         versionID,
+			"currentDigest":            digest,
+			"expectedDatasetVersionId": stringValue(request.Input, "expectedDatasetVersionId"),
+			"updatedAt":                now.UTC().Format(time.RFC3339),
+			"updatedBy":                actorID(request),
 		}, nil
 	case EvalDatasetItemPromoteSubject:
 		id := stableID("dataset-item", request.RequestID, stringValue(request.Input, "datasetId"), stringValue(request.Input, "sourceTraceId"), stringValue(request.Input, "sourceSpanId"))
@@ -699,6 +718,13 @@ func validateEvalMutationRequest(subject string, request contracts.EvalMutationR
 			return fmt.Errorf("ERR-001 VALIDATION_FAILED: items is required")
 		}
 		return nil
+	case EvalDatasetSettingsUpdateSubject:
+		for _, field := range []string{"datasetId", "expectedDatasetVersionId", "idempotencyKey"} {
+			if err := requireNonBlank(request.Input, field); err != nil {
+				return err
+			}
+		}
+		return requireObject(request.Input, "settings")
 	case EvalDatasetItemPromoteSubject:
 		for _, field := range []string{"datasetId", "sourceTraceId", "sourceSpanId"} {
 			if err := requireNonBlank(request.Input, field); err != nil {

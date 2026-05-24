@@ -138,6 +138,13 @@ channels:
         $ref: "#/components/messages/DatasetItemsAppendRequest"
       AiEvalResponse:
         $ref: "#/components/messages/AiEvalResponse"
+  eval.dataset.settings.update:
+    address: eval.dataset.settings.update
+    messages:
+      DatasetSettingsUpdateRequest:
+        $ref: "#/components/messages/DatasetSettingsUpdateRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.dataset.item.promote:
     address: eval.dataset.item.promote
     messages:
@@ -1519,6 +1526,10 @@ components:
       name: DatasetItemsAppendRequest
       payload:
         $ref: "#/components/schemas/DatasetItemsAppendRequest"
+    DatasetSettingsUpdateRequest:
+      name: DatasetSettingsUpdateRequest
+      payload:
+        $ref: "#/components/schemas/DatasetSettingsUpdateRequest"
     DatasetItemPromoteRequest:
       name: DatasetItemPromoteRequest
       payload:
@@ -2367,6 +2378,23 @@ components:
             expectedDatasetVersion:
               type: integer
               minimum: 1
+            idempotencyKey:
+              type: string
+            input:
+              $ref: "#/components/schemas/AiEvalObjectPayload"
+    DatasetSettingsUpdateRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, datasetId, expectedDatasetVersionId, idempotencyKey, input]
+          properties:
+            projectId:
+              type: string
+            datasetId:
+              type: string
+            expectedDatasetVersionId:
+              type: string
             idempotencyKey:
               type: string
             input:

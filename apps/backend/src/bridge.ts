@@ -19,7 +19,6 @@ import type {
   AiChatRunStatus,
   AiQualityOverview,
   AiQualityOverviewInput,
-  CompanyAiProviderSettings,
   AlertEventConnection,
   AlertRule,
   AlertRuleSearchInput,
@@ -31,15 +30,16 @@ import type {
   AnnotationQueueSearchInput,
   AppendDatasetItemsInput,
   ApproveAiChatActionInput,
-  CommitDatasetImportInput,
   CommitDatasetCandidatesInput,
+  CommitDatasetImportInput,
+  CompanyAiProviderSettings,
+  CreateAiChatConversationInput,
   CreateAlertRuleInput,
   CreateAlertSilenceInput,
-  CreateAiChatConversationInput,
   CreateDatasetInput,
+  CreatedIngestCredential,
   CreateEvaluationComparisonInput,
   CreateEvaluationDefinitionInput,
-  CreatedIngestCredential,
   CreateExperimentInput,
   CreateIngestCredentialInput,
   CreateProjectInput,
@@ -87,26 +87,26 @@ import type {
   IngestCredentialListResult,
   InviteOrganizationMemberInput,
   InviteProjectMemberInput,
-  LiveExperimentRunInput,
   LiveEvaluationRunInput,
+  LiveExperimentRunInput,
   LiveTraceEvent,
   LiveTraceInput,
   LogSearchInput,
   LogSearchResult,
   MetricNameSearchInput,
   MetricNameSearchResult,
-  MetricSeriesInput,
-  MetricSeriesResult,
   MetricResult,
   MetricResultSearchResult,
+  MetricSeriesInput,
+  MetricSeriesResult,
   OptimizationRun,
   OptimizationRunSearchInput,
   OptimizationRunSearchResult,
   Organization,
   OrganizationInvitation,
   OrganizationMember,
-  PrepareDatasetImportInput,
   PrepareDatasetCandidatesInput,
+  PrepareDatasetImportInput,
   Project,
   ProjectAiProviderSettings,
   ProjectAiSettings,
@@ -116,8 +116,8 @@ import type {
   ProjectRole,
   ProjectTelemetryOverview,
   PromotePromptVersionInput,
-  PromoteTargetSnapshotInput,
   PromoteSpanToDatasetItemInput,
+  PromoteTargetSnapshotInput,
   PromotionRecord,
   PromptVersion,
   RemoveOrganizationMemberInput,
@@ -135,23 +135,25 @@ import type {
   StartEvaluationRunInput,
   StartExperimentRunInput,
   StartOptimizationRunInput,
-  TelemetryFacetInput,
-  TelemetryFacetResult,
   TargetDiff,
   TargetDiffInput,
   TargetSnapshot,
+  TelemetryFacetInput,
+  TelemetryFacetResult,
   TraceDetail,
   TraceDetailInput,
   TraceSearchInput,
   TraceSearchResult,
-  UpdateCompanyAiProviderSettingsInput,
   UpdateAlertRuleInput,
+  UpdateCompanyAiProviderSettingsInput,
+  UpdateDatasetItemsInput,
+  UpdateDatasetSettingsInput,
+  UpdateEvaluationDefinitionInput,
   UpdateOrganizationMemberInput,
   UpdateProjectAiProviderSettingsInput,
   UpdateProjectAiSettingsInput,
   UpdateProjectInput,
   UpdateRetentionPolicyInput,
-  UpdateEvaluationDefinitionInput,
   Viewer,
 } from "@cloudgrid/ui-contracts";
 import { GraphQLError } from "graphql";
@@ -591,8 +593,16 @@ export interface AiEvalBridge {
     authContext?: NormalizedAuthContext,
   ): Promise<AiQualityOverview>;
   createDataset(input: CreateDatasetInput, authContext?: NormalizedAuthContext): Promise<Dataset>;
+  updateDatasetSettings(
+    input: UpdateDatasetSettingsInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<Dataset>;
   appendDatasetItems(
     input: AppendDatasetItemsInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<Dataset>;
+  updateDatasetItems(
+    input: UpdateDatasetItemsInput,
     authContext?: NormalizedAuthContext,
   ): Promise<Dataset>;
   prepareDatasetImport(
@@ -1779,7 +1789,33 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<Dataset> {
     return this.#requestParsed(
       subjects.datasetCreate,
-      { ...envelope(authContext), input },
+      {
+        ...envelope(authContext),
+        projectId: input.projectId,
+        idempotencyKey: input.idempotencyKey,
+        input,
+      },
+      typedDatasetSchema,
+    );
+  }
+
+  async updateDatasetSettings(
+    input: UpdateDatasetSettingsInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<Dataset> {
+    return this.#requestParsed(
+      subjects.datasetSettingsUpdate,
+      {
+        ...envelope(authContext),
+        projectId: authContext?.projectId ?? "",
+        datasetId: input.datasetId,
+        expectedDatasetVersionId: input.expectedDatasetVersionId,
+        idempotencyKey: input.idempotencyKey,
+        input: {
+          ...input,
+          projectId: authContext?.projectId ?? "",
+        },
+      },
       typedDatasetSchema,
     );
   }
@@ -1793,7 +1829,37 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
       {
         ...envelope(authContext),
         projectId: authContext?.projectId ?? "",
+        datasetId: input.datasetId,
+        expectedDatasetVersionId: input.expectedDatasetVersionId,
+        idempotencyKey: input.idempotencyKey,
         input: { ...input, projectId: authContext?.projectId ?? "" },
+      },
+      typedDatasetSchema,
+    );
+  }
+
+  async updateDatasetItems(
+    input: UpdateDatasetItemsInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<Dataset> {
+    const [firstUpdate] = input.updates;
+    return this.#requestParsed(
+      subjects.datasetItemUpdate,
+      {
+        ...envelope(authContext),
+        projectId: authContext?.projectId ?? "",
+        datasetId: input.datasetId,
+        datasetItemId: firstUpdate?.id ?? "",
+        expectedDatasetVersionId: input.expectedDatasetVersionId,
+        idempotencyKey: input.idempotencyKey,
+        input: {
+          ...firstUpdate,
+          itemId: firstUpdate?.id ?? "",
+          datasetId: input.datasetId,
+          expectedDatasetVersionId: input.expectedDatasetVersionId,
+          idempotencyKey: input.idempotencyKey,
+          projectId: authContext?.projectId ?? "",
+        },
       },
       typedDatasetSchema,
     );

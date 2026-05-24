@@ -41,6 +41,7 @@ func RegisterEvalMutationResponders(nc interface {
 	for _, subject := range []string{
 		EvalDatasetCreateSubject,
 		EvalDatasetItemsAppendSubject,
+		EvalDatasetSettingsUpdateSubject,
 		EvalDatasetItemPromoteSubject,
 		EvalDatasetItemUpdateSubject,
 		EvalDatasetCandidatesPrepareSubject,

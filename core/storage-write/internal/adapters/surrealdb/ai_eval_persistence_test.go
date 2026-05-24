@@ -102,6 +102,38 @@ func TestBuildEvalMutationPersistQueryDatasetItemUpdateGuardsExpectedVersion(t *
 	}
 }
 
+func TestBuildEvalMutationPersistQueryDatasetSettingsUpdateCreatesVersion(t *testing.T) {
+	request := validEvalRequest(map[string]any{
+		"projectId":                "project-1",
+		"datasetId":                "dataset-1",
+		"expectedDatasetVersionId": "dataset-1:version:1",
+		"idempotencyKey":           "settings-update-1",
+		"settings": map[string]any{
+			"evaluationFamily": "classification",
+			"inputType":        "text",
+			"expectedType":     "json",
+			"defaultSplit":     "validation",
+			"intakePolicy":     map[string]any{},
+			"retentionProfile": "balanced",
+		},
+	})
+
+	sql, vars, data, err := BuildEvalMutationPersistQuery("eval.dataset.settings.update", request, fixedWriterTime())
+	if err != nil {
+		t.Fatalf("BuildEvalMutationPersistQuery() error = %v", err)
+	}
+
+	if !strings.Contains(sql, "stale dataset version") || !strings.Contains(sql, "settings = $settings") {
+		t.Fatalf("sql = %s, want version guard and settings update", sql)
+	}
+	if vars["dataset_version_id"] != "dataset-1:version:2" {
+		t.Fatalf("dataset_version_id = %#v, want dataset-1:version:2", vars["dataset_version_id"])
+	}
+	if data["currentVersionId"] != "dataset-1:version:2" || data["settings"] == nil {
+		t.Fatalf("data = %#v, want settings update data", data)
+	}
+}
+
 func TestBuildEvalMutationPersistQueryCandidateCommitGuardsStateAndCreatesVersion(t *testing.T) {
 	request := validEvalRequest(map[string]any{
 		"datasetId":                  "dataset-1",

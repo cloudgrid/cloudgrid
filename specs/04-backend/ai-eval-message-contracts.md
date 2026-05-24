@@ -25,6 +25,7 @@ Dataset subjects:
 | Subject | Producer | Consumer | Purpose |
 | --- | --- | --- | --- |
 | `eval.dataset.create` | BFF | storage-write | Create dataset and initial version. |
+| `eval.dataset.settings.update` | BFF | storage-write | Replace dataset settings and create a new dataset version guarded by `expectedDatasetVersionId`. |
 | `eval.dataset.items.append` | BFF | storage-write | Append manual rows and create item revisions/version. |
 | `eval.dataset.item.update` | BFF | storage-write | Edit, reject, split-change, restore, or remove rows. |
 | `eval.dataset.item.promote` | BFF | storage-write | Promote trace/span into dataset through extraction settings. |
@@ -83,6 +84,9 @@ Live and settings subjects:
 
 - Every request uses `BridgeEnvelope` plus a subject-specific typed payload.
 - BFF-originated payloads mirror the GraphQL input type for the same operation.
+- Dataset settings updates are full replacements in v2. Partial settings
+  patches are not supported, so every update sends the complete
+  `DatasetSettingsInput` shape.
 - Runner-originated persistence payloads mirror entity JSON schemas.
 - Responses use `{ requestId, ok, data?, error? }`.
 - `error.code` must come from `specs/03-contracts/errors.yaml`.

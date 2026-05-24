@@ -204,6 +204,7 @@ export const AI_EVAL_SUBJECTS = [
   "ai.persisted.projections",
   "eval.dataset.create",
   "eval.dataset.items.append",
+  "eval.dataset.settings.update",
   "eval.dataset.item.promote",
   "eval.dataset.item.update",
   "eval.dataset.version.get",
