@@ -14,7 +14,7 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
       eyebrow="Dashboards"
       accent="amber"
       title="Saved views. Typed widgets. Pinned where you work."
-      description="Dashboards compose from a small, opinionated set of typed widgets — metric time-series, log table, trace table, live trace feed. Saved per-project, pinned to your project sidebar."
+      description="Dashboards compose from a small, opinionated set of typed widgets — metric time-series, log table, trace table, live trace feed, and project evidence views. Saved per-project, pinned to your project sidebar."
     />
   </Section>
 
@@ -36,6 +36,7 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
             "Pin dashboards to the project sidebar for instant access.",
             "Each widget binds to a project-scoped query — isolation enforced server-side.",
             "Live-feed widgets use GraphQL subscriptions with the same auth as queries.",
+            "Share evaluation summaries as project evidence without turning dashboards into release gates.",
             "Dashboards are versioned records in the control plane, not opaque JSON blobs.",
           ]}
         />
@@ -60,7 +61,7 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
       items={[
         { label: "Metrics", href: "/features/metrics", desc: "Where ad-hoc metric work happens." },
         { label: "Traces", href: "/features/traces", desc: "Trace tables and live feed widgets." },
-        { label: "Configuration", href: "/handbook/configuration", desc: "Per-project retention and policies." },
+        { label: "AI Evaluation", href: "/features/ai-evaluation", desc: "Evaluation scoreboards explain what changed and why." },
       ]}
     />
   </Section>

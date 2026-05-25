@@ -13,7 +13,7 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
       eyebrow="Adapters"
       accent="rose"
       title="Every infrastructure dependency sits behind a port."
-      description="Storage, message bridge, auth providers, evaluation harness — each is an explicit, typed port with a documented v1 implementation. CloudGrid ships sensible defaults; the patterns are real enough to swap without forking."
+      description="Storage, message bridge, auth providers, and evaluation execution each sit behind an explicit port. Day-to-day users work with datasets and evaluations; teams with complex agents can plug in the execution boundary they need."
     />
   </Section>
 
@@ -32,7 +32,7 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
             "Storage port: storage-read and storage-write. v1 adapter is SurrealDB; SurrealQL only lives inside the adapter package.",
             "Message-bridge port: request/reply, durable streams, ephemeral live subjects. v1 adapter is NATS JetStream.",
             "Auth provider port: OIDC/OAuth providers feeding BFF-managed sessions. v1 adapters: GitHub, Google, Microsoft Entra ID.",
-            "Harness adapter: HTTP contract for /v1/run, /v1/score, /v1/optimize. v1 implementation: puristajs/harness.",
+            "Evaluation execution adapter: the advanced HTTP boundary used when a target or workflow should run outside the core product.",
           ]}
         />
       </div>
@@ -42,7 +42,7 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
           items={[
             "Storage adapter code lives in internal/adapters/<database>/ in storage-read and storage-write. The boundary is enforced by structure.",
             "Storage-read and storage-write are the only services that touch the database — adapters cannot leak out.",
-            "Harness adapter is a stable HTTP contract; alternative orchestrators can implement it.",
+            "Complex AI workflows can be evaluated through an adapter without rebuilding the whole workflow inside CloudGrid.",
             "Auth provider switching requires no schema migrations — sessions stay BFF-owned.",
           ]}
         />
@@ -77,7 +77,7 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
     <RelatedFeatures
       items={[
         { label: "Architecture", href: "/handbook/architecture", desc: "Where ports sit inside services." },
-        { label: "AI Evaluation", href: "/features/ai-evaluation", desc: "Harness is one of the four ports." },
+        { label: "AI Evaluation", href: "/features/ai-evaluation", desc: "Most users start with datasets, evaluations, and comparisons." },
         { label: "Enterprise", href: "/enterprise", desc: "Adapter swap-out is an enterprise lever." },
       ]}
     />

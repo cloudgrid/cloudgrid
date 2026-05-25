@@ -46,7 +46,7 @@ export const handbookNav: HandbookNavItem[] = [
   {
     label: "Guides",
     href: "/handbook/guides",
-    description: "Task guides for ingestion, investigation, dashboards, and AI eval.",
+    description: "Task guides for ingestion, investigation, dashboards, and AI Chat.",
     children: [
       { label: "Ingest OTLP", href: "/handbook/guides/ingest-otlp" },
       { label: "Project API keys", href: "/handbook/guides/project-api-keys" },
@@ -55,7 +55,18 @@ export const handbookNav: HandbookNavItem[] = [
       { label: "Metrics", href: "/handbook/guides/metrics" },
       { label: "Dashboards", href: "/handbook/guides/dashboards" },
       { label: "AI Chat", href: "/handbook/guides/ai-chat" },
-      { label: "AI evaluation", href: "/handbook/guides/ai-eval" },
+      { label: "AI Evaluation legacy guide", href: "/handbook/guides/ai-eval" },
+    ],
+  },
+  {
+    label: "Evaluations",
+    href: "/handbook/evaluations",
+    description: "Build datasets, run evaluations, compare candidates, and optimize targets.",
+    children: [
+      { label: "Overview", href: "/handbook/evaluations" },
+      { label: "Datasets", href: "/handbook/evaluations/datasets" },
+      { label: "Evaluations", href: "/handbook/evaluations/evaluations" },
+      { label: "Optimizations", href: "/handbook/evaluations/optimizations" },
     ],
   },
   {
@@ -176,7 +187,7 @@ export const handbookNav: HandbookNavItem[] = [
 export const handbookTopNav = [
   handbookNav[0],
   handbookNav[1],
-  handbookNav[4],
   handbookNav[5],
-  handbookNav[7],
+  handbookNav[6],
+  handbookNav[8],
 ];

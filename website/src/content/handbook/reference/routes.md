@@ -29,6 +29,15 @@ updated: 2026-05-18
 | `/projects/:projectId/settings/ai-eval` | Project AI evaluation settings when enabled. |
 | `/organizations/:organizationId/ai-provider` | Company AI Chat provider settings for company admins. |
 
+## Handbook Evaluation Routes
+
+| Route | Purpose |
+| --- | --- |
+| `/handbook/evaluations` | End-user overview for datasets, evaluations, comparisons, optimization, and promotion. |
+| `/handbook/evaluations/datasets` | Create and manage schema-backed datasets and rows. |
+| `/handbook/evaluations/evaluations` | Create evaluation definitions, run them, inspect results, and compare candidates. |
+| `/handbook/evaluations/optimizations` | Use evaluation evidence to optimize and explicitly promote target changes. |
+
 There is no `/live` primary route. Live trace receiving is a mode inside `/traces`.
 
 ## Public Backend Routes

@@ -24,29 +24,29 @@ You don't have to choose between "real observability" and "AI-aware evaluation."
 
 ## 2. Positioning statement
 
-> CloudGrid is the open-source, OpenTelemetry-native observability platform you actually own. Traces, logs, metrics, dashboards, and first-class AI-agent evaluations — in one self-hosted system with adapter-driven extensibility, so the storage, message bridge, auth, and evaluation harness you run today can be swapped tomorrow.
+> CloudGrid is the open-source, OpenTelemetry-native observability platform you actually own. Traces, logs, metrics, dashboards, and first-class AI evaluation and optimization — in one self-hosted system with adapter-driven extensibility, so the storage, message bridge, auth, and evaluation execution path you run today can be swapped tomorrow.
 
 Short form (hero):
 
 > **Own your observability.**
-> OpenTelemetry traces, logs, metrics, dashboards, and AI agent evaluations — open source, self-hosted, adapter-driven. No vendor lock-in. No data leaving your network.
+> OpenTelemetry traces, logs, metrics, dashboards, and AI evaluation workflows — open source, self-hosted, adapter-driven. No vendor lock-in. No data leaving your network.
 
 ## 3. ICP and audiences
 
 Three audiences read the site differently. The IA has to serve all three within two clicks.
 
 1. **Platform / Infra engineer (primary).** Already runs OTel collectors and a Grafana stack or an APM. Wants to know: how it scales, how the message bridge isolates blast radius, what storage backends are pluggable, how to migrate. Cares about Architecture, Adapters, Handbook.
-2. **AI / ML engineer (growth wedge).** Building LLM apps or agents, currently using Langfuse / Arize / Phoenix / Braintrust on top of (or instead of) observability. Wants: agent runs, scorers, experiments, prompt optimization, but also wants the trace context for the rest of the system. Cares about AI Evaluation, Traces, Compare.
+2. **AI / ML engineer (growth wedge).** Building LLM apps or agents, currently using Langfuse / Arize / Phoenix / Braintrust on top of (or instead of) observability. Wants: datasets, evaluation runs, comparisons, optimization, and trace-backed evidence for the rest of the system. Cares about AI Evaluation, Traces, Compare.
 3. **Engineering manager / security buyer (decision lever).** Asks the procurement-grade questions: data residency, SSO, isolation, license clarity, total cost. Cares about Enterprise, Compare, Open Source license, governance posture.
 
 ## 4. "Unicorn" features — the 6 things only CloudGrid claims at once
 
 These are the differentiators the entire site repeats. Every page should echo at least two.
 
-1. **OTel-native, signal-complete, in one place.** Traces, logs, metrics, dashboards, *and* AI agent evaluations. Not five tools glued together.
-2. **Adapter-driven infrastructure.** Every external dependency — storage backend, message bridge, auth providers, evaluation harness — sits behind an explicit port. v1 ships with SurrealDB, NATS JetStream, GitHub/Google/Entra ID SSO, and the `puristajs/harness` adapter. You can implement your own.
+1. **OTel-native, signal-complete, in one place.** Traces, logs, metrics, dashboards, *and* AI evaluation workflows. Not five tools glued together.
+2. **Adapter-driven infrastructure.** Every external dependency — storage backend, message bridge, auth providers, evaluation execution — sits behind an explicit port. v1 ships with SurrealDB, NATS JetStream, GitHub/Google/Entra ID SSO, and adapter-backed AI execution. You can implement your own.
 3. **Message-bridge isolation.** No public service touches the database. Every read and every write crosses NATS. The blast radius of a bad UI query is bounded by a request/reply contract, not a SQL connection pool.
-4. **AI-evaluation, first-class — without giving up your trace data.** AgentRuns, LlmCalls, ToolCalls, RetrievalEvents are projections of OTel spans you already emit. Datasets, scorers, experiments, prompt optimization runs are persisted next to the spans they came from. Prompt and completion content stays on the originating span event — never copied into a separate "AI database."
+4. **AI-evaluation, first-class — without giving up your trace data.** Datasets, evaluation runs, comparisons, optimization evidence, and promotion records live next to the telemetry that explains them. Prompt and completion content stays controlled by the originating trace data and dataset policy — never copied into a separate "AI database" workflow.
 5. **You own the data, end of paragraph.** Self-hosted by default. No telemetry leaves your network unless you wire it to. Apache 2.0-licensed. No open-core bait-and-switch.
 6. **Open development.** Source is on GitHub. Roadmap is in issues and milestones, not a closed-door deck. (We deliberately do not surface the internal `/specs` directory on the public website — that's an implementation artifact, not a marketing message.)
 
@@ -70,7 +70,8 @@ Four top-level entries. Nothing more, because every extra nav item costs compreh
   /handbook/architecture          Services, bridge, contracts
   /handbook/deployment            Local, deployed, Kubernetes
   /handbook/configuration         Env, modes, SSO providers
-  /handbook/adapters              Adapter author guide (storage, harness, auth)
+  /handbook/evaluations           Dataset, evaluation, and optimization guides
+  /handbook/adapters              Adapter author guide (storage, evaluation execution, auth)
 ```
 
 Cross-links:
@@ -88,8 +89,8 @@ Sections in order:
 2. **Signal strip** — five tiles: Traces / Logs / Metrics / Dashboards / AI Evaluation. Each links to its feature page.
 3. **The wedge** — "One self-hosted system. Five signals. One contract." Three paragraphs against the three competitor camps, named.
 4. **Architecture teaser** — flat SVG of the service graph. Caption: "No public service touches the database." CTA to Handbook → Architecture.
-5. **Adapter-driven** — small grid showing the four adapter slots (storage / bridge / auth / harness) with the v1 implementation chip on each. CTA to Features → Adapters.
-6. **AI-native, signal-complete** — small mockup of an AgentRun with linked LlmCalls and a scoreboard. CTA to Features → AI Evaluation.
+5. **Adapter-driven** — small grid showing the four adapter slots (storage / bridge / auth / evaluation execution) with the v1 implementation chip on each. CTA to Features → Adapters.
+6. **AI-native, signal-complete** — small mockup of an evaluation scoreboard with row evidence and trace links. CTA to Features → AI Evaluation.
 7. **Compare strip** — a 4-row preview of the comparison table. CTA to Enterprise → Compare.
 8. **Open-source footer block** — Apache 2.0, public specs, public roadmap, GitHub.
 
@@ -101,7 +102,7 @@ Card grid of the six feature pages, each with an SVG glyph, one-line value, and 
 - Mockup: SVG trace waterfall with span details panel.
 - What you can do: waterfall view, span attribute search, span event inspection, status filtering, live trace receiving via GraphQL subscriptions.
 - Honesty: OTLP HTTP today; OTLP gRPC is on the spec path.
-- Related: Logs (trace-log correlation), AI Evaluation (AgentRuns project from spans).
+- Related: Logs (trace-log correlation), AI Evaluation (trace evidence becomes dataset cases).
 
 ### `/features/logs`
 - Hero: "Search-first logs that already know which trace they belong to."
@@ -122,16 +123,16 @@ Card grid of the six feature pages, each with an SVG glyph, one-line value, and 
 - Distinction: `Dashboard` and `DashboardWidget` are the only saved-composition surface. Ad-hoc exploration lives in `/metrics`, `/traces`, `/logs`.
 
 ### `/features/ai-evaluation`
-- Hero: "Evaluate your agents next to the spans they came from."
-- Mockup: SVG AgentRun → LlmCall + ToolCall list, plus a scoreboard.
-- What you can do: project OTel GenAI / OpenInference spans into AgentRuns, build datasets, define deterministic and judge scorers, run experiments through the harness adapter, optimize prompts.
-- Key honesty: prompt and completion content stays on span events; nothing is copied into a separate AI database. Harness is the only execution surface — CloudGrid never holds model-provider credentials.
+- Hero: "Turn collected telemetry into better AI behavior."
+- Mockup: dataset evaluation scoreboard with metric deltas, row evidence, and trace links.
+- What you can do: build schema-backed datasets, import trace-derived cases, run dataset evaluations, inspect row evidence, compare candidates, optimize prompts or examples, and promote with validation evidence.
+- Key honesty: production measurement is not the primary v1 workflow; complex targets can use an adapter; provider credentials stay in project/provider settings.
 - Compare: Langfuse / Arize / Braintrust focus on AI slice only; CloudGrid evaluates AI inside the same system that observes everything else.
 
 ### `/features/adapters`
 - Hero: "Every infrastructure dependency sits behind a port."
-- Diagram: SVG showing four port surfaces with v1 implementation chips: storage (SurrealDB), message bridge (NATS JetStream), auth (GitHub / Google / Entra ID), evaluation harness (`puristajs/harness`).
-- What you can do: implement a Go storage adapter against the storage-read/write port, point the bridge at a different transport, add an SSO provider, swap the eval harness.
+- Diagram: SVG showing four port surfaces with v1 implementation chips: storage (SurrealDB), message bridge (NATS JetStream), auth (GitHub / Google / Entra ID), evaluation execution.
+- What you can do: implement a Go storage adapter against the storage-read/write port, point the bridge at a different transport, add an SSO provider, or plug in an external evaluation execution path.
 - Honesty: v1 ships one of each. The pattern is real today; alternative implementations are a contributor surface.
 - Link to Handbook → Adapters for the author guide.
 
@@ -185,7 +186,7 @@ Local mode, deployed mode, Kubernetes, scaling guidance, observability of CloudG
 Env vars table, deployment-mode/auth-mode matrix, SSO provider setup, retention policy.
 
 ### `/handbook/adapters`
-Adapter author guide. The port shapes (storage-read, storage-write, harness, auth provider). v1 implementations as references. How to contribute a new adapter.
+Adapter author guide. The port shapes (storage-read, storage-write, evaluation execution, auth provider). v1 implementations as references. How to contribute a new adapter.
 
 ## 7. Visual system
 
@@ -242,7 +243,7 @@ Adapter author guide. The port shapes (storage-read, storage-write, harness, aut
 |---|---|
 | Single long page, dark-only | Multi-page IA (Home / Features / Enterprise / Handbook), light + dark with toggle |
 | Animated canvas hero + gradient stacks | Flat hero with static SVG product shot |
-| Generic "AI-ready" mention | Dedicated AI Evaluation page with AgentRun / scorer / experiment mockups |
+| Generic "AI-ready" mention | Dedicated AI Evaluation page with datasets, evaluation scoreboards, comparisons, and optimization |
 | Architecture as a side note | Architecture as a first-class handbook page with named services + adapter slots |
 | No competitor comparison | Named head-to-head page with 13 decision rows |
 | No adapter story | First-class Adapters feature page + adapter author handbook page |

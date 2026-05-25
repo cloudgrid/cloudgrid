@@ -28,7 +28,7 @@ src/
       LogTable.astro          HTML/CSS log table mockup
       MetricChart.astro       SVG time-series chart with exemplar pin
       DashboardGrid.astro     Mock dashboard with 4 typed widgets
-      AiEvalBoard.astro       Mock AI experiment scoreboard
+      AiEvalBoard.astro       Mock AI evaluation scoreboard
       ArchitectureDiagram.astro Flat SVG service graph + bridge
       AdapterDiagram.astro    Port → v1-implementation visualisation
       CompareTable.astro      Head-to-head competitor matrix
@@ -51,11 +51,13 @@ src/
       compare.astro           Head-to-head with 9 competitors
     handbook/
       index.astro             Handbook hub
-      getting-started.astro
-      architecture.astro
-      deployment.astro
-      configuration.astro
-      adapters.astro          Adapter author guide
+  content/
+    handbook/
+      evaluations/            Dataset, evaluation, and optimization user docs
+      getting-started/
+      architecture/
+      configuration/
+      adapters/
   styles/
     global.css                Tailwind v4 theme — light + dark via CSS variables
   sections/                   (legacy — unused; safe to delete)
@@ -115,4 +117,5 @@ Repository setup on GitHub:
   Jaeger, Langfuse, Arize, Braintrust, Helicone. Tone is respectful; no FUD.
 - **No marketing adjectives.** No "powerful," "seamless," "blazing-fast." Use the concrete
   thing that would have justified the adjective.
-- **The specs are the law.** When in doubt, link `https://github.com/cloudgriddev/cloudgrid/tree/main/specs`.
+- **The specs are the law.** When in doubt, link `https://github.com/cloudgrid/cloudgrid/tree/main/specs`.
+        evaluations/            Dataset, evaluation, and optimization user docs

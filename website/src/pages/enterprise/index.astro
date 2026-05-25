@@ -21,18 +21,19 @@ const concerns = [
     who: "Privacy & DPO",
     accent: "var(--color-violet)",
     icon: "M12 2c4 0 7 3 7 7v3l2 4-2 1v3a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-3l-2-1 2-4V9c0-4 3-7 7-7Z",
-    q: "What about PII inside spans, logs, or AI prompts?",
-    a: "Redaction is owned by the OTel pipeline you control. CloudGrid stores what you send. For AI evaluation specifically: prompt and completion content stays on the originating span event and is shown only when content capture was explicitly enabled by the emitter — it is never copied into a separate AI database.",
+    q: "What about PII inside spans, logs, datasets, or AI outputs?",
+    a: "Redaction is owned by the OTel pipeline and dataset policies you control. CloudGrid stores what you send and keeps evaluation datasets, observed outputs, reasons, and source links inside your deployment boundary. Provider settings are stored as references; raw provider secrets are not returned to the browser.",
     proof:
-      "Content-capture flag controls AI evaluation visibility. Projections are pointers, not duplicates.",
+      "Telemetry, datasets, evaluation results, and provider settings stay project-scoped and self-hosted.",
   },
   {
     who: "Legal & Procurement",
     accent: "var(--color-emerald)",
     icon: "M3 7h18v12H3zM3 7l9-4 9 4M8 12h8M8 16h5",
     q: "What is the license, and what are the IP & sub-processor risks?",
-    a: "Apache 2.0. Commercial use is permitted without negotiation. There is no open-core split, no 'community edition' you'll have to migrate off, no CLA, no per-seat license. CloudGrid has zero sub-processors that touch your telemetry — because there is no CloudGrid SaaS.",
-    proof: "Apache 2.0. No CLA. No sub-processors. Source is reviewable end-to-end.",
+    a: "Apache 2.0 with Commons Clause. Internal company use and use inside your own products are permitted, but selling CloudGrid itself or offering it as a competing product/service requires a separate agreement. There is no open-core split, no 'community edition' you'll have to migrate off, no CLA, no per-seat license. CloudGrid has zero sub-processors that touch your telemetry — because there is no CloudGrid SaaS.",
+    proof:
+      "Apache 2.0 + Commons Clause. No CLA. No sub-processors. Source is reviewable end-to-end.",
   },
   {
     who: "Identity & Access",
@@ -128,7 +129,7 @@ const postureBadge: Record<string, { label: string; color: string }> = {
 
 // Quick-answer brief — the procurement reviewer one-pager.
 const brief = [
-  { k: "License", v: "Apache 2.0" },
+  { k: "License", v: "Apache 2.0 + Commons Clause" },
   { k: "Self-hostable", v: "Yes — only deployment model" },
   { k: "Sub-processors that see telemetry", v: "Zero" },
   { k: "Telemetry egress from CloudGrid", v: "None (no phone-home)" },
@@ -137,7 +138,10 @@ const brief = [
   { k: "Data residency", v: "Wherever you deploy" },
   { k: "Isolation primitive", v: "Project (API, message, persistence)" },
   { k: "OTLP ingest", v: "HTTP :4318 + gRPC :4317 — traces, logs, metrics" },
-  { k: "AI evaluation", v: "Optional service; no provider credentials in CloudGrid" },
+  {
+    k: "AI evaluation",
+    v: "Project-scoped datasets, evaluations, comparisons, and optimization evidence",
+  },
   { k: "Backups & DR", v: "Your control — SurrealDB tooling + your runbook" },
   { k: "Cost model", v: "Self-priced compute + storage" },
 ];
@@ -165,7 +169,7 @@ const brief = [
             <div class="mt-1 text-xs text-text-muted uppercase tracking-wider">Source open</div>
           </div>
           <div>
-            <div class="text-3xl font-semibold text-text font-mono whitespace-nowrap">Apache 2.0</div>
+            <div class="text-3xl font-semibold text-text font-mono whitespace-nowrap">Commons Clause</div>
             <div class="mt-1 text-xs text-text-muted uppercase tracking-wider">License</div>
           </div>
         </div>
@@ -235,8 +239,8 @@ const brief = [
           CloudGrid does not call home. It does not stream anonymized usage data to an analytics
           backend. It does not require an internet round-trip to render a trace. Everything inside
           the dashed boundary runs on your infrastructure. The only outbound channels are the ones
-          you configure — your SSO IdP for sign-in, and your model provider <em>only</em> if you
-          enable the AI-eval runner and route through harness.
+          you configure — your SSO IdP for sign-in, and your model provider <em>only</em> when an
+          enabled evaluation or optimization target needs that provider.
         </p>
         <ul class="mt-6 space-y-2.5 text-sm">
           <li class="flex gap-3 items-start">
@@ -245,7 +249,7 @@ const brief = [
           </li>
           <li class="flex gap-3 items-start">
             <span class="mt-1 inline-block w-1.5 h-1.5 rounded-full bg-[color:var(--color-amber)]"></span>
-            <span class="text-text"><strong>Opt-in only:</strong> harness → model provider, alert routing to Slack / PagerDuty, etc.</span>
+            <span class="text-text"><strong>Opt-in only:</strong> evaluation target → model provider, alert routing to Slack / PagerDuty, etc.</span>
           </li>
           <li class="flex gap-3 items-start">
             <span class="mt-1 inline-block w-1.5 h-1.5 rounded-full bg-[color:var(--color-rose)]"></span>

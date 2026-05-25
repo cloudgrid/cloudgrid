@@ -9,7 +9,7 @@ import type { CompareRow, Vendor } from "./compare-types";
 export type { CompareRow, Vendor };
 
 export const vendors: Vendor[] = [
-  { key: "cloudgrid", label: "CloudGrid", category: "OSS · OTel-native" },
+  { key: "cloudgrid", label: "CloudGrid", category: "Source-available · OTel-native" },
   { key: "datadog", label: "Datadog", category: "SaaS APM" },
   { key: "honeycomb", label: "Honeycomb", category: "SaaS APM" },
   { key: "lgtm", label: "Grafana LGTM", category: "OSS stack" },
@@ -22,10 +22,10 @@ export const vendors: Vendor[] = [
 
 export const rows: CompareRow[] = [
   {
-    criterion: "Open source",
-    detail: "Core under a permissive license, no open-core split.",
+    criterion: "Source model",
+    detail: "Source reviewable and self-hostable, with license posture called out explicitly.",
     cells: {
-      cloudgrid: { value: "yes", note: "Apache 2.0" },
+      cloudgrid: { value: "partial", note: "Apache 2.0 + Commons Clause" },
       datadog: { value: "no" },
       honeycomb: { value: "no" },
       lgtm: { value: "yes", note: "AGPL/Apache mix" },
@@ -82,7 +82,7 @@ export const rows: CompareRow[] = [
   },
   {
     criterion: "First-class AI agent evaluation",
-    detail: "AgentRuns, datasets, scorers, experiments, prompt optimization.",
+    detail: "Datasets, dataset evaluations, comparisons, optimization, and promotion evidence.",
     cells: {
       cloudgrid: { value: "yes" },
       datadog: { value: "partial", note: "LLM Observability add-on" },
@@ -202,7 +202,7 @@ export const rows: CompareRow[] = [
   },
   {
     criterion: "AI-eval lives next to general traces",
-    detail: "Score an agent without leaving the system that observes the rest of the stack.",
+    detail: "Evaluate AI behavior without leaving the system that observes the rest of the stack.",
     cells: {
       cloudgrid: { value: "yes" },
       datadog: { value: "partial" },

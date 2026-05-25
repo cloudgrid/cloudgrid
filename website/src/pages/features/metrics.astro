@@ -14,7 +14,7 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
       eyebrow="Metrics"
       accent="emerald"
       title="Metric exploration that respects descriptors, attributes, and exemplars."
-      description="CloudGrid ingests OTLP metrics as a first-class project-scoped signal — counters, gauges, histograms, summaries, exemplars. Pivot from any exemplar straight into the trace that produced it."
+      description="CloudGrid ingests OTLP metrics as a first-class project-scoped signal — counters, gauges, histograms, summaries, exemplars. Pivot from any exemplar straight into the trace that produced it, and keep model latency, token, and cost signals beside evaluation results."
     />
   </Section>
 
@@ -38,7 +38,7 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
             "Browse metric descriptors with units, types, and attribute key inventories.",
             "Time-series exploration with group-by descriptor attributes and aggregation.",
             "Exemplar pivots back into the originating trace.",
-            "AI harness metrics — token totals, model-call counts — ingested as standard OTLP.",
+            "AI runtime metrics — token totals, model-call counts, latency, and cost signals — ingested as standard OTLP.",
           ]}
         />
       </div>
@@ -62,7 +62,7 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
       items={[
         { label: "Dashboards", href: "/features/dashboards", desc: "Save metric explorations as typed widgets." },
         { label: "Traces", href: "/features/traces", desc: "Exemplars are linkable trace IDs." },
-        { label: "Adapters", href: "/features/adapters", desc: "Swap the storage backend behind metrics." },
+        { label: "AI Evaluation", href: "/features/ai-evaluation", desc: "Use latency and token metrics as evaluation context." },
       ]}
     />
   </Section>

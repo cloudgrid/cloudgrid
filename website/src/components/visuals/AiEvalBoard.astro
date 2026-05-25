@@ -1,129 +1,119 @@
 ---
 /**
- * Mock AI-eval scoreboard. Shows an experiment with two prompt versions across
- * a dataset, deterministic + judge scorers.
+ * Mock AI evaluation scoreboard. Uses current product language: dataset
+ * evaluation, model alias, metric deltas, row evidence, and trace links.
  */
+const summary = [
+  { label: "Exact match", value: "82%", delta: "+14pp", tone: "good" },
+  { label: "Pass rate", value: "91%", delta: "+9pp", tone: "good" },
+  { label: "p95 latency", value: "420 ms", delta: "-18%", tone: "good" },
+  { label: "Regressions", value: "3", delta: "-5", tone: "warn" },
+  { label: "Improvements", value: "28", delta: "+11", tone: "good" },
+];
+
 const rows = [
   {
-    case: "case_01",
-    v1: 0.62,
-    v2: 0.71,
-    latency1: 312,
-    latency2: 280,
-    judge1: "ok",
-    judge2: "good",
+    caseId: "cls-041",
+    input: "refund request",
+    expected: "billing_refund",
+    actual: "billing_refund",
+    score: "pass",
+    summary: "Matched refund intent and ignored invoice wording.",
+    trace: "trc_92ad",
   },
   {
-    case: "case_02",
-    v1: 0.41,
-    v2: 0.84,
-    latency1: 410,
-    latency2: 305,
-    judge1: "bad",
-    judge2: "ok",
+    caseId: "ext-018",
+    input: "order email",
+    expected: "ORD-10482",
+    actual: "ORD-10482",
+    score: "pass",
+    summary: "Extracted order id, total, currency, and two items.",
+    trace: "trc_a18f",
   },
   {
-    case: "case_03",
-    v1: 0.79,
-    v2: 0.76,
-    latency1: 220,
-    latency2: 260,
-    judge1: "good",
-    judge2: "good",
+    caseId: "cls-077",
+    input: "cancel + VAT",
+    expected: "cancellation",
+    actual: "billing_invoice",
+    score: "fail",
+    summary: "Overweighted VAT detail; needs prompt example.",
+    trace: "trc_c443",
   },
   {
-    case: "case_04",
-    v1: 0.55,
-    v2: 0.78,
-    latency1: 380,
-    latency2: 240,
-    judge1: "ok",
-    judge2: "good",
-  },
-  {
-    case: "case_05",
-    v1: 0.34,
-    v2: 0.69,
-    latency1: 510,
-    latency2: 290,
-    judge1: "bad",
-    judge2: "ok",
+    caseId: "ext-022",
+    input: "chat order",
+    expected: "FR",
+    actual: "FR",
+    score: "pass",
+    summary: "Normalized country name and retained item quantity.",
+    trace: "trc_d091",
   },
 ];
 
-const colorFor = (j: string) =>
-  j === "good" ? "var(--color-emerald)" : j === "ok" ? "var(--color-amber)" : "var(--color-rose)";
+const scoreClass = (score: string) =>
+  score === "pass"
+    ? "text-[color:var(--color-emerald)] bg-emerald-soft"
+    : "text-[color:var(--color-rose)] bg-rose-soft";
 
-function bar(v: number, color: string) {
-  return `
-    <div class="h-1.5 rounded-full bg-recessed overflow-hidden">
-      <div class="h-full rounded-full" style="width:${Math.round(v * 100)}%; background:${color}; opacity:.8"></div>
-    </div>`;
-}
+const toneColor = (tone: string) =>
+  tone === "good" ? "var(--color-emerald)" : tone === "warn" ? "var(--color-amber)" : "var(--color-rose)";
 ---
 
-<div class="p-4 bg-recessed">
-  <div class="flex items-center justify-between mb-3">
-    <div>
-      <div class="text-xs font-semibold text-text">Experiment · faq_router_optim_v3</div>
-      <div class="text-[10px] text-text-muted font-mono">prompt.v1 ↔ prompt.v2 · dataset:faqs_2026q1 · n=124</div>
+<div class="bg-recessed p-3 sm:p-4">
+  <div class="flex flex-wrap items-start justify-between gap-3 border-b border-border-subtle pb-3">
+    <div class="min-w-0">
+      <div class="text-xs font-semibold text-text">Evaluation run · support-quality-validation</div>
+      <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-text-muted font-mono">
+        <span>dataset: support-intents-v7</span>
+        <span>split: validation</span>
+        <span>model alias: judge-fast</span>
+        <span>rows: 124</span>
+      </div>
     </div>
-    <span class="inline-flex items-center gap-1 text-[10px] font-semibold text-[color:var(--color-emerald)]">
-      <span class="w-1.5 h-1.5 rounded-full bg-[color:var(--color-emerald)]"></span>
+    <span class="inline-flex items-center gap-1 rounded-full bg-emerald-soft px-2 py-1 text-[10px] font-semibold text-[color:var(--color-emerald)]">
+      <span class="h-1.5 w-1.5 rounded-full bg-[color:var(--color-emerald)]"></span>
       complete
     </span>
   </div>
 
-  <!-- summary tiles -->
-  <div class="grid grid-cols-4 gap-2 mb-4">
-    {[
-      { l: "Accuracy", v1: "0.54", v2: "0.76", delta: "+22%" },
-      { l: "Judge ‘good’", v1: "31%", v2: "58%", delta: "+27pp" },
-      { l: "p95 latency", v1: "412 ms", v2: "298 ms", delta: "−28%" },
-      { l: "tokens / call", v1: "1,820", v2: "1,310", delta: "−28%" },
-    ].map((s) => (
+  <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+    {summary.map((item) => (
       <div class="rounded-lg border border-border-subtle bg-surface p-3">
-        <div class="text-[10px] text-text-muted">{s.l}</div>
-        <div class="mt-1 flex items-baseline gap-2">
-          <span class="text-base font-semibold text-text font-mono">{s.v2}</span>
-          <span class="text-[10px] font-mono text-text-muted">v1 {s.v1}</span>
+        <div class="text-[10px] text-text-muted">{item.label}</div>
+        <div class="mt-1 text-base font-semibold text-text font-mono">{item.value}</div>
+        <div class="mt-0.5 text-[10px] font-mono" style={`color:${toneColor(item.tone)}`}>
+          {item.delta}
         </div>
-        <div class="text-[10px] mt-0.5 font-mono" style="color:var(--color-emerald)">{s.delta}</div>
       </div>
     ))}
   </div>
 
-  <!-- per-case table -->
-  <div class="rounded-lg border border-border-subtle bg-surface overflow-hidden">
-    <div class="grid grid-cols-[100px_1fr_1fr_70px_70px_70px_70px] gap-2 px-3 py-2 text-[10px] uppercase tracking-wider text-text-muted bg-recessed border-b border-border-subtle font-medium">
-      <div>case</div>
-      <div>accuracy · v1</div>
-      <div>accuracy · v2</div>
-      <div class="text-right">v1 ms</div>
-      <div class="text-right">v2 ms</div>
-      <div class="text-center">judge v1</div>
-      <div class="text-center">judge v2</div>
-    </div>
-    {rows.map((r) => (
-      <div class="grid grid-cols-[100px_1fr_1fr_70px_70px_70px_70px] gap-2 px-3 py-2 items-center text-xs border-b border-border-subtle last:border-b-0">
-        <span class="font-mono text-text-secondary">{r.case}</span>
-        <div set:html={bar(r.v1, "var(--color-amber)")} />
-        <div set:html={bar(r.v2, "var(--color-violet)")} />
-        <span class="font-mono text-text-secondary text-right">{r.latency1}</span>
-        <span class="font-mono text-text-secondary text-right">{r.latency2}</span>
-        <span
-          class="text-[10px] font-mono font-semibold text-center px-1.5 py-0.5 rounded mx-auto inline-block"
-          style={`color:${colorFor(r.judge1)}; background: color-mix(in srgb, ${colorFor(r.judge1)} 14%, transparent);`}
-        >
-          {r.judge1}
-        </span>
-        <span
-          class="text-[10px] font-mono font-semibold text-center px-1.5 py-0.5 rounded mx-auto inline-block"
-          style={`color:${colorFor(r.judge2)}; background: color-mix(in srgb, ${colorFor(r.judge2)} 14%, transparent);`}
-        >
-          {r.judge2}
-        </span>
+  <div class="mt-3 overflow-hidden rounded-lg border border-border-subtle bg-surface">
+    <div class="overflow-x-auto">
+      <div class="min-w-[760px]">
+        <div class="grid grid-cols-[72px_96px_112px_112px_64px_minmax(180px,1fr)_72px] gap-2 border-b border-border-subtle bg-recessed px-3 py-2 text-[10px] font-medium uppercase tracking-wider text-text-muted">
+          <div>row</div>
+          <div>input</div>
+          <div>expected</div>
+          <div>actual</div>
+          <div>metric</div>
+          <div>trajectory summary</div>
+          <div>trace</div>
+        </div>
+        {rows.map((row) => (
+          <div class="grid grid-cols-[72px_96px_112px_112px_64px_minmax(180px,1fr)_72px] gap-2 border-b border-border-subtle px-3 py-2 text-xs last:border-b-0">
+            <span class="font-mono text-text-secondary">{row.caseId}</span>
+            <span class="truncate text-text-secondary">{row.input}</span>
+            <span class="truncate font-mono text-text">{row.expected}</span>
+            <span class="truncate font-mono text-text">{row.actual}</span>
+            <span class={`w-fit rounded px-1.5 py-0.5 text-[10px] font-semibold ${scoreClass(row.score)}`}>
+              {row.score}
+            </span>
+            <span class="truncate text-text-secondary">{row.summary}</span>
+            <span class="font-mono text-[color:var(--color-brand)]">{row.trace}</span>
+          </div>
+        ))}
       </div>
-    ))}
+    </div>
   </div>
 </div>

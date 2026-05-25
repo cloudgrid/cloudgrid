@@ -16,7 +16,7 @@ const teaserVendors = vendors.filter((v) =>
   ["cloudgrid", "datadog", "lgtm", "langfuse"].includes(v.key),
 );
 const teaserRowNames = [
-  "Open source",
+  "Source available",
   "Self-hostable",
   "Traces · Logs · Metrics in one product",
   "First-class AI agent evaluation",
@@ -57,14 +57,14 @@ const signalPillars = [
   {
     icon: "ai" as const,
     title: "AI Evaluation",
-    description: "Agent runs, datasets, scorers, prompt optimization.",
+    description: "Datasets, evaluations, comparisons, optimization, promotion evidence.",
     href: "/features/ai-evaluation",
     accent: "violet" as const,
   },
   {
     icon: "adapter" as const,
     title: "Adapters",
-    description: "Storage, message bridge, auth, eval harness — all pluggable.",
+    description: "Storage, message bridge, auth, and evaluation execution are pluggable.",
     href: "/features/adapters",
     accent: "rose" as const,
   },
@@ -99,15 +99,16 @@ const techRow = [
       <div class="lg:col-span-6">
         <div class="reveal chip bg-emerald-soft text-[var(--color-emerald)]">
           <span class="pulse-dot inline-block w-1.5 h-1.5 rounded-full bg-[color:var(--color-emerald)]"></span>
-          Open source · Self-hosted · Apache 2.0
+          Source available · Self-hosted · Commons Clause
         </div>
         <h1 class="reveal mt-5 text-4xl sm:text-5xl lg:text-[3.7rem] font-semibold tracking-tight leading-[1.04] text-text text-balance" data-delay="1">
           Own your <span class="text-accent-gradient">observability</span>.
         </h1>
         <p class="reveal mt-5 text-lg text-text-secondary leading-relaxed max-w-xl" data-delay="2">
-          CloudGrid is the OpenTelemetry-native platform you actually own. Traces, logs, metrics,
-          dashboards, and first-class AI agent evaluation — in one self-hosted system. No vendor
-          lock-in. No telemetry leaving your network.
+          CloudGrid is the OpenTelemetry-native platform you actually own. Collect traces, logs,
+          metrics, and dashboards, then use that evidence for first-class AI evaluation and
+          optimization — in one self-hosted system. No vendor lock-in. No telemetry leaving your
+          network.
         </p>
         <div class="reveal mt-8 flex flex-wrap gap-3" data-delay="3">
           <Button href="/handbook/getting-started" size="lg">
@@ -219,8 +220,9 @@ const techRow = [
             CloudGrid: one OpenTelemetry-native system that does both.
           </div>
           <p class="mt-2 text-sm text-text-secondary leading-relaxed max-w-3xl">
-            Real general-purpose traces · logs · metrics · dashboards <em>and</em> first-class AI
-            agent evaluation. Self-hosted, Apache 2.0-licensed, adapter-driven. Compare every cell.
+            Real general-purpose traces · logs · metrics · dashboards <em>and</em> a practical AI
+            evaluation loop for datasets, comparisons, optimization, and promotion evidence.
+            Self-hosted, source-available, adapter-driven. Compare every cell.
           </p>
         </div>
         <Button href="/enterprise/compare" variant="primary">
@@ -266,10 +268,9 @@ const techRow = [
           Every dependency sits behind a port.
         </h2>
         <p class="mt-4 text-text-secondary leading-relaxed">
-          Storage backend, message bridge, auth providers, evaluation harness — all behind explicit,
-          typed ports. v1 ships SurrealDB, NATS JetStream, GitHub/Google/Entra ID SSO, and the
-          <code class="font-mono text-xs px-1 py-0.5 rounded bg-recessed border border-border-subtle">puristajs/harness</code>
-          adapter. Implement your own without forking the platform.
+          Storage backend, message bridge, auth providers, and evaluation execution — all behind
+          explicit, typed ports. v1 ships SurrealDB, NATS JetStream, GitHub/Google/Entra ID SSO,
+          and adapter-backed AI execution. Implement your own without forking the platform.
         </p>
         <div class="mt-6">
           <Button href="/features/adapters" variant="secondary">
@@ -293,15 +294,15 @@ const techRow = [
           Evaluate agents next to the spans they came from.
         </h2>
         <p class="mt-4 text-text-secondary leading-relaxed">
-          CloudGrid projects OpenTelemetry GenAI / OpenInference spans into first-class entities —
-          AgentRun, LlmCall, ToolCall, RetrievalEvent — and lets you build datasets, define
-          deterministic and judge scorers, run experiments, and optimize prompts through a harness
-          adapter.
+          CloudGrid turns the telemetry you already collect into AI evaluation evidence. Curate
+          datasets from known examples or trace-derived failures, run evaluations against a target,
+          compare expected and actual outputs, optimize prompts or examples, and promote the
+          candidate that improves the scoreboard.
         </p>
         <ul class="mt-5 space-y-2 text-sm text-text-secondary">
-          <li class="flex gap-2"><span class="text-[color:var(--color-emerald)]">✓</span> Prompt and completion content stays on span events — nothing copied to a separate AI database.</li>
-          <li class="flex gap-2"><span class="text-[color:var(--color-emerald)]">✓</span> Harness owns model-provider calls. CloudGrid never holds provider credentials.</li>
-          <li class="flex gap-2"><span class="text-[color:var(--color-emerald)]">✓</span> Same project isolation as the rest of your telemetry.</li>
+          <li class="flex gap-2"><span class="text-[color:var(--color-emerald)]">✓</span> Schema-backed datasets with input, expected output, reason, split, and curation state.</li>
+          <li class="flex gap-2"><span class="text-[color:var(--color-emerald)]">✓</span> Per-row results include metrics, trajectory summaries, and links back to trace evidence.</li>
+          <li class="flex gap-2"><span class="text-[color:var(--color-emerald)]">✓</span> Provider profiles and model aliases stay project-scoped and controlled by settings.</li>
         </ul>
         <div class="mt-6">
           <Button href="/features/ai-evaluation" variant="secondary">
@@ -310,7 +311,7 @@ const techRow = [
         </div>
       </div>
       <div class="lg:col-span-7 reveal-scale">
-        <MockFrame title="cloudgrid · /ai-eval/experiments/faq_router_optim_v3">
+        <MockFrame title="cloudgrid · /ai-eval · evaluation run">
           <AiEvalBoard />
         </MockFrame>
       </div>
@@ -346,8 +347,8 @@ const techRow = [
           Built in the open. Run on your own terms.
         </h2>
         <p class="mt-3 text-text-secondary max-w-2xl">
-          Apache 2.0-licensed. No open-core split, no hidden enterprise switches, no telemetry leaving
-          your network unless you wire it to.
+          Source-available under Apache 2.0 with Commons Clause. No open-core split, no
+          hidden enterprise switches, no telemetry leaving your network unless you wire it to.
         </p>
       </div>
       <div class="flex flex-wrap gap-3 lg:justify-end">

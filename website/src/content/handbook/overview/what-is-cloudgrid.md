@@ -20,7 +20,7 @@ Primary users:
 | Local developer | Run CloudGrid locally, create a project, send OTLP data, and inspect traces, logs, and metrics. |
 | Team engineer | Select a project, investigate telemetry, pivot between evidence, and share URLs. |
 | Platform admin | Manage projects, members, ingest credentials, retention policies, and alert rules. |
-| AI-agent engineer | Inspect agent runs, datasets, dataset evaluations, metric results, comparisons, and optimization evidence when AI Eval is enabled. |
+| AI-agent engineer | Create datasets, run evaluations, inspect metric results, compare candidates, and review optimization evidence when AI Eval is enabled. |
 
 ## What CloudGrid Does Today
 
@@ -32,7 +32,7 @@ Primary users:
 - Streams live trace updates through GraphQL subscriptions backed by `storage-read`.
 - Manages companies, projects, memberships, ingest credentials, dashboards, retention policies, and alert records through `control-plane`.
 - Supports local no-login mode and deployed SSO mode.
-- Supports optional AI evaluation surfaces and runner integration behind a feature flag.
+- Supports optional AI evaluation and optimization workflows behind a feature flag.
 
 ## What Is Still Production-Readiness Work
 

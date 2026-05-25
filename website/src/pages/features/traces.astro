@@ -14,7 +14,7 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
       eyebrow="Traces"
       accent="brand"
       title="Every span, every attribute, every event — preserved."
-      description="CloudGrid receives OTLP traces and renders them as waterfall timelines you can dig into. Span attributes, span events, and W3C trace context are kept end-to-end. Pivots from logs, metrics, and AI evaluations all land here."
+      description="CloudGrid receives OTLP traces and renders them as waterfall timelines you can dig into. Span attributes, span events, and W3C trace context are kept end-to-end. Logs, metrics, and AI evaluation evidence can all link back to the trace that explains what happened."
     />
   </Section>
 
@@ -38,7 +38,8 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
             "Project-scoped trace list with service, operation, status, and duration filters.",
             "Full waterfall view with span attributes, span events, and trace-context links.",
             "Live trace receiving over GraphQL subscriptions — filter by service, status, or duration.",
-            "Trace-id pivots from any log, metric exemplar, or AI agent run.",
+            "Trace-id pivots from any log, metric exemplar, or AI evaluation row.",
+            "Use trace evidence as source material for dataset candidates when an AI workflow produces a wrong or surprising output.",
           ]}
         />
       </div>
@@ -70,7 +71,7 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
     <RelatedFeatures
       items={[
         { label: "Logs", href: "/features/logs", desc: "Every log row already knows its trace id." },
-        { label: "AI Evaluation", href: "/features/ai-evaluation", desc: "AgentRuns project from these spans." },
+        { label: "AI Evaluation", href: "/features/ai-evaluation", desc: "Turn trace-backed failures into dataset rows and evaluation evidence." },
         { label: "Architecture", href: "/handbook/architecture", desc: "Read the message-bridge contract." },
       ]}
     />

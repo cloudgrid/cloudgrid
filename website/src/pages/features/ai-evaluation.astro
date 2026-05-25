@@ -9,13 +9,13 @@ import CheckList from "../../components/CheckList.astro";
 import RelatedFeatures from "../../components/RelatedFeatures.astro";
 ---
 
-<Layout title="AI agent evaluation — CloudGrid">
+<Layout title="AI evaluation and optimization — CloudGrid">
   <Section size="lg">
     <PageHeader
       eyebrow="AI Evaluation"
       accent="violet"
-      title="Evaluate your agents next to the spans they came from."
-      description="CloudGrid projects OpenTelemetry GenAI and OpenInference spans into first-class entities — AgentRuns, LlmCalls, ToolCalls, RetrievalEvents — and lets you curate datasets, define scorers, run experiments, and optimize prompts. Without leaving the system that observes the rest of your stack."
+      title="Turn collected telemetry into better AI behavior."
+      description="CloudGrid gives AI teams a practical evaluation loop inside the same project where traces, logs, metrics, and dashboards already live: curate datasets, run evaluations, compare outputs, optimize prompts or examples, and promote improvements with evidence."
     />
   </Section>
 
@@ -23,37 +23,39 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
     <div class="reveal-scale">
       <EvalFlowCanvas />
     </div>
-    <p class="mt-3 text-xs text-text-muted text-center">
-      Online lane: spans arrive · projections persist · policy gates · runner calls harness · result fans out to dashboards or annotation queue.
-      Offline lane: dataset → experiment → harness → prompt candidates.
+    <p class="mt-3 text-center text-xs text-text-muted">
+      The loop is intentionally simple: evidence becomes dataset rows, evaluations produce results,
+      comparisons show what changed, and promotion stays an explicit team decision.
     </p>
   </Section>
 
   <Section>
-    <div class="grid lg:grid-cols-2 gap-12">
+    <div class="grid gap-12 lg:grid-cols-2">
       <div class="reveal">
-        <h2 class="text-xl font-semibold text-text mb-4">What you can do today</h2>
+        <h2 class="mb-4 text-xl font-semibold text-text">What you can do today</h2>
         <CheckList
           items={[
-            "Project OTel GenAI (gen_ai.*) and OpenInference (openinference.*) spans into typed entities.",
-            "Promote any agent run, tool call, or model call into a Dataset item.",
-            "Define deterministic scorers (contains, regex, JSON Schema, attribute equality) and judge scorers.",
-            "Run experiments through the harness adapter; compare prompt versions on a scoreboard.",
-            "Optimize prompts through harness workflows — candidates become PromptVersion records.",
-            "Annotate spans into datasets through an annotation queue.",
+            "Create schema-backed datasets for classification, extraction, generation, and workflow checks.",
+            "Add rows with input, expected output, optional observed output, reason, split, and curation status.",
+            "Validate raw JSON input and expected output against the dataset schema before a row becomes ready.",
+            "Import trace-derived cases when production evidence reveals a missed classification, extraction, or workflow decision.",
+            "Run dataset evaluations against a target using project model aliases and metric defaults.",
+            "Inspect per-row expected vs actual output, metric results, trajectory summaries, important steps, and trace links.",
+            "Compare baseline and candidate runs to see improvements, regressions, latency tradeoffs, and representative examples.",
+            "Use quick-shot optimization to explore candidates, then validate before explicit promotion.",
           ]}
         />
       </div>
       <div class="reveal">
-        <h2 class="text-xl font-semibold text-text mb-4">Honest about scope</h2>
+        <h2 class="mb-4 text-xl font-semibold text-text">Honest about scope</h2>
         <CheckList
           muted
           items={[
-            "Prompt and completion content stays on span events — never copied into a separate AI database.",
-            "Harness owns model-provider HTTP calls. CloudGrid never holds provider credentials.",
-            "CloudGrid does not proxy or gateway model providers, and is not a model router.",
-            "Token and cost totals come from harness run summaries or OTel metrics — never inferred from span text.",
-            "Python frameworks (DSPy, TextGrad, MIPROv2) are not embedded; they run inside harness when used.",
+            "The primary v1 workflow is dataset evaluation and optimization. Production measurement is intentionally not the main user flow yet.",
+            "Complex agents and workflows can be evaluated through an adapter endpoint instead of rebuilding the whole workflow inside CloudGrid.",
+            "Provider API keys belong in project or company provider settings. They are not typed into datasets or evaluation rows.",
+            "Evaluation produces metrics, results, and comparisons. Alerting or release gates can consume those values later, but they are not the evaluation itself.",
+            "Quick-shot optimization is exploratory. Promotion should use full validation evidence.",
           ]}
         />
       </div>
@@ -61,61 +63,95 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
   </Section>
 
   <Section>
-    <div class="max-w-3xl mb-8 reveal">
+    <div class="mb-8 max-w-3xl reveal">
       <h2 class="text-2xl font-semibold tracking-tight text-text">
-        Why this belongs next to your traces, not in a separate tool.
+        The building blocks are understandable by the whole team.
       </h2>
-      <p class="mt-3 text-text-secondary leading-relaxed">
-        AI-eval-only tools (Langfuse, Arize, Braintrust) treat agent traces as their universe. But
-        agent runs touch tools, databases, retrieval, and downstream services that the rest of your
-        engineering team already observes. CloudGrid evaluates agents where the rest of the system
-        is already visible — same project, same SSO, same isolation, same dashboards.
+      <p class="mt-3 leading-relaxed text-text-secondary">
+        A dataset says what good looks like. An evaluation runs a target against that dataset. A
+        comparison shows whether the candidate is better or worse. Optimization is the loop that
+        proposes changes and proves them against validation data.
       </p>
     </div>
-    <div class="grid sm:grid-cols-3 gap-5">
+    <div class="grid gap-5 sm:grid-cols-4">
       <div class="card spotlight is-interactive flex h-full flex-col p-6 reveal" data-delay="1">
         <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Datasets</div>
-        <div class="mt-1 text-base font-semibold text-text">Promotable, versioned, project-scoped</div>
-        <p class="mt-2 text-sm text-text-secondary flex-1">Curate test cases from real spans. The source span is always linkable.</p>
+        <div class="mt-1 text-base font-semibold text-text">Versioned examples</div>
+        <p class="mt-2 flex-1 text-sm text-text-secondary">Rows contain input, expected output, optional reason, split, curation status, and source evidence.</p>
       </div>
       <div class="card spotlight is-interactive flex h-full flex-col p-6 reveal" data-delay="2">
-        <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Scorers</div>
-        <div class="mt-1 text-base font-semibold text-text">Deterministic + LLM-judge</div>
-        <p class="mt-2 text-sm text-text-secondary flex-1">JSON-Pointer-based deterministic scorers and judge scorers via harness.</p>
+        <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Evaluations</div>
+        <div class="mt-1 text-base font-semibold text-text">Repeatable runs</div>
+        <p class="mt-2 flex-1 text-sm text-text-secondary">Run a selected target over a dataset split and inspect aggregate and per-row results.</p>
       </div>
       <div class="card spotlight is-interactive flex h-full flex-col p-6 reveal" data-delay="3">
-        <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Experiments</div>
-        <div class="mt-1 text-base font-semibold text-text">Reproducible & comparable</div>
-        <p class="mt-2 text-sm text-text-secondary flex-1">Every run produces an ExperimentRun with per-item results and a summary.</p>
+        <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Comparisons</div>
+        <div class="mt-1 text-base font-semibold text-text">Better or worse</div>
+        <p class="mt-2 flex-1 text-sm text-text-secondary">See metric deltas, regressions, improvements, and examples that explain the tradeoff.</p>
+      </div>
+      <div class="card spotlight is-interactive flex h-full flex-col p-6 reveal" data-delay="1">
+        <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Optimization</div>
+        <div class="mt-1 text-base font-semibold text-text">Improve with evidence</div>
+        <p class="mt-2 flex-1 text-sm text-text-secondary">Explore quick-shot candidates, validate them, then explicitly promote the winning target.</p>
       </div>
     </div>
   </Section>
 
   <Section tone="recessed">
-    <div class="max-w-3xl mb-8 reveal">
-      <div class="chip bg-violet-soft text-[var(--color-violet)]">What a finished experiment looks like</div>
+    <div class="mb-8 max-w-3xl reveal">
+      <div class="chip bg-violet-soft text-[var(--color-violet)]">What a finished evaluation looks like</div>
       <h2 class="mt-4 text-2xl font-semibold tracking-tight text-text text-balance">
         A scoreboard you can actually hand to your team.
       </h2>
       <p class="mt-3 text-text-secondary">
-        After the harness adapter returns, the experiment summary lands in the UI as a per-case
-        scoreboard with deterministic and judge scores, latency, and a delta against the baseline
-        prompt version.
+        A run summary is not just one number. CloudGrid keeps the aggregate metrics, row-level
+        expected vs actual output, trace links, and short trajectory summaries together so the team
+        can decide what to improve next.
       </p>
     </div>
     <div class="reveal">
-      <MockFrame title="cloudgrid · /ai-eval/experiments/faq_router_optim_v3">
+      <MockFrame title="cloudgrid · /ai-eval · evaluation run">
         <AiEvalBoard />
       </MockFrame>
     </div>
   </Section>
 
   <Section>
+    <div class="grid gap-10 lg:grid-cols-[1fr_1.2fr]">
+      <div class="reveal-x">
+        <div class="chip bg-emerald-soft text-[var(--color-emerald)]">Why it belongs with telemetry</div>
+        <h2 class="mt-4 text-2xl font-semibold tracking-tight text-text text-balance">
+          Your failed examples already exist in traces.
+        </h2>
+        <p class="mt-4 leading-relaxed text-text-secondary">
+          Many useful evaluation rows start as production evidence: a wrong category, a missing JSON
+          field, a tool call that went down the wrong path, or a workflow that took too many steps.
+          CloudGrid keeps the source trace link next to the dataset row and the evaluation result,
+          so debugging and optimization stay connected.
+        </p>
+      </div>
+      <div class="grid gap-3 reveal">
+        {[
+          ["Classify", "Capture customer messages and expected categories, then measure prompt changes against validation and test splits."],
+          ["Extract", "Validate raw JSON outputs against a dataset schema and see exactly which rows failed."],
+          ["Workflow", "Keep bounded trajectory summaries and important steps so complex agent runs can be reviewed without opening every span."],
+          ["Optimize", "Let candidates compete against the same dataset, then promote only after validation evidence is visible."],
+        ].map(([title, body]) => (
+          <div class="rounded-lg border border-border-subtle bg-surface p-4">
+            <div class="text-sm font-semibold text-text">{title}</div>
+            <p class="mt-1 text-sm text-text-secondary">{body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </Section>
+
+  <Section tone="recessed">
     <RelatedFeatures
       items={[
-        { label: "Traces", href: "/features/traces", desc: "Where AgentRuns come from." },
-        { label: "Adapters", href: "/features/adapters", desc: "The harness adapter is one port among four." },
-        { label: "Compare vs", href: "/enterprise/compare", desc: "CloudGrid vs Langfuse, Arize, Braintrust." },
+        { label: "Traces", href: "/features/traces", desc: "Where trace-derived dataset cases and run evidence stay linkable." },
+        { label: "Handbook", href: "/handbook/evaluations", desc: "How to create datasets, run evaluations, and optimize targets." },
+        { label: "Compare vs", href: "/enterprise/compare", desc: "CloudGrid vs Langfuse, Arize, Braintrust, and APM tools." },
       ]}
     />
   </Section>
