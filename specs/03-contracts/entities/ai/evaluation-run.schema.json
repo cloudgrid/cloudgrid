@@ -26,10 +26,22 @@
     "id": { "type": "string" },
     "projectId": { "type": "string" },
     "evaluationDefinitionId": { "type": "string" },
-    "kind": { "type": "string", "enum": ["dataset_evaluation", "quick_shot", "optimization_validation", "test"] },
+    "kind": {
+      "type": "string",
+      "enum": ["dataset_evaluation", "quick_shot", "optimization_validation", "test"]
+    },
     "status": {
       "type": "string",
-      "enum": ["queued", "running", "pausing", "paused", "cancelling", "cancelled", "completed", "failed"]
+      "enum": [
+        "queued",
+        "running",
+        "pausing",
+        "paused",
+        "cancelling",
+        "cancelled",
+        "completed",
+        "failed"
+      ]
     },
     "datasetId": { "type": "string" },
     "datasetVersionId": { "type": "string" },
@@ -37,7 +49,9 @@
     "selectedItemRevisionIds": { "type": "array", "items": { "type": "string" }, "default": [] },
     "splitSelector": { "$ref": "./evaluation-definition.schema.json#/$defs/splitSelector" },
     "targetSnapshotId": { "type": "string" },
-    "metricSettingsSnapshot": { "$ref": "./evaluation-definition.schema.json#/$defs/metricSettings" },
+    "metricSettingsSnapshot": {
+      "$ref": "./evaluation-definition.schema.json#/$defs/metricSettings"
+    },
     "runPolicySnapshot": { "$ref": "./eval-run-policy.schema.json" },
     "retentionProfile": {
       "type": "string",
@@ -45,7 +59,16 @@
     },
     "retentionRole": {
       "type": "string",
-      "enum": ["scratch", "quick_shot", "candidate", "baseline", "validation", "test", "promoted", "pinned"]
+      "enum": [
+        "scratch",
+        "quick_shot",
+        "candidate",
+        "baseline",
+        "validation",
+        "test",
+        "promoted",
+        "pinned"
+      ]
     },
     "startedAt": { "type": "string", "format": "date-time" },
     "endedAt": { "type": "string", "format": "date-time" },

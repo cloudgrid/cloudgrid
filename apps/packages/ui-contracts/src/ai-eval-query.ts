@@ -197,7 +197,9 @@ function datasetSplitOrNull(value: string | null | undefined): DatasetSplit | nu
   return DATASET_SPLITS.includes(value as DatasetSplit) ? (value as DatasetSplit) : null;
 }
 
-function datasetCurationStatusOrNull(value: string | null | undefined): DatasetCurationStatus | null {
+function datasetCurationStatusOrNull(
+  value: string | null | undefined,
+): DatasetCurationStatus | null {
   return DATASET_CURATION_STATUSES.includes(value as DatasetCurationStatus)
     ? (value as DatasetCurationStatus)
     : null;

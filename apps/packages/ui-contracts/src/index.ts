@@ -91,10 +91,7 @@ export type AlertNotificationAdapterConfigFieldType =
 
 export type AlertNotificationSecretStatus = "SET" | "MISSING";
 
-export type AlertNotificationAdapterTestStatus =
-  | "PASSED"
-  | "FAILED_RETRYABLE"
-  | "FAILED_TERMINAL";
+export type AlertNotificationAdapterTestStatus = "PASSED" | "FAILED_RETRYABLE" | "FAILED_TERMINAL";
 
 export type AlertRuleSort =
   | "updatedAt_desc"

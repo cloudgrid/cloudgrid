@@ -25,8 +25,14 @@
     "id": { "type": "string" },
     "projectId": { "type": "string" },
     "datasetId": { "type": "string" },
-    "status": { "type": "string", "enum": ["staged", "preview_ready", "committed", "failed", "expired"] },
-    "format": { "type": "string", "enum": ["jsonl", "json_array", "csv", "zip", "hugging_face_jsonl", "hugging_face_csv"] },
+    "status": {
+      "type": "string",
+      "enum": ["staged", "preview_ready", "committed", "failed", "expired"]
+    },
+    "format": {
+      "type": "string",
+      "enum": ["jsonl", "json_array", "csv", "zip", "hugging_face_jsonl", "hugging_face_csv"]
+    },
     "sourceFiles": { "type": "array", "items": { "$ref": "#/$defs/sourceFile" } },
     "mapping": { "$ref": "#/$defs/importMapping" },
     "defaults": { "$ref": "#/$defs/importDefaults" },
@@ -47,7 +53,10 @@
       "required": ["path", "format", "sizeBytes", "sha256"],
       "properties": {
         "path": { "type": "string" },
-        "format": { "type": "string", "enum": ["jsonl", "json_array", "csv", "zip", "hugging_face_jsonl", "hugging_face_csv"] },
+        "format": {
+          "type": "string",
+          "enum": ["jsonl", "json_array", "csv", "zip", "hugging_face_jsonl", "hugging_face_csv"]
+        },
         "sizeBytes": { "type": "integer", "minimum": 0 },
         "rowCount": { "type": "integer", "minimum": 0 },
         "sha256": { "type": "string" }

@@ -56,7 +56,11 @@ const scoreClass = (score: string) =>
     : "text-[color:var(--color-rose)] bg-rose-soft";
 
 const toneColor = (tone: string) =>
-  tone === "good" ? "var(--color-emerald)" : tone === "warn" ? "var(--color-amber)" : "var(--color-rose)";
+  tone === "good"
+    ? "var(--color-emerald)"
+    : tone === "warn"
+      ? "var(--color-amber)"
+      : "var(--color-rose)";
 ---
 
 <div class="bg-recessed p-3 sm:p-4">

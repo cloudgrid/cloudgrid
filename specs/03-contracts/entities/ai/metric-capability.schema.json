@@ -43,12 +43,29 @@
     },
     "requiredEvidence": {
       "type": "array",
-      "items": { "type": "string", "enum": ["input", "expected", "actual_output", "trace", "trajectory_summary", "important_steps", "metadata"] },
+      "items": {
+        "type": "string",
+        "enum": [
+          "input",
+          "expected",
+          "actual_output",
+          "trace",
+          "trajectory_summary",
+          "important_steps",
+          "metadata"
+        ]
+      },
       "default": []
     },
     "executionKind": {
       "type": "string",
-      "enum": ["deterministic", "trace_derived", "semantic_model_backed", "judge_backed", "aggregate_only"]
+      "enum": [
+        "deterministic",
+        "trace_derived",
+        "semantic_model_backed",
+        "judge_backed",
+        "aggregate_only"
+      ]
     },
     "providerRequirements": {
       "type": "object",
@@ -56,12 +73,30 @@
       "required": ["required", "purposes"],
       "properties": {
         "required": { "type": "boolean" },
-        "purposes": { "type": "array", "items": { "type": "string", "enum": ["judge", "optimizer", "embedding", "replay", "default"] }, "default": [] }
+        "purposes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["judge", "optimizer", "embedding", "replay", "default"]
+          },
+          "default": []
+        }
       }
     },
     "perItemResultSchema": { "type": "object", "additionalProperties": true },
     "aggregationBehavior": { "type": "object", "additionalProperties": true },
     "comparisonBehavior": { "type": "object", "additionalProperties": true },
-    "visualizationKind": { "type": "string", "enum": ["scalar", "boolean", "label", "confusion_matrix", "field_breakdown", "distribution", "none"] }
+    "visualizationKind": {
+      "type": "string",
+      "enum": [
+        "scalar",
+        "boolean",
+        "label",
+        "confusion_matrix",
+        "field_breakdown",
+        "distribution",
+        "none"
+      ]
+    }
   }
 }

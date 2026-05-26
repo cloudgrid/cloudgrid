@@ -26,7 +26,8 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  const body = request.method === "GET" || request.method === "HEAD" ? undefined : await readBody(request);
+  const body =
+    request.method === "GET" || request.method === "HEAD" ? undefined : await readBody(request);
   const headers = new Headers();
   for (const [key, value] of Object.entries(request.headers)) {
     if (typeof value === "string") {

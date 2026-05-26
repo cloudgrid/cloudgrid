@@ -28,7 +28,10 @@
     "digest": { "type": "string", "minLength": 1 },
     "createdAt": { "type": "string", "format": "date-time" },
     "createdBy": { "type": "string" },
-    "source": { "type": "string", "enum": ["manual", "imported", "optimized", "promoted", "external"] },
+    "source": {
+      "type": "string",
+      "enum": ["manual", "imported", "optimized", "promoted", "external"]
+    },
     "parts": { "type": "array", "items": { "$ref": "#/$defs/targetPartSnapshot" }, "minItems": 1 },
     "metadata": { "type": "object", "additionalProperties": true, "default": {} },
     "reproducibility": { "type": "string", "enum": ["full", "degraded"] }
@@ -41,7 +44,16 @@
       "properties": {
         "partKind": {
           "type": "string",
-          "enum": ["prompt", "examples", "model_config", "tool_config", "skill", "workflow", "agent_config", "adapter_metadata"]
+          "enum": [
+            "prompt",
+            "examples",
+            "model_config",
+            "tool_config",
+            "skill",
+            "workflow",
+            "agent_config",
+            "adapter_metadata"
+          ]
         },
         "partRef": { "type": "string" },
         "version": { "type": "integer", "minimum": 1 },

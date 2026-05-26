@@ -52,7 +52,10 @@
   },
   "allOf": [
     {
-      "if": { "properties": { "curationStatus": { "const": "ready" } }, "required": ["curationStatus"] },
+      "if": {
+        "properties": { "curationStatus": { "const": "ready" } },
+        "required": ["curationStatus"]
+      },
       "then": { "required": ["expected"] }
     },
     {
@@ -69,7 +72,10 @@
       "additionalProperties": false,
       "required": ["kind", "id"],
       "properties": {
-        "kind": { "type": "string", "enum": ["trace", "span", "evaluation", "import", "candidate", "manual"] },
+        "kind": {
+          "type": "string",
+          "enum": ["trace", "span", "evaluation", "import", "candidate", "manual"]
+        },
         "id": { "type": "string" },
         "traceId": { "type": "string" },
         "spanId": { "type": "string" },
@@ -83,7 +89,13 @@
     "anonymizationProvenance": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["policyId", "policyVersion", "transformedAt", "consistencyScope", "transformedFields"],
+      "required": [
+        "policyId",
+        "policyVersion",
+        "transformedAt",
+        "consistencyScope",
+        "transformedFields"
+      ],
       "properties": {
         "policyId": { "type": "string" },
         "policyVersion": { "type": "integer", "minimum": 1 },

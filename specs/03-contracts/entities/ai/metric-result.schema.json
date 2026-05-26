@@ -22,15 +22,34 @@
     "id": { "type": "string" },
     "metricId": { "type": "string", "minLength": 1 },
     "metricVersion": { "type": "integer", "minimum": 1 },
-    "scope": { "type": "string", "enum": ["item_run", "evaluation_run", "comparison", "optimization_run"] },
+    "scope": {
+      "type": "string",
+      "enum": ["item_run", "evaluation_run", "comparison", "optimization_run"]
+    },
     "subjectId": { "type": "string" },
     "family": {
       "type": "string",
-      "enum": ["classification", "extraction", "freeform_answer", "tool_use", "agent_loop", "workflow", "skill", "trajectory", "cost"]
+      "enum": [
+        "classification",
+        "extraction",
+        "freeform_answer",
+        "tool_use",
+        "agent_loop",
+        "workflow",
+        "skill",
+        "trajectory",
+        "cost"
+      ]
     },
     "payload": { "$ref": "#/$defs/metricPayload" },
-    "unit": { "type": "string", "enum": ["ratio", "count", "ms", "tokens", "currency", "label", "none"] },
-    "direction": { "type": "string", "enum": ["higher_is_better", "lower_is_better", "informational"] },
+    "unit": {
+      "type": "string",
+      "enum": ["ratio", "count", "ms", "tokens", "currency", "label", "none"]
+    },
+    "direction": {
+      "type": "string",
+      "enum": ["higher_is_better", "lower_is_better", "informational"]
+    },
     "problem": { "$ref": "#/$defs/problem" },
     "evidenceRefs": { "type": "array", "items": { "$ref": "#/$defs/evidenceRef" }, "default": [] },
     "metadata": { "type": "object", "additionalProperties": true, "default": {} },
@@ -155,7 +174,10 @@
       "additionalProperties": false,
       "required": ["kind", "id"],
       "properties": {
-        "kind": { "type": "string", "enum": ["dataset_item_revision", "evaluation_item_run", "trace", "span", "artifact"] },
+        "kind": {
+          "type": "string",
+          "enum": ["dataset_item_revision", "evaluation_item_run", "trace", "span", "artifact"]
+        },
         "id": { "type": "string" },
         "traceId": { "type": "string" },
         "spanId": { "type": "string" }

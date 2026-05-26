@@ -3015,7 +3015,7 @@ function WizardPage({
                 type="button"
                 variant={readOnly ? "outline" : "default"}
               >
-                {saveIcon}
+                <span data-icon="inline-start">{saveIcon}</span>
                 {saveLabel}
               </Button>
             ) : (

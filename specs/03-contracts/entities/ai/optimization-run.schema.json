@@ -22,14 +22,25 @@
     "projectId": { "type": "string" },
     "status": {
       "type": "string",
-      "enum": ["queued", "running", "pausing", "paused", "cancelling", "cancelled", "completed", "failed"]
+      "enum": [
+        "queued",
+        "running",
+        "pausing",
+        "paused",
+        "cancelling",
+        "cancelled",
+        "completed",
+        "failed"
+      ]
     },
     "baselineTargetSnapshotId": { "type": "string" },
     "objective": { "$ref": "#/$defs/optimizationObjective" },
     "trainingEvaluationDefinitionId": { "type": "string" },
     "trainingSplitSelector": { "$ref": "./evaluation-definition.schema.json#/$defs/splitSelector" },
     "validationEvaluationDefinitionId": { "type": "string" },
-    "validationSplitSelector": { "$ref": "./evaluation-definition.schema.json#/$defs/splitSelector" },
+    "validationSplitSelector": {
+      "$ref": "./evaluation-definition.schema.json#/$defs/splitSelector"
+    },
     "testEvaluationDefinitionId": { "type": "string" },
     "testSplitSelector": { "$ref": "./evaluation-definition.schema.json#/$defs/splitSelector" },
     "candidateTargetSnapshotIds": { "type": "array", "items": { "type": "string" }, "default": [] },
@@ -43,18 +54,36 @@
     "startedAt": { "type": "string", "format": "date-time" },
     "endedAt": { "type": "string", "format": "date-time" }
   },
-  "anyOf": [{ "required": ["trainingEvaluationDefinitionId"] }, { "required": ["trainingSplitSelector"] }],
+  "anyOf": [
+    { "required": ["trainingEvaluationDefinitionId"] },
+    { "required": ["trainingSplitSelector"] }
+  ],
   "$defs": {
     "optimizationObjective": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["primaryMetricId", "secondaryMetricIds", "constraints", "tradeoffMetricIds", "rankingPolicy", "tieBreakers", "minimumEvidence"],
+      "required": [
+        "primaryMetricId",
+        "secondaryMetricIds",
+        "constraints",
+        "tradeoffMetricIds",
+        "rankingPolicy",
+        "tieBreakers",
+        "minimumEvidence"
+      ],
       "properties": {
         "primaryMetricId": { "type": "string", "minLength": 1 },
         "secondaryMetricIds": { "type": "array", "items": { "type": "string" }, "default": [] },
-        "constraints": { "type": "array", "items": { "$ref": "#/$defs/objectiveConstraint" }, "default": [] },
+        "constraints": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/objectiveConstraint" },
+          "default": []
+        },
         "tradeoffMetricIds": { "type": "array", "items": { "type": "string" }, "default": [] },
-        "rankingPolicy": { "type": "string", "enum": ["primary_then_constraints", "weighted_score", "pareto"] },
+        "rankingPolicy": {
+          "type": "string",
+          "enum": ["primary_then_constraints", "weighted_score", "pareto"]
+        },
         "tieBreakers": { "type": "array", "items": { "type": "string" }, "default": [] },
         "minimumEvidence": {
           "type": "object",
@@ -99,17 +128,34 @@
         "split": { "type": "string", "enum": ["training", "validation", "test"] },
         "selectionStrategy": {
           "type": "string",
-          "enum": ["failed_categories", "weak_fields", "edge_cases", "high_cost_rows", "recent_failures", "representative_clusters", "stratified_random"]
+          "enum": [
+            "failed_categories",
+            "weak_fields",
+            "edge_cases",
+            "high_cost_rows",
+            "recent_failures",
+            "representative_clusters",
+            "stratified_random"
+          ]
         },
-        "selectedItemRevisionIds": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "selectedItemRevisionIds": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        },
         "seed": { "type": "integer" },
         "minimumSampleSize": { "type": "integer", "minimum": 1 },
-        "metricSettingsSnapshot": { "$ref": "./evaluation-definition.schema.json#/$defs/metricSettings" },
+        "metricSettingsSnapshot": {
+          "$ref": "./evaluation-definition.schema.json#/$defs/metricSettings"
+        },
         "runPolicySnapshot": { "$ref": "./eval-run-policy.schema.json" }
       },
       "allOf": [
         {
-          "if": { "properties": { "selectionStrategy": { "const": "stratified_random" } }, "required": ["selectionStrategy"] },
+          "if": {
+            "properties": { "selectionStrategy": { "const": "stratified_random" } },
+            "required": ["selectionStrategy"]
+          },
           "then": { "required": ["seed"] }
         }
       ]

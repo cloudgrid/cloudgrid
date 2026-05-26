@@ -28,9 +28,17 @@
     "defaultJudgeProfileId": { "type": "string" },
     "defaultOptimizerProfileId": { "type": "string" },
     "defaultEmbeddingProfileId": { "type": "string" },
-    "providerProfiles": { "type": "array", "items": { "$ref": "#/$defs/providerProfile" }, "default": [] },
+    "providerProfiles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/providerProfile" },
+      "default": []
+    },
     "modelAliases": { "type": "array", "items": { "$ref": "#/$defs/modelAlias" }, "default": [] },
-    "onlinePolicies": { "type": "array", "items": { "$ref": "#/$defs/onlinePolicy" }, "default": [] },
+    "onlinePolicies": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/onlinePolicy" },
+      "default": []
+    },
     "budget": { "$ref": "#/$defs/budget" },
     "sampling": { "$ref": "#/$defs/sampling" },
     "runPolicyDefaults": { "$ref": "./eval-run-policy.schema.json" },
@@ -82,7 +90,10 @@
         "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,62}$" },
         "providerProfileId": { "type": "string" },
         "model": { "type": "string", "minLength": 1 },
-        "purpose": { "type": "string", "enum": ["judge", "optimizer", "embedding", "replay", "default"] },
+        "purpose": {
+          "type": "string",
+          "enum": ["judge", "optimizer", "embedding", "replay", "default"]
+        },
         "parameters": { "type": "object", "additionalProperties": true, "default": {} }
       }
     },
@@ -112,12 +123,26 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["none", "metadata_only", "captured_content", "dataset_content", "retrieved_document_content"]
+            "enum": [
+              "none",
+              "metadata_only",
+              "captured_content",
+              "dataset_content",
+              "retrieved_document_content"
+            ]
           },
           "default": ["metadata_only"]
         },
-        "maxLatencyClass": { "type": "string", "enum": ["inline", "near_realtime", "batch"], "default": "batch" },
-        "annotationRules": { "type": "array", "items": { "$ref": "#/$defs/annotationRule" }, "default": [] },
+        "maxLatencyClass": {
+          "type": "string",
+          "enum": ["inline", "near_realtime", "batch"],
+          "default": "batch"
+        },
+        "annotationRules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/annotationRule" },
+          "default": []
+        },
         "updatedAt": { "type": "string", "format": "date-time" },
         "updatedByUserId": { "type": "string" }
       }
@@ -189,10 +214,18 @@
       "properties": {
         "candidateSuggestionsEnabled": { "type": "boolean", "default": true },
         "requireReviewBeforeCommit": { "type": "boolean", "default": true },
-        "anonymizationMode": { "type": "string", "enum": ["off", "realistic", "redact"], "default": "realistic" },
+        "anonymizationMode": {
+          "type": "string",
+          "enum": ["off", "realistic", "redact"],
+          "default": "realistic"
+        },
         "anonymizationPolicyId": { "type": "string" },
         "anonymizationPolicyVersion": { "type": "integer", "minimum": 1 },
-        "anonymizationConsistencyScope": { "type": "string", "enum": ["project", "dataset"], "default": "dataset" },
+        "anonymizationConsistencyScope": {
+          "type": "string",
+          "enum": ["project", "dataset"],
+          "default": "dataset"
+        },
         "preserveLocale": { "type": "boolean", "default": true },
         "preserveTemporalDistance": { "type": "boolean", "default": true },
         "blockedEntityTypes": { "type": "array", "items": { "type": "string" }, "default": [] }
@@ -203,7 +236,11 @@
       "additionalProperties": false,
       "required": ["datasetVersionPolicy", "splitSelector", "metricIds", "retentionProfile"],
       "properties": {
-        "datasetVersionPolicy": { "type": "string", "enum": ["latest_ready", "pinned"], "default": "latest_ready" },
+        "datasetVersionPolicy": {
+          "type": "string",
+          "enum": ["latest_ready", "pinned"],
+          "default": "latest_ready"
+        },
         "splitSelector": {
           "type": "array",
           "items": { "type": "string", "enum": ["training", "validation", "test"] },
@@ -234,7 +271,13 @@
     "effective": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["warnings", "deterministicOnly", "missingProviderProfiles", "disabledProviderProfiles", "budgetExhausted"],
+      "required": [
+        "warnings",
+        "deterministicOnly",
+        "missingProviderProfiles",
+        "disabledProviderProfiles",
+        "budgetExhausted"
+      ],
       "properties": {
         "warnings": { "type": "array", "items": { "type": "string" }, "default": [] },
         "deterministicOnly": { "type": "boolean" },

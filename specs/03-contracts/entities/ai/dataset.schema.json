@@ -83,18 +83,35 @@
           "then": { "properties": { "inputJsonSchema": { "type": "null" } } }
         },
         {
-          "if": { "properties": { "expectedType": { "const": "text" } }, "required": ["expectedType"] },
+          "if": {
+            "properties": { "expectedType": { "const": "text" } },
+            "required": ["expectedType"]
+          },
           "then": { "properties": { "expectedJsonSchema": { "type": "null" } } }
         },
         {
-          "if": { "properties": { "expectedType": { "const": "json" } }, "required": ["expectedType"] },
-          "then": { "required": ["expectedJsonSchema"], "properties": { "expectedJsonSchema": { "type": "object" } } }
+          "if": {
+            "properties": { "expectedType": { "const": "json" } },
+            "required": ["expectedType"]
+          },
+          "then": {
+            "required": ["expectedJsonSchema"],
+            "properties": { "expectedJsonSchema": { "type": "object" } }
+          }
         }
       ]
     },
     "evaluationFamily": {
       "type": "string",
-      "enum": ["classification", "extraction", "freeform_answer", "tool_use", "agent_loop", "workflow", "skill"]
+      "enum": [
+        "classification",
+        "extraction",
+        "freeform_answer",
+        "tool_use",
+        "agent_loop",
+        "workflow",
+        "skill"
+      ]
     },
     "jsonSchemaOrNull": {
       "oneOf": [{ "type": "object", "additionalProperties": true }, { "type": "null" }]
@@ -119,7 +136,11 @@
       "additionalProperties": false,
       "required": ["metricIds", "options"],
       "properties": {
-        "metricIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "default": [] },
+        "metricIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        },
         "primaryMetricId": { "type": "string", "minLength": 1 },
         "options": { "type": "object", "additionalProperties": true, "default": {} }
       }

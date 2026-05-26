@@ -213,12 +213,15 @@ export const aiEvalV2ScenarioFixtures = [
     steps: [
       {
         operation: "CreateDataset",
-        purpose: "Create a per-dataset input/expected-output schema with v2 split and curation defaults.",
-        expected: "Dataset has a current version, ready item counts, split counts, and health metadata.",
+        purpose:
+          "Create a per-dataset input/expected-output schema with v2 split and curation defaults.",
+        expected:
+          "Dataset has a current version, ready item counts, split counts, and health metadata.",
       },
       {
         operation: "PrepareDatasetImport",
-        purpose: "Preview JSONL rows mapped to input, expected, observedOutput, reason, metadata, source refs, split, and curationStatus.",
+        purpose:
+          "Preview JSONL rows mapped to input, expected, observedOutput, reason, metadata, source refs, split, and curationStatus.",
         expected: "Preview validates raw JSON values against dataset settings before commit.",
       },
       {
@@ -228,23 +231,27 @@ export const aiEvalV2ScenarioFixtures = [
       },
       {
         operation: "AppendDatasetItems",
-        purpose: "Add one manual row with input, expected output, optional reason, validation split, and ready curation status.",
+        purpose:
+          "Add one manual row with input, expected output, optional reason, validation split, and ready curation status.",
         expected: "The row creates an item revision and the dataset version changes.",
       },
       {
         operation: "CreateEvaluationDefinition",
-        purpose: "Bind the dataset, ready validation split, target ref, metric settings, and run policy.",
+        purpose:
+          "Bind the dataset, ready validation split, target ref, metric settings, and run policy.",
         expected: "Evaluation definition persists immutable target and metric configuration.",
       },
       {
         operation: "StartEvaluationRun",
         purpose: "Execute the dataset evaluation against the configured target.",
-        expected: "Run returns normal metric aggregates, item results, trajectory summaries, and trace refs.",
+        expected:
+          "Run returns normal metric aggregates, item results, trajectory summaries, and trace refs.",
       },
       {
         operation: "EvaluationRun",
         purpose: "Read run detail without recomputing metrics in the caller.",
-        expected: "Storage-read returns aggregates, item run rows, important steps, and bounded summaries.",
+        expected:
+          "Storage-read returns aggregates, item run rows, important steps, and bounded summaries.",
       },
       {
         operation: "CreateEvaluationComparison",
@@ -256,7 +263,8 @@ export const aiEvalV2ScenarioFixtures = [
       {
         operation: "AppendDatasetItems",
         purpose: "Submit expected JSON that violates the dataset expected-output schema.",
-        expected: "Storage-write rejects the row with a validation error and no dataset version is committed.",
+        expected:
+          "Storage-write rejects the row with a validation error and no dataset version is committed.",
       },
     ],
   },
@@ -269,25 +277,30 @@ export const aiEvalV2ScenarioFixtures = [
     steps: [
       {
         operation: "StartOptimizationRun",
-        purpose: "Start optimization with explicit objective, baseline target snapshot, validation split selector, and quick-shot policy.",
-        expected: "Optimization run stores objective, budget snapshot, quick-shot policy, candidate snapshot ids, and caused evaluation run ids.",
+        purpose:
+          "Start optimization with explicit objective, baseline target snapshot, validation split selector, and quick-shot policy.",
+        expected:
+          "Optimization run stores objective, budget snapshot, quick-shot policy, candidate snapshot ids, and caused evaluation run ids.",
       },
       {
         operation: "OptimizationRuns",
         purpose: "Read optimization progress and candidate evidence.",
-        expected: "Progress exposes candidate snapshots, comparison ids, selected candidate, and promotion record state.",
+        expected:
+          "Progress exposes candidate snapshots, comparison ids, selected candidate, and promotion record state.",
       },
       {
         operation: "PromoteTargetSnapshot",
         purpose: "Promote only after full validation evidence exists.",
-        expected: "Promotion writes a PromotionRecord with baseline, candidate, comparison, target ref, and evidence run ids.",
+        expected:
+          "Promotion writes a PromotionRecord with baseline, candidate, comparison, target ref, and evidence run ids.",
       },
     ],
     failureCases: [
       {
         operation: "StartEvaluationRun",
         purpose: "Run through an opt-in external adapter that exceeds the configured timeout.",
-        expected: "Runner records bounded adapter timeout failure evidence without auto-promoting or mutating the target.",
+        expected:
+          "Runner records bounded adapter timeout failure evidence without auto-promoting or mutating the target.",
       },
     ],
   },
