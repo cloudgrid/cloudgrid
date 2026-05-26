@@ -367,8 +367,9 @@ test("renders project selection and project setup shell modes", async ({ page })
     }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: /^traces$/i })).toHaveCount(0);
-  await page.getByRole("button", { exact: true, name: "Create project" }).click();
-  await expect(page.getByRole("dialog", { name: /add project/i })).toBeVisible();
+  await page.getByRole("link", { exact: true, name: "Create project" }).click();
+  await expect(page).toHaveURL(/\/projects\/new/);
+  await expect(page.getByRole("heading", { name: "Create project", exact: true })).toBeVisible();
 
   await page.goto(`/projects/${projectId}`);
   await expect(page).toHaveURL(/\/traces$/);

@@ -1482,13 +1482,6 @@ function agentRunStatusArg(value: unknown): AgentRunStatus | null {
     : null;
 }
 
-function evalTargetKindArg(value: unknown): "agentRun" | "span" | "datasetItemRun" | null {
-  const normalized = stringArg(value);
-  return normalized === "agentRun" || normalized === "span" || normalized === "datasetItemRun"
-    ? normalized
-    : null;
-}
-
 function requiredStringArg(value: unknown, field: string): string {
   const parsed = stringArg(value);
   if (!parsed) {

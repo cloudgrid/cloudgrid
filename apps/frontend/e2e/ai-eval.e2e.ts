@@ -171,7 +171,7 @@ test.describe("/ai-eval", () => {
     await expect(page.getByRole("heading", { name: "Checkout regression" })).toBeVisible();
     await expect(page.getByText("Regression example from checkout trace")).toBeVisible();
     await expect(page.locator('a[href="/traces/trace-1"]')).toBeVisible();
-    await page.getByRole("button", { name: /dataset settings/i }).click();
+    await page.getByRole("link", { name: /dataset settings/i }).click();
     await page.getByLabel("Default metric").fill("classification.accuracy");
     await page.getByRole("button", { name: /save settings/i }).click();
     await expect.poll(() => calls).toContain("UpdateDatasetSettings");

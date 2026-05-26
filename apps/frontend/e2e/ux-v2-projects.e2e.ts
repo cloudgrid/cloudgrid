@@ -268,7 +268,7 @@ test("project settings use a settings sidebar and focused forms", async ({ page 
 
   await page.goto(`/projects/${projectId}/settings`);
 
-  await expect(page.getByRole("heading", { name: /^general$/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^identity$/i })).toBeVisible();
   await expect(
     page.getByRole("navigation", { name: /settings/i }).getByRole("link", { name: /^api keys$/i }),
   ).toHaveAttribute("href", `/projects/${projectId}/settings/ingest`);
