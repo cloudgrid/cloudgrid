@@ -4,7 +4,7 @@ description: "Retention and alerting are project-scoped administrative surfaces.
 order: 5
 accent: cyan
 eyebrow: "Handbook - Concepts"
-updated: 2026-05-18
+updated: 2026-05-26
 ---
 
 Retention and alerting are project-scoped administrative surfaces. Policy and rule management is implemented; deletion and alert execution are separate service responsibilities.
@@ -78,9 +78,9 @@ flowchart LR
   Control --> History["in-app alert history"]
 ```
 
-The alert evaluator owns schedules, rule execution, state transitions, deduplication, and notification dispatch. The repository includes evaluator domain logic and transport-neutral handlers, but production firing requires scheduler, storage-read/control-plane adapters, and configured notification dispatch. Dashboard widget thresholds are visual dashboard settings and do not execute alert rules.
+The alert evaluator owns schedules, rule execution, state transitions, deduplication, and notification dispatch. The repository includes evaluator domain logic, scheduler startup validation, service project discovery, storage-read/control-plane adapters, and the in-app, email, and webhook notification adapters. Production firing requires operators to configure the enabled adapter catalog and the deployment SMTP or webhook values. Dashboard widget thresholds are visual dashboard settings and do not execute alert rules.
 
-Non-core adapters such as email, webhook, Slack, or Teams require their own provider config and secret-handling specs before implementation.
+Provider-specific delivery paths such as Slack, Teams, WhatsApp, SMS, PagerDuty, or a customer-owned notification gateway use the bridge-backed adapter path. Those adapters listen for alert dispatch work on the private message bridge, deliver to their provider, and return bounded delivery status. They do not evaluate rules, query telemetry, mutate alert rules, or own alert state. The signed webhook adapter remains the simplest way to connect an HTTPS receiver.
 
 ## Next Step
 

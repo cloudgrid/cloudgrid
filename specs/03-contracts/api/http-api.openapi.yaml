@@ -179,7 +179,7 @@ paths:
           $ref: "#/components/responses/Error"
         "410":
           $ref: "#/components/responses/Error"
-  /api/ai-chat/runs:
+  /api/ai-chat/stream:
     post:
       operationId: OPR-AIC-post-chat-run
       summary: Start an AI Chat run and stream server-sent events.
@@ -195,7 +195,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AiChatRunRequest"
+              $ref: "../entities/ai/ai-chat-stream.schema.json#/$defs/streamRequest"
       responses:
         "200":
           description: Server-sent event stream for the chat run.
@@ -406,53 +406,8 @@ components:
         expiresAt:
           type: string
           format: date-time
-    AiChatRunRequest:
-      type: object
-      additionalProperties: false
-      required: [companyId, projectId, conversationId, message]
-      properties:
-        companyId:
-          type: string
-        projectId:
-          type: string
-        conversationId:
-          type: string
-        message:
-          type: string
-        idempotencyKey:
-          type: string
-        resumeRunId:
-          type: string
     AiChatStreamEvent:
-      type: object
-      additionalProperties: false
-      required: [type, runId, seq, emittedAt]
-      properties:
-        type:
-          type: string
-          enum:
-            - run.started
-            - message.delta
-            - message.completed
-            - artifact.created
-            - action.proposed
-            - action.updated
-            - run.completed
-            - run.failed
-            - heartbeat
-        runId:
-          type: string
-        conversationId:
-          type: string
-        seq:
-          type: integer
-          minimum: 0
-        emittedAt:
-          type: string
-          format: date-time
-        payload:
-          type: object
-          additionalProperties: true
+      $ref: "../entities/ai/ai-chat-stream.schema.json#/$defs/streamEvent"
     LivenessResponse:
       type: object
       additionalProperties: false

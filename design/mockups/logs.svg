@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1440" height="1024" viewBox="0 0 1440 1024" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="CloudGrid logs mockup">
+  <style>
+    .title{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:21px;font-weight:650;fill:#09090b;letter-spacing:0}
+    .h{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:600;fill:#09090b;letter-spacing:0}
+    .body{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:13px;font-weight:400;fill:#09090b;letter-spacing:0}
+    .muted{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:400;fill:#71717a;letter-spacing:0}
+    .label{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:11px;font-weight:500;fill:#71717a;letter-spacing:0}
+    .button{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:500;letter-spacing:0}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;font-weight:400;fill:#09090b;letter-spacing:0}
+    .mono-muted{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;font-weight:400;fill:#71717a;letter-spacing:0}
+    .tiny{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:9px;font-weight:500;fill:#71717a;letter-spacing:0}
+  </style>
+  <rect width="1440" height="1024" fill="#ffffff"/>
+  
+  <rect x="0" y="0" width="1440" height="56" rx="0" fill="#ffffff" stroke="none" />
+  <line x1="0" y1="56" x2="1440" y2="56" stroke="#e4e4e7" />
+  <rect x="16" y="16" width="24" height="24" rx="5" fill="#18181b"/>
+  <text x="50" y="34" class="h" >CloudGrid</text>
+  <rect x="426" y="12" width="320" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+  <text x="442" y="32" class="label" fill="#09090b">Personal / checkout-platform</text>
+  <rect x="762" y="12" width="264" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+  <text x="778" y="32" class="label" >Search commands...</text>
+  <rect x="1182" y="12" width="76" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1196" y="33" class="button" fill="#09090b">Setup</text>
+  <rect x="1270" y="12" width="64" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1284" y="33" class="button" fill="#09090b">Docs</text>
+  <circle cx="1388" cy="28" r="15" fill="#f4f4f5" stroke="#e4e4e7"/>
+
+    <rect x="0" y="56" width="232" height="968" rx="0" fill="#fafafa" stroke="none" />
+    <line x1="232" y1="56" x2="232" y2="1024" stroke="#e4e4e7" />
+    <text x="20" y="88" class="label" >Project</text>
+    <text x="20" y="108" class="h" >checkout-platform</text>
+    <text x="20" y="128" class="muted" >production</text>
+    <line x1="16" y1="148" x2="216" y2="148" stroke="#f0f0f1" />
+    <rect x="12" y="166" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="181" r="4" fill="#a1a1aa"/>
+          <text x="42" y="186" class="body" fill="#71717a">AI Chat</text><rect x="12" y="204" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="219" r="4" fill="#a1a1aa"/>
+          <text x="42" y="224" class="body" fill="#71717a">Traces</text><rect x="12" y="242" width="208" height="30" rx="6" fill="#f4f4f5" stroke="#e4e4e7" />
+          <circle cx="28" cy="257" r="4" fill="#18181b"/>
+          <text x="42" y="262" class="body" fill="#09090b">Logs</text><rect x="12" y="280" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="295" r="4" fill="#a1a1aa"/>
+          <text x="42" y="300" class="body" fill="#71717a">Metrics</text><rect x="12" y="318" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="333" r="4" fill="#a1a1aa"/>
+          <text x="42" y="338" class="body" fill="#71717a">Dashboards</text><rect x="12" y="356" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="371" r="4" fill="#a1a1aa"/>
+          <text x="42" y="376" class="body" fill="#71717a">Evaluations</text>
+    <line x1="16" y1="948" x2="216" y2="948" stroke="#f0f0f1" />
+    <circle cx="28" cy="978" r="4" fill="#a1a1aa"/>
+    <text x="42" y="983" class="body" fill="#71717a">Project settings</text>
+  
+    
+  <text x="248" y="93" class="title" >Logs</text>
+  <text x="248" y="115" class="muted" >Search project logs and pivot to traces.</text>
+  <rect x="1228" y="80" width="84" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1242" y="101" class="button" fill="#09090b">Refresh</text><rect x="1324" y="80" width="72" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1338" y="101" class="button" fill="#09090b">More</text>
+  <line x1="232" y1="136" x2="1440" y2="136" stroke="#e4e4e7" />
+
+    
+  <rect x="248" y="152" width="1176" height="78" rx="8" fill="#ffffff" stroke="#e4e4e7" />
+    <rect x="262" y="164" width="150" height="30" rx="6" fill="#ffffff" stroke="#e4e4e7" /><text x="274" y="184" class="label" >Search logs</text><rect x="430" y="164" width="150" height="30" rx="6" fill="#ffffff" stroke="#e4e4e7" /><text x="442" y="184" class="label" >Service</text><rect x="598" y="164" width="150" height="30" rx="6" fill="#ffffff" stroke="#e4e4e7" /><text x="610" y="184" class="label" >Severity</text><rect x="766" y="164" width="150" height="30" rx="6" fill="#ffffff" stroke="#e4e4e7" /><text x="778" y="184" class="label" >Trace/span</text><rect x="934" y="164" width="150" height="30" rx="6" fill="#ffffff" stroke="#e4e4e7" /><text x="946" y="184" class="label" >Time range</text>
+  <rect x="262" y="200" width="142" height="24" rx="5" fill="#f4f4f5" stroke="#e4e4e7" /><text x="272" y="216" class="label" fill="#09090b">severity=error</text><rect x="416" y="200" width="142" height="24" rx="5" fill="#fef2f2" stroke="#fecaca" /><text x="426" y="216" class="label" fill="#dc2626">trace=trc_92ad</text>
+
+    <rect x="248" y="244" width="776" height="764" rx="8" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="266" y="278" class="label" >Timestamp</text><text x="408" y="278" class="label" >Severity</text><text x="504" y="278" class="label" >Service</text><text x="638" y="278" class="label" >Trace / Span</text><text x="826" y="278" class="label" >Message</text>
+    <line x1="248" y1="294" x2="1024" y2="294" stroke="#e4e4e7" />
+    <rect x="248" y="295" width="776" height="58" rx="0" fill="#fafafa" stroke="transparent" /><line x1="248" y1="353" x2="1024" y2="353" stroke="#f0f0f1" />
+        <text x="266" y="330" class="mono-muted" >12:04:18.890</text><rect x="398" y="312" width="72" height="24" rx="5" fill="#fef2f2" stroke="#fecaca" /><text x="408" y="328" class="label" fill="#dc2626">ERROR</text><text x="496" y="330" class="mono" >payment-svc</text><text x="630" y="330" class="mono-muted" >trc_92ad / spn_41c</text><text x="818" y="330" class="body" >provider declined capture request</text><rect x="248" y="353" width="776" height="58" rx="0" fill="transparent" stroke="transparent" /><line x1="248" y1="411" x2="1024" y2="411" stroke="#f0f0f1" />
+        <text x="266" y="388" class="mono-muted" >12:04:18.711</text><rect x="398" y="370" width="72" height="24" rx="5" fill="#fffbeb" stroke="#fde68a" /><text x="408" y="386" class="label" fill="#d97706">WARN</text><text x="496" y="388" class="mono" >tool-router</text><text x="630" y="388" class="mono-muted" >trc_92ad / spn_22f</text><text x="818" y="388" class="body" >web_search rate-limit retry attempt=2</text><rect x="248" y="411" width="776" height="58" rx="0" fill="transparent" stroke="transparent" /><line x1="248" y1="469" x2="1024" y2="469" stroke="#f0f0f1" />
+        <text x="266" y="446" class="mono-muted" >12:04:18.532</text><rect x="398" y="428" width="72" height="24" rx="5" fill="#f4f4f5" stroke="#e4e4e7" /><text x="408" y="444" class="label" fill="#09090b">INFO</text><text x="496" y="446" class="mono" >llm-router</text><text x="630" y="446" class="mono-muted" >trc_a18f / spn_09a</text><text x="818" y="446" class="body" >openai.chat completion 832 tokens</text><rect x="248" y="469" width="776" height="58" rx="0" fill="transparent" stroke="transparent" /><line x1="248" y1="527" x2="1024" y2="527" stroke="#f0f0f1" />
+        <text x="266" y="504" class="mono-muted" >12:04:18.421</text><rect x="398" y="486" width="72" height="24" rx="5" fill="#f4f4f5" stroke="#e4e4e7" /><text x="408" y="502" class="label" fill="#09090b">INFO</text><text x="496" y="504" class="mono" >checkout-api</text><text x="630" y="504" class="mono-muted" >trc_92ad / root</text><text x="818" y="504" class="body" >started checkout request</text><rect x="248" y="527" width="776" height="58" rx="0" fill="transparent" stroke="transparent" /><line x1="248" y1="585" x2="1024" y2="585" stroke="#f0f0f1" />
+        <text x="266" y="562" class="mono-muted" >12:04:17.920</text><rect x="398" y="544" width="72" height="24" rx="5" fill="#f4f4f5" stroke="#e4e4e7" /><text x="408" y="560" class="label" fill="#09090b">DEBUG</text><text x="496" y="562" class="mono" >storage-read</text><text x="630" y="562" class="mono-muted" >-</text><text x="818" y="562" class="body" >query metric descriptor cache hit</text>
+    <rect x="1036" y="244" width="388" height="764" rx="8" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1052" y="274" class="h" >Selected log</text><rect x="1320" y="255" width="74" height="24" rx="5" fill="#fef2f2" stroke="#fecaca" /><text x="1330" y="271" class="label" fill="#dc2626">ERROR</text>
+    <text x="1052" y="300" class="mono-muted" >payment-svc · 12:04:18.890</text>
+    <rect x="1048" y="318" width="90" height="28" rx="5" fill="#f4f4f5" stroke="#e4e4e7" /><text x="1060" y="337" class="label" fill="#09090b">Body</text><rect x="1144" y="318" width="90" height="28" rx="5" fill="transparent" stroke="transparent" /><text x="1156" y="337" class="label" fill="#71717a">Attributes</text><rect x="1240" y="318" width="90" height="28" rx="5" fill="transparent" stroke="transparent" /><text x="1252" y="337" class="label" fill="#71717a">Correlation</text>
+    <rect x="1052" y="366" width="356" height="126" rx="6" fill="#fafafa" stroke="#e4e4e7" />
+    <text x="1066" y="396" class="mono" >provider declined capture request</text>
+    <text x="1066" y="424" class="mono-muted" >code=card_declined retry=false</text>
+    <text x="1052" y="534" class="h" >Correlation</text>
+    <line x1="1052" y1="556" x2="1408" y2="556" stroke="#f0f0f1" /><text x="1060" y="582" class="mono" >traceId  trc_92ad6f</text><line x1="1052" y1="598" x2="1408" y2="598" stroke="#f0f0f1" /><text x="1060" y="624" class="mono" >spanId   spn_41c</text><line x1="1052" y1="640" x2="1408" y2="640" stroke="#f0f0f1" /><text x="1060" y="666" class="mono" >service  payment-svc</text>
+    <rect x="1052" y="710" width="100" height="32" rx="6" fill="#18181b" stroke="#18181b" />
+    <text x="1066" y="731" class="button" fill="#fafafa">Open span</text><rect x="1164" y="710" width="116" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1178" y="731" class="button" fill="#09090b">Copy trace ID</text>
+  
+</svg>

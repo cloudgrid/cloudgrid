@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-104",
+  "title": "EvaluationRun",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "projectId",
+    "kind",
+    "status",
+    "datasetId",
+    "datasetVersionId",
+    "datasetDigest",
+    "selectedItemRevisionIds",
+    "splitSelector",
+    "targetSnapshotId",
+    "metricSettingsSnapshot",
+    "runPolicySnapshot",
+    "retentionProfile",
+    "retentionRole",
+    "startedAt",
+    "summary"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "projectId": { "type": "string" },
+    "evaluationDefinitionId": { "type": "string" },
+    "kind": {
+      "type": "string",
+      "enum": ["dataset_evaluation", "quick_shot", "optimization_validation", "test"]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "running",
+        "pausing",
+        "paused",
+        "cancelling",
+        "cancelled",
+        "completed",
+        "failed"
+      ]
+    },
+    "datasetId": { "type": "string" },
+    "datasetVersionId": { "type": "string" },
+    "datasetDigest": { "type": "string", "minLength": 1 },
+    "selectedItemRevisionIds": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "splitSelector": { "$ref": "./evaluation-definition.schema.json#/$defs/splitSelector" },
+    "targetSnapshotId": { "type": "string" },
+    "metricSettingsSnapshot": {
+      "$ref": "./evaluation-definition.schema.json#/$defs/metricSettings"
+    },
+    "runPolicySnapshot": { "$ref": "./eval-run-policy.schema.json" },
+    "retentionProfile": {
+      "type": "string",
+      "enum": ["balanced", "fast_iteration", "audit_friendly", "minimal_storage"]
+    },
+    "retentionRole": {
+      "type": "string",
+      "enum": [
+        "scratch",
+        "quick_shot",
+        "candidate",
+        "baseline",
+        "validation",
+        "test",
+        "promoted",
+        "pinned"
+      ]
+    },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "endedAt": { "type": "string", "format": "date-time" },
+    "summary": { "type": "object", "additionalProperties": true },
+    "problem": { "type": "object", "additionalProperties": true }
+  }
+}

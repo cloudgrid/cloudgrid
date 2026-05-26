@@ -10,10 +10,15 @@ import (
 
 type Checker func(context.Context) map[string]Check
 
+type Options struct {
+	Timeout time.Duration
+}
+
 type State struct {
 	service string
 	ready   atomic.Bool
 	checker Checker
+	timeout time.Duration
 }
 
 type Check struct {
@@ -42,7 +47,15 @@ type response struct {
 }
 
 func NewState(service string, checker Checker) *State {
-	return &State{service: service, checker: checker}
+	return NewStateWithOptions(service, checker, Options{})
+}
+
+func NewStateWithOptions(service string, checker Checker, options Options) *State {
+	timeout := options.Timeout
+	if timeout <= 0 {
+		timeout = time.Second
+	}
+	return &State{service: service, checker: checker, timeout: timeout}
 }
 
 func (s *State) SetReady(ready bool) {
@@ -76,9 +89,9 @@ func (s *State) handleReadiness(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.checker != nil {
-		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
 		defer cancel()
-		for name, check := range s.checker(ctx) {
+		for name, check := range s.runChecker(ctx) {
 			checks[name] = check
 		}
 	}
@@ -101,6 +114,28 @@ func (s *State) handleReadiness(w http.ResponseWriter, r *http.Request) {
 		Service: s.service,
 		Checks:  checks,
 	})
+}
+
+func (s *State) runChecker(ctx context.Context) map[string]Check {
+	result := make(chan map[string]Check, 1)
+	go func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				result <- map[string]Check{
+					"health_checker": Unavailable("ERR-010", "RUNTIME_COMPOSITION_FAILED", "health checker panicked"),
+				}
+			}
+		}()
+		result <- s.checker(ctx)
+	}()
+	select {
+	case checks := <-result:
+		return checks
+	case <-ctx.Done():
+		return map[string]Check{
+			"health_checker": Unavailable("ERR-010", "RUNTIME_COMPOSITION_FAILED", "health checker timed out"),
+		}
+	}
 }
 
 func OK() Check {

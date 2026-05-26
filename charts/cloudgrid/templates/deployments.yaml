@@ -4,7 +4,7 @@
   "cloudgrid-otlp-collector" (dict "values" .Values.otlpCollector "port" 4318 "grpcPort" 4317 "probe" "/readyz" "surrealdb" false "enabled" true)
   "cloudgrid-storage-read" (dict "values" .Values.storageRead "port" 8081 "probe" "/readyz" "surrealdb" true "enabled" true)
   "cloudgrid-storage-write" (dict "values" .Values.storageWrite "port" 8082 "probe" "/readyz" "surrealdb" true "enabled" true)
-  "cloudgrid-control-plane" (dict "values" .Values.controlPlane "port" 8084 "probe" "/readyz" "surrealdb" true "enabled" true)
+  "cloudgrid-control-plane" (dict "values" .Values.controlPlane "port" 8084 "probe" "/readyz" "surrealdb" true "enabled" true "extraEnv" (list (dict "name" "CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY" "secretName" .Values.controlPlane.providerSecretEncryptionKey.existingSecret "secretKey" .Values.controlPlane.providerSecretEncryptionKey.secretKey)))
   "cloudgrid-ai-eval-runner" (dict "values" .Values.aiEvalRunner "port" 8085 "probe" "/readyz" "surrealdb" false "enabled" .Values.aiEvalRunner.enabled)
   "cloudgrid-alert-evaluator" (dict "values" .Values.alertEvaluator "port" 8086 "probe" "/readyz" "surrealdb" false "enabled" .Values.alertEvaluator.enabled)
   "cloudgrid-storage-maintenance" (dict "values" .Values.storageMaintenance "port" 8087 "probe" "/readyz" "surrealdb" true "enabled" .Values.storageMaintenance.enabled)
@@ -73,6 +73,9 @@ spec:
             {{- end }}
           env:
             {{- include "cloudgrid.env.common" $root | nindent 12 }}
+            {{- if eq $name "cloudgrid-otlp-collector" }}
+            {{- include "cloudgrid.env.collectorAuth" $root | nindent 12 }}
+            {{- end }}
             {{- range $key, $value := $svc.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
@@ -81,11 +84,13 @@ spec:
             {{- include "cloudgrid.env.surrealdb" $root | nindent 12 }}
             {{- end }}
             {{- range $env := $service.extraEnv }}
+            {{- if $env.secretName }}
             - name: {{ $env.name }}
               valueFrom:
                 secretKeyRef:
                   name: {{ $env.secretName }}
                   key: {{ $env.secretKey }}
+            {{- end }}
             {{- end }}
           livenessProbe:
             httpGet:

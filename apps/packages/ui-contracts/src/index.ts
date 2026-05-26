@@ -6,9 +6,20 @@ export type JSONValue =
   | JSONValue[]
   | { [key: string]: JSONValue };
 
+export * from "./ai-eval-query";
+export * from "./alert-query";
+export * from "./dashboard-query";
 export * from "./generated";
+export * from "./telemetry-query";
 
 export type DateTime = string;
+
+export interface BridgeError {
+  code: string;
+  message: string;
+  retryable?: boolean | null;
+  details?: JSONValue;
+}
 
 export type TraceStatus = "ok" | "error" | "unset";
 
@@ -65,6 +76,22 @@ export type AlertSeverity = "INFO" | "WARNING" | "ERROR" | "CRITICAL";
 export type AlertState = "OK" | "PENDING" | "FIRING" | "RESOLVED" | "SILENCED" | "ERROR";
 
 export type AlertSignal = "METRIC" | "LOG" | "TRACE";
+
+export type AlertNotificationAdapterKind = "IN_APP" | "EMAIL" | "WEBHOOK" | "BRIDGE";
+
+export type AlertNotificationAdapterConfigFieldType =
+  | "STRING"
+  | "URL"
+  | "EMAIL"
+  | "SECRET"
+  | "BOOLEAN"
+  | "NUMBER"
+  | "SELECT"
+  | "MULTISELECT";
+
+export type AlertNotificationSecretStatus = "SET" | "MISSING";
+
+export type AlertNotificationAdapterTestStatus = "PASSED" | "FAILED_RETRYABLE" | "FAILED_TERMINAL";
 
 export type AlertRuleSort =
   | "updatedAt_desc"
@@ -172,25 +199,274 @@ export type ScorerKind =
   | "semantic"
   | "rag"
   | "llm_judge"
+  | "pairwise_judge"
   | "tool_correctness"
   | "trajectory"
-  | "human";
+  | "workflow"
+  | "human"
+  | "composite";
 
 export type EvalTargetKind = "agentRun" | "span" | "datasetItemRun";
 
-export type ExperimentRunStatus = "queued" | "running" | "cancelled" | "failed" | "finished";
+export type EvalRunMode =
+  | "offline_experiment"
+  | "optimization"
+  | "continuous_measurement"
+  | "dataset_backfill"
+  | "ci_regression_gate"
+  | "realtime_alerting";
+
+export type EvalResultKind =
+  | "classification"
+  | "json_schema"
+  | "llm_judge"
+  | "pairwise_judge"
+  | "semantic_similarity"
+  | "rag"
+  | "tool_correctness"
+  | "trajectory"
+  | "workflow"
+  | "human_review"
+  | "composite"
+  | "deterministic";
+
+export type EvalResultVisualizationKind =
+  | "scalar"
+  | "table"
+  | "confusion_matrix"
+  | "fact_coverage"
+  | "rubric_breakdown"
+  | "rag_grounding"
+  | "tool_call_diff"
+  | "trajectory_steps"
+  | "workflow_steps"
+  | "distribution"
+  | "composite_gate";
+
+export type ExperimentRunStatus =
+  | "queued"
+  | "running"
+  | "pausing"
+  | "paused"
+  | "resuming"
+  | "cancelling"
+  | "cancelled"
+  | "failed"
+  | "completed";
+
+export type DatasetItemRunStatus =
+  | "pending"
+  | "running"
+  | "passed"
+  | "failed"
+  | "errored"
+  | "skipped"
+  | "needs_review"
+  | "quarantined";
+
+export type DatasetItemUpdateOperation =
+  | "edit"
+  | "remove"
+  | "mark_ready"
+  | "reject"
+  | "split_change"
+  | "metadata_update"
+  | "curation_update";
+
+export type DatasetItemQuarantineStatus = "none" | "needs_review" | "quarantined";
+
+export type DatasetTargetShape =
+  | "single_turn"
+  | "conversation"
+  | "tool_call"
+  | "agent_trajectory"
+  | "workflow_trace"
+  | "retrieval_case"
+  | "production_trace_ref";
+
+export type DatasetContentTreatment =
+  | "original"
+  | "realistic_anonymized"
+  | "redacted"
+  | "synthetic";
+
+export type DatasetCandidateStatus =
+  | "suggested"
+  | "reviewing"
+  | "ready"
+  | "committed"
+  | "dismissed"
+  | "superseded";
+
+export type DatasetCandidateSourceKind =
+  | "trace"
+  | "import"
+  | "metric_result"
+  | "evaluation_item_run"
+  | "coverage_gap"
+  | "health_issue"
+  | "failure_cluster"
+  | "manual";
+
+export type EvalBackpressureBehavior = "slow" | "pause" | "skip" | "fail";
+export type EvalLimitBehavior = "skip_item" | "pause_run" | "fail_run";
+export type EvalCheckpointCadence = "item" | "scorer" | "batch";
+
+export type EvalContentClass =
+  | "none"
+  | "metadata_only"
+  | "captured_content"
+  | "dataset_content"
+  | "retrieved_document_content";
+
+export type EvalLatencyClass = "inline" | "near_realtime" | "batch";
+
+export type DatasetAnonymizationMode = "off" | "realistic" | "redact";
+
+export type DatasetAnonymizationConsistencyScope = "project" | "dataset";
 
 export type AnnotationStatus = "open" | "in_review" | "resolved" | "dismissed";
 
-export type OptimizerKind =
-  | "bootstrap_fewshot"
-  | "critic_mutate_judge_pick"
-  | "mipro_v2"
-  | "reflective_text_gradient";
+export type OptimizerKind = "bootstrap_fewshot" | "critic_mutate_judge_pick";
 
-export type DatasetSplit = "dev" | "optimization" | "validation" | "regression" | "holdout";
+export type EvalSolverKind = "prompt" | "agent" | "workflow" | "skill" | "tool";
+export type EvalBaselineKind = "experiment_run" | "prompt_version" | "solver_ref" | "none";
+export type BootstrapFewshotDiversityStrategy =
+  | "none"
+  | "by_label"
+  | "by_cluster"
+  | "by_failure_mode";
 
-export type DatasetReviewStatus = "unreviewed" | "reviewed" | "rejected";
+export type EvaluationFamily =
+  | "classification"
+  | "extraction"
+  | "freeform_answer"
+  | "tool_use"
+  | "agent_loop"
+  | "workflow"
+  | "skill";
+
+export type DatasetValueType = "text" | "json";
+
+export type DatasetSplit = "training" | "validation" | "test";
+
+export type DatasetCurationStatus =
+  | "draft"
+  | "needs_expected"
+  | "needs_review"
+  | "ready"
+  | "rejected";
+
+export type DatasetReviewStatus = DatasetCurationStatus | "unreviewed" | "reviewed";
+
+export type RetentionProfile = "balanced" | "fast_iteration" | "audit_friendly" | "minimal_storage";
+
+export type RetentionRole =
+  | "scratch"
+  | "quick_shot"
+  | "candidate"
+  | "baseline"
+  | "validation"
+  | "test"
+  | "promoted"
+  | "pinned";
+
+export type EvaluationDatasetVersionPolicy = "latest_ready" | "pinned";
+
+export type DatasetVersionSource =
+  | "manual"
+  | "import"
+  | "trace_import"
+  | "optimization"
+  | "candidate_commit";
+
+export type EvaluationTargetKind =
+  | "prompt"
+  | "external_adapter"
+  | "agent"
+  | "workflow"
+  | "custom_harness_target";
+
+export type EvaluationRunKind =
+  | "dataset_evaluation"
+  | "quick_shot"
+  | "optimization_validation"
+  | "test";
+
+export type EvaluationRunStatus =
+  | "queued"
+  | "running"
+  | "pausing"
+  | "paused"
+  | "resuming"
+  | "cancelling"
+  | "cancelled"
+  | "failed"
+  | "completed";
+
+export type EvaluationItemRunStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "quarantined";
+
+export type EvaluationRunEventType =
+  | "started"
+  | "item_completed"
+  | "progress"
+  | "heartbeat"
+  | "cancelled"
+  | "failed"
+  | "completed";
+
+export type QuickShotSelectionStrategy =
+  | "failed_categories"
+  | "weak_fields"
+  | "edge_cases"
+  | "high_cost_rows"
+  | "recent_failures"
+  | "representative_clusters"
+  | "stratified_random";
+
+export type MetricResultScope = "item_run" | "evaluation_run" | "comparison" | "optimization_run";
+export type MetricPayloadKind =
+  | "scalar"
+  | "boolean"
+  | "text"
+  | "json"
+  | "confusion_matrix"
+  | "field_breakdown"
+  | "distribution";
+export type MetricUnit = "score" | "percent" | "count" | "milliseconds" | "tokens" | "usd";
+export type MetricDirection = "higher_is_better" | "lower_is_better" | "informational";
+export type MetricProblemCode =
+  | "invalid_actual_output"
+  | "invalid_expected_output"
+  | "missing_evidence"
+  | "adapter_failure"
+  | "timeout"
+  | "provider_failure"
+  | "content_redacted"
+  | "not_applicable"
+  | "metric_config_invalid"
+  | "internal_error";
+export type TargetSnapshotSource =
+  | "manual"
+  | "evaluation_run"
+  | "optimization_candidate"
+  | "promotion";
+export type TargetReproducibility = "exact" | "same_inputs" | "best_effort" | "not_reproducible";
+
+export type AiEvalSourceRefKind =
+  | "trace"
+  | "span"
+  | "evaluation_run"
+  | "evaluation_item_run"
+  | "import"
+  | "candidate"
+  | "manual";
 
 export type DatasetHealthStatus =
   | "ready"
@@ -245,10 +521,12 @@ export type AiChatMessageRole = "user" | "assistant" | "system" | "tool";
 
 export type AiChatMessagePartType =
   | "text"
-  | "json_render"
-  | "tool_call"
-  | "tool_result"
-  | "action_request";
+  | "artifact"
+  | "tool_status"
+  | "action_proposal"
+  | "approval_result"
+  | "error"
+  | "compaction_summary";
 
 export type AiChatArtifactKind = "json_render" | "data_file" | "script" | "script_output";
 
@@ -268,9 +546,11 @@ export type ExperimentRunEventType =
   | "item_completed"
   | "progress"
   | "heartbeat"
+  | "paused"
+  | "resumed"
   | "cancelled"
   | "failed"
-  | "finished";
+  | "completed";
 
 export type AttributeFilterOperator =
   | "eq"
@@ -293,6 +573,15 @@ export type TraceSort =
 
 export type LogSort = "timestamp_desc" | "timestamp_asc" | "severity_desc";
 
+export type MetricNameSort =
+  | "lastSeenAt_desc"
+  | "lastSeenAt_asc"
+  | "name_asc"
+  | "name_desc"
+  | "kind_asc";
+
+export type MetricSeriesSort = "timestamp_asc" | "timestamp_desc" | "value_desc" | "value_asc";
+
 export type SpanLinkDirection = "forward" | "backward" | "unknown";
 
 export type SpanMatchReason = "selected" | "search" | "filter" | "error" | "criticalPath";
@@ -303,6 +592,7 @@ export type TraceWarningCode =
   | "clockSkew"
   | "partialTrace"
   | "largeTracePreview";
+export type TelemetryFacetSignal = "traces" | "logs" | "metrics";
 
 export interface AttributeFilterInput {
   key: string;
@@ -312,6 +602,7 @@ export interface AttributeFilterInput {
 
 export interface TraceSearchInput {
   service?: string | null;
+  services?: string[] | null;
   query?: string | null;
   operationName?: string | null;
   spanName?: string | null;
@@ -328,6 +619,7 @@ export interface TraceSearchInput {
 
 export interface LiveTraceInput {
   service?: string | null;
+  services?: string[] | null;
   query?: string | null;
   operationName?: string | null;
   spanName?: string | null;
@@ -355,6 +647,7 @@ export interface TraceDetailInput {
 
 export interface LogSearchInput {
   service?: string | null;
+  services?: string[] | null;
   traceId?: string | null;
   spanId?: string | null;
   severity?: string | null;
@@ -371,6 +664,8 @@ export interface TelemetryFacetInput {
   from?: DateTime | null;
   to?: DateTime | null;
   service?: string | null;
+  services?: string[] | null;
+  signal?: TelemetryFacetSignal | null;
   search?: string | null;
   limit?: number | null;
 }
@@ -378,9 +673,12 @@ export interface TelemetryFacetInput {
 export interface MetricNameSearchInput {
   query?: string | null;
   service?: string | null;
+  services?: string[] | null;
   from?: DateTime | null;
   to?: DateTime | null;
+  sort?: MetricNameSort | null;
   limit?: number | null;
+  cursor?: string | null;
 }
 
 export interface MetricSeriesInput {
@@ -391,6 +689,7 @@ export interface MetricSeriesInput {
   aggregation: MetricAggregation;
   groupBy?: string[] | null;
   filters?: AttributeFilterInput[] | null;
+  sort?: MetricSeriesSort | null;
   limit?: number | null;
 }
 
@@ -574,26 +873,30 @@ export interface AgentRunSearchInput {
   status?: AgentRunStatus | null;
   from?: DateTime | null;
   to?: DateTime | null;
-  experimentRunId?: string | null;
+  evaluationRunId?: string | null;
   query?: string | null;
   limit?: number | null;
   cursor?: string | null;
 }
 
 export interface DatasetSearchInput {
+  projectId?: string | null;
   query?: string | null;
   tag?: string | null;
+  evaluationFamily?: EvaluationFamily | null;
   split?: DatasetSplit | null;
-  reviewStatus?: DatasetReviewStatus | null;
+  curationStatus?: DatasetCurationStatus | null;
   limit?: number | null;
   cursor?: string | null;
 }
 
 export interface DatasetItemSearchInput {
+  datasetId?: string | null;
+  datasetVersionId?: string | null;
   query?: string | null;
   sourceTraceId?: string | null;
   split?: DatasetSplit | null;
-  reviewStatus?: DatasetReviewStatus | null;
+  curationStatus?: DatasetCurationStatus | null;
   synthetic?: boolean | null;
   limit?: number | null;
   cursor?: string | null;
@@ -617,11 +920,63 @@ export interface ExperimentSearchInput {
 }
 
 export interface EvalResultSearchInput {
-  scorerId?: string | null;
-  experimentRunId?: string | null;
-  targetKind?: EvalTargetKind | null;
-  targetId?: string | null;
-  passed?: boolean | null;
+  projectId?: string | null;
+  evaluationRunId?: string | null;
+  evaluationItemRunId?: string | null;
+  metricId?: string | null;
+  scope?: MetricResultScope | null;
+  limit?: number | null;
+  cursor?: string | null;
+}
+
+export interface EvaluationResultsSearchInput extends EvalResultSearchInput {}
+
+export interface EvaluationDefinitionSearchInput {
+  projectId?: string | null;
+  datasetId?: string | null;
+  targetKind?: EvaluationTargetKind | null;
+  query?: string | null;
+  limit?: number | null;
+  cursor?: string | null;
+}
+
+export interface EvaluationRunSearchInput {
+  projectId?: string | null;
+  evaluationDefinitionId?: string | null;
+  datasetId?: string | null;
+  datasetVersionId?: string | null;
+  status?: EvaluationRunStatus | null;
+  kind?: EvaluationRunKind | null;
+  split?: DatasetSplit | null;
+  targetSnapshotId?: string | null;
+  query?: string | null;
+  limit?: number | null;
+  cursor?: string | null;
+}
+
+export interface EvaluationItemRunSearchInput {
+  evaluationRunId?: string | null;
+  datasetItemId?: string | null;
+  datasetItemRevisionId?: string | null;
+  status?: EvaluationItemRunStatus | null;
+  limit?: number | null;
+  cursor?: string | null;
+}
+
+export interface EvaluationComparisonSearchInput {
+  projectId?: string | null;
+  baselineRunId?: string | null;
+  candidateRunId?: string | null;
+  metricId?: string | null;
+  limit?: number | null;
+  cursor?: string | null;
+}
+
+export interface OptimizationRunSearchInput {
+  projectId?: string | null;
+  status?: EvaluationRunStatus | null;
+  baselineTargetSnapshotId?: string | null;
+  selectedCandidateSnapshotId?: string | null;
   limit?: number | null;
   cursor?: string | null;
 }
@@ -630,31 +985,155 @@ export interface AnnotationQueueSearchInput {
   status?: AnnotationStatus | null;
   reason?: string | null;
   assignedTo?: string | null;
-  scorerId?: string | null;
+  metricId?: string | null;
   targetKind?: EvalTargetKind | null;
   limit?: number | null;
   cursor?: string | null;
 }
 
 export interface CreateDatasetInput {
+  projectId: string;
   name: string;
   description?: string | null;
   tags?: string[] | null;
+  settings: DatasetSettingsInput;
+  idempotencyKey: string;
+}
+
+export interface DatasetSettingsInput {
+  evaluationFamily: EvaluationFamily;
+  inputType: DatasetValueType;
+  expectedType: DatasetValueType;
+  inputJsonSchema?: JSONValue;
+  expectedJsonSchema?: JSONValue;
+  defaultSplit: DatasetSplit;
+  intakePolicy: DatasetIntakePolicyInput;
+  traceExtractionSettings?: DatasetTraceExtractionSettingsInput | null;
+  anonymizationPolicy?: DatasetAnonymizationPolicyInput | null;
+  defaultMetricSettings: MetricSettingInput[];
+  retentionProfile: RetentionProfile;
+}
+
+export interface UpdateDatasetSettingsInput {
+  datasetId: string;
+  expectedDatasetVersionId: string;
+  settings: DatasetSettingsInput;
+  idempotencyKey: string;
+}
+
+export interface DatasetIntakePolicyInput {
+  manualDefaultStatus?: DatasetCurationStatus | null;
+  importDefaultStatus?: DatasetCurationStatus | null;
+  traceDefaultStatus?: DatasetCurationStatus | null;
+}
+
+export interface DatasetTraceExtractionSettingsInput {
+  inputPath: string;
+  expectedPath?: string | null;
+  observedOutputPath?: string | null;
+  metadataPaths?: string[] | null;
+}
+
+export interface DatasetAnonymizationPolicyInput {
+  mode: DatasetAnonymizationMode;
+  policyId?: string | null;
+  policyVersion?: number | null;
+  consistencyScope?: DatasetAnonymizationConsistencyScope | null;
+  blockedEntityTypes?: string[] | null;
+}
+
+export interface MetricSettingInput {
+  metricId: string;
+  metricVersion?: string | null;
+  options?: JSONValue;
 }
 
 export interface DatasetItemInput {
   input: JSONValue;
   expected?: JSONValue;
+  observedOutput?: JSONValue;
+  reason?: string | null;
   metadata?: JSONValue;
-  sourceTraceId?: string | null;
-  sourceSpanId?: string | null;
+  sourceRefs?: AiEvalSourceRefInput[] | null;
   split?: DatasetSplit | null;
-  reviewStatus?: DatasetReviewStatus | null;
+  curationStatus?: DatasetCurationStatus | null;
+  contentTreatment?: DatasetContentTreatment | null;
+  anonymizationProvenance?: DatasetAnonymizationProvenanceInput | null;
 }
 
 export interface AppendDatasetItemsInput {
   datasetId: string;
+  expectedDatasetVersionId?: string | null;
   items: DatasetItemInput[];
+  idempotencyKey: string;
+}
+
+export interface UpdateDatasetItemsInput {
+  datasetId: string;
+  expectedDatasetVersionId?: string | null;
+  updates: DatasetItemUpdateInput[];
+  idempotencyKey: string;
+}
+
+export interface DatasetItemUpdateInput {
+  id: string;
+  operation: DatasetItemUpdateOperation;
+  input?: JSONValue;
+  expected?: JSONValue;
+  observedOutput?: JSONValue;
+  reason?: string | null;
+  metadata?: JSONValue;
+  sourceRefs?: AiEvalSourceRefInput[] | null;
+  split?: DatasetSplit | null;
+  curationStatus?: DatasetCurationStatus | null;
+  curationNote?: string | null;
+  contentTreatment?: DatasetContentTreatment | null;
+  anonymizationProvenance?: DatasetAnonymizationProvenanceInput | null;
+}
+
+export interface DatasetCandidateSearchInput {
+  datasetId?: string | null;
+  status?: DatasetCandidateStatus | null;
+  sourceKind?: DatasetCandidateSourceKind | null;
+  curationStatus?: DatasetCurationStatus | null;
+  contentTreatment?: DatasetContentTreatment | null;
+  clusterId?: string | null;
+  query?: string | null;
+  limit?: number | null;
+  cursor?: string | null;
+}
+
+export interface PrepareDatasetCandidatesInput {
+  datasetId?: string | null;
+  sources: DatasetCandidateSourceInput[];
+  split?: DatasetSplit | null;
+  curationStatus?: DatasetCurationStatus | null;
+  contentTreatment?: DatasetContentTreatment | null;
+  anonymizationPolicyId?: string | null;
+  anonymizationPolicyVersion?: number | null;
+  idempotencyKey: string;
+}
+
+export interface DatasetCandidateSourceInput {
+  sourceKind: DatasetCandidateSourceKind;
+  traceId?: string | null;
+  spanId?: string | null;
+  metricResultId?: string | null;
+  evaluationRunId?: string | null;
+  evaluationItemRunId?: string | null;
+  policyId?: string | null;
+  coverageGapId?: string | null;
+  healthIssueId?: string | null;
+  clusterId?: string | null;
+}
+
+export interface CommitDatasetCandidatesInput {
+  datasetId: string;
+  expectedDatasetVersionId?: string | null;
+  candidateIds: string[];
+  split?: DatasetSplit | null;
+  curationStatus?: DatasetCurationStatus | null;
+  idempotencyKey: string;
 }
 
 export interface PromoteSpanToDatasetItemInput {
@@ -663,9 +1142,12 @@ export interface PromoteSpanToDatasetItemInput {
   spanId?: string | null;
   input?: JSONValue;
   expected?: JSONValue;
+  observedOutput?: JSONValue;
+  reason?: string | null;
   metadata?: JSONValue;
   split?: DatasetSplit | null;
-  reviewStatus?: DatasetReviewStatus | null;
+  curationStatus?: DatasetCurationStatus | null;
+  idempotencyKey: string;
 }
 
 export interface PrepareDatasetImportInput {
@@ -676,6 +1158,7 @@ export interface PrepareDatasetImportInput {
   mapping: DatasetImportMappingInput;
   defaults?: DatasetImportDefaultsInput | null;
   previewLimit?: number | null;
+  idempotencyKey: string;
 }
 
 export interface DatasetImportFileSelectorInput {
@@ -686,11 +1169,13 @@ export interface DatasetImportFileSelectorInput {
 export interface DatasetImportMappingInput {
   input: DatasetImportFieldMappingInput[];
   expected?: DatasetImportFieldMappingInput[] | null;
+  observedOutput?: DatasetImportFieldMappingInput[] | null;
+  reason?: DatasetImportScalarMappingInput | null;
   metadata?: DatasetImportFieldMappingInput[] | null;
   sourceTraceId?: DatasetImportScalarMappingInput | null;
   sourceSpanId?: DatasetImportScalarMappingInput | null;
   split?: DatasetImportScalarMappingInput | null;
-  reviewStatus?: DatasetImportScalarMappingInput | null;
+  curationStatus?: DatasetImportScalarMappingInput | null;
 }
 
 export interface DatasetImportFieldMappingInput {
@@ -707,25 +1192,28 @@ export interface DatasetImportScalarMappingInput {
 
 export interface DatasetImportDefaultsInput {
   split?: DatasetSplit | null;
-  reviewStatus?: DatasetReviewStatus | null;
+  curationStatus?: DatasetCurationStatus | null;
   metadata?: JSONValue;
-  synthetic?: boolean | null;
+  reason?: string | null;
   allowPartialCommit?: boolean | null;
 }
 
 export interface CommitDatasetImportInput {
   importId: string;
-  expectedDatasetVersion: number;
+  expectedDatasetVersionId?: string | null;
   mode?: DatasetImportCommitMode | null;
+  idempotencyKey: string;
 }
 
 export interface StartDatasetExportInput {
   datasetId: string;
+  datasetVersionId?: string | null;
   format: DatasetExportFormat;
   split?: DatasetSplit | null;
-  reviewStatus?: DatasetReviewStatus | null;
+  curationStatus?: DatasetCurationStatus | null;
   includeMetadata?: boolean | null;
   includeSourcePointers?: boolean | null;
+  idempotencyKey: string;
 }
 
 export interface CreateScorerInput {
@@ -735,14 +1223,79 @@ export interface CreateScorerInput {
   judgeModelRef?: string | null;
 }
 
+export interface EvaluationTargetRefInput {
+  kind: EvaluationTargetKind;
+  targetId?: string | null;
+  targetSnapshotId?: string | null;
+  targetRef?: string | null;
+  displayName: string;
+  metadata?: JSONValue;
+}
+
+export interface CreateEvaluationDefinitionInput {
+  projectId: string;
+  name: string;
+  datasetId: string;
+  datasetVersionPolicy: EvaluationDatasetVersionPolicy;
+  pinnedDatasetVersionId?: string | null;
+  splitSelector: DatasetSplitSelectorInput;
+  targetRef: EvaluationTargetRefInput;
+  metricSettings: MetricSettingInput[];
+  runPolicy?: EvalRunPolicyInput | null;
+  retentionProfile?: RetentionProfile | null;
+  idempotencyKey: string;
+}
+
+export interface UpdateEvaluationDefinitionInput {
+  id: string;
+  name: string;
+  splitSelector?: DatasetSplitSelectorInput | null;
+  targetRef?: EvaluationTargetRefInput | null;
+  metricSettings?: MetricSettingInput[] | null;
+  runPolicy?: EvalRunPolicyInput | null;
+  retentionProfile?: RetentionProfile | null;
+  expectedVersion: number;
+  idempotencyKey: string;
+}
+
+export interface StartEvaluationRunInput {
+  evaluationDefinitionId?: string | null;
+  projectId: string;
+  kind?: EvaluationRunKind | null;
+  datasetId: string;
+  datasetVersionId: string;
+  selectedItemRevisionIds?: string[] | null;
+  splitSelector: DatasetSplitSelectorInput;
+  targetRef?: EvaluationTargetRefInput | null;
+  targetSnapshotId?: string | null;
+  metricSettings?: MetricSettingInput[] | null;
+  runPolicy?: EvalRunPolicyInput | null;
+  retentionProfile?: RetentionProfile | null;
+  retentionRole?: RetentionRole | null;
+  idempotencyKey: string;
+}
+
+export interface EvaluationRunControlInput {
+  evaluationRunId: string;
+  idempotencyKey: string;
+}
+
+export interface CreateEvaluationComparisonInput {
+  projectId: string;
+  baselineRunId: string;
+  candidateRunId: string;
+  metricIds?: string[] | null;
+  idempotencyKey: string;
+}
+
 export interface CreateExperimentInput {
   name: string;
   datasetId: string;
   datasetVersion: number;
   splitSelector?: DatasetSplitSelectorInput | null;
   scorerIds: string[];
-  solverRef: JSONValue;
-  baselineRef?: JSONValue;
+  solverRef: EvalSolverRefInput;
+  baselineRef?: EvalBaselineRefInput | null;
   promptVersionRefs?: string[] | null;
   skillSnapshotRefs?: string[] | null;
   toolSnapshotRefs?: string[] | null;
@@ -752,21 +1305,247 @@ export interface CreateExperimentInput {
 
 export interface StartExperimentRunInput {
   experimentId: string;
-  solverRef?: JSONValue;
+  solverRef?: EvalSolverRefInput | null;
   splitSelector?: DatasetSplitSelectorInput | null;
+  runPolicy?: EvalRunPolicyInput | null;
 }
 
 export interface StartOptimizationRunInput {
-  experimentId: string;
-  optimizerKind: OptimizerKind;
-  basePromptVersionId: string;
-  splitSelector?: DatasetSplitSelectorInput | null;
-  config?: JSONValue;
+  projectId: string;
+  baselineTargetSnapshotId: string;
+  objective: OptimizationObjectiveInput;
+  trainingEvaluationDefinitionId?: string | null;
+  trainingSplitSelector?: DatasetSplitSelectorInput | null;
+  validationEvaluationDefinitionId?: string | null;
+  validationSplitSelector?: DatasetSplitSelectorInput | null;
+  testEvaluationDefinitionId?: string | null;
+  quickShotPolicy?: QuickShotPolicyInput | null;
+  runPolicy?: EvalRunPolicyInput | null;
+  idempotencyKey: string;
+}
+
+export interface OptimizationObjectiveInput {
+  primaryMetricId: string;
+  secondaryMetricIds?: string[] | null;
+  constraints?: JSONValue;
+  tradeoffMetricIds?: string[] | null;
+  rankingPolicy?: JSONValue;
+  tieBreakers?: string[] | null;
+  minimumEvidence?: JSONValue;
+}
+
+export interface QuickShotPolicyInput {
+  sourceDatasetVersionId: string;
+  split: DatasetSplit;
+  selectionStrategy: QuickShotSelectionStrategy;
+  selectedItemRevisionIds?: string[] | null;
+  seed?: number | null;
+  minimumSampleSize?: number | null;
+  metricSettingsSnapshot: MetricSettingInput[];
+  runPolicySnapshot?: EvalRunPolicyInput | null;
+}
+
+export interface EvalSolverRefInput {
+  kind: EvalSolverKind;
+  name: string;
+  promptVersionId?: string | null;
+  promptVersion?: number | null;
+  agentRef?: string | null;
+  workflowRef?: string | null;
+  skillSnapshotRef?: string | null;
+  toolSnapshotRef?: string | null;
+  modelAlias?: string | null;
+  providerProfileId?: string | null;
+}
+
+export interface EvalBaselineRefInput {
+  kind: EvalBaselineKind;
+  experimentRunId?: string | null;
+  promptVersionId?: string | null;
+  promptVersion?: number | null;
+  solverRef?: EvalSolverRefInput | null;
+}
+
+export interface OptimizationConfigInput {
+  bootstrapFewshot?: BootstrapFewshotConfigInput | null;
+  criticMutateJudgePick?: CriticMutateJudgePickConfigInput | null;
+}
+
+export interface BootstrapFewshotConfigInput {
+  candidateCount: number;
+  maxExamplesPerCandidate: number;
+  selectionScorerIds: string[];
+  seed: number;
+  diversityStrategy?: BootstrapFewshotDiversityStrategy | null;
+}
+
+export interface CriticMutateJudgePickConfigInput {
+  candidateCount: number;
+  mutationInstructions: string;
+  judgeScorerIds: string[];
+  seed: number;
+  maxRounds: number;
+  keepTopK?: number | null;
+}
+
+export interface EvalRunPolicyInput {
+  maxParallelRequests?: number | null;
+  tokenBudget?: EvalTokenBudgetInput | null;
+  costBudget?: EvalCostBudgetInput | null;
+  rateLimit?: EvalRateLimitInput | null;
+  retry?: EvalRetryPolicyInput | null;
+  timeout?: EvalTimeoutPolicyInput | null;
+  failureBudget?: EvalFailureBudgetInput | null;
+  backpressure?: EvalBackpressurePolicyInput | null;
+  checkpoint?: EvalCheckpointPolicyInput | null;
+  quarantine?: EvalQuarantinePolicyInput | null;
+  workspaceQuota?: EvalWorkspaceQuotaInput | null;
+  cleanupRetry?: EvalCleanupRetryPolicyInput | null;
+}
+
+export interface EvalTokenBudgetInput {
+  maxRunTokens?: number | null;
+  maxItemInputTokens?: number | null;
+  maxItemOutputTokens?: number | null;
+  maxJudgeTokens?: number | null;
+  behavior?: EvalLimitBehavior | null;
+}
+
+export interface EvalCostBudgetInput {
+  maxRunUsd?: number | null;
+  maxDailyProjectUsd?: number | null;
+  behavior?: EvalLimitBehavior | null;
+}
+
+export interface EvalRateLimitInput {
+  maxRequestsPerMinute?: number | null;
+  maxTokensPerMinute?: number | null;
+  providerBurst?: number | null;
+  projectBurst?: number | null;
+}
+
+export interface EvalRetryPolicyInput {
+  maxAttempts?: number | null;
+  baseDelayMs?: number | null;
+  maxDelayMs?: number | null;
+  jitter?: boolean | null;
+  retryBudget?: number | null;
+  retryableCodes?: string[] | null;
+}
+
+export interface EvalTimeoutPolicyInput {
+  itemTimeoutMs?: number | null;
+  metricTimeoutMs?: number | null;
+  adapterCallTimeoutMs?: number | null;
+  runTimeoutMs?: number | null;
+  cleanupTimeoutMs?: number | null;
+}
+
+export interface EvalFailureBudgetInput {
+  maxModelFailures?: number | null;
+  maxTechnicalErrors?: number | null;
+  maxItemQualityFailures?: number | null;
+  maxMetricConfigFailures?: number | null;
+}
+
+export interface EvalBackpressurePolicyInput {
+  behavior?: EvalBackpressureBehavior | null;
+  queueDepthThreshold?: number | null;
+  storageLagMsThreshold?: number | null;
+  providerRateLimitBehavior?: EvalBackpressureBehavior | null;
+}
+
+export interface EvalCheckpointPolicyInput {
+  cadence?: EvalCheckpointCadence | null;
+  batchSize?: number | null;
+  persistSandboxRefs?: boolean | null;
+}
+
+export interface EvalQuarantinePolicyInput {
+  enabled?: boolean | null;
+  maxConsecutiveItemFailures?: number | null;
+  quarantineOversizedItems?: boolean | null;
+  quarantineInvalidJson?: boolean | null;
+  quarantineMissingEvidence?: boolean | null;
+}
+
+export interface EvalWorkspaceQuotaInput {
+  maxWorkspaceBytes?: number | null;
+  maxSingleFileBytes?: number | null;
+  maxFileCount?: number | null;
+  maxCheckpointPayloadBytes?: number | null;
+  maxSnapshotBytes?: number | null;
+  maxWorkspaceAgeMs?: number | null;
+  maxActiveWorkspaces?: number | null;
+  maxPausedWorkspaces?: number | null;
+  maxConcurrentResumes?: number | null;
+}
+
+export interface EvalCleanupRetryPolicyInput {
+  maxAttempts?: number | null;
+  baseDelayMs?: number | null;
+  maxDelayMs?: number | null;
+  jitter?: boolean | null;
+  orphanAfterMs?: number | null;
+  retryableCleanupCodes?: string[] | null;
 }
 
 export interface PromotePromptVersionInput {
   promptVersionId: string;
   tag: string;
+}
+
+export interface PromoteTargetSnapshotInput {
+  projectId: string;
+  targetRef: string;
+  baselineTargetSnapshotId: string;
+  candidateTargetSnapshotId: string;
+  evidenceEvaluationRunIds: string[];
+  comparisonId: string;
+  notes?: string | null;
+  idempotencyKey: string;
+}
+
+export interface TargetDiffInput {
+  projectId: string;
+  baselineSnapshotId: string;
+  candidateSnapshotId: string;
+}
+
+export interface AiEvalSourceRefInput {
+  kind: AiEvalSourceRefKind;
+  traceId?: string | null;
+  spanId?: string | null;
+  evaluationRunId?: string | null;
+  evaluationItemRunId?: string | null;
+  importJobId?: string | null;
+  candidateId?: string | null;
+  metadata?: JSONValue;
+}
+
+export interface AiEvalSourceRef {
+  kind: AiEvalSourceRefKind;
+  traceId?: string | null;
+  spanId?: string | null;
+  evaluationRunId?: string | null;
+  evaluationItemRunId?: string | null;
+  importJobId?: string | null;
+  candidateId?: string | null;
+  metadata: JSONValue;
+}
+
+export interface DatasetAnonymizationProvenanceInput {
+  policyId: string;
+  policyVersion: number;
+  transformedAt?: DateTime | null;
+  consistencyScope: string;
+  transformedFields: DatasetAnonymizedFieldInput[];
+}
+
+export interface DatasetAnonymizedFieldInput {
+  path: string;
+  entityType: string;
+  strategy: string;
 }
 
 export interface ResolveAnnotationInput {
@@ -779,10 +1558,13 @@ export interface LiveExperimentRunInput {
   experimentRunId: string;
 }
 
+export interface LiveEvaluationRunInput {
+  evaluationRunId: string;
+}
+
 export interface DatasetSplitSelectorInput {
   splits: DatasetSplit[];
-  reviewedOnly?: boolean | null;
-  includeSynthetic?: boolean | null;
+  curationStatuses?: DatasetCurationStatus[] | null;
 }
 
 export interface AiQualityOverviewInput {
@@ -812,6 +1594,8 @@ export interface UpdateProjectAiSettingsInput {
   onlinePolicies?: OnlineEvaluationPolicyInput[] | null;
   budget: AiEvalBudgetInput;
   sampling: AiEvalSamplingInput;
+  runPolicyDefaults?: EvalRunPolicyInput | null;
+  datasetPipeline?: DatasetPipelineSettingsInput | null;
   datasetDefaults: DatasetDefaultsInput;
   expectedVersion: number;
 }
@@ -835,8 +1619,10 @@ export interface AiProviderProfileInput {
   label: string;
   providerKind: AiProviderKind;
   baseUrl?: string | null;
-  credentialRef: string;
+  credentialRef?: string | null;
+  credentialValue?: string | null;
   models: JSONValue;
+  parameters?: JSONValue | null;
   timeoutMs?: number | null;
   maxConcurrency?: number | null;
   disabled?: boolean | null;
@@ -875,7 +1661,8 @@ export interface CreateAiChatConversationInput {
 }
 
 export interface ApproveAiChatActionInput {
-  actionId: string;
+  actionProposalId: string;
+  idempotencyKey: string;
   approved: boolean;
   reason?: string | null;
   expectedVersion: number;
@@ -907,9 +1694,11 @@ export interface OnlineEvaluationPolicyInput {
   enabled: boolean;
   name: string;
   target: JSONValue;
-  scorerIds: string[];
+  metricIds: string[];
   sampleRate: number;
   maxDailyRuns?: number | null;
+  contentAllowance?: EvalContentClass[] | null;
+  maxLatencyClass?: EvalLatencyClass | null;
   annotationRules?: AnnotationRuleInput[] | null;
 }
 
@@ -929,14 +1718,26 @@ export interface AiEvalBudgetInput {
 export interface AiEvalSamplingInput {
   defaultOnlineSampleRate: number;
   maxOnlineSampleRate: number;
-  maxConcurrentExperimentItems: number;
+  maxConcurrentEvaluationItems: number;
   maxConcurrentOptimizationCandidates: number;
+}
+
+export interface DatasetPipelineSettingsInput {
+  candidateSuggestionsEnabled?: boolean | null;
+  requireReviewBeforeCommit?: boolean | null;
+  anonymizationMode?: DatasetAnonymizationMode | null;
+  anonymizationPolicyId?: string | null;
+  anonymizationPolicyVersion?: number | null;
+  anonymizationConsistencyScope?: DatasetAnonymizationConsistencyScope | null;
+  preserveLocale?: boolean | null;
+  preserveTemporalDistance?: boolean | null;
+  blockedEntityTypes?: string[] | null;
 }
 
 export interface DatasetDefaultsInput {
   splitAllocation: JSONValue;
-  smallDatasetReviewedThreshold?: number | null;
-  requireReviewForRegression?: boolean | null;
+  smallDatasetReadyThreshold?: number | null;
+  requireReadyForTest?: boolean | null;
 }
 
 export interface ProjectListInput {
@@ -1028,6 +1829,18 @@ export interface CreateAlertSilenceInput {
   reason: string;
   startsAt: DateTime;
   endsAt: DateTime;
+}
+
+export interface UpsertCompanyAlertNotificationAdapterInput {
+  id?: string | null;
+  companyId: string;
+  definitionId: string;
+  label: string;
+  enabled: boolean;
+  config: JSONValue;
+  secretConfig?: JSONValue | null;
+  clearSecretKeys?: string[] | null;
+  expectedVersion?: number | null;
 }
 
 export interface Trace {
@@ -1270,21 +2083,28 @@ export interface AgentRun {
 
 export interface Dataset {
   id: string;
+  projectId: string;
   name: string;
   description?: string | null;
-  version: number;
+  currentVersionId: string;
+  currentVersion: DatasetVersion;
+  settings: DatasetSettings;
   createdAt: DateTime;
+  createdBy: string;
+  updatedAt: DateTime;
+  updatedBy: string;
   itemCount: number;
-  reviewedItemCount: number;
+  readyItemCount: number;
   splitCounts: JSONValue;
   health: DatasetHealth;
   tags: string[];
   items?: DatasetItemSearchResult;
+  versions?: DatasetVersionSearchResult;
 }
 
 export interface DatasetHealth {
   status: DatasetHealthStatus;
-  reviewedItemCount: number;
+  readyItemCount: number;
   totalItemCount: number;
   splitCounts: JSONValue;
   duplicateCandidateCount: number;
@@ -1298,17 +2118,123 @@ export interface DatasetHealth {
 export interface DatasetItem {
   id: string;
   datasetId: string;
+  latestRevisionId: string;
+  latestRevision: DatasetItemRevision;
+  createdAt: DateTime;
+  createdBy: string;
+  updatedAt: DateTime;
+  updatedBy: string;
+}
+
+export interface DatasetVersion {
+  id: string;
+  datasetId: string;
   version: number;
+  digest: string;
+  createdAt: DateTime;
+  createdBy: string;
+  settingsSnapshot: DatasetSettings;
+  itemRevisionIds: string[];
+  parentVersionId?: string | null;
+  changeSummary?: string | null;
+  source: DatasetVersionSource;
+}
+
+export interface DatasetSettings {
+  evaluationFamily: EvaluationFamily;
+  inputType: DatasetValueType;
+  expectedType: DatasetValueType;
+  inputJsonSchema?: JSONValue;
+  expectedJsonSchema?: JSONValue;
+  defaultSplit: DatasetSplit;
+  intakePolicy: DatasetIntakePolicy;
+  traceExtractionSettings?: DatasetTraceExtractionSettings | null;
+  anonymizationPolicy?: DatasetAnonymizationPolicy | null;
+  defaultMetricSettings: MetricSetting[];
+  retentionProfile: RetentionProfile;
+}
+
+export interface DatasetIntakePolicy {
+  manualDefaultStatus: DatasetCurationStatus;
+  importDefaultStatus: DatasetCurationStatus;
+  traceDefaultStatus: DatasetCurationStatus;
+}
+
+export interface DatasetTraceExtractionSettings {
+  inputPath: string;
+  expectedPath?: string | null;
+  observedOutputPath?: string | null;
+  metadataPaths: string[];
+}
+
+export interface DatasetAnonymizationPolicy {
+  mode: DatasetAnonymizationMode;
+  policyId?: string | null;
+  policyVersion?: number | null;
+  consistencyScope: DatasetAnonymizationConsistencyScope;
+  blockedEntityTypes: string[];
+}
+
+export interface MetricSetting {
+  metricId: string;
+  metricVersion?: string | null;
+  options: JSONValue;
+}
+
+export interface DatasetItemRevision {
+  id: string;
+  datasetItemId: string;
+  datasetId: string;
   input: JSONValue;
   expected?: JSONValue;
+  observedOutput?: JSONValue;
+  reason: string;
   metadata: JSONValue;
-  sourceTraceId?: string | null;
-  sourceSpanId?: string | null;
+  sourceRefs: AiEvalSourceRef[];
+  split: DatasetSplit;
+  curationStatus: DatasetCurationStatus;
+  curationNote?: string | null;
+  contentTreatment: DatasetContentTreatment;
+  anonymizationProvenance?: DatasetAnonymizationProvenance | null;
+  createdAt: DateTime;
+  createdBy: string;
+  updatedAt: DateTime;
+  updatedBy: string;
+}
+
+export interface DatasetAnonymizationProvenance {
+  policyId: string;
+  policyVersion: number;
+  transformedAt: DateTime;
+  consistencyScope: string;
+  transformedFields: DatasetAnonymizedField[];
+}
+
+export interface DatasetAnonymizedField {
+  path: string;
+  entityType: string;
+  strategy: string;
+}
+
+export interface DatasetCandidate {
+  id: string;
+  datasetId?: string | null;
+  status: DatasetCandidateStatus;
+  sourceKind: DatasetCandidateSourceKind;
+  source: JSONValue;
+  targetShape: DatasetTargetShape;
+  input?: JSONValue;
+  expected?: JSONValue;
+  metadata: JSONValue;
   split: DatasetSplit;
   reviewStatus: DatasetReviewStatus;
-  synthetic: boolean;
-  duplicateOfItemId?: string | null;
-  leakageWarnings: string[];
+  contentTreatment: DatasetContentTreatment;
+  anonymization?: DatasetAnonymizationProvenance | null;
+  reason: string;
+  clusterId?: string | null;
+  warnings: string[];
+  createdAt: DateTime;
+  updatedAt: DateTime;
 }
 
 export interface DatasetImportJob {
@@ -1348,12 +2274,12 @@ export interface DatasetImportPreviewRow {
 export interface DatasetItemPreview {
   input: JSONValue;
   expected?: JSONValue;
+  observedOutput?: JSONValue;
+  reason: string;
   metadata: JSONValue;
   split: DatasetSplit;
-  reviewStatus: DatasetReviewStatus;
-  sourceTraceId?: string | null;
-  sourceSpanId?: string | null;
-  synthetic: boolean;
+  curationStatus: DatasetCurationStatus;
+  sourceRefs: AiEvalSourceRef[];
 }
 
 export interface DatasetImportRowIssue {
@@ -1365,6 +2291,7 @@ export interface DatasetImportRowIssue {
 export interface DatasetExportJob {
   id: string;
   datasetId: string;
+  datasetVersionId: string;
   datasetVersion: number;
   status: DatasetExportStatus;
   format: DatasetExportFormat;
@@ -1395,9 +2322,21 @@ export interface EvalResult {
   experimentRunId?: string | null;
   score: number;
   passed: boolean;
+  runMode?: EvalRunMode | null;
+  resultKind?: EvalResultKind | null;
+  metrics?: JSONValue;
+  breakdown?: JSONValue;
+  visualization?: EvalResultVisualization | null;
   evidence?: JSONValue;
+  problem?: JSONValue;
   judgeRunRef?: string | null;
   producedAt: DateTime;
+}
+
+export interface EvalResultVisualization {
+  kind: EvalResultVisualizationKind;
+  title?: string | null;
+  data: JSONValue;
 }
 
 export interface Experiment {
@@ -1407,7 +2346,7 @@ export interface Experiment {
   datasetVersion: number;
   splitSelector: DatasetSplitSelector;
   scorerIds: string[];
-  baselineRef?: JSONValue;
+  baselineRef?: EvalBaselineRef | null;
   promptVersionRefs: string[];
   skillSnapshotRefs: string[];
   toolSnapshotRefs: string[];
@@ -1420,25 +2359,331 @@ export interface Experiment {
 export interface ExperimentRun {
   id: string;
   experimentId: string;
-  solverRef: JSONValue;
+  solverRef: EvalSolverRef;
   manifest?: ExperimentManifest | null;
   baselineRunId?: string | null;
   status: ExperimentRunStatus;
+  runPolicy: EvalRunPolicy;
   startedAt: DateTime;
   endedAt?: DateTime | null;
-  summary: JSONValue;
+  summary: ExperimentRunSummary;
   itemRuns?: DatasetItemRunSearchResult;
+}
+
+export interface MetricResultPayload {
+  kind: MetricPayloadKind;
+  value?: JSONValue;
+  confusionMatrix?: JSONValue;
+  fieldBreakdown?: JSONValue;
+  distribution?: JSONValue;
+  summary?: string | null;
+}
+
+export interface MetricProblem {
+  code: MetricProblemCode;
+  message: string;
+  path?: string | null;
+  severity: string;
+  metadata: JSONValue;
+}
+
+export interface MetricResult {
+  id: string;
+  evaluationRunId: string;
+  evaluationItemRunId?: string | null;
+  metricId: string;
+  metricVersion: string;
+  scope: MetricResultScope;
+  subjectId: string;
+  payload: MetricResultPayload;
+  unit: MetricUnit;
+  direction: MetricDirection;
+  problem?: MetricProblem | null;
+  producedAt: DateTime;
+}
+
+export interface MetricAggregate {
+  metricId: string;
+  metricVersion: string;
+  scope: MetricResultScope;
+  subjectId: string;
+  payload: MetricResultPayload;
+  unit: MetricUnit;
+  direction: MetricDirection;
+  support: number;
+  problemCount: number;
 }
 
 export interface DatasetSplitSelector {
   splits: DatasetSplit[];
-  reviewedOnly: boolean;
-  includeSynthetic: boolean;
+  curationStatuses?: DatasetCurationStatus[];
+}
+
+export interface EvaluationTargetRef {
+  kind: EvaluationTargetKind;
+  targetId?: string | null;
+  targetSnapshotId?: string | null;
+  targetRef?: string | null;
+  displayName: string;
+  metadata: JSONValue;
+}
+
+export interface EvaluationDefinition {
+  id: string;
+  projectId: string;
+  name: string;
+  datasetId: string;
+  datasetVersionPolicy: EvaluationDatasetVersionPolicy;
+  pinnedDatasetVersionId?: string | null;
+  splitSelector: DatasetSplitSelector;
+  targetRef: EvaluationTargetRef;
+  metricSettings: MetricSettingInput[];
+  runPolicy: EvalRunPolicy;
+  retentionProfile: RetentionProfile;
+  createdAt: DateTime;
+  createdBy: string;
+  updatedAt: DateTime;
+  updatedBy: string;
+  version: number;
+}
+
+export interface EvaluationRunSummary {
+  itemCounts: JSONValue;
+  metricAggregates: MetricAggregate[];
+  problemCounts: JSONValue;
+  budgetUsage: JSONValue;
+  latency?: JSONValue;
+}
+
+export interface EvaluationRun {
+  id: string;
+  projectId: string;
+  evaluationDefinitionId?: string | null;
+  kind: EvaluationRunKind;
+  status: EvaluationRunStatus;
+  datasetId: string;
+  datasetVersionId: string;
+  datasetDigest: string;
+  selectedItemRevisionIds: string[];
+  splitSelector: DatasetSplitSelector;
+  targetSnapshotId: string;
+  metricSettingsSnapshot: MetricSettingInput[];
+  runPolicySnapshot: EvalRunPolicy;
+  retentionProfile: RetentionProfile;
+  retentionRole: RetentionRole;
+  startedAt?: DateTime | null;
+  endedAt?: DateTime | null;
+  summary: EvaluationRunSummary;
+  problem?: MetricProblem | null;
+  itemRuns?: EvaluationItemRunSearchResult;
+  metricResults: MetricResult[];
+  metricAggregates: MetricAggregate[];
+}
+
+export interface TargetSnapshot {
+  id: string;
+  kind: EvaluationTargetKind;
+  name: string;
+  version: string;
+  digest: string;
+  createdAt: DateTime;
+  createdBy: string;
+  source: TargetSnapshotSource;
+  parts: JSONValue[];
+  metadata: JSONValue;
+  reproducibility: TargetReproducibility;
+}
+
+export interface TargetDiff {
+  baselineTargetSnapshotId: string;
+  candidateTargetSnapshotId: string;
+  changedParts: JSONValue[];
+  summary: string;
+}
+
+export interface EvaluationItemRun {
+  id: string;
+  evaluationRunId: string;
+  datasetItemId: string;
+  datasetItemRevisionId: string;
+  targetSnapshotId: string;
+  status: EvaluationItemRunStatus;
+  actualOutput?: JSONValue;
+  actualOutputType?: DatasetValueType | null;
+  traceId?: string | null;
+  rootSpanId?: string | null;
+  metricResultIds: string[];
+  metricResults: MetricResult[];
+  problems: MetricProblem[];
+  trajectorySummary?: string | null;
+  summaryEvidenceRefs: AiEvalSourceRef[];
+  importantSteps: JSONValue[];
+  conversationRef?: string | null;
+  summaryDigest?: string | null;
+  summaryGeneratedAt?: DateTime | null;
+  retentionRole: RetentionRole;
+  startedAt?: DateTime | null;
+  endedAt?: DateTime | null;
+}
+
+export interface EvaluationComparison {
+  id: string;
+  projectId: string;
+  baselineRunId: string;
+  candidateRunId: string;
+  metricResults: MetricResult[];
+  metricAggregates: MetricAggregate[];
+  targetDiff?: TargetDiff | null;
+  summary: string;
+  createdAt: DateTime;
+}
+
+export interface OptimizationRun {
+  id: string;
+  projectId: string;
+  status: EvaluationRunStatus;
+  baselineTargetSnapshotId: string;
+  objective: OptimizationObjectiveInput;
+  trainingEvaluationDefinitionId?: string | null;
+  trainingSplitSelector?: DatasetSplitSelector | null;
+  validationEvaluationDefinitionId?: string | null;
+  validationSplitSelector?: DatasetSplitSelector | null;
+  testEvaluationDefinitionId?: string | null;
+  candidateTargetSnapshotIds: string[];
+  causedEvaluationRunIds: string[];
+  quickShotPolicy?: JSONValue;
+  comparisonIds: string[];
+  selectedCandidateSnapshotId?: string | null;
+  promotionRecordId?: string | null;
+  budgetSnapshot: JSONValue;
+  createdAt: DateTime;
+  startedAt?: DateTime | null;
+  endedAt?: DateTime | null;
+}
+
+export interface PromotionRecord {
+  id: string;
+  projectId: string;
+  targetRef: string;
+  baselineTargetSnapshotId: string;
+  candidateTargetSnapshotId: string;
+  evidenceEvaluationRunIds: string[];
+  comparisonId: string;
+  summary: string;
+  promotedBy: string;
+  promotedAt: DateTime;
+  notes?: string | null;
+}
+
+export interface DatasetSplitSelector {
+  splits: DatasetSplit[];
+  curationStatuses?: DatasetCurationStatus[];
+  reviewedOnly?: boolean;
+  includeSynthetic?: boolean;
 }
 
 export interface VersionedRef {
   id: string;
   version: number;
+}
+
+export interface EvalSolverRef {
+  kind: EvalSolverKind;
+  name: string;
+  promptVersion?: VersionedRef | null;
+  agentRef?: string | null;
+  workflowRef?: string | null;
+  skillSnapshotRef?: string | null;
+  toolSnapshotRef?: string | null;
+  modelAlias?: string | null;
+  providerProfileId?: string | null;
+}
+
+export interface EvalBaselineRef {
+  kind: EvalBaselineKind;
+  experimentRunId?: string | null;
+  promptVersion?: VersionedRef | null;
+  solverRef?: EvalSolverRef | null;
+}
+
+export interface OptimizationConfig {
+  optimizerKind: OptimizerKind;
+  bootstrapFewshot?: BootstrapFewshotConfig | null;
+  criticMutateJudgePick?: CriticMutateJudgePickConfig | null;
+}
+
+export interface BootstrapFewshotConfig {
+  candidateCount: number;
+  maxExamplesPerCandidate: number;
+  selectionScorerIds: string[];
+  seed: number;
+  diversityStrategy: BootstrapFewshotDiversityStrategy;
+}
+
+export interface CriticMutateJudgePickConfig {
+  candidateCount: number;
+  mutationInstructions: string;
+  judgeScorerIds: string[];
+  seed: number;
+  maxRounds: number;
+  keepTopK?: number | null;
+}
+
+export interface ExperimentRunSummary {
+  itemCounts: EvalItemCounts;
+  scoreSummaries: EvalScoreSummary[];
+  problemCounts: EvalProblemCounts;
+  budgetUsage: EvalBudgetUsage;
+  latency?: EvalLatencySummary | null;
+  regressions: EvalRegressionSummary[];
+}
+
+export interface EvalItemCounts {
+  total: number;
+  passed: number;
+  failed: number;
+  errored: number;
+  skipped: number;
+  needsReview: number;
+  quarantined: number;
+}
+
+export interface EvalScoreSummary {
+  scorerId: string;
+  scorerVersion: number;
+  resultKind?: string | null;
+  passRate: number;
+  meanScore: number;
+  p50?: number | null;
+  p95?: number | null;
+  support: number;
+  visualization?: EvalResultVisualization | null;
+}
+
+export interface EvalProblemCounts {
+  modelQuality: number;
+  itemQuality: number;
+  scorerConfig: number;
+  infrastructure: number;
+}
+
+export interface EvalBudgetUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  estimatedUsd: number;
+}
+
+export interface EvalLatencySummary {
+  p50Ms?: number | null;
+  p95Ms?: number | null;
+  maxMs?: number | null;
+}
+
+export interface EvalRegressionSummary {
+  kind: string;
+  count: number;
+  blocker?: boolean | null;
 }
 
 export interface ExperimentManifest {
@@ -1452,14 +2697,16 @@ export interface ExperimentManifest {
   splitSelector: DatasetSplitSelector;
   datasetItemIds: string[];
   scorerRefs: VersionedRef[];
-  baselineRef?: JSONValue;
-  solverRef: JSONValue;
+  baselineRef?: EvalBaselineRef | null;
+  solverRef: EvalSolverRef;
+  optimizationConfig?: OptimizationConfig | null;
   promptVersionRefs: string[];
   skillSnapshotRefs: string[];
   toolSnapshotRefs: string[];
   providerProfileRefs: string[];
   budget: JSONValue;
   concurrency: JSONValue;
+  runPolicy: EvalRunPolicy;
   createdAt: DateTime;
 }
 
@@ -1467,11 +2714,115 @@ export interface DatasetItemRun {
   id: string;
   experimentRunId: string;
   datasetItemId: string;
+  status: DatasetItemRunStatus;
   harnessRunId?: string | null;
   output: JSONValue;
   latencyMs: number;
   tokenTotals?: TokenTotals | null;
+  problem?: JSONValue;
   evalResults: EvalResult[];
+}
+
+export interface EvalRunPolicy {
+  maxParallelRequests: number;
+  tokenBudget?: EvalTokenBudget | null;
+  costBudget?: EvalCostBudget | null;
+  rateLimit?: EvalRateLimit | null;
+  retry?: EvalRetryPolicy | null;
+  timeout?: EvalTimeoutPolicy | null;
+  failureBudget?: EvalFailureBudget | null;
+  backpressure?: EvalBackpressurePolicy | null;
+  checkpoint?: EvalCheckpointPolicy | null;
+  quarantine?: EvalQuarantinePolicy | null;
+  workspaceQuota?: EvalWorkspaceQuota | null;
+  cleanupRetry?: EvalCleanupRetryPolicy | null;
+}
+
+export interface EvalTokenBudget {
+  maxRunTokens?: number | null;
+  maxItemInputTokens?: number | null;
+  maxItemOutputTokens?: number | null;
+  maxJudgeTokens?: number | null;
+  behavior?: EvalLimitBehavior | null;
+}
+
+export interface EvalCostBudget {
+  maxRunUsd?: number | null;
+  maxDailyProjectUsd?: number | null;
+  behavior?: EvalLimitBehavior | null;
+}
+
+export interface EvalRateLimit {
+  maxRequestsPerMinute?: number | null;
+  maxTokensPerMinute?: number | null;
+  providerBurst?: number | null;
+  projectBurst?: number | null;
+}
+
+export interface EvalRetryPolicy {
+  maxAttempts?: number | null;
+  baseDelayMs?: number | null;
+  maxDelayMs?: number | null;
+  jitter?: boolean | null;
+  retryBudget?: number | null;
+  retryableCodes: string[];
+}
+
+export interface EvalTimeoutPolicy {
+  itemTimeoutMs?: number | null;
+  scorerTimeoutMs?: number | null;
+  adapterCallTimeoutMs?: number | null;
+  runTimeoutMs?: number | null;
+  cleanupTimeoutMs?: number | null;
+}
+
+export interface EvalFailureBudget {
+  maxModelFailures?: number | null;
+  maxTechnicalErrors?: number | null;
+  maxItemQualityFailures?: number | null;
+  maxScorerConfigFailures?: number | null;
+}
+
+export interface EvalBackpressurePolicy {
+  behavior?: EvalBackpressureBehavior | null;
+  queueDepthThreshold?: number | null;
+  storageLagMsThreshold?: number | null;
+  providerRateLimitBehavior?: EvalBackpressureBehavior | null;
+}
+
+export interface EvalCheckpointPolicy {
+  cadence?: EvalCheckpointCadence | null;
+  batchSize?: number | null;
+  persistSandboxRefs?: boolean | null;
+}
+
+export interface EvalQuarantinePolicy {
+  enabled?: boolean | null;
+  maxConsecutiveItemFailures?: number | null;
+  quarantineOversizedItems?: boolean | null;
+  quarantineInvalidJson?: boolean | null;
+  quarantineMissingEvidence?: boolean | null;
+}
+
+export interface EvalWorkspaceQuota {
+  maxWorkspaceBytes?: number | null;
+  maxSingleFileBytes?: number | null;
+  maxFileCount?: number | null;
+  maxCheckpointPayloadBytes?: number | null;
+  maxSnapshotBytes?: number | null;
+  maxWorkspaceAgeMs?: number | null;
+  maxActiveWorkspaces?: number | null;
+  maxPausedWorkspaces?: number | null;
+  maxConcurrentResumes?: number | null;
+}
+
+export interface EvalCleanupRetryPolicy {
+  maxAttempts?: number | null;
+  baseDelayMs?: number | null;
+  maxDelayMs?: number | null;
+  jitter?: boolean | null;
+  orphanAfterMs?: number | null;
+  retryableCleanupCodes: string[];
 }
 
 export interface PromptVersion {
@@ -1512,6 +2863,8 @@ export interface ProjectAiSettings {
   onlinePolicies: OnlineEvaluationPolicy[];
   budget: AiEvalBudget;
   sampling: AiEvalSampling;
+  runPolicyDefaults: EvalRunPolicy;
+  datasetPipeline: DatasetPipelineSettings;
   datasetDefaults: DatasetDefaults;
   effective: ProjectAiSettingsEffective;
   version: number;
@@ -1546,9 +2899,11 @@ export interface OnlineEvaluationPolicy {
   enabled: boolean;
   name: string;
   target: JSONValue;
-  scorerIds: string[];
+  metricIds: string[];
   sampleRate: number;
   maxDailyRuns?: number | null;
+  contentAllowance: EvalContentClass[];
+  maxLatencyClass: EvalLatencyClass;
   annotationRules: AnnotationRule[];
   updatedAt: DateTime;
   updatedByUserId: string;
@@ -1571,14 +2926,26 @@ export interface AiEvalBudget {
 export interface AiEvalSampling {
   defaultOnlineSampleRate: number;
   maxOnlineSampleRate: number;
-  maxConcurrentExperimentItems: number;
+  maxConcurrentEvaluationItems: number;
   maxConcurrentOptimizationCandidates: number;
 }
 
 export interface DatasetDefaults {
   splitAllocation: JSONValue;
-  smallDatasetReviewedThreshold: number;
-  requireReviewForRegression: boolean;
+  smallDatasetReadyThreshold: number;
+  requireReadyForTest: boolean;
+}
+
+export interface DatasetPipelineSettings {
+  candidateSuggestionsEnabled: boolean;
+  requireReviewBeforeCommit: boolean;
+  anonymizationMode: DatasetAnonymizationMode;
+  anonymizationPolicyId?: string | null;
+  anonymizationPolicyVersion?: number | null;
+  anonymizationConsistencyScope: DatasetAnonymizationConsistencyScope;
+  preserveLocale: boolean;
+  preserveTemporalDistance: boolean;
+  blockedEntityTypes: string[];
 }
 
 export interface ProjectAiSettingsEffective {
@@ -1618,6 +2985,7 @@ export interface AiProviderProfile {
   baseUrl?: string | null;
   credentialRef: string;
   models: JSONValue;
+  parameters: JSONValue;
   timeoutMs: number;
   maxConcurrency?: number | null;
   disabledAt?: DateTime | null;
@@ -1689,29 +3057,48 @@ export interface AiChatMessagePart {
   text?: string | null;
   json?: JSONValue;
   artifactId?: string | null;
-  actionId?: string | null;
+  renderer?: string | null;
+  actionProposalId?: string | null;
+  toolCallId?: string | null;
+  toolName?: string | null;
+  label?: string | null;
+  status?: string | null;
+  problem?: JSONValue;
 }
 
 export interface AiChatRun {
   id: string;
   conversationId: string;
+  projectId: string;
+  userId: string;
   status: AiChatRunStatus;
-  providerProfileId: string;
+  providerKind: string;
+  providerProfileId?: string | null;
   model: string;
+  traceId?: string | null;
+  toolCallCount: number;
+  sandboxScriptCount: number;
+  artifactCount: number;
+  inputTokenCount?: number | null;
+  outputTokenCount?: number | null;
+  estimatedCostUsd?: number | null;
   artifacts: AiChatArtifact[];
   actionProposals: AiChatActionProposal[];
   startedAt: DateTime;
   completedAt?: DateTime | null;
-  error?: string | null;
+  problem?: JSONValue;
 }
 
 export interface AiChatArtifact {
   id: string;
+  conversationId: string;
   runId: string;
   kind: AiChatArtifactKind;
   label: string;
-  mimeType?: string | null;
-  content: JSONValue;
+  mediaType: string;
+  sizeBytes: number;
+  renderSpec?: JSONValue;
+  fileRef?: string | null;
   createdAt: DateTime;
 }
 
@@ -1723,21 +3110,26 @@ export interface AiChatActionProposal {
   description: string;
   risk: AiChatActionRisk;
   status: AiChatActionStatus;
-  operation: string;
-  preview: JSONValue;
+  actionKind: string;
+  graphqlMutation?: string | null;
+  inputPreview: JSONValue;
+  requiresApproval: boolean;
   result?: JSONValue;
   requestedAt: DateTime;
   decidedAt?: DateTime | null;
   decidedByUserId?: string | null;
+  expiresAt: DateTime;
   version: number;
 }
 
 export interface AiChatCompaction {
   id: string;
   conversationId: string;
+  sourceMessageCount: number;
   summary: string;
-  coveredMessageIds: string[];
-  tokenCount: number;
+  retainedMessageIds: string[];
+  artifactSummaries: string[];
+  pendingActionIds: string[];
   createdAt: DateTime;
 }
 
@@ -1783,6 +3175,24 @@ export interface DatasetSearchResult {
 export interface DatasetItemSearchResult {
   items: DatasetItem[];
   nextCursor?: string | null;
+}
+export interface DatasetVersionSearchResult {
+  items: DatasetVersion[];
+  nextCursor?: string | null;
+}
+export interface DatasetCandidateSearchResult {
+  items: DatasetCandidate[];
+  nextCursor?: string | null;
+}
+export interface DatasetCandidatesData {
+  items: DatasetCandidate[];
+  nextCursor?: string | null;
+}
+export interface DatasetCandidatesResponse {
+  requestId: string;
+  ok: boolean;
+  data?: DatasetCandidatesData | null;
+  error?: BridgeError | null;
 }
 export interface ScorerSearchResult {
   items: Scorer[];
@@ -1860,6 +3270,7 @@ export interface MetricQueryWarning {
 
 export interface MetricNameSearchResult {
   items: MetricDescriptor[];
+  nextCursor?: string | null;
 }
 
 export interface MetricSeriesResult {
@@ -2241,6 +3652,72 @@ export interface AlertSilence {
   active: boolean;
 }
 
+export interface AlertNotificationAdapter {
+  id: string;
+  definitionId: string;
+  label: string;
+  kind: AlertNotificationAdapterKind;
+  configured: boolean;
+  enabled: boolean;
+  description: string;
+  disabledReason?: string | null;
+}
+
+export interface AlertNotificationAdapterDefinition {
+  id: string;
+  kind: AlertNotificationAdapterKind;
+  label: string;
+  description: string;
+  configFields: AlertNotificationAdapterConfigField[];
+  supportsTest: boolean;
+  defaultEnabled: boolean;
+}
+
+export interface AlertNotificationAdapterConfigField {
+  key: string;
+  label: string;
+  description: string;
+  type: AlertNotificationAdapterConfigFieldType;
+  required: boolean;
+  secret: boolean;
+  placeholder?: string | null;
+  options: AlertNotificationAdapterConfigOption[];
+  validationPattern?: string | null;
+}
+
+export interface AlertNotificationAdapterConfigOption {
+  value: string;
+  label: string;
+}
+
+export interface CompanyAlertNotificationAdapter {
+  id: string;
+  companyId: string;
+  definitionId: string;
+  label: string;
+  kind: AlertNotificationAdapterKind;
+  enabled: boolean;
+  configured: boolean;
+  config: JSONValue;
+  secretStatuses: AlertNotificationSecretFieldStatus[];
+  createdAt: DateTime;
+  updatedAt: DateTime;
+  updatedByUserId: string;
+  version: number;
+}
+
+export interface AlertNotificationSecretFieldStatus {
+  key: string;
+  status: AlertNotificationSecretStatus;
+}
+
+export interface AlertNotificationAdapterTestResult {
+  adapterId: string;
+  status: AlertNotificationAdapterTestStatus;
+  message: string;
+  testedAt: DateTime;
+}
+
 export interface PageInfo {
   hasNextPage: boolean;
   endCursor?: string | null;
@@ -2391,6 +3868,18 @@ export interface AlertSilencesQueryData {
   alertSilences: AlertSilence[];
 }
 
+export interface AlertNotificationAdaptersQueryData {
+  alertNotificationAdapters: AlertNotificationAdapter[];
+}
+
+export interface AlertNotificationAdapterDefinitionsQueryData {
+  alertNotificationAdapterDefinitions: AlertNotificationAdapterDefinition[];
+}
+
+export interface CompanyAlertNotificationAdaptersQueryData {
+  companyAlertNotificationAdapters: CompanyAlertNotificationAdapter[];
+}
+
 export interface AgentRunsQueryData {
   agentRuns: AgentRunSearchResult;
 }
@@ -2421,6 +3910,50 @@ export interface ExperimentRunQueryData {
 
 export interface EvalResultsQueryData {
   evalResults: EvalResultSearchResult;
+}
+
+export interface EvaluationDefinitionsQueryData {
+  evaluationDefinitions: EvaluationDefinitionSearchResult;
+}
+
+export interface EvaluationDefinitionQueryData {
+  evaluationDefinition?: EvaluationDefinition | null;
+}
+
+export interface EvaluationRunsQueryData {
+  evaluationRuns: EvaluationRunSearchResult;
+}
+
+export interface EvaluationRunQueryData {
+  evaluationRun?: EvaluationRun | null;
+}
+
+export interface EvaluationResultsQueryData {
+  evaluationResults: MetricResultSearchResult;
+}
+
+export interface EvaluationComparisonsQueryData {
+  evaluationComparisons: EvaluationComparisonSearchResult;
+}
+
+export interface EvaluationComparisonQueryData {
+  evaluationComparison?: EvaluationComparison | null;
+}
+
+export interface OptimizationRunsQueryData {
+  optimizationRuns: OptimizationRunSearchResult;
+}
+
+export interface OptimizationRunQueryData {
+  optimizationRun?: OptimizationRun | null;
+}
+
+export interface TargetSnapshotQueryData {
+  targetSnapshot?: TargetSnapshot | null;
+}
+
+export interface TargetDiffQueryData {
+  targetDiff: TargetDiff;
 }
 
 export interface AnnotationQueueQueryData {
@@ -2580,11 +4113,43 @@ export interface CancelExperimentRunMutationData {
 }
 
 export interface StartOptimizationRunMutationData {
-  startOptimizationRun: ExperimentRun;
+  startOptimizationRun: OptimizationRun;
 }
 
 export interface PromotePromptVersionMutationData {
   promotePromptVersion: PromptVersion;
+}
+
+export interface CreateEvaluationDefinitionMutationData {
+  createEvaluationDefinition: EvaluationDefinition;
+}
+
+export interface UpdateEvaluationDefinitionMutationData {
+  updateEvaluationDefinition: EvaluationDefinition;
+}
+
+export interface StartEvaluationRunMutationData {
+  startEvaluationRun: EvaluationRun;
+}
+
+export interface PauseEvaluationRunMutationData {
+  pauseEvaluationRun: EvaluationRun;
+}
+
+export interface ResumeEvaluationRunMutationData {
+  resumeEvaluationRun: EvaluationRun;
+}
+
+export interface CancelEvaluationRunMutationData {
+  cancelEvaluationRun: EvaluationRun;
+}
+
+export interface CreateEvaluationComparisonMutationData {
+  createEvaluationComparison: EvaluationComparison;
+}
+
+export interface PromoteTargetSnapshotMutationData {
+  promoteTargetSnapshot: PromotionRecord;
 }
 
 export interface ResolveAnnotationMutationData {
@@ -2611,10 +4176,56 @@ export interface ArchiveAiChatConversationMutationData {
   archiveAiChatConversation: AiChatConversation;
 }
 
+export interface DeleteAiChatConversationMutationData {
+  deleteAiChatConversation: boolean;
+}
+
 export interface ApproveAiChatActionMutationData {
   approveAiChatAction: AiChatActionProposal;
 }
 
 export interface LiveExperimentRunSubscriptionData {
   liveExperimentRun: ExperimentRunEvent;
+}
+
+export interface EvaluationDefinitionSearchResult {
+  items: EvaluationDefinition[];
+  nextCursor?: string | null;
+}
+
+export interface EvaluationRunSearchResult {
+  items: EvaluationRun[];
+  nextCursor?: string | null;
+}
+
+export interface EvaluationItemRunSearchResult {
+  items: EvaluationItemRun[];
+  nextCursor?: string | null;
+}
+
+export interface MetricResultSearchResult {
+  items: MetricResult[];
+  nextCursor?: string | null;
+}
+
+export interface EvaluationComparisonSearchResult {
+  items: EvaluationComparison[];
+  nextCursor?: string | null;
+}
+
+export interface OptimizationRunSearchResult {
+  items: OptimizationRun[];
+  nextCursor?: string | null;
+}
+
+export interface EvaluationRunEvent {
+  type: EvaluationRunEventType;
+  seq: number;
+  receivedAt: DateTime;
+  run?: EvaluationRun | null;
+  itemRun?: EvaluationItemRun | null;
+}
+
+export interface LiveEvaluationRunSubscriptionData {
+  liveEvaluationRun: EvaluationRunEvent;
 }

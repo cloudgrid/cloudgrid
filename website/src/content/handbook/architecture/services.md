@@ -54,12 +54,12 @@ subjects.
 
 ## AI evaluation, briefly
 
-The `core/ai-eval-runner` service is optional. When enabled, it consumes AI
-projection notifications for online scoring, handles experiment start /
-cancel / optimization-start subjects, reads datasets and scorers only
-through `storage-read`, writes mutable AI-eval records only through
-`storage-write`, and calls the harness adapter over HTTP. It never reads
-or writes the database directly and never calls model providers directly.
+The `core/ai-eval-runner` service is optional. When enabled, it handles
+evaluation start, run-control, and optimization subjects, reads datasets,
+evaluation definitions, target snapshots, and run evidence only through
+`storage-read`, writes AI Eval records only through `storage-write`, and calls
+the configured harness or external adapter over HTTP. It never reads or writes
+the database directly and never calls model providers directly.
 
 See the [AI Evaluation feature page](/features/ai-evaluation) for the
 user-visible surface.

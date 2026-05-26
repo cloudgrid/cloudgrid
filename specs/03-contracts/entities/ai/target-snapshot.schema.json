@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-111",
+  "title": "TargetSnapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "kind",
+    "name",
+    "version",
+    "digest",
+    "createdAt",
+    "createdBy",
+    "source",
+    "parts",
+    "metadata",
+    "reproducibility"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "kind": {
+      "type": "string",
+      "enum": ["prompt", "external_adapter", "agent", "workflow", "custom_harness_target"]
+    },
+    "name": { "type": "string", "minLength": 1 },
+    "version": { "type": "integer", "minimum": 1 },
+    "digest": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "createdBy": { "type": "string" },
+    "source": {
+      "type": "string",
+      "enum": ["manual", "imported", "optimized", "promoted", "external"]
+    },
+    "parts": { "type": "array", "items": { "$ref": "#/$defs/targetPartSnapshot" }, "minItems": 1 },
+    "metadata": { "type": "object", "additionalProperties": true, "default": {} },
+    "reproducibility": { "type": "string", "enum": ["full", "degraded"] }
+  },
+  "$defs": {
+    "targetPartSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["partKind", "version", "digest", "metadata"],
+      "properties": {
+        "partKind": {
+          "type": "string",
+          "enum": [
+            "prompt",
+            "examples",
+            "model_config",
+            "tool_config",
+            "skill",
+            "workflow",
+            "agent_config",
+            "adapter_metadata"
+          ]
+        },
+        "partRef": { "type": "string" },
+        "version": { "type": "integer", "minimum": 1 },
+        "digest": { "type": "string", "minLength": 1 },
+        "contentRef": { "type": "string" },
+        "summary": { "type": "string" },
+        "metadata": { "type": "object", "additionalProperties": true, "default": {} }
+      }
+    }
+  }
+}

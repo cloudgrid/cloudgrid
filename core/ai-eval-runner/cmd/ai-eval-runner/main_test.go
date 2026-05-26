@@ -11,7 +11,10 @@ import (
 )
 
 func TestLoadConfigDisablesRunnerByDefault(t *testing.T) {
-	cfg, err := loadConfig(func(string) string { return "" })
+	env := map[string]string{
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN": "system-token",
+	}
+	cfg, err := loadConfig(func(name string) string { return env[name] })
 	if err != nil {
 		t.Fatalf("loadConfig() error = %v", err)
 	}
@@ -28,6 +31,9 @@ func TestLoadConfigRequiresHarnessURLWhenEnabled(t *testing.T) {
 		if name == "CLOUDGRID_AI_EVAL_ENABLED" {
 			return "true"
 		}
+		if name == "CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN" {
+			return "system-token"
+		}
 		return ""
 	})
 	if err == nil || !strings.Contains(err.Error(), "CLOUDGRID_AI_EVAL_HARNESS_URL") {
@@ -37,11 +43,12 @@ func TestLoadConfigRequiresHarnessURLWhenEnabled(t *testing.T) {
 
 func TestLoadConfigReadsEnabledRunnerConfig(t *testing.T) {
 	env := map[string]string{
-		"CLOUDGRID_AI_EVAL_ENABLED":            "true",
-		"CLOUDGRID_NATS_URL":                   "nats://example:4222",
-		"CLOUDGRID_AI_EVAL_HARNESS_URL":        "http://harness.local",
-		"CLOUDGRID_AI_EVAL_RUNNER_HEALTH_HOST": "127.0.0.1",
-		"CLOUDGRID_AI_EVAL_RUNNER_HEALTH_PORT": "18085",
+		"CLOUDGRID_AI_EVAL_ENABLED":                      "true",
+		"CLOUDGRID_NATS_URL":                             "nats://example:4222",
+		"CLOUDGRID_AI_EVAL_HARNESS_URL":                  "http://harness.local",
+		"CLOUDGRID_AI_EVAL_RUNNER_HEALTH_HOST":           "127.0.0.1",
+		"CLOUDGRID_AI_EVAL_RUNNER_HEALTH_PORT":           "18085",
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN": "system-token",
 	}
 	cfg, err := loadConfig(func(name string) string { return env[name] })
 	if err != nil {
@@ -54,8 +61,9 @@ func TestLoadConfigReadsEnabledRunnerConfig(t *testing.T) {
 
 func TestLoadConfigAppliesLocalSelfObservabilityDefaultsWhenEnabled(t *testing.T) {
 	env := map[string]string{
-		"CLOUDGRID_AI_EVAL_ENABLED":     "true",
-		"CLOUDGRID_AI_EVAL_HARNESS_URL": "http://harness.local",
+		"CLOUDGRID_AI_EVAL_ENABLED":                      "true",
+		"CLOUDGRID_AI_EVAL_HARNESS_URL":                  "http://harness.local",
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN": "system-token",
 	}
 	cfg, err := loadConfig(func(name string) string { return env[name] })
 	if err != nil {
@@ -67,6 +75,46 @@ func TestLoadConfigAppliesLocalSelfObservabilityDefaultsWhenEnabled(t *testing.T
 	}
 	if self.CompanyID != "local" || self.ProjectID != "cloudgrid-system" || self.OTLPEndpoint != "http://localhost:4318" || self.ExportIntervalSeconds != 10 {
 		t.Fatalf("self-observability defaults = %#v", self)
+	}
+	if self.OTLPBearerToken != "system-token" {
+		t.Fatalf("OTLPBearerToken = %q, want configured token", self.OTLPBearerToken)
+	}
+	if self.ExportFailureLogLevel != "warn" {
+		t.Fatalf("ExportFailureLogLevel = %q, want warn", self.ExportFailureLogLevel)
+	}
+}
+
+func TestLoadConfigAppliesSelfObservabilityFailureLogLevelOverride(t *testing.T) {
+	env := map[string]string{
+		"CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN":        "system-token",
+		"CLOUDGRID_SELF_OBSERVABILITY_EXPORT_FAILURE_LOG_LEVEL": "off",
+	}
+	cfg, err := loadConfig(func(name string) string { return env[name] })
+	if err != nil {
+		t.Fatalf("loadConfig() error = %v", err)
+	}
+	if cfg.SelfObservability.ExportFailureLogLevel != "off" {
+		t.Fatalf("ExportFailureLogLevel = %q, want off", cfg.SelfObservability.ExportFailureLogLevel)
+	}
+}
+
+func TestLoadConfigRejectsLocalEnabledSelfObservabilityWithoutBearerToken(t *testing.T) {
+	_, err := loadConfig(func(string) string { return "" })
+	if err == nil || !strings.Contains(err.Error(), "CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN") {
+		t.Fatalf("loadConfig() error = %v, want bearer token validation", err)
+	}
+}
+
+func TestLoadConfigRejectsInvalidSelfObservabilityFailureLogLevel(t *testing.T) {
+	env := map[string]string{
+		"CLOUDGRID_SELF_OBSERVABILITY_EXPORT_FAILURE_LOG_LEVEL": "verbose",
+	}
+	_, err := loadConfig(func(name string) string { return env[name] })
+	if err == nil {
+		t.Fatal("loadConfig() error = nil")
+	}
+	if !strings.Contains(err.Error(), "CLOUDGRID_SELF_OBSERVABILITY_EXPORT_FAILURE_LOG_LEVEL") {
+		t.Fatalf("error = %v, want failure log level validation", err)
 	}
 }
 

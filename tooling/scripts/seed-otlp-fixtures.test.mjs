@@ -72,16 +72,9 @@ describe("seed OTLP fixtures script", () => {
     expect(
       parseSeedArgs([], {
         CLOUDGRID_OTLP_BEARER_TOKEN: "bearer-token",
-        CLOUDGRID_OTLP_TOKEN: "legacy-token",
         CLOUDGRID_PROJECT_API_KEY: "project-api-key",
       }).token,
     ).toBe("bearer-token");
-    expect(
-      parseSeedArgs([], {
-        CLOUDGRID_OTLP_TOKEN: "legacy-token",
-        CLOUDGRID_PROJECT_API_KEY: "project-api-key",
-      }).token,
-    ).toBe("legacy-token");
     expect(parseSeedArgs([], { CLOUDGRID_PROJECT_API_KEY: "project-api-key" }).token).toBe(
       "project-api-key",
     );
@@ -120,7 +113,7 @@ describe("seed OTLP fixtures script", () => {
     );
   });
 
-  test("generates rich development telemetry with larger traces, logs, and metrics", () => {
+  test("generates realistic NimbusCart showcase telemetry for the previous two months", () => {
     const nowMs = Date.UTC(2026, 4, 18, 12, 0, 0, 0);
     const seedContext = createSeedRunContext(nowMs);
     const traces = generatedFixture("rich-traces", seedContext);
@@ -169,9 +162,9 @@ describe("seed OTLP fixtures script", () => {
     expect(spanCount).toBeGreaterThanOrEqual(1500);
     expect(logCount).toBeGreaterThanOrEqual(450);
     expect(metricCount).toBeGreaterThanOrEqual(3);
-    expect(Math.min(...spanStartTimes)).toBe(Date.UTC(2026, 3, 18, 11, 59, 0, 0));
+    expect(Math.min(...spanStartTimes)).toBe(Date.UTC(2026, 2, 18, 11, 59, 0, 0));
     expect(Math.max(...spanStartTimes)).toBeLessThanOrEqual(nowMs);
-    expect(Math.min(...metricPointTimes)).toBe(Date.UTC(2026, 3, 18, 11, 59, 3, 0));
+    expect(Math.min(...metricPointTimes)).toBe(Date.UTC(2026, 2, 18, 11, 59, 3, 0));
     expect(Math.max(...metricPointTimes)).toBeLessThanOrEqual(nowMs);
     expect([...spansByTrace.keys()]).not.toContain("44444444444444444444444444444444");
     expect([...spansByTrace.keys()]).not.toContain("d4444444444444444444444444444444");
@@ -193,7 +186,61 @@ describe("seed OTLP fixtures script", () => {
       ),
     );
     expect(logBodies.some((body) => body.includes("processed fixture step"))).toBe(false);
-    expect(logBodies).toContain("Card authorization declined by issuer");
+    const serializedTraces = JSON.stringify(traces);
+    const serializedMetrics = JSON.stringify(metrics);
+    expect(serializedTraces).toContain("NimbusCart");
+    expect(serializedTraces).toContain("nimbuscart.checkout-api");
+    expect(serializedTraces).not.toContain("cloudgrid-dev-seed");
+    expect(serializedMetrics).toContain("nimbuscart.checkout.conversion_rate");
+    expect(serializedMetrics).toContain("nimbuscart.orders.created");
+    expect(logBodies).toContain("Payment authorization declined by issuer");
+    expect(logBodies).toContain("Order confirmation sent to customer");
+    expect(
+      logBodies.some((body) => body.includes("Recommendation fallback used cached results")),
+    ).toBe(true);
+  });
+
+  test("supports bounded generated fixture batches for integration orchestration", () => {
+    const seedContext = {
+      ...createSeedRunContext(Date.UTC(2026, 4, 18, 12, 0, 0, 0)),
+      pointCount: 3,
+    };
+    const defaultTraces = generatedFixture(
+      "rich-traces",
+      createSeedRunContext(Date.UTC(2026, 4, 18, 12, 0, 0, 0)),
+    );
+    const boundedTraces = generatedFixture("rich-traces", seedContext);
+    const boundedMetrics = generatedFixture("rich-metrics", seedContext);
+    const defaultSpanCount = defaultTraces.resourceSpans.reduce(
+      (sum, resourceSpan) =>
+        sum +
+        resourceSpan.scopeSpans.reduce(
+          (scopeSum, scopeSpan) => scopeSum + scopeSpan.spans.length,
+          0,
+        ),
+      0,
+    );
+    const boundedSpanCount = boundedTraces.resourceSpans.reduce(
+      (sum, resourceSpan) =>
+        sum +
+        resourceSpan.scopeSpans.reduce(
+          (scopeSum, scopeSpan) => scopeSum + scopeSpan.spans.length,
+          0,
+        ),
+      0,
+    );
+    const metricPointCount = boundedMetrics.resourceMetrics[0].scopeMetrics[0].metrics.reduce(
+      (sum, metric) =>
+        sum +
+        Object.values(metric)
+          .filter((value) => value && typeof value === "object" && "dataPoints" in value)
+          .reduce((pointSum, value) => pointSum + value.dataPoints.length, 0),
+      0,
+    );
+
+    expect(boundedSpanCount).toBeLessThan(defaultSpanCount);
+    expect(boundedSpanCount).toBeGreaterThan(0);
+    expect(metricPointCount).toBeGreaterThanOrEqual(15);
   });
 
   test("continuous mode posts fresh generated telemetry batches", async () => {

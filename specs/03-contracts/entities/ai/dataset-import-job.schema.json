@@ -6,6 +6,7 @@
   "additionalProperties": false,
   "required": [
     "id",
+    "projectId",
     "datasetId",
     "status",
     "format",
@@ -22,6 +23,7 @@
   ],
   "properties": {
     "id": { "type": "string" },
+    "projectId": { "type": "string" },
     "datasetId": { "type": "string" },
     "status": {
       "type": "string",
@@ -29,24 +31,19 @@
     },
     "format": {
       "type": "string",
-      "enum": ["jsonl", "json_array", "csv", "zip"]
+      "enum": ["jsonl", "json_array", "csv", "zip", "hugging_face_jsonl", "hugging_face_csv"]
     },
-    "sourceFiles": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/sourceFile" }
-    },
-    "mapping": { "type": "object", "additionalProperties": true },
-    "defaults": { "type": "object", "additionalProperties": true },
-    "previewRows": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/previewRow" }
-    },
+    "sourceFiles": { "type": "array", "items": { "$ref": "#/$defs/sourceFile" } },
+    "mapping": { "$ref": "#/$defs/importMapping" },
+    "defaults": { "$ref": "#/$defs/importDefaults" },
+    "previewRows": { "type": "array", "items": { "$ref": "#/$defs/previewRow" } },
     "totalRows": { "type": "integer", "minimum": 0 },
     "validRows": { "type": "integer", "minimum": 0 },
     "errorRows": { "type": "integer", "minimum": 0 },
-    "warnings": { "type": "array", "items": { "type": "string" } },
+    "warnings": { "type": "array", "items": { "type": "string" }, "default": [] },
     "createdAt": { "type": "string", "format": "date-time" },
     "expiresAt": { "type": "string", "format": "date-time" },
+    "committedDatasetVersionId": { "type": "string" },
     "committedDatasetVersion": { "type": "integer", "minimum": 1 }
   },
   "$defs": {
@@ -58,11 +55,41 @@
         "path": { "type": "string" },
         "format": {
           "type": "string",
-          "enum": ["jsonl", "json_array", "csv", "zip"]
+          "enum": ["jsonl", "json_array", "csv", "zip", "hugging_face_jsonl", "hugging_face_csv"]
         },
         "sizeBytes": { "type": "integer", "minimum": 0 },
         "rowCount": { "type": "integer", "minimum": 0 },
         "sha256": { "type": "string" }
+      }
+    },
+    "importMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input", "expected", "reason", "split", "metadata"],
+      "properties": {
+        "input": { "type": "string" },
+        "expected": { "type": "string" },
+        "observedOutput": { "type": "string" },
+        "reason": { "type": "string" },
+        "split": { "type": "string" },
+        "metadata": { "type": "array", "items": { "type": "string" }, "default": [] }
+      }
+    },
+    "importDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["split", "curationStatus", "contentTreatment"],
+      "properties": {
+        "split": { "type": "string", "enum": ["training", "validation", "test"] },
+        "curationStatus": {
+          "type": "string",
+          "enum": ["draft", "needs_expected", "needs_review", "ready", "rejected"]
+        },
+        "contentTreatment": {
+          "type": "string",
+          "enum": ["original", "realistic_anonymized", "redacted", "synthetic"]
+        },
+        "metadata": { "type": "object", "additionalProperties": true, "default": {} }
       }
     },
     "previewRow": {
@@ -73,35 +100,34 @@
         "rowNumber": { "type": "integer", "minimum": 1 },
         "filePath": { "type": "string" },
         "item": { "$ref": "#/$defs/itemPreview" },
-        "errors": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/issue" }
-        },
-        "warnings": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/issue" }
-        }
+        "errors": { "type": "array", "items": { "$ref": "#/$defs/issue" }, "default": [] },
+        "warnings": { "type": "array", "items": { "$ref": "#/$defs/issue" }, "default": [] }
       }
     },
     "itemPreview": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["input", "metadata", "split", "reviewStatus", "synthetic"],
+      "required": ["input", "metadata", "split", "curationStatus", "contentTreatment"],
       "properties": {
-        "input": { "type": "object", "additionalProperties": true },
+        "input": true,
         "expected": true,
-        "metadata": { "type": "object", "additionalProperties": true },
-        "sourceTraceId": { "type": "string" },
-        "sourceSpanId": { "type": "string" },
-        "split": {
+        "observedOutput": true,
+        "reason": { "type": "string", "default": "" },
+        "metadata": { "type": "object", "additionalProperties": true, "default": {} },
+        "split": { "type": "string", "enum": ["training", "validation", "test"] },
+        "curationStatus": {
           "type": "string",
-          "enum": ["dev", "optimization", "validation", "regression", "holdout"]
+          "enum": ["draft", "needs_expected", "needs_review", "ready", "rejected"]
         },
-        "reviewStatus": {
+        "contentTreatment": {
           "type": "string",
-          "enum": ["unreviewed", "reviewed", "rejected"]
+          "enum": ["original", "realistic_anonymized", "redacted", "synthetic"]
         },
-        "synthetic": { "type": "boolean" }
+        "sourceRefs": {
+          "type": "array",
+          "items": { "$ref": "./dataset-item-revision.schema.json#/$defs/sourceRef" },
+          "default": []
+        }
       }
     },
     "issue": {

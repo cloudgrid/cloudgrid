@@ -29,6 +29,7 @@ export type CloudGridErrorId =
   | "ERR-020"
   | "ERR-021"
   | "ERR-022"
+  | "ERR-023"
   | "ERR-AIP-001"
   | "ERR-AIC-001"
   | "ERR-AIC-002"
@@ -187,6 +188,12 @@ const errorTaxonomy: Record<CloudGridErrorId, ErrorTaxonomyEntry> = {
     status: 503,
     retryable: true,
     detail: "Invitation email delivery failed",
+  },
+  "ERR-023": {
+    code: "RESPONSE_CONTRACT_INVALID",
+    status: 502,
+    retryable: false,
+    detail: "Private service response did not match the message contract",
   },
   "ERR-AIP-001": {
     code: "AI_PROVIDER_CREDENTIAL_UNAVAILABLE",

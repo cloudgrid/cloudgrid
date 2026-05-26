@@ -1,10 +1,20 @@
-import type { TelemetryFacetResult, TraceSearchInput } from "@cloudgrid/ui-contracts";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, ClipboardCopy, Clock, Radio, SlidersHorizontal, X } from "lucide-react";
+import type { Dataset, TelemetryFacetResult, TraceSearchInput } from "@cloudgrid/ui-contracts";
+import { buildDatasetSearchInput, TRACE_SEARCH_DEFAULT_LIMIT } from "@cloudgrid/ui-contracts";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { ClipboardCopy, Clock, FileJson, Radio, SlidersHorizontal, X } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
+import { InfiniteScrollSentinel } from "../components/infinite-scroll-sentinel";
 import { EmptyState, ErrorPanel, LoadingRows } from "../components/query-state";
 import { RouteBreadcrumb } from "../components/route-breadcrumb";
 import { Button } from "../components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../components/ui/dialog";
 import {
   Sheet,
   SheetContent,
@@ -13,6 +23,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "../components/ui/sheet";
+import { compatibleTraceImportDatasets } from "../features/ai-eval/view-model-v2";
 import { FacetPanel } from "../features/telemetry/facet-panel";
 import { TraceFilters } from "../features/traces/trace-filters";
 import { TraceTable } from "../features/traces/trace-table";
@@ -27,30 +38,43 @@ import { LiveRoute } from "./live-route";
 export function TracesRoute() {
   const client = useTelemetryClient();
   const { viewer } = useAppSession();
+  const projectId = viewer?.selectedProject?.id ?? "";
   const ingestSettingsHref = viewer?.selectedProject
     ? `/projects/${encodeURIComponent(viewer.selectedProject.id)}/settings/ingest`
     : "/projects";
-  const { filters, searchParams, setFilter, clearFilters } = useTraceFilters();
+  const { filters, searchParams, setFilter, setServicesFilter, clearFilters } = useTraceFilters();
   const [routeSearchParams, setRouteSearchParams] = useSearchParams();
   const traceMode = routeSearchParams.get("mode") === "live" ? "live" : "history";
   const filtered = hasActiveFilters(searchParams);
+  const traceSearchInput = { ...filters, cursor: null, limit: TRACE_SEARCH_DEFAULT_LIMIT };
   const facetInput = {
     from: filters.from ?? null,
     to: filters.to ?? null,
-    service: filters.service ?? null,
+    signal: "traces" as const,
     search: filters.query ?? null,
-    limit: 50,
+    limit: 25,
   };
   const debouncedFacetInput = useDebouncedValue(facetInput, 250);
-  const query = useQuery({
-    queryKey: queryKeys.traces(filters),
-    queryFn: () => client.searchTraces(filters),
+  const query = useInfiniteQuery({
+    queryKey: queryKeys.traces(traceSearchInput),
+    queryFn: ({ pageParam }) => client.searchTraces({ ...traceSearchInput, cursor: pageParam }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: traceMode === "history",
   });
   const facetsQuery = useQuery({
     queryKey: queryKeys.telemetryFacets(debouncedFacetInput),
     queryFn: () => client.getTelemetryFacets(debouncedFacetInput),
     enabled: traceMode === "history",
+  });
+  const datasetsQuery = useQuery({
+    queryKey: ["Datasets", "trace-import", projectId],
+    queryFn: () =>
+      client.searchDatasets({
+        ...buildDatasetSearchInput({ limit: 50 }),
+        projectId,
+      }),
+    enabled: Boolean(projectId) && traceMode === "history",
   });
 
   const setTraceMode = (mode: "history" | "live") => {
@@ -63,11 +87,18 @@ export function TracesRoute() {
       return params;
     });
   };
+  const traceResult = query.data
+    ? {
+        items: query.data.pages.flatMap((page) => page.items),
+        nextCursor: query.hasNextPage ? (query.data.pages.at(-1)?.nextCursor ?? null) : null,
+      }
+    : null;
 
   if (traceMode === "live") {
     return (
       <section className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
         <TraceModeHeader
+          datasets={[]}
           mode={traceMode}
           onModeChange={setTraceMode}
           projectName={viewer?.selectedProject?.name ?? t("projects.select")}
@@ -80,11 +111,18 @@ export function TracesRoute() {
   return (
     <section className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
       <TraceModeHeader
+        datasets={datasetsQuery.data?.items ?? []}
         mode={traceMode}
         onModeChange={setTraceMode}
         projectName={viewer?.selectedProject?.name ?? t("projects.select")}
       />
-      <TraceFilters filters={filters} onChange={setFilter} onClear={clearFilters} />
+      <TraceFilters
+        filters={filters}
+        onChange={setFilter}
+        onClear={clearFilters}
+        onServicesChange={setServicesFilter}
+        serviceOptions={facetsQuery.data?.services}
+      />
       <TraceFacetDrawer
         facets={facetsQuery.data}
         isError={facetsQuery.isError}
@@ -92,12 +130,14 @@ export function TracesRoute() {
         onAttributeKeySelect={(value) => setFilter("attributeKey", value)}
         onOperationSelect={(value) => setFilter("operationName", value)}
         onRetry={() => void facetsQuery.refetch()}
-        onServiceSelect={(value) => setFilter("service", value)}
+        onServiceSelect={(value) =>
+          toggleServiceFilter(filters.services ?? [], value, setServicesFilter)
+        }
         onSpanNameSelect={(value) => setFilter("spanName", value)}
         selected={{
           attributeKey: searchParams.get("attributeKey"),
           operation: filters.operationName,
-          service: filters.service,
+          service: filters.services ?? filters.service,
           spanName: filters.spanName,
         }}
         error={facetsQuery.error}
@@ -112,12 +152,14 @@ export function TracesRoute() {
             onAttributeKeySelect={(value) => setFilter("attributeKey", value)}
             onOperationSelect={(value) => setFilter("operationName", value)}
             onRetry={() => void facetsQuery.refetch()}
-            onServiceSelect={(value) => setFilter("service", value)}
+            onServiceSelect={(value) =>
+              toggleServiceFilter(filters.services ?? [], value, setServicesFilter)
+            }
             onSpanNameSelect={(value) => setFilter("spanName", value)}
             selected={{
               attributeKey: searchParams.get("attributeKey"),
               operation: filters.operationName,
-              service: filters.service,
+              service: filters.services ?? filters.service,
               spanName: filters.spanName,
             }}
           />
@@ -128,7 +170,7 @@ export function TracesRoute() {
             {query.isError ? (
               <ErrorPanel error={query.error} onRetry={() => void query.refetch()} />
             ) : null}
-            {query.isSuccess && query.data.items.length === 0 && filtered ? (
+            {query.isSuccess && traceResult?.items.length === 0 && filtered ? (
               <EmptyState
                 filtered={filtered}
                 title={t("traces.empty.filtered.title")}
@@ -141,7 +183,7 @@ export function TracesRoute() {
                 }
               />
             ) : null}
-            {query.isSuccess && query.data.items.length === 0 && !filtered ? (
+            {query.isSuccess && traceResult?.items.length === 0 && !filtered ? (
               <EmptyState
                 filtered={filtered}
                 title={t("traces.empty.noTraces.title")}
@@ -156,28 +198,38 @@ export function TracesRoute() {
                 }
               />
             ) : null}
-            {query.isSuccess && query.data.items.length > 0 ? (
+            {query.isSuccess && traceResult && traceResult.items.length > 0 ? (
               <TraceTable
                 onSortChange={(value) => setFilter("sort", value)}
-                result={query.data}
+                result={traceResult}
                 sort={filters.sort ?? "startedAt_desc"}
               />
             ) : null}
+            <InfiniteScrollSentinel
+              hasMore={query.hasNextPage}
+              isLoading={query.isFetchingNextPage}
+              label={t("actions.loadMore")}
+              loadingLabel={t("actions.loadingMore")}
+              onLoadMore={() => void query.fetchNextPage()}
+            />
           </div>
-          {query.isSuccess && query.data.nextCursor ? (
-            <div className="flex shrink-0 justify-end border-t bg-background px-3 py-2">
-              <Button
-                onClick={() => setFilter("cursor", query.data.nextCursor ?? null)}
-                variant="outline"
-              >
-                <ArrowRight data-icon="inline-start" />
-                {t("actions.nextPage")}
-              </Button>
-            </div>
-          ) : null}
         </section>
       </div>
     </section>
+  );
+}
+
+function toggleServiceFilter(
+  current: readonly string[],
+  value: string | null,
+  onChange: (services: string[]) => void,
+) {
+  if (!value) {
+    onChange([]);
+    return;
+  }
+  onChange(
+    current.includes(value) ? current.filter((service) => service !== value) : [...current, value],
   );
 }
 
@@ -218,7 +270,7 @@ interface TraceFacetsContentProps {
   selected: {
     attributeKey: string | null;
     operation: TraceSearchInput["operationName"];
-    service: TraceSearchInput["service"];
+    service: TraceSearchInput["service"] | TraceSearchInput["services"];
     spanName: TraceSearchInput["spanName"];
   };
 }
@@ -257,10 +309,12 @@ function TraceFacetsContent({
 }
 
 function TraceModeHeader({
+  datasets,
   mode,
   onModeChange,
   projectName,
 }: {
+  datasets: Dataset[];
   mode: "history" | "live";
   onModeChange: (mode: "history" | "live") => void;
   projectName: string;
@@ -280,26 +334,61 @@ function TraceModeHeader({
         <h1 className="text-xl font-semibold tracking-normal">{t("traces.title")}</h1>
         <p className="text-sm text-muted-foreground">{t("traces.description")}</p>
       </div>
-      <div className="flex items-center gap-1 rounded-md border p-1">
-        <Button
-          onClick={() => onModeChange("history")}
-          size="sm"
-          type="button"
-          variant={mode === "history" ? "secondary" : "ghost"}
-        >
-          <Clock data-icon="inline-start" />
-          {t("traces.mode.history")}
-        </Button>
-        <Button
-          onClick={() => onModeChange("live")}
-          size="sm"
-          type="button"
-          variant={mode === "live" ? "secondary" : "ghost"}
-        >
-          <Radio data-icon="inline-start" />
-          {t("traces.mode.live")}
-        </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        {mode === "history" ? <TraceToDatasetImportPicker datasets={datasets} /> : null}
+        <div className="flex items-center gap-1 rounded-md border p-1">
+          <Button
+            onClick={() => onModeChange("history")}
+            size="sm"
+            type="button"
+            variant={mode === "history" ? "secondary" : "ghost"}
+          >
+            <Clock data-icon="inline-start" />
+            {t("traces.mode.history")}
+          </Button>
+          <Button
+            onClick={() => onModeChange("live")}
+            size="sm"
+            type="button"
+            variant={mode === "live" ? "secondary" : "ghost"}
+          >
+            <Radio data-icon="inline-start" />
+            {t("traces.mode.live")}
+          </Button>
+        </div>
       </div>
     </div>
+  );
+}
+
+function TraceToDatasetImportPicker({ datasets }: { datasets: Dataset[] }) {
+  const compatible = compatibleTraceImportDatasets(datasets);
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button size="sm" type="button" variant="outline">
+          <FileJson data-icon="inline-start" />
+          Add trace to dataset
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add trace to dataset</DialogTitle>
+          <DialogDescription>Only datasets with extraction settings are shown.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-2">
+          {compatible.map((dataset) => (
+            <div className="border px-3 py-2 text-sm" key={dataset.id}>
+              {dataset.name}
+            </div>
+          ))}
+          {compatible.length === 0 ? (
+            <div className="border border-dashed p-3 text-sm text-muted-foreground">
+              No dataset has compatible extraction settings.
+            </div>
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

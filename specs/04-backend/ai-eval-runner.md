@@ -1,148 +1,133 @@
 ---
-id: TEC-BE-014
+id: TEC-BE-015
 title: AI evaluation runner
 layer: backend
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-16
+updated: 2026-05-24
 provenance: from-user
-depends_on: [DOM-006, TEC-BE-001, ADR-0007, TEC-BE-024]
+depends_on: [DOM-006, TEC-BE-016]
 ---
 
 # AI Evaluation Runner
 
-## Service
+## Responsibility
 
-`core/ai-eval-runner` is a feature-gated Go service enabled by the `aieval` build tag and `CLOUDGRID_AI_EVAL_ENABLED=true`.
+`core/ai-eval-runner` executes evaluation and optimization work. It does not own
+storage, GraphQL, metric aggregation, dataset validation, or project settings.
 
-Runtime configuration:
+The runner:
 
-- `CLOUDGRID_AI_EVAL_ENABLED`: when not `true`, the runner process exits
-  successfully without subscribing to message subjects.
-- `CLOUDGRID_NATS_URL`: NATS message bridge URL, shared with other private
-  services.
-- `CLOUDGRID_AI_EVAL_HARNESS_URL`: base URL for the trusted harness adapter.
-  Required when AI Eval is enabled.
-- `CLOUDGRID_AI_EVAL_RUNNER_HEALTH_HOST`: health listener host, default
-  `0.0.0.0`.
-- `CLOUDGRID_AI_EVAL_RUNNER_HEALTH_PORT`: health listener port, default `8085`.
+- consumes `eval.evaluation.run.*` and `eval.optimization.start`;
+- resolves project AI settings through control-plane;
+- resolves dataset versions, target snapshots, and run state through
+  storage-read;
+- executes prompt targets through the harness/runtime abstraction;
+- executes external adapter targets through the `DOM-006` adapter protocol;
+- persists item runs, metric results, target snapshots, optimization state, and
+  progress through storage-write;
+- emits no direct frontend events.
 
-## Responsibilities
+## Execution Preflight
 
-- Own `ExperimentRun` lifecycle.
-- Consume `ai.persisted.projections` for online scoring.
-- Handle `eval.experiment.start`, `eval.experiment.cancel`, and `eval.optimization.start`.
-- Resolve immutable run manifests through storage-read/control-plane ports
-  before execution.
-- Call the harness adapter over HTTP for `/v1/run`, `/v1/score`, and `/v1/optimize`.
-- Preserve W3C trace context on every harness adapter call.
-- Persist all mutable AI-eval records through storage-write command subjects.
-- Publish durable experiment progress notifications for storage-read live fanout.
-- Execute deterministic scorers locally for `Scorer.kind = deterministic`.
-- Enforce split, budget, sampling, concurrency, retry, cancellation, and
-  idempotency rules before invoking harness.
-- Pass provider profile IDs, model aliases, prompt version refs, skill snapshot
-  refs, and tool snapshot refs to harness without resolving provider secrets.
+Before starting work, runner must resolve and snapshot:
 
-## Non-Responsibilities
-
-- Does not read or write SurrealDB.
-- Does not call OpenAI, Anthropic, Bedrock, Azure, or other model providers directly.
-- Does not expose public HTTP endpoints.
-- Does not implement Python-based optimizers.
-- Does not own online policy matching semantics locally.
-- Does not call harness `/v1/score` for online scoring in v1.
-- Does not create annotation queue items automatically from online scoring
-  results in v1.
-- Does not feed online score results into alerting.
-- Does not read `holdout` split data during optimization.
-
-## Harness Adapter Contract
-
-The adapter is a trusted-network HTTP service. It exposes:
-
-- `POST /v1/run`
-- `POST /v1/score`
-- `POST /v1/optimize`
-- `GET /healthz`
-- `GET /v1/agents`
-
-Responses contain run outputs, score results, candidate prompt IDs, and summaries. Spans are never returned in adapter response bodies; harness emits spans to CloudGrid through OTLP.
-
-CloudGrid aligns with the current harness boundary:
-
-- runner calls pass W3C `traceparent`/`tracestate` into harness run options;
-- basic run status, token totals, model call counts, tool call counts, and agent call counts come from harness run summaries, not from parsing spans;
-- deterministic scorer definitions use the harness JSON Pointer subset for `contains`, `regex`, `json-schema`, and `attribute-equality`;
-- prompt candidate evaluation may be delegated to harness helpers, but CloudGrid owns datasets, experiment runs, prompt versions, score persistence, and UI state;
-- prompt, skill, and tool candidate execution may be delegated to harness, but
-  CloudGrid owns run manifests, candidate references, comparisons, score
-  persistence, and promotion state;
-- harness metrics are ingested later through standard OTLP metrics, not returned through adapter response bodies.
-
-## Adapter Package Location
-
-The harness adapter package lives in `apps/packages/cloudgrid-harness-adapter` in the CloudGrid repo for the v1 implementation. The package name is `@cloudgrid/harness-adapter`. This is the only supported v1 placement for implementation tickets and generated contract references.
-
-## Idempotency
-
-Runner requests are idempotent at CloudGrid persistence boundaries:
-
-- Dataset item execution key: `(experimentRunId, datasetItemId)`.
-- Eval result key: `(targetKind, targetId, scorerId, scorerVersion)`.
-- Optimization candidate key: `(experimentRunId, promptVersionHash)`.
-
-If an adapter call is retried after an unknown outcome, duplicate harness execution is allowed, but duplicate CloudGrid records are not.
-
-## Run Manifest Rules
-
-Before starting an offline experiment or optimization, the runner obtains a
-manifest from storage-read/control-plane ports. The manifest contains:
-
-- `experimentRunId`;
-- `experimentId`;
-- `datasetId` and `datasetVersion`;
-- resolved dataset item IDs;
+- project AI settings and budgets;
+- dataset version and item revision IDs;
 - split selector;
-- scorer IDs and versions;
-- baseline run or baseline prompt/skill refs;
-- solver reference;
-- prompt version refs;
-- skill snapshot refs;
-- tool snapshot refs;
-- provider profile refs and model aliases;
-- budget caps and concurrency caps;
-- optimizer kind and config when applicable;
-- manifest digest.
+- target snapshot;
+- metric settings;
+- run policy;
+- retention profile and role;
+- idempotency key.
 
-The manifest digest is persisted with the run. A resumed run must use the same
-manifest digest or fail with `ERR-AIE-002`.
+If any selected row is not `ready`, has invalid input/expected, or is outside
+the selected dataset version, runner fails start before executing target calls.
 
-## Online Policy Rules
+Optimization start additionally verifies:
 
-For online scoring, runner receives matched policy references from storage-read.
-It may enforce budget, sampling, and concurrency decisions only from the
-resolved policy data. It must not inspect raw traces and invent policy matching
-outside storage-read semantics.
+- objective is resolved;
+- candidate generation does not use `test`;
+- quick-shot selected item revisions are persisted when used;
+- budget is sufficient for at least one candidate evaluation.
 
-Online scoring v1 is deterministic-only:
+## Run Lifecycle
 
-- runner resolves matches through `eval.online.policy_matches.resolve`;
-- storage-read must return only deterministic scorer refs for executable v1
-  matches;
-- runner rejects or skips any non-deterministic scorer ref with `ERR-AIE-002`;
-- runner executes deterministic scorers locally;
-- runner must not call harness `/v1/score`, read provider profiles, or forward
-  prompt/completion/tool/retrieval content for online scoring;
-- runner persists only `EvalResult` or bounded skipped-result records through
-  `eval.results.persist`;
-- runner ignores online policy annotation defaults during notification
-  handling. Manual annotation creation is triggered only by user-facing BFF
-  mutations that route to `annotation.item.update`.
+Evaluation and optimization statuses are exactly:
 
-## Optimizer Rules
+- `queued`;
+- `running`;
+- `pausing`;
+- `paused`;
+- `cancelling`;
+- `cancelled`;
+- `completed`;
+- `failed`.
 
-Optimization input may include `optimization` and `validation` splits. It must
-not include `holdout`. `regression` may be used only for post-candidate
-regression gates, not candidate search. The runner rejects invalid manifests
-before calling harness.
+Allowed transitions are the table in `DOM-006`. Runner must reject any other
+transition and must make repeated control commands idempotent.
+
+## Item Execution
+
+For each item revision:
+
+1. Create or resume `EvaluationItemRun`.
+2. Start a CloudGrid trace/root span for the item run.
+3. Execute target.
+4. Validate actual output against output type expectations where applicable.
+5. Compute deterministic and trace-derived metrics.
+6. Call optional semantic/judge metrics only when provider settings and content
+   policy allow.
+7. Persist actual output, trace refs, metric results, bounded trajectory
+   summary, important steps, and problems.
+
+Item run statuses are `queued`, `running`, `completed`, `failed`, `cancelled`,
+and `quarantined`.
+
+Adapter/provider/timeouts create item-run problems using the `DOM-006` problem
+taxonomy. They do not become quality failures unless a metric capability says
+so.
+
+## External Adapter Execution
+
+Runner is the only service that calls external adapter URLs.
+
+Runner must:
+
+- propagate `traceparent` and optional `tracestate`;
+- set `x-cloudgrid-request-id`;
+- set `x-cloudgrid-idempotency-key`;
+- authenticate using project settings without exposing secrets;
+- omit `expected` by default;
+- enforce 1 MiB request and response body limits;
+- poll async adapters until completion, cancellation, failure, or timeout;
+- map adapter errors to item-run and metric problems;
+- support fake sync and async adapters in default tests.
+
+Inbound webhooks are out of scope for v2.
+
+## Metric Execution
+
+Runner may compute item-level deterministic metrics and bounded summaries.
+Storage-read owns aggregates and comparisons. Runner must not precompute
+frontend-specific scoreboards.
+
+## Retention
+
+Runner attaches retention profile and role to every run, item run, summary,
+preview, scratch artifact, and candidate artifact it persists. Storage-write
+enforces TTL metadata; storage-read hides expired details while preserving
+durable metadata and aggregates.
+
+## Verification
+
+Required focused tests before implementation is complete:
+
+- run lifecycle idempotency;
+- dataset version immutability during later row edits;
+- external adapter sync success;
+- external adapter async polling success;
+- adapter timeout and terminal failure mapping;
+- quick-shot sample reproducibility;
+- `test` split rejection during candidate generation;
+- promotion evidence requires full validation, not quick-shot only.

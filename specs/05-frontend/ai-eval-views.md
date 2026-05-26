@@ -1,213 +1,201 @@
 ---
-id: TEC-FE-007
+id: TEC-FE-009
 title: AI evaluation views
 layer: frontend
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-17
+updated: 2026-05-24
 provenance: from-user
-depends_on: [DOM-006, TEC-BE-015, TEC-FE-008]
+depends_on: [TEC-FE-008, DOM-006]
 ---
 
 # AI Evaluation Views
 
-## Feature Flag
+## View Inventory
 
-AI evaluation routes render only when `CLOUDGRID_AI_EVAL_ENABLED=true`. When disabled, the frontend hides navigation entries and does not execute AI-eval GraphQL operations.
+Implement only these route-local AI Eval views in v2:
 
-## Views
+- `DatasetsListView`;
+- `DatasetCreateView`;
+- `DatasetDetailView`;
+- `DatasetSettingsView`;
+- `DatasetImportView`;
+- `DatasetExportView`;
+- `EvaluationDefinitionsView`;
+- `EvaluationCreateView`;
+- `EvaluationSettingsView`;
+- `EvaluationRunDetailView`;
+- `EvaluationComparisonView`;
+- `OptimizationCreateView`;
+- `OptimizationSettingsView`;
+- `OptimizationRunDetailView`;
+- `TargetPromotionDialog`.
 
-AI evaluation layout follows `05-frontend/product-ux-concept.md` and
-`05-frontend/ai-eval-ux-concept.md`: feature-gated project workspace
-navigation, route-local AI Eval rail, and one main workspace surface. The
-route-local rail is task based and must not expose generic demo entries such as
-`Overview`, duplicate telemetry entries such as `Agent runs`, or unbacked work
-queues such as `Annotations`. The approved rail entries are `Datasets`,
-`Scorers`, `Experiments`, and `Production quality`.
+Do not implement `ScorerRegistry`, `ScorerCreate`, `ExperimentCreate`,
+`ExperimentScoreboard`, or `ProductionQuality` as v2 primary views.
 
-- Trace evidence pivots: rows that need execution detail link to `/traces`.
-- Dataset workbench: dataset list, item table, version health, structured row
-  create, import/export, and source trace pivots.
-- Dataset import/export: upload JSONL, JSON array, CSV, or ZIP files; map
-  source fields; preview validation; commit valid rows; export canonical
-  dataset files.
-- Dataset health: split coverage, reviewed count, duplicate candidates, leakage
-  warnings, schema validation state, and small-dataset confidence.
-- Scorer registry: deterministic, schema/JSON, semantic, RAG, LLM-judge,
-  tool correctness, trajectory/task completion, and human scorer definitions.
-- Experiment scoreboard: run comparison, pass-rate, mean score, p50/p95, regression highlights, and per-item diffs.
-- Optimization workspace: prompt, skill, and tool candidate comparison with
-  explicit promotion gating.
-- Production quality: online policies, quality trend, cost trend, latency trend,
-  tool/retrieval health, and budget status.
-- Annotation actions: only appear from experiment or production result context
-  when the approved mutation path is available.
+## GraphQL Usage
 
-## Online Policy UI V1
+Frontend uses only v2 GraphQL fields from `DOM-006`:
 
-Online policy management lives in Project Settings / AI Eval configuration, with
-read-only production quality monitoring in the AI Eval route.
-The AI Eval route may link to `/projects/:projectId/settings/ai-eval` from setup
-or administrative actions, and to `/projects/:projectId/settings/ai-providers`
-when provider configuration is missing. It must not render settings as a rail
-item, right-inspector detail surface, or alternate settings form.
+- dataset queries/mutations;
+- evaluation definition queries/mutations;
+- evaluation run queries/mutations/subscription;
+- comparison queries/mutations;
+- optimization queries/mutations;
+- target snapshot/promotion queries/mutations.
 
-The settings UI must:
+Frontend must not call legacy `createScorer`, `scorers`, `createExperiment`,
+`experiments`, or `startExperimentRun` after the v2 contract migration.
 
-- show that production online scoring is inactive by default;
-- create/edit/delete online policies only through
-  `Mutation.updateProjectAiSettings`;
-- require an explicit enabled toggle per policy;
-- require at least one target filter before a policy can be enabled;
-- expose only the approved target fields from
-  `specs/04-backend/ai-eval-project-settings.md`;
-- select judge, optimizer, embedding, replay, and default provider references
-  from Project AI Providers instead of editing provider profiles inline;
-- allow selecting deterministic scorers only for v1 online policies;
-- show non-deterministic scorer families as offline-only when useful,
-  but never submit them in enabled online policies;
-- show sample rate, max daily runs, and manual annotation defaults;
-- describe annotation defaults as user-triggered batch action defaults, not
-  automatic routing.
+## Dataset View Requirements
 
-The production quality UI must:
+- The AI Eval route-level navigation contains only `Datasets` and
+  `Evaluations`; it must not contain a nested Datasets-to-Evaluations tab set.
+- Dataset list and dataset detail are separate route states.
+- Dataset list primary action label is `New dataset`.
+- `New dataset` navigates to `/ai-eval/datasets/new`; it must not open a drawer, sheet, dialog, popover, or inline expansion.
+- Dataset creation follows the create entity page pattern in
+  `product-ux-concept.md` with tabs `Purpose`, `Schema`, `Curation`,
+  `Extraction`.
+- Dataset creation validates required fields before forward navigation:
+  dataset name, evaluation family, input value type, expected value type,
+  expected JSON schema when expected type is JSON, default split, default
+  curation status, and required retention/anonymization fields exposed by the
+  contract.
+- Dataset creation shows field-level validation, tab-level error indicators,
+  and a summary error panel when validation or submission fails.
+- Dataset creation success navigates to dataset detail.
+- Dataset detail manages rows and dataset settings only. Its row creation action
+  label is `Add row`; `Add dataset` must not appear inside an existing dataset
+  detail view.
+- Dataset settings are available from dataset detail through a `Dataset
+  settings` action. Settings are not hidden in import/export flows.
+- `Dataset settings` navigates to `/ai-eval/datasets/:datasetId/settings`; it
+  must not open a drawer, sheet, dialog, popover, or inline expansion.
+- Dataset settings follows the entity settings page pattern in
+  `product-ux-concept.md` with tabs `Purpose`, `Schema`, `Curation`,
+  `Extraction`, `Versions`.
+- Dataset settings reuses the same field grouping as dataset creation for
+  creation-time fields. Settings-only behavior belongs in `Versions` or in the
+  existing topical tab that owns it.
+- The settings surface edits configured dataset-level behavior as a full
+  settings replacement guarded by `expectedDatasetVersionId`: input value
+  type/schema, expected output value type/schema, default split, curation
+  defaults, extraction settings, anonymization/PII policy, retention, and
+  metric defaults.
+- Dataset settings shows field-level validation, tab-level error indicators,
+  a summary error panel, and field-adjacent explanations for dataset version
+  impact before save.
+- Row data uses storage-read cursor pagination.
+- Frontend passes filters and sort options to GraphQL; it does not load all rows
+  and filter locally.
+- Manual row creation sends raw text/JSON values, reason, split, curation
+  status, and metadata to BFF.
+- Every row update sends `expectedDatasetVersion`.
+- Import files go through prepare/preview/commit. Frontend must not parse upload
+  files into row mutation payloads.
+- Export starts a server-side export job.
+- Dataset detail can show an explicit `Create evaluation from dataset` action
+  for an eligible dataset. This action opens the evaluation creation flow with
+  the dataset preselected; it is not route-local navigation to a separate
+  Evaluations tab.
+- `Add trace to dataset` is not a dataset-list or dataset-detail action. Trace
+  import actions live in Traces views where the user has trace/span context:
+  trace detail, span context actions, and trace overview bulk actions. The
+  dataset picker in Traces lists only datasets that have extraction settings.
 
-- render quality summaries and segments from `Query.aiQualityOverview`;
-- render skipped-result reasons returned by GraphQL;
-- provide filters for policy, scorer, service, route, environment, model,
-  prompt version, and time range when backed by GraphQL fields;
-- let users select/filter failed online score results and trigger annotation
-  item creation through the approved annotation mutation path;
-- not create annotation queue items automatically;
-- not expose alert-rule controls for AI-eval online results in v1.
+## Evaluation View Requirements
 
-## Dataset Import/Export UI
+- Evaluation definitions list primary action label is `New evaluation`.
+- `New evaluation` navigates to `/ai-eval/evaluations/new`; it must not open a
+  drawer, sheet, dialog, popover, or inline expansion.
+- Evaluation creation follows the create entity page pattern in
+  `product-ux-concept.md` with tabs `Dataset`, `Target`, `Metrics`,
+  `Run policy`.
+- Evaluation creation validates required fields before forward navigation:
+  dataset, dataset version policy, split selector, target kind, target
+  reference, required model alias when applicable, required metric settings, and
+  required run policy fields.
+- Dataset detail `Create evaluation from dataset` opens
+  `/ai-eval/evaluations/new` with the dataset preselected and still requires
+  the user to complete the wizard before saving or starting a run.
+- Evaluation creation success navigates to the evaluation definition/detail
+  route. When the user explicitly chose immediate run start, success starts the
+  run through `startEvaluationRun` and navigates to the run detail route.
+- Evaluation detail uses `Run evaluation` for starting a run. It must not use
+  `Add evaluation` inside an existing evaluation detail.
+- Evaluation detail exposes a `Settings` action that navigates to
+  `/ai-eval/evaluations/:evaluationId/settings`.
+- Evaluation settings follows the entity settings page pattern in
+  `product-ux-concept.md` with tabs `Dataset`, `Target`, `Metrics`,
+  `Run policy`, `History`.
+- Evaluation settings reuses the same field grouping as evaluation creation for
+  creation-time fields. Settings-only behavior belongs in `History` or in the
+  existing topical tab that owns it.
+- Evaluation settings changes affect future runs only and must not mutate
+  already resolved run records.
+- Links from evaluation detail to the source dataset are plain object links back
+  to dataset detail, not nested dataset navigation.
+- Evaluation creation uses dataset, dataset version policy, split selector,
+  target, model alias, metric settings, retention profile, and run policy
+  controls. The model alias is stored in
+  `EvaluationTargetRef.metadata.modelAlias` and is resolved through project AI
+  provider settings by the runner.
+- Run start uses `startEvaluationRun`.
+- Run control buttons are visible only for valid lifecycle states.
+- Run detail renders storage-read aggregates and item rows as returned.
+- Item rows show bounded previews and trace links, not full trace payloads.
+- Comparison views render metric deltas and examples from storage-read.
+- Comparison creation label is `Create comparison`.
 
-Dataset administration, import, and export lives in the Datasets section.
-Import uses a dedicated workflow view inside the route workspace, not a narrow
-side sheet. The Datasets workspace must always show a dataset create action and
-a clear empty state that explains that a dataset is required before imports or
-experiment runs can happen.
+## Optimization View Requirements
 
-Dataset list and dataset detail are separate states. The list state is a
-full-width overview and selection table. Opening a dataset replaces the list
-with a full-width dataset workbench; the list must not remain as a side column
-that steals row-editing space.
+- Start optimization from evaluation/run/comparison.
+- Optimization start label is `Start optimization`.
+- `Start optimization` navigates to `/ai-eval/optimizations/new` when user
+  choices are required; it must not open a drawer, sheet, dialog, popover, or
+  inline expansion for the primary start workflow.
+- Optimization creation follows the create entity page pattern in
+  `product-ux-concept.md` with tabs `Source`, `Objective`, `Search`,
+  `Validation`.
+- Optimization creation validates required fields before forward navigation:
+  source evaluation/run/comparison, baseline target, primary metric, hard
+  constraints, ranking policy, tie-breakers, validation split policy, minimum
+  evidence, and test-split exclusion.
+- Optimization creation success calls `startOptimizationRun` and navigates to
+  optimization run detail.
+- Optimization run detail exposes a `Settings` action while the run is
+  configurable. The action navigates to
+  `/ai-eval/optimizations/:optimizationRunId/settings`.
+- Optimization settings follows the entity settings page pattern in
+  `product-ux-concept.md` with tabs `Source`, `Objective`, `Search`,
+  `Validation`, `Controls`.
+- Optimization settings reuses the same field grouping as optimization creation
+  for creation-time fields. Settings-only behavior belongs in `Controls` or in
+  the existing topical tab that owns it.
+- Terminal optimization runs render settings read-only unless a later spec
+  defines mutable post-run metadata.
+- Show resolved objective before start.
+- Show quick-shot as an explicit phase when present.
+- Show candidate target snapshots and target diffs.
+- Disable promotion until full validation evidence exists.
+- Promotion uses `promoteTargetSnapshot`.
 
-Import UI:
+## Empty And Error States
 
-- shows an Import action on the selected dataset;
-- accepts `.jsonl`, `.json`, `.csv`, and `.zip`;
-- uploads bytes only through
-  `POST /api/ai-eval/dataset-imports/uploads`;
-- displays detected ZIP contents with file path, detected format, and size;
-- lets users select included files when a ZIP contains multiple supported
-  files;
-- provides mapping controls for `input`, `expected`, `metadata`,
-  `sourceTraceId`, `sourceSpanId`, `split`, and `reviewStatus`;
-- supports column mapping for CSV and JSON path mapping for JSON/JSONL;
-- supports constants/defaults without custom scripting;
-- shows preview rows returned by `Mutation.prepareDatasetImport`;
-- shows row errors and warnings with source file path and row number;
-- disables Commit when errors exist unless the user explicitly enables partial
-  commit and the preview allows it;
-- calls `Mutation.commitDatasetImport` only after user confirmation.
+- AI Eval disabled: link to project settings when user is authorized.
+- No datasets: primary action creates or imports a dataset.
+- Dataset has no ready rows: primary action opens row add/import.
+- No evaluations: primary action creates evaluation from an eligible dataset.
+- External adapter unavailable: show adapter problem and retry/control actions
+  based on run state.
+- Retained detail expired: show durable metrics and explain that detailed
+  previews expired by retention policy.
 
-Manual row creation uses `Mutation.appendDatasetItems` with structured fields
-for input prompt, expected answer, split, review status, and optional source
-trace/span. Text answers use a text field. JSON answers use a field editor for
-name, scalar type, and value. The UI must not require JSON input for the common
-manual-row path.
+## Acceptance Criteria
 
-Export UI:
-
-- exposes Export on the selected dataset;
-- supports `jsonl`, `json_array`, and `csv`;
-- lets users filter by split and review status only when the GraphQL input
-  supports those filters;
-- calls `Mutation.startDatasetExport`;
-- downloads only from the returned same-origin `downloadUrl`;
-- labels exports as canonical CloudGrid dataset format.
-
-Frontend must not parse uploaded file rows into `DatasetItemInput`, infer
-mapping automatically, compute row validity, deduplicate rows, compute leakage,
-or call `appendDatasetItems` for uploaded files.
-
-The import workflow must minimize visual noise:
-
-- show one active decision area at a time where possible;
-- provide presets for common CSV and JSONL shapes;
-- explain disabled preview/commit states next to the disabled action;
-- avoid repeating dataset version, item counts, and health values in a separate
-  inspector when they are already visible in the workspace.
-
-## Experiment Run UI
-
-Experiment creation and evaluation runs live in the Experiments section. The
-workspace must guide the user from prerequisite data to execution:
-
-- show which dataset version and scorers each experiment uses;
-- expose Create experiment from the Experiments workspace, using existing
-  dataset and scorer query results;
-- require a dataset, at least one scorer, a name, and a solver reference before
-  creating an experiment;
-- expose Run evaluation on every experiment row and in the selected experiment
-  inspector;
-- call `Mutation.startExperimentRun` for evaluation execution;
-- show existing experiment runs, status, pass rate, mean score, latency, and
-  item-run details returned by GraphQL;
-- keep prompt/tool/skill optimization details inside experiment/run details
-  until a dedicated optimization contract exists.
-
-Experiment creation must use form controls for solver kind and solver name. The
-primary UI must not ask users to type a JSON object.
-
-## Scorer Creation UI
-
-Scorer creation uses structured templates. The primary UI must expose:
-
-- scorer name;
-- template;
-- template-specific inputs such as selectable match field, expected value type,
-  expected value, threshold, rubric text, or provider alias;
-- deterministic/offline-only availability guidance for scorer families that
-  cannot run online in v1.
-
-The primary UI must not contain a `Definition JSON` text input. Match field is a
-dropdown of known expected/model output paths and must not be free text.
-
-## Project AI Eval Settings
-
-Project Settings / AI Eval exposes the operational setup required to run AI
-Eval:
-
-- enable/disable AI Eval for the project;
-- default provider and judge profile ids;
-- provider profile timeout and max parallel request controls;
-- daily and per-run budget limits;
-- max parallel experiment item execution;
-- existing provider/profile/policy counts and effective warnings.
-
-## Frontend Boundary
-
-Frontend code owns route state, selection, tabs, focus, expansion, sorting
-controls, and virtualization windows. It does not compute scores, transcript
-semantics, cost estimates, dataset health, split leakage, production quality,
-online policy matches, scorer calibration, scoreboard aggregates, or query
-facets from raw spans.
-
-## Required UX Flows
-
-Implementation must cover the flows in `05-frontend/ai-eval-ux-concept.md`:
-
-- first-use setup;
-- production trace to dataset item through Traces pivots;
-- dataset split management;
-- scorer template creation;
-- baseline experiment run;
-- prompt/skill/tool optimization;
-- candidate promotion;
-- production online policy monitoring;
-- annotation actions from result context when supported;
-- dataset import/export;
-- Project Settings / AI Eval configuration.
+- The AI Eval rail/tabs contain only Datasets and Evaluations.
+- A run can be started and watched without frontend polling private services.
+- A dataset with thousands of rows remains usable through cursor pagination.
+- A user can inspect effective retention only in advanced details.

@@ -3,8 +3,8 @@ title: Auth provider adapter
 description: Add a new OIDC/OAuth provider for BFF-managed sessions.
 order: 3
 accent: rose
-eyebrow: Handbook · Adapters · Auth
-updated: 2026-05-17
+eyebrow: Handbook - Architecture - Extension boundaries
+updated: 2026-05-21
 ---
 
 Auth providers feed BFF-managed sessions. The provider port is
@@ -17,6 +17,11 @@ ID.
 - Return the canonical identity claims the control plane expects.
 - Stay **inside the BFF process** — provider tokens never leave the server.
 - Avoid storing additional state in the browser.
+- Keep browser SSO settings separate from collector service-token validation.
+  The OTLP collector uses `CLOUDGRID_AUTH_ISSUER`,
+  `CLOUDGRID_AUTH_AUDIENCE`, and `CLOUDGRID_AUTH_JWKS_URL` for ingest bearer
+  tokens in deployed SSO mode; it must not infer project access from browser
+  provider profile claims.
 
 ## Provider port
 

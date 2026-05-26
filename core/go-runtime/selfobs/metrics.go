@@ -3,7 +3,6 @@ package selfobs
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,6 +11,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	collectormetricspb "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
+	metricspb "go.opentelemetry.io/proto/otlp/metrics/v1"
+	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type MetricKind string
@@ -47,19 +52,22 @@ type MetricsExporterConfig struct {
 	MaxBuffer             int
 	Client                *http.Client
 	Logger                *slog.Logger
+	FailureLogLevel       string
 	Now                   func() time.Time
 }
 
 type OTLPHTTPMetricsExporter struct {
-	endpoint    string
-	bearerToken string
-	client      *http.Client
-	logger      *slog.Logger
-	now         func() time.Time
-	resource    map[string]string
-	maxBuffer   int
-	stop        chan struct{}
-	stopOnce    sync.Once
+	endpoint        string
+	bearerToken     string
+	client          *http.Client
+	logger          *slog.Logger
+	now             func() time.Time
+	resource        map[string]string
+	maxBuffer       int
+	failureLogLevel slog.Level
+	failureLogOff   bool
+	stop            chan struct{}
+	stopOnce        sync.Once
 
 	mu     sync.Mutex
 	buffer []MetricEvent
@@ -86,13 +94,16 @@ func NewOTLPHTTPMetricsExporter(config MetricsExporterConfig) (*OTLPHTTPMetricsE
 	if maxBuffer <= 0 {
 		maxBuffer = 1024
 	}
+	failureLogLevel, failureLogOff := parseFailureLogLevel(config.FailureLogLevel)
 	exporter := &OTLPHTTPMetricsExporter{
-		endpoint:    endpoint,
-		bearerToken: strings.TrimSpace(config.BearerToken),
-		client:      client,
-		logger:      config.Logger,
-		now:         now,
-		maxBuffer:   maxBuffer,
+		endpoint:        endpoint,
+		bearerToken:     strings.TrimSpace(config.BearerToken),
+		client:          client,
+		logger:          config.Logger,
+		now:             now,
+		maxBuffer:       maxBuffer,
+		failureLogLevel: failureLogLevel,
+		failureLogOff:   failureLogOff,
 		resource: map[string]string{
 			"service.name":                            config.ServiceName,
 			"service.namespace":                       "cloudgrid",
@@ -157,11 +168,15 @@ func (exporter *OTLPHTTPMetricsExporter) Flush(ctx context.Context) error {
 	if exporter == nil {
 		return nil
 	}
+	return exporter.flush(ctx, true)
+}
+
+func (exporter *OTLPHTTPMetricsExporter) flush(ctx context.Context, logFailures bool) error {
 	events := exporter.drain()
 	if len(events) == 0 {
 		return nil
 	}
-	payload, err := json.Marshal(exporter.payload(events))
+	payload, err := protojson.Marshal(exporter.payload(events))
 	if err != nil {
 		return err
 	}
@@ -175,13 +190,17 @@ func (exporter *OTLPHTTPMetricsExporter) Flush(ctx context.Context) error {
 	}
 	response, err := exporter.client.Do(request)
 	if err != nil {
-		exporter.logFailure(err)
+		if logFailures {
+			exporter.logFailure(err)
+		}
 		return err
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		err := fmt.Errorf("self-observability metrics export failed with status %d", response.StatusCode)
-		exporter.logFailure(err)
+		if logFailures {
+			exporter.logFailure(err)
+		}
 		return err
 	}
 	return nil
@@ -197,7 +216,8 @@ func (exporter *OTLPHTTPMetricsExporter) Shutdown(ctx context.Context) error {
 	exporter.stopOnce.Do(func() {
 		close(exporter.stop)
 	})
-	return exporter.Flush(ctx)
+	_ = exporter.flush(ctx, false)
+	return nil
 }
 
 func (exporter *OTLPHTTPMetricsExporter) drain() []MetricEvent {
@@ -208,88 +228,80 @@ func (exporter *OTLPHTTPMetricsExporter) drain() []MetricEvent {
 	return events
 }
 
-func (exporter *OTLPHTTPMetricsExporter) payload(events []MetricEvent) map[string]any {
-	metrics := make([]map[string]any, 0, len(events))
+func (exporter *OTLPHTTPMetricsExporter) payload(events []MetricEvent) *collectormetricspb.ExportMetricsServiceRequest {
+	metrics := make([]*metricspb.Metric, 0, len(events))
 	for _, event := range events {
 		metrics = append(metrics, otlpMetric(event, exporter.now()))
 	}
-	return map[string]any{
-		"resourceMetrics": []map[string]any{{
-			"resource": map[string]any{
-				"attributes": otlpAttributes(exporter.resource),
-			},
-			"scopeMetrics": []map[string]any{{
-				"scope": map[string]any{
-					"name": "cloudgrid.self_observability",
-				},
-				"metrics": metrics,
+	return &collectormetricspb.ExportMetricsServiceRequest{
+		ResourceMetrics: []*metricspb.ResourceMetrics{{
+			Resource: &resourcepb.Resource{Attributes: otlpKeyValues(exporter.resource)},
+			ScopeMetrics: []*metricspb.ScopeMetrics{{
+				Scope:   &commonpb.InstrumentationScope{Name: "cloudgrid.self_observability"},
+				Metrics: metrics,
 			}},
 		}},
 	}
 }
 
-func otlpMetric(event MetricEvent, timestamp time.Time) map[string]any {
-	point := map[string]any{
-		"timeUnixNano": fmt.Sprintf("%d", timestamp.UnixNano()),
-		"attributes":   otlpAttributes(event.Attributes),
+func otlpMetric(event MetricEvent, timestamp time.Time) *metricspb.Metric {
+	point := &metricspb.NumberDataPoint{
+		TimeUnixNano: uint64(timestamp.UnixNano()),
+		Attributes:   otlpKeyValues(event.Attributes),
+		Value:        &metricspb.NumberDataPoint_AsDouble{AsDouble: event.Value},
 	}
 	switch event.Kind {
 	case MetricKindHistogram:
-		point["count"] = "1"
-		point["sum"] = event.Value
-		point["bucketCounts"] = []string{"1"}
-		point["explicitBounds"] = []float64{}
-		return map[string]any{
-			"name": event.Name,
-			"histogram": map[string]any{
-				"aggregationTemporality": "AGGREGATION_TEMPORALITY_DELTA",
-				"dataPoints":             []map[string]any{point},
+		sum := event.Value
+		return &metricspb.Metric{
+			Name: event.Name,
+			Data: &metricspb.Metric_Histogram{
+				Histogram: &metricspb.Histogram{
+					AggregationTemporality: metricspb.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA,
+					DataPoints: []*metricspb.HistogramDataPoint{{
+						TimeUnixNano:   uint64(timestamp.UnixNano()),
+						Attributes:     otlpKeyValues(event.Attributes),
+						Count:          1,
+						Sum:            &sum,
+						BucketCounts:   []uint64{1},
+						ExplicitBounds: []float64{},
+					}},
+				},
 			},
 		}
 	case MetricKindUpDownCounter:
-		point["asDouble"] = event.Value
-		return map[string]any{
-			"name": event.Name,
-			"sum": map[string]any{
-				"aggregationTemporality": "AGGREGATION_TEMPORALITY_DELTA",
-				"isMonotonic":            false,
-				"dataPoints":             []map[string]any{point},
+		return &metricspb.Metric{
+			Name: event.Name,
+			Data: &metricspb.Metric_Sum{
+				Sum: &metricspb.Sum{
+					AggregationTemporality: metricspb.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA,
+					IsMonotonic:            false,
+					DataPoints:             []*metricspb.NumberDataPoint{point},
+				},
 			},
 		}
 	default:
-		point["asDouble"] = event.Value
-		return map[string]any{
-			"name": event.Name,
-			"sum": map[string]any{
-				"aggregationTemporality": "AGGREGATION_TEMPORALITY_DELTA",
-				"isMonotonic":            true,
-				"dataPoints":             []map[string]any{point},
+		return &metricspb.Metric{
+			Name: event.Name,
+			Data: &metricspb.Metric_Sum{
+				Sum: &metricspb.Sum{
+					AggregationTemporality: metricspb.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA,
+					IsMonotonic:            true,
+					DataPoints:             []*metricspb.NumberDataPoint{point},
+				},
 			},
 		}
 	}
-}
-
-func otlpAttributes(labels map[string]string) []map[string]any {
-	attributes := make([]map[string]any, 0, len(labels))
-	for key, value := range labels {
-		if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
-			continue
-		}
-		attributes = append(attributes, map[string]any{
-			"key": key,
-			"value": map[string]any{
-				"stringValue": value,
-			},
-		})
-	}
-	return attributes
 }
 
 func (exporter *OTLPHTTPMetricsExporter) logFailure(err error) {
 	if exporter.logger == nil || err == nil {
 		return
 	}
-	exporter.logger.Warn("self_observability_metrics_export_failed",
+	if exporter.failureLogOff {
+		return
+	}
+	exporter.logger.Log(context.Background(), exporter.failureLogLevel, "self_observability_metrics_export_failed",
 		"service", exporter.resource["service.name"],
 		"event", "self_observability_metrics_export_failed",
 		"request_id", "",

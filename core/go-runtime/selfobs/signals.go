@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -15,6 +14,15 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	collectorlogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
+	collectortracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
+	logspb "go.opentelemetry.io/proto/otlp/logs/v1"
+	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
+	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 type SpanEvent struct {
@@ -60,6 +68,7 @@ type TraceLogExporterConfig struct {
 	Client                *http.Client
 	Logger                *slog.Logger
 	MetricsRecorder       MetricsRecorder
+	FailureLogLevel       string
 	Now                   func() time.Time
 }
 
@@ -73,6 +82,8 @@ type OTLPTraceLogExporter struct {
 	resource        map[string]string
 	maxBuffer       int
 	metrics         MetricsRecorder
+	failureLogLevel slog.Level
+	failureLogOff   bool
 	failureInterval time.Duration
 	tracesEnabled   bool
 	logsEnabled     bool
@@ -120,6 +131,7 @@ func NewOTLPTraceLogExporter(config TraceLogExporterConfig) (*OTLPTraceLogExport
 		tracesEnabled = config.TracesEnabled
 		logsEnabled = config.LogsEnabled
 	}
+	failureLogLevel, failureLogOff := parseFailureLogLevel(config.FailureLogLevel)
 	exporter := &OTLPTraceLogExporter{
 		tracesEndpoint:  tracesEndpoint,
 		logsEndpoint:    logsEndpoint,
@@ -129,6 +141,8 @@ func NewOTLPTraceLogExporter(config TraceLogExporterConfig) (*OTLPTraceLogExport
 		now:             now,
 		maxBuffer:       maxBuffer,
 		metrics:         config.MetricsRecorder,
+		failureLogLevel: failureLogLevel,
+		failureLogOff:   failureLogOff,
 		failureInterval: interval,
 		tracesEnabled:   tracesEnabled,
 		logsEnabled:     logsEnabled,
@@ -211,14 +225,18 @@ func (exporter *OTLPTraceLogExporter) Flush(ctx context.Context) error {
 	if exporter == nil {
 		return nil
 	}
+	exporter.flush(ctx, true)
+	return nil
+}
+
+func (exporter *OTLPTraceLogExporter) flush(ctx context.Context, logFailures bool) {
 	spans, logs := exporter.drain()
 	if len(spans) > 0 {
-		_ = exporter.post(ctx, exporter.tracesEndpoint, "traces", exporter.tracePayload(spans))
+		_ = exporter.post(ctx, exporter.tracesEndpoint, "traces", exporter.tracePayload(spans), logFailures)
 	}
 	if len(logs) > 0 {
-		_ = exporter.post(ctx, exporter.logsEndpoint, "logs", exporter.logPayload(logs))
+		_ = exporter.post(ctx, exporter.logsEndpoint, "logs", exporter.logPayload(logs), logFailures)
 	}
-	return nil
 }
 
 func (exporter *OTLPTraceLogExporter) Shutdown(ctx context.Context) error {
@@ -231,7 +249,8 @@ func (exporter *OTLPTraceLogExporter) Shutdown(ctx context.Context) error {
 	exporter.stopOnce.Do(func() {
 		close(exporter.stop)
 	})
-	return exporter.Flush(ctx)
+	exporter.flush(ctx, false)
+	return nil
 }
 
 func (exporter *OTLPTraceLogExporter) drain() ([]SpanEvent, []LogEvent) {
@@ -244,8 +263,8 @@ func (exporter *OTLPTraceLogExporter) drain() ([]SpanEvent, []LogEvent) {
 	return spans, logs
 }
 
-func (exporter *OTLPTraceLogExporter) post(ctx context.Context, endpoint string, signal string, payload map[string]any) error {
-	encoded, err := json.Marshal(payload)
+func (exporter *OTLPTraceLogExporter) post(ctx context.Context, endpoint string, signal string, payload proto.Message, logFailures bool) error {
+	encoded, err := protojson.Marshal(payload)
 	if err != nil {
 		return err
 	}
@@ -259,18 +278,22 @@ func (exporter *OTLPTraceLogExporter) post(ctx context.Context, endpoint string,
 	}
 	response, err := exporter.client.Do(request)
 	if err != nil {
-		exporter.logFailure(err, signal)
+		if logFailures {
+			exporter.logFailure(err, signal)
+		}
 		return err
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		exporter.logFailure(fmt.Errorf("status %d", response.StatusCode), signal)
+		if logFailures {
+			exporter.logFailure(fmt.Errorf("status %d", response.StatusCode), signal)
+		}
 	}
 	return nil
 }
 
-func (exporter *OTLPTraceLogExporter) tracePayload(spans []SpanEvent) map[string]any {
-	records := make([]map[string]any, 0, len(spans))
+func (exporter *OTLPTraceLogExporter) tracePayload(spans []SpanEvent) *collectortracepb.ExportTraceServiceRequest {
+	records := make([]*tracepb.Span, 0, len(spans))
 	for _, span := range spans {
 		start := span.StartTime
 		if start.IsZero() {
@@ -288,68 +311,68 @@ func (exporter *OTLPTraceLogExporter) tracePayload(spans []SpanEvent) map[string
 		if !isLowerHex(traceID, 32) || isAllZero(traceID) {
 			traceID = randomHex(16)
 		}
+		traceIDBytes, _ := hex.DecodeString(traceID)
 		spanID := span.SpanID
 		if !isLowerHex(spanID, 16) || isAllZero(spanID) {
 			spanID = randomHex(8)
 		}
-		record := map[string]any{
-			"traceId":           traceID,
-			"spanId":            spanID,
-			"name":              span.Name,
-			"kind":              "SPAN_KIND_INTERNAL",
-			"startTimeUnixNano": fmt.Sprintf("%d", start.UnixNano()),
-			"endTimeUnixNano":   fmt.Sprintf("%d", end.UnixNano()),
-			"attributes":        otlpAttributes(attrs),
-			"status": map[string]any{
-				"code": statusCodeForResult(span.Result),
-			},
+		spanIDBytes, _ := hex.DecodeString(spanID)
+		record := &tracepb.Span{
+			TraceId:           traceIDBytes,
+			SpanId:            spanIDBytes,
+			Name:              span.Name,
+			Kind:              tracepb.Span_SPAN_KIND_INTERNAL,
+			StartTimeUnixNano: uint64(start.UnixNano()),
+			EndTimeUnixNano:   uint64(end.UnixNano()),
+			Attributes:        otlpKeyValues(attrs),
+			Status:            &tracepb.Status{Code: traceStatusCodeForResult(span.Result)},
 		}
 		if isLowerHex(span.ParentSpanID, 16) && !isAllZero(span.ParentSpanID) {
-			record["parentSpanId"] = span.ParentSpanID
+			record.ParentSpanId, _ = hex.DecodeString(span.ParentSpanID)
 		}
 		if traceState := validTraceState(span.TraceState); traceState != "" {
-			record["traceState"] = traceState
+			record.TraceState = traceState
 		}
 		records = append(records, record)
 	}
-	return map[string]any{"resourceSpans": []map[string]any{{
-		"resource": map[string]any{"attributes": otlpAttributes(exporter.resource)},
-		"scopeSpans": []map[string]any{{
-			"scope": map[string]any{"name": "cloudgrid.self_observability"},
-			"spans": records,
+	return &collectortracepb.ExportTraceServiceRequest{ResourceSpans: []*tracepb.ResourceSpans{{
+		Resource: &resourcepb.Resource{Attributes: otlpKeyValues(exporter.resource)},
+		ScopeSpans: []*tracepb.ScopeSpans{{
+			Scope: &commonpb.InstrumentationScope{Name: "cloudgrid.self_observability"},
+			Spans: records,
 		}},
 	}}}
 }
 
-func (exporter *OTLPTraceLogExporter) logPayload(logs []LogEvent) map[string]any {
-	records := make([]map[string]any, 0, len(logs))
+func (exporter *OTLPTraceLogExporter) logPayload(logs []LogEvent) *collectorlogspb.ExportLogsServiceRequest {
+	records := make([]*logspb.LogRecord, 0, len(logs))
 	for _, log := range logs {
 		timestamp := log.Timestamp
 		if timestamp.IsZero() {
 			timestamp = exporter.now()
 		}
 		severityText, severityNumber := boundedSeverityFields(log.SeverityText)
-		record := map[string]any{
-			"timeUnixNano":         fmt.Sprintf("%d", timestamp.UnixNano()),
-			"observedTimeUnixNano": fmt.Sprintf("%d", exporter.now().UnixNano()),
-			"severityText":         severityText,
-			"severityNumber":       severityNumber,
-			"body":                 map[string]any{"stringValue": boundedLogBody(log.Message)},
-			"attributes":           otlpAttributes(sanitizeLogAttributes(log.Attributes, exporter.resource["service.name"])),
+		record := &logspb.LogRecord{
+			TimeUnixNano:         uint64(timestamp.UnixNano()),
+			ObservedTimeUnixNano: uint64(exporter.now().UnixNano()),
+			SeverityText:         severityText,
+			SeverityNumber:       logspb.SeverityNumber(severityNumber),
+			Body:                 &commonpb.AnyValue{Value: &commonpb.AnyValue_StringValue{StringValue: boundedLogBody(log.Message)}},
+			Attributes:           otlpKeyValues(sanitizeLogAttributes(log.Attributes, exporter.resource["service.name"])),
 		}
 		if isLowerHex(log.TraceID, 32) && !isAllZero(log.TraceID) {
-			record["traceId"] = log.TraceID
+			record.TraceId, _ = hex.DecodeString(log.TraceID)
 		}
 		if isLowerHex(log.SpanID, 16) && !isAllZero(log.SpanID) {
-			record["spanId"] = log.SpanID
+			record.SpanId, _ = hex.DecodeString(log.SpanID)
 		}
 		records = append(records, record)
 	}
-	return map[string]any{"resourceLogs": []map[string]any{{
-		"resource": map[string]any{"attributes": otlpAttributes(exporter.resource)},
-		"scopeLogs": []map[string]any{{
-			"scope":      map[string]any{"name": "cloudgrid.self_observability.logs"},
-			"logRecords": records,
+	return &collectorlogspb.ExportLogsServiceRequest{ResourceLogs: []*logspb.ResourceLogs{{
+		Resource: &resourcepb.Resource{Attributes: otlpKeyValues(exporter.resource)},
+		ScopeLogs: []*logspb.ScopeLogs{{
+			Scope:      &commonpb.InstrumentationScope{Name: "cloudgrid.self_observability.logs"},
+			LogRecords: records,
 		}},
 	}}}
 }
@@ -365,7 +388,10 @@ func (exporter *OTLPTraceLogExporter) logFailure(err error, signal string) {
 	if !exporter.shouldLogFailure() {
 		return
 	}
-	exporter.logger.Warn("self_observability_export_failed",
+	if exporter.failureLogOff {
+		return
+	}
+	exporter.logger.Log(context.Background(), exporter.failureLogLevel, "self_observability_export_failed",
 		"service", exporter.resource["service.name"],
 		"event", "self_observability_export_failed",
 		"request_id", "",
@@ -409,12 +435,45 @@ func randomHex(size int) string {
 	return hex.EncodeToString(bytes)
 }
 
-func statusCodeForResult(result string) string {
+func traceStatusCodeForResult(result string) tracepb.Status_StatusCode {
 	switch result {
 	case "success", "persisted", "accepted", "published":
-		return "STATUS_CODE_OK"
+		return tracepb.Status_STATUS_CODE_OK
 	default:
-		return "STATUS_CODE_ERROR"
+		return tracepb.Status_STATUS_CODE_ERROR
+	}
+}
+
+func otlpKeyValues(labels map[string]string) []*commonpb.KeyValue {
+	attributes := make([]*commonpb.KeyValue, 0, len(labels))
+	for key, value := range labels {
+		if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
+			continue
+		}
+		attributes = append(attributes, &commonpb.KeyValue{
+			Key: key,
+			Value: &commonpb.AnyValue{
+				Value: &commonpb.AnyValue_StringValue{StringValue: value},
+			},
+		})
+	}
+	return attributes
+}
+
+func parseFailureLogLevel(value string) (slog.Level, bool) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "warn":
+		return slog.LevelWarn, false
+	case "debug":
+		return slog.LevelDebug, false
+	case "info":
+		return slog.LevelInfo, false
+	case "error":
+		return slog.LevelError, false
+	case "off", "none", "silent":
+		return slog.LevelWarn, true
+	default:
+		return slog.LevelWarn, false
 	}
 }
 

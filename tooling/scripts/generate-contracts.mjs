@@ -20,6 +20,7 @@ import {
   COMPANY_ROLES,
   CONTRACT_GENERATION_TARGETS,
   CONTROL_PLANE_SUBJECTS,
+  CLOUDGRID_ENV_VARS,
   DEPLOYMENT_MODES,
   INVITATION_DELIVERY_STATUSES,
   INVITATION_PROJECT_GRANT_STATUSES,
@@ -30,7 +31,9 @@ import {
   PROJECT_STATUSES,
   RETENTION_DATA_CLASSES,
   RETENTION_MODES,
+  MESSAGE_BRIDGE_SUBJECTS,
   STORAGE_MAINTENANCE_SUBJECTS,
+  TELEMETRY_SUBJECTS,
 } from "../../apps/packages/definition/src/index.ts";
 
 const root = process.cwd();
@@ -61,10 +64,13 @@ export const AI_CHAT_ACTION_RISKS = ${inlineTsArray(AI_CHAT_ACTION_RISKS)} as co
 export const AI_CHAT_ACTION_STATUSES = ${multilineTsArray(AI_CHAT_ACTION_STATUSES)} as const;
 export const AI_CHAT_ARTIFACT_KINDS = ${multilineTsArray(AI_CHAT_ARTIFACT_KINDS)} as const;
 export const AI_CHAT_STREAM_EVENT_TYPES = ${multilineTsArray(AI_CHAT_STREAM_EVENT_TYPES)} as const;
+export const TELEMETRY_SUBJECTS = ${multilineTsArray(TELEMETRY_SUBJECTS)} as const;
 export const CONTROL_PLANE_SUBJECTS = ${multilineTsArray(CONTROL_PLANE_SUBJECTS)} as const;
 export const STORAGE_MAINTENANCE_SUBJECTS = ${multilineTsArray(STORAGE_MAINTENANCE_SUBJECTS)} as const;
 export const ALERT_EVALUATOR_SUBJECTS = ${multilineTsArray(ALERT_EVALUATOR_SUBJECTS)} as const;
 export const AI_EVAL_SUBJECTS = ${multilineTsArray(AI_EVAL_SUBJECTS)} as const;
+export const MESSAGE_BRIDGE_SUBJECTS = ${multilineTsArray(MESSAGE_BRIDGE_SUBJECTS)} as const;
+export const CLOUDGRID_ENV_VARS = ${multilineTsArray(CLOUDGRID_ENV_VARS)} as const;
 export const CONTRACT_GENERATION_TARGETS = ${multilineTsArray(CONTRACT_GENERATION_TARGETS)} as const;
 `;
 
@@ -95,10 +101,13 @@ var AiChatActionRisks = []string{${AI_CHAT_ACTION_RISKS.map(quoteGo).join(", ")}
 var AiChatActionStatuses = []string{${AI_CHAT_ACTION_STATUSES.map(quoteGo).join(", ")}}
 var AiChatArtifactKinds = []string{${AI_CHAT_ARTIFACT_KINDS.map(quoteGo).join(", ")}}
 var AiChatStreamEventTypes = []string{${AI_CHAT_STREAM_EVENT_TYPES.map(quoteGo).join(", ")}}
+var TelemetrySubjects = []string{${TELEMETRY_SUBJECTS.map(quoteGo).join(", ")}}
 var ControlPlaneSubjects = []string{${CONTROL_PLANE_SUBJECTS.map(quoteGo).join(", ")}}
 var StorageMaintenanceSubjects = []string{${STORAGE_MAINTENANCE_SUBJECTS.map(quoteGo).join(", ")}}
 var AlertEvaluatorSubjects = []string{${ALERT_EVALUATOR_SUBJECTS.map(quoteGo).join(", ")}}
 var AiEvalSubjects = []string{${AI_EVAL_SUBJECTS.map(quoteGo).join(", ")}}
+var MessageBridgeSubjects = []string{${MESSAGE_BRIDGE_SUBJECTS.map(quoteGo).join(", ")}}
+var CloudGridEnvVars = []string{${CLOUDGRID_ENV_VARS.map(quoteGo).join(", ")}}
 `;
 
 const targets = [

@@ -70,6 +70,7 @@ func run() int {
 		StorageWriter:     runnerruntime.NATSStorageWriter{Requester: requester},
 		ControlPlane:      runnerruntime.NATSControlPlane{Requester: requester},
 		HarnessAdapter:    runnerruntime.HarnessHTTPAdapter{BaseURL: cfg.HarnessURL},
+		ExternalAdapter:   runnerruntime.ExternalHTTPAdapter{},
 		ProgressPublisher: runnerruntime.NATSProgressPublisher{Publisher: requester},
 	})
 	if _, err := runnerruntime.SubscribeRunnerHandlersWithOptions(nc, runner, logger, runnerruntime.RunnerServiceOptions{SelfObservability: traceLogExporter}); err != nil {
@@ -163,6 +164,7 @@ type selfObservabilityConfig struct {
 	ExportIntervalSeconds int
 	TracesEnabled         bool
 	LogsEnabled           bool
+	ExportFailureLogLevel string
 }
 
 func loadConfig(getenv func(string) string) (config, error) {
@@ -207,6 +209,10 @@ func loadSelfObservabilityConfig(getenv func(string) string, deploymentMode stri
 		OTLPBearerToken:       strings.TrimSpace(getenv("CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN")),
 		ExportIntervalSeconds: interval,
 	}
+	cfg.ExportFailureLogLevel, err = selfObservabilityFailureLogLevel(getenv("CLOUDGRID_SELF_OBSERVABILITY_EXPORT_FAILURE_LOG_LEVEL"))
+	if err != nil {
+		return selfObservabilityConfig{}, err
+	}
 	if deploymentMode == "local" {
 		if cfg.CompanyID == "" {
 			cfg.CompanyID = "local"
@@ -233,6 +239,9 @@ func loadSelfObservabilityConfig(getenv func(string) string, deploymentMode stri
 	if deploymentMode == "deployed" && enabled && (cfg.CompanyID == "" || cfg.ProjectID == "" || cfg.OTLPEndpoint == "" || cfg.OTLPBearerToken == "") {
 		return selfObservabilityConfig{}, errors.New("ERR-009 CONFIG_INVALID: deployed self-observability requires company ID, project ID, OTLP endpoint, and bearer token")
 	}
+	if deploymentMode == "local" && enabled && cfg.OTLPBearerToken == "" {
+		return selfObservabilityConfig{}, errors.New("ERR-009 CONFIG_INVALID: CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN is required when self-observability is enabled")
+	}
 	return cfg, nil
 }
 
@@ -253,7 +262,21 @@ func aiEvalSelfObservabilityTraceLogExporter(cfg config, logger *slog.Logger) (*
 		TracesEnabled:         self.TracesEnabled,
 		LogsEnabled:           self.LogsEnabled,
 		Logger:                logger,
+		FailureLogLevel:       self.ExportFailureLogLevel,
 	})
+}
+
+func selfObservabilityFailureLogLevel(value string) (string, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return "warn", nil
+	}
+	switch value {
+	case "debug", "info", "warn", "error", "off":
+		return value, nil
+	default:
+		return "", errors.New("ERR-009 CONFIG_INVALID: CLOUDGRID_SELF_OBSERVABILITY_EXPORT_FAILURE_LOG_LEVEL must be debug, info, warn, error, or off")
+	}
 }
 
 func selfObservabilityLogEvent(event string, message string, severity string, attrs map[string]string) selfobs.LogEvent {
@@ -273,6 +296,7 @@ func shutdownSignal() <-chan os.Signal {
 
 func newLogger(output io.Writer) *slog.Logger {
 	handler := slog.NewJSONHandler(output, &slog.HandlerOptions{
+		Level: runtimeLogLevel(),
 		ReplaceAttr: func(_ []string, attr slog.Attr) slog.Attr {
 			switch attr.Key {
 			case slog.TimeKey:
@@ -286,6 +310,19 @@ func newLogger(output io.Writer) *slog.Logger {
 		},
 	})
 	return slog.New(handler)
+}
+
+func runtimeLogLevel() slog.Level {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("CLOUDGRID_LOG_LEVEL"))) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }
 
 func logError(logger *slog.Logger, event string, err error, fallbackID string, fields ...any) {

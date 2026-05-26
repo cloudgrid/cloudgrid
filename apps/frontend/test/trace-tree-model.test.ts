@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import type { Span } from "@cloudgrid/ui-contracts";
 import {
   buildTraceTreeIndexes,
+  expandSelectedSpanPath,
   getSpanDurationPercent,
   getSpanStartOffsetPercent,
 } from "../src/features/traces/trace-tree-model";
@@ -68,4 +69,19 @@ test("trace tree waterfall prefers Unix nanoseconds over same-second ISO timesta
   expect(getSpanStartOffsetPercent(indexes, first)).toBe(0);
   expect(getSpanStartOffsetPercent(indexes, second)).toBe(50);
   expect(getSpanDurationPercent(indexes, second)).toBe(20);
+});
+
+test("trace tree expansion adds only the selected span path", () => {
+  const root = span({ id: "root" });
+  const child = span({ id: "child", parentSpanId: "root" });
+  const leaf = span({ id: "leaf", parentSpanId: "child" });
+  const indexes = buildTraceTreeIndexes({
+    spans: [root, child, leaf],
+    traceStartedAt: "2026-05-08T10:00:00Z",
+    traceDurationMs: 10,
+  });
+
+  const expanded = expandSelectedSpanPath(new Set(["unrelated"]), indexes, "leaf");
+
+  expect([...expanded].sort()).toEqual(["child", "root", "unrelated"]);
 });

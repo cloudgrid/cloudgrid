@@ -33,11 +33,11 @@ func TestBuildMetricNameSearchQueryFiltersAndOrdersDescriptors(t *testing.T) {
 	for _, want := range []string{
 		"FROM metric_descriptor",
 		"deletedAt = NONE",
-		"string::lowercase(metricName) CONTAINS $query",
+		"searchText @AND@ $query",
 		"lastSeenAt >= $from",
 		"firstSeenAt <= $to",
 		"metricName IN (SELECT VALUE metricName FROM metric_point",
-		"serviceName = $service",
+		"serviceName IN $services",
 		"ORDER BY lastSeenAt DESC, metricName ASC",
 		"LIMIT $limit",
 	} {
@@ -45,8 +45,123 @@ func TestBuildMetricNameSearchQueryFiltersAndOrdersDescriptors(t *testing.T) {
 			t.Fatalf("metric name SQL missing %q:\n%s", want, stmt.SQL)
 		}
 	}
-	if stmt.Params["query"] != "duration" || stmt.Params["service"] != service || stmt.Params["limit"] != limit {
-		t.Fatalf("params = %#v, want query/service/limit", stmt.Params)
+	if services, ok := stmt.Params["services"].([]string); !ok || len(services) != 1 || services[0] != service || stmt.Params["query"] != "duration" || stmt.Params["limit"] != limit+1 {
+		t.Fatalf("params = %#v, want query/service/limit+1 sentinel", stmt.Params)
+	}
+}
+
+func TestBuildMetricNameSearchQueryAppliesCursor(t *testing.T) {
+	cursorTime := time.Date(2026, 5, 14, 8, 0, 0, 0, time.UTC)
+	cursor := encodeCursor(t, "lastSeenAt_desc_metricName_asc", cursorTime.Format(time.RFC3339Nano), "requests")
+
+	stmt, err := BuildMetricNameSearchQuery(contracts.MetricNameSearchInput{Cursor: &cursor})
+	if err != nil {
+		t.Fatalf("BuildMetricNameSearchQuery returned error: %v", err)
+	}
+
+	for _, want := range []string{
+		"lastSeenAt < $cursorValue",
+		"lastSeenAt = $cursorValue AND metricName > $cursorId",
+		"ORDER BY lastSeenAt DESC, metricName ASC",
+	} {
+		if !strings.Contains(stmt.SQL, want) {
+			t.Fatalf("metric name SQL missing %q:\n%s", want, stmt.SQL)
+		}
+	}
+	if stmt.Params["cursorValue"] != cursorTime || stmt.Params["cursorId"] != "requests" {
+		t.Fatalf("params = %#v, want decoded cursor", stmt.Params)
+	}
+}
+
+func TestBuildMetricNameSearchQueryUsesRequestedSortAndCursor(t *testing.T) {
+	sort := contracts.MetricNameSortNameAsc
+	cursor := encodeCursor(t, "name_asc_metricName_asc", "checkout.duration", "checkout.duration")
+
+	stmt, err := BuildMetricNameSearchQuery(contracts.MetricNameSearchInput{
+		Sort:   &sort,
+		Cursor: &cursor,
+	})
+	if err != nil {
+		t.Fatalf("BuildMetricNameSearchQuery returned error: %v", err)
+	}
+
+	for _, want := range []string{
+		"metricName > $cursorValue",
+		"ORDER BY metricName ASC",
+	} {
+		if !strings.Contains(stmt.SQL, want) {
+			t.Fatalf("metric name SQL missing %q:\n%s", want, stmt.SQL)
+		}
+	}
+}
+
+func TestBuildMetricNameSearchQueryUsesEverySupportedSortAndCursor(t *testing.T) {
+	cursorTime := time.Date(2026, 5, 14, 8, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name       string
+		sort       contracts.MetricNameSort
+		cursorSort string
+		lastValue  string
+		wantSQL    []string
+	}{
+		{
+			name:       "last seen asc",
+			sort:       contracts.MetricNameSortLastSeenAtAsc,
+			cursorSort: "lastSeenAt_asc_metricName_asc",
+			lastValue:  cursorTime.Format(time.RFC3339Nano),
+			wantSQL:    []string{"lastSeenAt > $cursorValue", "lastSeenAt = $cursorValue AND metricName > $cursorId", "ORDER BY lastSeenAt ASC, metricName ASC"},
+		},
+		{
+			name:       "name desc",
+			sort:       contracts.MetricNameSortNameDesc,
+			cursorSort: "name_desc_metricName_asc",
+			lastValue:  "queue.depth",
+			wantSQL:    []string{"metricName < $cursorValue", "ORDER BY metricName DESC"},
+		},
+		{
+			name:       "kind asc",
+			sort:       contracts.MetricNameSortKindAsc,
+			cursorSort: "kind_asc_metricName_asc",
+			lastValue:  string(contracts.MetricKindGauge),
+			wantSQL:    []string{"kind > $cursorValue", "kind = $cursorValue AND metricName > $cursorId", "ORDER BY kind ASC, metricName ASC"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cursor := encodeCursor(t, tt.cursorSort, tt.lastValue, "queue.depth")
+			stmt, err := BuildMetricNameSearchQuery(contracts.MetricNameSearchInput{Sort: &tt.sort, Cursor: &cursor})
+			if err != nil {
+				t.Fatalf("BuildMetricNameSearchQuery returned error: %v", err)
+			}
+			for _, want := range tt.wantSQL {
+				if !strings.Contains(stmt.SQL, want) {
+					t.Fatalf("metric name SQL missing %q:\n%s", want, stmt.SQL)
+				}
+			}
+		})
+	}
+}
+
+func TestMetricNamePageReturnsCursor(t *testing.T) {
+	now := time.Date(2026, 5, 14, 8, 0, 0, 0, time.UTC)
+	items := []contracts.MetricDescriptor{
+		{Name: "requests", LastSeenAt: now},
+		{Name: "latency", LastSeenAt: now.Add(-time.Minute)},
+	}
+
+	page, cursor := metricNamePage(items, 1, nil)
+	if len(page) != 1 || page[0].Name != "requests" || cursor == nil {
+		t.Fatalf("metric page = %#v cursor=%v, want first item and cursor", page, cursor)
+	}
+
+	decoded, err := decodeCursor(*cursor, "lastSeenAt_desc_metricName_asc")
+	if err != nil {
+		t.Fatalf("decode cursor: %v", err)
+	}
+	cursorValue, ok := decoded.LastValue.(time.Time)
+	if !ok || !cursorValue.Equal(now) || decoded.LastID != "requests" {
+		t.Fatalf("cursor = %#v, want requests at %s", decoded, now)
 	}
 }
 
@@ -102,6 +217,72 @@ func TestBuildMetricSeriesQueryValidatesDescriptorAndBuildsGroupedBuckets(t *tes
 	if strings.Contains(stmt.SQL, "$intervalSeconds * 1s") {
 		t.Fatalf("metric series SQL must not compute bucket duration from a numeric parameter:\n%s", stmt.SQL)
 	}
+}
+
+func TestBuildMetricSeriesQueryUsesRequestedResultSort(t *testing.T) {
+	from := time.Date(2026, 5, 14, 8, 0, 0, 0, time.UTC)
+	to := from.Add(time.Hour)
+	sort := contracts.MetricSeriesSortValueDesc
+	stmt, _, err := BuildMetricSeriesQuery(contracts.MetricSeriesInput{
+		MetricName:  "queue.depth",
+		From:        from,
+		To:          to,
+		Aggregation: contracts.MetricAggregationAvg,
+		Sort:        &sort,
+	}, contracts.MetricDescriptor{
+		Name: "queue.depth",
+		Kind: contracts.MetricKindGauge,
+	})
+	if err != nil {
+		t.Fatalf("BuildMetricSeriesQuery returned error: %v", err)
+	}
+	if !strings.Contains(stmt.SQL, "ORDER BY value DESC, bucket ASC") {
+		t.Fatalf("metric series SQL missing backend value sort:\n%s", stmt.SQL)
+	}
+}
+
+func TestBuildMetricSeriesQueryUsesEverySupportedSortWithGroupTieBreakers(t *testing.T) {
+	from := time.Date(2026, 5, 14, 8, 0, 0, 0, time.UTC)
+	to := from.Add(time.Hour)
+	descriptor := contracts.MetricDescriptor{
+		Name:          "queue.depth",
+		Kind:          contracts.MetricKindGauge,
+		AttributeKeys: []string{"service.name"},
+	}
+	tests := []struct {
+		name    string
+		sort    *contracts.MetricSeriesSort
+		wantSQL string
+	}{
+		{name: "default timestamp asc", wantSQL: "ORDER BY bucket ASC, group0 ASC"},
+		{name: "timestamp asc", sort: ptrMetricSeriesSort(contracts.MetricSeriesSortTimestampAsc), wantSQL: "ORDER BY bucket ASC, group0 ASC"},
+		{name: "timestamp desc", sort: ptrMetricSeriesSort(contracts.MetricSeriesSortTimestampDesc), wantSQL: "ORDER BY bucket DESC, group0 ASC"},
+		{name: "value desc", sort: ptrMetricSeriesSort(contracts.MetricSeriesSortValueDesc), wantSQL: "ORDER BY value DESC, bucket ASC, group0 ASC"},
+		{name: "value asc", sort: ptrMetricSeriesSort(contracts.MetricSeriesSortValueAsc), wantSQL: "ORDER BY value ASC, bucket ASC, group0 ASC"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stmt, _, err := BuildMetricSeriesQuery(contracts.MetricSeriesInput{
+				MetricName:  "queue.depth",
+				From:        from,
+				To:          to,
+				Aggregation: contracts.MetricAggregationAvg,
+				GroupBy:     []string{"service.name"},
+				Sort:        tt.sort,
+			}, descriptor)
+			if err != nil {
+				t.Fatalf("BuildMetricSeriesQuery returned error: %v", err)
+			}
+			if !strings.Contains(stmt.SQL, tt.wantSQL) {
+				t.Fatalf("metric series SQL missing %q:\n%s", tt.wantSQL, stmt.SQL)
+			}
+		})
+	}
+}
+
+func ptrMetricSeriesSort(sort contracts.MetricSeriesSort) *contracts.MetricSeriesSort {
+	return &sort
 }
 
 func TestBuildMetricSeriesQueryRejectsUnsupportedAggregationAndGrouping(t *testing.T) {

@@ -6,7 +6,9 @@ import type {
   MetricExemplar,
   MetricSeries,
   MetricSeriesResult,
+  MetricSeriesSort,
 } from "@cloudgrid/ui-contracts";
+import { METRIC_AGGREGATIONS, METRIC_EXPLORER_CHART_TYPES } from "@cloudgrid/ui-contracts";
 import { Activity, ClipboardCopy, ExternalLink, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
@@ -29,19 +31,14 @@ import { t } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
 import { TelemetryChart, type TelemetryChartKind } from "../telemetry/telemetry-chart";
 
-export const metricAggregations: MetricAggregation[] = [
-  "avg",
-  "sum",
-  "min",
-  "max",
-  "count",
-  "rate",
-  "p50",
-  "p90",
-  "p95",
-  "p99",
+export const metricAggregations: MetricAggregation[] = [...METRIC_AGGREGATIONS];
+export const metricChartTypes: MetricChartType[] = [...METRIC_EXPLORER_CHART_TYPES];
+const metricSeriesSorts: MetricSeriesSort[] = [
+  "timestamp_asc",
+  "timestamp_desc",
+  "value_desc",
+  "value_asc",
 ];
-export const metricChartTypes: MetricChartType[] = ["line", "area", "bar", "pie", "stat", "table"];
 
 export type MetricInspectorTab = "descriptor" | "attributes" | "series" | "exemplars";
 
@@ -129,12 +126,13 @@ export function MetricQueryControls({
     interval: string;
     groupBy: string[];
     filters: AttributeFilterInput[];
+    sort: MetricSeriesSort;
     chartType: MetricChartType;
   };
 }) {
   return (
     <section className="shrink-0 border bg-background p-2">
-      <FieldGroup className="grid gap-2 md:grid-cols-3 xl:grid-cols-5">
+      <FieldGroup className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
         <Field>
           <FieldLabel htmlFor="metric-aggregation">{t("metrics.aggregation")}</FieldLabel>
           <Select
@@ -194,6 +192,23 @@ export function MetricQueryControls({
           </Select>
         </Field>
         <Field>
+          <FieldLabel htmlFor="metric-series-sort">{t("filters.sort")}</FieldLabel>
+          <Select onValueChange={(value) => onChange("seriesSort", value)} value={state.sort}>
+            <SelectTrigger id="metric-series-sort">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {metricSeriesSorts.map((sort) => (
+                  <SelectItem key={sort} value={sort}>
+                    {metricSeriesSortLabel(sort)}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field>
           <FieldLabel htmlFor="metric-chart-type">{t("metrics.preview")}</FieldLabel>
           <Select onValueChange={(value) => onChange("chartType", value)} value={state.chartType}>
             <SelectTrigger id="metric-chart-type">
@@ -213,6 +228,19 @@ export function MetricQueryControls({
       </FieldGroup>
     </section>
   );
+}
+
+function metricSeriesSortLabel(sort: MetricSeriesSort) {
+  switch (sort) {
+    case "timestamp_desc":
+      return t("metrics.sort.timestampDesc");
+    case "value_desc":
+      return t("metrics.sort.valueDesc");
+    case "value_asc":
+      return t("metrics.sort.valueAsc");
+    default:
+      return t("metrics.sort.timestampAsc");
+  }
 }
 
 export function MetricSeriesExplorer({
@@ -274,7 +302,7 @@ export function MetricSeriesExplorer({
         </div>
       )}
       <div className="divide-y">
-        {result.series.slice(0, 20).map((series) => (
+        {result.series.map((series) => (
           <MetricSeriesRows key={metricSeriesKey(series)} series={series} />
         ))}
       </div>
@@ -444,7 +472,7 @@ function MetricSeriesRows({ series }: { series: MetricSeries }) {
         <div className="font-medium text-muted-foreground">{t("metrics.series.timestamp")}</div>
         <div className="font-medium text-muted-foreground">{t("metrics.series.value")}</div>
         <div className="font-medium text-muted-foreground">{t("metrics.series.exemplars")}</div>
-        {series.points.slice(0, 80).map((point) => (
+        {series.points.map((point) => (
           <div className="contents" key={`${point.timestamp}:${point.value}`}>
             <code>{point.timestamp}</code>
             <code>{point.value}</code>
@@ -507,13 +535,13 @@ function buildMetricExplorerChartData(result: MetricSeriesResult, chartType: Met
   const timestamps = Array.from(
     new Set(result.series.flatMap((series) => series.points.map((point) => point.timestamp))),
   ).sort();
-  const series = result.series.slice(0, 8).map((metricSeries, index) => ({
+  const series = result.series.map((metricSeries, index) => ({
     key: `series_${index}`,
     label: metricSeriesLabel(metricSeries.labels),
   }));
   const data = timestamps.map((timestamp) => {
     const row: Record<string, number | string | null> = { label: timestamp };
-    result.series.slice(0, 8).forEach((metricSeries, index) => {
+    result.series.forEach((metricSeries, index) => {
       row[`series_${index}`] =
         metricSeries.points.find((point) => point.timestamp === timestamp)?.value ?? null;
     });
@@ -638,7 +666,7 @@ function SeriesTab({ result }: { result: MetricSeriesResult | null }) {
         </InspectorRow>
       </dl>
       <div className="divide-y rounded-md border">
-        {result.series.slice(0, 20).map((series) => (
+        {result.series.map((series) => (
           <div className="px-2 py-1.5 text-xs" key={metricSeriesKey(series)}>
             <code className="block truncate">{JSON.stringify(series.labels)}</code>
             <span className="text-muted-foreground">

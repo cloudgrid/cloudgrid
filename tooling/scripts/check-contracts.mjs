@@ -11,6 +11,10 @@ import {
   validate as validateGraphQL,
 } from "graphql";
 import { parse as parseYaml } from "yaml";
+import {
+  CLOUDGRID_ENV_VARS,
+  MESSAGE_BRIDGE_SUBJECTS,
+} from "../../apps/packages/definition/src/index.ts";
 
 const root = process.cwd();
 const read = (file) => readFileSync(join(root, file), "utf8");
@@ -74,68 +78,12 @@ const asyncApi = parseYaml(read("specs/03-contracts/messages/message-bridge.asyn
 if (asyncApi?.asyncapi !== "3.0.0") {
   throw new Error("AsyncAPI contract must declare asyncapi: 3.0.0");
 }
-const expectedChannels = [
-  "telemetry.traces.search",
-  "telemetry.traces.get",
-  "telemetry.logs.search",
-  "telemetry.facets",
-  "telemetry.traces.live.start",
-  "telemetry.traces.live.stop",
-  "telemetry.traces.live.events",
-  "telemetry.persisted.traces",
-  "telemetry.ingest.traces",
-  "telemetry.ingest.logs",
-  "control.viewer.get",
-  "control.organizations.list",
-  "control.organizations.get",
-  "control.projects.list",
-  "control.projects.get",
-  "control.projects.create",
-  "control.projects.update",
-  "control.projects.select",
-  "control.members.update",
-  "control.members.remove",
-  "control.ai_providers.project.get",
-  "control.ai_providers.project.update",
-  "control.ai_providers.company.get",
-  "control.ai_providers.company.update",
-  "control.ai_chat.history",
-  "control.ai_chat.conversation.get",
-  "control.ai_chat.conversation.create",
-  "control.ai_chat.conversation.archive",
-  "control.ai_chat.message.append",
-  "control.ai_chat.action.propose",
-  "control.ai_chat.action.approve",
-  "control.ai_chat.action.finish",
-  "control.ai_chat.compaction.save",
-  "control.project_status.snapshot",
-  "control.project_status.changed",
-  "control.project_members.list",
-  "control.project_members.update",
-  "control.project_members.remove",
-  "control.retention.get",
-  "control.retention.update",
-  "storage_maintenance.retention.execute_batch",
-  "control.alert_rules.list",
-  "control.alert_rules.create",
-  "control.alert_rules.update",
-  "control.alert_rules.delete",
-  "control.alert_silences.list",
-  "control.alert_silences.create",
-  "control.alert_silences.delete",
-  "control.alert_history.list",
-  "control.alert_history.record",
-  "alert_evaluator.tick",
-  "alert_evaluator.rules.evaluate",
-  "alert_evaluator.notifications.dispatch",
-];
-for (const channel of expectedChannels) {
-  if (!asyncApi.channels?.[channel]?.address) {
-    throw new Error(`AsyncAPI contract is missing channel ${channel}`);
-  }
-}
+validateAsyncApiChannelsFromDefinition(asyncApi);
 validateAsyncApiReferences(asyncApi);
 validateAsyncApiRequestStructs(asyncApi);
+validateAiEvalContractAlignment();
+validateMessageSubjectLiteralsFromDefinition();
+validateCloudGridEnvVarsFromDefinition();
 if (asyncApi["x-cloudgrid"]?.error_mapping?.graphql_extension_path !== "extensions.problem") {
   throw new Error("AsyncAPI x-cloudgrid error mapping must declare GraphQL problem extension path");
 }
@@ -294,6 +242,7 @@ for (const id of [
   "ERR-020",
   "ERR-021",
   "ERR-022",
+  "ERR-023",
 ]) {
   if (!errors.errors?.[id]?.code || errors.errors[id].retryable === undefined) {
     throw new Error(`errors.yaml is missing ${id}`);
@@ -385,6 +334,9 @@ for (const generatedSymbol of [
   "AI_CHAT_RUN_STATUSES",
   "AI_CHAT_ACTION_RISKS",
   "AI_CHAT_ACTION_STATUSES",
+  "TELEMETRY_SUBJECTS",
+  "MESSAGE_BRIDGE_SUBJECTS",
+  "CLOUDGRID_ENV_VARS",
 ]) {
   if (!generatedUiContracts.includes(`const ${generatedSymbol}`)) {
     throw new Error(`generated ui contracts missing ${generatedSymbol}`);
@@ -474,6 +426,9 @@ for (const generatedSymbol of [
   "AiChatRunStatuses",
   "AiChatActionRisks",
   "AiChatActionStatuses",
+  "TelemetrySubjects",
+  "MessageBridgeSubjects",
+  "CloudGridEnvVars",
 ]) {
   if (!generatedGoContracts.includes(`var ${generatedSymbol}`)) {
     throw new Error(`generated go contracts missing ${generatedSymbol}`);
@@ -522,6 +477,24 @@ console.log(
   "contract files parsed, generated contracts present, and cross-layer drift checks passed",
 );
 
+function validateAsyncApiChannelsFromDefinition(document) {
+  const expected = new Set(MESSAGE_BRIDGE_SUBJECTS);
+  const actual = new Set(Object.values(document.channels ?? {}).map((channel) => channel.address));
+  const missing = [...expected].filter((subject) => !actual.has(subject));
+  const extra = [...actual].filter((subject) => !expected.has(subject));
+  if (missing.length > 0 || extra.length > 0) {
+    throw new Error(
+      [
+        "AsyncAPI channels must match @cloudgrid/definition MESSAGE_BRIDGE_SUBJECTS.",
+        missing.length ? `Missing: ${missing.sort().join(", ")}` : "",
+        extra.length ? `Extra: ${extra.sort().join(", ")}` : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+  }
+}
+
 function validateAsyncApiReferences(document) {
   const messageNames = new Set(Object.keys(document.components?.messages ?? {}));
   const schemaNames = new Set(Object.keys(document.components?.schemas ?? {}));
@@ -564,6 +537,111 @@ function validateAsyncApiReferences(document) {
   }
 }
 
+function validateMessageSubjectLiteralsFromDefinition() {
+  const subjects = new Set(MESSAGE_BRIDGE_SUBJECTS);
+  const source = [
+    "apps/backend/src/bridge.ts",
+    ...sourceFiles("apps/backend/src/bridge", [".ts"]),
+    ...sourceFiles("core", [".go"]),
+  ]
+    .filter(
+      (file) =>
+        !file.includes("/dist/") &&
+        !file.endsWith("_test.go") &&
+        !file.includes("core/go-contracts/") &&
+        (file.startsWith("apps/backend/src/bridge") ||
+          /\/internal\/[^/]*(nats|handler|consumer|bridge)[^/]*\.go$/.test(file) ||
+          /\/internal\/runtime\/nats_ports\.go$/.test(file) ||
+          /\/internal\/runtime\/bridge\.go$/.test(file) ||
+          /\/internal\/collector\/handler\.go$/.test(file)),
+    )
+    .map((file) => [file, read(file)]);
+  const pattern =
+    /\b(?:telemetry|control|eval|annotation|alert_evaluator|storage_maintenance|ai\.persisted)(?:\.[a-z0-9_*]+)+\b/g;
+  const literalPattern =
+    /(["'`])([^"'`]*\b(?:telemetry|control|eval|annotation|alert_evaluator|storage_maintenance|ai\.persisted)\.[^"'`]*)\1/g;
+  const unknown = [];
+  for (const [file, content] of source) {
+    for (const literal of content.matchAll(literalPattern)) {
+      const literalValue = literal[2];
+      for (const match of literalValue.matchAll(pattern)) {
+        const subject = match[0];
+        if (subjects.has(subject)) {
+          continue;
+        }
+        if (subject === "telemetry.ingest.*") {
+          continue;
+        }
+        if (
+          (subject === "telemetry.traces.live.events" ||
+            subject.startsWith("telemetry.traces.live.events.")) &&
+          subjects.has("telemetry.traces.live.events.*.*")
+        ) {
+          continue;
+        }
+        if (
+          (subject === "eval.live.events" || subject.startsWith("eval.live.events.")) &&
+          subjects.has("eval.live.events.*.*")
+        ) {
+          continue;
+        }
+        if (
+          subject === "eval.online.policy_matches.resolve" &&
+          file === "core/ai-eval-runner/internal/runtime/bridge.go"
+        ) {
+          continue;
+        }
+        unknown.push(`${file}: ${subject}`);
+      }
+    }
+  }
+  if (unknown.length > 0) {
+    throw new Error(
+      `message subject literals must be registered in @cloudgrid/definition: ${[...new Set(unknown)].sort().join(", ")}`,
+    );
+  }
+}
+
+function validateCloudGridEnvVarsFromDefinition() {
+  const envVars = new Set(CLOUDGRID_ENV_VARS);
+  const files = [
+    "README.md",
+    ".env.example",
+    "compose.yaml",
+    "deploy/compose/cloudgrid.compose.yaml",
+    "deploy/compose/cloudgrid.env.example",
+    "charts/cloudgrid/values.yaml",
+    ...sourceFiles("apps", [".ts", ".tsx", ".mjs", ".md", ".yaml", ".yml"]),
+    ...sourceFiles("core", [".go", ".md", ".yaml", ".yml"]),
+    ...sourceFiles("specs", [".md", ".yaml", ".yml", ".json"]),
+    ...sourceFiles("tooling", [".mjs", ".ts", ".md", ".yaml", ".yml"]),
+    ...sourceFiles("website/src/content/handbook", [".md", ".mdx"]),
+    ...sourceFiles("skills", [".md"]),
+  ].filter((file) => !file.includes("/dist/") && !file.includes("/node_modules/"));
+  const pattern = /\b(?:VITE_)?CLOUDGRID_[A-Z0-9_]+\b/g;
+  const unknown = [];
+  for (const file of files) {
+    const content = read(file);
+    for (const match of content.matchAll(pattern)) {
+      const name = match[0];
+      if (
+        name === "CLOUDGRID_ENV_VARS" ||
+        name.endsWith("_") ||
+        envVars.has(name) ||
+        name.startsWith("CLOUDGRID_TEST_")
+      ) {
+        continue;
+      }
+      unknown.push(`${file}: ${name}`);
+    }
+  }
+  if (unknown.length > 0) {
+    throw new Error(
+      `CloudGrid environment variables must be registered in @cloudgrid/definition CLOUDGRID_ENV_VARS: ${[...new Set(unknown)].sort().join(", ")}`,
+    );
+  }
+}
+
 function validateSchemaRefs(value, location, schemaNames) {
   if (!value || typeof value !== "object") {
     return;
@@ -591,7 +669,10 @@ function validateSchemaRefs(value, location, schemaNames) {
 }
 
 function validateFrontendGraphQLOperations(schema) {
-  const source = read("apps/packages/public-api-client/src/index.ts");
+  const source = sourceFiles("apps/packages/public-api-client/src", [".ts"])
+    .filter((file) => !file.endsWith(".test.ts"))
+    .map((file) => read(file))
+    .join("\n");
   const templates = extractTemplateLiteralExports(source);
   const operations = new Map(
     [...templates.entries()]
@@ -636,7 +717,7 @@ async function validatePublicApiScenarioCoverage() {
     { publicGraphQLOperationNames },
     { integrationScenarios, uncoveredPublicGraphQLOperationNames },
   ] = await Promise.all([
-    import(pathToFileURL(join(root, "apps/packages/public-api-client/src/index.ts")).href),
+    import(pathToFileURL(join(root, "apps/packages/public-api-client/src/operations.ts")).href),
     import(pathToFileURL(join(root, "apps/packages/integration-scenarios/src/index.ts")).href),
   ]);
   const knownOperationNames = new Set(publicGraphQLOperationNames);
@@ -708,6 +789,223 @@ function validateAsyncApiRequestStructs(document) {
       }
     }
   }
+}
+
+function validateAiEvalContractAlignment() {
+  const asyncApiSource = read("specs/03-contracts/messages/message-bridge.asyncapi.yaml");
+  const generatedTs = read("apps/packages/ui-contracts/src/generated.ts");
+  const generatedGo = read("core/go-contracts/generated_contracts.go");
+  const requiredSubjects = [
+    "eval.dataset.create",
+    "eval.dataset.items.append",
+    "eval.dataset.item.promote",
+    "eval.dataset.version.get",
+    "eval.dataset.search",
+    "eval.dataset.health",
+    "eval.dataset.candidates.prepare",
+    "eval.dataset.candidates.search",
+    "eval.dataset.candidates.commit",
+    "eval.dataset.import.prepare",
+    "eval.dataset.import.commit",
+    "eval.dataset.export.start",
+    "eval.dataset.transfer.get",
+    "eval.agent_runs.search",
+    "eval.evaluation.create",
+    "eval.evaluation.update",
+    "eval.evaluation.search",
+    "eval.evaluation.run.start",
+    "eval.evaluation.run.cancel",
+    "eval.evaluation.run.pause",
+    "eval.evaluation.run.resume",
+    "eval.evaluation.run.search",
+    "eval.evaluation.run.get",
+    "eval.results.search",
+    "eval.results.persist",
+    "eval.evaluation.comparison.create",
+    "eval.evaluation.comparison.search",
+    "eval.target.snapshot.create",
+    "eval.target.snapshot.get",
+    "eval.target.diff",
+    "eval.optimization.start",
+    "eval.optimization.search",
+    "eval.optimization.get",
+    "eval.target.promote",
+    "eval.live.start",
+    "eval.live.stop",
+    "eval.live.events.*.*",
+  ];
+
+  for (const subject of requiredSubjects) {
+    if (!MESSAGE_BRIDGE_SUBJECTS.includes(subject)) {
+      throw new Error(`definition MESSAGE_BRIDGE_SUBJECTS missing AI Eval v2 subject ${subject}`);
+    }
+    const hasChannelKey = asyncApiSource.includes(`${subject}:`) || subject.includes("*");
+    if (!hasChannelKey || !asyncApiSource.includes(`address: ${subject}`)) {
+      throw new Error(`AsyncAPI missing AI Eval v2 channel ${subject}`);
+    }
+    if (!generatedTs.includes(`"${subject}"`)) {
+      throw new Error(`generated UI contracts missing AI Eval v2 subject ${subject}`);
+    }
+    if (!generatedGo.includes(`"${subject}"`)) {
+      throw new Error(`generated Go contracts missing AI Eval v2 subject ${subject}`);
+    }
+  }
+
+  for (const forbidden of [
+    "eval.scorer.",
+    "eval.experiment.",
+    "eval.manifest.resolve",
+    "eval.prompt_version.promote",
+    "eval.quality.overview",
+    "eval.online.policy_matches.resolve",
+    "annotation.queue.",
+    "annotation.item.",
+  ]) {
+    if (MESSAGE_BRIDGE_SUBJECTS.some((subject) => subject.includes(forbidden))) {
+      throw new Error(
+        `definition MESSAGE_BRIDGE_SUBJECTS must not expose legacy AI Eval subject ${forbidden}`,
+      );
+    }
+    if (asyncApiSource.includes(forbidden)) {
+      throw new Error(`AsyncAPI must not expose legacy AI Eval subject ${forbidden}`);
+    }
+    if (generatedTs.includes(forbidden)) {
+      throw new Error(`generated UI contracts must not expose legacy AI Eval subject ${forbidden}`);
+    }
+    if (generatedGo.includes(forbidden)) {
+      throw new Error(`generated Go contracts must not expose legacy AI Eval subject ${forbidden}`);
+    }
+  }
+
+  const queryType = graphqlSchema.getQueryType();
+  const mutationType = graphqlSchema.getMutationType();
+  const subscriptionType = graphqlSchema.getSubscriptionType();
+  for (const field of [
+    "datasets",
+    "dataset",
+    "datasetVersion",
+    "datasetCandidates",
+    "evaluationDefinitions",
+    "evaluationRuns",
+    "evaluationRun",
+    "evaluationResults",
+    "evaluationComparisons",
+    "targetSnapshot",
+    "targetDiff",
+    "optimizationRuns",
+    "optimizationRun",
+  ]) {
+    if (!queryType?.getFields?.()[field]) {
+      throw new Error(`GraphQL Query missing AI Eval v2 field ${field}`);
+    }
+  }
+  for (const field of [
+    "createDataset",
+    "appendDatasetItems",
+    "promoteSpanToDatasetItem",
+    "updateDatasetItems",
+    "prepareDatasetCandidates",
+    "commitDatasetCandidates",
+    "prepareDatasetImport",
+    "startDatasetExport",
+    "createEvaluationDefinition",
+    "updateEvaluationDefinition",
+    "startEvaluationRun",
+    "cancelEvaluationRun",
+    "pauseEvaluationRun",
+    "resumeEvaluationRun",
+    "createEvaluationComparison",
+    "startOptimizationRun",
+    "promoteTargetSnapshot",
+  ]) {
+    if (!mutationType?.getFields?.()[field]) {
+      throw new Error(`GraphQL Mutation missing AI Eval v2 field ${field}`);
+    }
+  }
+  if (!subscriptionType?.getFields?.().liveEvaluationRun) {
+    throw new Error("GraphQL Subscription missing liveEvaluationRun");
+  }
+
+  for (const forbidden of [
+    "scorers",
+    "scorer",
+    "experiments",
+    "experiment",
+    "experimentRuns",
+    "experimentRun",
+    "createScorer",
+    "createExperiment",
+    "startExperimentRun",
+    "liveExperimentRun",
+  ]) {
+    if (
+      queryType?.getFields?.()[forbidden] ||
+      mutationType?.getFields?.()[forbidden] ||
+      subscriptionType?.getFields?.()[forbidden]
+    ) {
+      throw new Error(`GraphQL public schema must not expose legacy AI Eval field ${forbidden}`);
+    }
+  }
+
+  for (const enumName of ["DatasetSplit", "DatasetCurationStatus"]) {
+    if (!graphqlSchema.getType(enumName)) {
+      throw new Error(`GraphQL schema missing AI Eval enum ${enumName}`);
+    }
+  }
+  const splitValues = graphqlEnumValues("DatasetSplit").sort();
+  if (JSON.stringify(splitValues) !== JSON.stringify(["test", "training", "validation"])) {
+    throw new Error("GraphQL DatasetSplit must be exactly training, validation, test");
+  }
+
+  for (const schemaFile of [
+    "dataset-item-revision.schema.json",
+    "dataset-version.schema.json",
+    "evaluation-definition.schema.json",
+    "evaluation-run.schema.json",
+    "evaluation-item-run.schema.json",
+    "metric-result.schema.json",
+    "metric-aggregate.schema.json",
+    "evaluation-comparison.schema.json",
+    "evaluation-target-ref.schema.json",
+    "target-snapshot.schema.json",
+    "target-diff.schema.json",
+    "optimization-run.schema.json",
+    "promotion-record.schema.json",
+    "metric-capability.schema.json",
+  ]) {
+    const schemaPath = `specs/03-contracts/entities/ai/${schemaFile}`;
+    try {
+      const content = read(schemaPath);
+      JSON.parse(content);
+    } catch (error) {
+      throw new Error(
+        `AI Eval v2 entity schema ${schemaPath} is missing or invalid: ${error.message}`,
+      );
+    }
+  }
+
+  for (const legacySchemaFile of [
+    "eval-solver-ref.schema.json",
+    "scorer-definition.schema.json",
+    "scorer.schema.json",
+    "experiment.schema.json",
+    "experiment-run.schema.json",
+    "experiment-manifest.schema.json",
+  ]) {
+    try {
+      read(`specs/03-contracts/entities/ai/${legacySchemaFile}`);
+      throw new Error(`legacy AI Eval entity schema must be removed: ${legacySchemaFile}`);
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
+}
+
+function graphqlEnumValues(enumName) {
+  const type = graphqlSchema.getType(enumName);
+  return typeof type?.getValues === "function" ? type.getValues().map((value) => value.name) : [];
 }
 
 function extractTemplateLiteralExports(source) {

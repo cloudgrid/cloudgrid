@@ -1,13 +1,14 @@
-import type { Dashboard } from "@cloudgrid/ui-contracts";
-import { useQuery } from "@tanstack/react-query";
+import type { Dashboard, Organization } from "@cloudgrid/ui-contracts";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   Bot,
-  Braces,
   Building2,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Command,
+  Database,
   FolderOpen,
   HelpCircle,
   LayoutDashboard,
@@ -26,10 +27,20 @@ import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
+import {
   Select,
   SelectContent,
   SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
 } from "../components/ui/select";
 import {
@@ -41,27 +52,28 @@ import {
   SheetTrigger,
 } from "../components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
-import { CommandPalette } from "../features/navigation/command-palette";
 import { createAiChatGraphQLClient } from "../features/ai-chat/api";
 import {
   aiChatProviderQueryKey,
   isCompanyAiChatProviderConfigured,
 } from "../features/ai-chat/view-model";
+import { CommandPalette } from "../features/navigation/command-palette";
+import { notifyMutationError, notifyMutationSuccess } from "../lib/feedback";
 import { t } from "../lib/i18n";
 import { queryKeys } from "../lib/query-keys";
 import {
   buildProjectSwitchTarget,
   firstProjectForOrganization,
   initialOrganizationId,
-  organizationProjects,
   resolveAppShellMode,
   selectedProjectOrganization,
 } from "../lib/session-state";
 import { cn } from "../lib/utils";
 import { useAppSession } from "../providers/app-session-provider";
+import { useBrand } from "../providers/brand-provider";
 import { useTheme } from "../providers/theme-provider";
-import { aiEvalEnabled } from "./ai-eval-route";
 import { aiChatEnabled } from "./ai-chat-route";
+import { aiEvalEnabled } from "./ai-eval-route";
 
 const projectNavItems = [
   { to: "/traces", label: t("nav.traces"), icon: Activity },
@@ -70,22 +82,40 @@ const projectNavItems = [
   { to: "/dashboards", label: t("nav.dashboards"), icon: LayoutDashboard },
 ];
 
-const showGraphQLUiLink =
-  import.meta.env.DEV || import.meta.env.VITE_CLOUDGRID_GRAPHQL_UI === "true";
 const aiChatClient = createAiChatGraphQLClient(
   import.meta.env.VITE_CLOUDGRID_GRAPHQL_URL || "/graphql",
 );
 
 function sidebarLinkClass({ isActive }: { isActive: boolean }) {
   return cn(
-    "flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-[3px] focus-visible:ring-sidebar-ring/50",
+    "flex h-9 w-full items-center gap-2 rounded-md px-3 text-sm font-medium text-sidebar-foreground outline-none transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-[3px] focus-visible:ring-sidebar-ring/50",
     isActive && "bg-sidebar-accent text-sidebar-accent-foreground",
   );
 }
 
+function ProjectSelectGroups({ organizations }: { organizations: Organization[] }) {
+  return (
+    <>
+      {organizations.map((organization, index) => (
+        <SelectGroup key={organization.id}>
+          {index > 0 ? <SelectSeparator /> : null}
+          <SelectLabel>{organization.name}</SelectLabel>
+          {organization.projects.map((project) => (
+            <SelectItem key={project.id} value={project.id}>
+              <span className="truncate">{project.name}</span>
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      ))}
+    </>
+  );
+}
+
 export function AppShell() {
+  const { productName, renderMark } = useBrand();
   const { appliedTheme, setTheme } = useTheme();
-  const { client, logout, mode, selectProject, viewer } = useAppSession();
+  const { client, isBackendUnavailable, logout, refetchViewer, selectProject, viewer } =
+    useAppSession();
   const location = useLocation();
   const navigate = useNavigate();
   const [commandOpen, setCommandOpen] = useState(false);
@@ -98,33 +128,61 @@ export function AppShell() {
   const selectedProject = viewer?.selectedProject ?? null;
   const selectedOrganization = selectedProjectOrganization(viewer);
   const fallbackOrganizationId = initialOrganizationId(viewer);
+  const routeOrganizationId = location.pathname.match(/^\/organizations\/([^/]+)/)?.[1] ?? null;
+  const decodedRouteOrganizationId = routeOrganizationId
+    ? decodeURIComponent(routeOrganizationId)
+    : null;
+  const routeOrganization =
+    viewer?.organizations.find((organization) => organization.id === decodedRouteOrganizationId) ??
+    null;
+  const activeOrganizationExists = Boolean(
+    viewer?.organizations.some((organization) => organization.id === activeOrganizationId),
+  );
   const currentOrganization =
+    routeOrganization ??
     viewer?.organizations.find((organization) => organization.id === activeOrganizationId) ??
     selectedOrganization ??
     viewer?.organizations.find((organization) => organization.id === fallbackOrganizationId) ??
     null;
   const showCompanySelector = (viewer?.organizations.length ?? 0) > 1;
-  const topbarProjects = organizationProjects(viewer, currentOrganization?.id);
+  const topbarProjectOrganizations =
+    viewer?.organizations.filter((organization) => organization.projects.length > 0) ?? [];
   const currentOrganizationLabel = currentOrganization?.name ?? t("nav.companySelector");
-  const selectedProjectLabel = selectedProject?.name ?? t("projects.select");
+  const selectedProjectOrganizationName = selectedOrganization?.name ?? currentOrganization?.name;
+  const selectedProjectLabel =
+    selectedProject && selectedOrganization
+      ? showCompanySelector
+        ? `${selectedProjectOrganizationName} / ${selectedProject.name}`
+        : selectedProject.name
+      : t("projects.select");
   const shellMode = resolveAppShellMode({ viewer, pathname: location.pathname });
   const showProjectWorkspace = shellMode === "project-workspace" && selectedProject !== null;
   const showAdminSettings = shellMode === "admin-settings";
-  const selectedProjectId = selectedProject?.id ?? "";
+  const selectedProjectId = selectedProject ? selectedProject.id : "";
   const projectSwitchTarget = (projectId: string) =>
     buildProjectSwitchTarget(location.pathname, location.search, projectId);
   const adminOrganizationId =
-    location.pathname.match(/^\/organizations\/([^/]+)/)?.[1] ??
-    currentOrganization?.id ??
-    fallbackOrganizationId;
-  const showAdminMembersLink = !(mode === "local" && adminOrganizationId === "local");
+    decodedRouteOrganizationId ?? currentOrganization?.id ?? fallbackOrganizationId;
+  const adminOrganization =
+    viewer?.organizations.find((organization) => organization.id === adminOrganizationId) ?? null;
+  const showAdminMembersLink = adminOrganization?.role === "admin";
+  const showAdminAiProviderLink = aiChatEnabled && adminOrganization?.role === "admin";
+  const companySettingsOrganization = currentOrganization ?? selectedOrganization;
+  const showCompanySettingsTopbarAction = companySettingsOrganization?.role === "admin";
+  const companySettingsTarget = companySettingsOrganization
+    ? `/organizations/${encodeURIComponent(companySettingsOrganization.id)}/projects`
+    : "/organizations";
   const dashboardsQuery = useQuery({
     enabled: showProjectWorkspace,
     queryKey: queryKeys.dashboards({ includeBuiltins: true }),
     queryFn: () => client.getDashboards({ includeBuiltins: true }),
   });
   const aiChatProviderQuery = useQuery({
-    enabled: aiChatEnabled && showProjectWorkspace && Boolean(selectedOrganization?.id),
+    enabled:
+      aiChatEnabled &&
+      showProjectWorkspace &&
+      Boolean(selectedOrganization?.id) &&
+      !isBackendUnavailable,
     queryKey: aiChatProviderQueryKey(selectedOrganization?.id ?? ""),
     queryFn: () => aiChatClient.getCompanyAiProviderSettings(selectedOrganization?.id ?? ""),
   });
@@ -133,21 +191,49 @@ export function AppShell() {
     showProjectWorkspace &&
     (selectedOrganization?.role === "admin" ||
       isCompanyAiChatProviderConfigured(aiChatProviderQuery.data));
+  const queryClient = useQueryClient();
+  const reorderPinsMutation = useMutation({
+    mutationFn: client.reorderDashboardPins,
+    onSuccess: () => {
+      notifyMutationSuccess(t("dashboards.pinOrder.updated"));
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.dashboards({ includeBuiltins: true }),
+      });
+    },
+    onError: (error) => {
+      notifyMutationError(error, t("dashboards.pinOrder.error"));
+    },
+  });
   const visibleDashboards = dashboardsQuery.data?.items ?? [];
-  const pinnedDashboards = (dashboardsQuery.data?.pinnedDashboardIds ?? [])
+  const pinnedDashboardIds = dashboardsQuery.data?.pinnedDashboardIds ?? [];
+  const pinnedDashboards = pinnedDashboardIds
     .map((dashboardId) => visibleDashboards.find((dashboard) => dashboard.id === dashboardId))
     .filter((dashboard) => dashboard !== undefined)
     .slice(0, 5);
   const customDashboards = visibleDashboards.filter(
     (dashboard) => dashboard.visibility !== "builtin",
   );
+  const handleReorderPin = (dashboardId: string, direction: "up" | "down") => {
+    const index = pinnedDashboardIds.indexOf(dashboardId);
+    if (index === -1) return;
+    const next = [...pinnedDashboardIds];
+    const swapIndex = direction === "up" ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= next.length) return;
+    const aId = next[index] as string;
+    const bId = next[swapIndex] as string;
+    next[index] = bId;
+    next[swapIndex] = aId;
+    void reorderPinsMutation.mutate({ dashboardIds: next });
+  };
   const projectSidebarContext =
     showProjectWorkspace && selectedProject
       ? {
           customDashboards,
           dashboardsExpanded,
           onDashboardsExpandedChange: setDashboardsExpanded,
+          onReorderPin: handleReorderPin,
           pinnedDashboards,
+          pinnedDashboardIds,
           showAiChatNav,
         }
       : null;
@@ -165,11 +251,21 @@ export function AppShell() {
   }, []);
 
   useEffect(() => {
-    const nextOrganizationId = selectedOrganization?.id ?? fallbackOrganizationId;
+    const nextOrganizationId =
+      decodedRouteOrganizationId ??
+      (shellMode === "project-workspace" ? selectedOrganization?.id : null) ??
+      (activeOrganizationExists ? activeOrganizationId : fallbackOrganizationId);
     if (nextOrganizationId && nextOrganizationId !== activeOrganizationId) {
       setActiveOrganizationId(nextOrganizationId);
     }
-  }, [activeOrganizationId, fallbackOrganizationId, selectedOrganization?.id]);
+  }, [
+    activeOrganizationExists,
+    activeOrganizationId,
+    fallbackOrganizationId,
+    decodedRouteOrganizationId,
+    selectedOrganization?.id,
+    shellMode,
+  ]);
 
   const selectAndNavigateProject = (projectId: string) => {
     if (!projectId) {
@@ -192,7 +288,7 @@ export function AppShell() {
     }
 
     if (showAdminSettings && organizationId) {
-      navigate(`/organizations/${encodeURIComponent(organizationId)}`);
+      navigate(`/organizations/${encodeURIComponent(organizationId)}/projects`);
       return;
     }
 
@@ -213,10 +309,10 @@ export function AppShell() {
                 to="/projects"
               >
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-primary text-primary-foreground">
-                  <Activity className="size-4" aria-hidden />
+                  {renderMark("size-4")}
                 </span>
                 <span className="hidden truncate text-sm font-semibold sm:inline">
-                  {t("app.name")}
+                  {productName}
                 </span>
               </Link>
             </div>
@@ -233,7 +329,7 @@ export function AppShell() {
                   >
                     <span className="truncate">{currentOrganizationLabel}</span>
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent position="popper">
                     <SelectGroup>
                       {(viewer?.organizations ?? []).map((organization) => (
                         <SelectItem key={organization.id} value={organization.id}>
@@ -257,14 +353,8 @@ export function AppShell() {
                 >
                   <span className="truncate">{selectedProjectLabel}</span>
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {topbarProjects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
+                <SelectContent position="popper">
+                  <ProjectSelectGroups organizations={topbarProjectOrganizations} />
                 </SelectContent>
               </Select>
             </div>
@@ -298,6 +388,23 @@ export function AppShell() {
                 </TooltipTrigger>
                 <TooltipContent>{t("nav.command")}</TooltipContent>
               </Tooltip>
+              {showCompanySettingsTopbarAction ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      aria-label={t("nav.companySettings")}
+                      asChild
+                      size="icon-sm"
+                      variant="outline"
+                    >
+                      <Link to={companySettingsTarget}>
+                        <Building2 />
+                      </Link>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{t("nav.companySettings")}</TooltipContent>
+                </Tooltip>
+              ) : null}
               {showProjectWorkspace ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -312,18 +419,6 @@ export function AppShell() {
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>{t("nav.setup")}</TooltipContent>
-                </Tooltip>
-              ) : null}
-              {showGraphQLUiLink ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button aria-label={t("nav.graphql")} asChild size="icon-sm" variant="outline">
-                      <a href="/graphql">
-                        <Braces />
-                      </a>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{t("nav.graphql")}</TooltipContent>
                 </Tooltip>
               ) : null}
               <Tooltip>
@@ -342,31 +437,68 @@ export function AppShell() {
                   {appliedTheme === "dark" ? t("theme.light") : t("theme.dark")}
                 </TooltipContent>
               </Tooltip>
-              <Button
-                aria-label={viewer?.user.displayName ?? ""}
-                className="hidden max-w-40 text-muted-foreground lg:inline-flex"
-                type="button"
-                variant="outline"
-              >
-                <UserCircle data-icon="inline-start" />
-                <span className="truncate">{viewer?.user.displayName}</span>
-              </Button>
-              {mode === "deployed" ? (
+              <DropdownMenu>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button
-                      aria-label={t("nav.logout")}
-                      onClick={() => void logout()}
-                      size="icon-sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      <LogOut />
-                    </Button>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        aria-label={t("nav.userMenu")}
+                        className="hidden max-w-48 text-muted-foreground lg:inline-flex"
+                        type="button"
+                        variant="outline"
+                      >
+                        <UserCircle data-icon="inline-start" />
+                        <span className="truncate">{viewer?.user.displayName}</span>
+                        <ChevronDown className="size-3.5" aria-hidden />
+                      </Button>
+                    </DropdownMenuTrigger>
                   </TooltipTrigger>
-                  <TooltipContent>{t("nav.logout")}</TooltipContent>
+                  <TooltipContent>{t("nav.userMenu")}</TooltipContent>
                 </Tooltip>
-              ) : null}
+                <DropdownMenuContent align="end" className="w-64">
+                  <DropdownMenuLabel className="grid gap-0.5">
+                    <span className="truncate">{viewer?.user.displayName}</span>
+                    {viewer?.user.email ? (
+                      <span className="truncate text-xs font-normal text-muted-foreground">
+                        {viewer.user.email}
+                      </span>
+                    ) : null}
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => void logout()}>
+                    <LogOut />
+                    <span>{t("nav.logout")}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    aria-label={t("nav.userMenu")}
+                    className="lg:hidden"
+                    size="icon-sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    <UserCircle />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  <DropdownMenuLabel className="grid gap-0.5">
+                    <span className="truncate">{viewer?.user.displayName}</span>
+                    {viewer?.user.email ? (
+                      <span className="truncate text-xs font-normal text-muted-foreground">
+                        {viewer.user.email}
+                      </span>
+                    ) : null}
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => void logout()}>
+                    <LogOut />
+                    <span>{t("nav.logout")}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Sheet onOpenChange={setMobileMenuOpen} open={mobileMenuOpen}>
                 <SheetTrigger asChild>
                   <Button
@@ -381,7 +513,7 @@ export function AppShell() {
                 </SheetTrigger>
                 <SheetContent className="w-[320px] max-w-[88vw]" side="left">
                   <SheetHeader>
-                    <SheetTitle>{t("app.name")}</SheetTitle>
+                    <SheetTitle>{productName}</SheetTitle>
                     <SheetDescription>
                       {selectedProject?.name ?? t("projects.select")}
                     </SheetDescription>
@@ -400,7 +532,7 @@ export function AppShell() {
                           >
                             <span className="truncate">{currentOrganizationLabel}</span>
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent position="popper">
                             <SelectGroup>
                               {(viewer?.organizations ?? []).map((organization) => (
                                 <SelectItem key={organization.id} value={organization.id}>
@@ -426,14 +558,8 @@ export function AppShell() {
                         >
                           <span className="truncate">{selectedProjectLabel}</span>
                         </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {topbarProjects.map((project) => (
-                              <SelectItem key={project.id} value={project.id}>
-                                {project.name}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
+                        <SelectContent position="popper">
+                          <ProjectSelectGroups organizations={topbarProjectOrganizations} />
                         </SelectContent>
                       </Select>
                     </div>
@@ -445,6 +571,7 @@ export function AppShell() {
                     ) : showAdminSettings ? (
                       <AdminSidebarNav
                         adminOrganizationId={adminOrganizationId}
+                        showAdminAiProviderLink={showAdminAiProviderLink}
                         showAdminMembersLink={showAdminMembersLink}
                       />
                     ) : null}
@@ -454,6 +581,29 @@ export function AppShell() {
             </div>
           </div>
         </header>
+        {isBackendUnavailable ? (
+          <div
+            className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive sm:px-4"
+            role="alert"
+          >
+            <div className="min-w-0">
+              <p className="font-medium">{t("backend.unavailable.title", { productName })}</p>
+              <p className="text-xs text-destructive/90">
+                {t("backend.unavailable.description", { productName })}
+              </p>
+            </div>
+            <Button
+              className="shrink-0"
+              onClick={() => void refetchViewer()}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <Search data-icon="inline-start" />
+              {t("actions.retry")}
+            </Button>
+          </div>
+        ) : null}
         <div
           className={cn(
             "grid min-h-0 flex-1",
@@ -463,7 +613,7 @@ export function AppShell() {
           {projectSidebarContext ? (
             <aside className="hidden min-h-0 border-r bg-sidebar text-sidebar-foreground lg:flex lg:flex-col">
               <nav
-                aria-label={t("nav.projectSelector")}
+                aria-label={t("nav.projectNavigation")}
                 className="min-h-0 flex-1 overflow-y-auto p-2 pt-3"
               >
                 <ProjectSidebarNav {...projectSidebarContext} />
@@ -481,15 +631,10 @@ export function AppShell() {
           ) : null}
           {showAdminSettings ? (
             <aside className="hidden min-h-0 border-r bg-sidebar text-sidebar-foreground lg:flex lg:flex-col">
-              <div className="border-b p-3">
-                <p className="text-xs text-muted-foreground">{t("nav.company")}</p>
-                <p className="truncate text-sm font-semibold">
-                  {currentOrganization?.name ?? t("nav.companies")}
-                </p>
-              </div>
               <nav aria-label={t("nav.companies")} className="min-h-0 flex-1 overflow-y-auto p-2">
                 <AdminSidebarNav
                   adminOrganizationId={adminOrganizationId}
+                  showAdminAiProviderLink={showAdminAiProviderLink}
                   showAdminMembersLink={showAdminMembersLink}
                 />
               </nav>
@@ -511,11 +656,7 @@ export function AppShell() {
             </div>
           </main>
         </div>
-        <CommandPalette
-          onOpenChange={setCommandOpen}
-          open={commandOpen}
-          showGraphQLUiLink={showGraphQLUiLink}
-        />
+        <CommandPalette onOpenChange={setCommandOpen} open={commandOpen} />
       </div>
     </TooltipProvider>
   );
@@ -526,40 +667,88 @@ function ProjectSidebarNav({
   dashboardsExpanded,
   onDashboardsExpandedChange,
   onNavigate,
+  onReorderPin,
   pinnedDashboards,
+  pinnedDashboardIds,
   showAiChatNav,
 }: {
   customDashboards: Pick<Dashboard, "id" | "name">[];
   dashboardsExpanded: boolean;
   onDashboardsExpandedChange: (expanded: boolean) => void;
   onNavigate?: () => void;
+  onReorderPin: (dashboardId: string, direction: "up" | "down") => void;
   pinnedDashboards: Pick<Dashboard, "id" | "name">[];
+  pinnedDashboardIds: string[];
   showAiChatNav: boolean;
 }) {
-  const enabledNavItems = [
-    ...projectNavItems,
-    ...(showAiChatNav ? [{ to: "/ai-chat", label: t("nav.aiChat"), icon: Sparkles }] : []),
-    ...(aiEvalEnabled ? [{ to: "/ai-eval", label: t("nav.aiEval"), icon: Bot }] : []),
+  const location = useLocation();
+  const aiEvalTab =
+    location.pathname === "/ai-eval"
+      ? (new URLSearchParams(location.search).get("tab") ?? "datasets")
+      : null;
+  const aiChatNavItem = showAiChatNav
+    ? { to: "/ai-chat", label: t("nav.aiChat"), icon: Sparkles }
+    : null;
+  const aiEvalSubItems: Array<{ tab: string; label: string; icon: typeof Database }> = [
+    { tab: "datasets", label: t("nav.aiEvalDatasets"), icon: Database },
+    { tab: "evaluations", label: t("nav.aiEvalEvaluations"), icon: Activity },
   ];
+  const enabledNavItems = [...projectNavItems];
 
   return (
     <div className="flex flex-col gap-1">
+      {aiChatNavItem ? (
+        <div className="mb-2 flex flex-col gap-1 border-b pb-2">
+          <NavLink className={sidebarLinkClass} onClick={onNavigate} to={aiChatNavItem.to}>
+            <aiChatNavItem.icon className="size-4" aria-hidden />
+            <span className="truncate">{aiChatNavItem.label}</span>
+          </NavLink>
+        </div>
+      ) : null}
       {pinnedDashboards.length > 0 ? (
         <div className="mb-2 flex flex-col gap-1 border-b pb-2">
           <p className="px-3 py-1 text-xs font-medium text-muted-foreground">
             {t("dashboards.pinned")}
           </p>
-          {pinnedDashboards.map((dashboard) => (
-            <NavLink
-              className={sidebarLinkClass}
-              key={`pinned-${dashboard.id}`}
-              onClick={onNavigate}
-              to={`/dashboards?dashboard=${encodeURIComponent(dashboard.id)}`}
-            >
-              <LayoutDashboard className="size-4" aria-hidden />
-              <span className="truncate">{dashboard.name}</span>
-            </NavLink>
-          ))}
+          {pinnedDashboards.map((dashboard, index) => {
+            const fullIndex = pinnedDashboardIds.indexOf(dashboard.id);
+            return (
+              <div className="flex items-center gap-1" key={`pinned-${dashboard.id}`}>
+                <NavLink
+                  className={cn(sidebarLinkClass({ isActive: false }), "min-w-0 flex-1")}
+                  onClick={onNavigate}
+                  to={`/dashboards?dashboard=${encodeURIComponent(dashboard.id)}`}
+                >
+                  <LayoutDashboard className="size-4" aria-hidden />
+                  <span className="truncate">{dashboard.name}</span>
+                </NavLink>
+                <div className="flex shrink-0 flex-col">
+                  <Button
+                    aria-label={t("dashboards.pin.moveUp")}
+                    className="size-4"
+                    disabled={index === 0}
+                    onClick={() => onReorderPin(dashboard.id, "up")}
+                    size="icon-sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <ChevronUp className="size-3" />
+                  </Button>
+                  <Button
+                    aria-label={t("dashboards.pin.moveDown")}
+                    className="size-4"
+                    disabled={fullIndex >= pinnedDashboardIds.length - 1}
+                    onClick={() => onReorderPin(dashboard.id, "down")}
+                    size="icon-sm"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <ChevronDown className="size-3" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : null}
       {enabledNavItems.map((item) => {
@@ -610,29 +799,49 @@ function ProjectSidebarNav({
           </div>
         );
       })}
+      {aiEvalEnabled ? (
+        <div className="flex flex-col gap-1">
+          <NavLink
+            className={({ isActive }) => sidebarLinkClass({ isActive })}
+            end
+            onClick={onNavigate}
+            to="/ai-eval"
+          >
+            <Bot className="size-4" aria-hidden />
+            <span className="truncate">{t("nav.aiEval")}</span>
+          </NavLink>
+          <div className="ml-6 flex flex-col gap-1">
+            {aiEvalSubItems.map((subItem) => (
+              <Link
+                className={sidebarLinkClass({ isActive: aiEvalTab === subItem.tab })}
+                key={subItem.tab}
+                onClick={onNavigate}
+                to={`/ai-eval?tab=${subItem.tab}`}
+              >
+                <subItem.icon className="size-4" aria-hidden />
+                <span className="truncate">{subItem.label}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function AdminSidebarNav({
   adminOrganizationId,
+  showAdminAiProviderLink,
   showAdminMembersLink,
 }: {
   adminOrganizationId: string;
+  showAdminAiProviderLink: boolean;
   showAdminMembersLink: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <NavLink className={sidebarLinkClass} end to="/organizations">
-        <Building2 className="size-4" aria-hidden />
-        <span className="truncate">{t("nav.companies")}</span>
-      </NavLink>
       {adminOrganizationId ? (
         <>
-          <NavLink className={sidebarLinkClass} end to={`/organizations/${adminOrganizationId}`}>
-            <Building2 className="size-4" aria-hidden />
-            <span className="truncate">{t("nav.company")}</span>
-          </NavLink>
           <NavLink
             className={sidebarLinkClass}
             to={`/organizations/${adminOrganizationId}/projects`}
@@ -647,6 +856,15 @@ function AdminSidebarNav({
             >
               <UserCircle className="size-4" aria-hidden />
               <span className="truncate">{t("nav.members")}</span>
+            </NavLink>
+          ) : null}
+          {showAdminAiProviderLink ? (
+            <NavLink
+              className={sidebarLinkClass}
+              to={`/organizations/${adminOrganizationId}/ai-provider`}
+            >
+              <Bot className="size-4" aria-hidden />
+              <span className="truncate">{t("nav.aiProvider")}</span>
             </NavLink>
           ) : null}
         </>

@@ -7,7 +7,7 @@ export interface HandbookNavItem {
 
 export const handbookNav: HandbookNavItem[] = [
   {
-    label: "Start here",
+    label: "Overview",
     href: "/handbook",
     description: "Read the product boundary, runtime choices, and first path.",
     children: [
@@ -17,10 +17,11 @@ export const handbookNav: HandbookNavItem[] = [
     ],
   },
   {
-    label: "Get running",
+    label: "Getting started",
     href: "/handbook/getting-started",
     description: "Start from released images or from source, then send data.",
     children: [
+      { label: "Install AI skills", href: "/handbook/getting-started/install-skills" },
       { label: "Release Compose", href: "/handbook/getting-started/docker-compose-release" },
       { label: "Local quickstart", href: "/handbook/getting-started/local-quickstart" },
       { label: "Send telemetry", href: "/handbook/getting-started/send-telemetry" },
@@ -28,7 +29,7 @@ export const handbookNav: HandbookNavItem[] = [
     ],
   },
   {
-    label: "Understand the model",
+    label: "Concepts",
     href: "/handbook/concepts",
     description: "Companies, projects, signals, live traces, metrics, and lifecycle.",
     children: [
@@ -43,9 +44,9 @@ export const handbookNav: HandbookNavItem[] = [
     ],
   },
   {
-    label: "Use CloudGrid",
+    label: "Guides",
     href: "/handbook/guides",
-    description: "Task guides for ingestion, investigation, dashboards, and AI eval.",
+    description: "Task guides for ingestion, investigation, dashboards, and AI Chat.",
     children: [
       { label: "Ingest OTLP", href: "/handbook/guides/ingest-otlp" },
       { label: "Project API keys", href: "/handbook/guides/project-api-keys" },
@@ -53,11 +54,23 @@ export const handbookNav: HandbookNavItem[] = [
       { label: "Logs", href: "/handbook/guides/logs" },
       { label: "Metrics", href: "/handbook/guides/metrics" },
       { label: "Dashboards", href: "/handbook/guides/dashboards" },
-      { label: "AI evaluation", href: "/handbook/guides/ai-eval" },
+      { label: "AI Chat", href: "/handbook/guides/ai-chat" },
+      { label: "AI Evaluation legacy guide", href: "/handbook/guides/ai-eval" },
     ],
   },
   {
-    label: "Configure",
+    label: "Evaluations",
+    href: "/handbook/evaluations",
+    description: "Build datasets, run evaluations, compare candidates, and optimize targets.",
+    children: [
+      { label: "Overview", href: "/handbook/evaluations" },
+      { label: "Datasets", href: "/handbook/evaluations/datasets" },
+      { label: "Evaluations", href: "/handbook/evaluations/evaluations" },
+      { label: "Optimizations", href: "/handbook/evaluations/optimizations" },
+    ],
+  },
+  {
+    label: "Configuration",
     href: "/handbook/configuration",
     description: "Local mode, deployed mode, SSO, SMTP, storage, and runtime values.",
     children: [
@@ -79,8 +92,22 @@ export const handbookNav: HandbookNavItem[] = [
         children: [
           { label: "Deployment choices", href: "/handbook/deployment" },
           { label: "Kubernetes", href: "/handbook/configuration/deployed/kubernetes" },
+          { label: "Helm install", href: "/handbook/configuration/deployed/helm-install" },
+          {
+            label: "External dependencies",
+            href: "/handbook/configuration/deployed/external-dependencies",
+          },
+          {
+            label: "Image customization",
+            href: "/handbook/configuration/deployed/image-customization",
+          },
+          {
+            label: "Private registry",
+            href: "/handbook/configuration/deployed/private-registry",
+          },
           { label: "Invitations", href: "/handbook/configuration/deployed/invitations" },
           { label: "Invitation email", href: "/handbook/configuration/deployed/invitation-email" },
+          { label: "Provider secrets", href: "/handbook/configuration/deployed/provider-secrets" },
           {
             label: "Self-observability",
             href: "/handbook/configuration/deployed/self-observability",
@@ -101,7 +128,7 @@ export const handbookNav: HandbookNavItem[] = [
     ],
   },
   {
-    label: "Operate",
+    label: "Operations",
     href: "/handbook/operations",
     description: "Start, stop, monitor, troubleshoot, and assess production readiness.",
     children: [
@@ -112,6 +139,9 @@ export const handbookNav: HandbookNavItem[] = [
       { label: "Alerting", href: "/handbook/operations/alerting" },
       { label: "Troubleshooting", href: "/handbook/operations/troubleshooting" },
       { label: "Production readiness", href: "/handbook/operations/production-readiness" },
+      { label: "Release verification", href: "/handbook/operations/release-verification" },
+      { label: "Upgrade and rollback", href: "/handbook/operations/upgrade-rollback" },
+      { label: "Sizing and scaling", href: "/handbook/operations/sizing" },
     ],
   },
   {
@@ -126,6 +156,17 @@ export const handbookNav: HandbookNavItem[] = [
       { label: "Read flow", href: "/handbook/architecture/read-flow" },
       { label: "Live trace flow", href: "/handbook/architecture/live-trace-flow" },
       { label: "Tenancy and security", href: "/handbook/architecture/tenancy-security" },
+      {
+        label: "Extension boundaries",
+        href: "/handbook/adapters",
+        children: [
+          { label: "Storage adapter", href: "/handbook/adapters/storage" },
+          { label: "Bridge adapter", href: "/handbook/adapters/bridge" },
+          { label: "Auth provider adapter", href: "/handbook/adapters/auth" },
+          { label: "Harness adapter", href: "/handbook/adapters/harness" },
+          { label: "Public API clients", href: "/handbook/adapters/public-api-clients" },
+        ],
+      },
     ],
   },
   {
@@ -141,23 +182,12 @@ export const handbookNav: HandbookNavItem[] = [
       { label: "Errors", href: "/handbook/reference/errors" },
     ],
   },
-  {
-    label: "Extend",
-    href: "/handbook/adapters",
-    description: "Storage, bridge, auth-provider, and harness adapter boundaries.",
-    children: [
-      { label: "Storage adapter", href: "/handbook/adapters/storage" },
-      { label: "Bridge adapter", href: "/handbook/adapters/bridge" },
-      { label: "Auth provider adapter", href: "/handbook/adapters/auth" },
-      { label: "Harness adapter", href: "/handbook/adapters/harness" },
-    ],
-  },
 ];
 
 export const handbookTopNav = [
   handbookNav[0],
   handbookNav[1],
-  handbookNav[4],
   handbookNav[5],
-  handbookNav[7],
+  handbookNav[6],
+  handbookNav[8],
 ];

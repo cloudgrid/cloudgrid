@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-103",
+  "title": "EvaluationDefinition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "projectId",
+    "name",
+    "datasetId",
+    "datasetVersionPolicy",
+    "splitSelector",
+    "targetRef",
+    "metricSettings",
+    "runPolicy",
+    "retentionProfile",
+    "createdAt",
+    "createdBy",
+    "updatedAt",
+    "updatedBy"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "projectId": { "type": "string" },
+    "name": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "datasetId": { "type": "string" },
+    "datasetVersionPolicy": { "type": "string", "enum": ["latest_ready", "pinned"] },
+    "pinnedDatasetVersionId": { "type": "string" },
+    "splitSelector": { "$ref": "#/$defs/splitSelector" },
+    "targetRef": { "$ref": "./evaluation-target-ref.schema.json" },
+    "metricSettings": { "$ref": "#/$defs/metricSettings" },
+    "runPolicy": { "$ref": "./eval-run-policy.schema.json" },
+    "retentionProfile": {
+      "type": "string",
+      "enum": ["balanced", "fast_iteration", "audit_friendly", "minimal_storage"]
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "createdBy": { "type": "string" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "updatedBy": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "datasetVersionPolicy": { "const": "pinned" } },
+        "required": ["datasetVersionPolicy"]
+      },
+      "then": { "required": ["pinnedDatasetVersionId"] }
+    }
+  ],
+  "$defs": {
+    "splitSelector": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["training", "validation", "test"] },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "metricSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metricIds", "options"],
+      "properties": {
+        "metricIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        },
+        "primaryMetricId": { "type": "string", "minLength": 1 },
+        "options": { "type": "object", "additionalProperties": true, "default": {} }
+      }
+    }
+  }
+}

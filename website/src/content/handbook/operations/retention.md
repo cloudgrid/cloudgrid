@@ -4,7 +4,7 @@ description: "Retention policy CRUD is implemented per project; deletion executi
 order: 4
 accent: amber
 eyebrow: "Handbook - Operations"
-updated: 2026-05-18
+updated: 2026-05-19
 ---
 
 Retention is configured per project. Project retention policy CRUD is implemented through GraphQL, the BFF bridge, control-plane storage, and the project settings UI. Deletion execution is a separate storage-maintenance boundary, not frontend or BFF behavior.
@@ -13,7 +13,7 @@ Retention is configured per project. Project retention policy CRUD is implemente
 
 Project admins can read and save the effective retention policy for a project. A policy has exactly one rule per data class, and updates replace the complete rule set using optimistic version checks.
 
-Saved policies are durable configuration. The repository includes the storage-maintenance batch executor, scheduler loop, lease-aware fixture implementation, and service image/chart shape. Production deletion still depends on wiring the executor to the SurrealDB retention adapter and enabling the scheduler for the intended project IDs.
+Saved policies are durable configuration. The repository includes the storage-maintenance batch executor, scheduler loop, lease-aware fixture implementation, SurrealDB retention adapter, and service image/chart shape. Production deletion still depends on enabling the scheduler for the intended project IDs and validating the deployment with the opt-in SurrealDB retention tests for the data classes you plan to execute.
 
 ## Data Classes
 
@@ -60,7 +60,7 @@ When deletion execution is present, operators should check:
 
 ## Scheduler Configuration
 
-The scheduler is disabled by default until the SurrealDB retention adapter is enabled.
+The scheduler is disabled by default. In production-style SurrealDB builds, `CLOUDGRID_STORAGE_ADAPTER=surrealdb` wires storage-maintenance to the SurrealDB retention adapter; fixture builds use the in-memory fixture adapter for tests only.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -69,6 +69,7 @@ The scheduler is disabled by default until the SurrealDB retention adapter is en
 | `CLOUDGRID_RETENTION_SCHEDULER_PROJECT_IDS` | none | Comma-separated project IDs for the first production wave. |
 | `CLOUDGRID_RETENTION_BATCH_LIMIT` | `1000` | Maximum rows per project/data-class batch. |
 | `CLOUDGRID_RETENTION_LEASE_SECONDS` | `900` | Lease duration per project/data class. |
+| `CLOUDGRID_STORAGE_ADAPTER` | `surrealdb` in SurrealDB builds | Selects the compiled storage-maintenance adapter. |
 
 When enabled, the scheduler iterates configured project IDs and every retention data class. One failed project/data class does not stop the rest of the tick. Multiple storage-maintenance replicas coordinate with a lease key shaped as `retention:{projectId}:{dataClass}`.
 

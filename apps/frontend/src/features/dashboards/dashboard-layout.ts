@@ -179,6 +179,79 @@ export function sortDashboardWidgetsForSave(
   ).map((item) => item.widget);
 }
 
+export function toProjectedDashboardLayout(
+  layout: DashboardWidgetLayoutInput,
+  columns: 6 | 12,
+): DashboardWidgetLayout {
+  const normalized = normalizeDashboardLayout(layout);
+  if (columns === DASHBOARD_GRID_COLUMNS) {
+    return normalized;
+  }
+
+  const scale = columns / DASHBOARD_GRID_COLUMNS;
+  const minW = clampInteger(Math.ceil(normalized.minW * scale), 1, columns);
+  const w = clampInteger(Math.ceil(normalized.w * scale), minW, columns);
+  const x = clampInteger(Math.floor(normalized.x * scale), 0, columns - w);
+
+  return {
+    x,
+    y: normalized.y,
+    w,
+    h: normalized.h,
+    minW,
+    minH: normalized.minH,
+  };
+}
+
+export function stackedDashboardWidgets(widgets: DashboardWidgetInput[]): DashboardWidgetInput[] {
+  return sortDashboardWidgetsForSave(widgets).map((widget) =>
+    cloneWidgetWithLayout(widget, normalizeDashboardLayout(widget.layout)),
+  );
+}
+
+export function reorderStackedDashboardWidget(
+  draft: SaveDashboardInput,
+  widgetId: string,
+  delta: number,
+): SaveDashboardInput {
+  const orderedWidgets = stackedDashboardWidgets(draft.widgets);
+  const currentIndex = orderedWidgets.findIndex((widget) => widget.id === widgetId);
+  if (currentIndex < 0) {
+    return { ...draft, widgets: orderedWidgets };
+  }
+
+  const targetIndex = clampInteger(
+    currentIndex + integerOr(delta, 0),
+    0,
+    orderedWidgets.length - 1,
+  );
+  if (targetIndex === currentIndex) {
+    return { ...draft, widgets: orderedWidgets };
+  }
+
+  const reordered = [...orderedWidgets];
+  const [moved] = reordered.splice(currentIndex, 1);
+  if (!moved) {
+    return { ...draft, widgets: orderedWidgets };
+  }
+  reordered.splice(targetIndex, 0, moved);
+
+  let y = 0;
+  const widgets = reordered.map((widget) => {
+    const layout = normalizeDashboardLayout(widget.layout);
+    const next = cloneWidgetWithLayout(widget, {
+      ...layout,
+      x: 0,
+      y,
+      w: DASHBOARD_GRID_COLUMNS,
+    });
+    y += next.layout.h;
+    return next;
+  });
+
+  return { ...draft, widgets };
+}
+
 function orderWidgetsForCompaction(
   widgets: IndexedWidget[],
   priorityWidgetId?: string,

@@ -42,7 +42,7 @@ bun run dev:seed:live
 bun run dev:seed:live -- --interval-ms 1000 --max-batches 10
 ```
 
-If `bun run setup:local` configured token routing, the seed script uses `CLOUDGRID_OTLP_BEARER_TOKEN`, `CLOUDGRID_OTLP_TOKEN`, or `CLOUDGRID_PROJECT_API_KEY` in that precedence order.
+If `bun run setup:local` configured token routing, the seed script uses `CLOUDGRID_OTLP_BEARER_TOKEN` or `CLOUDGRID_PROJECT_API_KEY` in that precedence order.
 
 ## Send Checked-In Fixtures
 

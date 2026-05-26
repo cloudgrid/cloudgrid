@@ -17,6 +17,8 @@ CloudGrid is an enterprise-focused operational workspace for project-scoped Open
 
 This spec is authoritative for frontend information architecture, onboarding, route layout, panel behavior, and interaction patterns. When this spec conflicts with older frontend prose, this spec wins and the older file must be updated before implementation.
 
+Public website pages in `website/` follow the repo design system but are not product app routes. Their marketing hero treatment is intentionally limited: generated, realistic enterprise/product collage imagery belongs only in the first hero section of non-handbook pages; the rest of the page returns to flat white or neutral sections. Handbook pages and subpages remain plain documentation pages. Website hero text and CTA placement must stay aligned across home, feature, and enterprise routes, and hero art must not be replaced by gradients, procedural SVGs, abstract blobs, generic placeholders, or separate right-side mockup components. Marketing feature lists and related-page navigation should use editorial stacks, alternating image/text rows, ruled lists, or image-led strips instead of generic card grids. Non-handbook marketing pages should introduce the decision-maker or operator problem first, explain CloudGrid's concrete product help, then link to deeper detail instead of repeating the same capability catalog across pages.
+
 Trace search and trace detail behavior is specified in [Traces and metrics UX concept](./traces-and-metrics-ux-concept.md). Log search, metric exploration, and dashboard composition behavior is specified in [Logs, metrics explorer, and dashboards UX concept](./logs-metrics-dashboards-ux-concept.md). Those specs own concrete visualization placement, detail behavior, and route-specific inspectors while this file continues to own the global shell and surface taxonomy.
 
 External product-pattern inputs applied:
@@ -42,7 +44,8 @@ Primary users:
 - Local developer: runs CloudGrid locally, creates a `Personal` project, sends OTLP data, and debugs a local service or agent.
 - Team engineer: belongs to one or more companies, switches projects, investigates trace/log/metric evidence, and shares URLs with teammates.
 - Platform/admin user: creates projects, manages members, checks ingestion setup, and protects company/project boundaries.
-- AI-agent engineer: inspects agent runs, datasets, scorers, experiments, regressions, annotations, and optimization output.
+- AI-agent engineer: inspects datasets, evaluations, runs, metrics,
+  comparisons, trace-backed evidence, and optimization output.
 
 Primary jobs in priority order:
 
@@ -63,6 +66,10 @@ The approved UX v2 shell is the implementation target for all new frontend work.
 Rules:
 
 - CloudGrid uses one global topbar across authenticated views.
+- Licensed whitelabel builds may replace visible product identity through the
+  code-level brand contract in `whitelabel-customization.md`, but they must
+  preserve this shell model, route taxonomy, navigation ordering, and
+  project-first behavior.
 - Project-scoped work uses a left sidebar for project/domain navigation.
 - Project selection is a centered picker, not a full dashboard route with telemetry navigation.
 - Project selection cards render only GraphQL `Project.telemetry` values enriched by the BFF from storage-read. They must not use hardcoded zeros, frontend-side telemetry queries, or browser-local telemetry summaries.
@@ -70,7 +77,10 @@ Rules:
 - Company/admin settings use a separate admin settings shell.
 - Content regions own their own scrolling; the app must not rely on one full-page scroll for dense telemetry surfaces.
 - Confirmation, information, warning, and error interruptions use modal dialogs only.
-- Local mode uses a `Personal` company and must not expose company administration unless multi-company auth is enabled.
+- Local mode uses a `Personal` company and exposes only useful company admin
+  surfaces for that durable boundary: projects, members, and AI provider
+  settings. It must not expose destructive company deletion, owner-transfer,
+  billing, or orphaning flows.
 
 ## Information Architecture
 
@@ -82,7 +92,7 @@ Project selection mode:
 
 - Applies when the current route is `/projects` or when a project-scoped route is requested without a selected project.
 - Topbar shows CloudGrid identity/home, company dropdown when applicable, project dropdown with `Select project` when no project is selected, command/search button, theme/language controls when implemented, and user menu.
-- Telemetry navigation entries `Traces`, `Logs`, `Metrics`, `Dashboards`, and `AI Eval` are hidden.
+- Telemetry navigation entries `AI Chat`, `Traces`, `Logs`, `Metrics`, `Dashboards`, and `Evaluations` are hidden.
 - Main content is a centered project picker with company context, search/filter, rich selectable project cards, create action when authorized, and local onboarding prompt when applicable.
 - The project picker must be horizontally centered in the remaining viewport and must not use a left navigation sidebar.
 
@@ -91,33 +101,38 @@ Project workspace mode:
 - Applies after `viewer.selectedProject` exists and the route is project-scoped.
 - Global topbar shows CloudGrid identity/home, company dropdown, project dropdown, command/search button, help/setup entry, theme/language controls when implemented, and user menu.
 - A left project/domain sidebar owns primary project navigation.
-- Sidebar order is `Traces`, `Logs`, `Metrics`, `Dashboards`, `AI Chat` when enabled, `AI Eval` when enabled, then a separated `Project settings` entry.
+- Sidebar order is `AI Chat` when enabled, pinned dashboard shortcuts when present, then `Traces`, `Logs`, `Metrics`, `Dashboards`, `Evaluations` when enabled, and a separated `Project settings` entry.
 - The project sidebar must not repeat the selected company/project summary. The global topbar owns company and project context with dropdown selectors.
-- Pinned dashboard shortcuts may appear above the primary navigation when explicit user dashboard preference data exists.
+- Pinned dashboard shortcuts may appear below `AI Chat` and above the primary telemetry navigation when explicit user dashboard preference data exists.
 - The `Dashboards` entry may be expanded to show custom dashboards available to the current user; the parent entry still opens the dashboard workspace.
 - `Live` is not a primary sidebar entry. Live receiving is a mode inside `/traces` because it uses the same trace row model, filters, and trace detail route.
 - The active route uses a selected rail state and text label. Collapsed sidebar state may hide labels on desktop but must preserve tooltips and accessible names.
-- Company/member administration is reached from the user/company menu, not mixed into project telemetry navigation.
+- Company settings are reached from a compact global topbar action for company
+  admins. Company/member administration must not be mixed into project telemetry
+  navigation.
 
 Admin settings mode:
 
 - Applies to company and administrative routes: `/organizations`, `/organizations/:organizationId`, `/organizations/:organizationId/projects`, `/organizations/:organizationId/members`, and specified billing/security/audit routes.
 - Global topbar remains visible.
 - A dedicated admin settings sidebar replaces the project/domain sidebar.
-- Admin sidebar groups are `Organization`, `Projects`, `Members`, `AI Provider` when AI Chat is enabled, and explicitly specified admin-only sections.
+- Admin sidebar groups are `Projects`, `Members`, `AI Provider` when AI Chat is
+  enabled, and explicitly specified admin-only sections. The admin sidebar does
+  not include separate `Companies` or read-only company overview entries.
 - Telemetry navigation remains hidden in admin settings mode.
 
 ### Route Groups
 
 Workspace selection routes:
 
-- `/projects`: project selection, project creation, local onboarding, and selected-project summary.
+- `/projects`: project selection, project creation entry, local onboarding, and selected-project summary.
+- `/projects/new`: project creation page.
 
 Admin settings routes:
 
 - `/organizations`: company list for users in multiple companies.
 - `/organizations/:organizationId`: company overview.
-- `/organizations/:organizationId/projects`: company-scoped project list and creation.
+- `/organizations/:organizationId/projects`: company-scoped project list and project creation entry.
 - `/organizations/:organizationId/members`: company members and roles.
 - `/organizations/:organizationId/ai-provider`: company AI Chat provider settings, visible only to company admins.
 
@@ -131,9 +146,19 @@ Project workspace routes:
 - `/dashboards`: dashboard view and editor workspace.
 - `/ai-chat`: project-scoped AI Chat assistant, visible when enabled.
 - `/alerts`: project alert rules and history workspace. This route remains available by URL, command palette action, alert evidence links, and any explicit alert-management entry points defined by alerting specs, but it is not a primary project sidebar item.
+- `/alerts/new`: alert rule creation page.
+- `/alerts/:ruleId/settings`: alert rule settings page.
+- `/organizations/:organizationId/alert-adapters`: company alert notification
+  adapter settings for company admins.
 - `/ai-eval`: AI evaluation workspace when enabled.
-- `/projects/:projectId/settings`: project general settings. There is no separate project settings overview subpage.
-- `/projects/:projectId/settings/general`: aliases the same project identity and basic metadata surface when routed explicitly.
+- `/ai-eval/datasets/new`: dataset creation page when AI Eval is enabled.
+- `/ai-eval/datasets/:datasetId/settings`: dataset settings page when AI Eval is enabled.
+- `/ai-eval/evaluations/new`: evaluation creation page when AI Eval is enabled.
+- `/ai-eval/evaluations/:evaluationId/settings`: evaluation settings page when AI Eval is enabled.
+- `/ai-eval/optimizations/new`: optimization creation page when AI Eval is enabled.
+- `/ai-eval/optimizations/:optimizationRunId/settings`: optimization settings page when AI Eval is enabled.
+- `/projects/:projectId/settings`: project settings page. There is no separate project settings overview subpage.
+- `/projects/:projectId/settings/general`: aliases `/projects/:projectId/settings` with the `Identity` tab active when routed explicitly.
 - `/projects/:projectId/settings/ingest`: settings item labeled `API Keys`; one concise project setup page with OTLP endpoint, copyable setup snippets, and multiple project ingest API keys.
 - `/projects/:projectId/settings/retention`: project-level editable retention policy for each supported data class once backend retention contracts are generated.
 - `/projects/:projectId/settings/members`: project-specific members and roles once backend project-membership contracts are generated.
@@ -156,7 +181,8 @@ Desktop topbar:
 - Height: 56px.
 - Left section width: content-sized, CloudGrid wordmark/home link plus environment badge when not production.
 - Center section: company dropdown and project dropdown, each truncating safely, combined minimum width 320px and maximum width 560px, horizontally centered when viewport allows.
-- Right section: command button, setup/help button, theme/language controls when implemented, user menu.
+- Right section: command button, company settings action for company admins,
+  setup/help button, theme/language controls when implemented, user menu.
 - The topbar never contains telemetry route tabs in UX v2.
 
 Project selection mode topbar:
@@ -255,12 +281,40 @@ Modal dialog:
 - Dialogs must not contain long multi-section workflows. Use a drawer for those.
 - Confirmation, information, warning, and error surfaces must not be implemented as drawers, sheets, inline banners, popovers, or toast-only flows when they require user acknowledgement or a decision.
 
+Create entity page:
+
+- Dedicated route surface for creating a durable entity.
+- Required for every new durable entity except adding a row/item inside an existing dataset-like collection.
+- Examples: new project, new dataset, new evaluation, and new optimization.
+- The create action that starts the flow navigates to the create route. It must not open a drawer, sheet, dialog, popover, or inline expansion for the primary creation workflow.
+- The page uses the standard page frame: breadcrumb/back row, route header, one primary working surface, and no card route container.
+- The main surface is a wizard-like tabbed form. Tabs group logical topics and show only the active topic's fields.
+- Users can navigate by selecting tabs or by using the current step's Back and Continue buttons. Back navigation is always allowed. Forward navigation validates the current and earlier required steps before moving.
+- Required fields use visible required markers on the field label and accessible required semantics. Optional fields must not be marked.
+- Missing or invalid input renders field-level validation text, sets an invalid field state, and marks the affected tab with an error indicator and accessible label.
+- A summary error panel appears above the active tab form when submission or step validation fails and lists the invalid tabs or fields without duplicating long backend error payloads.
+- Backend or bridge failures use the canonical inline error panel with problem code, retry when safe, and no raw provider/internal errors.
+- Do not add a dedicated review step. The active step should provide clear field-level help and the submit action should stay available in the route header when the current step is the final editable topic.
+- Successful creation navigates to the newly created entity's detail/workspace route, or to the run detail route for async starts.
+- Unsaved create pages prompt before route/project switch when any user-entered value differs from the default draft.
+- Creation pages may include concise domain onboarding copy inside each step. Onboarding must be practical, field-adjacent, and specific to the current topic; it must not become a marketing hero, separate tour, or blocking first-run overlay.
+- Create pages do not replace contextual add/edit surfaces for child records. Adding a dataset row remains an in-dataset row editor because it appends to an existing dataset rather than creating a top-level entity.
+
 Settings page:
 
 - Dedicated route surface for durable configuration.
-- Uses admin-like form sections and tables, not dashboard cards.
+- Entity settings pages use the same wizard-like tabbed form pattern as the entity's create page.
+- The entity detail page must expose a `Settings` action when the current user can view or edit settings for that entity. The action navigates to the entity settings route; it must not open a drawer, sheet, dialog, popover, or inline expansion for the primary settings workflow.
+- Settings tabs must preserve the same order, labels, and conceptual grouping as creation when the same topics exist.
+- When settings expose editable fields that do not exist during creation, add them as either new tabs or fields inside the existing tab whose topic owns the behavior. Do not add a miscellaneous or advanced dumping-ground tab for unrelated settings.
+- Settings pages load the current persisted entity state, validate field-level and tab-level input using the same required marker/error pattern as creation, and use a summary error panel for validation or save failures.
+- Forward navigation validates the current and earlier required tabs. Back navigation is always allowed.
+- Do not add a dedicated review tab to settings pages. Explain behavior-affecting changes next to the fields that control them, and use focused confirmation dialogs only for destructive or irreversible actions.
+- Settings saves use explicit `Save changes` actions, show success/failure feedback, and prompt before route/project switch when there are unsaved changes.
+- Destructive settings actions are not regular tab save actions. They use focused confirmation dialogs and appear only when the relevant backend contract and spec define them.
 - Project settings are scoped under `/projects/:projectId/settings/*`.
-- Project settings routes are flat, border-led forms and tables. Do not wrap settings pages in an outer card when inner sections, tables, setup snippets, or alerts already have their own surface.
+- Project settings are the settings page for the project entity. The settings root is the tabbed project settings page with `Identity` active by default. It uses tabs that mirror project creation topics `Identity`, `Access`, and `Setup`, plus additional settings-only tabs such as `API Keys`, `Retention`, `AI Providers`, and `AI Eval` when the corresponding contracts are enabled.
+- Project settings routes are flat, border-led tabbed forms and tables. Do not wrap settings pages in an outer card when inner sections, tables, setup snippets, or alerts already have their own surface.
 - Admin settings are scoped under organization routes and use the admin settings shell.
 - AI Chat uses a project route with a route-local conversation history rail and
   transcript, not a settings route. AI provider configuration remains in
@@ -306,9 +360,9 @@ Layout:
 Required behavior:
 
 - If no projects exist, the primary action is `Create project`.
-- Project creation uses a drawer on desktop and a sheet on mobile.
+- Project creation navigates to `/projects/new` and uses the create entity page pattern.
 - After project creation succeeds, call `Mutation.selectProject` and navigate to `/traces`.
-- The user must never see `Traces`, `Logs`, `Metrics`, `Dashboards`, or `AI Eval` topbar navigation before a project is selected.
+- The user must never see `AI Chat`, `Traces`, `Logs`, `Metrics`, `Dashboards`, or `Evaluations` topbar navigation before a project is selected.
 
 ### Project Home Checklist
 
@@ -370,7 +424,7 @@ Steps:
 1. User sees companies and projects they can access.
 2. User can switch company from the company selector.
 3. Project list updates to the selected company.
-4. User can create a project when authorized.
+4. User can navigate to `/projects/new` when authorized.
 5. User selects a project.
 6. Frontend calls `Mutation.selectProject`.
 7. On success, frontend invalidates project-scoped queries and navigates to `/traces`.
@@ -382,6 +436,29 @@ Failure states:
 - forbidden: show company/project access message without hidden project names;
 - create validation failure: inline field errors;
 - storage/control-plane unavailable: inline error with retry.
+
+Project creation page:
+
+- Route: `/projects/new`.
+- Entry points: `/projects` primary action, project picker empty state, organization project list create action, command palette when authorized.
+- Breadcrumb: `Projects / New project` in project selection mode or `Company settings / Projects / New project` when entered from admin settings.
+- Tabs: `Identity`, `Access`.
+- `Identity` fields: project name required, project slug required when not auto-derived, optional description when the contract supports it. Field help explains where the name and slug are used.
+- `Access` fields: owning company selector when the user can create in more than one company; initial project membership defaults to the creator as project admin. Additional member invite controls appear only when project invitation contracts and authorization allow them.
+- Submit calls the project creation contract only after all required tabs validate. On success, the frontend calls `Mutation.selectProject` for the created project and navigates to `/traces`.
+
+Project settings page:
+
+- Route: `/projects/:projectId/settings`.
+- Entry points: project sidebar `Project settings`, project switcher/context menu settings action, command palette, and setup/empty-state links.
+- Breadcrumb: `Projects / <project name> / Settings`.
+- Tabs: `Identity`, `Access`, `Setup`, `API Keys`, `Retention`, `AI Providers`, `AI Eval`.
+- `Identity` reuses project creation identity fields and adds editable status when authorized. Fixed local system projects render immutable identity fields with explanatory disabled states.
+- `Access` reuses project creation access semantics and expands to project member and pending project invitation management when those contracts are enabled.
+- `Setup` reuses project creation setup guidance and shows OTLP endpoint and setup snippets without exposing stored secrets.
+- `API Keys` manages project ingest credential metadata and create/revoke flows. Secret values are shown only once on credential creation.
+- `Retention`, `AI Providers`, and `AI Eval` appear only when matching contracts/features are enabled and use their existing project settings specs.
+- Save uses the relevant project/control-plane contracts per tab. The page must not batch unrelated backend mutations into a fake aggregate mutation unless such a contract exists.
 
 ### Flow 2: Send First Telemetry
 
@@ -515,7 +592,7 @@ Dashboards layout:
 - Left dashboard rail: pinned, built-in, personal, and project dashboards, search, create action.
 - Main surface: responsive dashboard widget grid.
 - Right inspector drawer: widget details or editor.
-- Project sidebar: pinned dashboard shortcuts above primary navigation and optional `Dashboards` children from `Query.dashboards`.
+- Project sidebar: `AI Chat` first when enabled, pinned dashboard shortcuts below it when present, and optional `Dashboards` children from `Query.dashboards`.
 
 Steps:
 
@@ -551,15 +628,21 @@ Entry: `/ai-eval` when enabled.
 Layout:
 
 - Header: workspace title, feature status, create/run action when supported.
-- Left rail or tabs: Runs, Experiments, Datasets, Scorers, Annotations.
+- Left rail or tabs: Datasets, Evaluations.
 - Main surface: selected list/detail workspace.
-- Right inspector drawer: run detail, scorer definition, annotation detail, or experiment item diff.
+- Right inspector drawer: optional advanced run, item, adapter, target snapshot,
+  or comparison detail.
 
 Steps:
 
-1. User selects a run or experiment.
-2. UI renders GraphQL-provided timelines, transcript, scoreboard, and result summaries.
-3. User pivots to trace detail from run/span links.
+1. User creates or opens a dataset.
+2. User adds/imports rows with input, expected output, optional reason, split,
+   and curation status.
+3. User creates an evaluation for a dataset, split selector, target, and metric
+   defaults.
+4. UI renders GraphQL-provided metrics, item runs, comparisons, and trajectory
+   summaries.
+5. User pivots to trace detail from run/span links.
 4. User promotes traces/spans to dataset items when supported.
 5. User opens annotation items and updates status when supported.
 
@@ -568,6 +651,82 @@ Rules:
 - Frontend must not compute scores, costs, token totals, transcript semantics, or regression summaries.
 - Feature disabled state hides primary navigation and direct route shows a feature-disabled state.
 
+AI Eval creation pages:
+
+- `New dataset` navigates to `/ai-eval/datasets/new`.
+- `New evaluation` navigates to `/ai-eval/evaluations/new`.
+- `Start optimization` navigates to `/ai-eval/optimizations/new` when the start requires user choices. One-click starts are allowed only when all required inputs are already resolved from the current evaluation/run/comparison context and the user still sees the resolved objective before submission.
+- AI Eval create routes use the project workspace shell, preserve the selected project, and show breadcrumbs under `AI Eval`.
+- Direct access to an AI Eval create route while the feature is disabled renders the feature-disabled state with a settings link for authorized users.
+- Dataset row creation remains `Add row` inside dataset detail and does not use a top-level create page.
+
+Dataset creation page:
+
+- Route: `/ai-eval/datasets/new`.
+- Entry points: Datasets list primary action, AI Eval first-use checklist, compatible import flow start, command palette when authorized.
+- Breadcrumb: `AI Eval / Datasets / New dataset`.
+- Tabs: `Purpose`, `Schema`, `Curation`, `Extraction`.
+- `Purpose` fields: dataset name required, evaluation family required, optional description, and project shown read-only.
+- `Schema` fields: input value type required, expected value type required, input JSON schema when input type is JSON and schema is desired, expected JSON schema required when expected type is JSON.
+- `Curation` fields: default split required, default curation status required, anonymization/PII policy required when the backend contract exposes it, retention profile required or defaulted from project settings.
+- `Extraction` fields: trace extraction settings are optional but must be configured before traces can use `Add to dataset`; the step explains that no trace picker compatibility exists until extraction settings are defined.
+- Successful creation navigates to the dataset detail route.
+
+Dataset settings page:
+
+- Route: `/ai-eval/datasets/:datasetId/settings`.
+- Entry points: dataset detail `Dataset settings` action, command palette when the dataset is in context, import/export flows, and validation/health warnings that require dataset-level changes.
+- Breadcrumb: `AI Eval / Datasets / <dataset name> / Settings`.
+- Tabs: `Purpose`, `Schema`, `Curation`, `Extraction`, `Versions`.
+- `Purpose`, `Schema`, `Curation`, and `Extraction` reuse dataset creation grouping and fields, populated from the current dataset state.
+- `Versions` is settings-only and shows current version, latest version, version policy impact, and stale-write context. It must not replace dataset row/version history in dataset detail.
+- Every save that changes behavior-affecting dataset settings sends `expectedDatasetVersionId` and creates a new dataset version according to the dataset contract.
+
+Evaluation creation page:
+
+- Route: `/ai-eval/evaluations/new`.
+- Entry points: Evaluations list primary action, dataset detail `Create evaluation from dataset`, AI Eval first-use checklist, command palette when authorized.
+- Breadcrumb: `AI Eval / Evaluations / New evaluation`.
+- Tabs: `Dataset`, `Target`, `Metrics`, `Run policy`.
+- `Dataset` fields: dataset required, dataset version policy required, split selector required, and eligibility/ready-row feedback from GraphQL read models.
+- `Target` fields: target kind required, target reference required, model alias stored through `EvaluationTargetRef.metadata.modelAlias` when applicable.
+- `Metrics` fields: metric settings default from the dataset and project AI Eval settings; required metric fields must be visible and overridable only where contracts allow.
+- `Run policy` fields: retention role/profile, concurrency/budget/sampling controls, and any required adapter/provider choices default from project settings.
+- Successful creation navigates to the evaluation definition/detail route. If the user explicitly chose to start immediately, the run starts through `startEvaluationRun` and the user lands on the run detail route.
+
+Evaluation settings page:
+
+- Route: `/ai-eval/evaluations/:evaluationId/settings`.
+- Entry points: evaluation definition/detail `Settings` action, run detail source evaluation link action, and command palette when an evaluation is in context.
+- Breadcrumb: `AI Eval / Evaluations / <evaluation name> / Settings`.
+- Tabs: `Dataset`, `Target`, `Metrics`, `Run policy`, `History`.
+- `Dataset`, `Target`, `Metrics`, and `Run policy` reuse evaluation creation grouping and fields, populated from the current evaluation definition.
+- `History` is settings-only and shows last run state, pinned dataset version behavior, and links to recent runs/comparisons without duplicating run result tables.
+- Changes affect future runs only. Existing evaluation runs remain reproducible and must continue rendering their resolved dataset version, target snapshot, metric settings, and run policy.
+
+Optimization creation page:
+
+- Route: `/ai-eval/optimizations/new`.
+- Entry points: evaluation detail, run detail, comparison view, and command palette only when enough context can be selected.
+- Breadcrumb: `AI Eval / Optimizations / New optimization`.
+- Tabs: `Source`, `Objective`, `Search`, `Validation`.
+- `Source` fields: source evaluation/run/comparison required, candidate baseline target required, and dataset split availability shown from storage-read view models.
+- `Objective` fields: primary metric required, secondary metrics optional, hard constraints required or defaulted, tradeoff metrics optional, ranking policy required, and tie-breakers required or defaulted.
+- `Search` fields: editable target parts limited to v1-supported prompt text and few-shot/example selection; model config may appear only when represented as a target part snapshot; skill, tool, workflow, and agent optimization controls remain hidden in v1.
+- `Validation` fields: quick-shot usage, validation split policy, minimum evidence, and test split exclusion. The page must state that quick-shot results are exploratory and cannot be promotion evidence.
+- Submit calls `startOptimizationRun`; successful start navigates to the optimization run detail route.
+
+Optimization settings page:
+
+- Route: `/ai-eval/optimizations/:optimizationRunId/settings`.
+- Entry points: optimization run detail `Settings` action while the run is configurable, and command palette when an optimization run is in context.
+- Breadcrumb: `AI Eval / Optimizations / <optimization run label> / Settings`.
+- Tabs: `Source`, `Objective`, `Search`, `Validation`, `Controls`.
+- `Source`, `Objective`, `Search`, and `Validation` reuse optimization creation grouping and fields, populated from the resolved run configuration.
+- `Controls` is settings-only and contains lifecycle controls that are supported by contracts for the current run state, such as pause, resume, cancel, retry, or budget adjustment. Unsupported lifecycle controls are hidden.
+- Settings for completed, failed terminal, canceled terminal, or promoted optimization runs are read-only unless a later spec defines mutable post-run metadata.
+- Save/update actions must preserve reproducibility: completed candidate snapshots, quick-shot selections, validation evidence, and promotion records are immutable.
+
 ### Flow 9: Company And Member Management
 
 Entry: company switcher, `/organizations`.
@@ -575,10 +734,14 @@ Entry: company switcher, `/organizations`.
 Layout:
 
 - Company routes use admin-focused list/detail layouts.
+- The company admin sidebar exposes only useful management surfaces: projects,
+  members, and AI provider settings. It does not include a company list entry or
+  a read-only company overview entry.
 - Company project list and member list are dense tables, not dashboard cards.
 - Company AI Provider settings uses the same admin shell and is visible only to
   company admins.
 - Member mutation actions use dialogs for confirmation and drawers for invite/edit forms.
+- Users cannot demote or remove their own account from the company member list.
 - The Members route has one primary `Invite member` action for company admins.
   The invite drawer accepts one email address, explains that access activates
   only after SSO sign-in with a matching verified email, and does not expose an
@@ -667,7 +830,7 @@ The app may feel dense, but it must not feel cramped. Density comes from aligned
 Copy rules:
 
 - Use verb-first actions: `Create project`, `Select project`, `Copy endpoint`, `Clear filters`, `Open trace`.
-- Avoid implementation terms in user-facing navigation. Use `Company`, `Project`, `Traces`, `Logs`, `Metrics`, `Dashboards`, `AI Chat`, `AI Eval`, and `Settings`. Use `Live` only as a trace workspace mode label, not as a primary navigation entry.
+- Avoid implementation terms in user-facing navigation. Use `Company`, `Project`, `Traces`, `Logs`, `Metrics`, `Dashboards`, `AI Chat`, `Evaluations`, and `Settings`. Use `Live` only as a trace workspace mode label, not as a primary navigation entry.
 - Technical protocol terms are allowed only inside setup and documentation surfaces: `OTLP`, `OpenTelemetry`, `Bearer token`, `GraphQL`.
 - Every user-visible string goes through the translation layer.
 
@@ -746,6 +909,8 @@ Frontend implementation must pass these UX gates before completion:
 - No route-primary table, waterfall, metric result surface, or dashboard grid is nested inside a card.
 - Every route has loading, empty, no-filter-results when applicable, error, and populated states.
 - Every empty state has exactly one primary next action.
+- Durable entity creation uses dedicated create pages with wizard-like tabs, validation, field-adjacent help, and unsaved-change protection.
+- Durable entity settings use dedicated settings pages with the same tab groups as creation plus focused settings-only tabs.
 - Company/project switcher is visible in project workspace mode.
 - Project changes reset project-scoped telemetry/metric/eval query state.
 - Modal/dialog/sheet/popover usage follows this spec's surface taxonomy.
@@ -758,14 +923,14 @@ Frontend implementation must pass these UX gates before completion:
 Implementation agents must split UI work by ownership boundary:
 
 1. Shell and navigation: global topbar with company/project dropdowns, centered project picker, project/domain sidebar, command palette route inventory, route guard behavior.
-2. Project selection and onboarding: `/projects`, ingest setup, project empty states.
+2. Project selection and onboarding: `/projects`, `/projects/new`, ingest setup, project empty states.
 3. Telemetry workspaces: Traces with History/Live modes, Logs, trace detail route frames, filters, facets, and primary surfaces.
 4. Metrics and dashboards: metric explorer, dashboard rail, widget grid, editor drawer, dirty state, save/delete dialogs.
 5. Project settings: general settings at the settings root, API Keys, retention, members, AI Providers, and AI Eval settings.
 6. AI Chat: project assistant route with per-user history grouped by project, BFF streaming, approved action proposals, and json-render artifacts.
 7. Admin settings shell: organization overview, project list, member list, AI Provider, and admin navigation.
-7. AI Eval workspace: feature-gated layout, section rail/tabs, inspector drawers, trace pivots.
-8. Design QA: responsive checks, accessibility checks, no nested-card checks, translation coverage.
+8. AI Eval workspace: feature-gated layout, section rail/tabs, dataset/evaluation/optimization create and settings pages, inspector drawers, trace pivots.
+9. Design QA: responsive checks, accessibility checks, no nested-card checks, translation coverage.
 
 ## Remaining Feature Backlog
 
@@ -781,12 +946,15 @@ backend ownership must exist before a route claims the behavior as enforcing.
   SurrealDB retention adapter plus storage-read soft-delete filtering described in
   `04-backend/data-retention-policy.md`. The UI must not imply that a saved
   policy has deleted telemetry until that production adapter is enabled.
-- Alerting: Project-scoped alert rule, silence, and history management is
-  implemented through generated contracts. The evaluator domain logic, runtime
-  handlers, and optional project-ID scheduler are implemented. Automatic project
-  discovery, non-core notification adapters, and dashboard alert/evidence
-  widgets remain unavailable until their backend and frontend contracts are
-  specified.
+- Alerting: Project-scoped alert rule, silence, history management, evaluator
+  runtime handlers, project discovery, adapter definition registration,
+  company-scoped adapter instance settings, and dashboard alert/evidence
+  widgets are defined by generated contracts and the alerting spec.
+  Provider-specific notification services such as Slack, Teams, email,
+  webhooks, WhatsApp, SMS, or incident-management tools integrate through
+  adapter definitions and bridge-backed delivery adapters. The frontend manages
+  rules and company adapter settings through GraphQL, but alert rule pages
+  select only safe adapter instance IDs and never own delivery execution logic.
 - Full OTLP protocol compatibility: setup snippets may describe OTLP/HTTP
   JSON/protobuf on `4318` and OTLP/gRPC protobuf on `4317` for traces, logs, and
   metrics when the collector is used with the current implementation.

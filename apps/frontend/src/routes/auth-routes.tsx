@@ -1,4 +1,4 @@
-import { Grid3X3, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { LoginForm, LoginProductPreview } from "../components/login-form";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
@@ -6,6 +6,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from "../components/ui/c
 import { t } from "../lib/i18n";
 import { buildLoginUrl, type LoginProvider, resolveRootRedirect } from "../lib/session-state";
 import { useAppSession } from "../providers/app-session-provider";
+import { useBrand } from "../providers/brand-provider";
 
 export function AuthGate() {
   const { isLoading, mode, viewer } = useAppSession();
@@ -34,6 +35,7 @@ export function RootRedirect() {
 
 export function LoginRoute() {
   const { mode, viewer } = useAppSession();
+  const { productName, renderMark } = useBrand();
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const returnTo = params.get("returnTo") || "/projects";
@@ -54,9 +56,9 @@ export function LoginRoute() {
         <div className="flex justify-center gap-2 md:justify-start">
           <a className="flex items-center gap-2 font-medium" href="/">
             <span className="flex size-6 items-center justify-center rounded-md border bg-primary text-primary-foreground">
-              <Grid3X3 className="size-3.5" aria-hidden />
+              {renderMark("size-3.5")}
             </span>
-            {t("app.name")}
+            {productName}
           </a>
         </div>
         <div className="flex flex-1 items-center justify-center">
@@ -74,6 +76,7 @@ export function LoginRoute() {
 
 export function AuthCallbackRoute() {
   const location = useLocation();
+  const { productName } = useBrand();
   const params = new URLSearchParams(location.search);
   const hasError = params.has("error");
 
@@ -89,7 +92,7 @@ export function AuthCallbackRoute() {
           <Card>
             <CardHeader>
               <CardTitle>{t("auth.callback.title")}</CardTitle>
-              <CardDescription>{t("auth.callback.description")}</CardDescription>
+              <CardDescription>{t("auth.callback.description", { productName })}</CardDescription>
             </CardHeader>
           </Card>
         )}

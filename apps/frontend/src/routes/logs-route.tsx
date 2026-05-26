@@ -1,8 +1,9 @@
 import type { LogEvent } from "@cloudgrid/ui-contracts";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, ClipboardCopy, RefreshCw, X } from "lucide-react";
-import { useMemo } from "react";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ClipboardCopy, RefreshCw, X } from "lucide-react";
+import { useEffect, useMemo, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { InfiniteScrollSentinel } from "../components/infinite-scroll-sentinel";
 import { EmptyState, ErrorPanel, LoadingRows } from "../components/query-state";
 import { RouteBreadcrumb } from "../components/route-breadcrumb";
 import { Button } from "../components/ui/button";
@@ -18,34 +19,62 @@ import { useTelemetryClient } from "../providers/telemetry-client-provider";
 
 export function LogsRoute() {
   const client = useTelemetryClient();
+  const queryClient = useQueryClient();
   const { viewer } = useAppSession();
+  const selectedCompanyId = viewer?.selectedProject?.organizationId ?? "";
+  const selectedProjectId = viewer?.selectedProject?.id ?? "";
+  const selectedProjectScope = `${selectedCompanyId}\u0000${selectedProjectId}`;
+  const previousProjectIdRef = useRef(selectedProjectId);
   const ingestSettingsHref = viewer?.selectedProject
     ? `/projects/${encodeURIComponent(viewer.selectedProject.id)}/settings/ingest`
     : "/projects";
-  const { filters, searchParams, setFilter, clearFilters } = useLogFilters();
+  const { filters, searchParams, setFilter, setServicesFilter, clearFilters } = useLogFilters();
   const [, setSearchParams] = useSearchParams();
   const selectedLogId = searchParams.get("logId");
   const inspectorTab = logInspectorTabOrDefault(searchParams.get("tab"));
   const filtered = hasActiveFiltersForLogs(searchParams);
+  const logSearchInput = { ...filters, cursor: null };
   const facetInput = {
     from: filters.from ?? null,
     to: filters.to ?? null,
-    service: filters.service ?? null,
+    signal: "logs" as const,
     search: filters.search ?? null,
     limit: 50,
   };
   const debouncedFacetInput = useDebouncedValue(facetInput, 250);
-  const query = useQuery({
-    queryKey: queryKeys.logs(filters),
-    queryFn: () => client.searchLogs(filters),
+  useEffect(() => {
+    if (previousProjectIdRef.current === selectedProjectId) {
+      return;
+    }
+    previousProjectIdRef.current = selectedProjectId;
+    void queryClient.resetQueries({
+      predicate: (query) => logRouteCachePredicate(query.queryKey),
+    });
+  }, [queryClient, selectedProjectId]);
+
+  const query = useInfiniteQuery({
+    queryKey: ["LogSearch", selectedProjectScope, queryKeys.logs(logSearchInput)[1]] as const,
+    queryFn: ({ pageParam }) => client.searchLogs({ ...logSearchInput, cursor: pageParam }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
   const facetsQuery = useQuery({
-    queryKey: queryKeys.telemetryFacets(debouncedFacetInput),
+    queryKey: [
+      "TelemetryFacets",
+      selectedProjectScope,
+      queryKeys.telemetryFacets(debouncedFacetInput)[1],
+    ] as const,
     queryFn: () => client.getTelemetryFacets(debouncedFacetInput),
   });
+  const logResult = query.data
+    ? {
+        items: query.data.pages.flatMap((page) => page.items),
+        nextCursor: query.hasNextPage ? (query.data.pages.at(-1)?.nextCursor ?? null) : null,
+      }
+    : null;
   const selectedLog = useMemo<LogEvent | null>(
-    () => query.data?.items.find((log) => log.id === selectedLogId) ?? null,
-    [query.data, selectedLogId],
+    () => logResult?.items.find((log) => log.id === selectedLogId) ?? null,
+    [logResult, selectedLogId],
   );
   const selectLog = (log: LogEvent) => {
     setSearchParams((params) => {
@@ -65,7 +94,7 @@ export function LogsRoute() {
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
-      <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 border-b pb-3">
+      <div className="flex shrink-0 flex-col gap-3 border-b pb-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0 space-y-2">
           <RouteBreadcrumb
             backLabel={t("actions.back")}
@@ -79,7 +108,7 @@ export function LogsRoute() {
           <h1 className="text-xl font-semibold tracking-normal">{t("logs.title")}</h1>
           <p className="text-sm text-muted-foreground">{t("logs.description")}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Button
             aria-label={t("logs.refresh")}
             onClick={() => void query.refetch()}
@@ -96,6 +125,7 @@ export function LogsRoute() {
         filters={filters}
         onChange={setFilter}
         onClear={clearFilters}
+        onServicesChange={setServicesFilter}
       />
       <ResizablePanelGroup className="min-h-0 flex-1 border bg-background" orientation="horizontal">
         <ResizablePanel defaultSize="68%" minSize="45%">
@@ -105,7 +135,7 @@ export function LogsRoute() {
               {query.isError ? (
                 <ErrorPanel error={query.error} onRetry={() => void query.refetch()} />
               ) : null}
-              {query.isSuccess && query.data.items.length === 0 && filtered ? (
+              {query.isSuccess && logResult?.items.length === 0 && filtered ? (
                 <EmptyState
                   filtered={filtered}
                   title={t("logs.empty.filtered.title")}
@@ -118,7 +148,7 @@ export function LogsRoute() {
                   }
                 />
               ) : null}
-              {query.isSuccess && query.data.items.length === 0 && !filtered ? (
+              {query.isSuccess && logResult?.items.length === 0 && !filtered ? (
                 <EmptyState
                   filtered={filtered}
                   title={t("logs.empty.noLogs.title")}
@@ -133,27 +163,23 @@ export function LogsRoute() {
                   }
                 />
               ) : null}
-              {query.isSuccess && query.data.items.length > 0 ? (
+              {query.isSuccess && logResult && logResult.items.length > 0 ? (
                 <LogTable
                   onSelectLog={selectLog}
                   onSortChange={(value) => setFilter("sort", value)}
-                  result={query.data}
+                  result={logResult}
                   selectedLogId={selectedLogId}
                   sort={filters.sort ?? "timestamp_desc"}
                 />
               ) : null}
+              <InfiniteScrollSentinel
+                hasMore={query.hasNextPage}
+                isLoading={query.isFetchingNextPage}
+                label={t("actions.loadMore")}
+                loadingLabel={t("actions.loadingMore")}
+                onLoadMore={() => void query.fetchNextPage()}
+              />
             </div>
-            {query.isSuccess && query.data.nextCursor ? (
-              <div className="flex shrink-0 justify-end border-t bg-background px-3 py-2">
-                <Button
-                  onClick={() => setFilter("cursor", query.data.nextCursor ?? null)}
-                  variant="outline"
-                >
-                  <ArrowRight data-icon="inline-start" />
-                  {t("actions.nextPage")}
-                </Button>
-              </div>
-            ) : null}
           </section>
         </ResizablePanel>
         <ResizableHandle withHandle />
@@ -184,4 +210,8 @@ export function hasActiveFiltersForLogs(searchParams: URLSearchParams) {
   }
 
   return false;
+}
+
+export function logRouteCachePredicate(queryKey: readonly unknown[]): boolean {
+  return queryKey[0] === "LogSearch" || queryKey[0] === "TelemetryFacets";
 }

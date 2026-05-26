@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1440" height="1024" viewBox="0 0 1440 1024" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="CloudGrid evaluation detail result mockup">
+  <style>
+    .title{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:21px;font-weight:650;fill:#09090b;letter-spacing:0}
+    .h{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:600;fill:#09090b;letter-spacing:0}
+    .body{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:13px;font-weight:400;fill:#09090b;letter-spacing:0}
+    .muted{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:400;fill:#71717a;letter-spacing:0}
+    .label{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:11px;font-weight:500;fill:#71717a;letter-spacing:0}
+    .button{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:500;letter-spacing:0}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;font-weight:400;fill:#09090b;letter-spacing:0}
+    .mono-muted{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;font-weight:400;fill:#71717a;letter-spacing:0}
+    .tiny{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:9px;font-weight:500;fill:#71717a;letter-spacing:0}
+  </style>
+  <rect width="1440" height="1024" fill="#ffffff"/>
+  
+  <rect x="0" y="0" width="1440" height="56" rx="0" fill="#ffffff" stroke="none" />
+  <line x1="0" y1="56" x2="1440" y2="56" stroke="#e4e4e7" />
+  <rect x="16" y="16" width="24" height="24" rx="5" fill="#18181b"/>
+  <text x="50" y="34" class="h" >CloudGrid</text>
+  <rect x="426" y="12" width="320" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+  <text x="442" y="32" class="label" fill="#09090b">Personal / checkout-platform</text>
+  <rect x="762" y="12" width="264" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+  <text x="778" y="32" class="label" >Search commands...</text>
+  <rect x="1182" y="12" width="76" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1196" y="33" class="button" fill="#09090b">Setup</text>
+  <rect x="1270" y="12" width="64" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1284" y="33" class="button" fill="#09090b">Docs</text>
+  <circle cx="1388" cy="28" r="15" fill="#f4f4f5" stroke="#e4e4e7"/>
+
+    <rect x="0" y="56" width="232" height="968" rx="0" fill="#fafafa" stroke="none" />
+    <line x1="232" y1="56" x2="232" y2="1024" stroke="#e4e4e7" />
+    <text x="20" y="88" class="label" >Project</text>
+    <text x="20" y="108" class="h" >checkout-platform</text>
+    <text x="20" y="128" class="muted" >production</text>
+    <line x1="16" y1="148" x2="216" y2="148" stroke="#f0f0f1" />
+    <rect x="12" y="166" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="181" r="4" fill="#a1a1aa"/>
+          <text x="42" y="186" class="body" fill="#71717a">AI Chat</text><rect x="12" y="204" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="219" r="4" fill="#a1a1aa"/>
+          <text x="42" y="224" class="body" fill="#71717a">Traces</text><rect x="12" y="242" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="257" r="4" fill="#a1a1aa"/>
+          <text x="42" y="262" class="body" fill="#71717a">Logs</text><rect x="12" y="280" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="295" r="4" fill="#a1a1aa"/>
+          <text x="42" y="300" class="body" fill="#71717a">Metrics</text><rect x="12" y="318" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="333" r="4" fill="#a1a1aa"/>
+          <text x="42" y="338" class="body" fill="#71717a">Dashboards</text><rect x="12" y="356" width="208" height="30" rx="6" fill="#f4f4f5" stroke="#e4e4e7" />
+          <circle cx="28" cy="371" r="4" fill="#18181b"/>
+          <text x="42" y="376" class="body" fill="#09090b">Evaluations</text>
+    <line x1="16" y1="948" x2="216" y2="948" stroke="#f0f0f1" />
+    <circle cx="28" cy="978" r="4" fill="#a1a1aa"/>
+    <text x="42" y="983" class="body" fill="#71717a">Project settings</text>
+  
+    <text x="248" y="92" class="title" >‹</text><text x="276" y="90" class="muted" >AI Eval / Evaluations / support-quality-validation</text>
+    <text x="248" y="128" class="title" >support-quality-validation</text><text x="248" y="150" class="muted" >dataset support-intents v7 · validation · target agent-v4</text>
+    <rect x="1110" y="112" width="128" height="32" rx="6" fill="#18181b" stroke="#18181b" />
+    <text x="1124" y="133" class="button" fill="#fafafa">Run evaluation</text><rect x="1250" y="112" width="154" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1264" y="133" class="button" fill="#09090b">Create comparison</text>
+    <rect x="248" y="172" width="776" height="160" rx="8" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="272" y="206" class="label" >Status</text><text x="272" y="238" class="title" >complete</text><text x="430" y="206" class="label" >Pass rate</text><text x="430" y="238" class="title" >91%</text><text x="430" y="264" class="mono" fill="#16a34a">+9pp</text><text x="588" y="206" class="label" >Exact match</text><text x="588" y="238" class="title" >82%</text><text x="588" y="264" class="mono" fill="#16a34a">+14pp</text><text x="746" y="206" class="label" >p95 latency</text><text x="746" y="238" class="title" >420 ms</text><text x="746" y="264" class="mono" fill="#16a34a">-18%</text><text x="904" y="206" class="label" >Regressions</text><text x="904" y="238" class="title" >3</text><text x="904" y="264" class="mono" fill="#d97706">-5</text>
+    <rect x="248" y="348" width="776" height="616" rx="8" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="264" y="378" class="h" >Item results</text>
+    <text x="266" y="422" class="label" >Row</text><text x="370" y="422" class="label" >Expected</text><text x="516" y="422" class="label" >Actual</text><text x="656" y="422" class="label" >Metric</text><text x="766" y="422" class="label" >Trajectory summary</text><text x="1088" y="422" class="label" >Trace</text>
+    <line x1="248" y1="438" x2="1024" y2="438" stroke="#e4e4e7" />
+    <line x1="248" y1="505" x2="1024" y2="505" stroke="#f0f0f1" /><text x="266" y="477" class="mono" >cls-041</text><text x="370" y="477" class="mono" >billing_refund</text><text x="516" y="477" class="mono" >billing_refund</text><rect x="650" y="459" width="62" height="24" rx="5" fill="#f0fdf4" stroke="#bbf7d0" /><text x="660" y="475" class="label" fill="#16a34a">pass</text><text x="766" y="477" class="muted" >matched refund intent</text><text x="1088" y="477" class="mono" fill="#2563eb">trc_92ad</text><line x1="248" y1="571" x2="1024" y2="571" stroke="#f0f0f1" /><text x="266" y="543" class="mono" >ext-018</text><text x="370" y="543" class="mono" >ORD-10482</text><text x="516" y="543" class="mono" >ORD-10482</text><rect x="650" y="525" width="62" height="24" rx="5" fill="#f0fdf4" stroke="#bbf7d0" /><text x="660" y="541" class="label" fill="#16a34a">pass</text><text x="766" y="543" class="muted" >extracted order fields</text><text x="1088" y="543" class="mono" fill="#2563eb">trc_a18f</text><line x1="248" y1="637" x2="1024" y2="637" stroke="#f0f0f1" /><text x="266" y="609" class="mono" >cls-077</text><text x="370" y="609" class="mono" >cancellation</text><text x="516" y="609" class="mono" >billing_invoice</text><rect x="650" y="591" width="62" height="24" rx="5" fill="#fef2f2" stroke="#fecaca" /><text x="660" y="607" class="label" fill="#dc2626">fail</text><text x="766" y="609" class="muted" >VAT detail outweighed intent</text><text x="1088" y="609" class="mono" fill="#2563eb">trc_c443</text><line x1="248" y1="703" x2="1024" y2="703" stroke="#f0f0f1" /><text x="266" y="675" class="mono" >ext-022</text><text x="370" y="675" class="mono" >FR</text><text x="516" y="675" class="mono" >FR</text><rect x="650" y="657" width="62" height="24" rx="5" fill="#f0fdf4" stroke="#bbf7d0" /><text x="660" y="673" class="label" fill="#16a34a">pass</text><text x="766" y="675" class="muted" >normalized country value</text><text x="1088" y="675" class="mono" fill="#2563eb">trc_d091</text>
+    <rect x="1036" y="172" width="388" height="792" rx="8" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1052" y="202" class="h" >Evaluation result</text><rect x="1312" y="183" width="82" height="24" rx="5" fill="#f0fdf4" stroke="#bbf7d0" /><text x="1322" y="199" class="label" fill="#16a34a">complete</text>
+    <text x="1052" y="234" class="h" >Metric breakdown</text>
+    <line x1="1052" y1="254" x2="1408" y2="254" stroke="#f0f0f1" /><text x="1060" y="282" class="mono" >exact_match  82%  +14pp</text><line x1="1052" y1="298" x2="1408" y2="298" stroke="#f0f0f1" /><text x="1060" y="326" class="mono" >pass_rate    91%  +9pp</text><line x1="1052" y1="342" x2="1408" y2="342" stroke="#f0f0f1" /><text x="1060" y="370" class="mono" >groundedness 88%  +6pp</text><line x1="1052" y1="386" x2="1408" y2="386" stroke="#f0f0f1" /><text x="1060" y="414" class="mono" >latency_p95  420ms -18%</text>
+    <text x="1052" y="462" class="h" >Problems</text>
+    <rect x="1052" y="482" width="356" height="88" rx="6" fill="#fffbeb" stroke="#fde68a" /><text x="1066" y="510" class="body" fill="#d97706">3 validation rows regressed on billing terms.</text><text x="1066" y="536" class="muted" >Open failed rows before promotion.</text>
+    <text x="1052" y="618" class="h" >Actions</text><rect x="1052" y="640" width="146" height="32" rx="6" fill="#18181b" stroke="#18181b" />
+    <text x="1066" y="661" class="button" fill="#fafafa">Start optimization</text><rect x="1210" y="640" width="112" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1224" y="661" class="button" fill="#09090b">Open traces</text>
+  
+</svg>

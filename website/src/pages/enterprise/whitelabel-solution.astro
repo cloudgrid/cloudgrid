@@ -1,0 +1,296 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Section from "../../components/Section.astro";
+import PageHeader from "../../components/PageHeader.astro";
+import Button from "../../components/Button.astro";
+import RelatedFeatures from "../../components/RelatedFeatures.astro";
+
+const audiences = [
+  {
+    title: "Enterprises adding observability to a platform",
+    body: "Offer CloudGrid as the telemetry workspace inside an internal developer platform, private cloud, customer success environment, or managed service portfolio.",
+  },
+  {
+    title: "Startups building SaaS around operational insight",
+    body: "Use CloudGrid as the observability foundation behind a focused product instead of rebuilding OTLP ingest, project isolation, storage, dashboards, and AI evaluation from scratch.",
+  },
+  {
+    title: "Service providers and consultancies",
+    body: "Bundle a branded CloudGrid deployment with implementation, hosting, support, compliance work, or vertical-specific telemetry packages.",
+  },
+];
+
+const customizable = [
+  "Logo, product name, help destinations, legal links, and visible product language.",
+  "Theme tokens such as brand colors, accents, surface treatment, and dark/light presentation.",
+  "Authentication providers and session policy through the BFF-managed OIDC/OAuth boundary.",
+  "Storage, message broker, and evaluation execution through adapter ports.",
+  "Deployment packaging for your environment, tenant model, registry, ingress, TLS, and dependency choices.",
+  "Operational runbooks, support posture, and customer-facing documentation around the branded offering.",
+];
+
+const architecture = [
+  {
+    title: "Public surface stays controlled",
+    body: "The browser talks only to the TypeScript BFF. That keeps sessions, GraphQL, health, and static serving in one public boundary.",
+  },
+  {
+    title: "The message broker is the bridge",
+    body: "Request/reply reads, durable ingest, and live subjects move through the bridge contract instead of direct public access to storage services.",
+  },
+  {
+    title: "Private services own data semantics",
+    body: "Storage-write mutates SurrealDB. Storage-read fetches telemetry and owns filtering, sorting, counts, grouping, facets, and live fanout.",
+  },
+  {
+    title: "Adapters preserve the service model",
+    body: "Storage, bridge, auth, and execution integrations can change behind ports while service ownership and telemetry contracts stay explicit.",
+  },
+];
+
+const scalingLevels = [
+  {
+    title: "Data ingestion",
+    body: "Scale collector capacity around OTLP traffic independently from read-path capacity.",
+  },
+  {
+    title: "Persisting telemetry",
+    body: "Scale storage-write workers and durable bridge processing around write pressure, backlog, and persistence latency.",
+  },
+  {
+    title: "Reading and live delivery",
+    body: "Scale storage-read and BFF capacity around dashboards, GraphQL queries, live subscriptions, and customer-facing UI load.",
+  },
+];
+
+const specAdvantages = [
+  {
+    title: "AI-assisted customization has real boundaries",
+    body: "Agents can read the specs first, then change branding, UX copy, adapter code, or deployment packaging against named interfaces instead of guessing product behavior.",
+  },
+  {
+    title: "Different languages can still implement the same behavior",
+    body: "The GraphQL schema, AsyncAPI bridge contract, error taxonomy, and architecture specs define the expected inputs, outputs, restrictions, and service ownership.",
+  },
+  {
+    title: "Third-party systems integrate at contract edges",
+    body: "External auth, broker, storage, evaluation, or product-portfolio integrations can target documented boundaries while preserving the BFF, bridge, and storage service rules.",
+  },
+  {
+    title: "Review is faster because acceptance is explicit",
+    body: "Specs describe implementation invariants such as data access boundaries, credential handling, public telemetry reads, live delivery, and adapter responsibilities.",
+  },
+];
+
+const licenseRows = [
+  {
+    k: "Internal self-hosted use",
+    v: "Covered by the public Apache 2.0 + Commons Clause license.",
+  },
+  {
+    k: "Use inside your own product infrastructure",
+    v: "Covered when CloudGrid supports your own product operations.",
+  },
+  { k: "Hosted CloudGrid SaaS", v: "Commercial license path." },
+  { k: "White-label resale or embedded offering", v: "Commercial license path." },
+  { k: "Managed service built substantially around CloudGrid", v: "Commercial license path." },
+];
+---
+
+<Layout title="White-label Solution — CloudGrid">
+  <Section size="lg">
+    <PageHeader
+      eyebrow="White-label solution"
+      accent="brand"
+      highlight="your"
+      title="Offer CloudGrid as part of your own product."
+      description="For enterprises, startups, and service providers that want a branded observability and AI-evaluation foundation inside their SaaS, platform, or managed service. CloudGrid provides the source-available product base; commercial licensing covers hosted and white-label use."
+    />
+    <div class="reveal mt-7 flex flex-wrap gap-3" data-delay="3">
+      <Button href="/features/adapters" variant="primary">Customization surface</Button>
+      <Button href="/enterprise#license-paths" variant="secondary">License paths</Button>
+    </div>
+  </Section>
+
+  <Section tone="recessed">
+    <div class="max-w-3xl reveal">
+      <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text">
+        Use CloudGrid when observability is part of your offer.
+      </h2>
+      <p class="mt-3 text-text-secondary">
+        The strongest fit is a product team that needs a branded telemetry workspace and wants
+        control over deployment, customer data, and integration points.
+      </p>
+    </div>
+
+    <div class="mt-10 truth-stack truth-stack--wide">
+      {audiences.map((item, i) => (
+        <div class="truth-stack__item reveal" data-delay={(i + 1) as any}>
+          <div class="truth-stack__index">{String(i + 1).padStart(2, "0")}</div>
+          <div>
+            <div class="truth-stack__title">{item.title}</div>
+            <p>{item.body}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  </Section>
+
+  <Section>
+    <div class="grid lg:grid-cols-[0.85fr_1.15fr] gap-10 items-start">
+      <div class="reveal-x">
+        <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text">
+          From brand wrapper to runtime ports.
+        </h2>
+        <p class="mt-3 text-text-secondary leading-relaxed">
+          White-label use goes beyond a logo swap. CloudGrid separates visible product identity,
+          public access, private telemetry services, and infrastructure adapters so customization
+          can happen at the right layer.
+        </p>
+      </div>
+
+      <div class="reveal">
+        <ul class="truth-stack">
+          {customizable.map((item) => (
+            <li class="truth-stack__item truth-stack__item--compact truth-stack__item--dot">
+              <span class="mt-2 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-text)]"></span>
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  </Section>
+
+  <Section tone="recessed">
+    <div class="max-w-3xl reveal">
+      <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text">
+        Flexible because the bridge keeps boundaries honest.
+      </h2>
+      <p class="mt-3 text-text-secondary leading-relaxed">
+        CloudGrid's service split is what makes partner packaging practical: the public surface
+        stays small, private services keep their ownership, and extensions happen behind message
+        contracts and adapter ports.
+      </p>
+    </div>
+
+    <div class="mt-10 truth-stack truth-stack--wide">
+      {architecture.map((item, i) => (
+        <div class="truth-stack__item reveal" data-delay={(((i % 2) + 1)) as any}>
+          <div class="truth-stack__index">{String(i + 1).padStart(2, "0")}</div>
+          <div>
+            <div class="truth-stack__title">{item.title}</div>
+            <p>{item.body}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  </Section>
+
+  <Section>
+    <div class="grid lg:grid-cols-[0.8fr_1.2fr] gap-10 items-start">
+      <div class="reveal-x">
+        <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text">
+          Scale each pressure point independently.
+        </h2>
+        <p class="mt-3 text-text-secondary leading-relaxed">
+          The modular service model lets each customer tune CloudGrid around their own workload.
+          A write-heavy environment, a dashboard-heavy product, and a high-ingest telemetry service
+          can each use the infrastructure shape that fits.
+        </p>
+      </div>
+
+      <div class="truth-stack">
+        {scalingLevels.map((item, i) => (
+          <div class="truth-stack__item reveal" data-delay={(i + 1) as any}>
+            <div class="truth-stack__index">{String(i + 1).padStart(2, "0")}</div>
+            <div>
+              <div class="truth-stack__title">{item.title}</div>
+              <p>{item.body}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </Section>
+
+  <Section tone="recessed">
+    <div class="grid lg:grid-cols-[0.8fr_1.2fr] gap-10 items-start">
+      <div class="reveal-x">
+        <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text">
+          Customization ships faster because the interfaces are already written down.
+        </h2>
+        <p class="mt-3 text-text-secondary leading-relaxed">
+          CloudGrid comes with implementation specs, contracts, and restrictions that define the
+          expected behavior before a customization project starts. That makes it practical to use
+          AI agents, different programming languages, or third-party systems while keeping the
+          white-label build focused.
+        </p>
+      </div>
+
+      <div class="truth-stack truth-stack--wide">
+        {specAdvantages.map((item, i) => (
+          <div class="truth-stack__item reveal" data-delay={(((i % 2) + 1)) as any}>
+            <div class="truth-stack__index">{String(i + 1).padStart(2, "0")}</div>
+            <div>
+              <div class="truth-stack__title">{item.title}</div>
+              <p>{item.body}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </Section>
+
+  <Section>
+    <div class="grid lg:grid-cols-[0.8fr_1.2fr] gap-10 items-start">
+      <div class="reveal-x">
+        <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text">
+          Clear line between adoption and resale.
+        </h2>
+        <p class="mt-3 text-text-secondary leading-relaxed">
+          The public license supports source-available self-hosted adoption. When CloudGrid itself
+          becomes the hosted service, white-label product, or managed observability offer, use the
+          commercial path.
+        </p>
+      </div>
+
+      <div class="card overflow-hidden p-0 reveal">
+        <dl class="divide-y divide-border-subtle">
+          {licenseRows.map((row) => (
+            <div class="grid sm:grid-cols-[210px_1fr] gap-3 px-5 py-4">
+              <dt class="text-xs uppercase tracking-wider font-semibold text-text-muted">{row.k}</dt>
+              <dd class="text-sm text-text">{row.v}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </div>
+  </Section>
+
+  <Section>
+    <div class="card spotlight p-8 sm:p-10 grid lg:grid-cols-[1fr_auto] gap-6 items-center reveal">
+      <div>
+        <h2 class="text-2xl font-semibold text-text">Bring CloudGrid into your offer.</h2>
+        <p class="mt-3 text-text-secondary max-w-2xl">
+          Start with the customization surface, then review the enterprise overview for data
+          ownership, SSO, project isolation, and procurement answers.
+        </p>
+      </div>
+      <div class="flex flex-wrap gap-3 lg:justify-end">
+        <Button href="/features/adapters" variant="primary">Customization details</Button>
+        <Button href="/enterprise" variant="secondary">Enterprise overview</Button>
+      </div>
+    </div>
+  </Section>
+
+  <Section>
+    <RelatedFeatures
+      items={[
+        { label: "Customizable", href: "/features/adapters", desc: "Branding, packaging, adapters, and runtime extension points." },
+        { label: "Enterprise", href: "/enterprise", desc: "Data ownership, SSO, license, and procurement posture." },
+        { label: "Compare", href: "/enterprise/compare", desc: "Named side-by-side view for buyer and procurement review." },
+      ]}
+    />
+  </Section>
+</Layout>

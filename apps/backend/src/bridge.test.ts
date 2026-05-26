@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { createLogger } from "@cloudgrid/runtime";
 import type { RetentionRuleInput } from "@cloudgrid/ui-contracts";
 import { JSONCodec, type NatsConnection } from "nats";
+import { localAuthContext } from "./auth";
 import { MessageBridgeCloudGridBridge, NATSTelemetryQueryBridge } from "./bridge";
-import { NATSRequestReplyClient } from "./bridge/adapters/nats";
+import { NATSBridgeLifecycle, NATSRequestReplyClient } from "./bridge/adapters/nats";
 
 describe("NATS telemetry query bridge", () => {
   test("injects W3C trace context as NATS request headers", async () => {
@@ -67,6 +68,188 @@ describe("NATS telemetry query bridge", () => {
         attributes: [{ key: "http.status_code", operator: "gte", value: 500 }],
       },
     });
+  });
+
+  test("rejects trace search responses that violate the public non-null GraphQL contract", async () => {
+    const codec = JSONCodec<unknown>();
+    const connection = {
+      request: async (_requestedSubject: string, data: Uint8Array) => {
+        const payload = codec.decode(data);
+        return {
+          data: codec.encode({
+            requestId: requestId(payload),
+            ok: true,
+            data: {
+              items: [
+                {
+                  id: "trace-1",
+                  serviceName: "api",
+                  startedAt: "2026-05-08T10:00:00.000Z",
+                  attributes: {},
+                  spanCount: 1,
+                  errorSpanCount: 0,
+                  logCount: 0,
+                  serviceCount: 1,
+                },
+              ],
+              nextCursor: null,
+            },
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+
+    await expect(bridge.searchTraces({})).rejects.toMatchObject({
+      extensions: {
+        code: "RESPONSE_CONTRACT_INVALID",
+        problem: {
+          id: "ERR-023",
+          retryable: false,
+        },
+      },
+    });
+  });
+
+  test("classifies malformed bridge envelopes as response contract failures", async () => {
+    const codec = JSONCodec<unknown>();
+    const requestReply = {
+      async request() {
+        return codec.encode({
+          ok: true,
+          data: { items: [], nextCursor: null },
+        });
+      },
+    };
+    const bridge = new MessageBridgeCloudGridBridge(requestReply, 2000, createLogger("bff"));
+
+    await expect(bridge.searchTraces({})).rejects.toMatchObject({
+      extensions: {
+        code: "RESPONSE_CONTRACT_INVALID",
+        problem: {
+          id: "ERR-023",
+          retryable: false,
+        },
+      },
+    });
+  });
+
+  test("classifies bridge response payload decode failures as response contract failures", async () => {
+    const requestReply = {
+      async request() {
+        return new TextEncoder().encode("{not-json");
+      },
+    };
+    const bridge = new MessageBridgeCloudGridBridge(requestReply, 2000, createLogger("bff"));
+
+    await expect(bridge.searchTraces({})).rejects.toMatchObject({
+      extensions: {
+        code: "RESPONSE_CONTRACT_INVALID",
+        problem: {
+          id: "ERR-023",
+          retryable: false,
+        },
+      },
+    });
+  });
+
+  test("keeps NATS no responders and timeout errors classified separately", async () => {
+    const bridgeUnavailable = new MessageBridgeCloudGridBridge(
+      {
+        async request() {
+          throw Object.assign(new Error("no responders"), { code: "503" });
+        },
+      },
+      2000,
+      createLogger("bff"),
+    );
+    const bridgeTimeout = new MessageBridgeCloudGridBridge(
+      {
+        async request() {
+          throw Object.assign(new Error("timeout"), { code: "TIMEOUT" });
+        },
+      },
+      2000,
+      createLogger("bff"),
+    );
+
+    await expect(bridgeUnavailable.searchTraces({})).rejects.toMatchObject({
+      extensions: { code: "MESSAGE_BRIDGE_UNAVAILABLE", problem: { id: "ERR-013" } },
+    });
+    await expect(bridgeTimeout.searchTraces({})).rejects.toMatchObject({
+      extensions: { code: "MESSAGE_BRIDGE_TIMEOUT", problem: { id: "ERR-014" } },
+    });
+  });
+
+  test("caps response validation issue logging without raw payload data", async () => {
+    const codec = JSONCodec<unknown>();
+    const logged: Array<{ event: string; fields: Record<string, unknown> }> = [];
+    const logger = {
+      debug() {},
+      info() {},
+      warn() {},
+      error(event: string, fields?: Record<string, unknown>) {
+        logged.push({ event, fields: fields ?? {} });
+      },
+    };
+    const requestReply = {
+      async request(_subject: string, data: Uint8Array) {
+        const payload = codec.decode(data);
+        return codec.encode({
+          requestId: requestId(payload),
+          ok: true,
+          data: {
+            items: Array.from({ length: 20 }, (_, index) => ({
+              id: `trace-${index}`,
+              serviceName: "api",
+              secret: "do-not-log-this-payload-value",
+            })),
+            nextCursor: null,
+          },
+        });
+      },
+    };
+    const bridge = new MessageBridgeCloudGridBridge(requestReply, 2000, logger);
+
+    await expect(bridge.searchTraces({})).rejects.toMatchObject({
+      extensions: { code: "RESPONSE_CONTRACT_INVALID" },
+    });
+
+    const validationLog = logged.find((entry) => entry.event === "nats_response_validation_failed");
+    expect(validationLog?.fields).toMatchObject({
+      error_id: "ERR-023",
+      error_code: "RESPONSE_CONTRACT_INVALID",
+      operation_or_subject: "telemetry.traces.search",
+    });
+    const issues = validationLog?.fields.issues as Array<{ path: string }> | undefined;
+    expect(issues?.length).toBeLessThanOrEqual(5);
+    expect(JSON.stringify(validationLog)).not.toContain("do-not-log-this-payload-value");
+    expect(issues?.every((issue) => issue.path.split(".").length <= 6)).toBe(true);
+  });
+
+  test("NATS lifecycle health requires an operational flush", async () => {
+    const lifecycle = new NATSBridgeLifecycle({
+      isClosed: () => false,
+      isDraining: () => false,
+      flush: async () => {
+        throw new Error("flush failed");
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection);
+
+    await expect(lifecycle.health()).resolves.toBe("unavailable");
+  });
+
+  test("NATS lifecycle health is unavailable while draining", async () => {
+    const lifecycle = new NATSBridgeLifecycle({
+      isClosed: () => false,
+      isDraining: () => true,
+      flush: async () => {},
+      drain: async () => {},
+    } as unknown as NatsConnection);
+
+    await expect(lifecycle.health()).resolves.toBe("unavailable");
   });
 
   test("sends telemetry facet requests to telemetry.facets", async () => {
@@ -143,13 +326,14 @@ describe("NATS telemetry query bridge", () => {
     } as unknown as NatsConnection;
     const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
 
-    await bridge.metricNames({ query: "token", limit: 10 });
+    await bridge.metricNames({ query: "token", sort: "name_desc", limit: 10 });
     await bridge.metricSeries({
       metricName: "gen_ai.client.token.usage",
       from: "2026-05-14T08:00:00.000Z",
       to: "2026-05-14T09:00:00.000Z",
       aggregation: "sum",
       groupBy: ["gen_ai.system"],
+      sort: "value_desc",
       limit: 100,
     });
     await bridge.richMetricSeries({
@@ -174,7 +358,7 @@ describe("NATS telemetry query bridge", () => {
     expect(requests).toMatchObject([
       {
         subject: "telemetry.metrics.names",
-        payload: { input: { query: "token", limit: 10 } },
+        payload: { input: { query: "token", sort: "name_desc", limit: 10 } },
       },
       {
         subject: "telemetry.metrics.query",
@@ -185,6 +369,7 @@ describe("NATS telemetry query bridge", () => {
             to: "2026-05-14T09:00:00.000Z",
             aggregation: "sum",
             groupBy: ["gen_ai.system"],
+            sort: "value_desc",
             limit: 100,
           },
         },
@@ -213,6 +398,63 @@ describe("NATS telemetry query bridge", () => {
         },
       },
     ]);
+  });
+
+  test("emits AsyncAPI top-level request payload shapes for telemetry subject families", async () => {
+    const codec = JSONCodec<unknown>();
+    const requests: Array<{ subject: string; payload: Record<string, unknown> }> = [];
+    const connection = {
+      request: async (requestedSubject: string, data: Uint8Array) => {
+        const payload = codec.decode(data) as Record<string, unknown>;
+        requests.push({ subject: requestedSubject, payload });
+        return {
+          data: codec.encode({
+            requestId: requestId(payload),
+            ok: true,
+            data: responseForTelemetrySubject(requestedSubject),
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+
+    await bridge.searchTraces({ service: "api", limit: 10 }, localAuthContext());
+    await bridge.getTraceDetail(
+      "trace-1",
+      { selectedSpanId: "span-1", relatedLogLimit: 10 },
+      localAuthContext(),
+    );
+    await bridge.searchLogs({ service: "api", limit: 10 }, localAuthContext());
+    await bridge.telemetryFacets({ service: "api", limit: 25 }, localAuthContext());
+    await bridge.metricNames({ query: "token", limit: 10 }, localAuthContext());
+    await bridge.metricSeries(
+      {
+        metricName: "gen_ai.client.token.usage",
+        from: "2026-05-14T08:00:00.000Z",
+        to: "2026-05-14T09:00:00.000Z",
+        aggregation: "sum",
+      },
+      localAuthContext(),
+    );
+    await bridge.richMetricSeries(
+      {
+        from: "2026-05-14T08:00:00.000Z",
+        to: "2026-05-14T09:00:00.000Z",
+        query: { interval: "PT1M", queries: [], formulas: [], displaySeries: [] },
+      },
+      localAuthContext(),
+    );
+
+    expect(payloadKeysBySubject(requests)).toEqual({
+      "telemetry.facets": ["authContext", "issuedAt", "query", "requestId"],
+      "telemetry.logs.search": ["authContext", "issuedAt", "query", "requestId"],
+      "telemetry.metrics.names": ["authContext", "input", "issuedAt", "requestId"],
+      "telemetry.metrics.query": ["authContext", "input", "issuedAt", "requestId"],
+      "telemetry.metrics.rich_query": ["authContext", "input", "issuedAt", "requestId"],
+      "telemetry.traces.get": ["authContext", "issuedAt", "query", "requestId", "traceId"],
+      "telemetry.traces.search": ["authContext", "issuedAt", "query", "requestId"],
+    });
   });
 
   test("sends dashboard queries and mutations to control-plane dashboard subjects", async () => {
@@ -380,27 +622,214 @@ describe("NATS telemetry query bridge", () => {
     } as unknown as NatsConnection;
     const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
 
-    const dataset = await bridge.createDataset({ name: "Regression", tags: ["nightly"] });
+    const dataset = await bridge.createDataset({
+      projectId: "project-1",
+      name: "Regression",
+      tags: ["nightly"],
+      settings: {
+        evaluationFamily: "classification",
+        inputType: "json",
+        expectedType: "json",
+        defaultSplit: "training",
+        intakePolicy: {},
+        defaultMetricSettings: [{ metricId: "exact_match" }],
+        retentionProfile: "balanced",
+      },
+      idempotencyKey: "dataset-create-1",
+    });
 
     expect(subject).toBe("eval.dataset.create");
     expect(payload).toMatchObject({
-      input: { name: "Regression", tags: ["nightly"] },
+      projectId: "project-1",
+      idempotencyKey: "dataset-create-1",
+      input: { name: "Regression", tags: ["nightly"], projectId: "project-1" },
     });
     expect(dataset).toMatchObject({
       id: "dataset-1",
       name: "Regression",
       itemCount: 0,
-      reviewedItemCount: 0,
+      readyItemCount: 0,
       splitCounts: {},
       tags: [],
       health: {
         status: "needs_review",
-        reviewedItemCount: 0,
+        readyItemCount: 0,
         totalItemCount: 0,
         splitCounts: {},
         warnings: [],
       },
     });
+    expect(dataset.currentVersion).toMatchObject({ version: 1, datasetId: "dataset-1" });
+  });
+
+  test("updates dataset settings through the v2 storage-write subject", async () => {
+    const codec = JSONCodec<unknown>();
+    let subject = "";
+    let payload: unknown;
+    const connection = {
+      request: async (requestedSubject: string, data: Uint8Array) => {
+        subject = requestedSubject;
+        payload = codec.decode(data);
+        return {
+          data: codec.encode({
+            requestId: requestId(payload),
+            ok: true,
+            data: {
+              id: "dataset-1",
+              projectId: "project-1",
+              name: "Regression",
+              description: null,
+              currentVersionId: "dataset-1:version:2",
+              currentVersion: {
+                id: "dataset-1:version:2",
+                version: 2,
+                digest: "digest-2",
+                createdAt: "2026-05-17T10:00:00.000Z",
+              },
+              settings: {
+                evaluationFamily: "classification",
+                inputType: "text",
+                expectedType: "json",
+                defaultSplit: "validation",
+                intakePolicy: {
+                  manualDefaultStatus: "draft",
+                  importDefaultStatus: "needs_review",
+                  traceDefaultStatus: "needs_expected",
+                },
+                defaultMetricSettings: [],
+                retentionProfile: "balanced",
+              },
+              createdAt: "2026-05-17T10:00:00.000Z",
+              createdBy: "user-1",
+              updatedAt: "2026-05-17T10:01:00.000Z",
+              updatedBy: "user-1",
+              itemCount: 0,
+              readyItemCount: 0,
+              splitCounts: {},
+              health: null,
+              tags: [],
+            },
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+
+    const dataset = await bridge.updateDatasetSettings(
+      {
+        datasetId: "dataset-1",
+        expectedDatasetVersionId: "dataset-1:version:1",
+        settings: {
+          evaluationFamily: "classification",
+          inputType: "text",
+          expectedType: "json",
+          defaultSplit: "validation",
+          intakePolicy: {
+            manualDefaultStatus: "draft",
+            importDefaultStatus: "needs_review",
+            traceDefaultStatus: "needs_expected",
+          },
+          defaultMetricSettings: [],
+          retentionProfile: "balanced",
+        },
+        idempotencyKey: "dataset-settings-1",
+      },
+      { mode: "authenticated", authMode: "sso", principalId: "user-1", projectId: "project-1" },
+    );
+
+    expect(subject).toBe("eval.dataset.settings.update");
+    expect(payload).toMatchObject({
+      projectId: "project-1",
+      datasetId: "dataset-1",
+      expectedDatasetVersionId: "dataset-1:version:1",
+      idempotencyKey: "dataset-settings-1",
+      input: { settings: { inputType: "text" }, projectId: "project-1" },
+    });
+    expect(dataset.currentVersionId).toBe("dataset-1:version:2");
+    expect(dataset.settings.inputType).toBe("text");
+  });
+
+  test("applies all dataset item updates instead of dropping later batch entries", async () => {
+    const codec = JSONCodec<unknown>();
+    const subjects: string[] = [];
+    const payloads: unknown[] = [];
+    const connection = {
+      request: async (requestedSubject: string, data: Uint8Array) => {
+        subjects.push(requestedSubject);
+        payloads.push(codec.decode(data));
+        const version = subjects.length + 1;
+        return {
+          data: codec.encode({
+            requestId: requestId(payloads.at(-1)),
+            ok: true,
+            data: {
+              id: "dataset-1",
+              projectId: "project-1",
+              name: "Dataset",
+              description: null,
+              currentVersionId: `dataset-1:version:${version}`,
+              currentVersion: {
+                id: `dataset-1:version:${version}`,
+                version,
+                digest: `digest-${version}`,
+                createdAt: "2026-05-17T10:00:00.000Z",
+              },
+              settings: {
+                evaluationFamily: "classification",
+                inputType: "json",
+                expectedType: "json",
+                defaultSplit: "validation",
+                intakePolicy: {},
+                defaultMetricSettings: [],
+                retentionProfile: "balanced",
+              },
+              createdAt: "2026-05-17T10:00:00.000Z",
+              createdBy: "user-1",
+              updatedAt: "2026-05-17T10:00:00.000Z",
+              updatedBy: "user-1",
+              itemCount: 2,
+              readyItemCount: 2,
+              splitCounts: { validation: 2 },
+              health: null,
+              tags: [],
+            },
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+
+    const dataset = await bridge.updateDatasetItems(
+      {
+        datasetId: "dataset-1",
+        expectedDatasetVersionId: "dataset-1:version:1",
+        updates: [
+          { id: "item-1", operation: "edit", input: { q: "one" } },
+          { id: "item-2", operation: "edit", input: { q: "two" } },
+        ],
+        idempotencyKey: "dataset-items-1",
+      },
+      { mode: "authenticated", authMode: "sso", principalId: "user-1", projectId: "project-1" },
+    );
+
+    expect(subjects).toEqual(["eval.dataset.item.update", "eval.dataset.item.update"]);
+    expect(payloads).toMatchObject([
+      {
+        datasetId: "dataset-1",
+        datasetItemId: "item-1",
+        expectedDatasetVersionId: "dataset-1:version:1",
+        idempotencyKey: "dataset-items-1:1",
+      },
+      {
+        datasetId: "dataset-1",
+        datasetItemId: "item-2",
+        expectedDatasetVersionId: "dataset-1:version:2",
+        idempotencyKey: "dataset-items-1:2",
+      },
+    ]);
+    expect(dataset.currentVersionId).toBe("dataset-1:version:3");
   });
 
   test("normalizes lean experiment create responses to the public GraphQL experiment shape", async () => {
@@ -436,10 +865,10 @@ describe("NATS telemetry query bridge", () => {
       datasetId: "dataset-1",
       datasetVersion: 1,
       scorerIds: ["scorer-1"],
-      solverRef: { kind: "integration" },
+      solverRef: { kind: "agent", name: "integration" },
     });
 
-    expect(subject).toBe("eval.experiment.create");
+    expect(subject).toBe("eval.evaluation.create");
     expect(payload).toMatchObject({
       input: {
         name: "Regression",
@@ -642,6 +1071,170 @@ describe("NATS telemetry query bridge", () => {
     });
     expect(requests[4]?.payload).toMatchObject({ invitationId: "invite-1" });
     expect(requests[5]?.payload).toMatchObject({ invitationId: "invite-1" });
+  });
+
+  test("sends AI provider and AI Chat control requests using AsyncAPI top-level payload fields", async () => {
+    const codec = JSONCodec<unknown>();
+    const requests: Array<{ subject: string; payload: unknown }> = [];
+    const connection = {
+      request: async (requestedSubject: string, data: Uint8Array) => {
+        const payload = codec.decode(data);
+        requests.push({ subject: requestedSubject, payload });
+        return {
+          data: codec.encode({
+            requestId: requestId(payload),
+            ok: true,
+            data: aiControlResponseFor(requestedSubject),
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+    const authContext = {
+      mode: "authenticated" as const,
+      authMode: "sso" as const,
+      principalId: "user-1",
+    };
+
+    await bridge.updateProjectAiProviderSettings(
+      {
+        projectId: "project-1",
+        providerProfiles: [],
+        modelAliases: [],
+        expectedVersion: 1,
+      },
+      authContext,
+    );
+    await bridge.updateCompanyAiProviderSettings(
+      {
+        companyId: "org-1",
+        providerProfile: aiProviderProfile("company"),
+        chatModelAlias: {
+          id: "company-chat",
+          name: "chat",
+          providerProfileId: "provider-1",
+          model: "gpt-4.1-mini",
+          purpose: "chat",
+          parameters: {},
+        },
+        expectedVersion: 1,
+      },
+      authContext,
+    );
+    await bridge.aiChatHistory(
+      { companyId: "org-1", projectId: "project-1", first: 10 },
+      authContext,
+    );
+    await bridge.resolveAiProviderSecret("managed:company/org-1/provider-1", authContext);
+    await bridge.createAiChatConversation(
+      {
+        companyId: "org-1",
+        projectId: "project-1",
+        firstUserMessage: "Investigate errors",
+      },
+      authContext,
+    );
+    await bridge.deleteAiChatConversation("chat-1", authContext);
+    await bridge.approveAiChatAction(
+      {
+        actionProposalId: "action-1",
+        idempotencyKey: "approval-key-1",
+        approved: true,
+        expectedVersion: 1,
+      },
+      authContext,
+    );
+
+    expect(requests.map((request) => request.subject)).toEqual([
+      "control.ai_providers.project.update",
+      "control.ai_providers.company.update",
+      "control.ai_chat.history",
+      "control.ai_provider_secrets.resolve",
+      "control.ai_chat.conversation.create",
+      "control.ai_chat.conversation.delete",
+      "control.ai_chat.action.approve",
+    ]);
+    expect(requests[0]?.payload).toMatchObject({
+      projectId: "project-1",
+      providerProfiles: [],
+      modelAliases: [],
+      expectedVersion: 1,
+    });
+    expect(requests[0]?.payload).not.toHaveProperty("input");
+    expect(requests[1]?.payload).toMatchObject({
+      companyId: "org-1",
+      providerProfile: { id: "provider-1" },
+      chatModelAlias: { id: "company-chat" },
+      expectedVersion: 1,
+    });
+    expect(requests[1]?.payload).not.toHaveProperty("input");
+    expect(requests[2]?.payload).toMatchObject({
+      companyId: "org-1",
+      userId: "user-1",
+      projectId: "project-1",
+      first: 10,
+    });
+    expect(requests[2]?.payload).not.toHaveProperty("input");
+    expect(requests[3]?.payload).toMatchObject({
+      credentialRef: "managed:company/org-1/provider-1",
+    });
+    expect(requests[3]?.payload).not.toHaveProperty("input");
+    expect(requests[4]?.payload).toMatchObject({
+      companyId: "org-1",
+      projectId: "project-1",
+      userId: "user-1",
+      firstUserMessage: "Investigate errors",
+    });
+    expect(requests[4]?.payload).not.toHaveProperty("input");
+    expect(requests[5]?.payload).toMatchObject({
+      conversationId: "chat-1",
+      userId: "user-1",
+    });
+    expect(requests[5]?.payload).not.toHaveProperty("input");
+    expect(requests[6]?.payload).toMatchObject({
+      actionProposalId: "action-1",
+      idempotencyKey: "approval-key-1",
+      approved: true,
+      userId: "user-1",
+      expectedVersion: 1,
+    });
+    expect(requests[6]?.payload).not.toHaveProperty("input");
+  });
+
+  test("uses the durable local principal for AI Chat conversation create requests", async () => {
+    const codec = JSONCodec<unknown>();
+    let payload: unknown;
+    const connection = {
+      request: async (_requestedSubject: string, data: Uint8Array) => {
+        payload = codec.decode(data);
+        return {
+          data: codec.encode({
+            requestId: requestId(payload),
+            ok: true,
+            data: aiControlResponseFor("control.ai_chat.conversation.create"),
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+
+    await bridge.createAiChatConversation(
+      {
+        companyId: "local",
+        projectId: "default",
+        firstUserMessage: "Investigate errors",
+      },
+      localAuthContext(),
+    );
+
+    expect(payload).toMatchObject({
+      companyId: "local",
+      projectId: "default",
+      userId: "local-user",
+      firstUserMessage: "Investigate errors",
+    });
   });
 
   test("starts live traces through storage-read and stops on iterator return", async () => {
@@ -898,6 +1491,49 @@ function requestId(payload: unknown): string {
   return "request-1";
 }
 
+function payloadKeysBySubject(
+  requests: Array<{ subject: string; payload: Record<string, unknown> }>,
+) {
+  return Object.fromEntries(
+    requests.map(({ subject, payload }) => [subject, Object.keys(payload).sort()]),
+  );
+}
+
+function responseForTelemetrySubject(subject: string) {
+  if (subject === "telemetry.traces.search") {
+    return { items: [], nextCursor: null };
+  }
+  if (subject === "telemetry.traces.get") {
+    return traceDetail();
+  }
+  if (subject === "telemetry.logs.search") {
+    return { items: [], nextCursor: null };
+  }
+  if (subject === "telemetry.facets") {
+    return {
+      services: [],
+      operations: [],
+      spanNames: [],
+      severities: [],
+      attributeKeys: [],
+    };
+  }
+  if (subject === "telemetry.metrics.names") {
+    return { items: [] };
+  }
+  if (subject === "telemetry.metrics.rich_query") {
+    return { interval: "PT1M", series: [], displaySeries: [], warnings: [] };
+  }
+  return {
+    metric: metricDescriptor("gen_ai.client.token.usage"),
+    aggregation: "sum",
+    interval: "PT1M",
+    groupBy: [],
+    series: [],
+    warnings: [],
+  };
+}
+
 async function waitUntil(predicate: () => boolean, timeoutMs: number) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
@@ -1024,6 +1660,122 @@ function controlResponseFor(subject: string) {
     default:
       throw new Error(`unexpected subject ${subject}`);
   }
+}
+
+function aiControlResponseFor(subject: string) {
+  switch (subject) {
+    case "control.ai_providers.project.update":
+      return { settings: projectAiProviderSettings() };
+    case "control.ai_providers.company.update":
+      return { settings: companyAiProviderSettings() };
+    case "control.ai_chat.history":
+      return {
+        history: {
+          companyId: "org-1",
+          userId: "user-1",
+          projectGroups: [],
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      };
+    case "control.ai_provider_secrets.resolve":
+      return { credential: { credentialRef: "managed:company/org-1/provider-1", value: "secret" } };
+    case "control.ai_chat.conversation.create":
+      return { conversation: aiChatConversation() };
+    case "control.ai_chat.conversation.delete":
+      return { deleted: true };
+    case "control.ai_chat.action.approve":
+      return { action: aiChatActionProposal("approved") };
+    default:
+      throw new Error(`unexpected AI control subject ${subject}`);
+  }
+}
+
+function aiProviderProfile(scope: "project" | "company") {
+  const providerKind = "openai" as const;
+  void scope;
+  return {
+    id: "provider-1",
+    label: "OpenAI",
+    providerKind,
+    credentialRef: "env:OPENAI_API_KEY",
+    models: { chat: ["gpt-4.1-mini"] },
+  };
+}
+
+function projectAiProviderSettings() {
+  return {
+    projectId: "project-1",
+    providerProfiles: [],
+    modelAliases: [],
+    effective: {
+      enabled: false,
+      warnings: [],
+      missingCredentialRefs: [],
+      disabledProviderProfiles: [],
+      missingAliasPurposes: [],
+      runtimeSource: "stored",
+    },
+    version: 2,
+    updatedAt: "2026-05-18T08:00:00.000Z",
+    updatedByUserId: "user-1",
+  };
+}
+
+function companyAiProviderSettings() {
+  return {
+    companyId: "org-1",
+    chatProviderProfile: aiProviderProfile("company"),
+    effective: {
+      enabled: true,
+      warnings: [],
+      missingCredentialRefs: [],
+      disabledProviderProfiles: [],
+      runtimeSource: "stored",
+    },
+    version: 2,
+    updatedAt: "2026-05-18T08:00:00.000Z",
+    updatedByUserId: "user-1",
+  };
+}
+
+function aiChatConversation() {
+  return {
+    id: "chat-1",
+    companyId: "org-1",
+    projectId: "project-1",
+    userId: "user-1",
+    title: "Investigate errors",
+    status: "active",
+    lastMessageAt: "2026-05-18T08:00:00.000Z",
+    lastRunStatus: "idle",
+    messages: [],
+    runs: [],
+    artifacts: [],
+    actionProposals: [],
+    compactions: [],
+    version: 1,
+    createdAt: "2026-05-18T08:00:00.000Z",
+    updatedAt: "2026-05-18T08:00:00.000Z",
+  };
+}
+
+function aiChatActionProposal(status = "proposed") {
+  return {
+    id: "action-1",
+    conversationId: "chat-1",
+    runId: "run-1",
+    projectId: "project-1",
+    risk: "medium",
+    status,
+    actionKind: "dashboard.save",
+    inputPreview: {},
+    requiresApproval: true,
+    idempotencyKey: "action-1",
+    expiresAt: "2026-05-18T08:15:00.000Z",
+    version: 2,
+    createdAt: "2026-05-18T08:00:00.000Z",
+    updatedAt: "2026-05-18T08:00:00.000Z",
+  };
 }
 
 function organizationInvitation(overrides: Record<string, unknown> = {}) {

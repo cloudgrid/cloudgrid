@@ -41,8 +41,16 @@ Control-plane does not:
 - resolve raw provider credentials for the frontend;
 - store raw API keys, bearer tokens, refresh tokens, provider secret JSON, AWS
   access key secrets, Azure client secrets, session cookies, or Authorization
-  headers;
+  headers in provider settings rows or return them through read APIs;
 - execute AI Chat, AI Eval, judge, optimizer, embedding, or replay work.
+
+Control-plane does own the managed provider secret vault used by SaaS and local
+UI configuration. Managed secrets are encrypted at rest in dedicated
+`ai_provider_secret` records and are referenced from provider settings by
+`managed:<scope>/<owner>/<provider>` refs. The raw secret value is accepted only
+through write-only mutation input and is returned only to the BFF/runtime over
+the private `control.ai_provider_secrets.resolve` subject for an authorized
+execution.
 
 The BFF talks to control-plane through message bridge subjects. Frontend talks
 only to BFF GraphQL. Harness is the only execution boundary for model calls.
@@ -72,15 +80,20 @@ migration updates generated types.
 Fields:
 
 - `id`: opaque profile ID.
-- `scope`: `project` or `company`.
-- `companyId`.
-- `projectId`: present only for project-scoped profiles.
+- `ownerScope`: public GraphQL field with value `project` or `company`.
+- `ownerId`: public GraphQL field containing the owning project ID for
+  project-scoped profiles or company ID for company-scoped profiles.
+- `companyId` and `projectId`: internal control-plane persistence fields only;
+  they are not returned through the public GraphQL `AiProviderProfile` type.
 - `label`: user-facing name.
 - `providerKind`: one supported provider kind.
 - `baseUrl`: required for `openai_compatible` and `azure_foundry`; forbidden
   for `openai`, `anthropic`, and `aws_bedrock`.
 - `credentialRef`: opaque reference resolved by the BFF/harness credential
   resolver.
+- `credentialValue`: write-only input field for creating or rotating the
+  managed secret behind `credentialRef`. It is never stored in provider settings
+  and never returned by GraphQL.
 - `defaultModel`: optional model identifier.
 - `models`: allowed model identifiers grouped by `default`, `chat`, `judge`,
   `optimizer`, `embedding`, and `replay`.
@@ -155,23 +168,38 @@ the profile for chat.
 
 Allowed v1 forms:
 
+- `managed:company/<companyId>/<providerProfileId>`: CloudGrid-managed,
+  company-scoped encrypted provider secret. This is the default UI path for AI
+  Chat in SaaS and local mode.
+- `managed:project/<projectId>/<providerProfileId>`: CloudGrid-managed,
+  project-scoped encrypted provider secret. This is the default UI path for
+  project-level provider settings.
 - `env:<NAME>`: the BFF/harness runtime reads the named environment variable.
 - `external:<provider>/<path>`: an installed credential resolver reads an
   operator-managed external secret. The resolver contract must be configured at
   service startup.
 
-The frontend may collect and save `credentialRef`; it must not collect raw
-secret values. CloudGrid does not accept write-only raw secret input in the UI
-unless a separate secret-management spec and storage boundary exist.
+The frontend may collect `credentialValue` only on create/rotate flows. The BFF
+sends it to control-plane, control-plane writes an encrypted managed secret, and
+the saved profile receives the derived `managed:` `credentialRef`. The frontend
+may also collect `credentialRef` for advanced automation/operator flows. Raw
+secret values must never be sent in `credentialRef`.
 
 Returned GraphQL settings include only the redacted `credentialRef`, a
 human-readable credential label, and effective warnings. They never include
 resolved secret bytes.
 
-Control-plane validates only reference shape and structural settings. It does
-not read BFF environment variables and does not call external secret resolvers.
-Runtime credential existence is checked by the execution process immediately
-before harness invocation. Missing runtime credentials fail with `ERR-AIP-001`.
+Control-plane validates reference shape and structural settings. It does not
+read BFF environment variables and does not call external secret resolvers.
+Managed credential existence is checked by control-plane when resolving
+`managed:` refs. Environment and external credential existence is checked by the
+execution process immediately before harness invocation. Missing runtime
+credentials fail with `ERR-AIP-001`.
+
+Managed provider secrets use the control-plane
+`CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY` deployment secret as key material.
+Local mode may run with the built-in development key; deployed mode must provide
+a stable non-default encryption key before accepting production secrets.
 
 ## Local Bootstrap
 
@@ -208,7 +236,8 @@ The contract wave for this spec must add:
   - `control.ai_providers.project.get`;
   - `control.ai_providers.project.update`;
   - `control.ai_providers.company.get`;
-  - `control.ai_providers.company.update`.
+  - `control.ai_providers.company.update`;
+  - `control.ai_provider_secrets.resolve`.
 - JSON Schema `specs/03-contracts/entities/ai/ai-provider-settings.schema.json`.
 - Generated TypeScript UI contracts and Go contracts.
 
@@ -235,8 +264,10 @@ Updates fail with `ERR-001` when:
 - `azure_foundry` is missing required deployment metadata in
   `parameters.deployment`;
 - alias references are missing or disabled;
-- `credentialRef` is missing for an enabled profile;
+- neither `credentialRef` nor write-only `credentialValue` is provided for an
+  enabled profile;
 - `credentialRef` does not use an allowed prefix;
+- `credentialValue` is empty when present;
 - strings contain secret-looking keys such as `authorization`, `cookie`,
   `x-api-key`, `api_key`, `token`, `secret`, `password`,
   `aws_secret_access_key`, or `client_secret`;

@@ -43,6 +43,11 @@ Deployed mode defaults:
 
 - `CLOUDGRID_SELF_OBSERVABILITY_ENABLED=false` unless explicitly enabled.
 - Enabling self-observability requires explicit company, project, OTLP endpoint, and ingest credential configuration.
+- The configured OTLP endpoint must be accepted by the collector's deployed
+  ingest bearer-token validator. Collector validation uses
+  `CLOUDGRID_AUTH_ISSUER`, `CLOUDGRID_AUTH_AUDIENCE`, and
+  `CLOUDGRID_AUTH_JWKS_URL`; browser SSO provider settings are not a substitute
+  for these service-token values.
 - Control-plane must not create a company in deployed mode for this feature.
 - The configured project is visible only through the existing organization membership and selected-project authorization rules.
 - The control-plane service validates at startup/readiness that the configured self-observability project exists and belongs to the configured company. A mismatch fails with ERR-009. Other services validate only static self-observability configuration and rely on the collector's ingest credential validation for project routing.
@@ -75,24 +80,24 @@ Shared variables:
 - `CLOUDGRID_SELF_OBSERVABILITY_TRACES_ENABLED`, default `true` when self-observability is enabled.
 - `CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED`, default `true` when self-observability is enabled.
 - `CLOUDGRID_SELF_OBSERVABILITY_METRICS_ENABLED`, default `true` when self-observability is enabled.
+- `CLOUDGRID_SELF_OBSERVABILITY_EXPORT_FAILURE_LOG_LEVEL`, one of `debug`,
+  `info`, `warn`, `error`, or `off`. Default `warn`. This controls only
+  process log records emitted when an exporter cannot deliver telemetry; it does
+  not change telemetry signal collection or `cloudgrid.exporter.failures`.
 
 Credential variables:
 
-- `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN`, required when enabled in
-  deployed mode. In local token mode it is the opaque local project token mapped
-  to `CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID` by
-  `CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS`. It may be empty only in local
-  single-project development mode.
+- `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN`, required whenever
+  self-observability is enabled. In local mode it is the opaque local project
+  token mapped to `CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID` by
+  `CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS`; it must not fall back to anonymous
+  local ingest.
 
 Validation rules:
 
 - `CLOUDGRID_SELF_OBSERVABILITY_ENABLED=false` disables all self-observability exporters in that process.
 - In deployed mode, enabling self-observability without company ID, project ID, endpoint, or bearer token fails startup with ERR-009.
-- In local mode, if `CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS` is non-empty and
-  self-observability is enabled, `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN`
-  must be non-empty and must resolve to `CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID`
-  in the configured token map. Startup or readiness fails with ERR-009 when the
-  token is missing or mapped to another project.
+- In local mode, enabling self-observability without `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN` fails startup with ERR-009. The token must resolve to `CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID` in `CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS`; readiness fails with ERR-009 when it is mapped to another project.
 - Services must not read SurrealDB credentials, browser session cookies, provider credentials, or raw API keys to populate telemetry.
 - Services must not accept tenant, company, or project ownership from OTLP resource attributes. Project ownership still comes only from collector authorization and routing.
 - Unknown `CLOUDGRID_SELF_OBSERVABILITY_*` variables are ignored until this spec defines them.
@@ -116,14 +121,28 @@ The first production exporter is OTLP HTTP:
 - Logs are sent to `<endpoint>/v1/logs`.
 - The exporter sets `Authorization: Bearer <token>` only when
   `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN` is non-empty.
-- The exporter sets `Content-Type: application/json` and uses OTLP JSON mapping.
+- The exporter sets `Content-Type: application/json` and emits OTLP JSON that
+  follows the protobuf JSON mapping. Go implementations should build official
+  OTLP protobuf message types and serialize them with `protojson`. TypeScript
+  implementations may use a constrained mapper only when focused tests prove
+  the emitted payload is accepted by protobuf JSON decoding. All OTLP `bytes`
+  fields, including trace IDs, span IDs, parent span IDs, metric exemplars, and
+  log trace/span correlation fields, must be base64-encoded byte strings in the
+  exported JSON. W3C lowercase hex trace context is transport state, not the
+  JSON representation for OTLP `bytes` fields.
 - Export attempts run on `CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS`
-  and must flush on graceful shutdown.
+  and must flush on graceful shutdown. Shutdown flush is best-effort and must
+  not emit bridge-unavailable process log noise when the collector or message
+  bridge is already stopping.
 - Exporters use bounded in-memory buffers. When a buffer is full, new
   telemetry is dropped and `cloudgrid.exporter.failures` is incremented with
   `result=dropped` when the metrics signal is available.
-- Export failures are logged as bounded warnings and never fail readiness,
-  request handling, message acknowledgement, or process shutdown.
+- Export failures are logged at
+  `CLOUDGRID_SELF_OBSERVABILITY_EXPORT_FAILURE_LOG_LEVEL`, are bounded and
+  rate-limited, and never fail readiness, request handling, message
+  acknowledgement, or process shutdown. `off` suppresses only the process log
+  line; metrics still record exporter failures when the metrics signal is
+  available.
 
 Exporter resource attributes are fixed at process startup from the resolved
 runtime configuration. Implementations must not derive company/project identity
@@ -172,7 +191,7 @@ Required behavior:
   must not print full token values.
 
 Fixture and seed scripts must use `CLOUDGRID_OTLP_BEARER_TOKEN`,
-`CLOUDGRID_OTLP_TOKEN`, or `CLOUDGRID_PROJECT_API_KEY` in that precedence order
+`CLOUDGRID_PROJECT_API_KEY` in that precedence order
 when sending local OTLP requests. They must not send unauthenticated OTLP by
 default after `bun run setup:local` has configured token routing.
 

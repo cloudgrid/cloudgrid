@@ -93,6 +93,42 @@ func TestFacetValuesFromAttributeKeyRowsCountsSortsFiltersAndLimits(t *testing.T
 	}
 }
 
+func TestTraceAndLogPagesReturnServerCursors(t *testing.T) {
+	startedAt := time.Date(2026, 5, 21, 8, 0, 0, 0, time.UTC)
+	traces, traceCursor := tracePage([]contracts.TraceSummary{
+		{Trace: contracts.Trace{ID: "trace-1", StartedAt: startedAt}},
+		{Trace: contracts.Trace{ID: "trace-2", StartedAt: startedAt.Add(-time.Second)}},
+		{Trace: contracts.Trace{ID: "trace-3", StartedAt: startedAt.Add(-2 * time.Second)}},
+	}, 2, nil)
+	if len(traces) != 2 || traceCursor == nil {
+		t.Fatalf("trace page = %d cursor=%v, want two items and cursor", len(traces), traceCursor)
+	}
+	decodedTrace, err := decodeCursor(*traceCursor, "startedAt_desc_traceId_asc")
+	if err != nil {
+		t.Fatalf("decode trace cursor: %v", err)
+	}
+	traceCursorValue, ok := decodedTrace.LastValue.(time.Time)
+	if !ok || decodedTrace.LastID != "trace-2" || !traceCursorValue.Equal(startedAt.Add(-time.Second)) {
+		t.Fatalf("trace cursor = %#v", decodedTrace)
+	}
+
+	logs, logCursor := logPage([]contracts.LogEvent{
+		{ID: "log-1", Timestamp: startedAt},
+		{ID: "log-2", Timestamp: startedAt.Add(-time.Second)},
+	}, 1, nil)
+	if len(logs) != 1 || logCursor == nil {
+		t.Fatalf("log page = %d cursor=%v, want one item and cursor", len(logs), logCursor)
+	}
+	decodedLog, err := decodeCursor(*logCursor, "timestamp_desc_logEventId_asc")
+	if err != nil {
+		t.Fatalf("decode log cursor: %v", err)
+	}
+	logCursorValue, ok := decodedLog.LastValue.(time.Time)
+	if !ok || decodedLog.LastID != "log-1" || !logCursorValue.Equal(startedAt) {
+		t.Fatalf("log cursor = %#v", decodedLog)
+	}
+}
+
 func TestSetLogCorrelationsInitializesAttributesAndPrefersSpanCorrelation(t *testing.T) {
 	traceID := "trace-1"
 	spanID := "span-1"
@@ -140,6 +176,45 @@ func TestNormalizeSpansInitializesNestedCollectionsAndLinkDefaults(t *testing.T)
 	}
 	if spans[0].Links[0].Direction == nil || *spans[0].Links[0].Direction != contracts.SpanLinkDirectionUnknown {
 		t.Fatalf("link direction = %#v, want unknown", spans[0].Links[0].Direction)
+	}
+}
+
+func TestNormalizeTraceSummariesBackfillsLegacyUnixNanoAndAttributes(t *testing.T) {
+	startedAt := time.Date(2026, 5, 19, 12, 15, 21, 123456789, time.UTC)
+	items := []contracts.TraceSummary{{
+		Trace: contracts.Trace{
+			ID:        "trace-1",
+			StartedAt: startedAt,
+		},
+	}}
+
+	normalizeTraceSummaries(items)
+
+	if items[0].StartedAtUnixNano != "1779192921123456789" {
+		t.Fatalf("StartedAtUnixNano = %q", items[0].StartedAtUnixNano)
+	}
+	if items[0].Attributes == nil {
+		t.Fatal("normalizeTraceSummaries did not initialize attributes")
+	}
+}
+
+func TestNormalizeTraceSummariesPreservesStoredUnixNano(t *testing.T) {
+	items := []contracts.TraceSummary{{
+		Trace: contracts.Trace{
+			ID:                "trace-1",
+			StartedAt:         time.Date(2026, 5, 19, 12, 15, 21, 0, time.UTC),
+			StartedAtUnixNano: "42",
+			Attributes:        contracts.Attributes{"service.name": "api"},
+		},
+	}}
+
+	normalizeTraceSummaries(items)
+
+	if items[0].StartedAtUnixNano != "42" {
+		t.Fatalf("StartedAtUnixNano = %q, want stored value", items[0].StartedAtUnixNano)
+	}
+	if items[0].Attributes["service.name"] != "api" {
+		t.Fatalf("attributes = %#v, want preserved", items[0].Attributes)
 	}
 }
 

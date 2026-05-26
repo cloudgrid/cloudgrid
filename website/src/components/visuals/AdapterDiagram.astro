@@ -9,28 +9,31 @@ const adapters = [
   },
   {
     title: "Message bridge",
-    port: "request/reply · streams · live subjects",
+    port: "request/reply · streams · live · alert dispatch",
     v1: "NATS JetStream",
     color: "var(--color-brand)",
     bullets: ["durable ingest", "typed request/reply", "ephemeral session fanout"],
+  },
+  {
+    title: "Alert delivery",
+    port: "dispatch request · delivery result",
+    v1: "in-app · email · webhook",
+    color: "var(--color-amber)",
+    bullets: ["core-owned alert state", "safe summaries only", "provider adapters over bridge"],
   },
   {
     title: "Auth provider",
     port: "OIDC/OAuth · session boundary",
     v1: "GitHub · Google · Entra ID",
     color: "var(--color-emerald)",
-    bullets: ["BFF-managed cookies", "no provider tokens in browser", "claim canonicalization"],
+    bullets: ["BFF-managed cookies", "provider tokens stay server-side", "claim canonicalization"],
   },
   {
-    title: "Eval harness",
-    port: "/v1/run · /v1/score · /v1/optimize",
-    v1: "puristajs / harness",
+    title: "Evaluation execution",
+    port: "run · score · optimize",
+    v1: "adapter-backed",
     color: "var(--color-violet)",
-    bullets: [
-      "W3C trace context preserved",
-      "no provider creds in CloudGrid",
-      "idempotent retries",
-    ],
+    bullets: ["W3C trace context preserved", "provider refs stay controlled", "idempotent retries"],
   },
 ];
 ---

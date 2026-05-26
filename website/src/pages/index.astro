@@ -2,112 +2,139 @@
 import Layout from "../layouts/Layout.astro";
 import Section from "../components/Section.astro";
 import Button from "../components/Button.astro";
-import FeatureCard from "../components/FeatureCard.astro";
-import MockFrame from "../components/visuals/MockFrame.astro";
-import TraceWaterfall from "../components/visuals/TraceWaterfall.astro";
-import SystemCanvas from "../components/visuals/SystemCanvas.astro";
-import AdapterDiagram from "../components/visuals/AdapterDiagram.astro";
 import AiEvalBoard from "../components/visuals/AiEvalBoard.astro";
-import CompareTable from "../components/visuals/CompareTable.astro";
-import { vendors, rows } from "../data/compare";
-
-// Slim comparison teaser
-const teaserVendors = vendors.filter((v) =>
-  ["cloudgrid", "datadog", "lgtm", "langfuse"].includes(v.key),
-);
-const teaserRowNames = [
-  "Open source",
-  "Self-hostable",
-  "Traces · Logs · Metrics in one product",
-  "First-class AI agent evaluation",
-  "Adapter-swappable storage",
-  "No telemetry-volume / per-host pricing",
-];
-const slimRows = rows.filter((r) => teaserRowNames.includes(r.criterion));
 
 const signalPillars = [
   {
-    icon: "trace" as const,
     title: "Traces",
-    description: "Distributed waterfalls, span attributes, events, live receiving.",
+    role: "Explain the request path and the service boundary where behavior changed.",
     href: "/features/traces",
-    accent: "brand" as const,
+    image: "/hero-backgrounds/features-traces.png",
   },
   {
-    icon: "log" as const,
     title: "Logs",
-    description: "Search-first analytics with trace-id pivots out of the box.",
+    role: "Make operational text searchable without losing trace and span context.",
     href: "/features/logs",
-    accent: "cyan" as const,
+    image: "/hero-backgrounds/features-logs.png",
   },
   {
-    icon: "metric" as const,
     title: "Metrics",
-    description: "Descriptors, attributes, exemplar pivots back into traces.",
+    role: "Track health, latency, volume, runtime, token, and cost signals over time.",
     href: "/features/metrics",
-    accent: "emerald" as const,
+    image: "/hero-backgrounds/features-metrics.png",
   },
   {
-    icon: "dashboard" as const,
     title: "Dashboards",
-    description: "Saved typed widgets, pinned where you work.",
+    role: "Keep recurring operational questions visible for reviews and daily work.",
     href: "/features/dashboards",
-    accent: "amber" as const,
+    image: "/hero-backgrounds/features-dashboards.png",
   },
   {
-    icon: "ai" as const,
+    title: "Alerts",
+    role: "Turn live and persisted telemetry into managed action with state and history.",
+    href: "/features/alerts",
+    image: "/hero-backgrounds/features-alerts.png",
+  },
+  {
     title: "AI Evaluation",
-    description: "Agent runs, datasets, scorers, prompt optimization.",
+    role: "Convert production examples into datasets, runs, comparisons, and promotion evidence.",
     href: "/features/ai-evaluation",
-    accent: "violet" as const,
+    image: "/hero-backgrounds/features-ai-evaluation.png",
   },
   {
-    icon: "adapter" as const,
-    title: "Adapters",
-    description: "Storage, message bridge, auth, eval harness — all pluggable.",
+    title: "Customizable",
+    role: "Adapt brand, packaging, storage, bridge, auth, delivery, and execution boundaries.",
     href: "/features/adapters",
-    accent: "rose" as const,
+    image: "/hero-backgrounds/features-adapters.png",
   },
 ];
 
-// Tech marquee — what CloudGrid speaks
-const techRow = [
-  "OpenTelemetry",
-  "OTLP HTTP",
-  "OTLP gRPC",
-  "NATS JetStream",
-  "SurrealDB",
-  "GraphQL",
-  "OIDC",
-  "GitHub",
-  "Google",
-  "Microsoft Entra ID",
-  "GenAI spans",
-  "OpenInference",
-  "W3C Trace Context",
-  "Go",
-  "TypeScript",
-  "React",
+const evidenceFlow = [
+  {
+    title: "Capture the operational facts once.",
+    body: "CloudGrid receives OpenTelemetry traces, logs, and metrics into a project boundary. The same project also owns dashboards, alert rules, datasets, evaluation runs, and optimization results.",
+  },
+  {
+    title: "Keep the links that make evidence useful.",
+    body: "A log can point to a trace. A metric exemplar can point to a trace. A failed AI example can keep the source trace beside the dataset row and the evaluation result.",
+  },
+  {
+    title: "Make different teams work from the same record.",
+    body: "Platform teams investigate incidents, product teams review service behavior, and AI teams validate model or agent changes without exporting evidence into separate tools first.",
+  },
+  {
+    title: "Scale and customize the system around your environment.",
+    body: "The message bridge and adapter boundaries let ingestion, persistence, reads, alert delivery, and white-label customization evolve without turning the public UI into the integration layer.",
+  },
+];
+
+const executiveOutcomes = [
+  {
+    title: "Own the data perimeter",
+    body: "Run the product in your environment and decide which external systems receive telemetry-derived information.",
+    href: "/enterprise",
+  },
+  {
+    title: "Connect operations and AI quality",
+    body: "Use the same telemetry record to investigate service behavior and validate AI changes against explicit datasets and runs.",
+    href: "/features/ai-evaluation",
+  },
+  {
+    title: "Build on a product foundation",
+    body: "Use CloudGrid as an internal platform, source-available deployment, or commercial white-label foundation by agreement.",
+    href: "/enterprise/whitelabel-solution",
+  },
+];
+
+const workflowLayers = [
+  {
+    title: "Ingest stays boring on purpose.",
+    body: "Collectors receive OTLP and publish bounded work. Public services do not become storage clients.",
+  },
+  {
+    title: "The bridge keeps services independent.",
+    body: "Request/reply reads, durable ingest, live fanout, and delivery dispatch move through explicit message contracts.",
+  },
+  {
+    title: "Storage services own telemetry semantics.",
+    body: "Write paths mutate storage. Read paths own filtering, sorting, grouping, counts, live matching, and authorization preparation.",
+  },
+  {
+    title: "The product surface stays focused.",
+    body: "Users see project evidence, dashboards, alerts, and evaluation decisions instead of infrastructure wiring.",
+  },
+];
+
+const customizationLayers = [
+  ["Brand surface", "Logo, name, colors, legal links, help destinations, and product language."],
+  [
+    "Access surface",
+    "OIDC/OAuth providers, BFF-owned sessions, membership, and project isolation.",
+  ],
+  [
+    "Runtime surface",
+    "Storage, message bridge, alert delivery, and evaluation execution behind explicit ports.",
+  ],
+  [
+    "Packaging surface",
+    "Self-hosted deployments, customer environments, product-cloud packaging, and commercial white-label paths.",
+  ],
 ];
 ---
 
 <Layout title="CloudGrid — own your observability">
   <!-- HERO -->
-  <Section size="lg" tone="grid" class="!pt-28 sm:!pt-36 !pb-20">
-    <div class="aurora"></div>
-    <div class="relative grid lg:grid-cols-12 gap-10 lg:gap-14 items-center">
-      <div class="lg:col-span-6">
-        <div class="reveal chip bg-emerald-soft text-[var(--color-emerald)]">
-          <span class="pulse-dot inline-block w-1.5 h-1.5 rounded-full bg-[color:var(--color-emerald)]"></span>
-          Open source · Self-hosted · Apache 2.0
-        </div>
-        <h1 class="reveal mt-5 text-4xl sm:text-5xl lg:text-[3.7rem] font-semibold tracking-tight leading-[1.04] text-text text-balance" data-delay="1">
-          Own your <span class="text-accent-gradient">observability</span>.
+  <Section size="lg">
+    <div class="max-w-3xl">
+        <div class="reveal hero-eyebrow">CloudGrid</div>
+        <h1 class="reveal mt-5 text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight leading-[1.06] text-text text-balance" data-delay="1">
+          Turn every signal into owned operational evidence.
         </h1>
         <p class="reveal mt-5 text-lg text-text-secondary leading-relaxed max-w-xl" data-delay="2">
-          CloudGrid is the OpenTelemetry-native platform you actually own. Traces, logs, metrics,
-          dashboards, and first-class AI agent evaluation — in one self-hosted system. No vendor
-          lock-in. No telemetry leaving your network.
+          CloudGrid is the OpenTelemetry-native platform for teams that need traces, logs, metrics,
+          dashboards, alerts, and AI evaluation to work from one project-scoped record. It is
+          self-hosted, source-available, and built so telemetry stays inside the environment you
+          control.
         </p>
         <div class="reveal mt-8 flex flex-wrap gap-3" data-delay="3">
           <Button href="/handbook/getting-started" size="lg">
@@ -123,163 +150,163 @@ const techRow = [
             Star on GitHub
           </Button>
         </div>
-
-        <dl class="reveal mt-12 grid grid-cols-3 gap-6 max-w-xl" data-delay="4">
-          <div>
-            <dt class="text-xs text-text-muted uppercase tracking-wider">Signals</dt>
-            <dd class="mt-1 text-xl font-semibold text-text font-mono">
-              <span class="count-up" data-target="5" data-suffix="">0</span>
-            </dd>
-            <dd class="text-xs text-text-muted mt-0.5">traces · logs · metrics · dash · ai-eval</dd>
-          </div>
-          <div>
-            <dt class="text-xs text-text-muted uppercase tracking-wider">Services</dt>
-            <dd class="mt-1 text-xl font-semibold text-text font-mono">
-              <span class="count-up" data-target="5" data-suffix="">0</span>
-            </dd>
-            <dd class="text-xs text-text-muted mt-0.5">single-purpose · message-bridged</dd>
-          </div>
-          <div>
-            <dt class="text-xs text-text-muted uppercase tracking-wider">Start</dt>
-            <dd class="mt-1 text-xl font-semibold text-text font-mono">1 cmd</dd>
-            <dd class="text-xs text-text-muted mt-0.5">docker compose up</dd>
-          </div>
-        </dl>
-      </div>
-
-      <div class="lg:col-span-6 reveal-scale">
-        <MockFrame title="cloudgrid · /traces · agent.run">
-          <div class="p-4 bg-surface">
-            <TraceWaterfall />
-          </div>
-        </MockFrame>
-      </div>
-    </div>
-
-    <!-- Tech marquee -->
-    <div class="relative mt-16 reveal" data-delay="5">
-      <div class="text-center text-xs uppercase tracking-wider text-text-muted mb-4">Speaks the open standards your stack already speaks</div>
-      <div class="marquee py-3">
-        <div class="marquee-track">
-          {[...techRow, ...techRow].map((t) => (
-            <span class="text-sm font-mono text-text-muted whitespace-nowrap">{t}</span>
-          ))}
-        </div>
-      </div>
     </div>
   </Section>
 
   <!-- SIGNAL PILLARS -->
   <Section tone="recessed">
-    <div class="max-w-3xl mb-10 reveal">
-      <div class="chip bg-brand-soft text-[var(--color-brand)]">Five signals, one system</div>
-      <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
-        One self-hosted system. Five signals. One contract.
-      </h2>
-      <p class="mt-3 text-text-secondary">
-        Everything you need to observe modern systems — including the agentic ones — without
-        gluing five tools together.
-      </p>
-    </div>
-    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-      {signalPillars.map((p, i) => (
-        <div class="reveal" data-delay={(((i % 3) + 1)) as any}>
-          <FeatureCard {...p} />
+    <div class="grid lg:grid-cols-[0.82fr_1.18fr] gap-12 items-start">
+      <div class="max-w-xl reveal-x">
+        <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
+          One self-hosted system. Many signals. One evidence model.
+        </h2>
+        <p class="mt-4 text-text-secondary leading-relaxed">
+          A leadership team does not need a separate answer for every telemetry format. It needs a
+          reliable way to understand what happened, why it matters, who owns it, and which decision
+          follows. CloudGrid keeps the signals distinct where they need precision and connected
+          where the business needs evidence.
+        </p>
+        <div class="mt-6">
+          <Button href="/features" variant="secondary">Explore the feature map</Button>
         </div>
-      ))}
+      </div>
+      <div class="evidence-map reveal">
+        {signalPillars.map((item, i) => (
+          <a href={item.href} class="evidence-map__row" data-delay={(i + 1) as any}>
+            <div class="evidence-map__image" aria-hidden="true">
+              <img src={item.image} alt="" loading="lazy" decoding="async" />
+            </div>
+            <div>
+              <div class="evidence-map__title">{item.title}</div>
+              <p>{item.role}</p>
+            </div>
+          </a>
+        ))}
+      </div>
     </div>
   </Section>
 
-  <!-- WEDGE -->
+  <!-- CONNECTED EVIDENCE -->
   <Section>
-    <div class="max-w-3xl reveal">
-      <div class="chip bg-amber-soft text-[var(--color-amber)]">The wedge</div>
-      <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
-        You shouldn't have to choose.
-      </h2>
-    </div>
-    <div class="mt-10 grid md:grid-cols-3 gap-5">
-      {[
-        { eyebrow: "SaaS APM", vendors: "Datadog · Honeycomb · New Relic", body: "Polished UI and deep correlations — but your telemetry lives on someone else's disk, with per-host and per-GB pricing that punishes the workloads that need observability most." },
-        { eyebrow: "OSS LGTM stacks", vendors: "Grafana · Tempo · Loki · Mimir · SigNoz", body: "You own the data and the components are interchangeable — but you're operating three to five systems with three to five query languages, and signal correlation is glue you wrote." },
-        { eyebrow: "AI-eval point tools", vendors: "Langfuse · Arize · Braintrust · Helicone", body: "Built for LLM and agent traces — but they only see the AI slice. Your non-AI services and your evaluations live in different worlds." },
-      ].map((c, i) => (
-        <div class="card spotlight is-interactive flex h-full flex-col p-6 reveal" data-delay={(i + 1) as any}>
-          <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">{c.eyebrow}</div>
-          <div class="mt-1 text-sm text-text-secondary font-mono">{c.vendors}</div>
-          <p class="mt-4 text-sm text-text leading-relaxed flex-1">{c.body}</p>
-        </div>
-      ))}
-    </div>
-
-    <div class="reveal mt-10 card spotlight p-7 sm:p-9">
-      <div class="grid lg:grid-cols-[1fr_auto] gap-4 items-center">
-        <div>
-          <div class="text-base sm:text-lg font-semibold text-text">
-            CloudGrid: one OpenTelemetry-native system that does both.
-          </div>
-          <p class="mt-2 text-sm text-text-secondary leading-relaxed max-w-3xl">
-            Real general-purpose traces · logs · metrics · dashboards <em>and</em> first-class AI
-            agent evaluation. Self-hosted, Apache 2.0-licensed, adapter-driven. Compare every cell.
-          </p>
-        </div>
-        <Button href="/enterprise/compare" variant="primary">
-          See the head-to-head
-        </Button>
+    <div class="grid lg:grid-cols-[0.8fr_1.2fr] gap-10 items-start">
+      <div class="max-w-xl reveal-x">
+        <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
+          From incident to decision, the evidence stays connected.
+        </h2>
+        <p class="mt-4 text-text-secondary leading-relaxed">
+          Enterprise teams rarely fail because one signal is missing. They lose time when the
+          trace, log line, metric trend, dashboard, alert, dataset row, and evaluation result live
+          in different products with different ownership rules. CloudGrid keeps those pieces in
+          one project workspace and lets the right service own each data path.
+        </p>
       </div>
+      <div class="truth-stack">
+        {evidenceFlow.map((item, i) => (
+          <div class="truth-stack__item reveal" data-delay={(((i % 3) + 1)) as any}>
+            <div class="truth-stack__index">{String(i + 1).padStart(2, "0")}</div>
+            <div>
+              <div class="truth-stack__title">{item.title}</div>
+              <p>{item.body}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </Section>
+
+  <!-- EXECUTIVE OUTCOMES -->
+  <Section tone="recessed">
+    <div class="max-w-3xl mb-8 reveal">
+      <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
+        What decision-makers get from the product shape.
+      </h2>
+      <p class="mt-3 text-text-secondary">
+        The first question is not which signal exists. It is whether the system gives leadership,
+        engineering, security, and AI teams a reliable way to act on the same evidence.
+      </p>
+    </div>
+    <div class="related-stack">
+      {executiveOutcomes.map((item, i) => (
+        <a href={item.href} class="related-stack__item group reveal" data-delay={(i + 1) as any}>
+          <div class="related-stack__media" aria-hidden="true">
+            <img src={i === 0 ? "/hero-backgrounds/enterprise.png" : i === 1 ? "/hero-backgrounds/features-ai-evaluation.png" : "/hero-backgrounds/enterprise-whitelabel.png"} alt="" loading="lazy" decoding="async" />
+          </div>
+          <div class="related-stack__copy">
+            <div class="related-stack__kicker">Outcome</div>
+            <div class="related-stack__title">{item.title}</div>
+            <p>{item.body}</p>
+          </div>
+          <svg class="related-stack__arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12h14M12 5l7 7-7 7" />
+          </svg>
+        </a>
+      ))}
     </div>
   </Section>
 
   <!-- ARCHITECTURE / SYSTEM CANVAS -->
   <Section tone="recessed">
-    <div class="max-w-3xl mb-8 reveal">
-      <div class="chip bg-brand-soft text-[var(--color-brand)]">Architecture</div>
-      <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
-        Wired like a workflow. Audited like infrastructure.
-      </h2>
-      <p class="mt-3 text-text-secondary max-w-2xl">
-        A trigger fires. Ingest validates. The bridge routes. Storage commits. The switch enforces
-        project authorization. Live updates fan out. Adapters hang off the side — swap one without
-        touching the others.
-      </p>
+    <div class="story-split story-split--image-right">
+      <div class="reveal-x">
+        <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
+          Wired like a workflow. Audited like infrastructure.
+        </h2>
+        <p class="mt-4 text-text-secondary leading-relaxed">
+          CloudGrid is modular without asking users to operate the product as a pile of separate
+          tools. The public UI talks to the BFF. Private services own telemetry semantics. The
+          message bridge gives each path a contract, so scaling and customization stay controlled.
+        </p>
+        <div class="mt-6 reveal flex flex-wrap gap-3">
+          <Button href="/handbook/architecture" variant="secondary">Architecture deep dive</Button>
+          <Button href="/features/adapters" variant="ghost">Customization and adapters →</Button>
+        </div>
+      </div>
+      <div class="story-media reveal" aria-hidden="true">
+        <img src="/hero-backgrounds/features-adapters.png" alt="" loading="lazy" decoding="async" />
+      </div>
     </div>
-    <div class="reveal-scale">
-      <SystemCanvas />
-    </div>
-    <div class="mt-6 reveal flex flex-wrap gap-3">
-      <Button href="/handbook/architecture" variant="secondary">
-        Architecture deep dive
-        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
-      </Button>
-      <Button href="/features/adapters" variant="ghost">
-        Adapter-driven extensibility →
-      </Button>
+    <div class="mt-10 truth-stack truth-stack--wide">
+      {workflowLayers.map((item, i) => (
+        <div class="truth-stack__item reveal" data-delay={(((i % 3) + 1)) as any}>
+          <div class="truth-stack__index">{String(i + 1).padStart(2, "0")}</div>
+          <div>
+            <div class="truth-stack__title">{item.title}</div>
+            <p>{item.body}</p>
+          </div>
+        </div>
+      ))}
     </div>
   </Section>
 
-  <!-- ADAPTER STORY -->
+  <!-- CUSTOMIZATION STORY -->
   <Section>
-    <div class="grid lg:grid-cols-12 gap-10 items-start">
-      <div class="lg:col-span-4 reveal-x">
-        <div class="chip bg-cyan-soft text-[var(--color-cyan)]">Adapter-driven</div>
+    <div class="grid lg:grid-cols-[0.85fr_1.15fr] gap-12 items-start">
+      <div class="reveal-x">
         <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
-          Every dependency sits behind a port.
+          Brand it, package it, extend it.
         </h2>
         <p class="mt-4 text-text-secondary leading-relaxed">
-          Storage backend, message bridge, auth providers, evaluation harness — all behind explicit,
-          typed ports. v1 ships SurrealDB, NATS JetStream, GitHub/Google/Entra ID SSO, and the
-          <code class="font-mono text-xs px-1 py-0.5 rounded bg-recessed border border-border-subtle">puristajs/harness</code>
-          adapter. Implement your own without forking the platform.
+          CloudGrid can fit your product portfolio, customer environment, or internal platform.
+          The important point is not that every layer can be changed; it is that the layers are
+          named, bounded, and documented so customization does not damage the operating model.
         </p>
         <div class="mt-6">
           <Button href="/features/adapters" variant="secondary">
-            Adapter overview
+            Customization overview
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
           </Button>
         </div>
       </div>
-      <div class="lg:col-span-8">
-        <AdapterDiagram />
+      <div class="layer-list reveal">
+        {customizationLayers.map(([title, body], i) => (
+          <a href={i === 3 ? "/enterprise/whitelabel-solution" : "/features/adapters"} class="layer-list__row">
+            <span class="layer-list__number">{String(i + 1).padStart(2, "0")}</span>
+            <span>
+              <strong>{title}</strong>
+              <em>{body}</em>
+            </span>
+          </a>
+        ))}
       </div>
     </div>
   </Section>
@@ -288,20 +315,19 @@ const techRow = [
   <Section tone="recessed">
     <div class="grid lg:grid-cols-12 gap-10 items-start">
       <div class="lg:col-span-5 reveal-x">
-        <div class="chip bg-violet-soft text-[var(--color-violet)]">AI-native</div>
         <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
           Evaluate agents next to the spans they came from.
         </h2>
         <p class="mt-4 text-text-secondary leading-relaxed">
-          CloudGrid projects OpenTelemetry GenAI / OpenInference spans into first-class entities —
-          AgentRun, LlmCall, ToolCall, RetrievalEvent — and lets you build datasets, define
-          deterministic and judge scorers, run experiments, and optimize prompts through a harness
-          adapter.
+          CloudGrid turns the telemetry you already collect into AI evaluation evidence. Curate
+          datasets from known examples or trace-derived failures, run evaluations against a target,
+          compare expected and actual outputs, optimize prompts or examples, and promote the
+          candidate with validation evidence the team can inspect.
         </p>
         <ul class="mt-5 space-y-2 text-sm text-text-secondary">
-          <li class="flex gap-2"><span class="text-[color:var(--color-emerald)]">✓</span> Prompt and completion content stays on span events — nothing copied to a separate AI database.</li>
-          <li class="flex gap-2"><span class="text-[color:var(--color-emerald)]">✓</span> Harness owns model-provider calls. CloudGrid never holds provider credentials.</li>
-          <li class="flex gap-2"><span class="text-[color:var(--color-emerald)]">✓</span> Same project isolation as the rest of your telemetry.</li>
+          <li class="flex gap-2"><span class="text-[color:var(--color-emerald)]">✓</span> Schema-backed datasets with input, expected output, reason, split, and curation state.</li>
+          <li class="flex gap-2"><span class="text-[color:var(--color-emerald)]">✓</span> Per-row results include metrics, trajectory summaries, and links back to trace evidence.</li>
+          <li class="flex gap-2"><span class="text-[color:var(--color-emerald)]">✓</span> Provider profiles and model aliases stay project-scoped and controlled by settings.</li>
         </ul>
         <div class="mt-6">
           <Button href="/features/ai-evaluation" variant="secondary">
@@ -310,31 +336,10 @@ const techRow = [
         </div>
       </div>
       <div class="lg:col-span-7 reveal-scale">
-        <MockFrame title="cloudgrid · /ai-eval/experiments/faq_router_optim_v3">
+        <div class="card p-0 overflow-hidden">
           <AiEvalBoard />
-        </MockFrame>
+        </div>
       </div>
-    </div>
-  </Section>
-
-  <!-- COMPARE TEASER -->
-  <Section>
-    <div class="max-w-3xl mb-8 reveal">
-      <div class="chip bg-rose-soft text-[var(--color-rose)]">Honest comparison</div>
-      <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
-        How CloudGrid stacks up.
-      </h2>
-      <p class="mt-3 text-text-secondary">
-        A few rows from the full head-to-head. Each named, each fact-checked, each linkable.
-      </p>
-    </div>
-    <div class="reveal">
-      <CompareTable vendors={teaserVendors} rows={slimRows} />
-    </div>
-    <div class="mt-6 reveal">
-      <Button href="/enterprise/compare" variant="primary">
-        See the full comparison (13 rows · 9 vendors)
-      </Button>
     </div>
   </Section>
 
@@ -346,8 +351,9 @@ const techRow = [
           Built in the open. Run on your own terms.
         </h2>
         <p class="mt-3 text-text-secondary max-w-2xl">
-          Apache 2.0-licensed. No open-core split, no hidden enterprise switches, no telemetry leaving
-          your network unless you wire it to.
+          Source-available under Apache 2.0 with Commons Clause. One reviewable distribution,
+          visible commercial paths, and telemetry that stays in your network unless you wire it to
+          leave.
         </p>
       </div>
       <div class="flex flex-wrap gap-3 lg:justify-end">

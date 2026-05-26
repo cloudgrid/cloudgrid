@@ -12,7 +12,11 @@
     "onlinePolicies",
     "budget",
     "sampling",
+    "runPolicyDefaults",
+    "datasetPipeline",
     "datasetDefaults",
+    "evaluationDefaults",
+    "optimizationDefaults",
     "version",
     "updatedAt",
     "updatedByUserId"
@@ -29,11 +33,7 @@
       "items": { "$ref": "#/$defs/providerProfile" },
       "default": []
     },
-    "modelAliases": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/modelAlias" },
-      "default": []
-    },
+    "modelAliases": { "type": "array", "items": { "$ref": "#/$defs/modelAlias" }, "default": [] },
     "onlinePolicies": {
       "type": "array",
       "items": { "$ref": "#/$defs/onlinePolicy" },
@@ -41,7 +41,11 @@
     },
     "budget": { "$ref": "#/$defs/budget" },
     "sampling": { "$ref": "#/$defs/sampling" },
+    "runPolicyDefaults": { "$ref": "./eval-run-policy.schema.json" },
+    "datasetPipeline": { "$ref": "#/$defs/datasetPipeline" },
     "datasetDefaults": { "$ref": "#/$defs/datasetDefaults" },
+    "evaluationDefaults": { "$ref": "#/$defs/evaluationDefaults" },
+    "optimizationDefaults": { "$ref": "#/$defs/optimizationDefaults" },
     "effective": { "$ref": "#/$defs/effective" },
     "version": { "type": "integer", "minimum": 1 },
     "updatedAt": { "type": "string", "format": "date-time" },
@@ -96,15 +100,44 @@
     "onlinePolicy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "enabled", "name", "target", "scorerIds", "sampleRate", "annotationRules"],
+      "required": [
+        "id",
+        "enabled",
+        "name",
+        "target",
+        "metricIds",
+        "sampleRate",
+        "contentAllowance",
+        "maxLatencyClass",
+        "annotationRules"
+      ],
       "properties": {
         "id": { "type": "string" },
         "enabled": { "type": "boolean" },
         "name": { "type": "string", "minLength": 1, "maxLength": 96 },
-        "target": { "$ref": "#/$defs/onlinePolicyTarget" },
-        "scorerIds": { "type": "array", "items": { "type": "string" } },
+        "target": { "$ref": "./evaluation-target-ref.schema.json" },
+        "metricIds": { "type": "array", "items": { "type": "string" }, "default": [] },
         "sampleRate": { "type": "number", "minimum": 0, "maximum": 1 },
         "maxDailyRuns": { "type": "integer", "minimum": 1 },
+        "contentAllowance": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "none",
+              "metadata_only",
+              "captured_content",
+              "dataset_content",
+              "retrieved_document_content"
+            ]
+          },
+          "default": ["metadata_only"]
+        },
+        "maxLatencyClass": {
+          "type": "string",
+          "enum": ["inline", "near_realtime", "batch"],
+          "default": "batch"
+        },
         "annotationRules": {
           "type": "array",
           "items": { "$ref": "#/$defs/annotationRule" },
@@ -112,58 +145,6 @@
         },
         "updatedAt": { "type": "string", "format": "date-time" },
         "updatedByUserId": { "type": "string" }
-      }
-    },
-    "onlinePolicyTarget": {
-      "type": "object",
-      "additionalProperties": false,
-      "minProperties": 1,
-      "properties": {
-        "agentId": { "type": "string", "minLength": 1 },
-        "agentName": { "type": "string", "minLength": 1 },
-        "environment": { "type": "string", "minLength": 1 },
-        "serviceName": { "type": "string", "minLength": 1 },
-        "route": { "type": "string", "minLength": 1 },
-        "routePrefix": { "type": "string", "minLength": 1 },
-        "toolName": { "type": "string", "minLength": 1 },
-        "retrievalSource": { "type": "string", "minLength": 1 },
-        "model": { "type": "string", "minLength": 1 },
-        "promptVersionId": { "type": "string", "minLength": 1 },
-        "experimentRunId": { "type": "string", "minLength": 1 },
-        "attributes": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/onlinePolicyAttributeFilter" },
-          "default": []
-        }
-      }
-    },
-    "onlinePolicyAttributeFilter": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["key", "operator"],
-      "properties": {
-        "key": {
-          "type": "string",
-          "minLength": 1,
-          "pattern": "^[a-zA-Z0-9_.:-]+$"
-        },
-        "operator": {
-          "type": "string",
-          "enum": ["eq", "neq", "contains", "exists", "gt", "gte", "lt", "lte", "in", "not_in"]
-        },
-        "value": {
-          "oneOf": [
-            { "type": "string" },
-            { "type": "number" },
-            { "type": "boolean" },
-            {
-              "type": "array",
-              "items": {
-                "oneOf": [{ "type": "string" }, { "type": "number" }, { "type": "boolean" }]
-              }
-            }
-          ]
-        }
       }
     },
     "annotationRule": {
@@ -194,28 +175,97 @@
       "required": [
         "defaultOnlineSampleRate",
         "maxOnlineSampleRate",
-        "maxConcurrentExperimentItems",
+        "maxConcurrentEvaluationItems",
         "maxConcurrentOptimizationCandidates"
       ],
       "properties": {
         "defaultOnlineSampleRate": { "type": "number", "minimum": 0, "maximum": 1 },
         "maxOnlineSampleRate": { "type": "number", "minimum": 0, "maximum": 1 },
-        "maxConcurrentExperimentItems": { "type": "integer", "minimum": 1 },
+        "maxConcurrentEvaluationItems": { "type": "integer", "minimum": 1 },
         "maxConcurrentOptimizationCandidates": { "type": "integer", "minimum": 1 }
       }
     },
     "datasetDefaults": {
       "type": "object",
       "additionalProperties": false,
+      "required": ["defaultSplit", "requireReviewBeforeReady", "retentionProfile"],
+      "properties": {
+        "defaultSplit": { "type": "string", "enum": ["training", "validation", "test"] },
+        "requireReviewBeforeReady": { "type": "boolean", "default": true },
+        "retentionProfile": {
+          "type": "string",
+          "enum": ["balanced", "fast_iteration", "audit_friendly", "minimal_storage"],
+          "default": "balanced"
+        }
+      }
+    },
+    "datasetPipeline": {
+      "type": "object",
+      "additionalProperties": false,
       "required": [
-        "splitAllocation",
-        "smallDatasetReviewedThreshold",
-        "requireReviewForRegression"
+        "candidateSuggestionsEnabled",
+        "requireReviewBeforeCommit",
+        "anonymizationMode",
+        "anonymizationConsistencyScope",
+        "preserveLocale",
+        "preserveTemporalDistance",
+        "blockedEntityTypes"
       ],
       "properties": {
-        "splitAllocation": { "type": "object", "additionalProperties": true },
-        "smallDatasetReviewedThreshold": { "type": "integer", "minimum": 1, "default": 30 },
-        "requireReviewForRegression": { "type": "boolean", "default": true }
+        "candidateSuggestionsEnabled": { "type": "boolean", "default": true },
+        "requireReviewBeforeCommit": { "type": "boolean", "default": true },
+        "anonymizationMode": {
+          "type": "string",
+          "enum": ["off", "realistic", "redact"],
+          "default": "realistic"
+        },
+        "anonymizationPolicyId": { "type": "string" },
+        "anonymizationPolicyVersion": { "type": "integer", "minimum": 1 },
+        "anonymizationConsistencyScope": {
+          "type": "string",
+          "enum": ["project", "dataset"],
+          "default": "dataset"
+        },
+        "preserveLocale": { "type": "boolean", "default": true },
+        "preserveTemporalDistance": { "type": "boolean", "default": true },
+        "blockedEntityTypes": { "type": "array", "items": { "type": "string" }, "default": [] }
+      }
+    },
+    "evaluationDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["datasetVersionPolicy", "splitSelector", "metricIds", "retentionProfile"],
+      "properties": {
+        "datasetVersionPolicy": {
+          "type": "string",
+          "enum": ["latest_ready", "pinned"],
+          "default": "latest_ready"
+        },
+        "splitSelector": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["training", "validation", "test"] },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "metricIds": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "retentionProfile": {
+          "type": "string",
+          "enum": ["balanced", "fast_iteration", "audit_friendly", "minimal_storage"],
+          "default": "balanced"
+        }
+      }
+    },
+    "optimizationDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimumSampleSize", "allowedTargetPartKinds"],
+      "properties": {
+        "minimumSampleSize": { "type": "integer", "minimum": 1, "default": 20 },
+        "allowedTargetPartKinds": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["prompt", "examples", "model_config"] },
+          "default": ["prompt", "examples", "model_config"]
+        }
       }
     },
     "effective": {

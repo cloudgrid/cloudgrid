@@ -4,9 +4,9 @@ title: AI Chat runtime
 layer: backend
 status: draft
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-18
+updated: 2026-05-21
 provenance: from-user
-depends_on: [DOM-007, TEC-BE-001, TEC-BE-008, TEC-BE-011, TEC-BE-028, NFR-003]
+depends_on: [DOM-007, TEC-BE-001, TEC-BE-008, TEC-BE-011, TEC-BE-028, TEC-BE-030, NFR-003]
 ---
 
 # AI Chat Runtime
@@ -18,6 +18,25 @@ by the AI harness. It streams responses to the browser, persists conversation
 history through control-plane, retrieves telemetry through approved read paths,
 executes bounded sandbox scripts, renders typed artifacts, and mediates user
 approval for actions.
+
+The assistant is a CloudGrid-native observability surface. It must help users
+investigate traces, logs, metrics, dashboards, alerts, and AI-evaluation
+evidence inside CloudGrid instead of handing off primary workflows to Jaeger,
+Zipkin, Datadog, or another external explorer. External product names may be
+used only for user wording, import/export context, or comparative explanation;
+the runtime must answer with CloudGrid routes, CloudGrid artifacts, and
+CloudGrid authorization semantics.
+
+The assistant must answer telemetry questions only from runtime-provided
+CloudGrid evidence. It must not invent CLIs, REST telemetry read endpoints,
+screens, dashboards, traces, logs, metrics, tool output, or setup steps based on
+model training data.
+
+The assistant is not a general-purpose chat surface. Clearly out-of-scope
+requests, including politics, elections, ideology, religion, entertainment,
+sports, general news, personal advice, medical, legal, financial, weather, or
+general knowledge, must be refused before model execution when detected by the
+BFF policy gate.
 
 ## Boundary
 
@@ -38,6 +57,8 @@ The BFF does not:
 
 - import SurrealDB clients;
 - call model providers directly;
+- ask users to inspect primary evidence in Jaeger, Zipkin, Datadog, or another
+  external observability product when CloudGrid has the required data;
 - expose a REST telemetry read API;
 - subscribe to telemetry ingest or persisted-notification streams;
 - execute arbitrary shell commands;
@@ -47,6 +68,15 @@ The BFF does not:
 Control-plane owns chat history, provider settings, action approvals, and
 conversation metadata. Storage-read owns trace/log/metric/AI-eval query
 semantics. Harness owns model-provider execution.
+
+AI Chat provider execution must use PURISTA harness model provider adapters
+through the harness model boundary. The BFF must not implement provider-specific
+HTTP clients, streaming parsers, retry semantics, or credential handling outside
+that boundary. The bundled AI Chat runtime supports `openai`,
+`openai_compatible` through the OpenAI-compatible PURISTA adapter base URL,
+`anthropic`, `azure_foundry`, and `aws_bedrock`. Provider kinds without an
+installed PURISTA harness adapter must fail setup with a bounded provider error
+until the adapter is added.
 
 ## Public Runtime Surface
 
@@ -59,6 +89,7 @@ The contract wave must add:
 - `Mutation.createAiChatConversation(input:
   CreateAiChatConversationInput!): AiChatConversation!`
 - `Mutation.archiveAiChatConversation(id: ID!): AiChatConversation!`
+- `Mutation.deleteAiChatConversation(id: ID!): Boolean!`
 - `Mutation.approveAiChatAction(input:
   ApproveAiChatActionInput!): AiChatActionProposal!`
 
@@ -72,8 +103,11 @@ They use control-plane request/reply subjects and return redacted view models.
 - `first`: default `50`, maximum `200`.
 - `after`: optional cursor over `(lastMessageAt, conversationId)`.
 
-History returns conversations the current user owns, grouped by accessible
-project. Archived conversations are excluded unless `includeArchived=true`.
+History returns only conversations the current user owns. When `projectId` is
+provided, history returns only that project; the AI Chat route must always pass
+the selected project ID so changing projects cannot display another project's
+conversation list. Archived conversations are excluded unless
+`includeArchived=true`.
 
 ### Streaming HTTP
 
@@ -143,7 +177,50 @@ excluding heartbeat.
 The BFF must not stream hidden provider reasoning text. Provider reasoning may
 only surface as generic `tool.started` or `message.created` status labels.
 
+Tool status events are user-interface progress signals only. They must include
+only a stable tool ID, safe display label, status, sequence, and optional
+duration/error code. They must not include tool input JSON, tool output JSON,
+provider reasoning, prompts, credentials, query filters, raw trace/log/metric
+records, or sandbox file contents. The frontend renders these events as compact
+tool-use indicators, not expandable payload inspectors.
+
+Artifacts are stream parts, not provider-authored raw Markdown. The BFF emits
+`artifact.created` only after validating the render spec and persisting an
+`AiChatArtifact`. The event payload contains `artifactId`, `renderer`, `label`,
+`renderSpec`, and optional source IDs. The frontend inserts the artifact at the
+current assistant-message position.
+
+For transcript export, copy/paste, and no-JavaScript fallback rendering, the
+canonical Markdown serialization for a JSON-render artifact is a fenced code
+block with this exact info string:
+
+````markdown
+```cloudgrid-json-render:<renderer>
+{ "artifactId": "art_...", "renderer": "<renderer>", "spec": {} }
+```
+````
+
+`<renderer>` must be one approved CloudGrid JSON-render catalog key. The JSON
+body must be valid UTF-8 JSON and must include the persisted `artifactId`.
+Frontend code must render this fence as a CloudGrid artifact only when the
+fence originates from a BFF `artifact` message part or `artifact.created`
+event. User-authored or model-authored text that happens to contain the same
+fence is displayed as an inert code block unless it is backed by a persisted
+artifact ID in the current conversation.
+
+Requests to reveal, print, translate, summarize, debug, ignore, override, or
+bypass hidden prompts, system instructions, developer instructions, policies,
+tool schemas, chain-of-thought, credentials, tokens, environment variables,
+provider request/response bodies, or internal implementation details must be
+refused before provider execution when detected by the BFF policy gate.
+
 ## Harness Chat Port
+
+The harness graph, model aliases, specialist agents, provider adapter rules,
+tool strategy, JSON-render integration, large-result behavior, and session
+identity requirements are defined in
+`specs/04-backend/ai-runtime-structure.md`. This section defines the BFF chat
+port used by the stream endpoint.
 
 The BFF integrates the AI harness through an internal `AiChatHarnessPort`.
 
@@ -158,6 +235,9 @@ Required methods:
 - resolved credential material in memory only;
 - recent conversation messages and latest compaction summary;
 - tool declaration schemas;
+- deterministic runtime time context containing current UTC time, accepted IANA
+  timezone, and current local date/time for resolving relative human date/time
+  phrases;
 - W3C trace context;
 - max tool calls, max output tokens, and timeout budget.
 
@@ -210,9 +290,24 @@ Message parts store sanitized assistant output and artifact references. Large
 tool result files are not embedded in message parts; they are stored as bounded
 artifacts.
 
+Assistant messages preserve mixed content order. A single assistant message may
+contain multiple text parts and multiple artifact parts, for example short
+Markdown analysis, a `trace_waterfall` artifact, more Markdown, and a `table`
+artifact. The BFF is the only component that may create `artifact` message
+parts. The model may request `render.emitJsonRender`; it may not directly write
+artifact message parts or trusted `cloudgrid-json-render:*` fences.
+
 Archiving a conversation sets `status=archived`, hides it from default history,
 and prevents new runs in that conversation. It does not delete messages,
 artifacts, action approvals, compactions, or audit records.
+
+Deleting a conversation is owner-only and permanent. It removes the
+conversation, messages, runs, artifacts, action proposals, and compaction
+records for that conversation from control-plane storage. A delete request for a
+conversation owned by another user fails with `ERR-016 FORBIDDEN`; a missing
+conversation fails with `ERR-004 NOT_FOUND`. The frontend must remove deleted
+conversations from the local history cache and clear the active route when the
+deleted conversation is open.
 
 ### AiChatRun
 
@@ -238,8 +333,7 @@ Fields:
 - `id`.
 - `conversationId`.
 - `runId`.
-- `kind`: `json_render`, `data_file`, `script`, `script_output`, or
-  `download`.
+- `kind`: `json_render`, `data_file`, `script`, or `script_output`.
 - `label`.
 - `mediaType`.
 - `sizeBytes`.
@@ -292,7 +386,6 @@ Allowed read tools:
 - `telemetry.queryMetrics`
 - `telemetry.getFacets`
 - `dashboards.list`
-- `dashboards.get`
 - `alerts.list`
 - `alerts.history`
 - `aiEval.searchAgentRuns`
@@ -325,16 +418,36 @@ into every tool call. Model-supplied `companyId`, `projectId`, `userId`,
 tenant, or auth fields are ignored and treated as validation errors when
 present.
 
+Model-facing tool schemas must follow default-plus-optional-override design.
+The model must not be required or asked to provide company, project, user,
+conversation, tenant, or auth fields. Runtime scope comes from the current
+conversation/request context and is passed directly into BFF bridge calls as
+authorization context. For telemetry read tools, omitted optional inputs use
+CloudGrid defaults: current project, default time window, default limit, default
+aggregation or step, and no additional filters. The assistant asks the user only
+for a genuinely missing domain choice that cannot be inferred from the request,
+such as an absent metric name.
+
+AI Chat tools must reuse the same typed contract inputs, validation helpers, and
+bridge methods as the regular UI. Shared telemetry defaults and query builders
+live in the UI contract package and are imported by frontend routes, AI Chat BFF
+tool adapters, dashboard widgets, and tests. Route-local or prompt-local copies
+of metric aggregation lists, chart type lists, default windows, default limits,
+metric-series input builders, trace/log/facet input builders, or renderer
+catalogs are drift bugs. If the UI gains a telemetry capability, the AI tool
+catalog must either expose the same capability through the shared contract or
+explicitly record why it is not available to AI Chat.
+
 ### Read Tool Limits
 
 | Tool | Backend path | Default window | Default limit | Hard limit |
 | --- | --- | --- | --- | --- |
-| `telemetry.searchTraces` | `Query.traces` / storage-read trace search | last 1 hour | 50 traces | 200 traces |
-| `telemetry.getTrace` | `Query.trace` / storage-read trace detail | not applicable | full trace detail | 5000 spans |
-| `telemetry.searchLogs` | `Query.logs` / storage-read log search | last 1 hour | 100 logs | 1000 logs |
+| `telemetry.searchTraces` | `Query.traces` / storage-read trace search | last 1 hour, newest first | 50 traces | 200 traces |
+| `telemetry.getTrace` | `Query.trace` / storage-read trace detail | not applicable; related logs default to 50 | full trace detail | 5000 spans |
+| `telemetry.searchLogs` | `Query.logs` / storage-read log search | last 1 hour, newest first | 50 logs | 200 logs |
 | `telemetry.queryMetrics` | `Query.metricSeries` or `Query.richMetricSeries` | last 1 hour | storage-read default step | 5000 points |
-| `telemetry.getFacets` | `Query.telemetryFacets` | last 1 hour | backend default | backend cap |
-| `dashboards.list` | `Query.dashboards` | not applicable | all visible dashboards | backend cap |
+| `telemetry.getFacets` | `Query.telemetryFacets` | last 1 hour | 25 values per facet family | 200 values per facet family |
+| `dashboards.list` | `Query.dashboards` | not applicable; built-in dashboards included by default | all visible dashboards matching optional filters | backend cap |
 | `alerts.list` | `Query.alertRules` | not applicable | all visible rules | backend cap |
 | `alerts.history` | `Query.alertHistory` | last 24 hours | 50 events | 200 events |
 | `aiEval.*` search tools | AI Eval GraphQL queries | last 7 days when time is supported | 50 rows | 200 rows |
@@ -379,7 +492,31 @@ and bounded previews. V1 does not expose full sandbox file downloads.
 
 ## Rendering
 
-Assistant artifacts use JSON-render specs. The approved catalog keys are:
+Assistant text uses sanitized Markdown. The BFF must preserve paragraphs,
+lists, tables, inline code, fenced code blocks, links, emphasis, and headings
+that are safe for the frontend renderer. Raw HTML, scripts, iframes, event
+handlers, and provider-hidden reasoning are stripped before streaming or
+persisting. Links are allowed only when they target BFF-approved CloudGrid
+routes or documented CloudGrid public documentation.
+
+The BFF must not accept JSON-render specs from arbitrary Markdown code fences
+inside model text. Trusted JSON-render artifacts come only from the validated
+`render.emitJsonRender` output tool or from server-side deterministic reducers.
+When persisting or exporting transcripts, artifact parts are serialized as
+`cloudgrid-json-render:<renderer>` fenced code blocks so Markdown text and
+structured renderers can be represented in one ordered response without
+inventing a second transcript format.
+
+Assistant artifacts use JSON-render specs from the approved CloudGrid
+json-render catalog. The assistant must not invent renderer keys or inline ad
+hoc chart/table schemas when an approved catalog renderer exists. The frontend
+renderer implementation must be shared with, or wrap, the same components used
+by regular CloudGrid views. Metric artifacts use the metric explorer
+chart/table components; trace artifacts use the trace waterfall/tree
+components; log artifacts use the log list/detail components; dashboard
+artifacts use dashboard widget rendering components. The AI Chat route must not
+keep route-local chart, table, trace, log, or dashboard render logic when an
+equivalent regular UI component exists. The approved catalog keys are:
 
 - `metric_timeseries`
 - `metric_bar`
@@ -400,6 +537,19 @@ Render specs must be at most 512 KiB after JSON serialization. Embedded table
 data is capped at 500 rows, chart data at 5000 points, log lists at 200 rows,
 and trace waterfalls at 5000 spans. Larger artifacts must render summarized
 views with a warning and a link back to the source CloudGrid route.
+
+A single run may create at most 12 JSON-render artifacts and at most one
+`action_approval` artifact per pending action proposal. The BFF increments
+`artifactCount` only after validation succeeds. Duplicate render specs with the
+same `sourceToolCallIds`, renderer, and canonical JSON digest within one run
+must be de-duplicated and referenced by the existing artifact ID instead of
+persisted twice.
+
+Trace, log, and metric investigation answers should pair short Markdown
+analysis with structured JSON-render artifacts. Tables are for sortable
+evidence, `trace_waterfall` is for span timing and critical path inspection,
+metric charts are for time-series or grouped comparisons, `log_list` is for
+log evidence, and `status_summary` is for concise incident-state summaries.
 
 ## Action Approval
 
@@ -503,6 +653,12 @@ or provider errors.
 Runtime flags:
 
 - `CLOUDGRID_AI_CHAT_ENABLED`: enables the route and BFF runtime.
+- `CLOUDGRID_AI_CHAT_HARNESS_MODE`: BFF harness runtime. `provider` is the
+  default and uses the configured provider profile and secure credential
+  material at request time. `mock` enables the deterministic local/mock harness
+  for integration tests and local smoke checks only; it must not be used as a
+  production model-provider substitute. `off` disables in-process harness
+  execution.
 - `CLOUDGRID_AI_CHAT_TRACING_ENABLED`: defaults to `true` in local mode and
   `false` in deployed mode.
 - `CLOUDGRID_AI_CHAT_SANDBOX_MAX_INPUT_BYTES`: defaults to `104857600`.
@@ -524,12 +680,24 @@ Required tests:
 - BFF stream endpoint requires an authenticated session and selected-project
   access;
 - missing company provider returns a setup error before harness execution;
+- local integration runs configure a managed company provider, create a
+  conversation, stream through the deterministic mock harness, verify the
+  terminal stream event, and verify history persistence without leaking
+  credential material;
 - read tools call only approved BFF helper or message bridge paths;
 - sandbox rejects network, environment, host path, and oversized output access;
 - render specs reject unapproved catalog keys and executable content;
+- artifact stream events, persisted message parts, and
+  `cloudgrid-json-render:<renderer>` transcript serialization preserve mixed
+  Markdown/artifact ordering without trusting model-authored fenced blocks;
+- tool status events expose only tool names/status labels and never tool
+  payloads;
 - critical actions require approval and re-run authorization checks;
 - stale action versions fail without mutation;
-- conversation history is scoped to the current user and grouped by project;
+- conversation history is scoped to the current user, filtered to the selected
+  project in the AI Chat route, and grouped by project in the response model;
+- conversation deletion is owner-only and removes the deleted conversation from
+  subsequent history and direct conversation reads;
 - compaction preserves pending actions and approval records;
 - AI Chat spans and logs do not contain prompt text, tool result payloads, raw
   provider errors, or secrets.

@@ -1,0 +1,58 @@
+plan: ai_eval_v1_parallel_implementation
+tickets:
+  TICKET-001:
+    title: AI Eval contracts and drift gates
+    wave: 1
+    status: done
+    file: plans/wave_01_contracts/tickets/TICKET-001-contracts-and-drift-gates.md
+    depends_on: []
+    blocked_by: []
+  TICKET-002:
+    title: Storage-write AI Eval persistence
+    wave: 2
+    status: done
+    file: plans/wave_02_storage/tickets/TICKET-002-storage-write-ai-eval-persistence.md
+    depends_on: [TICKET-001]
+    blocked_by: []
+  TICKET-003:
+    title: Storage-read AI Eval query semantics
+    wave: 2
+    status: done
+    file: plans/wave_02_storage/tickets/TICKET-003-storage-read-ai-eval-query-semantics.md
+    depends_on: [TICKET-001]
+    blocked_by: []
+  TICKET-004:
+    title: Runner AI Eval orchestration
+    wave: 3
+    status: done
+    file: plans/wave_03_runner_harness/tickets/TICKET-004-runner-ai-eval-orchestration.md
+    depends_on: [TICKET-002, TICKET-003]
+    blocked_by: []
+  TICKET-005:
+    title: Harness adapter lifecycle
+    wave: 3
+    status: done
+    file: plans/wave_03_runner_harness/tickets/TICKET-005-harness-adapter-lifecycle.md
+    depends_on: [TICKET-001]
+    blocked_by: []
+  TICKET-006:
+    title: BFF AI Eval GraphQL bridge
+    wave: 4
+    status: done
+    file: plans/wave_04_bff/tickets/TICKET-006-bff-ai-eval-graphql-bridge.md
+    depends_on: [TICKET-002, TICKET-003, TICKET-004]
+    blocked_by: []
+  TICKET-007:
+    title: Frontend AI Eval workspace
+    wave: 5
+    status: done
+    file: plans/wave_05_frontend/tickets/TICKET-007-frontend-ai-eval-workspace.md
+    depends_on: [TICKET-006]
+    blocked_by: []
+  TICKET-008:
+    title: AI Eval integration gates and evidence
+    wave: 6
+    status: done
+    file: plans/wave_06_integration/tickets/TICKET-008-integration-gates-and-evidence.md
+    depends_on: [TICKET-004, TICKET-005, TICKET-006, TICKET-007]
+    blocked_by: []

@@ -18,7 +18,10 @@ const project = {
 
 async function mockViewer(page: Page, selectedProject: typeof project | null = null) {
   await page.route("**/graphql", async (route) => {
-    const requestBody = route.request().postDataJSON() as { operationName?: string };
+    const requestBody = route.request().postDataJSON() as {
+      operationName?: string;
+      variables?: Record<string, unknown>;
+    };
     if (requestBody.operationName === "Viewer") {
       await route.fulfill({
         contentType: "application/json",
@@ -108,6 +111,86 @@ async function mockViewer(page: Page, selectedProject: typeof project | null = n
       return;
     }
 
+    if (requestBody.operationName === "ProjectAiProviderSettings") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          data: {
+            projectAiProviderSettings: {
+              projectId,
+              providerProfiles: [],
+              modelAliases: [],
+              effective: {
+                warnings: [],
+                missingProviderProfiles: [],
+                disabledProviderProfiles: [],
+                missingChatProvider: true,
+              },
+              version: 1,
+              updatedAt: "2026-05-15T08:00:00.000Z",
+              updatedByUserId: null,
+            },
+          },
+        },
+      });
+      return;
+    }
+
+    if (requestBody.operationName === "UpdateProjectAiProviderSettings") {
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          data: {
+            updateProjectAiProviderSettings: {
+              projectId,
+              providerProfiles: [
+                {
+                  id: "provider-1",
+                  ownerScope: "project",
+                  ownerId: projectId,
+                  label: "Eval OpenAI",
+                  providerKind: "openai",
+                  baseUrl: null,
+                  credentialRef: "managed:project/project-uxv2/provider-1",
+                  models: { default: ["gpt-5-mini"] },
+                  parameters: {},
+                  timeoutMs: 30000,
+                  maxConcurrency: null,
+                  disabledAt: null,
+                },
+              ],
+              modelAliases: [
+                {
+                  id: "alias-1",
+                  name: "default",
+                  providerProfileId: "provider-1",
+                  model: "gpt-5-mini",
+                  purpose: "default",
+                  parameters: {
+                    temperature: null,
+                    topP: null,
+                    maxOutputTokens: null,
+                    reasoningEffort: null,
+                    extras: {},
+                  },
+                },
+              ],
+              effective: {
+                warnings: [],
+                missingProviderProfiles: [],
+                disabledProviderProfiles: [],
+                missingChatProvider: true,
+              },
+              version: 2,
+              updatedAt: "2026-05-15T08:00:00.000Z",
+              updatedByUserId: "local",
+            },
+          },
+        },
+      });
+      return;
+    }
+
     if (requestBody.operationName === "TraceSearch") {
       await route.fulfill({
         contentType: "application/json",
@@ -185,11 +268,30 @@ test("project settings use a settings sidebar and focused forms", async ({ page 
 
   await page.goto(`/projects/${projectId}/settings`);
 
-  await expect(page.getByRole("heading", { name: /^general$/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^identity$/i })).toBeVisible();
   await expect(
-    page.getByRole("navigation", { name: /settings/i }).getByRole("link", { name: /^api keys$/i }),
+    page.getByRole("tablist", { name: /settings/i }).getByRole("tab", { name: /^api keys$/i }),
   ).toHaveAttribute("href", `/projects/${projectId}/settings/ingest`);
   await page.goto(`/projects/${projectId}/settings/ingest`);
   await expect(page.getByRole("heading", { name: "API Keys", exact: true })).toBeVisible();
   await expect(page.getByText(/stored credential secrets are never displayed/i)).toBeVisible();
+});
+
+test("project AI provider settings route edits provider profiles and model aliases", async ({
+  page,
+}) => {
+  await mockViewer(page, project);
+
+  await page.goto(`/projects/${projectId}/settings/ai-providers`);
+
+  await expect(page.getByRole("heading", { name: /^ai providers$/i })).toBeVisible();
+  await page.getByRole("button", { name: /add provider/i }).click();
+  await page.getByLabel("Label").fill("Eval OpenAI");
+  await page.getByLabel("Credential value").fill("sk-test-project-provider");
+  await page.getByRole("button", { name: /add alias/i }).click();
+  await page.getByLabel("Alias name").fill("default");
+  await page.getByLabel("Model").fill("gpt-5-mini");
+  await page.getByRole("button", { name: /save ai providers/i }).click();
+
+  await expect(page.getByText(/ai providers saved/i)).toBeVisible();
 });

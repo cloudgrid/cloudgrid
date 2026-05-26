@@ -1,0 +1,72 @@
+plan: dashboard_gap_closure
+global_read_scope:
+  - specs/spec.md
+  - specs/00-vision.md
+  - specs/00-conventions.md
+  - specs/05-frontend/product-ux-concept.md
+  - specs/05-frontend/logs-metrics-dashboards-ux-concept.md
+  - specs/05-frontend/dashboard-widgets.md
+  - specs/05-frontend/dashboard-implementation-contract.md
+  - specs/02-capabilities/metrics/manage-dashboards.md
+  - specs/02-flows/metrics/dashboard-query.md
+  - specs/03-contracts/graphql/public-schema.graphql
+  - specs/03-contracts/messages/message-bridge.asyncapi.yaml
+  - specs/03-contracts/errors.yaml
+  - DESIGN.md
+  - .agent/IMPLEMENTATION.md
+boundaries:
+  dashboard-foundation-agent:
+    write_scope:
+      - apps/frontend/src/features/dashboards
+      - apps/frontend/test/dashboard-layout.test.ts
+      - apps/frontend/test/dashboard-draft-reducer.test.ts
+      - apps/frontend/test/dashboards-ux.test.ts
+    must_not_write:
+      - apps/backend
+      - core
+      - specs/03-contracts
+  dashboard-route-agent:
+    write_scope:
+      - apps/frontend/src/routes/dashboards-route.tsx
+      - apps/frontend/src/lib/i18n.ts
+      - apps/frontend/test/dashboards-ux.test.ts
+    must_not_write:
+      - apps/backend
+      - core
+      - specs/03-contracts
+  metric-controls-agent:
+    write_scope:
+      - apps/frontend/src/features/metrics
+      - apps/frontend/src/features/dashboards/widget-editor
+      - apps/frontend/test
+    must_not_write:
+      - apps/backend
+      - core
+      - specs/03-contracts
+  dashboard-renderers-agent:
+    write_scope:
+      - apps/frontend/src/features/dashboards/widget-renderers
+      - apps/frontend/src/features/dashboards/widget-source-mappers.ts
+      - apps/frontend/test
+    must_not_write:
+      - apps/backend
+      - core
+  dashboard-pins-agent:
+    write_scope:
+      - apps/frontend/src/routes
+      - apps/frontend/src/features/dashboards
+      - apps/frontend/test
+    must_not_write:
+      - apps/backend
+      - core
+      - specs/03-contracts
+  rich-metric-gate-agent:
+    write_scope:
+      - apps/frontend/src/routes/dashboards-route.tsx
+      - apps/frontend/src/features/dashboards
+      - apps/frontend/test/dashboards-ux.test.ts
+      - specs/05-frontend/dashboard-implementation-contract.md
+    must_not_write:
+      - core
+      - apps/backend
+      - specs/03-contracts

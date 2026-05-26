@@ -49,7 +49,7 @@
 **Files:**
 - Modify: `AGENTS.md`, `CLAUDE.md`, `.agent/IMPLEMENTATION.md`
 - Modify: `specs/**/*.md`, `specs/**/*.yaml`, `specs/**/*.json`
-- Modify: `docs/**/*.md`, `tooling/**/*.mjs`, `tooling/**/*.md`
+- Modify: `website/src/content/handbook/**/*.md`, `tooling/**/*.mjs`, `tooling/**/*.md`
 
 - [ ] Replace old path references with the new layout.
 - [ ] Preserve the hard boundaries: frontend to BFF only, BFF to private services through NATS, storage-read owns reads, storage-write owns writes.

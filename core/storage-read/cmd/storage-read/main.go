@@ -17,32 +17,103 @@ import (
 	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/selfobs"
 	storage "github.com/cloudgrid-dev/cloudgrid/core/storage-read/internal"
 	"github.com/cloudgrid-dev/cloudgrid/core/storage-read/internal/ports"
+	"github.com/nats-io/nats.go"
 )
 
-const startupTimeout = 5 * time.Second
+const (
+	startupTimeout              = 5 * time.Second
+	storageCloseTimeout         = time.Second
+	exporterShutdownTimeout     = 2 * time.Second
+	healthReadHeaderTimeout     = 5 * time.Second
+	healthServerShutdownTimeout = 10 * time.Second
+)
 
 func main() {
 	os.Exit(run())
 }
 
 func run() int {
-	logger := newLogger(os.Stdout)
+	return runWithRuntime(storageReadRuntime{
+		output: os.Stdout,
+		loadConfig: func() (storage.Config, error) {
+			return storage.LoadConfig(storage.OSEnv)
+		},
+		newAdapter: newTelemetryReadAdapter,
+		connectNATS: func(url string) (storageReadNATSConnection, error) {
+			nc, err := storage.ConnectNATS(url)
+			if err != nil {
+				return nil, err
+			}
+			return storageReadNATSAdapter{conn: nc}, nil
+		},
+		subscribeHandlers: func(conn storageReadNATSConnection, store ports.TelemetryReadStore, logger *slog.Logger, recorder storage.MetricsRecorder, traceLogRecorder storage.TraceLogRecorder, limits storage.RuntimeLimits) error {
+			nc := conn.NATSConn()
+			if nc == nil {
+				return errors.New("ERR-013 MESSAGE_BRIDGE_UNAVAILABLE: invalid NATS connection")
+			}
+			_, err := storage.SubscribeTelemetryHandlersWithOptions(nc, store, logger, recorder, traceLogRecorder, limits)
+			return err
+		},
+		listen:         net.Listen,
+		shutdownSignal: shutdownSignal,
+	})
+}
+
+type storageReadNATSConnection interface {
+	CheckReady(context.Context) error
+	NATSConn() *nats.Conn
+	Close()
+	Drain() error
+}
+
+type storageReadNATSAdapter struct {
+	conn *nats.Conn
+}
+
+func (adapter storageReadNATSAdapter) CheckReady(ctx context.Context) error {
+	return checkNATSReady(ctx, adapter.conn)
+}
+
+func (adapter storageReadNATSAdapter) NATSConn() *nats.Conn {
+	return adapter.conn
+}
+
+func (adapter storageReadNATSAdapter) Close() {
+	adapter.conn.Close()
+}
+
+func (adapter storageReadNATSAdapter) Drain() error {
+	return adapter.conn.Drain()
+}
+
+type storageReadRuntime struct {
+	output            io.Writer
+	loadConfig        func() (storage.Config, error)
+	newAdapter        func(context.Context, storage.Config) (telemetryReadAdapter, error)
+	connectNATS       func(string) (storageReadNATSConnection, error)
+	subscribeHandlers func(storageReadNATSConnection, ports.TelemetryReadStore, *slog.Logger, storage.MetricsRecorder, storage.TraceLogRecorder, storage.RuntimeLimits) error
+	listen            func(string, string) (net.Listener, error)
+	shutdownSignal    func() <-chan os.Signal
+}
+
+func runWithRuntime(runtime storageReadRuntime) int {
+	logger := newLogger(runtime.output)
 	ctx, cancel := context.WithTimeout(context.Background(), startupTimeout)
 	defer cancel()
 
-	cfg, err := storage.LoadConfig(storage.OSEnv)
+	cfg, err := runtime.loadConfig()
 	if err != nil {
 		logError(logger, "startup_config_invalid", err, "ERR-009")
 		return 1
 	}
 
-	adapter, err := newTelemetryReadAdapter(ctx, cfg)
+	adapter, err := runtime.newAdapter(ctx, cfg)
 	if err != nil {
 		logError(logger, "startup_storage_unavailable", err, "ERR-006")
 		return 1
 	}
 	defer func() {
-		closeCtx, closeCancel := context.WithTimeout(context.Background(), time.Second)
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), storageCloseTimeout)
 		defer closeCancel()
 		if err := adapter.Close(closeCtx); err != nil {
 			logError(logger, "storage_close_failed", err, "ERR-006")
@@ -60,7 +131,7 @@ func run() int {
 	}
 	if metricsExporter != nil {
 		defer func() {
-			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), exporterShutdownTimeout)
 			defer shutdownCancel()
 			_ = metricsExporter.Shutdown(shutdownCtx)
 		}()
@@ -72,13 +143,13 @@ func run() int {
 	}
 	if traceLogExporter != nil {
 		defer func() {
-			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 2*time.Second)
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), exporterShutdownTimeout)
 			defer shutdownCancel()
 			_ = traceLogExporter.Shutdown(shutdownCtx)
 		}()
 	}
 
-	nc, err := storage.ConnectNATS(cfg.NATSURL)
+	nc, err := runtime.connectNATS(cfg.NATSURL)
 	if err != nil {
 		logError(logger, "message_bridge_unavailable", err, "ERR-013")
 		return 1
@@ -89,37 +160,16 @@ func run() int {
 	if metricsExporter != nil {
 		recorder = storage.NewOTLPMetricsRecorder(metricsExporter)
 	}
-	if _, err := storage.SubscribeTelemetryHandlersWithOptions(nc, adapter.Store, logger, recorder, traceLogExporter, cfg.Limits); err != nil {
+	if err := runtime.subscribeHandlers(nc, adapter.Store, logger, recorder, traceLogExporter, cfg.Limits); err != nil {
 		logError(logger, "message_bridge_subscribe_failed", err, "ERR-013")
 		return 1
 	}
 
-	probes := health.NewState("storage-read", func(ctx context.Context) map[string]health.Check {
-		checks := map[string]health.Check{}
-		if nc.IsClosed() {
-			checks["nats"] = health.Unavailable("ERR-013", "MESSAGE_BRIDGE_UNAVAILABLE", "message bridge is unavailable")
-		} else {
-			checks["nats"] = health.OK()
-		}
-		storageCheck := adapter.Name
-		if storageCheck == "" {
-			storageCheck = "storage"
-		}
-		if err := adapter.CheckReadiness(ctx); err != nil {
-			checks[storageCheck] = health.Unavailable("ERR-006", "STORAGE_UNAVAILABLE", "storage is unavailable")
-		} else {
-			checks[storageCheck] = health.OK()
-		}
-		return checks
-	})
-	healthServer := &http.Server{
-		Addr:              net.JoinHostPort(cfg.HealthHost, cfg.HealthPort),
-		Handler:           probes.Handler(),
-		ReadHeaderTimeout: 5 * time.Second,
-	}
+	probes := health.NewState("storage-read", storageReadHealthChecks(nc.CheckReady, adapter))
+	healthServer := storageReadHealthServer(cfg, probes.Handler())
 	probes.SetReady(true)
 	healthErrors := make(chan error, 1)
-	healthListener, err := net.Listen("tcp", healthServer.Addr)
+	healthListener, err := runtime.listen("tcp", healthServer.Addr)
 	if err != nil {
 		logError(logger, "health_server_bind_failed", err, "ERR-010", "health_addr", healthServer.Addr)
 		return 1
@@ -142,7 +192,7 @@ func run() int {
 			return 1
 		}
 		return 0
-	case signal := <-shutdownSignal():
+	case signal := <-runtime.shutdownSignal():
 		probes.SetReady(false)
 		logger.Info("storage read shutdown started",
 			"service", "storage-read",
@@ -150,7 +200,7 @@ func run() int {
 			"request_id", "",
 			"signal", signal.String(),
 		)
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), healthServerShutdownTimeout)
 		defer shutdownCancel()
 		if err := healthServer.Shutdown(shutdownCtx); err != nil {
 			logError(logger, "health_server_shutdown_failed", err, "ERR-010")
@@ -165,6 +215,48 @@ func run() int {
 		)
 	}
 	return 0
+}
+
+func storageReadHealthChecks(checkNATSReady func(context.Context) error, adapter telemetryReadAdapter) health.Checker {
+	return func(ctx context.Context) map[string]health.Check {
+		checks := map[string]health.Check{}
+		if err := checkNATSReady(ctx); err != nil {
+			checks["nats"] = health.Unavailable("ERR-013", "MESSAGE_BRIDGE_UNAVAILABLE", "message bridge is unavailable")
+		} else {
+			checks["nats"] = health.OK()
+		}
+		storageCheck := adapter.Name
+		if storageCheck == "" {
+			storageCheck = "storage"
+		}
+		if err := adapter.CheckReadiness(ctx); err != nil {
+			checks[storageCheck] = health.Unavailable("ERR-006", "STORAGE_UNAVAILABLE", "storage is unavailable")
+		} else {
+			checks[storageCheck] = health.OK()
+		}
+		return checks
+	}
+}
+
+func checkNATSReady(ctx context.Context, nc *nats.Conn) error {
+	if nc == nil || nc.IsClosed() || nc.IsDraining() {
+		return errors.New("ERR-013 MESSAGE_BRIDGE_UNAVAILABLE: invalid NATS connection")
+	}
+	timeout := time.Second
+	if deadline, ok := ctx.Deadline(); ok {
+		if remaining := time.Until(deadline); remaining > 0 && remaining < timeout {
+			timeout = remaining
+		}
+	}
+	return nc.FlushTimeout(timeout)
+}
+
+func storageReadHealthServer(cfg storage.Config, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              net.JoinHostPort(cfg.HealthHost, cfg.HealthPort),
+		Handler:           handler,
+		ReadHeaderTimeout: healthReadHeaderTimeout,
+	}
 }
 
 func storageReadSelfObservabilityMetricsExporter(cfg storage.Config, logger *slog.Logger) (*selfobs.OTLPHTTPMetricsExporter, error) {
@@ -182,6 +274,7 @@ func storageReadSelfObservabilityMetricsExporter(cfg storage.Config, logger *slo
 		CompanyID:             self.CompanyID,
 		ProjectID:             self.ProjectID,
 		Logger:                logger,
+		FailureLogLevel:       self.ExportFailureLogLevel,
 	})
 }
 
@@ -202,6 +295,7 @@ func storageReadSelfObservabilityTraceLogExporter(cfg storage.Config, logger *sl
 		TracesEnabled:         self.TracesEnabled,
 		LogsEnabled:           self.LogsEnabled,
 		Logger:                logger,
+		FailureLogLevel:       self.ExportFailureLogLevel,
 	})
 }
 
@@ -220,6 +314,7 @@ func shutdownSignal() <-chan os.Signal {
 
 func newLogger(output io.Writer) *slog.Logger {
 	handler := slog.NewJSONHandler(output, &slog.HandlerOptions{
+		Level: runtimeLogLevel(),
 		ReplaceAttr: func(_ []string, attr slog.Attr) slog.Attr {
 			switch attr.Key {
 			case slog.TimeKey:
@@ -233,6 +328,19 @@ func newLogger(output io.Writer) *slog.Logger {
 		},
 	})
 	return slog.New(handler)
+}
+
+func runtimeLogLevel() slog.Level {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("CLOUDGRID_LOG_LEVEL"))) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }
 
 func logError(logger *slog.Logger, event string, err error, fallbackCode string, fields ...any) {

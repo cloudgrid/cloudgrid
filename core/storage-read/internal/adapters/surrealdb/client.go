@@ -19,6 +19,15 @@ type Config struct {
 }
 
 func Connect(ctx context.Context, cfg Config) (*sdk.DB, error) {
+	db, err := openSDKDB(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	registerReadClient(db, cfg)
+	return db, nil
+}
+
+func openSDKDB(ctx context.Context, cfg Config) (*sdk.DB, error) {
 	db, err := sdk.FromEndpointURLString(ctx, SDKEndpointURL(cfg.URL))
 	if err != nil {
 		return nil, fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: SurrealDB connection failed")

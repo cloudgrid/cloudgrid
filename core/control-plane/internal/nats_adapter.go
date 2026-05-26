@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 
@@ -25,57 +26,10 @@ func SubscribeControlHandlers(nc *nats.Conn, service *Service, logger *slog.Logg
 
 func SubscribeControlHandlersWithOptions(nc *nats.Conn, service *Service, logger *slog.Logger, options ControlHandlerOptions) ([]*nats.Subscription, error) {
 	publisher := natsMessagePublisher{nc: nc}
-	handlers := map[string]bridgeMessageHandler{
-		SubjectViewerGet:                handleViewerGet(service, logger),
-		SubjectOrganizationsList:        handleOrganizationsList(service, logger),
-		SubjectOrganizationsGet:         handleOrganizationsGet(service, logger),
-		SubjectProjectsList:             handleProjectsList(service, logger),
-		SubjectProjectsListForService:   handleProjectsListForService(service, logger),
-		SubjectProjectsGet:              handleProjectsGet(service, logger),
-		SubjectProjectsCreate:           handleProjectsCreate(service, logger),
-		SubjectProjectsUpdate:           handleProjectsUpdate(service, publisher, logger),
-		SubjectProjectsSelect:           handleProjectsSelect(service, logger),
-		SubjectMembersList:              handleMembersList(service, logger),
-		SubjectMembersUpdate:            handleMembersUpdate(service, logger),
-		SubjectMembersRemove:            handleMembersRemove(service, logger),
-		SubjectInvitationsList:          handleInvitationsList(service, logger),
-		SubjectInvitationsCreate:        handleInvitationsCreate(service, logger),
-		SubjectInvitationsResend:        handleInvitationsResend(service, logger),
-		SubjectInvitationsRevoke:        handleInvitationsRevoke(service, logger),
-		SubjectProjectInvitationsCreate: handleProjectInvitationsCreate(service, logger),
-		SubjectIngestCredentialsList:    handleIngestCredentialsList(service, logger),
-		SubjectIngestCredentialsCreate:  handleIngestCredentialsCreate(service, logger),
-		SubjectIngestCredentialsRevoke:  handleIngestCredentialsRevoke(service, logger),
-		SubjectProjectStatusSnapshot:    handleProjectStatusSnapshot(service, logger),
-		SubjectDashboardsList:           handleDashboardsList(service, logger),
-		SubjectDashboardsSave:           handleDashboardsSave(service, logger),
-		SubjectDashboardsDelete:         handleDashboardsDelete(service, logger),
-		SubjectDashboardPinsSet:         handleDashboardPinsSet(service, logger),
-		SubjectDashboardPinsReorder:     handleDashboardPinsReorder(service, logger),
-		SubjectProjectAiSettingsGet:     handleProjectAiSettingsGet(service, logger),
-		SubjectProjectAiSettingsUpdate:  handleProjectAiSettingsUpdate(service, logger),
-		SubjectAiChatRunCreate:          handleAiChatRunCreate(service, logger),
-		SubjectAiChatRunUpdate:          handleAiChatRunUpdate(service, logger),
-		SubjectAiChatRunFinalize:        handleAiChatRunFinalize(service, logger),
-		SubjectProjectMembersList:       handleProjectMembersList(service, logger),
-		SubjectProjectMembersUpdate:     handleProjectMembersUpdate(service, logger),
-		SubjectProjectMembersRemove:     handleProjectMembersRemove(service, logger),
-		SubjectRetentionGet:             handleRetentionGet(service, logger),
-		SubjectRetentionUpdate:          handleRetentionUpdate(service, logger),
-		SubjectAlertRulesList:           handleAlertRulesList(service, logger),
-		SubjectAlertRulesCreate:         handleAlertRulesCreate(service, logger),
-		SubjectAlertRulesUpdate:         handleAlertRulesUpdate(service, logger),
-		SubjectAlertRulesDelete:         handleAlertRulesDelete(service, logger),
-		SubjectAlertSilencesList:        handleAlertSilencesList(service, logger),
-		SubjectAlertSilencesCreate:      handleAlertSilencesCreate(service, logger),
-		SubjectAlertSilencesDelete:      handleAlertSilencesDelete(service, logger),
-		SubjectAlertHistoryList:         handleAlertHistoryList(service, logger),
-		SubjectAlertSummaryGet:          handleAlertSummaryGet(service, logger),
-		SubjectAlertHistoryRecord:       handleAlertHistoryRecord(service, logger),
-	}
+	handlers := controlHandlers(service, publisher, logger, options.SelfObservability)
 	subscriptions := make([]*nats.Subscription, 0, len(handlers))
 	for subject, handler := range handlers {
-		subscription, err := nc.Subscribe(subject, adaptNATSHandler(adaptBridgeHandlerWithSelfObservability(subject, handler, options.SelfObservability)))
+		subscription, err := nc.Subscribe(subject, adaptNATSHandler(recoverControlHandlerPanic(subject, logger, adaptBridgeHandlerWithSelfObservability(subject, handler, options.SelfObservability))))
 		if err != nil {
 			return nil, fmt.Errorf("ERR-013 MESSAGE_BRIDGE_UNAVAILABLE: NATS subscribe failed")
 		}
@@ -85,6 +39,73 @@ func SubscribeControlHandlersWithOptions(nc *nats.Conn, service *Service, logger
 		return nil, fmt.Errorf("ERR-013 MESSAGE_BRIDGE_UNAVAILABLE: NATS subscription flush failed")
 	}
 	return subscriptions, nil
+}
+
+func controlHandlers(service *Service, publisher MessagePublisher, logger *slog.Logger, _ SelfObservabilityRecorder) map[string]bridgeMessageHandler {
+	return map[string]bridgeMessageHandler{
+		SubjectViewerGet:                 handleViewerGet(service, logger),
+		SubjectOrganizationsList:         handleOrganizationsList(service, logger),
+		SubjectOrganizationsGet:          handleOrganizationsGet(service, logger),
+		SubjectProjectsList:              handleProjectsList(service, logger),
+		SubjectProjectsListForService:    handleProjectsListForService(service, logger),
+		SubjectProjectsGet:               handleProjectsGet(service, logger),
+		SubjectProjectsCreate:            handleProjectsCreate(service, logger),
+		SubjectProjectsUpdate:            handleProjectsUpdate(service, publisher, logger),
+		SubjectProjectsSelect:            handleProjectsSelect(service, logger),
+		SubjectMembersList:               handleMembersList(service, logger),
+		SubjectMembersUpdate:             handleMembersUpdate(service, logger),
+		SubjectMembersRemove:             handleMembersRemove(service, logger),
+		SubjectInvitationsList:           handleInvitationsList(service, logger),
+		SubjectInvitationsCreate:         handleInvitationsCreate(service, logger),
+		SubjectInvitationsResend:         handleInvitationsResend(service, logger),
+		SubjectInvitationsRevoke:         handleInvitationsRevoke(service, logger),
+		SubjectProjectInvitationsCreate:  handleProjectInvitationsCreate(service, logger),
+		SubjectIngestCredentialsList:     handleIngestCredentialsList(service, logger),
+		SubjectIngestCredentialsCreate:   handleIngestCredentialsCreate(service, logger),
+		SubjectIngestCredentialsRevoke:   handleIngestCredentialsRevoke(service, logger),
+		SubjectProjectStatusSnapshot:     handleProjectStatusSnapshot(service, logger),
+		SubjectDashboardsList:            handleDashboardsList(service, logger),
+		SubjectDashboardsSave:            handleDashboardsSave(service, logger),
+		SubjectDashboardsDelete:          handleDashboardsDelete(service, logger),
+		SubjectDashboardPinsSet:          handleDashboardPinsSet(service, logger),
+		SubjectDashboardPinsReorder:      handleDashboardPinsReorder(service, logger),
+		SubjectProjectAiSettingsGet:      handleProjectAiSettingsGet(service, logger),
+		SubjectProjectAiSettingsUpdate:   handleProjectAiSettingsUpdate(service, logger),
+		SubjectProjectAiProvidersGet:     handleProjectAiProviderSettingsGet(service, logger),
+		SubjectProjectAiProvidersUpdate:  handleProjectAiProviderSettingsUpdate(service, logger),
+		SubjectCompanyAiProvidersGet:     handleCompanyAiProviderSettingsGet(service, logger),
+		SubjectCompanyAiProvidersUpdate:  handleCompanyAiProviderSettingsUpdate(service, logger),
+		SubjectAiProviderSecretsResolve:  handleAiProviderSecretResolve(service, logger),
+		SubjectAiChatHistory:             handleAiChatHistory(service, logger),
+		SubjectAiChatConversationGet:     handleAiChatConversationGet(service, logger),
+		SubjectAiChatConversationCreate:  handleAiChatConversationCreate(service, logger),
+		SubjectAiChatConversationArchive: handleAiChatConversationArchive(service, logger),
+		SubjectAiChatConversationDelete:  handleAiChatConversationDelete(service, logger),
+		SubjectAiChatMessageAppend:       handleAiChatMessageAppend(service, logger),
+		SubjectAiChatRunCreate:           handleAiChatRunCreate(service, logger),
+		SubjectAiChatRunUpdate:           handleAiChatRunUpdate(service, logger),
+		SubjectAiChatRunFinalize:         handleAiChatRunFinalize(service, logger),
+		SubjectAiChatActionPropose:       handleAiChatActionPropose(service, logger),
+		SubjectAiChatActionApprove:       handleAiChatActionApprove(service, logger),
+		SubjectAiChatActionFinish:        handleAiChatActionFinish(service, logger),
+		SubjectAiChatCompactionSave:      handleAiChatCompactionSave(service, logger),
+		SubjectProjectMembersList:        handleProjectMembersList(service, logger),
+		SubjectProjectMembersUpdate:      handleProjectMembersUpdate(service, logger),
+		SubjectProjectMembersRemove:      handleProjectMembersRemove(service, logger),
+		SubjectRetentionGet:              handleRetentionGet(service, logger),
+		SubjectRetentionUpdate:           handleRetentionUpdate(service, logger),
+		SubjectAlertRulesList:            handleAlertRulesList(service, logger),
+		SubjectAlertRulesCreate:          handleAlertRulesCreate(service, logger),
+		SubjectAlertRulesUpdate:          handleAlertRulesUpdate(service, logger),
+		SubjectAlertRulesDelete:          handleAlertRulesDelete(service, logger),
+		SubjectAlertSilencesList:         handleAlertSilencesList(service, logger),
+		SubjectAlertSilencesCreate:       handleAlertSilencesCreate(service, logger),
+		SubjectAlertSilencesDelete:       handleAlertSilencesDelete(service, logger),
+		SubjectAlertHistoryList:          handleAlertHistoryList(service, logger),
+		SubjectAlertSummaryGet:           handleAlertSummaryGet(service, logger),
+		SubjectAlertNotificationAdapters: handleAlertNotificationAdaptersList(service, logger),
+		SubjectAlertHistoryRecord:        handleAlertHistoryRecord(service, logger),
+	}
 }
 
 type natsBridgeMessage struct {
@@ -115,4 +136,58 @@ func adaptNATSHandler(handler bridgeMessageHandler) nats.MsgHandler {
 	return func(msg *nats.Msg) {
 		handler(natsBridgeMessage{msg: msg})
 	}
+}
+
+func recoverControlHandlerPanic(subject string, logger *slog.Logger, handler bridgeMessageHandler) bridgeMessageHandler {
+	return func(message BridgeMessage) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				if logger != nil {
+					logger.Error("nats_handler_panic_recovered",
+						"subject", subject,
+						"error_id", "ERR-013",
+						"error_code", "MESSAGE_BRIDGE_UNAVAILABLE",
+					)
+				}
+				_ = message.Respond(canonicalPanicBridgeResponse(message.Data()))
+			}
+		}()
+		handler(message)
+	}
+}
+
+func canonicalPanicBridgeResponse(data []byte) []byte {
+	requestID := requestIDFromJSON(data)
+	response := struct {
+		RequestID string `json:"requestId"`
+		OK        bool   `json:"ok"`
+		Error     struct {
+			ID        string `json:"id"`
+			Code      string `json:"code"`
+			Message   string `json:"message"`
+			Retryable bool   `json:"retryable"`
+		} `json:"error"`
+	}{
+		RequestID: requestID,
+		OK:        false,
+	}
+	response.Error.ID = "ERR-013"
+	response.Error.Code = "MESSAGE_BRIDGE_UNAVAILABLE"
+	response.Error.Message = "Message bridge is unavailable"
+	response.Error.Retryable = true
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		return []byte(`{"requestId":"","ok":false,"error":{"id":"ERR-013","code":"MESSAGE_BRIDGE_UNAVAILABLE","message":"Message bridge is unavailable","retryable":true}}`)
+	}
+	return encoded
+}
+
+func requestIDFromJSON(data []byte) string {
+	var envelope struct {
+		RequestID string `json:"requestId"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return ""
+	}
+	return envelope.RequestID
 }

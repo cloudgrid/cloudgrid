@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,12 +18,23 @@ type Store struct {
 	DB *sdk.DB
 }
 
+var queryRowsLock = newSDKOperationLock()
+var queryRowsOverride func(context.Context, *sdk.DB, QueryStatement, any) error
+
 func (store Store) GetProjectTelemetryOverviews(ctx context.Context, request contracts.ProjectTelemetryOverviewRequest) (contracts.ProjectTelemetryOverviewData, error) {
 	items := make([]contracts.ProjectTelemetryOverviewItem, 0, len(request.Projects))
 	for _, project := range request.Projects {
 		target, err := ResolveProjectTelemetryTarget(project, request.AuthContext)
 		if err != nil {
 			return contracts.ProjectTelemetryOverviewData{}, err
+		}
+		hasTelemetrySchema, err := store.targetHasTelemetrySchema(ctx, target)
+		if err != nil {
+			return contracts.ProjectTelemetryOverviewData{}, storageError()
+		}
+		if !hasTelemetrySchema {
+			items = append(items, projectTelemetryOverviewItem(target, contracts.ProjectTelemetryOverview{}))
+			continue
 		}
 		queries := BuildProjectTelemetryOverviewQueries(target)
 		traceCount, err := store.queryCount(ctx, queries["traces"])
@@ -45,23 +57,31 @@ func (store Store) GetProjectTelemetryOverviews(ctx context.Context, request con
 		if err != nil {
 			return contracts.ProjectTelemetryOverviewData{}, storageError()
 		}
-		items = append(items, contracts.ProjectTelemetryOverviewItem{
-			TenantID:  target.TenantID,
-			CompanyID: target.CompanyID,
-			ProjectID: target.ProjectID,
-			Telemetry: contracts.ProjectTelemetryOverview{
-				LastIngestAt: lastIngestAt,
-				TraceCount:   traceCount,
-				LogCount:     logCount,
-				MetricCount:  metricCount,
-				ServiceCount: serviceCount,
-			},
-		})
+		items = append(items, projectTelemetryOverviewItem(target, contracts.ProjectTelemetryOverview{
+			LastIngestAt: lastIngestAt,
+			TraceCount:   traceCount,
+			LogCount:     logCount,
+			MetricCount:  metricCount,
+			ServiceCount: serviceCount,
+		}))
 	}
 	return contracts.ProjectTelemetryOverviewData{Items: items}, nil
 }
 
+func projectTelemetryOverviewItem(target TelemetryTarget, telemetry contracts.ProjectTelemetryOverview) contracts.ProjectTelemetryOverviewItem {
+	return contracts.ProjectTelemetryOverviewItem{
+		TenantID:  target.TenantID,
+		CompanyID: target.CompanyID,
+		ProjectID: target.ProjectID,
+		Telemetry: telemetry,
+	}
+}
+
 func (store Store) SearchTraces(ctx context.Context, query contracts.TraceSearchQuery, authContext *contracts.AuthContext) (contracts.TraceSearchData, error) {
+	limit, err := normalizedLimit(query.Limit)
+	if err != nil {
+		return contracts.TraceSearchData{}, err
+	}
 	stmt, err := BuildTraceSearchQuery(query, authContext)
 	if err != nil {
 		return contracts.TraceSearchData{}, err
@@ -70,10 +90,9 @@ func (store Store) SearchTraces(ctx context.Context, query contracts.TraceSearch
 	if err != nil {
 		return contracts.TraceSearchData{}, storageError()
 	}
-	if err := store.applyTraceSummaryCounts(ctx, items); err != nil {
-		return contracts.TraceSearchData{}, storageError()
-	}
-	return contracts.TraceSearchData{Items: items}, nil
+	normalizeTraceSummaries(items)
+	items, nextCursor := tracePage(items, limit, query.Sort)
+	return contracts.TraceSearchData{Items: items, NextCursor: nextCursor}, nil
 }
 
 func (store Store) SearchLiveTraceCandidates(ctx context.Context, query contracts.LiveTraceQuery, traceIDs []string, authContext *contracts.AuthContext) ([]contracts.TraceSummary, error) {
@@ -85,9 +104,7 @@ func (store Store) SearchLiveTraceCandidates(ctx context.Context, query contract
 	if err != nil {
 		return nil, storageError()
 	}
-	if err := store.applyTraceSummaryCounts(ctx, items); err != nil {
-		return nil, storageError()
-	}
+	normalizeTraceSummaries(items)
 	return items, nil
 }
 
@@ -129,6 +146,10 @@ func (store Store) GetTraceDetail(ctx context.Context, traceID string, query *co
 }
 
 func (store Store) SearchLogs(ctx context.Context, query contracts.LogSearchQuery, authContext *contracts.AuthContext) (contracts.LogSearchData, error) {
+	limit, err := normalizedLimit(query.Limit)
+	if err != nil {
+		return contracts.LogSearchData{}, err
+	}
 	stmt, err := BuildLogSearchQuery(query, authContext)
 	if err != nil {
 		return contracts.LogSearchData{}, err
@@ -138,7 +159,66 @@ func (store Store) SearchLogs(ctx context.Context, query contracts.LogSearchQuer
 		return contracts.LogSearchData{}, storageError()
 	}
 	setLogCorrelations(items)
-	return contracts.LogSearchData{Items: items}, nil
+	items, nextCursor := logPage(items, limit, query.Sort)
+	return contracts.LogSearchData{Items: items, NextCursor: nextCursor}, nil
+}
+
+func tracePage(items []contracts.TraceSummary, limit int, sort *contracts.TraceSort) ([]contracts.TraceSummary, *string) {
+	if limit < 1 || len(items) <= limit {
+		return items, nil
+	}
+	page := items[:limit]
+	last := page[len(page)-1]
+	spec := traceSearchSortSpec(sort)
+	switch spec.valueKind {
+	case cursorValueFloat:
+		duration := 0.0
+		if last.DurationMs != nil {
+			duration = *last.DurationMs
+		}
+		return page, pageCursorValue(spec.cursorSort, strconv.FormatFloat(duration, 'f', -1, 64), last.ID)
+	case cursorValueTraceErrorFirst:
+		return page, pageCursorTraceErrorFirst(spec.cursorSort, last.Status != nil && *last.Status == contracts.TraceStatusError, last.StartedAt, last.ID)
+	default:
+		return page, pageCursor(spec.cursorSort, last.StartedAt, last.ID)
+	}
+}
+
+func logPage(items []contracts.LogEvent, limit int, sort *contracts.LogSort) ([]contracts.LogEvent, *string) {
+	if limit < 1 || len(items) <= limit {
+		return items, nil
+	}
+	page := items[:limit]
+	last := page[len(page)-1]
+	spec := logSearchSortSpec(sort)
+	switch spec.valueKind {
+	case cursorValueFloat:
+		severity := 0
+		if last.SeverityNumber != nil {
+			severity = *last.SeverityNumber
+		}
+		return page, pageCursorValue(spec.cursorSort, strconv.Itoa(severity), last.ID)
+	default:
+		return page, pageCursor(spec.cursorSort, last.Timestamp, last.ID)
+	}
+}
+
+func metricNamePage(items []contracts.MetricDescriptor, limit int, sort *contracts.MetricNameSort) ([]contracts.MetricDescriptor, *string) {
+	if limit < 1 || len(items) <= limit {
+		return items, nil
+	}
+	page := items[:limit]
+	last := page[len(page)-1]
+	spec := metricNameSearchSortSpec(sort)
+	switch spec.valueKind {
+	case cursorValueString:
+		if sort != nil && *sort == contracts.MetricNameSortKindAsc {
+			return page, pageCursorValue(spec.cursorSort, string(last.Kind), last.Name)
+		}
+		return page, pageCursorValue(spec.cursorSort, last.Name, last.Name)
+	default:
+		return page, pageCursor(spec.cursorSort, last.LastSeenAt, last.Name)
+	}
 }
 
 func (store Store) GetTelemetryFacets(ctx context.Context, query contracts.TelemetryFacetQuery, authContext *contracts.AuthContext) (contracts.TelemetryFacetData, error) {
@@ -211,6 +291,10 @@ func facetValuesFromAttributeKeyRows(rows [][]string, search *string, limit int)
 }
 
 func (store Store) SearchMetricNames(ctx context.Context, input contracts.MetricNameSearchInput, authContext *contracts.AuthContext) (contracts.MetricNameSearchData, error) {
+	limit, err := normalizedMetricNameLimit(input.Limit)
+	if err != nil {
+		return contracts.MetricNameSearchData{}, err
+	}
 	stmt, err := BuildMetricNameSearchQuery(input, authContext)
 	if err != nil {
 		return contracts.MetricNameSearchData{}, err
@@ -220,7 +304,8 @@ func (store Store) SearchMetricNames(ctx context.Context, input contracts.Metric
 		return contracts.MetricNameSearchData{}, storageError()
 	}
 	normalizeMetricDescriptors(items)
-	return contracts.MetricNameSearchData{Items: items}, nil
+	items, nextCursor := metricNamePage(items, limit, input.Sort)
+	return contracts.MetricNameSearchData{Items: items, NextCursor: nextCursor}, nil
 }
 
 func (store Store) QueryMetricSeries(ctx context.Context, input contracts.MetricSeriesInput, authContext *contracts.AuthContext) (contracts.MetricSeriesData, error) {
@@ -278,95 +363,63 @@ func (store Store) queryLastIngestAt(ctx context.Context, stmt QueryStatement) (
 	return rows[0].LastIngestAt, nil
 }
 
-func (store Store) applyTraceSummaryCounts(ctx context.Context, items []contracts.TraceSummary) error {
-	if len(items) == 0 {
-		return nil
+func (store Store) targetHasTelemetrySchema(ctx context.Context, target TelemetryTarget) (bool, error) {
+	if queryRowsOverride != nil {
+		return true, nil
 	}
-	traceIDs := make([]string, 0, len(items))
-	indexByTraceID := map[string]int{}
-	for index, item := range items {
-		traceIDs = append(traceIDs, item.ID)
-		indexByTraceID[item.ID] = index
+	if store.DB == nil {
+		return false, storageUnavailableError()
 	}
-	target, err := ResolveTelemetryTarget(nil)
+	if manager := managerForDB(store.DB); manager != nil {
+		if err := manager.state.operationReady(); err != nil {
+			return false, err
+		}
+		release, err := manager.lock.acquire(ctx)
+		if err != nil {
+			manager.state.markDegraded()
+			return false, storageUnavailableError()
+		}
+		defer release()
+		if manager.db == nil {
+			manager.state.markDegraded()
+			return false, storageUnavailableError()
+		}
+		hasSchema, err := targetHasTelemetrySchemaWithDB(ctx, manager.db, target)
+		if err != nil {
+			return false, manager.state.observeOperationError(err)
+		}
+		return hasSchema, nil
+	}
+	release, err := queryRowsLock.acquire(ctx)
 	if err != nil {
-		return err
+		return false, storageUnavailableError()
 	}
-	params := map[string]any{"traceIds": traceIDs}
-	addOwnershipParams(params, target)
+	defer release()
+	return targetHasTelemetrySchemaWithDB(ctx, store.DB, target)
+}
 
-	spanCounts, err := queryRows[traceCountRow](ctx, store.DB, QueryStatement{
-		SQL:    "SELECT traceId, count() AS count FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND traceId IN $traceIds GROUP BY traceId;",
-		Params: params,
-	})
+func targetHasTelemetrySchemaWithDB(ctx context.Context, db *sdk.DB, target TelemetryTarget) (bool, error) {
+	if err := db.Use(ctx, target.Namespace, target.Database); err != nil {
+		return false, storageUnavailableError()
+	}
+	dbInfo, err := queryOne[DatabaseInfo](ctx, db, "INFO FOR DB;", nil)
 	if err != nil {
-		return err
+		return false, storageUnavailableError()
 	}
-	for _, row := range spanCounts {
-		if index, ok := indexByTraceID[row.TraceID]; ok {
-			items[index].SpanCount = row.Count
-		}
-	}
+	return hasAnyRequiredTelemetryTable(dbInfo), nil
+}
 
-	errorCounts, err := queryRows[traceCountRow](ctx, store.DB, QueryStatement{
-		SQL:    "SELECT traceId, count() AS count FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND traceId IN $traceIds AND status = 'error' GROUP BY traceId;",
-		Params: params,
-	})
-	if err != nil {
-		return err
-	}
-	for _, row := range errorCounts {
-		if index, ok := indexByTraceID[row.TraceID]; ok {
-			items[index].ErrorSpanCount = row.Count
+func hasAnyRequiredTelemetryTable(dbInfo DatabaseInfo) bool {
+	for _, table := range requiredTables {
+		if _, ok := dbInfo.Tables[table]; ok {
+			return true
 		}
 	}
-
-	logCounts, err := queryRows[traceCountRow](ctx, store.DB, QueryStatement{
-		SQL:    "SELECT traceId, count() AS count FROM log_event WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND traceId IN $traceIds GROUP BY traceId;",
-		Params: params,
-	})
-	if err != nil {
-		return err
-	}
-	for _, row := range logCounts {
-		if index, ok := indexByTraceID[row.TraceID]; ok {
-			items[index].LogCount = row.Count
-		}
-	}
-
-	serviceRows, err := queryRows[traceServiceRow](ctx, store.DB, QueryStatement{
-		SQL:    "SELECT traceId, serviceName FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND traceId IN $traceIds AND serviceName != NONE GROUP BY traceId, serviceName;",
-		Params: params,
-	})
-	if err != nil {
-		return err
-	}
-	serviceCounts := map[string]int{}
-	for _, row := range serviceRows {
-		if strings.TrimSpace(row.ServiceName) != "" {
-			serviceCounts[row.TraceID]++
-		}
-	}
-	for traceID, count := range serviceCounts {
-		if index, ok := indexByTraceID[traceID]; ok {
-			items[index].ServiceCount = count
-		}
-	}
-	return nil
+	return false
 }
 
 type countRow struct {
 	Count int `json:"count"`
-}
-
-type traceCountRow struct {
-	TraceID string `json:"traceId"`
-	Count   int    `json:"count"`
-}
-
-type traceServiceRow struct {
-	TraceID     string `json:"traceId"`
-	ServiceName string `json:"serviceName"`
 }
 
 type lastIngestRow struct {
@@ -540,13 +593,46 @@ func normalizeSpans(spans []contracts.Span) {
 	}
 }
 
+func normalizeTraceSummaries(items []contracts.TraceSummary) {
+	for index := range items {
+		if items[index].StartedAtUnixNano == "" && !items[index].StartedAt.IsZero() {
+			items[index].StartedAtUnixNano = strconv.FormatInt(items[index].StartedAt.UnixNano(), 10)
+		}
+		if items[index].Attributes == nil {
+			items[index].Attributes = contracts.Attributes{}
+		}
+	}
+}
+
 func queryRows[T any](ctx context.Context, db *sdk.DB, stmt QueryStatement) ([]T, error) {
+	if queryRowsOverride != nil {
+		var rows []T
+		if err := queryRowsOverride(ctx, db, stmt, &rows); err != nil {
+			return nil, err
+		}
+		return rows, nil
+	}
 	if db == nil {
 		return nil, fmt.Errorf("storage database is not configured")
 	}
+	if manager := managerForDB(db); manager != nil {
+		return queryRowsWithManager[T](ctx, manager, stmt)
+	}
+	release, err := queryRowsLock.acquire(ctx)
+	if err != nil {
+		return nil, storageUnavailableError()
+	}
+	defer release()
+	// The SurrealDB SDK client keeps namespace/database selection as mutable
+	// connection state, so Use and Query are serialized for unmanaged test clients.
+	if stmt.Target.Namespace != "" || stmt.Target.Database != "" {
+		if err := db.Use(ctx, stmt.Target.Namespace, stmt.Target.Database); err != nil {
+			return nil, storageUnavailableError()
+		}
+	}
 	results, err := sdk.Query[[]T](ctx, db, stmt.SQL, stmt.Params)
 	if err != nil {
-		return nil, err
+		return nil, storageUnavailableError()
 	}
 	if results == nil || len(*results) == 0 {
 		return nil, fmt.Errorf("empty SurrealDB query result")

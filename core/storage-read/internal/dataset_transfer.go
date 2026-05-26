@@ -28,6 +28,7 @@ func StartDatasetExport(ctx context.Context, root string, request contracts.Eval
 		return nil, validationError("requestId and issuedAt are required")
 	}
 	datasetID := stringInputValue(request.Input, "datasetId")
+	datasetVersionID := stringInputValue(request.Input, "datasetVersionId")
 	format := stringInputValue(request.Input, "format")
 	if datasetID == "" {
 		return nil, validationError("datasetId is required")
@@ -37,7 +38,13 @@ func StartDatasetExport(ctx context.Context, root string, request contracts.Eval
 	}
 	canonical := make([]map[string]any, 0, len(items))
 	for _, item := range items {
+		if datasetVersionID == "" {
+			datasetVersionID = stringInputValue(item, "datasetVersionId")
+		}
 		canonical = append(canonical, canonicalDatasetItem(item))
+	}
+	if datasetVersionID == "" {
+		datasetVersionID = fmt.Sprintf("%s:version:%d", datasetID, maxTransferInt(1, intInputValue(request.Input, "datasetVersion")))
 	}
 	artifact, extension, err := encodeDatasetExport(format, canonical)
 	if err != nil {
@@ -55,19 +62,20 @@ func StartDatasetExport(ctx context.Context, root string, request contracts.Eval
 	sum := sha256.Sum256(artifact)
 	createdAt := now().UTC()
 	job := map[string]any{
-		"id":             exportID,
-		"exportId":       exportID,
-		"datasetId":      datasetID,
-		"datasetVersion": maxTransferInt(1, intInputValue(request.Input, "datasetVersion")),
-		"status":         "ready",
-		"format":         format,
-		"rowCount":       len(canonical),
-		"sizeBytes":      len(artifact),
-		"sha256":         hex.EncodeToString(sum[:]),
-		"downloadUrl":    "/api/ai-eval/dataset-exports/" + exportID + "/download",
-		"filename":       filename,
-		"createdAt":      createdAt.Format(time.RFC3339),
-		"expiresAt":      createdAt.Add(datasetTransferTTL).Format(time.RFC3339),
+		"id":               exportID,
+		"exportId":         exportID,
+		"datasetId":        datasetID,
+		"datasetVersionId": datasetVersionID,
+		"datasetVersion":   maxTransferInt(1, intInputValue(request.Input, "datasetVersion")),
+		"status":           "ready",
+		"format":           format,
+		"rowCount":         len(canonical),
+		"sizeBytes":        len(artifact),
+		"sha256":           hex.EncodeToString(sum[:]),
+		"downloadUrl":      "/api/ai-eval/dataset-exports/" + exportID + "/download",
+		"filename":         filename,
+		"createdAt":        createdAt.Format(time.RFC3339),
+		"expiresAt":        createdAt.Add(datasetTransferTTL).Format(time.RFC3339),
 	}
 	if err := writeTransferJSON(filepath.Join(exportDir, exportID+".json"), job); err != nil {
 		return nil, bridgeError("ERR-006", "STORAGE_UNAVAILABLE", "Storage is unavailable", true)
@@ -122,7 +130,7 @@ func encodeDatasetExport(format string, rows []map[string]any) ([]byte, string, 
 	case "csv":
 		var buffer bytes.Buffer
 		writer := csv.NewWriter(&buffer)
-		header := []string{"input", "expected", "metadata", "sourceTraceId", "sourceSpanId", "split", "reviewStatus", "synthetic"}
+		header := []string{"input", "expected", "observedOutput", "reason", "metadata", "sourceRefs", "split", "curationStatus", "contentTreatment"}
 		if err := writer.Write(header); err != nil {
 			return nil, "", bridgeError("ERR-006", "STORAGE_UNAVAILABLE", "Storage is unavailable", true)
 		}
@@ -147,14 +155,41 @@ func encodeDatasetExport(format string, rows []map[string]any) ([]byte, string, 
 
 func canonicalDatasetItem(item map[string]any) map[string]any {
 	return map[string]any{
-		"input":         transferValueOrDefault(item["input"], map[string]any{}),
-		"expected":      nullableValue(item["expected"]),
-		"metadata":      transferValueOrDefault(item["metadata"], map[string]any{}),
-		"sourceTraceId": nullableValue(item["sourceTraceId"]),
-		"sourceSpanId":  nullableValue(item["sourceSpanId"]),
-		"split":         transferValueOrDefault(item["split"], "dev"),
-		"reviewStatus":  transferValueOrDefault(item["reviewStatus"], "unreviewed"),
-		"synthetic":     transferValueOrDefault(item["synthetic"], false),
+		"input":            transferValueOrDefault(item["input"], map[string]any{}),
+		"expected":         nullableValue(item["expected"]),
+		"observedOutput":   nullableValue(item["observedOutput"]),
+		"reason":           transferValueOrDefault(item["reason"], ""),
+		"metadata":         transferValueOrDefault(item["metadata"], map[string]any{}),
+		"sourceRefs":       transferValueOrDefault(item["sourceRefs"], []any{}),
+		"split":            normalizedExportSplit(item["split"]),
+		"curationStatus":   normalizedExportCurationStatus(item),
+		"contentTreatment": transferValueOrDefault(item["contentTreatment"], map[string]any{}),
+	}
+}
+
+func normalizedExportSplit(value any) string {
+	switch strings.TrimSpace(fmt.Sprint(value)) {
+	case "training", "validation", "test":
+		return strings.TrimSpace(fmt.Sprint(value))
+	default:
+		return "validation"
+	}
+}
+
+func normalizedExportCurationStatus(item map[string]any) string {
+	switch strings.TrimSpace(fmt.Sprint(item["curationStatus"])) {
+	case "draft", "needs_expected", "needs_review", "ready", "rejected":
+		return strings.TrimSpace(fmt.Sprint(item["curationStatus"]))
+	}
+	switch strings.TrimSpace(fmt.Sprint(item["reviewStatus"])) {
+	case "reviewed", "ready", "approved":
+		return "ready"
+	case "rejected":
+		return "rejected"
+	case "unreviewed", "pending", "needs_review":
+		return "needs_review"
+	default:
+		return "needs_review"
 	}
 }
 

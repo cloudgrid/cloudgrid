@@ -22,6 +22,10 @@ type WriterQueryer interface {
 	IngestCommandExistsInTarget(ctx context.Context, target TelemetryTarget, commandID string) (bool, error)
 }
 
+type targetRowsQueryer interface {
+	QueryRowsInTarget(ctx context.Context, target TelemetryTarget, sql string, vars map[string]any) ([]map[string]any, error)
+}
+
 type Persister struct {
 	DB WriterQueryer
 }
@@ -127,7 +131,46 @@ func (p Persister) PersistEvalMutation(ctx context.Context, subject string, requ
 	if err != nil {
 		return nil, err
 	}
-	return data, p.DB.QueryInTarget(ctx, target, sql, vars)
+	if key := mapStringValue(request.Input, "idempotencyKey"); key != "" {
+		if queryer, ok := p.DB.(targetRowsQueryer); ok {
+			rows, err := queryer.QueryRowsInTarget(ctx, target, "SELECT result FROM ai_eval_idempotency WHERE tenantId = $tenant_id AND companyId = $company_id AND projectId = $project_id AND subject = $subject AND idempotencyKey = $idempotency_key LIMIT 1;", map[string]any{
+				"tenant_id":       target.TenantID,
+				"company_id":      target.CompanyID,
+				"project_id":      target.ProjectID,
+				"subject":         subject,
+				"idempotency_key": key,
+			})
+			if err != nil {
+				return nil, err
+			}
+			if len(rows) > 0 {
+				if result, ok := rows[0]["result"].(map[string]any); ok {
+					normalizeRecordDateStrings(result)
+					return result, nil
+				}
+			}
+		}
+	}
+	if err := p.DB.QueryInTarget(ctx, target, sql, vars); err != nil {
+		return nil, err
+	}
+	if subject == "eval.dataset.items.append" || subject == "eval.dataset.settings.update" || subject == "eval.dataset.item.update" {
+		queryer, ok := p.DB.(targetRowsQueryer)
+		if !ok {
+			return data, nil
+		}
+		rows, err := queryer.QueryRowsInTarget(ctx, target, "SELECT meta::id(id) AS id, projectId, name, description, settings, currentVersion, currentVersionId, currentDigest, version, createdAt, createdBy, updatedAt, updatedBy, itemCount, readyItemCount, splitCounts, health, tags FROM type::record('ai_dataset', $dataset_id) LIMIT 1;", map[string]any{
+			"dataset_id": mapStringValue(request.Input, "datasetId"),
+		})
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) > 0 {
+			normalizeRecordDateStrings(rows[0])
+			return rows[0], nil
+		}
+	}
+	return data, nil
 }
 
 func BuildPersistQuery(command contracts.PersistTelemetryCommand, subject string, completedAt time.Time) (string, map[string]any, error) {
@@ -168,10 +211,20 @@ func BuildPersistQuery(command contracts.PersistTelemetryCommand, subject string
 	spanCountByTrace := map[string]int{}
 	errorSpanCountByTrace := map[string]int{}
 	serviceNamesByTrace := map[string]map[string]struct{}{}
+	spanNamesByTrace := map[string][]string{}
+	spanAttributesByTrace := map[string][]contracts.Attributes{}
+	operationNameByTrace := map[string]string{}
 	for _, span := range command.Spans {
 		spanCountByTrace[span.TraceID]++
+		spanNamesByTrace[span.TraceID] = append(spanNamesByTrace[span.TraceID], span.Name)
+		spanAttributesByTrace[span.TraceID] = append(spanAttributesByTrace[span.TraceID], span.Attributes)
 		if spanHasErrorStatus(span) {
 			errorSpanCountByTrace[span.TraceID]++
+		}
+		if isRootSpan(span) && strings.TrimSpace(span.Name) != "" {
+			if _, exists := operationNameByTrace[span.TraceID]; !exists {
+				operationNameByTrace[span.TraceID] = span.Name
+			}
 		}
 		if serviceName := spanServiceName(span); serviceName != "" {
 			if serviceNamesByTrace[span.TraceID] == nil {
@@ -196,7 +249,7 @@ func BuildPersistQuery(command contracts.PersistTelemetryCommand, subject string
 		}
 		key := fmt.Sprintf("trace%d", i)
 		vars[key+"_id"] = trace.ID
-		vars[key+"_record"] = traceRecord(trace, spanCountByTrace[trace.ID], errorSpanCountByTrace[trace.ID], logCountByTrace[trace.ID], len(serviceNamesByTrace[trace.ID]), target)
+		vars[key+"_record"] = traceRecord(trace, operationNameByTrace[trace.ID], spanNamesByTrace[trace.ID], spanAttributesByTrace[trace.ID], spanCountByTrace[trace.ID], errorSpanCountByTrace[trace.ID], logCountByTrace[trace.ID], len(serviceNamesByTrace[trace.ID]), target)
 		builder.WriteString(fmt.Sprintf("UPSERT type::record('trace', $%s_id) CONTENT $%s_record;\n", key, key))
 		if trace.ServiceName != nil {
 			mergeService(serviceRecords, *trace.ServiceName, trace.StartedAt, trace.Attributes)
@@ -270,7 +323,7 @@ func BuildPersistQuery(command contracts.PersistTelemetryCommand, subject string
 	for i, traceID := range traceLogIDs {
 		key := fmt.Sprintf("traceLog%d", i)
 		vars[key+"_id"] = traceID
-		builder.WriteString(fmt.Sprintf("UPDATE trace SET logCount = (SELECT count() AS count FROM log_event WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId = $%s_id GROUP ALL)[0].count WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId = $%s_id;\n", key, key))
+		builder.WriteString(fmt.Sprintf("UPDATE type::record('trace', $%s_id) SET logCount = (SELECT count() AS count FROM log_event WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId = $%s_id GROUP ALL)[0].count;\n", key, key))
 	}
 
 	serviceNames := make([]string, 0, len(serviceRecords))
@@ -342,20 +395,9 @@ func BuildMetricsPersistQuery(command contracts.PersistMetricsCommand, subject s
 
 	cardinality := map[string]metricCardinalityRecord{}
 	cardinalityBudget := newMetricCardinalityBudget()
-	for i, descriptor := range command.Descriptors {
-		if strings.TrimSpace(descriptor.Name) == "" {
-			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: metric descriptor name is required")
-		}
-		if descriptor.Kind == "" {
-			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: metric descriptor kind is required")
-		}
-		key := fmt.Sprintf("descriptor%d", i)
-		vars[key+"_id"] = metricRecordSlug(descriptor.Name)
-		vars[key+"_record"] = metricDescriptorRecord(descriptor, target)
-		builder.WriteString(fmt.Sprintf("UPSERT type::record('metric_descriptor', $%s_id) CONTENT $%s_record;\n", key, key))
-	}
-
-	for i, point := range command.Points {
+	filteredPoints := make([]contracts.MetricPoint, 0, len(command.Points))
+	observedMetricAttributeKeys := map[string]map[string]struct{}{}
+	for _, point := range command.Points {
 		if strings.TrimSpace(point.MetricName) == "" {
 			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: metric point metricName is required")
 		}
@@ -367,6 +409,31 @@ func BuildMetricsPersistQuery(command contracts.PersistMetricsCommand, subject s
 		}
 		filtered := applyMetricPointPolicy(point, cardinalityBudget)
 		mergeMetricCardinality(cardinality, filtered)
+		filteredPoints = append(filteredPoints, filtered)
+		if observedMetricAttributeKeys[filtered.MetricName] == nil {
+			observedMetricAttributeKeys[filtered.MetricName] = map[string]struct{}{}
+		}
+		for attributeKey := range filtered.Attributes {
+			observedMetricAttributeKeys[filtered.MetricName][attributeKey] = struct{}{}
+		}
+	}
+	for i, descriptor := range command.Descriptors {
+		if strings.TrimSpace(descriptor.Name) == "" {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: metric descriptor name is required")
+		}
+		if descriptor.Kind == "" {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: metric descriptor kind is required")
+		}
+		key := fmt.Sprintf("descriptor%d", i)
+		attributeKeys := metricDescriptorAttributeKeys(descriptor.AttributeKeys, observedMetricAttributeKeys[descriptor.Name])
+		descriptor.AttributeKeys = attributeKeys
+		vars[key+"_id"] = metricRecordSlug(descriptor.Name)
+		vars[key+"_record"] = metricDescriptorRecord(descriptor, target)
+		vars[key+"_attribute_keys"] = stringArrayRecord(attributeKeys)
+		builder.WriteString(metricDescriptorUpsertStatement(key))
+	}
+
+	for i, filtered := range filteredPoints {
 		key := fmt.Sprintf("point%d", i)
 		vars[key+"_id"] = metricPointRecordID(filtered)
 		vars[key+"_record"] = metricPointRecord(filtered, target)
@@ -501,6 +568,10 @@ func BuildEvalMutationPersistQuery(subject string, request contracts.EvalMutatio
 	normalizeRecordDateStrings(record)
 	addOwnership(record, target)
 
+	if sql, vars, ok := buildAIEvalV2PersistQuery(subject, request, table, data, record, recordID, target, occurredAt); ok {
+		return sql, vars, data, nil
+	}
+
 	sql := fmt.Sprintf("BEGIN TRANSACTION;\nUPSERT type::record('%s', $record_id) CONTENT $record;\nCOMMIT TRANSACTION;", table)
 	vars := map[string]any{
 		"record_id": recordID,
@@ -519,7 +590,213 @@ func BuildEvalMutationPersistQuery(subject string, request contracts.EvalMutatio
 		vars["company_id"] = target.CompanyID
 		vars["project_id"] = target.ProjectID
 	}
+	if subject == "eval.dataset.item.update" {
+		datasetID := mapStringValue(request.Input, "datasetId")
+		expectedVersion := mapIntValue(request.Input, "expectedDatasetVersion")
+		newVersion := expectedVersion + 1
+		sql = fmt.Sprintf(
+			"BEGIN TRANSACTION;\nLET $dataset = SELECT version FROM type::record('ai_dataset', $dataset_id) LIMIT 1;\nIF array::len($dataset) = 0 OR $dataset[0].version != $expected_dataset_version { THROW 'ERR-001 VALIDATION_FAILED: stale dataset version'; };\nUPSERT type::record('%s', $record_id) CONTENT $record;\nUPDATE type::record('ai_dataset', $dataset_id) SET version = $new_dataset_version, itemCount = (SELECT count() AS count FROM ai_dataset_item WHERE tenantId = $tenant_id AND companyId = $company_id AND projectId = $project_id AND datasetId = $dataset_id AND removedAt = NONE GROUP ALL)[0].count;\nCOMMIT TRANSACTION;",
+			table,
+		)
+		vars["dataset_id"] = datasetID
+		vars["expected_dataset_version"] = expectedVersion
+		vars["new_dataset_version"] = newVersion
+		vars["tenant_id"] = target.TenantID
+		vars["company_id"] = target.CompanyID
+		vars["project_id"] = target.ProjectID
+	}
+	if subject == "eval.dataset.candidates.commit" {
+		datasetID := mapStringValue(request.Input, "datasetId")
+		expectedVersion := mapIntValue(request.Input, "expectedDatasetVersion")
+		newVersion := expectedVersion + 1
+		candidateIDs := sortedMapStringValues(mapArrayValue(request.Input, "candidateIds"))
+		sql = "BEGIN TRANSACTION;\n" +
+			"LET $dataset = SELECT version FROM type::record('ai_dataset', $dataset_id) LIMIT 1;\n" +
+			"IF array::len($dataset) = 0 OR $dataset[0].version != $expected_dataset_version { THROW 'ERR-001 VALIDATION_FAILED: stale dataset version'; };\n" +
+			"LET $candidates = SELECT * FROM ai_dataset_candidate WHERE tenantId = $tenant_id AND companyId = $company_id AND projectId = $project_id AND record::id(id) IN $candidate_ids;\n" +
+			"IF array::len($candidates) != array::len($candidate_ids) OR array::len($candidates[WHERE status != 'ready' OR datasetId != $dataset_id OR (contentTreatment = 'realistic_anonymized' AND anonymization.policyVersion != $anonymization_policy_version)]) > 0 { THROW 'ERR-AIE-003 VALIDATION_FAILED: candidate commit rejected'; };\n" +
+			"FOR $candidate IN $candidates { UPSERT type::record('ai_dataset_item', string::concat('candidate-item-', record::id($candidate.id))) CONTENT object::extend($candidate, { datasetId: $dataset_id, version: $new_dataset_version, split: $selected_split, reviewStatus: $selected_review_status, metadata: object::extend($candidate.metadata ?? {}, { sourceKind: 'candidate_commit', sourceCandidateId: record::id($candidate.id) }) }); };\n" +
+			"UPDATE ai_dataset_candidate SET status = 'committed', committedDatasetId = $dataset_id, committedDatasetVersion = $new_dataset_version, updatedAt = $occurred_at WHERE tenantId = $tenant_id AND companyId = $company_id AND projectId = $project_id AND record::id(id) IN $candidate_ids;\n" +
+			"UPDATE type::record('ai_dataset', $dataset_id) SET version = $new_dataset_version, itemCount = (SELECT count() AS count FROM ai_dataset_item WHERE tenantId = $tenant_id AND companyId = $company_id AND projectId = $project_id AND datasetId = $dataset_id AND removedAt = NONE GROUP ALL)[0].count;\n" +
+			"COMMIT TRANSACTION;"
+		vars["dataset_id"] = datasetID
+		vars["expected_dataset_version"] = expectedVersion
+		vars["new_dataset_version"] = newVersion
+		vars["candidate_ids"] = candidateIDs
+		vars["selected_split"] = mapStringValueWithDefault(request.Input, "split", "dev")
+		vars["selected_review_status"] = mapStringValueWithDefault(request.Input, "reviewStatus", "reviewed")
+		vars["anonymization_policy_version"] = mapIntValue(request.Input, "anonymizationPolicyVersion")
+		vars["occurred_at"] = occurredAt.UTC()
+		vars["tenant_id"] = target.TenantID
+		vars["company_id"] = target.CompanyID
+		vars["project_id"] = target.ProjectID
+	}
 	return sql, vars, data, nil
+}
+
+func buildAIEvalV2PersistQuery(subject string, request contracts.EvalMutationRequest, table string, data map[string]any, record map[string]any, recordID any, target TelemetryTarget, occurredAt time.Time) (string, map[string]any, bool) {
+	idempotencyKey := mapStringValue(request.Input, "idempotencyKey")
+	if idempotencyKey == "" {
+		return "", nil, false
+	}
+	vars := map[string]any{
+		"record_id":       recordID,
+		"record":          record,
+		"result":          data,
+		"tenant_id":       target.TenantID,
+		"company_id":      target.CompanyID,
+		"project_id":      target.ProjectID,
+		"subject":         subject,
+		"request_id":      request.RequestID,
+		"idempotency_key": idempotencyKey,
+		"occurred_at":     occurredAt.UTC(),
+	}
+	idempotencySQL := "UPSERT type::record('ai_eval_idempotency', $idempotency_record_id) CONTENT { tenantId: $tenant_id, companyId: $company_id, projectId: $project_id, subject: $subject, requestId: $request_id, idempotencyKey: $idempotency_key, resultRecordId: $record_id, result: $result, createdAt: $occurred_at };"
+	vars["idempotency_record_id"] = stableRecordID("eval-idempotency", target.TenantID, target.CompanyID, target.ProjectID, subject, idempotencyKey)
+
+	switch subject {
+	case "eval.dataset.create":
+		versionRecord := map[string]any{
+			"id":               data["currentVersionId"],
+			"tenantId":         target.TenantID,
+			"companyId":        target.CompanyID,
+			"projectId":        target.ProjectID,
+			"datasetId":        data["id"],
+			"version":          1,
+			"digest":           data["currentDigest"],
+			"createdAt":        occurredAt.UTC(),
+			"createdBy":        data["createdBy"],
+			"settingsSnapshot": data["settings"],
+			"itemRevisionIds":  []string{},
+			"changeSummary":    "initial dataset version",
+			"source":           datasetVersionSourceObject(request.Input, "manual"),
+		}
+		vars["version_record_id"] = data["currentVersionId"]
+		vars["version_record"] = versionRecord
+		sql := "BEGIN TRANSACTION;\n" +
+			"UPSERT type::record('ai_dataset', $record_id) CONTENT $record;\n" +
+			"UPSERT type::record('ai_dataset_version', $version_record_id) CONTENT $version_record;\n" +
+			idempotencySQL + "\nCOMMIT TRANSACTION;"
+		return sql, vars, true
+	case "eval.dataset.items.append", "eval.dataset.item.update":
+		datasetID := mapStringValue(request.Input, "datasetId")
+		expectedVersion := datasetVersionNumberFromInput(request.Input)
+		newVersion := expectedVersion + 1
+		versionID := datasetVersionID(datasetID, newVersion)
+		digest := stableJSONDigest(data)
+		itemID := mapStringValue(record, "datasetItemId")
+		itemRecord := map[string]any{
+			"tenantId":         target.TenantID,
+			"companyId":        target.CompanyID,
+			"projectId":        target.ProjectID,
+			"datasetId":        datasetID,
+			"latestRevisionId": recordID,
+			"currentRevision":  record["revision"],
+			"updatedAt":        occurredAt.UTC(),
+			"updatedBy":        requestActorID(request),
+		}
+		versionRecord := map[string]any{
+			"tenantId":         target.TenantID,
+			"companyId":        target.CompanyID,
+			"projectId":        target.ProjectID,
+			"datasetId":        datasetID,
+			"version":          newVersion,
+			"digest":           digest,
+			"createdAt":        occurredAt.UTC(),
+			"createdBy":        requestActorID(request),
+			"settingsSnapshot": mapObjectValueWithDefault(request.Input, "settingsSnapshot"),
+			"itemRevisionIds":  []string{fmt.Sprint(recordID)},
+			"parentVersionId":  firstMapStringValue(request.Input, "expectedDatasetVersionId", "currentVersionId"),
+			"changeSummary":    mapStringValueWithDefault(request.Input, "changeSummary", "dataset item revision update"),
+			"source":           datasetVersionSourceObject(request.Input, "manual"),
+		}
+		vars["dataset_id"] = datasetID
+		vars["expected_dataset_version"] = expectedVersion
+		vars["expected_dataset_version_id"] = firstMapStringValue(request.Input, "expectedDatasetVersionId", "currentVersionId")
+		vars["new_dataset_version"] = newVersion
+		vars["dataset_version_id"] = versionID
+		vars["dataset_digest"] = digest
+		vars["dataset_item_id"] = itemID
+		vars["dataset_item_record"] = itemRecord
+		vars["dataset_version_record"] = versionRecord
+		sql := "BEGIN TRANSACTION;\n" +
+			"LET $dataset = SELECT currentVersion, version, currentVersionId FROM type::record('ai_dataset', $dataset_id) LIMIT 1;\n" +
+			"IF array::len($dataset) = 0 OR (($expected_dataset_version_id != '' AND $dataset[0].currentVersionId != $expected_dataset_version_id) OR ($expected_dataset_version_id = '' AND ($dataset[0].currentVersion ?? $dataset[0].version) != $expected_dataset_version)) { THROW 'ERR-001 VALIDATION_FAILED: stale dataset version'; };\n" +
+			"UPSERT type::record('ai_dataset_item_revision', $record_id) CONTENT $record;\n" +
+			"UPSERT type::record('ai_dataset_item', $dataset_item_id) CONTENT $dataset_item_record;\n" +
+			"UPSERT type::record('ai_dataset_version', $dataset_version_id) CONTENT $dataset_version_record;\n" +
+			"UPDATE type::record('ai_dataset', $dataset_id) SET version = $new_dataset_version, currentVersion = $new_dataset_version, currentVersionId = $dataset_version_id, currentDigest = $dataset_digest, itemCount = (SELECT count() AS count FROM ai_dataset_item WHERE tenantId = $tenant_id AND companyId = $company_id AND projectId = $project_id AND datasetId = $dataset_id GROUP ALL)[0].count, readyItemCount = (SELECT count() AS count FROM ai_dataset_item_revision WHERE tenantId = $tenant_id AND companyId = $company_id AND projectId = $project_id AND datasetId = $dataset_id AND curationStatus = 'ready' GROUP ALL)[0].count;\n" +
+			idempotencySQL + "\nCOMMIT TRANSACTION;"
+		return sql, vars, true
+	case "eval.dataset.settings.update":
+		datasetID := mapStringValue(request.Input, "datasetId")
+		expectedVersion := datasetVersionNumberFromInput(request.Input)
+		newVersion := expectedVersion + 1
+		versionID := datasetVersionID(datasetID, newVersion)
+		settings := mapObjectValueWithDefault(request.Input, "settings")
+		digest := stableJSONDigest(map[string]any{
+			"settings":          settings,
+			"parentVersionId":   firstMapStringValue(request.Input, "expectedDatasetVersionId", "currentVersionId"),
+			"datasetVersionFor": "settings_update",
+		})
+		versionRecord := map[string]any{
+			"tenantId":         target.TenantID,
+			"companyId":        target.CompanyID,
+			"projectId":        target.ProjectID,
+			"datasetId":        datasetID,
+			"version":          newVersion,
+			"digest":           digest,
+			"createdAt":        occurredAt.UTC(),
+			"createdBy":        requestActorID(request),
+			"settingsSnapshot": settings,
+			"itemRevisionIds":  []string{},
+			"parentVersionId":  firstMapStringValue(request.Input, "expectedDatasetVersionId", "currentVersionId"),
+			"changeSummary":    "dataset settings update",
+			"source":           datasetVersionSourceObject(request.Input, "manual"),
+		}
+		vars["dataset_id"] = datasetID
+		vars["expected_dataset_version"] = expectedVersion
+		vars["expected_dataset_version_id"] = firstMapStringValue(request.Input, "expectedDatasetVersionId", "currentVersionId")
+		vars["new_dataset_version"] = newVersion
+		vars["dataset_version_id"] = versionID
+		vars["dataset_digest"] = digest
+		vars["settings"] = settings
+		vars["dataset_version_record"] = versionRecord
+		sql := "BEGIN TRANSACTION;\n" +
+			"LET $dataset = SELECT currentVersion, version, currentVersionId FROM type::record('ai_dataset', $dataset_id) LIMIT 1;\n" +
+			"IF array::len($dataset) = 0 OR (($expected_dataset_version_id != '' AND $dataset[0].currentVersionId != $expected_dataset_version_id) OR ($expected_dataset_version_id = '' AND ($dataset[0].currentVersion ?? $dataset[0].version) != $expected_dataset_version)) { THROW 'ERR-001 VALIDATION_FAILED: stale dataset version'; };\n" +
+			"LET $parent_version = SELECT itemRevisionIds FROM type::record('ai_dataset_version', $expected_dataset_version_id) LIMIT 1;\n" +
+			"LET $parent_item_revision_ids = IF array::len($parent_version) > 0 { $parent_version[0].itemRevisionIds ?? [] } ELSE { [] };\n" +
+			"UPSERT type::record('ai_dataset_version', $dataset_version_id) CONTENT $dataset_version_record;\n" +
+			"UPDATE type::record('ai_dataset_version', $dataset_version_id) SET itemRevisionIds = $parent_item_revision_ids;\n" +
+			"UPDATE type::record('ai_dataset', $dataset_id) SET settings = $settings, version = $new_dataset_version, currentVersion = $new_dataset_version, currentVersionId = $dataset_version_id, currentDigest = $dataset_digest, updatedAt = $occurred_at, updatedBy = $record.updatedBy;\n" +
+			idempotencySQL + "\nCOMMIT TRANSACTION;"
+		return sql, vars, true
+	case "eval.results.persist":
+		evaluationRun := mapObjectValueWithDefault(request.Input, "evaluationRun")
+		optimizationRun := mapObjectValueWithDefault(request.Input, "optimizationRun")
+		itemRuns := firstMapArrayValue(request.Input, "itemRuns", "evaluationItemRuns")
+		metricResults := firstMapArrayValue(request.Input, "metricResults", "results")
+		metricAggregates := mapArrayValue(request.Input, "metricAggregates")
+		vars["evaluation_run"] = withOwnership(evaluationRun, target)
+		vars["optimization_run"] = withOwnership(optimizationRun, target)
+		vars["item_runs"] = withOwnershipArray(itemRuns, target)
+		vars["metric_results"] = withOwnershipArray(metricResults, target)
+		vars["metric_aggregates"] = withOwnershipArray(metricAggregates, target)
+		sql := "BEGIN TRANSACTION;\n" +
+			"IF $evaluation_run.id != NONE { UPSERT type::record('ai_evaluation_run', $evaluation_run.id) CONTENT $evaluation_run; };\n" +
+			"IF $optimization_run.id != NONE { UPSERT type::record('ai_optimization_run', $optimization_run.id) CONTENT $optimization_run; };\n" +
+			"FOR $item_run IN $item_runs { UPSERT type::record('ai_evaluation_item_run', $item_run.id) CONTENT $item_run; };\n" +
+			"FOR $metric_result IN $metric_results { UPSERT type::record('ai_metric_result', $metric_result.id) CONTENT $metric_result; };\n" +
+			"FOR $metric_aggregate IN $metric_aggregates { UPSERT type::record('ai_metric_aggregate', $metric_aggregate.id) CONTENT $metric_aggregate; };\n" +
+			idempotencySQL + "\nCOMMIT TRANSACTION;"
+		return sql, vars, true
+	case "eval.evaluation.create", "eval.evaluation.update", "eval.evaluation.comparison.create", "eval.target.snapshot.create", "eval.target.promote":
+		sql := fmt.Sprintf("BEGIN TRANSACTION;\nUPSERT type::record('%s', $record_id) CONTENT $record;\n%s\nCOMMIT TRANSACTION;", table, idempotencySQL)
+		return sql, vars, true
+	default:
+		return "", nil, false
+	}
 }
 
 func aiProjectionTable(kind contracts.AiProjectionKind) (string, error) {
@@ -544,6 +821,39 @@ func evalMutationRecord(subject string, request contracts.EvalMutationRequest, o
 		if name == "" {
 			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: name is required")
 		}
+		if mapStringValue(request.Input, "projectId") != "" {
+			if mapStringValue(request.Input, "idempotencyKey") == "" {
+				return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: idempotencyKey is required")
+			}
+			settings := mapObjectValueWithDefault(request.Input, "settings")
+			if len(settings) == 0 {
+				return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: settings is required")
+			}
+			datasetID := stableRecordID("dataset", request.RequestID, name)
+			versionID := datasetVersionID(datasetID, 1)
+			digest := stableJSONDigest(map[string]any{"settings": settings, "itemRevisionIds": []string{}})
+			record := map[string]any{
+				"id":               datasetID,
+				"projectId":        mapStringValue(request.Input, "projectId"),
+				"name":             name,
+				"settings":         settings,
+				"currentVersionId": versionID,
+				"currentVersion":   1,
+				"currentDigest":    digest,
+				"itemCount":        0,
+				"readyItemCount":   0,
+				"splitCounts":      map[string]any{"training": 0, "validation": 0, "test": 0},
+				"health":           map[string]any{},
+				"tags":             mapArrayValue(request.Input, "tags"),
+				"metadata":         mapObjectValueWithDefault(request.Input, "metadata"),
+				"createdAt":        occurredAt.UTC(),
+				"createdBy":        requestActorID(request),
+				"updatedAt":        occurredAt.UTC(),
+				"updatedBy":        requestActorID(request),
+			}
+			putMapString(record, "description", request.Input, "description")
+			return "ai_dataset", record, nil
+		}
 		record := map[string]any{
 			"id":        stableRecordID("dataset", request.RequestID, name),
 			"name":      name,
@@ -557,10 +867,27 @@ func evalMutationRecord(subject string, request contracts.EvalMutationRequest, o
 	case "eval.dataset.items.append":
 		datasetID := mapStringValue(request.Input, "datasetId")
 		version := mapIntValue(request.Input, "version")
+		if version < 1 {
+			version = datasetVersionNumberFromInput(request.Input) + 1
+		}
 		items := mapArrayValue(request.Input, "items")
 		item := firstObject(items)
 		if datasetID == "" || version < 1 || len(item) == 0 {
 			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: dataset item append input is invalid")
+		}
+		if mapStringValue(request.Input, "projectId") != "" {
+			if mapStringValue(request.Input, "idempotencyKey") == "" || (mapIntValue(request.Input, "expectedDatasetVersion") < 1 && mapStringValue(request.Input, "expectedDatasetVersionId") == "") {
+				return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: dataset item append input is invalid")
+			}
+			itemID := mapStringValue(item, "datasetItemId")
+			if itemID == "" {
+				itemID = mapStringValue(item, "id")
+			}
+			if itemID == "" {
+				itemID = stableRecordID("dataset-item", request.RequestID, datasetID)
+			}
+			revisionID := stableRecordID("dataset-item-revision", itemID, fmt.Sprintf("%d", version), mapStringValue(request.Input, "idempotencyKey"))
+			return "ai_dataset_item_revision", datasetItemRevisionRecord(request, item, datasetID, itemID, revisionID, 1, occurredAt), nil
 		}
 		id := mapStringValue(item, "id")
 		if id == "" {
@@ -580,6 +907,30 @@ func evalMutationRecord(subject string, request contracts.EvalMutationRequest, o
 		putMapString(record, "sourceTraceId", item, "sourceTraceId")
 		putMapString(record, "sourceSpanId", item, "sourceSpanId")
 		return "ai_dataset_item", record, nil
+	case "eval.dataset.settings.update":
+		datasetID := mapStringValue(request.Input, "datasetId")
+		expectedVersion := datasetVersionNumberFromInput(request.Input)
+		settings := mapObjectValueWithDefault(request.Input, "settings")
+		if datasetID == "" || expectedVersion < 1 || len(settings) == 0 || mapStringValue(request.Input, "idempotencyKey") == "" {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: dataset settings update input is invalid")
+		}
+		versionID := datasetVersionID(datasetID, expectedVersion+1)
+		digest := stableJSONDigest(map[string]any{
+			"settings":        settings,
+			"parentVersionId": firstMapStringValue(request.Input, "expectedDatasetVersionId", "currentVersionId"),
+		})
+		return "ai_dataset", map[string]any{
+			"id":                       datasetID,
+			"datasetId":                datasetID,
+			"projectId":                mapStringValue(request.Input, "projectId"),
+			"settings":                 settings,
+			"currentVersion":           expectedVersion + 1,
+			"currentVersionId":         versionID,
+			"currentDigest":            digest,
+			"expectedDatasetVersionId": firstMapStringValue(request.Input, "expectedDatasetVersionId", "currentVersionId"),
+			"updatedAt":                occurredAt.UTC(),
+			"updatedBy":                requestActorID(request),
+		}, nil
 	case "eval.dataset.item.promote":
 		datasetID := mapStringValue(request.Input, "datasetId")
 		sourceTraceID := mapStringValue(request.Input, "sourceTraceId")
@@ -605,12 +956,133 @@ func evalMutationRecord(subject string, request contracts.EvalMutationRequest, o
 			"synthetic":     false,
 		}
 		return "ai_dataset_item", record, nil
+	case "eval.dataset.item.update":
+		datasetID := mapStringValue(request.Input, "datasetId")
+		itemID := mapStringValue(request.Input, "itemId")
+		expectedVersion := mapIntValue(request.Input, "expectedDatasetVersion")
+		operation := mapStringValue(request.Input, "operation")
+		if datasetID == "" || itemID == "" || expectedVersion < 1 || operation == "" {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: dataset item update input is invalid")
+		}
+		if mapStringValue(request.Input, "projectId") != "" {
+			if mapStringValue(request.Input, "idempotencyKey") == "" {
+				return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: idempotencyKey is required")
+			}
+			revisionID := stableRecordID("dataset-item-revision", itemID, fmt.Sprintf("%d", expectedVersion+1), mapStringValue(request.Input, "idempotencyKey"))
+			return "ai_dataset_item_revision", datasetItemRevisionRecord(request, request.Input, datasetID, itemID, revisionID, expectedVersion+1, occurredAt), nil
+		}
+		record := map[string]any{
+			"id":           itemID,
+			"datasetId":    datasetID,
+			"version":      expectedVersion + 1,
+			"input":        request.Input["input"],
+			"expected":     request.Input["expected"],
+			"metadata":     mapObjectValueWithDefault(request.Input, "metadata"),
+			"split":        mapStringValueWithDefault(request.Input, "split", "dev"),
+			"reviewStatus": mapStringValueWithDefault(request.Input, "reviewStatus", "unreviewed"),
+		}
+		if operation == "remove" {
+			record["removedAt"] = occurredAt.UTC()
+		}
+		putMapString(record, "targetShape", request.Input, "targetShape")
+		putMapString(record, "contentTreatment", request.Input, "contentTreatment")
+		if anonymization := mapAnonymizationRecord(request.Input, occurredAt); anonymization != nil {
+			record["anonymization"] = anonymization
+		}
+		return "ai_dataset_item", record, nil
+	case "eval.dataset.candidates.prepare":
+		sources := mapArrayValue(request.Input, "sources")
+		source := firstObject(sources)
+		sourceKind := mapStringValue(source, "sourceKind")
+		if len(sources) == 0 || sourceKind == "" {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: candidate sources are required")
+		}
+		record := map[string]any{
+			"id":               stableRecordID("candidate", request.RequestID, mapStringValue(request.Input, "datasetId"), sourceKind, mapStringValue(source, "traceId"), mapStringValue(source, "spanId"), mapStringValue(source, "evalResultId")),
+			"datasetId":        mapStringValue(request.Input, "datasetId"),
+			"status":           "ready",
+			"sourceKind":       sourceKind,
+			"source":           source,
+			"targetShape":      mapStringValueWithDefault(request.Input, "targetShape", "single_turn"),
+			"metadata":         mapObjectValueWithDefault(request.Input, "metadata"),
+			"split":            mapStringValueWithDefault(request.Input, "split", "dev"),
+			"reviewStatus":     mapStringValueWithDefault(request.Input, "reviewStatus", "unreviewed"),
+			"contentTreatment": mapStringValueWithDefault(request.Input, "contentTreatment", "original"),
+			"reason":           mapStringValue(request.Input, "reason"),
+			"warnings":         mapArrayValue(request.Input, "warnings"),
+			"createdAt":        occurredAt.UTC(),
+			"updatedAt":        occurredAt.UTC(),
+		}
+		if input, ok := request.Input["input"]; ok {
+			record["input"] = input
+		}
+		if expected, ok := request.Input["expected"]; ok {
+			record["expected"] = expected
+		}
+		if anonymization := mapAnonymizationRecord(request.Input, occurredAt); anonymization != nil {
+			record["anonymization"] = anonymization
+		}
+		return "ai_dataset_candidate", record, nil
+	case "eval.dataset.candidates.commit":
+		datasetID := mapStringValue(request.Input, "datasetId")
+		expectedVersion := mapIntValue(request.Input, "expectedDatasetVersion")
+		candidateIDs := sortedMapStringValues(mapArrayValue(request.Input, "candidateIds"))
+		if datasetID == "" || expectedVersion < 1 || len(candidateIDs) == 0 {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: candidate commit input is invalid")
+		}
+		return "ai_dataset", map[string]any{
+			"id":                 datasetID,
+			"version":            expectedVersion + 1,
+			"sourceCandidateIds": candidateIDs,
+			"split":              mapStringValue(request.Input, "split"),
+			"reviewStatus":       mapStringValue(request.Input, "reviewStatus"),
+		}, nil
+	case "eval.evaluation.create":
+		name := mapStringValue(request.Input, "name")
+		if name == "" || mapStringValue(request.Input, "projectId") == "" || mapStringValue(request.Input, "idempotencyKey") == "" {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: evaluation create input is invalid")
+		}
+		return "ai_evaluation_definition", map[string]any{
+			"id":               stableRecordID("evaluation-definition", request.RequestID, name),
+			"projectId":        mapStringValue(request.Input, "projectId"),
+			"name":             name,
+			"description":      mapStringValue(request.Input, "description"),
+			"datasetId":        mapStringValue(request.Input, "datasetId"),
+			"targetRef":        mapObjectValueWithDefault(request.Input, "targetRef"),
+			"metricSettings":   mapArrayValue(request.Input, "metricSettings"),
+			"splitSelector":    mapObjectValueWithDefault(request.Input, "splitSelector"),
+			"runPolicy":        mapObjectValueWithDefault(request.Input, "runPolicy"),
+			"retentionProfile": mapStringValueWithDefault(request.Input, "retentionProfile", "balanced"),
+			"version":          1,
+			"createdAt":        occurredAt.UTC(),
+			"createdBy":        requestActorID(request),
+			"updatedAt":        occurredAt.UTC(),
+			"updatedBy":        requestActorID(request),
+		}, nil
+	case "eval.evaluation.update":
+		id := mapStringValue(request.Input, "evaluationDefinitionId")
+		if id == "" || mapStringValue(request.Input, "projectId") == "" || mapStringValue(request.Input, "idempotencyKey") == "" {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: evaluation update input is invalid")
+		}
+		record := cloneMap(mapObjectValueWithDefault(request.Input, "input"))
+		for key, value := range request.Input {
+			if _, exists := record[key]; !exists {
+				record[key] = value
+			}
+		}
+		record["id"] = id
+		record["updatedAt"] = occurredAt.UTC()
+		record["updatedBy"] = requestActorID(request)
+		return "ai_evaluation_definition", record, nil
 	case "eval.scorer.create":
 		name := mapStringValue(request.Input, "name")
 		kind := mapStringValue(request.Input, "kind")
 		definition := mapObjectValue(request.Input, "definition")
 		if name == "" || kind == "" || len(definition) == 0 {
 			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: scorer input is invalid")
+		}
+		if err := validateScorerDefinitionRecord(definition); err != nil {
+			return "", nil, err
 		}
 		record := map[string]any{
 			"id":         stableRecordID("scorer", request.RequestID, name),
@@ -639,9 +1111,33 @@ func evalMutationRecord(subject string, request contracts.EvalMutationRequest, o
 			"tags":           mapArrayValue(request.Input, "tags"),
 		}, nil
 	case "eval.results.persist":
+		if mapStringValue(request.Input, "projectId") != "" {
+			if mapStringValue(request.Input, "idempotencyKey") == "" {
+				return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: idempotencyKey is required")
+			}
+			return "ai_evaluation_run", map[string]any{
+				"id":               stableRecordID("evaluation-results", request.RequestID, mapStringValue(request.Input, "evaluationRunId")),
+				"projectId":        mapStringValue(request.Input, "projectId"),
+				"evaluationRunId":  mapStringValue(request.Input, "evaluationRunId"),
+				"evaluationRun":    mapObjectValueWithDefault(request.Input, "evaluationRun"),
+				"optimizationRun":  mapObjectValueWithDefault(request.Input, "optimizationRun"),
+				"itemRuns":         firstMapArrayValue(request.Input, "itemRuns", "evaluationItemRuns"),
+				"metricResults":    firstMapArrayValue(request.Input, "metricResults", "results"),
+				"metricAggregates": mapArrayValue(request.Input, "metricAggregates"),
+				"persistedAt":      occurredAt.UTC(),
+			}, nil
+		}
 		experimentRunID := mapStringValue(request.Input, "experimentRunId")
 		itemRuns := mapArrayValue(request.Input, "itemRuns")
 		results := mapArrayValue(request.Input, "results")
+		for _, value := range results {
+			result := firstObject([]any{value})
+			if payload := mapObjectValue(result, "payload"); len(payload) > 0 {
+				if err := validateEvalResultPayloadRecord(payload); err != nil {
+					return "", nil, err
+				}
+			}
+		}
 		if len(results) > 0 && len(itemRuns) == 0 {
 			result := firstObject(results)
 			id := mapStringValue(result, "id")
@@ -679,6 +1175,61 @@ func evalMutationRecord(subject string, request contracts.EvalMutationRequest, o
 		}
 		record["persistedAt"] = occurredAt.UTC()
 		return "ai_dataset_item_run", record, nil
+	case "eval.evaluation.comparison.create":
+		if mapStringValue(request.Input, "projectId") == "" || mapStringValue(request.Input, "baselineRunId") == "" || mapStringValue(request.Input, "candidateRunId") == "" || mapStringValue(request.Input, "idempotencyKey") == "" {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: comparison create input is invalid")
+		}
+		return "ai_evaluation_comparison", map[string]any{
+			"id":                        stableRecordID("evaluation-comparison", request.RequestID, mapStringValue(request.Input, "baselineRunId"), mapStringValue(request.Input, "candidateRunId")),
+			"projectId":                 mapStringValue(request.Input, "projectId"),
+			"baselineEvaluationRunId":   mapStringValue(request.Input, "baselineRunId"),
+			"candidateEvaluationRunId":  mapStringValue(request.Input, "candidateRunId"),
+			"baselineTargetSnapshotId":  mapStringValue(request.Input, "baselineTargetSnapshotId"),
+			"candidateTargetSnapshotId": mapStringValue(request.Input, "candidateTargetSnapshotId"),
+			"metricResultIds":           mapArrayValue(request.Input, "metricResultIds"),
+			"metricAggregateIds":        mapArrayValue(request.Input, "metricAggregateIds"),
+			"targetDiffId":              mapStringValue(request.Input, "targetDiffId"),
+			"summary":                   mapObjectValueWithDefault(request.Input, "summary"),
+			"createdAt":                 occurredAt.UTC(),
+			"createdBy":                 requestActorID(request),
+		}, nil
+	case "eval.target.snapshot.create":
+		input := mapObjectValueWithDefault(request.Input, "input")
+		if mapStringValue(request.Input, "projectId") == "" || mapStringValue(request.Input, "idempotencyKey") == "" || len(mapObjectValue(request.Input, "targetRef")) == 0 {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: target snapshot input is invalid")
+		}
+		return "ai_target_snapshot", map[string]any{
+			"id":              stableRecordID("target-snapshot", request.RequestID, stableJSONDigest(input)),
+			"projectId":       mapStringValue(request.Input, "projectId"),
+			"targetRef":       mapObjectValueWithDefault(request.Input, "targetRef"),
+			"kind":            mapStringValueWithDefault(input, "kind", mapStringValueWithDefault(request.Input, "kind", "prompt")),
+			"name":            mapStringValueWithDefault(input, "name", "target snapshot"),
+			"version":         maxInt(1, mapIntValue(input, "version")),
+			"digest":          stableJSONDigest(input),
+			"createdAt":       occurredAt.UTC(),
+			"createdBy":       requestActorID(request),
+			"source":          aiEvalSourceObject(input, "manual"),
+			"parts":           mapArrayValue(input, "parts"),
+			"metadata":        mapObjectValueWithDefault(input, "metadata"),
+			"reproducibility": mapStringValueWithDefault(input, "reproducibility", "full"),
+		}, nil
+	case "eval.target.promote":
+		if mapStringValue(request.Input, "projectId") == "" || mapStringValue(request.Input, "candidateSnapshotId") == "" || mapStringValue(request.Input, "comparisonId") == "" || mapStringValue(request.Input, "idempotencyKey") == "" {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: target promote input is invalid")
+		}
+		return "ai_promotion_record", map[string]any{
+			"id":                        stableRecordID("promotion", request.RequestID, mapStringValue(request.Input, "candidateSnapshotId"), mapStringValue(request.Input, "comparisonId")),
+			"projectId":                 mapStringValue(request.Input, "projectId"),
+			"targetRef":                 mapObjectValueWithDefault(request.Input, "targetRef"),
+			"baselineTargetSnapshotId":  mapStringValue(request.Input, "baselineTargetSnapshotId"),
+			"candidateTargetSnapshotId": mapStringValue(request.Input, "candidateSnapshotId"),
+			"evidenceEvaluationRunIds":  mapArrayValue(request.Input, "evidenceEvaluationRunIds"),
+			"comparisonId":              mapStringValue(request.Input, "comparisonId"),
+			"summary":                   mapStringValue(request.Input, "summary"),
+			"promotedBy":                requestActorID(request),
+			"promotedAt":                occurredAt.UTC(),
+			"notes":                     mapStringValue(request.Input, "notes"),
+		}, nil
 	case "eval.prompt_version.promote":
 		id := mapStringValue(request.Input, "promptVersionId")
 		tag := mapStringValue(request.Input, "tag")
@@ -857,6 +1408,13 @@ func metricDescriptorRecord(descriptor contracts.MetricDescriptor, target Teleme
 		"lastSeenAt":    descriptor.LastSeenAt.UTC(),
 	}
 	putStringPtr(record, "description", descriptor.Description)
+	record["searchText"] = searchText(
+		descriptor.Name,
+		descriptor.Unit,
+		string(descriptor.Kind),
+		descriptor.Description,
+		descriptor.AttributeKeys,
+	)
 	if descriptor.AggregationTemporality != nil {
 		record["aggregationTemporality"] = string(*descriptor.AggregationTemporality)
 	}
@@ -865,6 +1423,32 @@ func metricDescriptorRecord(descriptor contracts.MetricDescriptor, target Teleme
 	}
 	addOwnership(record, target)
 	return record
+}
+
+func metricDescriptorUpsertStatement(key string) string {
+	return fmt.Sprintf("UPSERT type::record('metric_descriptor', $%[1]s_id) SET tenantId = $%[1]s_record.tenantId, companyId = $%[1]s_record.companyId, projectId = $%[1]s_record.projectId, metricName = $%[1]s_record.metricName, description = $%[1]s_record.description, unit = $%[1]s_record.unit, kind = $%[1]s_record.kind, aggregationTemporality = $%[1]s_record.aggregationTemporality, monotonic = $%[1]s_record.monotonic, attributeKeys = array::sort(array::distinct(array::concat(IF attributeKeys = NONE THEN [] ELSE attributeKeys END, $%[1]s_attribute_keys))), firstSeenAt = IF firstSeenAt = NONE OR $%[1]s_record.firstSeenAt < firstSeenAt THEN $%[1]s_record.firstSeenAt ELSE firstSeenAt END, lastSeenAt = IF lastSeenAt = NONE OR $%[1]s_record.lastSeenAt > lastSeenAt THEN $%[1]s_record.lastSeenAt ELSE lastSeenAt END, searchText = string::concat($%[1]s_record.metricName, ' ', $%[1]s_record.unit, ' ', $%[1]s_record.kind, ' ', $%[1]s_record.description, ' ', array::sort(array::distinct(array::concat(IF attributeKeys = NONE THEN [] ELSE attributeKeys END, $%[1]s_attribute_keys))));\n", key)
+}
+
+func metricDescriptorAttributeKeys(declared []string, observed map[string]struct{}) []string {
+	seen := map[string]struct{}{}
+	for _, key := range declared {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		seen[key] = struct{}{}
+	}
+	for key := range observed {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		seen[key] = struct{}{}
+	}
+	keys := make([]string, 0, len(seen))
+	for key := range seen {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func metricPointRecord(point contracts.MetricPoint, target TelemetryTarget) map[string]any {
@@ -959,7 +1543,7 @@ type serviceRecord struct {
 	Attributes  contracts.Attributes
 }
 
-func traceRecord(trace contracts.Trace, spanCount int, errorSpanCount int, logCount int, serviceCount int, target TelemetryTarget) map[string]any {
+func traceRecord(trace contracts.Trace, operationName string, spanNames []string, spanAttributes []contracts.Attributes, spanCount int, errorSpanCount int, logCount int, serviceCount int, target TelemetryTarget) map[string]any {
 	record := map[string]any{
 		"traceId":           trace.ID,
 		"startedAt":         trace.StartedAt.UTC(),
@@ -969,8 +1553,12 @@ func traceRecord(trace contracts.Trace, spanCount int, errorSpanCount int, logCo
 		"errorSpanCount":    errorSpanCount,
 		"logCount":          logCount,
 		"serviceCount":      serviceCount,
+		"searchText":        traceSearchText(trace, operationName, spanNames, spanAttributes),
 	}
 	putStringPtr(record, "serviceName", trace.ServiceName)
+	if strings.TrimSpace(operationName) != "" {
+		record["operationName"] = strings.TrimSpace(operationName)
+	}
 	if trace.EndedAt != nil {
 		endedAtNano := unixNanoString(*trace.EndedAt)
 		record["endedAt"] = trace.EndedAt.UTC()
@@ -982,6 +1570,10 @@ func traceRecord(trace contracts.Trace, spanCount int, errorSpanCount int, logCo
 	putStatusPtr(record, "status", trace.Status)
 	addOwnership(record, target)
 	return record
+}
+
+func isRootSpan(span contracts.Span) bool {
+	return span.ParentSpanID == nil || strings.TrimSpace(*span.ParentSpanID) == ""
 }
 
 func spanRecord(span contracts.Span, target TelemetryTarget) map[string]any {
@@ -1013,6 +1605,7 @@ func logRecord(log contracts.LogEvent, target TelemetryTarget) map[string]any {
 		"body":       log.Body,
 		"timestamp":  log.Timestamp.UTC(),
 		"attributes": nonNilAttributes(log.Attributes),
+		"searchText": logSearchText(log),
 	}
 	putStringPtr(record, "traceId", log.TraceID)
 	putStringPtr(record, "spanId", log.SpanID)
@@ -1027,6 +1620,87 @@ func logRecord(log contracts.LogEvent, target TelemetryTarget) map[string]any {
 	putTimePtr(record, "observedTimestamp", log.ObservedTimestamp)
 	addOwnership(record, target)
 	return record
+}
+
+func traceSearchText(trace contracts.Trace, operationName string, spanNames []string, spanAttributes []contracts.Attributes) string {
+	parts := []any{trace.ID, trace.ServiceName, operationName, trace.RootSpanID, trace.Status, trace.Attributes}
+	for _, spanName := range spanNames {
+		parts = append(parts, spanName)
+	}
+	for _, attributes := range spanAttributes {
+		parts = append(parts, attributes)
+	}
+	return searchText(parts...)
+}
+
+func logSearchText(log contracts.LogEvent) string {
+	return searchText(log.ID, log.TraceID, log.SpanID, log.ServiceName, log.SeverityText, log.Body, log.Attributes)
+}
+
+func searchText(parts ...any) string {
+	terms := make([]string, 0, len(parts))
+	for _, part := range parts {
+		appendSearchTerms(&terms, part)
+	}
+	return strings.Join(uniqueNonBlankStrings(terms), " ")
+}
+
+func appendSearchTerms(terms *[]string, value any) {
+	switch typed := value.(type) {
+	case nil:
+		return
+	case string:
+		*terms = append(*terms, typed)
+	case *string:
+		if typed != nil {
+			*terms = append(*terms, *typed)
+		}
+	case fmt.Stringer:
+		*terms = append(*terms, typed.String())
+	case []string:
+		*terms = append(*terms, typed...)
+	case contracts.Attributes:
+		appendAttributesSearchTerms(terms, map[string]any(typed))
+	case map[string]any:
+		appendAttributesSearchTerms(terms, typed)
+	case contracts.TraceStatus:
+		*terms = append(*terms, string(typed))
+	case *contracts.TraceStatus:
+		if typed != nil {
+			*terms = append(*terms, string(*typed))
+		}
+	default:
+		*terms = append(*terms, fmt.Sprint(typed))
+	}
+}
+
+func appendAttributesSearchTerms(terms *[]string, attributes map[string]any) {
+	keys := make([]string, 0, len(attributes))
+	for key := range attributes {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		*terms = append(*terms, key)
+		appendSearchTerms(terms, attributes[key])
+	}
+}
+
+func uniqueNonBlankStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
 }
 
 func spanEvents(events []contracts.SpanEvent) []map[string]any {
@@ -1175,7 +1849,7 @@ func cloneMap(input map[string]any) map[string]any {
 }
 
 func normalizeRecordDateStrings(record map[string]any) {
-	for _, key := range []string{"startedAt", "endedAt", "createdAt", "producedAt", "persistedAt"} {
+	for _, key := range []string{"startedAt", "endedAt", "createdAt", "updatedAt", "producedAt", "persistedAt", "summaryGeneratedAt", "computedAt", "promotedAt"} {
 		value, ok := record[key].(string)
 		if !ok {
 			continue
@@ -1204,6 +1878,15 @@ func mapStringValue(input map[string]any, key string) string {
 	default:
 		return strings.TrimSpace(fmt.Sprint(typed))
 	}
+}
+
+func firstMapStringValue(input map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value := mapStringValue(input, key); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func putMapString(record map[string]any, recordKey string, input map[string]any, inputKey string) {
@@ -1269,6 +1952,18 @@ func mapStringValueWithDefault(input map[string]any, key string, fallback string
 	return value
 }
 
+func datasetVersionSourceObject(input map[string]any, fallbackKind string) map[string]any {
+	return aiEvalSourceObject(input, fallbackKind)
+}
+
+func aiEvalSourceObject(input map[string]any, fallbackKind string) map[string]any {
+	if source := mapObjectValue(input, "source"); len(source) > 0 {
+		return cloneMap(source)
+	}
+	kind := mapStringValueWithDefault(input, "source", fallbackKind)
+	return map[string]any{"kind": kind}
+}
+
 func mapBoolValue(input map[string]any, key string) bool {
 	value, ok := input[key]
 	if !ok || value == nil {
@@ -1292,6 +1987,225 @@ func mapIntValue(input map[string]any, key string) int {
 		return int(typed)
 	default:
 		return 0
+	}
+}
+
+func datasetVersionID(datasetID string, version int) string {
+	return fmt.Sprintf("%s:version:%d", datasetID, maxInt(1, version))
+}
+
+func datasetVersionNumberFromInput(input map[string]any) int {
+	if version := mapIntValue(input, "expectedDatasetVersion"); version > 0 {
+		return version
+	}
+	versionID := firstMapStringValue(input, "expectedDatasetVersionId", "currentVersionId")
+	prefix := ":version:"
+	index := strings.LastIndex(versionID, prefix)
+	if index < 0 {
+		return 1
+	}
+	version := 0
+	for _, char := range versionID[index+len(prefix):] {
+		if char < '0' || char > '9' {
+			break
+		}
+		version = version*10 + int(char-'0')
+	}
+	if version < 1 {
+		return 1
+	}
+	return version
+}
+
+func sortedMapStringValues(items []any) []string {
+	values := make([]string, 0, len(items))
+	for _, item := range items {
+		value := strings.TrimSpace(fmt.Sprint(item))
+		if value != "" {
+			values = append(values, value)
+		}
+	}
+	sort.Strings(values)
+	return values
+}
+
+func firstMapArrayValue(input map[string]any, keys ...string) []any {
+	for _, key := range keys {
+		if values := mapArrayValue(input, key); len(values) > 0 {
+			return values
+		}
+	}
+	return []any{}
+}
+
+func datasetItemRevisionRecord(request contracts.EvalMutationRequest, item map[string]any, datasetID string, itemID string, revisionID string, revision int, occurredAt time.Time) map[string]any {
+	record := map[string]any{
+		"id":               revisionID,
+		"datasetItemId":    itemID,
+		"datasetId":        datasetID,
+		"revision":         maxInt(1, revision),
+		"input":            item["input"],
+		"expected":         item["expected"],
+		"observedOutput":   item["observedOutput"],
+		"reason":           mapStringValue(item, "reason"),
+		"curationStatus":   mapStringValueWithDefault(item, "curationStatus", "draft"),
+		"curationNote":     mapStringValue(item, "curationNote"),
+		"split":            mapStringValueWithDefault(item, "split", "training"),
+		"sourceRefs":       mapArrayValue(item, "sourceRefs"),
+		"contentTreatment": mapStringValueWithDefault(item, "contentTreatment", "original"),
+		"metadata":         mapObjectValueWithDefault(item, "metadata"),
+		"createdAt":        occurredAt.UTC(),
+		"createdBy":        requestActorID(request),
+		"updatedAt":        occurredAt.UTC(),
+		"updatedBy":        requestActorID(request),
+	}
+	if provenance := mapObjectValue(item, "anonymizationProvenance"); len(provenance) > 0 {
+		record["anonymizationProvenance"] = provenance
+	}
+	record["digest"] = stableJSONDigest(map[string]any{
+		"input":            record["input"],
+		"expected":         record["expected"],
+		"observedOutput":   record["observedOutput"],
+		"reason":           record["reason"],
+		"curationStatus":   record["curationStatus"],
+		"split":            record["split"],
+		"sourceRefs":       record["sourceRefs"],
+		"contentTreatment": record["contentTreatment"],
+		"metadata":         record["metadata"],
+	})
+	return record
+}
+
+func withOwnership(input map[string]any, target TelemetryTarget) map[string]any {
+	record := cloneMap(input)
+	normalizeRecordDateStrings(record)
+	addOwnership(record, target)
+	return record
+}
+
+func withOwnershipArray(items []any, target TelemetryTarget) []any {
+	records := make([]any, 0, len(items))
+	for _, item := range items {
+		record, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		records = append(records, withOwnership(record, target))
+	}
+	return records
+}
+
+func requestActorID(request contracts.EvalMutationRequest) string {
+	if request.AuthContext != nil && request.AuthContext.PrincipalID != nil && strings.TrimSpace(*request.AuthContext.PrincipalID) != "" {
+		return *request.AuthContext.PrincipalID
+	}
+	return "system"
+}
+
+func stableJSONDigest(value any) string {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		encoded = []byte(fmt.Sprint(value))
+	}
+	sum := sha256.Sum256(encoded)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func maxInt(a int, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func mapAnonymizationRecord(input map[string]any, now time.Time) map[string]any {
+	policyID := mapStringValue(input, "anonymizationPolicyId")
+	policyVersion := mapIntValue(input, "anonymizationPolicyVersion")
+	if policyID == "" || policyVersion < 1 {
+		return nil
+	}
+	return map[string]any{
+		"policyId":          policyID,
+		"policyVersion":     policyVersion,
+		"transformedAt":     now.UTC(),
+		"consistencyScope":  mapStringValueWithDefault(input, "anonymizationConsistencyScope", "project"),
+		"transformedFields": mapArrayValue(input, "anonymizationTransformedFields"),
+	}
+}
+
+func validateScorerDefinitionRecord(definition map[string]any) error {
+	if mapStringValue(definition, "type") == "" {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: scorer definition type is required")
+	}
+	if mapStringValue(definition, "resultKind") == "" {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: scorer definition resultKind is required")
+	}
+	requirements := mapObjectValue(definition, "requirements")
+	for _, field := range []string{"executionLocation", "contentClass", "latencyClass"} {
+		if mapStringValue(requirements, field) == "" {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: scorer definition requirements.%s is required", field)
+		}
+	}
+	if mapStringValue(definition, "type") == "exact_match" && (mapStringValue(definition, "expectedPath") == "" || mapStringValue(definition, "actualPath") == "") {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: exact_match scorer paths are required")
+	}
+	return nil
+}
+
+func validateEvalResultPayloadRecord(payload map[string]any) error {
+	resultKind := mapStringValue(payload, "resultKind")
+	if resultKind == "" {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: eval result payload resultKind is required")
+	}
+	if len(mapObjectValue(payload, "metrics")) == 0 {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: eval result payload metrics is required")
+	}
+	if _, ok := payload["breakdown"].(map[string]any); !ok {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: eval result payload breakdown is required")
+	}
+	if len(mapObjectValue(payload, "visualization")) == 0 {
+		return fmt.Errorf("ERR-001 VALIDATION_FAILED: eval result payload visualization is required")
+	}
+	if resultKind == "classification" {
+		metrics := mapObjectValue(payload, "metrics")
+		accuracy, ok := mapNumericValue(metrics, "accuracy")
+		if !ok || accuracy < 0 || accuracy > 1 {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: classification accuracy is invalid")
+		}
+		if _, ok := metrics["support"]; !ok || mapIntValue(metrics, "support") < 0 {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: classification support is invalid")
+		}
+		if _, ok := mapObjectValue(payload, "breakdown")["categories"]; !ok {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: classification categories are required")
+		}
+		visualization := mapObjectValue(payload, "visualization")
+		if mapStringValue(visualization, "kind") != "confusion_matrix" {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: classification visualization is invalid")
+		}
+		if _, ok := visualization["labels"]; !ok {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: classification visualization is invalid")
+		}
+		if _, ok := visualization["matrix"]; !ok {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: classification visualization is invalid")
+		}
+	}
+	return nil
+}
+
+func mapNumericValue(input map[string]any, key string) (float64, bool) {
+	value, ok := input[key]
+	if !ok || value == nil {
+		return 0, false
+	}
+	switch typed := value.(type) {
+	case int:
+		return float64(typed), true
+	case int64:
+		return float64(typed), true
+	case float64:
+		return typed, true
+	default:
+		return 0, false
 	}
 }
 

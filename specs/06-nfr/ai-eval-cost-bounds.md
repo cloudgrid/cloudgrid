@@ -13,20 +13,34 @@ depends_on: [DOM-006, TEC-BE-024]
 
 ## Requirement
 
-Online scoring, offline scoring, and optimization must have explicit cost and concurrency bounds before calling harness.
+Dataset evaluations, optimization, external adapter calls, and future
+production measurement must have explicit cost, token, concurrency, rate-limit,
+backpressure, retry, and timeout bounds before calling the harness, external
+adapter, or model-backed metric.
 
 ## Defaults
 
-- Online scoring is disabled until configured.
-- LLM-judge online scoring samples at most 10 percent of matching runs unless a lower project limit is configured.
-- One experiment run executes at most 4 dataset items concurrently by default.
-- One optimization run executes at most 2 candidates concurrently by default.
+- Production measurement is disabled until configured.
+- One run executes at most 10 concurrent harness/model/metric/adapter requests by
+  default unless a lower project or run policy is configured.
 - A project-level daily evaluation budget stops additional harness calls with `ERR-AIE-004` when the configured budget is exhausted.
 - Project AI settings may lower these defaults. They must not raise global
   hard caps unless a later scaling/commercial spec explicitly changes the cap.
-- Deterministic local scorers consume concurrency but not provider budget.
-- Budget checks occur before every harness `/v1/run`, `/v1/score`, and
-  `/v1/optimize` call.
+- Deterministic local metrics consume concurrency but not provider budget.
+- Budget checks occur before every harness, model-backed metric, optimizer, and
+  external adapter call.
+- Token budget checks occur before every item execution and metric execution
+  when the required evidence can be measured before scheduling. Oversized items
+  are marked `needs_review` or `quarantined` according to policy rather than
+  being counted as model-quality failures.
+- Rate limits apply per project, provider profile, model alias, run, and
+  harness adapter when configured.
+- Backpressure behavior must be bounded and explicit: slow scheduling, pause the
+  run, skip affected items, or fail the run. Silent unbounded queue growth is
+  forbidden.
+- Retry uses bounded exponential backoff with jitter. Default retry attempts are
+  at most three for retryable harness, provider throttling, NATS, and
+  storage-write errors.
 - Skipped evaluations due to budget or sampling are recorded as bounded
   skip/summary records without prompt, completion, tool parameter, or retrieval
   document content.

@@ -174,6 +174,53 @@ type ProjectAiSettingsRecord struct {
 	Version         int
 }
 
+type CompanyAiProviderSettingsRecord struct {
+	CompanyID       string
+	Settings        map[string]any
+	UpdatedAt       time.Time
+	UpdatedByUserID string
+	Version         int
+}
+
+type AiProviderSecretRecord struct {
+	ID              string
+	Scope           string
+	CompanyID       string
+	ProjectID       string
+	ProviderID      string
+	Algorithm       string
+	Nonce           string
+	Ciphertext      string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	UpdatedByUserID string
+}
+
+type AiChatConversationRecord struct {
+	ID                 string
+	CompanyID          string
+	ProjectID          string
+	UserID             string
+	Title              string
+	Status             contracts.AiChatConversationStatus
+	LastMessageAt      time.Time
+	LastRunStatus      string
+	LatestCompactionID *string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	Version            int
+}
+
+type AiChatMessageRecord struct {
+	ID             string
+	ConversationID string
+	RunID          string
+	Role           string
+	Parts          []map[string]any
+	TokenEstimate  int
+	CreatedAt      time.Time
+}
+
 type AiChatRunRecord struct {
 	ID                  string
 	ConversationID      string
@@ -196,6 +243,43 @@ type AiChatRunRecord struct {
 	StartedAt           time.Time
 	CompletedAt         *time.Time
 	UpdatedAt           time.Time
+}
+
+type AiChatActionRecord struct {
+	ID               string
+	ConversationID   string
+	RunID            string
+	ProjectID        string
+	Title            string
+	Description      *string
+	Risk             contracts.AiChatActionRisk
+	Status           contracts.AiChatActionStatus
+	ActionKind       string
+	GraphQLMutation  *string
+	InputPreview     map[string]any
+	RequiresApproval bool
+	ApprovedByUserID *string
+	ApprovedAt       *time.Time
+	IdempotencyKey   string
+	ApprovalKey      *string
+	ApprovalReason   *string
+	ExpiresAt        time.Time
+	Result           map[string]any
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	Version          int
+}
+
+type AiChatCompactionRecord struct {
+	ID                 string
+	ConversationID     string
+	SourceMessageCount int
+	Summary            string
+	RetainedMessageIDs []string
+	ArtifactSummaries  []string
+	PendingActionIDs   []string
+	TokenCount         int
+	CreatedAt          time.Time
 }
 
 type RetentionRuleRecord struct {
@@ -297,10 +381,23 @@ type ControlStore interface {
 	PutRetentionPolicy(ctx context.Context, policy RetentionPolicyRecord) error
 	GetProjectAiSettings(ctx context.Context, projectID string) (ProjectAiSettingsRecord, bool, error)
 	PutProjectAiSettings(ctx context.Context, settings ProjectAiSettingsRecord) error
+	GetCompanyAiProviderSettings(ctx context.Context, companyID string) (CompanyAiProviderSettingsRecord, bool, error)
+	PutCompanyAiProviderSettings(ctx context.Context, settings CompanyAiProviderSettingsRecord) error
+	GetAiProviderSecret(ctx context.Context, secretID string) (AiProviderSecretRecord, bool, error)
+	PutAiProviderSecret(ctx context.Context, secret AiProviderSecretRecord) error
+	GetAiChatConversation(ctx context.Context, conversationID string) (AiChatConversationRecord, bool, error)
+	ListAiChatConversations(ctx context.Context, companyID string, userID string, projectID *string, includeArchived bool, limit int) ([]AiChatConversationRecord, error)
+	PutAiChatConversation(ctx context.Context, conversation AiChatConversationRecord) error
+	DeleteAiChatConversation(ctx context.Context, conversationID string) error
+	PutAiChatMessage(ctx context.Context, message AiChatMessageRecord) error
+	ListAiChatMessages(ctx context.Context, conversationID string, limit int) ([]AiChatMessageRecord, error)
 	GetAiChatRun(ctx context.Context, runID string) (AiChatRunRecord, bool, error)
 	GetAiChatRunByIdempotency(ctx context.Context, conversationID string, userMessageClientID string, idempotencyKey string) (AiChatRunRecord, bool, error)
 	ListActiveAiChatRunsForConversation(ctx context.Context, conversationID string) ([]AiChatRunRecord, error)
 	PutAiChatRun(ctx context.Context, run AiChatRunRecord) error
+	GetAiChatAction(ctx context.Context, actionID string) (AiChatActionRecord, bool, error)
+	PutAiChatAction(ctx context.Context, action AiChatActionRecord) error
+	PutAiChatCompaction(ctx context.Context, compaction AiChatCompactionRecord) error
 	GetAlertRule(ctx context.Context, id string) (AlertRuleRecord, bool, error)
 	PutAlertRule(ctx context.Context, rule AlertRuleRecord) error
 	DeleteAlertRule(ctx context.Context, id string) error

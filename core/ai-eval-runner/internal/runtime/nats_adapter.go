@@ -144,6 +144,70 @@ func (reader NATSStorageReader) SearchDatasetItems(ctx context.Context, datasetI
 	return result, nil
 }
 
+func (reader NATSStorageReader) GetDatasetVersion(ctx context.Context, datasetVersionID string) (ports.DatasetVersion, error) {
+	data, err := reader.evalQuery(ctx, SubjectDatasetVersionGet, map[string]any{"datasetVersionId": datasetVersionID})
+	if err != nil {
+		return ports.DatasetVersion{}, err
+	}
+	version := objectValue(data, "version")
+	return ports.DatasetVersion{
+		ID:              stringValue(version, "id"),
+		DatasetID:       stringValue(version, "datasetId"),
+		Version:         intValue(version, "version"),
+		Digest:          stringValue(version, "digest"),
+		ItemRevisionIDs: stringArrayValue(version, "itemRevisionIds"),
+		Settings:        objectValue(version, "settingsSnapshot"),
+	}, nil
+}
+
+func (reader NATSStorageReader) SearchDatasetItemRevisions(ctx context.Context, datasetVersionID string, itemRevisionIDs []string) ([]ports.DatasetItemRevision, error) {
+	input := map[string]any{"datasetVersionId": datasetVersionID}
+	if len(itemRevisionIDs) > 0 {
+		input["itemRevisionIds"] = itemRevisionIDs
+	}
+	data, err := reader.evalQuery(ctx, SubjectDatasetSearch, input)
+	if err != nil {
+		return nil, err
+	}
+	items, _ := data["items"].([]any)
+	result := make([]ports.DatasetItemRevision, 0, len(items))
+	for _, item := range items {
+		if row, ok := item.(map[string]any); ok {
+			result = append(result, ports.DatasetItemRevision{
+				ID:             stringValue(row, "id"),
+				DatasetItemID:  stringValue(row, "datasetItemId"),
+				DatasetID:      stringValue(row, "datasetId"),
+				Revision:       intValue(row, "revision"),
+				Input:          objectValue(row, "input"),
+				Expected:       objectValue(row, "expected"),
+				Reason:         stringValue(row, "reason"),
+				Split:          stringValue(row, "split"),
+				CurationStatus: stringValue(row, "curationStatus"),
+				Metadata:       objectValue(row, "metadata"),
+			})
+		}
+	}
+	return result, nil
+}
+
+func (reader NATSStorageReader) GetTargetSnapshot(ctx context.Context, targetSnapshotID string) (ports.TargetSnapshot, error) {
+	data, err := reader.evalQuery(ctx, SubjectTargetSnapshotGet, map[string]any{"targetSnapshotId": targetSnapshotID})
+	if err != nil {
+		return ports.TargetSnapshot{}, err
+	}
+	snapshot := objectValue(data, "snapshot")
+	return ports.TargetSnapshot{
+		ID:        stringValue(snapshot, "id"),
+		TargetRef: objectValue(snapshot, "targetRef"),
+		Kind:      stringValue(snapshot, "kind"),
+		Name:      stringValue(snapshot, "name"),
+		Version:   intValue(snapshot, "version"),
+		Digest:    stringValue(snapshot, "digest"),
+		Parts:     mapArrayValue(snapshot, "parts"),
+		Metadata:  objectValue(snapshot, "metadata"),
+	}, nil
+}
+
 func (reader NATSStorageReader) SearchScorers(ctx context.Context, scorerIDs []string) ([]ports.Scorer, error) {
 	data, err := reader.evalQuery(ctx, SubjectScorerSearch, map[string]any{"scorerIds": scorerIDs})
 	if err != nil {
@@ -172,7 +236,8 @@ func (reader NATSStorageReader) ResolveManifest(ctx context.Context, request por
 		SplitSelector:   splitSelectorMap(request.SplitSelector),
 	}
 	if request.OptimizerKind != "" {
-		resolveRequest.OptimizerKind = &request.OptimizerKind
+		optimizerKind := contracts.OptimizerKind(request.OptimizerKind)
+		resolveRequest.OptimizerKind = &optimizerKind
 	}
 	responseData, err := requestJSON(ctx, reader.Requester, reader.timeout(), SubjectManifestResolve, resolveRequest)
 	if err != nil {
@@ -185,8 +250,10 @@ func (reader NATSStorageReader) ResolveManifest(ctx context.Context, request por
 	if !response.OK {
 		return ports.ExperimentManifest{}, errorFromBridge(response.Error)
 	}
-	manifest, _ := response.Data["manifest"].(map[string]any)
-	return manifestFromMap(manifest), nil
+	if response.Data == nil {
+		return ports.ExperimentManifest{}, nil
+	}
+	return manifestFromContract(response.Data.Manifest), nil
 }
 
 func (reader NATSStorageReader) ResolveOnlinePolicyMatches(ctx context.Context, request ports.OnlinePolicyResolveRequest) (ports.OnlinePolicyMatches, error) {
@@ -243,24 +310,7 @@ func (reader NATSStorageReader) ResolveOnlinePolicyMatches(ctx context.Context, 
 			SampleRate:    match.SampleRate,
 			MaxDailyRuns:  maxDailyRuns,
 			ScorerRefs:    scorerRefs,
-			Projection: ports.OnlinePolicyProjection{
-				ProjectID:       match.Projection.ProjectID,
-				TraceID:         match.Projection.TraceID,
-				SpanID:          stringPtrValue(match.Projection.SpanID),
-				ProjectionID:    match.Projection.ProjectionID,
-				Kind:            string(match.Projection.Kind),
-				AgentID:         stringPtrValue(match.Projection.AgentID),
-				AgentName:       stringPtrValue(match.Projection.AgentName),
-				Environment:     stringPtrValue(match.Projection.Environment),
-				ServiceName:     stringPtrValue(match.Projection.ServiceName),
-				Route:           stringPtrValue(match.Projection.Route),
-				ToolName:        stringPtrValue(match.Projection.ToolName),
-				RetrievalSource: stringPtrValue(match.Projection.RetrievalSource),
-				Model:           stringPtrValue(match.Projection.Model),
-				PromptVersionID: stringPtrValue(match.Projection.PromptVersionID),
-				ExperimentRunID: stringPtrValue(match.Projection.ExperimentRunID),
-				SafeAttributes:  match.Projection.SafeAttributes,
-			},
+			Projection:    onlineProjectionFromContract(response.Data.Projection),
 		})
 	}
 	return ports.OnlinePolicyMatches{Matches: matches, Warnings: append([]string(nil), response.Data.Warnings...)}, nil
@@ -314,7 +364,15 @@ func (control NATSControlPlane) GetProjectAISettings(ctx context.Context, projec
 		return ports.ProjectAISettings{}, errorFromBridge(response.Error)
 	}
 	settings, _ := response.Data["settings"].(map[string]any)
-	return ports.ProjectAISettings{ProjectID: stringValue(settings, "projectId"), Budget: objectValue(settings, "budget")}, nil
+	return ports.ProjectAISettings{
+		ProjectID:                 stringValue(settings, "projectId"),
+		DefaultProviderProfileID:  stringValue(settings, "defaultProviderProfileId"),
+		DefaultJudgeProfileID:     stringValue(settings, "defaultJudgeProfileId"),
+		DefaultOptimizerProfileID: stringValue(settings, "defaultOptimizerProfileId"),
+		ProviderProfiles:          mapArrayValue(settings, "providerProfiles"),
+		ModelAliases:              mapArrayValue(settings, "modelAliases"),
+		Budget:                    objectValue(settings, "budget"),
+	}, nil
 }
 
 func (control NATSControlPlane) timeout() time.Duration {
@@ -377,6 +435,37 @@ func (writer NATSStorageWriter) PersistEvalResult(ctx context.Context, idempoten
 	return err
 }
 
+func (writer NATSStorageWriter) PersistEvaluationResults(ctx context.Context, result ports.EvaluationResultsPersist) error {
+	payload := map[string]any{
+		"evaluationRun":    evaluationRunMutationData(result.EvaluationRun),
+		"itemRuns":         evaluationItemRunMutationData(result.ItemRuns),
+		"metricResults":    metricResultMutationData(result.MetricResults),
+		"metricAggregates": result.MetricAggregates,
+	}
+	if len(result.OptimizationRun) > 0 {
+		payload["optimizationRun"] = result.OptimizationRun
+	}
+	request := contracts.EvaluationResultsPersistRequest{
+		BridgeEnvelope:  runnerEnvelope(ctx, result.EvaluationRunID+":results-persist"),
+		ProjectID:       result.ProjectID,
+		EvaluationRunID: result.EvaluationRunID,
+		IdempotencyKey:  result.IdempotencyKey,
+		Payload:         payload,
+	}
+	responseData, err := requestJSON(ctx, writer.Requester, writer.timeout(), SubjectResultsPersist, request)
+	if err != nil {
+		return err
+	}
+	var response contracts.EvalMutationResponse
+	if err := decodeStrict(responseData, &response); err != nil {
+		return err
+	}
+	if !response.OK {
+		return errorFromBridge(response.Error)
+	}
+	return nil
+}
+
 func (writer NATSStorageWriter) UpdateExperimentProgress(ctx context.Context, progress ports.ExperimentProgress) error {
 	_, _ = ctx, progress
 	return nil
@@ -428,6 +517,31 @@ func (publisher NATSProgressPublisher) PublishExperimentProgress(ctx context.Con
 		return err
 	}
 	return publisher.Publisher.Publish(SubjectExperimentProgress, payload)
+}
+
+func (publisher NATSProgressPublisher) PublishEvaluationProgress(ctx context.Context, progress ports.ExperimentProgress) error {
+	_ = ctx
+	notification := map[string]any{
+		"requestId":       stringDefault(progress.EvaluationRunID+":"+progress.Type, progress.ExperimentRunID+":"+progress.Type),
+		"evaluationRunId": progress.EvaluationRunID,
+		"type":            progress.Type,
+		"occurredAt":      timeNowUTC(progress.OccurredAt),
+	}
+	if progress.Run != nil {
+		notification["run"] = progress.Run
+	}
+	if progress.ItemRun != nil {
+		notification["itemRun"] = progress.ItemRun
+	}
+	payload, err := marshalJSON(notification)
+	if err != nil {
+		return err
+	}
+	subject := SubjectExperimentProgress
+	if progress.ProjectID != "" && progress.EvaluationRunID != "" {
+		subject = fmt.Sprintf("eval.live.events.%s.%s", progress.ProjectID, progress.EvaluationRunID)
+	}
+	return publisher.Publisher.Publish(subject, payload)
 }
 
 func requestJSON(ctx context.Context, requester Requester, timeout time.Duration, subject string, request any) ([]byte, error) {
@@ -488,6 +602,79 @@ func setOptionalString(values map[string]any, key string, value *string) {
 	}
 }
 
+func onlineProjectionFromContract(projection contracts.OnlinePolicyProjectionReadModel) ports.OnlinePolicyProjection {
+	return ports.OnlinePolicyProjection{
+		ProjectID:       projection.ProjectID,
+		TraceID:         projection.TraceID,
+		SpanID:          stringPtrValue(projection.SpanID),
+		ProjectionID:    projection.ProjectionID,
+		Kind:            string(projection.Kind),
+		AgentID:         stringPtrValue(projection.AgentID),
+		AgentName:       stringPtrValue(projection.AgentName),
+		Environment:     stringPtrValue(projection.Environment),
+		ServiceName:     stringPtrValue(projection.ServiceName),
+		Route:           stringPtrValue(projection.Route),
+		ToolName:        stringPtrValue(projection.ToolName),
+		RetrievalSource: stringPtrValue(projection.RetrievalSource),
+		Model:           stringPtrValue(projection.Model),
+		PromptVersionID: stringPtrValue(projection.PromptVersionID),
+		ExperimentRunID: stringPtrValue(projection.ExperimentRunID),
+		SafeAttributes:  projection.SafeAttributes,
+	}
+}
+
+func manifestFromContract(manifest contracts.ExperimentManifest) ports.ExperimentManifest {
+	scorerRefs := make([]ports.VersionedRef, 0, len(manifest.ScorerRefs))
+	for _, ref := range manifest.ScorerRefs {
+		scorerRefs = append(scorerRefs, ports.VersionedRef{ID: ref.ID, Version: ref.Version})
+	}
+	return ports.ExperimentManifest{
+		Digest:              manifest.Digest,
+		ExperimentRunID:     manifest.ExperimentRunID,
+		ExperimentID:        manifest.ExperimentID,
+		DatasetID:           manifest.DatasetID,
+		DatasetVersion:      manifest.DatasetVersion,
+		SplitSelector:       ports.DatasetSplitSelector{Splits: append([]string(nil), manifest.SplitSelector.Splits...), ReviewedOnly: manifest.SplitSelector.ReviewedOnly, IncludeSynthetic: manifest.SplitSelector.IncludeSynthetic},
+		DatasetItemIDs:      append([]string(nil), manifest.DatasetItemIDs...),
+		ScorerRefs:          scorerRefs,
+		SolverRef:           solverRefFromContract(manifest.SolverRef),
+		PromptVersionRefs:   append([]string(nil), manifest.PromptVersionRefs...),
+		SkillSnapshotRefs:   append([]string(nil), manifest.SkillSnapshotRefs...),
+		ToolSnapshotRefs:    append([]string(nil), manifest.ToolSnapshotRefs...),
+		ProviderProfileRefs: append([]string(nil), manifest.ProviderProfileRefs...),
+		Budget:              copyAnyMap(manifest.Budget),
+		Concurrency:         copyAnyMap(manifest.Concurrency),
+		RunPolicy:           runPolicyFromContract(manifest.RunPolicy),
+	}
+}
+
+func solverRefFromContract(ref contracts.EvalSolverRef) map[string]any {
+	payload, _ := json.Marshal(ref)
+	values := map[string]any{}
+	_ = json.Unmarshal(payload, &values)
+	return values
+}
+
+func runPolicyFromContract(policy contracts.EvalRunPolicy) map[string]any {
+	payload, _ := json.Marshal(policy)
+	values := map[string]any{}
+	_ = json.Unmarshal(payload, &values)
+	for key, value := range values {
+		if value == nil {
+			delete(values, key)
+		}
+	}
+	return values
+}
+
+func copyAnyMap(values map[string]any) map[string]any {
+	copied := map[string]any{}
+	for key, value := range values {
+		copied[key] = value
+	}
+	return copied
+}
+
 func manifestFromMap(manifest map[string]any) ports.ExperimentManifest {
 	return ports.ExperimentManifest{
 		Digest:              stringValue(manifest, "digest"),
@@ -507,6 +694,98 @@ func manifestFromMap(manifest map[string]any) ports.ExperimentManifest {
 		Budget:              objectValue(manifest, "budget"),
 		Concurrency:         objectValue(manifest, "concurrency"),
 	}
+}
+
+func evaluationRunMutationData(run ports.EvaluationRun) map[string]any {
+	if run.ID == "" {
+		return map[string]any{}
+	}
+	data := map[string]any{
+		"id":                      run.ID,
+		"projectId":               run.ProjectID,
+		"kind":                    run.Kind,
+		"status":                  run.Status,
+		"datasetId":               run.DatasetID,
+		"datasetVersionId":        run.DatasetVersionID,
+		"datasetDigest":           run.DatasetDigest,
+		"selectedItemRevisionIds": run.SelectedItemRevisionIDs,
+		"splitSelector":           run.SplitSelector,
+		"targetSnapshotId":        run.TargetSnapshotID,
+		"metricSettingsSnapshot":  run.MetricSettingsSnapshot,
+		"runPolicySnapshot":       run.RunPolicySnapshot,
+		"retentionProfile":        run.RetentionProfile,
+		"retentionRole":           run.RetentionRole,
+		"startedAt":               run.StartedAt,
+		"summary":                 run.Summary,
+	}
+	if run.EvaluationDefinitionID != "" {
+		data["evaluationDefinitionId"] = run.EvaluationDefinitionID
+	}
+	if run.EndedAt != "" {
+		data["endedAt"] = run.EndedAt
+	}
+	if len(run.Problem) > 0 {
+		data["problem"] = run.Problem
+	}
+	return data
+}
+
+func evaluationItemRunMutationData(runs []ports.EvaluationItemRun) []any {
+	items := make([]any, 0, len(runs))
+	for _, run := range runs {
+		item := map[string]any{
+			"id":                    run.ID,
+			"evaluationRunId":       run.EvaluationRunID,
+			"datasetItemId":         run.DatasetItemID,
+			"datasetItemRevisionId": run.DatasetItemRevisionID,
+			"targetSnapshotId":      run.TargetSnapshotID,
+			"status":                run.Status,
+			"actualOutput":          run.ActualOutput,
+			"actualOutputType":      run.ActualOutputType,
+			"traceId":               run.TraceID,
+			"rootSpanId":            run.RootSpanID,
+			"metricResultIds":       run.MetricResultIDs,
+			"problems":              run.Problems,
+			"trajectorySummary":     run.TrajectorySummary,
+			"summaryEvidenceRefs":   run.SummaryEvidenceRefs,
+			"importantSteps":        run.ImportantSteps,
+			"summaryDigest":         run.SummaryDigest,
+			"summaryGeneratedAt":    run.SummaryGeneratedAt,
+			"retentionRole":         run.RetentionRole,
+			"startedAt":             run.StartedAt,
+			"endedAt":               run.EndedAt,
+		}
+		if run.ConversationRef != "" {
+			item["conversationRef"] = run.ConversationRef
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
+func metricResultMutationData(results []ports.MetricResult) []any {
+	items := make([]any, 0, len(results))
+	for _, result := range results {
+		item := map[string]any{
+			"id":            result.ID,
+			"metricId":      result.MetricID,
+			"metricVersion": result.MetricVersion,
+			"scope":         result.Scope,
+			"subjectId":     result.SubjectID,
+			"family":        result.Family,
+			"payload":       result.Payload,
+			"unit":          result.Unit,
+			"direction":     result.Direction,
+			"evidenceRefs":  result.EvidenceRefs,
+			"metadata":      result.Metadata,
+			"producedAt":    result.ProducedAt,
+		}
+		if len(result.Problem) > 0 {
+			item["problem"] = result.Problem
+		}
+		items = append(items, item)
+	}
+	return items
 }
 
 func splitSelectorFromMap(values map[string]any) ports.DatasetSplitSelector {
@@ -571,7 +850,21 @@ func objectValue(values map[string]any, key string) map[string]any {
 	return value
 }
 
+func mapArrayValue(values map[string]any, key string) []map[string]any {
+	items, _ := values[key].([]any)
+	result := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		if value, ok := item.(map[string]any); ok {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
 func stringArrayValue(values map[string]any, key string) []string {
+	if typed, ok := values[key].([]string); ok {
+		return append([]string(nil), typed...)
+	}
 	items, _ := values[key].([]any)
 	result := make([]string, 0, len(items))
 	for _, item := range items {
@@ -580,6 +873,13 @@ func stringArrayValue(values map[string]any, key string) []string {
 		}
 	}
 	return result
+}
+
+func stringDefault(value string, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 func timeNowUTC(value string) time.Time {

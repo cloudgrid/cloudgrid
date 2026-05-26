@@ -278,7 +278,10 @@ const errorPayload = {
 
 async function mockGraphQL(page: Page, handler: GraphQLHandler) {
   await page.route("**/graphql", async (route) => {
-    const requestBody = route.request().postDataJSON() as { operationName: OperationName };
+    const requestBody = route.request().postDataJSON() as {
+      operationName: OperationName;
+      variables?: { input?: { cursor?: string | null } };
+    };
     if (requestBody.operationName === "Viewer") {
       await route.fulfill({
         contentType: "application/json",
@@ -290,6 +293,16 @@ async function mockGraphQL(page: Page, handler: GraphQLHandler) {
       requestBody.operationName === "Dashboards" ||
       requestBody.operationName === "IngestCredentials" ||
       requestBody.operationName === "CompanyAiProviderSettings"
+    ) {
+      await route.fulfill({
+        contentType: "application/json",
+        json: emptyPayloads[requestBody.operationName],
+      });
+      return;
+    }
+    if (
+      (requestBody.operationName === "TraceSearch" || requestBody.operationName === "LogSearch") &&
+      requestBody.variables?.input?.cursor
     ) {
       await route.fulfill({
         contentType: "application/json",
@@ -324,15 +337,16 @@ async function expectNoCriticalAxeViolations(page: Page) {
   ).toEqual([]);
 }
 
-test("renders shell routes, development GraphQL UI link, and applies dark theme", async ({
-  page,
-}) => {
+test("renders shell routes without a GraphQL UI link and applies dark theme", async ({ page }) => {
   await mockGraphQL(page, (operationName) => emptyPayloads[operationName]);
   const assertNoConsoleErrors = await expectNoConsoleErrors(page);
 
   await page.goto("/traces");
   await expect(page.getByRole("heading", { name: /trace search/i })).toBeVisible();
-  await expect(page.getByRole("link", { name: /graphql ui/i })).toHaveAttribute("href", "/graphql");
+  await expect(page.getByRole("link", { name: /graphql ui/i })).toHaveCount(0);
+  await page.getByRole("button", { name: /user menu/i }).click();
+  await expect(page.getByRole("menuitem", { name: /log out/i })).toBeVisible();
+  await page.keyboard.press("Escape");
 
   await page.getByRole("link", { name: /^logs$/i }).click();
   await expect(page.getByRole("heading", { name: /^logs$/i })).toBeVisible();
@@ -353,8 +367,9 @@ test("renders project selection and project setup shell modes", async ({ page })
     }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: /^traces$/i })).toHaveCount(0);
-  await page.getByRole("button", { exact: true, name: "Create project" }).click();
-  await expect(page.getByRole("dialog", { name: /add project/i })).toBeVisible();
+  await page.getByRole("link", { exact: true, name: "Create project" }).click();
+  await expect(page).toHaveURL(/\/projects\/new/);
+  await expect(page.getByRole("heading", { name: "Create project", exact: true })).toBeVisible();
 
   await page.goto(`/projects/${projectId}`);
   await expect(page).toHaveURL(/\/traces$/);

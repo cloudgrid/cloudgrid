@@ -1,0 +1,72 @@
+plan: service_resilience_hardening
+tickets:
+  TICKET-201:
+    title: Resilience taxonomy and implementation contracts
+    wave: 1
+    status: ready
+    file: plans/service-resilience-hardening/wave_01_specs_and_classification/tickets/TICKET-201-resilience-taxonomy-contracts.md
+    depends_on: []
+    blocked_by: []
+  TICKET-202:
+    title: Go NATS resilience and panic containment
+    wave: 2
+    status: ready
+    file: plans/service-resilience-hardening/wave_02_go_runtime_resilience/tickets/TICKET-202-go-nats-panic-readiness.md
+    depends_on: [TICKET-201]
+    blocked_by: []
+  TICKET-203:
+    title: SurrealDB reconnect managers and readiness
+    wave: 2
+    status: ready
+    file: plans/service-resilience-hardening/wave_02_go_runtime_resilience/tickets/TICKET-203-surrealdb-reconnect-readiness.md
+    depends_on: [TICKET-201]
+    blocked_by: []
+  TICKET-204:
+    title: Storage-write consumer recovery and lifecycle cleanup
+    wave: 2
+    status: ready
+    file: plans/service-resilience-hardening/wave_02_go_runtime_resilience/tickets/TICKET-204-storage-write-consumer-lifecycle.md
+    depends_on: [TICKET-201]
+    blocked_by: []
+  TICKET-205:
+    title: BFF bridge response validation error classification
+    wave: 3
+    status: ready
+    file: plans/service-resilience-hardening/wave_03_bff_and_contract_errors/tickets/TICKET-205-bff-bridge-error-classification.md
+    depends_on: [TICKET-201]
+    blocked_by: []
+  TICKET-206:
+    title: Local-stack resilience and chaos integration scenarios
+    wave: 6
+    status: ready
+    file: plans/service-resilience-hardening/wave_06_integration_chaos/tickets/TICKET-206-local-stack-resilience-chaos.md
+    depends_on: [TICKET-207]
+    blocked_by: []
+  TICKET-207:
+    title: Cross-service readiness startup and shutdown lifecycle
+    wave: 5
+    status: ready
+    file: plans/service-resilience-hardening/wave_05_readiness_lifecycle/tickets/TICKET-207-readiness-startup-shutdown-lifecycle.md
+    depends_on: [TICKET-208, TICKET-210]
+    blocked_by: []
+  TICKET-208:
+    title: Async blocking saturation and event-loop protection
+    wave: 4
+    status: ready
+    file: plans/service-resilience-hardening/wave_04_async_saturation/tickets/TICKET-208-async-blocking-saturation.md
+    depends_on: [TICKET-202, TICKET-203, TICKET-204, TICKET-205, TICKET-209]
+    blocked_by: []
+  TICKET-209:
+    title: BFF WebSocket limits and subscription lifecycle
+    wave: 4
+    status: ready
+    file: plans/service-resilience-hardening/wave_04_async_saturation/tickets/TICKET-209-bff-websocket-limits-lifecycle.md
+    depends_on: [TICKET-205]
+    blocked_by: []
+  TICKET-210:
+    title: Go health config and panic safety
+    wave: 5
+    status: ready
+    file: plans/service-resilience-hardening/wave_05_readiness_lifecycle/tickets/TICKET-210-go-health-config-panic-safety.md
+    depends_on: [TICKET-202, TICKET-203, TICKET-204]
+    blocked_by: []

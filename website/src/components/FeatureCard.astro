@@ -3,7 +3,7 @@ interface Props {
   href: string;
   title: string;
   description: string;
-  icon?: "trace" | "log" | "metric" | "dashboard" | "ai" | "adapter";
+  icon?: "trace" | "log" | "metric" | "dashboard" | "alert" | "ai" | "adapter";
   accent?: "brand" | "cyan" | "emerald" | "amber" | "violet" | "rose";
 }
 
@@ -23,6 +23,7 @@ const iconPaths: Record<string, string> = {
   log: "M4 5h16M4 10h16M4 15h10M4 20h13",
   metric: "M3 19V5M3 19h18M7 15l4-5 3 3 5-7",
   dashboard: "M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z",
+  alert: "M12 3a5 5 0 0 0-5 5v3.5L5 16h14l-2-4.5V8a5 5 0 0 0-5-5zM10 19h4",
   ai: "M9 2h6v3h-6zM6 8h12v9H6zM10 17v3M14 17v3M3 11h3M18 11h3",
   adapter: "M9 4v6h6V4M9 20v-6h6v6M3 12h6M15 12h6",
 };

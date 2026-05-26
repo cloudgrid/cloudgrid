@@ -47,12 +47,13 @@ func BuildMetricNameSearchQuery(input contracts.MetricNameSearchInput, authConte
 		return QueryStatement{}, err
 	}
 
-	params := map[string]any{"limit": limit}
+	params := map[string]any{"limit": limit + 1}
 	addOwnershipParams(params, target)
 	conditions := retentionVisibleConditions()
 	pointConditions := retentionVisibleConditions()
+	sortSpec := metricNameSearchSortSpec(input.Sort)
 	if input.Query != nil && strings.TrimSpace(*input.Query) != "" {
-		conditions = append(conditions, "string::lowercase(metricName) CONTAINS $query")
+		conditions = append(conditions, "searchText @AND@ $query")
 		params["query"] = strings.ToLower(strings.TrimSpace(*input.Query))
 	}
 	if input.From != nil {
@@ -65,10 +66,19 @@ func BuildMetricNameSearchQuery(input contracts.MetricNameSearchInput, authConte
 		pointConditions = append(pointConditions, "timestamp <= $to")
 		params["to"] = input.To.UTC()
 	}
-	if input.Service != nil && strings.TrimSpace(*input.Service) != "" {
-		pointConditions = append(pointConditions, "serviceName = $service")
-		params["service"] = strings.TrimSpace(*input.Service)
+	if services := normalizedServiceFilters(input.Service, input.Services); len(services) > 0 {
+		pointConditions = append(pointConditions, "serviceName IN $services")
+		params["services"] = services
 		conditions = append(conditions, "metricName IN (SELECT VALUE metricName FROM metric_point "+whereClause(pointConditions)+")")
+	}
+	if input.Cursor != nil && strings.TrimSpace(*input.Cursor) != "" {
+		cursor, err := decodeCursorForSort(*input.Cursor, sortSpec.cursorSort, sortSpec.valueKind)
+		if err != nil {
+			return QueryStatement{}, err
+		}
+		conditions = append(conditions, sortSpec.cursorCondition)
+		params["cursorValue"] = cursor.LastValue
+		params["cursorId"] = cursor.LastID
 	}
 
 	return QueryStatement{
@@ -76,10 +86,11 @@ func BuildMetricNameSearchQuery(input contracts.MetricNameSearchInput, authConte
 			"SELECT metricName AS id, metricName AS name, description, unit, kind, aggregationTemporality, monotonic, attributeKeys, firstSeenAt, lastSeenAt",
 			"FROM metric_descriptor",
 			whereClause(conditions),
-			"ORDER BY lastSeenAt DESC, metricName ASC",
+			sortSpec.orderBy,
 			"LIMIT $limit;",
 		}, " "),
 		Params: params,
+		Target: target,
 	}, nil
 }
 
@@ -98,10 +109,11 @@ func BuildMetricDescriptorByNameQuery(metricName string, authContext ...*contrac
 		SQL: strings.Join([]string{
 			"SELECT metricName AS id, metricName AS name, description, unit, kind, aggregationTemporality, monotonic, attributeKeys, firstSeenAt, lastSeenAt",
 			"FROM metric_descriptor",
-			"WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND metricName = $metricName",
+			whereClause(append(retentionVisibleConditions(), "metricName = $metricName")),
 			"LIMIT 1;",
 		}, " "),
 		Params: params,
+		Target: target,
 	}, nil
 }
 
@@ -155,6 +167,7 @@ func BuildMetricSeriesQuery(input contracts.MetricSeriesInput, descriptor contra
 	selects = append(selects, groupSelects...)
 	selects = append(selects, metricAggregationSelect(input.Aggregation, descriptor.Kind))
 	selects = append(selects, "array::flatten(array::group(exemplars)) AS exemplars")
+	orderBy := metricSeriesOrderBy(input.Sort, groupColumns[1:])
 
 	return QueryStatement{
 			SQL: strings.Join([]string{
@@ -162,10 +175,11 @@ func BuildMetricSeriesQuery(input contracts.MetricSeriesInput, descriptor contra
 				"FROM metric_point",
 				whereClause(conditions),
 				"GROUP BY " + strings.Join(groupColumns, ", "),
-				"ORDER BY bucket ASC",
+				orderBy,
 				"LIMIT $limit;",
 			}, " "),
 			Params: params,
+			Target: target,
 		}, ResolvedMetricSeriesQuery{
 			Interval: formatMetricInterval(interval),
 			Limit:    limit,
@@ -268,6 +282,74 @@ func metricAggregationSelect(aggregation contracts.MetricAggregation, kind contr
 		return "math::percentile(array::flatten(array::group(quantileValues.value)), 99) AS value, math::sum(count) AS count"
 	default:
 		return "count() AS value, count() AS count"
+	}
+}
+
+func metricNameSearchSortSpec(sort *contracts.MetricNameSort) querySortSpec {
+	if sort == nil {
+		return querySortSpec{
+			cursorSort:      "lastSeenAt_desc_metricName_asc",
+			cursorCondition: "(lastSeenAt < $cursorValue OR (lastSeenAt = $cursorValue AND metricName > $cursorId))",
+			orderBy:         "ORDER BY lastSeenAt DESC, metricName ASC",
+			valueKind:       cursorValueTime,
+		}
+	}
+	switch *sort {
+	case contracts.MetricNameSortLastSeenAtAsc:
+		return querySortSpec{
+			cursorSort:      "lastSeenAt_asc_metricName_asc",
+			cursorCondition: "(lastSeenAt > $cursorValue OR (lastSeenAt = $cursorValue AND metricName > $cursorId))",
+			orderBy:         "ORDER BY lastSeenAt ASC, metricName ASC",
+			valueKind:       cursorValueTime,
+		}
+	case contracts.MetricNameSortNameAsc:
+		return querySortSpec{
+			cursorSort:      "name_asc_metricName_asc",
+			cursorCondition: "metricName > $cursorValue",
+			orderBy:         "ORDER BY metricName ASC",
+			valueKind:       cursorValueString,
+		}
+	case contracts.MetricNameSortNameDesc:
+		return querySortSpec{
+			cursorSort:      "name_desc_metricName_asc",
+			cursorCondition: "metricName < $cursorValue",
+			orderBy:         "ORDER BY metricName DESC",
+			valueKind:       cursorValueString,
+		}
+	case contracts.MetricNameSortKindAsc:
+		return querySortSpec{
+			cursorSort:      "kind_asc_metricName_asc",
+			cursorCondition: "(kind > $cursorValue OR (kind = $cursorValue AND metricName > $cursorId))",
+			orderBy:         "ORDER BY kind ASC, metricName ASC",
+			valueKind:       cursorValueString,
+		}
+	default:
+		return metricNameSearchSortSpec(nil)
+	}
+}
+
+func metricSeriesOrderBy(sort *contracts.MetricSeriesSort, groupTieBreakers []string) string {
+	tieBreakers := make([]string, 0, 1+len(groupTieBreakers))
+	appendGroupTieBreakers := func(columns []string) []string {
+		for _, column := range groupTieBreakers {
+			columns = append(columns, column+" ASC")
+		}
+		return columns
+	}
+	if sort == nil {
+		return "ORDER BY " + strings.Join(appendGroupTieBreakers([]string{"bucket ASC"}), ", ")
+	}
+	switch *sort {
+	case contracts.MetricSeriesSortTimestampDesc:
+		return "ORDER BY " + strings.Join(appendGroupTieBreakers([]string{"bucket DESC"}), ", ")
+	case contracts.MetricSeriesSortValueDesc:
+		tieBreakers = append(tieBreakers, "value DESC", "bucket ASC")
+		return "ORDER BY " + strings.Join(appendGroupTieBreakers(tieBreakers), ", ")
+	case contracts.MetricSeriesSortValueAsc:
+		tieBreakers = append(tieBreakers, "value ASC", "bucket ASC")
+		return "ORDER BY " + strings.Join(appendGroupTieBreakers(tieBreakers), ", ")
+	default:
+		return "ORDER BY " + strings.Join(appendGroupTieBreakers([]string{"bucket ASC"}), ", ")
 	}
 }
 

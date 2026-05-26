@@ -10,105 +10,137 @@ import (
 )
 
 const (
-	SubjectViewerGet                = "control.viewer.get"
-	SubjectOrganizationsList        = "control.organizations.list"
-	SubjectOrganizationsGet         = "control.organizations.get"
-	SubjectProjectsList             = "control.projects.list"
-	SubjectProjectsListForService   = "control.projects.list_for_service"
-	SubjectProjectsGet              = "control.projects.get"
-	SubjectProjectsCreate           = "control.projects.create"
-	SubjectProjectsUpdate           = "control.projects.update"
-	SubjectProjectsSelect           = "control.projects.select"
-	SubjectMembersList              = "control.members.list"
-	SubjectMembersUpdate            = "control.members.update"
-	SubjectMembersRemove            = "control.members.remove"
-	SubjectInvitationsList          = "control.invitations.list"
-	SubjectInvitationsCreate        = "control.invitations.create"
-	SubjectInvitationsResend        = "control.invitations.resend"
-	SubjectInvitationsRevoke        = "control.invitations.revoke"
-	SubjectProjectInvitationsCreate = "control.project_invitations.create"
-	SubjectIngestCredentialsList    = "control.ingest_credentials.list"
-	SubjectIngestCredentialsCreate  = "control.ingest_credentials.create"
-	SubjectIngestCredentialsRevoke  = "control.ingest_credentials.revoke"
-	SubjectProjectStatusSnapshot    = "control.project_status.snapshot"
-	SubjectProjectStatusChanged     = "control.project_status.changed"
-	SubjectDashboardsList           = "control.dashboards.list"
-	SubjectDashboardsSave           = "control.dashboards.save"
-	SubjectDashboardsDelete         = "control.dashboards.delete"
-	SubjectDashboardPinsSet         = "control.dashboard_pins.set"
-	SubjectDashboardPinsReorder     = "control.dashboard_pins.reorder"
-	SubjectProjectAiSettingsGet     = "control.ai_settings.get"
-	SubjectProjectAiSettingsUpdate  = "control.ai_settings.update"
-	SubjectAiChatRunCreate          = "control.ai_chat.run.create"
-	SubjectAiChatRunUpdate          = "control.ai_chat.run.update"
-	SubjectAiChatRunFinalize        = "control.ai_chat.run.finalize"
-	SubjectProjectMembersList       = "control.project_members.list"
-	SubjectProjectMembersUpdate     = "control.project_members.update"
-	SubjectProjectMembersRemove     = "control.project_members.remove"
-	SubjectRetentionGet             = "control.retention.get"
-	SubjectRetentionUpdate          = "control.retention.update"
-	SubjectAlertRulesList           = "control.alert_rules.list"
-	SubjectAlertRulesCreate         = "control.alert_rules.create"
-	SubjectAlertRulesUpdate         = "control.alert_rules.update"
-	SubjectAlertRulesDelete         = "control.alert_rules.delete"
-	SubjectAlertSilencesList        = "control.alert_silences.list"
-	SubjectAlertSilencesCreate      = "control.alert_silences.create"
-	SubjectAlertSilencesDelete      = "control.alert_silences.delete"
-	SubjectAlertHistoryList         = "control.alert_history.list"
-	SubjectAlertSummaryGet          = "control.alert_summary.get"
-	SubjectAlertHistoryRecord       = "control.alert_history.record"
-	controlPlaneService             = "control-plane"
+	SubjectViewerGet                 = "control.viewer.get"
+	SubjectOrganizationsList         = "control.organizations.list"
+	SubjectOrganizationsGet          = "control.organizations.get"
+	SubjectProjectsList              = "control.projects.list"
+	SubjectProjectsListForService    = "control.projects.list_for_service"
+	SubjectProjectsGet               = "control.projects.get"
+	SubjectProjectsCreate            = "control.projects.create"
+	SubjectProjectsUpdate            = "control.projects.update"
+	SubjectProjectsSelect            = "control.projects.select"
+	SubjectMembersList               = "control.members.list"
+	SubjectMembersUpdate             = "control.members.update"
+	SubjectMembersRemove             = "control.members.remove"
+	SubjectInvitationsList           = "control.invitations.list"
+	SubjectInvitationsCreate         = "control.invitations.create"
+	SubjectInvitationsResend         = "control.invitations.resend"
+	SubjectInvitationsRevoke         = "control.invitations.revoke"
+	SubjectProjectInvitationsCreate  = "control.project_invitations.create"
+	SubjectIngestCredentialsList     = "control.ingest_credentials.list"
+	SubjectIngestCredentialsCreate   = "control.ingest_credentials.create"
+	SubjectIngestCredentialsRevoke   = "control.ingest_credentials.revoke"
+	SubjectProjectStatusSnapshot     = "control.project_status.snapshot"
+	SubjectProjectStatusChanged      = "control.project_status.changed"
+	SubjectDashboardsList            = "control.dashboards.list"
+	SubjectDashboardsSave            = "control.dashboards.save"
+	SubjectDashboardsDelete          = "control.dashboards.delete"
+	SubjectDashboardPinsSet          = "control.dashboard_pins.set"
+	SubjectDashboardPinsReorder      = "control.dashboard_pins.reorder"
+	SubjectProjectAiSettingsGet      = "control.ai_settings.get"
+	SubjectProjectAiSettingsUpdate   = "control.ai_settings.update"
+	SubjectProjectAiProvidersGet     = "control.ai_providers.project.get"
+	SubjectProjectAiProvidersUpdate  = "control.ai_providers.project.update"
+	SubjectCompanyAiProvidersGet     = "control.ai_providers.company.get"
+	SubjectCompanyAiProvidersUpdate  = "control.ai_providers.company.update"
+	SubjectAiProviderSecretsResolve  = "control.ai_provider_secrets.resolve"
+	SubjectAiChatHistory             = "control.ai_chat.history"
+	SubjectAiChatConversationGet     = "control.ai_chat.conversation.get"
+	SubjectAiChatConversationCreate  = "control.ai_chat.conversation.create"
+	SubjectAiChatConversationArchive = "control.ai_chat.conversation.archive"
+	SubjectAiChatConversationDelete  = "control.ai_chat.conversation.delete"
+	SubjectAiChatMessageAppend       = "control.ai_chat.message.append"
+	SubjectAiChatRunCreate           = "control.ai_chat.run.create"
+	SubjectAiChatRunUpdate           = "control.ai_chat.run.update"
+	SubjectAiChatRunFinalize         = "control.ai_chat.run.finalize"
+	SubjectAiChatActionPropose       = "control.ai_chat.action.propose"
+	SubjectAiChatActionApprove       = "control.ai_chat.action.approve"
+	SubjectAiChatActionFinish        = "control.ai_chat.action.finish"
+	SubjectAiChatCompactionSave      = "control.ai_chat.compaction.save"
+	SubjectProjectMembersList        = "control.project_members.list"
+	SubjectProjectMembersUpdate      = "control.project_members.update"
+	SubjectProjectMembersRemove      = "control.project_members.remove"
+	SubjectRetentionGet              = "control.retention.get"
+	SubjectRetentionUpdate           = "control.retention.update"
+	SubjectAlertRulesList            = "control.alert_rules.list"
+	SubjectAlertRulesCreate          = "control.alert_rules.create"
+	SubjectAlertRulesUpdate          = "control.alert_rules.update"
+	SubjectAlertRulesDelete          = "control.alert_rules.delete"
+	SubjectAlertSilencesList         = "control.alert_silences.list"
+	SubjectAlertSilencesCreate       = "control.alert_silences.create"
+	SubjectAlertSilencesDelete       = "control.alert_silences.delete"
+	SubjectAlertHistoryList          = "control.alert_history.list"
+	SubjectAlertSummaryGet           = "control.alert_summary.get"
+	SubjectAlertNotificationAdapters = "control.alert_notification_adapters.list"
+	SubjectAlertHistoryRecord        = "control.alert_history.record"
+	controlPlaneService              = "control-plane"
 )
 
 func ControlSubjects() map[string]struct{} {
 	return map[string]struct{}{
-		SubjectViewerGet:                {},
-		SubjectOrganizationsList:        {},
-		SubjectOrganizationsGet:         {},
-		SubjectProjectsList:             {},
-		SubjectProjectsListForService:   {},
-		SubjectProjectsGet:              {},
-		SubjectProjectsCreate:           {},
-		SubjectProjectsUpdate:           {},
-		SubjectProjectsSelect:           {},
-		SubjectMembersList:              {},
-		SubjectMembersUpdate:            {},
-		SubjectMembersRemove:            {},
-		SubjectInvitationsList:          {},
-		SubjectInvitationsCreate:        {},
-		SubjectInvitationsResend:        {},
-		SubjectInvitationsRevoke:        {},
-		SubjectProjectInvitationsCreate: {},
-		SubjectIngestCredentialsList:    {},
-		SubjectIngestCredentialsCreate:  {},
-		SubjectIngestCredentialsRevoke:  {},
-		SubjectProjectStatusSnapshot:    {},
-		SubjectProjectStatusChanged:     {},
-		SubjectDashboardsList:           {},
-		SubjectDashboardsSave:           {},
-		SubjectDashboardsDelete:         {},
-		SubjectDashboardPinsSet:         {},
-		SubjectDashboardPinsReorder:     {},
-		SubjectProjectAiSettingsGet:     {},
-		SubjectProjectAiSettingsUpdate:  {},
-		SubjectAiChatRunCreate:          {},
-		SubjectAiChatRunUpdate:          {},
-		SubjectAiChatRunFinalize:        {},
-		SubjectProjectMembersList:       {},
-		SubjectProjectMembersUpdate:     {},
-		SubjectProjectMembersRemove:     {},
-		SubjectRetentionGet:             {},
-		SubjectRetentionUpdate:          {},
-		SubjectAlertRulesList:           {},
-		SubjectAlertRulesCreate:         {},
-		SubjectAlertRulesUpdate:         {},
-		SubjectAlertRulesDelete:         {},
-		SubjectAlertSilencesList:        {},
-		SubjectAlertSilencesCreate:      {},
-		SubjectAlertSilencesDelete:      {},
-		SubjectAlertHistoryList:         {},
-		SubjectAlertSummaryGet:          {},
-		SubjectAlertHistoryRecord:       {},
+		SubjectViewerGet:                 {},
+		SubjectOrganizationsList:         {},
+		SubjectOrganizationsGet:          {},
+		SubjectProjectsList:              {},
+		SubjectProjectsListForService:    {},
+		SubjectProjectsGet:               {},
+		SubjectProjectsCreate:            {},
+		SubjectProjectsUpdate:            {},
+		SubjectProjectsSelect:            {},
+		SubjectMembersList:               {},
+		SubjectMembersUpdate:             {},
+		SubjectMembersRemove:             {},
+		SubjectInvitationsList:           {},
+		SubjectInvitationsCreate:         {},
+		SubjectInvitationsResend:         {},
+		SubjectInvitationsRevoke:         {},
+		SubjectProjectInvitationsCreate:  {},
+		SubjectIngestCredentialsList:     {},
+		SubjectIngestCredentialsCreate:   {},
+		SubjectIngestCredentialsRevoke:   {},
+		SubjectProjectStatusSnapshot:     {},
+		SubjectProjectStatusChanged:      {},
+		SubjectDashboardsList:            {},
+		SubjectDashboardsSave:            {},
+		SubjectDashboardsDelete:          {},
+		SubjectDashboardPinsSet:          {},
+		SubjectDashboardPinsReorder:      {},
+		SubjectProjectAiSettingsGet:      {},
+		SubjectProjectAiSettingsUpdate:   {},
+		SubjectProjectAiProvidersGet:     {},
+		SubjectProjectAiProvidersUpdate:  {},
+		SubjectCompanyAiProvidersGet:     {},
+		SubjectCompanyAiProvidersUpdate:  {},
+		SubjectAiProviderSecretsResolve:  {},
+		SubjectAiChatHistory:             {},
+		SubjectAiChatConversationGet:     {},
+		SubjectAiChatConversationCreate:  {},
+		SubjectAiChatConversationArchive: {},
+		SubjectAiChatConversationDelete:  {},
+		SubjectAiChatMessageAppend:       {},
+		SubjectAiChatRunCreate:           {},
+		SubjectAiChatRunUpdate:           {},
+		SubjectAiChatRunFinalize:         {},
+		SubjectAiChatActionPropose:       {},
+		SubjectAiChatActionApprove:       {},
+		SubjectAiChatActionFinish:        {},
+		SubjectAiChatCompactionSave:      {},
+		SubjectProjectMembersList:        {},
+		SubjectProjectMembersUpdate:      {},
+		SubjectProjectMembersRemove:      {},
+		SubjectRetentionGet:              {},
+		SubjectRetentionUpdate:           {},
+		SubjectAlertRulesList:            {},
+		SubjectAlertRulesCreate:          {},
+		SubjectAlertRulesUpdate:          {},
+		SubjectAlertRulesDelete:          {},
+		SubjectAlertSilencesList:         {},
+		SubjectAlertSilencesCreate:       {},
+		SubjectAlertSilencesDelete:       {},
+		SubjectAlertHistoryList:          {},
+		SubjectAlertSummaryGet:           {},
+		SubjectAlertNotificationAdapters: {},
+		SubjectAlertHistoryRecord:        {},
 	}
 }
 
@@ -409,6 +441,116 @@ func handleProjectAiSettingsUpdate(service *Service, logger *slog.Logger) bridge
 	})
 }
 
+func handleProjectAiProviderSettingsGet(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.ProjectAiProviderSettingsGetRequest](SubjectProjectAiProvidersGet, logger, func(ctx context.Context, request contracts.ProjectAiProviderSettingsGetRequest) contracts.ProjectAiSettingsGetResponse {
+		settings, err := service.GetProjectAiProviderSettings(ctx, request)
+		if err != nil {
+			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"settings": settings}}
+	})
+}
+
+func handleProjectAiProviderSettingsUpdate(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.ProjectAiProviderSettingsUpdateRequest](SubjectProjectAiProvidersUpdate, logger, func(ctx context.Context, request contracts.ProjectAiProviderSettingsUpdateRequest) contracts.ProjectAiSettingsUpdateResponse {
+		settings, err := service.UpdateProjectAiProviderSettings(ctx, request)
+		if err != nil {
+			return contracts.ProjectAiSettingsUpdateResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.ProjectAiSettingsUpdateResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"settings": settings}}
+	})
+}
+
+func handleCompanyAiProviderSettingsGet(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.CompanyAiProviderSettingsGetRequest](SubjectCompanyAiProvidersGet, logger, func(ctx context.Context, request contracts.CompanyAiProviderSettingsGetRequest) contracts.ProjectAiSettingsGetResponse {
+		settings, err := service.GetCompanyAiProviderSettings(ctx, request)
+		if err != nil {
+			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"settings": settings}}
+	})
+}
+
+func handleCompanyAiProviderSettingsUpdate(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.CompanyAiProviderSettingsUpdateRequest](SubjectCompanyAiProvidersUpdate, logger, func(ctx context.Context, request contracts.CompanyAiProviderSettingsUpdateRequest) contracts.ProjectAiSettingsUpdateResponse {
+		settings, err := service.UpdateCompanyAiProviderSettings(ctx, request)
+		if err != nil {
+			return contracts.ProjectAiSettingsUpdateResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.ProjectAiSettingsUpdateResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"settings": settings}}
+	})
+}
+
+func handleAiProviderSecretResolve(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.AiProviderSecretResolveRequest](SubjectAiProviderSecretsResolve, logger, func(ctx context.Context, request contracts.AiProviderSecretResolveRequest) contracts.ProjectAiSettingsGetResponse {
+		credential, err := service.ResolveAiProviderSecret(ctx, request)
+		if err != nil {
+			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"credential": credential}}
+	})
+}
+
+func handleAiChatHistory(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.AiChatHistoryRequest](SubjectAiChatHistory, logger, func(ctx context.Context, request contracts.AiChatHistoryRequest) contracts.ProjectAiSettingsGetResponse {
+		history, err := service.GetAiChatHistory(ctx, request)
+		if err != nil {
+			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"history": history}}
+	})
+}
+
+func handleAiChatConversationGet(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.AiChatConversationGetRequest](SubjectAiChatConversationGet, logger, func(ctx context.Context, request contracts.AiChatConversationGetRequest) contracts.ProjectAiSettingsGetResponse {
+		conversation, err := service.GetAiChatConversation(ctx, request)
+		if err != nil {
+			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"conversation": conversation}}
+	})
+}
+
+func handleAiChatConversationCreate(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.AiChatConversationCreateRequest](SubjectAiChatConversationCreate, logger, func(ctx context.Context, request contracts.AiChatConversationCreateRequest) contracts.ProjectAiSettingsGetResponse {
+		conversation, err := service.CreateAiChatConversation(ctx, request)
+		if err != nil {
+			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"conversation": conversation}}
+	})
+}
+
+func handleAiChatConversationArchive(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.AiChatConversationArchiveRequest](SubjectAiChatConversationArchive, logger, func(ctx context.Context, request contracts.AiChatConversationArchiveRequest) contracts.ProjectAiSettingsGetResponse {
+		conversation, err := service.ArchiveAiChatConversation(ctx, request)
+		if err != nil {
+			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"conversation": conversation}}
+	})
+}
+
+func handleAiChatConversationDelete(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.AiChatConversationDeleteRequest](SubjectAiChatConversationDelete, logger, func(ctx context.Context, request contracts.AiChatConversationDeleteRequest) contracts.AlertDeleteResponse {
+		deleted, err := service.DeleteAiChatConversation(ctx, request)
+		if err != nil {
+			return contracts.AlertDeleteResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.AlertDeleteResponse{RequestID: request.RequestID, OK: true, Data: &contracts.AlertDeleteData{Deleted: deleted}}
+	})
+}
+
+func handleAiChatMessageAppend(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.AiChatMessageAppendRequest](SubjectAiChatMessageAppend, logger, func(ctx context.Context, request contracts.AiChatMessageAppendRequest) contracts.ProjectAiSettingsGetResponse {
+		message, err := service.AppendAiChatMessage(ctx, request)
+		if err != nil {
+			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"message": message}}
+	})
+}
+
 func handleAiChatRunCreate(service *Service, logger *slog.Logger) bridgeMessageHandler {
 	return requestHandler[contracts.AiChatRunCreateRequest](SubjectAiChatRunCreate, logger, func(ctx context.Context, request contracts.AiChatRunCreateRequest) contracts.AiChatRunMutationResponse {
 		run, err := service.CreateAiChatRun(ctx, request)
@@ -436,6 +578,46 @@ func handleAiChatRunFinalize(service *Service, logger *slog.Logger) bridgeMessag
 			return contracts.AiChatRunMutationResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
 		return contracts.AiChatRunMutationResponse{RequestID: request.RequestID, OK: true, Data: &contracts.AiChatRunMutationData{Run: run}}
+	})
+}
+
+func handleAiChatActionPropose(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.AiChatActionProposeRequest](SubjectAiChatActionPropose, logger, func(ctx context.Context, request contracts.AiChatActionProposeRequest) contracts.ProjectAiSettingsGetResponse {
+		action, err := service.ProposeAiChatAction(ctx, request)
+		if err != nil {
+			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"action": action}}
+	})
+}
+
+func handleAiChatActionApprove(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.AiChatActionApproveRequest](SubjectAiChatActionApprove, logger, func(ctx context.Context, request contracts.AiChatActionApproveRequest) contracts.ProjectAiSettingsGetResponse {
+		action, err := service.ApproveAiChatAction(ctx, request)
+		if err != nil {
+			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"action": action}}
+	})
+}
+
+func handleAiChatActionFinish(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.AiChatActionFinishRequest](SubjectAiChatActionFinish, logger, func(ctx context.Context, request contracts.AiChatActionFinishRequest) contracts.ProjectAiSettingsGetResponse {
+		action, err := service.FinishAiChatAction(ctx, request)
+		if err != nil {
+			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"action": action}}
+	})
+}
+
+func handleAiChatCompactionSave(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.AiChatCompactionSaveRequest](SubjectAiChatCompactionSave, logger, func(ctx context.Context, request contracts.AiChatCompactionSaveRequest) contracts.ProjectAiSettingsGetResponse {
+		compaction, err := service.SaveAiChatCompaction(ctx, request)
+		if err != nil {
+			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"compaction": compaction}}
 	})
 }
 
@@ -579,6 +761,20 @@ func handleAlertSummaryGet(service *Service, logger *slog.Logger) bridgeMessageH
 	})
 }
 
+func handleAlertNotificationAdaptersList(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.AlertNotificationAdapterListRequest](SubjectAlertNotificationAdapters, logger, func(ctx context.Context, request contracts.AlertNotificationAdapterListRequest) contracts.AlertNotificationAdapterListResponse {
+		adapters, err := service.ListAlertNotificationAdapters(ctx, request)
+		if err != nil {
+			return contracts.AlertNotificationAdapterListResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.AlertNotificationAdapterListResponse{
+			RequestID: request.RequestID,
+			OK:        true,
+			Data:      &contracts.AlertNotificationAdapterListData{Adapters: adapters},
+		}
+	})
+}
+
 func handleAlertHistoryRecord(service *Service, logger *slog.Logger) bridgeMessageHandler {
 	return requestHandler[contracts.AlertHistoryRecordRequest](SubjectAlertHistoryRecord, logger, func(ctx context.Context, request contracts.AlertHistoryRecordRequest) contracts.AlertHistoryRecordResponse {
 		event, err := service.RecordAlertHistory(ctx, request)
@@ -659,7 +855,7 @@ func logHandlerCompletion(logger *slog.Logger, subject string, requestID string,
 	if logger == nil {
 		return
 	}
-	level := slog.LevelInfo
+	level := slog.LevelDebug
 	status := "ok"
 	if !ok {
 		level = slog.LevelWarn

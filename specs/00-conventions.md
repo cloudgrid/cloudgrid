@@ -100,6 +100,10 @@ Deployable apps may depend on `apps/packages/*`. Shared TypeScript packages must
 - Include `trace_id` and `span_id` when known.
 - Include `error_id` and `error_code` when logging mapped CloudGrid errors.
 - Log levels are lowercase strings: `debug`, `info`, `warn`, `error`.
+- Default runtime logging threshold is `info`. Successful high-frequency request, NATS handler, GraphQL operation, OTLP HTTP, telemetry ingest, live notification, and persisted-notification completions are `debug` events and must not be emitted at the default threshold.
+- Use `info` only for low-frequency operator-relevant lifecycle events such as startup readiness, shutdown, and explicit long-lived mode changes. A healthy running production system should not produce steady-state success logs.
+- Use `warn` for validation failures, denied or malformed client actions, recoverable dependency degradation, retryable bridge failures, and self-observability export failures when configured to surface them.
+- Use `error` for startup failure, unavailable required dependencies, terminal processing failure, data loss risk, or unexpected internal failures. When a process exits because of a fatal condition, log the condition as `error` with the canonical CloudGrid error fields before exit.
 - Services running in Kubernetes must write application logs to stdout/stderr as one JSON object per line.
 - Do not log full OTLP payload bodies by default.
 - Do not log SurrealDB credentials, NATS credentials, raw provider errors, raw OTLP bodies, or user-controlled high-cardinality payload objects by default.

@@ -1,0 +1,43 @@
+plan: ai_eval_e2e_ux_hardening
+status: done
+updated: 2026-05-24
+tickets:
+  TICKET-301:
+    status: done
+    wave: wave_01_shared_e2e_runtime
+    depends_on: []
+    blocked_by: []
+    owner: integration-agent
+    evidence:
+      - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/cloudgrid-harness-adapter test
+      - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/integration-scenarios test
+      - PATH="$HOME/.bun/bin:$PATH" bun run contracts:check
+      - PATH="$HOME/.bun/bin:$PATH" bun run typecheck
+      - git diff --check
+    next: TICKET-302 and TICKET-303 completed
+  TICKET-302:
+    status: done
+    wave: wave_02_parallel_ai_eval_coverage
+    depends_on: [TICKET-301]
+    blocked_by: []
+    owner: integration-agent
+    evidence:
+      - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/integration-scenarios test
+      - PATH="$HOME/.bun/bin:$PATH" bun test tooling/scripts/ai-eval-fake-service-integration.test.mjs
+      - PATH="$HOME/.bun/bin:$PATH" bun run contracts:check
+      - PATH="$HOME/.bun/bin:$PATH" bun run typecheck
+      - git diff --check
+    next: AI Eval v2 integration coverage complete
+  TICKET-303:
+    status: done
+    wave: wave_02_parallel_ai_eval_coverage
+    depends_on: [TICKET-301]
+    blocked_by: []
+    owner: frontend-agent
+    evidence:
+      - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/frontend typecheck
+      - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/frontend test -- ai-eval
+      - PATH="$HOME/.bun/bin:$PATH" bun --bun run --cwd apps/frontend smoke -- ai-eval.e2e.ts
+      - PATH="$HOME/.bun/bin:$PATH" bun run contracts:check
+      - git diff --check
+    next: AI Eval frontend UX feedback complete

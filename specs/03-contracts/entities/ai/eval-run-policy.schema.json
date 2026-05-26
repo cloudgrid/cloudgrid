@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-020",
+  "title": "EvalRunPolicy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["maxParallelRequests"],
+  "properties": {
+    "maxParallelRequests": { "type": "integer", "minimum": 1, "maximum": 100, "default": 10 },
+    "tokenBudget": { "$ref": "#/$defs/tokenBudget" },
+    "costBudget": { "$ref": "#/$defs/costBudget" },
+    "rateLimit": { "$ref": "#/$defs/rateLimit" },
+    "retry": { "$ref": "#/$defs/retryPolicy" },
+    "timeout": { "$ref": "#/$defs/timeoutPolicy" },
+    "failureBudget": { "$ref": "#/$defs/failureBudget" },
+    "backpressure": { "$ref": "#/$defs/backpressurePolicy" },
+    "checkpoint": { "$ref": "#/$defs/checkpointPolicy" },
+    "quarantine": { "$ref": "#/$defs/quarantinePolicy" },
+    "workspaceQuota": { "$ref": "#/$defs/workspaceQuota" },
+    "cleanupRetry": { "$ref": "#/$defs/cleanupRetryPolicy" }
+  },
+  "$defs": {
+    "tokenBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxRunTokens": { "type": "integer", "minimum": 1 },
+        "maxItemInputTokens": { "type": "integer", "minimum": 1 },
+        "maxItemOutputTokens": { "type": "integer", "minimum": 1 },
+        "maxJudgeTokens": { "type": "integer", "minimum": 1 },
+        "behavior": { "$ref": "#/$defs/limitBehavior" }
+      }
+    },
+    "costBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxRunUsd": { "type": "number", "minimum": 0 },
+        "maxDailyProjectUsd": { "type": "number", "minimum": 0 },
+        "behavior": { "$ref": "#/$defs/limitBehavior" }
+      }
+    },
+    "rateLimit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxRequestsPerMinute": { "type": "integer", "minimum": 1 },
+        "maxTokensPerMinute": { "type": "integer", "minimum": 1 },
+        "providerBurst": { "type": "integer", "minimum": 1 },
+        "projectBurst": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "retryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 10, "default": 3 },
+        "baseDelayMs": { "type": "integer", "minimum": 0, "maximum": 60000, "default": 250 },
+        "maxDelayMs": { "type": "integer", "minimum": 1, "maximum": 600000, "default": 5000 },
+        "jitter": { "type": "boolean", "default": true },
+        "retryBudget": { "type": "integer", "minimum": 0 },
+        "retryableCodes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        }
+      }
+    },
+    "timeoutPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "itemTimeoutMs": { "type": "integer", "minimum": 1 },
+        "metricTimeoutMs": { "type": "integer", "minimum": 1 },
+        "adapterCallTimeoutMs": { "type": "integer", "minimum": 1 },
+        "runTimeoutMs": { "type": "integer", "minimum": 1 },
+        "cleanupTimeoutMs": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "failureBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxTargetFailures": { "type": "integer", "minimum": 0 },
+        "maxTechnicalErrors": { "type": "integer", "minimum": 0 },
+        "maxItemQualityFailures": { "type": "integer", "minimum": 0 },
+        "maxMetricConfigFailures": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "backpressurePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["behavior"],
+      "properties": {
+        "behavior": {
+          "type": "string",
+          "enum": ["slow", "pause", "skip", "fail"],
+          "default": "slow"
+        },
+        "queueDepthThreshold": { "type": "integer", "minimum": 1 },
+        "storageLagMsThreshold": { "type": "integer", "minimum": 1 },
+        "providerRateLimitBehavior": { "type": "string", "enum": ["slow", "pause", "skip", "fail"] }
+      }
+    },
+    "checkpointPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cadence": { "type": "string", "enum": ["item", "metric", "batch"], "default": "item" },
+        "batchSize": { "type": "integer", "minimum": 1 },
+        "persistSandboxRefs": { "type": "boolean", "default": false }
+      }
+    },
+    "quarantinePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "maxConsecutiveItemFailures": { "type": "integer", "minimum": 1, "default": 3 },
+        "quarantineOversizedItems": { "type": "boolean", "default": true },
+        "quarantineInvalidJson": { "type": "boolean", "default": true },
+        "quarantineMissingEvidence": { "type": "boolean", "default": true }
+      }
+    },
+    "workspaceQuota": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxWorkspaceBytes": { "type": "integer", "minimum": 1 },
+        "maxSingleFileBytes": { "type": "integer", "minimum": 1 },
+        "maxFileCount": { "type": "integer", "minimum": 1 },
+        "maxCheckpointPayloadBytes": { "type": "integer", "minimum": 1 },
+        "maxSnapshotBytes": { "type": "integer", "minimum": 1 },
+        "maxWorkspaceAgeMs": { "type": "integer", "minimum": 1 },
+        "maxActiveWorkspaces": { "type": "integer", "minimum": 1 },
+        "maxPausedWorkspaces": { "type": "integer", "minimum": 1 },
+        "maxConcurrentResumes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "cleanupRetryPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 20, "default": 5 },
+        "baseDelayMs": { "type": "integer", "minimum": 0, "maximum": 60000, "default": 1000 },
+        "maxDelayMs": { "type": "integer", "minimum": 1, "maximum": 3600000, "default": 60000 },
+        "jitter": { "type": "boolean", "default": true },
+        "orphanAfterMs": { "type": "integer", "minimum": 1 },
+        "retryableCleanupCodes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        }
+      }
+    },
+    "limitBehavior": {
+      "type": "string",
+      "enum": ["skip_item", "pause_run", "fail_run"],
+      "default": "skip_item"
+    }
+  }
+}

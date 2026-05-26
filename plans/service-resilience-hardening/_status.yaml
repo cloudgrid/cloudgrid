@@ -1,0 +1,135 @@
+plan: service_resilience_hardening
+updated: 2026-05-23
+summary:
+  total: 10
+  ready: 0
+  in_progress: 0
+  review: 0
+  done: 10
+  blocked: 0
+tickets:
+  TICKET-201:
+    wave: wave_01_specs_and_classification
+    status: done
+    owner: resilience-contract-agent
+    depends_on: []
+    blocked_by: []
+    evidence:
+      - added ERR-023 RESPONSE_CONTRACT_INVALID for BFF response contract drift
+      - node /Users/sebastianwessel/.agents/skills/spec-architect/scripts/check_specs.mjs specs
+    next: implementation tickets can map response schema drift to ERR-023 instead of ERR-013
+  TICKET-202:
+    wave: wave_02_go_runtime_resilience
+    status: done
+    owner: go-nats-agent
+    depends_on: [TICKET-201]
+    blocked_by: []
+    evidence:
+      - Go NATS callback panic recovery implemented for control-plane and storage-read request/reply adapters
+      - storage-read and storage-write readiness now use bounded NATS FlushTimeout checks instead of closed/not-closed checks
+      - GOCACHE=/private/tmp/cloudgrid-gocache go test -count=1 -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/...
+    next: none
+  TICKET-203:
+    wave: wave_02_go_runtime_resilience
+    status: done
+    owner: surrealdb-agent
+    depends_on: [TICKET-201]
+    blocked_by: []
+    evidence:
+      - SurrealDB adapters classify retryable connection/query failures as ERR-006 and mark local state degraded
+      - storage-read closes the reconnect manager current SDK client instead of only the startup handle
+      - storage-read project telemetry overview returns zero telemetry for completely uninitialized project telemetry databases while preserving errors for partial/broken schemas
+      - GOCACHE=/private/tmp/cloudgrid-gocache go test -count=1 -tags surrealdb ./core/control-plane/internal/adapters/surrealdb ./core/storage-read/internal/adapters/surrealdb ./core/storage-write/internal/adapters/surrealdb
+      - GOCACHE=/private/tmp/cloudgrid-gocache go test -count=1 -tags surrealdb ./core/storage-read/internal/adapters/surrealdb ./core/storage-read/...
+      - GOCACHE=/private/tmp/cloudgrid-gocache go test -count=1 -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/...
+    next: none
+  TICKET-204:
+    wave: wave_02_go_runtime_resilience
+    status: done
+    owner: storage-write-agent
+    depends_on: [TICKET-201]
+    blocked_by: []
+    evidence:
+      - storage-write consumer classifies retryable JetStream fetch disconnects separately from fatal fetch errors
+      - GOCACHE=/private/tmp/cloudgrid-gocache go test -count=1 -tags surrealdb ./core/storage-write/internal/ingest
+      - GOCACHE=/private/tmp/cloudgrid-gocache go test -count=1 -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/...
+    next: none
+  TICKET-205:
+    wave: wave_03_bff_and_contract_errors
+    status: done
+    owner: bff-agent
+    depends_on: [TICKET-201]
+    blocked_by: []
+    evidence:
+      - BFF bridge maps malformed response envelopes, JSON decode failures, and response schema drift to ERR-023 RESPONSE_CONTRACT_INVALID
+      - BFF bridge keeps NATS unavailable and timeout mapped to ERR-013 and ERR-014
+      - bun test apps/backend/src
+      - bun run --cwd apps/backend typecheck
+      - bun run contracts:check
+    next: none
+  TICKET-206:
+    wave: wave_06_integration_chaos
+    status: done
+    owner: integration-agent
+    depends_on: [TICKET-207]
+    blocked_by: []
+    evidence:
+      - tooling/scripts/integration-local.mjs now runs opt-in resilience chaos with isolated Docker infrastructure, NATS pause/unpause recovery, liveness/readiness separation, post-recovery GraphQL viewer verification, and malformed private NATS request checks
+      - bun run integration:local
+      - CLOUDGRID_ENABLE_RESILIENCE_CHAOS_TESTS=true bun run integration:local
+    next: none
+  TICKET-207:
+    wave: wave_05_readiness_lifecycle
+    status: done
+    owner: lifecycle-agent
+    depends_on: [TICKET-208, TICKET-210]
+    blocked_by: []
+    evidence:
+      - storage-read and storage-write composition roots use operational NATS readiness checks
+      - BFF shutdown cancels active GraphQL WebSocket operations before bridge close
+      - GOCACHE=/private/tmp/cloudgrid-gocache go test -count=1 -tags surrealdb ./core/storage-read/cmd/storage-read ./core/storage-write/cmd/storage-write
+      - GOCACHE=/private/tmp/cloudgrid-gocache go test -count=1 -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/...
+      - bun run integration:local
+      - CLOUDGRID_ENABLE_RESILIENCE_CHAOS_TESTS=true bun run integration:local
+    next: none
+  TICKET-208:
+    wave: wave_04_async_saturation
+    status: done
+    owner: async-saturation-agent
+    depends_on: [TICKET-202, TICKET-203, TICKET-204, TICKET-205, TICKET-209]
+    blocked_by: []
+    evidence:
+      - BFF response validation issue logs are capped
+      - BFF GraphQL WebSocket message size, operation count, iterator cleanup, and shutdown cleanup are bounded
+      - Go health checker execution is bounded and panic-safe
+      - storage-write fetch retry loop uses bounded wait from consumer config
+      - bun test apps/backend/src
+      - GOCACHE=/private/tmp/cloudgrid-gocache go test -count=1 -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/...
+      - bun run test
+      - bun run typecheck
+      - bun run contracts:check
+    next: none
+  TICKET-209:
+    wave: wave_04_async_saturation
+    status: done
+    owner: bff-agent
+    depends_on: [TICKET-205]
+    blocked_by: []
+    evidence:
+      - GraphQL WebSocket raw message size and per-socket operation limits implemented
+      - GraphQL WebSocket iterator cleanup is awaited with bounded timeout and shutdown cleanup
+      - bun test apps/backend/src/graphql-ws.test.ts apps/backend/src/bridge.test.ts apps/backend/src/index.test.ts
+      - bun test apps/backend/src
+    next: none
+  TICKET-210:
+    wave: wave_05_readiness_lifecycle
+    status: done
+    owner: lifecycle-agent
+    depends_on: [TICKET-202, TICKET-203, TICKET-204]
+    blocked_by: []
+    evidence:
+      - core/go-runtime health supports configured timeout and converts checker panic/timeout to unhealthy readiness response
+      - storage-read and storage-write composition roots use CheckReady context-aware NATS probes
+      - GOCACHE=/private/tmp/cloudgrid-gocache go test -count=1 -tags surrealdb ./core/go-runtime/health ./core/storage-read/cmd/storage-read ./core/storage-write/cmd/storage-write
+      - GOCACHE=/private/tmp/cloudgrid-gocache go test -count=1 -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/...
+    next: none

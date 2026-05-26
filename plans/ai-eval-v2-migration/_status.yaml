@@ -1,0 +1,95 @@
+plan: ai_eval_v2_implementation_migration
+status: ready
+updated: 2026-05-24
+current_gate_evidence:
+  contracts_check: pass
+  typecheck: pass
+  spec_check: pass_with_warning_no_specs_03_flows_directory
+tickets:
+  TICKET-201:
+    status: done
+    wave: wave_01_backend_foundation
+    depends_on: []
+    blocked_by: []
+    owner: bff-agent
+    evidence:
+      - PATH="$HOME/.bun/bin:$PATH" bun test apps/backend/src/ai-eval.test.ts
+      - PATH="$HOME/.bun/bin:$PATH" bun run contracts:check
+      - node node_modules/.bin/tsc --noEmit -p apps/backend/tsconfig.json
+      - node node_modules/.bin/tsc --noEmit -p apps/frontend/tsconfig.json
+      - node node_modules/.bin/tsc --noEmit -p apps/packages/public-api-client/tsconfig.json
+      - node node_modules/.bin/tsc --noEmit -p apps/packages/ui-contracts/tsconfig.json
+      - node node_modules/.bin/tsc --noEmit -p apps/packages/integration-scenarios/tsconfig.json
+      - git diff --check
+    next: TICKET-202 and TICKET-203 may start
+  TICKET-202:
+    status: done
+    wave: wave_02_parallel_services
+    depends_on: [TICKET-201]
+    blocked_by: []
+    owner: storage-write-agent
+    evidence:
+      - PATH="/opt/homebrew/bin:/usr/local/go/bin:$HOME/.bun/bin:$PATH" go test -tags surrealdb ./core/storage-write/...
+      - PATH="$HOME/.bun/bin:$PATH" bun run contracts:check
+      - PATH="$HOME/.bun/bin:$PATH" bun run typecheck
+      - git diff --check -- core/storage-write
+    next: TICKET-204 may use storage-write v2 persistence
+  TICKET-203:
+    status: done
+    wave: wave_02_parallel_services
+    depends_on: [TICKET-201]
+    blocked_by: []
+    owner: storage-read-agent
+    evidence:
+      - PATH="/opt/homebrew/bin:/usr/local/go/bin:$HOME/.bun/bin:$PATH" go test -tags surrealdb ./core/storage-read/...
+      - PATH="$HOME/.bun/bin:$PATH" bun run contracts:check
+      - PATH="$HOME/.bun/bin:$PATH" bun run typecheck
+      - git diff --check -- core/storage-read
+    next: TICKET-204 and TICKET-205 may use storage-read v2 query semantics
+  TICKET-204:
+    status: done
+    wave: wave_03_runner_frontend
+    depends_on: [TICKET-202, TICKET-203]
+    blocked_by: []
+    owner: runner-agent
+    evidence:
+      - PATH="/opt/homebrew/bin:/usr/local/go/bin:$HOME/.bun/bin:$PATH" go test -tags surrealdb ./core/ai-eval-runner/...
+      - PATH="$HOME/.bun/bin:$PATH" bun run contracts:check
+      - git diff --check -- core/ai-eval-runner core/go-contracts
+    next: TICKET-206 may use runner v2 orchestration after TICKET-205 completes
+  TICKET-205:
+    status: done
+    wave: wave_03_runner_frontend
+    depends_on: [TICKET-201]
+    blocked_by: []
+    owner: frontend-agent
+    evidence:
+      - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/frontend typecheck
+      - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/frontend test -- ai-eval
+      - PATH="$HOME/.bun/bin:$PATH" bun run contracts:check
+      - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/frontend lint
+      - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/public-api-client typecheck
+      - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/public-api-client lint
+      - git diff --check -- apps/frontend apps/packages/public-api-client apps/packages/ui-contracts plans/ai-eval-v2-migration
+      - Browser route shell verification completed; TICKET-206 later resolved runtime v2 dataset shape drift and added Playwright acceptance.
+    next: TICKET-206 may start
+  TICKET-206:
+    status: done
+    wave: wave_04_integration_docs
+    depends_on: [TICKET-202, TICKET-203, TICKET-204, TICKET-205]
+    blocked_by: []
+    owner: integration-docs-agent
+    evidence:
+      - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/integration-scenarios test
+      - PATH="$HOME/.bun/bin:$PATH" bun run --cwd apps/packages/integration-scenarios typecheck
+      - PATH="$HOME/.bun/bin:$PATH" bun run contracts:check
+      - PATH="$HOME/.bun/bin:$PATH" bun run typecheck
+      - PATH="$HOME/.bun/bin:$PATH" bun run skills:check
+      - PATH="$HOME/.bun/bin:$PATH" bun --bun run --cwd website build
+      - PATH="/opt/homebrew/bin:/usr/local/go/bin:$HOME/.bun/bin:$PATH" go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/...
+      - node /Users/sebastianwessel/.agents/skills/spec-architect/scripts/check_specs.mjs specs
+      - node /Users/sebastianwessel/.agents/skills/implementation-planner/references/check_plan.mjs . plans/ai-eval-v2-migration specs
+      - git diff --check -- apps/packages/integration-scenarios apps/packages/public-api-client website skills specs plans/ai-eval-v2-migration
+      - PATH="$HOME/.bun/bin:$PATH" bun test apps/backend/src/ai-eval.test.ts apps/backend/src/bridge.test.ts apps/backend/src/ai-chat-stream.test.ts
+      - PATH="$HOME/.bun/bin:$PATH" bun --bun run --cwd apps/frontend smoke -- ai-eval.e2e.ts
+    next: AI Eval v2 migration is complete

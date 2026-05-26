@@ -11,13 +11,17 @@ import type {
   AlertSilence,
   ApproveAiChatActionInput,
   CompanyAiProviderSettings,
+  CreateAiChatConversationInput,
   CreateAlertRuleInput,
   CreateAlertSilenceInput,
-  CreateAiChatConversationInput,
   CreateIngestCredentialInput,
   CreateProjectInput,
+  Dataset,
   DatasetExportJob,
   DatasetImportJob,
+  DatasetItem,
+  EvaluationDefinition,
+  EvaluationRun,
   ExperimentRun,
   ExperimentRunEvent,
   InviteOrganizationMemberInput,
@@ -25,6 +29,7 @@ import type {
   LiveTraceEvent,
   LiveTraceInput,
   LogSearchInput,
+  OptimizationRun,
   Organization,
   OrganizationInvitation,
   OrganizationMember,
@@ -42,8 +47,8 @@ import type {
   TraceDetail,
   TraceDetailInput,
   TraceSearchInput,
-  UpdateCompanyAiProviderSettingsInput,
   UpdateAlertRuleInput,
+  UpdateCompanyAiProviderSettingsInput,
   UpdateOrganizationMemberInput,
   UpdateProjectAiProviderSettingsInput,
   UpdateProjectAiSettingsInput,
@@ -395,6 +400,9 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
     async datasetItems() {
       return { items: [], nextCursor: null };
     },
+    async datasetCandidates() {
+      return { items: [], nextCursor: null };
+    },
     async scorers() {
       return { items: [], nextCursor: null };
     },
@@ -431,6 +439,9 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
     async updateCompanyAiProviderSettings(input: UpdateCompanyAiProviderSettingsInput) {
       return companyAiProviderSettings(input.companyId, input.expectedVersion + 1);
     },
+    async resolveAiProviderSecret(credentialRef: string) {
+      return { credentialRef, value: "managed-provider-secret" };
+    },
     async aiChatHistory(input: AiChatHistoryInput) {
       return {
         companyId: input.companyId,
@@ -454,8 +465,11 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
     async archiveAiChatConversation(id: string) {
       return { ...aiChatConversation("org-1", "project-1", id), status: "archived" as const };
     },
+    async deleteAiChatConversation() {
+      return true;
+    },
     async approveAiChatAction(input: ApproveAiChatActionInput) {
-      return aiChatActionProposal(input.actionId, input.approved ? "approved" : "rejected");
+      return aiChatActionProposal(input.actionProposalId, input.approved ? "approved" : "rejected");
     },
     async aiChatAppendMessage() {},
     async aiChatCreateRun(input) {
@@ -482,30 +496,16 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
       return aiQualityOverview(input.projectId);
     },
     async createDataset() {
-      return {
-        id: "dataset-1",
-        name: "Regression",
-        version: 1,
-        createdAt: "2026-05-12T10:00:00.000Z",
-        itemCount: 0,
-        reviewedItemCount: 0,
-        splitCounts: {},
-        health: datasetHealth(),
-        tags: [],
-      };
+      return datasetShape();
+    },
+    async updateDatasetSettings() {
+      return datasetShape();
     },
     async appendDatasetItems() {
-      return {
-        id: "dataset-1",
-        name: "Regression",
-        version: 1,
-        createdAt: "2026-05-12T10:00:00.000Z",
-        itemCount: 0,
-        reviewedItemCount: 0,
-        splitCounts: {},
-        health: datasetHealth(),
-        tags: [],
-      };
+      return datasetShape();
+    },
+    async updateDatasetItems() {
+      return datasetShape();
     },
     async prepareDatasetImport() {
       return datasetImportJob();
@@ -516,18 +516,25 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
     async startDatasetExport() {
       return datasetExportJob();
     },
+    async prepareDatasetCandidates() {
+      return { items: [], nextCursor: null };
+    },
+    async commitDatasetCandidates() {
+      return datasetShape({
+        currentVersionId: "dataset-version-2",
+        currentVersion: {
+          ...datasetVersionShape(),
+          id: "dataset-version-2",
+          version: 2,
+          itemRevisionIds: ["dataset-item-revision-1"],
+        },
+        itemCount: 1,
+        readyItemCount: 1,
+        splitCounts: { validation: 1 },
+      });
+    },
     async promoteSpanToDatasetItem() {
-      return {
-        id: "dataset-item-1",
-        datasetId: "dataset-1",
-        version: 1,
-        input: {},
-        metadata: {},
-        split: "dev" as const,
-        reviewStatus: "unreviewed" as const,
-        synthetic: false,
-        leakageWarnings: [],
-      };
+      return datasetItemShape();
     },
     async createScorer() {
       return {
@@ -538,13 +545,60 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
         version: 1,
       };
     },
+    async evaluationDefinitions() {
+      return { items: [], nextCursor: null };
+    },
+    async evaluationDefinition() {
+      return null;
+    },
+    async evaluationRuns() {
+      return { items: [], nextCursor: null };
+    },
+    async evaluationRun() {
+      return evaluationRun();
+    },
+    async evaluationItemRuns() {
+      return { items: [], nextCursor: null };
+    },
+    async evaluationResults() {
+      return { items: [], nextCursor: null };
+    },
+    async evaluationComparisons() {
+      return { items: [], nextCursor: null };
+    },
+    async evaluationComparison() {
+      return null;
+    },
+    async optimizationRuns() {
+      return { items: [], nextCursor: null };
+    },
+    async optimizationRun() {
+      return optimizationRun();
+    },
+    async targetSnapshot() {
+      return null;
+    },
+    async targetDiff() {
+      return {
+        baselineTargetSnapshotId: "snapshot-1",
+        candidateTargetSnapshotId: "snapshot-2",
+        changedParts: [],
+        summary: "",
+      };
+    },
+    async createEvaluationDefinition() {
+      return evaluationDefinition();
+    },
+    async updateEvaluationDefinition() {
+      return evaluationDefinition();
+    },
     async createExperiment() {
       return {
         id: "experiment-1",
         name: "Regression",
         datasetId: "dataset-1",
         datasetVersion: 1,
-        splitSelector: { splits: ["dev"], reviewedOnly: false, includeSynthetic: true },
+        splitSelector: { splits: ["training"], reviewedOnly: false, includeSynthetic: true },
         scorerIds: ["scorer-1"],
         promptVersionRefs: [],
         skillSnapshotRefs: [],
@@ -557,11 +611,41 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
     async startExperimentRun() {
       return experimentRun();
     },
+    async startEvaluationRun() {
+      return evaluationRun();
+    },
     async cancelExperimentRun() {
       return experimentRun();
     },
+    async cancelEvaluationRun() {
+      return evaluationRun();
+    },
+    async pauseExperimentRun() {
+      return { ...experimentRun(), status: "paused" as const };
+    },
+    async pauseEvaluationRun() {
+      return { ...evaluationRun(), status: "paused" as const };
+    },
+    async resumeExperimentRun() {
+      return { ...experimentRun(), status: "running" as const };
+    },
+    async resumeEvaluationRun() {
+      return { ...evaluationRun(), status: "running" as const };
+    },
     async startOptimizationRun() {
-      return experimentRun();
+      return optimizationRun();
+    },
+    async createEvaluationComparison() {
+      return {
+        id: "comparison-1",
+        projectId: "project-1",
+        baselineRunId: "run-1",
+        candidateRunId: "run-2",
+        metricResults: [],
+        metricAggregates: [],
+        summary: "",
+        createdAt: "2026-05-12T10:00:00.000Z",
+      };
     },
     async promotePromptVersion() {
       return {
@@ -570,6 +654,20 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
         text: "hello",
         hash: "hash",
         createdAt: "2026-05-12T10:00:00.000Z",
+      };
+    },
+    async promoteTargetSnapshot() {
+      return {
+        id: "promotion-1",
+        projectId: "project-1",
+        targetRef: "prompt:base",
+        baselineTargetSnapshotId: "snapshot-1",
+        candidateTargetSnapshotId: "snapshot-2",
+        evidenceEvaluationRunIds: [],
+        comparisonId: "comparison-1",
+        summary: "",
+        promotedBy: "user-1",
+        promotedAt: "2026-05-12T10:00:00.000Z",
       };
     },
     async resolveAnnotation() {
@@ -586,6 +684,9 @@ export function bridge(overrides: Partial<CloudGridBridge> = {}): CloudGridBridg
     },
     subscribeLiveExperimentRun() {
       return liveExperimentEvents([]);
+    },
+    async *subscribeLiveEvaluationRun() {
+      yield* [];
     },
     async health() {
       return "ok" as const;
@@ -668,6 +769,7 @@ function aiProviderProfile(id: string, ownerScope: string, ownerId: string) {
     baseUrl: null,
     credentialRef: "env:OPENAI_API_KEY",
     models: { chat: ["gpt-5-mini"] },
+    parameters: {},
     timeoutMs: 30_000,
     maxConcurrency: null,
     disabledAt: null,
@@ -721,9 +823,19 @@ function aiChatRun(
   return {
     id,
     conversationId,
+    projectId: "project-1",
+    userId: "user-local",
     status,
+    providerKind: "openai",
     providerProfileId,
     model,
+    traceId: null,
+    toolCallCount: 0,
+    sandboxScriptCount: 0,
+    artifactCount: 0,
+    inputTokenCount: null,
+    outputTokenCount: null,
+    estimatedCostUsd: null,
     artifacts: [],
     actionProposals: [],
     startedAt: "2026-05-18T00:00:00.000Z",
@@ -731,7 +843,7 @@ function aiChatRun(
       status === "completed" || status === "failed" || status === "cancelled"
         ? "2026-05-18T00:00:01.000Z"
         : null,
-    error: status === "failed" ? "AI Chat provider execution failed" : null,
+    problem: status === "failed" ? { detail: "AI Chat provider execution failed" } : null,
   };
 }
 
@@ -747,12 +859,15 @@ function aiChatActionProposal(
     description: "Create a saved dashboard",
     risk: "medium",
     status,
-    operation: "dashboard.save",
-    preview: { name: "Latency" },
+    actionKind: "dashboard.save",
+    graphqlMutation: "saveDashboard",
+    inputPreview: { name: "Latency" },
+    requiresApproval: true,
     result: null,
     requestedAt: "2026-05-18T00:00:00.000Z",
     decidedAt: status === "proposed" ? null : "2026-05-18T00:01:00.000Z",
     decidedByUserId: status === "proposed" ? null : "user-local",
+    expiresAt: "2026-05-18T00:15:00.000Z",
     version: 2,
   };
 }
@@ -806,7 +921,7 @@ function projectMember(overrides: Partial<ProjectMember> = {}): ProjectMember {
 function datasetHealth() {
   return {
     status: "needs_review" as const,
-    reviewedItemCount: 0,
+    readyItemCount: 0,
     totalItemCount: 0,
     splitCounts: {},
     duplicateCandidateCount: 0,
@@ -815,6 +930,94 @@ function datasetHealth() {
     schemaIssueCount: 0,
     smallDataset: true,
     warnings: [],
+  };
+}
+
+function datasetSettingsShape() {
+  return {
+    evaluationFamily: "classification" as const,
+    inputType: "json" as const,
+    expectedType: "json" as const,
+    inputJsonSchema: {},
+    expectedJsonSchema: {},
+    defaultSplit: "validation" as const,
+    intakePolicy: {
+      manualDefaultStatus: "draft" as const,
+      importDefaultStatus: "needs_review" as const,
+      traceDefaultStatus: "needs_expected" as const,
+    },
+    traceExtractionSettings: null,
+    anonymizationPolicy: null,
+    defaultMetricSettings: [],
+    retentionProfile: "balanced" as const,
+  };
+}
+
+function datasetVersionShape() {
+  return {
+    id: "dataset-version-1",
+    datasetId: "dataset-1",
+    version: 1,
+    digest: "digest-1",
+    itemRevisionIds: [],
+    settingsSnapshot: datasetSettingsShape(),
+    changeSummary: "Initial dataset version",
+    source: "manual" as const,
+    createdAt: "2026-05-12T10:00:00.000Z",
+    createdBy: "user-1",
+  };
+}
+
+function datasetShape(overrides: Partial<Dataset> = {}): Dataset {
+  return {
+    id: "dataset-1",
+    projectId: "project-1",
+    name: "Regression",
+    description: null,
+    currentVersionId: "dataset-version-1",
+    currentVersion: datasetVersionShape(),
+    settings: datasetSettingsShape(),
+    createdAt: "2026-05-12T10:00:00.000Z",
+    createdBy: "user-1",
+    updatedAt: "2026-05-12T10:00:00.000Z",
+    updatedBy: "user-1",
+    itemCount: 0,
+    readyItemCount: 0,
+    splitCounts: {},
+    health: datasetHealth(),
+    tags: [],
+    ...overrides,
+  };
+}
+
+function datasetItemShape(): DatasetItem {
+  return {
+    id: "dataset-item-1",
+    datasetId: "dataset-1",
+    latestRevisionId: "dataset-item-revision-1",
+    latestRevision: {
+      id: "dataset-item-revision-1",
+      datasetItemId: "dataset-item-1",
+      datasetId: "dataset-1",
+      input: {},
+      expected: null,
+      observedOutput: null,
+      reason: "",
+      metadata: {},
+      sourceRefs: [],
+      split: "training" as const,
+      curationStatus: "draft" as const,
+      contentTreatment: "original" as const,
+      anonymizationProvenance: null,
+      createdAt: "2026-05-12T10:00:00.000Z",
+      createdBy: "user-1",
+      updatedAt: "2026-05-12T10:00:00.000Z",
+      updatedBy: "user-1",
+    },
+    createdAt: "2026-05-12T10:00:00.000Z",
+    createdBy: "user-1",
+    updatedAt: "2026-05-12T10:00:00.000Z",
+    updatedBy: "user-1",
   };
 }
 
@@ -841,6 +1044,7 @@ function datasetExportJob(): DatasetExportJob {
   return {
     id: "export-1",
     datasetId: "dataset-1",
+    datasetVersionId: "dataset-1:version:1",
     datasetVersion: 1,
     status: "ready",
     format: "jsonl",
@@ -881,13 +1085,25 @@ function projectAiSettings(projectId = "project-1", version = 1): ProjectAiSetti
     sampling: {
       defaultOnlineSampleRate: 0.1,
       maxOnlineSampleRate: 1,
-      maxConcurrentExperimentItems: 4,
+      maxConcurrentEvaluationItems: 4,
       maxConcurrentOptimizationCandidates: 2,
+    },
+    runPolicyDefaults: { maxParallelRequests: 10 },
+    datasetPipeline: {
+      candidateSuggestionsEnabled: true,
+      requireReviewBeforeCommit: true,
+      anonymizationMode: "realistic",
+      anonymizationPolicyId: null,
+      anonymizationPolicyVersion: null,
+      anonymizationConsistencyScope: "project",
+      preserveLocale: true,
+      preserveTemporalDistance: true,
+      blockedEntityTypes: [],
     },
     datasetDefaults: {
       splitAllocation: {},
-      smallDatasetReviewedThreshold: 30,
-      requireReviewForRegression: true,
+      smallDatasetReadyThreshold: 30,
+      requireReadyForTest: true,
     },
     effective: {
       warnings: [],
@@ -1028,10 +1244,106 @@ function experimentRun(): ExperimentRun {
   return {
     id: "experiment-run-1",
     experimentId: "experiment-1",
-    solverRef: {},
+    solverRef: { kind: "agent", name: "candidate" },
     status: "running",
+    runPolicy: { maxParallelRequests: 10 },
     startedAt: "2026-05-12T10:00:00.000Z",
-    summary: {},
+    summary: {
+      itemCounts: {
+        total: 0,
+        passed: 0,
+        failed: 0,
+        errored: 0,
+        skipped: 0,
+        needsReview: 0,
+        quarantined: 0,
+      },
+      scoreSummaries: [],
+      problemCounts: {
+        modelQuality: 0,
+        itemQuality: 0,
+        scorerConfig: 0,
+        infrastructure: 0,
+      },
+      budgetUsage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        estimatedUsd: 0,
+      },
+      latency: null,
+      regressions: [],
+    },
+  };
+}
+
+function evaluationDefinition(): EvaluationDefinition {
+  return {
+    id: "evaluation-definition-1",
+    projectId: "project-1",
+    name: "Regression",
+    datasetId: "dataset-1",
+    datasetVersionPolicy: "latest_ready",
+    splitSelector: { splits: ["validation"], curationStatuses: ["ready"] },
+    targetRef: {
+      kind: "prompt",
+      displayName: "Prompt",
+      metadata: {},
+    },
+    metricSettings: [],
+    runPolicy: { maxParallelRequests: 1 },
+    retentionProfile: "balanced",
+    createdAt: "2026-05-12T10:00:00.000Z",
+    createdBy: "user-1",
+    updatedAt: "2026-05-12T10:00:00.000Z",
+    updatedBy: "user-1",
+    version: 1,
+  };
+}
+
+function evaluationRun(): EvaluationRun {
+  return {
+    id: "evaluation-run-1",
+    projectId: "project-1",
+    evaluationDefinitionId: "evaluation-definition-1",
+    kind: "dataset_evaluation",
+    status: "running",
+    datasetId: "dataset-1",
+    datasetVersionId: "dataset-version-1",
+    datasetDigest: "digest",
+    selectedItemRevisionIds: [],
+    splitSelector: { splits: ["validation"], curationStatuses: ["ready"] },
+    targetSnapshotId: "target-snapshot-1",
+    metricSettingsSnapshot: [],
+    runPolicySnapshot: { maxParallelRequests: 10 },
+    retentionProfile: "balanced",
+    retentionRole: "validation",
+    startedAt: "2026-05-12T10:00:00.000Z",
+    summary: {
+      itemCounts: {},
+      metricAggregates: [],
+      problemCounts: {},
+      budgetUsage: {},
+      latency: null,
+    },
+    metricResults: [],
+    metricAggregates: [],
+  };
+}
+
+function optimizationRun(): OptimizationRun {
+  return {
+    id: "optimization-run-1",
+    projectId: "project-1",
+    status: "running",
+    baselineTargetSnapshotId: "target-snapshot-1",
+    objective: { primaryMetricId: "exact_match" },
+    candidateTargetSnapshotIds: [],
+    causedEvaluationRunIds: [],
+    comparisonIds: [],
+    budgetSnapshot: {},
+    createdAt: "2026-05-12T10:00:00.000Z",
+    startedAt: "2026-05-12T10:00:00.000Z",
   };
 }
 

@@ -5,31 +5,150 @@
       "id": 1,
       "prompt": "I want to run CloudGrid locally from the release bundle and send a test trace. Tell me the single supported path and what files or commands to inspect first.",
       "expected_output": "Uses cloudgrid-setup-configuration, points to deploy/compose/cloudgrid-local.sh and release compose docs, avoids mutable latest tags, and includes a verification step.",
-      "files": []
+      "files": [],
+      "assertions": [
+        "Mentions deploy/compose/cloudgrid-local.sh",
+        "Mentions release Compose docs or deploy/compose files",
+        "Does not recommend mutable latest image tags",
+        "Includes a verification step"
+      ]
     },
     {
       "id": 2,
       "prompt": "We need GitHub SSO plus SMTP invites in deployed mode. Check what env vars are valid and explain the onboarding flow without inventing magic links.",
-      "expected_output": "Uses cloudgrid-setup-configuration, reads runtime and invitation specs, explains SSO identity plus invite acceptance, and names only specified env vars.",
-      "files": []
+      "expected_output": "Uses cloudgrid-setup-configuration, reads runtime and invitation docs/code, explains SSO identity plus invite acceptance, and names only implemented env vars.",
+      "files": [],
+      "assertions": [
+        "Mentions checked-in environment variable docs or runtime validation",
+        "Mentions invitation lifecycle or SMTP invitation email docs",
+        "Does not invent undocumented environment variables",
+        "Does not invent magic-link behavior"
+      ]
     },
     {
       "id": 3,
       "prompt": "The storage-read service is returning too many metric rows. Update the query path so filtering and grouping happen in the database adapter.",
       "expected_output": "Uses cloudgrid-surrealdb or cloudgrid-extension-development, respects storage-read ownership, avoids BFF/frontend aggregation, and calls for focused Go tests.",
-      "files": []
+      "files": [],
+      "assertions": [
+        "Keeps query semantics in storage-read",
+        "Rejects BFF or frontend aggregation of telemetry records",
+        "Mentions SurrealDB adapter or storage-read database adapter",
+        "Requires focused Go tests"
+      ]
     },
     {
       "id": 4,
       "prompt": "Add a new dashboard widget backed by public GraphQL and make sure the frontend and integration scenarios don't drift.",
-      "expected_output": "Uses cloudgrid-observability-ui and cloudgrid-extension-development, updates specs/contracts first if needed, uses public API client operations, and requires contracts:check.",
-      "files": []
+      "expected_output": "Uses cloudgrid-observability-ui and cloudgrid-extension-development, updates contracts/docs first if needed, uses public API client operations, and requires contracts:check.",
+      "files": [],
+      "assertions": [
+        "Reports missing behavior as a product gap before implementation",
+        "Mentions public GraphQL schema or generated UI contracts",
+        "Mentions public API client or integration scenarios",
+        "Requires bun run contracts:check"
+      ]
     },
     {
       "id": 5,
       "prompt": "Our release workflow failed while building Docker images. Review what should be produced for a release and what checks to run before we retry.",
-      "expected_output": "Uses cloudgrid-operations-maintenance, follows release-distribution spec, checks image/artifact requirements, and uses release validation without adding long-lived registry secrets.",
-      "files": []
+      "expected_output": "Uses cloudgrid-operations-maintenance, follows release docs and workflow files, checks image/artifact requirements, and uses release validation without adding long-lived registry secrets.",
+      "files": [],
+      "assertions": [
+        "Mentions release docs, deploy files, or release workflow files",
+        "Mentions release artifact or Docker image validation",
+        "Mentions bun run release:validate",
+        "Does not add long-lived registry secrets"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Document how a company admin enables AI Chat, configures the provider, and explains why Azure AI Foundry cannot execute yet in the bundled runtime.",
+      "expected_output": "Uses cloudgrid-ai-chat-operations, explains the company provider route, managed credential behavior, supported bundled harness adapters, bounded unsupported-adapter failure, and avoids raw secrets.",
+      "files": [],
+      "assertions": [
+        "Mentions /organizations/:organizationId/ai-provider",
+        "Mentions managed company credential references or write-only credentialValue",
+        "Says bundled AI Chat execution supports openai, anthropic, and openai_compatible",
+        "Says azure_foundry requires a matching PURISTA harness adapter before AI Chat execution",
+        "Does not include raw API key examples"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Review an AI Chat artifact proposal that includes a cloudgrid-json-render fence and an approval button. What must be true before the frontend can render or execute it?",
+      "expected_output": "Uses cloudgrid-ai-chat-operations and cloudgrid-json-render-artifacts, requires persisted BFF artifact parts for trusted fences, approved renderer keys, server-issued action proposal IDs, and approval through GraphQL only.",
+      "files": [],
+      "assertions": [
+        "Requires a persisted BFF artifact part or artifact ID for trusted json-render fences",
+        "Mentions approved json-render renderer keys",
+        "Requires server-issued AiChatActionProposal IDs",
+        "Says the frontend must not execute actions from assistant text or copied JSON"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "I want to add a new AI Chat tool that reads telemetry and a new specialist skill for it. Outline the source files and checks without adding a generic GraphQL tool.",
+      "expected_output": "Uses cloudgrid-ai-chat-operations, reads AI Chat runtime code and generated contracts, keeps telemetry semantics in storage-read, updates the runtime catalog and skill evals, and requires contracts and skills checks.",
+      "files": [],
+      "assertions": [
+        "Mentions AI Chat route, BFF code, or public docs",
+        "Mentions generated contracts or public API client operations",
+        "Rejects a generic GraphQL tool",
+        "Keeps telemetry query semantics in storage-read",
+        "Mentions bun run contracts:check and bun run skills:check"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "Explain how a project admin should enable AI Eval, create a dataset, add candidates and scorers, run an experiment, and use production quality monitoring without leaking provider secrets or inventing unsupported alerting.",
+      "expected_output": "Uses cloudgrid-ai-eval-investigation, follows the website AI Eval guide and implemented contracts, explains the setup-to-run workflow, names production quality as monitoring rather than realtime alerting, and keeps secrets private.",
+      "files": [],
+      "assertions": [
+        "Mentions website/src/content/handbook/guides/ai-eval.md",
+        "Mentions datasets, dataset candidates, scorers, and experiments",
+        "Says production quality is monitoring, not realtime alerting",
+        "Does not expose raw provider credentials or bearer tokens",
+        "Does not invent unsupported AI Eval routes, GraphQL fields, or alerting behavior"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "Create a customer whitelabel build for CloudGrid named Acme Observe with a custom mark, product name, page titles, and theme colors. Do not add settings pages.",
+      "expected_output": "Uses cloudgrid-whitelabel-customization, implements the customer brand through @cloudgrid/brand/ProductBrand and CLOUDGRID_FRONTEND_BRAND_MODULE, keeps route code/core CSS generic, and avoids runtime brand settings.",
+      "files": [],
+      "assertions": [
+        "Mentions @cloudgrid/brand or ProductBrand",
+        "Mentions CLOUDGRID_FRONTEND_BRAND_MODULE",
+        "Does not add a frontend settings page for branding",
+        "Keeps customer-specific values in a brand module",
+        "Requires complete light and dark semantic token sets"
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "Review a PR that hard-codes a customer's blue into AppShell buttons and adds a GraphQL mutation to save organization branding. What should be changed?",
+      "expected_output": "Uses cloudgrid-whitelabel-customization, rejects route-level brand colors and GraphQL branding, requires semantic tokens and build-time brand module replacement only.",
+      "files": [],
+      "assertions": [
+        "Rejects hard-coded customer colors in route components",
+        "Rejects GraphQL or backend branding mutations",
+        "Requires semantic Tailwind/CSS tokens",
+        "Says whitelabeling is build-time/code-level only",
+        "Keeps telemetry, auth, route, and storage behavior unchanged"
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "A customer brand module compiles after omitting sidebarRing and chart5 by falling back to CloudGrid defaults. Is that acceptable?",
+      "expected_output": "Uses cloudgrid-whitelabel-customization, rejects partial token overrides, explains that complete light/dark token sets are required so missing tokens fail typecheck.",
+      "files": [],
+      "assertions": [
+        "Rejects partial token overrides",
+        "Requires sidebarRing and chart5 when part of ProductBrand token set",
+        "Says missing required tokens should fail typecheck",
+        "Does not recommend implicit fallback to CloudGrid brand values"
+      ]
     }
   ]
 }

@@ -3,17 +3,40 @@ import type {
   MetricAggregation,
   MetricChartType,
   MetricDescriptor,
+  MetricNameSort,
   MetricSeriesInput,
+  MetricSeriesSort,
 } from "@cloudgrid/ui-contracts";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  buildMetricNameSearchInput,
+  buildMetricSeriesInput,
+  buildTelemetryFacetInput,
+  createDefaultMetricTimeRange,
+  createObservedMetricRange,
+  defaultMetricAggregation,
+  metricAggregationOrDefault,
+  metricChartTypeOrDefault,
+  metricNameSortOrDefault,
+  metricSeriesSortOrDefault,
+} from "@cloudgrid/ui-contracts";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { InfiniteScrollSentinel } from "../components/infinite-scroll-sentinel";
 import { ErrorPanel, LoadingRows } from "../components/query-state";
+import { RouteBreadcrumb } from "../components/route-breadcrumb";
 import { Button } from "../components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
 import {
   CenteredMessage,
   MetricExplorerEmpty,
@@ -23,11 +46,10 @@ import {
   MetricQueryControls,
   MetricSearchField,
   MetricSeriesExplorer,
-  metricAggregations,
-  metricChartTypes,
   metricInspectorTabOrDefault,
   sanitizeMetricGroupBy,
 } from "../features/metrics/metric-explorer";
+import { ServiceMultiSelect } from "../features/telemetry/service-multi-select";
 import { t } from "../lib/i18n";
 import { queryKeys } from "../lib/query-keys";
 import { useDebouncedValue } from "../lib/use-debounced-value";
@@ -45,6 +67,7 @@ export interface MetricQueryState extends TimeRange {
   interval: string;
   groupBy: string[];
   filters: AttributeFilterInput[];
+  sort: MetricSeriesSort;
   chartType: MetricChartType;
 }
 
@@ -53,7 +76,7 @@ export function selectedMetricFromSearchParams(searchParams: URLSearchParams): s
 }
 
 export function defaultMetricQueryState(searchParams: URLSearchParams): MetricQueryState {
-  const range = createDefaultTimeRange();
+  const range = createDefaultMetricTimeRange();
   return {
     metricName: selectedMetricFromSearchParams(searchParams),
     from: searchParams.get("from") ?? range.from,
@@ -62,26 +85,12 @@ export function defaultMetricQueryState(searchParams: URLSearchParams): MetricQu
     interval: searchParams.get("interval") ?? "PT1M",
     groupBy: splitCsv(searchParams.get("groupBy") ?? searchParams.get("group") ?? ""),
     filters: attributeFilters(searchParams),
+    sort: metricSeriesSortOrDefault(searchParams.get("seriesSort")),
     chartType: metricChartTypeOrDefault(searchParams.get("chartType")),
   };
 }
 
-export function buildMetricSeriesInput(
-  descriptor: Pick<MetricDescriptor, "name">,
-  state: Omit<MetricQueryState, "metricName" | "chartType">,
-): MetricSeriesInput {
-  return {
-    metricName: descriptor.name,
-    from: state.from,
-    to: state.to,
-    aggregation: state.aggregation,
-    groupBy: state.groupBy,
-    filters: state.filters,
-    limit: 1000,
-    ...(state.interval ? { interval: state.interval } : {}),
-  };
-}
-
+export { buildMetricSeriesInput } from "@cloudgrid/ui-contracts";
 export { sanitizeMetricGroupBy };
 
 export function metricRouteCachePredicate(queryKey: readonly unknown[]): boolean {
@@ -98,7 +107,9 @@ export function MetricsRoute() {
   const previousProjectIdRef = useRef(selectedProjectId);
   const debouncedMetricSearch = useDebouncedValue(metricSearch, 250);
   const state = defaultMetricQueryState(searchParams);
+  const metricNameSort = metricNameSortOrDefault(searchParams.get("sort"));
   const inspectorTab = metricInspectorTabOrDefault(searchParams.get("tab"));
+  const projectName = viewer?.selectedProject?.name ?? t("projects.select");
   const ingestSettingsHref = viewer?.selectedProject
     ? `/projects/${encodeURIComponent(viewer.selectedProject.id)}/settings/ingest`
     : "/projects";
@@ -113,20 +124,40 @@ export function MetricsRoute() {
     });
   }, [queryClient, selectedProjectId]);
 
-  const namesInput = {
+  const selectedServices = searchParams.getAll("service").filter((service) => service.trim());
+  const namesInput = buildMetricNameSearchInput({
     query: debouncedMetricSearch || null,
-    service: searchParams.get("service") || null,
+    services: selectedServices,
     from: searchParams.get("from") || null,
     to: searchParams.get("to") || null,
+    sort: metricNameSort,
     limit: 100,
-  };
-  const namesQuery = useQuery({
-    queryKey: queryKeys.metricNames(namesInput),
-    queryFn: () => telemetryClient.getMetricNames(namesInput),
   });
+  const namesQuery = useInfiniteQuery({
+    queryKey: queryKeys.metricNames(namesInput),
+    queryFn: ({ pageParam }) =>
+      telemetryClient.getMetricNames({ ...namesInput, cursor: pageParam }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  });
+  const serviceFacetInput = buildTelemetryFacetInput({
+    from: searchParams.get("from") || null,
+    to: searchParams.get("to") || null,
+    signal: "metrics",
+    search: debouncedMetricSearch || null,
+    limit: 100,
+  });
+  const serviceFacetsQuery = useQuery({
+    queryKey: queryKeys.telemetryFacets(serviceFacetInput),
+    queryFn: () => telemetryClient.getTelemetryFacets(serviceFacetInput),
+  });
+  const metricNames = useMemo(
+    () => namesQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [namesQuery.data],
+  );
   const selectedMetric = useMemo(
-    () => namesQuery.data?.items.find((metric) => metric.name === state.metricName) ?? null,
-    [namesQuery.data, state.metricName],
+    () => metricNames.find((metric) => metric.name === state.metricName) ?? null,
+    [metricNames, state.metricName],
   );
   const effectiveState = selectedMetric
     ? withMetricDescriptorDefaults(state, selectedMetric, {
@@ -146,14 +177,14 @@ export function MetricsRoute() {
   });
 
   useEffect(() => {
-    if (state.metricName || !namesQuery.data?.items[0]) {
+    if (state.metricName || !metricNames[0]) {
       return;
     }
     setSearchParams((params) => {
-      params.set("metric", namesQuery.data.items[0]?.name ?? "");
+      params.set("metric", metricNames[0]?.name ?? "");
       return params;
     });
-  }, [namesQuery.data, setSearchParams, state.metricName]);
+  }, [metricNames, setSearchParams, state.metricName]);
 
   const setParam = (key: string, value: string | null) => {
     setSearchParams((params) => {
@@ -165,6 +196,18 @@ export function MetricsRoute() {
       if (key !== "cursor") {
         params.delete("cursor");
       }
+      return params;
+    });
+  };
+  const setServicesParam = (services: string[]) => {
+    setSearchParams((params) => {
+      params.delete("service");
+      for (const service of services) {
+        if (service.trim()) {
+          params.append("service", service.trim());
+        }
+      }
+      params.delete("cursor");
       return params;
     });
   };
@@ -193,14 +236,21 @@ export function MetricsRoute() {
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b pb-2">
-        <div className="min-w-0">
+      <header className="flex shrink-0 flex-col gap-3 border-b pb-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0 space-y-2">
+          <RouteBreadcrumb
+            backLabel={t("actions.back")}
+            backTo="/projects"
+            items={[
+              { label: t("nav.projects"), to: "/projects" },
+              { label: projectName, to: "/projects" },
+              { label: t("metrics.title") },
+            ]}
+          />
           <h1 className="text-xl font-semibold tracking-normal">{t("metrics.title")}</h1>
-          {state.metricName ? (
-            <p className="truncate text-sm text-muted-foreground">{state.metricName}</p>
-          ) : null}
+          <p className="text-sm text-muted-foreground">{t("metrics.description")}</p>
         </div>
-        <div className="flex items-end gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <MetricTimeRangePopover
             from={effectiveState.from}
             onChange={setParam}
@@ -222,7 +272,7 @@ export function MetricsRoute() {
       </header>
 
       <div className="shrink-0 border-b pb-2">
-        <FieldGroup className="grid gap-2 lg:grid-cols-[1.4fr_1fr]">
+        <FieldGroup className="grid gap-2 lg:grid-cols-[1.4fr_1fr_220px]">
           <MetricSearchField
             metricSearch={metricSearch}
             onChange={(value) => {
@@ -232,13 +282,18 @@ export function MetricsRoute() {
           />
           <Field>
             <FieldLabel htmlFor="metric-service">{t("filters.service")}</FieldLabel>
-            <Input
+            <ServiceMultiSelect
               id="metric-service"
-              onChange={(event) => setParam("service", event.target.value)}
+              onChange={setServicesParam}
+              options={serviceFacetsQuery.data?.services}
               placeholder={t("metrics.service.placeholder")}
-              value={searchParams.get("service") ?? ""}
+              selected={selectedServices}
             />
           </Field>
+          <MetricNameSortField
+            onChange={(value) => setParam("sort", value)}
+            value={metricNameSort}
+          />
         </FieldGroup>
       </div>
 
@@ -249,7 +304,7 @@ export function MetricsRoute() {
             {namesQuery.isError ? (
               <ErrorPanel error={namesQuery.error} onRetry={() => void namesQuery.refetch()} />
             ) : null}
-            {namesQuery.isSuccess && namesQuery.data.items.length === 0 ? (
+            {namesQuery.isSuccess && metricNames.length === 0 ? (
               <MetricExplorerEmpty
                 filtered={Boolean(metricSearch)}
                 href={ingestSettingsHref}
@@ -260,9 +315,16 @@ export function MetricsRoute() {
               />
             ) : null}
             <MetricList
-              metrics={namesQuery.data?.items ?? []}
+              metrics={metricNames}
               onSelectMetric={selectMetric}
               selectedMetricName={state.metricName}
+            />
+            <InfiniteScrollSentinel
+              hasMore={namesQuery.hasNextPage}
+              isLoading={namesQuery.isFetchingNextPage}
+              label={t("actions.loadMore")}
+              loadingLabel={t("actions.loadingMore")}
+              onLoadMore={() => void namesQuery.fetchNextPage()}
             />
           </div>
         </aside>
@@ -351,13 +413,30 @@ function MetricTimeRangePopover({
   );
 }
 
-function createDefaultTimeRange(): TimeRange {
-  const to = new Date();
-  const from = new Date(to.getTime() - 60 * 60 * 1000);
-  return {
-    from: from.toISOString(),
-    to: to.toISOString(),
-  };
+function MetricNameSortField({
+  onChange,
+  value,
+}: {
+  onChange: (value: string | null) => void;
+  value: MetricNameSort;
+}) {
+  return (
+    <Field>
+      <FieldLabel htmlFor="metric-name-sort">{t("filters.sort")}</FieldLabel>
+      <Select onValueChange={(next) => onChange(next)} value={value}>
+        <SelectTrigger id="metric-name-sort">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="lastSeenAt_desc">{t("metrics.sort.lastSeenDesc")}</SelectItem>
+          <SelectItem value="lastSeenAt_asc">{t("metrics.sort.lastSeenAsc")}</SelectItem>
+          <SelectItem value="name_asc">{t("metrics.sort.nameAsc")}</SelectItem>
+          <SelectItem value="name_desc">{t("metrics.sort.nameDesc")}</SelectItem>
+          <SelectItem value="kind_asc">{t("metrics.sort.kindAsc")}</SelectItem>
+        </SelectContent>
+      </Select>
+    </Field>
+  );
 }
 
 function withMetricDescriptorDefaults(
@@ -372,33 +451,6 @@ function withMetricDescriptorDefaults(
     from: explicit.hasFrom ? state.from : observedRange.from,
     to: explicit.hasTo ? state.to : observedRange.to,
   };
-}
-
-function createObservedMetricRange(descriptor: MetricDescriptor): TimeRange {
-  const firstSeenAt = Date.parse(descriptor.firstSeenAt);
-  const lastSeenAt = Date.parse(descriptor.lastSeenAt);
-  if (!Number.isFinite(firstSeenAt) || !Number.isFinite(lastSeenAt)) {
-    return createDefaultTimeRange();
-  }
-  const paddingMs = 10 * 60 * 1000;
-  return {
-    from: new Date(Math.min(firstSeenAt, lastSeenAt) - paddingMs).toISOString(),
-    to: new Date(Math.max(firstSeenAt, lastSeenAt) + paddingMs).toISOString(),
-  };
-}
-
-function defaultMetricAggregation(descriptor: Pick<MetricDescriptor, "kind">): MetricAggregation {
-  if (descriptor.kind === "sum") {
-    return "sum";
-  }
-  if (
-    descriptor.kind === "histogram" ||
-    descriptor.kind === "exponential_histogram" ||
-    descriptor.kind === "summary"
-  ) {
-    return "p95";
-  }
-  return "avg";
 }
 
 function stringOrNull(value: string | null) {
@@ -416,14 +468,4 @@ function splitCsv(value: string): string[] {
 function attributeFilters(searchParams: URLSearchParams): AttributeFilterInput[] {
   const key = stringOrNull(searchParams.get("filterKey"));
   return key ? [{ key, operator: "exists" }] : [];
-}
-
-function metricAggregationOrDefault(value: string | null): MetricAggregation {
-  return metricAggregations.includes(value as MetricAggregation)
-    ? (value as MetricAggregation)
-    : "avg";
-}
-
-function metricChartTypeOrDefault(value: string | null): MetricChartType {
-  return metricChartTypes.includes(value as MetricChartType) ? (value as MetricChartType) : "line";
 }

@@ -25,7 +25,7 @@ The checked source of truth is:
 - `specs/03-contracts/entities/*.schema.json`
 - `specs/03-contracts/errors.yaml`
 
-Manual generated outputs are allowed only while `tooling/scripts/check-contracts.mjs` verifies drift-sensitive symbols and cross-layer conformance. The checker must validate `apps/packages/public-api-client` GraphQL operation documents against the public GraphQL SDL, ensure frontend routes do not define route-local GraphQL operations or direct `/graphql` calls outside the approved client wrapper, validate every public API client operation has `apps/packages/integration-scenarios` coverage metadata, validate required GraphQL input fields against `apps/packages/ui-contracts/src/generated.ts`, and validate AsyncAPI request required fields against Go request structs.
+Manual generated outputs are allowed only while `tooling/scripts/check-contracts.mjs` verifies drift-sensitive symbols and cross-layer conformance. The checker must validate `apps/packages/public-api-client` GraphQL operation documents against the public GraphQL SDL, ensure frontend routes do not define route-local GraphQL operations or direct `/graphql` calls outside the approved client wrapper, validate every public API client operation has `apps/packages/integration-scenarios` coverage metadata, validate required GraphQL input fields against `apps/packages/ui-contracts/src/generated.ts`, validate AsyncAPI request required fields against Go request structs, validate AsyncAPI channel addresses against `MESSAGE_BRIDGE_SUBJECTS`, validate production NATS subject literals against the same registry, and validate every `CLOUDGRID_*` or `VITE_CLOUDGRID_*` configuration name against `CLOUDGRID_ENV_VARS`.
 
 ## Generated Outputs
 
@@ -56,7 +56,13 @@ The check command is a hard drift gate. It must fail when:
   directly instead of using the shared frontend client,
 - `ui-contracts` omits a required GraphQL input field,
 - an AsyncAPI request schema requires a field that is missing from its Go request struct,
+- an AsyncAPI channel address is missing from or extra to `MESSAGE_BRIDGE_SUBJECTS`,
+- a production BFF or Go service message subject literal is not registered in `MESSAGE_BRIDGE_SUBJECTS`,
+- a source, spec, deployment manifest, handbook page, or skill references a `CLOUDGRID_*` or `VITE_CLOUDGRID_*` variable that is not registered in `CLOUDGRID_ENV_VARS`,
 - generated enum or subject metadata is stale.
+- a generated control-plane subject is missing from `ControlSubjects()`.
+- a generated control-plane request/reply subject is missing from the control-plane NATS handler map.
+- a BFF bridge method sends a request envelope that does not match the AsyncAPI request shape, including accidental `input` wrappers on subjects whose schemas require top-level fields.
 
 ## Canonicalization
 
@@ -77,6 +83,14 @@ A contract change is complete only when all applicable layers are updated in the
 - Go bridge contract output,
 - error taxonomy when new failures are introduced,
 - focused contract test or drift-check assertion.
+
+For control-plane message subjects, the focused assertion must include a Go
+coverage test that compares `core/go-contracts.ControlPlaneSubjects` with the
+service subject registry and handler map. Notification-only subjects may be
+excluded from the handler-map assertion only by name, with the exclusion visible
+in the test. The corresponding BFF bridge test must assert the emitted subject
+and payload field layout for each public resolver or runtime call using that
+subject.
 
 Implementation agents must stop if they need a new field, enum value, subject, event type, operation, or error code that is not present in those layers.
 

@@ -1,4 +1,4 @@
-import type { AlertRule, AlertRuleSearchInput } from "@cloudgrid/ui-contracts";
+import { ALERT_HISTORY_DEFAULT_FIRST, type AlertRule } from "@cloudgrid/ui-contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, Plus, RefreshCw, X } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
@@ -20,10 +20,6 @@ import { t } from "../lib/i18n";
 import { queryKeys } from "../lib/query-keys";
 import { useAppSession } from "../providers/app-session-provider";
 
-type AlertRulesClient = {
-  getAlertRules(projectId: string, input?: AlertRuleSearchInput): Promise<AlertRule[]>;
-};
-
 export function AlertsRoute() {
   const { client, viewer } = useAppSession();
   const queryClient = useQueryClient();
@@ -40,15 +36,25 @@ export function AlertsRoute() {
   const [editorOpen, setEditorOpen] = useState(searchParams.get("new") === "1");
   const rulesQuery = useQuery({
     enabled: Boolean(projectId),
-    queryKey: queryKeys.alertRules(projectId),
-    queryFn: () => (client as AlertRulesClient).getAlertRules(projectId, alertRuleInput),
+    queryKey: queryKeys.alertRules(projectId, alertRuleInput),
+    queryFn: () => client.getAlertRules(projectId, alertRuleInput),
   });
   const rules = rulesQuery.data ?? [];
   const selectedRule = rules.find((rule) => rule.id === selectedRuleId) ?? rules[0] ?? null;
   const historyQuery = useQuery({
     enabled: Boolean(projectId && selectedRule),
-    queryKey: queryKeys.alertHistory(projectId, selectedRule?.id ?? null),
-    queryFn: () => client.getAlertHistory({ projectId, ruleId: selectedRule?.id ?? null }),
+    queryKey: queryKeys.alertHistory(
+      projectId,
+      selectedRule?.id ?? null,
+      ALERT_HISTORY_DEFAULT_FIRST,
+      null,
+    ),
+    queryFn: () =>
+      client.getAlertHistory({
+        projectId,
+        ruleId: selectedRule?.id ?? null,
+        first: ALERT_HISTORY_DEFAULT_FIRST,
+      }),
   });
   const silencesQuery = useQuery({
     enabled: Boolean(projectId && selectedRule),
@@ -146,10 +152,10 @@ export function AlertsRoute() {
         eyebrow={
           <RouteBreadcrumb
             backLabel={t("actions.back")}
-            backTo="/dashboards"
+            backTo="/projects"
             items={[
               { label: t("nav.projects"), to: "/projects" },
-              { label: selectedProject.name, to: `/projects/${selectedProject.id}` },
+              { label: selectedProject.name, to: "/projects" },
               { label: t("alerts.title") },
             ]}
           />
@@ -238,15 +244,15 @@ function RouteHeader({
   description: string;
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      {eyebrow}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0">
+    <div className="flex shrink-0 flex-col gap-3 border-b pb-3 lg:flex-row lg:items-end lg:justify-between">
+      <div className="min-w-0 space-y-2">
+        {eyebrow}
+        <div>
           <h1 className="text-xl font-semibold tracking-normal">{title}</h1>
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
-        {action ? <div className="shrink-0">{action}</div> : null}
       </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
     </div>
   );
 }

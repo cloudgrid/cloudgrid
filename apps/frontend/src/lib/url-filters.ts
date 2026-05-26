@@ -1,26 +1,36 @@
 import type {
   LogSearchInput,
-  LogSort,
   TraceDetailInput,
   TraceSearchInput,
-  TraceSort,
   TraceStatus,
+} from "@cloudgrid/ui-contracts";
+import {
+  LOG_SEARCH_DEFAULT_LIMIT,
+  logSortOrDefault,
+  TRACE_RELATED_LOG_DEFAULT_LIMIT,
+  TRACE_SEARCH_DEFAULT_LIMIT,
+  traceSortOrDefault,
 } from "@cloudgrid/ui-contracts";
 import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 
 const traceStatuses: TraceStatus[] = ["ok", "error", "unset"];
-const traceSorts: TraceSort[] = [
-  "startedAt_desc",
-  "startedAt_asc",
-  "duration_desc",
-  "duration_asc",
-  "errorFirst",
-];
-const logSorts: LogSort[] = ["timestamp_desc", "timestamp_asc", "severity_desc"];
-
 function valueOrNull(value: string | null) {
   return value && value.trim().length > 0 ? value : null;
+}
+
+function valuesOrNull(values: string[]) {
+  const seen = new Set<string>();
+  const normalized = values
+    .map((value) => value.trim())
+    .filter((value) => {
+      if (!value || seen.has(value)) {
+        return false;
+      }
+      seen.add(value);
+      return true;
+    });
+  return normalized.length > 0 ? normalized : null;
 }
 
 function traceStatusOrNull(value: string | null): TraceStatus | null {
@@ -45,20 +55,13 @@ function attributeFiltersOrNull(value: string | null) {
   return key ? [{ key, operator: "exists" as const }] : null;
 }
 
-function traceSortOrNull(value: string | null): TraceSort | null {
-  return traceSorts.includes(value as TraceSort) ? (value as TraceSort) : null;
-}
-
-function logSortOrNull(value: string | null): LogSort | null {
-  return logSorts.includes(value as LogSort) ? (value as LogSort) : null;
-}
-
 export function useTraceFilters() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const filters = useMemo<TraceSearchInput>(
     () => ({
       service: valueOrNull(searchParams.get("service")),
+      services: valuesOrNull(searchParams.getAll("service")),
       query: valueOrNull(searchParams.get("query")),
       operationName: valueOrNull(searchParams.get("operationName")),
       spanName: valueOrNull(searchParams.get("spanName")),
@@ -68,9 +71,9 @@ export function useTraceFilters() {
       minDurationMs: numberOrNull(searchParams.get("minDurationMs")),
       maxDurationMs: numberOrNull(searchParams.get("maxDurationMs")),
       attributes: attributeFiltersOrNull(searchParams.get("attributeKey")),
-      sort: traceSortOrNull(searchParams.get("sort")),
+      sort: traceSortOrDefault(searchParams.get("sort")),
       cursor: valueOrNull(searchParams.get("cursor")),
-      limit: 50,
+      limit: TRACE_SEARCH_DEFAULT_LIMIT,
     }),
     [searchParams],
   );
@@ -89,9 +92,21 @@ export function useTraceFilters() {
     setSearchParams(next);
   };
 
+  const setServicesFilter = (services: readonly string[]) => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("cursor");
+    next.delete("service");
+    for (const service of services) {
+      if (service.trim()) {
+        next.append("service", service.trim());
+      }
+    }
+    setSearchParams(next);
+  };
+
   const clearFilters = () => setSearchParams(new URLSearchParams());
 
-  return { filters, searchParams, setFilter, clearFilters };
+  return { filters, searchParams, setFilter, setServicesFilter, clearFilters };
 }
 
 export function useTraceDetailFilters() {
@@ -108,7 +123,7 @@ export function useTraceDetailFilters() {
       maxSpanDurationMs: numberOrNull(searchParams.get("maxSpanDurationMs")),
       attributes: attributeFiltersOrNull(searchParams.get("attributeKey")),
       showMatchesOnly: booleanOrFalse(searchParams.get("showMatchesOnly")),
-      relatedLogLimit: 50,
+      relatedLogLimit: TRACE_RELATED_LOG_DEFAULT_LIMIT,
       logSearch: valueOrNull(searchParams.get("logSearch")),
     }),
     [searchParams],
@@ -202,6 +217,7 @@ export function useLogFilters() {
   const filters = useMemo<LogSearchInput>(
     () => ({
       service: valueOrNull(searchParams.get("service")),
+      services: valuesOrNull(searchParams.getAll("service")),
       traceId: valueOrNull(searchParams.get("traceId")),
       spanId: valueOrNull(searchParams.get("spanId")),
       severity: valueOrNull(searchParams.get("severity")),
@@ -209,9 +225,9 @@ export function useLogFilters() {
       to: valueOrNull(searchParams.get("to")),
       search: valueOrNull(searchParams.get("search")),
       attributes: attributeFiltersOrNull(searchParams.get("attributeKey")),
-      sort: logSortOrNull(searchParams.get("sort")),
+      sort: logSortOrDefault(searchParams.get("sort")),
       cursor: valueOrNull(searchParams.get("cursor")),
-      limit: 50,
+      limit: LOG_SEARCH_DEFAULT_LIMIT,
     }),
     [searchParams],
   );
@@ -230,9 +246,21 @@ export function useLogFilters() {
     setSearchParams(next);
   };
 
+  const setServicesFilter = (services: readonly string[]) => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("cursor");
+    next.delete("service");
+    for (const service of services) {
+      if (service.trim()) {
+        next.append("service", service.trim());
+      }
+    }
+    setSearchParams(next);
+  };
+
   const clearFilters = () => setSearchParams(new URLSearchParams());
 
-  return { filters, searchParams, setFilter, clearFilters };
+  return { filters, searchParams, setFilter, setServicesFilter, clearFilters };
 }
 
 export function hasActiveFilters(searchParams: URLSearchParams) {

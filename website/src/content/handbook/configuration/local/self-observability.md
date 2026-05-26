@@ -22,7 +22,7 @@ CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED=true
 CLOUDGRID_SELF_OBSERVABILITY_METRICS_ENABLED=true
 ```
 
-When local token routing is configured, also set:
+When local self-observability is enabled, also set:
 
 ```sh
 CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN='<token-mapped-to-cloudgrid-system>'
@@ -60,6 +60,15 @@ sequenceDiagram
 ## Failure Behavior
 
 Exporter failures log bounded warnings and do not fail readiness, request handling, message acknowledgement, or shutdown. Exporter telemetry is rate-limited to avoid recursive noise during collector outages.
+
+## Inspect CloudGrid Logs
+
+1. Open CloudGrid and select the `CloudGrid` project.
+2. Open Logs.
+3. Filter by `serviceName` or the `cloudgrid.event` attribute to focus on a service lifecycle or error event.
+4. Use trace and span IDs on a log row to pivot into the matching CloudGrid trace when those IDs are present.
+
+`CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED=false` disables the OTLP log export path only. Process stdout and stderr logs continue to work.
 
 ## Safety Rules
 

@@ -1,14 +1,14 @@
 ---
 title: "Deployed Configuration"
-description: "Deployed mode is the shared-user configuration for CloudGrid."
+description: "Deployed mode is the shared-user and enterprise Kubernetes configuration for CloudGrid."
 sidebar: "Deployed"
 order: 7
 accent: amber
 eyebrow: "Handbook - Configuration"
-updated: 2026-05-18
+updated: 2026-05-19
 ---
 
-Deployed mode is the shared-user configuration for CloudGrid.
+Deployed mode is the shared-user configuration for CloudGrid. Enterprise deployments use the versioned Helm chart, verified release artifacts, private NATS and SurrealDB endpoints, SSO, and digest-pinned service images.
 
 ```sh
 CLOUDGRID_DEPLOYMENT_MODE=deployed
@@ -27,9 +27,12 @@ The repository includes a Helm chart and release workflow definition. Use this p
 | Public entrypoints | BFF and OTLP collector are the only public candidates. |
 | Private infrastructure | NATS and SurrealDB stay private. |
 | Auth | Browser users authenticate through BFF-owned SSO. |
+| Distribution | Install from the versioned Helm chart and verified OCI images. |
+| Image references | Production values pin image digests from `release-values.yaml` or `release-manifest.json`; do not use `latest`. |
 | Company boundary | `CLOUDGRID_AUTH_COMPANY_ID` selects the deployed company until dynamic tenant provisioning exists. |
 | Invitation delivery | Email delivery uses control-plane SMTP outbox, or an explicit suppressed manual mode for private testing. |
 | Ingest credentials | Machine ingest uses project API keys or trusted bearer JWTs, not browser SSO tokens. |
+| Provider secrets | Managed AI provider API keys require a stable `CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY` mounted only into control-plane. |
 | Self-observability | Disabled by default; enabling it requires explicit company, project, endpoint, and bearer token. |
 
 ## Service Environment Shape
@@ -60,6 +63,7 @@ CLOUDGRID_AUTH_GITHUB_CLIENT_SECRET='<client-secret>'
 CLOUDGRID_AUTH_GITHUB_REDIRECT_URI=https://cloudgrid.example.com/auth/callback
 CLOUDGRID_SESSION_SECRET='<random-session-secret>'
 CLOUDGRID_PUBLIC_URL=https://cloudgrid.example.com
+CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY='<long-random-secret>'
 CLOUDGRID_INVITATION_EMAIL_MODE=smtp
 CLOUDGRID_INVITATION_EMAIL_REQUIRE_DELIVERY=true
 CLOUDGRID_INVITATION_EMAIL_FROM='CloudGrid <noreply@example.com>'
@@ -86,8 +90,19 @@ Before public or enterprise distribution, verify:
 - alert evaluator scheduling/execution is wired to storage-read and control-plane ports;
 - production operational dashboards and load/capacity envelopes.
 
+## Deployment Guides
+
+| Goal | Page |
+| --- | --- |
+| Install the enterprise chart | [Enterprise Helm install](/handbook/configuration/deployed/helm-install) |
+| Store AI provider API keys safely | [Provider secrets](/handbook/configuration/deployed/provider-secrets) |
+| Configure private NATS and SurrealDB | [External NATS and SurrealDB](/handbook/configuration/deployed/external-dependencies) |
+| Customize service images and base images | [Image customization](/handbook/configuration/deployed/image-customization) |
+| Mirror artifacts into a private registry | [Private registry and air-gapped installs](/handbook/configuration/deployed/private-registry) |
+| Verify release artifacts before promotion | [Release artifact verification](/handbook/operations/release-verification) |
+| Upgrade or roll back a deployment | [Upgrade and rollback](/handbook/operations/upgrade-rollback) |
+| Select replicas and benchmark thresholds | [Sizing and scaling](/handbook/operations/sizing) |
+
 ## Next Step
 
-Configure [SSO providers](/handbook/configuration/deployed/sso), then review
-[invitation email delivery](/handbook/configuration/deployed/invitation-email) and
-[Kubernetes and deployment status](/handbook/configuration/deployed/kubernetes).
+Start with [Enterprise Helm install](/handbook/configuration/deployed/helm-install), then configure [SSO providers](/handbook/configuration/deployed/sso) and [invitation email delivery](/handbook/configuration/deployed/invitation-email).

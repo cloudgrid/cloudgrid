@@ -1,6 +1,7 @@
 # Go Contracts
 
-Generated or shared Go contract types for AsyncAPI, entity schemas, and error taxonomy.
+Generated or shared Go contract types and metadata for AsyncAPI, entity schemas,
+message bridge subjects, environment variable registries, and error taxonomy.
 
 This module is consumed by:
 

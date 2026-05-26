@@ -22,7 +22,7 @@ provenance: inferred-draft
 - Must not create JetStream consumers for `TELEMETRY_INGEST` and must not subscribe to `telemetry.persisted.traces`.
 - Validates runtime configuration, GraphQL resolver inputs, and decoded NATS request/reply responses with Zod before using them.
 - Maps all public GraphQL failures to `GraphQLError.extensions.problem`, using RFC 9457 Problem Details fields plus CloudGrid `id`, `code`, `retryable`, and optional `details` extension members.
-- Enables the GraphQL development UI only when running in development or when `CLOUDGRID_GRAPHQL_UI=true`; production defaults to disabled.
+- Exposes the `/graphql` API endpoint without a bundled GraphQL IDE or development UI.
 - Must not filter, aggregate, rank, correlate, or enrich telemetry records. Telemetry read semantics are owned by storage-read as defined in `04-backend/telemetry-query-semantics.md`.
 - Owns GraphQL subscription transport lifecycle only: WebSocket/session acceptance, input validation, start/stop bridge calls, event decoding, public error mapping, heartbeat forwarding, and cleanup on disconnect.
 
@@ -83,6 +83,20 @@ provenance: inferred-draft
 - Must not import SurrealDB clients, storage adapters, model-provider SDKs, or provider credentials.
 - Publishes durable experiment progress notifications for storage-read-managed GraphQL subscription fanout.
 
+### Go Alert Evaluator (`core/alert-evaluator`)
+
+- Optional private service enabled when project alert execution is configured.
+- Owns project alert schedules, rule evaluation, state transitions, silences,
+  cooldowns, deduplication, alert history recording, and notification dispatch.
+- Reads telemetry only through storage-read request/reply subjects and reads or
+  writes alert rules/history only through control-plane request/reply subjects.
+- Provides built-in in-app and email delivery paths and can dispatch safe alert
+  summaries to bridge-backed delivery adapters for provider-specific systems
+  such as Slack, WhatsApp, SMS, Teams, PagerDuty, or customer notification
+  gateways.
+- Must not import SurrealDB clients, storage adapters, frontend code, provider
+  SDKs, provider credentials, or raw telemetry payload bodies.
+
 ### Self-Observability
 
 CloudGrid services may emit OpenTelemetry for CloudGrid itself according to
@@ -131,7 +145,7 @@ SurrealDB build without Postgres dependencies.
 
 ## Private Boundary
 
-SurrealDB is private to storage and control-plane services. The message bridge is private infrastructure shared by BFF, collector, storage services, control-plane, and ai-eval-runner. The v1 message bridge adapter is NATS. Public clients never connect to NATS or SurrealDB.
+SurrealDB is private to storage and control-plane services. The message bridge is private infrastructure shared by BFF, collector, storage services, control-plane, ai-eval-runner, alert-evaluator, and bridge-backed delivery adapters. The v1 message bridge adapter is NATS. Public clients never connect to NATS or SurrealDB.
 
 ## Read Model Boundary
 
@@ -160,11 +174,11 @@ CloudGrid receives logs as OTLP logs. Local, VM, and Kubernetes stdout/file log 
 
 ## Timeout Policy
 
-- GraphQL resolver to NATS request/reply timeout: 2 seconds, maps to ERR-014.
-- GraphQL subscription start/stop request to storage-read timeout: 2 seconds, maps to ERR-014.
+- GraphQL resolver to NATS request/reply timeout: configured by `CLOUDGRID_MESSAGE_BRIDGE_REQUEST_TIMEOUT_MS`, default 12 seconds, maps to ERR-014.
+- GraphQL subscription start/stop request to storage-read timeout: configured by `CLOUDGRID_MESSAGE_BRIDGE_REQUEST_TIMEOUT_MS`, default 12 seconds, maps to ERR-014.
 - Live trace event heartbeat interval: 15 seconds. If the BFF does not receive heartbeat or data for 45 seconds, it closes the GraphQL subscription with ERR-014.
 - Collector JetStream publish ack timeout: 1 second, maps to ERR-013.
-- Storage-read SurrealDB query timeout: 1500 milliseconds, maps to ERR-006.
+- Storage-read request handler and SurrealDB query timeout: configured by `CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS`, default 10000 milliseconds, maps to ERR-006. This timeout is owned by storage-read handlers and must be the single read-query deadline applied to trace, log, metric, facet, live-notification, and AI-eval read handlers. The BFF message bridge request timeout must remain greater than this timeout so storage-read owns query timeout semantics.
 - Storage-write SurrealDB command timeout: 5 seconds, maps to ERR-006 or ERR-007.
 
 ## Scaling Policy
@@ -178,6 +192,30 @@ Production scaling is defined in `06-nfr/performance-and-scaling.md`. Implementa
 - Mapped failures include `error_id` from `errors.yaml` and `error_code` from the same taxonomy entry.
 - Startup failures sanitize provider errors before logging unless the failure is configuration or validation.
 - Request/reply handlers preserve `request_id` from the bridge envelope when available.
+
+## Runtime Resilience
+
+Service resilience requirements are defined by
+`06-nfr/service-resilience-self-healing.md`.
+
+- Invalid requests, invalid NATS messages, response contract validation
+  failures, retryable NATS outages, retryable SurrealDB outages, and handler
+  panics are operation-scoped runtime failures. They must not permanently wedge
+  the process or require manual restart after the local dependency recovers.
+- Startup remains fail-fast for invalid configuration, listener bind failure,
+  missing required startup schema, incompatible compiled adapter selection, and
+  other fatal composition errors.
+- `/livez` is process liveness only. `/readyz` reports local dependencies
+  directly owned by the service and must not call another CloudGrid service's
+  health endpoint.
+- NATS adapters own connection state, reconnect logging, subscription
+  readiness, and callback panic containment.
+- SurrealDB adapters own reconnect, reauthentication, namespace/database
+  selection, readiness recovery, and storage error classification behind their
+  service ports.
+- BFF bridge response validation failures must not be mapped as message-bridge
+  transport outages unless the underlying failure is actually NATS
+  unavailability.
 
 ## Parallel Implementation Boundaries
 

@@ -54,7 +54,10 @@
         "label": { "type": "string", "minLength": 1, "maxLength": 80 },
         "providerKind": { "$ref": "#/$defs/providerKind" },
         "baseUrl": { "type": "string", "format": "uri" },
-        "credentialRef": { "type": "string", "pattern": "^(env|external):[A-Za-z0-9_./:-]+$" },
+        "credentialRef": {
+          "type": "string",
+          "pattern": "^(managed|env|external):[A-Za-z0-9_./:-]+$"
+        },
         "defaultModel": { "type": "string", "minLength": 1 },
         "models": {
           "type": "object",
@@ -110,12 +113,12 @@
     "effective": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "warnings", "missingCredentialRefs", "disabledProviderProfileIds"],
+      "required": ["enabled", "warnings", "missingCredentialRefs", "disabledProviderProfiles"],
       "properties": {
         "enabled": { "type": "boolean" },
         "warnings": { "type": "array", "items": { "type": "string" }, "default": [] },
         "missingCredentialRefs": { "type": "array", "items": { "type": "string" }, "default": [] },
-        "disabledProviderProfileIds": {
+        "disabledProviderProfiles": {
           "type": "array",
           "items": { "type": "string" },
           "default": []

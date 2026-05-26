@@ -2,58 +2,143 @@
 import Layout from "../../layouts/Layout.astro";
 import Section from "../../components/Section.astro";
 import PageHeader from "../../components/PageHeader.astro";
-import MockFrame from "../../components/visuals/MockFrame.astro";
-import AiEvalBoard from "../../components/visuals/AiEvalBoard.astro";
-import EvalFlowCanvas from "../../components/visuals/EvalFlowCanvas.astro";
 import CheckList from "../../components/CheckList.astro";
 import RelatedFeatures from "../../components/RelatedFeatures.astro";
+
+const evaluationPath = [
+  {
+    title: "Define what good looks like.",
+    body: "Datasets make expected behavior explicit: inputs, expected outputs, reasons, splits, curation state, and optional source evidence.",
+  },
+  {
+    title: "Run the candidate against the same evidence.",
+    body: "Evaluations execute a target against a dataset split and produce aggregate metrics plus row-level expected versus actual results.",
+  },
+  {
+    title: "Compare before changing production behavior.",
+    body: "Baseline and candidate runs make improvements, regressions, latency changes, and representative examples visible before promotion.",
+  },
+  {
+    title: "Optimize with validation instead of intuition.",
+    body: "Quick-shot optimization can explore candidates, but promotion remains explicit and should be backed by validation evidence.",
+  },
+];
+
+const approaches = [
+  [
+    "Curated examples",
+    "Teams encode known customer messages, extraction cases, workflow checks, or generation tasks as reusable dataset rows.",
+  ],
+  [
+    "Trace-derived cases",
+    "Production traces can become source material when a real workflow exposes a missed classification, missing field, or wrong tool path.",
+  ],
+  [
+    "External targets",
+    "Complex agents and workflows can be evaluated through an adapter endpoint instead of being rebuilt inside CloudGrid.",
+  ],
+  [
+    "Runtime metrics",
+    "Latency, model calls, token totals, and cost signals can sit beside evaluation results when they are emitted as OTLP metrics.",
+  ],
+];
+
+const outcomes = [
+  [
+    "For CEOs",
+    "AI changes can be reviewed as business decisions with evidence, not only as engineering experiments.",
+  ],
+  [
+    "For CTOs",
+    "Teams get a repeatable path from production example to dataset, evaluation, comparison, optimization, and promotion.",
+  ],
+  [
+    "For AI teams",
+    "Expected outputs, observed outputs, metrics, traces, and optimization candidates stay connected in one project.",
+  ],
+];
 ---
 
-<Layout title="AI agent evaluation — CloudGrid">
+<Layout title="AI evaluation and optimization — CloudGrid">
   <Section size="lg">
     <PageHeader
       eyebrow="AI Evaluation"
       accent="violet"
-      title="Evaluate your agents next to the spans they came from."
-      description="CloudGrid projects OpenTelemetry GenAI and OpenInference spans into first-class entities — AgentRuns, LlmCalls, ToolCalls, RetrievalEvents — and lets you curate datasets, define scorers, run experiments, and optimize prompts. Without leaving the system that observes the rest of your stack."
+      title="Evaluate AI changes against evidence your team can inspect."
+      description="AI behavior needs the same operational discipline as production services. CloudGrid keeps datasets, evaluations, comparisons, optimization runs, metrics, and trace-backed evidence inside the same project where the rest of the system is observed."
     />
   </Section>
 
   <Section tone="recessed">
-    <div class="reveal-scale">
-      <EvalFlowCanvas />
+    <div class="story-split">
+      <div class="story-media reveal" aria-hidden="true">
+        <img src="/hero-backgrounds/features-ai-evaluation.png" alt="" loading="lazy" decoding="async" />
+      </div>
+      <div class="reveal-x">
+        <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
+          AI quality reviews need production context, not isolated screenshots.
+        </h2>
+        <p class="mt-4 text-text-secondary leading-relaxed">
+          A CEO or CTO needs to know whether a change is ready, why it is better, and what evidence
+          supports the decision. CloudGrid gives AI teams a repeatable evaluation loop while keeping
+          source traces, runtime metrics, expected outputs, and observed results reviewable together.
+        </p>
+      </div>
     </div>
-    <p class="mt-3 text-xs text-text-muted text-center">
-      Online lane: spans arrive · projections persist · policy gates · runner calls harness · result fans out to dashboards or annotation queue.
-      Offline lane: dataset → experiment → harness → prompt candidates.
-    </p>
   </Section>
 
   <Section>
-    <div class="grid lg:grid-cols-2 gap-12">
+    <div class="grid gap-12 lg:grid-cols-[0.78fr_1.22fr]">
+      <div class="reveal-x">
+        <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
+          From example to promotion decision.
+        </h2>
+        <p class="mt-4 text-text-secondary leading-relaxed">
+          Evaluation and optimization are not one feature. They are the path from "we know what
+          good should look like" to "we can explain why this candidate is ready." CloudGrid keeps
+          every step inside the project that owns the telemetry evidence.
+        </p>
+      </div>
+      <div class="truth-stack truth-stack--wide">
+        {evaluationPath.map((item, i) => (
+          <div class="truth-stack__item reveal" data-delay={(((i % 3) + 1)) as any}>
+            <div class="truth-stack__index">{String(i + 1).padStart(2, "0")}</div>
+            <div>
+              <div class="truth-stack__title">{item.title}</div>
+              <p>{item.body}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </Section>
+
+  <Section tone="recessed">
+    <div class="grid lg:grid-cols-[0.9fr_1.1fr] gap-12 items-start">
       <div class="reveal">
-        <h2 class="text-xl font-semibold text-text mb-4">What you can do today</h2>
+        <h2 class="text-xl font-semibold text-text mb-4">What CloudGrid provides</h2>
         <CheckList
           items={[
-            "Project OTel GenAI (gen_ai.*) and OpenInference (openinference.*) spans into typed entities.",
-            "Promote any agent run, tool call, or model call into a Dataset item.",
-            "Define deterministic scorers (contains, regex, JSON Schema, attribute equality) and judge scorers.",
-            "Run experiments through the harness adapter; compare prompt versions on a scoreboard.",
-            "Optimize prompts through harness workflows — candidates become PromptVersion records.",
-            "Annotate spans into datasets through an annotation queue.",
+            "Schema-backed datasets for classification, extraction, generation, and workflow checks.",
+            "Rows with input, expected output, optional observed output, reason, split, curation status, and source evidence.",
+            "JSON validation against the dataset schema before rows become ready.",
+            "Dataset evaluations against a target using project model aliases and metric defaults.",
+            "Per-row expected vs actual output, metric results, trajectory summaries, important steps, and trace links.",
+            "Baseline and candidate comparisons with improvements, regressions, latency tradeoffs, and representative examples.",
+            "Quick-shot optimization for candidate exploration followed by explicit validation before promotion.",
           ]}
         />
       </div>
       <div class="reveal">
-        <h2 class="text-xl font-semibold text-text mb-4">Honest about scope</h2>
+        <h2 class="text-xl font-semibold text-text mb-4">Operating model</h2>
         <CheckList
           muted
           items={[
-            "Prompt and completion content stays on span events — never copied into a separate AI database.",
-            "Harness owns model-provider HTTP calls. CloudGrid never holds provider credentials.",
-            "CloudGrid does not proxy or gateway model providers, and is not a model router.",
-            "Token and cost totals come from harness run summaries or OTel metrics — never inferred from span text.",
-            "Python frameworks (DSPy, TextGrad, MIPROv2) are not embedded; they run inside harness when used.",
+            "The primary v1 workflow is dataset evaluation and optimization.",
+            "Production measurement is on the product path after the core evaluation loop.",
+            "Complex agents and workflows can be evaluated through an adapter endpoint.",
+            "Provider API keys belong in project or company provider settings and stay out of datasets and rows.",
+            "Evaluation produces metrics, results, and comparisons that downstream alerting or release gates can consume later.",
           ]}
         />
       </div>
@@ -63,59 +148,60 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
   <Section>
     <div class="max-w-3xl mb-8 reveal">
       <h2 class="text-2xl font-semibold tracking-tight text-text">
-        Why this belongs next to your traces, not in a separate tool.
+        Different ways to build useful evaluation evidence.
       </h2>
-      <p class="mt-3 text-text-secondary leading-relaxed">
-        AI-eval-only tools (Langfuse, Arize, Braintrust) treat agent traces as their universe. But
-        agent runs touch tools, databases, retrieval, and downstream services that the rest of your
-        engineering team already observes. CloudGrid evaluates agents where the rest of the system
-        is already visible — same project, same SSO, same isolation, same dashboards.
+      <p class="mt-3 leading-relaxed text-text-secondary">
+        Enterprises usually need more than one input path. Some examples are curated deliberately;
+        others come from production traces; complex workflows may stay outside CloudGrid and expose
+        an evaluation target through an adapter.
       </p>
     </div>
-    <div class="grid sm:grid-cols-3 gap-5">
-      <div class="card spotlight is-interactive flex h-full flex-col p-6 reveal" data-delay="1">
-        <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Datasets</div>
-        <div class="mt-1 text-base font-semibold text-text">Promotable, versioned, project-scoped</div>
-        <p class="mt-2 text-sm text-text-secondary flex-1">Curate test cases from real spans. The source span is always linkable.</p>
-      </div>
-      <div class="card spotlight is-interactive flex h-full flex-col p-6 reveal" data-delay="2">
-        <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Scorers</div>
-        <div class="mt-1 text-base font-semibold text-text">Deterministic + LLM-judge</div>
-        <p class="mt-2 text-sm text-text-secondary flex-1">JSON-Pointer-based deterministic scorers and judge scorers via harness.</p>
-      </div>
-      <div class="card spotlight is-interactive flex h-full flex-col p-6 reveal" data-delay="3">
-        <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Experiments</div>
-        <div class="mt-1 text-base font-semibold text-text">Reproducible & comparable</div>
-        <p class="mt-2 text-sm text-text-secondary flex-1">Every run produces an ExperimentRun with per-item results and a summary.</p>
-      </div>
+    <div class="truth-stack truth-stack--wide">
+      {approaches.map(([title, body], i) => (
+        <div class="truth-stack__item reveal" data-delay={(i + 1) as any}>
+          <div class="truth-stack__index">{title}</div>
+          <div>
+            <div class="truth-stack__title">{title}</div>
+            <p>{body}</p>
+          </div>
+        </div>
+      ))}
     </div>
   </Section>
 
   <Section tone="recessed">
-    <div class="max-w-3xl mb-8 reveal">
-      <div class="chip bg-violet-soft text-[var(--color-violet)]">What a finished experiment looks like</div>
-      <h2 class="mt-4 text-2xl font-semibold tracking-tight text-text text-balance">
-        A scoreboard you can actually hand to your team.
-      </h2>
-      <p class="mt-3 text-text-secondary">
-        After the harness adapter returns, the experiment summary lands in the UI as a per-case
-        scoreboard with deterministic and judge scores, latency, and a delta against the baseline
-        prompt version.
-      </p>
-    </div>
-    <div class="reveal">
-      <MockFrame title="cloudgrid · /ai-eval/experiments/faq_router_optim_v3">
-        <AiEvalBoard />
-      </MockFrame>
+    <div class="grid gap-10 lg:grid-cols-[0.78fr_1.22fr]">
+      <div class="reveal-x">
+        <h2 class="mt-4 text-2xl font-semibold tracking-tight text-text text-balance">
+          Production examples can become evaluation evidence.
+        </h2>
+        <p class="mt-4 leading-relaxed text-text-secondary">
+          Many useful evaluation rows start as production evidence: an unexpected category, a missing
+          JSON field, a tool call that chose the wrong path, or a workflow that took too many steps.
+          CloudGrid keeps the source trace link next to the dataset row and the evaluation result,
+          so debugging and optimization stay connected.
+        </p>
+      </div>
+      <div class="truth-stack truth-stack--wide">
+        {outcomes.map(([title, body], i) => (
+          <div class="truth-stack__item reveal" data-delay={(i + 1) as any}>
+            <div class="truth-stack__index">{title}</div>
+            <div>
+              <div class="truth-stack__title">{title}</div>
+              <p>{body}</p>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   </Section>
 
   <Section>
     <RelatedFeatures
       items={[
-        { label: "Traces", href: "/features/traces", desc: "Where AgentRuns come from." },
-        { label: "Adapters", href: "/features/adapters", desc: "The harness adapter is one port among four." },
-        { label: "Compare vs", href: "/enterprise/compare", desc: "CloudGrid vs Langfuse, Arize, Braintrust." },
+        { label: "Traces", href: "/features/traces", desc: "Where trace-derived dataset cases and run evidence stay linkable." },
+        { label: "Metrics", href: "/features/metrics", desc: "Where runtime latency, token, and cost signals can stay visible." },
+        { label: "Customizable", href: "/features/adapters", desc: "How external evaluation targets can fit behind adapter boundaries." },
       ]}
     />
   </Section>

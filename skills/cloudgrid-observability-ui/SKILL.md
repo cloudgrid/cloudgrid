@@ -11,23 +11,21 @@ live trace receiving.
 
 ## Source Order
 
-Read the source specs before editing:
+Read the source and public docs before editing:
 
-1. `specs/spec.md`
-2. `specs/05-frontend/product-ux-concept.md`
-3. `specs/05-frontend/logs-metrics-dashboards-ux-concept.md`
-4. `specs/05-frontend/dashboard-widgets.md`
-5. `specs/05-frontend/traces-and-metrics-ux-concept.md` for trace search/detail and live trace behavior
-6. `specs/04-backend/control-plane.md`
-7. `specs/04-backend/bridge-ports.md`
-8. `specs/04-backend/telemetry-query-semantics.md`
-9. `specs/04-backend/metrics-signal.md`
-10. `specs/04-backend/authentication-authorization.md`
-11. `specs/03-contracts/graphql/public-schema.graphql`
-12. `specs/03-contracts/messages/message-bridge.asyncapi.yaml`
-13. `specs/03-contracts/errors.yaml`
+1. `DESIGN.md`
+2. `website/src/content/handbook/guides/`
+3. `website/src/content/handbook/reference/routes.md`
+4. `apps/frontend/src/routes`
+5. `apps/frontend/src/features`
+6. `apps/backend/src`
+7. `apps/packages/public-api-client`
+8. `apps/packages/ui-contracts`
+9. `core/storage-read`, `core/storage-write`, and `core/control-plane`
 
-If the requested behavior is not covered, stop and update the relevant spec first. Do not invent GraphQL fields, routes, subjects, widget kinds, project routing, retention behavior, alert rules, or error codes.
+If the requested behavior is not documented or implemented, report it as a
+product gap. Do not invent GraphQL fields, routes, subjects, widget kinds,
+project routing, retention behavior, alert rules, or error codes.
 
 ## Product Route Split
 
@@ -51,8 +49,8 @@ Use the owning module:
 | GraphQL/BFF mapping | `apps/backend/src`, BFF bridge clients, public API client descriptors. |
 | Shared public operations | `apps/packages/public-api-client`. |
 | Generated UI contracts | `apps/packages/ui-contracts`. |
-| GraphQL SDL | `specs/03-contracts/graphql/public-schema.graphql`. |
-| Public docs | `docs/` and `website/src/content/handbook/` when behavior changes. |
+| Public GraphQL operations and generated types | `apps/packages/public-api-client` and `apps/packages/ui-contracts`. |
+| Public docs | `website/src/content/handbook/` when behavior changes. |
 
 Do not define route-local GraphQL documents or direct `/graphql` calls when a
 shared public API client operation exists or should be added.
@@ -111,7 +109,8 @@ Implement or document:
 - metric discovery through `Query.metricNames`;
 - descriptor details, attribute keys, first seen, and last seen;
 - series execution through `Query.metricSeries`;
-- aggregation compatibility from `specs/04-backend/metrics-signal.md`;
+- aggregation compatibility from returned metric descriptor metadata and
+  backend validation;
 - group-by keys only from `MetricDescriptor.attributeKeys`;
 - exemplar trace/span links using selected-project pivot behavior;
 - backend warnings and validation errors inline without clearing the selected metric.
@@ -136,24 +135,31 @@ Do not expose SurrealDB credentials, provider tokens, bearer values, session coo
 
 ## Implementation Workflow
 
-1. Read the source specs and current route implementation.
+1. Read the current route implementation, public docs, and generated contracts.
 2. Identify whether the change is UI-only, BFF mapping, public contract, or
    private service behavior.
-3. Update specs/contracts first if a new field, input, widget kind, route state,
+3. Update contracts and public docs first if a new field, input, widget kind, route state,
    error, or subject is needed.
 4. Keep frontend state presentational: selection, focus, tabs, URL params,
    virtualization, and inspector state are allowed.
 5. Put telemetry query semantics in storage-read, not frontend or BFF.
 6. Add focused tests for the changed route, view model, or bridge mapping.
-7. Update handbook/docs if the user workflow changes.
+7. Update the website handbook if the user workflow changes.
 
 ## Current TODO Boundaries
 
 Document these as future work, not hidden features:
 
-- Retention policy enforcement follows `specs/04-backend/data-retention-policy.md`: project-level editable policies, per-data-class rules, and admin-selected hard delete or soft-delete-then-delete. Do not invent retention behavior outside that spec.
-- Alerting follows `specs/04-backend/alerting.md`: project-scoped metrics/logs/traces rules, adapter-based notifications, and in-app alert history as the core reference adapter. Do not invent alert widgets or external notification adapters outside specs.
-- Full OTLP compatibility follows `specs/04-backend/otlp-grpc-compatibility.md`: HTTP JSON/protobuf on `4318` and gRPC protobuf on `4317` for traces, logs, and metrics.
+- Retention policy enforcement is project-scoped with editable policies,
+  per-data-class rules, and admin-selected hard delete or
+  soft-delete-then-delete. Do not invent retention behavior outside checked-in
+  docs and implementation.
+- Alerting is project-scoped for metrics/logs/traces rules, adapter-based
+  notifications, and in-app alert history as the core reference adapter. Do not
+  invent alert widgets or external notification adapters outside checked-in docs
+  and implementation.
+- Full OTLP compatibility uses HTTP JSON/protobuf on `4318` and gRPC protobuf
+  on `4317` for traces, logs, and metrics.
 
 ## Review Checklist
 

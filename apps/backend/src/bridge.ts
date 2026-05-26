@@ -19,7 +19,6 @@ import type {
   AiChatRunStatus,
   AiQualityOverview,
   AiQualityOverviewInput,
-  CompanyAiProviderSettings,
   AlertEventConnection,
   AlertRule,
   AlertRuleSearchInput,
@@ -31,12 +30,16 @@ import type {
   AnnotationQueueSearchInput,
   AppendDatasetItemsInput,
   ApproveAiChatActionInput,
+  CommitDatasetCandidatesInput,
   CommitDatasetImportInput,
+  CompanyAiProviderSettings,
+  CreateAiChatConversationInput,
   CreateAlertRuleInput,
   CreateAlertSilenceInput,
-  CreateAiChatConversationInput,
   CreateDatasetInput,
   CreatedIngestCredential,
+  CreateEvaluationComparisonInput,
+  CreateEvaluationDefinitionInput,
   CreateExperimentInput,
   CreateIngestCredentialInput,
   CreateProjectInput,
@@ -46,6 +49,9 @@ import type {
   DashboardListResult,
   DashboardPreferences,
   Dataset,
+  DatasetCandidate,
+  DatasetCandidateSearchInput,
+  DatasetCandidateSearchResult,
   DatasetExportJob,
   DatasetImportJob,
   DatasetItem,
@@ -56,6 +62,21 @@ import type {
   DatasetSearchResult,
   EvalResultSearchInput,
   EvalResultSearchResult,
+  EvaluationComparison,
+  EvaluationComparisonSearchInput,
+  EvaluationComparisonSearchResult,
+  EvaluationDefinition,
+  EvaluationDefinitionSearchInput,
+  EvaluationDefinitionSearchResult,
+  EvaluationItemRun,
+  EvaluationItemRunSearchInput,
+  EvaluationItemRunSearchResult,
+  EvaluationResultsSearchInput,
+  EvaluationRun,
+  EvaluationRunControlInput,
+  EvaluationRunEvent,
+  EvaluationRunSearchInput,
+  EvaluationRunSearchResult,
   Experiment,
   ExperimentRun,
   ExperimentRunEvent,
@@ -66,6 +87,7 @@ import type {
   IngestCredentialListResult,
   InviteOrganizationMemberInput,
   InviteProjectMemberInput,
+  LiveEvaluationRunInput,
   LiveExperimentRunInput,
   LiveTraceEvent,
   LiveTraceInput,
@@ -73,11 +95,17 @@ import type {
   LogSearchResult,
   MetricNameSearchInput,
   MetricNameSearchResult,
+  MetricResult,
+  MetricResultSearchResult,
   MetricSeriesInput,
   MetricSeriesResult,
+  OptimizationRun,
+  OptimizationRunSearchInput,
+  OptimizationRunSearchResult,
   Organization,
   OrganizationInvitation,
   OrganizationMember,
+  PrepareDatasetCandidatesInput,
   PrepareDatasetImportInput,
   Project,
   ProjectAiProviderSettings,
@@ -89,6 +117,8 @@ import type {
   ProjectTelemetryOverview,
   PromotePromptVersionInput,
   PromoteSpanToDatasetItemInput,
+  PromoteTargetSnapshotInput,
+  PromotionRecord,
   PromptVersion,
   RemoveOrganizationMemberInput,
   ReorderDashboardPinsInput,
@@ -102,16 +132,23 @@ import type {
   ScorerSearchResult,
   SetDashboardPinnedInput,
   StartDatasetExportInput,
+  StartEvaluationRunInput,
   StartExperimentRunInput,
   StartOptimizationRunInput,
+  TargetDiff,
+  TargetDiffInput,
+  TargetSnapshot,
   TelemetryFacetInput,
   TelemetryFacetResult,
   TraceDetail,
   TraceDetailInput,
   TraceSearchInput,
   TraceSearchResult,
-  UpdateCompanyAiProviderSettingsInput,
   UpdateAlertRuleInput,
+  UpdateCompanyAiProviderSettingsInput,
+  UpdateDatasetItemsInput,
+  UpdateDatasetSettingsInput,
+  UpdateEvaluationDefinitionInput,
   UpdateOrganizationMemberInput,
   UpdateProjectAiProviderSettingsInput,
   UpdateProjectAiSettingsInput,
@@ -127,104 +164,14 @@ import {
   NATSEphemeralPubSub,
   NATSRequestReplyClient,
 } from "./bridge/adapters/nats";
+import { bridgeSubjects as subjects } from "./bridge/subjects";
+import { telemetryMetricPayload, telemetryQueryPayload } from "./bridge/telemetry-client";
 import type {
   SelfObservabilityLogRecorder,
   SelfObservabilityTraceRecorder,
   TraceContext,
 } from "./self-observability";
 import { createTraceContext, traceContextToTraceParent } from "./self-observability";
-
-const subjects = {
-  viewerGet: "control.viewer.get",
-  organizationsList: "control.organizations.list",
-  organizationGet: "control.organizations.get",
-  membersList: "control.members.list",
-  invitationsList: "control.invitations.list",
-  invitationCreate: "control.invitations.create",
-  invitationResend: "control.invitations.resend",
-  invitationRevoke: "control.invitations.revoke",
-  projectInvitationCreate: "control.project_invitations.create",
-  projectsList: "control.projects.list",
-  projectGet: "control.projects.get",
-  projectCreate: "control.projects.create",
-  projectUpdate: "control.projects.update",
-  projectSelect: "control.projects.select",
-  memberUpdate: "control.members.update",
-  memberRemove: "control.members.remove",
-  projectMembersList: "control.project_members.list",
-  projectMembersUpdate: "control.project_members.update",
-  projectMembersRemove: "control.project_members.remove",
-  retentionGet: "control.retention.get",
-  retentionUpdate: "control.retention.update",
-  alertRulesList: "control.alert_rules.list",
-  alertRulesCreate: "control.alert_rules.create",
-  alertRulesUpdate: "control.alert_rules.update",
-  alertRulesDelete: "control.alert_rules.delete",
-  alertSilencesList: "control.alert_silences.list",
-  alertSilencesCreate: "control.alert_silences.create",
-  alertSilencesDelete: "control.alert_silences.delete",
-  alertHistoryList: "control.alert_history.list",
-  alertSummaryGet: "control.alert_summary.get",
-  ingestCredentialsList: "control.ingest_credentials.list",
-  ingestCredentialsCreate: "control.ingest_credentials.create",
-  ingestCredentialsRevoke: "control.ingest_credentials.revoke",
-  traceSearch: "telemetry.traces.search",
-  traceGet: "telemetry.traces.get",
-  logSearch: "telemetry.logs.search",
-  telemetryFacets: "telemetry.facets",
-  projectTelemetryOverview: "telemetry.projects.overview",
-  metricNames: "telemetry.metrics.names",
-  metricSeries: "telemetry.metrics.query",
-  richMetricSeries: "telemetry.metrics.rich_query",
-  dashboardsList: "control.dashboards.list",
-  dashboardsSave: "control.dashboards.save",
-  dashboardsDelete: "control.dashboards.delete",
-  dashboardPinsSet: "control.dashboard_pins.set",
-  dashboardPinsReorder: "control.dashboard_pins.reorder",
-  liveTraceStart: "telemetry.traces.live.start",
-  liveTraceStop: "telemetry.traces.live.stop",
-  agentRunSearch: "eval.agent_runs.search",
-  datasetCreate: "eval.dataset.create",
-  datasetSearch: "eval.dataset.search",
-  datasetItemsAppend: "eval.dataset.items.append",
-  datasetItemPromote: "eval.dataset.item.promote",
-  datasetImportPrepare: "eval.dataset.import.prepare",
-  datasetImportCommit: "eval.dataset.import.commit",
-  datasetExportStart: "eval.dataset.export.start",
-  datasetTransferGet: "eval.dataset.transfer.get",
-  scorerCreate: "eval.scorer.create",
-  scorerSearch: "eval.scorer.search",
-  experimentCreate: "eval.experiment.create",
-  experimentStart: "eval.experiment.start",
-  experimentCancel: "eval.experiment.cancel",
-  optimizationStart: "eval.optimization.start",
-  experimentSearch: "eval.experiment.search",
-  resultSearch: "eval.results.search",
-  liveExperimentStart: "eval.live.start",
-  liveExperimentStop: "eval.live.stop",
-  annotationQueueSearch: "annotation.queue.search",
-  annotationItemUpdate: "annotation.item.update",
-  promptVersionPromote: "eval.prompt_version.promote",
-  projectAiSettingsGet: "control.ai_settings.get",
-  projectAiSettingsUpdate: "control.ai_settings.update",
-  projectAiProviderSettingsGet: "control.ai_providers.project.get",
-  projectAiProviderSettingsUpdate: "control.ai_providers.project.update",
-  companyAiProviderSettingsGet: "control.ai_providers.company.get",
-  companyAiProviderSettingsUpdate: "control.ai_providers.company.update",
-  aiChatHistory: "control.ai_chat.history",
-  aiChatConversationGet: "control.ai_chat.conversation.get",
-  aiChatConversationCreate: "control.ai_chat.conversation.create",
-  aiChatConversationArchive: "control.ai_chat.conversation.archive",
-  aiChatMessageAppend: "control.ai_chat.message.append",
-  aiChatRunCreate: "control.ai_chat.run.create",
-  aiChatRunUpdate: "control.ai_chat.run.update",
-  aiChatRunFinalize: "control.ai_chat.run.finalize",
-  aiChatActionPropose: "control.ai_chat.action.propose",
-  aiChatActionApprove: "control.ai_chat.action.approve",
-  aiChatActionFinish: "control.ai_chat.action.finish",
-  aiChatCompactionSave: "control.ai_chat.compaction.save",
-  aiQualityOverview: "eval.quality.overview",
-} as const;
 
 interface BridgeEnvelope {
   requestId: string;
@@ -246,6 +193,16 @@ interface BridgeResponse<Data> {
   data?: Data;
   error?: BridgeError;
 }
+
+const responseContractInvalidError = {
+  id: "ERR-023",
+  code: "RESPONSE_CONTRACT_INVALID",
+  message: "Private service response did not match the message contract",
+  retryable: false,
+} satisfies BridgeErrorLike;
+
+const maxLoggedValidationIssues = 5;
+const maxLoggedValidationPathDepth = 6;
 
 export interface TelemetryQueryBridge {
   searchTraces(
@@ -425,6 +382,10 @@ export interface ControlPlaneBridge {
     input: UpdateCompanyAiProviderSettingsInput,
     authContext?: NormalizedAuthContext,
   ): Promise<CompanyAiProviderSettings>;
+  resolveAiProviderSecret?(
+    credentialRef: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<{ credentialRef: string; value: string }>;
   aiChatHistory(
     input: AiChatHistoryInput,
     authContext?: NormalizedAuthContext,
@@ -441,6 +402,7 @@ export interface ControlPlaneBridge {
     id: string,
     authContext?: NormalizedAuthContext,
   ): Promise<AiChatConversation>;
+  deleteAiChatConversation(id: string, authContext?: NormalizedAuthContext): Promise<boolean>;
   approveAiChatAction(
     input: ApproveAiChatActionInput,
     authContext?: NormalizedAuthContext,
@@ -511,23 +473,31 @@ export interface AiChatFinalizeRunInput extends AiChatUpdateRunInput {}
 export interface AiChatProposeActionInput {
   conversationId: string;
   runId: string;
+  projectId: string;
   title: string;
+  description?: string;
   risk: string;
-  operation: string;
-  preview: Record<string, unknown>;
+  actionKind: string;
+  graphqlMutation?: string;
+  inputPreview: Record<string, unknown>;
+  requiresApproval: boolean;
+  idempotencyKey: string;
+  expiresAt: string;
 }
 
 export interface AiChatFinishActionInput {
-  actionId: string;
+  actionProposalId: string;
   status: string;
   result?: Record<string, unknown>;
 }
 
 export interface AiChatSaveCompactionInput {
   conversationId: string;
+  sourceMessageCount: number;
   summary: string;
-  coveredMessageIds: string[];
-  tokenCount: number;
+  retainedMessageIds: string[];
+  artifactSummaries: string[];
+  pendingActionIds: string[];
 }
 
 export interface AiEvalBridge {
@@ -548,6 +518,10 @@ export interface AiEvalBridge {
     input: DatasetItemSearchInput,
     authContext?: NormalizedAuthContext,
   ): Promise<DatasetItemSearchResult>;
+  datasetCandidates(
+    input: DatasetCandidateSearchInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<DatasetCandidateSearchResult>;
   scorers(
     input: ScorerSearchInput,
     authContext?: NormalizedAuthContext,
@@ -570,6 +544,42 @@ export interface AiEvalBridge {
     input: EvalResultSearchInput,
     authContext?: NormalizedAuthContext,
   ): Promise<EvalResultSearchResult>;
+  evaluationDefinitions(
+    input: EvaluationDefinitionSearchInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationDefinitionSearchResult>;
+  evaluationDefinition(
+    id: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationDefinition | null>;
+  evaluationRuns(
+    input: EvaluationRunSearchInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationRunSearchResult>;
+  evaluationRun(id: string, authContext?: NormalizedAuthContext): Promise<EvaluationRun | null>;
+  evaluationItemRuns(
+    input: EvaluationItemRunSearchInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationItemRunSearchResult>;
+  evaluationResults(
+    input: EvaluationResultsSearchInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<MetricResultSearchResult>;
+  evaluationComparisons(
+    input: EvaluationComparisonSearchInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationComparisonSearchResult>;
+  evaluationComparison(
+    id: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationComparison | null>;
+  optimizationRuns(
+    input: OptimizationRunSearchInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<OptimizationRunSearchResult>;
+  optimizationRun(id: string, authContext?: NormalizedAuthContext): Promise<OptimizationRun | null>;
+  targetSnapshot(id: string, authContext?: NormalizedAuthContext): Promise<TargetSnapshot | null>;
+  targetDiff(input: TargetDiffInput, authContext?: NormalizedAuthContext): Promise<TargetDiff>;
   annotationQueue(
     input: AnnotationQueueSearchInput,
     authContext?: NormalizedAuthContext,
@@ -583,8 +593,16 @@ export interface AiEvalBridge {
     authContext?: NormalizedAuthContext,
   ): Promise<AiQualityOverview>;
   createDataset(input: CreateDatasetInput, authContext?: NormalizedAuthContext): Promise<Dataset>;
+  updateDatasetSettings(
+    input: UpdateDatasetSettingsInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<Dataset>;
   appendDatasetItems(
     input: AppendDatasetItemsInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<Dataset>;
+  updateDatasetItems(
+    input: UpdateDatasetItemsInput,
     authContext?: NormalizedAuthContext,
   ): Promise<Dataset>;
   prepareDatasetImport(
@@ -599,11 +617,27 @@ export interface AiEvalBridge {
     input: StartDatasetExportInput,
     authContext?: NormalizedAuthContext,
   ): Promise<DatasetExportJob>;
+  prepareDatasetCandidates(
+    input: PrepareDatasetCandidatesInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<DatasetCandidateSearchResult>;
+  commitDatasetCandidates(
+    input: CommitDatasetCandidatesInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<Dataset>;
   promoteSpanToDatasetItem(
     input: PromoteSpanToDatasetItemInput,
     authContext?: NormalizedAuthContext,
   ): Promise<DatasetItem>;
   createScorer(input: CreateScorerInput, authContext?: NormalizedAuthContext): Promise<Scorer>;
+  createEvaluationDefinition(
+    input: CreateEvaluationDefinitionInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationDefinition>;
+  updateEvaluationDefinition(
+    input: UpdateEvaluationDefinitionInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationDefinition>;
   createExperiment(
     input: CreateExperimentInput,
     authContext?: NormalizedAuthContext,
@@ -612,15 +646,41 @@ export interface AiEvalBridge {
     input: StartExperimentRunInput,
     authContext?: NormalizedAuthContext,
   ): Promise<ExperimentRun>;
+  startEvaluationRun(
+    input: StartEvaluationRunInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationRun>;
+  cancelEvaluationRun(
+    input: EvaluationRunControlInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationRun>;
+  pauseEvaluationRun(
+    input: EvaluationRunControlInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationRun>;
+  resumeEvaluationRun(
+    input: EvaluationRunControlInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationRun>;
   cancelExperimentRun(id: string, authContext?: NormalizedAuthContext): Promise<ExperimentRun>;
+  pauseExperimentRun(id: string, authContext?: NormalizedAuthContext): Promise<ExperimentRun>;
+  resumeExperimentRun(id: string, authContext?: NormalizedAuthContext): Promise<ExperimentRun>;
   startOptimizationRun(
     input: StartOptimizationRunInput,
     authContext?: NormalizedAuthContext,
-  ): Promise<ExperimentRun>;
+  ): Promise<OptimizationRun>;
+  createEvaluationComparison(
+    input: CreateEvaluationComparisonInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationComparison>;
   promotePromptVersion(
     input: PromotePromptVersionInput,
     authContext?: NormalizedAuthContext,
   ): Promise<PromptVersion>;
+  promoteTargetSnapshot(
+    input: PromoteTargetSnapshotInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<PromotionRecord>;
   resolveAnnotation(
     input: ResolveAnnotationInput,
     authContext?: NormalizedAuthContext,
@@ -633,6 +693,10 @@ export interface AiEvalBridge {
     input: LiveExperimentRunInput,
     authContext?: NormalizedAuthContext,
   ): AsyncIterableIterator<ExperimentRunEvent>;
+  subscribeLiveEvaluationRun(
+    input: LiveEvaluationRunInput,
+    authContext?: NormalizedAuthContext,
+  ): AsyncIterableIterator<EvaluationRunEvent>;
 }
 
 export type CloudGridBridge = TelemetryQueryBridge &
@@ -1178,6 +1242,17 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     );
   }
 
+  async datasetCandidates(
+    input: DatasetCandidateSearchInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<DatasetCandidateSearchResult> {
+    return this.#requestParsed(
+      subjects.datasetCandidatesSearch,
+      { ...envelope(authContext), ...compactInput(input as unknown as Record<string, unknown>) },
+      datasetCandidateSearchResultSchema,
+    );
+  }
+
   async scorers(
     input: ScorerSearchInput,
     authContext?: NormalizedAuthContext,
@@ -1253,6 +1328,181 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     );
   }
 
+  async evaluationDefinitions(
+    input: EvaluationDefinitionSearchInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationDefinitionSearchResult> {
+    return this.#requestParsed(
+      subjects.evaluationSearch,
+      {
+        ...envelope(authContext),
+        projectId: input.projectId ?? authContext?.projectId ?? "",
+        ...compactInput(input as unknown as Record<string, unknown>),
+      },
+      evaluationDefinitionSearchResultSchema,
+    );
+  }
+
+  async evaluationDefinition(
+    id: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationDefinition | null> {
+    const input = compactInput({
+      projectId: authContext?.projectId,
+      limit: 1,
+      query: id,
+    }) as EvaluationDefinitionSearchInput;
+    const result = await this.evaluationDefinitions(input, authContext);
+    return result.items.find((item) => item.id === id) ?? result.items[0] ?? null;
+  }
+
+  async evaluationRuns(
+    input: EvaluationRunSearchInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationRunSearchResult> {
+    return this.#requestParsed(
+      subjects.evaluationRunSearch,
+      {
+        ...envelope(authContext),
+        projectId: input.projectId ?? authContext?.projectId ?? "",
+        ...compactInput(input as unknown as Record<string, unknown>),
+      },
+      evaluationRunSearchResultSchema,
+    );
+  }
+
+  async evaluationRun(
+    id: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationRun | null> {
+    const data = await this.#requestParsed(
+      subjects.evaluationRunGet,
+      {
+        ...envelope(authContext),
+        projectId: authContext?.projectId ?? "",
+        evaluationRunId: id,
+      },
+      z.object({ run: evaluationRunSchema.optional().nullable() }),
+    );
+    return data.run ?? null;
+  }
+
+  async evaluationItemRuns(
+    input: EvaluationItemRunSearchInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationItemRunSearchResult> {
+    return this.#requestParsed(
+      subjects.evaluationRunSearch,
+      {
+        ...envelope(authContext),
+        projectId: authContext?.projectId ?? "",
+        itemRuns: true,
+        ...compactInput(input as unknown as Record<string, unknown>),
+      },
+      evaluationItemRunSearchResultSchema,
+    );
+  }
+
+  async evaluationResults(
+    input: EvaluationResultsSearchInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<MetricResultSearchResult> {
+    return this.#requestParsed(
+      subjects.resultSearch,
+      {
+        ...envelope(authContext),
+        projectId: input.projectId ?? authContext?.projectId ?? "",
+        ...compactInput(input as unknown as Record<string, unknown>),
+      },
+      metricResultSearchResultSchema,
+    );
+  }
+
+  async evaluationComparisons(
+    input: EvaluationComparisonSearchInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationComparisonSearchResult> {
+    return this.#requestParsed(
+      subjects.evaluationComparisonSearch,
+      {
+        ...envelope(authContext),
+        projectId: input.projectId ?? authContext?.projectId ?? "",
+        ...compactInput(input as unknown as Record<string, unknown>),
+      },
+      evaluationComparisonSearchResultSchema,
+    );
+  }
+
+  async evaluationComparison(
+    id: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationComparison | null> {
+    const input = compactInput({
+      projectId: authContext?.projectId,
+      limit: 1,
+    }) as EvaluationComparisonSearchInput;
+    const result = await this.evaluationComparisons(input, authContext);
+    return result.items.find((item) => item.id === id) ?? result.items[0] ?? null;
+  }
+
+  async optimizationRuns(
+    input: OptimizationRunSearchInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<OptimizationRunSearchResult> {
+    return this.#requestParsed(
+      subjects.optimizationSearch,
+      {
+        ...envelope(authContext),
+        projectId: input.projectId ?? authContext?.projectId ?? "",
+        ...compactInput(input as unknown as Record<string, unknown>),
+      },
+      optimizationRunSearchResultSchema,
+    );
+  }
+
+  async optimizationRun(
+    id: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<OptimizationRun | null> {
+    const data = await this.#requestParsed(
+      subjects.optimizationGet,
+      {
+        ...envelope(authContext),
+        projectId: authContext?.projectId ?? "",
+        optimizationRunId: id,
+      },
+      z.object({ run: optimizationRunSchema.optional().nullable() }),
+    );
+    return data.run ?? null;
+  }
+
+  async targetSnapshot(
+    id: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<TargetSnapshot | null> {
+    const data = await this.#requestParsed(
+      subjects.targetSnapshotGet,
+      {
+        ...envelope(authContext),
+        projectId: authContext?.projectId ?? "",
+        targetSnapshotId: id,
+      },
+      z.object({ snapshot: targetSnapshotSchema.optional().nullable() }),
+    );
+    return data.snapshot ?? null;
+  }
+
+  async targetDiff(
+    input: TargetDiffInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<TargetDiff> {
+    return this.#requestParsed(
+      subjects.targetDiff,
+      { ...envelope(authContext), ...compactInput(input as unknown as Record<string, unknown>) },
+      targetDiffSchema,
+    );
+  }
+
   async annotationQueue(
     input: AnnotationQueueSearchInput,
     authContext?: NormalizedAuthContext,
@@ -1296,7 +1546,13 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<ProjectAiProviderSettings> {
     const data = await this.#request<{ settings?: ProjectAiProviderSettings }>(
       subjects.projectAiProviderSettingsUpdate,
-      { ...envelope(authContext), input, expectedVersion: input.expectedVersion },
+      {
+        ...envelope(authContext),
+        projectId: input.projectId,
+        providerProfiles: input.providerProfiles,
+        modelAliases: input.modelAliases,
+        expectedVersion: input.expectedVersion,
+      },
     );
     return requiredData(
       data.settings,
@@ -1324,11 +1580,31 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<CompanyAiProviderSettings> {
     const data = await this.#request<{ settings?: CompanyAiProviderSettings }>(
       subjects.companyAiProviderSettingsUpdate,
-      { ...envelope(authContext), input, expectedVersion: input.expectedVersion },
+      {
+        ...envelope(authContext),
+        companyId: input.companyId,
+        providerProfile: input.providerProfile,
+        chatModelAlias: input.chatModelAlias,
+        expectedVersion: input.expectedVersion,
+      },
     );
     return requiredData(
       data.settings,
       "Company AI provider settings update returned an empty response",
+    );
+  }
+
+  async resolveAiProviderSecret(
+    credentialRef: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<{ credentialRef: string; value: string }> {
+    const data = await this.#request<{ credential?: { credentialRef?: string; value?: string } }>(
+      subjects.aiProviderSecretResolve,
+      { ...envelope(authContext), credentialRef },
+    );
+    return requiredData(
+      aiProviderSecretSchema.parse(data.credential),
+      "AI provider secret resolver returned an empty response",
     );
   }
 
@@ -1338,7 +1614,8 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<AiChatHistory> {
     const data = await this.#request<{ history?: AiChatHistory }>(subjects.aiChatHistory, {
       ...envelope(authContext),
-      input: compactInput(input as unknown as Record<string, unknown>),
+      userId: authContext?.principalId ?? "",
+      ...compactInput(input as unknown as Record<string, unknown>),
     });
     return requiredData(data.history, "AI Chat history returned an empty response");
   }
@@ -1360,7 +1637,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<AiChatConversation> {
     const data = await this.#request<{ conversation?: AiChatConversation }>(
       subjects.aiChatConversationCreate,
-      { ...envelope(authContext), input },
+      { ...envelope(authContext), ...input, userId: authContext?.principalId ?? "" },
     );
     return requiredData(
       data.conversation,
@@ -1374,12 +1651,29 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<AiChatConversation> {
     const data = await this.#request<{ conversation?: AiChatConversation }>(
       subjects.aiChatConversationArchive,
-      { ...envelope(authContext), conversationId: id },
+      {
+        ...envelope(authContext),
+        conversationId: id,
+        userId: authContext?.principalId ?? "",
+        expectedVersion: 1,
+      },
     );
     return requiredData(
       data.conversation,
       "AI Chat conversation archive returned an empty response",
     );
+  }
+
+  async deleteAiChatConversation(
+    id: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<boolean> {
+    const data = await this.#request<{ deleted?: boolean }>(subjects.aiChatConversationDelete, {
+      ...envelope(authContext),
+      conversationId: id,
+      userId: authContext?.principalId ?? "",
+    });
+    return data.deleted === true;
   }
 
   async approveAiChatAction(
@@ -1388,7 +1682,15 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<AiChatActionProposal> {
     const data = await this.#request<{ action?: AiChatActionProposal }>(
       subjects.aiChatActionApprove,
-      { ...envelope(authContext), input, expectedVersion: input.expectedVersion },
+      {
+        ...envelope(authContext),
+        actionProposalId: input.actionProposalId,
+        idempotencyKey: input.idempotencyKey,
+        approved: input.approved,
+        userId: authContext?.principalId ?? "",
+        reason: input.reason,
+        expectedVersion: input.expectedVersion,
+      },
     );
     return requiredData(data.action, "AI Chat action approval returned an empty response");
   }
@@ -1487,7 +1789,33 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<Dataset> {
     return this.#requestParsed(
       subjects.datasetCreate,
-      { ...envelope(authContext), input },
+      {
+        ...envelope(authContext),
+        projectId: input.projectId,
+        idempotencyKey: input.idempotencyKey,
+        input,
+      },
+      typedDatasetSchema,
+    );
+  }
+
+  async updateDatasetSettings(
+    input: UpdateDatasetSettingsInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<Dataset> {
+    return this.#requestParsed(
+      subjects.datasetSettingsUpdate,
+      {
+        ...envelope(authContext),
+        projectId: authContext?.projectId ?? "",
+        datasetId: input.datasetId,
+        expectedDatasetVersionId: input.expectedDatasetVersionId,
+        idempotencyKey: input.idempotencyKey,
+        input: {
+          ...input,
+          projectId: authContext?.projectId ?? "",
+        },
+      },
       typedDatasetSchema,
     );
   }
@@ -1498,9 +1826,52 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<Dataset> {
     return this.#requestParsed(
       subjects.datasetItemsAppend,
-      { ...envelope(authContext), input },
+      {
+        ...envelope(authContext),
+        projectId: authContext?.projectId ?? "",
+        datasetId: input.datasetId,
+        expectedDatasetVersionId: input.expectedDatasetVersionId,
+        idempotencyKey: input.idempotencyKey,
+        input: { ...input, projectId: authContext?.projectId ?? "" },
+      },
       typedDatasetSchema,
     );
+  }
+
+  async updateDatasetItems(
+    input: UpdateDatasetItemsInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<Dataset> {
+    let expectedDatasetVersionId = input.expectedDatasetVersionId;
+    let dataset: Dataset | null = null;
+    for (const [index, update] of input.updates.entries()) {
+      dataset = await this.#requestParsed(
+        subjects.datasetItemUpdate,
+        {
+          ...envelope(authContext),
+          projectId: authContext?.projectId ?? "",
+          datasetId: input.datasetId,
+          datasetItemId: update.id,
+          expectedDatasetVersionId,
+          idempotencyKey: `${input.idempotencyKey}:${index + 1}`,
+          input: {
+            ...update,
+            itemId: update.id,
+            datasetId: input.datasetId,
+            expectedDatasetVersionId,
+            idempotencyKey: `${input.idempotencyKey}:${index + 1}`,
+            projectId: authContext?.projectId ?? "",
+          },
+        },
+        typedDatasetSchema,
+      );
+      expectedDatasetVersionId =
+        dataset.currentVersionId || dataset.currentVersion?.id || expectedDatasetVersionId;
+    }
+    if (!dataset) {
+      throw new Error("Dataset item update requires at least one update");
+    }
+    return dataset;
   }
 
   async prepareDatasetImport(
@@ -1536,6 +1907,28 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     );
   }
 
+  async prepareDatasetCandidates(
+    input: PrepareDatasetCandidatesInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<DatasetCandidateSearchResult> {
+    return this.#requestParsed(
+      subjects.datasetCandidatesPrepare,
+      { ...envelope(authContext), ...compactInput(input as unknown as Record<string, unknown>) },
+      datasetCandidateSearchResultSchema,
+    );
+  }
+
+  async commitDatasetCandidates(
+    input: CommitDatasetCandidatesInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<Dataset> {
+    return this.#requestParsed(
+      subjects.datasetCandidatesCommit,
+      { ...envelope(authContext), ...compactInput(input as unknown as Record<string, unknown>) },
+      typedDatasetSchema,
+    );
+  }
+
   async promoteSpanToDatasetItem(
     input: PromoteSpanToDatasetItemInput,
     authContext?: NormalizedAuthContext,
@@ -1555,6 +1948,39 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
       subjects.scorerCreate,
       { ...envelope(authContext), input },
       typedScorerSchema,
+    );
+  }
+
+  async createEvaluationDefinition(
+    input: CreateEvaluationDefinitionInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationDefinition> {
+    return this.#requestParsed(
+      subjects.evaluationCreate,
+      {
+        ...envelope(authContext),
+        projectId: input.projectId,
+        idempotencyKey: input.idempotencyKey,
+        input,
+      },
+      evaluationDefinitionSchema,
+    );
+  }
+
+  async updateEvaluationDefinition(
+    input: UpdateEvaluationDefinitionInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationDefinition> {
+    return this.#requestParsed(
+      subjects.evaluationUpdate,
+      {
+        ...envelope(authContext),
+        projectId: authContext?.projectId ?? "",
+        evaluationDefinitionId: input.id,
+        idempotencyKey: input.idempotencyKey,
+        input,
+      },
+      evaluationDefinitionSchema,
     );
   }
 
@@ -1580,6 +2006,56 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     );
   }
 
+  async startEvaluationRun(
+    input: StartEvaluationRunInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationRun> {
+    const targetSnapshotId =
+      input.targetSnapshotId ??
+      input.targetRef?.targetSnapshotId ??
+      (input.targetRef
+        ? (
+            await this.#requestParsed(
+              subjects.targetSnapshotCreate,
+              {
+                ...envelope(authContext),
+                projectId: input.projectId,
+                idempotencyKey: `${input.idempotencyKey}:target-snapshot`,
+                targetRef: input.targetRef,
+                input: {
+                  kind: input.targetRef.kind,
+                  name: input.targetRef.displayName,
+                  targetRef: input.targetRef,
+                  targetRefValue: input.targetRef.targetRef,
+                  metadata: input.targetRef.metadata ?? {},
+                  source: "evaluation_run_start",
+                },
+              },
+              targetSnapshotSchema,
+            )
+          ).id
+        : "");
+    return this.#requestParsed(
+      subjects.evaluationRunStart,
+      {
+        ...envelope(authContext),
+        projectId: input.projectId,
+        evaluationDefinitionId: input.evaluationDefinitionId,
+        kind: input.kind,
+        datasetVersionId: input.datasetVersionId,
+        targetSnapshotId,
+        selectedItemRevisionIds: input.selectedItemRevisionIds,
+        splitSelector: input.splitSelector,
+        metricSettings: input.metricSettings,
+        runPolicy: input.runPolicy,
+        retentionProfile: input.retentionProfile,
+        retentionRole: input.retentionRole,
+        idempotencyKey: input.idempotencyKey,
+      },
+      evaluationRunSchema,
+    );
+  }
+
   async cancelExperimentRun(
     id: string,
     authContext?: NormalizedAuthContext,
@@ -1591,15 +2067,116 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     );
   }
 
-  async startOptimizationRun(
-    input: StartOptimizationRunInput,
+  async pauseExperimentRun(
+    id: string,
     authContext?: NormalizedAuthContext,
   ): Promise<ExperimentRun> {
     return this.#requestParsed(
-      subjects.optimizationStart,
-      { ...envelope(authContext), ...compactInput(input as unknown as Record<string, unknown>) },
+      subjects.experimentPause,
+      {
+        ...envelope(authContext),
+        experimentRunId: id,
+        command: "pause",
+        idempotencyKey: `${id}:pause`,
+      },
       typedExperimentRunSchema,
     );
+  }
+
+  async resumeExperimentRun(
+    id: string,
+    authContext?: NormalizedAuthContext,
+  ): Promise<ExperimentRun> {
+    return this.#requestParsed(
+      subjects.experimentResume,
+      {
+        ...envelope(authContext),
+        experimentRunId: id,
+        command: "resume",
+        idempotencyKey: `${id}:resume`,
+      },
+      typedExperimentRunSchema,
+    );
+  }
+
+  async cancelEvaluationRun(
+    input: EvaluationRunControlInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationRun> {
+    return this.#evaluationRunControl(subjects.evaluationRunCancel, input, authContext);
+  }
+
+  async pauseEvaluationRun(
+    input: EvaluationRunControlInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationRun> {
+    return this.#evaluationRunControl(subjects.evaluationRunPause, input, authContext);
+  }
+
+  async resumeEvaluationRun(
+    input: EvaluationRunControlInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationRun> {
+    return this.#evaluationRunControl(subjects.evaluationRunResume, input, authContext);
+  }
+
+  async #evaluationRunControl(
+    subject: string,
+    input: EvaluationRunControlInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationRun> {
+    return this.#requestParsed(
+      subject,
+      {
+        ...envelope(authContext),
+        projectId: authContext?.projectId ?? "",
+        evaluationRunId: input.evaluationRunId,
+        idempotencyKey: input.idempotencyKey,
+      },
+      evaluationRunSchema,
+    );
+  }
+
+  async startOptimizationRun(
+    input: StartOptimizationRunInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<OptimizationRun> {
+    return this.#requestParsed(
+      subjects.optimizationStart,
+      {
+        ...envelope(authContext),
+        projectId: input.projectId,
+        targetSnapshotId: input.baselineTargetSnapshotId,
+        datasetVersionId:
+          input.quickShotPolicy && typeof input.quickShotPolicy === "object"
+            ? String(
+                (input.quickShotPolicy as { sourceDatasetVersionId?: unknown })
+                  .sourceDatasetVersionId ?? "",
+              )
+            : "",
+        config: input,
+        idempotencyKey: input.idempotencyKey,
+      },
+      optimizationRunSchema,
+    );
+  }
+
+  async createEvaluationComparison(
+    input: CreateEvaluationComparisonInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<EvaluationComparison> {
+    const comparison = await this.#requestParsed(
+      subjects.evaluationComparisonCreate,
+      {
+        ...envelope(authContext),
+        projectId: input.projectId,
+        baselineRunId: input.baselineRunId,
+        candidateRunId: input.candidateRunId,
+        idempotencyKey: input.idempotencyKey,
+      },
+      evaluationComparisonSchema,
+    );
+    return normalizeEvaluationComparison(comparison);
   }
 
   async promotePromptVersion(
@@ -1610,6 +2187,24 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
       subjects.promptVersionPromote,
       { ...envelope(authContext), input },
       typedPromptVersionSchema,
+    );
+  }
+
+  async promoteTargetSnapshot(
+    input: PromoteTargetSnapshotInput,
+    authContext?: NormalizedAuthContext,
+  ): Promise<PromotionRecord> {
+    return this.#requestParsed(
+      subjects.targetPromote,
+      {
+        ...envelope(authContext),
+        projectId: input.projectId,
+        targetRef: { value: input.targetRef },
+        candidateSnapshotId: input.candidateTargetSnapshotId,
+        comparisonId: input.comparisonId,
+        idempotencyKey: input.idempotencyKey,
+      },
+      promotionRecordSchema,
     );
   }
 
@@ -1683,14 +2278,61 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     }
   }
 
+  async *subscribeLiveEvaluationRun(
+    input: LiveEvaluationRunInput,
+    authContext?: NormalizedAuthContext,
+  ): AsyncIterableIterator<EvaluationRunEvent> {
+    if (!this.#pubSub) {
+      throw graphQLErrorFromBridge({
+        id: "ERR-013",
+        code: "MESSAGE_BRIDGE_UNAVAILABLE",
+        message: "Message bridge live evaluation adapter is unavailable",
+        retryable: true,
+      });
+    }
+    const subscriptionId = this.#subscriptionId();
+    const sinkSubject = `eval.live.events.${this.#bffInstanceId}.${subscriptionId}`;
+    const events = createAsyncQueue<EvaluationRunEvent>();
+    const subscription = await this.#pubSub.subscribe(sinkSubject, (message) => {
+      events.push(parseEvaluationRunEvent(decodeJson(message.data)));
+    });
+    let started = false;
+    try {
+      await this.#requestParsed(
+        subjects.liveExperimentStart,
+        {
+          ...envelope(authContext),
+          subscriptionId,
+          evaluationRunId: input.evaluationRunId,
+          sinkSubject,
+        },
+        liveStartDataSchema,
+      );
+      started = true;
+      for await (const event of events) {
+        yield event;
+      }
+    } finally {
+      events.close();
+      await subscription[Symbol.asyncDispose]();
+      if (started) {
+        await this.#stopLiveExperimentRun(subscriptionId);
+      }
+    }
+  }
+
   async searchTraces(
     input: TraceSearchInput,
     authContext?: NormalizedAuthContext,
   ): Promise<TraceSearchResult> {
-    return this.#request<TraceSearchResult>(subjects.traceSearch, {
-      ...envelope(authContext),
-      query: compactInput(input as Record<string, unknown>) as TraceSearchInput,
-    });
+    return this.#requestParsed(
+      subjects.traceSearch,
+      {
+        ...envelope(authContext),
+        ...telemetryQueryPayload(input),
+      },
+      traceSearchResultSchema,
+    );
   }
 
   async getTraceDetail(
@@ -1701,7 +2343,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     return this.#request<TraceDetail>(subjects.traceGet, {
       ...envelope(authContext),
       traceId,
-      query: compactInput(input as Record<string, unknown>) as TraceDetailInput,
+      ...telemetryQueryPayload(input),
     });
   }
 
@@ -1711,7 +2353,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<LogSearchResult> {
     return this.#request<LogSearchResult>(subjects.logSearch, {
       ...envelope(authContext),
-      query: compactInput(input as Record<string, unknown>) as LogSearchInput,
+      ...telemetryQueryPayload(input),
     });
   }
 
@@ -1721,7 +2363,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<TelemetryFacetResult> {
     return this.#request<TelemetryFacetResult>(subjects.telemetryFacets, {
       ...envelope(authContext),
-      query: compactInput(input as Record<string, unknown>) as TelemetryFacetInput,
+      ...telemetryQueryPayload(input),
     });
   }
 
@@ -1731,7 +2373,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<MetricNameSearchResult> {
     return this.#request<MetricNameSearchResult>(subjects.metricNames, {
       ...envelope(authContext),
-      input: compactInput(input as Record<string, unknown>) as MetricNameSearchInput,
+      ...telemetryMetricPayload(input),
     });
   }
 
@@ -1741,9 +2383,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<MetricSeriesResult> {
     return this.#request<MetricSeriesResult>(subjects.metricSeries, {
       ...envelope(authContext),
-      input: compactInput(
-        input as unknown as Record<string, unknown>,
-      ) as unknown as MetricSeriesInput,
+      ...telemetryMetricPayload(input),
     });
   }
 
@@ -1753,9 +2393,7 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
   ): Promise<RichMetricSeriesResult> {
     return this.#request<RichMetricSeriesResult>(subjects.richMetricSeries, {
       ...envelope(authContext),
-      input: compactInput(
-        input as unknown as Record<string, unknown>,
-      ) as unknown as RichMetricSeriesInput,
+      ...telemetryMetricPayload(input),
     });
   }
 
@@ -2073,15 +2711,13 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     const parsed = schema.safeParse(data);
     if (!parsed.success) {
       this.#logger.error("nats_response_validation_failed", {
+        request_id: requestIdFromPayload(payload),
+        error_id: responseContractInvalidError.id,
+        error_code: responseContractInvalidError.code,
         operation_or_subject: subject,
-        issues: parsed.error.issues,
+        issues: boundedValidationIssues(parsed.error.issues),
       });
-      throw graphQLErrorFromBridge({
-        id: "ERR-013",
-        code: "MESSAGE_BRIDGE_UNAVAILABLE",
-        message: "Message bridge returned an invalid response",
-        retryable: true,
-      });
+      throw graphQLErrorFromBridge(responseContractInvalidError, requestIdFromPayload(payload));
     }
     return parsed.data;
   }
@@ -2095,7 +2731,8 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
         timeoutMs: this.#timeoutMs,
         headers: traceContextHeaders(traceContext),
       });
-      const response = parseBridgeResponse<Data>(decodeJson(data));
+      const responseValue = decodeBridgeResponsePayload(data);
+      const response = parseBridgeResponse<Data>(responseValue);
       if (!response.ok) {
         this.#logRequest(
           "warn",
@@ -2126,25 +2763,39 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
         );
         throw graphQLErrorFromBridge(error, response.requestId || requestId);
       }
-      this.#logRequest("info", subject, response.requestId || requestId, start, "ok", traceContext);
+      this.#logRequest(
+        "debug",
+        subject,
+        response.requestId || requestId,
+        start,
+        "ok",
+        traceContext,
+      );
       return response.data;
     } catch (error) {
       if (error instanceof GraphQLError) {
         throw error;
       }
-      const bridgeError = {
-        id: "ERR-014",
-        code: "MESSAGE_BRIDGE_TIMEOUT",
-        message: "Message bridge request timed out",
-        retryable: true,
-      } satisfies BridgeErrorLike;
+      const bridgeError =
+        error instanceof BridgeResponseContractError
+          ? responseContractInvalidError
+          : bridgeErrorFromTransportError(error);
+      if (error instanceof BridgeResponseContractError) {
+        this.#logger.error("nats_response_validation_failed", {
+          request_id: requestId,
+          error_id: bridgeError.id,
+          error_code: bridgeError.code,
+          operation_or_subject: subject,
+          issues: error.issues,
+        });
+      }
       this.#logRequest("error", subject, requestId, start, "error", traceContext, bridgeError);
       throw graphQLErrorFromBridge(bridgeError, requestId);
     }
   }
 
   #logRequest(
-    level: "info" | "warn" | "error",
+    level: "debug" | "info" | "warn" | "error",
     subject: string,
     requestId: string,
     start: number,
@@ -2237,10 +2888,19 @@ export class NATSTelemetryQueryBridge extends MessageBridgeCloudGridBridge {
     connection: ConstructorParameters<typeof NATSRequestReplyClient>[0],
     timeoutMs: number,
     logger: CloudGridLogger,
-    options: BridgeOptions & { pubSub?: EphemeralPubSub; lifecycle?: MessageBridgeLifecycle } = {},
+    options: BridgeOptions & {
+      pubSub?: EphemeralPubSub;
+      lifecycle?: MessageBridgeLifecycle;
+      natsOperationFlushTimeoutMs?: number;
+    } = {},
   ) {
     const requestReply = new NATSRequestReplyClient(connection);
-    const lifecycle = new NATSBridgeLifecycle(connection);
+    const lifecycle = new NATSBridgeLifecycle(
+      connection,
+      options.natsOperationFlushTimeoutMs === undefined
+        ? {}
+        : { flushTimeoutMs: options.natsOperationFlushTimeoutMs },
+    );
     super(requestReply, timeoutMs, logger, {
       ...options,
       pubSub: options.pubSub ?? new NATSEphemeralPubSub(connection),
@@ -2253,10 +2913,31 @@ export async function createNATSTelemetryQueryBridge(
   servers: string,
   timeoutMs: number,
   logger: CloudGridLogger,
-  options: BridgeOptions & { pubSub?: EphemeralPubSub; lifecycle?: MessageBridgeLifecycle } = {},
+  options: BridgeOptions & {
+    pubSub?: EphemeralPubSub;
+    lifecycle?: MessageBridgeLifecycle;
+    natsOperationFlushTimeoutMs?: number;
+  } = {},
 ): Promise<NATSTelemetryQueryBridge> {
-  const connection = await connectNATS({ servers, name: "cloudgrid-bff" });
+  const connection = await connectNATSWithStartupRetry({ servers, name: "cloudgrid-bff" });
   return new NATSTelemetryQueryBridge(connection, timeoutMs, logger, options);
+}
+
+async function connectNATSWithStartupRetry(options: { servers: string; name: string }) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 20; attempt += 1) {
+    try {
+      return await connectNATS(options);
+    } catch (error) {
+      lastError = error;
+      await delay(250);
+    }
+  }
+  throw lastError;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function graphQLErrorFromBridge(error?: BridgeErrorLike, requestId?: string) {
@@ -2295,6 +2976,19 @@ function compactNullish(value: object) {
       ([, entryValue]) => entryValue !== null && entryValue !== undefined,
     ),
   );
+}
+
+function normalizeEvaluationComparison(comparison: EvaluationComparison): EvaluationComparison {
+  const row = comparison as unknown as Record<string, unknown>;
+  const summary = row.summary;
+  return {
+    ...comparison,
+    baselineRunId: String(row.baselineRunId ?? row.baselineEvaluationRunId ?? ""),
+    candidateRunId: String(row.candidateRunId ?? row.candidateEvaluationRunId ?? ""),
+    metricResults: Array.isArray(row.metricResults) ? row.metricResults : [],
+    metricAggregates: Array.isArray(row.metricAggregates) ? row.metricAggregates : [],
+    summary: typeof summary === "string" ? summary : JSON.stringify(summary ?? {}),
+  } as EvaluationComparison;
 }
 
 export function elapsedMilliseconds(start: number): number {
@@ -2383,6 +3077,79 @@ function requestIdFromPayload(payload: unknown): string {
   return "";
 }
 
+function boundedValidationIssues(issues: z.ZodIssue[]): Array<{
+  code: string;
+  path: string;
+  message: string;
+}> {
+  return issues.slice(0, maxLoggedValidationIssues).map((issue) => ({
+    code: issue.code,
+    path: issue.path.slice(0, maxLoggedValidationPathDepth).map(String).join(".") || "$",
+    message: issue.message,
+  }));
+}
+
+function bridgeErrorFromTransportError(error: unknown): BridgeErrorLike {
+  const code = errorCode(error);
+  if (isNatsTimeoutCode(code)) {
+    return {
+      id: "ERR-014",
+      code: "MESSAGE_BRIDGE_TIMEOUT",
+      message: "Message bridge request timed out",
+      retryable: true,
+    };
+  }
+  if (isNatsUnavailableCode(code)) {
+    return {
+      id: "ERR-013",
+      code: "MESSAGE_BRIDGE_UNAVAILABLE",
+      message: "Message bridge is unavailable",
+      retryable: true,
+    };
+  }
+  if (error instanceof SyntaxError) {
+    return responseContractInvalidError;
+  }
+  return {
+    id: "ERR-013",
+    code: "MESSAGE_BRIDGE_UNAVAILABLE",
+    message: "Message bridge is unavailable",
+    retryable: true,
+  };
+}
+
+function errorCode(error: unknown): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string"
+  ) {
+    return error.code;
+  }
+  return "";
+}
+
+function isNatsTimeoutCode(code: string): boolean {
+  return code === "TIMEOUT" || code === "408" || code === "CONNECTION_TIMEOUT";
+}
+
+function isNatsUnavailableCode(code: string): boolean {
+  return (
+    code === "503" ||
+    code === "CONNECTION_CLOSED" ||
+    code === "CONNECTION_DRAINING" ||
+    code === "CONNECTION_REFUSED" ||
+    code === "DISCONNECT" ||
+    code === "REQUEST_ERROR" ||
+    code === "PERMISSIONS_VIOLATION" ||
+    code === "AUTHORIZATION_VIOLATION" ||
+    code === "AUTHENTICATION_EXPIRED" ||
+    code === "AUTHENTICATION_TIMEOUT" ||
+    code === "ACCOUNT_EXPIRED"
+  );
+}
+
 const cloudGridErrorIdSchema = z.enum([
   "ERR-001",
   "ERR-002",
@@ -2406,6 +3173,7 @@ const cloudGridErrorIdSchema = z.enum([
   "ERR-020",
   "ERR-021",
   "ERR-022",
+  "ERR-023",
 ]);
 
 const bridgeErrorSchema = z.object({
@@ -2423,17 +3191,39 @@ const bridgeResponseSchema = z.object({
   error: bridgeErrorSchema.optional(),
 });
 
-function parseBridgeResponse<Data>(value: unknown): BridgeResponse<Data> {
-  try {
-    return parseWithZod(bridgeResponseSchema, value, "bridge response") as BridgeResponse<Data>;
-  } catch {
-    throw graphQLErrorFromBridge({
-      id: "ERR-013",
-      code: "MESSAGE_BRIDGE_UNAVAILABLE",
-      message: "Message bridge returned an invalid response",
-      retryable: true,
-    });
+class BridgeResponseContractError extends Error {
+  issues: Array<{ code: string; path: string; message: string }>;
+
+  constructor(message: string, issues: Array<{ code: string; path: string; message: string }>) {
+    super(message);
+    this.name = "BridgeResponseContractError";
+    this.issues = issues;
   }
+}
+
+function decodeBridgeResponsePayload(value: Uint8Array): unknown {
+  try {
+    return decodeJson(value);
+  } catch {
+    throw new BridgeResponseContractError("Bridge response payload is not valid JSON", [
+      {
+        code: "invalid_json",
+        path: "$",
+        message: "Bridge response payload is not valid JSON",
+      },
+    ]);
+  }
+}
+
+function parseBridgeResponse<Data>(value: unknown): BridgeResponse<Data> {
+  const parsed = bridgeResponseSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new BridgeResponseContractError(
+      "Bridge response envelope did not match the message contract",
+      boundedValidationIssues(parsed.error.issues),
+    );
+  }
+  return parsed.data as BridgeResponse<Data>;
 }
 
 const dateTimeSchema = z.string().datetime({ offset: true });
@@ -2527,15 +3317,100 @@ const scorerKindSchema = z.enum([
   "semantic",
   "rag",
   "llm_judge",
+  "pairwise_judge",
   "tool_correctness",
   "trajectory",
+  "workflow",
   "human",
+  "composite",
 ]);
 const evalTargetKindSchema = z.enum(["agentRun", "span", "datasetItemRun"]);
-const experimentRunStatusSchema = z.enum(["queued", "running", "cancelled", "failed", "finished"]);
+const experimentRunStatusSchema = z.enum([
+  "queued",
+  "running",
+  "pausing",
+  "paused",
+  "resuming",
+  "cancelling",
+  "cancelled",
+  "failed",
+  "completed",
+]);
 const annotationStatusSchema = z.enum(["open", "in_review", "resolved", "dismissed"]);
-const datasetSplitSchema = z.enum(["dev", "optimization", "validation", "regression", "holdout"]);
-const datasetReviewStatusSchema = z.enum(["unreviewed", "reviewed", "rejected"]);
+const evalSolverKindSchema = z.enum(["prompt", "agent", "workflow", "skill", "tool"]);
+const evalBaselineKindSchema = z.enum(["experiment_run", "prompt_version", "solver_ref", "none"]);
+const optimizerKindSchema = z.enum(["bootstrap_fewshot", "critic_mutate_judge_pick"]);
+const bootstrapFewshotDiversityStrategySchema = z.enum([
+  "none",
+  "by_label",
+  "by_cluster",
+  "by_failure_mode",
+]);
+const evaluationFamilySchema = z.enum([
+  "classification",
+  "extraction",
+  "freeform_answer",
+  "tool_use",
+  "agent_loop",
+  "workflow",
+  "skill",
+]);
+const datasetValueTypeSchema = z.enum(["text", "json"]);
+const datasetSplitSchema = z.enum(["training", "validation", "test"]);
+const datasetCurationStatusSchema = z.enum([
+  "draft",
+  "needs_expected",
+  "needs_review",
+  "ready",
+  "rejected",
+]);
+const datasetReviewStatusSchema = datasetCurationStatusSchema;
+const retentionProfileSchema = z.enum([
+  "balanced",
+  "fast_iteration",
+  "audit_friendly",
+  "minimal_storage",
+]);
+const datasetVersionSourceSchema = z.enum([
+  "manual",
+  "import",
+  "trace_import",
+  "optimization",
+  "candidate_commit",
+]);
+const datasetTargetShapeSchema = z.enum([
+  "single_turn",
+  "conversation",
+  "tool_call",
+  "agent_trajectory",
+  "workflow_trace",
+  "retrieval_case",
+  "production_trace_ref",
+]);
+const datasetContentTreatmentSchema = z.enum([
+  "original",
+  "realistic_anonymized",
+  "redacted",
+  "synthetic",
+]);
+const datasetCandidateStatusSchema = z.enum([
+  "suggested",
+  "reviewing",
+  "ready",
+  "committed",
+  "dismissed",
+  "superseded",
+]);
+const datasetCandidateSourceKindSchema = z.enum([
+  "trace",
+  "eval_result",
+  "experiment_item_run",
+  "production_measurement",
+  "coverage_gap",
+  "health_issue",
+  "failure_cluster",
+  "manual",
+]);
 const datasetHealthStatusSchema = z.enum([
   "ready",
   "needs_review",
@@ -2560,6 +3435,28 @@ const searchResultSchema = <Item extends z.ZodTypeAny>(item: Item) =>
     items: z.array(item),
     nextCursor: z.string().optional().nullable(),
   });
+
+const traceSummarySchema = z.object({
+  id: z.string().min(1),
+  serviceName: z.string().optional().nullable(),
+  operationName: z.string().optional().nullable(),
+  startedAt: dateTimeSchema,
+  startedAtUnixNano: z.string().min(1),
+  endedAt: dateTimeSchema.optional().nullable(),
+  endedAtUnixNano: z.string().optional().nullable(),
+  durationNano: z.string().optional().nullable(),
+  durationMs: z.number().optional().nullable(),
+  rootSpanId: z.string().optional().nullable(),
+  status: traceStatusSchema.optional().nullable(),
+  attributes: z.record(z.string(), z.unknown()),
+  spanCount: z.number().int(),
+  errorSpanCount: z.number().int(),
+  logCount: z.number().int(),
+  serviceCount: z.number().int(),
+});
+const traceSearchResultSchema = searchResultSchema(
+  traceSummarySchema,
+) as z.ZodType<TraceSearchResult>;
 
 const tokenTotalsSchema = z
   .object({
@@ -2587,7 +3484,20 @@ const evalResultSchema = z.object({
   experimentRunId: z.string().optional().nullable(),
   score: z.number(),
   passed: z.boolean(),
+  runMode: z.string().optional().nullable(),
+  resultKind: z.string().optional().nullable(),
+  metrics: z.unknown().optional().nullable(),
+  breakdown: z.unknown().optional().nullable(),
+  visualization: z
+    .object({
+      kind: z.string().min(1),
+      title: z.string().optional().nullable(),
+      data: z.unknown(),
+    })
+    .optional()
+    .nullable(),
   evidence: z.unknown().optional().nullable(),
+  problem: z.unknown().optional().nullable(),
   judgeRunRef: z.string().optional().nullable(),
   producedAt: dateTimeSchema,
 });
@@ -2656,22 +3566,131 @@ const agentRunSchema = z.object({
     }),
   ),
   evalResults: z.array(evalResultSchema),
+  metricResults: z.array(z.record(z.string(), z.unknown())).default([]),
 });
 
-const datasetItemSchema = z.object({
+const aiEvalSourceRefSchema = z.object({
+  kind: z.string().min(1),
+  traceId: z.string().optional().nullable(),
+  spanId: z.string().optional().nullable(),
+  evaluationRunId: z.string().optional().nullable(),
+  evaluationItemRunId: z.string().optional().nullable(),
+  importJobId: z.string().optional().nullable(),
+  candidateId: z.string().optional().nullable(),
+  metadata: z.unknown(),
+});
+const datasetItemRevisionSchema = z.preprocess(
+  (value) => {
+    const item = value && typeof value === "object" ? compactNullish(value) : {};
+    const now = "1970-01-01T00:00:00.000Z";
+    return {
+      id: item.id ?? "revision-unknown",
+      datasetItemId: item.datasetItemId ?? item.id ?? "item-unknown",
+      datasetId: item.datasetId ?? "",
+      input: item.input ?? {},
+      expected: item.expected ?? null,
+      observedOutput: item.observedOutput ?? null,
+      reason: typeof item.reason === "string" ? item.reason : "",
+      metadata: item.metadata ?? {},
+      sourceRefs: Array.isArray(item.sourceRefs) ? item.sourceRefs : [],
+      split: item.split ?? "validation",
+      curationStatus: item.curationStatus ?? item.reviewStatus ?? "draft",
+      curationNote: item.curationNote ?? null,
+      contentTreatment: item.contentTreatment ?? "original",
+      anonymizationProvenance: item.anonymizationProvenance ?? item.anonymization ?? null,
+      createdAt: item.createdAt ?? now,
+      createdBy: item.createdBy ?? "system",
+      updatedAt: item.updatedAt ?? item.createdAt ?? now,
+      updatedBy: item.updatedBy ?? item.createdBy ?? "system",
+    };
+  },
+  z.object({
+    id: z.string().min(1),
+    datasetItemId: z.string().min(1),
+    datasetId: z.string().min(1),
+    input: z.unknown(),
+    expected: z.unknown().optional().nullable(),
+    observedOutput: z.unknown().optional().nullable(),
+    reason: z.string(),
+    metadata: z.unknown(),
+    sourceRefs: z.array(aiEvalSourceRefSchema),
+    split: datasetSplitSchema,
+    curationStatus: datasetCurationStatusSchema,
+    curationNote: z.string().optional().nullable(),
+    contentTreatment: datasetContentTreatmentSchema,
+    anonymizationProvenance: z.unknown().optional().nullable(),
+    createdAt: dateTimeSchema,
+    createdBy: z.string().min(1),
+    updatedAt: dateTimeSchema,
+    updatedBy: z.string().min(1),
+  }),
+);
+const datasetItemSchema = z.preprocess(
+  (value) => {
+    const item = value && typeof value === "object" ? compactNullish(value) : {};
+    const now = "1970-01-01T00:00:00.000Z";
+    const latestRevision = item.latestRevision ?? {
+      ...item,
+      id: item.latestRevisionId ?? item.id ?? "revision-unknown",
+      datasetItemId: item.id ?? item.datasetItemId ?? "item-unknown",
+    };
+    return {
+      id: item.id ?? item.datasetItemId ?? "item-unknown",
+      datasetId: item.datasetId ?? "",
+      latestRevisionId: item.latestRevisionId ?? latestRevision.id ?? item.id ?? "revision-unknown",
+      latestRevision,
+      createdAt: item.createdAt ?? latestRevision.createdAt ?? now,
+      createdBy: item.createdBy ?? latestRevision.createdBy ?? "system",
+      updatedAt: item.updatedAt ?? latestRevision.updatedAt ?? item.createdAt ?? now,
+      updatedBy: item.updatedBy ?? latestRevision.updatedBy ?? item.createdBy ?? "system",
+    };
+  },
+  z.object({
+    id: z.string().min(1),
+    datasetId: z.string().min(1),
+    latestRevisionId: z.string().min(1),
+    latestRevision: datasetItemRevisionSchema,
+    createdAt: dateTimeSchema,
+    createdBy: z.string().min(1),
+    updatedAt: dateTimeSchema,
+    updatedBy: z.string().min(1),
+  }),
+);
+
+const datasetCandidateSchema = z.object({
   id: z.string().min(1),
-  datasetId: z.string().min(1),
-  version: z.number().int(),
-  input: z.unknown(),
+  datasetId: z.string().optional().nullable(),
+  status: datasetCandidateStatusSchema,
+  sourceKind: datasetCandidateSourceKindSchema,
+  source: z.unknown(),
+  targetShape: datasetTargetShapeSchema,
+  input: z.unknown().optional().nullable(),
   expected: z.unknown().optional().nullable(),
   metadata: z.unknown(),
-  sourceTraceId: z.string().optional().nullable(),
-  sourceSpanId: z.string().optional().nullable(),
   split: datasetSplitSchema,
   reviewStatus: datasetReviewStatusSchema,
-  synthetic: z.boolean(),
-  duplicateOfItemId: z.string().optional().nullable(),
-  leakageWarnings: z.array(z.string()),
+  contentTreatment: datasetContentTreatmentSchema,
+  anonymization: z
+    .object({
+      policyId: z.string().min(1),
+      policyVersion: z.number().int().min(1),
+      transformedAt: dateTimeSchema,
+      consistencyScope: z.string().min(1),
+      transformedFields: z.array(
+        z.object({
+          path: z.string().min(1),
+          entityType: z.string().min(1),
+          strategy: z.string().min(1),
+        }),
+      ),
+    })
+    .optional()
+    .nullable(),
+  reason: z.string().min(1),
+  clusterId: z.string().optional().nullable(),
+  warnings: z.array(z.string()),
+  createdAt: dateTimeSchema,
+  updatedAt: dateTimeSchema,
 });
 
 const datasetImportFormatSchema = z.enum(["jsonl", "json_array", "csv", "zip"]);
@@ -2689,16 +3708,31 @@ const datasetImportIssueSchema = z.object({
   message: z.string().min(1),
   path: z.string().optional().nullable(),
 });
-const datasetItemPreviewSchema = z.object({
-  input: z.unknown(),
-  expected: z.unknown().optional().nullable(),
-  metadata: z.unknown(),
-  split: datasetSplitSchema,
-  reviewStatus: datasetReviewStatusSchema,
-  sourceTraceId: z.string().optional().nullable(),
-  sourceSpanId: z.string().optional().nullable(),
-  synthetic: z.boolean(),
-});
+const datasetItemPreviewSchema = z.preprocess(
+  (value) => {
+    const item = value && typeof value === "object" ? compactNullish(value) : {};
+    return {
+      input: item.input ?? {},
+      expected: item.expected ?? null,
+      observedOutput: item.observedOutput ?? null,
+      reason: typeof item.reason === "string" ? item.reason : "",
+      metadata: item.metadata ?? {},
+      split: item.split ?? "validation",
+      curationStatus: item.curationStatus ?? item.reviewStatus ?? "needs_review",
+      sourceRefs: Array.isArray(item.sourceRefs) ? item.sourceRefs : [],
+    };
+  },
+  z.object({
+    input: z.unknown(),
+    expected: z.unknown().optional().nullable(),
+    observedOutput: z.unknown().optional().nullable(),
+    reason: z.string(),
+    metadata: z.unknown(),
+    split: datasetSplitSchema,
+    curationStatus: datasetCurationStatusSchema,
+    sourceRefs: z.array(aiEvalSourceRefSchema),
+  }),
+);
 const datasetImportJobSchema = z.object({
   id: z.string().min(1),
   datasetId: z.string().min(1),
@@ -2732,19 +3766,40 @@ const datasetImportJobSchema = z.object({
   expiresAt: dateTimeSchema,
   committedDatasetVersion: z.number().int().optional().nullable(),
 });
-const datasetExportJobSchema = z.object({
-  id: z.string().min(1),
-  datasetId: z.string().min(1),
-  datasetVersion: z.number().int().min(1),
-  status: datasetExportStatusSchema,
-  format: datasetExportFormatSchema,
-  rowCount: z.number().int().min(0),
-  sizeBytes: z.number().int().min(0).optional().nullable(),
-  sha256: z.string().optional().nullable(),
-  downloadUrl: z.string().optional().nullable(),
-  createdAt: dateTimeSchema,
-  expiresAt: dateTimeSchema,
-});
+const datasetExportJobSchema = z.preprocess(
+  (value) => {
+    if (!value || typeof value !== "object") {
+      return value;
+    }
+    const job = value as Record<string, unknown>;
+    const datasetId = typeof job.datasetId === "string" ? job.datasetId : "";
+    const datasetVersion =
+      typeof job.datasetVersion === "number" && Number.isInteger(job.datasetVersion)
+        ? job.datasetVersion
+        : 1;
+    return {
+      ...job,
+      datasetVersionId:
+        typeof job.datasetVersionId === "string" && job.datasetVersionId.length > 0
+          ? job.datasetVersionId
+          : `${datasetId}:version:${datasetVersion}`,
+    };
+  },
+  z.object({
+    id: z.string().min(1),
+    datasetId: z.string().min(1),
+    datasetVersionId: z.string().min(1),
+    datasetVersion: z.number().int().min(1),
+    status: datasetExportStatusSchema,
+    format: datasetExportFormatSchema,
+    rowCount: z.number().int().min(0),
+    sizeBytes: z.number().int().min(0).optional().nullable(),
+    sha256: z.string().optional().nullable(),
+    downloadUrl: z.string().optional().nullable(),
+    createdAt: dateTimeSchema,
+    expiresAt: dateTimeSchema,
+  }),
+);
 
 const datasetHealthSchema = z.preprocess(
   (value) => ({
@@ -2753,7 +3808,7 @@ const datasetHealthSchema = z.preprocess(
   }),
   z.object({
     status: datasetHealthStatusSchema,
-    reviewedItemCount: z.number().int(),
+    readyItemCount: z.number().int(),
     totalItemCount: z.number().int(),
     splitCounts: z.unknown(),
     duplicateCandidateCount: z.number().int(),
@@ -2768,7 +3823,7 @@ const datasetHealthSchema = z.preprocess(
 function defaultDatasetHealth() {
   return {
     status: "needs_review",
-    reviewedItemCount: 0,
+    readyItemCount: 0,
     totalItemCount: 0,
     splitCounts: {},
     duplicateCandidateCount: 0,
@@ -2780,23 +3835,153 @@ function defaultDatasetHealth() {
   };
 }
 
+const datasetSettingsSchema = z.preprocess(
+  (value) => {
+    const defaults = defaultDatasetSettings();
+    const settings = value && typeof value === "object" ? compactNullish(value) : {};
+    const intakePolicy =
+      settings.intakePolicy && typeof settings.intakePolicy === "object"
+        ? compactNullish(settings.intakePolicy)
+        : {};
+    return {
+      ...defaults,
+      ...settings,
+      intakePolicy: {
+        ...defaults.intakePolicy,
+        ...intakePolicy,
+      },
+      defaultMetricSettings: Array.isArray(settings.defaultMetricSettings)
+        ? settings.defaultMetricSettings
+        : defaults.defaultMetricSettings,
+    };
+  },
+  z.object({
+    evaluationFamily: evaluationFamilySchema,
+    inputType: datasetValueTypeSchema,
+    expectedType: datasetValueTypeSchema,
+    inputJsonSchema: z.unknown().optional().nullable(),
+    expectedJsonSchema: z.unknown().optional().nullable(),
+    defaultSplit: datasetSplitSchema,
+    intakePolicy: z.object({
+      manualDefaultStatus: datasetCurationStatusSchema,
+      importDefaultStatus: datasetCurationStatusSchema,
+      traceDefaultStatus: datasetCurationStatusSchema,
+    }),
+    traceExtractionSettings: z.unknown().optional().nullable(),
+    anonymizationPolicy: z.unknown().optional().nullable(),
+    defaultMetricSettings: z.array(z.unknown()),
+    retentionProfile: retentionProfileSchema,
+  }),
+);
+
+function defaultDatasetSettings() {
+  return {
+    evaluationFamily: "classification",
+    inputType: "json",
+    expectedType: "json",
+    defaultSplit: "validation",
+    intakePolicy: {
+      manualDefaultStatus: "draft",
+      importDefaultStatus: "needs_review",
+      traceDefaultStatus: "needs_expected",
+    },
+    defaultMetricSettings: [],
+    retentionProfile: "balanced",
+  };
+}
+
+const datasetVersionSchema = z.preprocess(
+  (value) => {
+    const version = value && typeof value === "object" ? compactNullish(value) : {};
+    return {
+      id: version.id ?? "version-1",
+      datasetId: version.datasetId ?? "",
+      version: typeof version.version === "number" ? version.version : 1,
+      digest: typeof version.digest === "string" ? version.digest : "digest-unknown",
+      createdAt: version.createdAt ?? "1970-01-01T00:00:00.000Z",
+      createdBy: version.createdBy ?? "system",
+      settingsSnapshot: version.settingsSnapshot ?? defaultDatasetSettings(),
+      itemRevisionIds: Array.isArray(version.itemRevisionIds) ? version.itemRevisionIds : [],
+      parentVersionId: version.parentVersionId ?? null,
+      changeSummary: version.changeSummary ?? null,
+      source: version.source ?? "manual",
+    };
+  },
+  z.object({
+    id: z.string().min(1),
+    datasetId: z.string(),
+    version: z.number().int().min(1),
+    digest: z.string().min(1),
+    createdAt: dateTimeSchema,
+    createdBy: z.string().min(1),
+    settingsSnapshot: datasetSettingsSchema,
+    itemRevisionIds: z.array(z.string()),
+    parentVersionId: z.string().optional().nullable(),
+    changeSummary: z.string().optional().nullable(),
+    source: datasetVersionSourceSchema,
+  }),
+);
+
 const datasetSchema = z.preprocess(
   (value) => {
     const dataset = value && typeof value === "object" ? compactNullish(value) : {};
     const itemCount = typeof dataset.itemCount === "number" ? dataset.itemCount : 0;
-    const reviewedItemCount =
-      typeof dataset.reviewedItemCount === "number" ? dataset.reviewedItemCount : 0;
+    const readyItemCount =
+      typeof dataset.readyItemCount === "number"
+        ? dataset.readyItemCount
+        : typeof dataset.reviewedItemCount === "number"
+          ? dataset.reviewedItemCount
+          : 0;
+    const version =
+      typeof dataset.currentVersion === "number"
+        ? dataset.currentVersion
+        : typeof dataset.version === "number"
+          ? dataset.version
+          : 1;
+    const currentVersionId =
+      typeof dataset.currentVersionId === "string" && dataset.currentVersionId.length > 0
+        ? dataset.currentVersionId
+        : `${String(dataset.id ?? "dataset")}:version:${version}`;
+    const createdAt =
+      typeof dataset.createdAt === "string" ? dataset.createdAt : "1970-01-01T00:00:00.000Z";
     const splitCounts =
       dataset.splitCounts && typeof dataset.splitCounts === "object" ? dataset.splitCounts : {};
+    const settings = dataset.settings ?? defaultDatasetSettings();
     return {
       ...dataset,
+      projectId: typeof dataset.projectId === "string" ? dataset.projectId : "",
+      currentVersionId,
+      currentVersion: {
+        id: currentVersionId,
+        datasetId: typeof dataset.id === "string" ? dataset.id : "",
+        version,
+        digest:
+          typeof dataset.currentDigest === "string"
+            ? dataset.currentDigest
+            : typeof dataset.digest === "string"
+              ? dataset.digest
+              : "digest-unknown",
+        createdAt,
+        createdBy: typeof dataset.createdBy === "string" ? dataset.createdBy : "system",
+        settingsSnapshot: settings,
+        itemRevisionIds: Array.isArray(dataset.itemRevisionIds) ? dataset.itemRevisionIds : [],
+        source: "manual",
+        ...(dataset.currentVersion && typeof dataset.currentVersion === "object"
+          ? compactNullish(dataset.currentVersion)
+          : {}),
+      },
+      settings,
+      createdAt,
+      createdBy: typeof dataset.createdBy === "string" ? dataset.createdBy : "system",
+      updatedAt: typeof dataset.updatedAt === "string" ? dataset.updatedAt : createdAt,
+      updatedBy: typeof dataset.updatedBy === "string" ? dataset.updatedBy : "system",
       itemCount,
-      reviewedItemCount,
+      readyItemCount,
       splitCounts,
       health: {
         ...defaultDatasetHealth(),
         totalItemCount: itemCount,
-        reviewedItemCount,
+        readyItemCount,
         splitCounts,
         ...(dataset.health && typeof dataset.health === "object"
           ? compactNullish(dataset.health)
@@ -2807,12 +3992,18 @@ const datasetSchema = z.preprocess(
   },
   z.object({
     id: z.string().min(1),
+    projectId: z.string(),
     name: z.string().min(1),
     description: z.string().optional().nullable(),
-    version: z.number().int(),
+    currentVersionId: z.string().min(1),
+    currentVersion: datasetVersionSchema,
+    settings: datasetSettingsSchema,
     createdAt: dateTimeSchema,
+    createdBy: z.string().min(1),
+    updatedAt: dateTimeSchema,
+    updatedBy: z.string().min(1),
     itemCount: z.number().int(),
-    reviewedItemCount: z.number().int(),
+    readyItemCount: z.number().int(),
     splitCounts: z.unknown(),
     health: datasetHealthSchema,
     tags: z.array(z.string()),
@@ -2834,6 +4025,109 @@ const datasetSplitSelectorSchema = z.object({
   splits: z.array(datasetSplitSchema),
   reviewedOnly: z.boolean(),
   includeSynthetic: z.boolean(),
+});
+
+const versionedRefSchema = z.object({
+  id: z.string().min(1),
+  version: z.number().int().min(1),
+});
+
+const evalSolverRefSchema = z.object({
+  kind: evalSolverKindSchema,
+  name: z.string().min(1),
+  promptVersion: versionedRefSchema.optional().nullable(),
+  agentRef: z.string().optional().nullable(),
+  workflowRef: z.string().optional().nullable(),
+  skillSnapshotRef: z.string().optional().nullable(),
+  toolSnapshotRef: z.string().optional().nullable(),
+  modelAlias: z.string().optional().nullable(),
+  providerProfileId: z.string().optional().nullable(),
+});
+
+const evalBaselineRefSchema = z.object({
+  kind: evalBaselineKindSchema,
+  experimentRunId: z.string().optional().nullable(),
+  promptVersion: versionedRefSchema.optional().nullable(),
+  solverRef: evalSolverRefSchema.optional().nullable(),
+});
+
+const optimizationConfigSchema = z.object({
+  optimizerKind: optimizerKindSchema,
+  bootstrapFewshot: z
+    .object({
+      candidateCount: z.number().int(),
+      maxExamplesPerCandidate: z.number().int(),
+      selectionScorerIds: z.array(z.string()),
+      seed: z.number().int(),
+      diversityStrategy: bootstrapFewshotDiversityStrategySchema,
+    })
+    .optional()
+    .nullable(),
+  criticMutateJudgePick: z
+    .object({
+      candidateCount: z.number().int(),
+      mutationInstructions: z.string(),
+      judgeScorerIds: z.array(z.string()),
+      seed: z.number().int(),
+      maxRounds: z.number().int(),
+      keepTopK: z.number().int().optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+});
+
+const evalRunPolicySchema = z.object({
+  maxParallelRequests: z.number().int(),
+  tokenBudget: z.unknown().optional().nullable(),
+  costBudget: z.unknown().optional().nullable(),
+  rateLimit: z.unknown().optional().nullable(),
+  retry: z.unknown().optional().nullable(),
+  timeout: z.unknown().optional().nullable(),
+  failureBudget: z.unknown().optional().nullable(),
+  backpressure: z.unknown().optional().nullable(),
+  checkpoint: z.unknown().optional().nullable(),
+  quarantine: z.unknown().optional().nullable(),
+  workspaceQuota: z.unknown().optional().nullable(),
+  cleanupRetry: z.unknown().optional().nullable(),
+});
+
+const experimentRunSummarySchema = z.object({
+  itemCounts: z.object({
+    total: z.number().int(),
+    passed: z.number().int(),
+    failed: z.number().int(),
+    errored: z.number().int(),
+    skipped: z.number().int(),
+    needsReview: z.number().int(),
+    quarantined: z.number().int(),
+  }),
+  scoreSummaries: z.array(
+    z.object({
+      scorerId: z.string().min(1),
+      scorerVersion: z.number().int(),
+      resultKind: z.string().optional().nullable(),
+      passRate: z.number(),
+      meanScore: z.number(),
+      p50: z.number().optional().nullable(),
+      p95: z.number().optional().nullable(),
+      support: z.number().int(),
+      visualization: z.unknown().optional().nullable(),
+    }),
+  ),
+  problemCounts: z.object({
+    modelQuality: z.number().int(),
+    itemQuality: z.number().int(),
+    scorerConfig: z.number().int(),
+    infrastructure: z.number().int(),
+  }),
+  budgetUsage: z.object({
+    inputTokens: z.number().int(),
+    outputTokens: z.number().int(),
+    totalTokens: z.number().int(),
+    estimatedUsd: z.number(),
+  }),
+  latency: z.unknown().optional().nullable(),
+  regressions: z.array(z.unknown()),
 });
 
 const experimentSchema = z.preprocess(
@@ -2871,7 +4165,7 @@ const experimentSchema = z.preprocess(
     datasetVersion: z.number().int(),
     splitSelector: datasetSplitSelectorSchema,
     scorerIds: z.array(z.string().min(1)),
-    baselineRef: z.unknown().optional().nullable(),
+    baselineRef: evalBaselineRefSchema.optional().nullable(),
     promptVersionRefs: z.array(z.string()),
     skillSnapshotRefs: z.array(z.string()),
     toolSnapshotRefs: z.array(z.string()),
@@ -2896,15 +4190,46 @@ const datasetItemRunSchema = z.object({
 const experimentRunSchema = z.object({
   id: z.string().min(1),
   experimentId: z.string().min(1),
-  solverRef: z.unknown(),
-  manifest: z.unknown().optional().nullable(),
+  solverRef: evalSolverRefSchema,
+  manifest: z
+    .object({
+      digest: z.string().min(1),
+      datasetId: z.string().min(1),
+      datasetVersion: z.number().int(),
+      splitSelector: datasetSplitSelectorSchema,
+      scorerRefs: z.array(versionedRefSchema),
+      baselineRef: evalBaselineRefSchema.optional().nullable(),
+      solverRef: evalSolverRefSchema,
+      optimizationConfig: optimizationConfigSchema.optional().nullable(),
+      promptVersionRefs: z.array(z.string()),
+      skillSnapshotRefs: z.array(z.string()),
+      toolSnapshotRefs: z.array(z.string()),
+      providerProfileRefs: z.array(z.string()),
+      budget: z.unknown(),
+      concurrency: z.unknown(),
+      createdAt: dateTimeSchema,
+    })
+    .optional()
+    .nullable(),
   baselineRunId: z.string().optional().nullable(),
   status: experimentRunStatusSchema,
+  runPolicy: evalRunPolicySchema,
   startedAt: dateTimeSchema,
   endedAt: dateTimeSchema.optional().nullable(),
-  summary: z.unknown(),
+  summary: experimentRunSummarySchema,
   itemRuns: z.unknown().optional(),
 });
+
+const aiEvalObjectSchema = z.object({}).passthrough() as z.ZodType<Record<string, unknown>>;
+const evaluationDefinitionSchema = aiEvalObjectSchema as unknown as z.ZodType<EvaluationDefinition>;
+const evaluationRunSchema = aiEvalObjectSchema as unknown as z.ZodType<EvaluationRun>;
+const evaluationItemRunSchema = aiEvalObjectSchema as unknown as z.ZodType<EvaluationItemRun>;
+const metricResultSchema = aiEvalObjectSchema as unknown as z.ZodType<MetricResult>;
+const evaluationComparisonSchema = aiEvalObjectSchema as unknown as z.ZodType<EvaluationComparison>;
+const optimizationRunSchema = aiEvalObjectSchema as unknown as z.ZodType<OptimizationRun>;
+const targetSnapshotSchema = aiEvalObjectSchema as unknown as z.ZodType<TargetSnapshot>;
+const targetDiffSchema = aiEvalObjectSchema as unknown as z.ZodType<TargetDiff>;
+const promotionRecordSchema = aiEvalObjectSchema as unknown as z.ZodType<PromotionRecord>;
 
 const promptVersionSchema = z.object({
   id: z.string().min(1),
@@ -2966,7 +4291,8 @@ const onlineEvaluationPolicySchema = z.object({
   enabled: z.boolean(),
   name: z.string().min(1),
   target: z.unknown(),
-  scorerIds: z.array(z.string().min(1)),
+  scorerIds: z.array(z.string().min(1)).optional(),
+  metricIds: z.array(z.string().min(1)).optional(),
   sampleRate: z.number(),
   maxDailyRuns: z.number().int().optional().nullable(),
   annotationRules: z.array(annotationRuleSchema),
@@ -2984,14 +4310,17 @@ const aiEvalBudgetSchema = z.object({
 const aiEvalSamplingSchema = z.object({
   defaultOnlineSampleRate: z.number(),
   maxOnlineSampleRate: z.number(),
-  maxConcurrentExperimentItems: z.number().int(),
+  maxConcurrentExperimentItems: z.number().int().optional(),
+  maxConcurrentEvaluationItems: z.number().int().optional(),
   maxConcurrentOptimizationCandidates: z.number().int(),
 });
 
 const datasetDefaultsSchema = z.object({
   splitAllocation: z.unknown(),
-  smallDatasetReviewedThreshold: z.number().int(),
-  requireReviewForRegression: z.boolean(),
+  smallDatasetReviewedThreshold: z.number().int().optional(),
+  requireReviewForRegression: z.boolean().optional(),
+  smallDatasetReadyThreshold: z.number().int().optional(),
+  requireReadyForTest: z.boolean().optional(),
 });
 
 const projectAiSettingsSchema = z.object({
@@ -3017,6 +4346,11 @@ const projectAiSettingsSchema = z.object({
   version: z.number().int(),
   updatedAt: dateTimeSchema,
   updatedByUserId: z.string().min(1),
+});
+
+const aiProviderSecretSchema = z.object({
+  credentialRef: z.string().min(1),
+  value: z.string().min(1),
 });
 
 const aiQualityOverviewSchema = z.object({
@@ -3172,10 +4506,10 @@ const alertSeveritySchema = z.enum(["INFO", "WARNING", "ERROR", "CRITICAL"]);
 const alertStateSchema = z.enum(["OK", "PENDING", "FIRING", "RESOLVED", "SILENCED", "ERROR"]);
 const alertSignalSchema = z.enum(["METRIC", "LOG", "TRACE"]);
 const dashboardAlertWidgetSchema = z.object({
-  ruleIds: z.array(z.string()),
-  states: z.array(alertStateSchema),
-  severities: z.array(alertSeveritySchema),
-  signals: z.array(alertSignalSchema),
+  ruleIds: z.array(z.string()).default([]),
+  states: z.array(alertStateSchema).default([]),
+  severities: z.array(alertSeveritySchema).default([]),
+  signals: z.array(alertSignalSchema).default([]),
   timeWindow: z.string().min(1),
   limit: z.number().int().min(1).max(100),
 });
@@ -3253,6 +4587,8 @@ const typedDatasetImportJobSchema =
 const typedDatasetExportJobSchema =
   datasetExportJobSchema as unknown as z.ZodType<DatasetExportJob>;
 const typedDatasetItemSchema = datasetItemSchema as unknown as z.ZodType<DatasetItem>;
+const typedDatasetCandidateSchema =
+  datasetCandidateSchema as unknown as z.ZodType<DatasetCandidate>;
 const typedScorerSchema = scorerSchema as unknown as z.ZodType<Scorer>;
 const typedExperimentSchema = experimentSchema as unknown as z.ZodType<Experiment>;
 const typedExperimentRunSchema = experimentRunSchema as unknown as z.ZodType<ExperimentRun>;
@@ -3273,13 +4609,30 @@ const experimentRunEventSchema = z.object({
     "heartbeat",
     "cancelled",
     "failed",
-    "finished",
+    "completed",
   ]),
   seq: z.number().int().min(1),
   receivedAt: dateTimeSchema,
   experimentRunId: z.string().optional(),
   run: experimentRunSchema.optional().nullable(),
   itemRun: datasetItemRunSchema.optional().nullable(),
+});
+
+const evaluationRunEventSchema = z.object({
+  type: z.enum([
+    "started",
+    "item_completed",
+    "progress",
+    "heartbeat",
+    "cancelled",
+    "failed",
+    "completed",
+  ]),
+  seq: z.number().int().min(1),
+  receivedAt: dateTimeSchema.optional(),
+  occurredAt: dateTimeSchema.optional(),
+  run: evaluationRunSchema.optional().nullable(),
+  itemRun: evaluationItemRunSchema.optional().nullable(),
 });
 
 const agentRunSearchResultSchema = searchResultSchema(
@@ -3291,6 +4644,9 @@ const datasetSearchResultSchema = searchResultSchema(
 const datasetItemSearchResultSchema = searchResultSchema(
   datasetItemSchema,
 ) as unknown as z.ZodType<DatasetItemSearchResult>;
+const datasetCandidateSearchResultSchema = searchResultSchema(
+  typedDatasetCandidateSchema,
+) as unknown as z.ZodType<DatasetCandidateSearchResult>;
 const scorerSearchResultSchema = searchResultSchema(
   scorerSchema,
 ) as unknown as z.ZodType<ScorerSearchResult>;
@@ -3306,6 +4662,24 @@ const datasetItemRunSearchResultSchema = searchResultSchema(
 const evalResultSearchResultSchema = searchResultSchema(
   evalResultSchema,
 ) as unknown as z.ZodType<EvalResultSearchResult>;
+const evaluationDefinitionSearchResultSchema = searchResultSchema(
+  evaluationDefinitionSchema,
+) as unknown as z.ZodType<EvaluationDefinitionSearchResult>;
+const evaluationRunSearchResultSchema = searchResultSchema(
+  evaluationRunSchema,
+) as unknown as z.ZodType<EvaluationRunSearchResult>;
+const evaluationItemRunSearchResultSchema = searchResultSchema(
+  evaluationItemRunSchema,
+) as unknown as z.ZodType<EvaluationItemRunSearchResult>;
+const metricResultSearchResultSchema = searchResultSchema(
+  metricResultSchema,
+) as unknown as z.ZodType<MetricResultSearchResult>;
+const evaluationComparisonSearchResultSchema = searchResultSchema(
+  evaluationComparisonSchema,
+) as unknown as z.ZodType<EvaluationComparisonSearchResult>;
+const optimizationRunSearchResultSchema = searchResultSchema(
+  optimizationRunSchema,
+) as unknown as z.ZodType<OptimizationRunSearchResult>;
 const annotationQueueResultSchema = searchResultSchema(
   annotationQueueItemSchema,
 ) as unknown as z.ZodType<AnnotationQueueResult>;
@@ -3322,12 +4696,7 @@ function parseLiveTraceEvent(value: unknown): LiveTraceEvent {
   try {
     return parseWithZod(liveTraceEventSchema, value, "live trace event") as LiveTraceEvent;
   } catch {
-    throw graphQLErrorFromBridge({
-      id: "ERR-013",
-      code: "MESSAGE_BRIDGE_UNAVAILABLE",
-      message: "Message bridge returned an invalid live trace event",
-      retryable: true,
-    });
+    throw graphQLErrorFromBridge(responseContractInvalidError);
   }
 }
 
@@ -3339,12 +4708,19 @@ function parseExperimentRunEvent(value: unknown): ExperimentRunEvent {
       "live experiment event",
     ) as ExperimentRunEvent;
   } catch {
-    throw graphQLErrorFromBridge({
-      id: "ERR-013",
-      code: "MESSAGE_BRIDGE_UNAVAILABLE",
-      message: "Message bridge returned an invalid live experiment event",
-      retryable: true,
-    });
+    throw graphQLErrorFromBridge(responseContractInvalidError);
+  }
+}
+
+function parseEvaluationRunEvent(value: unknown): EvaluationRunEvent {
+  try {
+    const event = parseWithZod(evaluationRunEventSchema, value, "live evaluation event");
+    return {
+      ...event,
+      receivedAt: event.receivedAt ?? event.occurredAt ?? new Date().toISOString(),
+    } as EvaluationRunEvent;
+  } catch {
+    throw graphQLErrorFromBridge(responseContractInvalidError);
   }
 }
 

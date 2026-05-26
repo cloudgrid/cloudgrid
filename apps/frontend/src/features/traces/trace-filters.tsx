@@ -1,4 +1,4 @@
-import type { TraceSearchInput, TraceSort, TraceStatus } from "@cloudgrid/ui-contracts";
+import type { FacetValue, TraceSearchInput, TraceSort, TraceStatus } from "@cloudgrid/ui-contracts";
 import { SlidersHorizontal, X } from "lucide-react";
 import { FilterChip } from "../../components/filter-chip";
 import { SearchInput } from "../../components/search-input";
@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 import { t } from "../../lib/i18n";
+import { ServiceMultiSelect } from "../telemetry/service-multi-select";
 
 const statuses: TraceStatus[] = ["ok", "error", "unset"];
 const sorts: TraceSort[] = [
@@ -40,12 +41,16 @@ function traceSortLabel(sort: TraceSort) {
 }
 
 export function TraceFilters({
+  serviceOptions,
   filters,
   onChange,
+  onServicesChange,
   onClear,
 }: {
+  serviceOptions?: FacetValue[] | undefined;
   filters: TraceSearchInput;
   onChange: (name: keyof TraceSearchInput | "attributeKey", value: string | null) => void;
+  onServicesChange: (services: string[]) => void;
   onClear: () => void;
 }) {
   const chips = activeTraceFilterChips(filters);
@@ -65,11 +70,12 @@ export function TraceFilters({
           </Field>
           <Field>
             <FieldLabel htmlFor="trace-service">{t("filters.service")}</FieldLabel>
-            <Input
+            <ServiceMultiSelect
               id="trace-service"
-              onChange={(event) => onChange("service", event.target.value)}
+              onChange={onServicesChange}
+              options={serviceOptions}
               placeholder={t("filters.placeholder.service")}
-              value={filters.service ?? ""}
+              selected={filters.services ?? (filters.service ? [filters.service] : [])}
             />
           </Field>
           <Field>
@@ -217,8 +223,9 @@ function TraceMoreFilters({
 function activeTraceFilterChips(filters: TraceSearchInput) {
   const chips: Array<{ key: keyof TraceSearchInput | "attributeKey"; label: string }> = [];
   if (filters.query) chips.push({ key: "query", label: `${t("filters.query")}: ${filters.query}` });
-  if (filters.service) {
-    chips.push({ key: "service", label: `${t("filters.service")}: ${filters.service}` });
+  const services = filters.services ?? (filters.service ? [filters.service] : []);
+  if (services.length > 0) {
+    chips.push({ key: "service", label: `${t("filters.service")}: ${services.join(", ")}` });
   }
   if (filters.operationName) {
     chips.push({

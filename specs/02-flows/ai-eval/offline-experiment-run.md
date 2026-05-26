@@ -1,19 +1,19 @@
 ---
 id: FLW-AIE-001
-title: Offline experiment run
+title: Offline dataset evaluation run
 domain: ai-eval
 layer: flow
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-16
+updated: 2026-05-24
 provenance: from-user
 trigger:
   type: manual
-  expression: GraphQL Mutation.startExperimentRun
+  expression: GraphQL Mutation.startEvaluationRun
 orchestration: async
 delivery_semantics: at-least-once commands with idempotent persistence
 idempotency:
-  key_fields: [experimentRunId, manifestDigest, datasetItemId]
+  key_fields: [evaluationRunId, datasetVersionId, targetSnapshotId, datasetItemRevisionId]
   dedupe_window: P30D
   store: storage-write
 retry:
@@ -23,46 +23,41 @@ retry:
   max_ms: 5000
   retryable_errors: [ERR-013, ERR-014, ERR-AIE-003]
   permanent_errors: [ERR-001, ERR-AIE-001, ERR-AIE-002, ERR-AIE-004]
-terminal_failure: mark-experiment-run-failed
+terminal_failure: mark-evaluation-run-failed
 ---
 
-# Offline Experiment Run
+# Offline Dataset Evaluation Run
 
 ## Steps
 
-1. Client starts `Mutation.startExperimentRun`.
-2. BFF validates input and sends `eval.experiment.start` to `core/ai-eval-runner`.
-3. Runner asks storage-read to resolve the immutable run manifest.
-4. Storage-read resolves dataset version, split selector, scorer versions,
-   baseline refs, prompt refs, skill/tool snapshot refs, provider profile refs,
-   budget caps, and allowed dataset item IDs.
-5. Runner rejects the run before harness execution when the manifest includes
-   invalid split use, missing provider profile, stale scorer version, or budget
-   exhaustion.
-6. Runner creates or resumes an `ExperimentRun` through storage-write with the
-   manifest digest.
-7. For each dataset item, runner calls harness adapter `POST /v1/run` with W3C
-   trace context and provider/profile refs.
-8. Harness executes the solver and emits OTLP spans to CloudGrid.
-9. Runner persists `DatasetItemRun` through storage-write.
-10. Runner executes deterministic scorers locally and delegates semantic, RAG,
-   tool, trajectory, or LLM-judge scorers to harness `POST /v1/score` when the
-   scorer requires harness execution.
-11. Runner persists `EvalResult` records and emits experiment progress events
-   to storage-read-managed live sinks.
-12. Runner persists `ExperimentRun.summary` and emits a final `finished` or
-   `failed` event.
+1. Client starts `Mutation.startEvaluationRun`.
+2. BFF validates input and sends `eval.evaluation.run.start` to
+   `core/ai-eval-runner`.
+3. Runner resolves project AI settings, dataset version, selected item
+   revisions, split selector, target snapshot, metric settings, run policy, and
+   retention role.
+4. Runner rejects before execution when selected items are not ready, schemas do
+   not validate, budgets are exhausted, or split rules are violated.
+5. Runner creates or resumes `EvaluationRun`.
+6. Runner schedules `EvaluationItemRun` work according to run policy.
+7. For each item, runner starts trace context, executes the target, persists
+   actual output, trace refs, metrics, problems, trajectory summary, and
+   important-step previews.
+8. Storage-read aggregates metrics and emits live events.
+9. Runner finalizes the run as `completed`, `cancelled`, or `failed`.
 
 ## Boundaries
 
-- The BFF never loads dataset items or computes scoreboard values.
-- The runner never reads or writes SurrealDB directly.
-- Harness never calls CloudGrid GraphQL or NATS. It only receives HTTP adapter calls and emits OTLP.
+- BFF never loads dataset items or computes metrics.
+- Runner never reads or writes SurrealDB directly.
+- Storage-read owns live authorization and fanout.
+- Full trace detail remains in telemetry storage.
 
 ## Terminal Behavior
 
-If the runner cannot load the dataset or scorer definitions, it fails before executing harness. If a single item fails after retries, the run records the item failure, continues while the failure budget allows, and marks the run failed when the configured failure budget is exceeded.
+Pause stops scheduling new item work and moves to `paused` after active work
+drains or checkpoints. Resume continues unfinished eligible items from the same
+run snapshot. Cancel stops scheduling and marks unfinished work cancelled.
 
-If a resumed run resolves a different manifest digest for the same
-`experimentRunId`, the runner fails with `ERR-AIE-002` and does not execute
-harness.
+Adapter/provider/storage retryable failures follow run policy. Dataset quality
+problems become item/metric problems and do not require frontend special cases.

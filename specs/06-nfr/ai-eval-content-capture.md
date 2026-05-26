@@ -26,7 +26,17 @@ Content capture defaults to off. CloudGrid must remain useful from metadata, IDs
 - Dataset items may store full input and expected output only when the user
   explicitly creates, imports, or reviews that item. Trace-derived projections
   still store digests and pointers only.
+- Production-derived or trace-derived dataset candidates may pass through a realistic
+  anonymization stage before commit. Realistic anonymization replaces sensitive
+  values with safe fake values that preserve semantic shape, locale, format, and
+  repeated-reference consistency. It records policy provenance but must not
+  store original sensitive values in dataset items, candidate records, logs,
+  GraphQL responses, generated assets, or metric evidence.
+- Realistic anonymization is distinct from synthetic data. A production-derived
+  anonymized item keeps `sourceKind = production_trace` and records
+  `contentTreatment = realistic_anonymized`; it is not marked `synthetic`
+  unless the input or expected output was generated rather than transformed.
 - Synthetic dataset items must be marked in metadata and must not be
   indistinguishable from production-derived items.
-- Provider profiles, model aliases, scorer definitions, and online policies
-  must reject raw secret-looking fields.
+- Provider profiles, model aliases, metric settings, external adapter metadata,
+  and future production policies must reject raw secret-looking fields.

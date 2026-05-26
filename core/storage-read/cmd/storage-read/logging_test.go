@@ -5,11 +5,97 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"net"
+	"net/http"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/health"
 	storage "github.com/cloudgrid-dev/cloudgrid/core/storage-read/internal"
+	"github.com/cloudgrid-dev/cloudgrid/core/storage-read/internal/ports"
+	"github.com/nats-io/nats.go"
 )
+
+type fakeStorageReadNATS struct {
+	readyErr error
+}
+
+func (fake fakeStorageReadNATS) CheckReady(context.Context) error {
+	return fake.readyErr
+}
+
+func (fakeStorageReadNATS) NATSConn() *nats.Conn {
+	return nil
+}
+
+func (fakeStorageReadNATS) Close() {}
+
+func (fakeStorageReadNATS) Drain() error {
+	return nil
+}
+
+type failingListener struct{}
+
+func (failingListener) Accept() (net.Conn, error) {
+	return nil, errors.New("listener stopped")
+}
+
+func (failingListener) Close() error {
+	return nil
+}
+
+func (failingListener) Addr() net.Addr {
+	return fakeAddr("127.0.0.1:0")
+}
+
+type fakeAddr string
+
+func (addr fakeAddr) Network() string {
+	return "tcp"
+}
+
+func (addr fakeAddr) String() string {
+	return string(addr)
+}
+
+type blockingListener struct {
+	done chan struct{}
+}
+
+type expectedStopListener struct{}
+
+func (expectedStopListener) Accept() (net.Conn, error) {
+	return nil, http.ErrServerClosed
+}
+
+func (expectedStopListener) Close() error {
+	return nil
+}
+
+func (expectedStopListener) Addr() net.Addr {
+	return fakeAddr("127.0.0.1:0")
+}
+
+func (listener blockingListener) Accept() (net.Conn, error) {
+	<-listener.done
+	return nil, http.ErrServerClosed
+}
+
+func (listener blockingListener) Close() error {
+	select {
+	case <-listener.done:
+	default:
+		close(listener.done)
+	}
+	return nil
+}
+
+func (listener blockingListener) Addr() net.Addr {
+	return fakeAddr("127.0.0.1:0")
+}
 
 func TestNewLoggerEmitsKubernetesShape(t *testing.T) {
 	var out bytes.Buffer
@@ -41,6 +127,81 @@ func TestNewLoggerEmitsKubernetesShape(t *testing.T) {
 	}
 }
 
+func TestNewLoggerSuppressesDebugByDefaultAndAllowsRuntimeDebug(t *testing.T) {
+	var out bytes.Buffer
+	newLogger(&out).Debug("hot path",
+		"service", "storage-read",
+		"event", "telemetry_read_query",
+		"request_id", "req-1",
+	)
+	if out.Len() != 0 {
+		t.Fatalf("default logger emitted debug entry: %s", out.String())
+	}
+
+	t.Setenv("CLOUDGRID_LOG_LEVEL", "debug")
+	newLogger(&out).Debug("hot path",
+		"service", "storage-read",
+		"event", "telemetry_read_query",
+		"request_id", "req-1",
+	)
+	entry := decodeLogEntry(t, out.Bytes())
+	if entry["level"] != "debug" {
+		t.Fatalf("level = %#v, want debug", entry["level"])
+	}
+}
+
+func TestStorageReadHealthServerUsesConfiguredAddressAndTimeout(t *testing.T) {
+	server := storageReadHealthServer(storage.Config{
+		HealthHost: "127.0.0.1",
+		HealthPort: "18081",
+	}, http.NewServeMux())
+
+	if server.Addr != "127.0.0.1:18081" {
+		t.Fatalf("Addr = %q, want configured host and port", server.Addr)
+	}
+	if server.ReadHeaderTimeout != healthReadHeaderTimeout {
+		t.Fatalf("ReadHeaderTimeout = %s, want %s", server.ReadHeaderTimeout, healthReadHeaderTimeout)
+	}
+}
+
+func TestStorageReadHealthChecksReportNATSAndAdapterReadiness(t *testing.T) {
+	var readinessCalls int
+	var natsReadyCalls int
+	checks := storageReadHealthChecks(func(context.Context) error {
+		natsReadyCalls++
+		return nil
+	}, telemetryReadAdapter{
+		Name: "surrealdb",
+		CheckReadiness: func(context.Context) error {
+			readinessCalls++
+			return nil
+		},
+	})(context.Background())
+
+	assertHealthCheckAvailable(t, checks["nats"])
+	assertHealthCheckAvailable(t, checks["surrealdb"])
+	if readinessCalls != 1 {
+		t.Fatalf("readiness calls = %d, want 1", readinessCalls)
+	}
+	if natsReadyCalls != 1 {
+		t.Fatalf("nats readiness calls = %d, want 1", natsReadyCalls)
+	}
+}
+
+func TestStorageReadHealthChecksUseFallbackStorageNameAndUnavailableStates(t *testing.T) {
+	checks := storageReadHealthChecks(func(context.Context) error { return errors.New("nats down") }, telemetryReadAdapter{
+		CheckReadiness: func(context.Context) error {
+			return errors.New("provider down")
+		},
+	})(context.Background())
+
+	assertHealthCheckUnavailable(t, checks["nats"], "ERR-013")
+	assertHealthCheckUnavailable(t, checks["storage"], "ERR-006")
+	if _, ok := checks[""]; ok {
+		t.Fatalf("checks included empty adapter name: %#v", checks)
+	}
+}
+
 func TestRunReturnsFailureWhenRequiredConfigIsMissing(t *testing.T) {
 	t.Setenv("CLOUDGRID_STORAGE_ADAPTER", "surrealdb")
 	t.Setenv("CLOUDGRID_SURREALDB_URL", "")
@@ -60,6 +221,223 @@ func TestRunReturnsFailureWhenConfiguredAdapterIsNotCompiledIn(t *testing.T) {
 
 	if got := run(); got != 1 {
 		t.Fatalf("run() = %d, want startup failure exit code 1", got)
+	}
+}
+
+func TestRunWithRuntimeCoversStartupFailureBranches(t *testing.T) {
+	baseConfig := func() storage.Config {
+		return storage.Config{
+			StorageAdapter: storage.AdapterSurrealDB,
+			DeploymentMode: "local",
+			NATSURL:        "nats://example.test:4222",
+			HealthHost:     "127.0.0.1",
+			HealthPort:     "0",
+			Limits: storage.RuntimeLimits{
+				QueryTimeout:         time.Second,
+				MaxPageSize:          100,
+				MaxMetricPoints:      100,
+				LiveMaxSubscriptions: 10,
+				LiveEventBufferSize:  10,
+			},
+		}
+	}
+	adapter := telemetryReadAdapter{
+		Name: "surrealdb",
+		CheckReadiness: func(context.Context) error {
+			return nil
+		},
+		Close: func(context.Context) error {
+			return nil
+		},
+	}
+	baseRuntime := func() storageReadRuntime {
+		return storageReadRuntime{
+			output: bytes.NewBuffer(nil),
+			loadConfig: func() (storage.Config, error) {
+				return baseConfig(), nil
+			},
+			newAdapter: func(context.Context, storage.Config) (telemetryReadAdapter, error) {
+				return adapter, nil
+			},
+			connectNATS: func(string) (storageReadNATSConnection, error) {
+				return fakeStorageReadNATS{}, nil
+			},
+			subscribeHandlers: func(storageReadNATSConnection, ports.TelemetryReadStore, *slog.Logger, storage.MetricsRecorder, storage.TraceLogRecorder, storage.RuntimeLimits) error {
+				return nil
+			},
+			listen: func(string, string) (net.Listener, error) {
+				return failingListener{}, nil
+			},
+			shutdownSignal: func() <-chan os.Signal {
+				return make(chan os.Signal)
+			},
+		}
+	}
+
+	cases := []struct {
+		name   string
+		mutate func(*storageReadRuntime)
+	}{
+		{
+			name: "load config",
+			mutate: func(runtime *storageReadRuntime) {
+				runtime.loadConfig = func() (storage.Config, error) {
+					return storage.Config{}, errors.New("bad config")
+				}
+			},
+		},
+		{
+			name: "adapter",
+			mutate: func(runtime *storageReadRuntime) {
+				runtime.newAdapter = func(context.Context, storage.Config) (telemetryReadAdapter, error) {
+					return telemetryReadAdapter{}, errors.New("adapter down")
+				}
+			},
+		},
+		{
+			name: "readiness",
+			mutate: func(runtime *storageReadRuntime) {
+				runtime.newAdapter = func(context.Context, storage.Config) (telemetryReadAdapter, error) {
+					failed := adapter
+					failed.CheckReadiness = func(context.Context) error {
+						return errors.New("not ready")
+					}
+					return failed, nil
+				}
+			},
+		},
+		{
+			name: "nats",
+			mutate: func(runtime *storageReadRuntime) {
+				runtime.connectNATS = func(string) (storageReadNATSConnection, error) {
+					return nil, errors.New("nats down")
+				}
+			},
+		},
+		{
+			name: "subscribe",
+			mutate: func(runtime *storageReadRuntime) {
+				runtime.subscribeHandlers = func(storageReadNATSConnection, ports.TelemetryReadStore, *slog.Logger, storage.MetricsRecorder, storage.TraceLogRecorder, storage.RuntimeLimits) error {
+					return errors.New("subscribe down")
+				}
+			},
+		},
+		{
+			name: "listen",
+			mutate: func(runtime *storageReadRuntime) {
+				runtime.listen = func(string, string) (net.Listener, error) {
+					return nil, errors.New("bind failed")
+				}
+			},
+		},
+		{
+			name:   "serve",
+			mutate: func(runtime *storageReadRuntime) {},
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			runtime := baseRuntime()
+			test.mutate(&runtime)
+			if got := runWithRuntime(runtime); got != 1 {
+				t.Fatalf("runWithRuntime() = %d, want failure", got)
+			}
+		})
+	}
+}
+
+func TestRunWithRuntimeCoversGracefulSignalShutdown(t *testing.T) {
+	cfg := storage.Config{
+		StorageAdapter: storage.AdapterSurrealDB,
+		DeploymentMode: "local",
+		NATSURL:        "nats://example.test:4222",
+		HealthHost:     "127.0.0.1",
+		HealthPort:     "0",
+		Limits: storage.RuntimeLimits{
+			QueryTimeout:         time.Second,
+			MaxPageSize:          100,
+			MaxMetricPoints:      100,
+			LiveMaxSubscriptions: 10,
+			LiveEventBufferSize:  10,
+		},
+	}
+	runtime := storageReadRuntime{
+		output: bytes.NewBuffer(nil),
+		loadConfig: func() (storage.Config, error) {
+			return cfg, nil
+		},
+		newAdapter: func(context.Context, storage.Config) (telemetryReadAdapter, error) {
+			return telemetryReadAdapter{
+				Name:           "surrealdb",
+				CheckReadiness: func(context.Context) error { return nil },
+				Close:          func(context.Context) error { return nil },
+			}, nil
+		},
+		connectNATS: func(string) (storageReadNATSConnection, error) {
+			return fakeStorageReadNATS{}, nil
+		},
+		subscribeHandlers: func(storageReadNATSConnection, ports.TelemetryReadStore, *slog.Logger, storage.MetricsRecorder, storage.TraceLogRecorder, storage.RuntimeLimits) error {
+			return nil
+		},
+		listen: func(string, string) (net.Listener, error) {
+			return blockingListener{done: make(chan struct{})}, nil
+		},
+		shutdownSignal: func() <-chan os.Signal {
+			signals := make(chan os.Signal, 1)
+			signals <- os.Interrupt
+			return signals
+		},
+	}
+
+	if got := runWithRuntime(runtime); got != 0 {
+		t.Fatalf("runWithRuntime() = %d, want graceful shutdown", got)
+	}
+}
+
+func TestRunWithRuntimeCoversExpectedHealthServerStop(t *testing.T) {
+	cfg := storage.Config{
+		StorageAdapter: storage.AdapterSurrealDB,
+		DeploymentMode: "local",
+		NATSURL:        "nats://example.test:4222",
+		HealthHost:     "127.0.0.1",
+		HealthPort:     "0",
+		Limits: storage.RuntimeLimits{
+			QueryTimeout:         time.Second,
+			MaxPageSize:          100,
+			MaxMetricPoints:      100,
+			LiveMaxSubscriptions: 10,
+			LiveEventBufferSize:  10,
+		},
+	}
+	runtime := storageReadRuntime{
+		output: bytes.NewBuffer(nil),
+		loadConfig: func() (storage.Config, error) {
+			return cfg, nil
+		},
+		newAdapter: func(context.Context, storage.Config) (telemetryReadAdapter, error) {
+			return telemetryReadAdapter{
+				Name:           "surrealdb",
+				CheckReadiness: func(context.Context) error { return nil },
+				Close:          func(context.Context) error { return nil },
+			}, nil
+		},
+		connectNATS: func(string) (storageReadNATSConnection, error) {
+			return fakeStorageReadNATS{}, nil
+		},
+		subscribeHandlers: func(storageReadNATSConnection, ports.TelemetryReadStore, *slog.Logger, storage.MetricsRecorder, storage.TraceLogRecorder, storage.RuntimeLimits) error {
+			return nil
+		},
+		listen: func(string, string) (net.Listener, error) {
+			return expectedStopListener{}, nil
+		},
+		shutdownSignal: func() <-chan os.Signal {
+			return make(chan os.Signal)
+		},
+	}
+
+	if got := runWithRuntime(runtime); got != 0 {
+		t.Fatalf("runWithRuntime() = %d, want expected server stop", got)
 	}
 }
 
@@ -279,4 +657,18 @@ func decodeLogEntry(t *testing.T, data []byte) map[string]any {
 		t.Fatalf("log entry is not JSON: %v\n%s", err, string(data))
 	}
 	return entry
+}
+
+func assertHealthCheckAvailable(t *testing.T, check health.Check) {
+	t.Helper()
+	if check.Status != "ok" {
+		t.Fatalf("health check = %#v, want available", check)
+	}
+}
+
+func assertHealthCheckUnavailable(t *testing.T, check health.Check, errorID string) {
+	t.Helper()
+	if check.Status != "unavailable" || check.Error == nil || check.Error.Error.ID != errorID {
+		t.Fatalf("health check = %#v, want unavailable %s", check, errorID)
+	}
 }

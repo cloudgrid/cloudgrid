@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"testing"
 	"time"
 
@@ -64,9 +65,24 @@ func TestControlSubjectsUseWaveOneContractNames(t *testing.T) {
 		SubjectDashboardPinsReorder,
 		SubjectProjectAiSettingsGet,
 		SubjectProjectAiSettingsUpdate,
+		SubjectCompanyAiProvidersGet,
+		SubjectCompanyAiProvidersUpdate,
+		SubjectProjectAiProvidersGet,
+		SubjectProjectAiProvidersUpdate,
+		SubjectAiProviderSecretsResolve,
+		SubjectAiChatHistory,
+		SubjectAiChatConversationGet,
+		SubjectAiChatConversationCreate,
+		SubjectAiChatConversationArchive,
+		SubjectAiChatConversationDelete,
+		SubjectAiChatMessageAppend,
 		SubjectAiChatRunCreate,
 		SubjectAiChatRunUpdate,
 		SubjectAiChatRunFinalize,
+		SubjectAiChatActionPropose,
+		SubjectAiChatActionApprove,
+		SubjectAiChatActionFinish,
+		SubjectAiChatCompactionSave,
 		SubjectProjectMembersList,
 		SubjectProjectMembersUpdate,
 		SubjectProjectMembersRemove,
@@ -97,6 +113,73 @@ func TestControlSubjectsUseWaveOneContractNames(t *testing.T) {
 		if _, ok := subjects[subject]; ok {
 			t.Fatalf("subjects must not include stale dashboard subject %s", subject)
 		}
+	}
+}
+
+func TestControlSubjectsCoverGeneratedContractSubjects(t *testing.T) {
+	subjects := ControlSubjects()
+	for _, subject := range contracts.ControlPlaneSubjects {
+		if _, ok := subjects[subject]; !ok {
+			t.Fatalf("control-plane subject registry is missing generated contract subject %s", subject)
+		}
+	}
+	for subject := range subjects {
+		if !slices.Contains(contracts.ControlPlaneSubjects, subject) {
+			t.Fatalf("control-plane subject registry contains subject %s outside generated contracts", subject)
+		}
+	}
+}
+
+func TestSubscribedControlHandlersCoverGeneratedContractSubjects(t *testing.T) {
+	service := NewService(newTestStore(), fixedNow)
+	handlers := controlHandlers(service, nil, nil, nil)
+	for _, subject := range contracts.ControlPlaneSubjects {
+		if subject == SubjectProjectStatusChanged {
+			continue
+		}
+		if _, ok := handlers[subject]; !ok {
+			t.Fatalf("control-plane handler map is missing generated contract subject %s", subject)
+		}
+	}
+	for subject := range handlers {
+		if !slices.Contains(contracts.ControlPlaneSubjects, subject) {
+			t.Fatalf("control-plane handler map contains subject %s outside generated contracts", subject)
+		}
+	}
+}
+
+func TestControlHandlersReturnBridgeErrorsForStructurallyValidEmptyRequests(t *testing.T) {
+	service := NewService(newTestStore(), fixedNow)
+	handlers := controlHandlers(service, nil, nil, nil)
+	for subject, handler := range handlers {
+		t.Run(subject, func(t *testing.T) {
+			message := &captureBridgeMessage{data: []byte(`{}`)}
+			handler(message)
+			if len(message.response) == 0 {
+				t.Fatal("handler did not respond")
+			}
+			var response map[string]any
+			if err := json.Unmarshal(message.response, &response); err != nil {
+				t.Fatalf("response is not JSON: %v\n%s", err, string(message.response))
+			}
+			if _, ok := response["ok"].(bool); !ok {
+				t.Fatalf("response missing boolean ok field: %#v", response)
+			}
+			if _, ok := response["requestId"].(string); !ok {
+				t.Fatalf("response missing requestId field: %#v", response)
+			}
+			if response["ok"] == false {
+				errorValue, ok := response["error"].(map[string]any)
+				if !ok {
+					t.Fatalf("error response missing bridge error: %#v", response)
+				}
+				for _, field := range []string{"id", "code", "message", "retryable"} {
+					if _, ok := errorValue[field]; !ok {
+						t.Fatalf("bridge error missing %s: %#v", field, errorValue)
+					}
+				}
+			}
+		})
 	}
 }
 
@@ -294,6 +377,24 @@ func TestProjectMemberRetentionAndAlertNATSHandlersReturnContractShapes(t *testi
 	settings, ok := aiSettingsResponse["data"].(map[string]any)["settings"].(map[string]any)
 	if !ok || settings["projectId"] != LocalProjectID || settings["version"].(float64) != 1 {
 		t.Fatalf("AI settings response = %#v, want default settings", aiSettingsResponse)
+	}
+
+	companyProvidersResponse := invokeJSONHandler(t, handleCompanyAiProviderSettingsGet(service, nil), contracts.CompanyAiProviderSettingsGetRequest{
+		BridgeEnvelope: localEnvelope("req-company-ai-providers", "local-user", nil),
+		CompanyID:      LocalCompanyID,
+	})
+	companySettings, ok := companyProvidersResponse["data"].(map[string]any)["settings"].(map[string]any)
+	if !ok || companySettings["companyId"] != LocalCompanyID || companySettings["version"].(float64) != 1 {
+		t.Fatalf("company AI provider response = %#v, want default settings", companyProvidersResponse)
+	}
+
+	historyResponse := invokeJSONHandler(t, handleAiChatHistory(service, nil), contracts.AiChatHistoryRequest{
+		BridgeEnvelope: localEnvelope("req-ai-chat-history", "local-user", nil),
+		CompanyID:      LocalCompanyID,
+	})
+	history, ok := historyResponse["data"].(map[string]any)["history"].(map[string]any)
+	if !ok || history["companyId"] != LocalCompanyID || history["userId"] != "local-user" {
+		t.Fatalf("AI Chat history response = %#v, want empty history", historyResponse)
 	}
 }
 

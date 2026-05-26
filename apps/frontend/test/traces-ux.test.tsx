@@ -39,6 +39,7 @@ const traceFiltersSource = readFileSync(
   join(import.meta.dir, "../src/features/traces/trace-filters.tsx"),
   "utf8",
 );
+const urlFiltersSource = readFileSync(join(import.meta.dir, "../src/lib/url-filters.ts"), "utf8");
 
 function traceTableMarkup() {
   return renderToStaticMarkup(
@@ -122,7 +123,7 @@ describe("traces UX migration", () => {
       tracesRouteSource.indexOf("<TraceTable"),
     );
     expect(tracesRouteSource).toContain("TraceFacetDrawer");
-    expect(tracesRouteSource).toContain('onServiceSelect={(value) => setFilter("service", value)}');
+    expect(tracesRouteSource).toContain("toggleServiceFilter");
     expect(tracesRouteSource).toContain('t("traces.mode.history")');
     expect(tracesRouteSource).toContain('t("traces.mode.live")');
     expect(tracesRouteSource).toContain('onSortChange={(value) => setFilter("sort", value)}');
@@ -135,6 +136,45 @@ describe("traces UX migration", () => {
       traceFiltersSource.indexOf('id="trace-from"'),
     );
     expect(tracesRouteSource).toContain("RouteBreadcrumb");
+  });
+
+  test("uses shared trace query defaults instead of route-local constants", () => {
+    expect(urlFiltersSource).toContain("@cloudgrid/ui-contracts");
+    expect(urlFiltersSource).toContain("TRACE_SEARCH_DEFAULT_LIMIT");
+    expect(urlFiltersSource).toContain("TRACE_RELATED_LOG_DEFAULT_LIMIT");
+    expect(urlFiltersSource).toContain("traceSortOrDefault");
+    expect(tracesRouteSource).toContain("TRACE_SEARCH_DEFAULT_LIMIT");
+    expect(tracesRouteSource).toContain("limit: TRACE_SEARCH_DEFAULT_LIMIT");
+    expect(urlFiltersSource).not.toContain("const traceSorts");
+    expect(urlFiltersSource).not.toContain("function traceSortOrNull");
+    expect(tracesRouteSource).toContain('sort={filters.sort ?? "startedAt_desc"}');
+  });
+
+  test("span selection is presentation state and does not refetch trace detail", () => {
+    const traceDetailRouteSource = readFileSync(
+      join(import.meta.dir, "../src/routes/trace-detail-route.tsx"),
+      "utf8",
+    );
+
+    expect(traceDetailRouteSource).toContain("traceDetailQueryInput(traceFilters.filters)");
+    expect(traceDetailRouteSource).not.toContain(
+      'queryKeys.trace(traceId ?? "", traceFilters.filters)',
+    );
+    expect(traceDetailRouteSource).not.toContain(
+      'client.getTrace(traceId ?? "", traceFilters.filters)',
+    );
+  });
+
+  test("waterfall span selection preserves expansion state instead of rebuilding the tree", () => {
+    const waterfallSource = readFileSync(
+      join(import.meta.dir, "../src/features/traces/trace-tree-waterfall.tsx"),
+      "utf8",
+    );
+
+    expect(waterfallSource).toContain("expandSelectedSpanPath");
+    expect(waterfallSource).not.toContain(
+      "}, [indexes, selectedSpanId, criticalPathSpanIdSet, errorSpanIds]);",
+    );
   });
 
   test("uses route-specific empty-state copy and working resizable panel constraints", () => {

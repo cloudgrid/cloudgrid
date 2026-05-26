@@ -14,17 +14,19 @@ import (
 var requiredTables = []string{"trace", "span", "log_event", "metric_descriptor", "metric_point", "metric_ingest_cardinality", "service", "ingest_command"}
 
 var requiredIndexes = map[string][]string{
-	"trace":                     {"startedAt", "serviceName", "status", "tenantId, projectId, startedAt", "tenantId, projectId, traceId"},
-	"span":                      {"traceId", "parentSpanId"},
-	"log_event":                 {"timestamp", "serviceName", "traceId", "spanId", "severityText", "tenantId, projectId, timestamp", "tenantId, projectId, serviceName"},
-	"metric_descriptor":         {"metricName", "lastSeenAt"},
-	"metric_point":              {"metricName", "metricName, timestamp", "serviceName, timestamp", "timestamp"},
+	"trace":                     {"startedAt", "serviceName", "status", "searchText", "tenantId, companyId, projectId, startedAt", "tenantId, companyId, projectId, traceId", "tenantId, companyId, projectId, serviceName, startedAt", "tenantId, companyId, projectId, status, startedAt"},
+	"span":                      {"traceId", "parentSpanId", "tenantId, companyId, projectId, traceId, parentSpanId, startedAt", "tenantId, companyId, projectId, serviceName, traceId"},
+	"log_event":                 {"timestamp", "serviceName", "traceId", "spanId", "severityText", "searchText", "tenantId, companyId, projectId, timestamp", "tenantId, companyId, projectId, serviceName, timestamp", "tenantId, companyId, projectId, traceId, timestamp"},
+	"metric_descriptor":         {"metricName", "lastSeenAt", "searchText", "tenantId, companyId, projectId, lastSeenAt", "tenantId, companyId, projectId, metricName"},
+	"metric_point":              {"metricName", "metricName, timestamp", "serviceName, timestamp", "tenantId, companyId, projectId, metricName, timestamp", "tenantId, companyId, projectId, serviceName, timestamp", "timestamp"},
 	"metric_ingest_cardinality": {"metricName, windowStart"},
 }
 
 var softDeleteTables = []string{"trace", "span", "log_event", "metric_descriptor", "metric_point", "metric_ingest_cardinality", "ingest_command"}
 
 var requiredSoftDeleteFields = []string{"deletedAt", "deletedByRetentionPolicyId", "finalDeleteAfter"}
+
+var readinessLock = newSDKOperationLock()
 
 type DatabaseInfo struct {
 	Tables map[string]string `json:"tables"`
@@ -118,6 +120,21 @@ func CheckSchemaReadinessReport(dbInfo DatabaseInfo, tableInfo map[string]TableI
 }
 
 func CheckReadiness(ctx context.Context, db *sdk.DB) error {
+	if manager := managerForDB(db); manager != nil {
+		return manager.checkReadiness(ctx)
+	}
+	release, err := readinessLock.acquire(ctx)
+	if err != nil {
+		return storageUnavailableError()
+	}
+	defer release()
+	// The SurrealDB SDK client keeps namespace/database selection as mutable
+	// connection state, so Use and readiness queries are serialized for
+	// unmanaged test clients without holding the lock beyond the context budget.
+	return checkReadinessWithDB(ctx, db)
+}
+
+func checkReadinessWithDB(ctx context.Context, db *sdk.DB) error {
 	target, err := ResolveTelemetryTarget(nil)
 	if err != nil {
 		return err

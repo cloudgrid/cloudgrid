@@ -182,6 +182,95 @@ func TestOTLPHTTPMetricsExporterLogsBoundedFailureAndDrainsBuffer(t *testing.T) 
 	}
 }
 
+func TestOTLPHTTPMetricsExporterShutdownSuppressesBridgeFailureLogs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	var logs bytes.Buffer
+	exporter, err := NewOTLPHTTPMetricsExporter(MetricsExporterConfig{
+		Enabled:               true,
+		Endpoint:              server.URL,
+		ExportIntervalSeconds: 300,
+		ServiceName:           "cloudgrid.storage_read",
+		DeploymentMode:        "local",
+		CompanyID:             "local",
+		ProjectID:             "cloudgrid-system",
+		Logger:                slog.New(slog.NewJSONHandler(&logs, nil)),
+	})
+	if err != nil {
+		t.Fatalf("NewOTLPHTTPMetricsExporter() error = %v", err)
+	}
+	exporter.RecordMetric(MetricEvent{Name: "cloudgrid.storage.read.requests", Kind: MetricKindCounter, Value: 1})
+
+	if err := exporter.Shutdown(context.Background()); err != nil {
+		t.Fatalf("Shutdown() error = %v, want exporter failures isolated", err)
+	}
+	if logs.Len() != 0 {
+		t.Fatalf("shutdown failure logs = %s, want quiet shutdown flush", logs.String())
+	}
+}
+
+func TestOTLPHTTPMetricsExporterFailureLogLevelCanBeSuppressed(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	var logs bytes.Buffer
+	exporter, err := NewOTLPHTTPMetricsExporter(MetricsExporterConfig{
+		Enabled:               true,
+		Endpoint:              server.URL,
+		ExportIntervalSeconds: 300,
+		ServiceName:           "cloudgrid.storage_read",
+		DeploymentMode:        "local",
+		CompanyID:             "local",
+		ProjectID:             "cloudgrid-system",
+		Logger:                slog.New(slog.NewJSONHandler(&logs, nil)),
+		FailureLogLevel:       "off",
+	})
+	if err != nil {
+		t.Fatalf("NewOTLPHTTPMetricsExporter() error = %v", err)
+	}
+	exporter.RecordMetric(MetricEvent{Name: "cloudgrid.storage.read.requests", Kind: MetricKindCounter, Value: 1})
+
+	if err := exporter.Flush(context.Background()); err == nil {
+		t.Fatal("Flush() error = nil, want failed export status")
+	}
+	if logs.Len() != 0 {
+		t.Fatalf("failure logs = %s, want suppressed process log", logs.String())
+	}
+}
+
+func TestOTLPHTTPMetricsExporterUsesConfiguredFailureLogLevel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+	var logs bytes.Buffer
+	exporter, err := NewOTLPHTTPMetricsExporter(MetricsExporterConfig{
+		Enabled:               true,
+		Endpoint:              server.URL,
+		ExportIntervalSeconds: 300,
+		ServiceName:           "cloudgrid.storage_read",
+		DeploymentMode:        "local",
+		CompanyID:             "local",
+		ProjectID:             "cloudgrid-system",
+		Logger:                slog.New(slog.NewJSONHandler(&logs, nil)),
+		FailureLogLevel:       "info",
+	})
+	if err != nil {
+		t.Fatalf("NewOTLPHTTPMetricsExporter() error = %v", err)
+	}
+	exporter.RecordMetric(MetricEvent{Name: "cloudgrid.storage.read.requests", Kind: MetricKindCounter, Value: 1})
+
+	if err := exporter.Flush(context.Background()); err == nil {
+		t.Fatal("Flush() error = nil, want failed export status")
+	}
+	if !strings.Contains(logs.String(), `"level":"INFO"`) {
+		t.Fatalf("failure logs = %s, want INFO level", logs.String())
+	}
+}
+
 func hasResourceAttribute(payload map[string]any, key string, value string) bool {
 	resourceMetrics, _ := payload["resourceMetrics"].([]any)
 	for _, item := range resourceMetrics {

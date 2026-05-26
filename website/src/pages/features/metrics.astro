@@ -2,10 +2,38 @@
 import Layout from "../../layouts/Layout.astro";
 import Section from "../../components/Section.astro";
 import PageHeader from "../../components/PageHeader.astro";
-import MockFrame from "../../components/visuals/MockFrame.astro";
-import MetricChart from "../../components/visuals/MetricChart.astro";
 import CheckList from "../../components/CheckList.astro";
 import RelatedFeatures from "../../components/RelatedFeatures.astro";
+
+const metricFlow = [
+  {
+    title: "See whether the system is healthy.",
+    body: "Metrics give leaders and operators the shape of service health, latency, throughput, error pressure, and runtime cost over time.",
+  },
+  {
+    title: "Move from trend to evidence.",
+    body: "Descriptors and attributes explain what is being measured. Exemplars can point from a metric spike back to the trace behind it.",
+  },
+  {
+    title: "Make the signal operational.",
+    body: "The same metric can support a dashboard, an absence or threshold alert, and AI-runtime review without leaving the project context.",
+  },
+];
+
+const metricUses = [
+  [
+    "Operations",
+    "Track service latency, volume, error pressure, and saturation signals before they become customer-facing incidents.",
+  ],
+  [
+    "FinOps",
+    "Bring runtime, token, model-call, latency, and cost signals into the same project where AI behavior is evaluated.",
+  ],
+  [
+    "Leadership",
+    "Use dashboards and alerts to turn metric changes into visible operating signals instead of ad-hoc charts.",
+  ],
+];
 ---
 
 <Layout title="Metrics — CloudGrid">
@@ -13,47 +41,100 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
     <PageHeader
       eyebrow="Metrics"
       accent="emerald"
-      title="Metric exploration that respects descriptors, attributes, and exemplars."
-      description="CloudGrid ingests OTLP metrics as a first-class project-scoped signal — counters, gauges, histograms, summaries, exemplars. Pivot from any exemplar straight into the trace that produced it."
+      title="Measure system behavior and keep the evidence close."
+      description="Metrics tell leaders whether a system is healthy, costly, or changing over time. CloudGrid ingests OTLP counters, gauges, histograms, summaries, and exemplars as project data, then keeps metric context linkable to traces, dashboards, alerts, and evaluation reviews."
     />
   </Section>
 
   <Section tone="recessed">
-    <div class="reveal">
-      <MockFrame title="cloudgrid · /metrics · http.server.duration">
-        <div class="p-4 bg-surface">
-          <MetricChart />
-        </div>
-      </MockFrame>
+    <div class="story-split">
+      <div class="story-media reveal" aria-hidden="true">
+        <img src="/hero-backgrounds/features-metrics.png" alt="" loading="lazy" decoding="async" />
+      </div>
+      <div class="reveal-x">
+        <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
+          Metrics become more valuable when they explain what to inspect.
+        </h2>
+        <p class="mt-4 text-text-secondary leading-relaxed">
+          A chart alone rarely answers the whole question. CloudGrid keeps metric descriptors,
+          attributes, and exemplars available so a trend can lead to a trace, a dashboard, an
+          alert, or an AI evaluation review in the same project.
+        </p>
+      </div>
     </div>
   </Section>
 
   <Section>
-    <div class="grid lg:grid-cols-2 gap-12">
+    <div class="grid lg:grid-cols-[0.78fr_1.22fr] gap-12 items-start">
+      <div class="reveal-x">
+        <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
+          From trend to operational decision.
+        </h2>
+        <p class="mt-4 text-text-secondary leading-relaxed">
+          Metrics help enterprise teams move from "something changed" to "this is where we should
+          investigate, alert, or review." CloudGrid keeps that path close to the rest of the evidence.
+        </p>
+      </div>
+      <div class="truth-stack truth-stack--wide">
+        {metricFlow.map((item, i) => (
+          <div class="truth-stack__item reveal" data-delay={(((i % 3) + 1)) as any}>
+            <div class="truth-stack__index">{String(i + 1).padStart(2, "0")}</div>
+            <div>
+              <div class="truth-stack__title">{item.title}</div>
+              <p>{item.body}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </Section>
+
+  <Section tone="recessed">
+    <div class="grid lg:grid-cols-[0.9fr_1.1fr] gap-12 items-start">
       <div class="reveal">
-        <h2 class="text-xl font-semibold text-text mb-4">What you can do today</h2>
+        <h2 class="text-xl font-semibold text-text mb-4">What CloudGrid provides</h2>
         <CheckList
           items={[
             "OTLP HTTP ingest on /v1/metrics with JSON and protobuf encodings.",
-            "Browse metric descriptors with units, types, and attribute key inventories.",
+            "Metric descriptor browsing with units, types, and attribute key inventories.",
             "Time-series exploration with group-by descriptor attributes and aggregation.",
             "Exemplar pivots back into the originating trace.",
-            "AI harness metrics — token totals, model-call counts — ingested as standard OTLP.",
+            "AI runtime metrics such as token totals, model-call counts, latency, and cost signals ingested as standard OTLP.",
           ]}
         />
       </div>
       <div class="reveal">
-        <h2 class="text-xl font-semibold text-text mb-4">Honest about scope</h2>
+        <h2 class="text-xl font-semibold text-text mb-4">Operating model</h2>
         <CheckList
           muted
           items={[
-            "Long-term metric retention runs on the v1 SurrealDB adapter — alternative backends are the natural next adapter.",
-            "Custom PromQL/MetricsQL surface is not provided; CloudGrid uses GraphQL view models with explicit aggregations.",
+            "Long-term metric retention uses the v1 SurrealDB adapter; alternative backends are the natural next adapter.",
+            "CloudGrid uses GraphQL view models with explicit aggregations for metric exploration.",
             "Recording-rule and downsampling pipelines are owned by your collector layer for now.",
-            "Alerting on metric thresholds is foundation-level today; production-grade routing keeps maturing.",
+            "Metric threshold and absence rules are managed in the project alerting workspace.",
           ]}
         />
       </div>
+    </div>
+  </Section>
+
+  <Section>
+    <div class="max-w-3xl mb-8 reveal">
+      <h2 class="text-2xl font-semibold tracking-tight text-text">Where metric evidence is used.</h2>
+      <p class="mt-3 text-text-secondary">
+        Metrics support different enterprise conversations when they stay attached to the project record.
+      </p>
+    </div>
+    <div class="truth-stack truth-stack--wide">
+      {metricUses.map(([title, body], i) => (
+        <div class="truth-stack__item reveal" data-delay={(i + 1) as any}>
+          <div class="truth-stack__index">{title}</div>
+          <div>
+            <div class="truth-stack__title">{title}</div>
+            <p>{body}</p>
+          </div>
+        </div>
+      ))}
     </div>
   </Section>
 
@@ -61,8 +142,8 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
     <RelatedFeatures
       items={[
         { label: "Dashboards", href: "/features/dashboards", desc: "Save metric explorations as typed widgets." },
+        { label: "Alerts", href: "/features/alerts", desc: "Create threshold and absence rules from metric semantics." },
         { label: "Traces", href: "/features/traces", desc: "Exemplars are linkable trace IDs." },
-        { label: "Adapters", href: "/features/adapters", desc: "Swap the storage backend behind metrics." },
       ]}
     />
   </Section>

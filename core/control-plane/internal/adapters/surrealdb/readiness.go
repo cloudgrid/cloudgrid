@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-var RequiredTables = []string{"organization", "user", "project", "membership", "organization_invitation", "email_delivery", "owns_project", "ingest_credential", "dashboard", "dashboard_pin", "project_membership", "retention_policy", "project_ai_settings", "alert_rule", "alert_silence", "alert_event", "project_status_event"}
+var RequiredTables = []string{"organization", "user", "project", "membership", "organization_invitation", "email_delivery", "owns_project", "ingest_credential", "dashboard", "dashboard_pin", "project_membership", "retention_policy", "project_ai_settings", "company_ai_provider_settings", "ai_chat_conversation", "ai_chat_message", "ai_chat_run", "ai_chat_action", "ai_chat_compaction", "alert_rule", "alert_silence", "alert_event", "project_status_event"}
 
 type DatabaseInfo struct {
 	Tables map[string]string `json:"tables"`

@@ -1,16 +1,24 @@
 import type {
+  AiModelAlias,
+  AiModelPurpose,
+  AiProviderKind,
+  AiProviderProfile,
+  CompanyAiProviderSettings,
   CreatedIngestCredential,
   IngestCredentialListResult,
   Organization,
   OrganizationInvitation,
   OrganizationMember,
   Project,
+  ProjectAiProviderSettings,
   ProjectAiSettings,
   ProjectMember,
   ProjectRole,
   RetentionDataClass,
   RetentionMode,
   RetentionRule,
+  UpdateCompanyAiProviderSettingsInput,
+  UpdateProjectAiProviderSettingsInput,
   UpdateProjectAiSettingsInput,
 } from "@cloudgrid/ui-contracts";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,6 +40,7 @@ import {
   Save,
   Settings,
   Shield,
+  SlidersHorizontal,
   TerminalSquare,
   Trash2,
   X,
@@ -54,7 +63,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../components/ui/dialog";
-import { Field, FieldLabel } from "../components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import {
@@ -81,10 +90,11 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { aiChatProviderQueryKey } from "../features/ai-chat/view-model";
 import {
   buildAdminSettingsModel,
   buildProjectPickerModel,
-  buildProjectSettingsSections,
   canMutateOrganizationMember,
 } from "../features/projects/project-view-model";
 import { formatDateTime } from "../lib/format";
@@ -97,6 +107,7 @@ import {
 } from "../lib/session-state";
 import { cn } from "../lib/utils";
 import { useAppSession } from "../providers/app-session-provider";
+import { useBrand } from "../providers/brand-provider";
 import { aiEvalEnabled } from "./ai-eval-route";
 
 export function OrganizationsRoute() {
@@ -205,13 +216,15 @@ export function OrganizationOverviewRoute() {
 }
 
 export function OrganizationMembersRoute() {
+  const { productName } = useBrand();
   const { organizationId } = useParams();
-  const { client, mode, refetchViewer, viewer } = useAppSession();
+  const { client, isBackendUnavailable, mode, refetchViewer, viewer } = useAppSession();
   const queryClient = useQueryClient();
   const organization = findOrganization(viewer?.organizations, organizationId);
   const adminModel = organization ? buildAdminSettingsModel({ mode, organization }) : null;
   const canAdminister =
     !!adminModel?.showMemberAdministration && canAdministerMembers(organization?.role);
+  const canMutateMembers = canAdminister && !isBackendUnavailable;
   const [pendingAction, setPendingAction] = useState<{
     action: "demote" | "remove";
     member: OrganizationMember;
@@ -220,14 +233,14 @@ export function OrganizationMembersRoute() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteError, setInviteError] = useState<string | null>(null);
   const membersQuery = useQuery({
-    enabled: !!organization && !!adminModel?.showMemberAdministration,
+    enabled: !!organization && !!adminModel?.showMemberAdministration && !isBackendUnavailable,
     queryKey: organization
       ? queryKeys.organizationMembers(organization.id)
       : ["OrganizationMembers"],
     queryFn: () => client.getOrganizationMembers(organization?.id ?? ""),
   });
   const invitationsQuery = useQuery({
-    enabled: canAdminister,
+    enabled: canMutateMembers,
     queryKey: organization
       ? queryKeys.organizationInvitations(organization.id)
       : ["OrganizationInvitations"],
@@ -336,7 +349,7 @@ export function OrganizationMembersRoute() {
     <AdminSettingsShell activeItem="members" organization={currentOrganization}>
       <RouteHeader
         action={
-          canAdminister ? (
+          canMutateMembers ? (
             <Button onClick={() => setInviteOpen(true)} type="button">
               <Plus data-icon="inline-start" />
               {t("companies.members.invite")}
@@ -347,6 +360,19 @@ export function OrganizationMembersRoute() {
         description={t("companies.members.description")}
       />
       {problem ? <ProblemDetailsAlert problem={problem} /> : null}
+      {isBackendUnavailable ? (
+        <Alert variant="destructive">
+          <Shield aria-hidden />
+          <AlertTitle>{t("companies.members.loadError")}</AlertTitle>
+          <AlertDescription>
+            {t("backend.unavailable.description", { productName })}
+          </AlertDescription>
+          <Button onClick={() => void refetchViewer()} size="sm" type="button" variant="outline">
+            <RefreshCw data-icon="inline-start" />
+            {t("actions.retry")}
+          </Button>
+        </Alert>
+      ) : null}
       {loadError ? (
         <Alert variant="destructive">
           <AlertTitle>{t("companies.members.loadError")}</AlertTitle>
@@ -362,132 +388,136 @@ export function OrganizationMembersRoute() {
           <AlertDescription>{t("companies.personal.localAdminLimited")}</AlertDescription>
         </Alert>
       ) : null}
-      <section className="flex min-h-0 flex-col gap-3">
-        <div>
-          <h2 className="text-base font-semibold tracking-normal">
-            {t("companies.members.activeTitle")}
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {t("companies.members.activeDescription")}
-          </p>
-        </div>
-        <div className="min-h-0 overflow-auto rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("companies.members.user")}</TableHead>
-                <TableHead>{t("companies.members.role")}</TableHead>
-                {canAdminister ? <TableHead>{t("companies.members.actions")}</TableHead> : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {membersQuery.isPending ? (
+      {!isBackendUnavailable ? (
+        <section className="flex min-h-0 flex-col gap-3">
+          <div>
+            <h2 className="text-base font-semibold tracking-normal">
+              {t("companies.members.activeTitle")}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {t("companies.members.activeDescription")}
+            </p>
+          </div>
+          <div className="min-h-0 overflow-auto rounded-lg border">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={canAdminister ? 3 : 2}>{t("state.loading")}</TableCell>
+                  <TableHead>{t("companies.members.user")}</TableHead>
+                  <TableHead>{t("companies.members.role")}</TableHead>
+                  {canMutateMembers ? (
+                    <TableHead>{t("companies.members.actions")}</TableHead>
+                  ) : null}
                 </TableRow>
-              ) : activeMembers.length ? (
-                activeMembers.map((member) => {
-                  const demoteSafety = canMutateOrganizationMember({
-                    mode,
-                    organization: currentOrganization,
-                    viewerUserId: currentViewer.user.id,
-                    targetUserId: member.user.id,
-                    mutation: "demote",
-                  });
-                  const removeSafety = canMutateOrganizationMember({
-                    mode,
-                    organization: currentOrganization,
-                    viewerUserId: currentViewer.user.id,
-                    targetUserId: member.user.id,
-                    mutation: "remove",
-                  });
+              </TableHeader>
+              <TableBody>
+                {!isBackendUnavailable && membersQuery.isPending ? (
+                  <TableRow>
+                    <TableCell colSpan={canMutateMembers ? 3 : 2}>{t("state.loading")}</TableCell>
+                  </TableRow>
+                ) : activeMembers.length ? (
+                  activeMembers.map((member) => {
+                    const demoteSafety = canMutateOrganizationMember({
+                      mode,
+                      organization: currentOrganization,
+                      viewerUserId: currentViewer.user.id,
+                      targetUserId: member.user.id,
+                      mutation: "demote",
+                    });
+                    const removeSafety = canMutateOrganizationMember({
+                      mode,
+                      organization: currentOrganization,
+                      viewerUserId: currentViewer.user.id,
+                      targetUserId: member.user.id,
+                      mutation: "remove",
+                    });
 
-                  return (
-                    <TableRow key={member.user.id}>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-medium">
-                            {member.user.displayName ?? member.user.id}
-                          </span>
-                          <span className="text-sm text-muted-foreground">
-                            {member.user.email ?? member.user.id}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <RoleBadge role={member.role} />
-                      </TableCell>
-                      {canAdminister ? (
+                    return (
+                      <TableRow key={member.user.id}>
                         <TableCell>
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              disabled={updateMember.isPending || member.role === "admin"}
-                              onClick={() =>
-                                updateMember.mutate({
-                                  organizationId: currentOrganization.id,
-                                  userId: member.user.id,
-                                  role: "admin",
-                                })
-                              }
-                              size="sm"
-                              type="button"
-                              variant="outline"
-                            >
-                              <Shield data-icon="inline-start" />
-                              {t("companies.members.makeAdmin")}
-                            </Button>
-                            <Button
-                              disabled={
-                                updateMember.isPending ||
-                                member.role === "user" ||
-                                !demoteSafety.allowed
-                              }
-                              onClick={() => setPendingAction({ action: "demote", member })}
-                              size="sm"
-                              title={
-                                !demoteSafety.allowed
-                                  ? t("companies.members.demoteBlocked")
-                                  : undefined
-                              }
-                              type="button"
-                              variant="outline"
-                            >
-                              <Shield data-icon="inline-start" />
-                              {t("companies.members.makeUser")}
-                            </Button>
-                            <Button
-                              disabled={removeMember.isPending || !removeSafety.allowed}
-                              onClick={() => setPendingAction({ action: "remove", member })}
-                              size="sm"
-                              title={
-                                !removeSafety.allowed
-                                  ? t("companies.members.demoteBlocked")
-                                  : undefined
-                              }
-                              type="button"
-                              variant="outline"
-                            >
-                              <Trash2 data-icon="inline-start" />
-                              {t("companies.members.remove")}
-                            </Button>
+                          <div className="flex flex-col">
+                            <span className="font-medium">
+                              {member.user.displayName ?? member.user.id}
+                            </span>
+                            <span className="text-sm text-muted-foreground">
+                              {member.user.email ?? member.user.id}
+                            </span>
                           </div>
                         </TableCell>
-                      ) : null}
-                    </TableRow>
-                  );
-                })
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={canAdminister ? 3 : 2}>
-                    {t("companies.members.activeMembersEmpty")}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </section>
-      {canAdminister ? (
+                        <TableCell>
+                          <RoleBadge role={member.role} />
+                        </TableCell>
+                        {canMutateMembers ? (
+                          <TableCell>
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                disabled={updateMember.isPending || member.role === "admin"}
+                                onClick={() =>
+                                  updateMember.mutate({
+                                    organizationId: currentOrganization.id,
+                                    userId: member.user.id,
+                                    role: "admin",
+                                  })
+                                }
+                                size="sm"
+                                type="button"
+                                variant="outline"
+                              >
+                                <Shield data-icon="inline-start" />
+                                {t("companies.members.makeAdmin")}
+                              </Button>
+                              <Button
+                                disabled={
+                                  updateMember.isPending ||
+                                  member.role === "user" ||
+                                  !demoteSafety.allowed
+                                }
+                                onClick={() => setPendingAction({ action: "demote", member })}
+                                size="sm"
+                                title={
+                                  !demoteSafety.allowed
+                                    ? t("companies.members.demoteBlocked")
+                                    : undefined
+                                }
+                                type="button"
+                                variant="outline"
+                              >
+                                <Shield data-icon="inline-start" />
+                                {t("companies.members.makeUser")}
+                              </Button>
+                              <Button
+                                disabled={removeMember.isPending || !removeSafety.allowed}
+                                onClick={() => setPendingAction({ action: "remove", member })}
+                                size="sm"
+                                title={
+                                  !removeSafety.allowed
+                                    ? t("companies.members.demoteBlocked")
+                                    : undefined
+                                }
+                                type="button"
+                                variant="outline"
+                              >
+                                <Trash2 data-icon="inline-start" />
+                                {t("companies.members.remove")}
+                              </Button>
+                            </div>
+                          </TableCell>
+                        ) : null}
+                      </TableRow>
+                    );
+                  })
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={canMutateMembers ? 3 : 2}>
+                      {t("companies.members.activeMembersEmpty")}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </section>
+      ) : null}
+      {canMutateMembers ? (
         <section className="flex min-h-0 flex-col gap-3">
           <div>
             <h2 className="text-base font-semibold tracking-normal">
@@ -510,7 +540,7 @@ export function OrganizationMembersRoute() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {invitationsQuery.isPending ? (
+                {!isBackendUnavailable && invitationsQuery.isPending ? (
                   <TableRow>
                     <TableCell colSpan={6}>{t("state.loading")}</TableCell>
                   </TableRow>
@@ -614,16 +644,301 @@ export function OrganizationMembersRoute() {
   );
 }
 
+export function OrganizationAiProviderRoute() {
+  const { productName } = useBrand();
+  const { organizationId } = useParams();
+  const { client, isBackendUnavailable, refetchViewer, viewer } = useAppSession();
+  const queryClient = useQueryClient();
+  const organization = findOrganization(viewer?.organizations, organizationId);
+  const [saved, setSaved] = useState(false);
+  const [providerKind, setProviderKind] = useState<AiProviderKind>("openai");
+  const [formError, setFormError] = useState<string | null>(null);
+  const settingsQuery = useQuery({
+    enabled: !!organization && !isBackendUnavailable,
+    queryKey: organization
+      ? aiChatProviderQueryKey(organization.id)
+      : ["CompanyAiProviderSettings"],
+    queryFn: () => client.getCompanyAiProviderSettings(organization?.id ?? ""),
+  });
+  const updateMutation = useMutation({
+    mutationFn: client.updateCompanyAiProviderSettings,
+    async onSuccess(settings) {
+      setSaved(true);
+      queryClient.setQueryData(aiChatProviderQueryKey(settings.companyId), settings);
+      await queryClient.invalidateQueries({ queryKey: aiChatProviderQueryKey(settings.companyId) });
+    },
+  });
+
+  useEffect(() => {
+    const nextKind = settingsQuery.data?.providerProfile?.providerKind;
+    if (nextKind) {
+      setProviderKind(nextKind);
+    }
+  }, [settingsQuery.data?.providerProfile?.providerKind]);
+
+  if (!organization) {
+    return <NotFoundState title={t("companies.notFound.title")} />;
+  }
+
+  if (organization.role !== "admin") {
+    return (
+      <AdminSettingsShell activeItem="ai-provider" organization={organization}>
+        <RouteHeader
+          title={t("companies.aiProvider.title")}
+          description={t("companies.aiProvider.description")}
+        />
+        <Alert variant="destructive">
+          <Shield aria-hidden />
+          <AlertTitle>{t("companies.aiProvider.forbiddenTitle")}</AlertTitle>
+          <AlertDescription>{t("companies.aiProvider.forbiddenDescription")}</AlertDescription>
+        </Alert>
+      </AdminSettingsShell>
+    );
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const settings = settingsQuery.data;
+    if (!settings) {
+      return;
+    }
+    const form = new FormData(event.currentTarget);
+    const input = toCompanyAiProviderSettingsInput(settings, form, providerKind);
+    if (!input) {
+      setFormError(t("companies.aiProvider.validation"));
+      return;
+    }
+    setFormError(null);
+    setSaved(false);
+    updateMutation.mutate(input);
+  }
+
+  const settings = settingsQuery.data;
+  const profile = settings?.providerProfile ?? null;
+  const alias = settings?.chatModelAlias ?? null;
+  const preservedCredentialRef =
+    profile?.credentialRef && isAllowedAiCredentialRef(profile.credentialRef)
+      ? profile.credentialRef
+      : "";
+  const profileParameters = readJsonObject(profile?.parameters);
+  const region = readString(profileParameters.region);
+  const deployment = readString(profileParameters.deployment);
+
+  return (
+    <AdminSettingsShell activeItem="ai-provider" organization={organization}>
+      <RouteHeader
+        title={t("companies.aiProvider.title")}
+        description={t("companies.aiProvider.description")}
+      />
+      <SettingsFormSurface>
+        {isBackendUnavailable ? (
+          <Alert variant="destructive">
+            <Shield aria-hidden />
+            <AlertTitle>{t("companies.aiProvider.loadError")}</AlertTitle>
+            <AlertDescription>
+              {t("backend.unavailable.description", { productName })}
+            </AlertDescription>
+            <Button onClick={() => void refetchViewer()} size="sm" type="button" variant="outline">
+              <RefreshCw data-icon="inline-start" />
+              {t("actions.retry")}
+            </Button>
+          </Alert>
+        ) : null}
+        {!isBackendUnavailable && settingsQuery.isError ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-destructive">{t("companies.aiProvider.loadError")}</p>
+            <Button
+              onClick={() => void settingsQuery.refetch()}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <RefreshCw data-icon="inline-start" />
+              {t("actions.retry")}
+            </Button>
+          </div>
+        ) : null}
+        {!isBackendUnavailable ? (
+          <form className="grid max-w-4xl gap-5" onSubmit={submit}>
+            <div className="grid gap-3 border-y py-4 sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="company-ai-label">
+                  {t("companies.aiProvider.label")}
+                </FieldLabel>
+                <Input
+                  defaultValue={profile?.label ?? "Company chat"}
+                  disabled={!settings || updateMutation.isPending || isBackendUnavailable}
+                  id="company-ai-label"
+                  name="label"
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="company-ai-kind">
+                  {t("companies.aiProvider.providerKind")}
+                </FieldLabel>
+                <Select
+                  disabled={!settings || updateMutation.isPending || isBackendUnavailable}
+                  onValueChange={(value) => setProviderKind(value as AiProviderKind)}
+                  value={providerKind}
+                >
+                  <SelectTrigger id="company-ai-kind">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {aiProviderKinds.map((kind) => (
+                        <SelectItem key={kind} value={kind}>
+                          {aiProviderKindLabel(kind)}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="company-ai-credential-value">
+                  {t("companies.aiProvider.credentialValue")}
+                </FieldLabel>
+                <Input
+                  autoComplete="off"
+                  disabled={!settings || updateMutation.isPending || isBackendUnavailable}
+                  id="company-ai-credential-value"
+                  name="credentialValue"
+                  placeholder={
+                    preservedCredentialRef
+                      ? t("companies.aiProvider.credentialValuePlaceholderExisting")
+                      : "sk-..."
+                  }
+                  type="password"
+                />
+                <input name="credentialRef" type="hidden" value={preservedCredentialRef} />
+                <FieldDescription>
+                  {t("companies.aiProvider.credentialRefDescription")}
+                </FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="company-ai-model">
+                  {t("companies.aiProvider.chatModel")}
+                </FieldLabel>
+                <Input
+                  defaultValue={alias?.model ?? firstChatModel(profile) ?? "gpt-5-mini"}
+                  disabled={!settings || updateMutation.isPending || isBackendUnavailable}
+                  id="company-ai-model"
+                  name="model"
+                  placeholder="gpt-5-mini"
+                />
+              </Field>
+              {providerKind === "azure_foundry" || providerKind === "openai_compatible" ? (
+                <Field>
+                  <FieldLabel htmlFor="company-ai-base-url">
+                    {t("companies.aiProvider.baseUrl")}
+                  </FieldLabel>
+                  <Input
+                    defaultValue={profile?.baseUrl ?? ""}
+                    disabled={!settings || updateMutation.isPending || isBackendUnavailable}
+                    id="company-ai-base-url"
+                    name="baseUrl"
+                    placeholder="https://example.openai.azure.com"
+                    type="url"
+                  />
+                </Field>
+              ) : null}
+              {providerKind === "azure_foundry" ? (
+                <Field>
+                  <FieldLabel htmlFor="company-ai-deployment">
+                    {t("companies.aiProvider.deployment")}
+                  </FieldLabel>
+                  <Input
+                    defaultValue={deployment}
+                    disabled={!settings || updateMutation.isPending || isBackendUnavailable}
+                    id="company-ai-deployment"
+                    name="deployment"
+                  />
+                </Field>
+              ) : null}
+              {providerKind === "aws_bedrock" ? (
+                <Field>
+                  <FieldLabel htmlFor="company-ai-region">
+                    {t("companies.aiProvider.region")}
+                  </FieldLabel>
+                  <Input
+                    defaultValue={region}
+                    disabled={!settings || updateMutation.isPending || isBackendUnavailable}
+                    id="company-ai-region"
+                    name="region"
+                    placeholder="us-east-1"
+                  />
+                </Field>
+              ) : null}
+              <Field>
+                <FieldLabel htmlFor="company-ai-timeout">
+                  {t("companies.aiProvider.timeoutMs")}
+                </FieldLabel>
+                <Input
+                  defaultValue={profile?.timeoutMs ?? 30000}
+                  disabled={!settings || updateMutation.isPending || isBackendUnavailable}
+                  id="company-ai-timeout"
+                  min="1000"
+                  name="timeoutMs"
+                  step="1000"
+                  type="number"
+                />
+              </Field>
+            </div>
+
+            {settings?.effective.warnings.length ? (
+              <Alert>
+                <AlertTitle>{t("companies.aiProvider.warnings")}</AlertTitle>
+                <AlertDescription>{settings.effective.warnings.join(", ")}</AlertDescription>
+              </Alert>
+            ) : null}
+            {settings?.effective.missingChatProvider ? (
+              <Alert>
+                <Bot aria-hidden />
+                <AlertTitle>{t("companies.aiProvider.missingTitle")}</AlertTitle>
+                <AlertDescription>{t("companies.aiProvider.missingDescription")}</AlertDescription>
+              </Alert>
+            ) : null}
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                disabled={!settings || updateMutation.isPending || isBackendUnavailable}
+                type="submit"
+              >
+                <Save data-icon="inline-start" />
+                {t("companies.aiProvider.save")}
+              </Button>
+              {!isBackendUnavailable ? (
+                <Button asChild type="button" variant="outline">
+                  <Link to="/ai-chat">
+                    <Bot data-icon="inline-start" />
+                    {t("companies.aiProvider.openChat")}
+                  </Link>
+                </Button>
+              ) : null}
+              {saved ? (
+                <span className="text-sm text-muted-foreground">
+                  {t("companies.aiProvider.saved")}
+                </span>
+              ) : null}
+              {formError ? <span className="text-sm text-destructive">{formError}</span> : null}
+              {updateMutation.isError ? (
+                <span className="text-sm text-destructive">
+                  {t("companies.aiProvider.saveError")}
+                </span>
+              ) : null}
+            </div>
+          </form>
+        ) : null}
+      </SettingsFormSurface>
+    </AdminSettingsShell>
+  );
+}
+
 export function OrganizationProjectsRoute() {
   const { organizationId } = useParams();
-  const navigate = useNavigate();
-  const { createProject, mode, selectProject, viewer } = useAppSession();
+  const { mode, viewer } = useAppSession();
   const organization = findOrganization(viewer?.organizations, organizationId);
-  const [projectName, setProjectName] = useState("");
-  const [projectSlug, setProjectSlug] = useState("");
-  const [projectError, setProjectError] = useState<string | null>(null);
-  const [creatingProject, setCreatingProject] = useState(false);
-  const [createProjectOpen, setCreateProjectOpen] = useState(false);
 
   if (!organization) {
     return <NotFoundState title={t("companies.notFound.title")} />;
@@ -631,42 +946,18 @@ export function OrganizationProjectsRoute() {
 
   const currentOrganization = organization;
 
-  async function submitProject(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const name = projectName.trim();
-    const slug = normalizeProjectSlug(projectSlug || projectName);
-    if (!name || !slug) {
-      setProjectError(t("projects.create.validation"));
-      return;
-    }
-    setProjectError(null);
-    setCreatingProject(true);
-    try {
-      const project = await createProject({
-        organizationId: currentOrganization.id,
-        name,
-        slug,
-      });
-      setProjectName("");
-      setProjectSlug("");
-      setCreateProjectOpen(false);
-      await selectProject(project.id);
-      navigate("/traces");
-    } catch (error) {
-      setProjectError(error instanceof Error ? error.message : t("projects.create.error"));
-    } finally {
-      setCreatingProject(false);
-    }
-  }
-
   return (
     <AdminSettingsShell activeItem="projects" organization={currentOrganization}>
       <RouteHeader
         action={
           canAdministerMembers(currentOrganization.role) ? (
-            <Button onClick={() => setCreateProjectOpen(true)} type="button">
-              <Plus data-icon="inline-start" />
-              {t("projects.create.submit")}
+            <Button asChild type="button">
+              <Link
+                to={`/projects/new?organizationId=${encodeURIComponent(currentOrganization.id)}`}
+              >
+                <Plus data-icon="inline-start" />
+                {t("projects.create.submit")}
+              </Link>
             </Button>
           ) : null
         }
@@ -713,33 +1004,14 @@ export function OrganizationProjectsRoute() {
           <AlertDescription>{t("companies.personal.localAdminLimited")}</AlertDescription>
         </Alert>
       ) : null}
-      <CreateProjectSheet
-        creatingProject={creatingProject}
-        onCreateProject={submitProject}
-        onOpenChange={setCreateProjectOpen}
-        open={createProjectOpen}
-        projectError={projectError}
-        projectName={projectName}
-        projectSlug={projectSlug}
-        setProjectName={(value) => {
-          setProjectName(value);
-          setProjectSlug((current) => current || normalizeProjectSlug(value));
-        }}
-        setProjectSlug={setProjectSlug}
-      />
     </AdminSettingsShell>
   );
 }
 
 export function ProjectsRoute() {
   const navigate = useNavigate();
-  const { createProject, mode, selectProject, viewer } = useAppSession();
+  const { mode, selectProject, viewer } = useAppSession();
   const [organizationId, setOrganizationId] = useState(() => initialOrganizationId(viewer));
-  const [projectName, setProjectName] = useState("");
-  const [projectSlug, setProjectSlug] = useState("");
-  const [projectError, setProjectError] = useState<string | null>(null);
-  const [creatingProject, setCreatingProject] = useState(false);
-  const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [search, setSearch] = useState("");
   const picker = useMemo(
     () => buildProjectPickerModel({ viewer, organizationId, search }),
@@ -759,37 +1031,6 @@ export function ProjectsRoute() {
   async function openProject(project: Project) {
     await selectProject(project.id);
     navigate("/traces");
-  }
-
-  async function submitProject(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedOrganization) {
-      return;
-    }
-    const name = projectName.trim();
-    const slug = normalizeProjectSlug(projectSlug || projectName);
-    if (!name || !slug) {
-      setProjectError(t("projects.create.validation"));
-      return;
-    }
-    setProjectError(null);
-    setCreatingProject(true);
-    try {
-      const project = await createProject({
-        organizationId: selectedOrganization.id,
-        name,
-        slug,
-      });
-      setProjectName("");
-      setProjectSlug("");
-      setCreateProjectOpen(false);
-      await selectProject(project.id);
-      navigate("/traces");
-    } catch (error) {
-      setProjectError(error instanceof Error ? error.message : t("projects.create.error"));
-    } finally {
-      setCreatingProject(false);
-    }
   }
 
   return (
@@ -848,15 +1089,25 @@ export function ProjectsRoute() {
             placeholder={t("projects.searchPlaceholder")}
             value={search}
           />
-          <Button onClick={() => setCreateProjectOpen(true)} type="button">
-            <Plus data-icon="inline-start" />
-            {t("projects.create.submit")}
+          <Button asChild type="button">
+            <Link
+              to={
+                selectedOrganization
+                  ? `/projects/new?organizationId=${encodeURIComponent(selectedOrganization.id)}`
+                  : "/projects/new"
+              }
+            >
+              <Plus data-icon="inline-start" />
+              {t("projects.create.submit")}
+            </Link>
           </Button>
         </div>
 
         {selectedOrganization ? (
           <ProjectPickerSurface
-            onCreateProject={() => setCreateProjectOpen(true)}
+            createProjectHref={`/projects/new?organizationId=${encodeURIComponent(
+              selectedOrganization.id,
+            )}`}
             onOpenProject={(project) => void openProject(project)}
             picker={picker}
             selectedProjectId={viewer?.selectedProject?.id ?? null}
@@ -874,20 +1125,258 @@ export function ProjectsRoute() {
           </p>
         ) : null}
       </div>
-      <CreateProjectSheet
-        creatingProject={creatingProject}
-        onCreateProject={submitProject}
-        onOpenChange={setCreateProjectOpen}
-        open={createProjectOpen}
-        projectError={projectError}
-        projectName={projectName}
-        projectSlug={projectSlug}
-        setProjectName={(value) => {
-          setProjectName(value);
-          setProjectSlug((current) => current || normalizeProjectSlug(value));
-        }}
-        setProjectSlug={setProjectSlug}
+    </section>
+  );
+}
+
+export function ProjectCreateRoute() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { createProject, selectProject, viewer } = useAppSession();
+  const searchParams = new URLSearchParams(location.search);
+  const requestedOrganizationId =
+    searchParams.get("organizationId") ?? initialOrganizationId(viewer);
+  const fallbackOrganization = viewer?.organizations[0] ?? null;
+  const requestedOrganization =
+    viewer?.organizations.find((organization) => organization.id === requestedOrganizationId) ??
+    fallbackOrganization;
+  const [activeTab, setActiveTab] = useState<ProjectCreateTab>("identity");
+  const [projectName, setProjectName] = useState("");
+  const [projectSlug, setProjectSlug] = useState("");
+  const [organizationId, setOrganizationId] = useState(requestedOrganization?.id ?? "");
+  const [fieldErrors, setFieldErrors] = useState<ProjectCreateFieldErrors>({});
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [creatingProject, setCreatingProject] = useState(false);
+  const selectedOrganization =
+    viewer?.organizations.find((organization) => organization.id === organizationId) ??
+    requestedOrganization;
+  const validation = validateProjectCreateDraft({
+    name: projectName,
+    organizationId: organizationId || selectedOrganization?.id || "",
+    slug: projectSlug,
+  });
+
+  useEffect(() => {
+    if (!organizationId && requestedOrganization?.id) {
+      setOrganizationId(requestedOrganization.id);
+    }
+  }, [organizationId, requestedOrganization]);
+
+  useEffect(() => {
+    const hasDraft = projectName.trim() || projectSlug.trim();
+    if (!hasDraft) {
+      return;
+    }
+    function confirmUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+    }
+    window.addEventListener("beforeunload", confirmUnload);
+    return () => window.removeEventListener("beforeunload", confirmUnload);
+  }, [projectName, projectSlug]);
+
+  function applyValidation(errors = validation) {
+    setFieldErrors(errors.fields);
+    setSummaryError(errors.valid ? null : t("projects.create.validation"));
+    return errors.valid;
+  }
+
+  function goToTab(tab: ProjectCreateTab) {
+    if (projectCreateTabIndex(tab) > projectCreateTabIndex(activeTab) && !applyValidation()) {
+      setActiveTab(projectCreateFirstInvalidTab(validation));
+      return;
+    }
+    setActiveTab(tab);
+  }
+
+  async function submitProject(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const errors = validateProjectCreateDraft({
+      name: projectName,
+      organizationId: organizationId || selectedOrganization?.id || "",
+      slug: projectSlug,
+    });
+    if (!applyValidation(errors)) {
+      setActiveTab(projectCreateFirstInvalidTab(errors));
+      return;
+    }
+    setCreatingProject(true);
+    try {
+      const project = await createProject({
+        organizationId: organizationId || selectedOrganization?.id || "",
+        name: projectName.trim(),
+        slug: normalizeProjectSlug(projectSlug),
+      });
+      await selectProject(project.id);
+      navigate("/traces");
+    } catch (error) {
+      setSummaryError(error instanceof Error ? error.message : t("projects.create.error"));
+    } finally {
+      setCreatingProject(false);
+    }
+  }
+
+  const tabErrors = validation.tabs;
+  const cancelHref = selectedOrganization
+    ? `/organizations/${selectedOrganization.id}/projects`
+    : "/projects";
+
+  return (
+    <section className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col gap-4 overflow-auto px-2 py-4">
+      <RouteHeader
+        eyebrow={<ProjectCreateBreadcrumb organizationId={selectedOrganization?.id ?? null} />}
+        title={t("projects.create.submit")}
+        description={t("projects.create.description")}
+        action={
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button asChild size="sm" type="button" variant="outline">
+              <Link to={cancelHref}>
+                <ArrowLeft data-icon="inline-start" />
+                {t("actions.cancel")}
+              </Link>
+            </Button>
+            <Button
+              disabled={activeTab === "identity" || creatingProject}
+              onClick={() => setActiveTab(projectCreatePreviousTab(activeTab))}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <ArrowLeft data-icon="inline-start" />
+              Back
+            </Button>
+            {activeTab === projectCreateTabs.at(-1)?.id ? (
+              <Button disabled={creatingProject} form="project-create-form" size="sm" type="submit">
+                <Plus data-icon="inline-start" />
+                {t("projects.create.submit")}
+              </Button>
+            ) : (
+              <Button
+                disabled={creatingProject}
+                onClick={() => goToTab(projectCreateNextTab(activeTab))}
+                size="sm"
+                type="button"
+              >
+                <ArrowRight data-icon="inline-start" />
+                Continue
+              </Button>
+            )}
+          </div>
+        }
       />
+      <form
+        className="flex min-h-0 flex-col gap-4"
+        id="project-create-form"
+        onSubmit={submitProject}
+      >
+        {summaryError ? (
+          <Alert variant="destructive">
+            <AlertTitle>{t("state.error.title")}</AlertTitle>
+            <AlertDescription>{summaryError}</AlertDescription>
+          </Alert>
+        ) : null}
+        <Tabs
+          className="flex min-h-0 flex-col gap-4"
+          onValueChange={(value) => goToTab(value as ProjectCreateTab)}
+          value={activeTab}
+        >
+          <TabsList className="grid h-auto grid-cols-2 lg:grid-cols-4">
+            {projectCreateTabs.map((tab) => (
+              <TabsTrigger
+                aria-invalid={tabErrors[tab.id] ? true : undefined}
+                key={tab.id}
+                value={tab.id}
+              >
+                {tabErrors[tab.id] ? <Shield className="text-destructive" aria-hidden /> : null}
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <TabsContent className="m-0" value="identity">
+            <SettingsFormSurface>
+              <Field>
+                <FieldLabel htmlFor="project-create-name">
+                  {t("projects.create.name")} <span aria-hidden>*</span>
+                </FieldLabel>
+                <Input
+                  aria-invalid={fieldErrors.name ? true : undefined}
+                  id="project-create-name"
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setProjectName(value);
+                    setProjectSlug((current) => current || normalizeProjectSlug(value));
+                  }}
+                  value={projectName}
+                />
+                {fieldErrors.name ? (
+                  <FieldDescription className="text-destructive">
+                    {fieldErrors.name}
+                  </FieldDescription>
+                ) : (
+                  <FieldDescription>
+                    Use a human-readable name that helps teammates recognize this environment or
+                    product area.
+                  </FieldDescription>
+                )}
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="project-create-slug">
+                  {t("value.slug")} <span aria-hidden>*</span>
+                </FieldLabel>
+                <Input
+                  aria-invalid={fieldErrors.slug ? true : undefined}
+                  id="project-create-slug"
+                  onChange={(event) => setProjectSlug(normalizeProjectSlug(event.target.value))}
+                  value={projectSlug}
+                />
+                <FieldDescription className={fieldErrors.slug ? "text-destructive" : undefined}>
+                  {fieldErrors.slug ??
+                    "Used in URLs and setup snippets. Keep it short, stable, and lowercase with hyphens."}
+                </FieldDescription>
+              </Field>
+            </SettingsFormSurface>
+          </TabsContent>
+          <TabsContent className="m-0" value="access">
+            <SettingsFormSurface>
+              <Field>
+                <FieldLabel htmlFor="project-create-organization">
+                  {t("nav.company")} <span aria-hidden>*</span>
+                </FieldLabel>
+                <Select
+                  onValueChange={(value) => {
+                    setOrganizationId(value);
+                    navigate(`/projects/new?organizationId=${encodeURIComponent(value)}`, {
+                      replace: true,
+                    });
+                  }}
+                  value={organizationId}
+                >
+                  <SelectTrigger
+                    aria-invalid={fieldErrors.organizationId ? true : undefined}
+                    id="project-create-organization"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {(viewer?.organizations ?? []).map((organization) => (
+                        <SelectItem key={organization.id} value={organization.id}>
+                          {companyName(organization)}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <FieldDescription
+                  className={fieldErrors.organizationId ? "text-destructive" : undefined}
+                >
+                  {fieldErrors.organizationId ??
+                    "Choose the company that owns access, membership, retention, and provider settings for this project."}
+                </FieldDescription>
+              </Field>
+            </SettingsFormSurface>
+          </TabsContent>
+        </Tabs>
+      </form>
     </section>
   );
 }
@@ -903,6 +1392,10 @@ export function ProjectWorkspaceRedirectRoute() {
       void selectProject(project.id);
     }
   }, [isSelected, project, selectProject]);
+
+  if (projectId === "new") {
+    return <ProjectCreateRoute />;
+  }
 
   if (!project) {
     return <NotFoundState title={t("projects.notFound.title")} />;
@@ -943,12 +1436,12 @@ export function ProjectSettingsRoute() {
 }
 
 function ProjectPickerSurface({
-  onCreateProject,
+  createProjectHref,
   onOpenProject,
   picker,
   selectedProjectId,
 }: {
-  onCreateProject: () => void;
+  createProjectHref: string;
   onOpenProject: (project: Project) => void;
   picker: ReturnType<typeof buildProjectPickerModel>;
   selectedProjectId: string | null;
@@ -968,9 +1461,11 @@ function ProjectPickerSurface({
               : t("state.empty.filtered.description")}
           </p>
         </div>
-        <Button onClick={onCreateProject} type="button">
-          <Plus data-icon="inline-start" />
-          {t("projects.create.submit")}
+        <Button asChild type="button">
+          <Link to={createProjectHref}>
+            <Plus data-icon="inline-start" />
+            {t("projects.create.submit")}
+          </Link>
         </Button>
       </div>
     );
@@ -987,20 +1482,22 @@ function ProjectPickerSurface({
         />
       ))}
       <Button
+        asChild
         className="flex h-auto min-h-52 flex-col items-center justify-center gap-3 whitespace-normal rounded-lg border-dashed p-6 text-center"
-        onClick={onCreateProject}
         type="button"
         variant="outline"
       >
-        <span className="flex size-10 items-center justify-center rounded-md border bg-background">
-          <Plus aria-hidden />
-        </span>
-        <span className="max-w-64 space-y-1">
-          <span className="block font-medium">{t("projects.create.submit")}</span>
-          <span className="block text-sm text-muted-foreground">
-            {t("projects.create.description")}
+        <Link to={createProjectHref}>
+          <span className="flex size-10 items-center justify-center rounded-md border bg-background">
+            <Plus aria-hidden />
           </span>
-        </span>
+          <span className="max-w-64 space-y-1">
+            <span className="block font-medium">{t("projects.create.submit")}</span>
+            <span className="block text-sm text-muted-foreground">
+              {t("projects.create.description")}
+            </span>
+          </span>
+        </Link>
       </Button>
     </div>
   );
@@ -1124,7 +1621,7 @@ function _ProjectOnboardingChecklist({
       icon: TerminalSquare,
       action: (
         <Button asChild size="sm" variant="outline">
-          <a href="/docs/03-operations/" rel="noreferrer" target="_blank">
+          <a href="/handbook/guides/ingest-otlp" rel="noreferrer" target="_blank">
             <TerminalSquare data-icon="inline-start" />
             {t("projects.checklist.telemetry.action")}
           </a>
@@ -1217,7 +1714,7 @@ function _ProjectOnboardingChecklist({
                     step.secondaryAction
                   ) : (
                     <Button asChild size="sm" variant="ghost">
-                      <a href="/docs/03-operations/" rel="noreferrer" target="_blank">
+                      <a href="/handbook/operations" rel="noreferrer" target="_blank">
                         <ExternalLink data-icon="inline-start" />
                         {t("projects.checklist.docs")}
                       </a>
@@ -1242,30 +1739,45 @@ function ProjectSettingsShell({
   children: ReactNode;
   project: Project;
 }) {
-  const sections = buildProjectSettingsSections(project.id, { aiEvalEnabled });
+  const base = `/projects/${encodeURIComponent(project.id)}/settings`;
+  const sections: Array<{ id: ProjectSettingsSectionId; href: string }> = [
+    { id: "identity", href: base },
+    { id: "access", href: `${base}/members` },
+    { id: "setup", href: `${base}/setup` },
+    { id: "ingest", href: `${base}/ingest` },
+    { id: "retention", href: `${base}/retention` },
+    { id: "ai-providers", href: `${base}/ai-providers` },
+    ...(aiEvalEnabled ? ([{ id: "ai-eval", href: `${base}/ai-eval` }] as const) : []),
+  ];
 
   return (
-    <section className="grid h-full min-h-0 gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
-      <aside className="min-h-0 overflow-auto border-r pr-3">
-        <div className="mb-4">
+    <section className="flex h-full min-h-0 flex-col gap-4">
+      <div className="grid gap-3 border-b pb-3">
+        <div>
           <p className="text-xs font-medium text-muted-foreground">{t("projects.settings")}</p>
           <h2 className="truncate text-sm font-semibold">{project.name}</h2>
         </div>
-        <nav className="grid gap-1" aria-label={t("projects.settings")}>
+        <div
+          aria-label={t("projects.settings")}
+          className="flex gap-1 overflow-x-auto"
+          role="tablist"
+        >
           {sections.map((section) => (
             <Link
+              aria-selected={section.id === activeSection}
               className={cn(
-                "rounded-md px-3 py-2 text-sm hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+                "shrink-0 rounded-md px-3 py-2 text-sm hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
                 section.id === activeSection && "bg-accent font-medium",
               )}
               key={section.id}
+              role="tab"
               to={section.href}
             >
               {projectSettingsNavLabel(section.id)}
             </Link>
           ))}
-        </nav>
-      </aside>
+        </div>
+      </div>
       <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-auto">{children}</div>
     </section>
   );
@@ -1281,7 +1793,7 @@ function ProjectSettingsContent({
   project: Project;
 }) {
   const { client } = useAppSession();
-  if (activeSection === "general") {
+  if (activeSection === "identity") {
     return (
       <SettingsFormSurface>
         <ReadOnlyField label={t("projects.create.name")} value={project.name} />
@@ -1294,6 +1806,14 @@ function ProjectSettingsContent({
     );
   }
 
+  if (activeSection === "access") {
+    return <ProjectMembersSettings client={client} project={project} />;
+  }
+
+  if (activeSection === "setup") {
+    return <ProjectSetupSettings project={project} />;
+  }
+
   if (activeSection === "ingest") {
     return <ProjectIngestSettings client={client} project={project} />;
   }
@@ -1302,15 +1822,595 @@ function ProjectSettingsContent({
     return <ProjectRetentionSettings client={client} project={project} />;
   }
 
+  if (activeSection === "ai-providers") {
+    return <ProjectAiProviderSettingsEditor client={client} project={project} />;
+  }
+
   if (activeSection === "ai-eval") {
     return <ProjectAiEvalSettings client={client} project={project} />;
   }
 
-  if (activeSection === "members") {
-    return <ProjectMembersSettings client={client} project={project} />;
+  return null;
+}
+
+function ProjectSetupSettings({ project }: { project: Project }) {
+  return (
+    <SettingsFormSurface>
+      <ReadOnlyField label={t("projects.settings.endpoint")} value="/otlp/v1/traces" />
+      <div className="flex flex-wrap gap-2">
+        <Button asChild type="button" variant="outline">
+          <Link to={`/projects/${project.id}/settings/ingest`}>
+            <KeyRound data-icon="inline-start" />
+            {t("projects.settings.apiKeys")}
+          </Link>
+        </Button>
+        <Button asChild type="button" variant="outline">
+          <Link to="/traces?mode=live">
+            <PlayCircle data-icon="inline-start" />
+            {t("projects.checklist.investigate.action")}
+          </Link>
+        </Button>
+      </div>
+    </SettingsFormSurface>
+  );
+}
+
+type ProjectAiProviderProfileDraft = {
+  draftId: string;
+  id: string;
+  label: string;
+  providerKind: AiProviderKind;
+  baseUrl: string;
+  credentialRef: string;
+  credentialValue: string;
+  deployment: string;
+  region: string;
+  timeoutMs: string;
+  maxConcurrency: string;
+  disabled: boolean;
+};
+
+type ProjectAiModelAliasDraft = {
+  draftId: string;
+  id: string;
+  name: string;
+  providerProfileId: string;
+  model: string;
+  purpose: AiModelPurpose;
+  temperature: string;
+  maxOutputTokens: string;
+};
+
+function ProjectAiProviderSettingsEditor({
+  client,
+  project,
+}: {
+  client: ReturnType<typeof useAppSession>["client"];
+  project: Project;
+}) {
+  const queryClient = useQueryClient();
+  const [saved, setSaved] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [draftsLoadedVersion, setDraftsLoadedVersion] = useState<number | null>(null);
+  const [profileDrafts, setProfileDrafts] = useState<ProjectAiProviderProfileDraft[]>([]);
+  const [aliasDrafts, setAliasDrafts] = useState<ProjectAiModelAliasDraft[]>([]);
+  const settingsQuery = useQuery({
+    queryKey: projectAiProviderSettingsQueryKey(project.id),
+    queryFn: () => client.getProjectAiProviderSettings(project.id),
+  });
+  const updateMutation = useMutation({
+    mutationFn: client.updateProjectAiProviderSettings,
+    async onSuccess(settings) {
+      setSaved(true);
+      queryClient.setQueryData(projectAiProviderSettingsQueryKey(settings.projectId), settings);
+      await queryClient.invalidateQueries({
+        queryKey: projectAiProviderSettingsQueryKey(settings.projectId),
+      });
+    },
+  });
+
+  useEffect(() => {
+    if (!settingsQuery.data) {
+      return;
+    }
+    setProfileDrafts(settingsQuery.data.providerProfiles.map(toProjectProviderProfileDraft));
+    setAliasDrafts(settingsQuery.data.modelAliases.map(toProjectModelAliasDraft));
+    setDraftsLoadedVersion(settingsQuery.data.version);
+  }, [settingsQuery.data]);
+
+  const profileRows =
+    settingsQuery.data && draftsLoadedVersion !== settingsQuery.data.version
+      ? settingsQuery.data.providerProfiles.map(toProjectProviderProfileDraft)
+      : profileDrafts;
+  const aliasRows =
+    settingsQuery.data && draftsLoadedVersion !== settingsQuery.data.version
+      ? settingsQuery.data.modelAliases.map(toProjectModelAliasDraft)
+      : aliasDrafts;
+
+  function addProfile() {
+    const id = `provider-${profileRows.length + 1}`;
+    setProfileDrafts((drafts) => [
+      ...drafts,
+      {
+        draftId: `new-profile-${Date.now()}`,
+        id,
+        label: "New provider",
+        providerKind: "openai",
+        baseUrl: "",
+        credentialRef: "",
+        credentialValue: "",
+        deployment: "",
+        region: "",
+        timeoutMs: "30000",
+        maxConcurrency: "",
+        disabled: false,
+      },
+    ]);
+    setFormError(null);
+    setSaved(false);
   }
 
-  return null;
+  function removeProfile(draftId: string) {
+    const profile = profileRows.find((draft) => draft.draftId === draftId);
+    setProfileDrafts((drafts) => drafts.filter((draft) => draft.draftId !== draftId));
+    if (profile) {
+      setAliasDrafts((drafts) => drafts.filter((draft) => draft.providerProfileId !== profile.id));
+    }
+    setSaved(false);
+  }
+
+  function updateProfile(draftId: string, patch: Partial<ProjectAiProviderProfileDraft>) {
+    setProfileDrafts((drafts) =>
+      drafts.map((draft) => (draft.draftId === draftId ? { ...draft, ...patch } : draft)),
+    );
+    setSaved(false);
+  }
+
+  function addAlias() {
+    const providerProfileId = profileRows[0]?.id ?? "";
+    setAliasDrafts((drafts) => [
+      ...drafts,
+      {
+        draftId: `new-alias-${Date.now()}`,
+        id: `alias-${drafts.length + 1}`,
+        name: "default",
+        providerProfileId,
+        model: "gpt-5-mini",
+        purpose: "default",
+        temperature: "",
+        maxOutputTokens: "",
+      },
+    ]);
+    setFormError(null);
+    setSaved(false);
+  }
+
+  function removeAlias(draftId: string) {
+    setAliasDrafts((drafts) => drafts.filter((draft) => draft.draftId !== draftId));
+    setSaved(false);
+  }
+
+  function updateAlias(draftId: string, patch: Partial<ProjectAiModelAliasDraft>) {
+    setAliasDrafts((drafts) =>
+      drafts.map((draft) => (draft.draftId === draftId ? { ...draft, ...patch } : draft)),
+    );
+    setSaved(false);
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const settings = settingsQuery.data;
+    if (!settings) {
+      return;
+    }
+    const input = toProjectAiProviderSettingsInput(settings, profileRows, aliasRows);
+    if (!input) {
+      setFormError(
+        "Provider profiles require a label and credential reference or new credential value. Model aliases require a name, provider, and model.",
+      );
+      return;
+    }
+    setFormError(null);
+    setSaved(false);
+    updateMutation.mutate(input);
+  }
+
+  return (
+    <SettingsFormSurface>
+      {settingsQuery.isError ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-destructive">AI provider settings could not be loaded.</p>
+          <Button
+            onClick={() => void settingsQuery.refetch()}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            <RefreshCw data-icon="inline-start" />
+            {t("actions.retry")}
+          </Button>
+        </div>
+      ) : null}
+      <form className="grid max-w-5xl gap-6" onSubmit={submit}>
+        <section className="grid gap-3 border-y py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium">Provider profiles</h3>
+              <p className="text-sm text-muted-foreground">
+                Configure project-scoped provider profiles used by AI Eval model aliases.
+              </p>
+            </div>
+            <Button
+              disabled={!settingsQuery.data || updateMutation.isPending}
+              onClick={addProfile}
+              type="button"
+              variant="outline"
+            >
+              <Plus data-icon="inline-start" />
+              Add provider
+            </Button>
+          </div>
+          {profileRows.length > 0 ? (
+            <div className="grid gap-3">
+              {profileRows.map((profile) => (
+                <div className="grid gap-3 border p-3" key={profile.draftId}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{profile.label}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {profile.id} · {aiProviderKindLabel(profile.providerKind)}
+                      </p>
+                    </div>
+                    <Button
+                      aria-label={`Remove ${profile.label}`}
+                      disabled={updateMutation.isPending}
+                      onClick={() => removeProfile(profile.draftId)}
+                      size="icon"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <Trash2 aria-hidden />
+                    </Button>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <Field>
+                      <FieldLabel htmlFor={`project-ai-provider-label-${profile.draftId}`}>
+                        Label
+                      </FieldLabel>
+                      <Input
+                        id={`project-ai-provider-label-${profile.draftId}`}
+                        onChange={(event) =>
+                          updateProfile(profile.draftId, { label: event.target.value })
+                        }
+                        value={profile.label}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor={`project-ai-provider-kind-${profile.draftId}`}>
+                        Provider kind
+                      </FieldLabel>
+                      <Select
+                        onValueChange={(value) =>
+                          updateProfile(profile.draftId, {
+                            providerKind: value as AiProviderKind,
+                          })
+                        }
+                        value={profile.providerKind}
+                      >
+                        <SelectTrigger id={`project-ai-provider-kind-${profile.draftId}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            {aiProviderKinds.map((kind) => (
+                              <SelectItem key={kind} value={kind}>
+                                {aiProviderKindLabel(kind)}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor={`project-ai-provider-credential-${profile.draftId}`}>
+                        Credential value
+                      </FieldLabel>
+                      <Input
+                        autoComplete="off"
+                        id={`project-ai-provider-credential-${profile.draftId}`}
+                        onChange={(event) =>
+                          updateProfile(profile.draftId, { credentialValue: event.target.value })
+                        }
+                        placeholder={
+                          profile.credentialRef
+                            ? t("companies.aiProvider.credentialValuePlaceholderExisting")
+                            : "sk-..."
+                        }
+                        type="password"
+                        value={profile.credentialValue}
+                      />
+                      <input name="credentialRef" type="hidden" value={profile.credentialRef} />
+                      <FieldDescription>
+                        {profile.credentialRef
+                          ? `Existing reference: ${profile.credentialRef}`
+                          : t("companies.aiProvider.credentialRefDescription")}
+                      </FieldDescription>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor={`project-ai-provider-timeout-${profile.draftId}`}>
+                        Timeout ms
+                      </FieldLabel>
+                      <Input
+                        id={`project-ai-provider-timeout-${profile.draftId}`}
+                        min="1000"
+                        onChange={(event) =>
+                          updateProfile(profile.draftId, { timeoutMs: event.target.value })
+                        }
+                        step="1000"
+                        type="number"
+                        value={profile.timeoutMs}
+                      />
+                    </Field>
+                    {profile.providerKind === "azure_foundry" ||
+                    profile.providerKind === "openai_compatible" ? (
+                      <Field>
+                        <FieldLabel htmlFor={`project-ai-provider-base-url-${profile.draftId}`}>
+                          {t("companies.aiProvider.baseUrl")}
+                        </FieldLabel>
+                        <Input
+                          id={`project-ai-provider-base-url-${profile.draftId}`}
+                          onChange={(event) =>
+                            updateProfile(profile.draftId, { baseUrl: event.target.value })
+                          }
+                          placeholder="https://example.openai.azure.com"
+                          type="url"
+                          value={profile.baseUrl}
+                        />
+                      </Field>
+                    ) : null}
+                    {profile.providerKind === "azure_foundry" ? (
+                      <Field>
+                        <FieldLabel htmlFor={`project-ai-provider-deployment-${profile.draftId}`}>
+                          {t("companies.aiProvider.deployment")}
+                        </FieldLabel>
+                        <Input
+                          id={`project-ai-provider-deployment-${profile.draftId}`}
+                          onChange={(event) =>
+                            updateProfile(profile.draftId, { deployment: event.target.value })
+                          }
+                          value={profile.deployment}
+                        />
+                      </Field>
+                    ) : null}
+                    {profile.providerKind === "aws_bedrock" ? (
+                      <Field>
+                        <FieldLabel htmlFor={`project-ai-provider-region-${profile.draftId}`}>
+                          {t("companies.aiProvider.region")}
+                        </FieldLabel>
+                        <Input
+                          id={`project-ai-provider-region-${profile.draftId}`}
+                          onChange={(event) =>
+                            updateProfile(profile.draftId, { region: event.target.value })
+                          }
+                          placeholder="us-east-1"
+                          value={profile.region}
+                        />
+                      </Field>
+                    ) : null}
+                    <Field>
+                      <FieldLabel htmlFor={`project-ai-provider-concurrency-${profile.draftId}`}>
+                        Max parallel
+                      </FieldLabel>
+                      <Input
+                        id={`project-ai-provider-concurrency-${profile.draftId}`}
+                        min="1"
+                        onChange={(event) =>
+                          updateProfile(profile.draftId, { maxConcurrency: event.target.value })
+                        }
+                        step="1"
+                        type="number"
+                        value={profile.maxConcurrency}
+                      />
+                    </Field>
+                    <Label className="flex items-center gap-2 text-sm font-medium">
+                      <Checkbox
+                        checked={profile.disabled}
+                        onCheckedChange={(checked) =>
+                          updateProfile(profile.draftId, { disabled: checked === true })
+                        }
+                      />
+                      Disabled
+                    </Label>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="border border-dashed px-3 py-2 text-sm text-muted-foreground">
+              No project provider profiles exist yet.
+            </p>
+          )}
+        </section>
+
+        <section className="grid gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-medium">Model aliases</h3>
+              <p className="text-sm text-muted-foreground">
+                Map AI Eval purposes to project provider models.
+              </p>
+            </div>
+            <Button
+              disabled={!settingsQuery.data || updateMutation.isPending || profileRows.length === 0}
+              onClick={addAlias}
+              type="button"
+              variant="outline"
+            >
+              <Plus data-icon="inline-start" />
+              Add alias
+            </Button>
+          </div>
+          {aliasRows.length > 0 ? (
+            <div className="grid gap-3">
+              {aliasRows.map((alias) => (
+                <div
+                  className="grid gap-3 border p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_10rem_2.5rem]"
+                  key={alias.draftId}
+                >
+                  <Field>
+                    <FieldLabel htmlFor={`project-ai-alias-name-${alias.draftId}`}>
+                      Alias name
+                    </FieldLabel>
+                    <Input
+                      id={`project-ai-alias-name-${alias.draftId}`}
+                      onChange={(event) => updateAlias(alias.draftId, { name: event.target.value })}
+                      value={alias.name}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor={`project-ai-alias-model-${alias.draftId}`}>
+                      Model
+                    </FieldLabel>
+                    <Input
+                      id={`project-ai-alias-model-${alias.draftId}`}
+                      onChange={(event) =>
+                        updateAlias(alias.draftId, { model: event.target.value })
+                      }
+                      placeholder="gpt-5-mini"
+                      value={alias.model}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor={`project-ai-alias-purpose-${alias.draftId}`}>
+                      Purpose
+                    </FieldLabel>
+                    <Select
+                      onValueChange={(value) =>
+                        updateAlias(alias.draftId, { purpose: value as AiModelPurpose })
+                      }
+                      value={alias.purpose}
+                    >
+                      <SelectTrigger id={`project-ai-alias-purpose-${alias.draftId}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {aiModelPurposes.map((purpose) => (
+                            <SelectItem key={purpose} value={purpose}>
+                              {purpose}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Button
+                    aria-label={`Remove ${alias.name}`}
+                    className="self-end"
+                    disabled={updateMutation.isPending}
+                    onClick={() => removeAlias(alias.draftId)}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Trash2 aria-hidden />
+                  </Button>
+                  <Field>
+                    <FieldLabel htmlFor={`project-ai-alias-provider-${alias.draftId}`}>
+                      Provider profile
+                    </FieldLabel>
+                    <Select
+                      onValueChange={(value) =>
+                        updateAlias(alias.draftId, { providerProfileId: value })
+                      }
+                      value={alias.providerProfileId}
+                    >
+                      <SelectTrigger id={`project-ai-alias-provider-${alias.draftId}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {profileRows.map((profile) => (
+                            <SelectItem key={profile.draftId} value={profile.id}>
+                              {profile.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor={`project-ai-alias-temperature-${alias.draftId}`}>
+                      Temperature
+                    </FieldLabel>
+                    <Input
+                      id={`project-ai-alias-temperature-${alias.draftId}`}
+                      max="2"
+                      min="0"
+                      onChange={(event) =>
+                        updateAlias(alias.draftId, { temperature: event.target.value })
+                      }
+                      step="0.1"
+                      type="number"
+                      value={alias.temperature}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor={`project-ai-alias-output-${alias.draftId}`}>
+                      Max output tokens
+                    </FieldLabel>
+                    <Input
+                      id={`project-ai-alias-output-${alias.draftId}`}
+                      min="1"
+                      onChange={(event) =>
+                        updateAlias(alias.draftId, { maxOutputTokens: event.target.value })
+                      }
+                      step="1"
+                      type="number"
+                      value={alias.maxOutputTokens}
+                    />
+                  </Field>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="border border-dashed px-3 py-2 text-sm text-muted-foreground">
+              No model aliases exist yet.
+            </p>
+          )}
+        </section>
+
+        {settingsQuery.data?.effective.warnings.length ? (
+          <Alert>
+            <AlertTitle>{t("projects.settings.aiEvalWarnings")}</AlertTitle>
+            <AlertDescription>{settingsQuery.data.effective.warnings.join(", ")}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button disabled={!settingsQuery.data || updateMutation.isPending} type="submit">
+            <Save data-icon="inline-start" />
+            Save AI providers
+          </Button>
+          <Button asChild type="button" variant="outline">
+            <Link to={`/projects/${encodeURIComponent(project.id)}/settings/ai-eval`}>
+              <SlidersHorizontal data-icon="inline-start" />
+              AI Eval policy
+            </Link>
+          </Button>
+          {saved ? (
+            <span className="text-sm text-muted-foreground">AI providers saved.</span>
+          ) : null}
+          {formError ? <span className="text-sm text-destructive">{formError}</span> : null}
+          {updateMutation.isError ? (
+            <span className="text-sm text-destructive">
+              AI provider settings could not be saved.
+            </span>
+          ) : null}
+        </div>
+      </form>
+    </SettingsFormSurface>
+  );
 }
 
 function ProjectAiEvalSettings({
@@ -1467,10 +2567,10 @@ function ProjectAiEvalSettings({
               <Field>
                 <FieldLabel htmlFor="ai-eval-max-items">Max parallel eval items</FieldLabel>
                 <Input
-                  defaultValue={settingsQuery.data.sampling.maxConcurrentExperimentItems}
+                  defaultValue={settingsQuery.data.sampling.maxConcurrentEvaluationItems}
                   id="ai-eval-max-items"
                   min="1"
-                  name="maxConcurrentExperimentItems"
+                  name="maxConcurrentEvaluationItems"
                   step="1"
                   type="number"
                 />
@@ -2186,7 +3286,7 @@ function AdminSettingsShell({
   children,
   organization,
 }: {
-  activeItem: "organization" | "projects" | "members";
+  activeItem: "organization" | "projects" | "members" | "ai-provider";
   children: ReactNode;
   organization: Organization;
 }) {
@@ -2197,66 +3297,6 @@ function AdminSettingsShell({
     >
       {children}
     </section>
-  );
-}
-
-function CreateProjectSheet({
-  creatingProject,
-  onCreateProject,
-  onOpenChange,
-  open,
-  projectError,
-  projectName,
-  projectSlug,
-  setProjectName,
-  setProjectSlug,
-}: {
-  creatingProject: boolean;
-  onCreateProject: (event: FormEvent<HTMLFormElement>) => void;
-  onOpenChange: (open: boolean) => void;
-  open: boolean;
-  projectError: string | null;
-  projectName: string;
-  projectSlug: string;
-  setProjectName: (value: string) => void;
-  setProjectSlug: (value: string) => void;
-}) {
-  return (
-    <Sheet onOpenChange={onOpenChange} open={open}>
-      <SheetContent className="w-full sm:max-w-[420px]" side="right">
-        <SheetHeader>
-          <SheetTitle>{t("projects.create.title")}</SheetTitle>
-          <SheetDescription>{t("projects.create.description")}</SheetDescription>
-        </SheetHeader>
-        <form className="flex flex-1 flex-col gap-4 px-4" onSubmit={onCreateProject}>
-          <div className="space-y-1.5">
-            <Label htmlFor="project-name">{t("projects.create.name")}</Label>
-            <Input
-              id="project-name"
-              onChange={(event) => setProjectName(event.target.value)}
-              placeholder={t("projects.create.namePlaceholder")}
-              value={projectName}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="project-slug">{t("projects.create.slug")}</Label>
-            <Input
-              id="project-slug"
-              onChange={(event) => setProjectSlug(normalizeProjectSlug(event.target.value))}
-              placeholder={t("projects.create.slugPlaceholder")}
-              value={projectSlug}
-            />
-          </div>
-          {projectError ? <p className="text-xs text-destructive">{projectError}</p> : null}
-          <SheetFooter className="mt-auto px-0">
-            <Button className="w-full" disabled={creatingProject} type="submit">
-              <FolderOpen data-icon="inline-start" />
-              {creatingProject ? t("projects.create.creating") : t("projects.create.submit")}
-            </Button>
-          </SheetFooter>
-        </form>
-      </SheetContent>
-    </Sheet>
   );
 }
 
@@ -2322,6 +3362,251 @@ function SettingsFormSurface({ children }: { children: ReactNode }) {
   return <div className="grid gap-4">{children}</div>;
 }
 
+const aiProviderKinds: AiProviderKind[] = [
+  "openai",
+  "anthropic",
+  "azure_foundry",
+  "aws_bedrock",
+  "openai_compatible",
+];
+
+const aiModelPurposes: AiModelPurpose[] = [
+  "default",
+  "chat",
+  "judge",
+  "optimizer",
+  "embedding",
+  "replay",
+];
+
+function projectAiProviderSettingsQueryKey(projectId: string) {
+  return ["ProjectAiProviderSettings", projectId] as const;
+}
+
+function aiProviderKindLabel(kind: AiProviderKind) {
+  switch (kind) {
+    case "anthropic":
+      return "Anthropic";
+    case "azure_foundry":
+      return "Azure AI Foundry";
+    case "aws_bedrock":
+      return "AWS Bedrock";
+    case "openai_compatible":
+      return "OpenAI-compatible";
+    case "openai":
+      return "OpenAI";
+  }
+}
+
+function toCompanyAiProviderSettingsInput(
+  settings: CompanyAiProviderSettings,
+  form: FormData,
+  providerKind: AiProviderKind,
+): UpdateCompanyAiProviderSettingsInput | null {
+  const label = stringField(form.get("label")) ?? "Company chat";
+  const rawCredentialRef = stringField(form.get("credentialRef"));
+  const credentialRef =
+    rawCredentialRef && isAllowedAiCredentialRef(rawCredentialRef) ? rawCredentialRef : null;
+  const credentialValue = stringField(form.get("credentialValue"));
+  const model = stringField(form.get("model"));
+  const baseUrl = stringField(form.get("baseUrl"));
+  const region = stringField(form.get("region"));
+  const deployment = stringField(form.get("deployment"));
+  const timeoutMs = numberField(form.get("timeoutMs")) ?? 30000;
+  if ((!credentialRef && !credentialValue) || !model) {
+    return null;
+  }
+  const providerProfileId = settings.providerProfile?.id ?? "company-chat-provider";
+  const aliasId = settings.chatModelAlias?.id ?? "company-chat";
+  const profileParameters = providerParametersForKind(providerKind, { deployment, region });
+  return {
+    companyId: settings.companyId,
+    expectedVersion: settings.version,
+    providerProfile: {
+      id: providerProfileId,
+      label,
+      providerKind,
+      baseUrl:
+        providerKind === "azure_foundry" || providerKind === "openai_compatible" ? baseUrl : null,
+      credentialRef,
+      credentialValue,
+      models: { chat: [model] },
+      parameters: profileParameters,
+      timeoutMs,
+      maxConcurrency: settings.providerProfile?.maxConcurrency ?? null,
+      disabled: false,
+    },
+    chatModelAlias: {
+      id: aliasId,
+      name: "chat",
+      providerProfileId,
+      model,
+      purpose: "chat",
+      parameters: { extras: {} },
+    },
+  };
+}
+
+function providerParametersForKind(
+  providerKind: AiProviderKind,
+  values: { deployment: string | null; region: string | null },
+) {
+  const extras: Record<string, string> = {};
+  if (providerKind === "azure_foundry" && values.deployment) {
+    extras.deployment = values.deployment;
+  }
+  if (providerKind === "aws_bedrock" && values.region) {
+    extras.region = values.region;
+  }
+  return extras;
+}
+
+function toProjectProviderProfileDraft(profile: AiProviderProfile): ProjectAiProviderProfileDraft {
+  const parameters = readJsonObject(profile.parameters);
+  return {
+    draftId: profile.id,
+    id: profile.id,
+    label: profile.label,
+    providerKind: profile.providerKind,
+    baseUrl: profile.baseUrl ?? "",
+    credentialRef: isAllowedAiCredentialRef(profile.credentialRef) ? profile.credentialRef : "",
+    credentialValue: "",
+    deployment: readString(parameters.deployment),
+    region: readString(parameters.region),
+    timeoutMs: String(profile.timeoutMs),
+    maxConcurrency: profile.maxConcurrency ? String(profile.maxConcurrency) : "",
+    disabled: !!profile.disabledAt,
+  };
+}
+
+function toProjectModelAliasDraft(alias: AiModelAlias): ProjectAiModelAliasDraft {
+  return {
+    draftId: alias.id,
+    id: alias.id,
+    name: alias.name,
+    providerProfileId: alias.providerProfileId,
+    model: alias.model,
+    purpose: alias.purpose,
+    temperature: alias.parameters.temperature == null ? "" : String(alias.parameters.temperature),
+    maxOutputTokens:
+      alias.parameters.maxOutputTokens == null ? "" : String(alias.parameters.maxOutputTokens),
+  };
+}
+
+function toProjectAiProviderSettingsInput(
+  settings: ProjectAiProviderSettings,
+  profileDrafts: ProjectAiProviderProfileDraft[],
+  aliasDrafts: ProjectAiModelAliasDraft[],
+): UpdateProjectAiProviderSettingsInput | null {
+  const providerProfiles = profileDrafts.map((profile) => {
+    const label = profile.label.trim();
+    const credentialRef =
+      profile.credentialRef && isAllowedAiCredentialRef(profile.credentialRef)
+        ? profile.credentialRef
+        : null;
+    const credentialValue = profile.credentialValue.trim() || null;
+    const timeoutMs = numberField(profile.timeoutMs) ?? 30000;
+    if (!label || (!credentialRef && !credentialValue)) {
+      return null;
+    }
+    return {
+      id: profile.id,
+      label,
+      providerKind: profile.providerKind,
+      baseUrl:
+        profile.providerKind === "azure_foundry" || profile.providerKind === "openai_compatible"
+          ? profile.baseUrl.trim() || null
+          : null,
+      credentialRef,
+      credentialValue,
+      models: modelsForProfile(profile.id, aliasDrafts),
+      parameters: providerParametersForKind(profile.providerKind, {
+        deployment: profile.deployment.trim() || null,
+        region: profile.region.trim() || null,
+      }),
+      timeoutMs,
+      maxConcurrency: numberField(profile.maxConcurrency),
+      disabled: profile.disabled,
+    };
+  });
+  if (providerProfiles.some((profile) => !profile)) {
+    return null;
+  }
+  const modelAliases = aliasDrafts.map((alias) => {
+    const name = alias.name.trim();
+    const providerProfileId = alias.providerProfileId.trim();
+    const model = alias.model.trim();
+    if (!name || !providerProfileId || !model) {
+      return null;
+    }
+    return {
+      id: alias.id,
+      name,
+      providerProfileId,
+      model,
+      purpose: alias.purpose,
+      parameters: {
+        temperature: numberField(alias.temperature),
+        topP: null,
+        maxOutputTokens: numberField(alias.maxOutputTokens),
+        reasoningEffort: null,
+        extras: {},
+      },
+    };
+  });
+  if (modelAliases.some((alias) => !alias)) {
+    return null;
+  }
+  return {
+    projectId: settings.projectId,
+    providerProfiles: providerProfiles as UpdateProjectAiProviderSettingsInput["providerProfiles"],
+    modelAliases: modelAliases as UpdateProjectAiProviderSettingsInput["modelAliases"],
+    expectedVersion: settings.version,
+  };
+}
+
+function modelsForProfile(
+  profileId: string,
+  aliasDrafts: ProjectAiModelAliasDraft[],
+): Record<string, string[]> {
+  return aliasDrafts.reduce<Record<string, string[]>>((models, alias) => {
+    if (alias.providerProfileId !== profileId || !alias.model.trim()) {
+      return models;
+    }
+    const purposeModels = models[alias.purpose] ?? [];
+    if (!purposeModels.includes(alias.model.trim())) {
+      purposeModels.push(alias.model.trim());
+    }
+    models[alias.purpose] = purposeModels;
+    return models;
+  }, {});
+}
+
+function isAllowedAiCredentialRef(value: string) {
+  return value.startsWith("managed:") || value.startsWith("env:") || value.startsWith("external:");
+}
+
+function readJsonObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function firstChatModel(settings: CompanyAiProviderSettings["providerProfile"]): string | null {
+  const models = settings?.models;
+  if (models && typeof models === "object" && !Array.isArray(models)) {
+    const chatModels = (models as Record<string, unknown>).chat;
+    if (Array.isArray(chatModels) && typeof chatModels[0] === "string") {
+      return chatModels[0];
+    }
+  }
+  return null;
+}
+
 function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 p-3">
@@ -2372,7 +3657,8 @@ function ProjectSettingsBreadcrumb({
   activeSection: ReturnType<typeof projectSettingsSectionFromPath>;
   project: Project;
 }) {
-  const parentHref = activeSection === "general" ? "/projects" : `/projects/${project.id}/settings`;
+  const parentHref =
+    activeSection === "identity" ? "/projects" : `/projects/${project.id}/settings`;
 
   return (
     <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
@@ -2410,6 +3696,22 @@ function ProjectSettingsBreadcrumb({
 
 const projectRoles: ProjectRole[] = ["viewer", "editor", "admin"];
 const retentionModes: RetentionMode[] = ["retain", "delete", "soft_delete_then_delete"];
+const projectCreateTabs = [
+  { id: "identity", label: "Identity" },
+  { id: "access", label: "Access" },
+] as const;
+
+type ProjectCreateTab = (typeof projectCreateTabs)[number]["id"];
+type ProjectCreateFieldErrors = {
+  name?: string;
+  organizationId?: string;
+  slug?: string;
+};
+type ProjectCreateValidation = {
+  fields: ProjectCreateFieldErrors;
+  tabs: Record<ProjectCreateTab, boolean>;
+  valid: boolean;
+};
 
 function isLikelyEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -2511,6 +3813,85 @@ function normalizeProjectSlug(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
+function validateProjectCreateDraft({
+  name,
+  organizationId,
+  slug,
+}: {
+  name: string;
+  organizationId: string;
+  slug: string;
+}): ProjectCreateValidation {
+  const normalizedSlug = normalizeProjectSlug(slug);
+  const fields: ProjectCreateFieldErrors = {};
+
+  if (!name.trim()) {
+    fields.name = t("projects.create.validation");
+  }
+  if (!normalizedSlug) {
+    fields.slug = t("projects.create.validation");
+  } else if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(normalizedSlug)) {
+    fields.slug = t("projects.create.validation");
+  }
+  if (!organizationId) {
+    fields.organizationId = t("projects.create.validation");
+  }
+
+  return {
+    fields,
+    tabs: {
+      identity: Boolean(fields.name || fields.slug),
+      access: Boolean(fields.organizationId),
+    },
+    valid: Object.keys(fields).length === 0,
+  };
+}
+
+function projectCreateTabIndex(tab: ProjectCreateTab) {
+  return projectCreateTabs.findIndex((candidate) => candidate.id === tab);
+}
+
+function projectCreateNextTab(tab: ProjectCreateTab) {
+  const nextIndex = Math.min(projectCreateTabIndex(tab) + 1, projectCreateTabs.length - 1);
+  return projectCreateTabs[nextIndex]?.id ?? tab;
+}
+
+function projectCreatePreviousTab(tab: ProjectCreateTab) {
+  const previousIndex = Math.max(projectCreateTabIndex(tab) - 1, 0);
+  return projectCreateTabs[previousIndex]?.id ?? tab;
+}
+
+function projectCreateFirstInvalidTab(validation: ProjectCreateValidation) {
+  return projectCreateTabs.find((tab) => validation.tabs[tab.id])?.id ?? "identity";
+}
+
+function ProjectCreateBreadcrumb({ organizationId }: { organizationId: string | null }) {
+  const parentHref = organizationId
+    ? `/organizations/${encodeURIComponent(organizationId)}/projects`
+    : "/projects";
+
+  return (
+    <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+      <Button aria-label="Back" asChild size="icon-sm" variant="ghost">
+        <Link to={parentHref}>
+          <ArrowLeft aria-hidden />
+        </Link>
+      </Button>
+      <nav aria-label={t("nav.breadcrumb")} className="min-w-0">
+        <ol className="flex min-w-0 items-center gap-1">
+          <li>
+            <Link className="hover:text-foreground" to="/projects">
+              {t("nav.projects")}
+            </Link>
+          </li>
+          <li aria-hidden>/</li>
+          <li className="truncate text-foreground">{t("projects.create.submit")}</li>
+        </ol>
+      </nav>
+    </div>
+  );
+}
+
 function companyName(organization: Organization) {
   return organization.id === "local" ? t("companies.personal") : organization.name;
 }
@@ -2523,7 +3904,7 @@ function formatProjectCardLastIngest(value: string | null | undefined) {
   return value ? formatDateTime(value) : t("projects.noIngestYet");
 }
 
-function numberField(value: FormDataEntryValue | null) {
+function numberField(value: FormDataEntryValue | string | null) {
   if (typeof value !== "string" || value.trim() === "") {
     return null;
   }
@@ -2578,7 +3959,7 @@ function toProjectAiSettingsInput(
       enabled: policy.enabled,
       name: policy.name,
       target: policy.target,
-      scorerIds: policy.scorerIds,
+      metricIds: policy.metricIds,
       sampleRate: policy.sampleRate,
       maxDailyRuns: policy.maxDailyRuns ?? null,
       annotationRules: policy.annotationRules.map((rule) => ({
@@ -2595,9 +3976,9 @@ function toProjectAiSettingsInput(
     },
     sampling: {
       ...settings.sampling,
-      maxConcurrentExperimentItems:
-        numberField(form.get("maxConcurrentExperimentItems")) ??
-        settings.sampling.maxConcurrentExperimentItems,
+      maxConcurrentEvaluationItems:
+        numberField(form.get("maxConcurrentEvaluationItems")) ??
+        settings.sampling.maxConcurrentEvaluationItems,
     },
     datasetDefaults: settings.datasetDefaults,
     expectedVersion: settings.version,
@@ -2613,7 +3994,7 @@ function retentionDataClassLabel(dataClass: RetentionDataClass) {
     TRACES: "Traces",
     LOGS: "Logs",
     METRICS: "Metrics",
-    AI_EVALS: "AI evals",
+    AI_EVALS: "Evaluations",
     DATASETS: "Datasets",
     SCORERS: "Scorers",
     DASHBOARD_HISTORY: "Dashboard history",
@@ -2631,19 +4012,37 @@ function retentionModeLabel(mode: RetentionMode) {
   return labels[mode];
 }
 
-function adminNavLabel(id: "organization" | "projects" | "members") {
+function adminNavLabel(id: "organization" | "projects" | "members" | "ai-provider") {
   if (id === "projects") {
     return t("nav.projects");
   }
   if (id === "members") {
     return t("companies.members.title");
   }
+  if (id === "ai-provider") {
+    return t("nav.aiProvider");
+  }
   return t("companies.title");
 }
 
-function projectSettingsNavLabel(id: "general" | "ingest" | "retention" | "ai-eval" | "members") {
-  if (id === "general") {
-    return t("projects.settings.general");
+type ProjectSettingsSectionId =
+  | "identity"
+  | "access"
+  | "setup"
+  | "ingest"
+  | "retention"
+  | "ai-providers"
+  | "ai-eval";
+
+function projectSettingsNavLabel(id: ProjectSettingsSectionId) {
+  if (id === "identity") {
+    return "Identity";
+  }
+  if (id === "access") {
+    return "Access";
+  }
+  if (id === "setup") {
+    return t("projects.settings.setup");
   }
   if (id === "ingest") {
     return t("projects.settings.apiKeys");
@@ -2651,18 +4050,24 @@ function projectSettingsNavLabel(id: "general" | "ingest" | "retention" | "ai-ev
   if (id === "retention") {
     return t("projects.settings.retention");
   }
+  if (id === "ai-providers") {
+    return "AI Providers";
+  }
   if (id === "ai-eval") {
     return t("projects.settings.aiEval");
   }
-  if (id === "members") {
-    return t("projects.settings.members");
-  }
-  return t("projects.settings.general");
+  return "Identity";
 }
 
-function projectSettingsTitle(id: "general" | "ingest" | "retention" | "ai-eval" | "members") {
-  if (id === "general") {
-    return t("projects.settings.general");
+function projectSettingsTitle(id: ProjectSettingsSectionId) {
+  if (id === "identity") {
+    return "Identity";
+  }
+  if (id === "access") {
+    return "Access";
+  }
+  if (id === "setup") {
+    return t("projects.settings.setup");
   }
   if (id === "ingest") {
     return t("projects.settings.apiKeys");
@@ -2670,36 +4075,49 @@ function projectSettingsTitle(id: "general" | "ingest" | "retention" | "ai-eval"
   if (id === "retention") {
     return t("projects.settings.retention");
   }
+  if (id === "ai-providers") {
+    return "AI Providers";
+  }
   if (id === "ai-eval") {
     return t("projects.settings.aiEval");
   }
-  if (id === "members") {
-    return t("projects.settings.members");
-  }
-  return t("projects.settings.general");
+  return "Identity";
 }
 
-function projectSettingsDescription(
-  id: "general" | "ingest" | "retention" | "ai-eval" | "members",
-) {
+function projectSettingsDescription(id: ProjectSettingsSectionId) {
+  if (id === "identity") {
+    return "Project identity and immutable company context.";
+  }
+  if (id === "access") {
+    return t("projects.settings.projectMembersDescription");
+  }
+  if (id === "setup") {
+    return "Prepare ingest setup before creating or copying API keys.";
+  }
   if (id === "ingest") {
     return t("projects.settings.setupDescription");
   }
   if (id === "retention") {
     return t("projects.settings.retentionDescription");
   }
+  if (id === "ai-providers") {
+    return "Project-scoped provider profiles and model aliases for AI Eval.";
+  }
   if (id === "ai-eval") {
     return t("projects.settings.aiEvalDescription");
-  }
-  if (id === "members") {
-    return t("projects.settings.projectMembersDescription");
   }
   return t("projects.settingsDescription");
 }
 
 function projectSettingsSectionFromPath(pathname: string) {
   if (pathname.endsWith("/general")) {
-    return "general" as const;
+    return "identity" as const;
+  }
+  if (pathname.endsWith("/access") || pathname.endsWith("/members")) {
+    return "access" as const;
+  }
+  if (pathname.endsWith("/setup")) {
+    return "setup" as const;
   }
   if (pathname.endsWith("/ingest")) {
     return "ingest" as const;
@@ -2707,11 +4125,11 @@ function projectSettingsSectionFromPath(pathname: string) {
   if (pathname.endsWith("/retention")) {
     return "retention" as const;
   }
+  if (pathname.endsWith("/ai-providers")) {
+    return "ai-providers" as const;
+  }
   if (pathname.endsWith("/ai-eval")) {
     return "ai-eval" as const;
   }
-  if (pathname.endsWith("/members")) {
-    return "members" as const;
-  }
-  return "general" as const;
+  return "identity" as const;
 }

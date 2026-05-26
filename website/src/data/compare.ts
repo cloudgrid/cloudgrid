@@ -9,7 +9,7 @@ import type { CompareRow, Vendor } from "./compare-types";
 export type { CompareRow, Vendor };
 
 export const vendors: Vendor[] = [
-  { key: "cloudgrid", label: "CloudGrid", category: "OSS · OTel-native" },
+  { key: "cloudgrid", label: "CloudGrid", category: "Source-available · OTel-native" },
   { key: "datadog", label: "Datadog", category: "SaaS APM" },
   { key: "honeycomb", label: "Honeycomb", category: "SaaS APM" },
   { key: "lgtm", label: "Grafana LGTM", category: "OSS stack" },
@@ -22,10 +22,10 @@ export const vendors: Vendor[] = [
 
 export const rows: CompareRow[] = [
   {
-    criterion: "Open source",
-    detail: "Core under a permissive license, no open-core split.",
+    criterion: "Source model",
+    detail: "Source reviewable and self-hostable, with license posture called out explicitly.",
     cells: {
-      cloudgrid: { value: "yes", note: "Apache 2.0" },
+      cloudgrid: { value: "partial", note: "Apache 2.0 + Commons Clause" },
       datadog: { value: "no" },
       honeycomb: { value: "no" },
       lgtm: { value: "yes", note: "AGPL/Apache mix" },
@@ -51,7 +51,7 @@ export const rows: CompareRow[] = [
     },
   },
   {
-    criterion: "OTel-native (no proprietary agents)",
+    criterion: "OTel-native agent support",
     detail: "Accepts OTLP from any OpenTelemetry SDK out of the box.",
     cells: {
       cloudgrid: { value: "yes" },
@@ -67,14 +67,14 @@ export const rows: CompareRow[] = [
   },
   {
     criterion: "Traces · Logs · Metrics in one product",
-    detail: "One UI, one query path, one storage adapter — no glue.",
+    detail: "One UI, one query path, one storage adapter.",
     cells: {
       cloudgrid: { value: "yes" },
       datadog: { value: "yes" },
       honeycomb: { value: "partial", note: "metrics is its own product" },
       lgtm: { value: "partial", note: "3 separate systems" },
       signoz: { value: "yes" },
-      jaeger: { value: "no", note: "tracing only" },
+      jaeger: { value: "no", note: "tracing-focused" },
       langfuse: { value: "no" },
       arize: { value: "no" },
       braintrust: { value: "no" },
@@ -82,7 +82,7 @@ export const rows: CompareRow[] = [
   },
   {
     criterion: "First-class AI agent evaluation",
-    detail: "AgentRuns, datasets, scorers, experiments, prompt optimization.",
+    detail: "Datasets, dataset evaluations, comparisons, optimization, and promotion evidence.",
     cells: {
       cloudgrid: { value: "yes" },
       datadog: { value: "partial", note: "LLM Observability add-on" },
@@ -97,7 +97,7 @@ export const rows: CompareRow[] = [
   },
   {
     criterion: "Adapter-swappable storage",
-    detail: "Storage backend sits behind a typed port; swap without forking.",
+    detail: "Storage backend sits behind a typed port for adapter-based replacement.",
     cells: {
       cloudgrid: { value: "yes", note: "v1: SurrealDB" },
       datadog: { value: "no" },
@@ -160,8 +160,8 @@ export const rows: CompareRow[] = [
     detail: "Not gated behind a paid tier.",
     cells: {
       cloudgrid: { value: "yes", note: "GitHub · Google · Entra ID" },
-      datadog: { value: "na", note: "paid only" },
-      honeycomb: { value: "na", note: "paid only" },
+      datadog: { value: "na", note: "paid tier" },
+      honeycomb: { value: "na", note: "paid tier" },
       lgtm: { value: "partial", note: "Grafana OSS supports SSO" },
       signoz: { value: "partial", note: "Cloud / paid" },
       jaeger: { value: "no" },
@@ -171,8 +171,8 @@ export const rows: CompareRow[] = [
     },
   },
   {
-    criterion: "No telemetry-volume / per-host pricing",
-    detail: "Self-hosted == self-priced.",
+    criterion: "Infrastructure-based cost model",
+    detail: "Self-hosted means compute and storage capacity drive the cost model.",
     cells: {
       cloudgrid: { value: "yes" },
       datadog: { value: "no" },
@@ -187,7 +187,7 @@ export const rows: CompareRow[] = [
   },
   {
     criterion: "Roadmap visible in the source repo",
-    detail: "Open issues, open milestones, open RFCs — no closed-door roadmap deck.",
+    detail: "Open issues, open milestones, and open RFCs keep roadmap review visible.",
     cells: {
       cloudgrid: { value: "yes" },
       datadog: { value: "no" },
@@ -202,7 +202,7 @@ export const rows: CompareRow[] = [
   },
   {
     criterion: "AI-eval lives next to general traces",
-    detail: "Score an agent without leaving the system that observes the rest of the stack.",
+    detail: "Evaluate AI behavior inside the system that observes the rest of the stack.",
     cells: {
       cloudgrid: { value: "yes" },
       datadog: { value: "partial" },

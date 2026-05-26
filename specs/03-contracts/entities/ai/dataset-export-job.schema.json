@@ -6,8 +6,11 @@
   "additionalProperties": false,
   "required": [
     "id",
+    "projectId",
     "datasetId",
+    "datasetVersionId",
     "datasetVersion",
+    "datasetDigest",
     "status",
     "format",
     "rowCount",
@@ -16,16 +19,13 @@
   ],
   "properties": {
     "id": { "type": "string" },
+    "projectId": { "type": "string" },
     "datasetId": { "type": "string" },
+    "datasetVersionId": { "type": "string" },
     "datasetVersion": { "type": "integer", "minimum": 1 },
-    "status": {
-      "type": "string",
-      "enum": ["queued", "ready", "failed", "expired"]
-    },
-    "format": {
-      "type": "string",
-      "enum": ["jsonl", "json_array", "csv"]
-    },
+    "datasetDigest": { "type": "string", "minLength": 1 },
+    "status": { "type": "string", "enum": ["queued", "ready", "failed", "expired"] },
+    "format": { "type": "string", "enum": ["jsonl", "json_array", "csv", "hugging_face_jsonl"] },
     "rowCount": { "type": "integer", "minimum": 0 },
     "sizeBytes": { "type": "integer", "minimum": 0 },
     "sha256": { "type": "string" },

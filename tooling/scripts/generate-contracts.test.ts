@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { $ } from "bun";
 import { buildSchema, isInputObjectType, isNonNullType, parse, validate } from "graphql";
@@ -17,8 +17,11 @@ import {
   AUTH_PROVIDERS,
   COMPANY_ROLES,
   CONTROL_PLANE_SUBJECTS,
+  CLOUDGRID_ENV_VARS,
   DEPLOYMENT_MODES,
+  MESSAGE_BRIDGE_SUBJECTS,
   PROJECT_STATUSES,
+  TELEMETRY_SUBJECTS,
 } from "../../apps/packages/definition/src/index";
 
 const root = join(import.meta.dir, "..", "..");
@@ -47,8 +50,11 @@ describe("contract generation", () => {
       ...AI_CHAT_ACTION_STATUSES,
       ...AI_CHAT_ARTIFACT_KINDS,
       ...AI_CHAT_STREAM_EVENT_TYPES,
+      ...TELEMETRY_SUBJECTS,
       ...CONTROL_PLANE_SUBJECTS,
       ...AI_EVAL_SUBJECTS,
+      ...MESSAGE_BRIDGE_SUBJECTS,
+      ...CLOUDGRID_ENV_VARS,
     ]) {
       expect(ts).toContain(value);
       expect(go).toContain(value);
@@ -69,11 +75,98 @@ describe("contract generation", () => {
     expect(AI_CHAT_STREAM_EVENT_TYPES).toEqual(schema.$defs.streamEvent.properties.type.enum);
   });
 
+  test("AI Chat json-render catalog constrains trace waterfall data", () => {
+    const schema = JSON.parse(
+      readFileSync(
+        join(root, "specs/03-contracts/entities/ai/json-render-catalog.schema.json"),
+        "utf8",
+      ),
+    ) as {
+      allOf: Array<{
+        if?: { properties?: { renderer?: { const?: string } } };
+        then?: { properties?: { data?: unknown } };
+      }>;
+      $defs: Record<string, { required?: string[]; properties?: Record<string, unknown> }>;
+    };
+    const traceWaterfallRule = schema.allOf.find(
+      (rule) => rule.if?.properties?.renderer?.const === "trace_waterfall",
+    );
+
+    expect(traceWaterfallRule?.then?.properties?.data).toEqual({
+      $ref: "#/$defs/traceWaterfallData",
+    });
+    expect(schema.$defs.traceWaterfallData?.required).toEqual(["trace", "spans", "structure"]);
+    expect(schema.$defs.traceWaterfallData?.properties?.trace).toEqual({ $ref: "#/$defs/trace" });
+    expect(schema.$defs.traceWaterfallData?.properties?.spans).toMatchObject({
+      type: "array",
+      maxItems: 5000,
+      items: { $ref: "#/$defs/span" },
+    });
+    expect(schema.$defs.traceWaterfallData?.properties?.structure).toEqual({
+      $ref: "#/$defs/traceStructure",
+    });
+    expect(schema.$defs.span?.required).toEqual(
+      expect.arrayContaining(["id", "traceId", "links", "exceptions"]),
+    );
+    expect(schema.$defs.traceStructure?.required).toEqual(
+      expect.arrayContaining(["rootSpanIds", "orphanSpanIds", "criticalPathSpanIds"]),
+    );
+  });
+
+  test("AI Chat json-render catalog constrains common artifact data shapes", () => {
+    const schema = JSON.parse(
+      readFileSync(
+        join(root, "specs/03-contracts/entities/ai/json-render-catalog.schema.json"),
+        "utf8",
+      ),
+    ) as {
+      allOf: Array<{
+        if?: { properties?: { renderer?: { const?: string } } };
+        then?: { properties?: { data?: unknown } };
+      }>;
+      $defs: Record<string, { required?: string[]; properties?: Record<string, unknown> }>;
+    };
+    const dataRefFor = (renderer: string) =>
+      schema.allOf.find((rule) => rule.if?.properties?.renderer?.const === renderer)?.then
+        ?.properties?.data;
+    const renderers = JSON.parse(
+      readFileSync(
+        join(root, "specs/03-contracts/entities/ai/json-render-catalog.schema.json"),
+        "utf8",
+      ),
+    ).properties.renderer.enum as string[];
+
+    expect(dataRefFor("table")).toEqual({ $ref: "#/$defs/tableData" });
+    expect(dataRefFor("key_value")).toEqual({ $ref: "#/$defs/keyValueData" });
+    expect(dataRefFor("status_summary")).toEqual({ $ref: "#/$defs/statusSummaryData" });
+    expect(dataRefFor("log_list")).toEqual({ $ref: "#/$defs/logListData" });
+    expect(dataRefFor("metric_timeseries")).toEqual({ $ref: "#/$defs/metricSeriesData" });
+    expect(dataRefFor("metric_bar")).toEqual({ $ref: "#/$defs/metricBarData" });
+    expect(dataRefFor("json_tree")).toEqual({ $ref: "#/$defs/jsonTreeData" });
+    expect(dataRefFor("diff")).toEqual({ $ref: "#/$defs/diffData" });
+    expect(dataRefFor("mermaid")).toEqual({ $ref: "#/$defs/mermaidData" });
+    expect(dataRefFor("action_approval")).toEqual({ $ref: "#/$defs/actionApprovalData" });
+    expect(renderers.map(dataRefFor).every(Boolean)).toBe(true);
+    expect(schema.$defs.tableData?.required).toEqual(["rows"]);
+    expect(schema.$defs.tableData?.properties?.rows).toMatchObject({
+      type: "array",
+      maxItems: 500,
+    });
+    expect(schema.$defs.logListData?.properties?.items).toMatchObject({
+      type: "array",
+      maxItems: 200,
+    });
+    expect(schema.$defs.metricSeriesData?.required).toEqual(["result"]);
+  });
+
   test("public API GraphQL operations validate against the public schema", () => {
     const schema = buildSchema(
       readFileSync(join(root, "specs/03-contracts/graphql/public-schema.graphql"), "utf8"),
     );
-    const source = readFileSync(join(root, "apps/packages/public-api-client/src/index.ts"), "utf8");
+    const source = sourceFiles(join(root, "apps/packages/public-api-client/src"))
+      .filter((file) => !file.endsWith(".test.ts"))
+      .map((file) => readFileSync(file, "utf8"))
+      .join("\n");
     const templates = extractTemplates(source);
     const operations = [...templates.entries()]
       .filter(([name]) => name.endsWith("Operation"))
@@ -121,6 +214,20 @@ describe("contract generation", () => {
     expect(violations).toEqual([]);
   });
 });
+
+function sourceFiles(directory: string): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(directory)) {
+    const path = join(directory, entry);
+    const stat = statSync(path);
+    if (stat.isDirectory()) {
+      files.push(...sourceFiles(path));
+    } else if (entry.endsWith(".ts")) {
+      files.push(path);
+    }
+  }
+  return files;
+}
 
 function extractTemplates(source: string) {
   const values = new Map<string, string>();

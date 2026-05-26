@@ -61,7 +61,7 @@ describe("BFF GraphQL control-plane resolvers", () => {
           return project();
         },
       }),
-      { graphqlUI: false, auth: { mode: "local", sessionTtlSeconds: 28_800 } },
+      { auth: { mode: "local", sessionTtlSeconds: 28_800 } },
     );
 
     const response = await app.request("/graphql", {
@@ -127,7 +127,7 @@ describe("BFF GraphQL control-plane resolvers", () => {
           return true;
         },
       }),
-      { graphqlUI: false, auth: { mode: "local", sessionTtlSeconds: 28_800 } },
+      { auth: { mode: "local", sessionTtlSeconds: 28_800 } },
     );
 
     const response = await app.request("/graphql", {
@@ -155,6 +155,42 @@ describe("BFF GraphQL control-plane resolvers", () => {
       "updateMember:org-1:user-1:admin",
       "removeMember:org-1:user-1",
     ]);
+  });
+
+  test("persists selected project into the BFF auth context for deep reloads", async () => {
+    const observedProjectIds: Array<string | undefined> = [];
+    const { app } = createAppWithBridge(
+      bridge({
+        async selectProject() {
+          return viewer();
+        },
+        async viewer(authContext: NormalizedAuthContext) {
+          observedProjectIds.push(authContext.projectId);
+          return viewer();
+        },
+      }),
+      { auth: { mode: "local", sessionTtlSeconds: 28_800 } },
+    );
+
+    const selectResponse = await app.request("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query:
+          'mutation Select { selectProject(projectId: "project-1") { selectedProject { id } } }',
+      }),
+    });
+    const viewerResponse = await app.request("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: "query Viewer { viewer { selectedProject { id } } }",
+      }),
+    });
+
+    expect((await selectResponse.json()).errors).toBeUndefined();
+    expect((await viewerResponse.json()).errors).toBeUndefined();
+    expect(observedProjectIds).toEqual(["project-1"]);
   });
 
   test("routes organization member and invitation operations through the control-plane bridge", async () => {
@@ -208,7 +244,7 @@ describe("BFF GraphQL control-plane resolvers", () => {
           return invitation({ id, status: "revoked", revokedAt: "2026-05-16T10:00:00.000Z" });
         },
       }),
-      { graphqlUI: false, auth: { mode: "local", sessionTtlSeconds: 28_800 } },
+      { auth: { mode: "local", sessionTtlSeconds: 28_800 } },
     );
 
     const queryResponse = await app.request("/graphql", {
@@ -393,7 +429,7 @@ describe("BFF GraphQL control-plane resolvers", () => {
           return true;
         },
       }),
-      { graphqlUI: false, auth: { mode: "local", sessionTtlSeconds: 28_800 } },
+      { auth: { mode: "local", sessionTtlSeconds: 28_800 } },
     );
 
     const mutationResponse = await app.request("/graphql", {
@@ -549,15 +585,22 @@ describe("BFF GraphQL control-plane resolvers", () => {
           calls.push(`archiveAiChatConversation:${id}`);
           return { ...aiChatConversation("org-1", "project-1", id), status: "archived" as const };
         },
+        async deleteAiChatConversation(id: string, _authContext: NormalizedAuthContext) {
+          calls.push(`deleteAiChatConversation:${id}`);
+          return true;
+        },
         async approveAiChatAction(
           input: ApproveAiChatActionInput,
           _authContext: NormalizedAuthContext,
         ) {
-          calls.push(`approveAiChatAction:${input.actionId}:${input.approved}`);
-          return aiChatActionProposal(input.actionId, input.approved ? "approved" : "rejected");
+          calls.push(`approveAiChatAction:${input.actionProposalId}:${input.approved}`);
+          return aiChatActionProposal(
+            input.actionProposalId,
+            input.approved ? "approved" : "rejected",
+          );
         },
       }),
-      { graphqlUI: false, auth: { mode: "local", sessionTtlSeconds: 28_800 } },
+      { auth: { mode: "local", sessionTtlSeconds: 28_800 } },
     );
 
     const mutationResponse = await app.request("/graphql", {
@@ -608,8 +651,10 @@ describe("BFF GraphQL control-plane resolvers", () => {
               firstUserMessage: "Investigate slow traces"
             }) { id projectId messages { role parts { type text } } }
             archiveAiChatConversation(id: "chat-1") { status }
+            deleteAiChatConversation(id: "chat-2")
             approveAiChatAction(input: {
-              actionId: "action-1",
+              actionProposalId: "action-1",
+              idempotencyKey: "approval-key-1",
               approved: true,
               expectedVersion: 1
             }) { id status }
@@ -643,6 +688,7 @@ describe("BFF GraphQL control-plane resolvers", () => {
       "updateCompanyAiProviderSettings:org-1:1",
       "createAiChatConversation:org-1:project-1",
       "archiveAiChatConversation:chat-1",
+      "deleteAiChatConversation:chat-2",
       "approveAiChatAction:action-1:true",
       "projectAiProviderSettings:project-1",
       "companyAiProviderSettings:org-1",
@@ -764,6 +810,7 @@ function aiProviderProfile(id: string, ownerScope: string, ownerId: string) {
     baseUrl: null,
     credentialRef: "env:OPENAI_API_KEY",
     models: { chat: ["gpt-5-mini"] },
+    parameters: {},
     timeoutMs: 30_000,
     maxConcurrency: null,
     disabledAt: null,
@@ -819,12 +866,15 @@ function aiChatActionProposal(
     description: "Create a saved dashboard",
     risk: "medium",
     status,
-    operation: "dashboard.save",
-    preview: { name: "Latency" },
+    actionKind: "dashboard.save",
+    graphqlMutation: "saveDashboard",
+    inputPreview: { name: "Latency" },
+    requiresApproval: true,
     result: null,
     requestedAt: "2026-05-18T00:00:00.000Z",
     decidedAt: status === "proposed" ? null : "2026-05-18T00:01:00.000Z",
     decidedByUserId: status === "proposed" ? null : "user-local",
+    expiresAt: "2026-05-18T00:15:00.000Z",
     version: 2,
   };
 }

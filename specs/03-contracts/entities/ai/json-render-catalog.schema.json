@@ -1,0 +1,408 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIC-008",
+  "title": "CloudGrid AI Chat JSON Render Catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["renderer", "title", "ariaLabel"],
+  "properties": {
+    "renderer": {
+      "type": "string",
+      "enum": [
+        "metric_timeseries",
+        "metric_bar",
+        "table",
+        "key_value",
+        "trace_waterfall",
+        "log_list",
+        "mermaid",
+        "json_tree",
+        "diff",
+        "status_summary",
+        "action_approval"
+      ]
+    },
+    "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "ariaLabel": { "type": "string", "minLength": 1, "maxLength": 240 },
+    "data": { "type": ["object", "array"] },
+    "dataRef": { "type": "string", "pattern": "^sandbox://run/[^/]+/(inputs|outputs)/" },
+    "options": { "type": "object", "additionalProperties": true },
+    "routeLinks": {
+      "type": "array",
+      "maxItems": 20,
+      "items": { "$ref": "#/$defs/routeLink" }
+    },
+    "sourceToolCallIds": { "type": "array", "items": { "type": "string" } },
+    "artifactIds": { "type": "array", "items": { "type": "string" } },
+    "warnings": {
+      "type": "array",
+      "maxItems": 10,
+      "items": { "type": "string", "maxLength": 240 }
+    }
+  },
+  "oneOf": [{ "required": ["data"] }, { "required": ["dataRef"] }],
+  "allOf": [
+    {
+      "if": { "properties": { "renderer": { "const": "mermaid" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/mermaidData" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "renderer": { "const": "table" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/tableData" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "renderer": { "const": "key_value" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/keyValueData" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "renderer": { "const": "status_summary" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/statusSummaryData" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "renderer": { "const": "log_list" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/logListData" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "renderer": { "const": "metric_timeseries" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/metricSeriesData" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "renderer": { "const": "metric_bar" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/metricBarData" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "renderer": { "const": "trace_waterfall" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/traceWaterfallData" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "renderer": { "const": "json_tree" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/jsonTreeData" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "renderer": { "const": "diff" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/diffData" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "renderer": { "const": "action_approval" } } },
+      "then": {
+        "properties": {
+          "data": { "$ref": "#/$defs/actionApprovalData" }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "jsonObject": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "tableData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rows"],
+      "properties": {
+        "rows": {
+          "type": "array",
+          "maxItems": 500,
+          "items": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "keyValueData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["values"],
+      "properties": {
+        "values": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "statusSummaryData": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "values": { "type": "object", "additionalProperties": true },
+        "rows": {
+          "type": "array",
+          "maxItems": 500,
+          "items": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "logListData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 200,
+          "items": { "type": "object", "additionalProperties": true }
+        },
+        "nextCursor": { "type": ["string", "null"] }
+      }
+    },
+    "metricSeriesData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["result"],
+      "properties": {
+        "result": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["metric", "series"],
+          "properties": {
+            "metric": { "type": "object", "additionalProperties": true },
+            "series": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true,
+                "required": ["labels", "points"],
+                "properties": {
+                  "labels": {},
+                  "points": { "type": "array", "maxItems": 5000, "items": { "type": "object" } }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "metricBarData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["data"],
+      "properties": {
+        "data": {
+          "type": "array",
+          "maxItems": 5000,
+          "items": { "type": "object", "additionalProperties": true }
+        },
+        "series": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key"],
+            "properties": {
+              "key": { "type": "string", "minLength": 1 },
+              "label": { "type": "string" }
+            }
+          }
+        },
+        "summary": { "type": "string" },
+        "label": { "type": "string" }
+      }
+    },
+    "jsonTreeData": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "diffData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["before", "after"],
+      "properties": {
+        "before": { "type": "string", "maxLength": 20000 },
+        "after": { "type": "string", "maxLength": 20000 },
+        "language": { "type": "string", "maxLength": 40 }
+      }
+    },
+    "mermaidData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["diagram"],
+      "properties": {
+        "diagram": { "type": "string", "minLength": 1, "maxLength": 20000 }
+      }
+    },
+    "actionApprovalData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionProposalId", "risk", "actionKind"],
+      "properties": {
+        "actionProposalId": { "type": "string", "minLength": 1 },
+        "risk": { "type": "string", "enum": ["low", "medium", "high", "destructive"] },
+        "actionKind": { "type": "string", "pattern": "^[a-z]+\\.[a-z_]+$" },
+        "summary": { "type": "string", "maxLength": 1000 }
+      }
+    },
+    "trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "startedAt", "startedAtUnixNano", "attributes"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "serviceName": { "type": ["string", "null"] },
+        "startedAt": { "type": "string", "minLength": 1 },
+        "startedAtUnixNano": { "type": "string", "pattern": "^[0-9]+$" },
+        "endedAt": { "type": ["string", "null"] },
+        "endedAtUnixNano": { "type": ["string", "null"] },
+        "durationNano": { "type": ["string", "null"] },
+        "durationMs": { "type": ["number", "null"], "minimum": 0 },
+        "rootSpanId": { "type": ["string", "null"] },
+        "status": { "type": ["string", "null"], "enum": ["ok", "error", "unset", null] },
+        "attributes": { "$ref": "#/$defs/jsonObject" }
+      }
+    },
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "traceId",
+        "name",
+        "startedAt",
+        "startedAtUnixNano",
+        "endedAt",
+        "endedAtUnixNano",
+        "startOffsetNano",
+        "durationNano",
+        "durationMs",
+        "attributes",
+        "depth",
+        "childCount",
+        "hasError",
+        "isCriticalPath",
+        "isOrphan",
+        "isServiceEntry",
+        "exceptionCount",
+        "events",
+        "links",
+        "exceptions"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "traceId": { "type": "string", "minLength": 1 },
+        "parentSpanId": { "type": ["string", "null"] },
+        "name": { "type": "string", "minLength": 1 },
+        "kind": { "type": ["string", "null"] },
+        "serviceName": { "type": ["string", "null"] },
+        "startedAt": { "type": "string", "minLength": 1 },
+        "startedAtUnixNano": { "type": "string", "pattern": "^[0-9]+$" },
+        "endedAt": { "type": "string", "minLength": 1 },
+        "endedAtUnixNano": { "type": "string", "pattern": "^[0-9]+$" },
+        "startOffsetNano": { "type": "string", "pattern": "^[0-9]+$" },
+        "durationNano": { "type": "string", "pattern": "^[0-9]+$" },
+        "durationMs": { "type": "number", "minimum": 0 },
+        "status": { "type": ["string", "null"], "enum": ["ok", "error", "unset", null] },
+        "attributes": { "$ref": "#/$defs/jsonObject" },
+        "depth": { "type": "integer", "minimum": 0 },
+        "childCount": { "type": "integer", "minimum": 0 },
+        "hasError": { "type": "boolean" },
+        "isCriticalPath": { "type": "boolean" },
+        "isOrphan": { "type": "boolean" },
+        "isServiceEntry": { "type": "boolean" },
+        "exceptionCount": { "type": "integer", "minimum": 0 },
+        "events": { "type": "array", "items": { "type": "object" } },
+        "links": { "type": "array", "items": { "type": "object" } },
+        "exceptions": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "traceStructure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rootSpanIds",
+        "orphanSpanIds",
+        "criticalPathSpanIds",
+        "maxDepth",
+        "serviceBreakdown"
+      ],
+      "properties": {
+        "rootSpanIds": { "type": "array", "items": { "type": "string" } },
+        "orphanSpanIds": { "type": "array", "items": { "type": "string" } },
+        "criticalPathSpanIds": { "type": "array", "items": { "type": "string" } },
+        "maxDepth": { "type": "integer", "minimum": 0 },
+        "serviceBreakdown": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "serviceName",
+              "spanCount",
+              "errorSpanCount",
+              "durationMs",
+              "percentOfTraceDuration"
+            ],
+            "properties": {
+              "serviceName": { "type": "string" },
+              "spanCount": { "type": "integer", "minimum": 0 },
+              "errorSpanCount": { "type": "integer", "minimum": 0 },
+              "durationMs": { "type": "number", "minimum": 0 },
+              "percentOfTraceDuration": { "type": "number", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "traceWaterfallData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trace", "spans", "structure"],
+      "properties": {
+        "trace": { "$ref": "#/$defs/trace" },
+        "spans": { "type": "array", "maxItems": 5000, "items": { "$ref": "#/$defs/span" } },
+        "structure": { "$ref": "#/$defs/traceStructure" },
+        "selectedSpan": { "anyOf": [{ "$ref": "#/$defs/span" }, { "type": "null" }] },
+        "spanMatches": { "type": "array", "items": { "type": "object" } },
+        "logs": { "type": "array", "items": { "type": "object" } },
+        "relatedLogs": { "type": "array", "items": { "type": "object" } },
+        "warnings": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "routeLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "to"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "to": {
+          "type": "string",
+          "pattern": "^/(projects/[^/]+/)?(traces|logs|metrics|dashboards|ai-chat|ai-eval|settings)(/.*)?$"
+        }
+      }
+    }
+  }
+}

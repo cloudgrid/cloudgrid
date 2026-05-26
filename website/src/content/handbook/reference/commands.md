@@ -4,7 +4,7 @@ description: "Run commands from the repository root unless a command says otherw
 order: 1
 accent: rose
 eyebrow: "Handbook - Reference"
-updated: 2026-05-18
+updated: 2026-05-19
 ---
 
 Run commands from the repository root unless a command says otherwise.
@@ -17,6 +17,7 @@ Run commands from the repository root unless a command says otherwise.
 | Prepare local token routing | `bun run setup:local` |
 | Start NATS and SurrealDB | `bun run dev:infra` |
 | Start local app stack | `bun run dev:all` |
+| Stop stale local app processes | `bun run dev:clean` |
 | Start BFF/frontend dev | `bun run dev` |
 | Seed development telemetry | `bun run dev:seed` |
 | Seed continuous live telemetry | `bun run dev:seed:live` |
@@ -48,6 +49,12 @@ Run commands from the repository root unless a command says otherwise.
 | Frontend smoke | `bun run smoke:frontend` |
 | Go workspace tests | `bun run go:test` |
 | Docker-backed integration | `bun run integration:local` |
+| Local benchmark probe | `bun run bench:local` |
+| Local read benchmark probe | `bun run bench:read` |
+| Local ingest benchmark probe | `bun run bench:ingest` |
+| Production-like benchmark probe | `bun run bench:production` |
+| Production-like read benchmark probe | `bun run bench:production:read` |
+| Production-like ingest benchmark probe | `bun run bench:production:ingest` |
 
 `bun run verify:full` includes `smoke:frontend` and `git diff --check` after the default verification chain. Any GraphQL, AsyncAPI, UI contract, BFF bridge, or Go message contract change must keep `bun run contracts:check` passing.
 
@@ -67,7 +74,7 @@ Start NATS and SurrealDB before manual service startup:
 bun run dev:infra
 ```
 
-The root `package.json` does not currently expose production benchmark commands. If benchmark scripts are added later, document the exact names only after verifying them in `package.json`.
+Benchmark commands skip unless `CLOUDGRID_ENABLE_BENCHMARKS=true`. Production-like benchmark commands also require `CLOUDGRID_BENCH_DEPLOYMENT_PROFILE=production-like` and explicit target URLs.
 
 ## AI Evaluation Runner Scaffold
 

@@ -8,24 +8,39 @@ interface Props {
   items: Item[];
 }
 const { items } = Astro.props;
+
+const imageByHref: Record<string, string> = {
+  "/features/traces": "/hero-backgrounds/features-traces.png",
+  "/features/logs": "/hero-backgrounds/features-logs.png",
+  "/features/metrics": "/hero-backgrounds/features-metrics.png",
+  "/features/dashboards": "/hero-backgrounds/features-dashboards.png",
+  "/features/alerts": "/hero-backgrounds/features-alerts.png",
+  "/features/ai-evaluation": "/hero-backgrounds/features-ai-evaluation.png",
+  "/features/adapters": "/hero-backgrounds/features-adapters.png",
+  "/enterprise": "/hero-backgrounds/enterprise.png",
+  "/enterprise/whitelabel-solution": "/hero-backgrounds/enterprise-whitelabel.png",
+  "/enterprise/compare": "/hero-backgrounds/enterprise-compare.png",
+};
 ---
 
-<div class="grid sm:grid-cols-3 gap-4">
+<div class="related-stack">
   {items.map((it, i) => (
     <a
       href={it.href}
-      class="card is-interactive group flex h-full flex-col p-5"
+      class="related-stack__item group reveal"
       data-delay={(i + 1) as any}
     >
-      <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Related</div>
-      <div class="mt-1 text-base font-semibold text-text">{it.label}</div>
-      <p class="mt-1.5 text-sm text-text-secondary leading-relaxed flex-1">{it.desc}</p>
-      <div class="mt-4 inline-flex items-center gap-1 text-sm font-medium text-text-secondary group-hover:text-text">
-        Visit
-        <svg class="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M5 12h14M12 5l7 7-7 7" />
-        </svg>
+      <div class="related-stack__media" aria-hidden="true">
+        <img src={imageByHref[it.href] ?? "/hero-backgrounds/default.png"} alt="" loading="lazy" decoding="async" />
       </div>
+      <div class="related-stack__copy">
+        <div class="related-stack__kicker">Related</div>
+        <div class="related-stack__title">{it.label}</div>
+        <p>{it.desc}</p>
+      </div>
+      <svg class="related-stack__arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M5 12h14M12 5l7 7-7 7" />
+      </svg>
     </a>
   ))}
 </div>

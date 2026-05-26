@@ -3,8 +3,8 @@ title: Storage adapter
 description: Implement the storage-read / storage-write port against your database.
 order: 1
 accent: rose
-eyebrow: Handbook · Adapters · Storage
-updated: 2026-05-17
+eyebrow: Handbook - Architecture - Extension boundaries
+updated: 2026-05-21
 ---
 
 Two services own the storage port: `core/storage-write` (mutations) and
@@ -22,6 +22,9 @@ SurrealDB.
 - **readiness checks** and **schema initialization** for your backend.
 - **authorization preparation** — projections must respect project
   boundaries.
+- **service ownership** — storage-write remains the only telemetry mutator and
+  storage-read remains the only telemetry reader. A storage adapter must not be
+  imported by the BFF, frontend, collector, or public API clients.
 
 ## A sketch
 

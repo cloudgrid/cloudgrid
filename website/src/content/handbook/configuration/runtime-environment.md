@@ -26,7 +26,6 @@ Runtime configuration is service-owned. Each service validates only the variable
 | `CLOUDGRID_BFF_PORT` | `3000` | BFF HTTP, GraphQL, auth, health, and static serving port. |
 | `CLOUDGRID_FRONTEND_SERVE_STATIC` | `true` in production, otherwise `false` | Serve built frontend from the BFF. |
 | `CLOUDGRID_FRONTEND_STATIC_DIR` | `./apps/backend/public` | Static frontend directory used by the BFF. |
-| `CLOUDGRID_GRAPHQL_UI` | development default | Enables GraphiQL only for trusted operator sessions. |
 | `CLOUDGRID_SESSION_SECRET` | unset | Required when `CLOUDGRID_AUTH_MODE=sso`. |
 | `CLOUDGRID_SESSION_TTL_SECONDS` | `28800` | Browser session lifetime in seconds. |
 
@@ -35,14 +34,15 @@ Runtime configuration is service-owned. Each service validates only the variable
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `CLOUDGRID_OTLP_HTTP_ADDR` | `0.0.0.0:4318` | OTLP/HTTP bind address for traces, logs, and metrics. |
-| `CLOUDGRID_OTLP_HOST` | `0.0.0.0` | Legacy host fallback when `CLOUDGRID_OTLP_HTTP_ADDR` is unset. |
-| `CLOUDGRID_OTLP_PORT` | `4318` | Legacy port fallback when `CLOUDGRID_OTLP_HTTP_ADDR` is unset. |
 | `CLOUDGRID_OTLP_GRPC_ADDR` | `0.0.0.0:4317` | OTLP/gRPC bind address. |
 | `CLOUDGRID_OTLP_MAX_REQUEST_BYTES` | `4194304` | Maximum OTLP/HTTP request body size. |
 | `CLOUDGRID_OTLP_GRPC_MAX_MESSAGE_BYTES` | HTTP body limit | Maximum OTLP/gRPC message size. |
 | `CLOUDGRID_OTLP_GRPC_COMPRESSION` | `gzip` | OTLP/gRPC compression mode, `gzip` or `none`. |
 | `CLOUDGRID_OTLP_LOCAL_PROJECT_ID` | `default` | Local single-project fallback when token routing is not configured. |
 | `CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS` | unset | JSON token-to-project map for local multi-project ingest. |
+| `CLOUDGRID_AUTH_ISSUER` | unset | Collector-only issuer for deployed OTLP ingest bearer tokens when `CLOUDGRID_AUTH_MODE=sso`. |
+| `CLOUDGRID_AUTH_AUDIENCE` | unset | Collector-only audience for deployed OTLP ingest bearer tokens when `CLOUDGRID_AUTH_MODE=sso`. |
+| `CLOUDGRID_AUTH_JWKS_URL` | unset | Collector-only JWKS endpoint for deployed OTLP ingest bearer-token validation when `CLOUDGRID_AUTH_MODE=sso`. |
 
 ## Storage And Control-Plane Variables
 
@@ -63,7 +63,7 @@ Runtime configuration is service-owned. Each service validates only the variable
 | `CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID` | `local` in local mode | Required in deployed mode when enabled. |
 | `CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID` | `cloudgrid-system` | Project receiving CloudGrid service telemetry. |
 | `CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT` | `http://localhost:4318` in local mode | OTLP HTTP base endpoint. |
-| `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN` | unset | Required in deployed mode and in local token mode. |
+| `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN` | unset | Required whenever self-observability is enabled; in local mode it must map to `cloudgrid-system`. |
 | `CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS` | `10` | Export interval, `1..300`. |
 
 Boolean parsing is strict for self-observability variables: use `true` or `false`, not `1` or `0`.

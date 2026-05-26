@@ -55,17 +55,20 @@ const MUTATION_OPERATIONS = new Set([
   "commitDatasetImport",
   "startDatasetExport",
   "promoteSpanToDatasetItem",
-  "createScorer",
-  "createExperiment",
-  "startExperimentRun",
-  "cancelExperimentRun",
+  "createEvaluationDefinition",
+  "updateEvaluationDefinition",
+  "startEvaluationRun",
+  "cancelEvaluationRun",
+  "pauseEvaluationRun",
+  "resumeEvaluationRun",
+  "createEvaluationComparison",
   "startOptimizationRun",
-  "promotePromptVersion",
+  "promoteTargetSnapshot",
   "resolveAnnotation",
   "updateProjectAiSettings",
 ]);
 
-const SUBSCRIPTION_OPERATIONS = new Set(["liveTraces", "liveExperimentRun"]);
+const SUBSCRIPTION_OPERATIONS = new Set(["liveTraces", "liveEvaluationRun"]);
 const BOUNDED_OPERATION_NAME = /^[A-Za-z][A-Za-z0-9_.]{0,63}$/;
 
 export function recordGraphQLMetrics(

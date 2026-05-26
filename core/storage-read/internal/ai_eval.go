@@ -15,10 +15,20 @@ import (
 const (
 	SubjectEvalAgentRunsSearch            = "eval.agent_runs.search"
 	SubjectEvalDatasetSearch              = "eval.dataset.search"
+	SubjectEvalDatasetCandidatesSearch    = "eval.dataset.candidates.search"
+	SubjectEvalDatasetVersionGet          = "eval.dataset.version.get"
 	SubjectEvalDatasetHealth              = "eval.dataset.health"
 	SubjectEvalScorerSearch               = "eval.scorer.search"
 	SubjectEvalExperimentSearch           = "eval.experiment.search"
+	SubjectEvalEvaluationSearch           = "eval.evaluation.search"
+	SubjectEvalEvaluationRunSearch        = "eval.evaluation.run.search"
+	SubjectEvalEvaluationRunGet           = "eval.evaluation.run.get"
 	SubjectEvalResultsSearch              = "eval.results.search"
+	SubjectEvalEvaluationComparisonSearch = "eval.evaluation.comparison.search"
+	SubjectEvalTargetSnapshotGet          = "eval.target.snapshot.get"
+	SubjectEvalTargetDiff                 = "eval.target.diff"
+	SubjectEvalOptimizationSearch         = "eval.optimization.search"
+	SubjectEvalOptimizationGet            = "eval.optimization.get"
 	SubjectEvalManifestResolve            = "eval.manifest.resolve"
 	SubjectEvalOnlinePolicyMatchesResolve = "eval.online.policy_matches.resolve"
 	SubjectEvalQualityOverview            = "eval.quality.overview"
@@ -217,28 +227,40 @@ func validateEvalLiveStart(request contracts.EvalLiveStartRequest) error {
 	return nil
 }
 
-func aiEvalReadSubjectHandlers(store AiEvalQueryStore, registry *EvalLiveRegistry, logger *slog.Logger) map[string]bridgeMessageHandler {
-	queryHandler := handleAiEvalQuery(store, logger)
+func aiEvalReadSubjectHandlers(store AiEvalQueryStore, registry *EvalLiveRegistry, logger *slog.Logger, timeout time.Duration) map[string]bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
+	queryHandler := handleAiEvalQuery(store, logger, timeout)
 	return map[string]bridgeMessageHandler{
 		SubjectEvalAgentRunsSearch:            queryHandler,
 		SubjectEvalDatasetSearch:              queryHandler,
+		SubjectEvalDatasetCandidatesSearch:    handleDatasetCandidatesSearch(store, logger, timeout),
 		SubjectEvalDatasetTransferGet:         queryHandler,
+		SubjectEvalDatasetVersionGet:          queryHandler,
 		SubjectEvalDatasetHealth:              queryHandler,
 		SubjectEvalScorerSearch:               queryHandler,
 		SubjectEvalExperimentSearch:           queryHandler,
+		SubjectEvalEvaluationSearch:           queryHandler,
+		SubjectEvalEvaluationRunSearch:        queryHandler,
+		SubjectEvalEvaluationRunGet:           queryHandler,
 		SubjectEvalResultsSearch:              queryHandler,
+		SubjectEvalEvaluationComparisonSearch: queryHandler,
+		SubjectEvalTargetSnapshotGet:          queryHandler,
+		SubjectEvalTargetDiff:                 queryHandler,
+		SubjectEvalOptimizationSearch:         queryHandler,
+		SubjectEvalOptimizationGet:            queryHandler,
 		SubjectEvalQualityOverview:            queryHandler,
-		SubjectEvalDatasetExportStart:         handleAiEvalMutationQuery(store, logger),
-		SubjectEvalManifestResolve:            handleExperimentManifestResolve(store, logger),
-		SubjectEvalOnlinePolicyMatchesResolve: handleOnlinePolicyMatchesResolve(store, logger),
+		SubjectEvalDatasetExportStart:         handleAiEvalMutationQuery(store, logger, timeout),
+		SubjectEvalManifestResolve:            handleExperimentManifestResolve(store, logger, timeout),
+		SubjectEvalOnlinePolicyMatchesResolve: handleOnlinePolicyMatchesResolve(store, logger, timeout),
 		SubjectAnnotationQueueSearch:          queryHandler,
 		SubjectEvalLiveStart:                  handleEvalLiveStart(registry, logger),
 		SubjectEvalLiveStop:                   handleEvalLiveStop(registry, logger),
-		SubjectEvalExperimentProgress:         handleExperimentProgressNotification(registry, logger),
+		SubjectEvalExperimentProgress:         handleExperimentProgressNotification(registry, logger, timeout),
 	}
 }
 
-func handleAiEvalMutationQuery(store AiEvalQueryStore, logger *slog.Logger) bridgeMessageHandler {
+func handleAiEvalMutationQuery(store AiEvalQueryStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var request contracts.EvalMutationRequest
@@ -252,9 +274,9 @@ func handleAiEvalMutationQuery(store AiEvalQueryStore, logger *slog.Logger) brid
 			logHandlerCompletion(logger, msg.Subject(), response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
-		data, err := store.QueryAiEval(ctx, msg.Subject(), request.Input)
+		data, err := store.QueryAiEval(ctx, msg.Subject(), request.Input, request.AuthContext)
 		if err != nil {
 			response := contracts.EvalMutationResponse{RequestID: request.RequestID, OK: false, Error: ptr(bridgeErrorFromError(err))}
 			respond(msg, response)
@@ -267,11 +289,13 @@ func handleAiEvalMutationQuery(store AiEvalQueryStore, logger *slog.Logger) brid
 	}
 }
 
-func handleAiEvalQuery(store AiEvalQueryStore, logger *slog.Logger) bridgeMessageHandler {
+func handleAiEvalQuery(store AiEvalQueryStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var request contracts.EvalQueryRequest
-		if err := json.Unmarshal(msg.Data(), &request); err != nil {
+		var raw map[string]any
+		if err := json.Unmarshal(msg.Data(), &raw); err != nil {
 			response := contracts.EvalQueryResponse{
 				RequestID: "",
 				OK:        false,
@@ -281,9 +305,20 @@ func handleAiEvalQuery(store AiEvalQueryStore, logger *slog.Logger) bridgeMessag
 			logHandlerCompletion(logger, msg.Subject(), response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		if data, err := json.Marshal(raw); err != nil || json.Unmarshal(data, &request) != nil {
+			response := contracts.EvalQueryResponse{
+				RequestID: "",
+				OK:        false,
+				Error:     ptr(bridgeErrorFromError(validationError("invalid AI eval query request JSON"))),
+			}
+			respond(msg, response)
+			logHandlerCompletion(logger, msg.Subject(), response.RequestID, false, start, response.Error)
+			return
+		}
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
-		data, err := store.QueryAiEval(ctx, msg.Subject(), request.Input)
+		input := aiEvalQueryInputFromRequest(raw, request.Input)
+		data, err := store.QueryAiEval(ctx, msg.Subject(), input, request.AuthContext)
 		if err != nil {
 			response := contracts.EvalQueryResponse{RequestID: request.RequestID, OK: false, Error: ptr(bridgeErrorFromError(err))}
 			respond(msg, response)
@@ -296,7 +331,77 @@ func handleAiEvalQuery(store AiEvalQueryStore, logger *slog.Logger) bridgeMessag
 	}
 }
 
-func handleExperimentManifestResolve(store AiEvalQueryStore, logger *slog.Logger) bridgeMessageHandler {
+func aiEvalQueryInputFromRequest(raw map[string]any, nested map[string]any) map[string]any {
+	input := map[string]any{}
+	for key, value := range nested {
+		input[key] = value
+	}
+	for key, value := range raw {
+		switch key {
+		case "requestId", "issuedAt", "authContext", "traceContext", "input":
+			continue
+		default:
+			if _, exists := input[key]; !exists {
+				input[key] = value
+			}
+		}
+	}
+	return input
+}
+
+func handleDatasetCandidatesSearch(store AiEvalQueryStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
+	return func(msg BridgeMessage) {
+		start := time.Now()
+		var request contracts.DatasetCandidatesSearchRequest
+		if err := json.Unmarshal(msg.Data(), &request); err != nil {
+			response := contracts.EvalQueryResponse{
+				RequestID: "",
+				OK:        false,
+				Error:     ptr(bridgeErrorFromError(validationError("invalid dataset candidates search request JSON"))),
+			}
+			respond(msg, response)
+			logHandlerCompletion(logger, msg.Subject(), response.RequestID, false, start, response.Error)
+			return
+		}
+		ctx, cancel := readHandlerContext(timeout)
+		defer cancel()
+		data, err := store.QueryAiEval(ctx, SubjectEvalDatasetCandidatesSearch, datasetCandidatesSearchInput(request), request.AuthContext)
+		if err != nil {
+			response := contracts.EvalQueryResponse{RequestID: request.RequestID, OK: false, Error: ptr(bridgeErrorFromError(err))}
+			respond(msg, response)
+			logHandlerCompletion(logger, msg.Subject(), response.RequestID, false, start, response.Error)
+			return
+		}
+		response := contracts.EvalQueryResponse{RequestID: request.RequestID, OK: true, Data: data}
+		respond(msg, response)
+		logHandlerCompletion(logger, msg.Subject(), request.RequestID, true, start, nil)
+	}
+}
+
+func datasetCandidatesSearchInput(request contracts.DatasetCandidatesSearchRequest) map[string]any {
+	input := map[string]any{}
+	setOptionalString := func(key string, value *string) {
+		if value != nil && strings.TrimSpace(*value) != "" {
+			input[key] = strings.TrimSpace(*value)
+		}
+	}
+	setOptionalString("datasetId", request.DatasetID)
+	setOptionalString("status", request.Status)
+	setOptionalString("sourceKind", request.SourceKind)
+	setOptionalString("targetShape", request.TargetShape)
+	setOptionalString("contentTreatment", request.ContentTreatment)
+	setOptionalString("clusterId", request.ClusterID)
+	setOptionalString("query", request.Query)
+	setOptionalString("cursor", request.Cursor)
+	if request.Limit != nil {
+		input["limit"] = *request.Limit
+	}
+	return input
+}
+
+func handleExperimentManifestResolve(store AiEvalQueryStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var request contracts.ExperimentManifestResolveRequest
@@ -310,7 +415,7 @@ func handleExperimentManifestResolve(store AiEvalQueryStore, logger *slog.Logger
 			logHandlerCompletion(logger, SubjectEvalManifestResolve, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
 		manifest, err := store.ResolveExperimentManifest(ctx, request)
 		if err != nil {
@@ -319,17 +424,20 @@ func handleExperimentManifestResolve(store AiEvalQueryStore, logger *slog.Logger
 			logHandlerCompletion(logger, SubjectEvalManifestResolve, response.RequestID, false, start, response.Error)
 			return
 		}
-		response := contracts.ExperimentManifestResolveResponse{
-			RequestID: request.RequestID,
-			OK:        true,
-			Data:      map[string]any{"manifest": manifest},
+		response := contracts.ExperimentManifestResolveResponse{RequestID: request.RequestID, OK: true}
+		if typed, err := mapToExperimentManifest(manifest); err == nil {
+			response.Data = &contracts.ExperimentManifestData{Manifest: typed}
+		} else {
+			response.OK = false
+			response.Error = ptr(bridgeErrorFromError(err))
 		}
 		respond(msg, response)
-		logHandlerCompletion(logger, SubjectEvalManifestResolve, request.RequestID, true, start, nil)
+		logHandlerCompletion(logger, SubjectEvalManifestResolve, request.RequestID, response.OK, start, response.Error)
 	}
 }
 
-func handleOnlinePolicyMatchesResolve(store AiEvalQueryStore, logger *slog.Logger) bridgeMessageHandler {
+func handleOnlinePolicyMatchesResolve(store AiEvalQueryStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var request contracts.OnlinePolicyMatchesResolveRequest
@@ -343,7 +451,7 @@ func handleOnlinePolicyMatchesResolve(store AiEvalQueryStore, logger *slog.Logge
 			logHandlerCompletion(logger, SubjectEvalOnlinePolicyMatchesResolve, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
 		data, err := store.ResolveOnlinePolicyMatches(ctx, request)
 		if err != nil {
@@ -360,6 +468,18 @@ func handleOnlinePolicyMatchesResolve(store AiEvalQueryStore, logger *slog.Logge
 		respond(msg, response)
 		logHandlerCompletion(logger, SubjectEvalOnlinePolicyMatchesResolve, request.RequestID, true, start, nil)
 	}
+}
+
+func mapToExperimentManifest(value map[string]any) (contracts.ExperimentManifest, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return contracts.ExperimentManifest{}, err
+	}
+	var manifest contracts.ExperimentManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return contracts.ExperimentManifest{}, validationError("experiment manifest did not match contract")
+	}
+	return manifest, nil
 }
 
 func handleEvalLiveStart(registry *EvalLiveRegistry, logger *slog.Logger) bridgeMessageHandler {
@@ -416,7 +536,8 @@ func handleEvalLiveStop(registry *EvalLiveRegistry, logger *slog.Logger) bridgeM
 	}
 }
 
-func handleExperimentProgressNotification(registry *EvalLiveRegistry, logger *slog.Logger) bridgeMessageHandler {
+func handleExperimentProgressNotification(registry *EvalLiveRegistry, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
+	timeout = readHandlerTimeout(timeout)
 	return func(msg BridgeMessage) {
 		start := time.Now()
 		var notification contracts.ExperimentProgressNotification
@@ -424,7 +545,7 @@ func handleExperimentProgressNotification(registry *EvalLiveRegistry, logger *sl
 			logHandlerCompletion(logger, SubjectEvalExperimentProgress, "", false, start, ptr(bridgeErrorFromError(validationError("invalid experiment progress notification JSON"))))
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx, cancel := readHandlerContext(timeout)
 		defer cancel()
 		if err := registry.HandleProgress(ctx, notification); err != nil {
 			bridgeError := bridgeErrorFromError(err)

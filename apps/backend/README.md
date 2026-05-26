@@ -28,8 +28,7 @@ bun run dev
 
 The BFF serves `/graphql`, `/api/health`, `/livez`, `/readyz`, and production
 frontend assets from `apps/backend/public` on `CLOUDGRID_BFF_PORT` (`3000` by
-default). GraphiQL is enabled in development and disabled in production unless
-`CLOUDGRID_GRAPHQL_UI=true` is set.
+default). The BFF does not serve a bundled GraphQL IDE.
 
 The MVP has no authentication enforcement. Do not expose the BFF to untrusted
 networks.

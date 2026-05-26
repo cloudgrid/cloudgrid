@@ -34,9 +34,9 @@ func TestBuildLiveTraceCandidatesQueryIncludesOptionalBranchFilters(t *testing.T
 
 	assertContains(t, stmt.SQL, "durationMs >= $minDurationMs")
 	assertContains(t, stmt.SQL, "durationMs <= $maxDurationMs")
-	assertContains(t, stmt.SQL, "string::lowercase(traceId) CONTAINS $query")
-	assertContains(t, stmt.SQL, "traceId IN (SELECT VALUE traceId FROM span WHERE parentSpanId = NONE AND name = $operationName)")
-	assertContains(t, stmt.SQL, "traceId IN (SELECT VALUE traceId FROM span WHERE name = $spanName)")
+	assertContains(t, stmt.SQL, "searchText @AND@ $query")
+	assertContains(t, stmt.SQL, "traceId IN (SELECT VALUE traceId FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND parentSpanId = NONE AND name = $operationName)")
+	assertContains(t, stmt.SQL, "traceId IN (SELECT VALUE traceId FROM span WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND deletedAt = NONE AND name = $spanName)")
 	assertContains(t, stmt.SQL, "string::lowercase(<string> attributes[$attributeKey0]) CONTAINS $attributeValue0")
 
 	traceIDs, ok := stmt.Params["traceIds"].([]string)
@@ -68,8 +68,8 @@ func TestBuildTraceByIDAndSpansByTraceIDQueriesTrimIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildTraceByIDQuery returned error: %v", err)
 	}
-	assertContains(t, traceStmt.SQL, "FROM trace")
-	assertContains(t, traceStmt.SQL, "WHERE traceId = $traceId")
+	assertContains(t, traceStmt.SQL, "FROM type::record('trace', $traceId)")
+	assertContains(t, traceStmt.SQL, "WHERE tenantId = $tenantId")
 	assertContains(t, traceStmt.SQL, "LIMIT 1")
 	assertNoMutation(t, traceStmt.SQL)
 	if traceStmt.Params["traceId"] != "trace-123" {
@@ -203,5 +203,23 @@ func TestDecodeCursorRejectsWrongSortAndInvalidTime(t *testing.T) {
 	blankID := strings.TrimRight(encodeCursor(t, "startedAt_desc_traceId_asc", time.Date(2026, 5, 8, 8, 0, 0, 0, time.UTC).Format(time.RFC3339Nano), " "), "=")
 	if _, err := BuildTraceSearchQuery(contracts.TraceSearchQuery{Cursor: &blankID}); err == nil {
 		t.Fatal("BuildTraceSearchQuery accepted cursor with blank last ID")
+	}
+
+	errorFirst := contracts.TraceSortErrorFirst
+	malformedErrorFirst := encodeCursor(t, "errorFirst_startedAt_desc_traceId_asc", time.Date(2026, 5, 8, 8, 0, 0, 0, time.UTC).Format(time.RFC3339Nano), "trace-1")
+	if _, err := BuildTraceSearchQuery(contracts.TraceSearchQuery{Sort: &errorFirst, Cursor: &malformedErrorFirst}); err == nil {
+		t.Fatal("BuildTraceSearchQuery accepted malformed error-first cursor value")
+	}
+
+	logSeverity := contracts.LogSortSeverityDesc
+	logWrongSort := encodeCursor(t, "timestamp_desc_logEventId_asc", time.Date(2026, 5, 8, 8, 0, 0, 0, time.UTC).Format(time.RFC3339Nano), "log-1")
+	if _, err := BuildLogSearchQuery(contracts.LogSearchQuery{Sort: &logSeverity, Cursor: &logWrongSort}); err == nil {
+		t.Fatal("BuildLogSearchQuery accepted a cursor for a different sort")
+	}
+
+	metricNameDesc := contracts.MetricNameSortNameDesc
+	metricWrongSort := encodeCursor(t, "lastSeenAt_desc_metricName_asc", time.Date(2026, 5, 8, 8, 0, 0, 0, time.UTC).Format(time.RFC3339Nano), "requests")
+	if _, err := BuildMetricNameSearchQuery(contracts.MetricNameSearchInput{Sort: &metricNameDesc, Cursor: &metricWrongSort}); err == nil {
+		t.Fatal("BuildMetricNameSearchQuery accepted a cursor for a different sort")
 	}
 }

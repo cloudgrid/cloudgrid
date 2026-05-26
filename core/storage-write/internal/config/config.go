@@ -56,6 +56,7 @@ type SelfObservabilityConfig struct {
 	TracesEnabled         bool
 	LogsEnabled           bool
 	MetricsEnabled        bool
+	ExportFailureLogLevel string
 }
 
 func (cfg SurrealDBConfig) HasCredentials() bool {
@@ -158,6 +159,10 @@ func loadSelfObservabilityConfig() (SelfObservabilityConfig, error) {
 		ProjectID:             valueOrDefault(os.Getenv("CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID"), "cloudgrid-system"),
 		ExportIntervalSeconds: interval,
 	}
+	cfg.ExportFailureLogLevel, err = selfObservabilityLogLevel(os.Getenv("CLOUDGRID_SELF_OBSERVABILITY_EXPORT_FAILURE_LOG_LEVEL"))
+	if err != nil {
+		return SelfObservabilityConfig{}, err
+	}
 	if mode == "local" {
 		cfg.CompanyID = valueOrDefault(os.Getenv("CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID"), "local")
 		cfg.OTLPEndpoint = valueOrDefault(os.Getenv("CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT"), "http://localhost:4318")
@@ -196,7 +201,23 @@ func loadSelfObservabilityConfig() (SelfObservabilityConfig, error) {
 			}
 		}
 	}
+	if mode == "local" && enabled && cfg.OTLPBearerToken == "" {
+		return SelfObservabilityConfig{}, configError("CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN is required when self-observability is enabled")
+	}
 	return cfg, nil
+}
+
+func selfObservabilityLogLevel(value string) (string, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return "warn", nil
+	}
+	switch value {
+	case "debug", "info", "warn", "error", "off":
+		return value, nil
+	default:
+		return "", configError("CLOUDGRID_SELF_OBSERVABILITY_EXPORT_FAILURE_LOG_LEVEL must be debug, info, warn, error, or off")
+	}
 }
 
 func (cfg Config) Validate() error {

@@ -1,0 +1,20 @@
+plan: ai_eval_v2_implementation_migration
+ownership_boundaries:
+  bff-agent:
+    write_scope: [apps/backend, apps/packages/public-api-client, apps/packages/ui-contracts]
+    must_not_write: [core/storage-read, core/storage-write, core/ai-eval-runner]
+  storage-write-agent:
+    write_scope: [core/storage-write, core/go-contracts]
+    must_not_write: [apps/frontend, apps/backend, core/storage-read, core/ai-eval-runner]
+  storage-read-agent:
+    write_scope: [core/storage-read, core/go-contracts]
+    must_not_write: [apps/frontend, apps/backend, core/storage-write, core/ai-eval-runner]
+  runner-agent:
+    write_scope: [core/ai-eval-runner, core/go-contracts]
+    must_not_write: [apps/frontend, apps/backend, core/storage-read, core/storage-write]
+  frontend-agent:
+    write_scope: [apps/frontend, apps/packages/public-api-client, apps/packages/ui-contracts]
+    must_not_write: [apps/backend, core]
+  integration-docs-agent:
+    write_scope: [apps/backend, apps/frontend, core, website, skills, specs/.readiness-report.yaml]
+    must_split_by_boundary_before_implementation: true

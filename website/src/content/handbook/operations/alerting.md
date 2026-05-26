@@ -4,7 +4,7 @@ description: "Alert rule, silence, and history CRUD is implemented per project; 
 order: 5
 accent: amber
 eyebrow: "Handbook - Operations"
-updated: 2026-05-18
+updated: 2026-05-26
 ---
 
 CloudGrid alerting is project-scoped. Alert rule, silence, and history CRUD is implemented through GraphQL, the BFF bridge, control-plane storage, and the alert management UI. Rule execution belongs to a dedicated alert evaluator.
@@ -18,7 +18,7 @@ CloudGrid exposes alert management surfaces:
 - in-app alert history;
 - typed rule shapes over metrics, logs, and traces.
 
-The alert evaluator is the component that executes rules, transitions states, and dispatches notifications. The repository includes evaluator domain logic, transport-neutral handlers, and service image/chart shape. Production completion packages are project discovery, email/webhook notification adapters, and dashboard alert widgets.
+The alert evaluator is the component that executes rules, transitions states, and dispatches notifications. The repository includes evaluator domain logic, transport-neutral handlers, service project discovery, in-app/email/webhook notification adapters, dashboard alert widgets, and service image/chart shape. The evaluator also owns the bridge-backed delivery boundary: built-in in-app and email delivery are part of the core runtime, while provider-specific delivery can be added through private adapters that consume alert dispatch work from the message bridge.
 
 ## Rule Kinds
 
@@ -47,9 +47,11 @@ flowchart TD
 
 ## Notification Adapters
 
-The core reference adapter is in-app alert history. The production adapter package adds email and webhook delivery using the configuration and secret-handling rules in the alerting spec. Slack and Teams delivery use webhook endpoints when operators provide compatible HTTPS receivers.
+CloudGrid core provides in-app alert history and email delivery. Webhook delivery gives deployments a signed HTTPS path for customer-owned receivers.
 
-Do not add notification provider secrets to dashboard widgets, frontend state, BFF responses, or alert summaries.
+Additional delivery paths such as Slack, WhatsApp, SMS, Teams, PagerDuty, or an internal notification gateway should be implemented as private bridge-backed adapters. Those adapters consume canonical alert dispatch requests, deliver to their provider, and return a bounded delivery result. They do not evaluate alert conditions, query telemetry, mutate alert rules, or own alert state.
+
+Do not add notification provider secrets to dashboard widgets, frontend state, BFF responses, alert summaries, or alert history records.
 
 ## Operator Checks
 
@@ -60,9 +62,10 @@ When the evaluator is present, check:
 - storage-read query failures;
 - notification delivery status;
 - alert history persistence;
-- silence matching.
+- silence matching;
+- bridge-backed adapter lag, retry counts, and terminal delivery failures for configured third-party paths.
 
-Do not document email or webhook alert notifications as available until their adapters exist. Invitation email SMTP is a separate onboarding path; alert email may reuse the deployed SMTP runtime only after the alert email adapter is implemented.
+Invitation email SMTP is a separate onboarding path. Alert email uses the deployed SMTP runtime through the alert email adapter.
 
 ## Dashboard Thresholds
 

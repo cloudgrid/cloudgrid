@@ -1,7 +1,6 @@
 import {
   Activity,
   Bot,
-  Braces,
   Clipboard,
   FilterX,
   FolderOpen,
@@ -99,11 +98,9 @@ function clearFilterSearch(pathname: string, search: string) {
 export function CommandPalette({
   open,
   onOpenChange,
-  showGraphQLUiLink,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  showGraphQLUiLink: boolean;
 }) {
   const { viewer } = useAppSession();
   const location = useLocation();
@@ -200,12 +197,6 @@ export function CommandPalette({
             <Clipboard />
             <span>{t("actions.copyUrl")}</span>
           </CommandItem>
-          {showGraphQLUiLink ? (
-            <CommandItem onSelect={() => runAction(() => window.location.assign("/graphql"))}>
-              <Braces />
-              <span>{t("actions.openGraphql")}</span>
-            </CommandItem>
-          ) : null}
         </CommandGroup>
       </CommandList>
     </CommandDialog>

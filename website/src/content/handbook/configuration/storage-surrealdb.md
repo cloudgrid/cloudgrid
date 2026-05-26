@@ -65,6 +65,8 @@ They must not appear in:
 
 Storage and control-plane services must not report ready until they can connect, authenticate, apply required schema, and run bounded readiness checks.
 
+For telemetry reads, storage-read readiness requires indexes that match the full project ownership predicate: `tenantId`, `companyId`, and `projectId` plus the selective field or sort field used by trace, log, metric, and facet queries. Trace list and live-candidate reads use denormalized count fields stored on `trace`; storage-read does not recompute span/log/service counts for every page. Write-side refreshes for one known trace target the deterministic SurrealDB record ID, for example `trace:<traceId>`, instead of scanning the trace table with a `WHERE` update.
+
 Check readiness with:
 
 ```sh

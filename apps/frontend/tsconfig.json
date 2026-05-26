@@ -5,6 +5,7 @@
     "outDir": "dist",
     "rootDir": "src",
     "paths": {
+      "@cloudgrid/brand": ["./src/brand/brand.ts"],
       "@/*": ["./src/*"]
     }
   },

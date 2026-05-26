@@ -248,6 +248,68 @@ func (store *Store) PutProjectAiSettings(ctx context.Context, settings ports.Pro
 	return store.put(ctx, "project_ai_settings", settings.ProjectID, settings)
 }
 
+func (store *Store) GetCompanyAiProviderSettings(ctx context.Context, companyID string) (ports.CompanyAiProviderSettingsRecord, bool, error) {
+	return queryRecord[ports.CompanyAiProviderSettingsRecord](ctx, store.client, "SELECT * FROM company_ai_provider_settings WHERE companyId = $companyId LIMIT 1;", map[string]any{"companyId": companyID})
+}
+
+func (store *Store) PutCompanyAiProviderSettings(ctx context.Context, settings ports.CompanyAiProviderSettingsRecord) error {
+	return store.put(ctx, "company_ai_provider_settings", settings.CompanyID, settings)
+}
+
+func (store *Store) GetAiProviderSecret(ctx context.Context, secretID string) (ports.AiProviderSecretRecord, bool, error) {
+	return queryRecord[ports.AiProviderSecretRecord](ctx, store.client, "SELECT record::id(id) AS ID, * FROM type::record('ai_provider_secret', $id) LIMIT 1;", map[string]any{"id": recordKey("ai_provider_secret", secretID)})
+}
+
+func (store *Store) PutAiProviderSecret(ctx context.Context, secret ports.AiProviderSecretRecord) error {
+	return store.put(ctx, "ai_provider_secret", secret.ID, secret)
+}
+
+func (store *Store) GetAiChatConversation(ctx context.Context, conversationID string) (ports.AiChatConversationRecord, bool, error) {
+	return queryRecord[ports.AiChatConversationRecord](ctx, store.client, "SELECT record::id(id) AS ID, * FROM type::record('ai_chat_conversation', $id) LIMIT 1;", map[string]any{"id": recordKey("ai_chat_conversation", conversationID)})
+}
+
+func (store *Store) ListAiChatConversations(ctx context.Context, companyID string, userID string, projectID *string, includeArchived bool, limit int) ([]ports.AiChatConversationRecord, error) {
+	conditions := []string{"companyId = $companyId", "userId = $userId"}
+	params := map[string]any{"companyId": companyID, "userId": userID, "limit": limit}
+	if projectID != nil {
+		conditions = append(conditions, "projectId = $projectId")
+		params["projectId"] = *projectID
+	}
+	if !includeArchived {
+		conditions = append(conditions, "status != 'archived'")
+	}
+	return queryRows[ports.AiChatConversationRecord](ctx, store.client, QueryStatement{
+		SQL:    "SELECT record::id(id) AS ID, * FROM ai_chat_conversation WHERE " + strings.Join(conditions, " AND ") + " ORDER BY lastMessageAt DESC, ID ASC LIMIT $limit;",
+		Params: params,
+	})
+}
+
+func (store *Store) PutAiChatConversation(ctx context.Context, conversation ports.AiChatConversationRecord) error {
+	return store.put(ctx, "ai_chat_conversation", conversation.ID, conversation)
+}
+
+func (store *Store) DeleteAiChatConversation(ctx context.Context, conversationID string) error {
+	params := map[string]any{"conversationId": conversationID, "conversationRecord": recordKey("ai_chat_conversation", conversationID)}
+	return store.client.exec(ctx, strings.Join([]string{
+		"DELETE FROM ai_chat_message WHERE conversationId = $conversationId;",
+		"DELETE FROM ai_chat_run WHERE conversationId = $conversationId;",
+		"DELETE FROM ai_chat_action WHERE conversationId = $conversationId;",
+		"DELETE FROM ai_chat_compaction WHERE conversationId = $conversationId;",
+		"DELETE type::record('ai_chat_conversation', $conversationRecord);",
+	}, " "), params)
+}
+
+func (store *Store) PutAiChatMessage(ctx context.Context, message ports.AiChatMessageRecord) error {
+	return store.put(ctx, "ai_chat_message", message.ID, message)
+}
+
+func (store *Store) ListAiChatMessages(ctx context.Context, conversationID string, limit int) ([]ports.AiChatMessageRecord, error) {
+	return queryRows[ports.AiChatMessageRecord](ctx, store.client, QueryStatement{
+		SQL:    "SELECT record::id(id) AS ID, * FROM ai_chat_message WHERE conversationId = $conversationId ORDER BY createdAt ASC, ID ASC LIMIT $limit;",
+		Params: map[string]any{"conversationId": conversationID, "limit": limit},
+	})
+}
+
 func (store *Store) GetAiChatRun(ctx context.Context, runID string) (ports.AiChatRunRecord, bool, error) {
 	return queryRecord[ports.AiChatRunRecord](ctx, store.client, "SELECT record::id(id) AS ID, * FROM type::record('ai_chat_run', $id) LIMIT 1;", map[string]any{"id": recordKey("ai_chat_run", runID)})
 }
@@ -262,6 +324,18 @@ func (store *Store) ListActiveAiChatRunsForConversation(ctx context.Context, con
 
 func (store *Store) PutAiChatRun(ctx context.Context, run ports.AiChatRunRecord) error {
 	return store.put(ctx, "ai_chat_run", run.ID, run)
+}
+
+func (store *Store) GetAiChatAction(ctx context.Context, actionID string) (ports.AiChatActionRecord, bool, error) {
+	return queryRecord[ports.AiChatActionRecord](ctx, store.client, "SELECT record::id(id) AS ID, * FROM type::record('ai_chat_action', $id) LIMIT 1;", map[string]any{"id": recordKey("ai_chat_action", actionID)})
+}
+
+func (store *Store) PutAiChatAction(ctx context.Context, action ports.AiChatActionRecord) error {
+	return store.put(ctx, "ai_chat_action", action.ID, action)
+}
+
+func (store *Store) PutAiChatCompaction(ctx context.Context, compaction ports.AiChatCompactionRecord) error {
+	return store.put(ctx, "ai_chat_compaction", compaction.ID, compaction)
 }
 
 func (store *Store) GetAlertRule(ctx context.Context, id string) (ports.AlertRuleRecord, bool, error) {
@@ -615,6 +689,7 @@ func normalizeValue(value reflect.Value) any {
 
 func surrealFieldName(name string) string {
 	name = strings.ReplaceAll(name, "ID", "Id")
+	name = strings.ReplaceAll(name, "USD", "Usd")
 	if name == "" {
 		return ""
 	}

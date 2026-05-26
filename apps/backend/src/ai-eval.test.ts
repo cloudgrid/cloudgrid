@@ -7,12 +7,16 @@ import type {
   AiQualityOverview,
   CreateDatasetInput,
   Dataset,
+  DatasetCandidate,
+  DatasetCandidateSearchResult,
   DatasetExportJob,
   DatasetImportJob,
   DatasetItem,
+  EvaluationDefinition,
+  EvaluationRun,
+  EvaluationRunEvent,
   ExperimentRun,
   ExperimentRunEvent,
-  LiveExperimentRunInput,
   ProjectAiSettings,
   UpdateProjectAiSettingsInput,
 } from "@cloudgrid/ui-contracts";
@@ -82,10 +86,41 @@ describe("AI-eval bridge", () => {
         payload: expect.objectContaining({ input: { id: "dataset-1" } }),
       },
       {
-        subject: "eval.experiment.search",
+        subject: "eval.evaluation.search",
         payload: expect.objectContaining({ input: { experimentRunId: "experiment-run-1" } }),
       },
     ]);
+  });
+
+  test("normalizes evaluation comparison create replies to the public GraphQL shape", async () => {
+    const bridge = new MessageBridgeCloudGridBridge(
+      requestReply(() => ({
+        id: "comparison-1",
+        projectId: "project-1",
+        baselineEvaluationRunId: "run-a",
+        candidateEvaluationRunId: "run-b",
+        summary: { outcome: "unchanged" },
+        createdAt: "2026-05-12T10:00:00.000Z",
+      })),
+      2000,
+      createLogger("bff"),
+    );
+
+    const result = await bridge.createEvaluationComparison({
+      projectId: "project-1",
+      baselineRunId: "run-a",
+      candidateRunId: "run-b",
+      idempotencyKey: "comparison-1",
+    });
+
+    expect(result).toMatchObject({
+      id: "comparison-1",
+      baselineRunId: "run-a",
+      candidateRunId: "run-b",
+      metricResults: [],
+      metricAggregates: [],
+      summary: '{"outcome":"unchanged"}',
+    });
   });
 
   test("rejects invalid AI-eval bridge replies before GraphQL mapping", async () => {
@@ -96,7 +131,10 @@ describe("AI-eval bridge", () => {
     );
 
     await expect(bridge.agentRuns({ limit: 10 })).rejects.toMatchObject({
-      extensions: { code: "MESSAGE_BRIDGE_UNAVAILABLE" },
+      extensions: {
+        code: "RESPONSE_CONTRACT_INVALID",
+        problem: { id: "ERR-023", retryable: false },
+      },
     });
   });
 
@@ -175,21 +213,23 @@ describe("AI-eval bridge", () => {
     await bridge.prepareDatasetImport(prepareDatasetImportInput());
     await bridge.commitDatasetImport({
       importId: "import-1",
-      expectedDatasetVersion: 1,
+      expectedDatasetVersionId: "dataset-version-1",
       mode: "valid_rows_only",
+      idempotencyKey: "import-commit-1",
     });
     await bridge.startDatasetExport({
       datasetId: "dataset-1",
       format: "jsonl",
-      split: "dev",
-      reviewStatus: "reviewed",
+      split: "training",
+      curationStatus: "ready",
+      idempotencyKey: "export-1",
     });
     await bridge.datasetImport("import-1");
     await bridge.datasetExport("export-1");
 
     expect(requests.map((request) => request.subject)).toEqual([
       "control.ai_settings.get",
-      "eval.quality.overview",
+      "eval.results.search",
       "control.ai_settings.update",
       "eval.dataset.import.prepare",
       "eval.dataset.import.commit",
@@ -207,13 +247,180 @@ describe("AI-eval bridge", () => {
     });
     expect(requests[3]?.payload).toMatchObject({ input: prepareDatasetImportInput() });
     expect(requests[4]?.payload).toMatchObject({
-      input: { importId: "import-1", expectedDatasetVersion: 1, mode: "valid_rows_only" },
+      input: {
+        importId: "import-1",
+        expectedDatasetVersionId: "dataset-version-1",
+        mode: "valid_rows_only",
+        idempotencyKey: "import-commit-1",
+      },
     });
     expect(requests[5]?.payload).toMatchObject({
-      input: { datasetId: "dataset-1", format: "jsonl", split: "dev", reviewStatus: "reviewed" },
+      input: {
+        datasetId: "dataset-1",
+        format: "jsonl",
+        split: "training",
+        curationStatus: "ready",
+        idempotencyKey: "export-1",
+      },
     });
     expect(requests[6]?.payload).toMatchObject({ input: { id: "import-1", kind: "import" } });
     expect(requests[7]?.payload).toMatchObject({ input: { id: "export-1", kind: "export" } });
+  });
+
+  test("routes dataset candidate and idempotent run-control requests to approved subjects", async () => {
+    const requests: Array<{ subject: string; payload: Record<string, unknown> }> = [];
+    const bridge = new MessageBridgeCloudGridBridge(
+      requestReply((subject, payload) => {
+        requests.push({ subject, payload });
+        if (
+          subject === "eval.dataset.candidates.search" ||
+          subject === "eval.dataset.candidates.prepare"
+        ) {
+          return { items: [datasetCandidate()], nextCursor: null };
+        }
+        if (subject === "eval.dataset.candidates.commit") {
+          return dataset();
+        }
+        return experimentRun();
+      }),
+      2000,
+      createLogger("bff"),
+    );
+
+    await bridge.datasetCandidates({ datasetId: "dataset-1", status: "suggested", limit: 25 });
+    await bridge.prepareDatasetCandidates({
+      datasetId: "dataset-1",
+      sources: [{ sourceKind: "trace", traceId: "trace-1", spanId: "span-1" }],
+      contentTreatment: "realistic_anonymized",
+      anonymizationPolicyVersion: 3,
+      idempotencyKey: "candidates-prepare-1",
+    });
+    await bridge.commitDatasetCandidates({
+      datasetId: "dataset-1",
+      expectedDatasetVersionId: "dataset-version-1",
+      candidateIds: ["candidate-1"],
+      split: "validation",
+      curationStatus: "ready",
+      idempotencyKey: "candidates-commit-1",
+    });
+    await bridge.pauseExperimentRun("experiment-run-1");
+    await bridge.resumeExperimentRun("experiment-run-1");
+
+    expect(requests).toEqual([
+      {
+        subject: "eval.dataset.candidates.search",
+        payload: expect.objectContaining({
+          datasetId: "dataset-1",
+          status: "suggested",
+          limit: 25,
+        }),
+      },
+      {
+        subject: "eval.dataset.candidates.prepare",
+        payload: expect.objectContaining({
+          datasetId: "dataset-1",
+          sources: [{ sourceKind: "trace", traceId: "trace-1", spanId: "span-1" }],
+          contentTreatment: "realistic_anonymized",
+          anonymizationPolicyVersion: 3,
+          idempotencyKey: "candidates-prepare-1",
+        }),
+      },
+      {
+        subject: "eval.dataset.candidates.commit",
+        payload: expect.objectContaining({
+          datasetId: "dataset-1",
+          expectedDatasetVersionId: "dataset-version-1",
+          candidateIds: ["candidate-1"],
+          split: "validation",
+          curationStatus: "ready",
+          idempotencyKey: "candidates-commit-1",
+        }),
+      },
+      {
+        subject: "eval.evaluation.run.pause",
+        payload: expect.objectContaining({
+          experimentRunId: "experiment-run-1",
+          command: "pause",
+          idempotencyKey: "experiment-run-1:pause",
+        }),
+      },
+      {
+        subject: "eval.evaluation.run.resume",
+        payload: expect.objectContaining({
+          experimentRunId: "experiment-run-1",
+          command: "resume",
+          idempotencyKey: "experiment-run-1:resume",
+        }),
+      },
+    ]);
+  });
+
+  test("creates a target snapshot before starting a v2 evaluation run from a target ref", async () => {
+    const requests: Array<{ subject: string; payload: Record<string, unknown> }> = [];
+    const bridge = new MessageBridgeCloudGridBridge(
+      requestReply((subject, payload) => {
+        requests.push({ subject, payload });
+        if (subject === "eval.target.snapshot.create") {
+          return {
+            id: "target-snapshot-created",
+            projectId: "project-1",
+            targetRef: { kind: "prompt", targetRef: "prompt://current", displayName: "Current" },
+            kind: "prompt",
+            name: "Current",
+            version: 1,
+            digest: "sha256:target",
+            createdAt: "2026-05-12T10:00:00.000Z",
+            source: "manual",
+            parts: [],
+            metadata: {},
+            reproducibility: "full",
+          };
+        }
+        return { ...evaluationRun(), targetSnapshotId: "target-snapshot-created" };
+      }),
+      2000,
+      createLogger("bff"),
+    );
+
+    await expect(
+      bridge.startEvaluationRun({
+        evaluationDefinitionId: "evaluation-1",
+        projectId: "project-1",
+        kind: "dataset_evaluation",
+        datasetId: "dataset-1",
+        datasetVersionId: "dataset-version-1",
+        splitSelector: { splits: ["validation"], curationStatuses: ["ready"] },
+        targetRef: { kind: "prompt", targetRef: "prompt://current", displayName: "Current" },
+        metricSettings: [{ metricId: "classification.exact_label_match", options: {} }],
+        runPolicy: { maxParallelRequests: 1 },
+        retentionProfile: "balanced",
+        retentionRole: "baseline",
+        idempotencyKey: "run-1",
+      }),
+    ).resolves.toMatchObject({ targetSnapshotId: "target-snapshot-created" });
+
+    expect(requests.map((request) => request.subject)).toEqual([
+      "eval.target.snapshot.create",
+      "eval.evaluation.run.start",
+    ]);
+    expect(requests[0]?.payload).toMatchObject({
+      projectId: "project-1",
+      idempotencyKey: "run-1:target-snapshot",
+      targetRef: { kind: "prompt", targetRef: "prompt://current", displayName: "Current" },
+      input: {
+        kind: "prompt",
+        name: "Current",
+        targetRef: { kind: "prompt", targetRef: "prompt://current", displayName: "Current" },
+        targetRefValue: "prompt://current",
+        metadata: {},
+        source: "evaluation_run_start",
+      },
+    });
+    expect(requests[1]?.payload).toMatchObject({
+      targetSnapshotId: "target-snapshot-created",
+      evaluationDefinitionId: "evaluation-1",
+      metricSettings: [{ metricId: "classification.exact_label_match", options: {} }],
+    });
   });
 });
 
@@ -238,6 +445,26 @@ describe("AI-eval GraphQL resolvers", () => {
           calls.push({ method: "aiQualityOverview", input });
           return aiQualityOverview();
         },
+        async datasetCandidates(input) {
+          calls.push({ method: "datasetCandidates", input });
+          return { items: [datasetCandidate()], nextCursor: null };
+        },
+        async prepareDatasetCandidates(input) {
+          calls.push({ method: "prepareDatasetCandidates", input });
+          return { items: [datasetCandidate()], nextCursor: null };
+        },
+        async commitDatasetCandidates(input) {
+          calls.push({ method: "commitDatasetCandidates", input });
+          return dataset();
+        },
+        async pauseEvaluationRun(input) {
+          calls.push({ method: "pauseEvaluationRun", input });
+          return evaluationRun();
+        },
+        async resumeEvaluationRun(input) {
+          calls.push({ method: "resumeEvaluationRun", input });
+          return evaluationRun();
+        },
         async updateProjectAiSettings(input) {
           calls.push({ method: "updateProjectAiSettings", input });
           return projectAiSettings();
@@ -248,7 +475,11 @@ describe("AI-eval GraphQL resolvers", () => {
         },
         async commitDatasetImport(input) {
           calls.push({ method: "commitDatasetImport", input });
-          return { ...datasetImportJob(), status: "committed", committedDatasetVersion: 2 };
+          return {
+            ...datasetImportJob(),
+            status: "committed",
+            committedDatasetVersionId: "dataset-version-2",
+          };
         },
         async startDatasetExport(input) {
           calls.push({ method: "startDatasetExport", input });
@@ -263,7 +494,7 @@ describe("AI-eval GraphQL resolvers", () => {
           return datasetExportJob();
         },
       }),
-      { graphqlUI: false },
+      {},
     );
 
     const queryResponse = await app.request("/graphql", {
@@ -287,10 +518,26 @@ describe("AI-eval GraphQL resolvers", () => {
       body: JSON.stringify({
         query: `
           mutation CreateDataset($input: CreateDatasetInput!) {
-            createDataset(input: $input) { id name version itemCount tags }
+            createDataset(input: $input) { id name itemCount tags }
           }
         `,
-        variables: { input: { name: "Regression", tags: ["nightly"] } },
+        variables: {
+          input: {
+            projectId: "project-1",
+            name: "Regression",
+            tags: ["nightly"],
+            settings: {
+              evaluationFamily: "classification",
+              inputType: "json",
+              expectedType: "json",
+              defaultSplit: "training",
+              intakePolicy: {},
+              defaultMetricSettings: [{ metricId: "exact_match" }],
+              retentionProfile: "balanced",
+            },
+            idempotencyKey: "dataset-create-1",
+          },
+        },
       }),
     });
     const settingsResponse = await app.request("/graphql", {
@@ -300,7 +547,7 @@ describe("AI-eval GraphQL resolvers", () => {
         query: `
           query AiSettings($projectId: ID!, $quality: AiQualityOverviewInput!) {
             projectAiSettings(projectId: $projectId) { projectId enabled version }
-            aiQualityOverview(input: $quality) { projectId segments { key runCount regressionCount } }
+            aiQualityOverview(input: $quality) { projectId segments { key runCount } }
           }
         `,
         variables: {
@@ -321,21 +568,72 @@ describe("AI-eval GraphQL resolvers", () => {
         variables: { input: projectAiSettingsInput() },
       }),
     });
+    const candidateSearchResponse = await app.request("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: `
+          query DatasetCandidates($search: DatasetCandidateSearchInput) {
+            datasetCandidates(input: $search) { items { id status reason contentTreatment anonymizationProvenance { policyVersion transformedFields { entityType } } } }
+          }
+        `,
+        variables: { search: { datasetId: "dataset-1", status: "suggested", limit: 25 } },
+      }),
+    });
+    const candidatesResponse = await app.request("/graphql", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: `
+          mutation CandidateFlow($prepare: PrepareDatasetCandidatesInput!, $commit: CommitDatasetCandidatesInput!, $control: EvaluationRunControlInput!) {
+            prepareDatasetCandidates(input: $prepare) { items { id status reason } }
+            commitDatasetCandidates(input: $commit) { id itemCount health { status } }
+            pauseEvaluationRun(input: $control) { id status }
+            resumeEvaluationRun(input: $control) { id status }
+          }
+        `,
+        variables: {
+          prepare: {
+            datasetId: "dataset-1",
+            sources: [{ sourceKind: "trace", traceId: "trace-1" }],
+            contentTreatment: "realistic_anonymized",
+            idempotencyKey: "candidates-prepare-graphql",
+          },
+          commit: {
+            datasetId: "dataset-1",
+            expectedDatasetVersionId: "dataset-version-1",
+            candidateIds: ["candidate-1"],
+            idempotencyKey: "candidates-commit-graphql",
+          },
+          control: { evaluationRunId: "evaluation-run-1", idempotencyKey: "control-1" },
+        },
+      }),
+    });
     const transferResponse = await app.request("/graphql", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         query: `
           mutation DatasetTransfer($prepare: PrepareDatasetImportInput!, $commit: CommitDatasetImportInput!, $export: StartDatasetExportInput!) {
-            prepareDatasetImport(input: $prepare) { id status validRows errorRows previewRows { rowNumber item { input split reviewStatus synthetic } } }
-            commitDatasetImport(input: $commit) { id status committedDatasetVersion }
+            prepareDatasetImport(input: $prepare) { id status validRows errorRows previewRows { rowNumber item { input split curationStatus } } }
+            commitDatasetImport(input: $commit) { id status committedDatasetVersionId }
             startDatasetExport(input: $export) { id status format downloadUrl }
           }
         `,
         variables: {
           prepare: prepareDatasetImportInput(),
-          commit: { importId: "import-1", expectedDatasetVersion: 1, mode: "valid_rows_only" },
-          export: { datasetId: "dataset-1", format: "jsonl" },
+          commit: {
+            importId: "import-1",
+            expectedDatasetVersionId: "dataset-version-1",
+            mode: "valid_rows_only",
+            idempotencyKey: "import-commit-graphql",
+          },
+          export: {
+            datasetId: "dataset-1",
+            datasetVersionId: "dataset-version-1",
+            format: "jsonl",
+            idempotencyKey: "export-graphql",
+          },
         },
       }),
     });
@@ -357,6 +655,8 @@ describe("AI-eval GraphQL resolvers", () => {
     const mutationBody = await mutationResponse.json();
     const settingsBody = await settingsResponse.json();
     const updateSettingsBody = await updateSettingsResponse.json();
+    const candidateSearchBody = await candidateSearchResponse.json();
+    const candidatesBody = await candidatesResponse.json();
     const transferBody = await transferResponse.json();
     const transferQueryBody = await transferQueryResponse.json();
 
@@ -384,6 +684,19 @@ describe("AI-eval GraphQL resolvers", () => {
       projectId: "project-1",
       enabled: true,
     });
+    expect(candidateSearchBody.errors).toBeUndefined();
+    expect(candidateSearchBody.data.datasetCandidates.items[0]).toMatchObject({
+      id: "candidate-1",
+      status: "suggested",
+      contentTreatment: "realistic_anonymized",
+    });
+    expect(candidatesBody.errors).toBeUndefined();
+    expect(candidatesBody.data.commitDatasetCandidates).toMatchObject({
+      id: "dataset-1",
+      itemCount: 0,
+    });
+    expect(candidatesBody.data.pauseEvaluationRun).toMatchObject({ id: "evaluation-run-1" });
+    expect(candidatesBody.data.resumeEvaluationRun).toMatchObject({ id: "evaluation-run-1" });
     expect(transferBody.errors).toBeUndefined();
     expect(transferBody.data.prepareDatasetImport).toMatchObject({
       id: "import-1",
@@ -394,7 +707,7 @@ describe("AI-eval GraphQL resolvers", () => {
     expect(transferBody.data.commitDatasetImport).toMatchObject({
       id: "import-1",
       status: "committed",
-      committedDatasetVersion: 2,
+      committedDatasetVersionId: "dataset-version-2",
     });
     expect(transferBody.data.startDatasetExport).toMatchObject({
       id: "export-1",
@@ -404,15 +717,49 @@ describe("AI-eval GraphQL resolvers", () => {
     expect(transferQueryBody.errors).toBeUndefined();
     expect(transferQueryBody.data.datasetImport).toMatchObject({ id: "import-1" });
     expect(transferQueryBody.data.datasetExport).toMatchObject({ id: "export-1" });
-    expect(calls).toEqual([
+    expect(calls).toMatchObject([
       { method: "agentRuns", input: { agentName: "support", limit: 5 } },
-      { method: "createDataset", input: { name: "Regression", tags: ["nightly"] } },
+      {
+        method: "createDataset",
+        input: { name: "Regression", tags: ["nightly"] },
+      },
       { method: "projectAiSettings", input: "project-1" },
       {
         method: "aiQualityOverview",
         input: { projectId: "project-1", agentName: "support", limit: 10 },
       },
       { method: "updateProjectAiSettings", input: projectAiSettingsInput() },
+      {
+        method: "datasetCandidates",
+        input: { datasetId: "dataset-1", status: "suggested", limit: 25 },
+      },
+      {
+        method: "prepareDatasetCandidates",
+        input: {
+          datasetId: "dataset-1",
+          sources: [{ sourceKind: "trace", traceId: "trace-1" }],
+          contentTreatment: "realistic_anonymized",
+          curationStatus: "needs_review",
+          idempotencyKey: "candidates-prepare-graphql",
+        },
+      },
+      {
+        method: "commitDatasetCandidates",
+        input: {
+          datasetId: "dataset-1",
+          expectedDatasetVersionId: "dataset-version-1",
+          candidateIds: ["candidate-1"],
+          idempotencyKey: "candidates-commit-graphql",
+        },
+      },
+      {
+        method: "pauseEvaluationRun",
+        input: { evaluationRunId: "evaluation-run-1", idempotencyKey: "control-1" },
+      },
+      {
+        method: "resumeEvaluationRun",
+        input: { evaluationRunId: "evaluation-run-1", idempotencyKey: "control-1" },
+      },
       {
         method: "prepareDatasetImport",
         input: {
@@ -427,15 +774,22 @@ describe("AI-eval GraphQL resolvers", () => {
       },
       {
         method: "commitDatasetImport",
-        input: { importId: "import-1", expectedDatasetVersion: 1, mode: "valid_rows_only" },
+        input: {
+          importId: "import-1",
+          expectedDatasetVersionId: "dataset-version-1",
+          mode: "valid_rows_only",
+          idempotencyKey: "import-commit-graphql",
+        },
       },
       {
         method: "startDatasetExport",
         input: {
           datasetId: "dataset-1",
+          datasetVersionId: "dataset-version-1",
           format: "jsonl",
           includeMetadata: true,
           includeSourcePointers: true,
+          idempotencyKey: "export-graphql",
         },
       },
       { method: "datasetImport", input: "import-1" },
@@ -443,28 +797,30 @@ describe("AI-eval GraphQL resolvers", () => {
     ]);
   });
 
-  test("liveExperimentRun validates input and streams bridge events", async () => {
-    let receivedInput: LiveExperimentRunInput | undefined;
+  test("liveEvaluationRun validates input and streams bridge events", async () => {
+    let receivedInput: { evaluationRunId: string } | undefined;
     const result = await subscribe({
       schema: createCloudGridSchema(),
       document: parse(`
-        subscription Live($input: LiveExperimentRunInput!) {
-          liveExperimentRun(input: $input) {
+        subscription Live($input: LiveEvaluationRunInput!) {
+          liveEvaluationRun(input: $input) {
             type
             seq
             receivedAt
-            run { id status summary }
+            run { id status }
           }
         }
       `),
-      variableValues: { input: { experimentRunId: "experiment-run-1" } },
+      variableValues: { input: { evaluationRunId: "evaluation-run-1" } },
       contextValue: {
         hono: {
           get: () =>
             bridge({
-              subscribeLiveExperimentRun(input) {
+              subscribeLiveEvaluationRun(input) {
                 receivedInput = input;
-                return liveExperimentEvents([experimentRunEvent()]);
+                return (async function* () {
+                  yield evaluationRunEvent();
+                })();
               },
             }),
         },
@@ -480,14 +836,14 @@ describe("AI-eval GraphQL resolvers", () => {
     await result.return?.();
 
     if (first.done) {
-      throw new Error("expected live experiment event");
+      throw new Error("expected live evaluation event");
     }
-    expect(first.value.data?.liveExperimentRun).toMatchObject({
+    expect(first.value.data?.liveEvaluationRun).toMatchObject({
       type: "progress",
       seq: 1,
-      run: { id: "experiment-run-1", status: "running" },
+      run: { id: "evaluation-run-1", status: "running" },
     });
-    expect(receivedInput).toEqual({ experimentRunId: "experiment-run-1" });
+    expect(receivedInput).toEqual({ evaluationRunId: "evaluation-run-1" });
   });
 });
 
@@ -522,7 +878,7 @@ describe("AI-eval dataset transfer HTTP endpoints", () => {
           return dataset();
         },
       }),
-      { graphqlUI: false, datasetTransferDir: transferDir },
+      { datasetTransferDir: transferDir },
     );
 
     const form = new FormData();
@@ -557,10 +913,7 @@ describe("AI-eval dataset transfer HTTP endpoints", () => {
   test("rejects unsafe ZIP uploads before staging bytes", async () => {
     const transferDir = join(import.meta.dir, "..", ".tmp-ai-eval-transfer-zip-test");
     rmSync(transferDir, { recursive: true, force: true });
-    const { app } = createAppWithBridge(bridge(), {
-      graphqlUI: false,
-      datasetTransferDir: transferDir,
-    });
+    const { app } = createAppWithBridge(bridge(), { datasetTransferDir: transferDir });
 
     const form = new FormData();
     form.set("projectId", "project-1");
@@ -653,6 +1006,47 @@ function bridge(
     async evalResults() {
       return { items: [], nextCursor: null };
     },
+    async evaluationDefinitions() {
+      return { items: [], nextCursor: null };
+    },
+    async evaluationDefinition() {
+      return null;
+    },
+    async evaluationRuns() {
+      return { items: [], nextCursor: null };
+    },
+    async evaluationRun() {
+      return evaluationRun();
+    },
+    async evaluationItemRuns() {
+      return { items: [], nextCursor: null };
+    },
+    async evaluationResults() {
+      return { items: [], nextCursor: null };
+    },
+    async evaluationComparisons() {
+      return { items: [], nextCursor: null };
+    },
+    async evaluationComparison() {
+      return null;
+    },
+    async optimizationRuns() {
+      return { items: [], nextCursor: null };
+    },
+    async optimizationRun() {
+      return optimizationRun();
+    },
+    async targetSnapshot() {
+      return null;
+    },
+    async targetDiff() {
+      return {
+        baselineTargetSnapshotId: "snapshot-1",
+        candidateTargetSnapshotId: "snapshot-2",
+        changedParts: [],
+        summary: "",
+      };
+    },
     async annotationQueue() {
       return { items: [], nextCursor: null };
     },
@@ -661,6 +1055,15 @@ function bridge(
     },
     async aiQualityOverview() {
       return aiQualityOverview();
+    },
+    async datasetCandidates(): Promise<DatasetCandidateSearchResult> {
+      return { items: [], nextCursor: null };
+    },
+    async prepareDatasetCandidates(): Promise<DatasetCandidateSearchResult> {
+      return { items: [], nextCursor: null };
+    },
+    async commitDatasetCandidates() {
+      return dataset();
     },
     async createDataset(_input: CreateDatasetInput) {
       return dataset();
@@ -689,13 +1092,19 @@ function bridge(
         version: 1,
       };
     },
+    async createEvaluationDefinition() {
+      return evaluationDefinition();
+    },
+    async updateEvaluationDefinition() {
+      return evaluationDefinition();
+    },
     async createExperiment() {
       return {
         id: "experiment-1",
         name: "Regression",
         datasetId: "dataset-1",
         datasetVersion: 1,
-        scorerIds: ["scorer-1"],
+        metricIds: ["exact_match"],
         createdAt: "2026-05-12T10:00:00.000Z",
         tags: [],
       };
@@ -703,11 +1112,41 @@ function bridge(
     async startExperimentRun() {
       return experimentRun();
     },
+    async startEvaluationRun() {
+      return evaluationRun();
+    },
     async cancelExperimentRun() {
       return experimentRun();
     },
-    async startOptimizationRun() {
+    async cancelEvaluationRun() {
+      return evaluationRun();
+    },
+    async pauseExperimentRun() {
       return experimentRun();
+    },
+    async pauseEvaluationRun() {
+      return evaluationRun();
+    },
+    async resumeExperimentRun() {
+      return experimentRun();
+    },
+    async resumeEvaluationRun() {
+      return evaluationRun();
+    },
+    async startOptimizationRun() {
+      return optimizationRun();
+    },
+    async createEvaluationComparison() {
+      return {
+        id: "comparison-1",
+        projectId: "project-1",
+        baselineRunId: "evaluation-run-1",
+        candidateRunId: "evaluation-run-2",
+        metricResults: [],
+        metricAggregates: [],
+        summary: "",
+        createdAt: "2026-05-12T10:00:00.000Z",
+      };
     },
     async promotePromptVersion() {
       return {
@@ -716,6 +1155,20 @@ function bridge(
         text: "Hello",
         hash: "hash",
         createdAt: "2026-05-12T10:00:00.000Z",
+      };
+    },
+    async promoteTargetSnapshot() {
+      return {
+        id: "promotion-1",
+        projectId: "project-1",
+        targetRef: "prompt:base",
+        baselineTargetSnapshotId: "snapshot-1",
+        candidateTargetSnapshotId: "snapshot-2",
+        evidenceEvaluationRunIds: [],
+        comparisonId: "comparison-1",
+        summary: "",
+        promotedBy: "user-1",
+        promotedAt: "2026-05-12T10:00:00.000Z",
       };
     },
     async resolveAnnotation() {
@@ -732,6 +1185,9 @@ function bridge(
     },
     subscribeLiveExperimentRun() {
       return liveExperimentEvents([]);
+    },
+    async *subscribeLiveEvaluationRun() {
+      yield evaluationRunEvent();
     },
     async searchTraces() {
       return { items: [], nextCursor: null };
@@ -783,17 +1239,52 @@ function agentRun(): AgentRun {
 }
 
 function dataset(): Dataset {
+  const settings = {
+    evaluationFamily: "classification" as const,
+    inputType: "json" as const,
+    expectedType: "json" as const,
+    inputJsonSchema: {},
+    expectedJsonSchema: {},
+    defaultSplit: "validation" as const,
+    intakePolicy: {
+      manualDefaultStatus: "draft" as const,
+      importDefaultStatus: "needs_review" as const,
+      traceDefaultStatus: "needs_expected" as const,
+    },
+    traceExtractionSettings: null,
+    anonymizationPolicy: null,
+    defaultMetricSettings: [],
+    retentionProfile: "balanced" as const,
+  };
   return {
     id: "dataset-1",
+    projectId: "project-1",
     name: "Regression",
-    version: 1,
+    description: null,
+    currentVersionId: "dataset-version-1",
+    currentVersion: {
+      id: "dataset-version-1",
+      datasetId: "dataset-1",
+      version: 1,
+      digest: "digest-1",
+      itemRevisionIds: [],
+      settingsSnapshot: settings,
+      changeSummary: "Initial dataset version",
+      source: "manual",
+      createdAt: "2026-05-12T10:00:00.000Z",
+      createdBy: "user-1",
+    },
+    settings,
     createdAt: "2026-05-12T10:00:00.000Z",
+    createdBy: "user-1",
+    updatedAt: "2026-05-12T10:00:00.000Z",
+    updatedBy: "user-1",
     itemCount: 0,
-    reviewedItemCount: 0,
+    readyItemCount: 0,
     splitCounts: {},
     health: {
       status: "needs_review",
-      reviewedItemCount: 0,
+      readyItemCount: 0,
       totalItemCount: 0,
       splitCounts: {},
       duplicateCandidateCount: 0,
@@ -811,13 +1302,59 @@ function datasetItem(): DatasetItem {
   return {
     id: "dataset-item-1",
     datasetId: "dataset-1",
-    version: 1,
-    input: {},
-    metadata: {},
-    split: "dev",
-    reviewStatus: "unreviewed",
-    synthetic: false,
-    leakageWarnings: [],
+    latestRevisionId: "dataset-item-revision-1",
+    latestRevision: {
+      id: "dataset-item-revision-1",
+      datasetItemId: "dataset-item-1",
+      datasetId: "dataset-1",
+      input: {},
+      expected: null,
+      observedOutput: null,
+      reason: "",
+      metadata: {},
+      sourceRefs: [],
+      split: "training",
+      curationStatus: "draft",
+      contentTreatment: "original",
+      anonymizationProvenance: null,
+      createdAt: "2026-05-12T10:00:00.000Z",
+      createdBy: "user-1",
+      updatedAt: "2026-05-12T10:00:00.000Z",
+      updatedBy: "user-1",
+    },
+    createdAt: "2026-05-12T10:00:00.000Z",
+    createdBy: "user-1",
+    updatedAt: "2026-05-12T10:00:00.000Z",
+    updatedBy: "user-1",
+  };
+}
+
+function datasetCandidate(): DatasetCandidate {
+  return {
+    id: "candidate-1",
+    datasetId: "dataset-1",
+    status: "suggested",
+    sourceKind: "trace",
+    source: { traceId: "trace-1", spanId: "span-1" },
+    targetShape: "single_turn",
+    input: { prompt: "How should checkout fail gracefully?" },
+    expected: { answer: "Show a retryable payment error." },
+    metadata: { service: "checkout" },
+    split: "validation",
+    reviewStatus: "draft",
+    contentTreatment: "realistic_anonymized",
+    anonymization: {
+      policyId: "default-realistic",
+      policyVersion: 3,
+      transformedAt: "2026-05-12T10:01:00.000Z",
+      consistencyScope: "dataset",
+      transformedFields: [{ path: "$.customer.email", entityType: "email", strategy: "replace" }],
+    },
+    reason: "failed production measurement",
+    clusterId: "cluster-1",
+    warnings: [],
+    createdAt: "2026-05-12T10:00:00.000Z",
+    updatedAt: "2026-05-12T10:05:00.000Z",
   };
 }
 
@@ -825,10 +1362,115 @@ function experimentRun(): ExperimentRun {
   return {
     id: "experiment-run-1",
     experimentId: "experiment-1",
-    solverRef: {},
+    solverRef: { kind: "agent", name: "candidate" },
     status: "running",
+    runPolicy: { maxParallelRequests: 10 },
     startedAt: "2026-05-12T10:00:00.000Z",
-    summary: {},
+    summary: emptyExperimentRunSummary(),
+  };
+}
+
+function evaluationDefinition(): EvaluationDefinition {
+  return {
+    id: "evaluation-definition-1",
+    projectId: "project-1",
+    name: "Regression",
+    datasetId: "dataset-1",
+    datasetVersionPolicy: "latest_ready",
+    splitSelector: { splits: ["validation"], curationStatuses: ["ready"] },
+    targetRef: { kind: "prompt", displayName: "Prompt", metadata: {} },
+    metricSettings: [],
+    runPolicy: { maxParallelRequests: 10 },
+    retentionProfile: "balanced",
+    createdAt: "2026-05-12T10:00:00.000Z",
+    createdBy: "user-1",
+    updatedAt: "2026-05-12T10:00:00.000Z",
+    updatedBy: "user-1",
+    version: 1,
+  };
+}
+
+function evaluationRun(): EvaluationRun {
+  return {
+    id: "evaluation-run-1",
+    projectId: "project-1",
+    evaluationDefinitionId: "evaluation-definition-1",
+    kind: "dataset_evaluation",
+    status: "running",
+    datasetId: "dataset-1",
+    datasetVersionId: "dataset-version-1",
+    datasetDigest: "digest",
+    selectedItemRevisionIds: [],
+    splitSelector: { splits: ["validation"], curationStatuses: ["ready"] },
+    targetSnapshotId: "target-snapshot-1",
+    metricSettingsSnapshot: [],
+    runPolicySnapshot: { maxParallelRequests: 10 },
+    retentionProfile: "balanced",
+    retentionRole: "validation",
+    startedAt: "2026-05-12T10:00:00.000Z",
+    summary: {
+      itemCounts: {},
+      metricAggregates: [],
+      problemCounts: {},
+      budgetUsage: {},
+      latency: null,
+    },
+    metricResults: [],
+    metricAggregates: [],
+  };
+}
+
+function optimizationRun() {
+  return {
+    id: "optimization-run-1",
+    projectId: "project-1",
+    status: "running" as const,
+    baselineTargetSnapshotId: "target-snapshot-1",
+    objective: { primaryMetricId: "exact_match" },
+    candidateTargetSnapshotIds: [],
+    causedEvaluationRunIds: [],
+    comparisonIds: [],
+    budgetSnapshot: {},
+    createdAt: "2026-05-12T10:00:00.000Z",
+    startedAt: "2026-05-12T10:00:00.000Z",
+  };
+}
+
+function evaluationRunEvent(): EvaluationRunEvent {
+  return {
+    type: "progress",
+    seq: 1,
+    receivedAt: "2026-05-12T10:00:01.000Z",
+    run: evaluationRun(),
+  };
+}
+
+function emptyExperimentRunSummary(): ExperimentRun["summary"] {
+  return {
+    itemCounts: {
+      total: 0,
+      passed: 0,
+      failed: 0,
+      errored: 0,
+      skipped: 0,
+      needsReview: 0,
+      quarantined: 0,
+    },
+    scoreSummaries: [],
+    problemCounts: {
+      modelQuality: 0,
+      itemQuality: 0,
+      scorerConfig: 0,
+      infrastructure: 0,
+    },
+    budgetUsage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      estimatedUsd: 0,
+    },
+    latency: null,
+    regressions: [],
   };
 }
 
@@ -875,8 +1517,10 @@ function projectAiSettings(): ProjectAiSettings {
         enabled: true,
         name: "Production quality",
         target: {},
-        scorerIds: ["scorer-1"],
+        metricIds: ["exact_match"],
         sampleRate: 0.1,
+        contentAllowance: ["captured_content"],
+        maxLatencyClass: "batch",
         annotationRules: [],
         updatedAt: "2026-05-12T10:00:00.000Z",
         updatedByUserId: "user-1",
@@ -890,13 +1534,25 @@ function projectAiSettings(): ProjectAiSettings {
     sampling: {
       defaultOnlineSampleRate: 0.1,
       maxOnlineSampleRate: 1,
-      maxConcurrentExperimentItems: 4,
+      maxConcurrentEvaluationItems: 4,
       maxConcurrentOptimizationCandidates: 2,
+    },
+    runPolicyDefaults: { maxParallelRequests: 10 },
+    datasetPipeline: {
+      candidateSuggestionsEnabled: true,
+      requireReviewBeforeCommit: true,
+      anonymizationMode: "realistic",
+      anonymizationPolicyId: null,
+      anonymizationPolicyVersion: null,
+      anonymizationConsistencyScope: "project",
+      preserveLocale: true,
+      preserveTemporalDistance: true,
+      blockedEntityTypes: [],
     },
     datasetDefaults: {
       splitAllocation: {},
-      smallDatasetReviewedThreshold: 30,
-      requireReviewForRegression: true,
+      smallDatasetReadyThreshold: 30,
+      requireReadyForTest: true,
     },
     effective: {
       warnings: [],
@@ -936,13 +1592,13 @@ function projectAiSettingsInput(): UpdateProjectAiSettingsInput {
     sampling: {
       defaultOnlineSampleRate: 0.1,
       maxOnlineSampleRate: 1,
-      maxConcurrentExperimentItems: 4,
+      maxConcurrentEvaluationItems: 4,
       maxConcurrentOptimizationCandidates: 2,
     },
     datasetDefaults: {
       splitAllocation: {},
-      smallDatasetReviewedThreshold: 30,
-      requireReviewForRegression: true,
+      smallDatasetReadyThreshold: 30,
+      requireReadyForTest: true,
     },
     expectedVersion: 1,
   };
@@ -977,8 +1633,9 @@ function prepareDatasetImportInput() {
       input: [{ targetPath: "prompt", source: { jsonPath: "$.prompt" } }],
       expected: [{ targetPath: "answer", source: { jsonPath: "$.answer" } }],
     },
-    defaults: { split: "dev" as const, reviewStatus: "unreviewed" as const, synthetic: false },
+    defaults: { split: "training" as const, curationStatus: "draft" as const },
     previewLimit: 10,
+    idempotencyKey: "import-prepare-1",
   };
 }
 
@@ -1006,10 +1663,11 @@ function datasetImportJob(): DatasetImportJob {
         item: {
           input: { prompt: "hi" },
           expected: { answer: "hello" },
+          reason: "",
           metadata: {},
-          split: "dev",
-          reviewStatus: "unreviewed",
-          synthetic: false,
+          split: "training",
+          curationStatus: "draft",
+          sourceRefs: [],
         },
         errors: [],
         warnings: [],
@@ -1028,6 +1686,7 @@ function datasetExportJob(): DatasetExportJob {
   return {
     id: "export-1",
     datasetId: "dataset-1",
+    datasetVersionId: "dataset-1:version:1",
     datasetVersion: 1,
     status: "ready",
     format: "jsonl",

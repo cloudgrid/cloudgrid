@@ -36,7 +36,51 @@
     "streamEvent": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "conversationId", "runId", "createdAt", "payload"],
+      "required": ["type", "conversationId", "runId", "sequence", "createdAt", "payload"],
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "run.started" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/runStartedPayload" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "message.created" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/messageCreatedPayload" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "text.delta" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/textDeltaPayload" } } }
+        },
+        {
+          "if": {
+            "properties": { "type": { "enum": ["tool.started", "tool.completed"] } }
+          },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/toolStatusPayload" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "artifact.created" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/artifactCreatedPayload" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "action.proposed" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/actionProposedPayload" } } }
+        },
+        {
+          "if": {
+            "properties": { "type": { "enum": ["compaction.started", "compaction.saved"] } }
+          },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/compactionPayload" } } }
+        },
+        {
+          "if": {
+            "properties": { "type": { "enum": ["run.completed", "run.failed"] } }
+          },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/runTerminalPayload" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "heartbeat" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/heartbeatPayload" } } }
+        }
+      ],
       "properties": {
         "type": {
           "type": "string",
@@ -59,7 +103,131 @@
         "runId": { "type": "string", "minLength": 1 },
         "sequence": { "type": "integer", "minimum": 1 },
         "createdAt": { "type": "string", "format": "date-time" },
-        "payload": { "type": "object", "additionalProperties": true }
+        "payload": {
+          "oneOf": [
+            { "$ref": "#/$defs/runStartedPayload" },
+            { "$ref": "#/$defs/messageCreatedPayload" },
+            { "$ref": "#/$defs/textDeltaPayload" },
+            { "$ref": "#/$defs/toolStatusPayload" },
+            { "$ref": "#/$defs/artifactCreatedPayload" },
+            { "$ref": "#/$defs/actionProposedPayload" },
+            { "$ref": "#/$defs/compactionPayload" },
+            { "$ref": "#/$defs/runTerminalPayload" },
+            { "$ref": "#/$defs/heartbeatPayload" }
+          ]
+        }
+      }
+    },
+    "runStartedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "const": "streaming" }
+      }
+    },
+    "messageCreatedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["messageId", "role"],
+      "properties": {
+        "messageId": { "type": "string", "minLength": 1 },
+        "role": { "type": "string", "enum": ["user", "assistant"] }
+      }
+    },
+    "textDeltaPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["messageId", "text"],
+      "properties": {
+        "messageId": { "type": "string", "minLength": 1 },
+        "text": { "type": "string", "minLength": 1 }
+      }
+    },
+    "toolStatusPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolCallId", "toolName", "label", "status"],
+      "properties": {
+        "toolCallId": { "type": "string", "minLength": 1 },
+        "toolName": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9_.]*$" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "status": { "type": "string", "enum": ["running", "completed", "failed"] },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "errorCode": { "type": "string", "minLength": 1 }
+      }
+    },
+    "artifactCreatedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["messageId", "artifactId", "renderer", "label", "renderSpec"],
+      "properties": {
+        "messageId": { "type": "string", "minLength": 1 },
+        "artifactId": { "type": "string", "minLength": 1 },
+        "renderer": {
+          "type": "string",
+          "enum": [
+            "metric_timeseries",
+            "metric_bar",
+            "table",
+            "key_value",
+            "trace_waterfall",
+            "log_list",
+            "mermaid",
+            "json_tree",
+            "diff",
+            "status_summary",
+            "action_approval"
+          ]
+        },
+        "label": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "renderSpec": { "type": "object", "additionalProperties": true },
+        "sourceToolCallIds": { "type": "array", "items": { "type": "string" } },
+        "artifactIds": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "actionProposedPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["messageId", "actionProposalId", "risk", "actionKind"],
+      "properties": {
+        "messageId": { "type": "string", "minLength": 1 },
+        "actionProposalId": { "type": "string", "minLength": 1 },
+        "risk": { "type": "string", "enum": ["low", "medium", "high", "destructive"] },
+        "actionKind": { "type": "string", "pattern": "^[a-z]+\\.[a-z_]+$" }
+      }
+    },
+    "compactionPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["started", "saved"] },
+        "compactionId": { "type": "string" }
+      }
+    },
+    "runTerminalPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["completed", "failed"] },
+        "problem": { "type": "object", "additionalProperties": true },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "inputTokens": { "type": "integer", "minimum": 0 },
+            "outputTokens": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "heartbeatPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": { "type": "string", "const": "alive" }
       }
     }
   }

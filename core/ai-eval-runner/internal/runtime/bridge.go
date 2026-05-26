@@ -19,16 +19,24 @@ import (
 )
 
 const (
-	SubjectExperimentStart       = "eval.experiment.start"
-	SubjectExperimentCancel      = "eval.experiment.cancel"
+	SubjectEvaluationRunStart    = "eval.evaluation.run.start"
+	SubjectEvaluationRunPause    = "eval.evaluation.run.pause"
+	SubjectEvaluationRunResume   = "eval.evaluation.run.resume"
+	SubjectEvaluationRunCancel   = "eval.evaluation.run.cancel"
+	SubjectExperimentStart       = SubjectEvaluationRunStart
+	SubjectExperimentPause       = SubjectEvaluationRunPause
+	SubjectExperimentResume      = SubjectEvaluationRunResume
+	SubjectExperimentCancel      = SubjectEvaluationRunCancel
 	SubjectOptimizationStart     = "eval.optimization.start"
 	SubjectPersistedProjections  = "ai.persisted.projections"
-	SubjectExperimentSearch      = "eval.experiment.search"
+	SubjectExperimentSearch      = "eval.evaluation.run.search"
 	SubjectDatasetSearch         = "eval.dataset.search"
-	SubjectScorerSearch          = "eval.scorer.search"
+	SubjectScorerSearch          = "eval.evaluation.search"
+	SubjectDatasetVersionGet     = "eval.dataset.version.get"
+	SubjectTargetSnapshotGet     = "eval.target.snapshot.get"
 	SubjectResultsPersist        = "eval.results.persist"
-	SubjectExperimentProgress    = "eval.experiment.progress"
-	SubjectManifestResolve       = "eval.manifest.resolve"
+	SubjectExperimentProgress    = "eval.live.events.*.*"
+	SubjectManifestResolve       = "eval.target.snapshot.get"
 	SubjectOnlinePolicyResolve   = "eval.online.policy_matches.resolve"
 	SubjectControlAISettingsGet  = "control.ai_settings.get"
 	validationErrorID            = "ERR-001"
@@ -67,6 +75,32 @@ type RunnerServiceOptions struct {
 	SelfObservability selfobs.TraceLogRecorder
 }
 
+type evaluationRunStartMessage struct {
+	contracts.BridgeEnvelope
+	ProjectID               string           `json:"projectId"`
+	EvaluationDefinitionID  string           `json:"evaluationDefinitionId,omitempty"`
+	Kind                    string           `json:"kind,omitempty"`
+	DatasetVersionID        string           `json:"datasetVersionId"`
+	TargetSnapshotID        string           `json:"targetSnapshotId"`
+	SelectedItemRevisionIDs []string         `json:"selectedItemRevisionIds,omitempty"`
+	SplitSelector           map[string]any   `json:"splitSelector,omitempty"`
+	MetricSettings          []map[string]any `json:"metricSettings,omitempty"`
+	RunPolicy               map[string]any   `json:"runPolicy,omitempty"`
+	RetentionProfile        string           `json:"retentionProfile,omitempty"`
+	RetentionRole           string           `json:"retentionRole,omitempty"`
+	IdempotencyKey          string           `json:"idempotencyKey"`
+}
+
+type optimizationStartMessage struct {
+	contracts.BridgeEnvelope
+	ProjectID        string         `json:"projectId"`
+	DatasetVersionID string         `json:"datasetVersionId"`
+	TargetSnapshotID string         `json:"targetSnapshotId"`
+	IdempotencyKey   string         `json:"idempotencyKey"`
+	Config           map[string]any `json:"config,omitempty"`
+	RunPolicy        map[string]any `json:"runPolicy,omitempty"`
+}
+
 func NewRunnerService(runner *orchestrator.Runner, logger *slog.Logger) *RunnerService {
 	return NewRunnerServiceWithOptions(runner, logger, RunnerServiceOptions{})
 }
@@ -77,8 +111,10 @@ func NewRunnerServiceWithOptions(runner *orchestrator.Runner, logger *slog.Logge
 
 func (service *RunnerService) SubjectHandlers() map[string]Handler {
 	handlers := map[string]Handler{
-		SubjectExperimentStart:      service.handleExperimentStart(),
-		SubjectExperimentCancel:     service.handleExperimentCancel(),
+		SubjectEvaluationRunStart:   service.handleEvaluationRunStart(),
+		SubjectEvaluationRunPause:   service.handleEvaluationRunControl("pause"),
+		SubjectEvaluationRunResume:  service.handleEvaluationRunControl("resume"),
+		SubjectEvaluationRunCancel:  service.handleEvaluationRunCancel(),
 		SubjectOptimizationStart:    service.handleOptimizationStart(),
 		SubjectPersistedProjections: service.handlePersistedProjections(),
 	}
@@ -91,111 +127,177 @@ func (service *RunnerService) SubjectHandlers() map[string]Handler {
 	return handlers
 }
 
-func (service *RunnerService) handleExperimentStart() Handler {
+func (service *RunnerService) handleEvaluationRunControl(command string) Handler {
 	return func(msg BridgeMessage) {
-		var request contracts.ExperimentStartRequest
+		var request contracts.EvaluationRunControlRequest
 		if err := decodeStrict(msg.Data(), &request); err != nil {
-			respond(msg, mutationErrorResponse("", validationBridgeError("invalid experiment start request JSON")))
+			respond(msg, mutationErrorResponse("", validationBridgeError("invalid evaluation control request JSON")))
 			return
 		}
 		if err := validateEnvelope(request.BridgeEnvelope); err != nil {
 			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError(err.Error())))
 			return
 		}
-		if strings.TrimSpace(request.ExperimentID) == "" {
-			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("experimentId is required")))
+		if strings.TrimSpace(request.EvaluationRunID) == "" {
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("evaluationRunId is required")))
 			return
 		}
 		ctx, cancel := context.WithTimeout(contextWithAuth(request.AuthContext), defaultRequestTimeout)
 		defer cancel()
-		result, err := service.runner.StartOfflineExperiment(ctx, orchestrator.StartExperimentRequest{
-			RequestID:    request.RequestID,
-			ProjectID:    projectID(request.AuthContext),
-			ExperimentID: request.ExperimentID,
-			SolverRef:    request.SolverRef,
-			TraceContext: traceContext(request.TraceContext),
-		})
+		controlRequest := orchestrator.EvaluationRunControlRequest{
+			RequestID:       request.RequestID,
+			ProjectID:       request.ProjectID,
+			EvaluationRunID: request.EvaluationRunID,
+			Command:         command,
+			IdempotencyKey:  request.IdempotencyKey,
+		}
+		var result orchestrator.EvaluationRunControlResult
+		var err error
+		if command == "pause" {
+			result, err = service.runner.PauseEvaluationRun(ctx, controlRequest)
+		} else {
+			result, err = service.runner.ResumeEvaluationRun(ctx, controlRequest)
+		}
 		if err != nil {
 			respond(msg, mutationErrorResponse(request.RequestID, bridgeErrorFromError(err)))
 			return
 		}
-		respond(msg, contracts.EvalMutationResponse{RequestID: request.RequestID, OK: true, Data: experimentRunData(result.Run)})
+		respond(msg, contracts.EvalMutationResponse{RequestID: request.RequestID, OK: true, Data: evaluationRunData(result.Run)})
 	}
 }
 
-func (service *RunnerService) handleExperimentCancel() Handler {
+func (service *RunnerService) handleEvaluationRunStart() Handler {
 	return func(msg BridgeMessage) {
-		var request contracts.ExperimentCancelRequest
+		var request evaluationRunStartMessage
 		if err := decodeStrict(msg.Data(), &request); err != nil {
-			respond(msg, mutationErrorResponse("", validationBridgeError("invalid experiment cancel request JSON")))
+			respond(msg, mutationErrorResponse("", validationBridgeError("invalid evaluation run start request JSON")))
 			return
 		}
 		if err := validateEnvelope(request.BridgeEnvelope); err != nil {
 			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError(err.Error())))
 			return
 		}
-		if strings.TrimSpace(request.ExperimentRunID) == "" {
-			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("experimentRunId is required")))
+		if strings.TrimSpace(request.DatasetVersionID) == "" {
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("datasetVersionId is required")))
+			return
+		}
+		if strings.TrimSpace(request.TargetSnapshotID) == "" {
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("targetSnapshotId is required")))
+			return
+		}
+		if strings.TrimSpace(request.IdempotencyKey) == "" {
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("idempotencyKey is required")))
 			return
 		}
 		ctx, cancel := context.WithTimeout(contextWithAuth(request.AuthContext), defaultRequestTimeout)
 		defer cancel()
-		result, err := service.runner.CancelExperimentRun(ctx, orchestrator.CancelExperimentRequest{
-			RequestID:       request.RequestID,
-			ExperimentRunID: request.ExperimentRunID,
+		project := request.ProjectID
+		if project == "" {
+			project = projectID(request.AuthContext)
+		}
+		result, err := service.runner.StartEvaluationRun(ctx, orchestrator.StartEvaluationRunRequest{
+			RequestID:               request.RequestID,
+			ProjectID:               project,
+			EvaluationDefinitionID:  request.EvaluationDefinitionID,
+			Kind:                    request.Kind,
+			DatasetVersionID:        request.DatasetVersionID,
+			TargetSnapshotID:        request.TargetSnapshotID,
+			SelectedItemRevisionIDs: request.SelectedItemRevisionIDs,
+			SplitSelector:           request.SplitSelector,
+			MetricSettings:          request.MetricSettings,
+			RunPolicy:               request.RunPolicy,
+			RetentionProfile:        request.RetentionProfile,
+			RetentionRole:           request.RetentionRole,
+			IdempotencyKey:          request.IdempotencyKey,
+			TraceContext:            traceContext(request.TraceContext),
 		})
 		if err != nil {
 			respond(msg, mutationErrorResponse(request.RequestID, bridgeErrorFromError(err)))
 			return
 		}
-		respond(msg, contracts.EvalMutationResponse{
-			RequestID: request.RequestID,
-			OK:        true,
-			Data: map[string]any{
-				"id":              result.ExperimentRunID,
-				"experimentRunId": result.ExperimentRunID,
-				"status":          ports.ExperimentRunStatusCancelled,
-				"summary":         map[string]any{"cancelled": result.Cancelled},
-			},
+		respond(msg, contracts.EvalMutationResponse{RequestID: request.RequestID, OK: true, Data: evaluationRunData(result.Run)})
+	}
+}
+
+func (service *RunnerService) handleEvaluationRunCancel() Handler {
+	return func(msg BridgeMessage) {
+		var request contracts.EvaluationRunControlRequest
+		if err := decodeStrict(msg.Data(), &request); err != nil {
+			respond(msg, mutationErrorResponse("", validationBridgeError("invalid evaluation cancel request JSON")))
+			return
+		}
+		if err := validateEnvelope(request.BridgeEnvelope); err != nil {
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError(err.Error())))
+			return
+		}
+		if strings.TrimSpace(request.EvaluationRunID) == "" {
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("evaluationRunId is required")))
+			return
+		}
+		ctx, cancel := context.WithTimeout(contextWithAuth(request.AuthContext), defaultRequestTimeout)
+		defer cancel()
+		result, err := service.runner.CancelEvaluationRun(ctx, orchestrator.EvaluationRunControlRequest{
+			RequestID:       request.RequestID,
+			ProjectID:       request.ProjectID,
+			EvaluationRunID: request.EvaluationRunID,
+			IdempotencyKey:  request.IdempotencyKey,
+			Command:         "cancel",
 		})
+		if err != nil {
+			respond(msg, mutationErrorResponse(request.RequestID, bridgeErrorFromError(err)))
+			return
+		}
+		respond(msg, contracts.EvalMutationResponse{RequestID: request.RequestID, OK: true, Data: evaluationRunData(result.Run)})
 	}
 }
 
 func (service *RunnerService) handleOptimizationStart() Handler {
 	return func(msg BridgeMessage) {
-		var request contracts.OptimizationStartRequest
+		var request optimizationStartMessage
 		if err := decodeStrict(msg.Data(), &request); err != nil {
+			if service.logger != nil {
+				service.logger.Warn("optimization start request decode failed", "service", "ai-eval-runner", "event", "optimization_start_failed", "error", err.Error())
+			}
 			respond(msg, mutationErrorResponse("", validationBridgeError("invalid optimization start request JSON")))
 			return
 		}
 		if err := validateEnvelope(request.BridgeEnvelope); err != nil {
+			if service.logger != nil {
+				service.logger.Warn("optimization start envelope validation failed", "service", "ai-eval-runner", "event", "optimization_start_failed", "request_id", request.RequestID, "error", err.Error())
+			}
 			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError(err.Error())))
 			return
 		}
-		if strings.TrimSpace(request.ExperimentID) == "" {
-			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("experimentId is required")))
+		if strings.TrimSpace(request.TargetSnapshotID) == "" {
+			if service.logger != nil {
+				service.logger.Warn("optimization start target validation failed", "service", "ai-eval-runner", "event", "optimization_start_failed", "request_id", request.RequestID, "error", "targetSnapshotId is required")
+			}
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("targetSnapshotId is required")))
 			return
 		}
-		if strings.TrimSpace(request.OptimizerKind) == "" {
-			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("optimizerKind is required")))
-			return
-		}
-		if strings.TrimSpace(request.BasePromptVersionID) == "" {
-			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("basePromptVersionId is required")))
+		if strings.TrimSpace(request.IdempotencyKey) == "" {
+			if service.logger != nil {
+				service.logger.Warn("optimization start idempotency validation failed", "service", "ai-eval-runner", "event", "optimization_start_failed", "request_id", request.RequestID, "error", "idempotencyKey is required")
+			}
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("idempotencyKey is required")))
 			return
 		}
 		ctx, cancel := context.WithTimeout(contextWithAuth(request.AuthContext), defaultRequestTimeout)
 		defer cancel()
 		result, err := service.runner.StartOptimization(ctx, orchestrator.StartOptimizationRequest{
-			RequestID:           request.RequestID,
-			ProjectID:           projectID(request.AuthContext),
-			ExperimentID:        request.ExperimentID,
-			OptimizerKind:       request.OptimizerKind,
-			BasePromptVersionID: request.BasePromptVersionID,
-			Config:              request.Config,
-			TraceContext:        traceContext(request.TraceContext),
+			RequestID:        request.RequestID,
+			ProjectID:        projectIDFromMessage(request.ProjectID, request.AuthContext),
+			DatasetVersionID: request.DatasetVersionID,
+			TargetSnapshotID: request.TargetSnapshotID,
+			IdempotencyKey:   request.IdempotencyKey,
+			Config:           request.Config,
+			RunPolicy:        request.RunPolicy,
+			TraceContext:     traceContext(request.TraceContext),
 		})
 		if err != nil {
+			if service.logger != nil {
+				service.logger.Warn("optimization start failed", "service", "ai-eval-runner", "event", "optimization_start_failed", "request_id", request.RequestID, "error", err.Error())
+			}
 			respond(msg, mutationErrorResponse(request.RequestID, bridgeErrorFromError(err)))
 			return
 		}
@@ -203,12 +305,24 @@ func (service *RunnerService) handleOptimizationStart() Handler {
 			RequestID: request.RequestID,
 			OK:        true,
 			Data: map[string]any{
-				"id":                 result.ExperimentRunID,
-				"experimentRunId":    result.ExperimentRunID,
-				"experimentId":       request.ExperimentID,
-				"status":             ports.ExperimentRunStatusFinished,
-				"candidatePromptIds": result.CandidatePromptIDs,
-				"summary":            result.Summary,
+				"id":                       result.ExperimentRunID,
+				"projectId":                projectIDFromMessage(request.ProjectID, request.AuthContext),
+				"status":                   ports.ExperimentRunStatusFinished,
+				"baselineTargetSnapshotId": request.TargetSnapshotID,
+				"objective":                objectFromMap(request.Config, "objective"),
+				"validationEvaluationDefinitionId": stringFromMap(
+					request.Config,
+					"validationEvaluationDefinitionId",
+				),
+				"validationSplitSelector":    objectFromMap(request.Config, "validationSplitSelector"),
+				"candidateTargetSnapshotIds": result.CandidatePromptIDs,
+				"causedEvaluationRunIds":     []string{},
+				"quickShotPolicy":            objectFromMap(request.Config, "quickShotPolicy"),
+				"comparisonIds":              []string{},
+				"budgetSnapshot":             map[string]any{},
+				"createdAt":                  time.Now().UTC().Format(time.RFC3339),
+				"startedAt":                  time.Now().UTC().Format(time.RFC3339),
+				"endedAt":                    time.Now().UTC().Format(time.RFC3339),
 			},
 		})
 	}
@@ -286,7 +400,11 @@ func bridgeErrorFromError(err error) contracts.BridgeError {
 		return contracts.BridgeError{ID: "ERR-001", Code: "VALIDATION_FAILED", Message: message, Retryable: false}
 	}
 	if strings.HasPrefix(message, "ERR-AIE-") {
-		return contracts.BridgeError{ID: "ERR-AIE", Code: "AI_EVAL_RUNNER_REJECTED", Message: message, Retryable: false}
+		id := strings.SplitN(message, ":", 2)[0]
+		return contracts.BridgeError{ID: id, Code: "AI_EVAL_RUNNER_REJECTED", Message: message, Retryable: false}
+	}
+	if strings.HasPrefix(message, "harness adapter returned status") {
+		return contracts.BridgeError{ID: "ERR-001", Code: "VALIDATION_FAILED", Message: message, Retryable: false}
 	}
 	if strings.HasPrefix(message, "ERR-013") {
 		return messageBridgeError()
@@ -299,6 +417,13 @@ func projectID(authContext *contracts.AuthContext) string {
 		return ""
 	}
 	return *authContext.ProjectID
+}
+
+func projectIDFromMessage(projectIDValue string, authContext *contracts.AuthContext) string {
+	if strings.TrimSpace(projectIDValue) != "" {
+		return strings.TrimSpace(projectIDValue)
+	}
+	return projectID(authContext)
 }
 
 func traceContext(values map[string]any) map[string]string {
@@ -319,11 +444,45 @@ func experimentRunData(run ports.ExperimentRun) map[string]any {
 		"id":           run.ID,
 		"experimentId": run.ExperimentID,
 		"solverRef":    run.SolverRef,
+		"runPolicy":    run.RunPolicy,
 		"status":       run.Status,
 		"startedAt":    run.StartedAt,
 		"endedAt":      run.EndedAt,
 		"summary":      run.Summary,
 	}
+}
+
+func evaluationRunData(run ports.EvaluationRun) map[string]any {
+	data := map[string]any{
+		"id":                      run.ID,
+		"projectId":               run.ProjectID,
+		"kind":                    run.Kind,
+		"status":                  run.Status,
+		"datasetId":               run.DatasetID,
+		"datasetVersionId":        run.DatasetVersionID,
+		"datasetDigest":           run.DatasetDigest,
+		"selectedItemRevisionIds": run.SelectedItemRevisionIDs,
+		"splitSelector":           run.SplitSelector,
+		"targetSnapshotId":        run.TargetSnapshotID,
+		"metricSettingsSnapshot":  run.MetricSettingsSnapshot,
+		"runPolicySnapshot":       run.RunPolicySnapshot,
+		"retentionProfile":        run.RetentionProfile,
+		"retentionRole":           run.RetentionRole,
+		"startedAt":               run.StartedAt,
+		"summary":                 run.Summary,
+		"metricResults":           []any{},
+		"metricAggregates":        []any{},
+	}
+	if run.EvaluationDefinitionID != "" {
+		data["evaluationDefinitionId"] = run.EvaluationDefinitionID
+	}
+	if run.EndedAt != "" {
+		data["endedAt"] = run.EndedAt
+	}
+	if len(run.Problem) > 0 {
+		data["problem"] = run.Problem
+	}
+	return data
 }
 
 func projectionKinds(kinds []contracts.AiProjectionKind) []string {
@@ -433,9 +592,49 @@ func requestIDFromPayload(payload []byte) string {
 	return value.RequestID
 }
 
+func objectFromTypedContract(value any) map[string]any {
+	if value == nil {
+		return nil
+	}
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		return nil
+	}
+	for key, nested := range decoded {
+		if nested == nil {
+			delete(decoded, key)
+		}
+	}
+	return decoded
+}
+
+func objectFromMap(value map[string]any, key string) map[string]any {
+	if value == nil {
+		return map[string]any{}
+	}
+	if nested, ok := value[key].(map[string]any); ok {
+		return nested
+	}
+	return map[string]any{}
+}
+
+func stringFromMap(value map[string]any, key string) string {
+	if value == nil {
+		return ""
+	}
+	if text, ok := value[key].(string); ok {
+		return strings.TrimSpace(text)
+	}
+	return ""
+}
+
 func boundedRunnerSubject(subject string) string {
 	switch subject {
-	case SubjectExperimentStart, SubjectExperimentCancel, SubjectOptimizationStart, SubjectPersistedProjections:
+	case SubjectExperimentStart, SubjectExperimentPause, SubjectExperimentResume, SubjectExperimentCancel, SubjectOptimizationStart, SubjectPersistedProjections:
 		return subject
 	default:
 		return "unknown"
@@ -445,9 +644,13 @@ func boundedRunnerSubject(subject string) string {
 func boundedRunnerOperation(subject string) string {
 	switch subject {
 	case SubjectExperimentStart:
-		return "experiment_start"
+		return "evaluation_run_start"
 	case SubjectExperimentCancel:
-		return "experiment_cancel"
+		return "evaluation_run_cancel"
+	case SubjectExperimentPause:
+		return "evaluation_run_pause"
+	case SubjectExperimentResume:
+		return "evaluation_run_resume"
 	case SubjectOptimizationStart:
 		return "optimization_start"
 	case SubjectPersistedProjections:
@@ -459,7 +662,7 @@ func boundedRunnerOperation(subject string) string {
 
 func boundedRunnerErrorID(id string) string {
 	switch id {
-	case "ERR-001", "ERR-006", "ERR-013", "ERR-AIE":
+	case "ERR-001", "ERR-006", "ERR-013", "ERR-AIE", "ERR-AIE-001", "ERR-AIE-002", "ERR-AIE-003", "ERR-AIE-004":
 		return id
 	default:
 		return "ERR-006"

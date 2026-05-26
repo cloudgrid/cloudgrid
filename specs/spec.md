@@ -40,6 +40,7 @@ This directory is the implementation specification for the MVP. The original sin
 - [HTTP API OpenAPI contract](./03-contracts/api/http-api.openapi.yaml)
 - [Public GraphQL schema](./03-contracts/graphql/public-schema.graphql)
 - [Message bridge AsyncAPI contract](./03-contracts/messages/message-bridge.asyncapi.yaml)
+- [AI Eval v2 contract rewrite](./03-contracts/ai-eval-v2-contract-rewrite.md)
 - [Error taxonomy](./03-contracts/errors.yaml)
 - Entity JSON Schemas in [03-contracts/entities](./03-contracts/entities)
 
@@ -68,7 +69,9 @@ This directory is the implementation specification for the MVP. The original sin
 - [AI evaluation project settings](./04-backend/ai-eval-project-settings.md)
 - [Project and company AI provider settings](./04-backend/ai-provider-settings.md)
 - [AI evaluation runner](./04-backend/ai-eval-runner.md)
+- [AI runtime structure](./04-backend/ai-runtime-structure.md)
 - [AI Chat runtime](./04-backend/ai-chat.md)
+- [AI Chat implementation contract](./04-backend/ai-chat-implementation-contract.md)
 - [AI evaluation query semantics](./04-backend/ai-eval-query-semantics.md)
 - [AI evaluation message contracts](./04-backend/ai-eval-message-contracts.md)
 - [Frontend application](./05-frontend/frontend-application.md)
@@ -79,6 +82,9 @@ This directory is the implementation specification for the MVP. The original sin
 - [Enterprise product UX concept](./05-frontend/product-ux-concept.md) - source of truth for UX v2 shell, navigation, settings, modal, and layout rules.
 - [Traces and metrics UX concept](./05-frontend/traces-and-metrics-ux-concept.md) - source of truth for trace search, trace detail, metric workspace, visualization, and detail-inspector behavior.
 - [Logs, metrics explorer, and dashboards UX concept](./05-frontend/logs-metrics-dashboards-ux-concept.md) - source of truth for log search, metric exploration, dashboard composition, and cross-view pivots.
+- [Alerts UX concept](./05-frontend/alerts-ux-concept.md) - source of truth for alert rule list, create/settings pages, company alert adapter settings, notification adapter selection, silences, and dashboard alert relationships.
+- [Dashboard implementation contract](./05-frontend/dashboard-implementation-contract.md) - agent-facing contract for dashboard gap closure, frontend module boundaries, reuse requirements, ticket scopes, and verification.
+- [Code-level whitelabel customization](./05-frontend/whitelabel-customization.md) - source of truth for licensed build-time branding, theme token boundaries, and upgrade-safe customer customization.
 - [Frontend views](./05-frontend/views.md)
 - [Trace investigation UX](./05-frontend/trace-investigation-ux.md)
 - [Frontend execution spec](./05-frontend/frontend-execution-spec.md)
@@ -99,17 +105,19 @@ This directory is the implementation specification for the MVP. The original sin
 - [AI Chat conversation compaction flow](./02-flows/ai-chat/conversation-compaction.md)
 - [Dataset curation and splits](./02-capabilities/ai-eval/curate-datasets.md)
 - [Production AI quality tracking](./02-capabilities/ai-eval/track-production-quality.md)
+- [Dataset candidate suggestions](./02-capabilities/ai-eval/suggest-dataset-candidates.md)
 - [Metric ingest](./02-capabilities/metrics/ingest-otlp-metrics.md)
 - [Metric query](./02-capabilities/metrics/query-metrics.md)
 - [Dashboards](./02-capabilities/metrics/manage-dashboards.md)
 - [CloudGrid self-observability](./04-backend/self-observability.md)
-- [Offline experiment run flow](./02-flows/ai-eval/offline-experiment-run.md)
+- [Offline dataset evaluation run flow](./02-flows/ai-eval/offline-experiment-run.md)
 - [Online evaluation flow](./02-flows/ai-eval/online-evaluation.md)
-- [Live experiment subscription flow](./02-flows/ai-eval/live-experiment-subscription.md)
+- [Live evaluation run subscription flow](./02-flows/ai-eval/live-experiment-subscription.md)
 - [Dataset curation and split governance flow](./02-flows/ai-eval/dataset-curation-and-splits.md)
 - [Metric ingest flow](./02-flows/metrics/metric-ingest.md)
 - [Dashboard query flow](./02-flows/metrics/dashboard-query.md)
 - [Performance and scaling](./06-nfr/performance-and-scaling.md)
+- [Service resilience and self-healing](./06-nfr/service-resilience-self-healing.md)
 - [Integration test suite](./06-nfr/integration-test-suite.md)
 - [Release, CI/CD, and distribution](./06-nfr/release-distribution.md)
 - [AI evaluation content capture](./06-nfr/ai-eval-content-capture.md)

@@ -10,7 +10,7 @@ provenance: inferred-draft
 
 # Frontend Views
 
-All views follow `05-frontend/product-ux-concept.md`. That spec owns shell modes, topbar placement, onboarding, empty-state structure, drawers, dialogs, popovers, collapsibles, and responsive route layout. Trace search, trace detail, and metrics inner-view UX follows `05-frontend/traces-and-metrics-ux-concept.md`.
+All views follow `05-frontend/product-ux-concept.md`. That spec owns shell modes, topbar placement, onboarding, empty-state structure, create entity pages, entity settings pages, drawers, dialogs, popovers, collapsibles, and responsive route layout. Trace search, trace detail, and metrics inner-view UX follows `05-frontend/traces-and-metrics-ux-concept.md`.
 
 ## Login
 
@@ -22,7 +22,7 @@ The authenticated app shell contains:
 
 - company selector;
 - project selector;
-- primary navigation for Traces, Logs, Metrics, Dashboards, and AI Eval after a project is selected; Live is a mode inside Traces;
+- primary navigation for AI Chat when enabled, pinned dashboard shortcuts when present, Traces, Logs, Metrics, Dashboards, and Evaluations after a project is selected; Live is a mode inside Traces;
 - user/session menu with logout.
 
 The selected project is visually persistent across telemetry pages. Switching projects calls GraphQL `Mutation.selectProject` and then refreshes project-scoped telemetry queries/subscriptions.
@@ -31,13 +31,36 @@ When no project is selected, telemetry navigation is hidden and `/projects` is t
 
 ## Project Selection And Settings
 
-`/projects` is the project selection and creation surface. `/projects/:projectId` selects the project and redirects to `/traces`; there is no project overview route.
+`/projects` is the project selection surface. `/projects/new` is the project creation page. `/projects/:projectId` selects the project and redirects to `/traces`; there is no project overview route.
 
-Project setup and onboarding live in `/projects/:projectId/settings/ingest` and in no-telemetry empty states. The settings root `/projects/:projectId/settings` is the General settings page, not a separate overview subpage.
+Project setup and onboarding live in `/projects/:projectId/settings/ingest` and in no-telemetry empty states. The settings root `/projects/:projectId/settings` is the tabbed project settings page with `Identity` active by default, not a separate overview subpage.
 
 ## Project Management
 
 Project management pages allow authorized users to create projects, rename projects, change status, create/list/revoke multiple titled ingest API keys, and navigate to member access. Secret values are shown only once in the create-key success state; stored secrets are never displayed.
+
+Project creation uses the create entity page pattern from
+`05-frontend/product-ux-concept.md`: dedicated route, wizard-like tabs,
+required-field markers, field-level and tab-level validation, summary error
+panel, field-adjacent help text, and unsaved-change protection.
+
+Project settings use the entity settings page pattern from
+`05-frontend/product-ux-concept.md`: tabs mirror project creation topics and add
+settings-only tabs for API keys, retention, AI providers, and AI Eval when
+enabled.
+
+## Alerts
+
+Alert rule list, creation, settings, notification adapter selection, silences,
+history, and dashboard alert relationships are defined in
+`05-frontend/alerts-ux-concept.md`.
+
+Alert creation uses `/alerts/new`. Alert rule settings use
+`/alerts/:ruleId/settings`. The frontend selects notification adapter IDs from
+the project-effective safe adapter list. Company admins configure Slack, Teams,
+email, webhook, and other provider adapter instances at
+`/organizations/:organizationId/alert-adapters` from adapter-provided schemas.
+Secret fields are write-only and must not be displayed after save.
 
 Traces, logs, metrics, and dashboards with no project telemetry link to the selected project ingest settings page. Filtered empty states keep their clear-filter action and do not show setup guidance as the primary action.
 
@@ -101,7 +124,7 @@ The live trace view streams `Subscription.liveTraces` events and displays trace-
 
 Columns: event time, event type, service, operation/root span, trace ID, started time, duration, status, span count, error span count, log count, and service count. Row click opens `/traces/:traceId`.
 
-Server filters: free text query, service, operation/span name, lower-bound time, status, duration range, attribute filters, and limit. These map directly to `LiveTraceInput`.
+Server filters: free text query, one or more services, operation/span name, lower-bound time, status, duration range, attribute filters, and limit. These map directly to `LiveTraceInput`.
 
 Controls:
 
@@ -128,9 +151,13 @@ Primary trace and log list tables are workspace surfaces, not card content. They
 Route-primary surfaces are not card content. Use:
 
 - workspace surfaces for trace/log/live/metric/eval primary content;
+- create entity pages for durable top-level entity creation such as project,
+  dataset, evaluation, and optimization;
+- entity settings pages for durable top-level entity settings, using the same
+  tab structure as creation plus topical settings-only tabs;
 - inspector drawers for span details, log previews, metric editors, setup guides, and AI-eval details;
 - dialogs for confirmation and short focused tasks;
 - popovers for compact anchored choices;
 - collapsibles for optional secondary groups such as facets and advanced filters.
 
-Do not create new modal/drawer/popover usage rules inside route components. Update `05-frontend/product-ux-concept.md` first when a route needs a new interaction pattern.
+Do not create new create-page, modal, drawer, popover, or wizard usage rules inside route components. Update `05-frontend/product-ux-concept.md` first when a route needs a new interaction pattern.

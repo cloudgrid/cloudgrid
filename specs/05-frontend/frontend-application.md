@@ -10,7 +10,7 @@ provenance: inferred-draft
 
 # Frontend Application
 
-`05-frontend/product-ux-concept.md` is the authoritative UX concept for shell modes, navigation ordering, onboarding, empty states, drawers, dialogs, popovers, collapsibles, and route layout. This file defines route/data behavior and must not contradict that concept.
+`05-frontend/product-ux-concept.md` is the authoritative UX concept for shell modes, navigation ordering, onboarding, empty states, create entity pages, drawers, dialogs, popovers, collapsibles, and route layout. This file defines route/data behavior and must not contradict that concept.
 
 ## Routes
 
@@ -21,7 +21,8 @@ provenance: inferred-draft
 - `/organizations/:organizationId`: company overview with projects, members, and settings navigation.
 - `/organizations/:organizationId/members`: company user/member management.
 - `/organizations/:organizationId/projects`: project management list.
-- `/projects`: project overview and selected-project entry point.
+- `/projects`: project selection entry point.
+- `/projects/new`: project creation page.
 - `/projects/:projectId`: compatibility redirect that selects the project and navigates to `/traces`.
 - `/projects/:projectId/settings`: project settings and ingest credential metadata.
 - `/traces`: trace list with filters. Live receiving is a mode of this route through `?mode=live`; there is no separate live primary route.
@@ -32,9 +33,19 @@ provenance: inferred-draft
 - `/ai-chat`: project-scoped AI Chat assistant when enabled and when the company
   AI Chat provider is configured or setup is visible to the user.
 - `/alerts`: project alert rules, alert history, silences, and trace/log/metric pivots. The route remains available but is not a primary project sidebar item.
+- `/alerts/new`: alert rule creation page.
+- `/alerts/:ruleId/settings`: alert rule settings page.
+- `/organizations/:organizationId/alert-adapters`: company alert notification
+  adapter settings for company admins.
 - `/ai-eval`: AI evaluation workspace unless the AI-eval frontend feature is
   explicitly disabled with `CLOUDGRID_AI_EVAL_ENABLED=false` or
   `VITE_CLOUDGRID_AI_EVAL_ENABLED=false`.
+- `/ai-eval/datasets/new`: dataset creation page when AI Eval is enabled.
+- `/ai-eval/datasets/:datasetId/settings`: dataset settings page when AI Eval is enabled.
+- `/ai-eval/evaluations/new`: evaluation creation page when AI Eval is enabled.
+- `/ai-eval/evaluations/:evaluationId/settings`: evaluation settings page when AI Eval is enabled.
+- `/ai-eval/optimizations/new`: optimization creation page when AI Eval is enabled.
+- `/ai-eval/optimizations/:optimizationRunId/settings`: optimization settings page when AI Eval is enabled.
 - `/projects/:projectId/settings/ai-eval`: project AI Eval settings in the
   admin settings shell.
 - `/projects/:projectId/settings/ai-providers`: reusable project AI provider
@@ -76,14 +87,14 @@ provenance: inferred-draft
   frontend must not call harness, providers, sandbox, NATS, SurrealDB, or
   storage-read directly.
 - The app shell has project selection mode and project workspace mode as defined in `05-frontend/product-ux-concept.md`.
-- In project selection mode, the topbar must not show `Live`, `Traces`, `Logs`, `Metrics`, or `AI Eval`.
-- In project workspace mode, primary navigation order is `Traces`, `Logs`, `Metrics`, `Dashboards`, `AI Chat`, and `AI Eval` when enabled. AI Eval is enabled by default and may be explicitly disabled with the AI-eval frontend feature flags. AI Chat is enabled only when the AI Chat feature flag and company provider settings allow it. `Live` is a mode inside `Traces`; `Alerts` remains available at `/alerts` but is not a primary project sidebar item; there is no project Overview route. Company/member management and settings are reached through context menus or explicit management routes, not mixed into telemetry navigation.
+- In project selection mode, the topbar must not show `AI Chat`, `Live`, `Traces`, `Logs`, `Metrics`, or `Evaluations`.
+- In project workspace mode, primary navigation order is `AI Chat` when enabled, pinned dashboard shortcuts when present, then `Traces`, `Logs`, `Metrics`, `Dashboards`, and `Evaluations` when enabled. AI Eval is enabled by default and may be explicitly disabled with the AI-eval frontend feature flags. AI Chat is enabled only when the AI Chat feature flag and company provider settings allow it. `Live` is a mode inside `Traces`; `Alerts` remains available at `/alerts`, `/alerts/new`, and `/alerts/:ruleId/settings` but is not a primary project sidebar item; there is no project Overview route. Company/member management, company alert adapter settings, and other settings are reached through context menus or explicit management routes, not mixed into telemetry navigation.
 
-## Development GraphQL UI
+## GraphQL Endpoint
 
-- The BFF may expose GraphiQL at `/graphql` only in development or when `CLOUDGRID_GRAPHQL_UI=true`.
 - The Vite frontend development server may proxy `/graphql` and `/auth` to the local BFF to keep frontend code on same-origin BFF GraphQL and auth routes.
-- The production frontend must not require direct GraphQL tooling routes beyond the BFF-owned `/graphql` endpoint.
+- CloudGrid does not expose a bundled GraphQL IDE or GraphQL tooling route in the product frontend or BFF.
+- The production frontend must not require direct GraphQL tooling routes beyond the BFF-owned `/graphql` API endpoint.
 
 ## Required States
 

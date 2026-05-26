@@ -6,6 +6,11 @@ import {
   experimentScoreboardRows,
   jsonPreview,
 } from "../src/features/ai-eval/view-model";
+import {
+  compatibleTraceImportDatasets,
+  parseRawValue,
+  validateAgainstJsonSchema,
+} from "../src/features/ai-eval/view-model-v2";
 
 describe("AI-eval view helpers", () => {
   test("orders agent timeline rows by GraphQL-provided span event timing", () => {
@@ -94,16 +99,46 @@ describe("AI-eval view helpers", () => {
     const run: ExperimentRun = {
       id: "run-1",
       experimentId: "experiment-1",
-      solverRef: { name: "candidate" },
+      solverRef: { kind: "agent", name: "candidate" },
       status: "finished",
+      runPolicy: { maxParallelRequests: 10 },
       startedAt: "2026-05-12T10:00:00.000Z",
       endedAt: "2026-05-12T10:01:00.000Z",
       summary: {
-        passRate: 0.97,
-        meanScore: 0.91,
-        p50Score: 0.94,
-        p95Score: 0.99,
-        regression: true,
+        itemCounts: {
+          total: 1,
+          passed: 0,
+          failed: 1,
+          errored: 0,
+          skipped: 0,
+          needsReview: 0,
+          quarantined: 0,
+        },
+        scoreSummaries: [
+          {
+            scorerId: "scorer-1",
+            scorerVersion: 1,
+            passRate: 0.97,
+            meanScore: 0.91,
+            p50: 0.94,
+            p95: 0.99,
+            support: 1,
+          },
+        ],
+        problemCounts: {
+          modelQuality: 1,
+          itemQuality: 0,
+          scorerConfig: 0,
+          infrastructure: 0,
+        },
+        budgetUsage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          estimatedUsd: 0,
+        },
+        latency: null,
+        regressions: [{ kind: "quality", count: 1, blocker: true }],
       },
       itemRuns: { items: [itemRun], nextCursor: null },
     };
@@ -250,5 +285,77 @@ describe("AI-eval view helpers", () => {
       budgetDailyUsd: 10,
     });
     expect(model.warnings).toEqual(["Missing holdout", "Provider profile missing"]);
+  });
+
+  test("validates raw JSON row values against simple dataset schemas", () => {
+    const parsed = parseRawValue('{"label":"refund"}', "json");
+
+    expect(parsed.error).toBeNull();
+    expect(
+      validateAgainstJsonSchema(parsed.value, {
+        type: "object",
+        required: ["label"],
+      }),
+    ).toBeNull();
+    expect(
+      validateAgainstJsonSchema(parsed.value, {
+        type: "object",
+        required: ["missing"],
+      }),
+    ).toBe('Missing required property "missing".');
+  });
+
+  test("trace import picker only includes datasets with extraction settings", () => {
+    const datasets = [
+      {
+        id: "dataset-1",
+        name: "Trace-ready",
+        version: 1,
+        createdAt: "2026-05-12T10:00:00.000Z",
+        itemCount: 0,
+        reviewedItemCount: 0,
+        splitCounts: {},
+        health: {
+          status: "ready",
+          reviewedItemCount: 0,
+          totalItemCount: 0,
+          splitCounts: {},
+          duplicateCandidateCount: 0,
+          leakageWarningCount: 0,
+          missingExpectedCount: 0,
+          schemaIssueCount: 0,
+          smallDataset: true,
+          warnings: [],
+        },
+        tags: [],
+        settings: { traceExtractionSettings: { inputPath: "$.input" } },
+      },
+      {
+        id: "dataset-2",
+        name: "Manual only",
+        version: 1,
+        createdAt: "2026-05-12T10:00:00.000Z",
+        itemCount: 0,
+        reviewedItemCount: 0,
+        splitCounts: {},
+        health: {
+          status: "ready",
+          reviewedItemCount: 0,
+          totalItemCount: 0,
+          splitCounts: {},
+          duplicateCandidateCount: 0,
+          leakageWarningCount: 0,
+          missingExpectedCount: 0,
+          schemaIssueCount: 0,
+          smallDataset: true,
+          warnings: [],
+        },
+        tags: [],
+      },
+    ];
+
+    expect(compatibleTraceImportDatasets(datasets).map((dataset) => dataset.id)).toEqual([
+      "dataset-1",
+    ]);
   });
 });

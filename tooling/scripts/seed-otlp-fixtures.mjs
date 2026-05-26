@@ -73,18 +73,13 @@ const allowedFixtureSets = new Set(["generated", "contracts", "all"]);
 export function parseSeedArgs(argv, env = process.env) {
   const options = {
     continuous: false,
-    endpoint:
-      env.CLOUDGRID_OTLP_ENDPOINT || `http://127.0.0.1:${env.CLOUDGRID_OTLP_PORT || "4318"}`,
+    endpoint: env.CLOUDGRID_OTLP_ENDPOINT || "http://127.0.0.1:4318",
     fixtureSet: "generated",
     format: "all",
     intervalMs: 5_000,
     maxBatches: null,
     signal: "all",
-    token:
-      env.CLOUDGRID_OTLP_BEARER_TOKEN ||
-      env.CLOUDGRID_OTLP_TOKEN ||
-      env.CLOUDGRID_PROJECT_API_KEY ||
-      null,
+    token: env.CLOUDGRID_OTLP_BEARER_TOKEN || env.CLOUDGRID_PROJECT_API_KEY || null,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -194,10 +189,11 @@ async function fixtureBody(request) {
 export function createSeedRunContext(nowMs = Date.now()) {
   const runId = `${nowMs.toString(16)}-${Math.random().toString(16).slice(2)}`;
   const windowEndMs = nowMs - 60 * 1000;
-  const windowStartMs = oneMonthBeforeMs(windowEndMs);
+  const windowStartMs = twoMonthsBeforeMs(windowEndMs);
   return {
     baseUnixNano: BigInt(windowStartMs) * 1_000_000n,
     windowEndUnixNano: BigInt(windowEndMs) * 1_000_000n,
+    pointCount: 61,
     runId,
   };
 }
@@ -253,15 +249,16 @@ function buildRichTraceFixture(seedContext) {
       resource: {
         attributes: [
           stringAttribute("service.name", serviceName),
+          stringAttribute("service.namespace", "NimbusCart"),
           stringAttribute("deployment.environment", "local"),
-          stringAttribute("deployment.release", "2026.05-dev"),
+          stringAttribute("deployment.release", releaseForSeed(seedContext)),
           stringAttribute("cloud.provider", "local"),
-          stringAttribute("cloudgrid.seed.run_id", seedContext.runId),
+          stringAttribute("nimbuscart.seed.run_id", seedContext.runId),
         ],
       },
       scopeSpans: [
         {
-          scope: { name: "cloudgrid-dev-seed", version: "1.0.0" },
+          scope: { name: "nimbuscart-showcase-seed", version: "1.0.0" },
           spans: serviceSpans.map(
             ({
               serviceName: _serviceName,
@@ -293,10 +290,10 @@ function buildRichLogFixture(seedContext) {
         body: { stringValue: span.logMessage ?? `${span.serviceName} completed ${span.operation}` },
         attributes: [
           stringAttribute("service.name", span.serviceName),
-          stringAttribute("cloudgrid.seed.run_id", seedContext.runId),
-          stringAttribute("cloudgrid.seed.scenario", span.scenarioSlug),
-          stringAttribute("cloudgrid.seed.operation", span.operation),
-          intAttribute("cloudgrid.seed.log_index", logIndex),
+          stringAttribute("nimbuscart.seed.run_id", seedContext.runId),
+          stringAttribute("nimbuscart.seed.scenario", span.scenarioSlug),
+          stringAttribute("nimbuscart.seed.operation", span.operation),
+          intAttribute("nimbuscart.seed.log_index", logIndex),
         ],
       };
     });
@@ -311,17 +308,20 @@ function buildRichLogFixture(seedContext) {
       resource: {
         attributes: [
           stringAttribute("service.name", serviceName),
+          stringAttribute("service.namespace", "NimbusCart"),
           stringAttribute("deployment.environment", "local"),
         ],
       },
-      scopeLogs: [{ scope: { name: "cloudgrid-dev-seed", version: "1.0.0" }, logRecords: records }],
+      scopeLogs: [
+        { scope: { name: "nimbuscart-showcase-seed", version: "1.0.0" }, logRecords: records },
+      ],
     })),
   };
 }
 
 function buildRichMetricFixture(seedContext) {
   const base = seedContext.baseUnixNano;
-  const metricBases = timelineUnixNanos(seedContext, 31);
+  const metricBases = timelineUnixNanos(seedContext, seedPointCount(seedContext));
   const serviceNames = services();
   const metrics = [
     {
@@ -335,7 +335,7 @@ function buildRichMetricFixture(seedContext) {
             attributes: [
               stringAttribute("service.name", serviceName),
               stringAttribute("http.route", routeForService(serviceName, index)),
-              intAttribute("cloudgrid.seed.day_index", dayIndex),
+              intAttribute("nimbuscart.seed.day_index", dayIndex),
             ],
             startTimeUnixNano: String(base),
             timeUnixNano: String(pointBase + 3_000_000_000n + BigInt(index) * 20_000_000n),
@@ -348,20 +348,57 @@ function buildRichMetricFixture(seedContext) {
       },
     },
     {
-      name: "cloudgrid.ingest.batch.size",
-      description: "Telemetry batch size observed by local development services",
+      name: "nimbuscart.events.processed",
+      description: "Domain events processed by NimbusCart services",
       unit: "{item}",
       gauge: {
         dataPoints: metricBases.flatMap((pointBase, dayIndex) =>
           serviceNames.map((serviceName, index) => ({
             attributes: [
               stringAttribute("service.name", serviceName),
-              intAttribute("cloudgrid.seed.day_index", dayIndex),
+              intAttribute("nimbuscart.seed.day_index", dayIndex),
             ],
             timeUnixNano: String(pointBase + 4_000_000_000n + BigInt(index) * 10_000_000n),
             asInt: String(12 + index * 3 + (dayIndex % 7)),
           })),
         ),
+      },
+    },
+    {
+      name: "nimbuscart.checkout.conversion_rate",
+      description: "Share of checkout attempts that completed successfully",
+      unit: "1",
+      gauge: {
+        dataPoints: metricBases.map((pointBase, dayIndex) => ({
+          attributes: [
+            stringAttribute("service.name", "nimbuscart.checkout-api"),
+            stringAttribute("market.region", dayIndex % 3 === 0 ? "eu-west" : "us-east"),
+            intAttribute("nimbuscart.seed.day_index", dayIndex),
+          ],
+          timeUnixNano: String(pointBase + 6_000_000_000n),
+          asDouble: Number(
+            (0.926 - (dayIndex % 11 === 0 ? 0.041 : 0) + (dayIndex % 5) * 0.002).toFixed(3),
+          ),
+        })),
+      },
+    },
+    {
+      name: "nimbuscart.orders.created",
+      description: "Orders accepted by NimbusCart checkout",
+      unit: "{order}",
+      sum: {
+        aggregationTemporality: 2,
+        isMonotonic: false,
+        dataPoints: metricBases.map((pointBase, dayIndex) => ({
+          attributes: [
+            stringAttribute("service.name", "nimbuscart.orders-api"),
+            stringAttribute("sales.channel", dayIndex % 2 === 0 ? "web" : "mobile"),
+            intAttribute("nimbuscart.seed.day_index", dayIndex),
+          ],
+          startTimeUnixNano: String(base),
+          timeUnixNano: String(pointBase + 7_000_000_000n),
+          asInt: String(840 + (dayIndex % 14) * 37 - (dayIndex % 17 === 0 ? 210 : 0)),
+        })),
       },
     },
     {
@@ -372,27 +409,28 @@ function buildRichMetricFixture(seedContext) {
         aggregationTemporality: 2,
         isMonotonic: false,
         dataPoints: metricBases.flatMap((pointBase, dayIndex) =>
-          ["assistant-api", "llm-proxy", "retrieval"].flatMap((serviceName, index) =>
-            ["input", "output"].map((tokenType, tokenIndex) => ({
-              attributes: [
-                stringAttribute("service.name", serviceName),
-                stringAttribute(
-                  "gen_ai.request.model",
-                  index === 1 ? "gpt-5.2" : "text-embedding-3-large",
+          ["nimbuscart.recommendations", "nimbuscart.search", "nimbuscart.personalization"].flatMap(
+            (serviceName, index) =>
+              ["input", "output"].map((tokenType, tokenIndex) => ({
+                attributes: [
+                  stringAttribute("service.name", serviceName),
+                  stringAttribute(
+                    "gen_ai.request.model",
+                    index === 1 ? "gpt-5.2" : "text-embedding-3-large",
+                  ),
+                  stringAttribute("gen_ai.token.type", tokenType),
+                  intAttribute("nimbuscart.seed.day_index", dayIndex),
+                ],
+                startTimeUnixNano: String(base),
+                timeUnixNano: String(
+                  pointBase + 5_000_000_000n + BigInt(index * 2 + tokenIndex) * 10_000_000n,
                 ),
-                stringAttribute("gen_ai.token.type", tokenType),
-                intAttribute("cloudgrid.seed.day_index", dayIndex),
-              ],
-              startTimeUnixNano: String(base),
-              timeUnixNano: String(
-                pointBase + 5_000_000_000n + BigInt(index * 2 + tokenIndex) * 10_000_000n,
-              ),
-              asInt: String(
-                tokenType === "input"
-                  ? 820 + index * 130 + dayIndex * 9
-                  : 240 + index * 90 + dayIndex * 4,
-              ),
-            })),
+                asInt: String(
+                  tokenType === "input"
+                    ? 820 + index * 130 + dayIndex * 9
+                    : 240 + index * 90 + dayIndex * 4,
+                ),
+              })),
           ),
         ),
       },
@@ -401,8 +439,8 @@ function buildRichMetricFixture(seedContext) {
   return {
     resourceMetrics: [
       {
-        resource: { attributes: [stringAttribute("service.name", "cloudgrid-dev-seed")] },
-        scopeMetrics: [{ scope: { name: "cloudgrid-dev-seed", version: "1.0.0" }, metrics }],
+        resource: { attributes: [stringAttribute("service.name", "nimbuscart.telemetry")] },
+        scopeMetrics: [{ scope: { name: "nimbuscart-showcase-seed", version: "1.0.0" }, metrics }],
       },
     ],
   };
@@ -410,7 +448,7 @@ function buildRichMetricFixture(seedContext) {
 
 function generatedTraceSpans(seedContext) {
   const scenarioDefinitions = scenarios();
-  const traceCount = scenarioDefinitions.length * 31;
+  const traceCount = scenarioDefinitions.length * seedPointCount(seedContext);
   return Array.from({ length: traceCount }, (_, traceIndex) => {
     const scenario = scenarioDefinitions[traceIndex % scenarioDefinitions.length];
     const traceId = idBytes(traceIdHex(seedContext, traceIndex));
@@ -452,9 +490,13 @@ function generatedTraceSpans(seedContext) {
   }).flat();
 }
 
-function oneMonthBeforeMs(valueMs) {
+function seedPointCount(seedContext) {
+  return Math.max(1, Math.min(61, Number(seedContext.pointCount ?? 61)));
+}
+
+function twoMonthsBeforeMs(valueMs) {
   const date = new Date(valueMs);
-  date.setUTCMonth(date.getUTCMonth() - 1);
+  date.setUTCMonth(date.getUTCMonth() - 2);
   return date.getTime();
 }
 
@@ -478,6 +520,7 @@ function scenarios() {
       slug: "checkout-payment-declined",
       route: "POST /api/checkout",
       customerTier: "business",
+      instance: 1,
       spans: [
         step("gateway", "POST /api/checkout", null, 0, 930, {
           kind: 2,
@@ -495,7 +538,7 @@ function scenarios() {
         step("payments", "authorize card", 6, 528, 310, {
           operation: "payment.authorize",
           status: "error",
-          logMessage: "Card authorization declined by issuer",
+          logMessage: "Payment authorization declined by issuer",
         }),
         step("checkout-api", "release reservation", 7, 852, 76, {
           operation: "inventory.release",
@@ -512,30 +555,36 @@ function scenarios() {
       ],
     },
     {
-      slug: "assistant-answer-with-retrieval",
-      route: "POST /api/assistant/runs",
+      slug: "personalized-recommendations",
+      route: "POST /api/recommendations",
       customerTier: "enterprise",
+      instance: 2,
       spans: [
-        step("gateway", "POST /api/assistant/runs", null, 0, 1480, {
+        step("gateway", "POST /api/recommendations", null, 0, 1480, {
           kind: 2,
-          logMessage: "Assistant run started for workspace ws_alpha",
+          logMessage: "Recommendation request started for shopper segment premium",
         }),
-        step("identity", "authorize workspace", 0, 9, 44, { operation: "authz.workspace" }),
-        step("assistant-api", "load conversation", 0, 68, 72, { operation: "conversation.load" }),
-        step("retrieval", "embed query", 2, 162, 118, { operation: "gen_ai.embed" }),
-        step("vector-db", "search knowledge base", 3, 305, 156, { operation: "vector.search" }),
-        step("retrieval", "rerank documents", 4, 474, 86, { operation: "retrieval.rerank" }),
-        step("assistant-api", "build prompt", 5, 585, 61, { operation: "prompt.render" }),
-        step("policy", "check safety policy", 6, 668, 74, { operation: "policy.evaluate" }),
-        step("llm-proxy", "chat completion", 7, 770, 640, {
-          operation: "gen_ai.chat",
-          logMessage: "Model completed answer with 3 retrieved citations",
+        step("identity", "authorize shopper", 0, 9, 44, { operation: "authz.shopper" }),
+        step("recommendations", "load shopper profile", 0, 68, 72, {
+          operation: "profile.load",
         }),
-        step("tools", "lookup account status", 8, 1128, 146, { operation: "tool.account_lookup" }),
-        step("assistant-api", "store assistant message", 8, 1430, 84, {
-          operation: "message.persist",
+        step("search", "embed browsing intent", 2, 162, 118, { operation: "gen_ai.embed" }),
+        step("catalog", "search similar products", 3, 305, 156, { operation: "catalog.search" }),
+        step("search", "rank candidates", 4, 474, 86, {
+          operation: "recommendation.rank",
+          logSeverity: "WARN",
+          logMessage: "Recommendation fallback used cached results",
         }),
-        step("usage-meter", "record token usage", 8, 1518, 53, { operation: "usage.record" }),
+        step("recommendations", "apply merchandising rules", 5, 585, 61, {
+          operation: "merchandising.rules",
+        }),
+        step("personalization", "score recommendation set", 6, 668, 214, {
+          operation: "recommendation.score",
+        }),
+        step("recommendations", "persist impression", 7, 920, 84, {
+          operation: "impression.persist",
+          logMessage: "Recommendation set rendered with 12 products",
+        }),
         step("gateway", "stream final chunk", 0, 1605, 42, { operation: "http.stream.finish" }),
       ],
     },
@@ -543,6 +592,7 @@ function scenarios() {
       slug: "order-confirmation",
       route: "POST /api/orders/{id}/confirm",
       customerTier: "business",
+      instance: 3,
       spans: [
         step("gateway", "POST /api/orders/{id}/confirm", null, 0, 820, { kind: 2 }),
         step("orders-api", "load order", 0, 15, 58, { operation: "order.load" }),
@@ -559,6 +609,7 @@ function scenarios() {
         step("events", "publish order confirmed", 5, 670, 64, { operation: "event.publish" }),
         step("notifications", "send confirmation", 7, 742, 102, {
           operation: "email.order_confirmed",
+          logMessage: "Order confirmation sent to customer",
         }),
         step("audit-log", "record order confirmation", 7, 808, 38, {
           operation: "audit.order_confirmed",
@@ -567,35 +618,32 @@ function scenarios() {
       ],
     },
     {
-      slug: "dashboard-summary-refresh",
-      route: "GET /api/dashboards/summary",
-      customerTier: "internal",
+      slug: "catalog-search-cache-warm",
+      route: "GET /api/search",
+      customerTier: "consumer",
+      instance: 4,
       spans: [
-        step("bff", "GET /api/dashboards/summary", null, 0, 640, {
+        step("gateway", "GET /api/search", null, 0, 640, {
           kind: 2,
-          logMessage: "Dashboard summary requested for project default",
+          logMessage: "Search results requested for query running shoes",
         }),
-        step("control-plane", "resolve selected project", 0, 8, 70, {
-          operation: "project.resolve",
+        step("search", "parse query", 0, 8, 34, { operation: "search.parse" }),
+        step("catalog", "load category facets", 0, 38, 95, { operation: "catalog.facets" }),
+        step("search", "query product index", 0, 92, 248, { operation: "search.products" }),
+        step("pricing", "load promotional prices", 3, 108, 118, { operation: "pricing.promos" }),
+        step("inventory", "filter available stock", 3, 232, 92, { operation: "stock.filter" }),
+        step("recommendations", "attach sponsored products", 3, 342, 105, {
+          operation: "ads.attach",
         }),
-        step("control-plane", "load pinned dashboards", 1, 38, 40, {
-          operation: "dashboard_pins.list",
-        }),
-        step("storage-read", "load dashboard telemetry", 0, 92, 448, {
-          operation: "telemetry.dashboard.load",
-        }),
-        step("storage-read", "query trace overview", 3, 108, 118, { operation: "trace.overview" }),
-        step("storage-read", "query log volume", 3, 232, 92, { operation: "log.volume" }),
-        step("storage-read", "query metric names", 3, 342, 105, { operation: "metric.names" }),
-        step("cache", "read dashboard cache", 3, 462, 34, { operation: "cache.get" }),
-        step("bff", "compose dashboard model", 3, 505, 54, { operation: "graphql.compose" }),
-        step("gateway", "return dashboard payload", 0, 578, 26, { operation: "http.response" }),
+        step("cache", "write search cache", 3, 462, 34, { operation: "cache.set" }),
+        step("gateway", "return search payload", 0, 578, 26, { operation: "http.response" }),
       ],
     },
     {
       slug: "webhook-retry",
       route: "POST /api/webhooks/stripe",
       customerTier: "startup",
+      instance: 5,
       spans: [
         step("gateway", "POST /api/webhooks/stripe", null, 0, 680, { kind: 2, linkPrevious: true }),
         step("webhooks", "verify signature", 0, 7, 52, { operation: "webhook.verify" }),
@@ -620,30 +668,33 @@ function scenarios() {
 
 function services() {
   return [
-    "gateway",
-    "identity",
-    "checkout-api",
-    "inventory",
-    "payments",
-    "assistant-api",
-    "retrieval",
-    "llm-proxy",
-    "storage-read",
-    "bff",
+    "nimbuscart.gateway",
+    "nimbuscart.identity",
+    "nimbuscart.checkout-api",
+    "nimbuscart.inventory",
+    "nimbuscart.payments",
+    "nimbuscart.recommendations",
+    "nimbuscart.search",
+    "nimbuscart.personalization",
+    "nimbuscart.orders-api",
+    "nimbuscart.fulfillment",
+    "nimbuscart.notifications",
   ];
 }
 
 function step(service, name, parent, offsetMs, durationMs, options = {}) {
-  return { service, name, parent, offsetMs, durationMs, ...options };
+  return { service: `nimbuscart.${service}`, name, parent, offsetMs, durationMs, ...options };
 }
 
 function spanAttributes(scenario, definition) {
   const attrs = [
     stringAttribute("service.name", definition.service),
+    stringAttribute("service.namespace", "NimbusCart"),
+    stringAttribute("service.instance.id", `${definition.service}-blue-0${scenario.instance}`),
     stringAttribute("http.route", scenario.route),
-    stringAttribute("cloudgrid.seed.scenario", scenario.slug),
-    stringAttribute("cloudgrid.customer.tier", scenario.customerTier),
-    stringAttribute("cloudgrid.operation", definition.operation ?? definition.name),
+    stringAttribute("nimbuscart.seed.scenario", scenario.slug),
+    stringAttribute("nimbuscart.customer.tier", scenario.customerTier),
+    stringAttribute("nimbuscart.operation", definition.operation ?? definition.name),
   ];
   if (definition.operation?.startsWith("gen_ai.")) {
     attrs.push(stringAttribute("gen_ai.request.model", "gpt-5.2"));
@@ -660,8 +711,8 @@ function spanEvents(start, scenario, definition) {
       timeUnixNano: String(start + 3_000_000n),
       name: "checkpoint",
       attributes: [
-        stringAttribute("cloudgrid.seed.scenario", scenario.slug),
-        stringAttribute("cloudgrid.operation", definition.operation ?? definition.name),
+        stringAttribute("nimbuscart.seed.scenario", scenario.slug),
+        stringAttribute("nimbuscart.operation", definition.operation ?? definition.name),
       ],
     },
   ];
@@ -679,24 +730,35 @@ function spanEvents(start, scenario, definition) {
 }
 
 function routeForService(serviceName, index) {
+  const normalizedServiceName = serviceName.replace(/^nimbuscart\./, "");
   const routes = {
     gateway: "/api/checkout",
     "checkout-api": "/api/checkout",
     payments: "/api/payments/authorize",
     inventory: "/api/inventory/reservations",
-    "assistant-api": "/api/assistant/runs",
-    "llm-proxy": "/v1/chat/completions",
-    "storage-read": "/graphql",
-    bff: "/graphql",
+    recommendations: "/api/recommendations",
+    search: "/api/search",
+    "orders-api": "/api/orders/{id}/confirm",
+    fulfillment: "/api/fulfillment/shipments",
+    notifications: "/api/notifications/email",
   };
   return (
-    routes[serviceName] ?? (index % 2 === 0 ? "/api/orders/{id}/confirm" : "/api/webhooks/stripe")
+    routes[normalizedServiceName] ??
+    (index % 2 === 0 ? "/api/orders/{id}/confirm" : "/api/webhooks/stripe")
   );
+}
+
+function releaseForSeed(seedContext) {
+  const releasedAt = new Date(Number(seedContext.windowEndUnixNano / 1_000_000n));
+  return `nimbuscart.${releasedAt.getUTCFullYear()}.${String(releasedAt.getUTCMonth() + 1).padStart(
+    2,
+    "0",
+  )}`;
 }
 
 function traceIdHex(seedContext, traceIndex) {
   return createHash("sha256")
-    .update(`cloudgrid-dev-seed:${seedContext.runId}:trace:${traceIndex}`)
+    .update(`nimbuscart-showcase-seed:${seedContext.runId}:trace:${traceIndex}`)
     .digest("hex")
     .slice(0, 32);
 }
@@ -712,7 +774,7 @@ function intAttribute(key, value) {
 function spanId(seedContext, traceIndex, spanIndex) {
   return idBytes(
     createHash("sha256")
-      .update(`cloudgrid-dev-seed:${seedContext.runId}:span:${traceIndex}:${spanIndex}`)
+      .update(`nimbuscart-showcase-seed:${seedContext.runId}:span:${traceIndex}:${spanIndex}`)
       .digest("hex")
       .slice(0, 16),
   );
@@ -768,7 +830,7 @@ function helpText() {
 Posts generated realistic development telemetry to the CloudGrid OTLP HTTP collector.
 
 Options:
-  --fixture-set generated   Default. Rich demo traces, logs, and metrics spread from one month ago through now.
+  --fixture-set generated   Default. Realistic NimbusCart traces, logs, and metrics spread over the previous two months.
   --fixture-set contracts   Checked-in JSON/protobuf fixtures for collector contract coverage.
   --fixture-set all         Generated demo data plus checked-in contract fixtures.
   --continuous, --watch     Keep sending fresh generated JSON telemetry for live UI development.
@@ -777,9 +839,7 @@ Options:
 
 Environment:
   CLOUDGRID_OTLP_ENDPOINT       Collector base URL. Defaults to http://127.0.0.1:4318.
-  CLOUDGRID_OTLP_PORT           Used for the default endpoint when set.
   CLOUDGRID_OTLP_BEARER_TOKEN   Optional bearer token for local project-token mode.
-  CLOUDGRID_OTLP_TOKEN          Fallback optional bearer token.
   CLOUDGRID_PROJECT_API_KEY     Fallback token written by bun run setup:local for the default local project.
 `;
 }

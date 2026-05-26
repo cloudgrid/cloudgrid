@@ -50,15 +50,19 @@ external secret exists at BFF runtime.
 2. BFF validates input shape and authorization, then sends the update to
    control-plane.
 3. Control-plane validates provider-specific metadata, credential reference
-   shape, alias references, secret-looking strings, and optimistic version.
-4. Control-plane persists the settings and increments `version`.
-5. Control-plane returns the redacted updated settings.
-6. Frontend clears dirty state and refetches any route that depends on provider
+   shape, write-only `credentialValue`, alias references, secret-looking
+   strings, and optimistic version.
+4. If `credentialValue` is present, control-plane encrypts it into an
+   `ai_provider_secret` record scoped to the company or project and replaces it
+   with a `managed:` `credentialRef` in the persisted settings.
+5. Control-plane persists the redacted settings and increments `version`.
+6. Control-plane returns the redacted updated settings.
+7. Frontend clears dirty state and refetches any route that depends on provider
    effective warnings.
 
-No update path stores raw provider credentials. If the UI ever needs write-only
-secret entry, a separate secret-management spec must define encryption,
-rotation, redaction, audit, and deletion before implementation.
+No read path returns raw provider credentials. Raw credentials are accepted only
+as write-only `credentialValue` mutation input and only to create or rotate a
+managed encrypted secret.
 
 ## Runtime Resolution Flow
 
@@ -67,6 +71,10 @@ rotation, redaction, audit, and deletion before implementation.
 2. BFF or runner loads redacted settings through control-plane.
 3. The runtime credential resolver resolves `credentialRef` only inside the
    execution process:
+   - `managed:company/<companyId>/<providerProfileId>` calls
+     `control.ai_provider_secrets.resolve`;
+   - `managed:project/<projectId>/<providerProfileId>` calls
+     `control.ai_provider_secrets.resolve`;
    - `env:<NAME>` reads process environment variable `<NAME>`;
    - `external:<provider>/<path>` calls the configured external resolver.
 4. The resolved credential is passed in memory to the harness integration.

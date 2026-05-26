@@ -222,11 +222,16 @@ The control-plane wave must add these subjects before implementation:
 - `control.ai_providers.project.update`
 - `control.ai_providers.company.get`
 - `control.ai_providers.company.update`
+- `control.ai_provider_secrets.resolve`
 - `control.ai_chat.history`
 - `control.ai_chat.conversation.get`
 - `control.ai_chat.conversation.create`
 - `control.ai_chat.conversation.archive`
+- `control.ai_chat.conversation.delete`
 - `control.ai_chat.message.append`
+- `control.ai_chat.run.create`
+- `control.ai_chat.run.update`
+- `control.ai_chat.run.finalize`
 - `control.ai_chat.action.propose`
 - `control.ai_chat.action.approve`
 - `control.ai_chat.action.finish`
@@ -440,7 +445,7 @@ snapshots.
 
 Control-plane project records always include the GraphQL `telemetry` object for schema stability, but control-plane does not own telemetry counts. For viewer, organization, project list, project detail, project create/update, and project selection responses, the BFF must request storage-read `telemetry.projects.overview` with the explicit `{ tenantId, companyId, projectId }` targets that came from authorized control-plane records and merge the returned overview into the GraphQL project model.
 
-Storage-read computes `traceCount`, `logCount`, `metricCount`, `serviceCount`, and `lastIngestAt` from SurrealDB telemetry tables. The BFF must not count, aggregate, or infer these fields locally. If storage-read cannot provide the overview, the GraphQL operation must surface the bridge error rather than silently replacing real telemetry with static zeros.
+Storage-read computes `traceCount`, `logCount`, `metricCount`, `serviceCount`, and `lastIngestAt` from SurrealDB telemetry tables. The BFF must not count, aggregate, or infer these fields locally. If a requested project telemetry database has not been initialized with any required telemetry tables yet, storage-read returns a zero overview for that project so empty or newly bootstrapped projects do not fail control-plane GraphQL reads. If a project has a partial/broken telemetry schema or storage-read otherwise cannot provide the overview, the GraphQL operation must surface the bridge error rather than silently replacing real telemetry with static zeros.
 
 ## Verification
 

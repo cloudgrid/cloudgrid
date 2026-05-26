@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 
 func TestStartOfflineExperimentRunsDatasetItemsAndPersistsDeterministicResults(t *testing.T) {
 	reader := &fakeReader{
+		manifest: ports.ExperimentManifest{Digest: "manifest-digest-1"},
 		experiments: []ports.Experiment{{
 			ID:             "experiment-1",
 			DatasetID:      "dataset-1",
@@ -73,6 +75,12 @@ func TestStartOfflineExperimentRunsDatasetItemsAndPersistsDeterministicResults(t
 	if len(harness.runRequests) != 1 {
 		t.Fatalf("expected one harness run request, got %d", len(harness.runRequests))
 	}
+	if len(harness.startSandboxRequests) != 1 || len(harness.cleanupSandboxRequests) != 1 {
+		t.Fatalf("sandbox lifecycle calls start=%#v cleanup=%#v", harness.startSandboxRequests, harness.cleanupSandboxRequests)
+	}
+	if harness.runRequests[0].ManifestDigest != "manifest-digest-1" || harness.runRequests[0].SandboxRef != "sandbox-run-1-item-1" || harness.runRequests[0].SandboxProfile != ports.SandboxProfileEphemeralEvalItem {
+		t.Fatalf("harness run missing manifest/sandbox refs: %#v", harness.runRequests[0])
+	}
 	if len(harness.scoreRequests) != 0 {
 		t.Fatalf("deterministic scorer must execute locally, got harness score calls: %#v", harness.scoreRequests)
 	}
@@ -98,6 +106,407 @@ func TestStartOfflineExperimentRunsDatasetItemsAndPersistsDeterministicResults(t
 		ports.ExperimentProgressFinished,
 	}) {
 		t.Fatalf("unexpected published progress: %#v", progressTypes)
+	}
+}
+
+func TestStartEvaluationRunPersistsV2ItemRunsAndMetricResults(t *testing.T) {
+	reader := &fakeReader{
+		datasetVersion: ports.DatasetVersion{
+			ID:              "version-1",
+			DatasetID:       "dataset-1",
+			Digest:          "digest-1",
+			ItemRevisionIDs: []string{"revision-1"},
+		},
+		itemRevisions: []ports.DatasetItemRevision{{
+			ID:             "revision-1",
+			DatasetItemID:  "item-1",
+			DatasetID:      "dataset-1",
+			Input:          map[string]any{"question": "2+2"},
+			Expected:       map[string]any{"answer": "4"},
+			CurationStatus: "ready",
+		}},
+		targetSnapshot: ports.TargetSnapshot{
+			ID:        "snapshot-1",
+			TargetRef: map[string]any{"kind": "prompt", "name": "test", "modelAlias": "judge-fast"},
+			Digest:    "target-digest",
+		},
+	}
+	writer := &fakeWriter{}
+	publisher := &fakePublisher{}
+	harness := &fakeHarness{runResult: ports.HarnessRunResult{
+		HarnessRunID: "harness-run-1",
+		Output:       map[string]any{"answer": "4"},
+		LatencyMs:    42,
+	}}
+	runner := NewRunner(RunnerConfig{
+		StorageReader: reader,
+		StorageWriter: writer,
+		ControlPlane: &fakeControlPlane{settings: ports.ProjectAISettings{
+			ProjectID: "project-1",
+			Budget:    map[string]any{"dailyUsd": 10.0},
+			ModelAliases: []map[string]any{{
+				"id":                "judge-fast",
+				"name":              "judge-fast",
+				"providerProfileId": "provider-openai",
+			}},
+		}},
+		HarnessAdapter:    harness,
+		ProgressPublisher: publisher,
+		Clock:             fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)),
+		IDGenerator:       sequenceIDs("eval-run-1", "item-run-1", "metric-exact-1", "metric-latency-1"),
+	})
+
+	result, err := runner.StartEvaluationRun(context.Background(), StartEvaluationRunRequest{
+		RequestID:        "request-1",
+		ProjectID:        "project-1",
+		DatasetVersionID: "version-1",
+		TargetSnapshotID: "snapshot-1",
+		IdempotencyKey:   "start-1",
+		TraceContext:     map[string]string{"traceparent": "00-test"},
+	})
+
+	if err != nil {
+		t.Fatalf("StartEvaluationRun returned error: %v", err)
+	}
+	if result.Run.ID != "eval-run-1" || result.Run.Status != ports.ExperimentRunStatusFinished {
+		t.Fatalf("unexpected evaluation run result: %#v", result.Run)
+	}
+	itemCounts, _ := result.Run.Summary["itemCounts"].(map[string]any)
+	if itemCounts["queued"] != 0 || itemCounts["running"] != 0 || itemCounts["completed"] != 1 || itemCounts["cancelled"] != 0 {
+		t.Fatalf("evaluation run item counts = %#v, want GraphQL EvaluationItemCounts shape", itemCounts)
+	}
+	problemCounts, _ := result.Run.Summary["problemCounts"].(map[string]any)
+	if _, ok := problemCounts["invalidActualOutput"]; !ok {
+		t.Fatalf("evaluation run problem counts = %#v, want GraphQL EvaluationProblemCounts shape", problemCounts)
+	}
+	if !reflect.DeepEqual(reader.datasetVersionGets, []string{"version-1"}) {
+		t.Fatalf("dataset version lookups = %#v", reader.datasetVersionGets)
+	}
+	if !reflect.DeepEqual(reader.targetSnapshotGets, []string{"snapshot-1"}) {
+		t.Fatalf("target snapshot lookups = %#v", reader.targetSnapshotGets)
+	}
+	if len(harness.runRequests) != 1 || harness.runRequests[0].TraceContext["traceparent"] != "00-test" {
+		t.Fatalf("harness run requests = %#v", harness.runRequests)
+	}
+	if !reflect.DeepEqual(harness.runRequests[0].ProviderProfileRefs, []string{"provider-openai"}) {
+		t.Fatalf("harness provider refs = %#v, want provider-openai from project model alias", harness.runRequests[0].ProviderProfileRefs)
+	}
+	if len(writer.evaluationResults) != 1 {
+		t.Fatalf("evaluation result persists = %d, want 1", len(writer.evaluationResults))
+	}
+	persisted := writer.evaluationResults[0]
+	if persisted.EvaluationRun.RetentionRole != ports.EvaluationRetentionRoleBaseline || persisted.EvaluationRun.DatasetDigest != "digest-1" {
+		t.Fatalf("persisted evaluation run = %#v", persisted.EvaluationRun)
+	}
+	if len(persisted.ItemRuns) != 1 || persisted.ItemRuns[0].Status != ports.EvaluationItemRunStatusCompleted {
+		t.Fatalf("persisted item runs = %#v", persisted.ItemRuns)
+	}
+	if persisted.ItemRuns[0].TrajectorySummary == "" || len(persisted.ItemRuns[0].ImportantSteps) == 0 {
+		t.Fatalf("item run missing trajectory summary or important steps: %#v", persisted.ItemRuns[0])
+	}
+	if len(persisted.MetricResults) != 2 || persisted.MetricResults[0].MetricID != "extraction.exact_json_match" || persisted.MetricResults[1].MetricID != "trajectory.duration_ms" {
+		t.Fatalf("metric results = %#v", persisted.MetricResults)
+	}
+	if len(writer.progressUpdates) != 0 || len(publisher.progress) != 0 {
+		t.Fatalf("v2 evaluation run emitted legacy progress writer=%#v publisher=%#v", writer.progressUpdates, publisher.progress)
+	}
+	if !reflect.DeepEqual(collectProgressTypes(publisher.evaluationProgress), []string{
+		ports.ExperimentProgressStarted,
+		ports.ExperimentProgressItemCompleted,
+		ports.ExperimentProgressFinished,
+	}) {
+		t.Fatalf("evaluation progress = %#v", collectProgressTypes(publisher.evaluationProgress))
+	}
+}
+
+func TestStartEvaluationRunInvalidActualOutputCreatesProblemMetric(t *testing.T) {
+	reader := &fakeReader{
+		datasetVersion: ports.DatasetVersion{ID: "version-1", DatasetID: "dataset-1", ItemRevisionIDs: []string{"revision-1"}},
+		itemRevisions: []ports.DatasetItemRevision{{
+			ID:             "revision-1",
+			DatasetItemID:  "item-1",
+			DatasetID:      "dataset-1",
+			Input:          map[string]any{"q": "run"},
+			Expected:       map[string]any{"a": "run"},
+			CurationStatus: "ready",
+		}},
+		targetSnapshot: ports.TargetSnapshot{ID: "snapshot-1", TargetRef: map[string]any{"kind": "prompt"}, Digest: "target-digest"},
+	}
+	writer := &fakeWriter{}
+	runner := NewRunner(RunnerConfig{
+		StorageReader:     reader,
+		StorageWriter:     writer,
+		HarnessAdapter:    &fakeHarness{runResult: ports.HarnessRunResult{LatencyMs: 5}},
+		ProgressPublisher: &fakePublisher{},
+		Clock:             fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)),
+		IDGenerator:       sequenceIDs("eval-run-1", "item-run-1", "metric-exact-1", "metric-latency-1"),
+	})
+
+	_, err := runner.StartEvaluationRun(context.Background(), StartEvaluationRunRequest{
+		RequestID:        "request-1",
+		ProjectID:        "project-1",
+		DatasetVersionID: "version-1",
+		TargetSnapshotID: "snapshot-1",
+		IdempotencyKey:   "start-1",
+	})
+
+	if err != nil {
+		t.Fatalf("StartEvaluationRun returned error: %v", err)
+	}
+	persisted := writer.evaluationResults[0]
+	if !hasProblemCode(persisted.ItemRuns[0].Problems, ports.EvaluationProblemInvalidActualOutput) {
+		t.Fatalf("item run problems = %#v", persisted.ItemRuns[0].Problems)
+	}
+	if persisted.MetricResults[0].Problem["code"] != ports.EvaluationProblemInvalidActualOutput {
+		t.Fatalf("metric problem = %#v", persisted.MetricResults[0].Problem)
+	}
+}
+
+func TestStartEvaluationRunSupportsQuickShotSubsetAndMetricConfigProblems(t *testing.T) {
+	reader := &fakeReader{
+		datasetVersion: ports.DatasetVersion{
+			ID:              "version-1",
+			DatasetID:       "dataset-1",
+			ItemRevisionIDs: []string{"revision-1", "revision-2"},
+		},
+		itemRevisions: []ports.DatasetItemRevision{
+			{ID: "revision-1", DatasetItemID: "item-1", DatasetID: "dataset-1", Input: map[string]any{"q": "skip"}, Expected: map[string]any{"a": "skip"}, CurationStatus: "ready"},
+			{ID: "revision-2", DatasetItemID: "item-2", DatasetID: "dataset-1", Input: map[string]any{"q": "run"}, Expected: map[string]any{"a": "run"}, CurationStatus: "ready"},
+		},
+		targetSnapshot: ports.TargetSnapshot{ID: "snapshot-1", TargetRef: map[string]any{"kind": "prompt"}, Digest: "target-digest"},
+	}
+	writer := &fakeWriter{}
+	runner := NewRunner(RunnerConfig{
+		StorageReader:     reader,
+		StorageWriter:     writer,
+		HarnessAdapter:    &fakeHarness{runResult: ports.HarnessRunResult{Output: map[string]any{"a": "run"}, LatencyMs: 5}},
+		ProgressPublisher: &fakePublisher{},
+		Clock:             fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)),
+		IDGenerator:       sequenceIDs("eval-run-1", "item-run-1", "metric-exact-1", "metric-latency-1"),
+	})
+
+	_, err := runner.StartEvaluationRun(context.Background(), StartEvaluationRunRequest{
+		RequestID:               "request-1",
+		ProjectID:               "project-1",
+		DatasetVersionID:        "version-1",
+		TargetSnapshotID:        "snapshot-1",
+		IdempotencyKey:          "start-1",
+		Kind:                    ports.EvaluationRunKindQuickShot,
+		SelectedItemRevisionIDs: []string{"revision-2"},
+		MetricSettings:          []map[string]any{{}},
+	})
+
+	if err != nil {
+		t.Fatalf("StartEvaluationRun returned error: %v", err)
+	}
+	if len(writer.evaluationResults) != 1 || len(writer.evaluationResults[0].ItemRuns) != 1 {
+		t.Fatalf("evaluation results = %#v", writer.evaluationResults)
+	}
+	itemRun := writer.evaluationResults[0].ItemRuns[0]
+	if itemRun.DatasetItemRevisionID != "revision-2" || itemRun.RetentionRole != ports.EvaluationRetentionRoleQuickShot {
+		t.Fatalf("quick-shot item run = %#v", itemRun)
+	}
+	if !hasProblemCode(itemRun.Problems, ports.EvaluationProblemMetricConfigInvalid) {
+		t.Fatalf("item run problems = %#v, want metric config problem", itemRun.Problems)
+	}
+	if writer.evaluationResults[0].MetricResults[0].Problem["code"] != ports.EvaluationProblemMetricConfigInvalid {
+		t.Fatalf("metric problem = %#v", writer.evaluationResults[0].MetricResults[0].Problem)
+	}
+	if !reflect.DeepEqual(reader.itemRevisionSearches, []itemRevisionSearch{{datasetVersionID: "version-1", itemRevisionIDs: []string{"revision-2"}}}) {
+		t.Fatalf("item revision searches = %#v", reader.itemRevisionSearches)
+	}
+}
+
+func TestStartEvaluationRunExternalAdapterFailureCreatesProblemMetric(t *testing.T) {
+	reader := &fakeReader{
+		datasetVersion: ports.DatasetVersion{ID: "version-1", DatasetID: "dataset-1", ItemRevisionIDs: []string{"revision-1"}},
+		itemRevisions: []ports.DatasetItemRevision{{
+			ID:             "revision-1",
+			DatasetItemID:  "item-1",
+			DatasetID:      "dataset-1",
+			Input:          map[string]any{"q": "run"},
+			Expected:       map[string]any{"a": "run"},
+			CurationStatus: "ready",
+		}},
+		targetSnapshot: ports.TargetSnapshot{ID: "snapshot-1", TargetRef: map[string]any{"kind": "external_adapter", "adapterUrl": "https://adapter.example/eval-runs"}, Digest: "target-digest"},
+	}
+	writer := &fakeWriter{}
+	runner := NewRunner(RunnerConfig{
+		StorageReader:     reader,
+		StorageWriter:     writer,
+		HarnessAdapter:    &fakeHarness{},
+		ExternalAdapter:   &fakeExternalAdapter{err: context.DeadlineExceeded},
+		ProgressPublisher: &fakePublisher{},
+		Clock:             fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)),
+		IDGenerator:       sequenceIDs("eval-run-1", "item-run-1", "metric-exact-1", "metric-latency-1"),
+	})
+
+	result, err := runner.StartEvaluationRun(context.Background(), StartEvaluationRunRequest{
+		RequestID:        "request-1",
+		ProjectID:        "project-1",
+		DatasetVersionID: "version-1",
+		TargetSnapshotID: "snapshot-1",
+		IdempotencyKey:   "start-1",
+		TraceContext:     map[string]string{"traceparent": "00-test"},
+	})
+
+	if err != nil {
+		t.Fatalf("StartEvaluationRun returned error: %v", err)
+	}
+	if result.Run.Status != ports.ExperimentRunStatusFailed {
+		t.Fatalf("run status = %q, want failed", result.Run.Status)
+	}
+	persisted := writer.evaluationResults[0]
+	if len(persisted.ItemRuns) != 1 || !hasProblemCode(persisted.ItemRuns[0].Problems, ports.EvaluationProblemTimeout) {
+		t.Fatalf("item run problems = %#v", persisted.ItemRuns)
+	}
+	if persisted.MetricResults[0].Problem["code"] != ports.EvaluationProblemTimeout {
+		t.Fatalf("metric problem = %#v", persisted.MetricResults[0].Problem)
+	}
+}
+
+func TestEvaluationRunControlPersistsPauseResumeAndRejectsTerminalResume(t *testing.T) {
+	writer := &fakeWriter{}
+	publisher := &fakePublisher{}
+	runner := NewRunner(RunnerConfig{
+		StorageReader:     &fakeReader{},
+		StorageWriter:     writer,
+		HarnessAdapter:    &fakeHarness{},
+		ProgressPublisher: publisher,
+		Clock:             fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)),
+	})
+
+	paused, err := runner.PauseEvaluationRun(context.Background(), EvaluationRunControlRequest{
+		RequestID:       "pause-1",
+		ProjectID:       "project-1",
+		EvaluationRunID: "eval-run-1",
+		IdempotencyKey:  "pause-key",
+	})
+	if err != nil {
+		t.Fatalf("PauseEvaluationRun returned error: %v", err)
+	}
+	resumed, err := runner.ResumeEvaluationRun(context.Background(), EvaluationRunControlRequest{
+		RequestID:       "resume-1",
+		ProjectID:       "project-1",
+		EvaluationRunID: "eval-run-1",
+		IdempotencyKey:  "resume-key",
+	})
+	if err != nil {
+		t.Fatalf("ResumeEvaluationRun returned error: %v", err)
+	}
+	if paused.Run.Status != ports.ExperimentRunStatusPaused || resumed.Run.Status != ports.ExperimentRunStatusRunning {
+		t.Fatalf("control statuses paused=%q resumed=%q", paused.Run.Status, resumed.Run.Status)
+	}
+	if len(writer.evaluationResults) != 2 || writer.evaluationResults[0].IdempotencyKey != "pause-key" || writer.evaluationResults[1].IdempotencyKey != "resume-key" {
+		t.Fatalf("control persists = %#v", writer.evaluationResults)
+	}
+	if !reflect.DeepEqual(collectProgressTypes(publisher.evaluationProgress), []string{ports.ExperimentProgressProgress, ports.ExperimentProgressProgress}) {
+		t.Fatalf("control progress = %#v", collectProgressTypes(publisher.evaluationProgress))
+	}
+
+	_, err = runner.CancelEvaluationRun(context.Background(), EvaluationRunControlRequest{
+		RequestID:       "cancel-1",
+		ProjectID:       "project-1",
+		EvaluationRunID: "eval-run-1",
+		IdempotencyKey:  "cancel-key",
+	})
+	if err != nil {
+		t.Fatalf("CancelEvaluationRun returned error: %v", err)
+	}
+	_, err = runner.ResumeEvaluationRun(context.Background(), EvaluationRunControlRequest{
+		RequestID:       "resume-terminal",
+		ProjectID:       "project-1",
+		EvaluationRunID: "eval-run-1",
+		IdempotencyKey:  "resume-terminal-key",
+	})
+	if err == nil || err.Error() != "ERR-AIE-001: cannot resume terminal evaluation run" {
+		t.Fatalf("terminal resume error = %v", err)
+	}
+}
+
+func TestPauseResumeControlIsIdempotentAndValidatesDigest(t *testing.T) {
+	writer := &fakeWriter{}
+	harness := &fakeHarness{}
+	runner := NewRunner(RunnerConfig{
+		StorageReader:     &fakeReader{manifest: ports.ExperimentManifest{Digest: "manifest-digest-1"}},
+		StorageWriter:     writer,
+		HarnessAdapter:    harness,
+		ProgressPublisher: &fakePublisher{},
+		Clock:             fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)),
+	})
+
+	paused, err := runner.PauseExperimentRun(context.Background(), ExperimentRunControlRequest{
+		RequestID:       "pause-1",
+		ExperimentRunID: "run-1",
+	})
+	if err != nil {
+		t.Fatalf("PauseExperimentRun returned error: %v", err)
+	}
+	pausedAgain, err := runner.PauseExperimentRun(context.Background(), ExperimentRunControlRequest{
+		RequestID:       "pause-2",
+		ExperimentRunID: "run-1",
+	})
+	if err != nil {
+		t.Fatalf("second PauseExperimentRun returned error: %v", err)
+	}
+	if paused.Run.Status != ports.ExperimentRunStatusPaused || pausedAgain.Run.Status != ports.ExperimentRunStatusPaused {
+		t.Fatalf("pause statuses = %q/%q", paused.Run.Status, pausedAgain.Run.Status)
+	}
+	if len(harness.pauseSandboxRequests) != 0 {
+		t.Fatalf("pause without active sandbox refs must not call harness: %#v", harness.pauseSandboxRequests)
+	}
+
+	_, err = runner.ResumeExperimentRun(context.Background(), ExperimentRunControlRequest{
+		RequestID:              "resume-stale",
+		ExperimentRunID:        "run-1",
+		ExpectedManifestDigest: "stale-digest",
+	})
+	if err == nil || err.Error() != "ERR-AIE-002: stale manifest digest" {
+		t.Fatalf("resume stale digest error = %v", err)
+	}
+
+	resumed, err := runner.ResumeExperimentRun(context.Background(), ExperimentRunControlRequest{
+		RequestID:              "resume-1",
+		ExperimentRunID:        "run-1",
+		ExpectedManifestDigest: "manifest-digest-1",
+	})
+	if err != nil {
+		t.Fatalf("ResumeExperimentRun returned error: %v", err)
+	}
+	resumedAgain, err := runner.ResumeExperimentRun(context.Background(), ExperimentRunControlRequest{
+		RequestID:              "resume-2",
+		ExperimentRunID:        "run-1",
+		ExpectedManifestDigest: "manifest-digest-1",
+	})
+	if err != nil {
+		t.Fatalf("second ResumeExperimentRun returned error: %v", err)
+	}
+	if resumed.Run.Status != ports.ExperimentRunStatusRunning || resumedAgain.Run.Status != ports.ExperimentRunStatusRunning {
+		t.Fatalf("resume statuses = %q/%q", resumed.Run.Status, resumedAgain.Run.Status)
+	}
+	if len(writer.experimentRuns) < 2 {
+		t.Fatalf("expected persisted pause/resume state, got %#v", writer.experimentRuns)
+	}
+}
+
+func TestResumeTerminalRunFailsWithNonRetryableLifecycleError(t *testing.T) {
+	runner := NewRunner(RunnerConfig{
+		StorageReader:     &fakeReader{},
+		StorageWriter:     &fakeWriter{},
+		HarnessAdapter:    &fakeHarness{},
+		ProgressPublisher: &fakePublisher{},
+	})
+	_, _ = runner.CancelExperimentRun(context.Background(), CancelExperimentRequest{
+		RequestID:       "cancel-1",
+		ExperimentRunID: "run-terminal",
+	})
+
+	_, err := runner.ResumeExperimentRun(context.Background(), ExperimentRunControlRequest{
+		RequestID:       "resume-terminal",
+		ExperimentRunID: "run-terminal",
+	})
+	if err == nil || err.Error() != "ERR-AIE-001: cannot resume terminal experiment run" {
+		t.Fatalf("resume terminal error = %v", err)
 	}
 }
 
@@ -133,16 +542,17 @@ func TestStartOfflineExperimentFallsBackToManifestSolverRef(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartOfflineExperiment returned error: %v", err)
 	}
-	if !reflect.DeepEqual(writer.experimentRuns[0].SolverRef, map[string]any{"kind": "manifest-solver"}) {
+	if !reflect.DeepEqual(writer.experimentRuns[0].SolverRef, map[string]any{"kind": "agent", "name": "local"}) {
 		t.Fatalf("persisted solverRef = %#v", writer.experimentRuns[0].SolverRef)
 	}
-	if !reflect.DeepEqual(harness.runRequests[0].SolverRef, map[string]any{"kind": "manifest-solver"}) {
+	if !reflect.DeepEqual(harness.runRequests[0].SolverRef, map[string]any{"kind": "agent", "name": "local"}) {
 		t.Fatalf("harness solverRef = %#v", harness.runRequests[0].SolverRef)
 	}
 }
 
 func TestCancelOfflineExperimentStopsBeforeNextDatasetItem(t *testing.T) {
 	reader := &fakeReader{
+		manifest: ports.ExperimentManifest{Digest: "manifest-digest-1"},
 		experiments: []ports.Experiment{{
 			ID:             "experiment-1",
 			DatasetID:      "dataset-1",
@@ -191,6 +601,9 @@ func TestCancelOfflineExperimentStopsBeforeNextDatasetItem(t *testing.T) {
 	if len(harness.runRequests) != 1 {
 		t.Fatalf("expected cancellation before second item, got %d harness runs", len(harness.runRequests))
 	}
+	if len(harness.abortSandboxRequests) != 1 {
+		t.Fatalf("expected active sandbox abort on cancel, got %#v", harness.abortSandboxRequests)
+	}
 	if last := publisher.progress[len(publisher.progress)-1]; last.Type != ports.ExperimentProgressCancelled {
 		t.Fatalf("expected final cancellation progress, got %#v", last)
 	}
@@ -206,7 +619,7 @@ func TestStartOptimizationDelegatesToHarnessAdapterAndPublishesProgress(t *testi
 	}
 	publisher := &fakePublisher{}
 	runner := NewRunner(RunnerConfig{
-		StorageReader:     &fakeReader{},
+		StorageReader:     &fakeReader{manifest: ports.ExperimentManifest{Digest: "manifest-digest-1"}},
 		StorageWriter:     writer,
 		HarnessAdapter:    harness,
 		ProgressPublisher: publisher,
@@ -217,7 +630,7 @@ func TestStartOptimizationDelegatesToHarnessAdapterAndPublishesProgress(t *testi
 	result, err := runner.StartOptimization(context.Background(), StartOptimizationRequest{
 		RequestID:           "request-1",
 		ExperimentID:        "experiment-1",
-		OptimizerKind:       "bootstrap-fewshot",
+		OptimizerKind:       "bootstrap_fewshot",
 		BasePromptVersionID: "prompt-1",
 		Config:              map[string]any{"maxCandidates": float64(2)},
 		TraceContext:        map[string]string{"traceparent": "00-test"},
@@ -232,11 +645,17 @@ func TestStartOptimizationDelegatesToHarnessAdapterAndPublishesProgress(t *testi
 	if len(harness.optimizeRequests) != 1 {
 		t.Fatalf("expected one harness optimization call, got %d", len(harness.optimizeRequests))
 	}
+	if harness.optimizeRequests[0].ManifestDigest != "manifest-digest-1" || harness.optimizeRequests[0].SandboxRef != "sandbox-optimization-run-1-optimization-run-1" || harness.optimizeRequests[0].SandboxProfile != ports.SandboxProfileEphemeralOptimizationCandidate {
+		t.Fatalf("harness optimize missing manifest/sandbox refs: %#v", harness.optimizeRequests[0])
+	}
+	if len(harness.startSandboxRequests) != 1 || len(harness.cleanupSandboxRequests) != 1 {
+		t.Fatalf("optimization sandbox lifecycle calls start=%#v cleanup=%#v", harness.startSandboxRequests, harness.cleanupSandboxRequests)
+	}
 	if len(writer.progressUpdates) == 0 {
 		t.Fatalf("expected storage-write progress update")
 	}
 	if last := publisher.progress[len(publisher.progress)-1]; last.Type != ports.ExperimentProgressFinished {
-		t.Fatalf("expected finished progress, got %#v", last)
+		t.Fatalf("expected completed progress, got %#v", last)
 	}
 }
 
@@ -588,7 +1007,7 @@ func TestStartOptimizationRejectsHoldoutManifestBeforeHarness(t *testing.T) {
 		RequestID:           "request-1",
 		ProjectID:           "project-1",
 		ExperimentID:        "experiment-1",
-		OptimizerKind:       "bootstrap-fewshot",
+		OptimizerKind:       "bootstrap_fewshot",
 		BasePromptVersionID: "prompt-1",
 	})
 
@@ -637,6 +1056,11 @@ type datasetSearch struct {
 	version   int
 }
 
+type itemRevisionSearch struct {
+	datasetVersionID string
+	itemRevisionIDs  []string
+}
+
 type manifestResolveRequest struct {
 	experimentRunID string
 	experimentID    string
@@ -645,11 +1069,17 @@ type manifestResolveRequest struct {
 type fakeReader struct {
 	experiments             []ports.Experiment
 	items                   []ports.DatasetItem
+	datasetVersion          ports.DatasetVersion
+	itemRevisions           []ports.DatasetItemRevision
+	targetSnapshot          ports.TargetSnapshot
 	scorers                 []ports.Scorer
 	manifest                ports.ExperimentManifest
 	onlineMatches           ports.OnlinePolicyMatches
 	experimentSearches      []string
 	datasetSearches         []datasetSearch
+	datasetVersionGets      []string
+	itemRevisionSearches    []itemRevisionSearch
+	targetSnapshotGets      []string
 	scorerSearches          [][]string
 	manifestResolveRequests []manifestResolveRequest
 	onlineResolveRequests   []ports.OnlinePolicyResolveRequest
@@ -668,6 +1098,40 @@ func (r *fakeReader) SearchDatasetItems(ctx context.Context, datasetID string, d
 func (r *fakeReader) SearchScorers(ctx context.Context, scorerIDs []string) ([]ports.Scorer, error) {
 	r.scorerSearches = append(r.scorerSearches, append([]string(nil), scorerIDs...))
 	return r.scorers, nil
+}
+
+func (r *fakeReader) GetDatasetVersion(ctx context.Context, datasetVersionID string) (ports.DatasetVersion, error) {
+	r.datasetVersionGets = append(r.datasetVersionGets, datasetVersionID)
+	if r.datasetVersion.ID != "" {
+		return r.datasetVersion, nil
+	}
+	itemRevisionIDs := make([]string, 0, len(r.itemRevisions))
+	for _, item := range r.itemRevisions {
+		itemRevisionIDs = append(itemRevisionIDs, item.ID)
+	}
+	return ports.DatasetVersion{ID: datasetVersionID, DatasetID: "dataset-1", Digest: "digest-1", ItemRevisionIDs: itemRevisionIDs}, nil
+}
+
+func (r *fakeReader) SearchDatasetItemRevisions(ctx context.Context, datasetVersionID string, itemRevisionIDs []string) ([]ports.DatasetItemRevision, error) {
+	r.itemRevisionSearches = append(r.itemRevisionSearches, itemRevisionSearch{datasetVersionID: datasetVersionID, itemRevisionIDs: append([]string(nil), itemRevisionIDs...)})
+	if len(itemRevisionIDs) == 0 {
+		return r.itemRevisions, nil
+	}
+	results := make([]ports.DatasetItemRevision, 0, len(itemRevisionIDs))
+	for _, item := range r.itemRevisions {
+		if slices.Contains(itemRevisionIDs, item.ID) {
+			results = append(results, item)
+		}
+	}
+	return results, nil
+}
+
+func (r *fakeReader) GetTargetSnapshot(ctx context.Context, targetSnapshotID string) (ports.TargetSnapshot, error) {
+	r.targetSnapshotGets = append(r.targetSnapshotGets, targetSnapshotID)
+	if r.targetSnapshot.ID != "" {
+		return r.targetSnapshot, nil
+	}
+	return ports.TargetSnapshot{ID: targetSnapshotID, TargetRef: map[string]any{"kind": "prompt"}, Digest: "target-digest"}, nil
 }
 
 func (r *fakeReader) ResolveManifest(ctx context.Context, request ports.ManifestResolveRequest) (ports.ExperimentManifest, error) {
@@ -702,6 +1166,7 @@ type fakeWriter struct {
 	experimentRuns    []ports.ExperimentRun
 	persistedRuns     []persistedRun
 	persistedResults  []persistedResult
+	evaluationResults []ports.EvaluationResultsPersist
 	progressUpdates   []ports.ExperimentProgress
 	progressErrByType map[string]error
 }
@@ -721,6 +1186,11 @@ func (w *fakeWriter) PersistEvalResult(ctx context.Context, idempotencyKey strin
 	return nil
 }
 
+func (w *fakeWriter) PersistEvaluationResults(ctx context.Context, result ports.EvaluationResultsPersist) error {
+	w.evaluationResults = append(w.evaluationResults, result)
+	return nil
+}
+
 func (w *fakeWriter) UpdateExperimentProgress(ctx context.Context, progress ports.ExperimentProgress) error {
 	if w.progressErrByType != nil && w.progressErrByType[progress.Type] != nil {
 		return w.progressErrByType[progress.Type]
@@ -730,14 +1200,44 @@ func (w *fakeWriter) UpdateExperimentProgress(ctx context.Context, progress port
 }
 
 type fakeHarness struct {
-	runner           *Runner
-	runResult        ports.HarnessRunResult
-	scoreResult      ports.HarnessScoreResult
-	optimizeResult   ports.HarnessOptimizeResult
-	afterRun         func(*Runner)
-	runRequests      []ports.HarnessRunRequest
-	scoreRequests    []ports.HarnessScoreRequest
-	optimizeRequests []ports.HarnessOptimizeRequest
+	runner                 *Runner
+	runResult              ports.HarnessRunResult
+	scoreResult            ports.HarnessScoreResult
+	optimizeResult         ports.HarnessOptimizeResult
+	afterRun               func(*Runner)
+	runRequests            []ports.HarnessRunRequest
+	scoreRequests          []ports.HarnessScoreRequest
+	optimizeRequests       []ports.HarnessOptimizeRequest
+	startSandboxRequests   []ports.SandboxLifecycleRequest
+	pauseSandboxRequests   []ports.SandboxLifecycleRequest
+	resumeSandboxRequests  []ports.SandboxLifecycleRequest
+	abortSandboxRequests   []ports.SandboxLifecycleRequest
+	cleanupSandboxRequests []ports.SandboxLifecycleRequest
+}
+
+func (h *fakeHarness) StartSandbox(ctx context.Context, request ports.SandboxLifecycleRequest) (ports.SandboxLifecycleResult, error) {
+	h.startSandboxRequests = append(h.startSandboxRequests, request)
+	return ports.SandboxLifecycleResult{SandboxRef: "sandbox-" + request.ExperimentRunID + "-" + request.AttemptID, SandboxProfile: request.SandboxProfile, CleanupRequired: true}, nil
+}
+
+func (h *fakeHarness) PauseSandbox(ctx context.Context, request ports.SandboxLifecycleRequest) (ports.SandboxLifecycleResult, error) {
+	h.pauseSandboxRequests = append(h.pauseSandboxRequests, request)
+	return ports.SandboxLifecycleResult{SandboxRef: request.SandboxRef, SandboxProfile: request.SandboxProfile}, nil
+}
+
+func (h *fakeHarness) ResumeSandbox(ctx context.Context, request ports.SandboxLifecycleRequest) (ports.SandboxLifecycleResult, error) {
+	h.resumeSandboxRequests = append(h.resumeSandboxRequests, request)
+	return ports.SandboxLifecycleResult{SandboxRef: request.SandboxRef, SandboxProfile: request.SandboxProfile}, nil
+}
+
+func (h *fakeHarness) AbortSandbox(ctx context.Context, request ports.SandboxLifecycleRequest) (ports.SandboxLifecycleResult, error) {
+	h.abortSandboxRequests = append(h.abortSandboxRequests, request)
+	return ports.SandboxLifecycleResult{SandboxRef: request.SandboxRef, SandboxProfile: request.SandboxProfile}, nil
+}
+
+func (h *fakeHarness) CleanupSandbox(ctx context.Context, request ports.SandboxLifecycleRequest) (ports.SandboxLifecycleResult, error) {
+	h.cleanupSandboxRequests = append(h.cleanupSandboxRequests, request)
+	return ports.SandboxLifecycleResult{SandboxRef: request.SandboxRef, SandboxProfile: request.SandboxProfile}, nil
 }
 
 func (h *fakeHarness) Run(ctx context.Context, request ports.HarnessRunRequest) (ports.HarnessRunResult, error) {
@@ -758,9 +1258,24 @@ func (h *fakeHarness) Optimize(ctx context.Context, request ports.HarnessOptimiz
 	return h.optimizeResult, nil
 }
 
-type fakePublisher struct {
-	progress []ports.ExperimentProgress
+type fakeExternalAdapter struct {
+	result   ports.ExternalAdapterRunResult
 	err      error
+	requests []ports.ExternalAdapterRunRequest
+}
+
+func (adapter *fakeExternalAdapter) RunEvaluationItem(ctx context.Context, request ports.ExternalAdapterRunRequest) (ports.ExternalAdapterRunResult, error) {
+	adapter.requests = append(adapter.requests, request)
+	if adapter.err != nil {
+		return ports.ExternalAdapterRunResult{}, adapter.err
+	}
+	return adapter.result, nil
+}
+
+type fakePublisher struct {
+	progress           []ports.ExperimentProgress
+	evaluationProgress []ports.ExperimentProgress
+	err                error
 }
 
 func (p *fakePublisher) PublishExperimentProgress(ctx context.Context, progress ports.ExperimentProgress) error {
@@ -768,6 +1283,14 @@ func (p *fakePublisher) PublishExperimentProgress(ctx context.Context, progress 
 		return p.err
 	}
 	p.progress = append(p.progress, progress)
+	return nil
+}
+
+func (p *fakePublisher) PublishEvaluationProgress(ctx context.Context, progress ports.ExperimentProgress) error {
+	if p.err != nil {
+		return p.err
+	}
+	p.evaluationProgress = append(p.evaluationProgress, progress)
 	return nil
 }
 
@@ -793,4 +1316,13 @@ func collectProgressTypes(progress []ports.ExperimentProgress) []string {
 		types = append(types, item.Type)
 	}
 	return types
+}
+
+func hasProblemCode(problems []map[string]any, code string) bool {
+	for _, problem := range problems {
+		if problem["code"] == code {
+			return true
+		}
+	}
+	return false
 }

@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { EmptyState, ErrorPanel, LoadingRows } from "../components/query-state";
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
+import { traceDetailQueryInput } from "../features/traces/trace-detail-query";
 import { TraceDetailView } from "../features/traces/trace-detail-view";
 import { t } from "../lib/i18n";
 import { queryKeys } from "../lib/query-keys";
@@ -14,10 +15,11 @@ export function TraceDetailRoute() {
   const client = useTelemetryClient();
   const { traceId } = useParams();
   const traceFilters = useTraceDetailFilters();
+  const queryInput = traceDetailQueryInput(traceFilters.filters);
   const query = useQuery({
     enabled: Boolean(traceId),
-    queryKey: queryKeys.trace(traceId ?? "", traceFilters.filters),
-    queryFn: () => client.getTrace(traceId ?? "", traceFilters.filters),
+    queryKey: queryKeys.trace(traceId ?? "", queryInput),
+    queryFn: () => client.getTrace(traceId ?? "", queryInput),
   });
   if (query.isSuccess && query.data) {
     return <TraceDetailView detail={query.data} traceFilters={traceFilters} />;

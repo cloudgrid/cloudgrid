@@ -84,7 +84,7 @@
 ## Task 4: Docs, Specs, Contracts, And Verification
 
 **Files:**
-- Modify: `docs/` user/operator docs for SSO member administration if an existing auth/admin doc exists.
+- Modify: `website/src/content/handbook/` user/operator docs for SSO member administration if an existing auth/admin doc exists.
 - Modify: `specs/.readiness-report.yaml`
 - Modify generated contract outputs only through `bun run contracts:generate`.
 

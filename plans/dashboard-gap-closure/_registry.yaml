@@ -1,0 +1,51 @@
+plan: dashboard_gap_closure
+tickets:
+  TICKET-101:
+    title: Dashboard reducer layout and mapper foundation
+    wave: 1
+    status: ready
+    file: plans/dashboard-gap-closure/wave_01_frontend_foundation/tickets/TICKET-101-dashboard-foundation.md
+    depends_on: []
+    blocked_by: []
+  TICKET-102:
+    title: Dashboard route modes discard and save flow
+    wave: 2
+    status: ready
+    file: plans/dashboard-gap-closure/wave_02_frontend_parallel/tickets/TICKET-102-route-modes-save-flow.md
+    depends_on: [TICKET-101]
+    blocked_by: []
+  TICKET-103:
+    title: Shared metric controls and widget editors
+    wave: 2
+    status: ready
+    file: plans/dashboard-gap-closure/wave_02_frontend_parallel/tickets/TICKET-103-shared-metric-controls-widget-editors.md
+    depends_on: [TICKET-101]
+    blocked_by: []
+  TICKET-104:
+    title: Widget source mappers and renderers
+    wave: 2
+    status: ready
+    file: plans/dashboard-gap-closure/wave_02_frontend_parallel/tickets/TICKET-104-widget-mappers-renderers.md
+    depends_on: [TICKET-101]
+    blocked_by: []
+  TICKET-105:
+    title: Tablet touch and keyboard canvas integration
+    wave: 3
+    status: ready
+    file: plans/dashboard-gap-closure/wave_03_pins_and_integration/tickets/TICKET-105-touch-keyboard-canvas.md
+    depends_on: [TICKET-101, TICKET-102]
+    blocked_by: []
+  TICKET-106:
+    title: Persisted pins and dashboard shortcuts
+    wave: 3
+    status: ready
+    file: plans/dashboard-gap-closure/wave_03_pins_and_integration/tickets/TICKET-106-persisted-pins-shortcuts.md
+    depends_on: [TICKET-102]
+    blocked_by: []
+  TICKET-107:
+    title: Rich metric production gate enforcement
+    wave: 4
+    status: ready
+    file: plans/dashboard-gap-closure/wave_04_rich_metric_gate/tickets/TICKET-107-rich-metric-production-gate.md
+    depends_on: [TICKET-102, TICKET-103, TICKET-104]
+    blocked_by: []

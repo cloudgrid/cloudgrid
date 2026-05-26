@@ -4,7 +4,7 @@ description: "CloudGrid uses NATS as the v1 private message bridge. Public clien
 order: 3
 accent: amber
 eyebrow: "Handbook - Operations"
-updated: 2026-05-18
+updated: 2026-05-20
 ---
 
 CloudGrid uses NATS as the v1 private message bridge. Public clients never connect to NATS.
@@ -54,7 +54,7 @@ Storage-write acknowledges messages only after persistence succeeds. Repeated re
 
 ## Request/Reply Behavior
 
-GraphQL reads use request/reply. Default timeout is 2 seconds for BFF-to-bridge calls.
+GraphQL reads use request/reply. `CLOUDGRID_MESSAGE_BRIDGE_REQUEST_TIMEOUT_MS` controls BFF-to-bridge calls and defaults to 12 seconds. Keep it above `CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS`, which defaults to 10 seconds and is the single storage-read request deadline for trace, log, metric, facet, live-notification, and AI-eval read handlers.
 
 Common subjects include:
 

@@ -1,4 +1,6 @@
 import type {
+  AlertRuleSearchInput,
+  AlertSummaryInput,
   LogSearchInput,
   MetricNameSearchInput,
   MetricSeriesInput,
@@ -6,7 +8,6 @@ import type {
   TelemetryFacetInput,
   TraceDetailInput,
   TraceSearchInput,
-  AlertSummaryInput,
 } from "@cloudgrid/ui-contracts";
 import type { DashboardListInput } from "./dashboard-contracts";
 
@@ -61,7 +62,8 @@ export const queryKeys = {
   projectMembers: (projectId: string) => ["ProjectMembers", projectId] as const,
   retentionPolicy: (projectId: string) => ["RetentionPolicy", projectId] as const,
   projectAiSettings: (projectId: string) => ["ProjectAiSettings", projectId] as const,
-  alertRules: (projectId: string) => ["AlertRules", projectId] as const,
+  alertRules: (projectId: string, input: AlertRuleSearchInput = {}) =>
+    ["AlertRules", projectId, normalizeVariables({ ...input })] as const,
   alertHistory: (
     projectId: string,
     ruleId: string | null,

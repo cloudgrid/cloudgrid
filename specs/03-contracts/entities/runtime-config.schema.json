@@ -71,7 +71,7 @@
         "requestTimeoutMs": {
           "type": "integer",
           "minimum": 1,
-          "default": 2000,
+          "default": 6000,
           "description": "Request/reply timeout for BFF and read service clients."
         },
         "publishAckTimeoutMs": {

@@ -4,163 +4,118 @@ title: AI evaluation message contracts
 layer: backend
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-16
+updated: 2026-05-24
 provenance: from-user
-depends_on: [DOM-006, TEC-BE-024]
+depends_on: [DOM-006]
 ---
 
 # AI Evaluation Message Contracts
 
-## Ownership Table
+## Rule
+
+The AsyncAPI file is the machine-readable source. This spec defines the v2
+subject inventory, ownership, and payload rules that AsyncAPI must implement.
+Implementation agents must not add message subjects, anonymous payloads, status
+values, or retry semantics outside this inventory.
+
+## Subjects
+
+Dataset subjects:
 
 | Subject | Producer | Consumer | Purpose |
 | --- | --- | --- | --- |
-| `telemetry.ingest.ai_projections` | `core/otlp-collector` | `core/storage-write` | Persist trace-derived AI projections. |
-| `ai.persisted.projections` | `core/storage-write` | `core/ai-eval-runner`, `core/storage-read` | Notify that AI projections were persisted. |
-| `eval.dataset.create` | BFF | `core/storage-write` | Create a dataset. |
-| `eval.dataset.items.append` | BFF | `core/storage-write` | Append manually authored or imported dataset items. |
-| `eval.dataset.item.promote` | BFF | `core/storage-write` | Promote a source trace/span into a dataset item. |
-| `eval.dataset.import.prepare` | BFF | `core/storage-write` | Validate staged dataset upload and return import preview. |
-| `eval.dataset.import.commit` | BFF | `core/storage-write` | Commit a prepared import preview into a dataset version. |
-| `eval.dataset.export.start` | BFF | `core/storage-read`, `core/storage-write` | Resolve and prepare canonical dataset export artifact. |
-| `eval.dataset.transfer.get` | BFF | `core/storage-read` | Read dataset import/export job state. |
-| `eval.dataset.search` | BFF, runner | `core/storage-read` | Search datasets and dataset items. |
-| `eval.agent_runs.search` | BFF | `core/storage-read` | Search projected agent runs. |
-| `eval.scorer.create` | BFF | `core/storage-write` | Create a scorer definition. |
-| `eval.scorer.search` | BFF, runner | `core/storage-read` | Search scorer definitions. |
-| `eval.experiment.create` | BFF | `core/storage-write` | Create an experiment. |
-| `eval.experiment.start` | BFF | `core/ai-eval-runner` | Start an offline experiment run. |
-| `eval.experiment.cancel` | BFF | `core/ai-eval-runner` | Cancel an experiment run. |
-| `eval.optimization.start` | BFF | `core/ai-eval-runner` | Start an optimization run. |
-| `eval.experiment.search` | BFF, runner | `core/storage-read` | Search experiments and experiment runs. |
-| `eval.results.search` | BFF, runner | `core/storage-read` | Search eval results. |
-| `eval.results.persist` | `core/ai-eval-runner` | `core/storage-write` | Persist eval results and dataset item runs. |
-| `eval.online.policy_matches.resolve` | `core/ai-eval-runner` | `core/storage-read` | Resolve enabled deterministic online policy matches for a persisted AI projection notification. |
-| `eval.live.start` | BFF | `core/storage-read` | Register a live experiment subscription. |
-| `eval.live.stop` | BFF | `core/storage-read` | Stop a live experiment subscription. |
-| `eval.live.events.*.*` | `core/storage-read` | BFF | Deliver GraphQL-ready live experiment events. |
-| `eval.experiment.progress` | `core/ai-eval-runner`, `core/storage-write` | `core/storage-read` | Durable progress notifications for live fanout. |
-| `annotation.queue.search` | BFF | `core/storage-read` | Search annotation queue items and facets. |
-| `annotation.item.update` | BFF, runner | `core/storage-write` | Resolve, assign, reopen, dismiss, or create annotation queue items. |
-| `eval.manifest.resolve` | runner | `core/storage-read` | Resolve immutable experiment or optimization run manifests. |
-| `eval.dataset.health` | BFF, runner | `core/storage-read` | Return dataset split, review, duplicate, schema, and leakage health. |
-| `eval.quality.overview` | BFF | `core/storage-read` | Return production AI quality summaries and trends. |
-| `eval.prompt_version.promote` | BFF | `core/storage-write` | Promote an approved prompt version tag. |
-| `control.ai_settings.get` | BFF, runner | `core/control-plane` | Read project AI settings and effective defaults. |
-| `control.ai_settings.update` | BFF | `core/control-plane` | Update project AI settings. |
+| `eval.dataset.create` | BFF | storage-write | Create dataset and initial version. |
+| `eval.dataset.settings.update` | BFF | storage-write | Replace dataset settings and create a new dataset version guarded by `expectedDatasetVersionId`. |
+| `eval.dataset.items.append` | BFF | storage-write | Append manual rows and create item revisions/version. |
+| `eval.dataset.item.update` | BFF | storage-write | Edit, reject, split-change, restore, or remove rows. |
+| `eval.dataset.item.promote` | BFF | storage-write | Promote trace/span into dataset through extraction settings. |
+| `eval.dataset.version.get` | BFF, runner | storage-read | Read immutable dataset version and item revision refs. |
+| `eval.dataset.search` | BFF, runner | storage-read | Search datasets and rows. |
+| `eval.dataset.health` | BFF, runner | storage-read | Return validation, split, curation, schema, duplicate, and leakage health. |
+| `eval.dataset.candidates.prepare` | BFF | storage-read then storage-write | Prepare reviewable candidates. |
+| `eval.dataset.candidates.search` | BFF | storage-read | Search candidates. |
+| `eval.dataset.candidates.commit` | BFF | storage-write | Commit ready candidates into a dataset version. |
+| `eval.dataset.import.prepare` | BFF | storage-write | Parse staged upload and prepare preview. |
+| `eval.dataset.import.commit` | BFF | storage-write | Commit import preview into a dataset version. |
+| `eval.dataset.export.start` | BFF | storage-read then storage-write | Prepare export artifact. |
+| `eval.dataset.transfer.get` | BFF | storage-read | Read import/export job state. |
 
-## Request Shape Rule
+Evaluation subjects:
 
-Each request uses `BridgeEnvelope` plus a subject-specific payload. BFF-originated payloads are derived directly from the corresponding GraphQL input type. Runner-originated write payloads are derived directly from entity JSON Schemas in `specs/03-contracts/entities/ai`.
+| Subject | Producer | Consumer | Purpose |
+| --- | --- | --- | --- |
+| `eval.evaluation.create` | BFF | storage-write | Create evaluation definition. |
+| `eval.evaluation.update` | BFF | storage-write | Update evaluation definition. |
+| `eval.evaluation.search` | BFF | storage-read | Search definitions. |
+| `eval.evaluation.run.start` | BFF | runner | Start evaluation run. |
+| `eval.evaluation.run.cancel` | BFF | runner | Cancel run. |
+| `eval.evaluation.run.pause` | BFF | runner | Pause run after checkpoint/drain. |
+| `eval.evaluation.run.resume` | BFF | runner | Resume paused run. |
+| `eval.evaluation.run.search` | BFF, runner | storage-read | Search runs. |
+| `eval.evaluation.run.get` | BFF, runner | storage-read | Read run detail. |
+| `eval.results.persist` | runner | storage-write | Persist evaluation run state, item runs, metric results, summaries, problems, and optimization run state. |
+| `eval.results.search` | BFF, runner | storage-read | Search metric results and item runs. |
+| `eval.evaluation.comparison.create` | BFF, runner | storage-read then storage-write | Create comparison from existing runs. |
+| `eval.evaluation.comparison.search` | BFF | storage-read | Search comparisons. |
 
-## Response Shape Rule
+Target and optimization subjects:
 
-Every response uses `{ requestId, ok, data?, error? }`. On success, `data` contains exactly the GraphQL-ready view model or persisted entity required by the caller. On failure, `error.code` is one of the codes in `specs/03-contracts/errors.yaml`.
+| Subject | Producer | Consumer | Purpose |
+| --- | --- | --- | --- |
+| `eval.target.snapshot.create` | BFF, runner | storage-write | Persist immutable target snapshot. |
+| `eval.target.snapshot.get` | BFF, runner | storage-read | Read target snapshot. |
+| `eval.target.diff` | BFF, runner | storage-read | Return target diff. |
+| `eval.optimization.start` | BFF | runner | Start optimization run. |
+| `eval.optimization.search` | BFF | storage-read | Search optimization runs. |
+| `eval.optimization.get` | BFF, runner | storage-read | Read optimization detail. |
+| `eval.target.promote` | BFF | storage-write | Create promotion record and move target ref. |
 
-## Mutation Routing Rule
+Live and settings subjects:
 
-Subjects with create, update, persist, resolve, promote, start-status, or cancel-status semantics are handled by storage-write or ai-eval-runner. Storage-read never mutates SurrealDB.
+| Subject | Producer | Consumer | Purpose |
+| --- | --- | --- | --- |
+| `eval.live.start` | BFF | storage-read | Register live run subscription. |
+| `eval.live.stop` | BFF | storage-read | Stop live run subscription. |
+| `eval.live.events.*.*` | storage-read | BFF | Deliver GraphQL-ready live events. |
+| `control.ai_settings.get` | BFF, runner | control-plane | Read project AI settings. |
+| `control.ai_settings.update` | BFF | control-plane | Update project AI settings. |
 
-## Contract Lock Rule
+## Payload Rules
 
-The subjects in this file are declared in
-`specs/03-contracts/messages/message-bridge.asyncapi.yaml`, and public surfaces
-are declared in `specs/03-contracts/graphql/public-schema.graphql`.
-Implementation agents must use the machine-readable contracts and generated
-TypeScript/Go outputs. They must not implement these subjects as undocumented
-string constants or add unregistered message variants during service work.
+- Every request uses `BridgeEnvelope` plus a subject-specific typed payload.
+- BFF-originated payloads mirror the GraphQL input type for the same operation.
+- Dataset settings updates are full replacements in v2. Partial settings
+  patches are not supported, so every update sends the complete
+  `DatasetSettingsInput` shape.
+- AI Eval runner execution resolves target model aliases from
+  `EvaluationTargetRef.metadata.modelAlias`, `TargetSnapshot.targetRef`, or
+  target snapshot provider metadata against project AI provider settings before
+  calling the harness adapter. Harness run, score, optimization, and sandbox
+  lifecycle requests carry `providerProfileRefs`; raw provider credentials stay
+  in control-plane secret resolution and are not persisted in AI Eval results.
+- Runner-originated persistence payloads mirror entity JSON schemas.
+- Responses use `{ requestId, ok, data?, error? }`.
+- `error.code` must come from `specs/03-contracts/errors.yaml`.
+- Do not use subject-local anonymous JSON.
+- Do not reuse legacy experiment/scorer payloads for v2 subjects.
 
-## Online Policy Match Contract
+## Idempotency
 
-`eval.online.policy_matches.resolve` is the only approved v1 request/reply
-subject for runner-side online policy resolution.
+- Dataset row writes use dataset ID, expected dataset version, normalized row
+  operation, and request ID.
+- Evaluation run start uses evaluation definition ID or ad hoc run spec digest,
+  target snapshot ID, dataset version ID, split selector, and request ID.
+- Evaluation run control commands use run ID, command, and request ID.
+- External adapter item execution uses evaluation item run ID, target snapshot
+  ID, and dataset item revision ID.
+- Promotion uses target ref, candidate snapshot ID, comparison ID, and request
+  ID.
 
-Producer:
+Repeated idempotent requests return the existing entity or terminal status.
 
-- `core/ai-eval-runner`
+## Legacy Subject Rule
 
-Consumer:
-
-- `core/storage-read`
-
-Request payload:
-
-- `BridgeEnvelope`.
-- `projectId`.
-- `traceId`.
-- `projectionIds`.
-- optional `spanIds`.
-- `kinds`.
-- `persistedAt`.
-
-Response payload:
-
-- `matches`: matched enabled online policies with `policyId`, `policyVersion`,
-  `policyName`, `target`, `sampleRate`, optional `maxDailyRuns`, and
-  deterministic `scorerRefs`.
-- `projection`: bounded scorer input read model with source IDs, routing fields,
-  safe indexed attributes, and no raw prompt/completion/tool/retrieval content.
-- `warnings`: bounded strings for invalid policies, stale scorer references, or
-  unsupported scorer kinds.
-
-Storage-read owns all policy target matching and scorer-kind validation. The
-runner must not reimplement target matching. If a policy references a scorer
-outside the deterministic v1 online set, storage-read either omits it with a
-warning or returns a validation error. Runner must not call harness to make the
-policy executable.
-
-## Dataset Import/Export Contract
-
-Dataset import/export subjects use `EvalMutationRequest` or `EvalQueryRequest`
-envelopes, but their `input` payloads are locked to the GraphQL input types in
-`public-schema.graphql`:
-
-- `eval.dataset.import.prepare` uses `PrepareDatasetImportInput`.
-- `eval.dataset.import.commit` uses `CommitDatasetImportInput`.
-- `eval.dataset.export.start` uses `StartDatasetExportInput`.
-- `eval.dataset.transfer.get` uses `{ id, kind }`, where `kind` is `import` or
-  `export`.
-
-The BFF must not bypass these subjects by parsing rows into `DatasetItemInput`
-and calling `eval.dataset.items.append` for uploaded files. Uploaded files must
-go through preview-before-commit so mapping, row validation, partial commit,
-and import job records are owned by storage-write.
-
-## Durable Experiment Manifest Contract
-
-`eval.manifest.resolve` returns an `ExperimentManifest` payload. The machine
-schema must include:
-
-- `schema`: fixed manifest schema URI or versioned schema name.
-- `version`: integer manifest contract version.
-- `digest`: stable digest over the canonical manifest payload.
-- `experimentRunId`.
-- `experimentId`.
-- `datasetId`.
-- `datasetVersion`.
-- `splitSelector`.
-- `datasetItemIds`.
-- `scorerRefs` with scorer ID and version.
-- `baselineRef`.
-- `solverRef`.
-- `promptVersionRefs`.
-- `skillSnapshotRefs`.
-- `toolSnapshotRefs`.
-- `providerProfileRefs`.
-- `budget`.
-- `concurrency`.
-- `createdAt`.
-
-Canonicalization input is the JSON object excluding transport envelope fields
-and excluding non-semantic ordering differences. Arrays whose order affects
-execution remain ordered in the digest input. Arrays whose order does not affect
-execution are sorted by stable ID before digesting.
-
-The manifest is immutable after the first successful run persistence. Replay or
-resume must use the persisted `digest`. If a later resolve request produces a
-different digest for the same `experimentRunId`, the runner fails with
-`ERR-AIE-002` and does not call harness.
-
-The manifest snapshot embeds resolved refs needed for replay. It does not embed
-raw provider secrets, raw prompt/completion content from source traces, or
-unbounded retrieved document content.
+Do not add new code for `eval.scorer.*`, `eval.experiment.*`, or
+`eval.prompt_version.promote` in v2. Existing machine-readable contracts must be
+removed or wrapped to the v2 subjects in the same contract migration before
+implementation.

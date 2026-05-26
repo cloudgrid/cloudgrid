@@ -48,49 +48,49 @@ func TestSurrealDBHotQueryPlansUseIndexes(t *testing.T) {
 			name:      "trace service and startedAt",
 			sql:       "SELECT traceId FROM trace WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND serviceName = $serviceName AND startedAt >= $from EXPLAIN;",
 			params:    map[string]any{"tenantId": "local", "companyId": "local", "projectId": "project-a", "serviceName": "checkout-api", "from": time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)},
-			wantIndex: "idx_trace_serviceName",
+			wantIndex: "idx_trace_tenant_company_project_service_started",
 		},
 		{
 			name:      "trace status and startedAt",
 			sql:       "SELECT traceId FROM trace WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND status = $status AND startedAt >= $from EXPLAIN;",
 			params:    map[string]any{"tenantId": "local", "companyId": "local", "projectId": "project-a", "status": "error", "from": time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)},
-			wantIndex: "idx_trace_status",
+			wantIndex: "idx_trace_tenant_company_project_status_started",
 		},
 		{
 			name:      "trace detail",
 			sql:       "SELECT traceId FROM trace WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId = $traceId EXPLAIN;",
 			params:    map[string]any{"tenantId": "local", "companyId": "local", "projectId": "project-a", "traceId": "trace-010"},
-			wantIndex: "idx_trace_tenant_project_traceId",
+			wantIndex: "idx_trace_tenant_company_project_traceId",
 		},
 		{
 			name:      "log trace timestamp",
 			sql:       "SELECT logEventId FROM log_event WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND traceId = $traceId AND timestamp >= $from EXPLAIN;",
 			params:    map[string]any{"tenantId": "local", "companyId": "local", "projectId": "project-a", "traceId": "trace-010", "from": time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)},
-			wantIndex: "idx_log_event_traceId",
+			wantIndex: "idx_log_event_tenant_company_project_trace_timestamp",
 		},
 		{
 			name:      "log service timestamp",
 			sql:       "SELECT logEventId FROM log_event WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND serviceName = $serviceName AND timestamp >= $from EXPLAIN;",
 			params:    map[string]any{"tenantId": "local", "companyId": "local", "projectId": "project-a", "serviceName": "checkout-api", "from": time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)},
-			wantIndex: "idx_log_event_serviceName",
+			wantIndex: "idx_log_event_tenant_company_project_service_timestamp",
 		},
 		{
 			name:      "metric names last seen",
-			sql:       "SELECT metricName FROM metric_descriptor WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId ORDER BY lastSeenAt DESC EXPLAIN;",
+			sql:       "SELECT metricName, lastSeenAt FROM metric_descriptor WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId ORDER BY lastSeenAt DESC EXPLAIN;",
 			params:    map[string]any{"tenantId": "local", "companyId": "local", "projectId": "project-a"},
-			wantIndex: "idx_metric_descriptor_lastSeenAt",
+			wantIndex: "idx_metric_descriptor_tenant_company_project_lastSeenAt",
 		},
 		{
 			name:      "metric series metric timestamp",
 			sql:       "SELECT metricName FROM metric_point WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND metricName = $metricName AND timestamp >= $from AND timestamp <= $to EXPLAIN;",
 			params:    map[string]any{"tenantId": "local", "companyId": "local", "projectId": "project-a", "metricName": "http.server.duration", "from": time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC), "to": time.Date(2026, 5, 2, 0, 0, 0, 0, time.UTC)},
-			wantIndex: "idx_metric_point_metricName_timestamp",
+			wantIndex: "idx_metric_point_tenant_company_project_metric_timestamp",
 		},
 		{
 			name:      "metric series service timestamp",
 			sql:       "SELECT metricName FROM metric_point WHERE tenantId = $tenantId AND companyId = $companyId AND projectId = $projectId AND serviceName = $serviceName AND timestamp >= $from AND timestamp <= $to EXPLAIN;",
 			params:    map[string]any{"tenantId": "local", "companyId": "local", "projectId": "project-a", "serviceName": "checkout-api", "from": time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC), "to": time.Date(2026, 5, 2, 0, 0, 0, 0, time.UTC)},
-			wantIndex: "idx_metric_point_serviceName_timestamp",
+			wantIndex: "idx_metric_point_tenant_company_project_service_timestamp",
 		},
 	}
 
@@ -117,9 +117,9 @@ func seedPlanSchema(ctx context.Context, db *sdk.DB) error {
 		"DEFINE FIELD IF NOT EXISTS serviceName ON trace TYPE option<string>",
 		"DEFINE FIELD IF NOT EXISTS status ON trace TYPE option<string>",
 		"DEFINE FIELD IF NOT EXISTS startedAt ON trace TYPE datetime",
-		"DEFINE INDEX IF NOT EXISTS idx_trace_serviceName ON trace FIELDS serviceName",
-		"DEFINE INDEX IF NOT EXISTS idx_trace_status ON trace FIELDS status",
-		"DEFINE INDEX IF NOT EXISTS idx_trace_tenant_project_traceId ON trace FIELDS tenantId, projectId, traceId",
+		"DEFINE INDEX IF NOT EXISTS idx_trace_tenant_company_project_service_started ON trace FIELDS tenantId, companyId, projectId, serviceName, startedAt",
+		"DEFINE INDEX IF NOT EXISTS idx_trace_tenant_company_project_status_started ON trace FIELDS tenantId, companyId, projectId, status, startedAt",
+		"DEFINE INDEX IF NOT EXISTS idx_trace_tenant_company_project_traceId ON trace FIELDS tenantId, companyId, projectId, traceId",
 		"DEFINE TABLE IF NOT EXISTS log_event SCHEMAFULL",
 		"DEFINE FIELD IF NOT EXISTS tenantId ON log_event TYPE string",
 		"DEFINE FIELD IF NOT EXISTS companyId ON log_event TYPE string",
@@ -128,15 +128,15 @@ func seedPlanSchema(ctx context.Context, db *sdk.DB) error {
 		"DEFINE FIELD IF NOT EXISTS traceId ON log_event TYPE option<string>",
 		"DEFINE FIELD IF NOT EXISTS serviceName ON log_event TYPE option<string>",
 		"DEFINE FIELD IF NOT EXISTS timestamp ON log_event TYPE datetime",
-		"DEFINE INDEX IF NOT EXISTS idx_log_event_traceId ON log_event FIELDS traceId",
-		"DEFINE INDEX IF NOT EXISTS idx_log_event_serviceName ON log_event FIELDS serviceName",
+		"DEFINE INDEX IF NOT EXISTS idx_log_event_tenant_company_project_trace_timestamp ON log_event FIELDS tenantId, companyId, projectId, traceId, timestamp",
+		"DEFINE INDEX IF NOT EXISTS idx_log_event_tenant_company_project_service_timestamp ON log_event FIELDS tenantId, companyId, projectId, serviceName, timestamp",
 		"DEFINE TABLE IF NOT EXISTS metric_descriptor SCHEMAFULL",
 		"DEFINE FIELD IF NOT EXISTS tenantId ON metric_descriptor TYPE string",
 		"DEFINE FIELD IF NOT EXISTS companyId ON metric_descriptor TYPE string",
 		"DEFINE FIELD IF NOT EXISTS projectId ON metric_descriptor TYPE string",
 		"DEFINE FIELD IF NOT EXISTS metricName ON metric_descriptor TYPE string",
 		"DEFINE FIELD IF NOT EXISTS lastSeenAt ON metric_descriptor TYPE datetime",
-		"DEFINE INDEX IF NOT EXISTS idx_metric_descriptor_lastSeenAt ON metric_descriptor FIELDS lastSeenAt",
+		"DEFINE INDEX IF NOT EXISTS idx_metric_descriptor_tenant_company_project_lastSeenAt ON metric_descriptor FIELDS tenantId, companyId, projectId, lastSeenAt",
 		"DEFINE TABLE IF NOT EXISTS metric_point SCHEMAFULL",
 		"DEFINE FIELD IF NOT EXISTS tenantId ON metric_point TYPE string",
 		"DEFINE FIELD IF NOT EXISTS companyId ON metric_point TYPE string",
@@ -144,8 +144,8 @@ func seedPlanSchema(ctx context.Context, db *sdk.DB) error {
 		"DEFINE FIELD IF NOT EXISTS metricName ON metric_point TYPE string",
 		"DEFINE FIELD IF NOT EXISTS serviceName ON metric_point TYPE option<string>",
 		"DEFINE FIELD IF NOT EXISTS timestamp ON metric_point TYPE datetime",
-		"DEFINE INDEX IF NOT EXISTS idx_metric_point_metricName_timestamp ON metric_point FIELDS metricName, timestamp",
-		"DEFINE INDEX IF NOT EXISTS idx_metric_point_serviceName_timestamp ON metric_point FIELDS serviceName, timestamp",
+		"DEFINE INDEX IF NOT EXISTS idx_metric_point_tenant_company_project_metric_timestamp ON metric_point FIELDS tenantId, companyId, projectId, metricName, timestamp",
+		"DEFINE INDEX IF NOT EXISTS idx_metric_point_tenant_company_project_service_timestamp ON metric_point FIELDS tenantId, companyId, projectId, serviceName, timestamp",
 	}
 	if err := runPlanQuery(ctx, db, strings.Join(statements, ";\n")+";", nil); err != nil {
 		return err
@@ -175,7 +175,7 @@ func seedPlanSchema(ctx context.Context, db *sdk.DB) error {
 }
 
 func explainPlanText(ctx context.Context, db *sdk.DB, sql string, vars map[string]any) (string, error) {
-	results, err := sdk.Query[[]map[string]any](ctx, db, sql, vars)
+	results, err := sdk.Query[any](ctx, db, sql, vars)
 	if err != nil {
 		return "", err
 	}
@@ -187,7 +187,7 @@ func explainPlanText(ctx context.Context, db *sdk.DB, sql string, vars map[strin
 }
 
 func runPlanQuery(ctx context.Context, db *sdk.DB, sql string, vars map[string]any) error {
-	results, err := sdk.Query[[]map[string]any](ctx, db, sql, vars)
+	results, err := sdk.Query[any](ctx, db, sql, vars)
 	if err != nil {
 		return err
 	}

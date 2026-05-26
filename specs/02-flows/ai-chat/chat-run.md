@@ -5,7 +5,7 @@ domain: ai-chat
 layer: flow
 status: draft
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-18
+updated: 2026-05-21
 provenance: from-user
 trigger:
   type: manual
@@ -21,7 +21,7 @@ retry:
   retryable_errors: [ERR-012, ERR-013, ERR-014, ERR-AIP-001]
   permanent_errors: [ERR-001, ERR-016, ERR-AIC-001, ERR-AIC-002, ERR-AIC-004, ERR-AIC-005]
 terminal_failure: persist-run-failed-and-stream-terminal-error
-depends_on: [CAP-AIC-001, TEC-BE-029]
+depends_on: [CAP-AIC-001, TEC-BE-029, TEC-BE-030]
 ---
 
 # AI Chat Run
@@ -41,11 +41,18 @@ depends_on: [CAP-AIC-001, TEC-BE-029]
    provider snapshot.
 7. BFF appends the user message and creates an `AiChatRun` in control-plane.
    For a new conversation, BFF derives the title from the first user text part.
-8. BFF streams `run.started` and starts the harness chat stream with the
-   provider snapshot, compacted conversation memory, recent message window, tool
-   registry, and W3C trace context.
+8. BFF derives the tenant-safe harness session ID defined in
+   `specs/04-backend/ai-runtime-structure.md`, streams `run.started`, and
+   starts `workflow.chat_run` with the provider snapshot, compacted
+   conversation memory, recent message window, AI runtime catalog tool
+   registry, deterministic runtime time context, and W3C trace context. The
+   time context includes current UTC time, the accepted IANA user timezone, and
+   the current local date/time for that timezone. Relative user phrases such as
+   "today", "yesterday", and "last hour" must be resolved against this context
+   and the available CloudGrid evidence, never model training data.
 9. When harness emits text, BFF streams `text.delta` and appends assistant
-   message parts incrementally.
+   message parts incrementally after applying the assistant Markdown sanitation
+   rules from `specs/04-backend/ai-chat.md`.
 10. When harness requests a tool, BFF validates the tool name and arguments,
     injects the conversation `projectId`, executes the tool through approved
     GraphQL helper or message bridge paths, materializes large results into the
@@ -54,8 +61,8 @@ depends_on: [CAP-AIC-001, TEC-BE-029]
     sandbox runner, validates outputs, and streams artifacts or sanitized
     errors.
 12. When the assistant emits a render spec, BFF validates it against the
-    approved json-render catalog, persists the artifact metadata, and streams
-    `artifact.created`.
+    approved CloudGrid json-render catalog, persists the artifact metadata, and
+    streams `artifact.created`.
 13. When the assistant proposes an action, BFF validates the action whitelist,
     persists the proposal, and streams `action.proposed`; execution waits for
     the approval flow.
@@ -83,7 +90,15 @@ depends_on: [CAP-AIC-001, TEC-BE-029]
 - Storage-read owns telemetry query semantics for every read tool.
 - Control-plane owns conversation, message, artifact, compaction, and action
   approval persistence.
-- Harness owns model execution and tool-call planning; BFF owns actual tool
-  execution.
+- Harness owns model execution, workflow/agent orchestration, specialist
+  analysis delegation, and tool-call planning; BFF owns actual CloudGrid tool
+  execution, scope injection, render validation, and action persistence.
 - Secret-returning mutations, including ingest credential creation, are not
   executable through AI Chat v1.
+- AI Chat must keep primary trace, log, metric, dashboard, alert, and
+  AI-evaluation investigation inside CloudGrid. It must not defer to Jaeger,
+  Zipkin, Datadog, or another external observability product when CloudGrid has
+  the required project data.
+- Assistant structured output must use approved json-render catalog renderers;
+  unknown renderer keys or executable UI payloads are rejected before streaming
+  to the frontend.

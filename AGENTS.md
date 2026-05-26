@@ -42,7 +42,6 @@ If implementation needs behavior not covered by specs, stop and update the relev
 - `apps/packages/ui-contracts`: generated GraphQL/UI TypeScript contracts.
 - `core/go-contracts`: generated/shared Go contract types.
 - `core/go-runtime`: shared Go runtime helpers.
-- `docs`: legacy end-user and operator documentation pending migration; do not add or update files here.
 - `website`: public website and the only current target for end-user/operator documentation updates.
 - `skills`: skills that help AI agents use, configure, operate, and extend CloudGrid.
 - `core/otlp-collector`: Go OTLP HTTP collector.
@@ -92,6 +91,10 @@ Before claiming completion, run the narrowest relevant checks plus any broader c
 
 For any GraphQL, AsyncAPI, UI contract, BFF bridge, or Go message contract change, `bun run contracts:check` is mandatory. It validates frontend GraphQL operations against the SDL, required GraphQL input fields against TypeScript UI contracts, and AsyncAPI request fields against Go structs; do not bypass it with syntax-only checks.
 
+For any control-plane message subject change, the implementation must also keep the generated subject list, `ControlSubjects()`, the NATS handler map, BFF bridge payload shape, and focused tests aligned. `go test -tags surrealdb ./core/control-plane/...` must fail if a generated control-plane request/reply subject is not registered by the service. BFF bridge tests must assert AsyncAPI top-level request fields for subjects whose schemas do not use an `input` wrapper.
+
+For any self-observability exporter change, OTLP JSON must follow protobuf JSON mapping. `traceId`, `spanId`, `parentSpanId`, metric exemplar IDs, and log trace/span correlation fields are OTLP `bytes` fields and must be base64-encoded in JSON, not W3C hex strings. Normal exporter failures are bounded and controlled by `CLOUDGRID_SELF_OBSERVABILITY_EXPORT_FAILURE_LOG_LEVEL`; graceful shutdown flushes are best-effort and must not log bridge-unavailable noise after services are stopping. Run `bun test apps/backend/src/self-observability.test.ts` and `go test -tags surrealdb ./core/go-runtime/selfobs`.
+
 Until the repository has a root Go module, use this Go workspace command from the repo root:
 
 ```sh
@@ -124,10 +127,19 @@ go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otl
 ## Documentation
 
 - User-facing and operator docs belong in `website/`, primarily under `website/src/content/handbook/`.
-- Do not add or update documentation in `docs/`. That tree is legacy content pending migration and will be removed after outstanding agent work is reconciled.
 - Docs must follow a storyline from easy to expert level.
 - Keep topics separated and link back to relevant specs only when useful.
 - Update docs when behavior or setup changes.
+
+## Public Website Design Rules
+
+- Public marketing pages in `website/src/pages` use generated, realistic, enterprise/product-focused hero imagery only in the first hero section. Do not apply image backgrounds to the full page body or later content sections.
+- Hero images must be high-quality photographic/product collages with CloudGrid-relevant observability, infrastructure, dashboards, message bridge, adapter, or enterprise SaaS motifs. Do not use simple gradients, procedural SVG backgrounds, abstract blobs, or low-effort placeholder art.
+- Keep hero title, eyebrow, description, and CTA positioning aligned across home, feature, and enterprise pages so route navigation does not visually jump.
+- Keep the handbook and all handbook subpages plain, white/neutral, documentation-first pages without marketing hero imagery.
+- Keep the marketing site flat and restrained: neutral shadcn-like surfaces, few colors, no card-in-card layouts, no decorative pill piles, no nested rounded section wrappers, and no right-side hero mockup components competing with the hero image.
+- Do not rebuild marketing feature lists or related-page navigation as generic card grids. Use editorial stacks, alternating image/text rows, ruled lists, or image-led strips with generated product collage crops.
+- Non-handbook marketing pages must be audience-led. Start from the decision-maker or operator problem, explain how CloudGrid helps, then link to deeper feature, enterprise, comparison, or handbook detail instead of repeating the same catalog copy across pages.
 
 ## Skills
 

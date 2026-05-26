@@ -5,6 +5,7 @@ package surrealdb
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -492,11 +493,15 @@ func TestRecordHelpersIncludeOptionalFieldsAndDefaults(t *testing.T) {
 		DurationMs:  &duration,
 		RootSpanID:  &rootSpan,
 		Status:      &status,
-	}, 2, 1, 3, 4, target)
-	for _, key := range []string{"serviceName", "endedAt", "durationMs", "rootSpanId", "status"} {
+	}, "GET /checkout", []string{"SELECT carts"}, []contracts.Attributes{{"db.system": "postgresql"}}, 2, 1, 3, 4, target)
+	for _, key := range []string{"serviceName", "operationName", "endedAt", "durationMs", "rootSpanId", "status", "searchText"} {
 		if _, ok := trace[key]; !ok {
 			t.Fatalf("trace record missing %q: %#v", key, trace)
 		}
+	}
+	traceSearch, ok := trace["searchText"].(string)
+	if !ok || !strings.Contains(traceSearch, "SELECT carts") || !strings.Contains(traceSearch, "postgresql") {
+		t.Fatalf("trace searchText = %#v, want span names and attributes", trace["searchText"])
 	}
 
 	records := map[string]serviceRecord{}
@@ -558,7 +563,7 @@ func TestBuildPersistQueryBuildsOptionalLogAndServiceFields(t *testing.T) {
 		t.Fatalf("BuildPersistQuery() error = %v", err)
 	}
 
-	if !strings.Contains(sql, "UPDATE trace SET logCount = (SELECT count() AS count FROM log_event") {
+	if !strings.Contains(sql, "UPDATE type::record('trace', $traceLog0_id) SET logCount = (SELECT count() AS count FROM log_event") {
 		t.Fatalf("log ingest should refresh denormalized trace log counts:\n%s", sql)
 	}
 	if vars["traceLog0_id"] != "trace-1" {
@@ -567,6 +572,9 @@ func TestBuildPersistQueryBuildsOptionalLogAndServiceFields(t *testing.T) {
 	logRecord := vars["log0_record"].(map[string]any)
 	if logRecord["bodyText"] != "plain body" || logRecord["observedTimestamp"] != observedAt.UTC() {
 		t.Fatalf("log record optional fields = %#v", logRecord)
+	}
+	if searchText, ok := logRecord["searchText"].(string); !ok || !strings.Contains(searchText, "plain body") || !strings.Contains(searchText, "WARN") {
+		t.Fatalf("log searchText = %#v, want body and severity", logRecord["searchText"])
 	}
 	if logRecord["severityText"] != "WARN" || logRecord["severityNumber"] != severity {
 		t.Fatalf("log severity fields = %#v", logRecord)
@@ -694,7 +702,10 @@ func TestBuildMetricsPersistQueryAppliesMetricPolicyAndRecordsCommand(t *testing
 
 	for _, want := range []string{
 		"BEGIN TRANSACTION",
-		"UPSERT type::record('metric_descriptor', $descriptor0_id) CONTENT $descriptor0_record",
+		"UPSERT type::record('metric_descriptor', $descriptor0_id) SET",
+		"attributeKeys = array::sort(array::distinct(array::concat(IF attributeKeys = NONE THEN [] ELSE attributeKeys END, $descriptor0_attribute_keys)))",
+		"firstSeenAt = IF firstSeenAt = NONE OR $descriptor0_record.firstSeenAt < firstSeenAt THEN $descriptor0_record.firstSeenAt ELSE firstSeenAt END",
+		"lastSeenAt = IF lastSeenAt = NONE OR $descriptor0_record.lastSeenAt > lastSeenAt THEN $descriptor0_record.lastSeenAt ELSE lastSeenAt END",
 		"UPSERT type::record('metric_point', $point0_id) CONTENT $point0_record",
 		"UPSERT type::record('metric_ingest_cardinality', $cardinality0_id) MERGE $cardinality0_record",
 		"CREATE type::record('ingest_command', $ingest_command_id) CONTENT $ingest_command_record",
@@ -716,6 +727,9 @@ func TestBuildMetricsPersistQueryAppliesMetricPolicyAndRecordsCommand(t *testing
 	}
 	if pointRecord["droppedAttributeCount"] != 3 {
 		t.Fatalf("droppedAttributeCount = %#v, want 3", pointRecord["droppedAttributeCount"])
+	}
+	if !reflect.DeepEqual(vars["descriptor0_attribute_keys"], []string{"route"}) {
+		t.Fatalf("descriptor attribute keys = %#v, want [route]", vars["descriptor0_attribute_keys"])
 	}
 	if len(pointRecord["exemplars"].([]map[string]any)) != 16 {
 		t.Fatalf("exemplar count = %d, want capped 16", len(pointRecord["exemplars"].([]map[string]any)))
@@ -1228,12 +1242,15 @@ func validAIProjectionPersistCommand() contracts.PersistAiProjectionCommand {
 		SpanID:    "span-1",
 		Kind:      contracts.AiProjectionKindAgentRun,
 		Projection: map[string]any{
-			"id":         "agent-run-1",
-			"traceId":    "trace-1",
-			"rootSpanId": "span-1",
-			"agent":      map[string]any{"name": "support-agent"},
-			"startedAt":  time.Date(2026, 5, 8, 8, 0, 0, 0, time.UTC).Format(time.RFC3339),
-			"status":     "ok",
+			"id":             "agent-run-1",
+			"traceId":        "trace-1",
+			"rootSpanId":     "span-1",
+			"parentSpanId":   "parent-1",
+			"agent":          map[string]any{"name": "support-agent"},
+			"startedAt":      time.Date(2026, 5, 8, 8, 0, 0, 0, time.UTC).Format(time.RFC3339),
+			"status":         "ok",
+			"contentDigests": []string{"sha256:input", "sha256:output"},
+			"contentSources": []string{"attribute:gen_ai.input", "attribute:gen_ai.output"},
 		},
 	}
 }

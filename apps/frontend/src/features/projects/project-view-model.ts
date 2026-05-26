@@ -15,23 +15,18 @@ export interface ProjectPickerModel {
 }
 
 export interface ProjectSettingsSection {
-  id: "general" | "ingest" | "retention" | "ai-eval" | "members";
+  id: "identity" | "access" | "setup" | "ingest" | "retention" | "ai-providers" | "ai-eval";
   href: string;
-  labelKey:
-    | "projects.settings.general"
-    | "projects.settings.apiKeys"
-    | "projects.settings.retention"
-    | "projects.settings.aiEval"
-    | "projects.settings.members";
+  label: string;
 }
 
 export interface AdminSettingsModel {
   layout: "admin-settings";
   organizationName: string;
   sidebarItems: Array<{
-    id: "organization" | "projects" | "members";
+    id: "projects" | "members" | "ai-provider";
     href: string;
-    labelKey: "companies.title" | "nav.projects" | "companies.members.title";
+    labelKey: "nav.projects" | "companies.members.title" | "nav.aiProvider";
   }>;
   showMemberAdministration: boolean;
 }
@@ -85,19 +80,34 @@ export function buildProjectSettingsSections(
   const base = `/projects/${encodedProjectId}/settings`;
   const sections: ProjectSettingsSection[] = [
     {
-      id: "general",
+      id: "identity",
       href: base,
-      labelKey: "projects.settings.general",
+      label: "Identity",
+    },
+    {
+      id: "access",
+      href: `${base}/members`,
+      label: "Access",
+    },
+    {
+      id: "setup",
+      href: `${base}/setup`,
+      label: "Setup",
     },
     {
       id: "ingest",
       href: `${base}/ingest`,
-      labelKey: "projects.settings.apiKeys",
+      label: "API Keys",
     },
     {
       id: "retention",
       href: `${base}/retention`,
-      labelKey: "projects.settings.retention",
+      label: "Retention",
+    },
+    {
+      id: "ai-providers",
+      href: `${base}/ai-providers`,
+      label: "AI Providers",
     },
   ];
 
@@ -105,15 +115,9 @@ export function buildProjectSettingsSections(
     sections.push({
       id: "ai-eval",
       href: `${base}/ai-eval`,
-      labelKey: "projects.settings.aiEval",
+      label: "AI Eval",
     });
   }
-
-  sections.push({
-    id: "members",
-    href: `${base}/members`,
-    labelKey: "projects.settings.members",
-  });
 
   return sections;
 }
@@ -125,14 +129,9 @@ export function buildAdminSettingsModel({
   mode: DeploymentMode;
   organization: Organization;
 }): AdminSettingsModel {
-  const isLocalPersonal = isLocalPersonalOrganization(mode, organization);
+  void mode;
   const encodedOrganizationId = encodeURIComponent(organization.id);
   const sidebarItems: AdminSettingsModel["sidebarItems"] = [
-    {
-      id: "organization",
-      href: `/organizations/${encodedOrganizationId}`,
-      labelKey: "companies.title",
-    },
     {
       id: "projects",
       href: `/organizations/${encodedOrganizationId}/projects`,
@@ -140,11 +139,16 @@ export function buildAdminSettingsModel({
     },
   ];
 
-  if (!isLocalPersonal) {
+  if (organization.role === "admin") {
     sidebarItems.push({
       id: "members",
       href: `/organizations/${encodedOrganizationId}/members`,
       labelKey: "companies.members.title",
+    });
+    sidebarItems.push({
+      id: "ai-provider",
+      href: `/organizations/${encodedOrganizationId}/ai-provider`,
+      labelKey: "nav.aiProvider",
     });
   }
 
@@ -152,7 +156,7 @@ export function buildAdminSettingsModel({
     layout: "admin-settings",
     organizationName: displayCompanyName(organization),
     sidebarItems,
-    showMemberAdministration: !isLocalPersonal,
+    showMemberAdministration: organization.role === "admin",
   };
 }
 
@@ -168,15 +172,14 @@ export function canMutateOrganizationMember({
   organization: Organization;
   targetUserId: string;
   viewerUserId: string;
-}): { allowed: true } | { allowed: false; reason: "local-personal-single-admin" } {
-  if (
-    isLocalPersonalOrganization(mode, organization) &&
-    targetUserId === viewerUserId &&
-    (mutation === "demote" || mutation === "remove")
-  ) {
+}): { allowed: true } | { allowed: false; reason: "own-account" } {
+  void mode;
+  void organization;
+
+  if (targetUserId === viewerUserId && (mutation === "demote" || mutation === "remove")) {
     return {
       allowed: false,
-      reason: "local-personal-single-admin",
+      reason: "own-account",
     };
   }
 
@@ -189,8 +192,4 @@ export function displayCompanyName(organization: Organization): string {
 
 export function displayRole(role: CompanyRole): string {
   return role;
-}
-
-function isLocalPersonalOrganization(mode: DeploymentMode, organization: Organization): boolean {
-  return mode === "local" && organization.id === "local";
 }

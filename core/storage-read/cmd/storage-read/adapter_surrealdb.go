@@ -30,10 +30,12 @@ func newTelemetryReadAdapter(ctx context.Context, cfg storage.Config) (telemetry
 
 	return telemetryReadAdapter{
 		Name:  storage.AdapterSurrealDB,
-		Store: storage.WithQueryTimeout(surrealdb.Store{DB: db}, cfg.Limits.QueryTimeout),
+		Store: surrealdb.Store{DB: db},
 		CheckReadiness: func(ctx context.Context) error {
 			return surrealdb.CheckReadiness(ctx, db)
 		},
-		Close: db.Close,
+		Close: func(ctx context.Context) error {
+			return surrealdb.Close(ctx, db)
+		},
 	}, nil
 }

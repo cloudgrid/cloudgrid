@@ -18,7 +18,7 @@ Metric names come from:
 ```graphql
 query MetricNames($input: MetricNameSearchInput!) {
   metricNames(input: $input) {
-    nodes {
+    items {
       name
       description
       unit
@@ -28,11 +28,12 @@ query MetricNames($input: MetricNameSearchInput!) {
       firstSeenAt
       lastSeenAt
     }
+    nextCursor
   }
 }
 ```
 
-Use search, service, kind, temporality, and time controls to narrow the list.
+Use search, service, and time controls to narrow the list. The metric list loads additional backend cursor pages while scrolling; the UI does not filter or page over a client-side subset.
 
 ## Series Query
 

@@ -52,6 +52,16 @@ The startup order avoids noisy first-load request timeouts. If the BFF starts be
 
 Stop `dev:all` with `Ctrl+C`.
 
+Stop stale local app processes left behind on CloudGrid dev ports:
+
+```sh
+bun run dev:clean
+```
+
+By default, this only stops listeners whose current working directory is inside
+the CloudGrid checkout. Use `bun run dev:clean -- --force` only when you want to
+terminate any process bound to a configured CloudGrid app port.
+
 Stop Docker infrastructure:
 
 ```sh
@@ -79,7 +89,7 @@ bun run dev:all
 | --- | --- | --- |
 | `3000` | BFF | `CLOUDGRID_BFF_PORT` |
 | `5173` | frontend dev server | `CLOUDGRID_FRONTEND_DEV_PORT` |
-| `4318` | OTLP/HTTP collector | `CLOUDGRID_OTLP_HTTP_ADDR` or `CLOUDGRID_OTLP_PORT` |
+| `4318` | OTLP/HTTP collector | `CLOUDGRID_OTLP_HTTP_ADDR` |
 | `4317` | OTLP/gRPC collector | `CLOUDGRID_OTLP_GRPC_ADDR` |
 | `4222` | NATS client | `CLOUDGRID_NATS_PORT` in Docker Compose env |
 | `8000` | SurrealDB | `CLOUDGRID_SURREALDB_PORT` in Docker Compose env |

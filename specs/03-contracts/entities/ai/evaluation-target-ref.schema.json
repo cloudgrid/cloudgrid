@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-110",
+  "title": "EvaluationTargetRef",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "displayName", "metadata"],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": ["prompt", "external_adapter", "agent", "workflow", "custom_harness_target"]
+    },
+    "targetId": { "type": "string" },
+    "targetSnapshotId": { "type": "string" },
+    "targetRef": { "type": "string" },
+    "displayName": { "type": "string", "minLength": 1 },
+    "metadata": { "type": "object", "additionalProperties": true, "default": {} }
+  },
+  "anyOf": [
+    { "required": ["targetId"] },
+    { "required": ["targetSnapshotId"] },
+    { "required": ["targetRef"] }
+  ]
+}

@@ -16,4 +16,13 @@ affects: [CAP-AIE-004, TEC-BE-014]
 
 # ADR-0006: TypeScript-Only AI Optimization
 
-CloudGrid will not ship Python, Optuna, DSPy, TextGrad, or ax-llm MIPROv2 in its deployable services. Supported v1 optimizer kinds are `bootstrap-fewshot` and `critic-mutate-judge-pick`, both executed through harness.
+CloudGrid will not ship Python, Optuna, DSPy, TextGrad, or ax-llm MIPROv2 in
+its deployable services. Implemented v1 optimizer kinds are
+`bootstrap-fewshot` and `critic-mutate-judge-pick`, both executed through the
+harness adapter.
+
+`mipro-v2` and `reflective-text-gradient`/GEPA-style reflective optimization
+are roadmap optimizer families, not implemented v1 behavior. They may become
+available only through explicit harness capability negotiation and manifests
+that capture search budget, random seed, candidate count, scorer set,
+trace/failure evidence, reproducibility limits, and promotion constraints.

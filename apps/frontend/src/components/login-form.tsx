@@ -4,7 +4,6 @@ import {
   Building2,
   CircleUserRound,
   Cloud,
-  Grid3X3,
   ShieldCheck,
 } from "lucide-react";
 import type * as React from "react";
@@ -13,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { FieldGroup } from "@/components/ui/field";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { useBrand } from "@/providers/brand-provider";
 
 type ProviderId = "github" | "google" | "azure";
 
@@ -34,6 +34,8 @@ const providerIcons = {
 } satisfies Record<ProviderId, typeof CircleUserRound>;
 
 export function LoginForm({ className, providers, showError = false, ...props }: LoginFormProps) {
+  const { productName } = useBrand();
+
   return (
     <section
       data-login-block="login-02"
@@ -42,7 +44,7 @@ export function LoginForm({ className, providers, showError = false, ...props }:
     >
       <FieldGroup>
         <div className="flex flex-col gap-2">
-          <h1 className="text-2xl font-semibold">{t("auth.login.title")}</h1>
+          <h1 className="text-2xl font-semibold">{t("auth.login.title", { productName })}</h1>
           <p className="text-sm text-muted-foreground">{t("auth.login.description")}</p>
         </div>
 
@@ -50,7 +52,7 @@ export function LoginForm({ className, providers, showError = false, ...props }:
           <Alert variant="destructive">
             <AlertCircle aria-hidden />
             <AlertTitle>{t("auth.login.errorTitle")}</AlertTitle>
-            <AlertDescription>{t("auth.login.errorDescription")}</AlertDescription>
+            <AlertDescription>{t("auth.login.errorDescription", { productName })}</AlertDescription>
           </Alert>
         ) : null}
 
@@ -79,9 +81,11 @@ export function LoginForm({ className, providers, showError = false, ...props }:
 }
 
 export function LoginProductPreview() {
+  const { productName, renderMark } = useBrand();
+
   return (
     <aside
-      aria-label={t("auth.login.previewLabel")}
+      aria-label={t("auth.login.previewLabel", { productName })}
       className="relative hidden overflow-hidden border-l bg-muted lg:block"
     >
       <div className="absolute inset-0 flex items-start justify-start p-8 xl:items-center xl:justify-center">
@@ -89,9 +93,9 @@ export function LoginProductPreview() {
           <div className="flex h-12 items-center justify-between border-b px-4">
             <div className="flex items-center gap-2 font-medium">
               <div className="flex size-6 items-center justify-center rounded-md border bg-primary text-primary-foreground">
-                <Grid3X3 className="size-3.5" aria-hidden />
+                {renderMark("size-3.5")}
               </div>
-              {t("app.name")}
+              {productName}
             </div>
             <div className="hidden rounded-md border px-2 py-1 font-mono text-xs text-muted-foreground xl:block">
               {t("auth.login.previewProject")}

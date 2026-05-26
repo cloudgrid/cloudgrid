@@ -4,22 +4,25 @@ description: Author your own storage, bridge, auth, or harness adapter.
 sidebar: Adapters
 order: 10
 accent: rose
-eyebrow: Handbook · Adapters
-updated: 2026-05-17
+eyebrow: Handbook - Architecture - Extension boundaries
+updated: 2026-05-21
 ---
 
-CloudGrid keeps every external dependency behind a typed port. v1 ships
-with one implementation per port — swap in your own without forking the
-platform.
+CloudGrid keeps external dependencies behind typed ports and public contracts.
+Extend those ports without changing service ownership boundaries: the frontend
+still talks only to the BFF, the BFF still uses message bridge contracts,
+storage-write is still the only telemetry mutator, and storage-read is still the
+only telemetry reader.
 
-## The four ports
+## Extension points
 
-| Port | v1 implementation | Adapter location |
+| Extension point | v1 implementation | Boundary |
 | --- | --- | --- |
 | Storage | SurrealDB | `internal/adapters/<database>/` in `storage-read` and `storage-write` |
-| Message bridge | NATS JetStream | bridge-ports contract |
-| Auth provider | GitHub · Google · Microsoft Entra ID | BFF-internal provider port |
-| Eval harness | `puristajs/harness` | HTTP contract |
+| Message bridge | NATS JetStream | Bridge ports plus AsyncAPI message contracts |
+| Auth provider | GitHub, Google, Microsoft Entra ID | BFF-owned browser session provider port |
+| Eval harness | `puristajs/harness` | HTTP contract called by the AI evaluation runner |
+| Public API clients | TypeScript helpers | Public GraphQL only |
 
 ```mermaid
 flowchart TB
@@ -45,9 +48,10 @@ flowchart TB
 - [Bridge adapter](/handbook/adapters/bridge)
 - [Auth provider adapter](/handbook/adapters/auth)
 - [Harness adapter](/handbook/adapters/harness)
+- [Public API clients](/handbook/adapters/public-api-clients)
 
 ## Contribution path
 
-Open an issue first if you're planning a new adapter — alignment on the
-port shape avoids rework. The contributor path is the same as the
-maintainer path; no CLA, no rebranded community edition.
+Start from the relevant spec and contract before writing code. If an extension
+needs new fields, routes, subjects, retry behavior, or error codes, update the
+source spec and machine-readable contract first.

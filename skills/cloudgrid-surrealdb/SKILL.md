@@ -14,19 +14,20 @@ code.
 
 ## Source Order
 
-Start with the repo specs, then use official docs only to confirm SurrealDB syntax and SDK APIs:
+Start with the owning storage code, generated contracts, tests, and public docs,
+then use official docs only to confirm SurrealDB syntax and SDK APIs:
 
-1. `specs/spec.md`
-2. `specs/00-conventions.md`
-3. `specs/04-backend/backend-architecture.md`
-4. `specs/04-backend/surrealdb-persistence.md`
-5. `specs/04-backend/surrealdb-tenancy-and-modeling.md`
-6. `specs/04-backend/telemetry-query-semantics.md`
-7. `specs/01-domains/storage.md`
-8. `specs/03-contracts/messages/message-bridge.asyncapi.yaml`
-9. `specs/03-contracts/errors.yaml`
+1. `core/storage-read/internal/adapters/surrealdb`
+2. `core/storage-write/internal/adapters/surrealdb`
+3. `core/control-plane/internal/adapters/surrealdb`
+4. `core/go-contracts`
+5. `apps/packages/ui-contracts`
+6. `website/src/content/handbook/reference/environment-variables.md`
+7. `.env.example`
 
-If a behavior is missing from these specs, stop and update the relevant spec first. Do not invent fields, tables, indexes, transactions, retry behavior, NATS subjects, or error codes from SurrealDB examples.
+If behavior is missing from code, contracts, and docs, report it as a product
+gap. Do not invent fields, tables, indexes, transactions, retry behavior, NATS
+subjects, or error codes from SurrealDB examples.
 
 ## Storage Boundaries
 
@@ -44,7 +45,9 @@ Respect these CloudGrid boundaries exactly:
 
 ## Schema Ownership
 
-The required tables and indexes are defined in `specs/04-backend/surrealdb-persistence.md`. Treat that file as the source path for schema shape until the specs change.
+The required tables and indexes are defined by the storage adapter schema
+initialization code and readiness tests. Treat those files as the source path
+for schema shape until product behavior changes.
 
 Telemetry tables:
 
@@ -66,9 +69,12 @@ Required MVP indexes:
 - `log_event.spanId`
 - `log_event.severityText`
 
-`span_event` is embedded in `span.events` for the MVP. Do not add a `span_event` table unless the spec changes.
+`span_event` is embedded in `span.events` for the MVP. Do not add a
+`span_event` table unless product behavior changes.
 
-Use direct ID fields for MVP correlation, as accepted by `specs/07-adr/0005-surrealdb-record-model.md`. Do not introduce relation tables for trace-span, span-log, trace-log, or service relationships unless the ADR and persistence spec change.
+Use direct ID fields for MVP correlation. Do not introduce relation tables for
+trace-span, span-log, trace-log, or service relationships unless product
+behavior changes.
 
 Control-plane tables belong to `core/control-plane/internal/adapters/surrealdb`.
 Do not reuse telemetry storage adapters for company, project, invitation,
@@ -81,8 +87,10 @@ Implement schema initialization only in `core/storage-write/internal/adapters/su
 When writing SurrealQL definitions:
 
 - Prefer explicit `DEFINE TABLE IF NOT EXISTS`, `DEFINE FIELD IF NOT EXISTS`, and `DEFINE INDEX IF NOT EXISTS` patterns when they match the target SurrealDB version.
-- Keep field names and record shapes aligned with `specs/04-backend/surrealdb-persistence.md`.
-- Define indexes only for spec-required query paths unless the spec adds more.
+- Keep field names and record shapes aligned with adapter schema
+  initialization and readiness tests.
+- Define indexes only for required query paths unless product behavior adds
+  more.
 - Keep schema, query, client, readiness, and future migration code inside `core/storage-read/internal/adapters/surrealdb` or `core/storage-write/internal/adapters/surrealdb`, not in shared packages or public services.
 
 Verify current syntax in official docs:
@@ -105,11 +113,15 @@ All telemetry read queries belong in `core/storage-read`. Validate request shape
 
 Use parameterized SurrealQL instead of string interpolation for values. Bind trace IDs, span IDs, service names, status values, severity values, timestamps, limits, cursors, and search text through the SurrealDB client API supported by the current Go SDK. Never concatenate user or message input into SurrealQL.
 
-Only interpolate table or index identifiers if there is no SDK-safe alternative and the identifier comes from a closed, hard-coded allowlist matching the spec-required tables/indexes. Do not accept table names from NATS messages, GraphQL inputs, frontend state, environment variables, or logs.
+Only interpolate table or index identifiers if there is no SDK-safe alternative
+and the identifier comes from a closed, hard-coded allowlist matching required
+tables/indexes. Do not accept table names from NATS messages, GraphQL inputs,
+frontend state, environment variables, or logs.
 
 Storage-read must push supported filters, sorting, cursor predicates, counts,
 grouping, and bounded facets into the database adapter. Do not fetch broad raw
-datasets and post-process them in Go when the spec requires adapter pushdown.
+datasets and post-process them in Go when the query contract requires adapter
+pushdown.
 
 Official docs for query syntax and parameter behavior:
 
@@ -140,9 +152,12 @@ Use SurrealDB `INFO` statements for readiness inspection:
 
 - `INFO FOR DB;` to inspect database-level definitions and confirm required tables are present.
 - `INFO FOR TABLE trace;`, `INFO FOR TABLE span;`, `INFO FOR TABLE log_event;`, and `INFO FOR TABLE service;` to inspect per-table fields and indexes.
-- `INFO FOR INDEX <index_name> ON <table_name>;` only for hard-coded, spec-owned indexes if the implementation gives indexes explicit names.
+- `INFO FOR INDEX <index_name> ON <table_name>;` only for hard-coded,
+  product-owned indexes if the implementation gives indexes explicit names.
 
-Compare `INFO` output against the required tables/indexes from `specs/04-backend/surrealdb-persistence.md`. Missing schema in storage-read is a readiness failure, not an auto-migration trigger.
+Compare `INFO` output against the required tables/indexes from adapter schema
+initialization and readiness tests. Missing schema in storage-read is a
+readiness failure, not an auto-migration trigger.
 
 Verify current `INFO` syntax and output shape in the official [INFO statement docs](https://surrealdb.com/docs/surrealql/statements/info).
 
@@ -159,15 +174,18 @@ Do not add SurrealDB clients, SurrealDB adapters, or SurrealQL files to:
 
 Do not expose or log SurrealDB credentials, connection URLs with credentials, namespace/database secrets, provider stack traces, or raw provider errors. Credentials must not appear in frontend bundles, BFF responses, GraphQL errors, NATS replies, OTLP responses, logs, screenshots, generated docs, or skill output.
 
-Map provider failures through `specs/03-contracts/errors.yaml` and include only safe context such as `request_id`, `command_id`, `trace_id`, `span_id`, `nats_subject`, and canonical error code.
+Map provider failures to canonical error codes and include only safe context
+such as `request_id`, `command_id`, `trace_id`, `span_id`, `nats_subject`, and
+canonical error code.
 
 ## Working Checklist
 
 Before editing storage code:
 
-1. Read the relevant source specs listed in Source Order.
+1. Read the relevant source files listed in Source Order.
 2. Identify whether the change belongs to `storage-write` or `storage-read`.
-3. Confirm the table, field, index, or query behavior already exists in the specs.
+3. Confirm the table, field, index, or query behavior already exists in code,
+   generated contracts, or public docs.
 4. Check official SurrealDB docs for version-sensitive syntax.
 5. Use parameter bindings for values and hard-coded allowlists for any identifiers.
 6. Add readiness checks with `INFO` statements when schema presence affects startup health.

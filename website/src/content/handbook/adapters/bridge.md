@@ -3,8 +3,8 @@ title: Bridge adapter
 description: Implement the message bridge port against an alternative transport.
 order: 2
 accent: rose
-eyebrow: Handbook · Adapters · Bridge
-updated: 2026-05-17
+eyebrow: Handbook - Architecture - Extension boundaries
+updated: 2026-05-21
 ---
 
 The bridge has three duties: durable ingest streams, request/reply queries,
@@ -38,3 +38,6 @@ interface BridgePort {
   registering service holds the handle.
 - **Authorization** is upstream — the bridge does not authenticate; the
   publishing/consuming services do.
+- **Public boundaries stay unchanged** — adding a bridge adapter must not add
+  public NATS, public SurrealDB, REST telemetry reads, or frontend-direct
+  realtime protocols.

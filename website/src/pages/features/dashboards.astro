@@ -2,8 +2,6 @@
 import Layout from "../../layouts/Layout.astro";
 import Section from "../../components/Section.astro";
 import PageHeader from "../../components/PageHeader.astro";
-import MockFrame from "../../components/visuals/MockFrame.astro";
-import DashboardGrid from "../../components/visuals/DashboardGrid.astro";
 import CheckList from "../../components/CheckList.astro";
 import RelatedFeatures from "../../components/RelatedFeatures.astro";
 ---
@@ -13,42 +11,44 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
     <PageHeader
       eyebrow="Dashboards"
       accent="amber"
-      title="Saved views. Typed widgets. Pinned where you work."
-      description="Dashboards compose from a small, opinionated set of typed widgets — metric time-series, log table, trace table, live trace feed. Saved per-project, pinned to your project sidebar."
+      title="Keep recurring operational questions one click away."
+      description="Dashboards are the saved evidence views teams return to during operations, reviews, and release decisions. CloudGrid composes them from typed widgets that keep project-scoped queries, live feeds, alerts, and evaluation evidence explicit."
     />
   </Section>
 
-  <Section tone="recessed">
-    <div class="reveal">
-      <MockFrame title="cloudgrid · /dashboards · agent-platform · overview">
-        <DashboardGrid />
-      </MockFrame>
-    </div>
-  </Section>
-
   <Section>
-    <div class="grid lg:grid-cols-2 gap-12">
+    <div class="grid lg:grid-cols-[0.85fr_1.15fr] gap-12">
+      <div class="reveal-x">
+        <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
+          Dashboards turn repeated decisions into shared views.
+        </h2>
+        <p class="mt-4 text-text-secondary leading-relaxed">
+          Executives, platform teams, and product teams ask many of the same questions every week:
+          is the service healthy, are alerts under control, did a release change behavior, and is
+          the AI workflow improving? CloudGrid keeps those views connected to the underlying
+          evidence instead of storing screenshots or opaque dashboard JSON.
+        </p>
+      </div>
       <div class="reveal">
-        <h2 class="text-xl font-semibold text-text mb-4">What you can do today</h2>
+        <h2 class="text-xl font-semibold text-text mb-4">What CloudGrid provides</h2>
         <CheckList
           items={[
             "Compose dashboards from typed widgets — metric, log, trace, live feed.",
             "Pin dashboards to the project sidebar for instant access.",
             "Each widget binds to a project-scoped query — isolation enforced server-side.",
             "Live-feed widgets use GraphQL subscriptions with the same auth as queries.",
-            "Dashboards are versioned records in the control plane, not opaque JSON blobs.",
+            "Share evaluation summaries as project evidence while keeping release decisions explicit.",
+            "Dashboards are versioned records in the control plane rather than opaque JSON blobs.",
           ]}
         />
-      </div>
-      <div class="reveal">
-        <h2 class="text-xl font-semibold text-text mb-4">Honest about scope</h2>
+        <h2 class="mt-8 text-xl font-semibold text-text mb-4">Operating model</h2>
         <CheckList
           muted
           items={[
-            "Free-form ad-hoc exploration lives in /metrics, /traces, /logs — not in dashboards.",
-            "Cross-project dashboards are intentionally out of scope today.",
+            "Free-form ad-hoc exploration lives in /metrics, /traces, and /logs; dashboards are the saved composition surface.",
+            "Project-scoped dashboards are the current boundary.",
             "Dashboard sharing across companies / external links is a planned capability.",
-            "There is no notebook surface or scripted analytics widget. Yet.",
+            "Notebook-style analysis and scripted analytics widgets are future product surfaces.",
           ]}
         />
       </div>
@@ -56,11 +56,18 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
   </Section>
 
   <Section tone="recessed">
+    <div class="max-w-3xl mb-6 reveal">
+      <h2 class="text-2xl font-semibold tracking-tight text-text">Where dashboard evidence comes from.</h2>
+      <p class="mt-2 text-text-secondary">
+        Dashboards are the place to return to known questions. Traces, logs, metrics, alerts, and
+        evaluation summaries remain the source evidence behind each view.
+      </p>
+    </div>
     <RelatedFeatures
       items={[
         { label: "Metrics", href: "/features/metrics", desc: "Where ad-hoc metric work happens." },
+        { label: "Alerts", href: "/features/alerts", desc: "Alert status, history, and evidence widgets." },
         { label: "Traces", href: "/features/traces", desc: "Trace tables and live feed widgets." },
-        { label: "Configuration", href: "/handbook/configuration", desc: "Per-project retention and policies." },
       ]}
     />
   </Section>

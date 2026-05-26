@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -135,9 +134,9 @@ func TestOTLPTraceLogExporterDropsEventsBeyondMaxBufferAndIgnoresRecordsAfterShu
 }
 
 func TestOTLPTraceLogExporterFlushDropsDrainedBatchOnPostFailure(t *testing.T) {
-	var paths []string
+	paths := map[string]int{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		paths = append(paths, r.URL.Path)
+		paths[r.URL.Path]++
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer server.Close()
@@ -162,18 +161,18 @@ func TestOTLPTraceLogExporterFlushDropsDrainedBatchOnPostFailure(t *testing.T) {
 	exporter.RecordLog(LogEvent{Message: "storage read NATS handler failed", SeverityText: "WARN"})
 
 	err = exporter.Flush(context.Background())
-	if err == nil {
-		t.Fatal("Flush() error = nil")
+	if err != nil {
+		t.Fatalf("Flush() error = %v, want exporter failures isolated", err)
 	}
-	if strings.Join(paths, ",") != "/v1/traces" {
-		t.Fatalf("posted paths = %#v, want trace post to fail before log post", paths)
+	if paths["/v1/traces"] != 1 || paths["/v1/logs"] != 1 {
+		t.Fatalf("posted paths = %#v, want drained trace and log attempts", paths)
 	}
 
 	err = exporter.Flush(context.Background())
 	if err != nil {
 		t.Fatalf("second Flush() error = %v, want drained failed batch not retried", err)
 	}
-	if strings.Join(paths, ",") != "/v1/traces" {
+	if paths["/v1/traces"] != 1 || paths["/v1/logs"] != 1 {
 		t.Fatalf("posted paths after second flush = %#v, want no retry", paths)
 	}
 }
@@ -185,7 +184,7 @@ func TestReadHandlerRecordsTraceAndFailureLog(t *testing.T) {
 		Query:          contracts.TraceSearchQuery{},
 	}
 
-	withReadSelfObservability("trace_search", recorder, handleTraceSearch(&failingReadStore{err: errors.New("ERR-006 STORAGE_UNAVAILABLE: down for project_1")}, nil))(bridgeMessageForTest(SubjectTraceSearch, mustMarshalNATSHandlerTest(t, request)))
+	withReadSelfObservability("trace_search", recorder, handleTraceSearch(&failingReadStore{err: errors.New("ERR-006 STORAGE_UNAVAILABLE: down for project_1")}, nil, defaultQueryTimeout))(bridgeMessageForTest(SubjectTraceSearch, mustMarshalNATSHandlerTest(t, request)))
 
 	snapshot := recorder.Snapshot()
 	if !hasSpanEvent(snapshot.Spans, "storage-read nats handler", "trace_search", "error") {

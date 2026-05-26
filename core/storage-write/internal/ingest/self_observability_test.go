@@ -96,6 +96,57 @@ func TestHandleMessageRecordsTraceAndFailureLog(t *testing.T) {
 	assertTraceLogLabelsDoNotContain(t, snapshot, "project_1", "down for project_1")
 }
 
+func TestHandleMessageSuppressesRecursiveSelfObservabilitySignals(t *testing.T) {
+	command := validCommand()
+	command.Traces[0].Attributes = map[string]any{
+		"cloudgrid.self_observability.project_id": "cloudgrid-system",
+	}
+	store := &fakeStore{}
+	publisher := &fakeTraceNotificationPublisher{}
+	msg := newFakeMessage(t, command)
+	metrics := NewInMemoryMetricsRecorder()
+	tracesLogs := NewInMemoryTraceLogRecorder()
+
+	HandleMessageWithSelfObservability(context.Background(), msg, store, publisher, testLogger(t), fixedClock, metrics, tracesLogs)
+
+	if !msg.acked || msg.naked {
+		t.Fatalf("ack=%v nak=%v, want ack only", msg.acked, msg.naked)
+	}
+	if store.persistCalls != 1 {
+		t.Fatalf("persist calls = %d, want 1", store.persistCalls)
+	}
+	if got := metrics.Snapshot(); len(got) != 0 {
+		t.Fatalf("metrics = %#v, want recursive self-observability suppressed", got)
+	}
+	traceLogSnapshot := tracesLogs.Snapshot()
+	if len(traceLogSnapshot.Spans) != 0 || len(traceLogSnapshot.Logs) != 0 {
+		t.Fatalf("trace/log snapshot = %#v, want recursive self-observability suppressed", traceLogSnapshot)
+	}
+}
+
+func TestHandleMetricMessageSuppressesRecursiveSelfObservabilityMetrics(t *testing.T) {
+	command := validMetricCommand()
+	command.Points[0].Attributes = map[string]any{
+		"cloudgrid.self_observability.project_id": "cloudgrid-system",
+	}
+	store := &fakeStore{}
+	publisher := &fakeTraceNotificationPublisher{}
+	msg := newFakeMetricMessage(t, command)
+	recorder := NewInMemoryMetricsRecorder()
+
+	HandleMessageWithMetrics(context.Background(), msg, store, publisher, testLogger(t), fixedClock, recorder)
+
+	if !msg.acked || msg.naked {
+		t.Fatalf("ack=%v nak=%v, want ack only", msg.acked, msg.naked)
+	}
+	if store.metricPersistCalls != 1 {
+		t.Fatalf("metric persist calls = %d, want 1", store.metricPersistCalls)
+	}
+	if got := recorder.Snapshot(); len(got) != 0 {
+		t.Fatalf("metrics = %#v, want recursive self-observability suppressed", got)
+	}
+}
+
 func TestHandleMessageUsesInboundTraceparentForSelfObservabilitySpan(t *testing.T) {
 	store := &fakeStore{}
 	publisher := &fakeTraceNotificationPublisher{}

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLivenessReportsOK(t *testing.T) {
@@ -73,6 +74,60 @@ func TestReadinessReportsCheckerFailure(t *testing.T) {
 	}
 	if !strings.Contains(response.Body.String(), `"code":"MESSAGE_BRIDGE_UNAVAILABLE"`) {
 		t.Fatalf("readiness body did not include problem code: %s", response.Body.String())
+	}
+}
+
+func TestReadinessBoundsCheckerExecutionWithConfiguredTimeout(t *testing.T) {
+	checkerStarted := make(chan struct{})
+	releaseChecker := make(chan struct{})
+	state := NewStateWithOptions("test-service", func(ctx context.Context) map[string]Check {
+		close(checkerStarted)
+		select {
+		case <-releaseChecker:
+			return map[string]Check{"late": OK()}
+		case <-ctx.Done():
+			<-releaseChecker
+			return map[string]Check{"late": OK()}
+		}
+	}, Options{Timeout: 25 * time.Millisecond})
+	state.SetReady(true)
+	recorder := httptest.NewRecorder()
+	start := time.Now()
+
+	state.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	close(releaseChecker)
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("readiness status = %d, want 503", recorder.Code)
+	}
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("readiness took %s, want bounded by configured timeout", elapsed)
+	}
+	select {
+	case <-checkerStarted:
+	default:
+		t.Fatal("checker was not started")
+	}
+	if !strings.Contains(recorder.Body.String(), `"code":"RUNTIME_COMPOSITION_FAILED"`) {
+		t.Fatalf("readiness body did not include timeout problem code: %s", recorder.Body.String())
+	}
+}
+
+func TestReadinessRecoversCheckerPanicAsUnavailable(t *testing.T) {
+	state := NewStateWithOptions("test-service", func(context.Context) map[string]Check {
+		panic("boom")
+	}, Options{Timeout: time.Second})
+	state.SetReady(true)
+	recorder := httptest.NewRecorder()
+
+	state.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("readiness status = %d, want 503", recorder.Code)
+	}
+	if !strings.Contains(recorder.Body.String(), `"health_checker"`) ||
+		!strings.Contains(recorder.Body.String(), `"code":"RUNTIME_COMPOSITION_FAILED"`) {
+		t.Fatalf("readiness body did not include panic health check: %s", recorder.Body.String())
 	}
 }
 

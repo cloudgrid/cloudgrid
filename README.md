@@ -4,6 +4,16 @@ CloudGrid is an AI-native OTLP observability platform for project-scoped traces,
 
 Website: https://cloudgrid.dev
 
+## License
+
+CloudGrid is source-available under the Apache License 2.0 with the
+Commons Clause License Condition v1.0. You may run, study, modify, and use
+CloudGrid for personal, internal, and commercial product work, including
+inside your own company or product infrastructure. The license does not
+allow selling CloudGrid itself, or offering a product or service whose value
+derives entirely or substantially from CloudGrid's functionality, without a
+separate commercial agreement.
+
 ## Architecture
 
 CloudGrid uses a public TypeScript backend-for-frontend and private Go services connected through NATS:
@@ -17,7 +27,7 @@ CloudGrid uses a public TypeScript backend-for-frontend and private Go services 
 - `apps/packages/*`: shared TypeScript and generated contract packages.
 - `core/go-contracts`: generated/shared Go contract package.
 - `core/go-runtime`: shared Go runtime helpers.
-- `docs`: end-user and operator documentation.
+- `website`: public website and current end-user/operator handbook.
 - `skills`: skills that help AI agents use, configure, operate, and extend CloudGrid.
 
 Public and ingress-facing services must not access SurrealDB directly. Every telemetry read and write crosses the NATS message bridge.
@@ -26,7 +36,7 @@ Local mode is configured with `CLOUDGRID_DEPLOYMENT_MODE=local` and
 `CLOUDGRID_AUTH_MODE=local`. Deployed mode uses
 `CLOUDGRID_DEPLOYMENT_MODE=deployed`, `CLOUDGRID_AUTH_MODE=sso`,
 `CLOUDGRID_AUTH_PROVIDERS`, and provider-specific GitHub, Google, or Azure Entra
-ID OAuth/OIDC settings. See [SSO configuration](./docs/configuration/deployed/sso/README.md).
+ID OAuth/OIDC settings. See [SSO configuration](./website/src/content/handbook/configuration/deployed/sso/index.md).
 
 ## Source Of Truth
 

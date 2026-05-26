@@ -16,6 +16,7 @@ const logFiltersSource = readFileSync(
   join(import.meta.dir, "../src/features/logs/log-filters.tsx"),
   "utf8",
 );
+const urlFiltersSource = readFileSync(join(import.meta.dir, "../src/lib/url-filters.ts"), "utf8");
 
 const log: LogEvent = {
   id: "log-1",
@@ -145,5 +146,45 @@ describe("logs UX migration", () => {
     expect(markup).toContain('aria-label="Copy attribute key service.name"');
     expect(markup).toContain('aria-label="Copy attribute value service.name"');
     expect(markup).toContain("Raw attributes");
+  });
+
+  test("uses shared log query defaults instead of route-local constants", () => {
+    expect(urlFiltersSource).toContain("@cloudgrid/ui-contracts");
+    expect(urlFiltersSource).toContain("LOG_SEARCH_DEFAULT_LIMIT");
+    expect(urlFiltersSource).toContain("logSortOrDefault");
+    expect(urlFiltersSource).not.toContain("const logSorts");
+    expect(urlFiltersSource).not.toContain("function logSortOrNull");
+    expect(logsRouteSource).toContain('sort={filters.sort ?? "timestamp_desc"}');
+  });
+
+  test("loads log cursor pages with the shared infinite-scroll sentinel", () => {
+    expect(logsRouteSource).toContain("useInfiniteQuery");
+    expect(logsRouteSource).toContain("InfiniteScrollSentinel");
+    expect(logsRouteSource).toContain("logSearchInput");
+    expect(logsRouteSource).toContain(
+      "client.searchLogs({ ...logSearchInput, cursor: pageParam })",
+    );
+    expect(logsRouteSource).toContain("pages.flatMap((page) => page.items)");
+    expect(logsRouteSource).toContain("query.fetchNextPage()");
+    expect(logsRouteSource).not.toContain('setFilter("cursor"');
+    expect(logsRouteSource).not.toContain('t("actions.nextPage")');
+  });
+
+  test("clears project-scoped log caches when the selected project changes", () => {
+    expect(logsRouteSource).toContain("useQueryClient");
+    expect(logsRouteSource).toContain("previousProjectIdRef");
+    expect(logsRouteSource).toContain("logRouteCachePredicate");
+    expect(logsRouteSource).toContain('queryKey[0] === "LogSearch"');
+    expect(logsRouteSource).toContain('queryKey[0] === "TelemetryFacets"');
+  });
+
+  test("keys log and facet queries by selected company and project", () => {
+    expect(logsRouteSource).toContain("selectedProjectScope");
+    expect(logsRouteSource).toContain("viewer?.selectedProject?.organizationId");
+    expect(logsRouteSource).toContain("viewer?.selectedProject?.id");
+    expect(logsRouteSource).toContain('["LogSearch", selectedProjectScope');
+    expect(logsRouteSource.indexOf('"TelemetryFacets"')).toBeLessThan(
+      logsRouteSource.indexOf("queryKeys.telemetryFacets(debouncedFacetInput)[1]"),
+    );
   });
 });

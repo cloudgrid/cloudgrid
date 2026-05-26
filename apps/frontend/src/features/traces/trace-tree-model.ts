@@ -317,6 +317,31 @@ export function buildInitialExpandedSpanIds({
   return expandedSpanIds;
 }
 
+export function expandSelectedSpanPath(
+  expandedSpanIds: ReadonlySet<string>,
+  indexes: TraceTreeIndexes,
+  selectedSpanId?: string | null,
+) {
+  if (!selectedSpanId || !indexes.spansById.has(selectedSpanId)) {
+    return expandedSpanIds instanceof Set ? expandedSpanIds : new Set(expandedSpanIds);
+  }
+
+  const next = new Set(expandedSpanIds);
+  for (const ancestorSpanId of getSpanAncestorIds(indexes, selectedSpanId)) {
+    next.add(ancestorSpanId);
+  }
+
+  if ((indexes.childrenByParentId.get(selectedSpanId)?.length ?? 0) > 0) {
+    next.add(selectedSpanId);
+  }
+
+  if (indexes.missingParentSpanIds.includes(selectedSpanId)) {
+    next.add(MISSING_PARENT_GROUP_ID);
+  }
+
+  return next;
+}
+
 export function getSpanStartOffsetPercent(indexes: TraceTreeIndexes, span: Span) {
   const startNano = spanStartedAtNano(span);
   if (

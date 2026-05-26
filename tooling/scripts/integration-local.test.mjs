@@ -6,9 +6,11 @@ import {
 } from "../../apps/packages/integration-scenarios/src/index.ts";
 import {
   buildMetricJsonFixture,
+  buildGeneratedIntegrationFixtureRequests,
   buildTraceJsonFixture,
   dashboardWidgetRuntimeRequests,
   duplicateCommands,
+  integrationFixtureBearerToken,
   mergedEnv,
   parseDotEnv,
 } from "./integration-local.mjs";
@@ -150,6 +152,33 @@ describe("integration-local helpers", () => {
       CLOUDGRID_BFF_PORT: "3000",
     });
     expect(mergedEnv(dotEnv, { CLOUDGRID_BFF_PORT: "3999" }).CLOUDGRID_BFF_PORT).toBe("3999");
+  });
+
+  test("integration OTLP fixtures use configured local project bearer token", () => {
+    expect(
+      integrationFixtureBearerToken({
+        CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS:
+          '{"default-token-abcdefghijklmnopqrstuvwxyz":"default","system-token-abcdefghijklmnopqrstuvwxyz":"cloudgrid-system"}',
+      }),
+    ).toBe("default-token-abcdefghijklmnopqrstuvwxyz");
+    expect(
+      integrationFixtureBearerToken({
+        CLOUDGRID_PROJECT_API_KEY: " explicit-token ",
+        CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS:
+          '{"default-token-abcdefghijklmnopqrstuvwxyz":"default"}',
+      }),
+    ).toBe("explicit-token");
+  });
+
+  test("generated integration fixtures publish dashboard metrics before heavier signals", () => {
+    const requests = buildGeneratedIntegrationFixtureRequests("http://127.0.0.1:4318", "token", {
+      baseUnixNano: 1_800_000_000_000_000_000n,
+      windowEndUnixNano: 1_800_003_600_000_000_000n,
+      runId: "test-run",
+    });
+
+    expect(requests.map((request) => request.signal)).toEqual(["metrics", "logs", "traces"]);
+    expect(requests.every((request) => request.authorization === "Bearer token")).toBe(true);
   });
 
   test("trace JSON fixture encodes byte IDs as protobuf JSON base64", () => {

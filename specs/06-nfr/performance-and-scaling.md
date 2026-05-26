@@ -51,10 +51,22 @@ Scale horizontally at these boundaries:
 | storage-write | worker replica | durable JetStream consumer and SurrealDB | shared durable pull consumer in production-scale mode |
 | storage-read | process replica | SurrealDB and NATS | request/reply queue subscribers plus live subscription registry per connection |
 | control-plane | process replica | control database | low-volume request/reply; writes remain idempotent |
+| alert-evaluator | process replica | NATS, control-plane, storage-read | project/rule work is partitioned by scheduler lease or explicit project assignment; notification dispatch is bounded |
+| alert delivery adapters | process replica | NATS and provider APIs | bridge-backed queue subscribers scale independently from alert evaluation and provider latency |
 | SurrealDB | deployment-specific cluster | tenant/project databases | one namespace per tenant and one strict database per project |
 | NATS | JetStream cluster | streams and consumers | stream replication and durable consumers |
 
 No scaling implementation may introduce public NATS, public SurrealDB, frontend direct storage access, or BFF telemetry aggregation.
+
+## Storage Read Hot Paths
+
+SurrealDB indexes for telemetry reads must match the full storage-read ownership predicate. Hot indexes therefore include `tenantId, companyId, projectId` before the selective field or sort field used by the query. Indexes that omit `companyId` are legacy-local helpers and are not sufficient for readiness of production hot paths.
+
+Trace summary reads must use the denormalized count fields stored on `trace`: `spanCount`, `errorSpanCount`, `logCount`, and `serviceCount`. Storage-read must not recompute those counts from `span` or `log_event` on every trace-list or live-candidate page.
+
+Single-record telemetry mutations must use deterministic SurrealDB record IDs instead of `UPDATE table WHERE ...` scans when the record ID is known.
+
+Trace history, log history, and metric descriptor discovery reads must use cursor pagination. Storage-read must request one sentinel row beyond the client limit, return at most the client limit, and only emit `nextCursor` when the sentinel exists. Pagination cursors must match the deterministic sort tuple used in the SurrealQL query. Frontend infinite-scroll surfaces must request additional backend cursor pages and must not implement search or pagination by filtering an already-fetched subset.
 
 ## Runtime Configuration
 
@@ -71,6 +83,12 @@ Add these typed environment variables in the scaling wave. Defaults must preserv
 | `CLOUDGRID_OTLP_PUBLISH_TIMEOUT_MS` | `1000` | integer 100..30000 | JetStream publish ack timeout. |
 | `CLOUDGRID_PROJECT_STATUS_CACHE_TTL_SECONDS` | `60` | integer 5..3600 | Freshness window. |
 | `CLOUDGRID_PROJECT_STATUS_CACHE_STALE_SECONDS` | `120` | integer >= ttl | Deployed mode fail-closed boundary. |
+
+### NATS Message Bridge
+
+| Variable | Default | Validation | Behavior |
+| --- | --- | --- | --- |
+| `CLOUDGRID_NATS_MAX_PAYLOAD` | `8388608` | integer >= `CLOUDGRID_OTLP_MAX_REQUEST_BYTES` | Local Compose and bundled chart NATS payload limit. External NATS must be configured at least as high as the collector request limit. |
 
 ### Storage Write
 
@@ -91,7 +109,8 @@ Add these typed environment variables in the scaling wave. Defaults must preserv
 | `CLOUDGRID_GRAPHQL_MAX_DEPTH` | `12` | integer 1..64 | Reject deeper operations with `ERR-001`. |
 | `CLOUDGRID_GRAPHQL_MAX_COMPLEXITY` | `500` | integer 1..10000 | Reject expensive operations with `ERR-001`. |
 | `CLOUDGRID_GRAPHQL_RESPONSE_MEDIA_TYPE` | `compatible` | `compatible` or `graphql-response-json` | `compatible` supports current clients; strict mode prefers `application/graphql-response+json`. |
-| `CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS` | `1500` | integer 100..30000 | SurrealDB read query timeout. |
+| `CLOUDGRID_MESSAGE_BRIDGE_REQUEST_TIMEOUT_MS` | `12000` | integer 100..30000 | BFF request/reply timeout for private NATS subjects. Must be greater than `CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS` so storage-read owns query timeout semantics. |
+| `CLOUDGRID_STORAGE_READ_QUERY_TIMEOUT_MS` | `10000` | integer 100..30000 | Single storage-read request deadline for trace, log, metric, facet, live-notification, and AI-eval read handlers. |
 | `CLOUDGRID_STORAGE_READ_MAX_PAGE_SIZE` | `200` | integer 1..1000 | Upper bound for trace/log pages. |
 | `CLOUDGRID_STORAGE_READ_MAX_METRIC_POINTS` | `5000` | integer 100..100000 | Upper bound for one metric series response. |
 | `CLOUDGRID_LIVE_MAX_SUBSCRIPTIONS` | `2000` | integer 1..100000 | Per storage-read pool soft limit. |
@@ -104,6 +123,8 @@ Configuration validation failure maps to `ERR-009 CONFIG_INVALID`.
 The collector must reject requests before decoding when `Content-Length` exceeds `CLOUDGRID_OTLP_MAX_REQUEST_BYTES`. If `Content-Length` is absent, it must read through a bounded reader and fail once the limit is exceeded.
 
 The collector must reject decoded payloads that exceed span/log/metric point count limits. It must not publish partial commands for oversized payloads.
+
+The collector readiness check must verify that the NATS JetStream ingest subjects are available and that the connected NATS server advertises a max payload at least as large as `CLOUDGRID_OTLP_MAX_REQUEST_BYTES`. If an external NATS server keeps the stock 1 MiB limit while CloudGrid accepts 4 MiB OTLP requests, `/readyz` must remain degraded instead of accepting traffic that will fail at publish time.
 
 Authentication and authorization must complete before OTLP body decoding except for method, content-type, and request-size checks. The collector must not call control-plane, storage-read, storage-write, SurrealDB, or any external authorization endpoint per ingest request. Deployed ingest uses local JWT validation plus project status cache lookup; local multi-project ingest uses startup-parsed token routing.
 
@@ -130,6 +151,22 @@ Every GraphQL list input must enforce:
 The BFF must reject GraphQL operations above configured depth or complexity before calling NATS.
 
 Storage-read must push supported filters, cursors, sorting, counts, and bounded facets into SurrealDB. It must not fetch broad raw rows into Go to perform filtering that SurrealDB can execute with indexed predicates.
+
+## Runtime Saturation And Blocking
+
+Performance work must include saturation behavior, not only happy-path latency.
+
+- The BFF must reject oversized HTTP/GraphQL bodies before expensive parsing and
+  must bound response validation logging for malformed bridge replies.
+- Go services must bound goroutine fan-out, SDK-client lock wait, NATS callback
+  work, and SurrealDB query concurrency.
+- Health checks must be minimal and must not contend with hot-path database
+  locks long enough to inflate p99 user-facing latency.
+- Retry loops must use jittered backoff and state-change logging to avoid CPU
+  spin and log storms during outages.
+- Benchmarks must include at least one saturation profile that measures behavior
+  at configured queue/concurrency limits and verifies bounded rejection or
+  retryable errors instead of unbounded latency growth.
 
 ## SurrealDB Query Plan Gates
 
@@ -189,6 +226,9 @@ buffers.
 
 Frontend requirements:
 
+- Trace history search requests use a conservative default `limit` of 25 while
+  storage-read query-plan and index optimization work is pending. This frontend
+  mitigation does not change the backend maximum page size.
 - trace/log tables use stable row heights or virtualization when lists exceed 500 rows;
 - trace waterfall renders a bounded visible row window plus overscan;
 - no large telemetry arrays are duplicated in React state;

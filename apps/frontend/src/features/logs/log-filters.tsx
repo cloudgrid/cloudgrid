@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 import { t } from "../../lib/i18n";
+import { ServiceMultiSelect } from "../telemetry/service-multi-select";
 
 const sorts: LogSort[] = ["timestamp_desc", "timestamp_asc", "severity_desc"];
 
@@ -32,11 +33,13 @@ export function LogFilters({
   facets,
   filters,
   onChange,
+  onServicesChange,
   onClear,
 }: {
   facets?: TelemetryFacetResult | undefined;
   filters: LogSearchInput;
   onChange: (name: keyof LogSearchInput, value: string | null) => void;
+  onServicesChange: (services: string[]) => void;
   onClear: () => void;
 }) {
   const chips = activeLogFilterChips(filters);
@@ -56,11 +59,12 @@ export function LogFilters({
           </Field>
           <Field>
             <FieldLabel htmlFor="log-service">{t("filters.service")}</FieldLabel>
-            <Input
+            <ServiceMultiSelect
               id="log-service"
-              onChange={(event) => onChange("service", event.target.value)}
+              onChange={onServicesChange}
+              options={facets?.services}
               placeholder={t("filters.placeholder.service")}
-              value={filters.service ?? ""}
+              selected={filters.services ?? (filters.service ? [filters.service] : [])}
             />
           </Field>
           <Field>
@@ -190,8 +194,9 @@ function activeLogFilterChips(filters: LogSearchInput) {
   if (filters.search) {
     chips.push({ key: "search", label: `${t("filters.search")}: ${filters.search}` });
   }
-  if (filters.service) {
-    chips.push({ key: "service", label: `${t("filters.service")}: ${filters.service}` });
+  const services = filters.services ?? (filters.service ? [filters.service] : []);
+  if (services.length > 0) {
+    chips.push({ key: "service", label: `${t("filters.service")}: ${services.join(", ")}` });
   }
   if (filters.severity) {
     chips.push({ key: "severity", label: `${t("filters.severity")}: ${filters.severity}` });

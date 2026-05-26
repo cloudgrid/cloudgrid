@@ -1,0 +1,102 @@
+package internal
+
+import (
+	"encoding/json"
+	"testing"
+
+	"github.com/nats-io/nats.go"
+)
+
+type captureStorageReadBridgeMessage struct {
+	subject   string
+	data      []byte
+	responses [][]byte
+	err       error
+}
+
+func (message *captureStorageReadBridgeMessage) Subject() string {
+	return message.subject
+}
+
+func (message *captureStorageReadBridgeMessage) Data() []byte {
+	return message.data
+}
+
+func (message *captureStorageReadBridgeMessage) Respond(response []byte) error {
+	message.responses = append(message.responses, append([]byte(nil), response...))
+	return message.err
+}
+
+func TestNATSBridgeMessageAdaptsSubjectHeadersDataAndRespondErrors(t *testing.T) {
+	msg := &nats.Msg{
+		Subject: "telemetry.traces.search",
+		Data:    []byte(`{"requestId":"req-1"}`),
+		Header:  nats.Header{},
+	}
+	msg.Header.Set("Nats-Msg-Id", "req-1")
+	bridgeMessage := natsBridgeMessage{msg: msg}
+
+	if got := bridgeMessage.Subject(); got != "telemetry.traces.search" {
+		t.Fatalf("Subject() = %q", got)
+	}
+	if got := string(bridgeMessage.Data()); got != `{"requestId":"req-1"}` {
+		t.Fatalf("Data() = %q", got)
+	}
+	if got := bridgeMessage.Header("Nats-Msg-Id"); got != "req-1" {
+		t.Fatalf("Header() = %q", got)
+	}
+	if err := bridgeMessage.Respond([]byte(`{}`)); err == nil {
+		t.Fatal("Respond() error = nil without reply subject")
+	}
+}
+
+func TestAdaptNATSHandlerPassesBridgeMessage(t *testing.T) {
+	var captured BridgeMessage
+	handler := adaptNATSHandler(func(message BridgeMessage) {
+		captured = message
+	})
+
+	handler(&nats.Msg{Subject: "telemetry.logs.search", Data: []byte("payload")})
+
+	if captured == nil || captured.Subject() != "telemetry.logs.search" || string(captured.Data()) != "payload" {
+		t.Fatalf("captured message = %#v", captured)
+	}
+}
+
+func TestRecoverStorageReadHandlerPanicRespondsCanonicalBridgeError(t *testing.T) {
+	msg := &captureStorageReadBridgeMessage{
+		subject: "telemetry.traces.search",
+		data:    []byte(`{"requestId":"req-panic"}`),
+	}
+	handler := recoverStorageReadHandlerPanic(nil, func(BridgeMessage) {
+		panic("handler failed")
+	})
+
+	handler(msg)
+
+	if len(msg.responses) != 1 {
+		t.Fatalf("responses = %d, want 1", len(msg.responses))
+	}
+	var response struct {
+		RequestID string `json:"requestId"`
+		OK        bool   `json:"ok"`
+		Error     *struct {
+			ID        string `json:"id"`
+			Code      string `json:"code"`
+			Retryable bool   `json:"retryable"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(msg.responses[0], &response); err != nil {
+		t.Fatalf("panic response is not JSON: %v", err)
+	}
+	if response.RequestID != "req-panic" || response.OK || response.Error == nil ||
+		response.Error.ID != "ERR-013" || response.Error.Code != "MESSAGE_BRIDGE_UNAVAILABLE" || !response.Error.Retryable {
+		t.Fatalf("panic response = %#v", response)
+	}
+}
+
+func TestConnectNATSRejectsMalformedURL(t *testing.T) {
+	if _, err := ConnectNATS("://bad"); err == nil {
+		t.Fatal("ConnectNATS() error = nil")
+	}
+}

@@ -114,15 +114,16 @@ export function aiEvalOverviewModel({
 
 export function experimentScoreboardRows(runs: ExperimentRun[]): ExperimentScoreboardRow[] {
   return runs.map((run) => {
-    const summary = summaryObject(run.summary);
+    const primaryScore = run.summary.scoreSummaries[0];
+    const regression = run.summary.regressions.some((item) => item.blocker || item.count > 0);
     return {
       runId: run.id,
       status: run.status,
-      passRate: numericSummary(summary, "passRate"),
-      meanScore: numericSummary(summary, "meanScore"),
-      p50Score: numericSummary(summary, "p50Score"),
-      p95Score: numericSummary(summary, "p95Score"),
-      regression: booleanSummary(summary, "regression"),
+      passRate: primaryScore?.passRate ?? null,
+      meanScore: primaryScore?.meanScore ?? null,
+      p50Score: primaryScore?.p50 ?? null,
+      p95Score: primaryScore?.p95 ?? null,
+      regression,
       itemRunCount: run.itemRuns?.items.length ?? 0,
     };
   });
@@ -155,8 +156,4 @@ function summaryObject(summary: JSONValue | undefined): Record<string, JSONValue
 function numericSummary(summary: Record<string, JSONValue>, key: string) {
   const value = summary[key];
   return typeof value === "number" ? value : null;
-}
-
-function booleanSummary(summary: Record<string, JSONValue>, key: string) {
-  return summary[key] === true;
 }

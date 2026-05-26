@@ -3,20 +3,19 @@ title: Harness adapter
 description: HTTP contract for the AI evaluation execution surface.
 order: 4
 accent: rose
-eyebrow: Handbook · Adapters · Harness
-updated: 2026-05-17
+eyebrow: Handbook - Architecture - Extension boundaries
+updated: 2026-05-24
 ---
 
-Unlike the other three ports, the harness adapter is an **HTTP contract** —
-not an in-process port. The v1 implementation is `puristajs/harness`.
+Unlike the other three ports, the evaluation adapter is an **HTTP contract**,
+not an in-process port. Simple targets can run inside the CloudGrid AI harness;
+complex agents and workflows can expose a black-box adapter URL.
 
-## The three endpoints
+## Core Endpoint
 
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /v1/run` | Execute an agent run; return a summary (no spans in the response). |
-| `POST /v1/score` | Execute deterministic and judge scorers; return scores. |
-| `POST /v1/optimize` | Execute prompt optimization; return candidate prompt versions. |
+| `POST /v1/run` | Execute one dataset input against the target and return, or later expose through polling, the final output and bounded run summary. |
 
 ## Required behaviors
 
@@ -24,10 +23,15 @@ not an in-process port. The v1 implementation is `puristajs/harness`.
   every call.
 - **Idempotency** is required for retries — repeated calls with the same
   idempotency key return the same result.
-- **No spans in response bodies.** Harness emits spans via OTLP back into
-  CloudGrid; the response body carries only summaries.
-- **CloudGrid never holds provider credentials.** Model-provider keys live
-  in your harness configuration.
+- **No full traces in response bodies.** The target should emit spans through
+  OTLP. Adapter responses carry the final output and bounded summaries.
+- **Expected output is omitted by default.** The evaluated system should not see
+  labels unless the evaluation settings explicitly allow it.
+- **Provider credentials stay outside CloudGrid.** Adapter deployments own their
+  provider keys and private tool configuration.
+- **No storage shortcuts.** Results return through the adapter protocol and
+  CloudGrid message contracts; telemetry still returns through normal OTLP
+  ingest, storage-write persistence, and storage-read GraphQL views.
 
 ## Example: a minimal harness skeleton
 
@@ -50,9 +54,6 @@ app.post("/v1/run", async (c) => {
   });
 });
 
-app.post("/v1/score", (c) => c.json({ /* ... */ }));
-app.post("/v1/optimize", (c) => c.json({ /* ... */ }));
-
 serve({ fetch: app.fetch, port: 8088 });
 ```
 
@@ -60,6 +61,5 @@ serve({ fetch: app.fetch, port: 8088 });
 
 | Operation | Key |
 | --- | --- |
-| Run | `(experimentRunId, datasetItemId)` |
-| Score | `(targetKind, targetId, scorerId, scorerVersion)` |
-| Optimize candidate | `(experimentRunId, promptVersionHash)` |
+| Dataset item run | `(evaluationRunId, datasetItemRevisionId, targetSnapshotId)` |
+| Optimization candidate | `(optimizationRunId, candidateTargetSnapshotId, datasetItemRevisionId)` |

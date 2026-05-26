@@ -4,7 +4,7 @@ title: Dashboard query flow
 layer: flow
 status: draft
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-16
+updated: 2026-05-22
 provenance: user-directed
 depends_on: [CAP-MET-002, CAP-MET-003]
 ---
@@ -19,7 +19,7 @@ depends_on: [CAP-MET-002, CAP-MET-003]
    - log table widgets use `Query.logs`;
    - trace table widgets use `Query.traces`;
    - live trace widgets use `Subscription.liveTraces`.
-5. Rich metric widgets, after their contracts are generated, use a storage-read-owned rich metric query GraphQL field rather than frontend fan-out plus React-side combination.
+5. Rich metric widgets use the storage-read-owned `Query.richMetricSeries` GraphQL field when rendering saved rich widgets. Rich metric creation and editing remain production-gated until function coverage, typed editor controls, generated contract checks, and focused tests are complete.
 6. The BFF validates GraphQL input and selected project, then routes telemetry queries to storage-read and dashboard mutations to control-plane through message bridge request/reply subjects.
 7. Storage-read validates telemetry query inputs and returns GraphQL-ready view models.
 8. For rich metric widgets, storage-read resolves all named metric queries, aligns timestamps to the requested interval, evaluates the typed formula AST, applies result limits, and returns chart-ready series plus bounded warnings.
@@ -42,7 +42,7 @@ Changing project resets dashboard query caches, selected dashboard, visible widg
 
 ## Rich Metric Query Flow
 
-This flow is inactive in production until the required contracts exist.
+This flow is read-only for existing saved widgets until the complete rich metric implementation gate passes. Production creation and editing are inactive until storage-read supports every allowed formula operator/function, generated contracts pass, and the frontend exposes complete typed controls.
 
 1. User adds a rich metric widget or upgrades a metric widget to rich query mode.
 2. Frontend renders typed query rows and typed formula controls inside the widget editor `Data` group.

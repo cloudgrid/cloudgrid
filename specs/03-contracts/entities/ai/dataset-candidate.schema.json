@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-025",
+  "title": "DatasetCandidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "projectId",
+    "status",
+    "sourceKind",
+    "source",
+    "metadata",
+    "split",
+    "curationStatus",
+    "contentTreatment",
+    "reason",
+    "warnings",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "projectId": { "type": "string" },
+    "datasetId": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["suggested", "reviewing", "ready", "committed", "dismissed", "superseded"]
+    },
+    "sourceKind": {
+      "type": "string",
+      "enum": [
+        "trace",
+        "metric_result",
+        "evaluation_item_run",
+        "import",
+        "coverage_gap",
+        "health_issue",
+        "failure_cluster",
+        "manual"
+      ]
+    },
+    "source": { "type": "object", "additionalProperties": true },
+    "input": true,
+    "expected": true,
+    "observedOutput": true,
+    "metadata": { "type": "object", "additionalProperties": true, "default": {} },
+    "split": { "type": "string", "enum": ["training", "validation", "test"] },
+    "curationStatus": {
+      "type": "string",
+      "enum": ["draft", "needs_expected", "needs_review", "ready", "rejected"]
+    },
+    "contentTreatment": {
+      "type": "string",
+      "enum": ["original", "realistic_anonymized", "redacted", "synthetic"]
+    },
+    "anonymizationProvenance": {
+      "$ref": "./dataset-item-revision.schema.json#/$defs/anonymizationProvenance"
+    },
+    "reason": { "type": "string", "default": "" },
+    "clusterId": { "type": "string" },
+    "sourceRefs": {
+      "type": "array",
+      "items": { "$ref": "./dataset-item-revision.schema.json#/$defs/sourceRef" },
+      "default": []
+    },
+    "warnings": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "curationStatus": { "const": "ready" } },
+        "required": ["curationStatus"]
+      },
+      "then": { "required": ["expected"] }
+    },
+    {
+      "if": {
+        "properties": {
+          "contentTreatment": { "enum": ["realistic_anonymized", "redacted"] }
+        },
+        "required": ["contentTreatment"]
+      },
+      "then": { "required": ["anonymizationProvenance"] }
+    }
+  ]
+}

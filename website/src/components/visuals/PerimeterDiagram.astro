@@ -43,7 +43,7 @@
     <g opacity="0.9">
       <rect class="cv-node" x="30" y="380" width="150" height="56" rx="12" stroke="rgba(245,158,11,0.45)" stroke-dasharray="3 3" />
       <text x="105" y="404" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" fill="#d97706" font-weight="600">LLM provider (optional)</text>
-      <text x="105" y="422" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9.5" class="cv-text-faint">only via harness, if used</text>
+      <text x="105" y="422" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="9.5" class="cv-text-faint">only when enabled</text>
     </g>
 
     <!-- Inside-perimeter components -->
@@ -56,7 +56,7 @@
       <text x="555" y="186" text-anchor="middle" font-family="Inter, sans-serif" font-size="13" class="cv-text" font-weight="700">CloudGrid Core</text>
       <text x="555" y="206" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#6366f1">bridge · storage · query</text>
       <text x="555" y="222" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#6366f1">control-plane · live</text>
-      <text x="555" y="240" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#6366f1">ai-eval-runner (optional)</text>
+      <text x="555" y="240" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="#6366f1">AI evaluation (optional)</text>
 
       <rect class="cv-node" x="700" y="180" width="160" height="56" rx="12" />
       <text x="780" y="206" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" class="cv-text" font-weight="600">GraphQL BFF</text>
@@ -90,7 +90,7 @@
         stroke="#f43f5e" stroke-width="1.5" stroke-dasharray="4 3" fill="none" />
       <line x1="940" y1="180" x2="960" y2="232" stroke="#f43f5e" stroke-width="2.2" stroke-linecap="round" />
       <line x1="960" y1="180" x2="940" y2="232" stroke="#f43f5e" stroke-width="2.2" stroke-linecap="round" />
-      <text x="1050" y="212" font-family="Inter, sans-serif" font-size="11" fill="#f43f5e" font-weight="600">no egress</text>
+      <text x="1050" y="212" font-family="Inter, sans-serif" font-size="11" fill="#f43f5e" font-weight="600">local boundary</text>
     </g>
 
     <!-- Bottom legend strip -->
@@ -100,7 +100,7 @@
         Everything stays inside your perimeter except what you explicitly wire to leave.
       </text>
       <text x="580" y="465" text-anchor="middle" class="cv-text-muted">
-        SSO callbacks ↔ your IdP · LLM calls ↔ your provider · CloudGrid itself never phones home.
+        SSO callbacks ↔ your IdP · LLM calls ↔ your provider · telemetry stays in your deployment.
       </text>
     </g>
   </svg>

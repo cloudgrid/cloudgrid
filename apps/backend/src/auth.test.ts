@@ -14,7 +14,7 @@ describe("BFF auth routes and sessions", () => {
           return viewer();
         },
       }),
-      { graphqlUI: false, auth: { mode: "local", sessionTtlSeconds: 28_800 } },
+      { auth: { mode: "local", sessionTtlSeconds: 28_800 } },
       createLogger("bff"),
     );
 
@@ -30,6 +30,7 @@ describe("BFF auth routes and sessions", () => {
     expect(authContext).toMatchObject({
       mode: "anonymous",
       authMode: "local",
+      principalId: "local-user",
       tenantId: "local",
       companyId: "local",
       projectId: "default",
@@ -40,7 +41,6 @@ describe("BFF auth routes and sessions", () => {
   test("starts SSO login with PKCE transaction cookie and provider redirect", async () => {
     const provider = fixtureProvider();
     const { app } = createAppWithBridge(bridge(), {
-      graphqlUI: false,
       auth: ssoAuthConfig(),
       authProvider: provider,
     });
@@ -62,7 +62,6 @@ describe("BFF auth routes and sessions", () => {
       },
     });
     const { app } = createAppWithBridge(bridge(), {
-      graphqlUI: false,
       auth: ssoAuthConfig(),
       authProvider: provider,
     });
@@ -82,7 +81,6 @@ describe("BFF auth routes and sessions", () => {
   test("callback creates an HttpOnly server-side session and logout clears it", async () => {
     const provider = fixtureProvider();
     const { app } = createAppWithBridge(bridge(), {
-      graphqlUI: false,
       auth: ssoAuthConfig(),
       authProvider: provider,
     });
@@ -133,11 +131,7 @@ describe("BFF auth routes and sessions", () => {
           return viewer();
         },
       }),
-      {
-        graphqlUI: false,
-        auth: ssoAuthConfig(),
-        authProvider: provider,
-      },
+      { auth: ssoAuthConfig(), authProvider: provider },
     );
 
     const login = await app.request("/auth/login?returnTo=/projects");
@@ -164,7 +158,6 @@ describe("BFF auth routes and sessions", () => {
 
   test("deployed GraphQL rejects missing and invalid credentials with sanitized errors", async () => {
     const { app } = createAppWithBridge(bridge(), {
-      graphqlUI: false,
       auth: ssoAuthConfig(),
       authProvider: fixtureProvider(),
     });
@@ -205,11 +198,7 @@ describe("BFF auth routes and sessions", () => {
           return viewer();
         },
       }),
-      {
-        graphqlUI: false,
-        auth: ssoAuthConfig(),
-        authProvider: fixtureProvider(),
-      },
+      { auth: ssoAuthConfig(), authProvider: fixtureProvider() },
     );
     const token = await auth.issueTestBearerToken({
       sub: "machine-1",
@@ -260,11 +249,7 @@ describe("BFF auth routes and sessions", () => {
           return viewer();
         },
       }),
-      {
-        graphqlUI: false,
-        auth: ssoAuthConfig(),
-        authFetch: authFetch as typeof fetch,
-      },
+      { auth: ssoAuthConfig(), authFetch: authFetch as typeof fetch },
     );
 
     const login = await app.request("/auth/login?provider=github&returnTo=/projects");

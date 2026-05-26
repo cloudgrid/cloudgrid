@@ -89,12 +89,13 @@ Project selection mode shows no telemetry navigation.
 
 Project workspace mode shows this primary navigation order:
 
-- Overview
-- Live
+- AI Chat when enabled
+- Pinned dashboard shortcuts when present
 - Traces
 - Logs
 - Metrics
-- AI Eval when enabled
+- Dashboards
+- Evaluations when enabled
 
 Enhance the shell with:
 
@@ -113,7 +114,7 @@ The command palette is local UI state only. It does not add a backend search con
 It must support:
 
 - route actions: go to Traces, Logs, current trace detail when applicable;
-- query actions: clear filters, copy current investigation URL, open GraphQL UI when enabled;
+- query actions: clear filters and copy current investigation URL;
 - preset actions: apply static trace/log query presets defined in frontend code;
 - keyboard navigation and escape-to-close behavior.
 

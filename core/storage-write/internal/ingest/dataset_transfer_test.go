@@ -87,9 +87,8 @@ func TestPrepareDatasetImportParsesJSONArrayAndAppliesDefaults(t *testing.T) {
 	}
 	request.Input["defaults"] = map[string]any{
 		"split":              "validation",
-		"reviewStatus":       "reviewed",
+		"curationStatus":     "ready",
 		"metadata":           map[string]any{"suite": "release"},
-		"synthetic":          true,
 		"allowPartialCommit": true,
 	}
 
@@ -109,7 +108,7 @@ func TestPrepareDatasetImportParsesJSONArrayAndAppliesDefaults(t *testing.T) {
 	if message["role"] != "user" || message["content"] != "hi" {
 		t.Fatalf("input = %#v, want nested message mapping", input)
 	}
-	if item["split"] != "validation" || item["reviewStatus"] != "reviewed" || item["synthetic"] != true {
+	if item["split"] != "validation" || item["curationStatus"] != "ready" {
 		t.Fatalf("item defaults = %#v", item)
 	}
 	if metadata["suite"] != "release" || metadata["source"] != "manual" || item["sourceTraceId"] != "trace-1" {
@@ -146,7 +145,7 @@ func TestDatasetImportAppendRequestsBuildsStableAppendMutations(t *testing.T) {
 	}
 	items := input["items"].([]any)
 	item := items[0].(map[string]any)
-	if item["id"] == "" || item["split"] != "dev" || item["reviewStatus"] != "unreviewed" {
+	if item["id"] == "" || item["split"] != "training" || item["curationStatus"] != "needs_review" {
 		t.Fatalf("append item = %#v, want stable defaults", item)
 	}
 	if !strings.HasPrefix(requests[0].RequestID, "req-append-row-") {
@@ -306,10 +305,9 @@ func datasetImportPrepareRequest(uploadID string, format string) contracts.EvalM
 				},
 			},
 			"defaults": map[string]any{
-				"split":              "dev",
-				"reviewStatus":       "unreviewed",
+				"split":              "training",
+				"curationStatus":     "needs_review",
 				"metadata":           map[string]any{},
-				"synthetic":          false,
 				"allowPartialCommit": true,
 			},
 		},

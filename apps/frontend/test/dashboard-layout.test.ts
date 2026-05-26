@@ -5,7 +5,10 @@ import {
   moveDashboardWidget,
   normalizeDashboardLayout,
   resizeDashboardWidget,
+  stackedDashboardWidgets,
   sortDashboardWidgetsForSave,
+  toProjectedDashboardLayout,
+  reorderStackedDashboardWidget,
 } from "../src/features/dashboards/dashboard-layout";
 import type { DashboardWidgetInput, SaveDashboardInput } from "../src/lib/dashboard-contracts";
 
@@ -150,5 +153,39 @@ describe("dashboard layout solver", () => {
       minW: 4,
       minH: 3,
     });
+  });
+
+  test("projects layouts for large touch tablets without changing persisted coordinates", () => {
+    const layout = { x: 6, y: 2, w: 6, h: 4, minW: 4, minH: 3 };
+
+    expect(toProjectedDashboardLayout(layout, 6)).toEqual({
+      x: 3,
+      y: 2,
+      w: 3,
+      h: 4,
+      minW: 2,
+      minH: 3,
+    });
+    expect(layout).toEqual({ x: 6, y: 2, w: 6, h: 4, minW: 4, minH: 3 });
+  });
+
+  test("reorders stacked widgets for touch layouts using deterministic 12-column coordinates", () => {
+    const input = draft([
+      widget("a", { x: 6, y: 0, w: 6, h: 4, minW: 4, minH: 3 }),
+      widget("b", { x: 0, y: 0, w: 6, h: 4, minW: 4, minH: 3 }),
+      widget("c", { x: 0, y: 4, w: 12, h: 2, minW: 4, minH: 2 }),
+    ]);
+
+    expect(stackedDashboardWidgets(input.widgets).map((item) => item.id)).toEqual(["b", "a", "c"]);
+
+    const next = reorderStackedDashboardWidget(input, "c", -1);
+
+    expect(
+      next.widgets.map((item) => [item.id, item.layout.x, item.layout.y, item.layout.w]),
+    ).toEqual([
+      ["b", 0, 0, 12],
+      ["c", 0, 4, 12],
+      ["a", 0, 6, 12],
+    ]);
   });
 });

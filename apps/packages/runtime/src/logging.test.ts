@@ -2,6 +2,39 @@ import { describe, expect, test } from "bun:test";
 import { createLogger } from "./logging";
 
 describe("runtime structured logger", () => {
+  test("suppresses debug logs by default", () => {
+    const stdout: string[] = [];
+    const logger = createLogger("bff", {
+      stdout: (line) => stdout.push(line),
+      stderr: () => {},
+    });
+
+    logger.debug("graphql_operation_completed", { status: "ok" });
+
+    expect(stdout).toHaveLength(0);
+  });
+
+  test("emits debug logs when configured", () => {
+    const stdout: string[] = [];
+    const logger = createLogger(
+      "bff",
+      {
+        stdout: (line) => stdout.push(line),
+        stderr: () => {},
+      },
+      "debug",
+    );
+
+    logger.debug("graphql_operation_completed", { status: "ok" });
+
+    expect(JSON.parse(stdout[0] ?? "{}")).toMatchObject({
+      level: "debug",
+      service: "bff",
+      event: "graphql_operation_completed",
+      status: "ok",
+    });
+  });
+
   test("writes Kubernetes-friendly JSON completion logs", () => {
     const stdout: string[] = [];
     const stderr: string[] = [];

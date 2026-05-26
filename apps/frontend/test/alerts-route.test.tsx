@@ -100,7 +100,7 @@ function alertsMarkup({ path = "/alerts", rules }: { path?: string; rules: Alert
     },
   });
   queryClient.setQueryData(["Viewer"], viewer);
-  queryClient.setQueryData(["AlertRules", "project-1"], rules);
+  queryClient.setQueryData(["AlertRules", "project-1", { sort: "updatedAt_desc" }], rules);
   queryClient.setQueryData(["AlertHistory", "project-1", "rule-1", 50, null], {
     items: [alertEvent],
     pageInfo: { hasNextPage: false, endCursor: null },
@@ -178,6 +178,10 @@ describe("alerts route", () => {
       .join("\n");
 
     expect(source).toContain("readAlertRuleSearchInput");
+    expect(source).toContain("buildAlertRuleSearchInput");
+    expect(source).toContain("ALERT_HISTORY_DEFAULT_FIRST");
+    expect(source).toContain("@cloudgrid/ui-contracts");
+    expect(source).not.toContain("const alertRuleSorts");
     expect(source).toContain("writeAlertRuleFilter");
     expect(source).toContain('searchParams.get("search")');
     expect(source).toContain('searchParams.get("status")');

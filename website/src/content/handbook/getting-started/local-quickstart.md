@@ -79,7 +79,7 @@ go run ./core/otlp-collector/cmd/otlp-collector
 
 Open the frontend at `http://127.0.0.1:5173/`.
 
-GraphiQL is available at `http://localhost:3000/graphql` in development.
+The BFF GraphQL API is available at `http://localhost:3000/graphql`.
 
 ## 5. Select A Project
 

@@ -20,6 +20,8 @@ Use shadcn/ui components backed by Tailwind CSS. Use the shadcn default theme as
 
 The UI is an enterprise operational workspace, not a marketing page. It must prioritize project-first orientation, dense scanability, stable layout, quick filtering, readable telemetry detail, and low-friction onboarding.
 
+The public website uses the same restraint with a marketing-specific hero treatment. Non-handbook website pages may use generated, realistic enterprise/product collage imagery as the first hero section background only. The imagery must show CloudGrid-relevant product and infrastructure concepts such as observability dashboards, telemetry flows, adapters, message bridge routing, SaaS packaging, or enterprise deployment. Do not use full-page image backgrounds, simple gradients, procedural SVGs, abstract blobs, or generic placeholder art. Handbook pages remain plain white/neutral documentation surfaces.
+
 ## Layout
 
 - First screen is the application shell with project/company selection.
@@ -29,6 +31,10 @@ The UI is an enterprise operational workspace, not a marketing page. It must pri
 - Detail pages use a split layout: trace/span waterfall on one side and contextual logs/details on the other side.
 - Do not nest framed surfaces. A card, bordered panel, or rounded section must not be placed inside another card-like container; compose owned components directly and use separators or sticky headers for hierarchy.
 - Use dialogs only for short focused confirmations, inspector drawers/sheets for related details and editors, popovers for compact anchored choices, and collapsibles for optional secondary groups.
+- On public website marketing pages, keep hero title, description, eyebrow, and CTA placement aligned across routes. Let the generated hero background carry the visual weight; do not add separate right-side mockups or visualizations in the hero.
+- Keep public website sections flat after the hero: white or neutral recessed bands, restrained borders, no decorative pill piles, no card-in-card layouts, and no nested rounded section wrappers.
+- Marketing feature lists and related-page navigation use editorial stacks, alternating image/text rows, ruled lists, or image-led strips with generated product collage crops instead of generic card grids.
+- Non-handbook public website pages use audience-led content flow: introduce the decision-maker or operator problem, explain CloudGrid's concrete product help, then link to deeper detail instead of duplicating capability catalogs.
 
 ## Tokens
 
@@ -37,6 +43,19 @@ The UI is an enterprise operational workspace, not a marketing page. It must pri
 - Color: neutral base with semantic severity colors for error, warn, info, debug, trace.
 - Theme modes: support light and dark mode through shadcn/Tailwind semantic tokens. Do not hard-code one mode with raw color values.
 - Motion: under 150ms for interaction feedback; respect reduced-motion.
+
+## Whitelabel Boundary
+
+Licensed whitelabel builds customize product identity through the code-level
+brand contract in `05-frontend/whitelabel-customization.md`. Frontend
+implementation must keep functional CSS, layout behavior, shadcn primitive
+behavior, and route UX in core. Brand modules may provide product name, mark,
+title formatting, typography, radius, and complete light/dark semantic token
+sets only.
+
+Core components must consume semantic tokens and `useBrand()` for visible
+product identity. They must not import customer CSS, hard-code brand colors, or
+introduce brand settings pages.
 
 ## Internationalization
 

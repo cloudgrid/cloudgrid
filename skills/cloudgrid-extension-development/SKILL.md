@@ -5,33 +5,24 @@ description: Extends and develops CloudGrid features, services, contracts, adapt
 
 # CloudGrid Extension Development
 
-Use this skill for code changes that extend CloudGrid. CloudGrid is
-spec-first: update the relevant spec before implementing behavior that is not
-already defined.
+Use this skill for code changes that extend CloudGrid. Keep changes aligned with
+checked-in product docs, generated contracts, service ownership, and existing
+tests. If behavior is not defined, report the product gap before implementing it.
 
 ## Source Order
 
-Always start with:
+Always start with `.agent/IMPLEMENTATION.md`, then read only the files needed
+for the touched boundary:
 
-1. `specs/spec.md`
-2. `specs/00-conventions.md`
-3. `specs/04-backend/backend-architecture.md`
-4. `specs/03-contracts/graphql/public-schema.graphql`
-5. `specs/03-contracts/messages/message-bridge.asyncapi.yaml`
-6. `specs/03-contracts/errors.yaml`
-7. `.agent/IMPLEMENTATION.md`
-
-Then read the domain-specific spec:
-
-| Work | Specs |
+| Work | Source files |
 | --- | --- |
-| Frontend UX | `specs/05-frontend/product-ux-concept.md` plus route-specific UX specs. |
-| BFF/GraphQL | backend architecture, contract generation, public schema, errors. |
-| Control plane | `control-plane.md`, project membership, invitations, email delivery. |
-| OTLP collector | ingestion, OTLP mapping, signal roadmap, metrics signal. |
-| Storage-read/write | telemetry query semantics, persistence, storage domain, SurrealDB specs. |
-| AI eval | AI eval runner, message contracts, query semantics, project settings. |
-| Release/distribution | release-distribution and integration-test-suite specs. |
+| Frontend UX | `DESIGN.md`, route implementation, component tests, and related handbook pages. |
+| BFF/GraphQL | `apps/backend`, generated UI contracts, public API client operations, and contract checks. |
+| Control plane | `core/control-plane`, BFF bridge clients, and related frontend settings routes. |
+| OTLP collector | `core/otlp-collector`, `core/go-contracts`, and ingestion tests. |
+| Storage-read/write | `core/storage-read`, `core/storage-write`, adapters, and Go tests. |
+| AI eval | `core/ai-eval-runner`, AI Eval frontend/BFF code, generated contracts, and handbook guide. |
+| Release/distribution | `.github/workflows/`, `deploy/`, `charts/`, and release validation scripts. |
 
 ## Boundary Rules
 
@@ -50,9 +41,9 @@ Then read the domain-specific spec:
 
 1. Identify the ownership boundary: BFF, frontend, collector, control-plane,
    storage-read, storage-write, contracts, release, or docs.
-2. Read the source specs and current implementation for that boundary.
+2. Read the current implementation and public docs for that boundary.
 3. If a new field, enum, route, subject, error, table, retry rule, or UI state is
-   needed, update the spec and machine-readable contracts first.
+   needed, update the machine-readable contracts and affected docs first.
 4. Implement the smallest coherent slice in the owning module.
 5. Add focused tests at the same boundary.
 6. Update public docs when setup, configuration, behavior, or operation changes.
@@ -70,7 +61,7 @@ Run `bun run contracts:check` for any change touching:
 - storage-read or storage-write message handling;
 - public API client operation documents or integration scenario metadata.
 
-A contract change is not complete until specs, contracts, generated outputs,
+A contract change is not complete until contracts, generated outputs,
 implementation, tests, and docs agree.
 
 ## Adapter Extension Guidance
@@ -87,7 +78,7 @@ Keep adapters behind local ports:
   credentials into CloudGrid.
 
 Do not add compatibility layers for pre-legacy names. Prefer clean breaking
-changes while specs and implementation are still pre-legacy.
+changes while product behavior is still pre-legacy.
 
 ## Verification Matrix
 

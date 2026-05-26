@@ -65,7 +65,26 @@
         },
         "text": { "type": "string" },
         "artifactId": { "type": "string" },
+        "renderer": {
+          "type": "string",
+          "enum": [
+            "metric_timeseries",
+            "metric_bar",
+            "table",
+            "key_value",
+            "trace_waterfall",
+            "log_list",
+            "mermaid",
+            "json_tree",
+            "diff",
+            "status_summary",
+            "action_approval"
+          ]
+        },
         "actionProposalId": { "type": "string" },
+        "toolCallId": { "type": "string" },
+        "toolName": { "type": "string" },
+        "label": { "type": "string" },
         "status": { "type": "string" },
         "problem": { "type": "object", "additionalProperties": true }
       }

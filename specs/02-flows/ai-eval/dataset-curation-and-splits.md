@@ -5,13 +5,13 @@ domain: ai-eval
 layer: flow
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-16
+updated: 2026-05-24
 provenance: from-user
 trigger:
   type: manual
-  expression: GraphQL dataset mutations and annotation queue actions
+  expression: GraphQL dataset mutations and trace import actions
 orchestration: sync for mutations, async for derived health checks
-delivery_semantics: request/reply mutations with versioned dataset persistence
+delivery_semantics: request/reply mutations with immutable dataset versions
 terminal_failure: reject-mutation-or-mark-health-warning
 ---
 
@@ -19,101 +19,51 @@ terminal_failure: reject-mutation-or-mark-health-warning
 
 ## Purpose
 
-Turn production traces and manually authored cases into trustworthy datasets
-without allowing optimization and evaluation leakage.
+Create trustworthy datasets without split leakage or mutable historical
+evidence.
 
-## Preconditions
+## Flow
 
-- A selected project exists.
-- AI Eval is enabled for the project.
-- The user has project `editor` or higher for dataset item edits.
-- Project `admin` or company `admin` is required for dataset deletion or
-  split-default changes.
-
-## Dataset Split Semantics
-
-Each dataset item belongs to exactly one split:
-
-- `dev`: manual authoring, debugging, scorer calibration.
-- `optimization`: prompt/skill optimization input.
-- `validation`: candidate selection during iteration.
-- `regression`: CI and release gate cases.
-- `holdout`: hidden confidence set; optimizer and prompt search must not read
-  it.
-
-An experiment or optimization manifest records the exact split selector used.
-Runner and harness requests must receive the resolved item set, not an
-unvalidated raw split expression.
-
-## Happy Path
-
-1. User opens AI Eval / Datasets or an annotation item.
+1. User opens AI Eval / Datasets or selects `Add to dataset` from trace detail
+   or trace overview.
 2. User creates or selects a dataset.
-3. User adds items by one of:
-   - promoting a trace/span;
-   - resolving an annotation item;
-   - manual entry;
-   - importing a batch through `Mutation.appendDatasetItems` with explicit
-     item payloads;
-   - importing JSONL, JSON array, CSV, or ZIP uploads through
-     `FLW-AIE-005`.
-4. Storage-write creates a new dataset version or appends to a mutable draft
-   version according to the dataset versioning contract.
-5. Storage-read computes dataset health: split counts, reviewed counts,
-   duplicate candidates, source trace coverage, leakage warnings, missing
-   expected values, and schema validation status.
-6. User reviews items, edits expected output, assigns split, and marks reviewed.
-7. Dataset becomes selectable for experiments when it has at least one reviewed
-   item in a permitted split.
+3. User adds rows through manual entry, trace import, candidate commit, or
+   import commit.
+4. Storage-write validates input/expected types, JSON schemas, curation status,
+   split, content treatment, and source refs.
+5. Storage-write creates item revisions and a dataset version.
+6. Storage-read computes health: curation counts, split counts, schema validity,
+   missing expected values, duplicate/leakage warnings, anonymization coverage,
+   trace extraction compatibility, and input-schema quality warnings.
+7. User edits rows, reasons, curation status, split, or metadata through
+   versioned mutations with `expectedDatasetVersion`.
+8. Dataset becomes selectable for evaluation when at least one row is `ready` in
+   the selected split.
 
-## Small-Dataset Mode
+## Split Rules
 
-When a dataset has fewer than 30 reviewed items:
+Splits are exactly `training`, `validation`, and `test`.
 
-- the UI labels confidence as low;
-- optimization may use `optimization` and `validation` only;
-- holdout remains hidden and cannot be optimizer input;
-- scorer calibration warns when fewer than 5 reviewed examples exist;
-- release gates must report the exact reviewed item count.
+- `training`: optimization input and candidate generation.
+- `validation`: candidate validation and normal development comparison.
+- `test`: final confidence only.
 
-Synthetic items may be added only when their metadata includes
-`sourceKind = "synthetic"`. Synthetic-only datasets cannot be marked production
-ready.
+Optimizers and prompt search must not read `test`.
 
-## Failure Paths
+## Failure Rules
 
-- Missing captured content: mutation requires explicit user-provided input or
-  expected output and returns `ERR-001` if absent.
-- Split leakage: storage-read marks dataset health warning; runner rejects
-  optimization manifests that include `holdout`.
-- Duplicate item: storage-read reports duplicate candidates; duplicate is a
-  warning, not an automatic rejection.
-- Import mapping error: import preview records row-level issues and commit
-  rejects invalid rows according to `FLW-AIE-005`.
-- Stale dataset version: mutation fails with `ERR-001`.
-- Unauthorized edit: mutation fails with `ERR-016`.
-
-## Signals
-
-Required logs:
-
-- dataset item created;
-- dataset item reviewed;
-- split changed;
-- dataset version finalized;
-- dataset health check failed.
-
-Logs must include `project_id`, `dataset_id`, and `dataset_version`, but not raw
-prompt, completion, tool parameter, or retrieved document content.
+- Stale dataset version rejects the mutation.
+- Invalid JSON or schema mismatch rejects the row mutation/import commit.
+- Missing expected value stores row as `needs_expected`, not `ready`.
+- Trace import without compatible extraction settings is not offered by the UI.
+- Duplicate rows are health warnings, not automatic rejection.
+- Content policy/anonymization failure rejects commit unless policy allows
+  redaction fallback.
 
 ## Verification
 
-Required tests:
-
-- trace promotion preserves source trace/span pointers;
-- missing content requires explicit user input;
-- every item has exactly one split;
-- holdout cannot be used for optimization;
-- small-dataset mode marks confidence low;
-- stale version update fails;
-- duplicate detection returns warning data from storage-read, not frontend code.
+- Every row has exactly one split.
+- Every ready row validates input and expected value.
+- Every behavior-affecting edit creates a new item revision and dataset version.
+- Historical evaluation runs keep rendering their original dataset version.
+- `test` rows cannot be selected for optimization candidate generation.

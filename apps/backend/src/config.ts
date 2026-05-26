@@ -2,10 +2,10 @@ import {
   type AuthRuntimeConfig,
   type CloudGridErrorId,
   type DeploymentMode,
-  type SelfObservabilityRuntimeConfig,
   parseBooleanFlag,
   parseDeploymentRuntimeConfig,
   parsePort,
+  type SelfObservabilityRuntimeConfig,
 } from "@cloudgrid/runtime";
 
 export interface RuntimeConfig {
@@ -16,16 +16,25 @@ export interface RuntimeConfig {
   port: number;
   natsUrl: string;
   requestTimeoutMs: number;
-  graphqlUI: boolean;
+  natsOperationFlushTimeoutMs: number;
+  healthCheckTimeoutMs: number;
+  serviceMaxInFlightRequests: number;
+  logStateChangeMinIntervalMs: number;
   graphqlMaxDepth: number;
   graphqlMaxComplexity: number;
   graphqlResponseMediaType: GraphQLResponseMediaType;
   frontendServeStatic: boolean;
   frontendStaticDir: string;
   datasetTransferDir: string;
+  aiChatHarnessMode: AiChatHarnessMode;
 }
 
 export type GraphQLResponseMediaType = "compatible" | "graphql-response-json";
+export type AiChatHarnessMode = "provider" | "mock" | "off";
+
+const defaultMessageBridgeRequestTimeoutMs = 12_000;
+const minMessageBridgeRequestTimeoutMs = 100;
+const maxMessageBridgeRequestTimeoutMs = 30_000;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
   const deployment = parseDeploymentRuntimeConfig(env);
@@ -36,8 +45,41 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     host: env.CLOUDGRID_BFF_HOST || "0.0.0.0",
     port: parsePort(env.CLOUDGRID_BFF_PORT, 3000),
     natsUrl: parseNatsUrl(env.CLOUDGRID_NATS_URL || "nats://localhost:4222"),
-    requestTimeoutMs: 2000,
-    graphqlUI: parseBooleanFlag(env.CLOUDGRID_GRAPHQL_UI, env.NODE_ENV !== "production"),
+    requestTimeoutMs: parseIntegerEnv(
+      env.CLOUDGRID_MESSAGE_BRIDGE_REQUEST_TIMEOUT_MS,
+      defaultMessageBridgeRequestTimeoutMs,
+      minMessageBridgeRequestTimeoutMs,
+      maxMessageBridgeRequestTimeoutMs,
+      "CLOUDGRID_MESSAGE_BRIDGE_REQUEST_TIMEOUT_MS",
+    ),
+    natsOperationFlushTimeoutMs: parseIntegerEnv(
+      env.CLOUDGRID_NATS_OPERATION_FLUSH_TIMEOUT_MS,
+      1000,
+      100,
+      5000,
+      "CLOUDGRID_NATS_OPERATION_FLUSH_TIMEOUT_MS",
+    ),
+    healthCheckTimeoutMs: parseIntegerEnv(
+      env.CLOUDGRID_HEALTH_CHECK_TIMEOUT_MS,
+      1000,
+      100,
+      5000,
+      "CLOUDGRID_HEALTH_CHECK_TIMEOUT_MS",
+    ),
+    serviceMaxInFlightRequests: parseIntegerEnv(
+      env.CLOUDGRID_SERVICE_MAX_IN_FLIGHT_REQUESTS,
+      1000,
+      1,
+      100_000,
+      "CLOUDGRID_SERVICE_MAX_IN_FLIGHT_REQUESTS",
+    ),
+    logStateChangeMinIntervalMs: parseIntegerEnv(
+      env.CLOUDGRID_LOG_STATE_CHANGE_MIN_INTERVAL_MS,
+      30_000,
+      1000,
+      300_000,
+      "CLOUDGRID_LOG_STATE_CHANGE_MIN_INTERVAL_MS",
+    ),
     graphqlMaxDepth: parseIntegerEnv(
       env.CLOUDGRID_GRAPHQL_MAX_DEPTH,
       12,
@@ -61,6 +103,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig 
     ),
     frontendStaticDir: env.CLOUDGRID_FRONTEND_STATIC_DIR || "./apps/backend/public",
     datasetTransferDir: env.CLOUDGRID_DATASET_TRANSFER_DIR || ".cloudgrid/dataset-transfer",
+    aiChatHarnessMode: parseAiChatHarnessMode(env.CLOUDGRID_AI_CHAT_HARNESS_MODE),
   };
 }
 
@@ -119,5 +162,15 @@ function parseGraphQLResponseMediaType(raw: string | undefined): GraphQLResponse
   }
   throw new Error(
     "ERR-009 CONFIG_INVALID: CLOUDGRID_GRAPHQL_RESPONSE_MEDIA_TYPE must be compatible or graphql-response-json",
+  );
+}
+
+function parseAiChatHarnessMode(raw: string | undefined): AiChatHarnessMode {
+  const value = raw?.trim() || "provider";
+  if (value === "provider" || value === "mock" || value === "off") {
+    return value;
+  }
+  throw new Error(
+    "ERR-009 CONFIG_INVALID: CLOUDGRID_AI_CHAT_HARNESS_MODE must be provider, mock, or off",
   );
 }

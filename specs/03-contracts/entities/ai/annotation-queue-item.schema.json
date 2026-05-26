@@ -14,7 +14,7 @@
     "status": { "type": "string", "enum": ["open", "in_review", "resolved", "dismissed"] },
     "createdAt": { "type": "string", "format": "date-time" },
     "resolvedDatasetItemId": { "type": "string" },
-    "scorerId": { "type": "string" },
+    "metricId": { "type": "string" },
     "score": { "type": "number" },
     "evidence": { "type": "object", "additionalProperties": true }
   }

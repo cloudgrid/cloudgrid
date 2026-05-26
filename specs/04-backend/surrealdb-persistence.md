@@ -45,6 +45,7 @@ Every telemetry record still stores `tenantId` and `projectId` as defense-in-dep
 - `service`
 - `ingest_command`
 - Optional AI evaluation tables when `CLOUDGRID_AI_EVAL_ENABLED=true`: `ai_agent_run`, `ai_llm_call`, `ai_tool_call`, `ai_retrieval_event`, `ai_dataset`, `ai_dataset_item`, `ai_scorer`, `ai_eval_result`, `ai_experiment`, `ai_experiment_run`, `ai_dataset_item_run`, `ai_prompt_version`, and `ai_annotation_queue_item`.
+- `ai_experiment_run` persists the resolved `runPolicy` object from the evaluation run policy contract so GraphQL `ExperimentRun.runPolicy`, storage-read responses, and runner responses stay field-aligned.
 
 `span_event` remains embedded in `span.events` for MVP.
 
@@ -59,6 +60,8 @@ Every telemetry record still stores `tenantId` and `projectId` as defense-in-dep
 - Service record: `service:<serviceNameSlug>`.
 - Ingest command record: `ingest_command:<commandId>`.
 
+Deterministic record IDs are the primary direct-reference mechanism for hot telemetry records. String IDs remain stored as fields for GraphQL contracts, filtering, notification payloads, and compound indexes. Do not add graph edge tables for trace-span, span-parent, span-log, service-span, or metric-service links on the ingest path unless an async materialization spec defines the extra write cost and query that consumes it.
+
 ## Trace Record
 
 ```ts
@@ -67,18 +70,26 @@ Every telemetry record still stores `tenantId` and `projectId` as defense-in-dep
   projectId: string
   traceId: string
   serviceName?: string
+  operationName?: string
   startedAt: Date
   endedAt?: Date
   durationMs?: number
   rootSpanId?: string
   status?: "ok" | "error" | "unset"
   attributes: Record<string, unknown>
+  searchText?: string
   spanCount: number
   errorSpanCount: number
   logCount: number
   serviceCount: number
 }
 ```
+
+`operationName` is the root span name captured at write time. Trace-list and live-candidate reads must project this field directly from `trace`; they must not perform per-row span lookups to derive it.
+
+Trace summary counters are denormalized on `trace`. Trace-list and live-candidate reads must project `spanCount`, `errorSpanCount`, `logCount`, and `serviceCount` directly from `trace`. Log-only ingest that refreshes an existing trace's `logCount` must target `trace:<traceId>` by deterministic record ID and may use the indexed `log_event(tenantId, companyId, projectId, traceId, timestamp)` lookup to recompute the count.
+
+`searchText` is a storage-owned full-text projection for route-primary trace and live-trace search. Storage-write populates it from trace identifiers, primary service, operation/root span data, trace status, trace attributes, span names, and span attributes. Public read contracts do not expose it.
 
 ## Span Record
 
@@ -119,8 +130,11 @@ Every telemetry record still stores `tenantId` and `projectId` as defense-in-dep
   timestamp: Date
   observedTimestamp?: Date
   attributes: Record<string, unknown>
+  searchText?: string
 }
 ```
+
+`searchText` is a storage-owned full-text projection for log search. Storage-write populates it from log ID, trace/span correlation IDs, service, severity, body, and attributes. Public read contracts do not expose it.
 
 ## Metric Descriptor Record
 
@@ -135,10 +149,15 @@ Every telemetry record still stores `tenantId` and `projectId` as defense-in-dep
   aggregationTemporality?: "unspecified" | "delta" | "cumulative"
   monotonic?: boolean
   attributeKeys: string[]
+  searchText?: string
   firstSeenAt: Date
   lastSeenAt: Date
 }
 ```
+
+`searchText` is a storage-owned full-text projection for metric-name search. Storage-write populates it from metric name, unit, kind, description, and attribute keys. Public read contracts do not expose it.
+
+Metric descriptor writes are monotonic for query-critical metadata. Storage-write must enrich a descriptor with the filtered metric point attribute keys observed for the same metric in the same command. When storage-write receives another descriptor for an existing metric name, it must keep the union of previously observed and newly observed `attributeKeys`, preserve the earliest `firstSeenAt`, and advance `lastSeenAt` to the latest observed value. This prevents later narrower OTLP batches from removing group-by keys that are still valid for persisted metric points.
 
 ## Metric Point Record
 
@@ -185,28 +204,38 @@ Every telemetry record still stores `tenantId` and `projectId` as defense-in-dep
 - `ingest_command.commandId` unique.
 - `ingest_command.completedAt`.
 - `trace.startedAt`.
+- `trace.tenantId, trace.companyId, trace.projectId, trace.startedAt`.
+- `trace.tenantId, trace.companyId, trace.projectId, trace.traceId`.
+- `trace.tenantId, trace.companyId, trace.projectId, trace.serviceName, trace.startedAt`.
+- `trace.tenantId, trace.companyId, trace.projectId, trace.status, trace.startedAt`.
 - `trace.serviceName`.
-- `trace.serviceName, trace.startedAt`.
 - `trace.status`.
-- `trace.status, trace.startedAt`.
 - `span.traceId`.
 - `span.parentSpanId`.
-- `span.traceId, parentSpanId`.
+- `span.tenantId, span.companyId, span.projectId, span.traceId, span.parentSpanId, span.startedAt`.
+- `span.tenantId, span.companyId, span.projectId, span.serviceName, span.traceId`.
 - `span.serviceName`.
 - `span.name`.
 - `span.status`.
 - `log_event.timestamp`.
+- `log_event.tenantId, log_event.companyId, log_event.projectId, log_event.timestamp`.
 - `log_event.serviceName`.
 - `log_event.serviceName, timestamp`.
 - `log_event.traceId`.
 - `log_event.traceId, timestamp`.
+- `log_event.tenantId, log_event.companyId, log_event.projectId, log_event.serviceName, log_event.timestamp`.
+- `log_event.tenantId, log_event.companyId, log_event.projectId, log_event.traceId, log_event.timestamp`.
 - `log_event.spanId`.
 - `log_event.severityText`.
 - `metric_descriptor.metricName`.
 - `metric_descriptor.lastSeenAt`.
+- `metric_descriptor.tenantId, metric_descriptor.companyId, metric_descriptor.projectId, metric_descriptor.lastSeenAt`.
+- `metric_descriptor.tenantId, metric_descriptor.companyId, metric_descriptor.projectId, metric_descriptor.metricName`.
 - `metric_point.metricName`.
 - `metric_point.metricName, timestamp`.
+- `metric_point.tenantId, metric_point.companyId, metric_point.projectId, metric_point.metricName, metric_point.timestamp`.
 - `metric_point.serviceName, timestamp`.
+- `metric_point.tenantId, metric_point.companyId, metric_point.projectId, metric_point.serviceName, metric_point.timestamp`.
 - `metric_point.timestamp`.
 - `metric_ingest_cardinality.metricName, windowStart`.
 

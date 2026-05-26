@@ -1,26 +1,30 @@
 #!/usr/bin/env bun
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { integrationScenarios } from "../../apps/packages/integration-scenarios/src/index.ts";
+import {
+  integrationScenarios,
+  runAiEvalV2FakeAdapterScenario,
+} from "../../apps/packages/integration-scenarios/src/index.ts";
 import {
   agentRunOperation,
   agentRunsOperation,
-  aiQualityOverviewOperation,
   alertHistoryOperation,
   alertRulesOperation,
   alertSilencesOperation,
-  annotationQueueOperation,
   appendDatasetItemsOperation,
+  aiChatHistoryOperation,
   commitDatasetImportOperation,
+  companyAiProviderSettingsOperation,
   createAlertRuleOperation,
   createAlertSilenceOperation,
+  createAiChatConversationOperation,
   createDatasetOperation,
-  createExperimentOperation,
+  createEvaluationComparisonOperation,
+  createEvaluationDefinitionOperation,
   createIngestCredentialOperation,
   createProjectOperation,
-  createScorerOperation,
   dashboardsOperation,
   datasetExportOperation,
   datasetOperation,
@@ -28,15 +32,15 @@ import {
   deleteAlertRuleOperation,
   deleteAlertSilenceOperation,
   deleteDashboardOperation,
-  experimentRunOperation,
-  experimentsOperation,
+  evaluationResultsOperation,
+  evaluationRunOperation,
   ingestCredentialsOperation,
   inviteOrganizationMemberOperation,
-  liveExperimentRunSubscriptionOperation,
   liveTraceSubscriptionOperation,
   logSearchOperation,
   metricNamesOperation,
   metricSeriesOperation,
+  optimizationRunsOperation,
   organizationInvitationsOperation,
   organizationMembersOperation,
   organizationOperation,
@@ -54,21 +58,22 @@ import {
   revokeOrganizationInvitationOperation,
   richMetricSeriesOperation,
   saveDashboardOperation,
-  scorersOperation,
   selectProjectOperation,
   setDashboardPinnedOperation,
   startDatasetExportOperation,
-  startExperimentRunOperation,
+  startEvaluationRunOperation,
+  startOptimizationRunOperation,
   telemetryFacetsOperation,
   traceDetailOperation,
   traceSearchOperation,
   updateAlertRuleOperation,
+  updateCompanyAiProviderSettingsOperation,
   updateOrganizationMemberOperation,
   updateProjectAiSettingsOperation,
   updateProjectMemberOperation,
   updateRetentionPolicyOperation,
   viewerOperation,
-} from "../../apps/packages/public-api-client/src/index.ts";
+} from "../../apps/packages/public-api-client/src/operations.ts";
 import { buildFixtureRequests, createSeedRunContext, postFixture } from "./seed-otlp-fixtures.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -296,6 +301,7 @@ async function main(args = process.argv.slice(2)) {
   const surrealDatabase = externalInfra ? baseEnv.CLOUDGRID_SURREALDB_DATABASE || "dev" : "control";
   const surrealUsername = baseEnv.CLOUDGRID_SURREALDB_USERNAME || "root";
   const surrealPassword = baseEnv.CLOUDGRID_SURREALDB_PASSWORD || "root";
+  const fixtureBearerToken = integrationFixtureBearerToken(baseEnv);
   const datasetTransferDir = resolve(
     repoRoot,
     ".cloudgrid",
@@ -303,6 +309,8 @@ async function main(args = process.argv.slice(2)) {
     runID,
     "dataset-transfer",
   );
+  const integrationRunDir = resolve(repoRoot, ".cloudgrid", "integration", runID);
+  const natsConfigPath = join(integrationRunDir, "nats.conf");
 
   const plan = [
     `Mode: ${externalInfra ? "external infrastructure" : "isolated Docker infrastructure"}`,
@@ -341,6 +349,19 @@ async function main(args = process.argv.slice(2)) {
   try {
     if (!externalInfra) {
       console.log("Starting isolated Docker infrastructure...");
+      mkdirSync(integrationRunDir, { recursive: true });
+      writeFileSync(
+        natsConfigPath,
+        [
+          "jetstream {",
+          '  store_dir: "/tmp/nats/jetstream"',
+          "}",
+          "",
+          "http_port: 8222",
+          `max_payload: ${baseEnv.CLOUDGRID_NATS_MAX_PAYLOAD || "8388608"}`,
+          "",
+        ].join("\n"),
+      );
       containers.push(
         await startDockerContainer({
           name: `cloudgrid-${runID}-nats`,
@@ -349,7 +370,8 @@ async function main(args = process.argv.slice(2)) {
             [natsPort, 4222],
             [natsMonitorPort, 8222],
           ],
-          args: ["-js", "-m", "8222"],
+          volumes: [[natsConfigPath, "/etc/nats/nats.conf", "ro"]],
+          args: ["-c", "/etc/nats/nats.conf"],
         }),
       );
       await waitForHttp(`http://127.0.0.1:${natsMonitorPort}/healthz`, 20_000);
@@ -390,9 +412,9 @@ async function main(args = process.argv.slice(2)) {
       CLOUDGRID_AI_EVAL_HARNESS_URL: aiEvalHarnessURL,
       CLOUDGRID_BFF_HOST: "127.0.0.1",
       CLOUDGRID_BFF_PORT: String(bffPort),
-      CLOUDGRID_GRAPHQL_UI: "false",
-      CLOUDGRID_OTLP_HOST: "127.0.0.1",
-      CLOUDGRID_OTLP_PORT: String(otlpPort),
+      CLOUDGRID_AI_CHAT_HARNESS_MODE: "mock",
+      CLOUDGRID_LOG_LEVEL: "debug",
+      CLOUDGRID_SELF_OBSERVABILITY_ENABLED: "false",
       CLOUDGRID_OTLP_HTTP_ADDR: `127.0.0.1:${otlpPort}`,
       CLOUDGRID_OTLP_GRPC_ADDR: `127.0.0.1:${otlpGrpcPort}`,
       CLOUDGRID_DATASET_TRANSFER_DIR: datasetTransferDir,
@@ -454,7 +476,7 @@ async function main(args = process.argv.slice(2)) {
         ...serviceEnv,
       }),
     );
-    await processes.at(-1).waitForLog("startup_ready", 20_000);
+    await waitForHttp(`http://127.0.0.1:${otlpPort}/readyz`, 20_000);
 
     console.log("Asserting public health endpoints...");
     await assertJsonStatus(`http://127.0.0.1:${bffPort}/livez`, "ok");
@@ -463,6 +485,7 @@ async function main(args = process.argv.slice(2)) {
     await assertJsonStatus(`http://127.0.0.1:${storageWriteHealthPort}/readyz`, "ok");
     await assertJsonStatus(`http://127.0.0.1:${storageReadHealthPort}/readyz`, "ok");
     await assertJsonStatus(`http://127.0.0.1:${controlPlaneHealthPort}/readyz`, "ok");
+    await assertJsonStatus(`http://127.0.0.1:${otlpPort}/readyz`, "ok");
 
     console.log("Asserting public GraphQL control-plane path...");
     const viewer = await graphql(bffPort, viewerOperation, {}, "Viewer");
@@ -488,6 +511,7 @@ async function main(args = process.argv.slice(2)) {
 
     await assertAdminGraphQLScenario(bffPort, organizationId, runID);
     await assertProjectSettingsScenario(bffPort, "default");
+    await assertAiChatScenario(bffPort, organizationId, "default", runID);
     await assertAlertingScenario(bffPort, "default", runMetricFixture.metricName);
 
     console.log("Asserting shared frontend dashboard operations...");
@@ -674,10 +698,10 @@ async function main(args = process.argv.slice(2)) {
     const liveTraceSubscription = await openLiveTraceSubscription(bffPort, runTraceFixture);
 
     console.log("Posting OTLP JSON and protobuf fixtures...");
-    await postTraceJson(otlpPort, runTraceFixture);
-    await postLogProtobuf(otlpPort);
-    await postMetricJson(otlpPort, runMetricFixture);
-    await postGeneratedFixtures(otlpPort);
+    await postTraceJson(otlpPort, runTraceFixture, fixtureBearerToken);
+    await postLogProtobuf(otlpPort, fixtureBearerToken);
+    await postMetricJson(otlpPort, runMetricFixture, fixtureBearerToken);
+    await postGeneratedFixtures(otlpPort, fixtureBearerToken);
 
     console.log("Asserting GraphQL live trace delivery...");
     await liveTraceSubscription.waitForTrace(runTraceFixture.traceIdHex, 20_000);
@@ -806,37 +830,61 @@ async function main(args = process.argv.slice(2)) {
       "DeleteDashboard did not delete saved dashboard",
     );
 
-    await assertAiEvalScenario(bffPort, natsUrl, runID, runTraceFixture);
+    await assertAiEvalScenario(bffPort, natsUrl, runID, runTraceFixture, aiEvalHarnessURL);
 
     console.log("Asserting collector failure mappings...");
-    await assertCollectorProblem(otlpPort, {
-      path: "/v1/traces",
-      body: "{}",
-      contentType: "text/plain",
-      status: 415,
-      id: "ERR-002",
-      code: "UNSUPPORTED_MEDIA_TYPE",
-    });
-    await assertCollectorProblem(otlpPort, {
-      path: "/v1/logs",
-      body: "{",
-      contentType: "application/json",
-      status: 400,
-      id: "ERR-008",
-      code: "OTLP_DECODE_FAILED",
-    });
-    await assertCollectorProblem(otlpPort, {
-      path: "/v1/logs",
-      body: Buffer.from([0xff]),
-      contentType: "application/x-protobuf",
-      status: 400,
-      id: "ERR-008",
-      code: "OTLP_DECODE_FAILED",
-    });
+    await assertCollectorProblem(
+      otlpPort,
+      {
+        path: "/v1/traces",
+        body: "{}",
+        contentType: "text/plain",
+        status: 415,
+        id: "ERR-002",
+        code: "UNSUPPORTED_MEDIA_TYPE",
+      },
+      fixtureBearerToken,
+    );
+    await assertCollectorProblem(
+      otlpPort,
+      {
+        path: "/v1/logs",
+        body: "{",
+        contentType: "application/json",
+        status: 400,
+        id: "ERR-008",
+        code: "OTLP_DECODE_FAILED",
+      },
+      fixtureBearerToken,
+    );
+    await assertCollectorProblem(
+      otlpPort,
+      {
+        path: "/v1/logs",
+        body: Buffer.from([0xff]),
+        contentType: "application/x-protobuf",
+        status: 400,
+        id: "ERR-008",
+        code: "OTLP_DECODE_FAILED",
+      },
+      fixtureBearerToken,
+    );
     await assertCollectorNatsStartupFailure(serviceEnv, await freePort());
 
     console.log("Asserting duplicate JetStream command handling...");
     await assertDuplicateCommandDoesNotRewrite(natsUrl, bffPort);
+
+    if (baseEnv.CLOUDGRID_ENABLE_RESILIENCE_CHAOS_TESTS === "true") {
+      await assertResilienceChaosScenarios({
+        bffPort,
+        natsUrl,
+        natsContainerName: externalInfra ? "" : `cloudgrid-${runID}-nats`,
+        storageWriteHealthPort,
+        storageReadHealthPort,
+        controlPlaneHealthPort,
+        otlpPort,
+      });
+    }
 
     console.log("Local integration checks passed.");
     console.log(
@@ -891,13 +939,17 @@ function startProcess(name, cmd, env) {
   };
 }
 
-async function startDockerContainer({ name, image, ports, args }) {
+async function startDockerContainer({ name, image, ports, args, volumes = [] }) {
   const portArgs = ports.flatMap(([hostPort, containerPort]) => [
     "-p",
     `127.0.0.1:${hostPort}:${containerPort}`,
   ]);
+  const volumeArgs = volumes.flatMap(([hostPath, containerPath, mode]) => [
+    "-v",
+    `${hostPath}:${containerPath}${mode ? `:${mode}` : ""}`,
+  ]);
   const proc = Bun.spawn({
-    cmd: ["docker", "run", "--rm", "--name", name, ...portArgs, image, ...args],
+    cmd: ["docker", "run", "--rm", "--name", name, ...portArgs, ...volumeArgs, image, ...args],
     cwd: repoRoot,
     stdout: "pipe",
     stderr: "pipe",
@@ -989,13 +1041,51 @@ async function collect(stream, name, lines) {
   }
 }
 
-async function postTraceJson(port, fixture) {
+export function integrationFixtureBearerToken(env) {
+  const explicit =
+    stringsTrim(env.CLOUDGRID_PROJECT_API_KEY) || stringsTrim(env.CLOUDGRID_OTLP_BEARER_TOKEN);
+  if (explicit) {
+    return explicit;
+  }
+  const tokenMapSource = stringsTrim(env.CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS);
+  if (!tokenMapSource) {
+    return "";
+  }
+  let tokenMap;
+  try {
+    tokenMap = JSON.parse(tokenMapSource);
+  } catch {
+    throw new Error("CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS must be valid JSON for integration");
+  }
+  for (const [token, projectId] of Object.entries(tokenMap)) {
+    if (projectId === "default" && stringsTrim(token)) {
+      return stringsTrim(token);
+    }
+  }
+  throw new Error(
+    "CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS is configured but no token is mapped to default",
+  );
+}
+
+function stringsTrim(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function otlpHeaders(contentType, requestId, bearerToken) {
+  const headers = {
+    "content-type": contentType,
+    "x-request-id": requestId,
+  };
+  if (bearerToken) {
+    headers.authorization = `Bearer ${bearerToken}`;
+  }
+  return headers;
+}
+
+async function postTraceJson(port, fixture, bearerToken) {
   const response = await fetch(`http://127.0.0.1:${port}/v1/traces`, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-request-id": "integration-trace-json",
-    },
+    headers: otlpHeaders("application/json", "integration-trace-json", bearerToken),
     body: JSON.stringify(buildTraceJsonFixture(fixture)),
   });
   assert(
@@ -1004,13 +1094,10 @@ async function postTraceJson(port, fixture) {
   );
 }
 
-async function postLogProtobuf(port) {
+async function postLogProtobuf(port, bearerToken) {
   const response = await fetch(`http://127.0.0.1:${port}/v1/logs`, {
     method: "POST",
-    headers: {
-      "content-type": "application/x-protobuf",
-      "x-request-id": "integration-log-protobuf",
-    },
+    headers: otlpHeaders("application/x-protobuf", "integration-log-protobuf", bearerToken),
     body: protobufLogFixture,
   });
   assert(
@@ -1019,13 +1106,10 @@ async function postLogProtobuf(port) {
   );
 }
 
-async function postMetricJson(port, fixture) {
+async function postMetricJson(port, fixture, bearerToken) {
   const response = await fetch(`http://127.0.0.1:${port}/v1/metrics`, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-request-id": "integration-metric-json",
-    },
+    headers: otlpHeaders("application/json", "integration-metric-json", bearerToken),
     body: JSON.stringify(buildMetricJsonFixture(fixture)),
   });
   assert(
@@ -1034,18 +1118,50 @@ async function postMetricJson(port, fixture) {
   );
 }
 
-async function postGeneratedFixtures(port) {
-  const requests = buildFixtureRequests({
-    endpoint: `http://127.0.0.1:${port}`,
-    fixtureSet: "generated",
-    format: "json",
-    signal: "all",
-    seedContext: createSeedRunContext(),
-    token: null,
-  });
+async function postGeneratedFixtures(port, bearerToken) {
+  const requests = buildGeneratedIntegrationFixtureRequests(
+    `http://127.0.0.1:${port}`,
+    bearerToken,
+    { ...createSeedRunContext(), pointCount: 3 },
+  );
   for (const request of requests) {
     await postFixture(request);
   }
+}
+
+export function buildGeneratedIntegrationFixtureRequests(endpoint, bearerToken, seedContext) {
+  return ["metrics", "logs", "traces"].flatMap((signal) =>
+    buildFixtureRequests({
+      endpoint,
+      fixtureSet: "generated",
+      format: "json",
+      signal,
+      seedContext,
+      token: bearerToken || null,
+    }),
+  );
+}
+
+async function assertBuiltinDashboardMetricDescriptors(port, from, to) {
+  const required = ["http.server.request.duration", "gen_ai.client.token.usage"];
+  await eventually(async () => {
+    const metricNames = await graphql(
+      port,
+      metricNamesOperation,
+      {
+        input: {
+          from,
+          to,
+          limit: 200,
+        },
+      },
+      "MetricNames",
+    );
+    const names = new Set(metricNames.data?.metricNames?.items?.map((item) => item.name) ?? []);
+    for (const metricName of required) {
+      assert(names.has(metricName), `generated fixture metric descriptor ${metricName} is missing`);
+    }
+  }, 30_000);
 }
 
 export function dashboardWidgetRuntimeRequests(dashboard, range) {
@@ -1169,6 +1285,7 @@ async function assertDashboardWidgetRuntimeScenario(
   port,
   { dashboardId, dashboardName, from, to },
 ) {
+  await assertBuiltinDashboardMetricDescriptors(port, from, to);
   const dashboards = await graphql(
     port,
     dashboardsOperation,
@@ -1415,6 +1532,130 @@ async function assertProjectSettingsScenario(port, projectId) {
   );
 }
 
+async function assertAiChatScenario(port, organizationId, projectId, runID) {
+  console.log("Asserting public GraphQL AI Chat workflow with mocked provider...");
+  const currentSettings = await graphql(
+    port,
+    companyAiProviderSettingsOperation,
+    { companyId: organizationId },
+    "CompanyAiProviderSettings",
+  );
+  const version = currentSettings.data?.companyAiProviderSettings?.version;
+  assert(Number.isInteger(version), "CompanyAiProviderSettings did not return a version");
+
+  const providerId = `provider-${runID}`;
+  const settings = await graphql(
+    port,
+    updateCompanyAiProviderSettingsOperation,
+    {
+      input: {
+        companyId: organizationId,
+        expectedVersion: version,
+        providerProfile: {
+          id: providerId,
+          label: "Integration mock provider",
+          providerKind: "openai",
+          baseUrl: null,
+          credentialValue: `integration-secret-${runID}`,
+          models: { chat: ["mock-chat-model"] },
+          parameters: {},
+          timeoutMs: 30_000,
+          maxConcurrency: null,
+          disabled: false,
+        },
+        chatModelAlias: {
+          id: `chat-${providerId}`,
+          name: "chat-default",
+          providerProfileId: providerId,
+          model: "mock-chat-model",
+          purpose: "chat",
+          parameters: { extras: {} },
+        },
+      },
+    },
+    "UpdateCompanyAiProviderSettings",
+  );
+  assert(
+    settings.data?.updateCompanyAiProviderSettings?.effective?.missingChatProvider === false,
+    "UpdateCompanyAiProviderSettings did not enable AI Chat",
+  );
+  assert(
+    settings.data.updateCompanyAiProviderSettings.providerProfile?.credentialRef?.startsWith(
+      "managed:",
+    ),
+    "UpdateCompanyAiProviderSettings did not return a managed credential ref",
+  );
+
+  const firstUserMessage = `Investigate mocked provider ${runID}`;
+  const created = await graphql(
+    port,
+    createAiChatConversationOperation,
+    {
+      input: {
+        companyId: organizationId,
+        projectId,
+        title: null,
+        firstUserMessage,
+      },
+    },
+    "CreateAiChatConversation",
+  );
+  const conversation = created.data?.createAiChatConversation;
+  assert(conversation?.id, "CreateAiChatConversation did not return a conversation id");
+  assert(
+    conversation.messages?.some((message) =>
+      message.parts?.some((part) => part.type === "text" && part.text === firstUserMessage),
+    ),
+    "CreateAiChatConversation did not persist the first user message",
+  );
+
+  const streamEvents = await streamAiChatRun(port, {
+    conversationId: conversation.id,
+    projectId,
+    userMessageClientId: `client-${runID}`,
+    idempotencyKey: `idempotency-${runID}-${randomHex(8)}`,
+    parts: [{ type: "text", text: "Summarize the current project state" }],
+    timezone: "UTC",
+  });
+  assert(
+    streamEvents.some((event) => event.type === "run.started"),
+    "AI Chat stream did not emit run.started",
+  );
+  assert(
+    streamEvents.some((event) => event.type === "text.delta"),
+    "AI Chat stream did not emit text.delta",
+  );
+  assert(
+    streamEvents.at(-1)?.type === "run.completed",
+    `AI Chat stream terminal event was ${streamEvents.at(-1)?.type}`,
+  );
+  assert(
+    !JSON.stringify(streamEvents).includes("integration-secret"),
+    "AI Chat stream leaked credential material",
+  );
+
+  const history = await graphql(
+    port,
+    aiChatHistoryOperation,
+    {
+      input: {
+        companyId: organizationId,
+        projectId,
+        includeArchived: false,
+        first: 10,
+        after: null,
+      },
+    },
+    "AiChatHistory",
+  );
+  assert(
+    history.data?.aiChatHistory?.projectGroups?.some((group) =>
+      group.conversations?.some((item) => item.id === conversation.id),
+    ),
+    "AiChatHistory did not return the streamed conversation",
+  );
+}
+
 function retentionRuleInput(rule) {
   const input = {
     dataClass: rule.dataClass,
@@ -1537,66 +1778,38 @@ async function assertAlertingScenario(port, projectId, metricName) {
   assert(deletedRule.data?.deleteAlertRule === true, "DeleteAlertRule did not delete");
 }
 
-async function assertAiEvalScenario(port, natsUrl, runID, traceFixture) {
+async function assertAiEvalScenario(port, natsUrl, runID, traceFixture, aiEvalHarnessURL) {
   console.log("Asserting public GraphQL AI Eval workspace workflows...");
-  const datasetResult = await graphql(
-    port,
-    createDatasetOperation,
-    {
-      input: {
-        name: `Integration dataset ${runID}`,
-        description: "Dataset created by the local integration runner",
-        tags: ["integration", runID],
+  const scenarioResult = await runAiEvalV2FakeAdapterScenario({
+    projectId: "default",
+    runId: runID,
+    graphql: {
+      async request(operationName, variables) {
+        const response = await graphql(
+          port,
+          aiEvalOperation(operationName),
+          variables,
+          operationName,
+        );
+        return response.data ?? {};
       },
     },
-    "CreateDataset",
-  );
-  const dataset = datasetResult.data?.createDataset;
-  assert(dataset?.id, "CreateDataset did not return a dataset id");
-
-  const scorerResult = await graphql(
-    port,
-    createScorerOperation,
-    {
-      input: {
-        name: `Integration deterministic scorer ${runID}`,
-        kind: "deterministic",
-        definition: { type: "contains", field: "answer", expected: "ok" },
-      },
+    async readHarnessCapturedRequests() {
+      const response = await fetch(`${aiEvalHarnessURL}/debug/captured-requests`);
+      if (!response.ok) {
+        return [];
+      }
+      const body = await response.json();
+      return Array.isArray(body.requests) ? body.requests : [];
     },
-    "CreateScorer",
-  );
-  const scorer = scorerResult.data?.createScorer;
-  assert(scorer?.id, "CreateScorer did not return a scorer id");
-
-  const experimentResult = await graphql(
-    port,
-    createExperimentOperation,
-    {
-      input: {
-        name: `Integration experiment ${runID}`,
-        datasetId: dataset.id,
-        datasetVersion: dataset.version,
-        scorerIds: [scorer.id],
-        solverRef: { kind: "integration", command: "cloudgrid-e2e" },
-        tags: ["integration"],
-      },
-    },
-    "CreateExperiment",
-  );
-  const experiment = experimentResult.data?.createExperiment;
-  assert(experiment?.id, "CreateExperiment did not return an experiment id");
-
-  const experimentRun = await graphql(
-    port,
-    startExperimentRunOperation,
-    { input: { experimentId: experiment.id } },
-    "StartExperimentRun",
-  );
+  });
+  assert(scenarioResult.datasetId, "CreateDataset did not return a dataset id");
   assert(
-    experimentRun.data?.startExperimentRun?.experimentId === experiment.id,
-    "StartExperimentRun did not return a run for the created experiment",
+    scenarioResult.evaluationRunId,
+    "StartEvaluationRun did not return a run for the created evaluation",
   );
+
+  const dataset = { id: scenarioResult.datasetId };
 
   const upload = await uploadDatasetImport(port, dataset.id, runID);
   const preparedImport = await graphql(
@@ -1614,12 +1827,12 @@ async function assertAiEvalScenario(port, natsUrl, runID, traceFixture) {
         },
         defaults: {
           split: "validation",
-          reviewStatus: "reviewed",
+          curationStatus: "ready",
           metadata: { source: "integration-local" },
-          synthetic: false,
           allowPartialCommit: false,
         },
         previewLimit: 10,
+        idempotencyKey: `dataset-import-prepare-${runID}`,
       },
     },
     "PrepareDatasetImport",
@@ -1634,8 +1847,9 @@ async function assertAiEvalScenario(port, natsUrl, runID, traceFixture) {
     {
       input: {
         importId: importJob.id,
-        expectedDatasetVersion: 1,
+        expectedDatasetVersionId: scenarioResult.datasetVersionId,
         mode: "valid_rows_only",
+        idempotencyKey: `dataset-import-commit-${runID}`,
       },
     },
     "CommitDatasetImport",
@@ -1651,15 +1865,19 @@ async function assertAiEvalScenario(port, natsUrl, runID, traceFixture) {
     {
       input: {
         datasetId: dataset.id,
+        expectedDatasetVersionId:
+          committedImport.data.commitDatasetImport.committedDatasetVersionId ??
+          scenarioResult.datasetVersionId,
         items: [
           {
             input: { prompt: `manual integration row ${runID}` },
             expected: { answer: "ok" },
             metadata: { source: "integration-local", mode: "manual-append" },
             split: "validation",
-            reviewStatus: "reviewed",
+            curationStatus: "ready",
           },
         ],
+        idempotencyKey: `dataset-import-followup-append-${runID}`,
       },
     },
     "AppendDatasetItems",
@@ -1718,72 +1936,17 @@ async function assertAiEvalScenario(port, natsUrl, runID, traceFixture) {
     "Dataset.items did not return committed import rows",
   );
 
-  const scorers = await graphql(
-    port,
-    scorersOperation,
-    { input: { query: "Integration deterministic", limit: 10 } },
-    "Scorers",
-  );
-  assert(
-    scorers.data?.scorers?.items?.some((item) => item.id === scorer.id),
-    "Scorers did not return the created scorer",
-  );
-
-  const experiments = await graphql(
-    port,
-    experimentsOperation,
-    { input: { datasetId: dataset.id, limit: 10 } },
-    "Experiments",
-  );
-  assert(
-    experiments.data?.experiments?.items?.some((item) => item.id === experiment.id),
-    "Experiments did not return the created experiment",
-  );
-
-  const missingExperimentRun = await graphql(
-    port,
-    experimentRunOperation,
-    { id: `experiment-run-${runID}` },
-    "ExperimentRun",
-  );
-  assert(
-    missingExperimentRun.data?.experimentRun === null,
-    "ExperimentRun should be nullable for a missing run",
-  );
-
-  const annotationQueue = await graphql(
-    port,
-    annotationQueueOperation,
-    { input: { status: "open", limit: 10 } },
-    "AnnotationQueue",
-  );
-  assert(
-    Array.isArray(annotationQueue.data?.annotationQueue?.items),
-    "AnnotationQueue did not return a search result",
-  );
-
-  const quality = await graphql(
-    port,
-    aiQualityOverviewOperation,
-    {
-      input: {
-        projectId: "default",
-        agentName: "checkout-agent",
-        service: traceFixture.serviceName,
-        limit: 10,
-      },
-    },
-    "AiQualityOverview",
-  );
-  assert(
-    quality.data?.aiQualityOverview?.segments?.some((segment) => segment.runCount >= 1),
-    "AiQualityOverview did not aggregate the persisted AI projection",
-  );
-
   const exportJob = await graphql(
     port,
     startDatasetExportOperation,
-    { input: { datasetId: dataset.id, format: "jsonl", includeMetadata: true } },
+    {
+      input: {
+        datasetId: dataset.id,
+        format: "jsonl",
+        includeMetadata: true,
+        idempotencyKey: `dataset-export-${runID}`,
+      },
+    },
     "StartDatasetExport",
   );
   assert(
@@ -1801,10 +1964,25 @@ async function assertAiEvalScenario(port, natsUrl, runID, traceFixture) {
     exportLookup.data?.datasetExport?.id === exportJob.data.startDatasetExport.id,
     "DatasetExport did not return the ready export",
   );
+}
 
-  const liveExperiment = await openLiveExperimentRunSubscription(port, `experiment-run-${runID}`);
-  await liveExperiment.waitForHeartbeat(10_000);
-  await liveExperiment.close();
+function aiEvalOperation(operationName) {
+  const operations = {
+    CreateDataset: createDatasetOperation,
+    AppendDatasetItems: appendDatasetItemsOperation,
+    CreateEvaluationDefinition: createEvaluationDefinitionOperation,
+    StartEvaluationRun: startEvaluationRunOperation,
+    EvaluationRun: evaluationRunOperation,
+    EvaluationResults: evaluationResultsOperation,
+    CreateEvaluationComparison: createEvaluationComparisonOperation,
+    StartOptimizationRun: startOptimizationRunOperation,
+    OptimizationRuns: optimizationRunsOperation,
+  };
+  const operation = operations[operationName];
+  if (!operation) {
+    throw new Error(`Unsupported AI Eval v2 integration operation ${operationName}`);
+  }
+  return operation;
 }
 
 function projectAiSettingsUpdateInput(settings) {
@@ -1847,19 +2025,17 @@ function projectAiSettingsUpdateInput(settings) {
     sampling: {
       defaultOnlineSampleRate: 0,
       maxOnlineSampleRate: 1,
-      maxConcurrentExperimentItems: 4,
+      maxConcurrentEvaluationItems: 4,
       maxConcurrentOptimizationCandidates: 2,
     },
     datasetDefaults: {
       splitAllocation: settings.datasetDefaults?.splitAllocation ?? {
-        dev: 0.2,
-        optimization: 0.4,
+        training: 0.7,
         validation: 0.2,
-        regression: 0.15,
-        holdout: 0.05,
+        test: 0.1,
       },
-      smallDatasetReviewedThreshold: settings.datasetDefaults?.smallDatasetReviewedThreshold ?? 30,
-      requireReviewForRegression: settings.datasetDefaults?.requireReviewForRegression ?? true,
+      smallDatasetReadyThreshold: settings.datasetDefaults?.smallDatasetReadyThreshold ?? 30,
+      requireReadyForTest: settings.datasetDefaults?.requireReadyForTest ?? true,
     },
     expectedVersion: settings.version,
   };
@@ -1988,75 +2164,6 @@ function describeError(error) {
   }
 }
 
-async function openLiveExperimentRunSubscription(port, experimentRunId) {
-  if (!globalThis.WebSocket) {
-    throw new Error("Bun WebSocket client is required for live experiment integration checks");
-  }
-  const messages = [];
-  let completed = false;
-  const operationId = `live-experiment-${Date.now()}`;
-  const socket = new globalThis.WebSocket(`ws://127.0.0.1:${port}/graphql`, "graphql-transport-ws");
-
-  socket.addEventListener("message", (message) => {
-    const parsed = parseSocketMessage(message.data);
-    if (parsed) {
-      messages.push(parsed);
-    }
-  });
-  socket.addEventListener("error", () => {
-    messages.push({ type: "error", payload: "WebSocket client error" });
-  });
-
-  await waitForSocketOpen(socket, 10_000);
-  socket.send(JSON.stringify({ type: "connection_init" }));
-  await eventually(() => {
-    assert(
-      messages.some((message) => message.type === "connection_ack"),
-      "GraphQL WebSocket did not acknowledge live experiment connection",
-    );
-  }, 10_000);
-
-  socket.send(
-    JSON.stringify({
-      id: operationId,
-      type: "subscribe",
-      payload: {
-        query: liveExperimentRunSubscriptionOperation,
-        variables: { input: { experimentRunId } },
-      },
-    }),
-  );
-
-  return {
-    async waitForHeartbeat(timeoutMs) {
-      await eventually(() => {
-        assert(
-          !messages.some((message) => message.type === "error" || message.payload?.errors?.length),
-          "liveExperimentRun subscription returned an error",
-        );
-        assert(
-          messages.some(
-            (message) =>
-              message.id === operationId &&
-              message.type === "next" &&
-              message.payload?.data?.liveExperimentRun?.type === "heartbeat",
-          ),
-          "liveExperimentRun subscription did not receive a heartbeat",
-        );
-      }, timeoutMs);
-    },
-    async close() {
-      if (completed) {
-        return;
-      }
-      completed = true;
-      socket.send(JSON.stringify({ id: operationId, type: "complete" }));
-      await sleep(250);
-      socket.close();
-    },
-  };
-}
-
 function bridgeEnvelope(requestId) {
   const checkedAt = new Date().toISOString();
   return {
@@ -2172,10 +2279,10 @@ async function openLiveTraceSubscription(port, fixture) {
   };
 }
 
-async function assertCollectorProblem(port, scenario) {
+async function assertCollectorProblem(port, scenario, bearerToken) {
   const response = await fetch(`http://127.0.0.1:${port}${scenario.path}`, {
     method: "POST",
-    headers: { "content-type": scenario.contentType },
+    headers: otlpHeaders(scenario.contentType, "integration-collector-problem", bearerToken),
     body: scenario.body,
   });
   const body = await response.json();
@@ -2191,8 +2298,7 @@ async function assertCollectorNatsStartupFailure(baseEnv, port) {
     {
       ...baseEnv,
       CLOUDGRID_NATS_URL: "nats://127.0.0.1:1",
-      CLOUDGRID_OTLP_HOST: "127.0.0.1",
-      CLOUDGRID_OTLP_PORT: String(port),
+      CLOUDGRID_OTLP_HTTP_ADDR: `127.0.0.1:${port}`,
     },
   );
   try {
@@ -2250,6 +2356,87 @@ async function assertDuplicateCommandDoesNotRewrite(natsUrl, bffPort) {
   } finally {
     await nc.drain();
   }
+}
+
+async function assertResilienceChaosScenarios({
+  bffPort,
+  natsUrl,
+  natsContainerName,
+  storageWriteHealthPort,
+  storageReadHealthPort,
+  controlPlaneHealthPort,
+  otlpPort,
+}) {
+  assert(
+    natsContainerName,
+    "CLOUDGRID_ENABLE_RESILIENCE_CHAOS_TESTS requires isolated Docker infrastructure",
+  );
+  console.log("Asserting resilience chaos scenarios...");
+
+  await assertJsonStatus(`http://127.0.0.1:${bffPort}/livez`, "ok");
+  await assertJsonStatus(`http://127.0.0.1:${storageWriteHealthPort}/livez`, "ok");
+  await assertJsonStatus(`http://127.0.0.1:${storageReadHealthPort}/livez`, "ok");
+  await assertJsonStatus(`http://127.0.0.1:${controlPlaneHealthPort}/livez`, "ok");
+  await assertJsonStatus(`http://127.0.0.1:${otlpPort}/livez`, "ok");
+
+  await dockerContainerCommand("pause", natsContainerName);
+  try {
+    await eventually(
+      () => assertHealthStatus(`http://127.0.0.1:${bffPort}/readyz`, "degraded"),
+      10_000,
+    );
+    await assertJsonStatus(`http://127.0.0.1:${bffPort}/livez`, "ok");
+    await assertJsonStatus(`http://127.0.0.1:${storageWriteHealthPort}/livez`, "ok");
+    await assertJsonStatus(`http://127.0.0.1:${storageReadHealthPort}/livez`, "ok");
+    await assertJsonStatus(`http://127.0.0.1:${controlPlaneHealthPort}/livez`, "ok");
+    await assertJsonStatus(`http://127.0.0.1:${otlpPort}/livez`, "ok");
+  } finally {
+    await dockerContainerCommand("unpause", natsContainerName);
+  }
+
+  await eventually(async () => {
+    await assertNatsReady(natsUrl);
+    await assertJsonStatus(`http://127.0.0.1:${bffPort}/readyz`, "ok");
+    await assertJsonStatus(`http://127.0.0.1:${storageWriteHealthPort}/readyz`, "ok");
+    await assertJsonStatus(`http://127.0.0.1:${storageReadHealthPort}/readyz`, "ok");
+    await assertJsonStatus(`http://127.0.0.1:${controlPlaneHealthPort}/readyz`, "ok");
+    await assertJsonStatus(`http://127.0.0.1:${otlpPort}/readyz`, "ok");
+  }, 20_000);
+
+  const viewer = await graphql(bffPort, viewerOperation, {}, "Viewer");
+  assert(viewer.data?.viewer?.user?.id === "local-user", "viewer failed after NATS recovery");
+  await assertMalformedPrivateNatsRequest(natsUrl, "control.viewer.get");
+  await assertMalformedPrivateNatsRequest(natsUrl, "telemetry.traces.search");
+  await assertJsonStatus(`http://127.0.0.1:${bffPort}/readyz`, "ok");
+}
+
+async function assertMalformedPrivateNatsRequest(natsUrl, subject) {
+  const { StringCodec, connect } = await loadNatsClient();
+  const sc = StringCodec();
+  const nc = await connect({ servers: natsUrl, name: "cloudgrid-integration-malformed-request" });
+  try {
+    const response = await nc.request(subject, sc.encode("{"), { timeout: 2_000 });
+    const body = JSON.parse(sc.decode(response.data));
+    assert(body.ok === false, `${subject} malformed request unexpectedly succeeded`);
+    assert(
+      body.error?.id === "ERR-001" || body.error?.code === "VALIDATION_FAILED",
+      `${subject} malformed request returned ${JSON.stringify(body.error)}`,
+    );
+  } finally {
+    await nc.drain();
+  }
+}
+
+async function dockerContainerCommand(command, name) {
+  const proc = Bun.spawn({
+    cmd: ["docker", command, name],
+    cwd: repoRoot,
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  const stderr = await new Response(proc.stderr).text();
+  const code = await proc.exited;
+  assert(code === 0, `docker ${command} ${name} failed: ${stderr}`);
 }
 
 function persistTraceCommand({
@@ -2317,6 +2504,28 @@ async function graphql(port, query, variables, operationName) {
   return body;
 }
 
+async function streamAiChatRun(port, input) {
+  const response = await fetch(`http://127.0.0.1:${port}/api/ai-chat/stream`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const body = await response.text();
+  assert(response.ok, `AI Chat stream returned ${response.status}: ${body}`);
+  return body
+    .trim()
+    .split("\n\n")
+    .filter(Boolean)
+    .map((chunk) => {
+      const data = chunk
+        .split("\n")
+        .filter((line) => line.startsWith("data: "))
+        .map((line) => line.slice("data: ".length))
+        .join("\n");
+      return JSON.parse(data);
+    });
+}
+
 async function assertNatsReady(natsUrl) {
   const { connect } = await loadNatsClient();
   const nc = await connect({ servers: natsUrl, name: "cloudgrid-integration-prereq" });
@@ -2349,6 +2558,18 @@ async function assertJsonStatus(url, expectedStatus) {
   assert(response.ok, `${url} returned ${response.status}`);
   const body = await response.json();
   assert(body.status === expectedStatus, `${url} status ${body.status}`);
+}
+
+async function assertHealthStatus(url, expectedStatus) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2_000);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    const body = await response.json();
+    assert(body.status === expectedStatus, `${url} status ${body.status}, want ${expectedStatus}`);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function waitForSocketOpen(socket, timeoutMs) {

@@ -4,7 +4,7 @@ title: Implementation-ready feature and improvement index
 layer: foundation
 status: active
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-19
+updated: 2026-05-24
 provenance: user-directed
 ---
 
@@ -37,10 +37,11 @@ Status values:
 | IR-003 | complete | Collector local/deployed bearer routing and sanitized auth failures exist; control-plane final-admin safeguards exist; storage-read fails closed for SSO read/live scopes and tenant mismatch; storage-write rejects deployed ingest commands without collector-authorized tenant/company/project routing; BFF GraphQL HTTP, WebSocket, and protected app shell coverage exists. `bun test apps/backend/src/static.test.ts apps/backend/src/auth.test.ts apps/backend/src/graphql-ws.test.ts` and `go test -tags surrealdb ./core/otlp-collector/... ./core/storage-read/... ./core/storage-write/... ./core/control-plane/...` pass. | None for deployed-mode auth hardening. |
 | IR-004 | blocked-by-environment | Benchmark commands, sizing/release docs, and benchmark JSON release identity fields exist. Production profiles require `CLOUDGRID_BENCH_DEPLOYMENT_PROFILE=production-like`, `CLOUDGRID_BENCH_ENVIRONMENT_ID`, and `CLOUDGRID_BENCH_IMAGE_TAG`. `bun test tooling/scripts/bench.test.mjs` passes. | Run production benchmark commands against the exact deployment being promoted and store the JSON evidence with release identity, thresholds, and pass/fail status. |
 | IR-005 | complete | AI provider and AI Chat generated metadata, BFF bridge/resolvers, validation, integration scenario coverage, and contract drift checks are present. `bun run contracts:check` passes. | None for the contract wave. Runtime/UI execution remains IR-006. |
-| IR-006 | partial | `/ai-chat` route, project navigation, provider status/history/conversation reads, safe artifact previews, server-issued action approval UI, BFF SSE stream endpoint, ordered terminal stream events, abort cleanup, public API stream client helper, follow-up prompt streaming UI, durable run create/update/finalize contracts, control-plane run idempotency, tests, and handbook docs are present. `bun run contracts:check`, `bun run typecheck`, targeted BFF/frontend tests, and `go test -tags surrealdb ./core/control-plane/...` pass. | Complete AI Elements/json-render component integration and richer provider settings forms for company/project configuration. |
+| IR-006 | partial | `/ai-chat` route, project navigation, provider status/history/conversation reads, safe artifact previews, server-issued action approval UI, company AI provider admin route, company provider update client mutation, BFF SSE stream endpoint, ordered terminal stream events, abort cleanup, public API stream client helper, follow-up prompt streaming UI, durable run create/update/finalize contracts, control-plane run idempotency, tests, and handbook docs are present. `bun run contracts:check`, `bun run typecheck`, targeted BFF/frontend tests, and `go test -tags surrealdb ./core/control-plane/...` pass. | Complete AI Elements/json-render component integration and the project provider profile/model-alias management surface at `/projects/:projectId/settings/ai-providers`. |
 | IR-007 | complete | No dedicated `core/log-ingest` service is specified for this wave; the collector still serves `POST /v1/logs`, publishes `telemetry.ingest.logs`, and storage-write receives the existing durable log command contract. | None unless a future backend ingestion wave explicitly introduces `core/log-ingest`. |
 | IR-008 | complete | Website handbook now covers Helm install, external NATS/SurrealDB, image customization, private registry/air-gapped installs, release verification, upgrade/rollback, and sizing. `bun run --cwd website build` passes. | None for documentation scope. Environment-specific values and verified release assets are produced outside the docs pass. |
 | IR-009 | partial | Shared Go OTLP trace/log exporter now supports per-signal toggles, bounded sanitized log records, trace/span IDs, severity numbers, observed timestamps, log scope naming, dropped-buffer metrics, rate-limited exporter failure warnings, and sanitization tests. AI-eval runner now wires exporter startup, NATS handler spans/failure logs, and shutdown flush. `go test -tags surrealdb ./core/go-runtime/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/...` passes. | Complete full-service log event coverage evidence across BFF, collector, control-plane, storage-read, storage-write, and AI-eval runner, plus normal Logs UI inspection evidence for the self-observability project. |
+| IR-010 | complete | AI Eval v2 product, backend, frontend, NFR, GraphQL, AsyncAPI, entity schema, generated TypeScript, generated Go, BFF foundation, storage-write persistence, storage-read query semantics, runner orchestration, frontend workspace, integration fixtures, docs, runtime v2 dataset shape normalization, and browser/API acceptance are aligned. `plans/ai-eval-v2-migration` is complete through `TICKET-206`, and `bun run contracts:check`, `bun run typecheck`, focused BFF/frontend/integration tests, Go workspace tests, website build, spec check, plan lint, skills check, and Playwright AI Eval smoke pass. | None for the AI Eval v2 migration scope. |
 
 ## IR-001: Production SurrealDB Retention Adapter
 
@@ -117,10 +118,14 @@ Required implementation:
 - `control.projects.list_for_service` private message bridge subject.
 - Alert evaluator project discovery mode controlled by
   `CLOUDGRID_ALERT_EVALUATOR_PROJECT_DISCOVERY_ENABLED`.
-- Email notification adapter using deployed SMTP runtime.
+- Company-scoped alert notification adapter definitions and instances, with
+  adapter-provided field schemas, write-only secret fields, encrypted
+  control-plane secret storage, and project-effective safe adapter listing.
+- Email notification adapter using company adapter instance configuration.
 - Webhook notification adapter with HTTPS-only URL validation,
   HMAC-SHA256 signing, timeout, retry/terminal status mapping, and redaction.
-- Adapter catalog validation for `notificationAdapterIds`.
+- Adapter instance validation for `notificationAdapterIds`, including unknown,
+  disabled, unconfigured, and cross-company rejection.
 - Typed dashboard alert widgets: `alert_status`, `alert_history`, and
   `alert_evidence`.
 - `Query.alertSummary(projectId, input)` only if aggregate dashboard counts are
@@ -130,8 +135,10 @@ Acceptance:
 
 - scheduler rejects startup when no project source is configured;
 - discovery pages active projects through control-plane with service auth;
-- email adapter maps transient and terminal failures correctly;
-- webhook adapter signs canonical JSON and redacts secrets and query strings;
+- email adapter maps transient and terminal failures correctly using fake
+  company-scoped configuration in default tests;
+- webhook adapter signs canonical JSON and redacts secrets and query strings
+  from company-scoped configuration;
 - dashboard alert widgets read backend view models only and never mutate rules.
 
 Verification:
@@ -205,7 +212,7 @@ Source specs:
 
 - [Performance and scaling](./06-nfr/performance-and-scaling.md)
 - [Release, CI/CD, and distribution](./06-nfr/release-distribution.md)
-- [Production readiness docs](../docs/operations/production-readiness.md)
+- [Production readiness docs](../website/src/content/handbook/operations/production-readiness.md)
 
 Write scope:
 
@@ -327,7 +334,11 @@ Acceptance:
 - one chat run cannot query across projects;
 - destructive actions require explicit approval;
 - stream events are ordered, terminal, and replay-safe according to contracts;
-- generated UI contracts are the only frontend data source.
+- generated UI contracts are the only frontend data source;
+- local integration coverage creates a managed company provider, creates an AI
+  Chat conversation, streams through `CLOUDGRID_AI_CHAT_HARNESS_MODE=mock`,
+  verifies terminal events, verifies history persistence, and checks that
+  credential material is absent from stream events.
 
 Verification:
 
@@ -390,12 +401,12 @@ Source specs:
 
 - [Release, CI/CD, and distribution](./06-nfr/release-distribution.md)
 - [Performance and scaling](./06-nfr/performance-and-scaling.md)
-- [Kubernetes handbook](../docs/configuration/deployed/kubernetes.md)
-- [Production readiness docs](../docs/operations/production-readiness.md)
+- [Kubernetes handbook](../website/src/content/handbook/configuration/deployed/kubernetes.md)
+- [Production readiness docs](../website/src/content/handbook/operations/production-readiness.md)
 
 Write scope:
 
-- `docs`
+- `website/src/content/handbook`
 - `website/src/content/handbook`
 - `.github/workflows` only when documentation needs workflow output paths
 - release validation scripts only when docs reference generated artifact names
@@ -487,6 +498,72 @@ bun run typecheck
 bun run test
 go test -tags surrealdb ./core/go-runtime/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/...
 bun run smoke:frontend
+```
+
+## IR-010: AI Eval v2 Implementation Migration
+
+Goal: replace legacy Scorer/Experiment behavior with the v2 Dataset,
+Evaluation, Metric, Target, Comparison, and Optimization model while preserving
+CloudGrid service boundaries and leaving production measurement as backlog-only
+product scope.
+
+Source specs:
+
+- [AI Eval domain](./01-domains/ai-eval.md)
+- [AI Eval v2 contract rewrite](./03-contracts/ai-eval-v2-contract-rewrite.md)
+- [AI Eval message contracts](./04-backend/ai-eval-message-contracts.md)
+- [AI Eval query semantics](./04-backend/ai-eval-query-semantics.md)
+- [AI Eval runner](./04-backend/ai-eval-runner.md)
+- [AI Eval UX concept](./05-frontend/ai-eval-ux-concept.md)
+- [AI Eval views](./05-frontend/ai-eval-views.md)
+- [AI Eval content capture](./06-nfr/ai-eval-content-capture.md)
+- [AI Eval cost bounds](./06-nfr/ai-eval-cost-bounds.md)
+
+Implementation plan:
+
+- [AI Eval v2 migration plan](../plans/ai-eval-v2-migration/implementation-plan.md)
+
+Required implementation:
+
+- Storage-write persists v2 datasets, immutable dataset versions, item
+  revisions, evaluation runs, item runs, metric results, aggregates,
+  comparisons, target snapshots, optimization runs, and promotion records.
+- Storage-read owns all AI Eval v2 query filtering, pagination, aggregates, and
+  live matching semantics for GraphQL-facing view models.
+- The AI Eval runner executes dataset evaluations through target snapshots,
+  optional external adapters, OpenTelemetry trace context, quick-shot subsets,
+  row-level summaries, metric results, retention roles, and deterministic
+  failure semantics.
+- The frontend exposes Dataset Evaluations and Optimization flows, raw JSON
+  schema editing and validation, dataset row curation, trace-to-dataset import
+  for datasets with extraction settings, run detail, comparisons, and
+  optimization progress without primary Scorer, Check, Gate, Experiment, or
+  Production Quality v2 tabs.
+- Integration fixtures, handbook docs, and final gates prove the end-to-end
+  dataset evaluation and optimization path.
+
+Acceptance:
+
+- no public v2 route, GraphQL field, AsyncAPI subject, entity schema, generated
+  type, frontend tab, or handbook page reintroduces legacy Scorer/Experiment
+  product concepts;
+- BFF access to private AI Eval behavior stays behind NATS request/reply;
+- storage-write remains the only AI Eval persistence mutator and storage-read
+  remains the only AI Eval query owner;
+- dataset versions and target snapshots provide durable replay semantics for
+  future prompt, skill, tool, workflow, and adapter optimization;
+- production measurement remains backlog-only until dataset evaluation and
+  optimization are implemented.
+
+Verification:
+
+```sh
+bun run contracts:check
+bun run typecheck
+node /Users/sebastianwessel/.agents/skills/spec-architect/scripts/check_specs.mjs specs
+node /Users/sebastianwessel/.agents/skills/implementation-planner/references/check_plan.mjs . plans/ai-eval-v2-migration specs
+node /Users/sebastianwessel/.agents/skills/implementation-planner/references/check_wave_readiness.mjs . wave_02_parallel_services plans/ai-eval-v2-migration specs
+node /Users/sebastianwessel/.agents/skills/implementation-planner/references/check_wave_readiness.mjs . wave_03_runner_frontend plans/ai-eval-v2-migration specs
 ```
 
 ## Cross-Cutting Rules

@@ -20,6 +20,7 @@ interface AppSessionContextValue {
   mode: DeploymentMode;
   viewer: Viewer | null;
   isLoading: boolean;
+  isBackendUnavailable: boolean;
   error: unknown;
   createProject: ControlPlaneGraphQLClient["createProject"];
   selectProject: (projectId: string) => Promise<Viewer>;
@@ -66,10 +67,9 @@ export function AppSessionProvider({
     },
   });
 
-  const viewer =
-    mode === "local" && (viewerQuery.isError || viewerQuery.data === null)
-      ? createLocalViewer()
-      : (viewerQuery.data ?? null);
+  const isBackendUnavailable =
+    mode === "local" && (viewerQuery.isError || viewerQuery.data === null);
+  const viewer = isBackendUnavailable ? createLocalViewer() : (viewerQuery.data ?? null);
 
   const refetchViewer = useCallback(async () => {
     await viewerQuery.refetch();
@@ -91,6 +91,7 @@ export function AppSessionProvider({
       mode,
       viewer,
       isLoading: viewerQuery.isLoading,
+      isBackendUnavailable,
       error: viewerQuery.error,
       createProject: createProjectMutation.mutateAsync,
       selectProject: (projectId: string) => selectProjectMutation.mutateAsync(projectId),
@@ -101,6 +102,7 @@ export function AppSessionProvider({
       client,
       logout,
       mode,
+      isBackendUnavailable,
       refetchViewer,
       createProjectMutation.mutateAsync,
       selectProjectMutation.mutateAsync,

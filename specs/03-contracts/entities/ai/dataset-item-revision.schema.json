@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-102",
+  "title": "DatasetItemRevision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "datasetItemId",
+    "datasetId",
+    "revision",
+    "digest",
+    "input",
+    "reason",
+    "curationStatus",
+    "split",
+    "sourceRefs",
+    "contentTreatment",
+    "metadata",
+    "createdAt",
+    "createdBy",
+    "updatedAt",
+    "updatedBy"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "datasetItemId": { "type": "string" },
+    "datasetId": { "type": "string" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "digest": { "type": "string", "minLength": 1 },
+    "input": true,
+    "expected": true,
+    "observedOutput": true,
+    "reason": { "type": "string", "default": "" },
+    "curationStatus": {
+      "type": "string",
+      "enum": ["draft", "needs_expected", "needs_review", "ready", "rejected"]
+    },
+    "curationNote": { "type": "string" },
+    "split": { "type": "string", "enum": ["training", "validation", "test"] },
+    "sourceRefs": { "type": "array", "items": { "$ref": "#/$defs/sourceRef" }, "default": [] },
+    "contentTreatment": {
+      "type": "string",
+      "enum": ["original", "realistic_anonymized", "redacted", "synthetic"]
+    },
+    "anonymizationProvenance": { "$ref": "#/$defs/anonymizationProvenance" },
+    "metadata": { "type": "object", "additionalProperties": true, "default": {} },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "createdBy": { "type": "string" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "updatedBy": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "curationStatus": { "const": "ready" } },
+        "required": ["curationStatus"]
+      },
+      "then": { "required": ["expected"] }
+    },
+    {
+      "if": {
+        "properties": { "contentTreatment": { "enum": ["realistic_anonymized", "redacted"] } },
+        "required": ["contentTreatment"]
+      },
+      "then": { "required": ["anonymizationProvenance"] }
+    }
+  ],
+  "$defs": {
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["trace", "span", "evaluation", "import", "candidate", "manual"]
+        },
+        "id": { "type": "string" },
+        "traceId": { "type": "string" },
+        "spanId": { "type": "string" },
+        "evaluationRunId": { "type": "string" },
+        "evaluationItemRunId": { "type": "string" },
+        "datasetImportJobId": { "type": "string" },
+        "datasetCandidateId": { "type": "string" },
+        "metadata": { "type": "object", "additionalProperties": true, "default": {} }
+      }
+    },
+    "anonymizationProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policyId",
+        "policyVersion",
+        "transformedAt",
+        "consistencyScope",
+        "transformedFields"
+      ],
+      "properties": {
+        "policyId": { "type": "string" },
+        "policyVersion": { "type": "integer", "minimum": 1 },
+        "transformedAt": { "type": "string", "format": "date-time" },
+        "consistencyScope": { "type": "string", "enum": ["project", "dataset"] },
+        "transformedFields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "entityType", "strategy"],
+            "properties": {
+              "path": { "type": "string" },
+              "entityType": { "type": "string" },
+              "strategy": { "type": "string" }
+            }
+          },
+          "default": []
+        }
+      }
+    }
+  }
+}

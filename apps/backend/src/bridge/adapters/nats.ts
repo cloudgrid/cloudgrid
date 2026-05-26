@@ -81,16 +81,38 @@ export class NATSEphemeralPubSub implements EphemeralPubSub {
 
 export class NATSBridgeLifecycle {
   #connection: NatsConnection;
+  #flushTimeoutMs: number;
 
-  constructor(connection: NatsConnection) {
+  constructor(connection: NatsConnection, options: { flushTimeoutMs?: number } = {}) {
     this.#connection = connection;
+    this.#flushTimeoutMs = options.flushTimeoutMs ?? 1000;
   }
 
   async health(): Promise<"ok" | "unavailable"> {
-    return this.#connection.isClosed() ? "unavailable" : "ok";
+    if (this.#connection.isClosed() || this.#connection.isDraining()) {
+      return "unavailable";
+    }
+    try {
+      await withTimeout(this.#connection.flush(), this.#flushTimeoutMs);
+      return "ok";
+    } catch {
+      return "unavailable";
+    }
   }
 
   async close(): Promise<void> {
     await this.#connection.drain();
   }
+}
+
+function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<T>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(new Error("NATS readiness flush timed out")), timeoutMs);
+  });
+  return Promise.race([operation, timeoutPromise]).finally(() => {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  });
 }

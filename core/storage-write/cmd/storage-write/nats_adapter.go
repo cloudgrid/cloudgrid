@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -52,10 +53,25 @@ func newMessageBridgeAdapterWithSelfObservability(natsURL string, store ports.Te
 		RunConsumer: func(ctx context.Context) error {
 			return ingest.RunConsumerWithOptions(ctx, pullSubscriberJetStream{JetStreamContext: js}, nc, ingest.NewTraceNotificationPublisher(nc), store, logger, recorder, traceLogRecorder, options)
 		},
-		IsClosed: nc.IsClosed,
-		Drain:    nc.Drain,
-		Close:    nc.Close,
+		CheckReady: func(ctx context.Context) error {
+			return checkNATSReady(ctx, nc)
+		},
+		Drain: nc.Drain,
+		Close: nc.Close,
 	}, nil
+}
+
+func checkNATSReady(ctx context.Context, nc *nats.Conn) error {
+	if nc == nil || nc.IsClosed() || nc.IsDraining() {
+		return errors.New("ERR-013 MESSAGE_BRIDGE_UNAVAILABLE: invalid NATS connection")
+	}
+	timeout := time.Second
+	if deadline, ok := ctx.Deadline(); ok {
+		if remaining := time.Until(deadline); remaining > 0 && remaining < timeout {
+			timeout = remaining
+		}
+	}
+	return nc.FlushTimeout(timeout)
 }
 
 func consumerOptions(consumer config.ConsumerConfig) ingest.ConsumerOptions {

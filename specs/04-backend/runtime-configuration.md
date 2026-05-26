@@ -4,7 +4,7 @@ title: Runtime configuration
 layer: backend
 status: draft
 owner: unknown@example.com
-updated: 2026-05-08
+updated: 2026-05-21
 provenance: inferred-draft
 ---
 
@@ -13,12 +13,41 @@ provenance: inferred-draft
 ## Shared Environment Variables
 
 - `CLOUDGRID_NATS_URL`, default `nats://localhost:4222`.
+- `CLOUDGRID_NATS_RECONNECT_MAX_ATTEMPTS`, default `-1`; `-1` means keep
+  retrying while the process is running, `0` disables reconnect attempts, and a
+  positive integer bounds reconnect attempts before the NATS client closes.
+- `CLOUDGRID_NATS_RECONNECT_WAIT_MS`, default `1000`; minimum `100`, maximum
+  `30000`; base wait between NATS reconnect attempts. Implementations may add
+  jitter but must not spin without sleep.
+- `CLOUDGRID_NATS_OPERATION_FLUSH_TIMEOUT_MS`, default `1000`; minimum `100`,
+  maximum `5000`; readiness flush timeout for services that own NATS
+  request/reply subscriptions or JetStream consumers.
+- `CLOUDGRID_DEPENDENCY_RECOVERY_MAX_BACKOFF_MS`, default `30000`; minimum
+  `1000`, maximum `300000`; maximum backoff for service-owned reconnect loops
+  such as SurrealDB client managers.
+- `CLOUDGRID_SERVICE_MAX_IN_FLIGHT_REQUESTS`, default `1000`; minimum `1`,
+  maximum `100000`; per-process guard for private request/reply handler work
+  when a service transport can otherwise dispatch unbounded callbacks.
+- `CLOUDGRID_HEALTH_CHECK_TIMEOUT_MS`, default `1000`; minimum `100`, maximum
+  `5000`; service health check budget. Health checks must not exceed this
+  timeout or perform heavy work.
+- `CLOUDGRID_LOG_STATE_CHANGE_MIN_INTERVAL_MS`, default `30000`; minimum
+  `1000`, maximum `300000`; minimum interval for repeated dependency-degraded
+  or retry-loop warning logs for the same dependency state.
+- `CLOUDGRID_RUNTIME_STARTUP_DEPENDENCY_MODE`, default `fail-fast`; allowed
+  values are `fail-fast` and `wait-for-ready`. `fail-fast` exits non-zero when
+  required startup dependencies cannot be reached or initialized.
+  `wait-for-ready` keeps the process live, reports readiness degraded, and keeps
+  retrying required dependency setup with bounded backoff. Local development
+  may opt into `wait-for-ready`; deployed packaging must document the selected
+  mode.
 - `CLOUDGRID_DEPLOYMENT_MODE`, default `local`; allowed values are `local` and `deployed`.
+- `CLOUDGRID_LOG_LEVEL`, default `info`; allowed values are `debug`, `info`, `warn`, `warning`, and `error`. Successful hot-path completion events are debug-only.
 - `CLOUDGRID_SELF_OBSERVABILITY_ENABLED`, default `true` when `CLOUDGRID_DEPLOYMENT_MODE=local`, default `false` when `CLOUDGRID_DEPLOYMENT_MODE=deployed`.
 - `CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID`, default `cloudgrid-system`.
 - `CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID`, default `local` in local mode; required when self-observability is enabled in deployed mode.
 - `CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT`, default `http://localhost:4318` in local mode; required when self-observability is enabled in deployed mode.
-- `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN`, required when self-observability is enabled in deployed mode.
+- `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN`, required whenever self-observability is enabled. In local mode it must be a token mapped to the configured self-observability project by `CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS`.
 - `CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS`, default `10`; minimum `1`, maximum `300`.
 - `CLOUDGRID_SELF_OBSERVABILITY_TRACES_ENABLED`, default `true` when self-observability is enabled.
 - `CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED`, default `true` when self-observability is enabled.
@@ -55,9 +84,20 @@ provenance: inferred-draft
   stream endpoint, GraphQL chat operations, and frontend navigation.
 - `CLOUDGRID_AI_CHAT_TRACING_ENABLED`, default `true` in local mode and `false`
   in deployed mode.
+- `CLOUDGRID_AI_CHAT_HARNESS_MODE`, default `provider`; allowed values are
+  `provider`, `mock`, and `off`. `provider` executes the configured AI provider
+  through the installed PURISTA harness model provider adapter with the
+  request-time credential resolved from `managed:` or `env:` refs. The BFF must
+  not call model providers directly. `mock` is only for local smoke checks and
+  automated integration tests.
 - `CLOUDGRID_AI_CHAT_PROVIDER_KIND`, optional local-mode bootstrap provider
   kind: `anthropic`, `openai`, `azure_foundry`, `aws_bedrock`, or
   `openai_compatible`.
+- Built-in PURISTA harness adapter support currently covers `openai`,
+  `openai_compatible` through the OpenAI-compatible base URL, and `anthropic`.
+  `azure_foundry` and `aws_bedrock` configuration is accepted as provider
+  contract data but must fail setup until a matching PURISTA harness adapter is
+  installed and wired.
 - `CLOUDGRID_AI_CHAT_MODEL`, required when local-mode AI Chat provider bootstrap
   is used.
 - `CLOUDGRID_AI_CHAT_CREDENTIAL_REF`, required when local-mode AI Chat provider
@@ -95,13 +135,27 @@ operator testing and must surface `suppressed` delivery status in admin UI.
 
 ## Go OTLP Collector Variables
 
-- `CLOUDGRID_OTLP_HOST`, default `0.0.0.0`.
-- `CLOUDGRID_OTLP_PORT`, default `4318`.
+- `CLOUDGRID_OTLP_HTTP_ADDR`, default `0.0.0.0:4318`.
+- `CLOUDGRID_OTLP_GRPC_ADDR`, default `0.0.0.0:4317`.
 - `CLOUDGRID_OTLP_LOCAL_PROJECT_ID`, optional single-project local ingest target used only in local mode when no project-token map is configured.
 - `CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS`, optional JSON object mapping opaque bearer tokens to local project IDs. Token keys must be at least 32 characters. When set, local OTLP requests require `Authorization: Bearer <token>`.
+- `CLOUDGRID_OTLP_MAX_REQUEST_BYTES`, default `4194304`; rejects oversized OTLP/HTTP exports before decoding.
+- `CLOUDGRID_OTLP_GRPC_MAX_MESSAGE_BYTES`, default equal to `CLOUDGRID_OTLP_MAX_REQUEST_BYTES`; rejects oversized OTLP/gRPC exports before decoding.
+- `CLOUDGRID_OTLP_GRPC_COMPRESSION`, default `gzip`; allowed values are `gzip` and `none`.
+- `CLOUDGRID_OTLP_MAX_SPANS_PER_REQUEST`, default `10000`; rejects oversized trace exports before publish.
+- `CLOUDGRID_OTLP_MAX_LOGS_PER_REQUEST`, default `10000`; rejects oversized log exports before publish.
 - `CLOUDGRID_OTLP_MAX_METRIC_POINTS_PER_REQUEST`, default `20000`; rejects oversized metric exports before publish.
+- `CLOUDGRID_OTLP_PUBLISH_TIMEOUT_MS`, default `1000`; bounds collector NATS publish attempts.
+- `CLOUDGRID_PROJECT_STATUS_CACHE_TTL_SECONDS`, default `60`; bounds fresh project-status authorization cache entries in deployed collector mode.
+- `CLOUDGRID_PROJECT_STATUS_CACHE_STALE_SECONDS`, default `120`; bounds stale project-status cache reuse during temporary control-plane failures.
 - `CLOUDGRID_AUTH_MODE`, default `local`; allowed values are `local` and `sso`.
-- Bearer-token issuer, audience, and JWKS configuration is still provider-specific in deployed mode. The collector must use trusted service-token configuration only and must not infer browser SSO company/project access from provider profile claims.
+- `CLOUDGRID_AUTH_ISSUER`, required by the collector when `CLOUDGRID_AUTH_MODE=sso`; trusted issuer for OTLP ingest bearer tokens.
+- `CLOUDGRID_AUTH_AUDIENCE`, required by the collector when `CLOUDGRID_AUTH_MODE=sso`; expected audience for OTLP ingest bearer tokens.
+- `CLOUDGRID_AUTH_JWKS_URL`, required by the collector when `CLOUDGRID_AUTH_MODE=sso`; JWKS endpoint used to validate OTLP ingest bearer-token signatures.
+
+Collector bearer-token issuer, audience, and JWKS configuration is service-token
+configuration. The collector must not infer browser SSO company/project access
+from provider profile claims or browser SSO provider client settings.
 
 ### Local OTLP Token Initialization
 
@@ -117,7 +171,8 @@ The command owns only local developer convenience configuration:
 - It writes `CLOUDGRID_OTLP_LOCAL_PROJECT_ID=default` for explicit
   single-project fallback.
 - It writes `CLOUDGRID_PROJECT_API_KEY` to the token mapped to `default` for
-  local fixture scripts and examples.
+  local fixture scripts and examples. Fixture scripts also accept
+  `CLOUDGRID_OTLP_BEARER_TOKEN` when a caller wants a command-specific token.
 - It writes `CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID=cloudgrid-system`,
   `CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID=local`, and
   `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN` to the token mapped to
@@ -137,6 +192,16 @@ The command must not print full token values to stdout or logs.
 - `CLOUDGRID_SURREALDB_DATABASE`, default `dev`.
 - `CLOUDGRID_SURREALDB_USERNAME`, optional.
 - `CLOUDGRID_SURREALDB_PASSWORD`, optional.
+- `CLOUDGRID_SURREALDB_CONNECT_TIMEOUT_MS`, default `5000`; minimum `100`,
+  maximum `30000`; bounds initial SurrealDB connect, namespace/database
+  selection, and authentication.
+- `CLOUDGRID_SURREALDB_READINESS_TIMEOUT_MS`, default `1000`; minimum `100`,
+  maximum `5000`; bounds health readiness checks.
+- `CLOUDGRID_SURREALDB_RECONNECT_ENABLED`, default `true`; when true, services
+  that use SurrealDB keep running after runtime disconnects, degrade readiness,
+  and reconnect with bounded backoff. When false, runtime disconnects are
+  treated as ordinary operation failures but no service-owned reconnect loop is
+  started.
 
 ## Validation
 
@@ -148,10 +213,18 @@ Invalid combinations:
 - `CLOUDGRID_DEPLOYMENT_MODE=deployed` with `CLOUDGRID_AUTH_MODE=local`.
 - `CLOUDGRID_AUTH_MODE=sso` without `CLOUDGRID_AUTH_PROVIDERS`.
 - `CLOUDGRID_AUTH_MODE=sso` with an enabled provider missing required `CLOUDGRID_AUTH_<PROVIDER>_*` values.
+- Collector `CLOUDGRID_AUTH_MODE=sso` without `CLOUDGRID_AUTH_ISSUER`,
+  `CLOUDGRID_AUTH_AUDIENCE`, or `CLOUDGRID_AUTH_JWKS_URL`.
 - `CLOUDGRID_DEPLOYMENT_MODE=deployed` with invitation email mode `smtp` and missing `CLOUDGRID_PUBLIC_URL`, sender, or required SMTP host/port values.
 - `CLOUDGRID_DEPLOYMENT_MODE=deployed` with invitation email mode `disabled` and `CLOUDGRID_INVITATION_EMAIL_REQUIRE_DELIVERY=true`.
 - `CLOUDGRID_DEPLOYMENT_MODE=deployed` with `CLOUDGRID_SELF_OBSERVABILITY_ENABLED=true` and missing `CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID`, `CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID`, `CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT`, or `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN`.
 - `CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS` outside `1..300`.
+- NATS reconnect, flush, dependency-recovery backoff, or SurrealDB timeout
+  variables outside their documented bounds.
+- Service in-flight, health timeout, or state-change log interval variables
+  outside their documented bounds.
+- `CLOUDGRID_RUNTIME_STARTUP_DEPENDENCY_MODE` outside `fail-fast` or
+  `wait-for-ready`.
 - `CLOUDGRID_AI_CHAT_ENABLED=true` with malformed AI Chat sandbox byte limits.
 - Any `CLOUDGRID_AI_CHAT_PROVIDER_KIND` outside the supported provider kinds.
 - Local-mode AI Chat provider bootstrap with missing provider-specific required

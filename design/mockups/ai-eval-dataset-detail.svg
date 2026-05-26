@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1440" height="1024" viewBox="0 0 1440 1024" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="CloudGrid dataset detail mockup">
+  <style>
+    .title{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:21px;font-weight:650;fill:#09090b;letter-spacing:0}
+    .h{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:600;fill:#09090b;letter-spacing:0}
+    .body{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:13px;font-weight:400;fill:#09090b;letter-spacing:0}
+    .muted{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:400;fill:#71717a;letter-spacing:0}
+    .label{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:11px;font-weight:500;fill:#71717a;letter-spacing:0}
+    .button{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:500;letter-spacing:0}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;font-weight:400;fill:#09090b;letter-spacing:0}
+    .mono-muted{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;font-weight:400;fill:#71717a;letter-spacing:0}
+    .tiny{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:9px;font-weight:500;fill:#71717a;letter-spacing:0}
+  </style>
+  <rect width="1440" height="1024" fill="#ffffff"/>
+  
+  <rect x="0" y="0" width="1440" height="56" rx="0" fill="#ffffff" stroke="none" />
+  <line x1="0" y1="56" x2="1440" y2="56" stroke="#e4e4e7" />
+  <rect x="16" y="16" width="24" height="24" rx="5" fill="#18181b"/>
+  <text x="50" y="34" class="h" >CloudGrid</text>
+  <rect x="426" y="12" width="320" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+  <text x="442" y="32" class="label" fill="#09090b">Personal / checkout-platform</text>
+  <rect x="762" y="12" width="264" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+  <text x="778" y="32" class="label" >Search commands...</text>
+  <rect x="1182" y="12" width="76" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1196" y="33" class="button" fill="#09090b">Setup</text>
+  <rect x="1270" y="12" width="64" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1284" y="33" class="button" fill="#09090b">Docs</text>
+  <circle cx="1388" cy="28" r="15" fill="#f4f4f5" stroke="#e4e4e7"/>
+
+    <rect x="0" y="56" width="232" height="968" rx="0" fill="#fafafa" stroke="none" />
+    <line x1="232" y1="56" x2="232" y2="1024" stroke="#e4e4e7" />
+    <text x="20" y="88" class="label" >Project</text>
+    <text x="20" y="108" class="h" >checkout-platform</text>
+    <text x="20" y="128" class="muted" >production</text>
+    <line x1="16" y1="148" x2="216" y2="148" stroke="#f0f0f1" />
+    <rect x="12" y="166" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="181" r="4" fill="#a1a1aa"/>
+          <text x="42" y="186" class="body" fill="#71717a">AI Chat</text><rect x="12" y="204" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="219" r="4" fill="#a1a1aa"/>
+          <text x="42" y="224" class="body" fill="#71717a">Traces</text><rect x="12" y="242" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="257" r="4" fill="#a1a1aa"/>
+          <text x="42" y="262" class="body" fill="#71717a">Logs</text><rect x="12" y="280" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="295" r="4" fill="#a1a1aa"/>
+          <text x="42" y="300" class="body" fill="#71717a">Metrics</text><rect x="12" y="318" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="333" r="4" fill="#a1a1aa"/>
+          <text x="42" y="338" class="body" fill="#71717a">Dashboards</text><rect x="12" y="356" width="208" height="30" rx="6" fill="#f4f4f5" stroke="#e4e4e7" />
+          <circle cx="28" cy="371" r="4" fill="#18181b"/>
+          <text x="42" y="376" class="body" fill="#09090b">Evaluations</text>
+    <line x1="16" y1="948" x2="216" y2="948" stroke="#f0f0f1" />
+    <circle cx="28" cy="978" r="4" fill="#a1a1aa"/>
+    <text x="42" y="983" class="body" fill="#71717a">Project settings</text>
+  
+    <text x="248" y="92" class="title" >‹</text><text x="276" y="90" class="muted" >AI Eval / Datasets / support-intents</text>
+    <text x="248" y="128" class="title" >support-intents</text><text x="248" y="150" class="muted" >classification · v7 · 1,240 ready rows · validation split complete</text>
+    <rect x="1080" y="112" width="144" height="32" rx="6" fill="#18181b" stroke="#18181b" />
+    <text x="1094" y="133" class="button" fill="#fafafa">Create evaluation</text><rect x="1236" y="112" width="142" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1250" y="133" class="button" fill="#09090b">Dataset settings</text>
+    <rect x="248" y="172" width="1176" height="92" rx="8" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="272" y="206" class="label" >Ready rows</text><text x="272" y="234" class="title" >1,240</text><text x="552" y="206" class="label" >Schema health</text><text x="552" y="234" class="title" >ready</text><text x="832" y="206" class="label" >Train/val/test</text><text x="832" y="234" class="title" >70 / 20 / 10</text><text x="1112" y="206" class="label" >Last import</text><text x="1112" y="234" class="title" >12m ago</text>
+    <rect x="248" y="280" width="1176" height="684" rx="8" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="264" y="310" class="h" >Rows</text><rect x="1196" y="294" width="82" height="32" rx="6" fill="#18181b" stroke="#18181b" />
+    <text x="1210" y="315" class="button" fill="#fafafa">Add row</text><rect x="1290" y="294" width="78" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1304" y="315" class="button" fill="#09090b">Import</text>
+    <text x="266" y="362" class="label" >Split</text><text x="366" y="362" class="label" >Status</text><text x="468" y="362" class="label" >Input preview</text><text x="696" y="362" class="label" >Expected preview</text><text x="916" y="362" class="label" >Reason</text><text x="1108" y="362" class="label" >Source</text><text x="1246" y="362" class="label" >Updated</text>
+    <line x1="248" y1="378" x2="1424" y2="378" stroke="#e4e4e7" />
+    <line x1="248" y1="445" x2="1424" y2="445" stroke="#f0f0f1" /><rect x="266" y="399" width="78" height="24" rx="5" fill="#f4f4f5" stroke="#e4e4e7" /><text x="276" y="415" class="label" fill="#09090b">validation</text><rect x="358" y="399" width="70" height="24" rx="5" fill="#f0fdf4" stroke="#bbf7d0" /><text x="368" y="415" class="label" fill="#16a34a">ready</text><text x="468" y="417" class="body" >refund request after duplicate charge</text><text x="696" y="417" class="mono" >billing_refund</text><text x="916" y="417" class="muted" >explicit refund wording</text><text x="1108" y="417" class="mono-muted" >trace trc_92ad</text><text x="1246" y="417" class="muted" >12m ago</text><line x1="248" y1="511" x2="1424" y2="511" stroke="#f0f0f1" /><rect x="266" y="465" width="78" height="24" rx="5" fill="#f4f4f5" stroke="#e4e4e7" /><text x="276" y="481" class="label" fill="#09090b">train</text><rect x="358" y="465" width="70" height="24" rx="5" fill="#f0fdf4" stroke="#bbf7d0" /><text x="368" y="481" class="label" fill="#16a34a">ready</text><text x="468" y="483" class="body" >cancel subscription and ask for VAT</text><text x="696" y="483" class="mono" >cancellation</text><text x="916" y="483" class="muted" >mixed billing terms</text><text x="1108" y="483" class="mono-muted" >manual</text><text x="1246" y="483" class="muted" >1h ago</text><line x1="248" y1="577" x2="1424" y2="577" stroke="#f0f0f1" /><rect x="266" y="531" width="78" height="24" rx="5" fill="#f4f4f5" stroke="#e4e4e7" /><text x="276" y="547" class="label" fill="#09090b">test</text><rect x="358" y="531" width="70" height="24" rx="5" fill="#fffbeb" stroke="#fde68a" /><text x="368" y="547" class="label" fill="#d97706">draft</text><text x="468" y="549" class="body" >where is order ORD-10482</text><text x="696" y="549" class="mono" >order_status</text><text x="916" y="549" class="muted" >needs expected confirmation</text><text x="1108" y="549" class="mono-muted" >csv import</text><text x="1246" y="549" class="muted" >2h ago</text><line x1="248" y1="643" x2="1424" y2="643" stroke="#f0f0f1" /><rect x="266" y="597" width="78" height="24" rx="5" fill="#f4f4f5" stroke="#e4e4e7" /><text x="276" y="613" class="label" fill="#09090b">validation</text><rect x="358" y="597" width="70" height="24" rx="5" fill="#f0fdf4" stroke="#bbf7d0" /><text x="368" y="613" class="label" fill="#16a34a">ready</text><text x="468" y="615" class="body" >agent gave wrong shipping answer</text><text x="696" y="615" class="mono" >shipping_policy</text><text x="916" y="615" class="muted" >trace-derived failure</text><text x="1108" y="615" class="mono-muted" >trace trc_c443</text><text x="1246" y="615" class="muted" >3h ago</text>
+  
+</svg>

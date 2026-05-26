@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import type { Organization, Project, Viewer } from "@cloudgrid/ui-contracts";
+import type {
+  CompanyAiProviderSettings,
+  Organization,
+  Project,
+  ProjectAiProviderSettings,
+  Viewer,
+} from "@cloudgrid/ui-contracts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -17,6 +23,8 @@ import { ThemeProvider } from "../src/providers/theme-provider";
 import {
   buildProjectSetupSnippet,
   mergeCreatedIngestCredential,
+  OrganizationAiProviderRoute,
+  OrganizationMembersRoute,
   ProjectSettingsRoute,
   ProjectsRoute,
   ProjectWorkspaceRedirectRoute,
@@ -62,7 +70,90 @@ const viewer: Viewer = {
   selectedProject: null,
 };
 
-function controlPlaneMarkup(path: string) {
+const companyAiProviderSettings: CompanyAiProviderSettings = {
+  companyId: "org-example",
+  providerProfile: {
+    id: "company-chat-provider",
+    ownerScope: "company",
+    ownerId: "org-example",
+    label: "Company chat",
+    providerKind: "openai",
+    baseUrl: null,
+    credentialRef: "env:OPENAI_API_KEY",
+    models: { chat: ["gpt-5-mini"] },
+    parameters: {},
+    timeoutMs: 30000,
+    maxConcurrency: null,
+    disabledAt: null,
+  },
+  chatModelAlias: {
+    id: "company-chat",
+    name: "chat",
+    providerProfileId: "company-chat-provider",
+    model: "gpt-5-mini",
+    purpose: "chat",
+    parameters: { extras: {} },
+  },
+  effective: {
+    warnings: [],
+    missingProviderProfiles: [],
+    disabledProviderProfiles: [],
+    missingChatProvider: false,
+  },
+  version: 1,
+  updatedAt: "2026-05-15T08:00:00.000Z",
+  updatedByUserId: "user-1",
+};
+
+const projectAiProviderSettings: ProjectAiProviderSettings = {
+  projectId: "project-checkout",
+  providerProfiles: [
+    {
+      id: "project-openai",
+      ownerScope: "project",
+      ownerId: "project-checkout",
+      label: "Project OpenAI",
+      providerKind: "openai",
+      baseUrl: null,
+      credentialRef: "env:OPENAI_API_KEY",
+      models: { judge: ["gpt-5-mini"], default: ["gpt-5-mini"] },
+      parameters: {},
+      timeoutMs: 30000,
+      maxConcurrency: 4,
+      disabledAt: null,
+    },
+  ],
+  modelAliases: [
+    {
+      id: "judge",
+      name: "judge",
+      providerProfileId: "project-openai",
+      model: "gpt-5-mini",
+      purpose: "judge",
+      parameters: {
+        temperature: 0,
+        topP: null,
+        maxOutputTokens: 2048,
+        reasoningEffort: null,
+        extras: {},
+      },
+    },
+  ],
+  effective: {
+    warnings: [],
+    missingProviderProfiles: [],
+    disabledProviderProfiles: [],
+    missingChatProvider: false,
+  },
+  version: 1,
+  updatedAt: "2026-05-15T08:00:00.000Z",
+  updatedByUserId: "user-1",
+};
+
+function controlPlaneMarkup(
+  path: string,
+  options: { companyAiProviderSettings?: CompanyAiProviderSettings } = {},
+) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -122,6 +213,7 @@ function controlPlaneMarkup(path: string) {
         baseUrl: null,
         credentialRef: "secret://openai",
         models: ["gpt-5-mini"],
+        parameters: {},
         timeoutMs: 30000,
         maxConcurrency: null,
         disabledAt: null,
@@ -160,13 +252,13 @@ function controlPlaneMarkup(path: string) {
     sampling: {
       defaultOnlineSampleRate: 0.1,
       maxOnlineSampleRate: 1,
-      maxConcurrentExperimentItems: 4,
+      maxConcurrentEvaluationItems: 4,
       maxConcurrentOptimizationCandidates: 2,
     },
     datasetDefaults: {
-      splitAllocation: { train: 0.8, validation: 0.2 },
-      smallDatasetReviewedThreshold: 25,
-      requireReviewForRegression: true,
+      splitAllocation: { training: 0.8, validation: 0.2 },
+      smallDatasetReadyThreshold: 25,
+      requireReadyForTest: true,
     },
     effective: {
       warnings: [],
@@ -178,6 +270,13 @@ function controlPlaneMarkup(path: string) {
     version: 1,
     updatedAt: "2026-05-15T08:00:00.000Z",
     updatedByUserId: "user-1",
+  });
+  queryClient.setQueryData(
+    ["CompanyAiProviderSettings", "org-example"],
+    options.companyAiProviderSettings ?? companyAiProviderSettings,
+  );
+  queryClient.setQueryData(["ProjectAiProviderSettings", "project-checkout"], {
+    ...projectAiProviderSettings,
   });
   queryClient.setQueryData(
     ["ProjectMembers", "project-checkout"],
@@ -257,6 +356,8 @@ function controlPlaneMarkup(path: string) {
     }),
     getProjectAiSettings: async () =>
       queryClient.getQueryData(["ProjectAiSettings", "project-checkout"]),
+    getCompanyAiProviderSettings: async () =>
+      queryClient.getQueryData(["CompanyAiProviderSettings", "org-example"]),
     getViewer: async () => ({ ...viewer, selectedProject: checkoutProject }),
     removeProjectMember: async () => true,
     revokeIngestCredential: async () => true,
@@ -286,6 +387,23 @@ function controlPlaneMarkup(path: string) {
       enabled: input.enabled,
       version: input.expectedVersion + 1,
     }),
+    updateCompanyAiProviderSettings: async (input) => ({
+      ...companyAiProviderSettings,
+      companyId: input.companyId,
+      providerProfile: {
+        ...companyAiProviderSettings.providerProfile,
+        ...input.providerProfile,
+        parameters: input.providerProfile.parameters ?? {},
+        ownerScope: "company",
+        ownerId: input.companyId,
+        disabledAt: input.providerProfile.disabled ? "2026-05-15T08:00:00.000Z" : null,
+      },
+      chatModelAlias: {
+        ...companyAiProviderSettings.chatModelAlias,
+        ...input.chatModelAlias,
+      },
+      version: input.expectedVersion + 1,
+    }),
   };
 
   return renderToStaticMarkup(
@@ -308,6 +426,10 @@ function controlPlaneMarkup(path: string) {
                 Routes,
                 null,
                 createElement(Route, {
+                  path: "/organizations/:organizationId/ai-provider",
+                  element: createElement(OrganizationAiProviderRoute),
+                }),
+                createElement(Route, {
                   path: "/projects",
                   element: createElement(ProjectsRoute),
                 }),
@@ -318,6 +440,81 @@ function controlPlaneMarkup(path: string) {
                 createElement(Route, {
                   path: "/projects/:projectId/settings/*",
                   element: createElement(ProjectSettingsRoute),
+                }),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+function backendUnavailableControlPlaneMarkup(path: string) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+    },
+  });
+  queryClient.setQueryData(["Viewer"], null);
+  const failingClient = {
+    getViewer: async () => null,
+    getCompanyAiProviderSettings: async () => {
+      throw new Error("Failed to fetch");
+    },
+    getOrganizationMembers: async () => {
+      throw new Error("Failed to fetch");
+    },
+    getOrganizationInvitations: async () => {
+      throw new Error("Failed to fetch");
+    },
+    updateCompanyAiProviderSettings: async () => {
+      throw new Error("Failed to fetch");
+    },
+    updateOrganizationMember: async () => {
+      throw new Error("Failed to fetch");
+    },
+    removeOrganizationMember: async () => {
+      throw new Error("Failed to fetch");
+    },
+    inviteOrganizationMember: async () => {
+      throw new Error("Failed to fetch");
+    },
+    revokeOrganizationInvitation: async () => {
+      throw new Error("Failed to fetch");
+    },
+    createProject: async () => checkoutProject,
+    selectProject: async () => viewer,
+  };
+
+  return renderToStaticMarkup(
+    createElement(
+      ThemeProvider,
+      null,
+      createElement(
+        QueryClientProvider,
+        { client: queryClient },
+        createElement(
+          TooltipProvider,
+          null,
+          createElement(
+            AppSessionProvider,
+            { client: failingClient, mode: "local" },
+            createElement(
+              MemoryRouter,
+              { initialEntries: [path] },
+              createElement(
+                Routes,
+                null,
+                createElement(Route, {
+                  path: "/organizations/:organizationId/ai-provider",
+                  element: createElement(OrganizationAiProviderRoute),
+                }),
+                createElement(Route, {
+                  path: "/organizations/:organizationId/members",
+                  element: createElement(OrganizationMembersRoute),
                 }),
               ),
             ),
@@ -360,29 +557,39 @@ describe("UX v2 project models", () => {
   test("exposes dedicated project settings sections under the project settings route", () => {
     expect(buildProjectSettingsSections("project-checkout", { aiEvalEnabled: true })).toEqual([
       {
-        id: "general",
+        id: "identity",
         href: "/projects/project-checkout/settings",
-        labelKey: "projects.settings.general",
+        label: "Identity",
+      },
+      {
+        id: "access",
+        href: "/projects/project-checkout/settings/members",
+        label: "Access",
+      },
+      {
+        id: "setup",
+        href: "/projects/project-checkout/settings/setup",
+        label: "Setup",
       },
       {
         id: "ingest",
         href: "/projects/project-checkout/settings/ingest",
-        labelKey: "projects.settings.apiKeys",
+        label: "API Keys",
       },
       {
         id: "retention",
         href: "/projects/project-checkout/settings/retention",
-        labelKey: "projects.settings.retention",
+        label: "Retention",
+      },
+      {
+        id: "ai-providers",
+        href: "/projects/project-checkout/settings/ai-providers",
+        label: "AI Providers",
       },
       {
         id: "ai-eval",
         href: "/projects/project-checkout/settings/ai-eval",
-        labelKey: "projects.settings.aiEval",
-      },
-      {
-        id: "members",
-        href: "/projects/project-checkout/settings/members",
-        labelKey: "projects.settings.members",
+        label: "AI Eval",
       },
     ]);
   });
@@ -403,7 +610,13 @@ describe("UX v2 project models", () => {
   test("uses general as the project settings root without an overview subpage", () => {
     const markup = controlPlaneMarkup("/projects/project-checkout/settings");
 
-    expect(markup).toContain(">General<");
+    expect(markup).toContain(">Identity<");
+    expect(markup).toContain(">Access<");
+    expect(markup).toContain(">Setup<");
+    expect(markup).toContain(">API Keys<");
+    expect(markup).toContain(">Retention<");
+    expect(markup).toContain(">AI Providers<");
+    expect(markup).toContain(">AI Eval<");
     expect(markup).toContain("Checkout API");
     expect(markup).not.toContain("Project status, ingest health, and telemetry navigation.");
     expect(markup).not.toContain(
@@ -462,29 +675,23 @@ describe("UX v2 project models", () => {
 
     expect(source).toContain('name="defaultProviderProfileId"');
     expect(source).toContain('name="budgetDailyUsd"');
-    expect(source).toContain('name="maxConcurrentExperimentItems"');
+    expect(source).toContain('name="maxConcurrentEvaluationItems"');
     expect(source).toContain("maxConcurrency");
     expect(source).toContain("Provider profiles");
   });
 
-  test("prevents the single local Personal user from being demoted or removed", () => {
+  test("prevents the current user from being demoted or removed", () => {
     expect(
       canMutateOrganizationMember({
-        mode: "local",
-        organization: {
-          id: "local",
-          name: "Personal",
-          slug: "local",
-          role: "admin",
-          projects: [],
-        },
-        viewerUserId: "local",
-        targetUserId: "local",
+        mode: "deployed",
+        organization: exampleOrganization,
+        viewerUserId: "user-1",
+        targetUserId: "user-1",
         mutation: "remove",
       }),
     ).toEqual({
       allowed: false,
-      reason: "local-personal-single-admin",
+      reason: "own-account",
     });
 
     expect(
@@ -511,8 +718,60 @@ describe("UX v2 project models", () => {
     });
 
     expect(admin.layout).toBe("admin-settings");
-    expect(admin.sidebarItems.map((item) => item.id)).toEqual(["organization", "projects"]);
-    expect(admin.showMemberAdministration).toBe(false);
+    expect(admin.sidebarItems.map((item) => item.id)).toEqual([
+      "projects",
+      "members",
+      "ai-provider",
+    ]);
+    expect(admin.showMemberAdministration).toBe(true);
+  });
+
+  test("renders company AI Chat provider settings without raw secret inputs", () => {
+    const markup = controlPlaneMarkup("/organizations/org-example/ai-provider");
+
+    expect(markup).toContain("AI Provider");
+    expect(markup).toContain("Company chat");
+    expect(markup).toContain("env:OPENAI_API_KEY");
+    expect(markup).toContain("gpt-5-mini");
+    expect(markup).toContain("Save AI provider");
+    expect(markup).toContain("credentialRef");
+    expect(markup).not.toContain("Current provider");
+    expect(markup).not.toContain("Policy version");
+    expect(markup).not.toContain("Loading telemetry");
+    expect(markup).not.toContain("api key value");
+    expect(markup).not.toContain('name="secret"');
+  });
+
+  test("shows explicit backend unavailable errors on company admin pages", () => {
+    const aiProviderMarkup = backendUnavailableControlPlaneMarkup(
+      "/organizations/local/ai-provider",
+    );
+    const membersMarkup = backendUnavailableControlPlaneMarkup("/organizations/local/members");
+
+    expect(aiProviderMarkup).toContain("AI provider settings could not be loaded.");
+    expect(aiProviderMarkup).toContain("CloudGrid is not reachable.");
+    expect(aiProviderMarkup).not.toContain("Failed to fetch");
+    expect(membersMarkup).toContain("Members or invitations could not be loaded.");
+    expect(membersMarkup).toContain("CloudGrid is not reachable.");
+    expect(membersMarkup).not.toContain("Local user");
+    expect(membersMarkup).not.toContain("Failed to fetch");
+  });
+
+  test("does not preserve unsupported legacy company AI credential refs", () => {
+    const markup = controlPlaneMarkup("/organizations/org-example/ai-provider", {
+      companyAiProviderSettings: {
+        ...companyAiProviderSettings,
+        providerProfile: companyAiProviderSettings.providerProfile
+          ? {
+              ...companyAiProviderSettings.providerProfile,
+              credentialRef: "secret://ai/openai",
+            }
+          : null,
+      },
+    });
+
+    expect(markup).toContain('name="credentialRef"');
+    expect(markup).not.toContain("secret://ai/openai");
   });
 
   test("renders retention settings from the GraphQL retention policy contract", () => {
@@ -539,6 +798,23 @@ describe("UX v2 project models", () => {
     expect(markup).not.toContain("AI Eval settings could not be loaded.");
   });
 
+  test("renders project AI provider settings editor from the GraphQL provider contract", () => {
+    const markup = controlPlaneMarkup("/projects/project-checkout/settings/ai-providers");
+
+    expect(markup).toContain(">AI Providers<");
+    expect(markup).toContain("Project OpenAI");
+    expect(markup).toContain("env:OPENAI_API_KEY");
+    expect(markup).toContain("gpt-5-mini");
+    expect(markup).toContain("Provider kind");
+    expect(markup).toContain("Model aliases");
+    expect(markup).toContain("Add provider");
+    expect(markup).toContain("Add alias");
+    expect(markup).toContain("Save AI providers");
+    expect(markup).toContain("AI Eval policy");
+    expect(markup).not.toContain("AI provider settings could not be loaded.");
+    expect(markup).not.toContain('name="secret"');
+  });
+
   test("disables retention fields that do not apply to the selected retention mode", () => {
     const markup = controlPlaneMarkup("/projects/project-checkout/settings/retention");
 
@@ -559,7 +835,7 @@ describe("UX v2 project models", () => {
     expect(markup).toContain("Local Personal admin");
     expect(markup).toContain("cannot be removed or demoted");
     expect(markup).toContain("disabled");
-    expect(markup).toContain(">Members<");
+    expect(markup).toContain(">Access<");
     expect(markup).not.toContain("Save member");
     expect(markup).not.toContain("User ID");
     expect(markup).not.toContain("Company members");
@@ -578,6 +854,17 @@ describe("UX v2 project models", () => {
     expect(markup).toContain("Create API key");
     expect(markup).not.toContain("Stored secrets are never displayed.");
     expect(markup).not.toContain("Create titled project API keys for OTLP ingest.");
+  });
+
+  test("renders the dedicated project creation wizard route", () => {
+    const markup = controlPlaneMarkup("/projects/new?organizationId=org-example");
+
+    expect(markup).toContain("Create project");
+    expect(markup).toContain(">Identity<");
+    expect(markup).toContain(">Access<");
+    expect(markup).toContain('id="project-create-name"');
+    expect(markup).toContain('id="project-create-slug"');
+    expect(markup).not.toContain('data-slot="sheet-content"');
   });
 
   test("builds API key setup snippets without obsolete OTLP header exports", () => {

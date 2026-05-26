@@ -137,36 +137,36 @@ func withReadMetrics(operation string, recorder MetricsRecorder, handler bridgeM
 	}
 }
 
-func handleProjectTelemetryOverviewWithMetrics(store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder) bridgeMessageHandler {
-	return withReadMetrics("project_telemetry_overview", recorder, handleProjectTelemetryOverview(store, logger))
+func handleProjectTelemetryOverviewWithMetrics(store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder, timeout time.Duration) bridgeMessageHandler {
+	return withReadMetrics("project_telemetry_overview", recorder, handleProjectTelemetryOverview(store, logger, timeout))
 }
 
-func handleTraceSearchWithMetrics(store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder) bridgeMessageHandler {
-	return withReadMetrics("trace_search", recorder, handleTraceSearch(store, logger))
+func handleTraceSearchWithMetrics(store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder, timeout time.Duration) bridgeMessageHandler {
+	return withReadMetrics("trace_search", recorder, handleTraceSearch(store, logger, timeout))
 }
 
-func handleTraceGetWithMetrics(store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder) bridgeMessageHandler {
-	return withReadMetrics("trace_get", recorder, handleTraceGet(store, logger))
+func handleTraceGetWithMetrics(store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder, timeout time.Duration) bridgeMessageHandler {
+	return withReadMetrics("trace_get", recorder, handleTraceGet(store, logger, timeout))
 }
 
-func handleLogSearchWithMetrics(store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder) bridgeMessageHandler {
-	return withReadMetrics("log_search", recorder, handleLogSearch(store, logger))
+func handleLogSearchWithMetrics(store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder, timeout time.Duration) bridgeMessageHandler {
+	return withReadMetrics("log_search", recorder, handleLogSearch(store, logger, timeout))
 }
 
-func handleTelemetryFacetsWithMetrics(store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder) bridgeMessageHandler {
-	return withReadMetrics("telemetry_facets", recorder, handleTelemetryFacets(store, logger))
+func handleTelemetryFacetsWithMetrics(store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder, timeout time.Duration) bridgeMessageHandler {
+	return withReadMetrics("telemetry_facets", recorder, handleTelemetryFacets(store, logger, timeout))
 }
 
-func handleMetricNameSearchWithMetrics(store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder) bridgeMessageHandler {
-	return withReadMetrics("metric_names", recorder, handleMetricNameSearch(store, logger))
+func handleMetricNameSearchWithMetrics(store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder, timeout time.Duration) bridgeMessageHandler {
+	return withReadMetrics("metric_names", recorder, handleMetricNameSearch(store, logger, timeout))
 }
 
-func handleMetricSeriesQueryWithMetrics(store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder) bridgeMessageHandler {
-	return withReadMetrics("metric_series", recorder, handleMetricSeriesQuery(store, logger))
+func handleMetricSeriesQueryWithMetrics(store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder, timeout time.Duration) bridgeMessageHandler {
+	return withReadMetrics("metric_series", recorder, handleMetricSeriesQuery(store, logger, timeout))
 }
 
-func handleRichMetricSeriesQueryWithMetrics(store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder) bridgeMessageHandler {
-	return withReadMetrics("rich_metric_series", recorder, handleRichMetricSeriesQuery(store, logger))
+func handleRichMetricSeriesQueryWithMetrics(store ports.TelemetryReadStore, logger *slog.Logger, recorder MetricsRecorder, timeout time.Duration) bridgeMessageHandler {
+	return withReadMetrics("rich_metric_series", recorder, handleRichMetricSeriesQuery(store, logger, timeout))
 }
 
 func withLiveSubscriptionMetrics(delta int64, recorder MetricsRecorder, handler bridgeMessageHandler) bridgeMessageHandler {
@@ -187,8 +187,8 @@ func withLiveSubscriptionMetrics(delta int64, recorder MetricsRecorder, handler 
 	}
 }
 
-func handleLiveTraceStartWithMetrics(registry *LiveTraceRegistry, logger *slog.Logger, recorder MetricsRecorder) bridgeMessageHandler {
-	return withLiveSubscriptionMetrics(1, recorder, handleLiveTraceStart(registry, logger))
+func handleLiveTraceStartWithMetrics(registry *LiveTraceRegistry, logger *slog.Logger, recorder MetricsRecorder, timeout time.Duration) bridgeMessageHandler {
+	return withLiveSubscriptionMetrics(1, recorder, handleLiveTraceStart(registry, logger, timeout))
 }
 
 func handleLiveTraceStopWithMetrics(registry *LiveTraceRegistry, logger *slog.Logger, recorder MetricsRecorder) bridgeMessageHandler {

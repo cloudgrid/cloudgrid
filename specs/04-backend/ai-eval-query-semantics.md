@@ -1,67 +1,91 @@
 ---
-id: TEC-BE-015
+id: TEC-BE-017
 title: AI evaluation query semantics
 layer: backend
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-16
+updated: 2026-05-24
 provenance: from-user
-depends_on: [DOM-006, TEC-BE-008]
+depends_on: [DOM-006, TEC-BE-016]
 ---
 
 # AI Evaluation Query Semantics
 
 ## Ownership
 
-Storage-read owns AI-eval read semantics, including agent-run search, dataset
-item filtering, dataset health, split leakage checks, scorer lookup,
-experiment manifest resolution, experiment scoreboard aggregation, eval-result
-search, transcript view-model derivation, production quality summaries, online
-policy matching, and annotation queue facets.
+Storage-read owns every AI Eval read model:
 
-## Required Pushdown
+- dataset search and row search;
+- dataset health;
+- dataset version reads;
+- candidate search;
+- evaluation definition search;
+- evaluation run detail;
+- item run search;
+- metric aggregation;
+- comparisons;
+- optimization detail;
+- target snapshot reads and diffs;
+- live run fanout.
 
-Storage-read adapters must push down supported filters, sorting, cursor predicates, counts, and bounded facets for:
+BFF forwards GraphQL query inputs. Frontend renders returned view models.
+Neither BFF nor frontend may recompute aggregate metrics or compare runs from
+full item result sets.
 
-- Agent runs by agent ID, agent name, status, time range, duration, token totals, cost estimate range, experiment run ID, and free text over safe indexed fields.
-- Dataset items by dataset ID, version, split, review status, source trace/span
-  presence, tags, metadata text, duplicate candidate status, synthetic flag, and
-  schema validation status.
-- Eval results by scorer ID, scorer version, target kind, target ID, pass/fail, score range, time range, and experiment run ID.
-- Experiments and runs by dataset, split selector, scorer, solver, prompt
-  version, skill snapshot, tool snapshot, provider profile, status, tag, and
-  time range.
-- Annotation queue by status, reason, assignee, target kind, and time range.
-- Production quality summaries by agent, environment, route, service, tool,
-  retrieval source, model, provider profile, prompt version, policy, scorer,
-  and time bucket.
-- Online policy matching by project ownership, policy selector, projection kind,
-  source trace/span, agent identity, model/provider, tool name, retrieval source,
-  service, route, environment, and safe indexed attributes.
+## Dataset Reads
 
-## Allowed Adapter-Side Derivations
+Dataset search supports project scope, name/text query, family, schema health,
+curation counts, split counts, updated range, and cursor pagination.
 
-- Score histogram buckets when the database lacks native histogram functions.
-- Dataset item by run cross-tab shape when the database cannot pivot cleanly.
-- Transcript messages from already bounded source span events and OpenInference message attributes.
-- Final scoreboard summary shape from pushed-down aggregate rows.
-- Dataset health view models from pushed-down counts and bounded duplicate
-  candidates.
-- Production quality view models from pushed-down aggregate rows.
-- Manifest resolution from stored dataset, scorer, settings, prompt, skill, and
-  tool references.
+Row search supports project/dataset/version scope, text query over safe indexed
+previews, curation status, split, source ref, content treatment, validation
+status, and cursor pagination.
 
-All derivations remain inside storage-read. The BFF and frontend render returned view models only.
+Dataset health returns:
 
-## Forbidden Derivations Outside Storage-Read
+- row counts by curation status and split;
+- schema validity counts;
+- missing expected counts;
+- duplicate/leakage warnings;
+- input schema warning when JSON input has no schema;
+- trace extraction compatibility status;
+- anonymization coverage;
+- test split leakage warnings for optimization.
 
-The BFF and frontend must not derive:
+## Evaluation Reads
 
-- dataset split counts or leakage state;
-- production quality trend lines;
-- online policy matches;
-- experiment manifests;
-- scoreboard deltas;
-- prompt or tool regression summaries;
-- scorer calibration summaries;
-- token or cost totals from raw span rows.
+Run detail returns:
+
+- run metadata and status;
+- dataset version and target snapshot refs;
+- aggregate metric cards;
+- metric breakdowns by label/field/problem where applicable;
+- item run table with actual output preview, expected preview, problems, and
+  trace links;
+- trajectory summary and important-step previews;
+- effective retention role and expiry in advanced details.
+
+Comparison reads return:
+
+- baseline and candidate run IDs;
+- target snapshot IDs;
+- metric deltas;
+- hard constraint results;
+- tradeoff summary;
+- regression and improvement examples;
+- recommendation summary when available.
+
+## Aggregation Rules
+
+Storage-read groups and aggregates metric results by metric ID/version, family,
+label, JSON field path, problem code, step kind, tool name, split, target
+snapshot, and run where requested.
+
+Aggregation must honor metric payload types. Unknown JSON payloads are not
+aggregated except as opaque evidence refs.
+
+## Live Fanout
+
+GraphQL subscriptions use storage-read live subjects. Runner and storage-write
+publish durable progress changes; storage-read authorizes and fans out
+GraphQL-ready events. BFF must not subscribe directly to runner internals.

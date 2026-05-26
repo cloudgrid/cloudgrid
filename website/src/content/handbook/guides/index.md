@@ -1,6 +1,6 @@
 ---
 title: "Guides"
-description: "Guides are task-focused. Each page covers one job and points to the next useful step."
+description: "Guides are task-focused. Each page covers one observability or AI Chat job and points to the next useful step."
 sidebar: "Guides"
 order: 4
 accent: violet
@@ -8,7 +8,7 @@ eyebrow: "Handbook - Guides"
 updated: 2026-05-18
 ---
 
-Guides are task-focused. Each page covers one job and points to the next useful step.
+Guides are task-focused. Each page covers one observability or AI Chat job and points to the next useful step.
 
 | Goal | Guide |
 | --- | --- |
@@ -18,6 +18,7 @@ Guides are task-focused. Each page covers one job and points to the next useful 
 | Search logs | [Logs](/handbook/guides/logs) |
 | Explore metrics | [Metrics](/handbook/guides/metrics) |
 | Build dashboards | [Dashboards](/handbook/guides/dashboards) |
-| Configure AI evaluation workflows | [AI evaluation](/handbook/guides/ai-eval) |
+| Ask project-scoped AI Chat questions | [AI Chat](/handbook/guides/ai-chat) |
+| Evaluate and optimize AI behavior | [Evaluations](/handbook/evaluations) |
 
 If a guide needs behavior that is not covered by specs, update the relevant spec before documenting it as available.

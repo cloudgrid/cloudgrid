@@ -7,6 +7,7 @@ import (
 
 func TestLoadAppliesDefaults(t *testing.T) {
 	t.Setenv("CLOUDGRID_SURREALDB_URL", "ws://localhost:8000/rpc")
+	setLocalSelfObservabilityToken(t)
 
 	cfg, err := Load()
 	if err != nil {
@@ -32,6 +33,7 @@ func TestLoadAppliesDefaults(t *testing.T) {
 
 func TestLoadAppliesStorageWriteConsumerOverrides(t *testing.T) {
 	t.Setenv("CLOUDGRID_SURREALDB_URL", "ws://localhost:8000/rpc")
+	setLocalSelfObservabilityToken(t)
 	t.Setenv("CLOUDGRID_STORAGE_WRITE_CONSUMER_MODE", "pull")
 	t.Setenv("CLOUDGRID_STORAGE_WRITE_PULL_BATCH_SIZE", "250")
 	t.Setenv("CLOUDGRID_STORAGE_WRITE_PULL_MAX_WAIT_MS", "750")
@@ -72,6 +74,7 @@ func TestLoadRejectsInvalidStorageWriteConsumerConfig(t *testing.T) {
 	for key, value := range tests {
 		t.Run(key, func(t *testing.T) {
 			t.Setenv("CLOUDGRID_SURREALDB_URL", "ws://localhost:8000/rpc")
+			setLocalSelfObservabilityToken(t)
 			t.Setenv(key, value)
 
 			_, err := Load()
@@ -87,6 +90,7 @@ func TestLoadRejectsInvalidStorageWriteConsumerConfig(t *testing.T) {
 
 func TestLoadAppliesLocalSelfObservabilityDefaults(t *testing.T) {
 	t.Setenv("CLOUDGRID_SURREALDB_URL", "ws://localhost:8000/rpc")
+	t.Setenv("CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN", "system-token")
 
 	cfg, err := Load()
 	if err != nil {
@@ -100,19 +104,65 @@ func TestLoadAppliesLocalSelfObservabilityDefaults(t *testing.T) {
 	if self.ProjectID != "cloudgrid-system" || self.CompanyID != "local" || self.OTLPEndpoint != "http://localhost:4318" {
 		t.Fatalf("self-observability identity/endpoint = %#v, want local defaults", self)
 	}
-	if self.OTLPBearerToken != "" {
-		t.Fatal("local self-observability token should be empty by default")
+	if self.OTLPBearerToken != "system-token" {
+		t.Fatalf("OTLPBearerToken = %q, want configured token", self.OTLPBearerToken)
 	}
 	if self.ExportIntervalSeconds != 10 {
 		t.Fatalf("ExportIntervalSeconds = %d, want 10", self.ExportIntervalSeconds)
+	}
+	if self.ExportFailureLogLevel != "warn" {
+		t.Fatalf("ExportFailureLogLevel = %q, want warn", self.ExportFailureLogLevel)
 	}
 	if !self.TracesEnabled || !self.LogsEnabled || !self.MetricsEnabled {
 		t.Fatalf("signal defaults = traces:%v logs:%v metrics:%v, want all enabled", self.TracesEnabled, self.LogsEnabled, self.MetricsEnabled)
 	}
 }
 
+func TestLoadRejectsLocalEnabledSelfObservabilityWithoutBearerToken(t *testing.T) {
+	t.Setenv("CLOUDGRID_SURREALDB_URL", "ws://localhost:8000/rpc")
+	t.Setenv("CLOUDGRID_SELF_OBSERVABILITY_ENABLED", "true")
+	t.Setenv("CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN", "")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN") {
+		t.Fatalf("Load() error = %v, want bearer token validation", err)
+	}
+}
+
+func TestLoadAppliesSelfObservabilityFailureLogLevelOverride(t *testing.T) {
+	t.Setenv("CLOUDGRID_SURREALDB_URL", "ws://localhost:8000/rpc")
+	setLocalSelfObservabilityToken(t)
+	t.Setenv("CLOUDGRID_SELF_OBSERVABILITY_EXPORT_FAILURE_LOG_LEVEL", "off")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.SelfObservability.ExportFailureLogLevel != "off" {
+		t.Fatalf("ExportFailureLogLevel = %q, want off", cfg.SelfObservability.ExportFailureLogLevel)
+	}
+}
+
+func TestLoadRejectsInvalidSelfObservabilityFailureLogLevel(t *testing.T) {
+	t.Setenv("CLOUDGRID_SURREALDB_URL", "ws://localhost:8000/rpc")
+	t.Setenv("CLOUDGRID_SELF_OBSERVABILITY_EXPORT_FAILURE_LOG_LEVEL", "verbose")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil")
+	}
+	if !strings.Contains(err.Error(), "ERR-009") || !strings.Contains(err.Error(), "CLOUDGRID_SELF_OBSERVABILITY_EXPORT_FAILURE_LOG_LEVEL") {
+		t.Fatalf("Load() error = %q, want failure log level validation", err.Error())
+	}
+}
+
 func TestLoadAppliesDeployedSelfObservabilityDisabledDefaults(t *testing.T) {
 	t.Setenv("CLOUDGRID_DEPLOYMENT_MODE", "deployed")
+	t.Setenv("CLOUDGRID_SELF_OBSERVABILITY_ENABLED", "")
+	t.Setenv("CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID", "")
+	t.Setenv("CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT", "")
+	t.Setenv("CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN", "")
 	t.Setenv("CLOUDGRID_SURREALDB_URL", "ws://localhost:8000/rpc")
 
 	cfg, err := Load()
@@ -202,6 +252,7 @@ func TestLoadRejectsNumericSelfObservabilityBooleans(t *testing.T) {
 
 func TestLoadPreservesStorageAdapterSelection(t *testing.T) {
 	t.Setenv("CLOUDGRID_STORAGE_ADAPTER", "postgres")
+	setLocalSelfObservabilityToken(t)
 
 	cfg, err := Load()
 	if err != nil {
@@ -227,6 +278,7 @@ func TestLoadRejectsMissingSurrealURL(t *testing.T) {
 
 func TestLoadRejectsPartialCredentialsWithoutLeakingSecrets(t *testing.T) {
 	t.Setenv("CLOUDGRID_SURREALDB_URL", "ws://localhost:8000/rpc")
+	setLocalSelfObservabilityToken(t)
 	t.Setenv("CLOUDGRID_SURREALDB_USERNAME", "root")
 	t.Setenv("CLOUDGRID_SURREALDB_PASSWORD", "super-secret")
 
@@ -246,6 +298,11 @@ func TestLoadRejectsPartialCredentialsWithoutLeakingSecrets(t *testing.T) {
 	if strings.Contains(err.Error(), "root") || strings.Contains(err.Error(), "super-secret") {
 		t.Fatalf("error leaked credential content: %q", err.Error())
 	}
+}
+
+func setLocalSelfObservabilityToken(t *testing.T) {
+	t.Helper()
+	t.Setenv("CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN", "system-token")
 }
 
 func TestValidateRejectsInvalidRuntimeConfiguration(t *testing.T) {

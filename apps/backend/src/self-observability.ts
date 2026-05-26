@@ -276,13 +276,14 @@ function otlpSpan(
   record: SelfObservabilitySpanRecord & { observedAt: Date },
   idGenerator: () => string,
 ) {
-  const traceId = record.traceId ?? fixedHex(idGenerator(), 32);
-  const spanId = record.spanId ?? fixedHex(idGenerator(), 16);
+  const traceId = validTraceId(record.traceId) ?? validTraceId(fixedHex(idGenerator(), 32));
+  const spanId = validSpanId(record.spanId) ?? validSpanId(fixedHex(idGenerator(), 16));
+  const parentSpanId = validSpanId(record.parentSpanId);
   const endUnixNano = BigInt(record.observedAt.getTime()) * 1_000_000n;
   const durationNanos = BigInt(Math.max(0, Math.round(record.durationSeconds * 1_000_000_000)));
   const span: Record<string, unknown> = {
-    traceId,
-    spanId,
+    traceId: hexBytesToBase64(traceId ?? randomHex(32)),
+    spanId: hexBytesToBase64(spanId ?? randomHex(16)),
     name: record.name,
     kind: "SPAN_KIND_INTERNAL",
     startTimeUnixNano: `${endUnixNano - durationNanos}`,
@@ -290,8 +291,8 @@ function otlpSpan(
     attributes: otlpAttributes(record.attributes ?? {}),
     status: { code: record.result === "success" ? "STATUS_CODE_OK" : "STATUS_CODE_ERROR" },
   };
-  if (record.parentSpanId) {
-    span.parentSpanId = record.parentSpanId;
+  if (parentSpanId) {
+    span.parentSpanId = hexBytesToBase64(parentSpanId);
   }
   if (record.traceState) {
     span.traceState = record.traceState;
@@ -324,6 +325,10 @@ function fixedHex(value: string, length: number): string {
     .toLowerCase()
     .replace(/[^0-9a-f]/g, "");
   return hex.padEnd(length, "0").slice(0, length);
+}
+
+function hexBytesToBase64(value: string): string {
+  return Buffer.from(value, "hex").toString("base64");
 }
 
 export function createTraceContext(

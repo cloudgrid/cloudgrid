@@ -21,7 +21,6 @@ describe("BFF static frontend serving", () => {
     writeFileSync(join(staticDir, "index.html"), "<main>CloudGrid</main>");
 
     const { app } = createAppWithBridge(bridge(), {
-      graphqlUI: false,
       frontendServeStatic: true,
       frontendStaticDir: staticDir,
     });
@@ -44,7 +43,6 @@ describe("BFF static frontend serving", () => {
     writeFileSync(join(staticDir, "app.js"), "console.log('asset');");
 
     const { app } = createAppWithBridge(bridge(), {
-      graphqlUI: false,
       frontendServeStatic: true,
       frontendStaticDir: staticDir,
       auth: ssoAuthConfig(),
@@ -66,7 +64,6 @@ describe("BFF static frontend serving", () => {
     writeFileSync(join(staticDir, "index.html"), "<main>CloudGrid</main>");
 
     const { app, auth } = createAppWithBridge(bridge(), {
-      graphqlUI: false,
       frontendServeStatic: true,
       frontendStaticDir: staticDir,
       auth: ssoAuthConfig(),

@@ -4,7 +4,7 @@ title: Logs, metrics explorer, and dashboards UX concept
 layer: frontend
 status: draft
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-16
+updated: 2026-05-22
 provenance: user-requested
 depends_on: [TEC-FE-009, TEC-FE-010, TEC-BE-017]
 ---
@@ -35,6 +35,11 @@ All routes use the global CloudGrid shell, selected project context, flat shadcn
 - Drawers are for detail/editor flows. Modals are only for confirmation, warning, information, or error acknowledgement.
 - Copy, save, create, update, delete, pin/unpin, and toggle actions must show success and failure feedback. Mutation failures show GraphQL problem details or field validation near the action surface; clipboard and low-risk utility actions may use compact toast/status feedback.
 - Server-backed list sorting belongs to GraphQL/backend contracts. Local component sorting is allowed only for bounded detail tables and already-loaded inspector sublists, never for route-primary server-backed lists.
+- Route-primary search, filtering, pagination, and table/list sorting for
+  `/logs`, `/traces`, and `/metrics` must update GraphQL input variables and
+  refetch backend-owned results. Frontend code may use local search only inside
+  already-loaded detail or inspector content, such as selected log attributes
+  or metric descriptor attribute-key inspection.
 - URL state preserves filters, selected records, selected metric, selected dashboard, time range, active inspector, and selected widget where specified.
 
 ## `/logs` Log Search Workspace
@@ -91,12 +96,15 @@ Advanced filters:
 
 Behavior:
 
-- Filters map directly to `LogSearchInput`.
+- Filters map directly to `LogSearchInput`, including multi-service selections through the `services` filter when more than one service is selected.
 - Active filters render as removable chips below the filter bar.
-- Manual entry remains available even when facets are unavailable.
+- Service selection uses bounded backend facet suggestions with removable chips, and manual entry remains available even when facets are unavailable. `/logs` requests `Query.telemetryFacets` with `signal: logs`; `/metrics` requests it with `signal: metrics`, so service suggestions are not mixed across telemetry signals.
 - Filter chips update URL state and refetch `Query.logs`.
 - Search input submits after debounce and on Enter; Enter must not open the selected row unless focus is on a row.
 - Filter suggestions are suggestions only. They do not replace typed filters or create a separate navigation rail.
+- Search, filters, cursor pagination, and sortable log columns are always
+  backend-driven through `Query.logs` and `LogSearchInput`. The log table must
+  not filter or reorder the loaded page in React for route-primary behavior.
 
 ### Log Table
 
@@ -222,6 +230,11 @@ Behavior:
 - selection loads descriptor into the inspector and prepares a default query;
 - list search updates `MetricNameSearchInput.query`;
 - service and time controls map to `MetricNameSearchInput` fields;
+- descriptor sorting maps to `MetricNameSearchInput.sort`;
+- the list incrementally loads backend cursor pages as the user scrolls;
+- the frontend must not filter or page metric descriptors over an already-fetched client subset;
+- the frontend must not sort metric descriptors locally for route-primary
+  list ordering;
 - the list remains readable with hundreds of metrics through virtualization.
 
 ### Metric Query Surface
@@ -241,6 +254,8 @@ Rules:
 
 - query execution uses `Query.metricSeries`;
 - controls map directly to `MetricSeriesInput`;
+- result ordering maps to `MetricSeriesInput.sort` and is applied by
+  storage-read;
 - frontend must not invent calculated fields or derived aggregations;
 - invalid backend combinations render GraphQL validation errors inline;
 - query warnings stay visible in the result header and inspector;
@@ -301,12 +316,23 @@ times. Metric chart legends must use readable labels such as `gateway` or
 `service.name: gateway`, not raw JSON snippets such as
 `{"service.name":"gateway"}`.
 
+The implementation in `apps/frontend/src/routes/dashboards-route.tsx` is a partial implementation and must not be treated as finished UX. Agents may reuse its GraphQL wiring and existing components, but the accepted UX target is this section plus `dashboard-widgets.md`.
+
 The route has two modes:
 
 - Overview mode: `/dashboards` without a selected dashboard shows a dedicated dashboard overview page. It contains search, grouped dashboard cards for pinned, built-in, personal, and project dashboards, a single create action, and star/pin affordances backed by dashboard pin mutations.
 - Builder mode: `/dashboards?dashboard=<dashboardId>` or a new unsaved draft opens the dashboard editor. The editor is a focused WYSIWYG-style canvas with the widget grid as the primary surface. Creating or editing a widget opens a right-side drawer/sheet for widget settings; the builder must not keep a permanent inspector column beside the canvas.
 
 Overview mode must not show the widget editor drawer. Builder mode must not show a second dashboard rail or a permanent widget inspector column; dashboard selection belongs to the overview page and the project sidebar shortcuts.
+
+Mode resolution:
+
+- `/dashboards` with no `dashboard` and no unsaved draft renders overview mode.
+- `/dashboards?dashboard=<dashboardId>` renders builder mode for the matching visible dashboard.
+- creating a dashboard renders builder mode with an unsaved draft and removes any stale `dashboard` parameter.
+- selecting a different dashboard while dirty opens discard confirmation before changing URL state.
+- a missing, inaccessible, or deleted `dashboard` parameter renders a not-found dashboard state with actions `Back to dashboards` and `Retry`; it must not silently choose another dashboard.
+- URL `widget=<widgetId>` selects that widget in builder mode when the widget exists; otherwise the widget parameter is ignored and removed on next state update.
 
 ### Desktop Layout
 
@@ -350,10 +376,21 @@ Cards show:
 - `Built-in`, `Personal`, or `Project`;
 - tags;
 - widget count;
+- updated timestamp when available;
+- owner label only when useful to distinguish personal and project dashboards;
 - star/pin action when the dashboard is user-pin eligible;
 - dirty marker for active edited dashboard only.
 
 Built-in dashboards are read-only. Editing a built-in creates an unsaved draft and requires duplicate/save before persistence.
+
+Overview interactions:
+
+- search input writes URL `query` and refetches `Query.dashboards(input.query)`;
+- empty search results show `No dashboards match these filters` and `Clear search`;
+- no-dashboard state shows built-ins when built-ins exist; otherwise it shows one primary `Create dashboard` action;
+- pin/unpin is an icon button on the card and does not open the dashboard;
+- successful pin/unpin updates `DashboardListResult.pinnedDashboardIds` and invalidates sidebar dashboard query data;
+- mutation errors show compact feedback and leave the card state unchanged unless an optimistic state is explicitly rolled back.
 
 ### Dashboard Sidebar Shortcuts
 
@@ -361,7 +398,7 @@ The global project sidebar may expose dashboard shortcuts because saved dashboar
 
 Rules:
 
-- pinned dashboards appear as a `Pinned dashboards` group at the top of the project sidebar, above the primary project navigation;
+- pinned dashboards appear as a `Pinned dashboards` group below `AI Chat` when present and above the primary telemetry navigation;
 - show at most five pinned dashboards in the sidebar; additional pinned dashboards remain available in `/dashboards`;
 - pinned entries open `/dashboards?dashboard=<dashboardId>` with the selected dashboard ID in URL state;
 - the primary `Dashboards` navigation entry is collapsible and may reveal custom dashboards the current user can access;
@@ -379,13 +416,23 @@ Builder header:
 
 - inline dashboard name field;
 - inline dashboard description field;
+- visibility control for unsaved drafts and mutable existing dashboards;
 - time range control;
 - refresh action;
 - view/edit mode toggle;
 - duplicate action;
 - save action;
+- discard action when a draft is dirty;
 - delete action when the selected dashboard is mutable;
 - one primary `Add widget` action.
+
+Header rules:
+
+- view/edit toggle is visible for saved mutable dashboards and unsaved drafts;
+- built-in dashboards open in view mode; selecting edit on a built-in creates a duplicate draft;
+- save is disabled until name is non-empty, at least one widget exists, layout is valid, and no editor field has a local validation error;
+- delete is hidden for built-ins and unavailable to users without permission;
+- refresh refetches visible widget data and dashboard list metadata, but it must not discard dirty draft state.
 
 Canvas layout:
 
@@ -407,7 +454,13 @@ Supported widgets:
 
 Additional full-editor widget target:
 
-- rich metric query widget backed by the required storage-read-owned rich metric query GraphQL contract. Production UI hides this widget until the GraphQL, AsyncAPI, TypeScript, and Go generated contracts exist.
+- rich metric query widget backed by the required storage-read-owned rich metric query GraphQL contract. Production UI hides creation/editing for this widget until GraphQL, AsyncAPI, TypeScript, Go, storage-read formula coverage, typed editor controls, and focused tests are complete.
+
+Production widget availability:
+
+- available now: `metric_timeseries`, `metric_stat`, `metric_table`, `log_table`, `trace_table`, `live_trace_table`, `alert_status`, `alert_history`, `alert_evidence`;
+- production-hidden for creation/editing until the rich metric implementation wave passes: `metric_rich`;
+- unsupported future widget kinds from persisted data render an unsupported widget state with kind, widget ID, and a copy-link action, but cannot be edited or saved without a spec/contract update.
 
 Widget rules:
 
@@ -440,6 +493,15 @@ Widget actions:
 - remove from draft dashboard;
 - copy widget link when URL state supports it.
 
+Widget action behavior:
+
+- edit opens the widget drawer in `edit` mode and starts or updates the local draft;
+- expand opens the drawer in `details` mode or a future full-screen detail route only if that route is specified first;
+- duplicate creates a new widget ID, offsets layout downward, selects the clone, and marks layout plus widget data dirty;
+- remove deletes from local draft only and is undoable;
+- copy widget link is enabled only for saved dashboards with stable widget IDs;
+- refresh refetches only the selected widget's data when invoked from the widget action menu.
+
 ### Widget Inspector And Editor
 
 The right drawer/sheet is used for widget details and editing. It is not a modal and opens only after the user creates or selects a widget for editing.
@@ -450,6 +512,16 @@ Metric widget editor groups:
 - Display: title, chart type, stacking option where supported, legend visibility, y-axis mode, unit display, and layout size;
 - Thresholds: threshold values and severity labels.
 
+Metric editor controls:
+
+- metric name uses `Query.metricNames` suggestions and permits manual entry;
+- aggregation options come from GraphQL `MetricAggregation` and are validated by backend;
+- group-by keys come from the selected `MetricDescriptor.attributeKeys`; manual entry is hidden unless descriptor data is unavailable, in which case manual entries are clearly marked as unverified;
+- filters use structured attribute-filter rows with key, operator, and value controls;
+- interval accepts explicit ISO duration or supported preset values;
+- thresholds support add, edit, remove, severity, value, and label;
+- display chart type list hides chart kinds unsupported by the current result shape.
+
 Rich metric query editor behavior:
 
 - The query builder lives inside the `Data` group to preserve the three-group editor rule.
@@ -458,7 +530,7 @@ Rich metric query editor behavior:
 - Formula rows are created through structured controls: choose left operand, operator/function, right operand or numeric constant. The UI must not expose freeform executable expressions.
 - Formula validation runs locally for shape feedback and is revalidated by GraphQL/storage-read on save or query execution.
 - The preview area renders backend-returned output only; it does not compute combined series in React.
-- A widget cannot save rich query configuration while the matching generated contracts are absent.
+- A widget cannot save rich query configuration while formula coverage, generated contracts, typed editor controls, or focused tests are incomplete.
 
 Log and trace widget editor groups:
 
@@ -484,6 +556,14 @@ Dirty behavior:
 - route changes, dashboard selection changes, and project selection changes use the same discard confirmation model.
 - successful save clears undo/redo history for the current draft.
 
+Conflict and validation behavior:
+
+- stale version conflict renders an inline problem beside Save and keeps the draft;
+- `Reload dashboard` discards the draft only after confirmation;
+- `Save as copy` removes `id` and `version`, appends `Copy` to the name, and keeps widgets unchanged;
+- field-level validation errors render beside the field and disable save only when the payload would fail known frontend validation;
+- backend validation errors without a field path render near Save and keep the drawer open.
+
 ### Dashboard States
 
 - No dashboards: show built-ins when available; otherwise primary action `Create dashboard`.
@@ -491,8 +571,12 @@ Dirty behavior:
 - Query error in one widget: show widget-local retry and problem code; do not fail the entire dashboard.
 - Delete dashboard: destructive confirmation dialog.
 - Empty dashboard draft: show the canvas empty state with one `Add widget` action.
-- Unsupported rich widget contract: show a disabled widget type and short unavailable reason only in development builds; production hides it.
+- Unsupported rich widget creation/edit gate: show a disabled widget type and short unavailable reason only in development builds; production hides creation/edit entry points.
 - Layout validation failure: keep the draft open, mark the invalid widget, and show the validation problem near the save action and editor layout controls.
+- Missing selected dashboard: show `Dashboard not found` with `Back to dashboards` and `Retry`.
+- Permission denied selected dashboard: show a GraphQL problem panel and do not reveal dashboard metadata.
+- Dirty route/project switch: show discard confirmation and preserve the user's attempted destination.
+- Widget unsupported by current contracts: keep the widget frame stable and show unsupported-contract copy; do not drop it from the draft automatically.
 
 ## Cross-View Pivots
 
@@ -505,88 +589,16 @@ Dirty behavior:
 
 ## Project Alerting UX
 
-Alerting is a project-level operational workspace at `/alerts`. It is not embedded into dashboard editing and it is not a company-global administration page.
+Alerting UX is specified in `specs/05-frontend/alerts-ux-concept.md`.
 
-Sidebar placement:
-
-- `/alerts` remains a project-level route, but it is not a primary project sidebar item and must not be inserted into the global project sidebar order;
-- the route may be opened directly, from command palette actions, from alert evidence links, and from explicit alert-management entry points specified by alerting specs;
-- active firing counts may be shown only on alerting surfaces when GraphQL exposes them; otherwise no synthetic count is rendered.
-
-Layout:
-
-- use the standard route chrome: breadcrumb row, title row, and project content area;
-- title is `Alerts`;
-- primary action is `Create alert rule` with a plus icon;
-- secondary action is icon-only refresh;
-- no other header actions are visible in v1;
-- content is a two-panel split: left alert rule table, right selected rule/history inspector;
-- the table panel is the primary surface and owns scrolling;
-- the inspector is resizable, uses the same right-panel behavior as logs and trace details, and is hidden on mobile until a row is selected.
-
-Alert rule table columns:
-
-- status;
-- severity;
-- rule name;
-- kind;
-- signal;
-- evaluation window;
-- last event;
-- enabled.
-
-Standard element rules:
-
-- status uses plain text for `OK` and red text only for `FIRING` or `ERROR`;
-- severity uses text only, not colored badges, except `CRITICAL` may use red text;
-- enabled is a switch only when the viewer can administer project alerts;
-- row click selects the rule and updates the inspector;
-- table headers are sortable where the backend returns stable sortable fields.
-
-Filters:
-
-- default visible filters are search, status, severity, signal, and enabled;
-- advanced filters are behind the existing `More filters` disclosure pattern;
-- filter chips are removable independently;
-- empty results caused by filters say `No alert rules match these filters` and show `Clear filters`;
-- a project with no alert rules says `No alert rules yet` and shows `Create alert rule` only for project admins.
-
-Rule editor:
-
-- create/edit opens a right sheet, not a modal;
-- destructive delete uses a confirmation dialog;
-- the sheet has sections `Basics`, `Signal query`, `Condition`, `Timing`, and `Notifications`;
-- `Basics` contains name, enabled, kind, and severity;
-- `Signal query` renders the exact query controls for the selected kind: metric selector for metric rules, log filters for log rules, trace filters for trace rules;
-- `Condition` renders only the fields allowed by `04-backend/alerting.md` for the selected kind;
-- `Timing` contains evaluation window, pending-for, and cooldown;
-- `Notifications` shows the in-app adapter as checked and read-only in v1;
-- changing rule kind resets query and condition after a confirmation dialog if either section is dirty.
-
-Inspector tabs:
-
-- `Overview`: current state, severity, kind, enabled state, timing, notification adapters, version, and last update metadata;
-- `History`: alert event table backed by `alertHistory`;
-- `Silences`: active and scheduled silences backed by `alertSilences`.
-
-History pivots:
-
-- trace evidence opens trace detail;
-- span evidence opens trace detail with selected span;
-- log evidence opens logs with selected log/trace/span filters;
-- metric evidence opens metrics with metric name and representable query context.
-
-Silence behavior:
-
-- create silence is available from the selected rule inspector for project admins;
-- delete silence is destructive only when active or scheduled;
-- expired silences are read-only history entries.
-
-Dashboard relationship:
+This dashboard/log/metric spec owns only alert relationships for these views:
 
 - dashboard threshold display settings are not alert rules;
+- dashboard alert widgets are read-only evidence/status/history widgets backed
+  by alert contracts;
 - dashboards may link to `/alerts?ruleId=<id>` from typed alert widgets;
-- v1 dashboard editing must not create, update, or delete alert rules.
+- dashboard editing must not create, update, enable, disable, silence, or delete
+  alert rules.
 
 ## URL State
 
@@ -602,6 +614,7 @@ Dashboards:
 
 - selected dashboard ID or built-in slug, time range, selected widget ID, inspector mode, dirty draft state only when shareable without leaking unsaved data. Otherwise dirty draft state is browser-local.
 - expanded/collapsed dashboard sidebar group is presentation state and does not change URL state.
+- route mode is derived from selected dashboard ID or local draft state; do not add a separate URL-only mode that can diverge from these rules.
 
 Alerts:
 
@@ -611,7 +624,8 @@ Alerts:
 
 - `/logs` renders a searchable log table with filter controls, removable filter chips, resizable selected-log inspector, copy actions, and trace/span pivot actions. It does not render a permanent left facet/service rail.
 - `/metrics` renders a metric explorer based on `metricNames` and `metricSeries`, not the dashboard rail.
-- `/dashboards` renders saved/built-in dashboards based on `Query.dashboards`, with dashboard rail, widget grid, inspector/editor, and pin/star affordances backed by dashboard pin mutations.
+- `/dashboards` renders saved/built-in dashboards based on `Query.dashboards`, with overview mode, builder mode, widget grid, drawer/sheet editor, and pin/star affordances backed by dashboard pin mutations.
 - The project sidebar supports pinned dashboard shortcuts and a collapsible `Dashboards` child list backed by `DashboardListResult.pinnedDashboardIds` and visible dashboard data.
 - Live trace receiving remains a mode inside `/traces`, not a dashboard or logs route.
 - `/alerts` renders project-scoped alert rules, history, silences, editor, and trace/log/metric pivots through the generated alert contracts. Dashboards may show alert evidence only through typed alert widgets; generic dashboard thresholds are not alert rules.
+- The dashboard implementation passes focused tests for mode resolution, dirty discard, stale conflict handling, rich metric production gating, widget-local query errors, mobile stacked editing, and keyboard layout controls before the dashboard UX can be marked complete.

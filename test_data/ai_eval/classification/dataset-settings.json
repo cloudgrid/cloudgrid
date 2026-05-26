@@ -1,0 +1,47 @@
+{
+  "name": "Support intent classification",
+  "description": "Classify short customer support messages into one canonical intent.",
+  "inputValueType": "json",
+  "expectedOutputValueType": "json",
+  "inputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["message"],
+    "properties": {
+      "message": {
+        "type": "string",
+        "minLength": 1
+      },
+      "channel": {
+        "type": "string",
+        "enum": ["email", "chat", "form"]
+      },
+      "customerTier": {
+        "type": "string",
+        "enum": ["free", "pro", "enterprise"]
+      }
+    }
+  },
+  "expectedOutputSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["intent"],
+    "properties": {
+      "intent": {
+        "type": "string",
+        "enum": [
+          "billing_refund",
+          "billing_invoice",
+          "technical_bug",
+          "account_access",
+          "feature_request",
+          "cancellation",
+          "sales_question"
+        ]
+      }
+    }
+  },
+  "defaultSplit": "validation",
+  "defaultReviewStatus": "ready",
+  "defaultMetric": "classification.accuracy"
+}

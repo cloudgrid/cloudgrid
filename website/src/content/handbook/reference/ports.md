@@ -10,7 +10,7 @@ updated: 2026-05-18
 | --- | --- | --- |
 | BFF | `3000` | `CLOUDGRID_BFF_PORT` |
 | Frontend dev server | `5173` | `CLOUDGRID_FRONTEND_DEV_PORT` |
-| OTLP HTTP collector | `4318` | `CLOUDGRID_OTLP_HTTP_ADDR`, `CLOUDGRID_OTLP_PORT` |
+| OTLP HTTP collector | `4318` | `CLOUDGRID_OTLP_HTTP_ADDR` |
 | OTLP gRPC collector | `4317` | `CLOUDGRID_OTLP_GRPC_ADDR` |
 | NATS client | `4222` | `CLOUDGRID_NATS_PORT` in Docker Compose env |
 | NATS monitor | `8222` | `CLOUDGRID_NATS_MONITOR_PORT` in Docker Compose env |
