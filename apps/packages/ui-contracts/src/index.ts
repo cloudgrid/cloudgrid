@@ -77,6 +77,25 @@ export type AlertState = "OK" | "PENDING" | "FIRING" | "RESOLVED" | "SILENCED" |
 
 export type AlertSignal = "METRIC" | "LOG" | "TRACE";
 
+export type AlertNotificationAdapterKind = "IN_APP" | "EMAIL" | "WEBHOOK" | "BRIDGE";
+
+export type AlertNotificationAdapterConfigFieldType =
+  | "STRING"
+  | "URL"
+  | "EMAIL"
+  | "SECRET"
+  | "BOOLEAN"
+  | "NUMBER"
+  | "SELECT"
+  | "MULTISELECT";
+
+export type AlertNotificationSecretStatus = "SET" | "MISSING";
+
+export type AlertNotificationAdapterTestStatus =
+  | "PASSED"
+  | "FAILED_RETRYABLE"
+  | "FAILED_TERMINAL";
+
 export type AlertRuleSort =
   | "updatedAt_desc"
   | "updatedAt_asc"
@@ -1813,6 +1832,18 @@ export interface CreateAlertSilenceInput {
   reason: string;
   startsAt: DateTime;
   endsAt: DateTime;
+}
+
+export interface UpsertCompanyAlertNotificationAdapterInput {
+  id?: string | null;
+  companyId: string;
+  definitionId: string;
+  label: string;
+  enabled: boolean;
+  config: JSONValue;
+  secretConfig?: JSONValue | null;
+  clearSecretKeys?: string[] | null;
+  expectedVersion?: number | null;
 }
 
 export interface Trace {
@@ -3624,6 +3655,72 @@ export interface AlertSilence {
   active: boolean;
 }
 
+export interface AlertNotificationAdapter {
+  id: string;
+  definitionId: string;
+  label: string;
+  kind: AlertNotificationAdapterKind;
+  configured: boolean;
+  enabled: boolean;
+  description: string;
+  disabledReason?: string | null;
+}
+
+export interface AlertNotificationAdapterDefinition {
+  id: string;
+  kind: AlertNotificationAdapterKind;
+  label: string;
+  description: string;
+  configFields: AlertNotificationAdapterConfigField[];
+  supportsTest: boolean;
+  defaultEnabled: boolean;
+}
+
+export interface AlertNotificationAdapterConfigField {
+  key: string;
+  label: string;
+  description: string;
+  type: AlertNotificationAdapterConfigFieldType;
+  required: boolean;
+  secret: boolean;
+  placeholder?: string | null;
+  options: AlertNotificationAdapterConfigOption[];
+  validationPattern?: string | null;
+}
+
+export interface AlertNotificationAdapterConfigOption {
+  value: string;
+  label: string;
+}
+
+export interface CompanyAlertNotificationAdapter {
+  id: string;
+  companyId: string;
+  definitionId: string;
+  label: string;
+  kind: AlertNotificationAdapterKind;
+  enabled: boolean;
+  configured: boolean;
+  config: JSONValue;
+  secretStatuses: AlertNotificationSecretFieldStatus[];
+  createdAt: DateTime;
+  updatedAt: DateTime;
+  updatedByUserId: string;
+  version: number;
+}
+
+export interface AlertNotificationSecretFieldStatus {
+  key: string;
+  status: AlertNotificationSecretStatus;
+}
+
+export interface AlertNotificationAdapterTestResult {
+  adapterId: string;
+  status: AlertNotificationAdapterTestStatus;
+  message: string;
+  testedAt: DateTime;
+}
+
 export interface PageInfo {
   hasNextPage: boolean;
   endCursor?: string | null;
@@ -3772,6 +3869,18 @@ export interface AlertSummaryQueryData {
 
 export interface AlertSilencesQueryData {
   alertSilences: AlertSilence[];
+}
+
+export interface AlertNotificationAdaptersQueryData {
+  alertNotificationAdapters: AlertNotificationAdapter[];
+}
+
+export interface AlertNotificationAdapterDefinitionsQueryData {
+  alertNotificationAdapterDefinitions: AlertNotificationAdapterDefinition[];
+}
+
+export interface CompanyAlertNotificationAdaptersQueryData {
+  companyAlertNotificationAdapters: CompanyAlertNotificationAdapter[];
 }
 
 export interface AgentRunsQueryData {

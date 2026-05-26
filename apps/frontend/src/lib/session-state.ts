@@ -165,7 +165,7 @@ export function resolveAppShellMode({
     return "project-selection";
   }
 
-  if (pathname === "/projects") {
+  if (pathname === "/projects" || pathname === "/projects/new") {
     return "project-selection";
   }
 

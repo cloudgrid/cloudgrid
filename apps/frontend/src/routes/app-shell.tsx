@@ -70,6 +70,7 @@ import {
 } from "../lib/session-state";
 import { cn } from "../lib/utils";
 import { useAppSession } from "../providers/app-session-provider";
+import { useBrand } from "../providers/brand-provider";
 import { useTheme } from "../providers/theme-provider";
 import { aiChatEnabled } from "./ai-chat-route";
 import { aiEvalEnabled } from "./ai-eval-route";
@@ -111,6 +112,7 @@ function ProjectSelectGroups({ organizations }: { organizations: Organization[] 
 }
 
 export function AppShell() {
+  const { productName, renderMark } = useBrand();
   const { appliedTheme, setTheme } = useTheme();
   const { client, isBackendUnavailable, logout, refetchViewer, selectProject, viewer } =
     useAppSession();
@@ -307,10 +309,10 @@ export function AppShell() {
                 to="/projects"
               >
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-primary text-primary-foreground">
-                  <Activity className="size-4" aria-hidden />
+                  {renderMark("size-4")}
                 </span>
                 <span className="hidden truncate text-sm font-semibold sm:inline">
-                  {t("app.name")}
+                  {productName}
                 </span>
               </Link>
             </div>
@@ -511,7 +513,7 @@ export function AppShell() {
                 </SheetTrigger>
                 <SheetContent className="w-[320px] max-w-[88vw]" side="left">
                   <SheetHeader>
-                    <SheetTitle>{t("app.name")}</SheetTitle>
+                    <SheetTitle>{productName}</SheetTitle>
                     <SheetDescription>
                       {selectedProject?.name ?? t("projects.select")}
                     </SheetDescription>
@@ -585,8 +587,10 @@ export function AppShell() {
             role="alert"
           >
             <div className="min-w-0">
-              <p className="font-medium">{t("backend.unavailable.title")}</p>
-              <p className="text-xs text-destructive/90">{t("backend.unavailable.description")}</p>
+              <p className="font-medium">{t("backend.unavailable.title", { productName })}</p>
+              <p className="text-xs text-destructive/90">
+                {t("backend.unavailable.description", { productName })}
+              </p>
             </div>
             <Button
               className="shrink-0"

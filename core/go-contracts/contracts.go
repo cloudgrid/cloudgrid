@@ -1823,6 +1823,25 @@ type AlertSummary struct {
 	BySignal   []AlertSignalCount   `json:"bySignal"`
 }
 
+type AlertNotificationAdapterKind string
+
+const (
+	AlertNotificationAdapterKindInApp   AlertNotificationAdapterKind = "IN_APP"
+	AlertNotificationAdapterKindEmail   AlertNotificationAdapterKind = "EMAIL"
+	AlertNotificationAdapterKindWebhook AlertNotificationAdapterKind = "WEBHOOK"
+	AlertNotificationAdapterKindBridge  AlertNotificationAdapterKind = "BRIDGE"
+)
+
+type AlertNotificationAdapter struct {
+	ID             string                       `json:"id"`
+	Label          string                       `json:"label"`
+	Kind           AlertNotificationAdapterKind `json:"kind"`
+	Configured     bool                         `json:"configured"`
+	Enabled        bool                         `json:"enabled"`
+	Description    string                       `json:"description"`
+	DisabledReason *string                      `json:"disabledReason,omitempty"`
+}
+
 type AlertRuleCreateInput struct {
 	ProjectID               string         `json:"projectId"`
 	Name                    string         `json:"name"`
@@ -1986,6 +2005,22 @@ type AlertSummaryResponse struct {
 	OK        bool              `json:"ok"`
 	Data      *AlertSummaryData `json:"data,omitempty"`
 	Error     *BridgeError      `json:"error,omitempty"`
+}
+
+type AlertNotificationAdapterListRequest struct {
+	BridgeEnvelope
+	ProjectID string `json:"projectId"`
+}
+
+type AlertNotificationAdapterListData struct {
+	Adapters []AlertNotificationAdapter `json:"adapters"`
+}
+
+type AlertNotificationAdapterListResponse struct {
+	RequestID string                            `json:"requestId"`
+	OK        bool                              `json:"ok"`
+	Data      *AlertNotificationAdapterListData `json:"data,omitempty"`
+	Error     *BridgeError                      `json:"error,omitempty"`
 }
 
 type AlertHistoryRecordRequest struct {

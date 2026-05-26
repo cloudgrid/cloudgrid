@@ -2,9 +2,7 @@
 import Layout from "../../layouts/Layout.astro";
 import Section from "../../components/Section.astro";
 import PageHeader from "../../components/PageHeader.astro";
-import MockFrame from "../../components/visuals/MockFrame.astro";
 import AiEvalBoard from "../../components/visuals/AiEvalBoard.astro";
-import EvalFlowCanvas from "../../components/visuals/EvalFlowCanvas.astro";
 import CheckList from "../../components/CheckList.astro";
 import RelatedFeatures from "../../components/RelatedFeatures.astro";
 ---
@@ -17,16 +15,6 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
       title="Turn collected telemetry into better AI behavior."
       description="CloudGrid gives AI teams a practical evaluation loop inside the same project where traces, logs, metrics, and dashboards already live: curate datasets, run evaluations, compare outputs, optimize prompts or examples, and promote improvements with evidence."
     />
-  </Section>
-
-  <Section tone="recessed">
-    <div class="reveal-scale">
-      <EvalFlowCanvas />
-    </div>
-    <p class="mt-3 text-center text-xs text-text-muted">
-      The loop is intentionally simple: evidence becomes dataset rows, evaluations produce results,
-      comparisons show what changed, and promotion stays an explicit team decision.
-    </p>
   </Section>
 
   <Section>
@@ -47,14 +35,14 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
         />
       </div>
       <div class="reveal">
-        <h2 class="mb-4 text-xl font-semibold text-text">Honest about scope</h2>
+        <h2 class="mb-4 text-xl font-semibold text-text">Current scope</h2>
         <CheckList
           muted
           items={[
-            "The primary v1 workflow is dataset evaluation and optimization. Production measurement is intentionally not the main user flow yet.",
+            "The primary v1 workflow is dataset evaluation and optimization. Production measurement is on the product path after the core evaluation loop.",
             "Complex agents and workflows can be evaluated through an adapter endpoint instead of rebuilding the whole workflow inside CloudGrid.",
-            "Provider API keys belong in project or company provider settings. They are not typed into datasets or evaluation rows.",
-            "Evaluation produces metrics, results, and comparisons. Alerting or release gates can consume those values later, but they are not the evaluation itself.",
+            "Provider API keys belong in project or company provider settings and stay out of datasets and evaluation rows.",
+            "Evaluation produces metrics, results, and comparisons. Alerting or release gates can consume those values later as downstream workflows.",
             "Quick-shot optimization is exploratory. Promotion should use full validation evidence.",
           ]}
         />
@@ -73,53 +61,45 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
         proposes changes and proves them against validation data.
       </p>
     </div>
-    <div class="grid gap-5 sm:grid-cols-4">
-      <div class="card spotlight is-interactive flex h-full flex-col p-6 reveal" data-delay="1">
-        <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Datasets</div>
-        <div class="mt-1 text-base font-semibold text-text">Versioned examples</div>
-        <p class="mt-2 flex-1 text-sm text-text-secondary">Rows contain input, expected output, optional reason, split, curation status, and source evidence.</p>
-      </div>
-      <div class="card spotlight is-interactive flex h-full flex-col p-6 reveal" data-delay="2">
-        <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Evaluations</div>
-        <div class="mt-1 text-base font-semibold text-text">Repeatable runs</div>
-        <p class="mt-2 flex-1 text-sm text-text-secondary">Run a selected target over a dataset split and inspect aggregate and per-row results.</p>
-      </div>
-      <div class="card spotlight is-interactive flex h-full flex-col p-6 reveal" data-delay="3">
-        <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Comparisons</div>
-        <div class="mt-1 text-base font-semibold text-text">Better or worse</div>
-        <p class="mt-2 flex-1 text-sm text-text-secondary">See metric deltas, regressions, improvements, and examples that explain the tradeoff.</p>
-      </div>
-      <div class="card spotlight is-interactive flex h-full flex-col p-6 reveal" data-delay="1">
-        <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Optimization</div>
-        <div class="mt-1 text-base font-semibold text-text">Improve with evidence</div>
-        <p class="mt-2 flex-1 text-sm text-text-secondary">Explore quick-shot candidates, validate them, then explicitly promote the winning target.</p>
-      </div>
+    <div class="truth-stack">
+      {[
+        ["Datasets", "Versioned examples", "Rows contain input, expected output, optional reason, split, curation status, and source evidence."],
+        ["Evaluations", "Repeatable runs", "Run a selected target over a dataset split and inspect aggregate and per-row results."],
+        ["Comparisons", "Better or worse", "See metric deltas, regressions, improvements, and examples that explain the tradeoff."],
+        ["Optimization", "Improve with evidence", "Explore quick-shot candidates, validate them, then explicitly promote the winning target."],
+      ].map(([label, title, body], i) => (
+        <div class="truth-stack__item reveal" data-delay={(((i % 3) + 1)) as any}>
+          <div class="truth-stack__index">{label}</div>
+          <div>
+            <div class="truth-stack__title">{title}</div>
+            <p>{body}</p>
+          </div>
+        </div>
+      ))}
     </div>
   </Section>
 
   <Section tone="recessed">
     <div class="mb-8 max-w-3xl reveal">
-      <div class="chip bg-violet-soft text-[var(--color-violet)]">What a finished evaluation looks like</div>
       <h2 class="mt-4 text-2xl font-semibold tracking-tight text-text text-balance">
         A scoreboard you can actually hand to your team.
       </h2>
       <p class="mt-3 text-text-secondary">
-        A run summary is not just one number. CloudGrid keeps the aggregate metrics, row-level
+        A run summary carries more than one number. CloudGrid keeps the aggregate metrics, row-level
         expected vs actual output, trace links, and short trajectory summaries together so the team
         can decide what to improve next.
       </p>
     </div>
     <div class="reveal">
-      <MockFrame title="cloudgrid · /ai-eval · evaluation run">
+      <div class="card overflow-hidden">
         <AiEvalBoard />
-      </MockFrame>
+      </div>
     </div>
   </Section>
 
   <Section>
     <div class="grid gap-10 lg:grid-cols-[1fr_1.2fr]">
       <div class="reveal-x">
-        <div class="chip bg-emerald-soft text-[var(--color-emerald)]">Why it belongs with telemetry</div>
         <h2 class="mt-4 text-2xl font-semibold tracking-tight text-text text-balance">
           Your failed examples already exist in traces.
         </h2>
@@ -134,7 +114,7 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
         {[
           ["Classify", "Capture customer messages and expected categories, then measure prompt changes against validation and test splits."],
           ["Extract", "Validate raw JSON outputs against a dataset schema and see exactly which rows failed."],
-          ["Workflow", "Keep bounded trajectory summaries and important steps so complex agent runs can be reviewed without opening every span."],
+          ["Workflow", "Keep bounded trajectory summaries and important steps so complex agent runs stay focused during review."],
           ["Optimize", "Let candidates compete against the same dataset, then promote only after validation evidence is visible."],
         ].map(([title, body]) => (
           <div class="rounded-lg border border-border-subtle bg-surface p-4">

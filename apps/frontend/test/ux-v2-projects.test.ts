@@ -557,29 +557,39 @@ describe("UX v2 project models", () => {
   test("exposes dedicated project settings sections under the project settings route", () => {
     expect(buildProjectSettingsSections("project-checkout", { aiEvalEnabled: true })).toEqual([
       {
-        id: "general",
+        id: "identity",
         href: "/projects/project-checkout/settings",
-        labelKey: "projects.settings.general",
+        label: "Identity",
+      },
+      {
+        id: "access",
+        href: "/projects/project-checkout/settings/members",
+        label: "Access",
+      },
+      {
+        id: "setup",
+        href: "/projects/project-checkout/settings/setup",
+        label: "Setup",
       },
       {
         id: "ingest",
         href: "/projects/project-checkout/settings/ingest",
-        labelKey: "projects.settings.apiKeys",
+        label: "API Keys",
       },
       {
         id: "retention",
         href: "/projects/project-checkout/settings/retention",
-        labelKey: "projects.settings.retention",
+        label: "Retention",
+      },
+      {
+        id: "ai-providers",
+        href: "/projects/project-checkout/settings/ai-providers",
+        label: "AI Providers",
       },
       {
         id: "ai-eval",
         href: "/projects/project-checkout/settings/ai-eval",
-        labelKey: "projects.settings.aiEval",
-      },
-      {
-        id: "members",
-        href: "/projects/project-checkout/settings/members",
-        labelKey: "projects.settings.members",
+        label: "AI Eval",
       },
     ]);
   });
@@ -600,7 +610,13 @@ describe("UX v2 project models", () => {
   test("uses general as the project settings root without an overview subpage", () => {
     const markup = controlPlaneMarkup("/projects/project-checkout/settings");
 
-    expect(markup).toContain(">General<");
+    expect(markup).toContain(">Identity<");
+    expect(markup).toContain(">Access<");
+    expect(markup).toContain(">Setup<");
+    expect(markup).toContain(">API Keys<");
+    expect(markup).toContain(">Retention<");
+    expect(markup).toContain(">AI Providers<");
+    expect(markup).toContain(">AI Eval<");
     expect(markup).toContain("Checkout API");
     expect(markup).not.toContain("Project status, ingest health, and telemetry navigation.");
     expect(markup).not.toContain(
@@ -819,7 +835,7 @@ describe("UX v2 project models", () => {
     expect(markup).toContain("Local Personal admin");
     expect(markup).toContain("cannot be removed or demoted");
     expect(markup).toContain("disabled");
-    expect(markup).toContain(">Members<");
+    expect(markup).toContain(">Access<");
     expect(markup).not.toContain("Save member");
     expect(markup).not.toContain("User ID");
     expect(markup).not.toContain("Company members");
@@ -838,6 +854,17 @@ describe("UX v2 project models", () => {
     expect(markup).toContain("Create API key");
     expect(markup).not.toContain("Stored secrets are never displayed.");
     expect(markup).not.toContain("Create titled project API keys for OTLP ingest.");
+  });
+
+  test("renders the dedicated project creation wizard route", () => {
+    const markup = controlPlaneMarkup("/projects/new?organizationId=org-example");
+
+    expect(markup).toContain("Create project");
+    expect(markup).toContain(">Identity<");
+    expect(markup).toContain(">Access<");
+    expect(markup).toContain('id="project-create-name"');
+    expect(markup).toContain('id="project-create-slug"');
+    expect(markup).not.toContain('data-slot="sheet-content"');
   });
 
   test("builds API key setup snippets without obsolete OTLP header exports", () => {

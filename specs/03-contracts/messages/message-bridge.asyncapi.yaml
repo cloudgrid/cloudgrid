@@ -820,6 +820,13 @@ channels:
         $ref: "#/components/messages/AlertSummaryRequest"
       AlertSummaryResponse:
         $ref: "#/components/messages/AlertSummaryResponse"
+  control.alert_notification_adapters.list:
+    address: control.alert_notification_adapters.list
+    messages:
+      AlertNotificationAdapterListRequest:
+        $ref: "#/components/messages/AlertNotificationAdapterListRequest"
+      AlertNotificationAdapterListResponse:
+        $ref: "#/components/messages/AlertNotificationAdapterListResponse"
   control.alert_history.record:
     address: control.alert_history.record
     messages:
@@ -1353,6 +1360,18 @@ operations:
       $ref: "#/channels/control.alert_summary.get"
     messages:
       - $ref: "#/channels/control.alert_summary.get/messages/AlertSummaryResponse"
+  requestAlertNotificationAdapters:
+    action: send
+    channel:
+      $ref: "#/channels/control.alert_notification_adapters.list"
+    messages:
+      - $ref: "#/channels/control.alert_notification_adapters.list/messages/AlertNotificationAdapterListRequest"
+  replyAlertNotificationAdapters:
+    action: receive
+    channel:
+      $ref: "#/channels/control.alert_notification_adapters.list"
+    messages:
+      - $ref: "#/channels/control.alert_notification_adapters.list/messages/AlertNotificationAdapterListResponse"
   recordAlertHistory:
     action: send
     channel:
@@ -2126,6 +2145,14 @@ components:
       name: AlertSummaryResponse
       payload:
         $ref: "#/components/schemas/AlertSummaryResponse"
+    AlertNotificationAdapterListRequest:
+      name: AlertNotificationAdapterListRequest
+      payload:
+        $ref: "#/components/schemas/AlertNotificationAdapterListRequest"
+    AlertNotificationAdapterListResponse:
+      name: AlertNotificationAdapterListResponse
+      payload:
+        $ref: "#/components/schemas/AlertNotificationAdapterListResponse"
     AlertHistoryRecordRequest:
       name: AlertHistoryRecordRequest
       payload:
@@ -3969,6 +3996,9 @@ components:
     AlertSignal:
       type: string
       enum: [METRIC, LOG, TRACE]
+    AlertNotificationAdapterKind:
+      type: string
+      enum: [IN_APP, EMAIL, WEBHOOK, BRIDGE]
     AlertRuleSort:
       type: string
       enum:
@@ -4331,6 +4361,19 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AlertSignalCount"
+    AlertNotificationAdapter:
+      type: object
+      additionalProperties: false
+      required: [id, label, kind, configured, enabled, description]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        kind:
+          $ref: "#/components/schemas/AlertNotificationAdapterKind"
+        configured: { type: boolean }
+        enabled: { type: boolean }
+        description: { type: string }
+        disabledReason: { type: string }
     AlertSummaryRequest:
       allOf:
         - $ref: "#/components/schemas/BridgeEnvelope"
@@ -4355,6 +4398,32 @@ components:
           properties:
             summary:
               $ref: "#/components/schemas/AlertSummary"
+        error:
+          $ref: "#/components/schemas/BridgeError"
+    AlertNotificationAdapterListRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId]
+          properties:
+            projectId: { type: string }
+    AlertNotificationAdapterListResponse:
+      type: object
+      additionalProperties: false
+      required: [requestId, ok]
+      properties:
+        requestId: { type: string }
+        ok: { type: boolean }
+        data:
+          type: object
+          additionalProperties: false
+          required: [adapters]
+          properties:
+            adapters:
+              type: array
+              items:
+                $ref: "#/components/schemas/AlertNotificationAdapter"
         error:
           $ref: "#/components/schemas/BridgeError"
     AlertHistoryListResponse:

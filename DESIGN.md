@@ -171,6 +171,27 @@ Use shadcn/ui primitives, Tailwind utility composition, and the default shadcn t
 
 `specs/05-frontend/product-ux-concept.md` is the authoritative UX concept. Frontend agents must read it before changing app shell, navigation, onboarding, empty states, route layout, drawers, dialogs, popovers, or collapsibles. Frontend agents changing `/traces` or `/traces/:traceId` must also read `specs/05-frontend/traces-and-metrics-ux-concept.md`. Frontend agents changing `/logs`, `/metrics`, or `/dashboards` must read `specs/05-frontend/logs-metrics-dashboards-ux-concept.md`.
 
+Licensed whitelabel builds use the code-level brand boundary in
+`specs/05-frontend/whitelabel-customization.md`. Product identity, light/dark
+semantic tokens, fonts, and radius come from `@cloudgrid/brand`; shell behavior,
+route layout, component hierarchy, telemetry colors by meaning, and shadcn
+primitive behavior remain CloudGrid core.
+
+## Public Website Visual Direction
+
+The public website under `website/` uses a different composition model than the product app, but the same restraint: neutral surfaces, concise copy, and no nested decorative UI. Marketing pages may use a generated hero image as a first-viewport signal; documentation pages do not.
+
+Website rules:
+
+- Use generated realistic enterprise/product collage imagery only in the first hero section of non-handbook pages. The image should feel like a polished product/infrastructure photograph or product-render collage, with observability dashboards, telemetry flows, message bridge/adapters, enterprise SaaS packaging, or cloud infrastructure as the subject.
+- Do not use full-page image backgrounds. After the hero, sections return to flat white or neutral recessed surfaces.
+- Do not use simple gradients, procedural SVG backgrounds, abstract blobs, bokeh, or generic stock-like filler as hero art.
+- Keep home, feature overview, feature detail, enterprise, white-label, and compare hero copy blocks aligned in position and scale so page navigation does not flicker.
+- Let the hero background carry the visual weight. Do not add a separate right-side hero mockup, animated canvas, SVG diagram, or card stack beside the headline.
+- Handbook pages and handbook subpages remain plain white/neutral documentation pages without marketing hero imagery.
+- Do not add decorative pill piles, card-in-card layouts, nested rounded section wrappers, oversized decorative cards, or marketing bloat. Use flat sections, restrained borders, concise typography, and shadcn-like neutral color.
+- Marketing feature lists and related-page navigation should not use generic card grids. Use editorial stacks, alternating image/text rows, ruled lists, or image-led strips with generated product collage crops.
+
 ## Colors
 
 CloudGrid uses neutral shadcn surfaces with semantic telemetry accents.
@@ -252,8 +273,11 @@ Do not mix highly rounded decorative elements with the operational app shell.
 - **Search Inputs:** All search fields use the shared shadcn-backed `SearchInput` component with a leading search icon. Do not hand-compose absolute search icons beside raw `Input` controls in route or feature code.
 - **Project Switcher:** Company/project switcher is a compact topbar control with company, project name, and overflow-safe truncation. It opens an anchored popover on desktop and appears first in the mobile menu sheet.
 - **Project Picker:** The picker is an operational selector, not a dashboard. Use a centered project-card grid with search/filter, current-selection state, status metadata, and a create-project card/action when authorized. Do not show global stat cards, company rails, marketing cards, nested cards, or decorative project tiles.
+- **Create Entity Pages:** Creating a durable entity uses a dedicated route page, not a drawer, sheet, dialog, popover, or inline expansion. Use the standard page frame with breadcrumb/back row, route header, wizard-like tabs, required-field markers, field-level and tab-level validation, a summary error panel, Back/Continue controls, field-adjacent help text, and unsaved-change protection. This applies to new project, new dataset, new evaluation, and new optimization. Adding a row inside an existing dataset remains a contextual row editor.
+- **Entity Settings Pages:** Settings for a durable entity use a dedicated route page with the same wizard-like tab structure as creation. Detail pages expose a `Settings` action that navigates to the settings route. Settings-only fields are added to the topical tab that owns them or to a new focused tab; do not create miscellaneous settings buckets.
 - **Onboarding:** Project setup lives in `/projects/:projectId/settings/ingest` and empty telemetry states link there. `/projects/:projectId` redirects to `/traces`; do not reintroduce a project overview/onboarding page.
-- **Admin Settings Shell:** Project and company administration uses a quiet settings shell with a route header, optional domain sidebar for settings sections, one primary working surface, and inspector drawers for long forms. Company project/member lists are dense tables. Project settings do not have a separate overview subpage and must not use outer card wrappers around inner tables, setup snippets, or alerts. Settings must not appear as a primary telemetry tab.
+- **Admin Settings Shell:** Project and company administration uses a quiet settings shell with a route header, optional domain sidebar for settings sections, one primary working surface, and inspector drawers for long forms. Company project/member lists are dense tables. Project settings use the entity settings page pattern with the `Identity` tab active by default, do not have a separate overview subpage, and must not use outer card wrappers around inner tables, setup snippets, or alerts. Settings must not appear as a primary telemetry tab.
+- **Alert Management:** `/alerts` is a project workspace for rule list, filters, selected-rule inspector, history, and silences. Alert rule creation uses `/alerts/new`; alert rule settings use `/alerts/:ruleId/settings`. Do not use a sheet or dialog for the primary alert rule create/settings workflow. Notification adapter selection is ID-based and safe-metadata-only on alert rule pages. Company admins configure Slack, Teams, email, webhook, and other provider adapter instances in company settings from adapter-provided field schemas; secret fields are write-only and never shown back to the UI.
 - **Filters:** Use inputs, selects, comboboxes, date/time fields, and removable filter chips. Suggestions may come from `telemetryFacets`, but manual entry remains available.
 - **Tables:** Dense, scan-friendly, keyboard navigable. Rows link to details and preserve visible focus. Data tables are sortable by default. Every meaningful scalar column exposes a sortable header unless the backing contract explicitly forbids sorting or the column only contains controls/actions. Server-backed list routes sort through their query contract; local detail tables may sort in component state. Sort affordances live in the table header with compact direction icons, not in separate toolbar controls when header sorting is available.
 - **Primary List Tables:** Route-primary telemetry tables use the full available width and remaining viewport height. The page shell must not scroll for the normal populated list state; the table body scrolls inside the route while headers stay sticky.
@@ -287,14 +311,106 @@ All user-visible product copy, navigation labels, filters, states, and errors go
 ## Enterprise UX Flow Rules
 
 - `/` routes to `/projects` after auth.
-- `/projects` is the project selection and creation entry point.
+- `/projects` is the project selection entry point; `/projects/new` is the project creation page.
 - `/projects/:projectId` selects the project and redirects to `/traces`.
 - `AI Chat`, `Traces`, `Logs`, `Metrics`, `Dashboards`, and `Evaluations` require selected project context. Live trace receiving is a Traces mode and shares the same project context.
 - Switching project calls `Mutation.selectProject` and resets project-scoped query state.
 - Empty states have one primary action and at most two secondary actions.
 - No route-primary table, trace waterfall, metric result surface, dashboard grid, or AI-eval workspace is placed inside a card.
-- Drawers, dialogs, popovers, and collapsibles follow the surface taxonomy in `specs/05-frontend/product-ux-concept.md`.
+- Create entity pages, entity settings pages, drawers, dialogs, popovers, and collapsibles follow the surface taxonomy in `specs/05-frontend/product-ux-concept.md`.
 - Local single-instance mode has exactly one visible company named `Personal`. Treat `Personal` as a real administrative boundary: do not expose destructive organization actions, owner-transfer flows, billing-style management, or multi-company affordances that could imply the local admin company can be deleted or orphaned.
+
+## Main View Mockups
+
+High-fidelity main-view mockups live in `design/mockups/`. The SVG files are the source images; PNG previews in `design/mockups/png/` are generated from the SVGs for quick review. Regenerate both with:
+
+```sh
+node design/mockups/cloudgrid-main-view-mockups.mjs
+for f in design/mockups/*.svg; do base=$(basename "$f" .svg); sips -s format png "$f" --out "design/mockups/png/$base.png" >/dev/null; done
+```
+
+These mockups translate the public website's UI-like visual language into the product app: thin technical borders, muted row density, compact semantic accents, trace/metric/eval evidence as the primary visual content, and neutral shadcn controls. They intentionally do not reuse the website's marketing gradients, glowing surfaces, large cards, or hero composition inside the app.
+
+Current mockup inventory:
+
+- `trace-overview.svg`: `/traces` history/live table with filter bar, active chips, collapsible facet rail, sortable table header, compact duration bars, and status chips.
+- `trace-detail.svg`: `/traces/:traceId` route-level investigation with breadcrumb/back row, trace waterfall, synchronized span inspector, and correlated logs below the waterfall.
+- `metrics.svg`: `/metrics` technical explorer with metric list, query controls, chart/result preview, series table, and descriptor inspector.
+- `logs.svg`: `/logs` search-first workspace with filter bar, selected-log table, and right-side body/attributes/correlation inspector.
+- `ai-eval-dataset-overview.svg`: `/ai-eval` Datasets section with route-local Datasets/Evaluations switch, dataset table, health, version, split coverage, and create/import actions.
+- `ai-eval-dataset-detail.svg`: dataset detail route state with dataset health summary, row table, `Add row`, `Import`, `Dataset settings`, and `Create evaluation` actions.
+- `ai-eval-evaluations-overview.svg`: `/ai-eval` Evaluations section with evaluation definition table, last-run state, primary metric, and comparison entry point.
+- `ai-eval-evaluation-detail-result.svg`: evaluation detail/result view with run metrics, item result table, trace links, result inspector, problem callout, and optimization/comparison actions.
+
+Use these images as the starting visual target for frontend implementation tickets, but keep specs authoritative. If implementation discovers missing behavior, update the relevant spec first instead of copying invented mockup details into production code.
+
+Screen-specific guidance:
+
+- Trace overview keeps the facet rail as secondary support. The trace table is the primary surface and should remain useful when the facet rail collapses into a drawer.
+- Trace detail gives the waterfall the largest uninterrupted area. The inspector is persistent on desktop and becomes a sheet on mobile; logs remain below the waterfall, not inside inspector tabs.
+- Logs do not use a permanent facet sidebar. Search, service, severity, trace/span, time, and advanced filters stay in the filter bar, chips, popovers, or sheets.
+- Metrics separates metric discovery, query execution, and descriptor inspection. `/metrics` must not look like a saved dashboard builder.
+- AI Eval uses only route-local `Datasets` and `Evaluations` sections. Dataset and evaluation details are route states with breadcrumbs, not nested tabs inside a table row.
+- Evaluation result screens should show the next meaningful action near the result evidence: compare, optimize, open traces, or rerun. Promotion belongs to explicit promotion flows after validation evidence exists.
+
+Recommended missing mockups before broad implementation:
+
+- Project picker, first-project empty state, and `/projects/new` creation wizard, because project creation is the main entry mutation and must not become a drawer or stats dashboard.
+- Dashboard overview and dashboard builder, because `/metrics` and `/dashboards` have intentionally different jobs.
+- Dataset, evaluation, and optimization creation/settings wizards, because these durable AI Eval entities must share the create and settings page patterns.
+- Trace `Add to dataset` picker and import preview, because it connects observability evidence to AI Eval without adding dataset actions to the dataset list.
+- Project API key/setup page, because telemetry empty states depend on this path for their primary action.
+
+## Rendered Webapp Design Prototype
+
+The primary visual direction now lives in `design/webapp-mockups/`. Unlike the SVG sketches, this is a real browser-rendered HTML/CSS/JS prototype with code-native tables, panels, controls, charts, navigation state, and inspector layouts. Use these screenshots as the main visual target for app implementation and use the SVG set only as a lightweight earlier sketch.
+
+Run locally:
+
+```sh
+python3 -m http.server 4177 --directory design/webapp-mockups
+```
+
+Open `http://127.0.0.1:4177/#trace-overview` and switch screens from the left navigation, or use these hash routes:
+
+- `#trace-overview`
+- `#trace-detail`
+- `#logs`
+- `#metrics`
+- `#dashboards`
+- `#dataset-overview`
+- `#dataset-detail`
+- `#evaluations`
+- `#evaluation-detail`
+
+Export the high-resolution PNG screenshots:
+
+```sh
+python3 -m http.server 4177 --directory design/webapp-mockups
+node design/webapp-mockups/capture-screenshots.mjs
+```
+
+Rendered screenshots are written to `design/webapp-mockups/screenshots/`.
+
+Design direction:
+
+- Treat the app as an enterprise evidence cockpit, not a generic admin dashboard.
+- Preserve the website's best visual cues: soft desktop-window framing, command-path chrome, live status, muted blue-gray typography, monospace evidence, rounded but restrained panels, and calm technical density.
+- Do not copy the website's marketing composition directly. The app prototype introduces a product-grade context rail, command row, active workspace, right-side evidence/setting inspectors, and large uninterrupted data surfaces.
+- Keep the standard shadcn neutral theme as the product baseline: white surfaces, neutral borders, black primary buttons, semantic status chips, compact table rows, and no custom brand-colored controls.
+- Use non-neutral color only for telemetry meaning: series, severity, status, live state, exemplar marks, and evaluation deltas.
+- Prefer one strong workspace composition per route over many small decorative cards. Metric summary tiles are acceptable when they summarize run or dataset health; route-primary telemetry data remains table, timeline, chart, or inspector content.
+- Keep app UI code-native. Do not ship screenshots as UI, rasterize text, or replace route tables/charts with static images.
+
+Prototype-specific route notes:
+
+- Trace overview uses a three-lane cockpit: server facet suggestions, trace stream, and investigation queue.
+- Trace detail gives the trace waterfall a wide evidence lane, keeps the span inspector persistent, and places correlated logs below as route evidence.
+- Logs use a search-first table plus a correlation inspector, with no permanent service facet sidebar.
+- Metrics keeps catalog, query result, and descriptor inspector visible at once.
+- Dashboards are saved typed widgets; they borrow the website's clean chart widgets but keep dashboard editing actions explicit.
+- Dataset and evaluation routes use the same cockpit shell, but local tabs switch only between `Datasets` and `Evaluations`.
+- Evaluation result puts run metrics, item results, metric deltas, problem callout, and next actions in one review workspace.
 
 ## Do's and Don'ts
 

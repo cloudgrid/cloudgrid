@@ -10,10 +10,12 @@ import type {
   DatasetValueType,
   EvaluationDatasetVersionPolicy,
   EvaluationDefinition,
+  EvaluationFamily,
   EvaluationRun,
   EvaluationTargetKind,
   JSONValue,
   MetricSettingInput,
+  OptimizationRun,
   RetentionProfile,
   StartDatasetExportInput,
   StartEvaluationRunInput,
@@ -43,8 +45,8 @@ import {
   Upload,
   XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { JsonViewer } from "../../components/json-viewer";
 import { EmptyState, ErrorPanel, LoadingRows } from "../../components/query-state";
 import { RouteBreadcrumb } from "../../components/route-breadcrumb";
@@ -61,7 +63,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../../components/ui/dialog";
-import { Field, FieldGroup, FieldLabel } from "../../components/ui/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "../../components/ui/field";
 import { Input } from "../../components/ui/input";
 import {
   Select,
@@ -101,10 +103,20 @@ import {
 
 type AiEvalSection = "datasets" | "evaluations";
 type QueryResult<T> = UseQueryResult<T, Error>;
+type AiEvalRouteState =
+  | { kind: "workspace"; section: AiEvalSection | null }
+  | { kind: "dataset-create"; section: "datasets" }
+  | { datasetId: string; kind: "dataset-settings"; section: "datasets" }
+  | { kind: "evaluation-create"; section: "evaluations" }
+  | { evaluationId: string; kind: "evaluation-settings"; section: "evaluations" }
+  | { kind: "optimization-create"; section: "evaluations" }
+  | { kind: "optimization-settings"; optimizationRunId: string; section: "evaluations" };
 
 export function AiEvalWorkspace({ enabled }: { enabled: boolean }) {
+  const location = useLocation();
+  const routeState = readAiEvalRouteState(location.pathname);
   const [searchParams, setSearchParams] = useSearchParams();
-  const section = readSection(searchParams.get("tab"));
+  const section = routeState.section ?? readSection(searchParams.get("tab"));
   const query = searchParams.get("query") ?? "";
   const selectedDatasetId = searchParams.get("dataset");
   const selectedEvaluationId = searchParams.get("evaluation");
@@ -163,6 +175,18 @@ export function AiEvalWorkspace({ enabled }: { enabled: boolean }) {
     (item) => item.id === selectedEvaluationId,
   );
   const selectedRun = runsQuery.data?.items.find((item) => item.id === selectedRunId);
+  const selectedSettingsDataset =
+    routeState.kind === "dataset-settings"
+      ? datasetsQuery.data?.items.find((item) => item.id === routeState.datasetId)
+      : null;
+  const selectedSettingsEvaluation =
+    routeState.kind === "evaluation-settings"
+      ? evaluationsQuery.data?.items.find((item) => item.id === routeState.evaluationId)
+      : null;
+  const selectedSettingsOptimization =
+    routeState.kind === "optimization-settings"
+      ? optimizationsQuery.data?.items.find((item) => item.id === routeState.optimizationRunId)
+      : null;
 
   const setParam = (key: string, value: string) => {
     const next = new URLSearchParams(searchParams);
@@ -197,14 +221,146 @@ export function AiEvalWorkspace({ enabled }: { enabled: boolean }) {
     );
   }
 
+  if (routeState.kind === "dataset-create") {
+    return (
+      <CreateDatasetView
+        projectId={projectId}
+        projectName={selectedProject?.name ?? t("projects.select")}
+      />
+    );
+  }
+  if (routeState.kind === "evaluation-create") {
+    return (
+      <CreateEvaluationView
+        datasets={datasetsQuery.data?.items ?? []}
+        initialDatasetId={searchParams.get("dataset") ?? ""}
+        projectId={projectId}
+        projectName={selectedProject?.name ?? t("projects.select")}
+      />
+    );
+  }
+  if (routeState.kind === "optimization-create") {
+    return (
+      <StartOptimizationView
+        datasets={datasetsQuery.data?.items ?? []}
+        evaluations={evaluationsQuery.data?.items ?? []}
+        projectId={projectId}
+        projectName={selectedProject?.name ?? t("projects.select")}
+      />
+    );
+  }
+  if (routeState.kind === "dataset-settings") {
+    if (datasetsQuery.isLoading) {
+      return <LoadingRows />;
+    }
+    if (datasetsQuery.isError) {
+      return (
+        <ErrorPanel error={datasetsQuery.error} onRetry={() => void datasetsQuery.refetch()} />
+      );
+    }
+    if (!selectedSettingsDataset) {
+      return (
+        <EmptyState
+          description="The requested dataset settings page could not find a loaded dataset."
+          filtered
+          primaryAction={
+            <Button asChild variant="outline">
+              <Link to="/ai-eval?tab=datasets">
+                <Database data-icon="inline-start" />
+                Datasets
+              </Link>
+            </Button>
+          }
+          title="Dataset not found"
+        />
+      );
+    }
+    return (
+      <DatasetSettingsView
+        dataset={selectedSettingsDataset}
+        projectName={selectedProject?.name ?? t("projects.select")}
+      />
+    );
+  }
+  if (routeState.kind === "evaluation-settings") {
+    if (evaluationsQuery.isLoading) {
+      return <LoadingRows />;
+    }
+    if (evaluationsQuery.isError) {
+      return (
+        <ErrorPanel
+          error={evaluationsQuery.error}
+          onRetry={() => void evaluationsQuery.refetch()}
+        />
+      );
+    }
+    if (!selectedSettingsEvaluation) {
+      return (
+        <EmptyState
+          description="The requested evaluation settings page could not find a loaded evaluation."
+          filtered
+          primaryAction={
+            <Button asChild variant="outline">
+              <Link to="/ai-eval?tab=evaluations">
+                <ClipboardCheck data-icon="inline-start" />
+                Evaluations
+              </Link>
+            </Button>
+          }
+          title="Evaluation not found"
+        />
+      );
+    }
+    return (
+      <EvaluationSettingsView
+        datasets={datasetsQuery.data?.items ?? []}
+        definition={selectedSettingsEvaluation}
+        projectName={selectedProject?.name ?? t("projects.select")}
+      />
+    );
+  }
+  if (routeState.kind === "optimization-settings") {
+    if (optimizationsQuery.isLoading) {
+      return <LoadingRows />;
+    }
+    if (optimizationsQuery.isError) {
+      return (
+        <ErrorPanel
+          error={optimizationsQuery.error}
+          onRetry={() => void optimizationsQuery.refetch()}
+        />
+      );
+    }
+    if (!selectedSettingsOptimization) {
+      return (
+        <EmptyState
+          description="The requested optimization settings page could not find a loaded run."
+          filtered
+          primaryAction={
+            <Button asChild variant="outline">
+              <Link to="/ai-eval?tab=evaluations">
+                <ClipboardCheck data-icon="inline-start" />
+                Evaluations
+              </Link>
+            </Button>
+          }
+          title="Optimization run not found"
+        />
+      );
+    }
+    return (
+      <OptimizationSettingsView
+        projectName={selectedProject?.name ?? t("projects.select")}
+        run={selectedSettingsOptimization}
+      />
+    );
+  }
+
   return (
     <section className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
       <AiEvalHeader
-        datasets={datasetsQuery.data?.items ?? []}
-        evaluations={evaluationsQuery.data?.items ?? []}
         onQueryChange={(value) => setParam("query", value)}
         onSectionChange={(value) => setParam("tab", value)}
-        projectId={projectId}
         projectName={selectedProject?.name ?? t("projects.select")}
         query={query}
         section={section}
@@ -227,7 +383,6 @@ export function AiEvalWorkspace({ enabled }: { enabled: boolean }) {
             onRunSelect={(id) => setParam("run", id)}
             onSelect={(id) => setParam("evaluation", id)}
             optimizationsQuery={optimizationsQuery}
-            projectId={projectId}
             runsQuery={runsQuery}
             selectedEvaluation={selectedEvaluation ?? null}
             selectedRun={selectedRun ?? null}
@@ -239,22 +394,16 @@ export function AiEvalWorkspace({ enabled }: { enabled: boolean }) {
 }
 
 function AiEvalHeader({
-  datasets,
-  evaluations,
   onQueryChange,
   onSectionChange,
-  projectId,
   projectName,
   query,
   section,
   selectedDataset,
   selectedEvaluation,
 }: {
-  datasets: Dataset[];
-  evaluations: EvaluationDefinition[];
   onQueryChange: (value: string) => void;
   onSectionChange: (value: AiEvalSection) => void;
-  projectId: string;
   projectName: string;
   query: string;
   section: AiEvalSection;
@@ -317,15 +466,26 @@ function AiEvalHeader({
           value={query}
         />
         {section === "datasets" ? (
-          <CreateDatasetDialog projectId={projectId} />
+          <Button asChild size="sm" type="button" variant="outline">
+            <Link to="/ai-eval/datasets/new">
+              <Plus data-icon="inline-start" />
+              New dataset
+            </Link>
+          </Button>
         ) : (
           <>
-            <CreateEvaluationDialog datasets={datasets} projectId={projectId} />
-            <StartOptimizationDialog
-              datasets={datasets}
-              evaluations={evaluations}
-              projectId={projectId}
-            />
+            <Button asChild size="sm" type="button" variant="outline">
+              <Link to="/ai-eval/evaluations/new">
+                <Plus data-icon="inline-start" />
+                New evaluation
+              </Link>
+            </Button>
+            <Button asChild size="sm" type="button" variant="outline">
+              <Link to="/ai-eval/optimizations/new">
+                <RefreshCw data-icon="inline-start" />
+                Start optimization
+              </Link>
+            </Button>
           </>
         )}
       </div>
@@ -356,7 +516,14 @@ function DatasetsListView({
       <EmptyState
         description="Create a dataset, add one ready row, then use it to start a dataset evaluation."
         filtered={false}
-        primaryAction={<CreateDatasetDialog projectId={projectId} triggerVariant="default" />}
+        primaryAction={
+          <Button asChild>
+            <Link to="/ai-eval/datasets/new">
+              <Plus data-icon="inline-start" />
+              New dataset
+            </Link>
+          </Button>
+        }
         title="No datasets yet"
       />
     );
@@ -425,11 +592,12 @@ function DatasetDetailView({ dataset, projectId }: { dataset: Dataset; projectId
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <CreateEvaluationDialog
-              datasets={[dataset]}
-              projectId={projectId}
-              triggerLabel="Create evaluation from dataset"
-            />
+            <Button asChild size="sm" type="button" variant="outline">
+              <Link to={`/ai-eval/evaluations/new?dataset=${encodeURIComponent(dataset.id)}`}>
+                <Plus data-icon="inline-start" />
+                Create evaluation from dataset
+              </Link>
+            </Button>
             <DatasetImportDialog dataset={dataset} projectId={projectId} />
             <DatasetExportDialog dataset={dataset} />
             <DatasetRowDialog dataset={dataset} mode="add" />
@@ -499,7 +667,12 @@ function DatasetDetailView({ dataset, projectId }: { dataset: Dataset; projectId
       <aside className="min-h-0 overflow-auto border p-4">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-medium">Dataset settings</h2>
-          <DatasetSettingsDialog dataset={dataset} />
+          <Button asChild size="sm" type="button" variant="outline">
+            <Link to={`/ai-eval/datasets/${encodeURIComponent(dataset.id)}/settings`}>
+              <Settings data-icon="inline-start" />
+              Dataset settings
+            </Link>
+          </Button>
         </div>
         <dl className="mt-3 grid gap-3 text-sm">
           <div>
@@ -538,7 +711,6 @@ function EvaluationsWorkspace({
   onRunSelect,
   onSelect,
   optimizationsQuery,
-  projectId,
   runsQuery,
   selectedEvaluation,
   selectedRun,
@@ -555,7 +727,6 @@ function EvaluationsWorkspace({
   optimizationsQuery: QueryResult<
     Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchOptimizationRuns"]>>
   >;
-  projectId: string;
   runsQuery: QueryResult<
     Awaited<ReturnType<ReturnType<typeof useTelemetryClient>["searchEvaluationRuns"]>>
   >;
@@ -577,11 +748,12 @@ function EvaluationsWorkspace({
         description="Create an evaluation from an eligible dataset, then start a baseline run."
         filtered={false}
         primaryAction={
-          <CreateEvaluationDialog
-            datasets={datasets}
-            projectId={projectId}
-            triggerVariant="default"
-          />
+          <Button asChild>
+            <Link to="/ai-eval/evaluations/new">
+              <Plus data-icon="inline-start" />
+              New evaluation
+            </Link>
+          </Button>
         }
         title="No evaluations yet"
       />
@@ -671,7 +843,15 @@ function EvaluationDetailView({
             {definition.metricSettings.map((item) => item.metricId).join(", ")}
           </p>
         </div>
-        <StartEvaluationRunButton datasets={datasets} definition={definition} />
+        <div className="flex flex-wrap gap-2">
+          <Button asChild size="sm" type="button" variant="outline">
+            <Link to={`/ai-eval/evaluations/${encodeURIComponent(definition.id)}/settings`}>
+              <Settings data-icon="inline-start" />
+              Settings
+            </Link>
+          </Button>
+          <StartEvaluationRunButton datasets={datasets} definition={definition} />
+        </div>
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <EvaluationRunsTable onRunSelect={onRunSelect} query={runsQuery} runs={runs} />
@@ -957,6 +1137,14 @@ function OptimizationRunDetailView({
               {run.candidateTargetSnapshotIds.length} candidates ·{" "}
               {run.causedEvaluationRunIds.length} runs
             </span>
+            {isConfigurableRunStatus(run.status) ? (
+              <Button asChild size="sm" type="button" variant="outline">
+                <Link to={`/ai-eval/optimizations/${encodeURIComponent(run.id)}/settings`}>
+                  <Settings data-icon="inline-start" />
+                  Settings
+                </Link>
+              </Button>
+            ) : null}
             <TargetPromotionDialog projectId={projectId} run={run} />
           </div>
         ))}
@@ -970,17 +1158,13 @@ function OptimizationRunDetailView({
   );
 }
 
-function CreateDatasetDialog({
-  projectId,
-  triggerVariant = "outline",
-}: {
-  projectId: string;
-  triggerVariant?: "default" | "outline";
-}) {
+function CreateDatasetView({ projectId, projectName }: { projectId: string; projectName: string }) {
   const telemetryClient = useTelemetryClient();
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState("Purpose");
   const [name, setName] = useState("");
+  const [evaluationFamily, setEvaluationFamily] = useState<EvaluationFamily>("classification");
   const [inputType, setInputType] = useState<DatasetValueType>("json");
   const [expectedType, setExpectedType] = useState<DatasetValueType>("json");
   const [inputSchema, setInputSchema] = useState('{"type":"object"}');
@@ -1003,7 +1187,7 @@ function CreateDatasetDialog({
         throw new Error(`Expected JSON schema is invalid: ${parsedExpectedSchema.error}`);
       }
       const settings: CreateDatasetInput["settings"] = {
-        evaluationFamily: "classification",
+        evaluationFamily,
         inputType,
         expectedType,
         inputJsonSchema: inputType === "json" ? parsedInputSchema.value : null,
@@ -1035,35 +1219,95 @@ function CreateDatasetDialog({
         idempotencyKey: `dataset-${Date.now()}`,
       });
     },
-    onSuccess() {
-      setOpen(false);
+    onSuccess(dataset) {
       setName("");
       void queryClient.invalidateQueries({ queryKey: ["Datasets"] });
+      navigate(`/ai-eval?tab=datasets&dataset=${encodeURIComponent(dataset.id)}`);
     },
   });
+  const validationErrors = [
+    !name.trim() ? "Dataset name is required." : null,
+    !evaluationFamily.trim() ? "Evaluation family is required." : null,
+    expectedType === "json" && !expectedSchema.trim() ? "Expected JSON schema is required." : null,
+  ].filter(Boolean) as string[];
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" type="button" variant={triggerVariant}>
-          <Plus data-icon="inline-start" />
-          New dataset
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>New dataset</DialogTitle>
-          <DialogDescription>
-            Configure one input and expected-output shape for every row.
-          </DialogDescription>
-        </DialogHeader>
+    <WizardPage
+      activeTab={activeTab}
+      backTo="/ai-eval?tab=datasets"
+      description="Configure one input and expected-output shape for every row."
+      error={error ?? mutation.error?.message ?? null}
+      onBack={() => setActiveTab(previousWizardTab(datasetCreateTabs, activeTab))}
+      onNext={() => {
+        setError(null);
+        const tabError = datasetCreateTabError(activeTab, {
+          evaluationFamily,
+          expectedSchema,
+          expectedType,
+          inputSchema,
+          inputType,
+          name,
+        });
+        if (tabError) {
+          setError(tabError);
+          return;
+        }
+        setActiveTab(nextWizardTab(datasetCreateTabs, activeTab));
+      }}
+      onSave={() => {
+        setError(null);
+        if (validationErrors.length) {
+          setError(validationErrors[0] ?? "Dataset validation failed.");
+          return;
+        }
+        void mutation.mutateAsync().catch((caught) => {
+          setError(caught instanceof Error ? caught.message : "Dataset creation failed.");
+        });
+      }}
+      projectName={projectName}
+      onTabChange={setActiveTab}
+      saveIcon={<Plus data-icon="inline-start" />}
+      saveLabel="New dataset"
+      saving={mutation.isPending}
+      tabs={datasetCreateTabs}
+      title="New dataset"
+    >
+      {activeTab === "Purpose" ? (
         <FieldGroup>
           <Field>
             <FieldLabel>Name</FieldLabel>
             <Input onChange={(event) => setName(event.target.value)} value={name} />
+            <FieldDescription>
+              Use a name that describes the job this dataset measures, such as checkout routing or
+              support triage.
+            </FieldDescription>
           </Field>
+          <Field>
+            <FieldLabel>Evaluation family</FieldLabel>
+            <Input
+              onChange={(event) => setEvaluationFamily(event.target.value as EvaluationFamily)}
+              value={evaluationFamily}
+            />
+            <FieldDescription>
+              Group related datasets under one family so evaluations stay easy to compare later.
+            </FieldDescription>
+          </Field>
+        </FieldGroup>
+      ) : null}
+      {activeTab === "Schema" ? (
+        <FieldGroup>
           <div className="grid gap-3 sm:grid-cols-2">
-            <ValueTypeField label="Input type" onChange={setInputType} value={inputType} />
-            <ValueTypeField label="Expected type" onChange={setExpectedType} value={expectedType} />
+            <ValueTypeField
+              description="Choose JSON when each row needs structured fields; choose text for a single prompt or message."
+              label="Input type"
+              onChange={setInputType}
+              value={inputType}
+            />
+            <ValueTypeField
+              description="Choose the shape your evaluator should compare against for every row."
+              label="Expected type"
+              onChange={setExpectedType}
+              value={expectedType}
+            />
           </div>
           <Field>
             <FieldLabel>Input JSON schema</FieldLabel>
@@ -1071,6 +1315,10 @@ function CreateDatasetDialog({
               onChange={(event) => setInputSchema(event.target.value)}
               value={inputSchema}
             />
+            <FieldDescription>
+              Optional for text inputs. For JSON inputs, describe the fields every dataset row must
+              provide.
+            </FieldDescription>
           </Field>
           <Field>
             <FieldLabel>Expected JSON schema</FieldLabel>
@@ -1078,24 +1326,15 @@ function CreateDatasetDialog({
               onChange={(event) => setExpectedSchema(event.target.value)}
               value={expectedSchema}
             />
+            <FieldDescription>
+              Describe the expected answer shape when the expected value is JSON. This keeps row
+              validation predictable.
+            </FieldDescription>
           </Field>
-          <Field>
-            <FieldLabel>Default metric</FieldLabel>
-            <Input onChange={(event) => setMetricId(event.target.value)} value={metricId} />
-          </Field>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field>
-              <FieldLabel>Trace input path</FieldLabel>
-              <Input onChange={(event) => setInputPath(event.target.value)} value={inputPath} />
-            </Field>
-            <Field>
-              <FieldLabel>Trace expected path</FieldLabel>
-              <Input
-                onChange={(event) => setExpectedPath(event.target.value)}
-                value={expectedPath}
-              />
-            </Field>
-          </div>
+        </FieldGroup>
+      ) : null}
+      {activeTab === "Curation" ? (
+        <FieldGroup>
           <Field>
             <FieldLabel>Anonymization</FieldLabel>
             <Select
@@ -1113,40 +1352,45 @@ function CreateDatasetDialog({
                 <SelectItem value="off">Off</SelectItem>
               </SelectContent>
             </Select>
+            <FieldDescription>
+              Pick how sensitive values should be handled before rows are used in evaluations.
+            </FieldDescription>
           </Field>
-          {error || mutation.error ? (
-            <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error ?? mutation.error?.message}
-            </div>
-          ) : null}
+          <Field>
+            <FieldLabel>Default metric</FieldLabel>
+            <Input onChange={(event) => setMetricId(event.target.value)} value={metricId} />
+            <FieldDescription>
+              Use the metric this dataset is normally judged by. Evaluations can still choose a
+              different metric later.
+            </FieldDescription>
+          </Field>
         </FieldGroup>
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline">
-              <XCircle data-icon="inline-start" />
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button
-            disabled={mutation.isPending}
-            onClick={() => {
-              setError(null);
-              if (!name.trim()) {
-                setError("Name is required.");
-                return;
-              }
-              void mutation.mutateAsync().catch((caught) => {
-                setError(caught instanceof Error ? caught.message : "Dataset creation failed.");
-              });
-            }}
-            type="button"
-          >
-            <Plus data-icon="inline-start" />
-            New dataset
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      ) : null}
+      {activeTab === "Extraction" ? (
+        <FieldGroup>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldLabel>Trace input path</FieldLabel>
+              <Input onChange={(event) => setInputPath(event.target.value)} value={inputPath} />
+              <FieldDescription>
+                Optional JSON path used when creating dataset rows from traces.
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel>Trace expected path</FieldLabel>
+              <Input
+                onChange={(event) => setExpectedPath(event.target.value)}
+                value={expectedPath}
+              />
+              <FieldDescription>
+                Optional JSON path for the expected value when traces already contain labels or
+                outcomes.
+              </FieldDescription>
+            </Field>
+          </div>
+        </FieldGroup>
+      ) : null}
+    </WizardPage>
   );
 }
 
@@ -1335,23 +1579,24 @@ function DatasetRowDialog({
   );
 }
 
-function CreateEvaluationDialog({
+function CreateEvaluationView({
   datasets,
+  initialDatasetId = "",
   projectId,
-  triggerLabel = "New evaluation",
-  triggerVariant = "outline",
+  projectName,
 }: {
   datasets: Dataset[];
+  initialDatasetId?: string;
   projectId: string;
-  triggerLabel?: string;
-  triggerVariant?: "default" | "outline";
+  projectName: string;
 }) {
   const telemetryClient = useTelemetryClient();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const firstDataset = datasets[0];
-  const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("Dataset");
   const [name, setName] = useState("");
-  const [datasetId, setDatasetId] = useState(firstDataset?.id ?? "");
+  const [datasetId, setDatasetId] = useState(initialDatasetId || firstDataset?.id || "");
   const [datasetVersionPolicy, setDatasetVersionPolicy] =
     useState<EvaluationDatasetVersionPolicy>("latest_ready");
   const [targetKind, setTargetKind] =
@@ -1397,30 +1642,72 @@ function CreateEvaluationDialog({
       };
       return telemetryClient.createEvaluationDefinition(input);
     },
-    onSuccess() {
-      setOpen(false);
+    onSuccess(definition) {
       void queryClient.invalidateQueries({ queryKey: ["EvaluationDefinitions"] });
+      navigate(`/ai-eval?tab=evaluations&evaluation=${encodeURIComponent(definition.id)}`);
     },
   });
+  const validationErrors = [
+    !name.trim() ? "Evaluation name is required." : null,
+    !datasetId ? "Dataset is required." : null,
+    !targetName.trim() ? "Target display name is required." : null,
+    !targetRef.trim() && !targetSnapshotId.trim()
+      ? "Target ref or target snapshot ID is required."
+      : null,
+    datasetVersionPolicy === "pinned" && !selectedDataset?.currentVersionId
+      ? "Selected dataset does not have a current version to pin."
+      : null,
+    !metricId.trim() ? "Metric is required." : null,
+  ].filter(Boolean) as string[];
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" type="button" variant={triggerVariant}>
-          <Plus data-icon="inline-start" />
-          {triggerLabel}
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{triggerLabel}</DialogTitle>
-          <DialogDescription>
-            Select a dataset, split, target, metric, and run policy.
-          </DialogDescription>
-        </DialogHeader>
+    <WizardPage
+      activeTab={activeTab}
+      backTo="/ai-eval?tab=evaluations"
+      description="Select a dataset, split, target, metric, and run policy."
+      error={error ?? mutation.error?.message ?? null}
+      onBack={() => setActiveTab(previousWizardTab(evaluationCreateTabs, activeTab))}
+      onNext={() => {
+        setError(null);
+        const tabError = evaluationCreateTabError(activeTab, {
+          datasetId,
+          datasetVersionPolicy,
+          metricId,
+          name,
+          selectedDataset,
+          targetName,
+          targetRef,
+          targetSnapshotId,
+        });
+        if (tabError) {
+          setError(tabError);
+          return;
+        }
+        setActiveTab(nextWizardTab(evaluationCreateTabs, activeTab));
+      }}
+      onSave={() => {
+        setError(null);
+        if (validationErrors.length) {
+          setError(validationErrors[0] ?? "Evaluation validation failed.");
+          return;
+        }
+        void mutation.mutateAsync();
+      }}
+      projectName={projectName}
+      onTabChange={setActiveTab}
+      saveIcon={<Plus data-icon="inline-start" />}
+      saveLabel="New evaluation"
+      saving={mutation.isPending}
+      tabs={evaluationCreateTabs}
+      title="New evaluation"
+    >
+      {activeTab === "Dataset" ? (
         <FieldGroup>
           <Field>
             <FieldLabel>Name</FieldLabel>
             <Input onChange={(event) => setName(event.target.value)} value={name} />
+            <FieldDescription>
+              Name the evaluation by the behavior or release candidate it will track.
+            </FieldDescription>
           </Field>
           <Field>
             <FieldLabel>Dataset</FieldLabel>
@@ -1436,6 +1723,10 @@ function CreateEvaluationDialog({
                 ))}
               </SelectContent>
             </Select>
+            <FieldDescription>
+              Pick the dataset whose rows define the inputs and expected outcomes for this
+              evaluation.
+            </FieldDescription>
           </Field>
           <Field>
             <FieldLabel>Dataset version policy</FieldLabel>
@@ -1453,8 +1744,20 @@ function CreateEvaluationDialog({
                 <SelectItem value="pinned">Pinned current version</SelectItem>
               </SelectContent>
             </Select>
+            <FieldDescription>
+              Use latest ready for ongoing iteration, or pin the current version for stable
+              comparisons.
+            </FieldDescription>
           </Field>
-          <SplitField onChange={setSplit} value={split} />
+          <SplitField
+            description="Choose which dataset split should be used when this evaluation runs."
+            onChange={setSplit}
+            value={split}
+          />
+        </FieldGroup>
+      ) : null}
+      {activeTab === "Target" ? (
+        <FieldGroup>
           <Field>
             <FieldLabel>Target kind</FieldLabel>
             <Select
@@ -1471,14 +1774,24 @@ function CreateEvaluationDialog({
                 <SelectItem value="external_adapter">External adapter</SelectItem>
               </SelectContent>
             </Select>
+            <FieldDescription>
+              Choose prompt for CloudGrid-managed prompt variants or external adapter for a target
+              hosted outside CloudGrid.
+            </FieldDescription>
           </Field>
           <Field>
             <FieldLabel>Target display name</FieldLabel>
             <Input onChange={(event) => setTargetName(event.target.value)} value={targetName} />
+            <FieldDescription>
+              A readable label shown in run results, comparisons, and optimization history.
+            </FieldDescription>
           </Field>
           <Field>
             <FieldLabel>Target ref</FieldLabel>
             <Input onChange={(event) => setTargetRef(event.target.value)} value={targetRef} />
+            <FieldDescription>
+              Reference the prompt, adapter, or implementation that should be evaluated.
+            </FieldDescription>
           </Field>
           <Field>
             <FieldLabel>Target snapshot ID</FieldLabel>
@@ -1487,15 +1800,34 @@ function CreateEvaluationDialog({
               placeholder="Optional"
               value={targetSnapshotId}
             />
+            <FieldDescription>
+              Optional immutable snapshot. Leave empty when the current target should be resolved at
+              run time.
+            </FieldDescription>
           </Field>
           <Field>
             <FieldLabel>Model alias</FieldLabel>
             <Input onChange={(event) => setModelAlias(event.target.value)} value={modelAlias} />
+            <FieldDescription>
+              Optional model alias used by the target when the evaluated behavior depends on a
+              model.
+            </FieldDescription>
           </Field>
+        </FieldGroup>
+      ) : null}
+      {activeTab === "Metrics" ? (
+        <FieldGroup>
           <Field>
             <FieldLabel>Metric</FieldLabel>
             <Input onChange={(event) => setMetricId(event.target.value)} value={metricId} />
+            <FieldDescription>
+              The primary score used for comparison, promotion decisions, and optimization ranking.
+            </FieldDescription>
           </Field>
+        </FieldGroup>
+      ) : null}
+      {activeTab === "Run policy" ? (
+        <FieldGroup>
           <Field>
             <FieldLabel>Retention profile</FieldLabel>
             <Select
@@ -1512,46 +1844,14 @@ function CreateEvaluationDialog({
                 <SelectItem value="minimal_storage">Minimal storage</SelectItem>
               </SelectContent>
             </Select>
+            <FieldDescription>
+              Controls how much run detail is retained after execution. Choose audit-friendly when
+              results need longer traceability.
+            </FieldDescription>
           </Field>
-          {error || mutation.error ? (
-            <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error ?? mutation.error?.message}
-            </div>
-          ) : null}
         </FieldGroup>
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline">
-              <XCircle data-icon="inline-start" />
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button
-            disabled={mutation.isPending}
-            onClick={() => {
-              setError(null);
-              if (!name.trim() || !datasetId || !targetName.trim()) {
-                setError("Name, dataset, and target are required.");
-                return;
-              }
-              if (!targetRef.trim() && !targetSnapshotId.trim()) {
-                setError("Target ref or target snapshot ID is required.");
-                return;
-              }
-              if (datasetVersionPolicy === "pinned" && !selectedDataset?.currentVersionId) {
-                setError("Selected dataset does not have a current version to pin.");
-                return;
-              }
-              void mutation.mutateAsync();
-            }}
-            type="button"
-          >
-            <Plus data-icon="inline-start" />
-            {triggerLabel}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      ) : null}
+    </WizardPage>
   );
 }
 
@@ -1666,22 +1966,26 @@ function EvaluationRunControls({ run }: { run: EvaluationRun }) {
   );
 }
 
-function StartOptimizationDialog({
+function StartOptimizationView({
   datasets,
   evaluations,
   projectId,
+  projectName,
 }: {
   datasets: Dataset[];
   evaluations: EvaluationDefinition[];
   projectId: string;
+  projectName: string;
 }) {
   const telemetryClient = useTelemetryClient();
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState("Source");
   const [evaluationId, setEvaluationId] = useState(evaluations[0]?.id ?? "");
   const [baselineSnapshotId, setBaselineSnapshotId] = useState("");
   const [primaryMetricId, setPrimaryMetricId] = useState("extraction.exact_json_match");
   const [quickShot, setQuickShot] = useState<"enabled" | "disabled">("enabled");
+  const [error, setError] = useState<string | null>(null);
   const evaluation = evaluations.find((item) => item.id === evaluationId);
   const dataset = datasets.find((item) => item.id === evaluation?.datasetId);
   useEffect(() => {
@@ -1724,24 +2028,54 @@ function StartOptimizationDialog({
       };
       return telemetryClient.startOptimizationRun(input);
     },
-    onSuccess() {
-      setOpen(false);
+    onSuccess(run) {
       void queryClient.invalidateQueries({ queryKey: ["OptimizationRuns"] });
+      navigate(`/ai-eval?tab=evaluations&run=${encodeURIComponent(run.id)}`);
     },
   });
+  const validationErrors = [
+    !evaluationId ? "Source evaluation is required." : null,
+    !baselineSnapshotId.trim() ? "Baseline target snapshot is required." : null,
+    !primaryMetricId.trim() ? "Primary metric is required." : null,
+  ].filter(Boolean) as string[];
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm" type="button" variant="outline">
-          <RefreshCw data-icon="inline-start" />
-          Start optimization
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Start optimization</DialogTitle>
-          <DialogDescription>Review the objective defaults before starting.</DialogDescription>
-        </DialogHeader>
+    <WizardPage
+      activeTab={activeTab}
+      backTo="/ai-eval?tab=evaluations"
+      description="Choose the source evaluation and objective for this optimization run."
+      error={error ?? mutation.error?.message ?? null}
+      onBack={() => setActiveTab(previousWizardTab(optimizationCreateTabs, activeTab))}
+      onNext={() => {
+        setError(null);
+        const tabError = optimizationCreateTabError(activeTab, {
+          baselineSnapshotId,
+          evaluationId,
+          primaryMetricId,
+        });
+        if (tabError) {
+          setError(tabError);
+          return;
+        }
+        setActiveTab(nextWizardTab(optimizationCreateTabs, activeTab));
+      }}
+      onSave={() => {
+        setError(null);
+        if (validationErrors.length) {
+          setError(validationErrors[0] ?? "Optimization validation failed.");
+          return;
+        }
+        void mutation.mutateAsync();
+      }}
+      projectName={projectName}
+      onTabChange={setActiveTab}
+      saveDisabled={validationErrors.length > 0}
+      saveIcon={<RefreshCw data-icon="inline-start" />}
+      saveLabel="Start optimization"
+      saving={mutation.isPending}
+      tabs={optimizationCreateTabs}
+      title="Start optimization"
+    >
+      {activeTab === "Source" ? (
         <FieldGroup>
           <Field>
             <FieldLabel>Evaluation</FieldLabel>
@@ -1757,6 +2091,9 @@ function StartOptimizationDialog({
                 ))}
               </SelectContent>
             </Select>
+            <FieldDescription>
+              Select the evaluation whose results and dataset should guide the optimization.
+            </FieldDescription>
           </Field>
           <Field>
             <FieldLabel>Baseline target snapshot</FieldLabel>
@@ -1764,14 +2101,37 @@ function StartOptimizationDialog({
               onChange={(event) => setBaselineSnapshotId(event.target.value)}
               value={baselineSnapshotId}
             />
+            <FieldDescription>
+              Enter the target snapshot to improve against so gains are measured from a stable
+              baseline.
+            </FieldDescription>
           </Field>
+        </FieldGroup>
+      ) : null}
+      {activeTab === "Objective" ? (
+        <FieldGroup>
           <Field>
             <FieldLabel>Primary metric</FieldLabel>
             <Input
               onChange={(event) => setPrimaryMetricId(event.target.value)}
               value={primaryMetricId}
             />
+            <FieldDescription>
+              This score is optimized first and determines how candidates are ranked.
+            </FieldDescription>
           </Field>
+        </FieldGroup>
+      ) : null}
+      {activeTab === "Search" ? (
+        <FieldGroup>
+          <p className="text-sm text-muted-foreground">
+            CloudGrid optimizes the target scope supported by this evaluation. Additional search
+            controls will appear here only when the backend exposes them.
+          </p>
+        </FieldGroup>
+      ) : null}
+      {activeTab === "Validation" ? (
+        <FieldGroup>
           <Field>
             <FieldLabel>Quick-shot phase</FieldLabel>
             <Select
@@ -1786,31 +2146,14 @@ function StartOptimizationDialog({
                 <SelectItem value="disabled">Disabled</SelectItem>
               </SelectContent>
             </Select>
+            <FieldDescription>
+              Enable quick-shot to try inexpensive candidates before spending budget on fuller
+              validation.
+            </FieldDescription>
           </Field>
-          {mutation.error ? (
-            <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {mutation.error.message}
-            </div>
-          ) : null}
         </FieldGroup>
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline">
-              <XCircle data-icon="inline-start" />
-              Cancel
-            </Button>
-          </DialogClose>
-          <Button
-            disabled={!evaluationId || !baselineSnapshotId || mutation.isPending}
-            onClick={() => void mutation.mutateAsync()}
-            type="button"
-          >
-            <RefreshCw data-icon="inline-start" />
-            Start optimization
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      ) : null}
+    </WizardPage>
   );
 }
 
@@ -2090,9 +2433,10 @@ function DatasetExportDialog({ dataset }: { dataset: Dataset }) {
   );
 }
 
-function DatasetSettingsDialog({ dataset }: { dataset: Dataset }) {
+function DatasetSettingsView({ dataset, projectName }: { dataset: Dataset; projectName: string }) {
   const telemetryClient = useTelemetryClient();
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState("Purpose");
   const settings = dataset.settings;
   const [inputType, setInputType] = useState<DatasetValueType>(settings.inputType);
   const [expectedType, setExpectedType] = useState<DatasetValueType>(settings.expectedType);
@@ -2186,24 +2530,43 @@ function DatasetSettingsDialog({ dataset }: { dataset: Dataset }) {
     },
   });
   return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button size="sm" type="button" variant="outline">
-          <Settings data-icon="inline-start" />
-          Dataset settings
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Dataset settings</DialogTitle>
-          <DialogDescription>
-            Dataset-level shape, curation, extraction, anonymization, and retention.
-          </DialogDescription>
-        </DialogHeader>
+    <WizardPage
+      activeTab={activeTab}
+      backTo={`/ai-eval?tab=datasets&dataset=${encodeURIComponent(dataset.id)}`}
+      description="Dataset-level shape, curation, extraction, anonymization, and retention."
+      error={mutation.error?.message ?? null}
+      onBack={() => setActiveTab(previousWizardTab(datasetSettingsTabs, activeTab))}
+      onNext={() => setActiveTab(nextWizardTab(datasetSettingsTabs, activeTab))}
+      onSave={() => void mutation.mutateAsync()}
+      projectName={projectName}
+      onTabChange={setActiveTab}
+      saveIcon={<Settings data-icon="inline-start" />}
+      saveLabel="Save settings"
+      saving={mutation.isPending}
+      tabs={datasetSettingsTabs}
+      title="Dataset settings"
+    >
+      {activeTab === "Purpose" ? (
+        <FieldGroup>
+          <ReadOnlyValue label="Dataset" value={dataset.name} />
+          <ReadOnlyValue label="Evaluation family" value={String(settings.evaluationFamily)} />
+        </FieldGroup>
+      ) : null}
+      {activeTab === "Schema" ? (
         <FieldGroup>
           <div className="grid gap-3 sm:grid-cols-2">
-            <ValueTypeField label="Input type" onChange={setInputType} value={inputType} />
-            <ValueTypeField label="Expected type" onChange={setExpectedType} value={expectedType} />
+            <ValueTypeField
+              description="Controls how new row inputs are validated before they enter the dataset."
+              label="Input type"
+              onChange={setInputType}
+              value={inputType}
+            />
+            <ValueTypeField
+              description="Controls how expected outputs are validated and compared."
+              label="Expected type"
+              onChange={setExpectedType}
+              value={expectedType}
+            />
           </div>
           <Field>
             <FieldLabel>Input JSON schema</FieldLabel>
@@ -2211,6 +2574,9 @@ function DatasetSettingsDialog({ dataset }: { dataset: Dataset }) {
               onChange={(event) => setInputSchema(event.target.value)}
               value={inputSchema}
             />
+            <FieldDescription>
+              Edit this when JSON input rows need stricter shape checks.
+            </FieldDescription>
           </Field>
           <Field>
             <FieldLabel>Expected JSON schema</FieldLabel>
@@ -2218,44 +2584,39 @@ function DatasetSettingsDialog({ dataset }: { dataset: Dataset }) {
               onChange={(event) => setExpectedSchema(event.target.value)}
               value={expectedSchema}
             />
+            <FieldDescription>
+              Edit this when expected JSON outputs should be validated before a row becomes ready.
+            </FieldDescription>
           </Field>
-          <SplitField label="Default split" onChange={setDefaultSplit} value={defaultSplit} />
+        </FieldGroup>
+      ) : null}
+      {activeTab === "Curation" ? (
+        <FieldGroup>
+          <SplitField
+            description="New rows start in this split unless import or trace extraction overrides it."
+            label="Default split"
+            onChange={setDefaultSplit}
+            value={defaultSplit}
+          />
           <div className="grid gap-3 sm:grid-cols-3">
             <CurationStatusField
+              description="Initial review state for rows entered by a user."
               label="Manual rows"
               onChange={setManualDefaultStatus}
               value={manualDefaultStatus}
             />
             <CurationStatusField
+              description="Initial review state for rows imported from files."
               label="Imported rows"
               onChange={setImportDefaultStatus}
               value={importDefaultStatus}
             />
             <CurationStatusField
+              description="Initial review state for rows extracted from traces."
               label="Trace rows"
               onChange={setTraceDefaultStatus}
               value={traceDefaultStatus}
             />
-          </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Field>
-              <FieldLabel>Trace input path</FieldLabel>
-              <Input onChange={(event) => setInputPath(event.target.value)} value={inputPath} />
-            </Field>
-            <Field>
-              <FieldLabel>Trace expected path</FieldLabel>
-              <Input
-                onChange={(event) => setExpectedPath(event.target.value)}
-                value={expectedPath}
-              />
-            </Field>
-            <Field>
-              <FieldLabel>Trace observed path</FieldLabel>
-              <Input
-                onChange={(event) => setObservedOutputPath(event.target.value)}
-                value={observedOutputPath}
-              />
-            </Field>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
             <Field>
@@ -2275,23 +2636,10 @@ function DatasetSettingsDialog({ dataset }: { dataset: Dataset }) {
                   <SelectItem value="redact">Redact</SelectItem>
                 </SelectContent>
               </Select>
-            </Field>
-            <Field>
-              <FieldLabel>Retention</FieldLabel>
-              <Select
-                onValueChange={(value) => setRetentionProfile(value as RetentionProfile)}
-                value={retentionProfile}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="balanced">Balanced</SelectItem>
-                  <SelectItem value="fast_iteration">Fast iteration</SelectItem>
-                  <SelectItem value="audit_friendly">Audit friendly</SelectItem>
-                  <SelectItem value="minimal_storage">Minimal storage</SelectItem>
-                </SelectContent>
-              </Select>
+              <FieldDescription>
+                Decide whether sensitive values are preserved, replaced, or redacted in dataset
+                rows.
+              </FieldDescription>
             </Field>
             <Field>
               <FieldLabel htmlFor="dataset-settings-default-metric">Default metric</FieldLabel>
@@ -2300,26 +2648,244 @@ function DatasetSettingsDialog({ dataset }: { dataset: Dataset }) {
                 onChange={(event) => setMetricId(event.target.value)}
                 value={metricId}
               />
+              <FieldDescription>
+                Used as the suggested metric when a new evaluation is created from this dataset.
+              </FieldDescription>
             </Field>
           </div>
-          {mutation.error ? (
-            <div className="border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {mutation.error.message}
-            </div>
-          ) : null}
         </FieldGroup>
-        <DialogFooter>
-          <Button
-            disabled={mutation.isPending}
-            onClick={() => void mutation.mutateAsync()}
-            type="button"
-          >
-            <Settings data-icon="inline-start" />
-            Save settings
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      ) : null}
+      {activeTab === "Extraction" ? (
+        <FieldGroup>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field>
+              <FieldLabel>Trace input path</FieldLabel>
+              <Input onChange={(event) => setInputPath(event.target.value)} value={inputPath} />
+              <FieldDescription>
+                JSON path for the input value extracted from traces.
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel>Trace expected path</FieldLabel>
+              <Input
+                onChange={(event) => setExpectedPath(event.target.value)}
+                value={expectedPath}
+              />
+              <FieldDescription>
+                JSON path for labels or expected values already present in traces.
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel>Trace observed path</FieldLabel>
+              <Input
+                onChange={(event) => setObservedOutputPath(event.target.value)}
+                value={observedOutputPath}
+              />
+              <FieldDescription>
+                JSON path for the actual model or system output captured in traces.
+              </FieldDescription>
+            </Field>
+          </div>
+        </FieldGroup>
+      ) : null}
+      {activeTab === "Versions" ? (
+        <FieldGroup>
+          <ReadOnlyValue label="Current version" value={String(dataset.currentVersion.version)} />
+          <ReadOnlyValue
+            label="Expected dataset version"
+            value={datasetCurrentVersionId(dataset)}
+          />
+          <Field>
+            <FieldLabel>Retention</FieldLabel>
+            <Select
+              onValueChange={(value) => setRetentionProfile(value as RetentionProfile)}
+              value={retentionProfile}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="balanced">Balanced</SelectItem>
+                <SelectItem value="fast_iteration">Fast iteration</SelectItem>
+                <SelectItem value="audit_friendly">Audit friendly</SelectItem>
+                <SelectItem value="minimal_storage">Minimal storage</SelectItem>
+              </SelectContent>
+            </Select>
+            <FieldDescription>
+              Choose how much version and row evidence CloudGrid should keep for this dataset.
+            </FieldDescription>
+          </Field>
+        </FieldGroup>
+      ) : null}
+    </WizardPage>
+  );
+}
+
+function EvaluationSettingsView({
+  datasets,
+  definition,
+  projectName,
+}: {
+  datasets: Dataset[];
+  definition: EvaluationDefinition;
+  projectName: string;
+}) {
+  const [activeTab, setActiveTab] = useState("Dataset");
+  const dataset = datasets.find((item) => item.id === definition.datasetId);
+  return (
+    <WizardPage
+      activeTab={activeTab}
+      backTo={`/ai-eval?tab=evaluations&evaluation=${encodeURIComponent(definition.id)}`}
+      description="Inspect evaluation settings that affect future runs only."
+      onBack={() => setActiveTab(previousWizardTab(evaluationSettingsTabs, activeTab))}
+      onNext={() => setActiveTab(nextWizardTab(evaluationSettingsTabs, activeTab))}
+      projectName={projectName}
+      onTabChange={setActiveTab}
+      readOnly
+      saveIcon={<Settings data-icon="inline-start" />}
+      saveLabel="Save settings"
+      tabs={evaluationSettingsTabs}
+      title="Evaluation settings"
+    >
+      {activeTab === "Dataset" ? (
+        <SummaryList
+          rows={[
+            ["Evaluation", definition.name],
+            ["Dataset", dataset?.name ?? definition.datasetId],
+            ["Dataset version policy", definition.datasetVersionPolicy],
+            ["Split selector", definition.splitSelector.splits.join(", ")],
+          ]}
+        />
+      ) : null}
+      {activeTab === "Target" ? (
+        <SummaryList
+          rows={[
+            ["Target kind", definition.targetRef.kind],
+            ["Target display name", definition.targetRef.displayName],
+            ["Target ref", definition.targetRef.targetRef ?? "not set"],
+            ["Target snapshot ID", definition.targetRef.targetSnapshotId ?? "not set"],
+            ["Model alias", metadataField(definition.targetRef.metadata, "modelAlias")],
+          ]}
+        />
+      ) : null}
+      {activeTab === "Metrics" ? (
+        <SummaryList
+          rows={definition.metricSettings.map((metric, index) => [
+            `Metric ${index + 1}`,
+            metric.metricId,
+          ])}
+        />
+      ) : null}
+      {activeTab === "Run policy" ? (
+        <SummaryList
+          rows={[
+            ["Retention profile", definition.retentionProfile],
+            ["Run policy", JSON.stringify(definition.runPolicy)],
+          ]}
+        />
+      ) : null}
+      {activeTab === "History" ? (
+        <FieldGroup>
+          <ReadOnlyValue
+            label="Future-run impact"
+            value="Settings changes apply only to runs started after the change."
+          />
+          <ReadOnlyValue
+            label="Existing runs"
+            value="Already resolved run records remain immutable evidence."
+          />
+        </FieldGroup>
+      ) : null}
+    </WizardPage>
+  );
+}
+
+function OptimizationSettingsView({
+  projectName,
+  run,
+}: {
+  projectName: string;
+  run: OptimizationRun;
+}) {
+  const [activeTab, setActiveTab] = useState("Source");
+  const terminal = !isConfigurableRunStatus(run.status);
+  return (
+    <WizardPage
+      activeTab={activeTab}
+      backTo="/ai-eval?tab=evaluations"
+      description={
+        terminal
+          ? "Terminal optimization settings are read-only."
+          : "Inspect configurable optimization settings for this run."
+      }
+      onBack={() => setActiveTab(previousWizardTab(optimizationSettingsTabs, activeTab))}
+      onNext={() => setActiveTab(nextWizardTab(optimizationSettingsTabs, activeTab))}
+      projectName={projectName}
+      onTabChange={setActiveTab}
+      readOnly
+      saveIcon={<Settings data-icon="inline-start" />}
+      saveLabel="Save settings"
+      tabs={optimizationSettingsTabs}
+      title="Optimization settings"
+    >
+      {activeTab === "Source" ? (
+        <SummaryList
+          rows={[
+            ["Run", run.id],
+            ["Status", run.status],
+            ["Baseline target", run.baselineTargetSnapshotId],
+            ["Training evaluation", run.trainingEvaluationDefinitionId ?? "not set"],
+            ["Validation evaluation", run.validationEvaluationDefinitionId ?? "not set"],
+          ]}
+        />
+      ) : null}
+      {activeTab === "Objective" ? (
+        <SummaryList
+          rows={[
+            ["Primary metric", run.objective.primaryMetricId],
+            ["Secondary metrics", run.objective.secondaryMetricIds?.join(", ") || "none"],
+            ["Tradeoff metrics", run.objective.tradeoffMetricIds?.join(", ") || "none"],
+            ["Tie-breakers", run.objective.tieBreakers?.join(", ") || "none"],
+            ["Minimum evidence", jsonPreview(run.objective.minimumEvidence, 160)],
+          ]}
+        />
+      ) : null}
+      {activeTab === "Search" ? (
+        <FieldGroup>
+          <ReadOnlyValue label="Editable target scope" value="Prompt text and few-shot examples" />
+          <ReadOnlyValue
+            label="Candidate target snapshots"
+            value={run.candidateTargetSnapshotIds.length.toString()}
+          />
+        </FieldGroup>
+      ) : null}
+      {activeTab === "Validation" ? (
+        <SummaryList
+          rows={[
+            ["Quick-shot phase", run.quickShotPolicy ? "configured" : "not configured"],
+            ["Caused evaluation runs", run.causedEvaluationRunIds.length.toString()],
+            ["Comparisons", run.comparisonIds.length.toString()],
+            [
+              "Promotion evidence",
+              run.selectedCandidateSnapshotId ? "candidate selected" : "pending",
+            ],
+          ]}
+        />
+      ) : null}
+      {activeTab === "Controls" ? (
+        <FieldGroup>
+          <ReadOnlyValue
+            label="Lifecycle controls"
+            value={
+              terminal
+                ? "Terminal run controls are locked."
+                : "Mutable optimization controls are read-only until a backend update mutation exists."
+            }
+          />
+          <ReadOnlyValue label="Budget snapshot" value={jsonPreview(run.budgetSnapshot, 160)} />
+        </FieldGroup>
+      ) : null}
+    </WizardPage>
   );
 }
 
@@ -2365,11 +2931,169 @@ function TargetPromotionDialog({
   );
 }
 
+const datasetCreateTabs = ["Purpose", "Schema", "Curation", "Extraction"];
+const datasetSettingsTabs = ["Purpose", "Schema", "Curation", "Extraction", "Versions"];
+const evaluationCreateTabs = ["Dataset", "Target", "Metrics", "Run policy"];
+const evaluationSettingsTabs = ["Dataset", "Target", "Metrics", "Run policy", "History"];
+const optimizationCreateTabs = ["Source", "Objective", "Search", "Validation"];
+const optimizationSettingsTabs = ["Source", "Objective", "Search", "Validation", "Controls"];
+
+function WizardPage({
+  activeTab,
+  backTo,
+  children,
+  description,
+  error = null,
+  onBack,
+  onNext,
+  onSave,
+  onTabChange,
+  projectName,
+  readOnly = false,
+  saveDisabled = false,
+  saveIcon,
+  saveLabel,
+  saving = false,
+  tabs,
+  title,
+}: {
+  activeTab: string;
+  backTo: string;
+  children: ReactNode;
+  description: string;
+  error?: string | null;
+  onBack: () => void;
+  onNext: () => void;
+  onSave?: () => void;
+  onTabChange: (tab: string) => void;
+  projectName: string;
+  readOnly?: boolean;
+  saveDisabled?: boolean;
+  saveIcon: ReactNode;
+  saveLabel: string;
+  saving?: boolean;
+  tabs: string[];
+  title: string;
+}) {
+  const activeIndex = Math.max(0, tabs.indexOf(activeTab));
+  const isFirst = activeIndex === 0;
+  const isLast = activeIndex === tabs.length - 1;
+  return (
+    <section className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
+      <div className="shrink-0 border-b pb-3">
+        <RouteBreadcrumb
+          backLabel={t("actions.back")}
+          backTo={backTo}
+          items={[
+            { label: t("nav.projects"), to: "/projects" },
+            { label: projectName, to: "/projects" },
+            { label: t("nav.aiEval"), to: "/ai-eval" },
+            { label: title },
+          ]}
+        />
+        <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold tracking-normal">{title}</h1>
+            <p className="text-sm text-muted-foreground">{description}</p>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button asChild size="sm" type="button" variant="outline">
+              <Link to={backTo}>
+                <XCircle data-icon="inline-start" />
+                Cancel
+              </Link>
+            </Button>
+            <Button disabled={isFirst} onClick={onBack} size="sm" type="button" variant="outline">
+              <SlidersHorizontal data-icon="inline-start" />
+              Back
+            </Button>
+            {isLast ? (
+              <Button
+                disabled={readOnly || saveDisabled || saving}
+                onClick={onSave}
+                size="sm"
+                type="button"
+                variant={readOnly ? "outline" : "default"}
+              >
+                {saveIcon}
+                {saveLabel}
+              </Button>
+            ) : (
+              <Button onClick={onNext} size="sm" type="button">
+                <CheckCircle2 data-icon="inline-start" />
+                Continue
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="flex min-h-0 flex-1 gap-4 overflow-hidden">
+        <nav className="w-56 shrink-0 overflow-auto border-r pr-3" aria-label={`${title} steps`}>
+          <div className="grid gap-1">
+            {tabs.map((tab) => (
+              <Button
+                className="justify-start"
+                key={tab}
+                onClick={() => onTabChange(tab)}
+                size="sm"
+                type="button"
+                variant={tab === activeTab ? "secondary" : "ghost"}
+              >
+                <ClipboardCheck data-icon="inline-start" />
+                {tab}
+              </Button>
+            ))}
+          </div>
+        </nav>
+        <div className="min-h-0 flex-1 overflow-auto border p-4">
+          <h2 className="mb-3 text-sm font-medium">{activeTab}</h2>
+          {error ? (
+            <div className="mb-3 border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </div>
+          ) : null}
+          {readOnly ? (
+            <div className="mb-3 border border-dashed px-3 py-2 text-sm text-muted-foreground">
+              Backend update mutation support is not available here, so this settings state is
+              read-only.
+            </div>
+          ) : null}
+          {children}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SummaryList({ rows }: { rows: Array<[string, string]> }) {
+  return (
+    <dl className="grid gap-3 text-sm">
+      {rows.map(([label, value]) => (
+        <div className="border px-3 py-2" key={label}>
+          <dt className="text-muted-foreground">{label}</dt>
+          <dd className="break-words">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function ReadOnlyValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border px-3 py-2 text-sm">
+      <div className="text-muted-foreground">{label}</div>
+      <div className="break-words">{value}</div>
+    </div>
+  );
+}
+
 function ValueTypeField({
+  description,
   label,
   onChange,
   value,
 }: {
+  description?: string;
   label: string;
   onChange: (value: DatasetValueType) => void;
   value: DatasetValueType;
@@ -2386,15 +3110,18 @@ function ValueTypeField({
           <SelectItem value="text">Text</SelectItem>
         </SelectContent>
       </Select>
+      {description ? <FieldDescription>{description}</FieldDescription> : null}
     </Field>
   );
 }
 
 function SplitField({
+  description,
   label = "Split",
   onChange,
   value,
 }: {
+  description?: string;
   label?: string;
   onChange: (value: DatasetSplit) => void;
   value: DatasetSplit;
@@ -2414,15 +3141,18 @@ function SplitField({
           ))}
         </SelectContent>
       </Select>
+      {description ? <FieldDescription>{description}</FieldDescription> : null}
     </Field>
   );
 }
 
 function CurationStatusField({
+  description,
   label = "Curation status",
   onChange,
   value,
 }: {
+  description?: string;
   label?: string;
   onChange: (value: DatasetCurationStatus) => void;
   value: DatasetCurationStatus;
@@ -2442,6 +3172,7 @@ function CurationStatusField({
           ))}
         </SelectContent>
       </Select>
+      {description ? <FieldDescription>{description}</FieldDescription> : null}
     </Field>
   );
 }
@@ -2450,9 +3181,154 @@ function readSection(value: string | null): AiEvalSection {
   return value === "evaluations" ? "evaluations" : "datasets";
 }
 
+function readAiEvalRouteState(pathname: string): AiEvalRouteState {
+  const datasetSettings = pathname.match(/^\/ai-eval\/datasets\/([^/]+)\/settings\/?$/);
+  if (datasetSettings?.[1]) {
+    return {
+      datasetId: decodeURIComponent(datasetSettings[1]),
+      kind: "dataset-settings",
+      section: "datasets",
+    };
+  }
+  const evaluationSettings = pathname.match(/^\/ai-eval\/evaluations\/([^/]+)\/settings\/?$/);
+  if (evaluationSettings?.[1]) {
+    return {
+      evaluationId: decodeURIComponent(evaluationSettings[1]),
+      kind: "evaluation-settings",
+      section: "evaluations",
+    };
+  }
+  const optimizationSettings = pathname.match(/^\/ai-eval\/optimizations\/([^/]+)\/settings\/?$/);
+  if (optimizationSettings?.[1]) {
+    return {
+      kind: "optimization-settings",
+      optimizationRunId: decodeURIComponent(optimizationSettings[1]),
+      section: "evaluations",
+    };
+  }
+  if (pathname === "/ai-eval/datasets/new") {
+    return { kind: "dataset-create", section: "datasets" };
+  }
+  if (pathname === "/ai-eval/evaluations/new") {
+    return { kind: "evaluation-create", section: "evaluations" };
+  }
+  if (pathname === "/ai-eval/optimizations/new") {
+    return { kind: "optimization-create", section: "evaluations" };
+  }
+  return { kind: "workspace", section: null };
+}
+
+function nextWizardTab(tabs: string[], activeTab: string) {
+  const index = Math.max(0, tabs.indexOf(activeTab));
+  return tabs[Math.min(tabs.length - 1, index + 1)] ?? activeTab;
+}
+
+function previousWizardTab(tabs: string[], activeTab: string) {
+  const index = Math.max(0, tabs.indexOf(activeTab));
+  return tabs[Math.max(0, index - 1)] ?? activeTab;
+}
+
+function datasetCreateTabError(
+  activeTab: string,
+  state: {
+    evaluationFamily: string;
+    expectedSchema: string;
+    expectedType: DatasetValueType;
+    inputSchema: string;
+    inputType: DatasetValueType;
+    name: string;
+  },
+) {
+  if (activeTab === "Purpose") {
+    if (!state.name.trim()) {
+      return "Dataset name is required.";
+    }
+    if (!state.evaluationFamily.trim()) {
+      return "Evaluation family is required.";
+    }
+  }
+  if (activeTab === "Schema") {
+    if (state.inputType === "json" && !state.inputSchema.trim()) {
+      return "Input JSON schema is required.";
+    }
+    if (state.expectedType === "json" && !state.expectedSchema.trim()) {
+      return "Expected JSON schema is required.";
+    }
+  }
+  return null;
+}
+
+function evaluationCreateTabError(
+  activeTab: string,
+  state: {
+    datasetId: string;
+    datasetVersionPolicy: EvaluationDatasetVersionPolicy;
+    metricId: string;
+    name: string;
+    selectedDataset: Dataset | undefined;
+    targetName: string;
+    targetRef: string;
+    targetSnapshotId: string;
+  },
+) {
+  if (activeTab === "Dataset") {
+    if (!state.name.trim()) {
+      return "Evaluation name is required.";
+    }
+    if (!state.datasetId) {
+      return "Dataset is required.";
+    }
+    if (state.datasetVersionPolicy === "pinned" && !state.selectedDataset?.currentVersionId) {
+      return "Selected dataset does not have a current version to pin.";
+    }
+  }
+  if (activeTab === "Target") {
+    if (!state.targetName.trim()) {
+      return "Target display name is required.";
+    }
+    if (!state.targetRef.trim() && !state.targetSnapshotId.trim()) {
+      return "Target ref or target snapshot ID is required.";
+    }
+  }
+  if (activeTab === "Metrics" && !state.metricId.trim()) {
+    return "Metric is required.";
+  }
+  return null;
+}
+
+function optimizationCreateTabError(
+  activeTab: string,
+  state: { baselineSnapshotId: string; evaluationId: string; primaryMetricId: string },
+) {
+  if (activeTab === "Source") {
+    if (!state.evaluationId) {
+      return "Source evaluation is required.";
+    }
+    if (!state.baselineSnapshotId.trim()) {
+      return "Baseline target snapshot is required.";
+    }
+  }
+  if (activeTab === "Objective" && !state.primaryMetricId.trim()) {
+    return "Primary metric is required.";
+  }
+  return null;
+}
+
+function isConfigurableRunStatus(status: string) {
+  return !["completed", "cancelled", "failed"].includes(status);
+}
+
 function datasetSetting(dataset: Dataset, key: string): JSONValue | undefined {
   const settings = (dataset as Dataset & { settings?: Record<string, JSONValue> | null }).settings;
   return settings?.[key];
+}
+
+function metadataField(value: JSONValue | undefined, key: string) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return "not set";
+  }
+  const item = value[key];
+  return item === undefined || item === null ? "not set" : String(item);
 }
 
 function itemValue(item: DatasetItem | undefined, key: string): JSONValue | undefined {

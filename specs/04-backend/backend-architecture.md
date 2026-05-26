@@ -83,6 +83,20 @@ provenance: inferred-draft
 - Must not import SurrealDB clients, storage adapters, model-provider SDKs, or provider credentials.
 - Publishes durable experiment progress notifications for storage-read-managed GraphQL subscription fanout.
 
+### Go Alert Evaluator (`core/alert-evaluator`)
+
+- Optional private service enabled when project alert execution is configured.
+- Owns project alert schedules, rule evaluation, state transitions, silences,
+  cooldowns, deduplication, alert history recording, and notification dispatch.
+- Reads telemetry only through storage-read request/reply subjects and reads or
+  writes alert rules/history only through control-plane request/reply subjects.
+- Provides built-in in-app and email delivery paths and can dispatch safe alert
+  summaries to bridge-backed delivery adapters for provider-specific systems
+  such as Slack, WhatsApp, SMS, Teams, PagerDuty, or customer notification
+  gateways.
+- Must not import SurrealDB clients, storage adapters, frontend code, provider
+  SDKs, provider credentials, or raw telemetry payload bodies.
+
 ### Self-Observability
 
 CloudGrid services may emit OpenTelemetry for CloudGrid itself according to
@@ -131,7 +145,7 @@ SurrealDB build without Postgres dependencies.
 
 ## Private Boundary
 
-SurrealDB is private to storage and control-plane services. The message bridge is private infrastructure shared by BFF, collector, storage services, control-plane, and ai-eval-runner. The v1 message bridge adapter is NATS. Public clients never connect to NATS or SurrealDB.
+SurrealDB is private to storage and control-plane services. The message bridge is private infrastructure shared by BFF, collector, storage services, control-plane, ai-eval-runner, alert-evaluator, and bridge-backed delivery adapters. The v1 message bridge adapter is NATS. Public clients never connect to NATS or SurrealDB.
 
 ## Read Model Boundary
 

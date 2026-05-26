@@ -185,6 +185,7 @@ export const CONTROL_PLANE_SUBJECTS = [
   "control.alert_silences.delete",
   "control.alert_history.list",
   "control.alert_summary.get",
+  "control.alert_notification_adapters.list",
   "control.alert_history.record",
 ] as const;
 export const STORAGE_MAINTENANCE_SUBJECTS = [
@@ -316,6 +317,7 @@ export const MESSAGE_BRIDGE_SUBJECTS = [
   "control.alert_silences.delete",
   "control.alert_history.list",
   "control.alert_summary.get",
+  "control.alert_notification_adapters.list",
   "control.alert_history.record",
   "storage_maintenance.retention.execute_batch",
   "alert_evaluator.tick",
@@ -434,6 +436,7 @@ export const CLOUDGRID_ENV_VARS = [
   "CLOUDGRID_ENABLE_SURREALDB_PLAN_TESTS",
   "CLOUDGRID_ENABLE_SURREALDB_RETENTION_TESTS",
   "CLOUDGRID_ENABLE_SURREALDB_STORAGE_WRITE_TESTS",
+  "CLOUDGRID_FRONTEND_BRAND_MODULE",
   "CLOUDGRID_FRONTEND_DEV_PORT",
   "CLOUDGRID_FRONTEND_SERVE_STATIC",
   "CLOUDGRID_FRONTEND_STATIC_DIR",

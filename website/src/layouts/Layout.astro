@@ -12,12 +12,45 @@ interface Props {
 
 const {
   title,
-  description = "CloudGrid — own your observability. Open-source, OpenTelemetry-native traces, logs, metrics, dashboards, and AI agent evaluation in one self-hosted system.",
+  description = "CloudGrid — own your observability. Source-available, OpenTelemetry-native traces, logs, metrics, dashboards, and AI agent evaluation in one self-hosted system.",
   ogImage = "/og-image.svg",
   hideFooter = false,
 } = Astro.props;
 
 const canonicalUrl = new URL(Astro.url.pathname, "https://cloudgrid.dev").toString();
+const path = Astro.url.pathname;
+const isHandbook = path.startsWith("/handbook");
+const background =
+  path === "/"
+    ? "home"
+    : path.startsWith("/features/traces")
+      ? "features-traces"
+      : path.startsWith("/features/logs")
+        ? "features-logs"
+        : path.startsWith("/features/metrics")
+          ? "features-metrics"
+          : path.startsWith("/features/dashboards")
+            ? "features-dashboards"
+            : path.startsWith("/features/alerts")
+              ? "features-alerts"
+              : path.startsWith("/features/ai-evaluation")
+                ? "features-ai-evaluation"
+                : path.startsWith("/features/adapters")
+                  ? "features-adapters"
+                  : path.startsWith("/features")
+                    ? "features"
+                    : path.startsWith("/enterprise/compare")
+                      ? "enterprise-compare"
+                      : path.startsWith("/enterprise/whitelabel-solution")
+                        ? "enterprise-whitelabel"
+                        : path.startsWith("/enterprise")
+                          ? "enterprise"
+                          : isHandbook
+                            ? "handbook"
+                            : "default";
+const backgroundStyle = isHandbook
+  ? "--hero-bg-image: none;"
+  : `--hero-bg-image: url('/hero-backgrounds/${background}.png');`;
 ---
 
 <!doctype html>
@@ -63,7 +96,7 @@ const canonicalUrl = new URL(Astro.url.pathname, "https://cloudgrid.dev").toStri
       })();
     </script>
   </head>
-  <body class="min-h-screen bg-page text-text antialiased">
+  <body class="min-h-screen bg-page text-text antialiased" data-background={isHandbook ? "plain" : "hero"} style={backgroundStyle}>
     <Navigation />
     <main>
       <slot />

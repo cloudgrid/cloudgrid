@@ -589,88 +589,16 @@ Conflict and validation behavior:
 
 ## Project Alerting UX
 
-Alerting is a project-level operational workspace at `/alerts`. It is not embedded into dashboard editing and it is not a company-global administration page.
+Alerting UX is specified in `specs/05-frontend/alerts-ux-concept.md`.
 
-Sidebar placement:
-
-- `/alerts` remains a project-level route, but it is not a primary project sidebar item and must not be inserted into the global project sidebar order;
-- the route may be opened directly, from command palette actions, from alert evidence links, and from explicit alert-management entry points specified by alerting specs;
-- active firing counts may be shown only on alerting surfaces when GraphQL exposes them; otherwise no synthetic count is rendered.
-
-Layout:
-
-- use the standard route chrome: breadcrumb row, title row, and project content area;
-- title is `Alerts`;
-- primary action is `Create alert rule` with a plus icon;
-- secondary action is icon-only refresh;
-- no other header actions are visible in v1;
-- content is a two-panel split: left alert rule table, right selected rule/history inspector;
-- the table panel is the primary surface and owns scrolling;
-- the inspector is resizable, uses the same right-panel behavior as logs and trace details, and is hidden on mobile until a row is selected.
-
-Alert rule table columns:
-
-- status;
-- severity;
-- rule name;
-- kind;
-- signal;
-- evaluation window;
-- last event;
-- enabled.
-
-Standard element rules:
-
-- status uses plain text for `OK` and red text only for `FIRING` or `ERROR`;
-- severity uses text only, not colored badges, except `CRITICAL` may use red text;
-- enabled is a switch only when the viewer can administer project alerts;
-- row click selects the rule and updates the inspector;
-- table headers are sortable where the backend returns stable sortable fields.
-
-Filters:
-
-- default visible filters are search, status, severity, signal, and enabled;
-- advanced filters are behind the existing `More filters` disclosure pattern;
-- filter chips are removable independently;
-- empty results caused by filters say `No alert rules match these filters` and show `Clear filters`;
-- a project with no alert rules says `No alert rules yet` and shows `Create alert rule` only for project admins.
-
-Rule editor:
-
-- create/edit opens a right sheet, not a modal;
-- destructive delete uses a confirmation dialog;
-- the sheet has sections `Basics`, `Signal query`, `Condition`, `Timing`, and `Notifications`;
-- `Basics` contains name, enabled, kind, and severity;
-- `Signal query` renders the exact query controls for the selected kind: metric selector for metric rules, log filters for log rules, trace filters for trace rules;
-- `Condition` renders only the fields allowed by `04-backend/alerting.md` for the selected kind;
-- `Timing` contains evaluation window, pending-for, and cooldown;
-- `Notifications` shows the in-app adapter as checked and read-only in v1;
-- changing rule kind resets query and condition after a confirmation dialog if either section is dirty.
-
-Inspector tabs:
-
-- `Overview`: current state, severity, kind, enabled state, timing, notification adapters, version, and last update metadata;
-- `History`: alert event table backed by `alertHistory`;
-- `Silences`: active and scheduled silences backed by `alertSilences`.
-
-History pivots:
-
-- trace evidence opens trace detail;
-- span evidence opens trace detail with selected span;
-- log evidence opens logs with selected log/trace/span filters;
-- metric evidence opens metrics with metric name and representable query context.
-
-Silence behavior:
-
-- create silence is available from the selected rule inspector for project admins;
-- delete silence is destructive only when active or scheduled;
-- expired silences are read-only history entries.
-
-Dashboard relationship:
+This dashboard/log/metric spec owns only alert relationships for these views:
 
 - dashboard threshold display settings are not alert rules;
+- dashboard alert widgets are read-only evidence/status/history widgets backed
+  by alert contracts;
 - dashboards may link to `/alerts?ruleId=<id>` from typed alert widgets;
-- v1 dashboard editing must not create, update, or delete alert rules.
+- dashboard editing must not create, update, enable, disable, silence, or delete
+  alert rules.
 
 ## URL State
 

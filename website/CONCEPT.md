@@ -1,14 +1,14 @@
 # CloudGrid Website — Concept & Positioning
 
 Status: working draft for the website redesign
-Last updated: 2026-05-16
+Last updated: 2026-05-26
 Scope: marketing site only (`/website`). Source code, specs, and product docs are unchanged.
 
 ---
 
 ## 1. Where CloudGrid sits in the market
 
-CloudGrid is an open-source, self-hosted, AI-native observability platform built on OpenTelemetry, with a clean message-bridge architecture and adapter-driven extensibility.
+CloudGrid is a source-available, self-hosted, AI-native observability platform built on OpenTelemetry, with a clean message-bridge architecture and customizable extension surface.
 
 The market has three rough camps. CloudGrid does not sit cleanly in any of them — which is the opportunity.
 
@@ -18,36 +18,36 @@ The market has three rough camps. CloudGrid does not sit cleanly in any of them 
 | **OSS "LGTM" stacks** | Grafana + Loki + Tempo + Mimir/Prometheus, Elastic, SigNoz, Uptrace | You own the data. Components are interchangeable. | You operate three to five independent systems with three to five different query languages, retention models, and storage backends. Correlation across signals is glue you wrote yourself. AI workloads are an afterthought. |
 | **AI-eval point tools** | Langfuse, Arize Phoenix, Helicone, Braintrust, LangSmith | Built specifically for LLM / agent traces and evaluations | They only see the AI slice. Your non-AI services are observed in a completely different tool. Evaluations live separately from your traces. |
 
-**CloudGrid's wedge:** one self-hosted system, OpenTelemetry-native end to end, that does general-purpose traces / logs / metrics / dashboards *and* first-class AI agent evaluation, with adapter-driven swap-out of every infrastructure dependency.
+**CloudGrid's wedge:** one self-hosted system, OpenTelemetry-native end to end, that does general-purpose traces / logs / metrics / dashboards / alerts *and* first-class AI agent evaluation, with brand, packaging, and adapter extension points.
 
-You don't have to choose between "real observability" and "AI-aware evaluation." You don't have to choose between "I own my data" and "the UI is actually good." You don't have to choose between "open source" and "coherent product."
+You don't have to choose between "real observability" and "AI-aware evaluation." You don't have to choose between "I own my data" and "the UI is actually good." You don't have to choose between source availability and coherent product packaging.
 
 ## 2. Positioning statement
 
-> CloudGrid is the open-source, OpenTelemetry-native observability platform you actually own. Traces, logs, metrics, dashboards, and first-class AI evaluation and optimization — in one self-hosted system with adapter-driven extensibility, so the storage, message bridge, auth, and evaluation execution path you run today can be swapped tomorrow.
+> CloudGrid is the source-available, OpenTelemetry-native observability platform you actually own. Traces, logs, metrics, dashboards, alerts, and first-class AI evaluation and optimization — in one self-hosted system with customization and adapter extensibility, so the brand, storage, message bridge, auth, alert delivery, and evaluation execution path you run today can be changed tomorrow.
 
 Short form (hero):
 
 > **Own your observability.**
-> OpenTelemetry traces, logs, metrics, dashboards, and AI evaluation workflows — open source, self-hosted, adapter-driven. No vendor lock-in. No data leaving your network.
+> OpenTelemetry traces, logs, metrics, dashboards, alerts, and AI evaluation workflows — source-available, self-hosted, customizable. No vendor lock-in. No data leaving your network.
 
 ## 3. ICP and audiences
 
 Three audiences read the site differently. The IA has to serve all three within two clicks.
 
-1. **Platform / Infra engineer (primary).** Already runs OTel collectors and a Grafana stack or an APM. Wants to know: how it scales, how the message bridge isolates blast radius, what storage backends are pluggable, how to migrate. Cares about Architecture, Adapters, Handbook.
+1. **Platform / Infra engineer (primary).** Already runs OTel collectors and a Grafana stack or an APM. Wants to know: how it scales, how the message bridge isolates blast radius, what storage backends are pluggable, how to migrate, and how far the product can be customized. Cares about Architecture, Customizable, Handbook.
 2. **AI / ML engineer (growth wedge).** Building LLM apps or agents, currently using Langfuse / Arize / Phoenix / Braintrust on top of (or instead of) observability. Wants: datasets, evaluation runs, comparisons, optimization, and trace-backed evidence for the rest of the system. Cares about AI Evaluation, Traces, Compare.
-3. **Engineering manager / security buyer (decision lever).** Asks the procurement-grade questions: data residency, SSO, isolation, license clarity, total cost. Cares about Enterprise, Compare, Open Source license, governance posture.
+3. **Engineering manager / security buyer (decision lever).** Asks the procurement-grade questions: data residency, SSO, isolation, license clarity, total cost. Cares about Enterprise, Compare, Commons Clause license, governance posture.
 
 ## 4. "Unicorn" features — the 6 things only CloudGrid claims at once
 
 These are the differentiators the entire site repeats. Every page should echo at least two.
 
-1. **OTel-native, signal-complete, in one place.** Traces, logs, metrics, dashboards, *and* AI evaluation workflows. Not five tools glued together.
-2. **Adapter-driven infrastructure.** Every external dependency — storage backend, message bridge, auth providers, evaluation execution — sits behind an explicit port. v1 ships with SurrealDB, NATS JetStream, GitHub/Google/Entra ID SSO, and adapter-backed AI execution. You can implement your own.
+1. **OTel-native, signal-complete, in one place.** Traces, logs, metrics, dashboards, alerts, *and* AI evaluation workflows. Not five tools glued together.
+2. **Customizable infrastructure.** Brand identity, packaging, and every external dependency — storage backend, message bridge, auth providers, alert delivery, evaluation execution — sit behind explicit layers or ports. v1 ships with SurrealDB, NATS JetStream, GitHub/Google/Entra ID SSO, built-in in-app/email alert delivery, and adapter-backed AI execution. You can implement your own.
 3. **Message-bridge isolation.** No public service touches the database. Every read and every write crosses NATS. The blast radius of a bad UI query is bounded by a request/reply contract, not a SQL connection pool.
 4. **AI-evaluation, first-class — without giving up your trace data.** Datasets, evaluation runs, comparisons, optimization evidence, and promotion records live next to the telemetry that explains them. Prompt and completion content stays controlled by the originating trace data and dataset policy — never copied into a separate "AI database" workflow.
-5. **You own the data, end of paragraph.** Self-hosted by default. No telemetry leaves your network unless you wire it to. Apache 2.0-licensed. No open-core bait-and-switch.
+5. **You own the data, end of paragraph.** Self-hosted by default. No telemetry leaves your network unless you wire it to. Apache 2.0 + Commons Clause. No open-core bait-and-switch.
 6. **Open development.** Source is on GitHub. Roadmap is in issues and milestones, not a closed-door deck. (We deliberately do not surface the internal `/specs` directory on the public website — that's an implementation artifact, not a marketing message.)
 
 ## 5. Information architecture
@@ -61,9 +61,11 @@ Four top-level entries. Nothing more, because every extra nav item costs compreh
   /features/logs                  Log analytics
   /features/metrics               Metrics exploration
   /features/dashboards            Dashboards & widgets
+  /features/alerts                Alerts
   /features/ai-evaluation         AI agent evaluation
-  /features/adapters              Adapter-driven extensibility
+  /features/adapters              Customizable foundation (brand, packaging, adapters)
 /enterprise                       Enterprise (data ownership, SSO, isolation)
+  /enterprise/whitelabel-solution White-label solution for commercial SaaS and partners
   /enterprise/compare             Head-to-head vs Datadog, Honeycomb, LGTM, Langfuse, ...
 /handbook                         Handbook (technical hub)
   /handbook/getting-started       Run it in one command
@@ -85,17 +87,17 @@ Cross-links:
 **Job:** in 8 seconds, prove this is a serious tool; in 60 seconds, get a platform engineer to click Handbook or an AI engineer to click AI Evaluation.
 
 Sections in order:
-1. **Hero** — headline "Own your observability." Sub: one-sentence positioning. CTAs: *Read the handbook*, *Star on GitHub*. Inline mini product shot (static SVG trace waterfall, not a canvas animation).
-2. **Signal strip** — five tiles: Traces / Logs / Metrics / Dashboards / AI Evaluation. Each links to its feature page.
-3. **The wedge** — "One self-hosted system. Five signals. One contract." Three paragraphs against the three competitor camps, named.
+1. **Hero** — headline "Own your observability." Sub: one-sentence positioning. CTAs: *Read the handbook*, *Star on GitHub*. The first section uses a generated realistic enterprise/product collage background, with the headline block aligned consistently with the other marketing pages.
+2. **Capability stack** — seven editorial rows: Traces / Logs / Metrics / Dashboards / Alerts / AI Evaluation / Customizable. Each row pairs concise copy with a generated product collage crop and links to its feature page.
+3. **The wedge** — "One self-hosted system. Signals, alerts, and evaluation." Three paragraphs against the three competitor camps, named.
 4. **Architecture teaser** — flat SVG of the service graph. Caption: "No public service touches the database." CTA to Handbook → Architecture.
-5. **Adapter-driven** — small grid showing the four adapter slots (storage / bridge / auth / evaluation execution) with the v1 implementation chip on each. CTA to Features → Adapters.
+5. **Customizable** — brand, packaging, and runtime extension story with the four adapter slots (storage / bridge / auth / evaluation execution) as the technical foundation. CTA to Features → Customizable.
 6. **AI-native, signal-complete** — small mockup of an evaluation scoreboard with row evidence and trace links. CTA to Features → AI Evaluation.
 7. **Compare strip** — a 4-row preview of the comparison table. CTA to Enterprise → Compare.
-8. **Open-source footer block** — Apache 2.0, public specs, public roadmap, GitHub.
+8. **Source-available footer block** — Apache 2.0 + Commons Clause, public specs, public roadmap, GitHub.
 
 ### Features overview (`/features`)
-Card grid of the six feature pages, each with an SVG glyph, one-line value, and "read more." Below the grid: the three architectural truths that hold across every feature (message bridge, project isolation, adapter-driven).
+Editorial stack of the seven feature pages, alternating text and generated product collage crops. Avoid card grids and generic "read more" tiles. Below the stack: the three architectural truths that hold across every feature (message bridge, project isolation, customization surface) as a flat ruled list.
 
 ### `/features/traces`
 - Hero: "Every span, every attribute, every event — preserved."
@@ -108,7 +110,7 @@ Card grid of the six feature pages, each with an SVG glyph, one-line value, and 
 - Hero: "Search-first logs that already know which trace they belong to."
 - Mockup: SVG log table with severity chips and a "Jump to trace" pivot.
 - What you can do: full-text search, severity filter, trace-id / span-id pivots, structured attribute filtering, time-range scoping.
-- Honesty: log ingestion is on `/v1/logs`; metrics-style alerting on log volume is a future capability.
+- Honesty: log ingestion is on `/v1/logs`; log match and log count alerting live in the project alerting workspace.
 
 ### `/features/metrics`
 - Hero: "Metric exploration that respects descriptors, attributes, and exemplars."
@@ -122,6 +124,12 @@ Card grid of the six feature pages, each with an SVG glyph, one-line value, and 
 - What you can do: compose dashboards from typed widgets, pin to project sidebar, share within the project.
 - Distinction: `Dashboard` and `DashboardWidget` are the only saved-composition surface. Ad-hoc exploration lives in `/metrics`, `/traces`, `/logs`.
 
+### `/features/alerts`
+- Hero: "Core alerting with flexible delivery paths."
+- Mockup: alert rule table plus delivery fan-out showing in-app, email, and bridge adapters.
+- What you can do: configure project-scoped metric, log, and trace alert rules; manage silences and history; use in-app alert history and email summaries; extend delivery through bridge-backed adapters for Slack, Teams, WhatsApp, SMS, PagerDuty, or customer gateways.
+- Key boundary: CloudGrid core owns evaluation, state transitions, deduplication, silences, cooldowns, history, and delivery result handling. Adapters deliver safe summaries and return bounded status; they do not evaluate rules or own provider secrets in the frontend.
+
 ### `/features/ai-evaluation`
 - Hero: "Turn collected telemetry into better AI behavior."
 - Mockup: dataset evaluation scoreboard with metric deltas, row evidence, and trace links.
@@ -130,11 +138,12 @@ Card grid of the six feature pages, each with an SVG glyph, one-line value, and 
 - Compare: Langfuse / Arize / Braintrust focus on AI slice only; CloudGrid evaluates AI inside the same system that observes everything else.
 
 ### `/features/adapters`
-- Hero: "Every infrastructure dependency sits behind a port."
-- Diagram: SVG showing four port surfaces with v1 implementation chips: storage (SurrealDB), message bridge (NATS JetStream), auth (GitHub / Google / Entra ID), evaluation execution.
-- What you can do: implement a Go storage adapter against the storage-read/write port, point the bridge at a different transport, add an SSO provider, or plug in an external evaluation execution path.
-- Honesty: v1 ships one of each. The pattern is real today; alternative implementations are a contributor surface.
-- Link to Handbook → Adapters for the author guide.
+- Hero: "Make CloudGrid feel like your product."
+- Focus: CloudGrid as a customizable, source-available foundation: logos, naming, colors, support/legal links, product copy, deployment packaging, auth, bridge, storage, and evaluation execution.
+- Diagram: SVG showing adapter port surfaces with v1 implementation chips: storage (SurrealDB), message bridge (NATS JetStream), alert delivery (in-app / email / webhook), auth (GitHub / Google / Entra ID), evaluation execution.
+- What you can do: customize the visible product surface, package CloudGrid for your environment, implement a Go storage adapter against the storage-read/write port, point the bridge at a different transport, add an SSO provider, or plug in an external evaluation execution path.
+- License honesty: Apache 2.0 + Commons Clause covers self-hosted adoption; hosted resale, white-label SaaS, and commercial product-portfolio use require a separate agreement.
+- Link to Enterprise → White-label Solution and Handbook → Adapters.
 
 ### Enterprise (`/enterprise`)
 **Job:** answer the buyer-grade questions in one read.
@@ -148,6 +157,16 @@ Sections:
 6. **Operational characteristics.** Independent scale of collector, BFF, storage-read. Storage-write is the only mutator. Live subscriptions respect the same authorization as queries.
 7. **License & governance.** Apache 2.0. Public specs. No hidden enterprise switches.
 8. **CTA:** Compare to your current stack → `/enterprise/compare`.
+
+### Enterprise — White-label Solution (`/enterprise/whitelabel-solution`)
+**Job:** explain CloudGrid as a commercial white-label / partner foundation.
+
+- Audience: enterprises adding observability to a platform, startups building SaaS around operational insight, and service providers bundling managed deployments.
+- Focus: brand ownership, customer-facing packaging, deployment flexibility, and modular extension through bridge and adapter boundaries.
+- Scaling: explain that the modular architecture lets customers scale data ingestion, persistence, and read/live-delivery capacity independently according to workload requirements.
+- Spec-driven delivery: explain that CloudGrid ships with implementation specs, GraphQL and AsyncAPI contracts, error taxonomy, and architecture restrictions so AI agents, alternate language implementations, and third-party integrations can customize against defined behavior instead of guessing.
+- License: clear line between public self-hosted use and commercial hosted / white-label / managed-service resale.
+- CTAs to Features → Customizable and Enterprise → Overview.
 
 ### Enterprise — Compare (`/enterprise/compare`)
 Two artifacts on this page:
@@ -190,7 +209,16 @@ Adapter author guide. The port shapes (storage-read, storage-write, evaluation e
 
 ## 7. Visual system
 
-**Philosophy.** Flat. Professional. Data-rich. Read like Vercel docs or Linear changelog, not like a SaaS landing page from 2019. No animated canvases, no rainbow gradients on every heading. Real-looking inline SVG mockups (trace waterfall, log tables, dashboards) carry the visual weight.
+**Philosophy.** Flat. Professional. Data-rich. Read like Vercel docs or Linear changelog, not like a SaaS landing page from 2019. No animated canvases, no rainbow gradients on every heading, no card-in-card compositions, and no decorative pill piles. On marketing pages, the hero image carries the first-viewport visual weight; below the hero, sections are flat white or neutral recessed bands.
+
+**Hero imagery.**
+- Home, feature, and enterprise pages use generated realistic enterprise/product collage images as the first hero section background only.
+- Hero images should look like polished product or infrastructure photography/render collages: observability dashboards, telemetry flows, message bridge routing, adapter blocks, SaaS packaging, cloud/server infrastructure, and operational evidence.
+- Do not use full-page image backgrounds. Do not apply hero images to content sections, related-link sections, body backgrounds, or handbook pages.
+- Do not use simple gradients, procedural SVG backgrounds, abstract waves, or generic stock-like filler as hero imagery.
+- Keep eyebrow, headline, description, and CTA placement aligned across marketing pages to avoid visual jumps while navigating.
+- Do not add a separate right-side mockup, animated canvas, SVG visualization, or card stack in the hero when the generated background already carries the visual focus.
+- Handbook and handbook subpages stay plain white/neutral documentation pages without marketing hero imagery.
 
 **Theme.** Dual-mode. Default follows OS preference. Manual toggle in the top-right of the nav, persisted in `localStorage`. Both themes are first-class — neither is an afterthought.
 
@@ -220,7 +248,8 @@ Adapter author guide. The port shapes (storage-read, storage-write, evaluation e
 
 **Components.**
 - Buttons: solid primary (filled with `--color-text-primary`-on-inverse), ghost secondary (1px border, hover background)
-- Cards: 1px border, no shadow in light, soft 12px-blur shadow in dark; 16px or 24px padding; `rounded-xl`
+- Cards: 1px border, no shadow in light, soft 12px-blur shadow in dark; 16px or 24px padding; use cards only for repeated selectable items or genuinely framed tools, never as nested page-section wrappers
+- Marketing feature/related navigation: prefer editorial rows, visual stacks, ruled lists, or image-led strips over grid cards. If a section links to multiple marketing pages, pair concise text with real generated product imagery instead of icon boxes.
 - Tables: zebra rows off, sticky header on long tables, monospace for numeric columns
 - Diagrams: SVG, stroke-based, accent color only at semantic emphasis points (e.g., the message bridge)
 - No card-in-card. No gradient borders. No glowing pulses.
@@ -242,11 +271,11 @@ Adapter author guide. The port shapes (storage-read, storage-write, evaluation e
 | Today | After |
 |---|---|
 | Single long page, dark-only | Multi-page IA (Home / Features / Enterprise / Handbook), light + dark with toggle |
-| Animated canvas hero + gradient stacks | Flat hero with static SVG product shot |
+| Animated canvas hero + gradient stacks | Aligned hero sections with generated realistic enterprise/product collage backgrounds |
 | Generic "AI-ready" mention | Dedicated AI Evaluation page with datasets, evaluation scoreboards, comparisons, and optimization |
 | Architecture as a side note | Architecture as a first-class handbook page with named services + adapter slots |
 | No competitor comparison | Named head-to-head page with 13 decision rows |
-| No adapter story | First-class Adapters feature page + adapter author handbook page |
+| No customization story | First-class Customizable feature page, white-label enterprise page, and adapter author handbook page |
 | Docs = redirect to GitHub | Handbook with real content; docs subdir on GitHub still linked as the deep reference |
 
 ## 10. Out of scope for this iteration
@@ -255,4 +284,4 @@ Adapter author guide. The port shapes (storage-read, storage-write, evaluation e
 - No i18n. English only.
 - No search. Site is small enough that nav handles it.
 - No analytics until a privacy posture is decided (consistent with own-your-data message).
-- No screenshots of the actual UI yet — SVG mockups stand in. When the UI is shipped at a brag-worthy state, swap mockups for screenshots without changing the IA.
+- No screenshots of the actual UI yet. Generated hero backgrounds carry the marketing first viewport until the UI is shipped at a brag-worthy state; later product screenshots can replace page body mockups without changing the IA or hero alignment.

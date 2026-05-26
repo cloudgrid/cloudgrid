@@ -82,7 +82,9 @@ This directory is the implementation specification for the MVP. The original sin
 - [Enterprise product UX concept](./05-frontend/product-ux-concept.md) - source of truth for UX v2 shell, navigation, settings, modal, and layout rules.
 - [Traces and metrics UX concept](./05-frontend/traces-and-metrics-ux-concept.md) - source of truth for trace search, trace detail, metric workspace, visualization, and detail-inspector behavior.
 - [Logs, metrics explorer, and dashboards UX concept](./05-frontend/logs-metrics-dashboards-ux-concept.md) - source of truth for log search, metric exploration, dashboard composition, and cross-view pivots.
+- [Alerts UX concept](./05-frontend/alerts-ux-concept.md) - source of truth for alert rule list, create/settings pages, company alert adapter settings, notification adapter selection, silences, and dashboard alert relationships.
 - [Dashboard implementation contract](./05-frontend/dashboard-implementation-contract.md) - agent-facing contract for dashboard gap closure, frontend module boundaries, reuse requirements, ticket scopes, and verification.
+- [Code-level whitelabel customization](./05-frontend/whitelabel-customization.md) - source of truth for licensed build-time branding, theme token boundaries, and upgrade-safe customer customization.
 - [Frontend views](./05-frontend/views.md)
 - [Trace investigation UX](./05-frontend/trace-investigation-ux.md)
 - [Frontend execution spec](./05-frontend/frontend-execution-spec.md)

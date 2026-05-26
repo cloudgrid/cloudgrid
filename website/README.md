@@ -44,10 +44,12 @@ src/
       logs.astro              Logs
       metrics.astro           Metrics
       dashboards.astro        Dashboards
+      alerts.astro            Alerts
       ai-evaluation.astro     AI agent evaluation
-      adapters.astro          Adapter-driven extensibility
+      adapters.astro          Customizable / white-label extension surface
     enterprise/
       index.astro             Enterprise overview
+      whitelabel-solution.astro White-label and commercial SaaS path
       compare.astro           Head-to-head with 9 competitors
     handbook/
       index.astro             Handbook hub

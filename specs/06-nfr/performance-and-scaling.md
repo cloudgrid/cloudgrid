@@ -51,6 +51,8 @@ Scale horizontally at these boundaries:
 | storage-write | worker replica | durable JetStream consumer and SurrealDB | shared durable pull consumer in production-scale mode |
 | storage-read | process replica | SurrealDB and NATS | request/reply queue subscribers plus live subscription registry per connection |
 | control-plane | process replica | control database | low-volume request/reply; writes remain idempotent |
+| alert-evaluator | process replica | NATS, control-plane, storage-read | project/rule work is partitioned by scheduler lease or explicit project assignment; notification dispatch is bounded |
+| alert delivery adapters | process replica | NATS and provider APIs | bridge-backed queue subscribers scale independently from alert evaluation and provider latency |
 | SurrealDB | deployment-specific cluster | tenant/project databases | one namespace per tenant and one strict database per project |
 | NATS | JetStream cluster | streams and consumers | stream replication and durable consumers |
 

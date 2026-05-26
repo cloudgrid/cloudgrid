@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1440" height="1024" viewBox="0 0 1440 1024" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="CloudGrid trace detail mockup">
+  <style>
+    .title{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:21px;font-weight:650;fill:#09090b;letter-spacing:0}
+    .h{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:600;fill:#09090b;letter-spacing:0}
+    .body{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:13px;font-weight:400;fill:#09090b;letter-spacing:0}
+    .muted{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:400;fill:#71717a;letter-spacing:0}
+    .label{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:11px;font-weight:500;fill:#71717a;letter-spacing:0}
+    .button{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:500;letter-spacing:0}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;font-weight:400;fill:#09090b;letter-spacing:0}
+    .mono-muted{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;font-weight:400;fill:#71717a;letter-spacing:0}
+    .tiny{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:9px;font-weight:500;fill:#71717a;letter-spacing:0}
+  </style>
+  <rect width="1440" height="1024" fill="#ffffff"/>
+  
+  <rect x="0" y="0" width="1440" height="56" rx="0" fill="#ffffff" stroke="none" />
+  <line x1="0" y1="56" x2="1440" y2="56" stroke="#e4e4e7" />
+  <rect x="16" y="16" width="24" height="24" rx="5" fill="#18181b"/>
+  <text x="50" y="34" class="h" >CloudGrid</text>
+  <rect x="426" y="12" width="320" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+  <text x="442" y="32" class="label" fill="#09090b">Personal / checkout-platform</text>
+  <rect x="762" y="12" width="264" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+  <text x="778" y="32" class="label" >Search commands...</text>
+  <rect x="1182" y="12" width="76" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1196" y="33" class="button" fill="#09090b">Setup</text>
+  <rect x="1270" y="12" width="64" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1284" y="33" class="button" fill="#09090b">Docs</text>
+  <circle cx="1388" cy="28" r="15" fill="#f4f4f5" stroke="#e4e4e7"/>
+
+    <rect x="0" y="56" width="232" height="968" rx="0" fill="#fafafa" stroke="none" />
+    <line x1="232" y1="56" x2="232" y2="1024" stroke="#e4e4e7" />
+    <text x="20" y="88" class="label" >Project</text>
+    <text x="20" y="108" class="h" >checkout-platform</text>
+    <text x="20" y="128" class="muted" >production</text>
+    <line x1="16" y1="148" x2="216" y2="148" stroke="#f0f0f1" />
+    <rect x="12" y="166" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="181" r="4" fill="#a1a1aa"/>
+          <text x="42" y="186" class="body" fill="#71717a">AI Chat</text><rect x="12" y="204" width="208" height="30" rx="6" fill="#f4f4f5" stroke="#e4e4e7" />
+          <circle cx="28" cy="219" r="4" fill="#18181b"/>
+          <text x="42" y="224" class="body" fill="#09090b">Traces</text><rect x="12" y="242" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="257" r="4" fill="#a1a1aa"/>
+          <text x="42" y="262" class="body" fill="#71717a">Logs</text><rect x="12" y="280" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="295" r="4" fill="#a1a1aa"/>
+          <text x="42" y="300" class="body" fill="#71717a">Metrics</text><rect x="12" y="318" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="333" r="4" fill="#a1a1aa"/>
+          <text x="42" y="338" class="body" fill="#71717a">Dashboards</text><rect x="12" y="356" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="371" r="4" fill="#a1a1aa"/>
+          <text x="42" y="376" class="body" fill="#71717a">Evaluations</text>
+    <line x1="16" y1="948" x2="216" y2="948" stroke="#f0f0f1" />
+    <circle cx="28" cy="978" r="4" fill="#a1a1aa"/>
+    <text x="42" y="983" class="body" fill="#71717a">Project settings</text>
+  
+    <text x="248" y="92" class="title" >‹</text><text x="276" y="90" class="muted" >Traces / trc_92ad6f</text>
+    <text x="248" y="128" class="title" >POST /checkout</text><text x="248" y="150" class="mono-muted" >trc_92ad6f · checkout-api · 842 ms · started 12:04:18.421</text>
+    <rect x="788" y="112" width="100" height="32" rx="6" fill="#18181b" stroke="#18181b" />
+    <text x="802" y="133" class="button" fill="#fafafa">Waterfall</text><rect x="900" y="112" width="68" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="914" y="133" class="button" fill="#09090b">Flow</text><rect x="980" y="112" width="56" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="994" y="133" class="button" fill="#09090b">Full</text>
+    <rect x="248" y="172" width="776" height="586" rx="8" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="264" y="200" class="h" >Trace waterfall</text><rect x="816" y="181" width="220" height="28" rx="6" fill="#ffffff" stroke="#e4e4e7" /><text x="828" y="200" class="label" >Search spans</text>
+    <line x1="458" y1="234" x2="458" y2="728" stroke="#f0f0f1" /><text x="458" y="226" class="tiny" >0%</text><line x1="614" y1="234" x2="614" y2="728" stroke="#f0f0f1" /><text x="614" y="226" class="tiny" >25%</text><line x1="770" y1="234" x2="770" y2="728" stroke="#f0f0f1" /><text x="770" y="226" class="tiny" >50%</text><line x1="926" y1="234" x2="926" y2="728" stroke="#f0f0f1" /><text x="926" y="226" class="tiny" >75%</text><line x1="1082" y1="234" x2="1082" y2="728" stroke="#f0f0f1" /><text x="1082" y="226" class="tiny" >100%</text>
+    <line x1="248" y1="300" x2="1024" y2="300" stroke="#f0f0f1" />
+        <text x="264" y="272" class="muted" >checkout-api</text>
+        <text x="398" y="272" class="mono" >POST /checkout</text>
+        <rect x="398" y="280" width="58" height="24" rx="5" fill="#fef2f2" stroke="#fecaca" /><text x="408" y="296" class="label" fill="#dc2626">error</text>
+        <rect x="463.12" y="260" width="523.52" height="18" rx="3" fill="#dc2626" opacity=".18" stroke="#dc2626"/>
+        <text x="473.12" y="274" class="mono" fill="#09090b">818 ms</text><line x1="248" y1="364" x2="1024" y2="364" stroke="#f0f0f1" />
+        <text x="278" y="336" class="muted" >auth-svc</text>
+        <text x="412" y="336" class="mono" >auth.verify</text>
+        <rect x="412" y="344" width="58" height="24" rx="5" fill="#f0fdf4" stroke="#bbf7d0" /><text x="422" y="360" class="label" fill="#16a34a">ok</text>
+        <rect x="490" y="324" width="58.88" height="18" rx="3" fill="#16a34a" opacity=".18" stroke="#16a34a"/>
+        <text x="500" y="338" class="mono" fill="#09090b">92 ms</text><line x1="248" y1="428" x2="1024" y2="428" stroke="#f0f0f1" />
+        <text x="292" y="400" class="muted" >cart-svc</text>
+        <text x="426" y="400" class="mono" >cart.lookup</text>
+        <rect x="426" y="408" width="58" height="24" rx="5" fill="#f0fdf4" stroke="#bbf7d0" /><text x="436" y="424" class="label" fill="#16a34a">ok</text>
+        <rect x="542.48" y="388" width="96" height="18" rx="3" fill="#2563eb" opacity=".18" stroke="#2563eb"/>
+        <text x="552.48" y="402" class="mono" fill="#09090b">150 ms</text><line x1="248" y1="492" x2="1024" y2="492" stroke="#f0f0f1" />
+        <text x="264" y="464" class="muted" >payment-svc</text>
+        <text x="398" y="464" class="mono" >payment.capture</text>
+        <rect x="398" y="472" width="58" height="24" rx="5" fill="#fef2f2" stroke="#fecaca" /><text x="408" y="488" class="label" fill="#dc2626">error</text>
+        <rect x="651.28" y="452" width="244.48000000000002" height="18" rx="3" fill="#dc2626" opacity=".18" stroke="#dc2626"/>
+        <text x="661.28" y="466" class="mono" fill="#09090b">382 ms</text><line x1="248" y1="556" x2="1024" y2="556" stroke="#f0f0f1" />
+        <text x="278" y="528" class="muted" >llm-router</text>
+        <text x="412" y="528" class="mono" >fraud.assess</text>
+        <rect x="412" y="536" width="58" height="24" rx="5" fill="#fffbeb" stroke="#fde68a" /><text x="422" y="552" class="label" fill="#d97706">warn</text>
+        <rect x="696.08" y="516" width="147.20000000000002" height="18" rx="3" fill="#7c3aed" opacity=".18" stroke="#7c3aed"/>
+        <text x="706.08" y="530" class="mono" fill="#09090b">230 ms</text><line x1="248" y1="620" x2="1024" y2="620" stroke="#f0f0f1" />
+        <text x="292" y="592" class="muted" >storage-read</text>
+        <text x="426" y="592" class="mono" >query customer risk</text>
+        <rect x="426" y="600" width="58" height="24" rx="5" fill="#f0fdf4" stroke="#bbf7d0" /><text x="436" y="616" class="label" fill="#16a34a">ok</text>
+        <rect x="854.8" y="580" width="60.160000000000004" height="18" rx="3" fill="#0891b2" opacity=".18" stroke="#0891b2"/>
+        <text x="864.8" y="594" class="mono" fill="#09090b">94 ms</text>
+    <rect x="248" y="770" width="776" height="210" rx="8" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="264" y="798" class="h" >Correlated logs</text><rect x="388" y="781" width="104" height="24" rx="5" fill="#f5f3ff" stroke="#ddd6fe" /><text x="398" y="797" class="label" fill="#7c3aed">selected span</text><rect x="500" y="781" width="92" height="24" rx="5" fill="#f4f4f5" stroke="#e4e4e7" /><text x="510" y="797" class="label" fill="#09090b">whole trace</text>
+    <line x1="248" y1="826" x2="1024" y2="826" stroke="#f0f0f1" /><text x="264" y="852" class="mono-muted" >12:04:18.890 ERROR payment.capture declined by provider</text><line x1="248" y1="868" x2="1024" y2="868" stroke="#f0f0f1" /><text x="264" y="894" class="mono-muted" >12:04:18.912 WARN fraud.assess high risk score</text><line x1="248" y1="910" x2="1024" y2="910" stroke="#f0f0f1" /><text x="264" y="936" class="mono-muted" >12:04:19.018 INFO checkout completed status=partial</text>
+    <rect x="1036" y="172" width="388" height="808" rx="8" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1052" y="202" class="h" >payment.capture</text><rect x="1306" y="183" width="68" height="24" rx="5" fill="#fef2f2" stroke="#fecaca" /><text x="1316" y="199" class="label" fill="#dc2626">error</text>
+    <text x="1052" y="228" class="mono-muted" >payment-svc · client · 382 ms</text>
+    <line x1="1036" y1="250" x2="1424" y2="250" stroke="#e4e4e7" />
+    <rect x="1048" y="264" width="82" height="28" rx="5" fill="#f4f4f5" stroke="#e4e4e7" /><text x="1060" y="283" class="label" fill="#09090b">Attributes</text><rect x="1138" y="264" width="82" height="28" rx="5" fill="transparent" stroke="transparent" /><text x="1150" y="283" class="label" fill="#71717a">Events</text><rect x="1228" y="264" width="82" height="28" rx="5" fill="transparent" stroke="transparent" /><text x="1240" y="283" class="label" fill="#71717a">Exceptions</text><rect x="1318" y="264" width="82" height="28" rx="5" fill="transparent" stroke="transparent" /><text x="1330" y="283" class="label" fill="#71717a">Links</text>
+    <line x1="1052" y1="324" x2="1408" y2="324" stroke="#f0f0f1" /><text x="1060" y="352" class="mono" >http.method  POST</text><line x1="1052" y1="368" x2="1408" y2="368" stroke="#f0f0f1" /><text x="1060" y="396" class="mono" >http.route  /checkout</text><line x1="1052" y1="412" x2="1408" y2="412" stroke="#f0f0f1" /><text x="1060" y="440" class="mono" >payment.provider  stripe</text><line x1="1052" y1="456" x2="1408" y2="456" stroke="#f0f0f1" /><text x="1060" y="484" class="mono" >error.type  ProviderDeclined</text><line x1="1052" y1="500" x2="1408" y2="500" stroke="#f0f0f1" /><text x="1060" y="528" class="mono" >cloud.region  eu-central-1</text>
+  
+</svg>

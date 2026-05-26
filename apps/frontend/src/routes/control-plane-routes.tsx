@@ -90,11 +90,11 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { aiChatProviderQueryKey } from "../features/ai-chat/view-model";
 import {
   buildAdminSettingsModel,
   buildProjectPickerModel,
-  buildProjectSettingsSections,
   canMutateOrganizationMember,
 } from "../features/projects/project-view-model";
 import { formatDateTime } from "../lib/format";
@@ -107,6 +107,7 @@ import {
 } from "../lib/session-state";
 import { cn } from "../lib/utils";
 import { useAppSession } from "../providers/app-session-provider";
+import { useBrand } from "../providers/brand-provider";
 import { aiEvalEnabled } from "./ai-eval-route";
 
 export function OrganizationsRoute() {
@@ -215,6 +216,7 @@ export function OrganizationOverviewRoute() {
 }
 
 export function OrganizationMembersRoute() {
+  const { productName } = useBrand();
   const { organizationId } = useParams();
   const { client, isBackendUnavailable, mode, refetchViewer, viewer } = useAppSession();
   const queryClient = useQueryClient();
@@ -362,7 +364,9 @@ export function OrganizationMembersRoute() {
         <Alert variant="destructive">
           <Shield aria-hidden />
           <AlertTitle>{t("companies.members.loadError")}</AlertTitle>
-          <AlertDescription>{t("backend.unavailable.description")}</AlertDescription>
+          <AlertDescription>
+            {t("backend.unavailable.description", { productName })}
+          </AlertDescription>
           <Button onClick={() => void refetchViewer()} size="sm" type="button" variant="outline">
             <RefreshCw data-icon="inline-start" />
             {t("actions.retry")}
@@ -641,6 +645,7 @@ export function OrganizationMembersRoute() {
 }
 
 export function OrganizationAiProviderRoute() {
+  const { productName } = useBrand();
   const { organizationId } = useParams();
   const { client, isBackendUnavailable, refetchViewer, viewer } = useAppSession();
   const queryClient = useQueryClient();
@@ -730,7 +735,9 @@ export function OrganizationAiProviderRoute() {
           <Alert variant="destructive">
             <Shield aria-hidden />
             <AlertTitle>{t("companies.aiProvider.loadError")}</AlertTitle>
-            <AlertDescription>{t("backend.unavailable.description")}</AlertDescription>
+            <AlertDescription>
+              {t("backend.unavailable.description", { productName })}
+            </AlertDescription>
             <Button onClick={() => void refetchViewer()} size="sm" type="button" variant="outline">
               <RefreshCw data-icon="inline-start" />
               {t("actions.retry")}
@@ -930,14 +937,8 @@ export function OrganizationAiProviderRoute() {
 
 export function OrganizationProjectsRoute() {
   const { organizationId } = useParams();
-  const navigate = useNavigate();
-  const { createProject, mode, selectProject, viewer } = useAppSession();
+  const { mode, viewer } = useAppSession();
   const organization = findOrganization(viewer?.organizations, organizationId);
-  const [projectName, setProjectName] = useState("");
-  const [projectSlug, setProjectSlug] = useState("");
-  const [projectError, setProjectError] = useState<string | null>(null);
-  const [creatingProject, setCreatingProject] = useState(false);
-  const [createProjectOpen, setCreateProjectOpen] = useState(false);
 
   if (!organization) {
     return <NotFoundState title={t("companies.notFound.title")} />;
@@ -945,42 +946,18 @@ export function OrganizationProjectsRoute() {
 
   const currentOrganization = organization;
 
-  async function submitProject(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const name = projectName.trim();
-    const slug = normalizeProjectSlug(projectSlug || projectName);
-    if (!name || !slug) {
-      setProjectError(t("projects.create.validation"));
-      return;
-    }
-    setProjectError(null);
-    setCreatingProject(true);
-    try {
-      const project = await createProject({
-        organizationId: currentOrganization.id,
-        name,
-        slug,
-      });
-      setProjectName("");
-      setProjectSlug("");
-      setCreateProjectOpen(false);
-      await selectProject(project.id);
-      navigate("/traces");
-    } catch (error) {
-      setProjectError(error instanceof Error ? error.message : t("projects.create.error"));
-    } finally {
-      setCreatingProject(false);
-    }
-  }
-
   return (
     <AdminSettingsShell activeItem="projects" organization={currentOrganization}>
       <RouteHeader
         action={
           canAdministerMembers(currentOrganization.role) ? (
-            <Button onClick={() => setCreateProjectOpen(true)} type="button">
-              <Plus data-icon="inline-start" />
-              {t("projects.create.submit")}
+            <Button asChild type="button">
+              <Link
+                to={`/projects/new?organizationId=${encodeURIComponent(currentOrganization.id)}`}
+              >
+                <Plus data-icon="inline-start" />
+                {t("projects.create.submit")}
+              </Link>
             </Button>
           ) : null
         }
@@ -1027,33 +1004,14 @@ export function OrganizationProjectsRoute() {
           <AlertDescription>{t("companies.personal.localAdminLimited")}</AlertDescription>
         </Alert>
       ) : null}
-      <CreateProjectSheet
-        creatingProject={creatingProject}
-        onCreateProject={submitProject}
-        onOpenChange={setCreateProjectOpen}
-        open={createProjectOpen}
-        projectError={projectError}
-        projectName={projectName}
-        projectSlug={projectSlug}
-        setProjectName={(value) => {
-          setProjectName(value);
-          setProjectSlug((current) => current || normalizeProjectSlug(value));
-        }}
-        setProjectSlug={setProjectSlug}
-      />
     </AdminSettingsShell>
   );
 }
 
 export function ProjectsRoute() {
   const navigate = useNavigate();
-  const { createProject, mode, selectProject, viewer } = useAppSession();
+  const { mode, selectProject, viewer } = useAppSession();
   const [organizationId, setOrganizationId] = useState(() => initialOrganizationId(viewer));
-  const [projectName, setProjectName] = useState("");
-  const [projectSlug, setProjectSlug] = useState("");
-  const [projectError, setProjectError] = useState<string | null>(null);
-  const [creatingProject, setCreatingProject] = useState(false);
-  const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [search, setSearch] = useState("");
   const picker = useMemo(
     () => buildProjectPickerModel({ viewer, organizationId, search }),
@@ -1073,37 +1031,6 @@ export function ProjectsRoute() {
   async function openProject(project: Project) {
     await selectProject(project.id);
     navigate("/traces");
-  }
-
-  async function submitProject(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedOrganization) {
-      return;
-    }
-    const name = projectName.trim();
-    const slug = normalizeProjectSlug(projectSlug || projectName);
-    if (!name || !slug) {
-      setProjectError(t("projects.create.validation"));
-      return;
-    }
-    setProjectError(null);
-    setCreatingProject(true);
-    try {
-      const project = await createProject({
-        organizationId: selectedOrganization.id,
-        name,
-        slug,
-      });
-      setProjectName("");
-      setProjectSlug("");
-      setCreateProjectOpen(false);
-      await selectProject(project.id);
-      navigate("/traces");
-    } catch (error) {
-      setProjectError(error instanceof Error ? error.message : t("projects.create.error"));
-    } finally {
-      setCreatingProject(false);
-    }
   }
 
   return (
@@ -1162,15 +1089,25 @@ export function ProjectsRoute() {
             placeholder={t("projects.searchPlaceholder")}
             value={search}
           />
-          <Button onClick={() => setCreateProjectOpen(true)} type="button">
-            <Plus data-icon="inline-start" />
-            {t("projects.create.submit")}
+          <Button asChild type="button">
+            <Link
+              to={
+                selectedOrganization
+                  ? `/projects/new?organizationId=${encodeURIComponent(selectedOrganization.id)}`
+                  : "/projects/new"
+              }
+            >
+              <Plus data-icon="inline-start" />
+              {t("projects.create.submit")}
+            </Link>
           </Button>
         </div>
 
         {selectedOrganization ? (
           <ProjectPickerSurface
-            onCreateProject={() => setCreateProjectOpen(true)}
+            createProjectHref={`/projects/new?organizationId=${encodeURIComponent(
+              selectedOrganization.id,
+            )}`}
             onOpenProject={(project) => void openProject(project)}
             picker={picker}
             selectedProjectId={viewer?.selectedProject?.id ?? null}
@@ -1188,20 +1125,258 @@ export function ProjectsRoute() {
           </p>
         ) : null}
       </div>
-      <CreateProjectSheet
-        creatingProject={creatingProject}
-        onCreateProject={submitProject}
-        onOpenChange={setCreateProjectOpen}
-        open={createProjectOpen}
-        projectError={projectError}
-        projectName={projectName}
-        projectSlug={projectSlug}
-        setProjectName={(value) => {
-          setProjectName(value);
-          setProjectSlug((current) => current || normalizeProjectSlug(value));
-        }}
-        setProjectSlug={setProjectSlug}
+    </section>
+  );
+}
+
+export function ProjectCreateRoute() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { createProject, selectProject, viewer } = useAppSession();
+  const searchParams = new URLSearchParams(location.search);
+  const requestedOrganizationId =
+    searchParams.get("organizationId") ?? initialOrganizationId(viewer);
+  const fallbackOrganization = viewer?.organizations[0] ?? null;
+  const requestedOrganization =
+    viewer?.organizations.find((organization) => organization.id === requestedOrganizationId) ??
+    fallbackOrganization;
+  const [activeTab, setActiveTab] = useState<ProjectCreateTab>("identity");
+  const [projectName, setProjectName] = useState("");
+  const [projectSlug, setProjectSlug] = useState("");
+  const [organizationId, setOrganizationId] = useState(requestedOrganization?.id ?? "");
+  const [fieldErrors, setFieldErrors] = useState<ProjectCreateFieldErrors>({});
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [creatingProject, setCreatingProject] = useState(false);
+  const selectedOrganization =
+    viewer?.organizations.find((organization) => organization.id === organizationId) ??
+    requestedOrganization;
+  const validation = validateProjectCreateDraft({
+    name: projectName,
+    organizationId: organizationId || selectedOrganization?.id || "",
+    slug: projectSlug,
+  });
+
+  useEffect(() => {
+    if (!organizationId && requestedOrganization?.id) {
+      setOrganizationId(requestedOrganization.id);
+    }
+  }, [organizationId, requestedOrganization]);
+
+  useEffect(() => {
+    const hasDraft = projectName.trim() || projectSlug.trim();
+    if (!hasDraft) {
+      return;
+    }
+    function confirmUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+    }
+    window.addEventListener("beforeunload", confirmUnload);
+    return () => window.removeEventListener("beforeunload", confirmUnload);
+  }, [projectName, projectSlug]);
+
+  function applyValidation(errors = validation) {
+    setFieldErrors(errors.fields);
+    setSummaryError(errors.valid ? null : t("projects.create.validation"));
+    return errors.valid;
+  }
+
+  function goToTab(tab: ProjectCreateTab) {
+    if (projectCreateTabIndex(tab) > projectCreateTabIndex(activeTab) && !applyValidation()) {
+      setActiveTab(projectCreateFirstInvalidTab(validation));
+      return;
+    }
+    setActiveTab(tab);
+  }
+
+  async function submitProject(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const errors = validateProjectCreateDraft({
+      name: projectName,
+      organizationId: organizationId || selectedOrganization?.id || "",
+      slug: projectSlug,
+    });
+    if (!applyValidation(errors)) {
+      setActiveTab(projectCreateFirstInvalidTab(errors));
+      return;
+    }
+    setCreatingProject(true);
+    try {
+      const project = await createProject({
+        organizationId: organizationId || selectedOrganization?.id || "",
+        name: projectName.trim(),
+        slug: normalizeProjectSlug(projectSlug),
+      });
+      await selectProject(project.id);
+      navigate("/traces");
+    } catch (error) {
+      setSummaryError(error instanceof Error ? error.message : t("projects.create.error"));
+    } finally {
+      setCreatingProject(false);
+    }
+  }
+
+  const tabErrors = validation.tabs;
+  const cancelHref = selectedOrganization
+    ? `/organizations/${selectedOrganization.id}/projects`
+    : "/projects";
+
+  return (
+    <section className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col gap-4 overflow-auto px-2 py-4">
+      <RouteHeader
+        eyebrow={<ProjectCreateBreadcrumb organizationId={selectedOrganization?.id ?? null} />}
+        title={t("projects.create.submit")}
+        description={t("projects.create.description")}
+        action={
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button asChild size="sm" type="button" variant="outline">
+              <Link to={cancelHref}>
+                <ArrowLeft data-icon="inline-start" />
+                {t("actions.cancel")}
+              </Link>
+            </Button>
+            <Button
+              disabled={activeTab === "identity" || creatingProject}
+              onClick={() => setActiveTab(projectCreatePreviousTab(activeTab))}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <ArrowLeft data-icon="inline-start" />
+              Back
+            </Button>
+            {activeTab === projectCreateTabs.at(-1)?.id ? (
+              <Button disabled={creatingProject} form="project-create-form" size="sm" type="submit">
+                <Plus data-icon="inline-start" />
+                {t("projects.create.submit")}
+              </Button>
+            ) : (
+              <Button
+                disabled={creatingProject}
+                onClick={() => goToTab(projectCreateNextTab(activeTab))}
+                size="sm"
+                type="button"
+              >
+                <ArrowRight data-icon="inline-start" />
+                Continue
+              </Button>
+            )}
+          </div>
+        }
       />
+      <form
+        className="flex min-h-0 flex-col gap-4"
+        id="project-create-form"
+        onSubmit={submitProject}
+      >
+        {summaryError ? (
+          <Alert variant="destructive">
+            <AlertTitle>{t("state.error.title")}</AlertTitle>
+            <AlertDescription>{summaryError}</AlertDescription>
+          </Alert>
+        ) : null}
+        <Tabs
+          className="flex min-h-0 flex-col gap-4"
+          onValueChange={(value) => goToTab(value as ProjectCreateTab)}
+          value={activeTab}
+        >
+          <TabsList className="grid h-auto grid-cols-2 lg:grid-cols-4">
+            {projectCreateTabs.map((tab) => (
+              <TabsTrigger
+                aria-invalid={tabErrors[tab.id] ? true : undefined}
+                key={tab.id}
+                value={tab.id}
+              >
+                {tabErrors[tab.id] ? <Shield className="text-destructive" aria-hidden /> : null}
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <TabsContent className="m-0" value="identity">
+            <SettingsFormSurface>
+              <Field>
+                <FieldLabel htmlFor="project-create-name">
+                  {t("projects.create.name")} <span aria-hidden>*</span>
+                </FieldLabel>
+                <Input
+                  aria-invalid={fieldErrors.name ? true : undefined}
+                  id="project-create-name"
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setProjectName(value);
+                    setProjectSlug((current) => current || normalizeProjectSlug(value));
+                  }}
+                  value={projectName}
+                />
+                {fieldErrors.name ? (
+                  <FieldDescription className="text-destructive">
+                    {fieldErrors.name}
+                  </FieldDescription>
+                ) : (
+                  <FieldDescription>
+                    Use a human-readable name that helps teammates recognize this environment or
+                    product area.
+                  </FieldDescription>
+                )}
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="project-create-slug">
+                  {t("value.slug")} <span aria-hidden>*</span>
+                </FieldLabel>
+                <Input
+                  aria-invalid={fieldErrors.slug ? true : undefined}
+                  id="project-create-slug"
+                  onChange={(event) => setProjectSlug(normalizeProjectSlug(event.target.value))}
+                  value={projectSlug}
+                />
+                <FieldDescription className={fieldErrors.slug ? "text-destructive" : undefined}>
+                  {fieldErrors.slug ??
+                    "Used in URLs and setup snippets. Keep it short, stable, and lowercase with hyphens."}
+                </FieldDescription>
+              </Field>
+            </SettingsFormSurface>
+          </TabsContent>
+          <TabsContent className="m-0" value="access">
+            <SettingsFormSurface>
+              <Field>
+                <FieldLabel htmlFor="project-create-organization">
+                  {t("nav.company")} <span aria-hidden>*</span>
+                </FieldLabel>
+                <Select
+                  onValueChange={(value) => {
+                    setOrganizationId(value);
+                    navigate(`/projects/new?organizationId=${encodeURIComponent(value)}`, {
+                      replace: true,
+                    });
+                  }}
+                  value={organizationId}
+                >
+                  <SelectTrigger
+                    aria-invalid={fieldErrors.organizationId ? true : undefined}
+                    id="project-create-organization"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {(viewer?.organizations ?? []).map((organization) => (
+                        <SelectItem key={organization.id} value={organization.id}>
+                          {companyName(organization)}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <FieldDescription
+                  className={fieldErrors.organizationId ? "text-destructive" : undefined}
+                >
+                  {fieldErrors.organizationId ??
+                    "Choose the company that owns access, membership, retention, and provider settings for this project."}
+                </FieldDescription>
+              </Field>
+            </SettingsFormSurface>
+          </TabsContent>
+        </Tabs>
+      </form>
     </section>
   );
 }
@@ -1217,6 +1392,10 @@ export function ProjectWorkspaceRedirectRoute() {
       void selectProject(project.id);
     }
   }, [isSelected, project, selectProject]);
+
+  if (projectId === "new") {
+    return <ProjectCreateRoute />;
+  }
 
   if (!project) {
     return <NotFoundState title={t("projects.notFound.title")} />;
@@ -1257,12 +1436,12 @@ export function ProjectSettingsRoute() {
 }
 
 function ProjectPickerSurface({
-  onCreateProject,
+  createProjectHref,
   onOpenProject,
   picker,
   selectedProjectId,
 }: {
-  onCreateProject: () => void;
+  createProjectHref: string;
   onOpenProject: (project: Project) => void;
   picker: ReturnType<typeof buildProjectPickerModel>;
   selectedProjectId: string | null;
@@ -1282,9 +1461,11 @@ function ProjectPickerSurface({
               : t("state.empty.filtered.description")}
           </p>
         </div>
-        <Button onClick={onCreateProject} type="button">
-          <Plus data-icon="inline-start" />
-          {t("projects.create.submit")}
+        <Button asChild type="button">
+          <Link to={createProjectHref}>
+            <Plus data-icon="inline-start" />
+            {t("projects.create.submit")}
+          </Link>
         </Button>
       </div>
     );
@@ -1301,20 +1482,22 @@ function ProjectPickerSurface({
         />
       ))}
       <Button
+        asChild
         className="flex h-auto min-h-52 flex-col items-center justify-center gap-3 whitespace-normal rounded-lg border-dashed p-6 text-center"
-        onClick={onCreateProject}
         type="button"
         variant="outline"
       >
-        <span className="flex size-10 items-center justify-center rounded-md border bg-background">
-          <Plus aria-hidden />
-        </span>
-        <span className="max-w-64 space-y-1">
-          <span className="block font-medium">{t("projects.create.submit")}</span>
-          <span className="block text-sm text-muted-foreground">
-            {t("projects.create.description")}
+        <Link to={createProjectHref}>
+          <span className="flex size-10 items-center justify-center rounded-md border bg-background">
+            <Plus aria-hidden />
           </span>
-        </span>
+          <span className="max-w-64 space-y-1">
+            <span className="block font-medium">{t("projects.create.submit")}</span>
+            <span className="block text-sm text-muted-foreground">
+              {t("projects.create.description")}
+            </span>
+          </span>
+        </Link>
       </Button>
     </div>
   );
@@ -1557,41 +1740,44 @@ function ProjectSettingsShell({
   project: Project;
 }) {
   const base = `/projects/${encodeURIComponent(project.id)}/settings`;
-  const sections = buildProjectSettingsSections(project.id, { aiEvalEnabled }).flatMap((section) =>
-    section.id === "ai-eval"
-      ? [
-          {
-            id: "ai-providers" as const,
-            href: `${base}/ai-providers`,
-            labelKey: "projects.settings.aiProviders" as const,
-          },
-          section,
-        ]
-      : [section],
-  );
+  const sections: Array<{ id: ProjectSettingsSectionId; href: string }> = [
+    { id: "identity", href: base },
+    { id: "access", href: `${base}/members` },
+    { id: "setup", href: `${base}/setup` },
+    { id: "ingest", href: `${base}/ingest` },
+    { id: "retention", href: `${base}/retention` },
+    { id: "ai-providers", href: `${base}/ai-providers` },
+    ...(aiEvalEnabled ? ([{ id: "ai-eval", href: `${base}/ai-eval` }] as const) : []),
+  ];
 
   return (
-    <section className="grid h-full min-h-0 gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
-      <aside className="min-h-0 overflow-auto border-r pr-3">
-        <div className="mb-4">
+    <section className="flex h-full min-h-0 flex-col gap-4">
+      <div className="grid gap-3 border-b pb-3">
+        <div>
           <p className="text-xs font-medium text-muted-foreground">{t("projects.settings")}</p>
           <h2 className="truncate text-sm font-semibold">{project.name}</h2>
         </div>
-        <nav className="grid gap-1" aria-label={t("projects.settings")}>
+        <div
+          aria-label={t("projects.settings")}
+          className="flex gap-1 overflow-x-auto"
+          role="tablist"
+        >
           {sections.map((section) => (
             <Link
+              aria-selected={section.id === activeSection}
               className={cn(
-                "rounded-md px-3 py-2 text-sm hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+                "shrink-0 rounded-md px-3 py-2 text-sm hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
                 section.id === activeSection && "bg-accent font-medium",
               )}
               key={section.id}
+              role="tab"
               to={section.href}
             >
               {projectSettingsNavLabel(section.id)}
             </Link>
           ))}
-        </nav>
-      </aside>
+        </div>
+      </div>
       <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-auto">{children}</div>
     </section>
   );
@@ -1607,7 +1793,7 @@ function ProjectSettingsContent({
   project: Project;
 }) {
   const { client } = useAppSession();
-  if (activeSection === "general") {
+  if (activeSection === "identity") {
     return (
       <SettingsFormSurface>
         <ReadOnlyField label={t("projects.create.name")} value={project.name} />
@@ -1618,6 +1804,14 @@ function ProjectSettingsContent({
         />
       </SettingsFormSurface>
     );
+  }
+
+  if (activeSection === "access") {
+    return <ProjectMembersSettings client={client} project={project} />;
+  }
+
+  if (activeSection === "setup") {
+    return <ProjectSetupSettings project={project} />;
   }
 
   if (activeSection === "ingest") {
@@ -1636,11 +1830,29 @@ function ProjectSettingsContent({
     return <ProjectAiEvalSettings client={client} project={project} />;
   }
 
-  if (activeSection === "members") {
-    return <ProjectMembersSettings client={client} project={project} />;
-  }
-
   return null;
+}
+
+function ProjectSetupSettings({ project }: { project: Project }) {
+  return (
+    <SettingsFormSurface>
+      <ReadOnlyField label={t("projects.settings.endpoint")} value="/otlp/v1/traces" />
+      <div className="flex flex-wrap gap-2">
+        <Button asChild type="button" variant="outline">
+          <Link to={`/projects/${project.id}/settings/ingest`}>
+            <KeyRound data-icon="inline-start" />
+            {t("projects.settings.apiKeys")}
+          </Link>
+        </Button>
+        <Button asChild type="button" variant="outline">
+          <Link to="/traces?mode=live">
+            <PlayCircle data-icon="inline-start" />
+            {t("projects.checklist.investigate.action")}
+          </Link>
+        </Button>
+      </div>
+    </SettingsFormSurface>
+  );
 }
 
 type ProjectAiProviderProfileDraft = {
@@ -3088,66 +3300,6 @@ function AdminSettingsShell({
   );
 }
 
-function CreateProjectSheet({
-  creatingProject,
-  onCreateProject,
-  onOpenChange,
-  open,
-  projectError,
-  projectName,
-  projectSlug,
-  setProjectName,
-  setProjectSlug,
-}: {
-  creatingProject: boolean;
-  onCreateProject: (event: FormEvent<HTMLFormElement>) => void;
-  onOpenChange: (open: boolean) => void;
-  open: boolean;
-  projectError: string | null;
-  projectName: string;
-  projectSlug: string;
-  setProjectName: (value: string) => void;
-  setProjectSlug: (value: string) => void;
-}) {
-  return (
-    <Sheet onOpenChange={onOpenChange} open={open}>
-      <SheetContent className="w-full sm:max-w-[420px]" side="right">
-        <SheetHeader>
-          <SheetTitle>{t("projects.create.title")}</SheetTitle>
-          <SheetDescription>{t("projects.create.description")}</SheetDescription>
-        </SheetHeader>
-        <form className="flex flex-1 flex-col gap-4 px-4" onSubmit={onCreateProject}>
-          <div className="space-y-1.5">
-            <Label htmlFor="project-name">{t("projects.create.name")}</Label>
-            <Input
-              id="project-name"
-              onChange={(event) => setProjectName(event.target.value)}
-              placeholder={t("projects.create.namePlaceholder")}
-              value={projectName}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="project-slug">{t("projects.create.slug")}</Label>
-            <Input
-              id="project-slug"
-              onChange={(event) => setProjectSlug(normalizeProjectSlug(event.target.value))}
-              placeholder={t("projects.create.slugPlaceholder")}
-              value={projectSlug}
-            />
-          </div>
-          {projectError ? <p className="text-xs text-destructive">{projectError}</p> : null}
-          <SheetFooter className="mt-auto px-0">
-            <Button className="w-full" disabled={creatingProject} type="submit">
-              <FolderOpen data-icon="inline-start" />
-              {creatingProject ? t("projects.create.creating") : t("projects.create.submit")}
-            </Button>
-          </SheetFooter>
-        </form>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
 export function mergeCreatedIngestCredential(
   current: IngestCredentialListResult | undefined,
   created: CreatedIngestCredential,
@@ -3505,7 +3657,8 @@ function ProjectSettingsBreadcrumb({
   activeSection: ReturnType<typeof projectSettingsSectionFromPath>;
   project: Project;
 }) {
-  const parentHref = activeSection === "general" ? "/projects" : `/projects/${project.id}/settings`;
+  const parentHref =
+    activeSection === "identity" ? "/projects" : `/projects/${project.id}/settings`;
 
   return (
     <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
@@ -3543,6 +3696,22 @@ function ProjectSettingsBreadcrumb({
 
 const projectRoles: ProjectRole[] = ["viewer", "editor", "admin"];
 const retentionModes: RetentionMode[] = ["retain", "delete", "soft_delete_then_delete"];
+const projectCreateTabs = [
+  { id: "identity", label: "Identity" },
+  { id: "access", label: "Access" },
+] as const;
+
+type ProjectCreateTab = (typeof projectCreateTabs)[number]["id"];
+type ProjectCreateFieldErrors = {
+  name?: string;
+  organizationId?: string;
+  slug?: string;
+};
+type ProjectCreateValidation = {
+  fields: ProjectCreateFieldErrors;
+  tabs: Record<ProjectCreateTab, boolean>;
+  valid: boolean;
+};
 
 function isLikelyEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -3642,6 +3811,85 @@ function normalizeProjectSlug(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9-]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+function validateProjectCreateDraft({
+  name,
+  organizationId,
+  slug,
+}: {
+  name: string;
+  organizationId: string;
+  slug: string;
+}): ProjectCreateValidation {
+  const normalizedSlug = normalizeProjectSlug(slug);
+  const fields: ProjectCreateFieldErrors = {};
+
+  if (!name.trim()) {
+    fields.name = t("projects.create.validation");
+  }
+  if (!normalizedSlug) {
+    fields.slug = t("projects.create.validation");
+  } else if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(normalizedSlug)) {
+    fields.slug = t("projects.create.validation");
+  }
+  if (!organizationId) {
+    fields.organizationId = t("projects.create.validation");
+  }
+
+  return {
+    fields,
+    tabs: {
+      identity: Boolean(fields.name || fields.slug),
+      access: Boolean(fields.organizationId),
+    },
+    valid: Object.keys(fields).length === 0,
+  };
+}
+
+function projectCreateTabIndex(tab: ProjectCreateTab) {
+  return projectCreateTabs.findIndex((candidate) => candidate.id === tab);
+}
+
+function projectCreateNextTab(tab: ProjectCreateTab) {
+  const nextIndex = Math.min(projectCreateTabIndex(tab) + 1, projectCreateTabs.length - 1);
+  return projectCreateTabs[nextIndex]?.id ?? tab;
+}
+
+function projectCreatePreviousTab(tab: ProjectCreateTab) {
+  const previousIndex = Math.max(projectCreateTabIndex(tab) - 1, 0);
+  return projectCreateTabs[previousIndex]?.id ?? tab;
+}
+
+function projectCreateFirstInvalidTab(validation: ProjectCreateValidation) {
+  return projectCreateTabs.find((tab) => validation.tabs[tab.id])?.id ?? "identity";
+}
+
+function ProjectCreateBreadcrumb({ organizationId }: { organizationId: string | null }) {
+  const parentHref = organizationId
+    ? `/organizations/${encodeURIComponent(organizationId)}/projects`
+    : "/projects";
+
+  return (
+    <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+      <Button aria-label="Back" asChild size="icon-sm" variant="ghost">
+        <Link to={parentHref}>
+          <ArrowLeft aria-hidden />
+        </Link>
+      </Button>
+      <nav aria-label={t("nav.breadcrumb")} className="min-w-0">
+        <ol className="flex min-w-0 items-center gap-1">
+          <li>
+            <Link className="hover:text-foreground" to="/projects">
+              {t("nav.projects")}
+            </Link>
+          </li>
+          <li aria-hidden>/</li>
+          <li className="truncate text-foreground">{t("projects.create.submit")}</li>
+        </ol>
+      </nav>
+    </div>
+  );
 }
 
 function companyName(organization: Organization) {
@@ -3778,16 +4026,23 @@ function adminNavLabel(id: "organization" | "projects" | "members" | "ai-provide
 }
 
 type ProjectSettingsSectionId =
-  | "general"
+  | "identity"
+  | "access"
+  | "setup"
   | "ingest"
   | "retention"
   | "ai-providers"
-  | "ai-eval"
-  | "members";
+  | "ai-eval";
 
 function projectSettingsNavLabel(id: ProjectSettingsSectionId) {
-  if (id === "general") {
-    return t("projects.settings.general");
+  if (id === "identity") {
+    return "Identity";
+  }
+  if (id === "access") {
+    return "Access";
+  }
+  if (id === "setup") {
+    return t("projects.settings.setup");
   }
   if (id === "ingest") {
     return t("projects.settings.apiKeys");
@@ -3801,15 +4056,18 @@ function projectSettingsNavLabel(id: ProjectSettingsSectionId) {
   if (id === "ai-eval") {
     return t("projects.settings.aiEval");
   }
-  if (id === "members") {
-    return t("projects.settings.members");
-  }
-  return t("projects.settings.general");
+  return "Identity";
 }
 
 function projectSettingsTitle(id: ProjectSettingsSectionId) {
-  if (id === "general") {
-    return t("projects.settings.general");
+  if (id === "identity") {
+    return "Identity";
+  }
+  if (id === "access") {
+    return "Access";
+  }
+  if (id === "setup") {
+    return t("projects.settings.setup");
   }
   if (id === "ingest") {
     return t("projects.settings.apiKeys");
@@ -3823,13 +4081,19 @@ function projectSettingsTitle(id: ProjectSettingsSectionId) {
   if (id === "ai-eval") {
     return t("projects.settings.aiEval");
   }
-  if (id === "members") {
-    return t("projects.settings.members");
-  }
-  return t("projects.settings.general");
+  return "Identity";
 }
 
 function projectSettingsDescription(id: ProjectSettingsSectionId) {
+  if (id === "identity") {
+    return "Project identity and immutable company context.";
+  }
+  if (id === "access") {
+    return t("projects.settings.projectMembersDescription");
+  }
+  if (id === "setup") {
+    return "Prepare ingest setup before creating or copying API keys.";
+  }
   if (id === "ingest") {
     return t("projects.settings.setupDescription");
   }
@@ -3842,15 +4106,18 @@ function projectSettingsDescription(id: ProjectSettingsSectionId) {
   if (id === "ai-eval") {
     return t("projects.settings.aiEvalDescription");
   }
-  if (id === "members") {
-    return t("projects.settings.projectMembersDescription");
-  }
   return t("projects.settingsDescription");
 }
 
 function projectSettingsSectionFromPath(pathname: string) {
   if (pathname.endsWith("/general")) {
-    return "general" as const;
+    return "identity" as const;
+  }
+  if (pathname.endsWith("/access") || pathname.endsWith("/members")) {
+    return "access" as const;
+  }
+  if (pathname.endsWith("/setup")) {
+    return "setup" as const;
   }
   if (pathname.endsWith("/ingest")) {
     return "ingest" as const;
@@ -3864,8 +4131,5 @@ function projectSettingsSectionFromPath(pathname: string) {
   if (pathname.endsWith("/ai-eval")) {
     return "ai-eval" as const;
   }
-  if (pathname.endsWith("/members")) {
-    return "members" as const;
-  }
-  return "general" as const;
+  return "identity" as const;
 }

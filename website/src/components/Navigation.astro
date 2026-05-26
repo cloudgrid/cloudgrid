@@ -9,12 +9,14 @@ const features = [
   { label: "Logs", href: "/features/logs", desc: "Search-first logs" },
   { label: "Metrics", href: "/features/metrics", desc: "Exploration & descriptors" },
   { label: "Dashboards", href: "/features/dashboards", desc: "Saved typed widgets" },
+  { label: "Alerts", href: "/features/alerts", desc: "Rules, history, delivery" },
   { label: "AI Evaluation", href: "/features/ai-evaluation", desc: "Agents, scorers, experiments" },
-  { label: "Adapters", href: "/features/adapters", desc: "Storage, bridge, auth, harness" },
+  { label: "Customizable", href: "/features/adapters", desc: "Branding, adapters, runtime ports" },
 ];
 
 const enterprise = [
   { label: "Overview", href: "/enterprise", desc: "Ownership, controls, procurement answers" },
+  { label: "White-label Solution", href: "/enterprise/whitelabel-solution", desc: "Commercial SaaS and partner path" },
   { label: "Compare", href: "/enterprise/compare", desc: "Risk and licensing vs alternatives" },
 ];
 
@@ -41,7 +43,7 @@ function isActive(href: string) {
 
 <nav
   id="main-nav"
-  class="sticky top-0 z-50 border-b border-border-subtle bg-page/85 backdrop-blur supports-[backdrop-filter]:bg-page/70"
+  class="sticky top-0 z-50 border-b border-border-subtle bg-white"
 >
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <div class="flex items-center justify-between h-16">
@@ -179,7 +181,7 @@ function isActive(href: string) {
   </div>
 
   <!-- Mobile menu drawer -->
-  <div id="mobile-menu" class="hidden md:hidden border-t border-border-subtle bg-page">
+  <div id="mobile-menu" class="hidden md:hidden border-t border-border-subtle bg-white">
     <div class="px-4 py-4 space-y-1">
       {
         topLevel.map((item) => (

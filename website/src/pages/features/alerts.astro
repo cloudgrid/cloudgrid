@@ -1,0 +1,58 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Section from "../../components/Section.astro";
+import PageHeader from "../../components/PageHeader.astro";
+import CheckList from "../../components/CheckList.astro";
+import RelatedFeatures from "../../components/RelatedFeatures.astro";
+---
+
+<Layout title="Alerts — CloudGrid">
+  <Section size="lg">
+    <PageHeader
+      eyebrow="Alerts"
+      accent="amber"
+      title="Core alerting with flexible delivery paths."
+      description="CloudGrid core observes live and persisted telemetry, evaluates project alert rules, manages state, records history, and dispatches notifications. Built-in in-app and email delivery cover the base path; bridge-backed adapters extend delivery to the systems your customers already use."
+    />
+  </Section>
+
+  <Section>
+    <div class="grid lg:grid-cols-2 gap-12">
+      <div class="reveal">
+        <h2 class="text-xl font-semibold text-text mb-4">What CloudGrid core owns</h2>
+        <CheckList
+          items={[
+            "Project-scoped rules over metrics, logs, and traces.",
+            "Rule schedules, evaluation, state transitions, silences, cooldowns, and deduplication.",
+            "Storage-read backed queries, so alert logic uses the same backend-owned telemetry semantics as the UI.",
+            "In-app alert history and evidence links for project operators.",
+            "Email delivery for safe alert summaries through the deployed SMTP runtime.",
+          ]}
+        />
+      </div>
+      <div class="reveal">
+        <h2 class="text-xl font-semibold text-text mb-4">How delivery extends</h2>
+        <CheckList
+          muted
+          items={[
+            "Bridge-backed adapters can deliver to Slack, Teams, WhatsApp, SMS, PagerDuty, or customer-owned gateways.",
+            "Adapters listen to private message bridge dispatch work and return bounded delivery status.",
+            "Provider credentials stay in adapter runtime configuration or customer secret stores.",
+            "Adapters deliver notifications; CloudGrid core remains responsible for alert state and history.",
+            "The model scales independently: evaluation, in-app persistence, email, and provider adapters can be sized for their own workload.",
+          ]}
+        />
+      </div>
+    </div>
+  </Section>
+
+  <Section tone="recessed">
+    <RelatedFeatures
+      items={[
+        { label: "Metrics", href: "/features/metrics", desc: "Threshold and absence rules start with metric semantics." },
+        { label: "Logs", href: "/features/logs", desc: "Log match and count rules use the same project filters as search." },
+        { label: "Customizable", href: "/features/adapters", desc: "Bridge-backed delivery is part of the extension surface." },
+      ]}
+    />
+  </Section>
+</Layout>

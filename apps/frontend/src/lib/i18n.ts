@@ -4,14 +4,14 @@ const en = {
   "app.logs": "Logs",
   "app.theme": "Theme",
   "auth.loading": "Loading session",
-  "auth.login.title": "Sign in to CloudGrid",
+  "auth.login.title": "Sign in to {productName}",
   "auth.login.description": "Use your organization identity provider.",
   "auth.login.providerGroup": "SSO providers",
   "auth.login.github": "Continue with GitHub",
   "auth.login.google": "Continue with Google",
   "auth.login.azure": "Continue with Microsoft Azure",
   "auth.login.sessionHint": "Access is resolved through company and project membership.",
-  "auth.login.previewLabel": "CloudGrid product preview",
+  "auth.login.previewLabel": "{productName} product preview",
   "auth.login.previewProject": "project: checkout-api",
   "auth.login.previewTitle": "Project-scoped telemetry",
   "auth.login.previewSubtitle":
@@ -19,9 +19,9 @@ const en = {
   "auth.login.previewLive": "live",
   "auth.login.previewFooter": "Open the selected project workspace after SSO completes.",
   "auth.login.errorTitle": "Sign-in failed",
-  "auth.login.errorDescription": "CloudGrid could not complete the sign-in flow.",
+  "auth.login.errorDescription": "{productName} could not complete the sign-in flow.",
   "auth.callback.title": "Completing sign-in",
-  "auth.callback.description": "CloudGrid is finishing sign-in and preparing your session.",
+  "auth.callback.description": "{productName} is finishing sign-in and preparing your session.",
   "auth.callback.errorTitle": "Callback failed",
   "auth.callback.errorDescription": "Return to login and start a new sign-in flow.",
   "theme.system": "System",
@@ -186,9 +186,9 @@ const en = {
   "state.loading": "Loading telemetry",
   "state.error.title": "Telemetry query failed",
   "state.error.description": "The frontend could not read this query result.",
-  "backend.unavailable.title": "CloudGrid backend is unavailable",
+  "backend.unavailable.title": "{productName} backend is unavailable",
   "backend.unavailable.description":
-    "CloudGrid is not reachable. Start or restart the dev stack to manage projects, members, AI credentials, and telemetry.",
+    "{productName} is not reachable. Start or restart the dev stack to manage projects, members, AI credentials, and telemetry.",
   "state.error.facetsTitle": "Facet suggestions failed",
   "state.error.code": "Code",
   "state.error.status": "Status",
@@ -852,6 +852,23 @@ const dictionaries: Record<Locale, Messages> = {
   en,
 };
 
-export function t(key: TranslationKey, locale: Locale = "en") {
-  return dictionaries[locale][key];
+export function t(
+  key: TranslationKey,
+  valuesOrLocale: Record<string, string> | Locale = "en",
+  locale: Locale = "en",
+): string {
+  const values = typeof valuesOrLocale === "string" ? undefined : valuesOrLocale;
+  const resolvedLocale = typeof valuesOrLocale === "string" ? valuesOrLocale : locale;
+  const message = dictionaries[resolvedLocale][key];
+
+  if (!values) {
+    return message;
+  }
+
+  let resolved = String(message);
+  for (const [name, value] of Object.entries(values)) {
+    resolved = resolved.replaceAll(`{${name}}`, value);
+  }
+
+  return resolved;
 }

@@ -1,0 +1,75 @@
+---
+interface Item {
+  href: string;
+  title: string;
+  description: string;
+  image?: string;
+  accent?: "brand" | "cyan" | "emerald" | "amber" | "violet" | "rose";
+}
+
+interface Props {
+  items: Item[];
+  compact?: boolean;
+}
+
+const { items, compact = false } = Astro.props;
+
+const accentColor: Record<string, string> = {
+  brand: "var(--color-brand)",
+  cyan: "var(--color-cyan)",
+  emerald: "var(--color-emerald)",
+  amber: "var(--color-amber)",
+  violet: "var(--color-violet)",
+  rose: "var(--color-rose)",
+};
+
+const imageByHref: Record<string, string> = {
+  "/features": "/hero-backgrounds/features.png",
+  "/features/traces": "/hero-backgrounds/features-traces.png",
+  "/features/logs": "/hero-backgrounds/features-logs.png",
+  "/features/metrics": "/hero-backgrounds/features-metrics.png",
+  "/features/dashboards": "/hero-backgrounds/features-dashboards.png",
+  "/features/alerts": "/hero-backgrounds/features-alerts.png",
+  "/features/ai-evaluation": "/hero-backgrounds/features-ai-evaluation.png",
+  "/features/adapters": "/hero-backgrounds/features-adapters.png",
+  "/enterprise": "/hero-backgrounds/enterprise.png",
+  "/enterprise/whitelabel-solution": "/hero-backgrounds/enterprise-whitelabel.png",
+  "/enterprise/compare": "/hero-backgrounds/enterprise-compare.png",
+};
+---
+
+<div class:list={["feature-showcase", compact && "feature-showcase--compact"]}>
+  {items.map((item, i) => {
+    const accent = accentColor[item.accent ?? "brand"];
+    const image = item.image ?? imageByHref[item.href] ?? "/hero-backgrounds/default.png";
+
+    return (
+      <a
+        href={item.href}
+        class="feature-showcase__row reveal"
+        style={`--accent: ${accent};`}
+        data-delay={(((i % 3) + 1)) as any}
+      >
+        <div class="feature-showcase__copy">
+          <div class="feature-showcase__index">{String(i + 1).padStart(2, "0")}</div>
+          <h3>{item.title}</h3>
+          <p>{item.description}</p>
+          <span class="feature-showcase__action">
+            Explore
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 12h14M12 5l7 7-7 7"></path>
+            </svg>
+          </span>
+        </div>
+        <div class="feature-showcase__media" aria-hidden="true">
+          <img src={image} alt="" loading={i < 2 ? "eager" : "lazy"} decoding="async" />
+          <div class="feature-showcase__glass">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </div>
+      </a>
+    );
+  })}
+</div>

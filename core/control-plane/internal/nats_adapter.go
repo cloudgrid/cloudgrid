@@ -103,6 +103,7 @@ func controlHandlers(service *Service, publisher MessagePublisher, logger *slog.
 		SubjectAlertSilencesDelete:       handleAlertSilencesDelete(service, logger),
 		SubjectAlertHistoryList:          handleAlertHistoryList(service, logger),
 		SubjectAlertSummaryGet:           handleAlertSummaryGet(service, logger),
+		SubjectAlertNotificationAdapters: handleAlertNotificationAdaptersList(service, logger),
 		SubjectAlertHistoryRecord:        handleAlertHistoryRecord(service, logger),
 	}
 }

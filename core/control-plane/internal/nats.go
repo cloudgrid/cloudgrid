@@ -71,6 +71,7 @@ const (
 	SubjectAlertSilencesDelete       = "control.alert_silences.delete"
 	SubjectAlertHistoryList          = "control.alert_history.list"
 	SubjectAlertSummaryGet           = "control.alert_summary.get"
+	SubjectAlertNotificationAdapters = "control.alert_notification_adapters.list"
 	SubjectAlertHistoryRecord        = "control.alert_history.record"
 	controlPlaneService              = "control-plane"
 )
@@ -138,6 +139,7 @@ func ControlSubjects() map[string]struct{} {
 		SubjectAlertSilencesDelete:       {},
 		SubjectAlertHistoryList:          {},
 		SubjectAlertSummaryGet:           {},
+		SubjectAlertNotificationAdapters: {},
 		SubjectAlertHistoryRecord:        {},
 	}
 }
@@ -756,6 +758,20 @@ func handleAlertSummaryGet(service *Service, logger *slog.Logger) bridgeMessageH
 			return contracts.AlertSummaryResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
 		return contracts.AlertSummaryResponse{RequestID: request.RequestID, OK: true, Data: &contracts.AlertSummaryData{Summary: summary}}
+	})
+}
+
+func handleAlertNotificationAdaptersList(service *Service, logger *slog.Logger) bridgeMessageHandler {
+	return requestHandler[contracts.AlertNotificationAdapterListRequest](SubjectAlertNotificationAdapters, logger, func(ctx context.Context, request contracts.AlertNotificationAdapterListRequest) contracts.AlertNotificationAdapterListResponse {
+		adapters, err := service.ListAlertNotificationAdapters(ctx, request)
+		if err != nil {
+			return contracts.AlertNotificationAdapterListResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+		}
+		return contracts.AlertNotificationAdapterListResponse{
+			RequestID: request.RequestID,
+			OK:        true,
+			Data:      &contracts.AlertNotificationAdapterListData{Adapters: adapters},
+		}
 	})
 }
 

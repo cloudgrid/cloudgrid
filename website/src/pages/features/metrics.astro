@@ -2,8 +2,6 @@
 import Layout from "../../layouts/Layout.astro";
 import Section from "../../components/Section.astro";
 import PageHeader from "../../components/PageHeader.astro";
-import MockFrame from "../../components/visuals/MockFrame.astro";
-import MetricChart from "../../components/visuals/MetricChart.astro";
 import CheckList from "../../components/CheckList.astro";
 import RelatedFeatures from "../../components/RelatedFeatures.astro";
 ---
@@ -16,16 +14,6 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
       title="Metric exploration that respects descriptors, attributes, and exemplars."
       description="CloudGrid ingests OTLP metrics as a first-class project-scoped signal — counters, gauges, histograms, summaries, exemplars. Pivot from any exemplar straight into the trace that produced it, and keep model latency, token, and cost signals beside evaluation results."
     />
-  </Section>
-
-  <Section tone="recessed">
-    <div class="reveal">
-      <MockFrame title="cloudgrid · /metrics · http.server.duration">
-        <div class="p-4 bg-surface">
-          <MetricChart />
-        </div>
-      </MockFrame>
-    </div>
   </Section>
 
   <Section>
@@ -43,14 +31,14 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
         />
       </div>
       <div class="reveal">
-        <h2 class="text-xl font-semibold text-text mb-4">Honest about scope</h2>
+        <h2 class="text-xl font-semibold text-text mb-4">Current scope</h2>
         <CheckList
           muted
           items={[
             "Long-term metric retention runs on the v1 SurrealDB adapter — alternative backends are the natural next adapter.",
-            "Custom PromQL/MetricsQL surface is not provided; CloudGrid uses GraphQL view models with explicit aggregations.",
+            "CloudGrid uses GraphQL view models with explicit aggregations for metric exploration.",
             "Recording-rule and downsampling pipelines are owned by your collector layer for now.",
-            "Alerting on metric thresholds is foundation-level today; production-grade routing keeps maturing.",
+            "Metric threshold and absence rules are managed in the project alerting workspace.",
           ]}
         />
       </div>
@@ -61,8 +49,8 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
     <RelatedFeatures
       items={[
         { label: "Dashboards", href: "/features/dashboards", desc: "Save metric explorations as typed widgets." },
+        { label: "Alerts", href: "/features/alerts", desc: "Create threshold and absence rules from metric semantics." },
         { label: "Traces", href: "/features/traces", desc: "Exemplars are linkable trace IDs." },
-        { label: "AI Evaluation", href: "/features/ai-evaluation", desc: "Use latency and token metrics as evaluation context." },
       ]}
     />
   </Section>

@@ -46,6 +46,8 @@ Profiles are values overlays, not separate charts. Customize the same chart with
 | Storage-write | Worker replica | Use durable pull consumer mode for production-scale multi-replica workers. |
 | Storage-read | Process replica | Request/reply queue subscribers plus live subscription registry per connection. |
 | Control-plane | Process replica | Low-volume request/reply; writes remain idempotent. |
+| Alert evaluator | Process replica | Project/rule work is partitioned by scheduler lease or explicit project assignment. |
+| Alert delivery adapters | Process replica | Bridge-backed queue subscribers scale independently from alert evaluation and provider latency. |
 | NATS | JetStream cluster | Stream replication and durable consumers. |
 | SurrealDB | Deployment-specific cluster | One namespace per tenant and strict database per project. |
 

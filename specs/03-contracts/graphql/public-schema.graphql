@@ -30,6 +30,9 @@ type Query {
   alertHistory(projectId: ID!, ruleId: ID, first: Int = 50, after: String): AlertEventConnection!
   alertSummary(projectId: ID!, input: AlertSummaryInput = {}): AlertSummary!
   alertSilences(projectId: ID!, ruleId: ID): [AlertSilence!]!
+  alertNotificationAdapters(projectId: ID!): [AlertNotificationAdapter!]!
+  alertNotificationAdapterDefinitions: [AlertNotificationAdapterDefinition!]!
+  companyAlertNotificationAdapters(companyId: ID!): [CompanyAlertNotificationAdapter!]!
   agentRuns(input: AgentRunSearchInput = {}): AgentRunSearchResult!
   agentRun(id: ID!): AgentRun
   datasets(input: DatasetSearchInput = {}): DatasetSearchResult!
@@ -82,6 +85,9 @@ type Mutation {
   deleteAlertRule(id: ID!): Boolean!
   createAlertSilence(input: CreateAlertSilenceInput!): AlertSilence!
   deleteAlertSilence(id: ID!): Boolean!
+  upsertCompanyAlertNotificationAdapter(input: UpsertCompanyAlertNotificationAdapterInput!): CompanyAlertNotificationAdapter!
+  deleteCompanyAlertNotificationAdapter(id: ID!, expectedVersion: Int!): Boolean!
+  testCompanyAlertNotificationAdapter(id: ID!): AlertNotificationAdapterTestResult!
   createDataset(input: CreateDatasetInput!): Dataset!
   updateDatasetSettings(input: UpdateDatasetSettingsInput!): Dataset!
   appendDatasetItems(input: AppendDatasetItemsInput!): Dataset!
@@ -211,6 +217,18 @@ input CreateAlertSilenceInput {
   reason: String!
   startsAt: DateTime!
   endsAt: DateTime!
+}
+
+input UpsertCompanyAlertNotificationAdapterInput {
+  id: ID
+  companyId: ID!
+  definitionId: ID!
+  label: String!
+  enabled: Boolean!
+  config: JSON!
+  secretConfig: JSON
+  clearSecretKeys: [String!] = []
+  expectedVersion: Int
 }
 
 input CreateIngestCredentialInput {
@@ -1546,6 +1564,35 @@ enum AlertSignal {
   TRACE
 }
 
+enum AlertNotificationAdapterKind {
+  IN_APP
+  EMAIL
+  WEBHOOK
+  BRIDGE
+}
+
+enum AlertNotificationAdapterConfigFieldType {
+  STRING
+  URL
+  EMAIL
+  SECRET
+  BOOLEAN
+  NUMBER
+  SELECT
+  MULTISELECT
+}
+
+enum AlertNotificationSecretStatus {
+  SET
+  MISSING
+}
+
+enum AlertNotificationAdapterTestStatus {
+  PASSED
+  FAILED_RETRYABLE
+  FAILED_TERMINAL
+}
+
 enum AlertRuleSort {
   updatedAt_desc
   updatedAt_asc
@@ -2188,6 +2235,72 @@ type AlertSilence {
   createdAt: DateTime!
   createdByUserId: ID!
   active: Boolean!
+}
+
+type AlertNotificationAdapter {
+  id: ID!
+  definitionId: ID!
+  label: String!
+  kind: AlertNotificationAdapterKind!
+  configured: Boolean!
+  enabled: Boolean!
+  description: String!
+  disabledReason: String
+}
+
+type AlertNotificationAdapterDefinition {
+  id: ID!
+  kind: AlertNotificationAdapterKind!
+  label: String!
+  description: String!
+  configFields: [AlertNotificationAdapterConfigField!]!
+  supportsTest: Boolean!
+  defaultEnabled: Boolean!
+}
+
+type AlertNotificationAdapterConfigField {
+  key: String!
+  label: String!
+  description: String!
+  type: AlertNotificationAdapterConfigFieldType!
+  required: Boolean!
+  secret: Boolean!
+  placeholder: String
+  options: [AlertNotificationAdapterConfigOption!]!
+  validationPattern: String
+}
+
+type AlertNotificationAdapterConfigOption {
+  value: String!
+  label: String!
+}
+
+type CompanyAlertNotificationAdapter {
+  id: ID!
+  companyId: ID!
+  definitionId: ID!
+  label: String!
+  kind: AlertNotificationAdapterKind!
+  enabled: Boolean!
+  configured: Boolean!
+  config: JSON!
+  secretStatuses: [AlertNotificationSecretFieldStatus!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  updatedByUserId: ID!
+  version: Int!
+}
+
+type AlertNotificationSecretFieldStatus {
+  key: String!
+  status: AlertNotificationSecretStatus!
+}
+
+type AlertNotificationAdapterTestResult {
+  adapterId: ID!
+  status: AlertNotificationAdapterTestStatus!
+  message: String!
+  testedAt: DateTime!
 }
 
 type PageInfo {

@@ -4,7 +4,7 @@ description: "CloudGrid is a focused observability application for OpenTelemetry
 order: 1
 accent: brand
 eyebrow: "Handbook - Overview"
-updated: 2026-05-18
+updated: 2026-05-26
 ---
 
 CloudGrid is a focused observability application for OpenTelemetry data from services and AI-agent workloads. It receives OTLP traces, logs, and metrics, stores them behind private Go services, and exposes investigation workflows through a TypeScript GraphQL BFF and a React UI.
@@ -31,12 +31,13 @@ Primary users:
 - Reads telemetry through GraphQL queries served by the TypeScript BFF.
 - Streams live trace updates through GraphQL subscriptions backed by `storage-read`.
 - Manages companies, projects, memberships, ingest credentials, dashboards, retention policies, and alert records through `control-plane`.
+- Executes project alert rules through the alert evaluator, with in-app/email delivery and bridge-backed adapter paths for provider-specific notifications.
 - Supports local no-login mode and deployed SSO mode.
 - Supports optional AI evaluation and optimization workflows behind a feature flag.
 
 ## What Is Still Production-Readiness Work
 
-The specs define the production target, and the repository now includes release workflow and Helm chart definitions. Published signed service images, SBOM/provenance output, and release manifests exist only after the release workflow runs. Retention policy CRUD and alert rule/silence/history CRUD are implemented; full retention deletion scheduling, full alert evaluator scheduling, and non-core notification adapters are still separate implementation work.
+The specs define the production target, and the repository now includes release workflow and Helm chart definitions. Published signed service images, SBOM/provenance output, and release manifests exist only after the release workflow runs. Retention policy CRUD and alert rule/silence/history CRUD are implemented; production retention deletion still depends on enabling the storage-maintenance scheduler and SurrealDB retention adapter for the target deployment. Alert execution, project discovery, dashboard alert widgets, and in-app/email/webhook delivery are implemented; provider-specific delivery such as Slack, WhatsApp, SMS, or incident tools uses the bridge-backed adapter path.
 
 Do not configure CloudGrid local mode on an untrusted network. Local mode intentionally skips login.
 

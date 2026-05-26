@@ -95,6 +95,10 @@ describe("AI Eval v2 route UX", () => {
   test("places trace-to-dataset import only in Traces and keeps dataset settings explicit", () => {
     expect(workspaceSource).toContain("New dataset");
     expect(workspaceSource).toContain("Dataset settings");
+    expect(workspaceSource).toContain("/ai-eval/datasets/new");
+    expect(workspaceSource).toContain("/settings");
+    expect(workspaceSource).toContain("DatasetSettingsView");
+    expect(workspaceSource).not.toContain("DatasetSettingsDialog");
     expect(workspaceSource).toContain("Add row");
     expect(workspaceSource).toContain("Create evaluation from dataset");
     expect(workspaceSource).not.toContain("Add trace to dataset");
@@ -106,7 +110,9 @@ describe("AI Eval v2 route UX", () => {
   });
 
   test("exposes v2 evaluation creation controls without contract drift", () => {
-    expect(workspaceSource).toContain('triggerLabel = "New evaluation"');
+    expect(workspaceSource).toContain("CreateEvaluationView");
+    expect(workspaceSource).toContain("/ai-eval/evaluations/new");
+    expect(workspaceSource).not.toContain("CreateEvaluationDialog");
     expect(workspaceSource).toContain("Dataset version policy");
     expect(workspaceSource).toContain("latest_ready");
     expect(workspaceSource).toContain("pinnedDatasetVersionId");
@@ -119,6 +125,21 @@ describe("AI Eval v2 route UX", () => {
     expect(workspaceSource).toContain("fast_iteration");
     expect(workspaceSource).toContain("audit_friendly");
     expect(workspaceSource).toContain("minimal_storage");
+  });
+
+  test("uses route-like wizard states for durable creation and settings", () => {
+    expect(workspaceSource).toContain("readAiEvalRouteState");
+    expect(workspaceSource).toContain("/ai-eval/datasets/new");
+    expect(workspaceSource).toContain("/ai-eval/evaluations/new");
+    expect(workspaceSource).toContain("/ai-eval/optimizations/new");
+    expect(workspaceSource).toContain("datasetSettingsTabs");
+    expect(workspaceSource).toContain("evaluationSettingsTabs");
+    expect(workspaceSource).toContain("optimizationSettingsTabs");
+    expect(workspaceSource).toContain('"Versions"');
+    expect(workspaceSource).toContain('"History"');
+    expect(workspaceSource).toContain('"Controls"');
+    expect(workspaceSource).not.toContain("CreateDatasetDialog");
+    expect(workspaceSource).not.toContain("StartOptimizationDialog");
   });
 
   test("renders run detail, comparison, optimization, and promotion surfaces", () => {

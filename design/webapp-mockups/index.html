@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CloudGrid Enterprise App Mockups</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="stage">
+      <section class="app-window" aria-label="CloudGrid app mockup">
+        <header class="chrome">
+          <div class="traffic" aria-hidden="true">
+            <span class="dot red"></span>
+            <span class="dot amber"></span>
+            <span class="dot green"></span>
+          </div>
+          <div class="chrome-path" id="chrome-path">cloudgrid · /traces · live evidence</div>
+          <div class="live-pill"><span></span> live</div>
+        </header>
+
+        <div class="product-shell">
+          <aside class="context-rail" aria-label="Workspace navigation">
+            <div class="brand-mark">cg</div>
+            <div class="project-card">
+              <div class="eyebrow">Personal</div>
+              <strong>checkout-platform</strong>
+              <span>production · eu-central</span>
+            </div>
+            <nav class="nav-list" id="nav-list"></nav>
+            <div class="rail-footer">
+              <button class="ghost-button">API keys</button>
+              <button class="ghost-button">Settings</button>
+            </div>
+          </aside>
+
+          <section class="workspace">
+            <div class="command-row">
+              <div>
+                <div class="workspace-title" id="screen-title">Traces</div>
+                <div class="workspace-subtitle" id="screen-subtitle">Investigate live and historical telemetry.</div>
+              </div>
+              <div class="command-search">Search traces, logs, metrics, rows...</div>
+              <div class="action-cluster" id="actions"></div>
+            </div>
+            <div class="screen" id="screen"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

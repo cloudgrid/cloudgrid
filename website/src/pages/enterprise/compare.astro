@@ -8,11 +8,11 @@ import { vendors, rows } from "../../data/compare";
 const vendorNotes = [
   {
     name: "Datadog",
-    body: "The most complete commercial APM. Polished UI, vast integration catalogue, mature AI Observability add-on. Trade-off: SaaS-only, your telemetry lives on Datadog's disks, per-host and per-GB pricing makes the workloads that need observability most also the workloads that get rate-limited first. CloudGrid trades polish for ownership and predictable cost.",
+    body: "The most complete commercial APM. Polished UI, vast integration catalogue, mature AI Observability add-on. Trade-off: vendor-operated storage and per-host / per-GB pricing. CloudGrid emphasizes ownership and infrastructure-based cost control.",
   },
   {
     name: "Honeycomb",
-    body: "Best-in-class wide-event tracing UX and BubbleUp-style exploration. SaaS-only, no first-class logs or AI evaluation today. CloudGrid is closer to Honeycomb than to Datadog in spirit — but self-hostable, with logs and AI-eval included.",
+    body: "Best-in-class wide-event tracing UX and BubbleUp-style exploration. CloudGrid is closer to Honeycomb than to Datadog in spirit, with self-hosting, logs, and AI-eval included.",
   },
   {
     name: "Grafana LGTM (Tempo + Loki + Mimir/Prometheus)",
@@ -20,11 +20,11 @@ const vendorNotes = [
   },
   {
     name: "SigNoz",
-    body: "Closest single-product OSS competitor: traces, logs, metrics in one UI. Tight ClickHouse coupling and no adapter port for storage. AI evaluation is not its focus. CloudGrid's wedge vs SigNoz is adapter-driven extensibility and first-class AI eval.",
+    body: "Closest single-product OSS competitor: traces, logs, metrics in one UI. CloudGrid's difference is adapter-driven extensibility, storage-port ownership, and first-class AI eval.",
   },
   {
     name: "Jaeger (+ Tempo)",
-    body: "Mature, well-understood, multi-backend distributed tracing. Tracing only — no logs, no metrics, no AI-eval. Great as a tracing backend; not the whole observability story.",
+    body: "Mature, well-understood, multi-backend distributed tracing. Great as a tracing backend; CloudGrid adds logs, metrics, dashboards, and AI-eval in one product.",
   },
   {
     name: "Langfuse",
@@ -32,15 +32,15 @@ const vendorNotes = [
   },
   {
     name: "Arize Phoenix",
-    body: "Excellent OSS evaluation and tracing tool for AI applications, strong in retrieval-augmented generation analysis. Single-purpose: it doesn't replace your APM or your logs system. CloudGrid focuses on one project workspace where telemetry evidence, datasets, evaluation runs, and optimization decisions remain connected.",
+    body: "Excellent OSS evaluation and tracing tool for AI applications, strong in retrieval-augmented generation analysis. CloudGrid focuses on one project workspace where telemetry evidence, datasets, evaluation runs, and optimization decisions remain connected across AI and general service telemetry.",
   },
   {
     name: "Braintrust",
-    body: "Polished commercial AI-eval platform with dataset and evaluation management. SaaS-only, proprietary. CloudGrid offers the evaluation loop in an open, self-hosted observability product, so promotion decisions can reference full-stack telemetry evidence.",
+    body: "Polished commercial AI-eval platform with dataset and evaluation management. CloudGrid offers the evaluation loop in a source-available, self-hosted observability product, so promotion decisions can reference full-stack telemetry evidence.",
   },
   {
     name: "Helicone (and similar gateways)",
-    body: "LLM proxy / observability tools that sit in front of model providers. Useful for cost capture and rate limiting; not a general-purpose observability platform. Complementary, not a substitute — CloudGrid ingests OTLP from whichever proxy you choose.",
+    body: "LLM proxy / observability tools that sit in front of model providers. Useful for cost capture and rate limiting; complementary to a general-purpose observability platform. CloudGrid ingests OTLP from whichever proxy you choose.",
   },
 ];
 ---
@@ -51,19 +51,19 @@ const vendorNotes = [
       eyebrow="Compare"
       accent="brand"
       title="How CloudGrid stacks up — named, fact-checked, honest."
-      description="Every column is a real product. Every cell is a single, defensible claim. Where CloudGrid loses or only partially wins, we say so."
+      description="Every column is a real product. Every cell is a single, defensible claim. Coverage differences are stated directly."
     />
-    <p class="mt-5 text-sm text-text-muted max-w-3xl">
-      Legend: <span class="font-semibold text-[color:var(--color-emerald)]">✓</span> yes ·
-      <span class="font-semibold text-[color:var(--color-amber)]">◐</span> partial ·
-      <span class="font-semibold text-[color:var(--color-rose)]">✗</span> no ·
-      <span class="font-mono text-text-muted">—</span> not applicable. Mouse over cells with notes for detail.
-    </p>
   </Section>
 
   <Section tone="recessed" size="sm">
     <div class="reveal">
       <CompareTable vendors={vendors} rows={rows} />
+      <p class="mt-4 text-sm text-text-muted max-w-3xl">
+        Legend: <span class="font-semibold text-[color:var(--color-emerald)]">✓</span> yes ·
+        <span class="font-semibold text-[color:var(--color-amber)]">◐</span> partial ·
+        <span class="font-semibold text-[color:var(--color-rose)]">○</span> different focus ·
+        <span class="font-mono text-text-muted">—</span> context-specific. Mouse over cells with notes for detail.
+      </p>
     </div>
   </Section>
 
@@ -93,11 +93,10 @@ const vendorNotes = [
       <p class="mt-3 text-text-secondary leading-relaxed">
         Pick CloudGrid when you want one self-hosted, OpenTelemetry-native system that does
         traces, logs, metrics, dashboards, <em>and</em> AI evaluation and optimization — with every
-        infrastructure dependency sitting behind a swappable port. Pick a SaaS APM when you'd
-        rather not run the system at all. Pick a Grafana stack when you want best-of-breed
-        components and you have the operational appetite to wire them. Pick a Langfuse / Arize /
-        Braintrust when AI-eval is the whole problem and you don't care about the rest of the
-        stack.
+        infrastructure dependency sitting behind a swappable port. Pick a SaaS APM when a
+        vendor-operated platform is the right fit. Pick a Grafana stack when you want
+        best-of-breed components and you have the operational appetite to wire them. Pick a
+        Langfuse / Arize / Braintrust when AI-eval is the focused scope.
       </p>
     </div>
   </Section>

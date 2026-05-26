@@ -168,6 +168,17 @@ describe("UX v2 app shell", () => {
     expect(markup).not.toContain(">Metrics<");
   });
 
+  test("keeps project creation in project-selection mode even with a selected project", () => {
+    const markup = shellMarkup({
+      path: "/projects/new",
+      sessionViewer: { ...viewer, selectedProject: project },
+    });
+
+    expect(markup).toContain('data-shell-mode="project-selection"');
+    expect(markup).not.toContain("<aside");
+    expect(markup).not.toContain(">Traces<");
+  });
+
   test("renders project navigation without the removed project overview route", () => {
     const markup = shellMarkup({
       path: "/traces",

@@ -4,7 +4,6 @@ import Section from "../../components/Section.astro";
 import PageHeader from "../../components/PageHeader.astro";
 import Button from "../../components/Button.astro";
 import PerimeterDiagram from "../../components/visuals/PerimeterDiagram.astro";
-import RiskRadar from "../../components/visuals/RiskRadar.astro";
 
 // Key questions decision makers ask. Each one is a card with: who asks it,
 // the question in plain words, and CloudGrid's concrete answer.
@@ -14,15 +13,15 @@ const concerns = [
     accent: "var(--color-brand)",
     icon: "M12 2 4 6v6c0 5 3.4 9.3 8 10 4.6-.7 8-5 8-10V6l-8-4Z",
     q: "Where does telemetry physically live?",
-    a: "On disks you operate. CloudGrid is self-hosted; SurrealDB (the v1 storage adapter) runs inside your VPC, on-prem, or in your regulated cloud. No CloudGrid-operated SaaS receives your spans, logs, or metrics.",
-    proof: "Self-hosted only. Storage adapter is swappable; the database lives where you run it.",
+    a: "On disks you operate. CloudGrid is self-hosted; SurrealDB (the v1 storage adapter) runs inside your VPC, on-prem, or in your regulated cloud. Your spans, logs, and metrics stay inside the deployment you control.",
+    proof: "Self-hosted deployment. Storage adapter is swappable; the database lives where you run it.",
   },
   {
     who: "Privacy & DPO",
     accent: "var(--color-violet)",
     icon: "M12 2c4 0 7 3 7 7v3l2 4-2 1v3a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3v-3l-2-1 2-4V9c0-4 3-7 7-7Z",
     q: "What about PII inside spans, logs, datasets, or AI outputs?",
-    a: "Redaction is owned by the OTel pipeline and dataset policies you control. CloudGrid stores what you send and keeps evaluation datasets, observed outputs, reasons, and source links inside your deployment boundary. Provider settings are stored as references; raw provider secrets are not returned to the browser.",
+    a: "Redaction is owned by the OTel pipeline and dataset policies you control. CloudGrid stores what you send and keeps evaluation datasets, observed outputs, reasons, and source links inside your deployment boundary. Provider settings are stored as references; raw provider secrets stay server-side.",
     proof:
       "Telemetry, datasets, evaluation results, and provider settings stay project-scoped and self-hosted.",
   },
@@ -31,33 +30,33 @@ const concerns = [
     accent: "var(--color-emerald)",
     icon: "M3 7h18v12H3zM3 7l9-4 9 4M8 12h8M8 16h5",
     q: "What is the license, and what are the IP & sub-processor risks?",
-    a: "Apache 2.0 with Commons Clause. Internal company use and use inside your own products are permitted, but selling CloudGrid itself or offering it as a competing product/service requires a separate agreement. There is no open-core split, no 'community edition' you'll have to migrate off, no CLA, no per-seat license. CloudGrid has zero sub-processors that touch your telemetry — because there is no CloudGrid SaaS.",
+    a: "Apache 2.0 with Commons Clause. Internal company use and use inside your own products are permitted. Commercial SaaS, white-label, hosted resale, or managed-service offerings are available through a separate agreement. One source-available distribution, source review end-to-end, and zero CloudGrid sub-processors touching your telemetry.",
     proof:
-      "Apache 2.0 + Commons Clause. No CLA. No sub-processors. Source is reviewable end-to-end.",
+      "Apache 2.0 + Commons Clause. Source-reviewable distribution. Zero telemetry sub-processors.",
   },
   {
     who: "Identity & Access",
     accent: "var(--color-cyan)",
     icon: "M12 7a4 4 0 1 1 0 8 4 4 0 0 1 0-8ZM4 21a8 8 0 0 1 16 0",
     q: "How do users sign in and how are sessions protected?",
-    a: "Deployed mode uses GitHub, Google, or Microsoft Entra ID through a BFF-managed session: HttpOnly cookies, server-side OAuth exchange, no provider access tokens in browser storage. Project membership is enforced server-side at every query and live subscription.",
-    proof: "OIDC/OAuth. BFF-only sessions. Project membership enforced at read time.",
+    a: "Deployed mode uses GitHub, Google, or Microsoft Entra ID through a BFF-managed session: HttpOnly cookies, server-side OAuth exchange, and provider tokens kept out of browser storage. Project membership is enforced server-side at every query and live subscription.",
+    proof: "OIDC/OAuth. BFF-managed sessions. Project membership enforced at read time.",
   },
   {
     who: "Risk & Compliance",
     accent: "var(--color-amber)",
     icon: "M12 2 2 22h20L12 2Zm0 6v6m0 3v.01",
     q: "What is the blast radius if something goes wrong?",
-    a: "Bounded by a request/reply contract. No public service touches the database. The TypeScript BFF owns transport only; storage services own query semantics and enforce authorization. A bad query cannot exhaust a SQL connection pool because the public surface doesn't have one.",
-    proof: "BFF cannot import DB clients or storage adapters. Service boundaries are structural.",
+    a: "Bounded by a request/reply contract. Public services stay on the BFF and bridge side of the boundary. Storage services own query semantics and enforce authorization, so database access stays inside private services.",
+    proof: "BFF uses bridge contracts. Storage clients stay inside private services.",
   },
   {
     who: "Finance & FinOps",
     accent: "var(--color-rose)",
     icon: "M4 7h16M4 12h10M4 17h16",
     q: "Will observability costs grow with traffic the way our SaaS bills do?",
-    a: "Telemetry-volume pricing is impossible because CloudGrid charges nothing. You pay for compute and storage in your cloud, on hardware you control. Costs scale with infrastructure, not with the number of spans your most-observed services emit.",
-    proof: "Self-priced. Volume scaling is a sizing question, not a billing event.",
+    a: "CloudGrid pricing is independent of telemetry volume. You pay for compute and storage in your cloud, on hardware you control. Costs scale with infrastructure capacity rather than span, host, or GB meters.",
+    proof: "Self-priced. Volume scaling is a capacity-planning question.",
   },
 ];
 
@@ -127,12 +126,28 @@ const postureBadge: Record<string, { label: string; color: string }> = {
   roadmap: { label: "on the roadmap", color: "var(--color-violet)" },
 };
 
+const licensePaths = [
+  {
+    title: "Use CloudGrid in your own environment",
+    label: "Allowed by default",
+    accent: "var(--color-emerald)",
+    body: "Run CloudGrid for your company, your teams, and your own products. You can study the source, modify it, deploy it internally, and use it to observe commercial systems you operate.",
+  },
+  {
+    title: "Offer CloudGrid as your own SaaS or white-label product",
+    label: "Commercial path",
+    accent: "var(--color-brand)",
+    body: "Hosted access, white-label packaging, managed hosting, embedded observability products, and commercial services built substantially around CloudGrid can be covered by a separate commercial license.",
+  },
+];
+
 // Quick-answer brief — the procurement reviewer one-pager.
 const brief = [
   { k: "License", v: "Apache 2.0 + Commons Clause" },
-  { k: "Self-hostable", v: "Yes — only deployment model" },
-  { k: "Sub-processors that see telemetry", v: "Zero" },
-  { k: "Telemetry egress from CloudGrid", v: "None (no phone-home)" },
+  { k: "Commercial SaaS / white-label", v: "Available by separate license" },
+  { k: "Self-hostable", v: "Yes — primary deployment model" },
+  { k: "Telemetry sub-processors", v: "Zero CloudGrid-operated sub-processors" },
+  { k: "Telemetry egress from CloudGrid", v: "Stays inside your deployment by default" },
   { k: "Auth (deployed)", v: "GitHub · Google · Microsoft Entra ID via OIDC/OAuth" },
   { k: "Session model", v: "BFF-managed HttpOnly cookies" },
   { k: "Data residency", v: "Wherever you deploy" },
@@ -149,42 +164,24 @@ const brief = [
 
 <Layout title="Enterprise — CloudGrid">
   <!-- HERO -->
-  <Section size="lg" tone="grid">
-    <div class="grid lg:grid-cols-[1.1fr_1fr] gap-10 items-center">
-      <div>
-        <PageHeader
-          eyebrow="Enterprise"
-          accent="brand"
-          highlight="own"
-          title="Observability you own. End of clause."
-          description="CloudGrid is the OpenTelemetry-native platform you deploy inside your own perimeter. No SaaS receives your telemetry. No vendor sub-processor sits between your logs and your auditor. The questions procurement asks have one-line answers here."
-        />
-        <div class="reveal mt-7 flex flex-wrap gap-3" data-delay="3">
-          <Button href="#perimeter" variant="primary">See the data perimeter</Button>
-          <Button href="/enterprise/compare" variant="secondary">Compare risk vs alternatives</Button>
-        </div>
-        <div class="reveal mt-10 grid grid-cols-2 gap-6 max-w-lg" data-delay="4">
-          <div>
-            <div class="text-3xl font-semibold text-text font-mono"><span class="count-up" data-target="100" data-suffix="%">0%</span></div>
-            <div class="mt-1 text-xs text-text-muted uppercase tracking-wider">Source open</div>
-          </div>
-          <div>
-            <div class="text-3xl font-semibold text-text font-mono whitespace-nowrap">Commons Clause</div>
-            <div class="mt-1 text-xs text-text-muted uppercase tracking-wider">License</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="reveal-scale">
-        <RiskRadar />
-      </div>
+  <Section size="lg">
+    <PageHeader
+      eyebrow="Enterprise"
+      accent="brand"
+      highlight="own"
+      title="Observability you own. End of clause."
+      description="CloudGrid is the OpenTelemetry-native platform you deploy inside your own perimeter. Telemetry stays in the environment you control, and procurement-grade questions have one-line answers here."
+    />
+    <div class="reveal mt-7 flex flex-wrap gap-3" data-delay="3">
+      <Button href="#perimeter" variant="primary">See the data perimeter</Button>
+      <Button href="/enterprise/whitelabel-solution" variant="secondary">White-label solution</Button>
+      <Button href="/enterprise/compare" variant="secondary">Compare risk vs alternatives</Button>
     </div>
   </Section>
 
   <!-- KEY QUESTIONS / ANSWERS -->
   <Section tone="recessed">
     <div class="max-w-3xl reveal">
-      <div class="chip bg-brand-soft text-[var(--color-brand)]">Decision lens</div>
       <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text">
         The six questions your reviewers will ask.
       </h2>
@@ -227,20 +224,57 @@ const brief = [
     </div>
   </Section>
 
+  <!-- LICENSE PATHS -->
+  <Section id="license-paths">
+    <div class="grid lg:grid-cols-[0.85fr_1.45fr] gap-10 items-start">
+      <div class="reveal-x">
+        <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text">
+          Clear for operators. Flexible for partners.
+        </h2>
+        <p class="mt-3 text-text-secondary leading-relaxed">
+          CloudGrid's public license is designed for self-hosted adoption with one reviewable
+          source-available distribution.
+          Product companies can use it for their own systems. Service providers, white-label
+          vendors, and hosted observability businesses can use a commercial license when CloudGrid
+          itself becomes the product being offered.
+        </p>
+        <p class="mt-4 text-sm text-text-muted leading-relaxed">
+          The short version: use it to observe your products; use the commercial path when
+          CloudGrid becomes your hosted, white-label, or managed-service offer.
+        </p>
+      </div>
+
+      <div class="grid gap-4">
+        {licensePaths.map((path) => (
+          <div
+            class="card spotlight p-5"
+            style={`--accent: ${path.accent};`}
+          >
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <h3 class="text-base font-semibold text-text">{path.title}</h3>
+              <span class="chip" style={`background: color-mix(in srgb, ${path.accent} 12%, transparent); color: ${path.accent};`}>
+                {path.label}
+              </span>
+            </div>
+            <p class="mt-3 text-sm text-text-secondary leading-relaxed">{path.body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </Section>
+
   <!-- DATA PERIMETER -->
   <Section id="perimeter">
     <div class="grid lg:grid-cols-[1fr_1.4fr] gap-10 items-start">
       <div class="reveal-x">
-        <div class="chip bg-emerald-soft text-[var(--color-emerald)]">Data perimeter</div>
         <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text">
           What leaves your perimeter is what you wire to leave.
         </h2>
         <p class="mt-4 text-text-secondary leading-relaxed">
-          CloudGrid does not call home. It does not stream anonymized usage data to an analytics
-          backend. It does not require an internet round-trip to render a trace. Everything inside
-          the dashed boundary runs on your infrastructure. The only outbound channels are the ones
-          you configure — your SSO IdP for sign-in, and your model provider <em>only</em> when an
-          enabled evaluation or optimization target needs that provider.
+          CloudGrid runs inside your infrastructure and renders traces from services you operate.
+          Outbound channels are the ones you configure — your SSO IdP for sign-in, and your model
+          provider when an enabled evaluation or optimization target needs that
+          provider.
         </p>
         <ul class="mt-6 space-y-2.5 text-sm">
           <li class="flex gap-3 items-start">
@@ -249,11 +283,11 @@ const brief = [
           </li>
           <li class="flex gap-3 items-start">
             <span class="mt-1 inline-block w-1.5 h-1.5 rounded-full bg-[color:var(--color-amber)]"></span>
-            <span class="text-text"><strong>Opt-in only:</strong> evaluation target → model provider, alert routing to Slack / PagerDuty, etc.</span>
+            <span class="text-text"><strong>Opt-in integrations:</strong> evaluation target → model provider, alert routing to Slack / PagerDuty, etc.</span>
           </li>
           <li class="flex gap-3 items-start">
             <span class="mt-1 inline-block w-1.5 h-1.5 rounded-full bg-[color:var(--color-rose)]"></span>
-            <span class="text-text"><strong>Never:</strong> telemetry egress to a CloudGrid-operated service. There isn't one.</span>
+            <span class="text-text"><strong>Telemetry stays local:</strong> CloudGrid runs inside your deployment boundary.</span>
           </li>
         </ul>
       </div>
@@ -267,7 +301,6 @@ const brief = [
   <!-- CONTROL POSTURE -->
   <Section tone="recessed">
     <div class="max-w-3xl reveal">
-      <div class="chip bg-cyan-soft text-[var(--color-cyan)]">Control posture</div>
       <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text">
         What's enforced, what's yours, what's coming.
       </h2>
@@ -314,7 +347,6 @@ const brief = [
   <Section>
     <div class="grid lg:grid-cols-[1fr_1.5fr] gap-10 items-start">
       <div class="reveal-x">
-        <div class="chip bg-amber-soft text-[var(--color-amber)]">One-page brief</div>
         <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text">
           The procurement-grade summary.
         </h2>
@@ -357,6 +389,7 @@ const brief = [
       </div>
       <div class="flex flex-wrap gap-3 lg:justify-end">
         <Button href="/handbook/deployment" variant="primary">Deployment guide</Button>
+        <Button href="/enterprise/whitelabel-solution" variant="secondary">White-label solution</Button>
         <Button href="/enterprise/compare" variant="secondary">Side-by-side comparison</Button>
       </div>
     </div>

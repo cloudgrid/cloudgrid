@@ -118,10 +118,14 @@ Required implementation:
 - `control.projects.list_for_service` private message bridge subject.
 - Alert evaluator project discovery mode controlled by
   `CLOUDGRID_ALERT_EVALUATOR_PROJECT_DISCOVERY_ENABLED`.
-- Email notification adapter using deployed SMTP runtime.
+- Company-scoped alert notification adapter definitions and instances, with
+  adapter-provided field schemas, write-only secret fields, encrypted
+  control-plane secret storage, and project-effective safe adapter listing.
+- Email notification adapter using company adapter instance configuration.
 - Webhook notification adapter with HTTPS-only URL validation,
   HMAC-SHA256 signing, timeout, retry/terminal status mapping, and redaction.
-- Adapter catalog validation for `notificationAdapterIds`.
+- Adapter instance validation for `notificationAdapterIds`, including unknown,
+  disabled, unconfigured, and cross-company rejection.
 - Typed dashboard alert widgets: `alert_status`, `alert_history`, and
   `alert_evidence`.
 - `Query.alertSummary(projectId, input)` only if aggregate dashboard counts are
@@ -131,8 +135,10 @@ Acceptance:
 
 - scheduler rejects startup when no project source is configured;
 - discovery pages active projects through control-plane with service auth;
-- email adapter maps transient and terminal failures correctly;
-- webhook adapter signs canonical JSON and redacts secrets and query strings;
+- email adapter maps transient and terminal failures correctly using fake
+  company-scoped configuration in default tests;
+- webhook adapter signs canonical JSON and redacts secrets and query strings
+  from company-scoped configuration;
 - dashboard alert widgets read backend view models only and never mutate rules.
 
 Verification:

@@ -24,6 +24,8 @@ Implement first:
 - `CommandPalette`: local route, filter, preset, copy-link, and GraphQL-UI actions.
 - `ProjectOnboardingChecklist`: project home checklist with browser-local collapsed/dismissed presentation state.
 - `InspectorDrawer`: right-side desktop and bottom mobile sheet pattern for span/log/metric/setup/eval details.
+- `CreateEntityWizard`: dedicated route-page pattern for durable entity creation with wizard-like tabs, required-field markers, field-level and tab-level validation, summary error panel, Back/Continue navigation, field-adjacent help text, and unsaved-change protection.
+- `EntitySettingsWizard`: dedicated route-page pattern for durable entity settings with the same tab groups as creation, settings-only topical tabs, field-level and tab-level validation, summary error panel, Save changes actions, field-adjacent help text, and unsaved-change protection.
 - `FilterBar`: search input, facet-backed comboboxes, time range, duration range, status/severity selects, clear button, active filter chips.
 - `FacetPanel`: bounded facet groups with counts from `Query.telemetryFacets`.
 - `DataState`: loading skeleton, no telemetry, no filter results, inline error with retry, populated slot.
@@ -47,35 +49,97 @@ Layout:
 Behavior:
 
 - Project selection calls `Mutation.selectProject`.
-- Successful project selection navigates to `/projects/:projectId`.
-- Project creation opens a drawer/sheet, validates inline, then selects the created project.
+- Successful project selection navigates to `/traces`.
+- Project creation navigates to `/projects/new`.
 - No-project guard states link here.
 
 Playwright states:
 
-- no projects, single project, multiple companies, create drawer, project selection success, create validation error, no-project telemetry guard.
+- no projects, single project, multiple companies, project selection success, no-project telemetry guard.
 
-## `/projects/:projectId`
+## `/projects/new`
 
 Layout:
 
-- Project workspace topbar with `Overview` active.
-- Header: project name, status, selected company, settings action.
-- Main workspace:
-  - project summary row;
-  - onboarding checklist;
-  - recent ingest/readiness section;
-  - navigation actions to Traces, Logs, Metrics, Dashboards, and Evaluations when enabled.
+- Project selection or admin settings shell based on entry context.
+- Breadcrumb/back row and route header.
+- CreateEntityWizard tabs: `Identity`, `Access`.
 
 Behavior:
 
-- Checklist completion uses GraphQL read models when available.
-- Dismissed/collapsed checklist state is browser-local presentation state.
-- Setup opens the shared setup inspector drawer.
+- Validates required project identity fields before forward navigation.
+- Marks invalid fields and tabs and renders a summary error panel.
+- Submit calls project creation, selects the created project, and navigates to `/traces`.
 
 Playwright states:
 
-- no ingest yet, traces/logs present, metrics present, AI Eval disabled, setup drawer open, checklist collapsed.
+- default draft, missing required fields, invalid slug, backend validation error, unsaved route-change prompt, successful create.
+
+## `/projects/:projectId`
+
+Behavior:
+
+- Compatibility route that selects the project after BFF validation and redirects to `/traces`.
+- Project onboarding lives in telemetry empty states and `/projects/:projectId/settings/ingest`, not on a project overview page.
+
+Playwright states:
+
+- valid project redirect, inaccessible project error, no-project telemetry guard.
+
+## `/alerts`
+
+Layout and behavior follow `05-frontend/alerts-ux-concept.md`.
+
+Implementation requirements:
+
+- route remains outside primary project sidebar navigation;
+- `Create alert rule` navigates to `/alerts/new`;
+- selected-rule inspector shows overview, history, and silences;
+- rule filtering uses `AlertRuleSearchInput`;
+- dashboard alert widgets link here but never mutate rules.
+
+## `/alerts/new`
+
+CreateEntityWizard tabs: `Basics`, `Signal`, `Condition`, `Timing`,
+`Notifications`.
+
+Behavior:
+
+- validates current tab before forward navigation;
+- creates rules through `Mutation.createAlertRule`;
+- without company adapter instance contracts, submits only
+  `notificationAdapterIds: ["in_app"]`;
+- never collects Slack, Teams, email, webhook, SMS, or provider credentials on
+  the alert rule page; company admins configure those values in company alert
+  adapter settings from adapter-provided schemas.
+
+## `/alerts/:ruleId/settings`
+
+EntitySettingsWizard tabs: `Basics`, `Signal`, `Condition`, `Timing`,
+`Notifications`, `Lifecycle`.
+
+Behavior:
+
+- loads the persisted alert rule;
+- saves through `Mutation.updateAlertRule` with `expectedVersion`;
+- destructive delete uses a confirmation dialog and `Mutation.deleteAlertRule`;
+- history and silences stay in the `/alerts` inspector, not duplicated in
+  settings.
+
+## `/organizations/:organizationId/alert-adapters`
+
+Layout and behavior follow `05-frontend/alerts-ux-concept.md`.
+
+Behavior:
+
+- renders installed adapter definitions and configured company adapter
+  instances;
+- uses adapter-provided field schemas for configuration forms;
+- sends non-secret values in `config` and secret values in write-only
+  `secretConfig`;
+- shows secret state as `Set` or `Missing` and never displays existing secret
+  values;
+- requires explicit clear actions for stored secrets.
 
 ## `/traces`
 
@@ -161,13 +225,13 @@ Playwright states:
 ## Implementation Order
 
 1. Shared shell foundations, project selection mode, project workspace topbar, inspector drawer, command palette, shadcn chart/command/sheet/tooltip/toggle-group/popover components, Recharts, TanStack Virtual, visualization tokens, and URL filter helpers.
-2. `/projects` project selection, project creation drawer, `/projects/:projectId` redirect to Traces, and project setup under `/projects/:projectId/settings/ingest`.
+2. `/projects` project selection, `/projects/new` project creation page, `/projects/:projectId` redirect to Traces, and project setup under `/projects/:projectId/settings/ingest`.
 3. `/traces` table, filters, facet panel, and preset chips.
 4. `/logs` table, filters, facet panel, row expansion, and trace preview.
 5. Trace detail header, service breakdown, minimap, and virtualized tree waterfall.
 6. Span detail tabs, stack traces, links, and related logs.
 7. Metrics workspace view rail, panel grid, editor drawer, and dirty-state confirmation.
-8. AI Eval workspace frame, section navigation, inspector drawers, and disabled/empty states.
+8. AI Eval workspace frame, section navigation, create and settings pages for datasets/evaluations/optimizations, inspector drawers, and disabled/empty states.
 9. Command palette and keyboard navigation polish.
 10. Playwright smoke/accessibility expansion and no-nested-card checks.
 

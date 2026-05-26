@@ -2,8 +2,6 @@
 import Layout from "../../layouts/Layout.astro";
 import Section from "../../components/Section.astro";
 import PageHeader from "../../components/PageHeader.astro";
-import MockFrame from "../../components/visuals/MockFrame.astro";
-import TraceWaterfall from "../../components/visuals/TraceWaterfall.astro";
 import CheckList from "../../components/CheckList.astro";
 import RelatedFeatures from "../../components/RelatedFeatures.astro";
 ---
@@ -16,16 +14,6 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
       title="Every span, every attribute, every event — preserved."
       description="CloudGrid receives OTLP traces and renders them as waterfall timelines you can dig into. Span attributes, span events, and W3C trace context are kept end-to-end. Logs, metrics, and AI evaluation evidence can all link back to the trace that explains what happened."
     />
-  </Section>
-
-  <Section tone="recessed">
-    <div class="reveal">
-      <MockFrame title="cloudgrid · /traces · 1a7b…c901">
-        <div class="p-4 bg-surface">
-          <TraceWaterfall />
-        </div>
-      </MockFrame>
-    </div>
   </Section>
 
   <Section>
@@ -44,13 +32,13 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
         />
       </div>
       <div class="reveal">
-        <h2 class="text-xl font-semibold text-text mb-4">Honest about scope</h2>
+        <h2 class="text-xl font-semibold text-text mb-4">Current scope</h2>
         <CheckList
           muted
           items={[
             "OTLP HTTP on :4318 and OTLP/gRPC on :4317 — both shipped.",
-            "No proprietary trace processor — what your OTel SDK sent is what is stored.",
-            "Sampling decisions are owned by your SDK / collector pipeline, not CloudGrid.",
+            "OpenTelemetry-native trace preservation — what your OTel SDK sent is what is stored.",
+            "Sampling decisions stay in your SDK / collector pipeline.",
             "Long-term cold storage is delivered through alternative storage adapters.",
           ]}
         />
@@ -64,15 +52,15 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
       <p class="mt-2 text-text-secondary">
         Trace persistence is a one-direction flow: collector → bridge → storage-write. Reads are a
         request/reply over the bridge; live trace receiving uses storage-read's ephemeral live
-        subjects scoped to the calling BFF session. The TypeScript BFF never imports a SurrealDB
-        client.
+        subjects scoped to the calling BFF session. SurrealDB client access stays inside the
+        private storage services.
       </p>
     </div>
     <RelatedFeatures
       items={[
         { label: "Logs", href: "/features/logs", desc: "Every log row already knows its trace id." },
+        { label: "Alerts", href: "/features/alerts", desc: "Trace match, count, latency, and error rules." },
         { label: "AI Evaluation", href: "/features/ai-evaluation", desc: "Turn trace-backed failures into dataset rows and evaluation evidence." },
-        { label: "Architecture", href: "/handbook/architecture", desc: "Read the message-bridge contract." },
       ]}
     />
   </Section>

@@ -16,6 +16,7 @@ instead of filling it in from the skill.
 | `cloudgrid-setup-configuration` | Local setup, release Compose, deployed mode, SSO, SMTP invitations, self-observability, runtime environment validation. |
 | `cloudgrid-operations-maintenance` | Health/readiness, start/stop/reset, release artifacts, Docker/Helm, CI gates, troubleshooting, production-readiness review. |
 | `cloudgrid-extension-development` | Feature work, contracts, BFF/bridge/service boundaries, adapters, public API client, tests, and verification. |
+| `cloudgrid-whitelabel-customization` | Licensed code-level whitelabel branding, customer brand modules, semantic theme tokens, product identity, and upgrade-safe customization boundaries. |
 | `cloudgrid-observability-ui` | Traces, logs, metrics, dashboards, widgets, pins, live trace UI, frontend/BFF observability contract alignment. |
 | `cloudgrid-surrealdb` | SurrealDB schema, query, readiness, storage adapter, and credential-handling work. |
 | `cloudgrid-ai-chat-operations` | AI Chat provider setup, project-scoped usage, harness execution boundaries, unsupported adapters, approvals, artifacts, telemetry privacy, docs, and skill coordination. |

@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1440" height="1024" viewBox="0 0 1440 1024" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="CloudGrid metrics mockup">
+  <style>
+    .title{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:21px;font-weight:650;fill:#09090b;letter-spacing:0}
+    .h{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:600;fill:#09090b;letter-spacing:0}
+    .body{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:13px;font-weight:400;fill:#09090b;letter-spacing:0}
+    .muted{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:400;fill:#71717a;letter-spacing:0}
+    .label{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:11px;font-weight:500;fill:#71717a;letter-spacing:0}
+    .button{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:500;letter-spacing:0}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;font-weight:400;fill:#09090b;letter-spacing:0}
+    .mono-muted{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;font-weight:400;fill:#71717a;letter-spacing:0}
+    .tiny{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:9px;font-weight:500;fill:#71717a;letter-spacing:0}
+  </style>
+  <rect width="1440" height="1024" fill="#ffffff"/>
+  
+  <rect x="0" y="0" width="1440" height="56" rx="0" fill="#ffffff" stroke="none" />
+  <line x1="0" y1="56" x2="1440" y2="56" stroke="#e4e4e7" />
+  <rect x="16" y="16" width="24" height="24" rx="5" fill="#18181b"/>
+  <text x="50" y="34" class="h" >CloudGrid</text>
+  <rect x="426" y="12" width="320" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+  <text x="442" y="32" class="label" fill="#09090b">Personal / checkout-platform</text>
+  <rect x="762" y="12" width="264" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+  <text x="778" y="32" class="label" >Search commands...</text>
+  <rect x="1182" y="12" width="76" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1196" y="33" class="button" fill="#09090b">Setup</text>
+  <rect x="1270" y="12" width="64" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1284" y="33" class="button" fill="#09090b">Docs</text>
+  <circle cx="1388" cy="28" r="15" fill="#f4f4f5" stroke="#e4e4e7"/>
+
+    <rect x="0" y="56" width="232" height="968" rx="0" fill="#fafafa" stroke="none" />
+    <line x1="232" y1="56" x2="232" y2="1024" stroke="#e4e4e7" />
+    <text x="20" y="88" class="label" >Project</text>
+    <text x="20" y="108" class="h" >checkout-platform</text>
+    <text x="20" y="128" class="muted" >production</text>
+    <line x1="16" y1="148" x2="216" y2="148" stroke="#f0f0f1" />
+    <rect x="12" y="166" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="181" r="4" fill="#a1a1aa"/>
+          <text x="42" y="186" class="body" fill="#71717a">AI Chat</text><rect x="12" y="204" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="219" r="4" fill="#a1a1aa"/>
+          <text x="42" y="224" class="body" fill="#71717a">Traces</text><rect x="12" y="242" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="257" r="4" fill="#a1a1aa"/>
+          <text x="42" y="262" class="body" fill="#71717a">Logs</text><rect x="12" y="280" width="208" height="30" rx="6" fill="#f4f4f5" stroke="#e4e4e7" />
+          <circle cx="28" cy="295" r="4" fill="#18181b"/>
+          <text x="42" y="300" class="body" fill="#09090b">Metrics</text><rect x="12" y="318" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="333" r="4" fill="#a1a1aa"/>
+          <text x="42" y="338" class="body" fill="#71717a">Dashboards</text><rect x="12" y="356" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="371" r="4" fill="#a1a1aa"/>
+          <text x="42" y="376" class="body" fill="#71717a">Evaluations</text>
+    <line x1="16" y1="948" x2="216" y2="948" stroke="#f0f0f1" />
+    <circle cx="28" cy="978" r="4" fill="#a1a1aa"/>
+    <text x="42" y="983" class="body" fill="#71717a">Project settings</text>
+  
+    
+  <text x="248" y="93" class="title" >Metrics</text>
+  <text x="248" y="115" class="muted" >Find project metrics and inspect raw series.</text>
+  <rect x="1228" y="80" width="84" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1242" y="101" class="button" fill="#09090b">Refresh</text><rect x="1324" y="80" width="88" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1338" y="101" class="button" fill="#09090b">Copy URL</text>
+  <line x1="232" y1="136" x2="1440" y2="136" stroke="#e4e4e7" />
+
+    <rect x="248" y="152" width="282" height="856" rx="8" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="264" y="180" class="h" >Metric list</text><rect x="264" y="196" width="250" height="30" rx="6" fill="#ffffff" stroke="#e4e4e7" /><text x="276" y="216" class="label" >Search metrics</text>
+    <rect x="258" y="238" width="262" height="58" rx="6" fill="#f4f4f5" stroke="#e4e4e7" /><text x="270" y="261" class="mono" >http.server.duration</text><text x="270" y="281" class="label" >histogram · ms</text><rect x="258" y="306" width="262" height="58" rx="6" fill="transparent" stroke="transparent" /><text x="270" y="329" class="mono" >gen_ai.token.count</text><text x="270" y="349" class="label" >sum · tokens</text><rect x="258" y="374" width="262" height="58" rx="6" fill="transparent" stroke="transparent" /><text x="270" y="397" class="mono" >process.cpu.usage</text><text x="270" y="417" class="label" >gauge · ratio</text><rect x="258" y="442" width="262" height="58" rx="6" fill="transparent" stroke="transparent" /><text x="270" y="465" class="mono" >db.client.duration</text><text x="270" y="485" class="label" >histogram · ms</text><rect x="258" y="510" width="262" height="58" rx="6" fill="transparent" stroke="transparent" /><text x="270" y="533" class="mono" >queue.depth</text><text x="270" y="553" class="label" >gauge · items</text>
+    <rect x="542" y="152" width="540" height="856" rx="8" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="558" y="180" class="h" >http.server.duration</text><rect x="740" y="162" width="84" height="24" rx="5" fill="#eff6ff" stroke="#bfdbfe" /><text x="750" y="178" class="label" fill="#2563eb">histogram</text><rect x="832" y="162" width="54" height="24" rx="5" fill="#f4f4f5" stroke="#e4e4e7" /><text x="842" y="178" class="label" fill="#09090b">p95</text>
+    <rect x="558" y="200" width="138" height="30" rx="6" fill="#ffffff" stroke="#e4e4e7" /><text x="570" y="220" class="label" >Aggregation: p95</text><rect x="708" y="200" width="138" height="30" rx="6" fill="#ffffff" stroke="#e4e4e7" /><text x="720" y="220" class="label" >Interval: 1m</text><rect x="858" y="200" width="138" height="30" rx="6" fill="#ffffff" stroke="#e4e4e7" /><text x="870" y="220" class="label" >Group by: service</text>
+    <rect x="558" y="248" width="508" height="330" rx="6" fill="#fafafa" stroke="#e4e4e7" />
+    <line x1="584" y1="286" x2="1052" y2="286" stroke="#f0f0f1" /><line x1="584" y1="344" x2="1052" y2="344" stroke="#f0f0f1" /><line x1="584" y1="402" x2="1052" y2="402" stroke="#f0f0f1" /><line x1="584" y1="460" x2="1052" y2="460" stroke="#f0f0f1" /><line x1="584" y1="518" x2="1052" y2="518" stroke="#f0f0f1" />
+    <path d="M 596 422 L 612.75 428 L 629.5 434 L 646.25 424 L 663 412 L 679.75 416 L 696.5 406 L 713.25 418 L 730 402 L 746.75 396 L 763.5 404 L 780.25 390 L 797 382 L 813.75 388 L 830.5 376 L 847.25 364 L 864 372 L 880.75 356 L 897.5 368 L 914.25 350 L 931 344 L 947.75 352 L 964.5 338 L 981.25 330 L 998 342" fill="none" stroke="#2563eb" stroke-width="2.2"/>
+    <path d="M 596 422 L 612.75 428 L 629.5 434 L 646.25 424 L 663 412 L 679.75 416 L 696.5 406 L 713.25 418 L 730 402 L 746.75 396 L 763.5 404 L 780.25 390 L 797 382 L 813.75 388 L 830.5 376 L 847.25 364 L 864 372 L 880.75 356 L 897.5 368 L 914.25 350 L 931 344 L 947.75 352 L 964.5 338 L 981.25 330 L 998 342 L 998 550 L 596 550 Z" fill="#2563eb" opacity=".08"/>
+    <circle cx="897.5" cy="368" r="5" fill="#7c3aed"/>
+    <text x="909.5" y="360" class="mono-muted" >exemplar trc_92ad</text>
+    <text x="558" y="618" class="h" >Series</text>
+    <line x1="558" y1="638" x2="1066" y2="638" stroke="#f0f0f1" /><text x="570" y="664" class="mono-muted" >checkout-api  p95 842ms  240 points</text><line x1="558" y1="676" x2="1066" y2="676" stroke="#f0f0f1" /><text x="570" y="702" class="mono-muted" >agent-svc     p95 611ms  240 points</text><line x1="558" y1="714" x2="1066" y2="714" stroke="#f0f0f1" /><text x="570" y="740" class="mono-muted" >payment-svc   p95 1.22s  240 points</text>
+    <rect x="1094" y="152" width="330" height="856" rx="8" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1110" y="180" class="h" >Metric inspector</text>
+    <rect x="1106" y="196" width="70" height="28" rx="5" fill="#f4f4f5" stroke="#e4e4e7" /><text x="1116" y="215" class="label" fill="#09090b">Descriptor</text><rect x="1182" y="196" width="70" height="28" rx="5" fill="transparent" stroke="transparent" /><text x="1192" y="215" class="label" fill="#71717a">Attributes</text><rect x="1258" y="196" width="70" height="28" rx="5" fill="transparent" stroke="transparent" /><text x="1268" y="215" class="label" fill="#71717a">Series</text><rect x="1334" y="196" width="70" height="28" rx="5" fill="transparent" stroke="transparent" /><text x="1344" y="215" class="label" fill="#71717a">Exemplars</text>
+    <line x1="1110" y1="254" x2="1408" y2="254" stroke="#f0f0f1" /><text x="1118" y="282" class="mono" >name  http.server.duration</text><line x1="1110" y1="298" x2="1408" y2="298" stroke="#f0f0f1" /><text x="1118" y="326" class="mono" >unit  ms</text><line x1="1110" y1="342" x2="1408" y2="342" stroke="#f0f0f1" /><text x="1118" y="370" class="mono" >kind  histogram</text><line x1="1110" y1="386" x2="1408" y2="386" stroke="#f0f0f1" /><text x="1118" y="414" class="mono" >temporality  delta</text><line x1="1110" y1="430" x2="1408" y2="430" stroke="#f0f0f1" /><text x="1118" y="458" class="mono" >monotonic  false</text><line x1="1110" y1="474" x2="1408" y2="474" stroke="#f0f0f1" /><text x="1118" y="502" class="mono" >first seen  2026-05-25 09:10</text>
+  
+</svg>

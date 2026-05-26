@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import "./styles.css";
 import { Toaster } from "./components/ui/sonner";
 import { AppSessionProvider } from "./providers/app-session-provider";
+import { BrandProvider } from "./providers/brand-provider";
 import { TelemetryClientProvider } from "./providers/telemetry-client-provider";
 import { ThemeProvider } from "./providers/theme-provider";
 import { AiChatRoute, aiChatEnabled } from "./routes/ai-chat-route";
@@ -17,6 +18,7 @@ import {
   OrganizationOverviewRoute,
   OrganizationProjectsRoute,
   OrganizationsRoute,
+  ProjectCreateRoute,
   ProjectSettingsRoute,
   ProjectsRoute,
   ProjectWorkspaceRedirectRoute,
@@ -38,93 +40,102 @@ const queryClient = new QueryClient({
 
 function App() {
   return (
-    <ThemeProvider>
-      <Toaster />
-      <TelemetryClientProvider>
-        <QueryClientProvider client={queryClient}>
-          <AppSessionProvider>
-            <BrowserRouter>
-              <Routes>
-                <Route element={<LoginRoute />} path="/login" />
-                <Route element={<AuthCallbackRoute />} path="/auth/callback" />
-                <Route element={<AuthGate />}>
-                  <Route element={<AppShell />}>
-                    <Route element={<RootRedirect />} index />
-                    <Route element={<OrganizationsRoute />} path="/organizations" />
-                    <Route
-                      element={<OrganizationOverviewRoute />}
-                      path="/organizations/:organizationId"
-                    />
-                    <Route
-                      element={<OrganizationMembersRoute />}
-                      path="/organizations/:organizationId/members"
-                    />
-                    {aiChatEnabled ? (
+    <BrandProvider>
+      <ThemeProvider>
+        <Toaster />
+        <TelemetryClientProvider>
+          <QueryClientProvider client={queryClient}>
+            <AppSessionProvider>
+              <BrowserRouter>
+                <Routes>
+                  <Route element={<LoginRoute />} path="/login" />
+                  <Route element={<AuthCallbackRoute />} path="/auth/callback" />
+                  <Route element={<AuthGate />}>
+                    <Route element={<AppShell />}>
+                      <Route element={<RootRedirect />} index />
+                      <Route element={<OrganizationsRoute />} path="/organizations" />
                       <Route
-                        element={<OrganizationAiProviderRoute />}
-                        path="/organizations/:organizationId/ai-provider"
+                        element={<OrganizationOverviewRoute />}
+                        path="/organizations/:organizationId"
                       />
-                    ) : null}
-                    <Route
-                      element={<OrganizationProjectsRoute />}
-                      path="/organizations/:organizationId/projects"
-                    />
-                    <Route element={<ProjectsRoute />} path="/projects" />
-                    <Route
-                      element={<ProjectWorkspaceRedirectRoute />}
-                      path="/projects/:projectId"
-                    />
-                    <Route
-                      element={<ProjectSettingsRoute />}
-                      path="/projects/:projectId/settings"
-                    />
-                    <Route
-                      element={<ProjectSettingsRoute />}
-                      path="/projects/:projectId/settings/general"
-                    />
-                    <Route
-                      element={<ProjectSettingsRoute />}
-                      path="/projects/:projectId/settings/ingest"
-                    />
-                    <Route
-                      element={<ProjectSettingsRoute />}
-                      path="/projects/:projectId/settings/retention"
-                    />
-                    {aiEvalEnabled ? (
-                      <>
+                      <Route
+                        element={<OrganizationMembersRoute />}
+                        path="/organizations/:organizationId/members"
+                      />
+                      {aiChatEnabled ? (
                         <Route
-                          element={<ProjectSettingsRoute />}
-                          path="/projects/:projectId/settings/ai-providers"
+                          element={<OrganizationAiProviderRoute />}
+                          path="/organizations/:organizationId/ai-provider"
                         />
-                        <Route
-                          element={<ProjectSettingsRoute />}
-                          path="/projects/:projectId/settings/ai-eval"
-                        />
-                      </>
-                    ) : null}
-                    <Route
-                      element={<ProjectSettingsRoute />}
-                      path="/projects/:projectId/settings/members"
-                    />
-                    <Route element={<TelemetryProjectGate />}>
-                      <Route element={<TracesRoute />} path="/traces" />
-                      <Route element={<TraceDetailRoute />} path="/traces/:traceId" />
-                      <Route element={<LogsRoute />} path="/logs" />
-                      <Route element={<MetricsRoute />} path="/metrics" />
-                      <Route element={<DashboardsRoute />} path="/dashboards" />
-                      {aiChatEnabled ? <Route element={<AiChatRoute />} path="/ai-chat" /> : null}
-                      <Route element={<AlertsRoute />} path="/alerts" />
-                      {aiEvalEnabled ? <Route element={<AiEvalRoute />} path="/ai-eval" /> : null}
+                      ) : null}
+                      <Route
+                        element={<OrganizationProjectsRoute />}
+                        path="/organizations/:organizationId/projects"
+                      />
+                      <Route element={<ProjectsRoute />} path="/projects" />
+                      <Route element={<ProjectCreateRoute />} path="/projects/new" />
+                      <Route
+                        element={<ProjectWorkspaceRedirectRoute />}
+                        path="/projects/:projectId"
+                      />
+                      <Route
+                        element={<ProjectSettingsRoute />}
+                        path="/projects/:projectId/settings"
+                      />
+                      <Route
+                        element={<ProjectSettingsRoute />}
+                        path="/projects/:projectId/settings/general"
+                      />
+                      <Route
+                        element={<ProjectSettingsRoute />}
+                        path="/projects/:projectId/settings/setup"
+                      />
+                      <Route
+                        element={<ProjectSettingsRoute />}
+                        path="/projects/:projectId/settings/ingest"
+                      />
+                      <Route
+                        element={<ProjectSettingsRoute />}
+                        path="/projects/:projectId/settings/retention"
+                      />
+                      {aiEvalEnabled ? (
+                        <>
+                          <Route
+                            element={<ProjectSettingsRoute />}
+                            path="/projects/:projectId/settings/ai-providers"
+                          />
+                          <Route
+                            element={<ProjectSettingsRoute />}
+                            path="/projects/:projectId/settings/ai-eval"
+                          />
+                        </>
+                      ) : null}
+                      <Route
+                        element={<ProjectSettingsRoute />}
+                        path="/projects/:projectId/settings/members"
+                      />
+                      <Route element={<TelemetryProjectGate />}>
+                        <Route element={<TracesRoute />} path="/traces" />
+                        <Route element={<TraceDetailRoute />} path="/traces/:traceId" />
+                        <Route element={<LogsRoute />} path="/logs" />
+                        <Route element={<MetricsRoute />} path="/metrics" />
+                        <Route element={<DashboardsRoute />} path="/dashboards" />
+                        {aiChatEnabled ? <Route element={<AiChatRoute />} path="/ai-chat" /> : null}
+                        <Route element={<AlertsRoute />} path="/alerts" />
+                        {aiEvalEnabled ? (
+                          <Route element={<AiEvalRoute />} path="/ai-eval/*" />
+                        ) : null}
+                      </Route>
+                      <Route element={<Navigate replace to="/projects" />} path="*" />
                     </Route>
-                    <Route element={<Navigate replace to="/projects" />} path="*" />
                   </Route>
-                </Route>
-              </Routes>
-            </BrowserRouter>
-          </AppSessionProvider>
-        </QueryClientProvider>
-      </TelemetryClientProvider>
-    </ThemeProvider>
+                </Routes>
+              </BrowserRouter>
+            </AppSessionProvider>
+          </QueryClientProvider>
+        </TelemetryClientProvider>
+      </ThemeProvider>
+    </BrandProvider>
   );
 }
 

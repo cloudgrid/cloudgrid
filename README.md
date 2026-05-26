@@ -4,6 +4,16 @@ CloudGrid is an AI-native OTLP observability platform for project-scoped traces,
 
 Website: https://cloudgrid.dev
 
+## License
+
+CloudGrid is source-available under the Apache License 2.0 with the
+Commons Clause License Condition v1.0. You may run, study, modify, and use
+CloudGrid for personal, internal, and commercial product work, including
+inside your own company or product infrastructure. The license does not
+allow selling CloudGrid itself, or offering a product or service whose value
+derives entirely or substantially from CloudGrid's functionality, without a
+separate commercial agreement.
+
 ## Architecture
 
 CloudGrid uses a public TypeScript backend-for-frontend and private Go services connected through NATS:

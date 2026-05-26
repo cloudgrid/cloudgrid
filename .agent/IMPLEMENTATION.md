@@ -190,6 +190,17 @@ Required test categories:
   - reference
 - Update docs whenever setup, configuration, or user-visible behavior changes.
 
+## Public Website Visual Direction
+
+When changing the public website in `website/`, preserve the current marketing-page visual contract:
+
+- Marketing pages may use generated hero imagery, but only as the background of the first hero section. Do not move those images to the body, the full page, recessed content bands, related-link sections, or handbook pages.
+- Hero imagery must be realistic and enterprise/product focused: photographic or polished product-collage compositions with observability dashboards, infrastructure, message-bridge flows, adapter blocks, SaaS packaging, or operational telemetry motifs. Avoid simple gradients, procedural SVGs, abstract waves, generic stock-like backgrounds, and placeholder illustrations.
+- Hero layout is shared across home, feature, and enterprise pages. Keep headline, description, eyebrow, and CTA placement stable between routes to avoid navigation flicker.
+- Handbook pages and handbook subpages stay documentation-first with simple white/neutral backgrounds.
+- Keep the site flat and concise: neutral shadcn-like color, restrained borders, no nested cards, no card-in-card compositions, no decorative pill piles, no marketing bloat, and no separate right-side hero visualization when the hero background already carries the visual weight.
+- For marketing feature lists and related-page navigation, avoid generic card grids. Prefer editorial stacks, alternating image/text rows, ruled lists, or image-led strips that reuse generated product collage crops.
+
 ## Frontend UX Implementation Rules
 
 Before changing `apps/frontend`, read:
@@ -209,11 +220,14 @@ Frontend implementation must preserve these rules:
 - Dashboard sidebar shortcuts and star/pin actions use `Query.dashboards`, `Mutation.setDashboardPinned`, and `Mutation.reorderDashboardPins`. Do not fake persisted dashboard pins in production UI.
 - Company/member management and settings are reached from context menus or management routes, not mixed into telemetry navigation.
 - `/projects` is the project selection and creation entry point.
-- `/projects/:projectId` is the project home and onboarding checklist.
+- `/projects/new` is the project creation page.
+- `/projects/:projectId` selects the project after validation and redirects to `/traces`; project onboarding lives in empty telemetry states and `/projects/:projectId/settings/ingest`.
 - Project picker UI is a centered operational selector: project-card grid, company/project context, search/filter, current-selection state, status metadata, and create action when authorized. Do not build global stat dashboards, company rails, nested cards, or decorative marketing tiles.
 - Project picker telemetry numbers are real backend view-model data. The BFF must enrich control-plane project records from storage-read via `telemetry.projects.overview`; frontend code must not invent, cache, or recompute trace/log/metric/service counts.
+- Durable entity creation uses dedicated route pages with wizard-like tabs, field-level and tab-level validation, a summary error panel, Back/Continue controls, field-adjacent help text, and unsaved-change protection. Do not implement new project, new dataset, new evaluation, or new optimization as a drawer, sheet, dialog, popover, or inline expansion. Adding a row to an existing dataset remains a contextual row editor.
+- Durable entity settings use dedicated route pages with the same wizard-like tab structure as creation, plus focused settings-only tabs when an entity has additional editable behavior. Detail pages expose a `Settings` action that navigates to the settings route. Do not implement project, dataset, evaluation, or optimization settings as drawers, sheets, dialogs, popovers, or inline expansions.
 - Domain sidebars structure the current domain. In project workspace mode, the left sidebar owns project route navigation and may expose collapsible dashboard children under the Dashboards entry; inside routes, nested rails may structure saved dashboards, AI Eval sections, or settings/admin subsections. They are not global/account navigation.
-- Project and company settings use an admin-focused settings shell: route header, optional domain sidebar, one primary working surface, dense tables for project/member lists, drawers for invite/edit/setup forms, and dialogs only for short confirmations. Project settings root `/projects/:projectId/settings` is General; do not add a separate overview subpage or card-in-card wrappers.
+- Project and company settings use an admin-focused settings shell: route header, optional domain sidebar, one primary working surface, dense tables for project/member lists, drawers for invite/edit/setup forms, and dialogs only for short confirmations. Project settings root `/projects/:projectId/settings` is the tabbed project settings page with `Identity` active by default; do not add a separate overview subpage or card-in-card wrappers.
 - Local mode exposes one visible company named `Personal`. Treat `Personal` as a durable local admin boundary: do not add delete-company, owner-transfer, billing, or multi-company safety flows unless the spec explicitly defines them.
 - Topbar, context strip, route header, domain sidebar, route-primary workspace, and inspector drawer must be independent scroll containers where applicable. Populated data routes should scroll their table/timeline/grid body, not the whole page shell.
 - Route-primary tables, trace waterfalls, metric result surfaces, dashboard grids, and AI-eval workspaces are not wrapped in cards.
@@ -228,9 +242,10 @@ Frontend implementation must preserve these rules:
 - Frontend route/feature code uses the shared Shiki-backed `CodeBlock` for JSON, YAML, Bash, logs, setup snippets, and raw structured evidence. Do not add ad hoc `<pre>` snippets outside the shared component.
 - Dashboard widgets are typed metric, log, trace, or live trace widgets. They must not store executable code, raw queries, arbitrary JSON widget configuration, secrets, or external embeds.
 - Retention settings must follow `specs/04-backend/data-retention-policy.md`: project-level editable policies, per-data-class rules, and admin-selected hard delete or soft-delete-then-delete. UI remains non-enforcing until storage-maintenance contracts are implemented.
-- Alerting must follow `specs/04-backend/alerting.md`: project-scoped rules over metrics, logs, and traces with adapter-based notifications and in-app history as the core reference adapter. Threshold UI is not alert execution until alert contracts exist.
+- Alerting must follow `specs/04-backend/alerting.md` and `specs/05-frontend/alerts-ux-concept.md`: project-scoped rules over metrics, logs, and traces with adapter-based notifications, in-app history as the core reference adapter, `/alerts/new` for creation, and `/alerts/:ruleId/settings` for settings. Threshold UI is not alert execution until alert contracts exist. Alert rule UI selects safe company adapter instance IDs only. Company admin settings collect adapter configuration from adapter-provided schemas; secret fields are write-only, stored company-scoped, and never returned to frontend reads, logs, URL state, review summaries, screenshots, or generated assets.
 - Never compose card-in-card layouts. Cards are allowed only for repeated selectable items, contained summaries, and modal/drawer content; route sections remain unframed layout regions.
 - Use shadcn/ui primitives and Tailwind semantic tokens with a flat, border-led style. Avoid custom component chrome, heavy shadows, gradients, decorative blobs, and one-off raw colors.
+- Licensed whitelabel customization is code-level only and follows `specs/05-frontend/whitelabel-customization.md`. Use `@cloudgrid/brand` and `useBrand()` for visible product identity, keep functional CSS separate from default theme tokens, and do not add brand settings pages or customer-specific route code.
 - Button hierarchy must be explicit: one primary next action, secondary/outline for alternatives, ghost or icon buttons for low-emphasis toolbar actions, and destructive only for irreversible or high-risk confirmations.
 - Every button must include an icon. Copy actions use the shared icon-only copy pattern with accessible labels and tooltips; non-copy visible actions use a concise icon plus label.
 - Search fields use the shared shadcn-backed `SearchInput` component with a leading search icon; do not hand-compose absolute search icons beside raw inputs in route or feature code.

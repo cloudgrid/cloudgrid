@@ -131,6 +131,15 @@ go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otl
 - Keep topics separated and link back to relevant specs only when useful.
 - Update docs when behavior or setup changes.
 
+## Public Website Design Rules
+
+- Public marketing pages in `website/src/pages` use generated, realistic, enterprise/product-focused hero imagery only in the first hero section. Do not apply image backgrounds to the full page body or later content sections.
+- Hero images must be high-quality photographic/product collages with CloudGrid-relevant observability, infrastructure, dashboards, message bridge, adapter, or enterprise SaaS motifs. Do not use simple gradients, procedural SVG backgrounds, abstract blobs, or low-effort placeholder art.
+- Keep hero title, eyebrow, description, and CTA positioning aligned across home, feature, and enterprise pages so route navigation does not visually jump.
+- Keep the handbook and all handbook subpages plain, white/neutral, documentation-first pages without marketing hero imagery.
+- Keep the marketing site flat and restrained: neutral shadcn-like surfaces, few colors, no card-in-card layouts, no decorative pill piles, no nested rounded section wrappers, and no right-side hero mockup components competing with the hero image.
+- Do not rebuild marketing feature lists or related-page navigation as generic card grids. Use editorial stacks, alternating image/text rows, ruled lists, or image-led strips with generated product collage crops.
+
 ## Skills
 
 - CloudGrid-specific AI skills belong in `skills/`.

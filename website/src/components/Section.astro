@@ -12,12 +12,12 @@ const padding =
 
 const bg =
   tone === "recessed"
-    ? "bg-recessed"
+    ? "section-recessed"
     : tone === "grid"
-      ? "bg-page relative overflow-hidden"
+      ? "section-default relative overflow-hidden"
       : tone === "canvas"
         ? "canvas-surface relative overflow-hidden"
-        : "bg-page";
+        : "section-default";
 ---
 
 <section id={id} class={`relative ${bg} ${padding} ${className}`}>

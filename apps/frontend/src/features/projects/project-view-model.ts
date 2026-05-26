@@ -15,14 +15,9 @@ export interface ProjectPickerModel {
 }
 
 export interface ProjectSettingsSection {
-  id: "general" | "ingest" | "retention" | "ai-eval" | "members";
+  id: "identity" | "access" | "setup" | "ingest" | "retention" | "ai-providers" | "ai-eval";
   href: string;
-  labelKey:
-    | "projects.settings.general"
-    | "projects.settings.apiKeys"
-    | "projects.settings.retention"
-    | "projects.settings.aiEval"
-    | "projects.settings.members";
+  label: string;
 }
 
 export interface AdminSettingsModel {
@@ -85,19 +80,34 @@ export function buildProjectSettingsSections(
   const base = `/projects/${encodedProjectId}/settings`;
   const sections: ProjectSettingsSection[] = [
     {
-      id: "general",
+      id: "identity",
       href: base,
-      labelKey: "projects.settings.general",
+      label: "Identity",
+    },
+    {
+      id: "access",
+      href: `${base}/members`,
+      label: "Access",
+    },
+    {
+      id: "setup",
+      href: `${base}/setup`,
+      label: "Setup",
     },
     {
       id: "ingest",
       href: `${base}/ingest`,
-      labelKey: "projects.settings.apiKeys",
+      label: "API Keys",
     },
     {
       id: "retention",
       href: `${base}/retention`,
-      labelKey: "projects.settings.retention",
+      label: "Retention",
+    },
+    {
+      id: "ai-providers",
+      href: `${base}/ai-providers`,
+      label: "AI Providers",
     },
   ];
 
@@ -105,15 +115,9 @@ export function buildProjectSettingsSections(
     sections.push({
       id: "ai-eval",
       href: `${base}/ai-eval`,
-      labelKey: "projects.settings.aiEval",
+      label: "AI Eval",
     });
   }
-
-  sections.push({
-    id: "members",
-    href: `${base}/members`,
-    labelKey: "projects.settings.members",
-  });
 
   return sections;
 }

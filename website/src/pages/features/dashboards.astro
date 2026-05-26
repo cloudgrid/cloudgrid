@@ -2,8 +2,6 @@
 import Layout from "../../layouts/Layout.astro";
 import Section from "../../components/Section.astro";
 import PageHeader from "../../components/PageHeader.astro";
-import MockFrame from "../../components/visuals/MockFrame.astro";
-import DashboardGrid from "../../components/visuals/DashboardGrid.astro";
 import CheckList from "../../components/CheckList.astro";
 import RelatedFeatures from "../../components/RelatedFeatures.astro";
 ---
@@ -18,14 +16,6 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
     />
   </Section>
 
-  <Section tone="recessed">
-    <div class="reveal">
-      <MockFrame title="cloudgrid · /dashboards · agent-platform · overview">
-        <DashboardGrid />
-      </MockFrame>
-    </div>
-  </Section>
-
   <Section>
     <div class="grid lg:grid-cols-2 gap-12">
       <div class="reveal">
@@ -36,20 +26,20 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
             "Pin dashboards to the project sidebar for instant access.",
             "Each widget binds to a project-scoped query — isolation enforced server-side.",
             "Live-feed widgets use GraphQL subscriptions with the same auth as queries.",
-            "Share evaluation summaries as project evidence without turning dashboards into release gates.",
-            "Dashboards are versioned records in the control plane, not opaque JSON blobs.",
+            "Share evaluation summaries as project evidence while keeping release decisions explicit.",
+            "Dashboards are versioned records in the control plane rather than opaque JSON blobs.",
           ]}
         />
       </div>
       <div class="reveal">
-        <h2 class="text-xl font-semibold text-text mb-4">Honest about scope</h2>
+        <h2 class="text-xl font-semibold text-text mb-4">Current scope</h2>
         <CheckList
           muted
           items={[
-            "Free-form ad-hoc exploration lives in /metrics, /traces, /logs — not in dashboards.",
-            "Cross-project dashboards are intentionally out of scope today.",
+            "Free-form ad-hoc exploration lives in /metrics, /traces, and /logs; dashboards are the saved composition surface.",
+            "Project-scoped dashboards are the current boundary.",
             "Dashboard sharing across companies / external links is a planned capability.",
-            "There is no notebook surface or scripted analytics widget. Yet.",
+            "Notebook-style analysis and scripted analytics widgets are future product surfaces.",
           ]}
         />
       </div>
@@ -60,8 +50,8 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
     <RelatedFeatures
       items={[
         { label: "Metrics", href: "/features/metrics", desc: "Where ad-hoc metric work happens." },
+        { label: "Alerts", href: "/features/alerts", desc: "Alert status, history, and evidence widgets." },
         { label: "Traces", href: "/features/traces", desc: "Trace tables and live feed widgets." },
-        { label: "AI Evaluation", href: "/features/ai-evaluation", desc: "Evaluation scoreboards explain what changed and why." },
       ]}
     />
   </Section>

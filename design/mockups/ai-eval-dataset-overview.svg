@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1440" height="1024" viewBox="0 0 1440 1024" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="CloudGrid dataset overview mockup">
+  <style>
+    .title{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:21px;font-weight:650;fill:#09090b;letter-spacing:0}
+    .h{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:14px;font-weight:600;fill:#09090b;letter-spacing:0}
+    .body{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:13px;font-weight:400;fill:#09090b;letter-spacing:0}
+    .muted{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:400;fill:#71717a;letter-spacing:0}
+    .label{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:11px;font-weight:500;fill:#71717a;letter-spacing:0}
+    .button{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px;font-weight:500;letter-spacing:0}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;font-weight:400;fill:#09090b;letter-spacing:0}
+    .mono-muted{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;font-weight:400;fill:#71717a;letter-spacing:0}
+    .tiny{font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:9px;font-weight:500;fill:#71717a;letter-spacing:0}
+  </style>
+  <rect width="1440" height="1024" fill="#ffffff"/>
+  
+  <rect x="0" y="0" width="1440" height="56" rx="0" fill="#ffffff" stroke="none" />
+  <line x1="0" y1="56" x2="1440" y2="56" stroke="#e4e4e7" />
+  <rect x="16" y="16" width="24" height="24" rx="5" fill="#18181b"/>
+  <text x="50" y="34" class="h" >CloudGrid</text>
+  <rect x="426" y="12" width="320" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+  <text x="442" y="32" class="label" fill="#09090b">Personal / checkout-platform</text>
+  <rect x="762" y="12" width="264" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+  <text x="778" y="32" class="label" >Search commands...</text>
+  <rect x="1182" y="12" width="76" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1196" y="33" class="button" fill="#09090b">Setup</text>
+  <rect x="1270" y="12" width="64" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1284" y="33" class="button" fill="#09090b">Docs</text>
+  <circle cx="1388" cy="28" r="15" fill="#f4f4f5" stroke="#e4e4e7"/>
+
+    <rect x="0" y="56" width="232" height="968" rx="0" fill="#fafafa" stroke="none" />
+    <line x1="232" y1="56" x2="232" y2="1024" stroke="#e4e4e7" />
+    <text x="20" y="88" class="label" >Project</text>
+    <text x="20" y="108" class="h" >checkout-platform</text>
+    <text x="20" y="128" class="muted" >production</text>
+    <line x1="16" y1="148" x2="216" y2="148" stroke="#f0f0f1" />
+    <rect x="12" y="166" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="181" r="4" fill="#a1a1aa"/>
+          <text x="42" y="186" class="body" fill="#71717a">AI Chat</text><rect x="12" y="204" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="219" r="4" fill="#a1a1aa"/>
+          <text x="42" y="224" class="body" fill="#71717a">Traces</text><rect x="12" y="242" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="257" r="4" fill="#a1a1aa"/>
+          <text x="42" y="262" class="body" fill="#71717a">Logs</text><rect x="12" y="280" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="295" r="4" fill="#a1a1aa"/>
+          <text x="42" y="300" class="body" fill="#71717a">Metrics</text><rect x="12" y="318" width="208" height="30" rx="6" fill="transparent" stroke="transparent" />
+          <circle cx="28" cy="333" r="4" fill="#a1a1aa"/>
+          <text x="42" y="338" class="body" fill="#71717a">Dashboards</text><rect x="12" y="356" width="208" height="30" rx="6" fill="#f4f4f5" stroke="#e4e4e7" />
+          <circle cx="28" cy="371" r="4" fill="#18181b"/>
+          <text x="42" y="376" class="body" fill="#09090b">Evaluations</text>
+    <line x1="16" y1="948" x2="216" y2="948" stroke="#f0f0f1" />
+    <circle cx="28" cy="978" r="4" fill="#a1a1aa"/>
+    <text x="42" y="983" class="body" fill="#71717a">Project settings</text>
+  
+    
+  <text x="248" y="93" class="title" >AI Eval</text>
+  <text x="248" y="115" class="muted" >Create datasets and run project-scoped evaluations.</text>
+  <rect x="1204" y="80" width="112" height="32" rx="6" fill="#18181b" stroke="#18181b" />
+    <text x="1218" y="101" class="button" fill="#fafafa">New dataset</text><rect x="1328" y="80" width="80" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1342" y="101" class="button" fill="#09090b">Import</text>
+  <line x1="232" y1="136" x2="1440" y2="136" stroke="#e4e4e7" />
+
+    <rect x="248" y="152" width="1176" height="44" rx="8" fill="#ffffff" stroke="#e4e4e7" />
+    <rect x="256" y="160" width="112" height="28" rx="6" fill="#18181b" stroke="#18181b" /><text x="276" y="179" class="button" fill="#fafafa">Datasets</text>
+    <rect x="376" y="160" width="126" height="28" rx="6" fill="#ffffff" stroke="#e4e4e7" /><text x="396" y="179" class="button" fill="#09090b">Evaluations</text>
+    <rect x="248" y="212" width="1176" height="796" rx="8" fill="#ffffff" stroke="#e4e4e7" />
+    <rect x="264" y="228" width="300" height="30" rx="6" fill="#ffffff" stroke="#e4e4e7" /><text x="276" y="248" class="label" >Search datasets</text>
+    <text x="266" y="288" class="label" >Name</text><text x="486" y="288" class="label" >Family</text><text x="674" y="288" class="label" >Version</text><text x="772" y="288" class="label" >Ready rows</text><text x="898" y="288" class="label" >Health</text><text x="1010" y="288" class="label" >Split coverage</text><text x="1168" y="288" class="label" >Updated</text>
+    <line x1="248" y1="304" x2="1424" y2="304" stroke="#e4e4e7" />
+    <line x1="248" y1="373" x2="1424" y2="373" stroke="#f0f0f1" /><text x="266" y="343" class="h" >support-intents</text><text x="486" y="343" class="body" >classification</text><text x="674" y="343" class="mono" >v7</text><text x="776" y="343" class="mono" >1,240</text><rect x="890" y="325" width="82" height="24" rx="5" fill="#f0fdf4" stroke="#bbf7d0" /><text x="900" y="341" class="label" fill="#16a34a">ready</text><text x="1014" y="343" class="mono-muted" >92%</text><text x="1168" y="343" class="muted" >12m ago</text><rect x="1308" y="323" width="72" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1322" y="344" class="button" fill="#09090b">Open</text><line x1="248" y1="441" x2="1424" y2="441" stroke="#f0f0f1" /><text x="266" y="411" class="h" >order-extraction</text><text x="486" y="411" class="body" >json extraction</text><text x="674" y="411" class="mono" >v3</text><text x="776" y="411" class="mono" >824</text><rect x="890" y="393" width="82" height="24" rx="5" fill="#fffbeb" stroke="#fde68a" /><text x="900" y="409" class="label" fill="#d97706">warning</text><text x="1014" y="411" class="mono-muted" >76%</text><text x="1168" y="411" class="muted" >2h ago</text><rect x="1308" y="391" width="72" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1322" y="412" class="button" fill="#09090b">Open</text><line x1="248" y1="509" x2="1424" y2="509" stroke="#f0f0f1" /><text x="266" y="479" class="h" >refund-policy</text><text x="486" y="479" class="body" >rag answer</text><text x="674" y="479" class="mono" >v2</text><text x="776" y="479" class="mono" >386</text><rect x="890" y="461" width="82" height="24" rx="5" fill="#f0fdf4" stroke="#bbf7d0" /><text x="900" y="477" class="label" fill="#16a34a">ready</text><text x="1014" y="479" class="mono-muted" >100%</text><text x="1168" y="479" class="muted" >1d ago</text><rect x="1308" y="459" width="72" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1322" y="480" class="button" fill="#09090b">Open</text><line x1="248" y1="577" x2="1424" y2="577" stroke="#f0f0f1" /><text x="266" y="547" class="h" >tool-routing</text><text x="486" y="547" class="body" >agent action</text><text x="674" y="547" class="mono" >v5</text><text x="776" y="547" class="mono" >2,014</text><rect x="890" y="529" width="82" height="24" rx="5" fill="#f0fdf4" stroke="#bbf7d0" /><text x="900" y="545" class="label" fill="#16a34a">ready</text><text x="1014" y="547" class="mono-muted" >88%</text><text x="1168" y="547" class="muted" >3d ago</text><rect x="1308" y="527" width="72" height="32" rx="6" fill="#ffffff" stroke="#e4e4e7" />
+    <text x="1322" y="548" class="button" fill="#09090b">Open</text>
+  
+</svg>

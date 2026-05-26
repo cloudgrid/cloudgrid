@@ -1905,6 +1905,25 @@ func (service *Service) AlertSummary(ctx context.Context, request contracts.Aler
 	return summary, nil
 }
 
+func (service *Service) ListAlertNotificationAdapters(ctx context.Context, request contracts.AlertNotificationAdapterListRequest) ([]contracts.AlertNotificationAdapter, error) {
+	if _, err := service.requireProjectAccess(ctx, request.BridgeEnvelope, request.ProjectID); err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(service.alertAdapters))
+	for adapterID := range service.alertAdapters {
+		ids = append(ids, adapterID)
+	}
+	sort.Strings(ids)
+	adapters := make([]contracts.AlertNotificationAdapter, 0, len(ids))
+	for _, adapterID := range ids {
+		adapters = append(adapters, alertNotificationAdapterContract(adapterID))
+	}
+	if len(adapters) == 0 {
+		adapters = append(adapters, alertNotificationAdapterContract("in_app"))
+	}
+	return adapters, nil
+}
+
 func (service *Service) alertSummaryWindowStart(timeWindow *string) (*time.Time, error) {
 	if timeWindow == nil || strings.TrimSpace(*timeWindow) == "" {
 		start := service.now().UTC().Add(-time.Hour)
@@ -5062,6 +5081,36 @@ func alertAdapterCatalog(adapterIDs []string) map[string]struct{} {
 		catalog[adapterID] = struct{}{}
 	}
 	return catalog
+}
+
+func alertNotificationAdapterContract(adapterID string) contracts.AlertNotificationAdapter {
+	kind := contracts.AlertNotificationAdapterKindBridge
+	label := adapterID
+	description := "Bridge-backed alert notification adapter."
+	switch adapterID {
+	case "in_app":
+		kind = contracts.AlertNotificationAdapterKindInApp
+		label = "In-app"
+		description = "Stores alert events and history in CloudGrid."
+	case "email":
+		kind = contracts.AlertNotificationAdapterKindEmail
+		label = "Email"
+		description = "Sends safe alert summaries through a configured company email adapter."
+	default:
+		if strings.HasPrefix(adapterID, "webhook") {
+			kind = contracts.AlertNotificationAdapterKindWebhook
+			label = "Webhook"
+			description = "Sends signed safe alert summaries to a configured HTTPS endpoint."
+		}
+	}
+	return contracts.AlertNotificationAdapter{
+		ID:          adapterID,
+		Label:       label,
+		Kind:        kind,
+		Configured:  true,
+		Enabled:     true,
+		Description: description,
+	}
 }
 
 func (service *Service) validateAlertAdapterIDs(adapterIDs []string) error {

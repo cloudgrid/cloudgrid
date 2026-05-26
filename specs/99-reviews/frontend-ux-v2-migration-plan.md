@@ -141,8 +141,8 @@ No other ticket may write these files unless this ticket explicitly creates a su
 **Implementation approach:**
 
 - Reshape `/projects` into project selection mode with project list, selected-project summary, and setup guidance.
-- Reshape `/projects/:projectId` into project home with onboarding checklist, recent ingest/readiness summary, and navigation actions.
-- Use a drawer/sheet for project creation and setup guidance.
+- Route `/projects/:projectId` as a compatibility selector that redirects to `/traces`.
+- Use `/projects/new` for project creation and a drawer/sheet only for setup guidance.
 - Keep checklist collapsed/dismissed state browser-local only.
 - Render current ingest credential metadata exactly as exposed by current GraphQL contracts; do not add multi-key create/rotate/disable behavior.
 
@@ -150,8 +150,8 @@ No other ticket may write these files unless this ticket explicitly creates a su
 
 - `/projects` never shows telemetry topbar navigation before project selection.
 - No-project state has primary action `Create project` when no project exists and `Select project` when projects exist.
-- Project creation uses a drawer/sheet, validates inline, calls existing project creation/select behavior, and navigates to `/projects/:projectId`.
-- `/projects/:projectId` owns the onboarding checklist and setup drawer.
+- Project creation uses `/projects/new`, validates through the create entity page pattern, calls existing project creation/select behavior, and navigates to `/traces`.
+- Project onboarding lives in empty telemetry states and `/projects/:projectId/settings/ingest`.
 - Setup drawer copies only project-scoped endpoint/config snippets and never exposes SurrealDB, NATS, session, or stored credential secrets.
 - Project settings shows ingest credential metadata and explicit copy that stored secrets are never displayed.
 - Empty, loading, forbidden, unavailable, and populated states use one primary next action.

@@ -111,6 +111,44 @@
         "Does not expose raw provider credentials or bearer tokens",
         "Does not invent unsupported AI Eval routes, GraphQL fields, or alerting behavior"
       ]
+    },
+    {
+      "id": 10,
+      "prompt": "Create a customer whitelabel build for CloudGrid named Acme Observe with a custom mark, product name, page titles, and theme colors. Do not add settings pages.",
+      "expected_output": "Uses cloudgrid-whitelabel-customization, implements the customer brand through @cloudgrid/brand/ProductBrand and CLOUDGRID_FRONTEND_BRAND_MODULE, keeps route code/core CSS generic, and avoids runtime brand settings.",
+      "files": [],
+      "assertions": [
+        "Mentions @cloudgrid/brand or ProductBrand",
+        "Mentions CLOUDGRID_FRONTEND_BRAND_MODULE",
+        "Does not add a frontend settings page for branding",
+        "Keeps customer-specific values in a brand module",
+        "Requires complete light and dark semantic token sets"
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "Review a PR that hard-codes a customer's blue into AppShell buttons and adds a GraphQL mutation to save organization branding. What should be changed?",
+      "expected_output": "Uses cloudgrid-whitelabel-customization, rejects route-level brand colors and GraphQL branding, requires semantic tokens and build-time brand module replacement only.",
+      "files": [],
+      "assertions": [
+        "Rejects hard-coded customer colors in route components",
+        "Rejects GraphQL or backend branding mutations",
+        "Requires semantic Tailwind/CSS tokens",
+        "Says whitelabeling is build-time/code-level only",
+        "Keeps telemetry, auth, route, and storage behavior unchanged"
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "A customer brand module compiles after omitting sidebarRing and chart5 by falling back to CloudGrid defaults. Is that acceptable?",
+      "expected_output": "Uses cloudgrid-whitelabel-customization, rejects partial token overrides, explains that complete light/dark token sets are required so missing tokens fail typecheck.",
+      "files": [],
+      "assertions": [
+        "Rejects partial token overrides",
+        "Requires sidebarRing and chart5 when part of ProductBrand token set",
+        "Says missing required tokens should fail typecheck",
+        "Does not recommend implicit fallback to CloudGrid brand values"
+      ]
     }
   ]
 }

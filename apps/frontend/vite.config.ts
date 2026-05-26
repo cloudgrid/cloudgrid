@@ -5,6 +5,9 @@ import { defineConfig, loadEnv } from "vite";
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const bffTarget = env.CLOUDGRID_DEV_BFF_URL || "http://localhost:3000";
+  const brandModule = env.CLOUDGRID_FRONTEND_BRAND_MODULE
+    ? new URL(env.CLOUDGRID_FRONTEND_BRAND_MODULE, import.meta.url).pathname
+    : new URL("./src/brand/brand.ts", import.meta.url).pathname;
 
   return {
     build: {
@@ -14,6 +17,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
+        "@cloudgrid/brand": brandModule,
         "@": new URL("./src", import.meta.url).pathname,
       },
     },

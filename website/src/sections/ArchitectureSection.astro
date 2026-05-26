@@ -70,7 +70,8 @@ const tagColors: Record<string, string> = {
       </h2>
       <p class="text-lg text-text-secondary leading-relaxed">
         Every telemetry read and write crosses the NATS message bridge.
-        No public service accesses SurrealDB directly. Clean boundaries, clear ownership.
+        Public services use the bridge while private storage services own SurrealDB access. Clean
+        boundaries, clear ownership.
       </p>
     </div>
 
@@ -145,7 +146,7 @@ const tagColors: Record<string, string> = {
     <!-- Architecture principles -->
     <div class="grid sm:grid-cols-3 gap-6 mt-12 max-w-4xl mx-auto">
       {[
-        { title: 'Message Bridge', desc: 'All reads and writes flow through NATS. No service bypasses the bridge.' },
+        { title: 'Message Bridge', desc: 'All reads and writes flow through NATS. Services use the bridge contract.' },
         { title: 'Database Isolation', desc: 'SurrealDB is only reachable from storage and control-plane services.' },
         { title: 'Horizontal Scale', desc: 'Scale BFF, collector, and storage-read independently.' },
       ].map((item, i) => (

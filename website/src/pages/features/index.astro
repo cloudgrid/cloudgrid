@@ -2,7 +2,7 @@
 import Layout from "../../layouts/Layout.astro";
 import Section from "../../components/Section.astro";
 import PageHeader from "../../components/PageHeader.astro";
-import FeatureCard from "../../components/FeatureCard.astro";
+import FeatureShowcase from "../../components/FeatureShowcase.astro";
 
 const features = [
   {
@@ -38,6 +38,14 @@ const features = [
     accent: "amber" as const,
   },
   {
+    icon: "alert" as const,
+    title: "Alerts",
+    description:
+      "Core-owned rule evaluation, alert state, in-app history, email delivery, and bridge-backed delivery adapters.",
+    href: "/features/alerts",
+    accent: "amber" as const,
+  },
+  {
     icon: "ai" as const,
     title: "AI agent evaluation",
     description:
@@ -47,9 +55,9 @@ const features = [
   },
   {
     icon: "adapter" as const,
-    title: "Adapter-driven core",
+    title: "Customizable foundation",
     description:
-      "Storage, message bridge, auth providers, and evaluation execution all sit behind explicit, swappable ports.",
+      "Branding, colors, packaging, auth, message bridge, storage, and evaluation execution can adapt behind explicit boundaries.",
     href: "/features/adapters",
     accent: "rose" as const,
   },
@@ -58,15 +66,15 @@ const features = [
 const truths = [
   {
     title: "Collected evidence stays usable across workflows.",
-    body: "The same project data supports incident investigation, dashboards, dataset curation, evaluation results, and optimization decisions.",
+    body: "The same project data supports incident investigation, alerting, dashboards, dataset curation, evaluation results, and optimization decisions.",
   },
   {
     title: "Project is the isolation primitive.",
-    body: "Every trace, log, metric, dashboard, dataset, and evaluation belongs to a project, so teams can work without mixing customer or environment evidence.",
+    body: "Every trace, log, metric, dashboard, dataset, and evaluation belongs to a project, so teams keep customer and environment evidence clearly separated.",
   },
   {
     title: "Advanced integrations stay replaceable.",
-    body: "Storage, transport, auth, and evaluation execution are explicit extension points, while day-to-day users stay focused on workflows and results.",
+    body: "Branding, packaging, storage, transport, auth, and evaluation execution are explicit extension points, while day-to-day users stay focused on workflows and results.",
   },
 ];
 ---
@@ -81,28 +89,24 @@ const truths = [
   </Section>
 
   <Section tone="recessed">
-    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-      {features.map((f, i) => (
-        <div class="reveal" data-delay={(((i % 3) + 1)) as any}>
-          <FeatureCard {...f} />
-        </div>
-      ))}
-    </div>
+    <FeatureShowcase items={features} />
   </Section>
 
   <Section>
     <div class="max-w-3xl mb-8 reveal">
-      <div class="chip bg-brand-soft text-[var(--color-brand)]">Constants</div>
       <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
         The three truths that hold across every feature.
       </h2>
-      <p class="mt-3 text-text-secondary">Capabilities change. These don't.</p>
+      <p class="mt-3 text-text-secondary">Capabilities change. These stay constant.</p>
     </div>
-    <div class="grid md:grid-cols-3 gap-5">
+    <div class="truth-stack">
       {truths.map((t, i) => (
-        <div class="card spotlight is-interactive p-6 reveal flex h-full flex-col" data-delay={(i + 1) as any}>
-          <div class="text-base font-semibold text-text">{t.title}</div>
-          <p class="mt-2 text-sm text-text-secondary leading-relaxed flex-1">{t.body}</p>
+        <div class="truth-stack__item reveal" data-delay={(i + 1) as any}>
+          <div class="truth-stack__index">{String(i + 1).padStart(2, "0")}</div>
+          <div>
+            <div class="truth-stack__title">{t.title}</div>
+            <p>{t.body}</p>
+          </div>
         </div>
       ))}
     </div>
