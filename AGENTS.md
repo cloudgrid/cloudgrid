@@ -139,6 +139,7 @@ go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otl
 - Keep the handbook and all handbook subpages plain, white/neutral, documentation-first pages without marketing hero imagery.
 - Keep the marketing site flat and restrained: neutral shadcn-like surfaces, few colors, no card-in-card layouts, no decorative pill piles, no nested rounded section wrappers, and no right-side hero mockup components competing with the hero image.
 - Do not rebuild marketing feature lists or related-page navigation as generic card grids. Use editorial stacks, alternating image/text rows, ruled lists, or image-led strips with generated product collage crops.
+- Non-handbook marketing pages must be audience-led. Start from the decision-maker or operator problem, explain how CloudGrid helps, then link to deeper feature, enterprise, comparison, or handbook detail instead of repeating the same catalog copy across pages.
 
 ## Skills
 

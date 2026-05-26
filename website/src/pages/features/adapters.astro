@@ -55,8 +55,8 @@ const extensionSurfaces = [
       eyebrow="Customizable"
       accent="rose"
       highlight="your"
-      title="Make CloudGrid feel like your product."
-      description="CloudGrid is built for teams that want more than a technical adapter surface. Logos, naming, color tokens, deployment packaging, auth, bridge, storage, and evaluation execution can be adapted so CloudGrid can sit inside your product portfolio or customer environment."
+      title="Make CloudGrid fit your brand, product, and runtime."
+      description="Customization is bigger than technical adapters. CloudGrid can adapt visible identity, packaging, auth, bridge, storage, alert delivery, and evaluation execution so it can run as your internal platform, customer deployment, or licensed white-label foundation."
     />
   </Section>
 
@@ -67,7 +67,7 @@ const extensionSurfaces = [
           Customization starts with the product your customers see.
         </h2>
         <p class="mt-3 text-text-secondary leading-relaxed">
-          Adapters are one part of the story. The larger idea is that CloudGrid can be branded,
+          Adapters are one part of the model. The larger idea is that CloudGrid can be branded,
           packaged, and extended as a source-available observability foundation. With the Commons
           Clause license, internal self-hosted use stays straightforward, while SaaS, resale, and
           white-label offerings use a commercial agreement.
@@ -83,11 +83,14 @@ const extensionSurfaces = [
         </div>
       </div>
 
-      <div class="grid sm:grid-cols-2 gap-4">
+      <div class="truth-stack">
         {customizationSurfaces.map((item, i) => (
-          <div class="card spotlight p-5 flex h-full flex-col reveal" data-delay={(i + 1) as any}>
-            <h3 class="text-base font-semibold text-text">{item.title}</h3>
-            <p class="mt-2 text-sm text-text-secondary leading-relaxed flex-1">{item.body}</p>
+          <div class="truth-stack__item reveal" data-delay={(i + 1) as any}>
+            <div class="truth-stack__index">{String(i + 1).padStart(2, "0")}</div>
+            <div>
+              <div class="truth-stack__title">{item.title}</div>
+              <p>{item.body}</p>
+            </div>
           </div>
         ))}
       </div>
@@ -109,11 +112,11 @@ const extensionSurfaces = [
       </div>
       <div class="reveal">
         <h2 class="text-xl font-semibold text-text mb-4">How the modular model helps</h2>
-        <div class="space-y-3">
+        <div class="truth-stack">
           {extensionSurfaces.map((item) => (
-            <div class="rounded-lg border border-border-default bg-surface px-4 py-3">
-              <div class="text-sm font-semibold text-text">{item.label}</div>
-              <p class="mt-1 text-sm text-text-secondary leading-relaxed">{item.text}</p>
+            <div class="truth-stack__item truth-stack__item--compact truth-stack__item--wide-index">
+              <div class="truth-stack__index">{item.label}</div>
+              <p>{item.text}</p>
             </div>
           ))}
         </div>
@@ -124,7 +127,7 @@ const extensionSurfaces = [
   <Section tone="recessed">
     <div class="max-w-3xl mb-8 reveal">
       <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text">
-        Adapters are real extension points inside the broader customization story.
+        Adapters are real extension points inside the broader customization model.
       </h2>
       <p class="mt-3 text-text-secondary leading-relaxed">
         CloudGrid keeps technical dependencies behind contracts so brand and business

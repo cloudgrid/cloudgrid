@@ -191,6 +191,7 @@ Website rules:
 - Handbook pages and handbook subpages remain plain white/neutral documentation pages without marketing hero imagery.
 - Do not add decorative pill piles, card-in-card layouts, nested rounded section wrappers, oversized decorative cards, or marketing bloat. Use flat sections, restrained borders, concise typography, and shadcn-like neutral color.
 - Marketing feature lists and related-page navigation should not use generic card grids. Use editorial stacks, alternating image/text rows, ruled lists, or image-led strips with generated product collage crops.
+- Non-handbook marketing pages lead with audience context: the decision-maker or operator problem, CloudGrid's concrete help, then links to deeper feature, enterprise, comparison, or handbook pages. Avoid repeating the same capability catalog across multiple pages.
 
 ## Colors
 

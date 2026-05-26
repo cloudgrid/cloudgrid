@@ -183,41 +183,27 @@ const brief = [
   <Section tone="recessed">
     <div class="max-w-3xl reveal">
       <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text">
-        The six questions your reviewers will ask.
+        The review path for a self-hosted observability platform.
       </h2>
       <p class="mt-3 text-text-secondary">
-        Each is the version we hear most from enterprise procurement, security, legal, and finance.
-        Each has a one-paragraph answer and a one-line proof point.
+        Enterprise adoption normally starts with the same concerns: data location, privacy,
+        license fit, identity, blast radius, and cost control. CloudGrid is designed so those
+        answers are direct and linked to product boundaries.
       </p>
     </div>
 
-    <div class="mt-10 grid md:grid-cols-2 gap-5">
+    <div class="mt-10 truth-stack truth-stack--wide">
       {concerns.map((c, i) => (
         <div
-          class="card spotlight flex h-full flex-col p-6"
+          class="truth-stack__item reveal"
           data-delay={(((i % 3) + 1)) as any}
           style={`--accent: ${c.accent};`}
         >
-          <div class="flex items-start justify-between gap-4">
-            <div
-              class="w-10 h-10 rounded-lg inline-flex items-center justify-center icon-pop"
-              style={`background: color-mix(in srgb, ${c.accent} 14%, transparent); color: ${c.accent};`}
-            >
-              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d={c.icon}></path>
-              </svg>
-            </div>
-            <div class="chip" style={`background: color-mix(in srgb, ${c.accent} 12%, transparent); color: ${c.accent};`}>
-              {c.who}
-            </div>
-          </div>
-          <h3 class="mt-5 text-base sm:text-lg font-semibold text-text leading-snug">
-            “{c.q}”
-          </h3>
-          <p class="mt-3 text-sm text-text-secondary leading-relaxed flex-1">{c.a}</p>
-          <div class="mt-5 pt-4 border-t border-border-subtle">
-            <div class="text-[10px] uppercase tracking-wider font-semibold text-text-muted mb-1">Proof</div>
-            <div class="text-xs text-text">{c.proof}</div>
+          <div class="truth-stack__index">{c.who}</div>
+          <div>
+            <div class="truth-stack__title">“{c.q}”</div>
+            <p>{c.a}</p>
+            <p class="mt-3 text-sm font-medium text-text">{c.proof}</p>
           </div>
         </div>
       ))}
@@ -302,11 +288,11 @@ const brief = [
   <Section tone="recessed">
     <div class="max-w-3xl reveal">
       <h2 class="mt-4 text-2xl sm:text-3xl font-semibold tracking-tight text-text">
-        What's enforced, what's yours, what's coming.
+        Control map for security and operations.
       </h2>
       <p class="mt-3 text-text-secondary">
-        Honest map of which controls CloudGrid enforces in code, which controls live in your
-        control, and which are still maturing. Hand it to your security reviewer.
+        A practical map of which controls CloudGrid enforces in code, which controls are operated
+        in your environment, and which integration surfaces are still evolving.
       </p>
     </div>
 
@@ -351,8 +337,8 @@ const brief = [
           The procurement-grade summary.
         </h2>
         <p class="mt-3 text-text-secondary">
-          Print this. Send it to the security questionnaire owner. It answers most of what they
-          need to start, and it's honest about what stays in your control.
+          Start here when security, legal, finance, or platform leadership needs a compact view of
+          what CloudGrid is, where data lives, and which operational areas remain under your control.
         </p>
         <div class="mt-6">
           <Button href="/enterprise/compare" variant="primary">

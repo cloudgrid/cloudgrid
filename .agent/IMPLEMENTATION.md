@@ -200,6 +200,7 @@ When changing the public website in `website/`, preserve the current marketing-p
 - Handbook pages and handbook subpages stay documentation-first with simple white/neutral backgrounds.
 - Keep the site flat and concise: neutral shadcn-like color, restrained borders, no nested cards, no card-in-card compositions, no decorative pill piles, no marketing bloat, and no separate right-side hero visualization when the hero background already carries the visual weight.
 - For marketing feature lists and related-page navigation, avoid generic card grids. Prefer editorial stacks, alternating image/text rows, ruled lists, or image-led strips that reuse generated product collage crops.
+- Non-handbook marketing pages should be audience-led: introduce the enterprise decision-maker or operator problem first, explain how CloudGrid solves it with existing product capabilities, then route readers to deeper pages instead of duplicating long capability lists.
 
 ## Frontend UX Implementation Rules
 

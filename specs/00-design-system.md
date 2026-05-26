@@ -34,6 +34,7 @@ The public website uses the same restraint with a marketing-specific hero treatm
 - On public website marketing pages, keep hero title, description, eyebrow, and CTA placement aligned across routes. Let the generated hero background carry the visual weight; do not add separate right-side mockups or visualizations in the hero.
 - Keep public website sections flat after the hero: white or neutral recessed bands, restrained borders, no decorative pill piles, no card-in-card layouts, and no nested rounded section wrappers.
 - Marketing feature lists and related-page navigation use editorial stacks, alternating image/text rows, ruled lists, or image-led strips with generated product collage crops instead of generic card grids.
+- Non-handbook public website pages use audience-led content flow: introduce the decision-maker or operator problem, explain CloudGrid's concrete product help, then link to deeper detail instead of duplicating capability catalogs.
 
 ## Tokens
 

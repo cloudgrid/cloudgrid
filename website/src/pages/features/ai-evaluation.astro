@@ -2,9 +2,40 @@
 import Layout from "../../layouts/Layout.astro";
 import Section from "../../components/Section.astro";
 import PageHeader from "../../components/PageHeader.astro";
-import AiEvalBoard from "../../components/visuals/AiEvalBoard.astro";
 import CheckList from "../../components/CheckList.astro";
 import RelatedFeatures from "../../components/RelatedFeatures.astro";
+
+const evaluationPath = [
+  {
+    title: "Define what good looks like.",
+    body: "Datasets make expected behavior explicit: inputs, expected outputs, reasons, splits, curation state, and optional source evidence.",
+  },
+  {
+    title: "Run the candidate against the same evidence.",
+    body: "Evaluations execute a target against a dataset split and produce aggregate metrics plus row-level expected versus actual results.",
+  },
+  {
+    title: "Compare before changing production behavior.",
+    body: "Baseline and candidate runs make improvements, regressions, latency changes, and representative examples visible before promotion.",
+  },
+  {
+    title: "Optimize with validation instead of intuition.",
+    body: "Quick-shot optimization can explore candidates, but promotion remains explicit and should be backed by validation evidence.",
+  },
+];
+
+const approaches = [
+  ["Curated examples", "Teams encode known customer messages, extraction cases, workflow checks, or generation tasks as reusable dataset rows."],
+  ["Trace-derived cases", "Production traces can become source material when a real workflow exposes a missed classification, missing field, or wrong tool path."],
+  ["External targets", "Complex agents and workflows can be evaluated through an adapter endpoint instead of being rebuilt inside CloudGrid."],
+  ["Runtime metrics", "Latency, model calls, token totals, and cost signals can sit beside evaluation results when they are emitted as OTLP metrics."],
+];
+
+const outcomes = [
+  ["For CEOs", "AI changes can be reviewed as business decisions with evidence, not only as engineering experiments."],
+  ["For CTOs", "Teams get a repeatable path from production example to dataset, evaluation, comparison, optimization, and promotion."],
+  ["For AI teams", "Expected outputs, observed outputs, metrics, traces, and optimization candidates stay connected in one project."],
+];
 ---
 
 <Layout title="AI evaluation and optimization — CloudGrid">
@@ -12,38 +43,81 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
     <PageHeader
       eyebrow="AI Evaluation"
       accent="violet"
-      title="Turn collected telemetry into better AI behavior."
-      description="CloudGrid gives AI teams a practical evaluation loop inside the same project where traces, logs, metrics, and dashboards already live: curate datasets, run evaluations, compare outputs, optimize prompts or examples, and promote improvements with evidence."
+      title="Evaluate AI changes against evidence your team can inspect."
+      description="AI behavior needs the same operational discipline as production services. CloudGrid keeps datasets, evaluations, comparisons, optimization runs, metrics, and trace-backed evidence inside the same project where the rest of the system is observed."
     />
   </Section>
 
+  <Section tone="recessed">
+    <div class="story-split">
+      <div class="story-media reveal" aria-hidden="true">
+        <img src="/hero-backgrounds/features-ai-evaluation.png" alt="" loading="lazy" decoding="async" />
+      </div>
+      <div class="reveal-x">
+        <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
+          AI quality reviews need production context, not isolated screenshots.
+        </h2>
+        <p class="mt-4 text-text-secondary leading-relaxed">
+          A CEO or CTO needs to know whether a change is ready, why it is better, and what evidence
+          supports the decision. CloudGrid gives AI teams a repeatable evaluation loop while keeping
+          source traces, runtime metrics, expected outputs, and observed results reviewable together.
+        </p>
+      </div>
+    </div>
+  </Section>
+
   <Section>
-    <div class="grid gap-12 lg:grid-cols-2">
+    <div class="grid gap-12 lg:grid-cols-[0.78fr_1.22fr]">
+      <div class="reveal-x">
+        <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
+          From example to promotion decision.
+        </h2>
+        <p class="mt-4 text-text-secondary leading-relaxed">
+          Evaluation and optimization are not one feature. They are the path from "we know what
+          good should look like" to "we can explain why this candidate is ready." CloudGrid keeps
+          every step inside the project that owns the telemetry evidence.
+        </p>
+      </div>
+      <div class="truth-stack truth-stack--wide">
+        {evaluationPath.map((item, i) => (
+          <div class="truth-stack__item reveal" data-delay={(((i % 3) + 1)) as any}>
+            <div class="truth-stack__index">{String(i + 1).padStart(2, "0")}</div>
+            <div>
+              <div class="truth-stack__title">{item.title}</div>
+              <p>{item.body}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </Section>
+
+  <Section tone="recessed">
+    <div class="grid lg:grid-cols-[0.9fr_1.1fr] gap-12 items-start">
       <div class="reveal">
-        <h2 class="mb-4 text-xl font-semibold text-text">What you can do today</h2>
+        <h2 class="text-xl font-semibold text-text mb-4">What CloudGrid provides</h2>
         <CheckList
           items={[
-            "Create schema-backed datasets for classification, extraction, generation, and workflow checks.",
-            "Add rows with input, expected output, optional observed output, reason, split, and curation status.",
-            "Validate raw JSON input and expected output against the dataset schema before a row becomes ready.",
-            "Import trace-derived cases when production evidence reveals a missed classification, extraction, or workflow decision.",
-            "Run dataset evaluations against a target using project model aliases and metric defaults.",
-            "Inspect per-row expected vs actual output, metric results, trajectory summaries, important steps, and trace links.",
-            "Compare baseline and candidate runs to see improvements, regressions, latency tradeoffs, and representative examples.",
-            "Use quick-shot optimization to explore candidates, then validate before explicit promotion.",
+            "Schema-backed datasets for classification, extraction, generation, and workflow checks.",
+            "Rows with input, expected output, optional observed output, reason, split, curation status, and source evidence.",
+            "JSON validation against the dataset schema before rows become ready.",
+            "Dataset evaluations against a target using project model aliases and metric defaults.",
+            "Per-row expected vs actual output, metric results, trajectory summaries, important steps, and trace links.",
+            "Baseline and candidate comparisons with improvements, regressions, latency tradeoffs, and representative examples.",
+            "Quick-shot optimization for candidate exploration followed by explicit validation before promotion.",
           ]}
         />
       </div>
       <div class="reveal">
-        <h2 class="mb-4 text-xl font-semibold text-text">Current scope</h2>
+        <h2 class="text-xl font-semibold text-text mb-4">Operating model</h2>
         <CheckList
           muted
           items={[
-            "The primary v1 workflow is dataset evaluation and optimization. Production measurement is on the product path after the core evaluation loop.",
-            "Complex agents and workflows can be evaluated through an adapter endpoint instead of rebuilding the whole workflow inside CloudGrid.",
-            "Provider API keys belong in project or company provider settings and stay out of datasets and evaluation rows.",
-            "Evaluation produces metrics, results, and comparisons. Alerting or release gates can consume those values later as downstream workflows.",
-            "Quick-shot optimization is exploratory. Promotion should use full validation evidence.",
+            "The primary v1 workflow is dataset evaluation and optimization.",
+            "Production measurement is on the product path after the core evaluation loop.",
+            "Complex agents and workflows can be evaluated through an adapter endpoint.",
+            "Provider API keys belong in project or company provider settings and stay out of datasets and rows.",
+            "Evaluation produces metrics, results, and comparisons that downstream alerting or release gates can consume later.",
           ]}
         />
       </div>
@@ -51,25 +125,20 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
   </Section>
 
   <Section>
-    <div class="mb-8 max-w-3xl reveal">
+    <div class="max-w-3xl mb-8 reveal">
       <h2 class="text-2xl font-semibold tracking-tight text-text">
-        The building blocks are understandable by the whole team.
+        Different ways to build useful evaluation evidence.
       </h2>
       <p class="mt-3 leading-relaxed text-text-secondary">
-        A dataset says what good looks like. An evaluation runs a target against that dataset. A
-        comparison shows whether the candidate is better or worse. Optimization is the loop that
-        proposes changes and proves them against validation data.
+        Enterprises usually need more than one input path. Some examples are curated deliberately;
+        others come from production traces; complex workflows may stay outside CloudGrid and expose
+        an evaluation target through an adapter.
       </p>
     </div>
-    <div class="truth-stack">
-      {[
-        ["Datasets", "Versioned examples", "Rows contain input, expected output, optional reason, split, curation status, and source evidence."],
-        ["Evaluations", "Repeatable runs", "Run a selected target over a dataset split and inspect aggregate and per-row results."],
-        ["Comparisons", "Better or worse", "See metric deltas, regressions, improvements, and examples that explain the tradeoff."],
-        ["Optimization", "Improve with evidence", "Explore quick-shot candidates, validate them, then explicitly promote the winning target."],
-      ].map(([label, title, body], i) => (
-        <div class="truth-stack__item reveal" data-delay={(((i % 3) + 1)) as any}>
-          <div class="truth-stack__index">{label}</div>
+    <div class="truth-stack truth-stack--wide">
+      {approaches.map(([title, body], i) => (
+        <div class="truth-stack__item reveal" data-delay={(i + 1) as any}>
+          <div class="truth-stack__index">{title}</div>
           <div>
             <div class="truth-stack__title">{title}</div>
             <p>{body}</p>
@@ -80,58 +149,38 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
   </Section>
 
   <Section tone="recessed">
-    <div class="mb-8 max-w-3xl reveal">
-      <h2 class="mt-4 text-2xl font-semibold tracking-tight text-text text-balance">
-        A scoreboard you can actually hand to your team.
-      </h2>
-      <p class="mt-3 text-text-secondary">
-        A run summary carries more than one number. CloudGrid keeps the aggregate metrics, row-level
-        expected vs actual output, trace links, and short trajectory summaries together so the team
-        can decide what to improve next.
-      </p>
-    </div>
-    <div class="reveal">
-      <div class="card overflow-hidden">
-        <AiEvalBoard />
-      </div>
-    </div>
-  </Section>
-
-  <Section>
-    <div class="grid gap-10 lg:grid-cols-[1fr_1.2fr]">
+    <div class="grid gap-10 lg:grid-cols-[0.78fr_1.22fr]">
       <div class="reveal-x">
         <h2 class="mt-4 text-2xl font-semibold tracking-tight text-text text-balance">
-          Your failed examples already exist in traces.
+          Production examples can become evaluation evidence.
         </h2>
         <p class="mt-4 leading-relaxed text-text-secondary">
-          Many useful evaluation rows start as production evidence: a wrong category, a missing JSON
-          field, a tool call that went down the wrong path, or a workflow that took too many steps.
+          Many useful evaluation rows start as production evidence: an unexpected category, a missing
+          JSON field, a tool call that chose the wrong path, or a workflow that took too many steps.
           CloudGrid keeps the source trace link next to the dataset row and the evaluation result,
           so debugging and optimization stay connected.
         </p>
       </div>
-      <div class="grid gap-3 reveal">
-        {[
-          ["Classify", "Capture customer messages and expected categories, then measure prompt changes against validation and test splits."],
-          ["Extract", "Validate raw JSON outputs against a dataset schema and see exactly which rows failed."],
-          ["Workflow", "Keep bounded trajectory summaries and important steps so complex agent runs stay focused during review."],
-          ["Optimize", "Let candidates compete against the same dataset, then promote only after validation evidence is visible."],
-        ].map(([title, body]) => (
-          <div class="rounded-lg border border-border-subtle bg-surface p-4">
-            <div class="text-sm font-semibold text-text">{title}</div>
-            <p class="mt-1 text-sm text-text-secondary">{body}</p>
+      <div class="truth-stack truth-stack--wide">
+        {outcomes.map(([title, body], i) => (
+          <div class="truth-stack__item reveal" data-delay={(i + 1) as any}>
+            <div class="truth-stack__index">{title}</div>
+            <div>
+              <div class="truth-stack__title">{title}</div>
+              <p>{body}</p>
+            </div>
           </div>
         ))}
       </div>
     </div>
   </Section>
 
-  <Section tone="recessed">
+  <Section>
     <RelatedFeatures
       items={[
         { label: "Traces", href: "/features/traces", desc: "Where trace-derived dataset cases and run evidence stay linkable." },
-        { label: "Handbook", href: "/handbook/evaluations", desc: "How to create datasets, run evaluations, and optimize targets." },
-        { label: "Compare vs", href: "/enterprise/compare", desc: "CloudGrid vs Langfuse, Arize, Braintrust, and APM tools." },
+        { label: "Metrics", href: "/features/metrics", desc: "Where runtime latency, token, and cost signals can stay visible." },
+        { label: "Customizable", href: "/features/adapters", desc: "How external evaluation targets can fit behind adapter boundaries." },
       ]}
     />
   </Section>

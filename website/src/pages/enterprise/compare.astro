@@ -50,8 +50,8 @@ const vendorNotes = [
     <PageHeader
       eyebrow="Compare"
       accent="brand"
-      title="How CloudGrid stacks up — named, fact-checked, honest."
-      description="Every column is a real product. Every cell is a single, defensible claim. Coverage differences are stated directly."
+      title="Compare CloudGrid against the products buyers already know."
+      description="Use this page when procurement, platform leadership, or engineering wants a named side-by-side view. The home and feature pages explain CloudGrid; this page keeps the comparison explicit."
     />
   </Section>
 
@@ -76,12 +76,14 @@ const vendorNotes = [
       </p>
     </div>
 
-    <div class="grid md:grid-cols-2 gap-5">
+    <div class="truth-stack truth-stack--wide">
       {vendorNotes.map((v, i) => (
-        <div class="card spotlight is-interactive flex h-full flex-col p-6 reveal" data-delay={(((i % 3) + 1)) as any}>
-          <div class="text-xs font-semibold uppercase tracking-wider text-text-muted">Vendor</div>
-          <div class="mt-1 text-lg font-semibold text-text">{v.name}</div>
-          <p class="mt-3 text-sm text-text-secondary leading-relaxed flex-1">{v.body}</p>
+        <div class="truth-stack__item reveal" data-delay={(((i % 3) + 1)) as any}>
+          <div class="truth-stack__index">Vendor</div>
+          <div>
+            <div class="truth-stack__title">{v.name}</div>
+            <p>{v.body}</p>
+          </div>
         </div>
       ))}
     </div>

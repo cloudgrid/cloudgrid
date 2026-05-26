@@ -4,6 +4,27 @@ import Section from "../../components/Section.astro";
 import PageHeader from "../../components/PageHeader.astro";
 import CheckList from "../../components/CheckList.astro";
 import RelatedFeatures from "../../components/RelatedFeatures.astro";
+
+const alertFlow = [
+  {
+    title: "Define the condition close to the data.",
+    body: "Rules can observe metrics, logs, and traces with the same project-scoped semantics the UI uses.",
+  },
+  {
+    title: "Let the product own lifecycle and history.",
+    body: "CloudGrid core manages evaluation, state transitions, silences, cooldowns, deduplication, evidence links, and alert history.",
+  },
+  {
+    title: "Route notifications through controlled delivery paths.",
+    body: "Built-in in-app and email delivery cover the base path; bridge-backed adapters can deliver to customer-owned channels.",
+  },
+];
+
+const alertOutcomes = [
+  ["Executives", "Alerting becomes a managed operating control instead of a scattered set of notification scripts."],
+  ["Platform teams", "Rules, state, and delivery status stay attached to the project that owns the telemetry."],
+  ["Partners", "White-label or customer-specific deployments can add delivery adapters without moving rule ownership out of CloudGrid core."],
+];
 ---
 
 <Layout title="Alerts — CloudGrid">
@@ -11,20 +32,64 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
     <PageHeader
       eyebrow="Alerts"
       accent="amber"
-      title="Core alerting with flexible delivery paths."
-      description="CloudGrid core observes live and persisted telemetry, evaluates project alert rules, manages state, records history, and dispatches notifications. Built-in in-app and email delivery cover the base path; bridge-backed adapters extend delivery to the systems your customers already use."
+      title="Turn live telemetry into managed action."
+      description="Alerts are valuable when the product owns rule evaluation, state, history, and evidence links. CloudGrid core observes live and persisted telemetry, manages alert lifecycle, and keeps delivery extensible through bridge-backed adapters."
     />
   </Section>
 
+  <Section tone="recessed">
+    <div class="story-split">
+      <div class="story-media reveal" aria-hidden="true">
+        <img src="/hero-backgrounds/features-alerts.png" alt="" loading="lazy" decoding="async" />
+      </div>
+      <div class="reveal-x">
+        <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
+          Alerting belongs close to the telemetry semantics.
+        </h2>
+        <p class="mt-4 text-text-secondary leading-relaxed">
+          Teams need more than a notification channel. They need a project rule, the query that
+          evaluated it, the state history, and the evidence link that shows why action was needed.
+          CloudGrid keeps that core responsibility in the product while delivery remains flexible.
+        </p>
+      </div>
+    </div>
+  </Section>
+
   <Section>
-    <div class="grid lg:grid-cols-2 gap-12">
+    <div class="grid lg:grid-cols-[0.78fr_1.22fr] gap-12 items-start">
+      <div class="reveal-x">
+        <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
+          From telemetry condition to accountable response.
+        </h2>
+        <p class="mt-4 text-text-secondary leading-relaxed">
+          CloudGrid separates alert ownership from notification delivery. That gives leadership a
+          clearer operating model: the product owns the rule and evidence; adapters deliver messages
+          to the tools teams already use.
+        </p>
+      </div>
+      <div class="truth-stack truth-stack--wide">
+        {alertFlow.map((item, i) => (
+          <div class="truth-stack__item reveal" data-delay={(((i % 3) + 1)) as any}>
+            <div class="truth-stack__index">{String(i + 1).padStart(2, "0")}</div>
+            <div>
+              <div class="truth-stack__title">{item.title}</div>
+              <p>{item.body}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </Section>
+
+  <Section tone="recessed">
+    <div class="grid lg:grid-cols-[0.9fr_1.1fr] gap-12 items-start">
       <div class="reveal">
         <h2 class="text-xl font-semibold text-text mb-4">What CloudGrid core owns</h2>
         <CheckList
           items={[
             "Project-scoped rules over metrics, logs, and traces.",
             "Rule schedules, evaluation, state transitions, silences, cooldowns, and deduplication.",
-            "Storage-read backed queries, so alert logic uses the same backend-owned telemetry semantics as the UI.",
+            "Storage-read backed queries, so alert logic uses backend-owned telemetry semantics.",
             "In-app alert history and evidence links for project operators.",
             "Email delivery for safe alert summaries through the deployed SMTP runtime.",
           ]}
@@ -39,10 +104,30 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
             "Adapters listen to private message bridge dispatch work and return bounded delivery status.",
             "Provider credentials stay in adapter runtime configuration or customer secret stores.",
             "Adapters deliver notifications; CloudGrid core remains responsible for alert state and history.",
-            "The model scales independently: evaluation, in-app persistence, email, and provider adapters can be sized for their own workload.",
+            "Evaluation, in-app persistence, email, and provider adapters can be sized for their own workload.",
           ]}
         />
       </div>
+    </div>
+  </Section>
+
+  <Section>
+    <div class="max-w-3xl mb-8 reveal">
+      <h2 class="text-2xl font-semibold tracking-tight text-text">What improves when alerts are managed centrally.</h2>
+      <p class="mt-3 text-text-secondary">
+        Alerting creates business value when response, evidence, and ownership stay visible.
+      </p>
+    </div>
+    <div class="truth-stack truth-stack--wide">
+      {alertOutcomes.map(([title, body], i) => (
+        <div class="truth-stack__item reveal" data-delay={(i + 1) as any}>
+          <div class="truth-stack__index">{title}</div>
+          <div>
+            <div class="truth-stack__title">{title}</div>
+            <p>{body}</p>
+          </div>
+        </div>
+      ))}
     </div>
   </Section>
 

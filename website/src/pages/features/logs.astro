@@ -4,6 +4,27 @@ import Section from "../../components/Section.astro";
 import PageHeader from "../../components/PageHeader.astro";
 import CheckList from "../../components/CheckList.astro";
 import RelatedFeatures from "../../components/RelatedFeatures.astro";
+
+const logFlow = [
+  {
+    title: "Find the symptom quickly.",
+    body: "Operators need fast search over message bodies, severity, services, attributes, and time ranges when a system starts behaving differently.",
+  },
+  {
+    title: "Keep the line attached to the execution.",
+    body: "A useful log entry should not become a dead end. Trace and span ids make the next click a pivot into the actual request path.",
+  },
+  {
+    title: "Turn recurring patterns into operations.",
+    body: "When a log pattern matters repeatedly, it can become an alert condition, a dashboard widget, or part of an incident review.",
+  },
+];
+
+const outcomes = [
+  ["Support", "Customer-facing incidents can move from a text symptom to the request that produced it."],
+  ["Platform", "Teams can keep structured filters and project scoping instead of searching a shared log bucket."],
+  ["Governance", "Redaction remains in the customer collector pipeline, while CloudGrid stores and queries what was intentionally sent."],
+];
 ---
 
 <Layout title="Logs — CloudGrid">
@@ -11,37 +32,100 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
     <PageHeader
       eyebrow="Logs"
       accent="cyan"
-      title="Search-first logs that already know which trace they belong to."
-      description="CloudGrid receives OTLP log records and renders them as a fast, searchable table where every entry preserves its severity, service, attributes, and W3C trace context — so you can pivot from any log line straight into the originating waterfall."
+      title="Search logs without losing the execution context."
+      description="Logs are where teams often see symptoms first. CloudGrid keeps OTLP log records searchable while preserving severity, service, attributes, trace id, and span id, so a useful line can lead directly to the trace that explains it."
     />
   </Section>
 
+  <Section tone="recessed">
+    <div class="story-split">
+      <div class="story-media reveal" aria-hidden="true">
+        <img src="/hero-backgrounds/features-logs.png" alt="" loading="lazy" decoding="async" />
+      </div>
+      <div class="reveal-x">
+        <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
+          Logs become decision evidence when they stay connected.
+        </h2>
+        <p class="mt-4 text-text-secondary leading-relaxed">
+          Enterprise operators need fast search, but they also need confidence that a log line
+          belongs to the right customer, project, service, and request. CloudGrid keeps those
+          relationships explicit instead of turning logs into a detached text archive.
+        </p>
+      </div>
+    </div>
+  </Section>
+
   <Section>
-    <div class="grid lg:grid-cols-2 gap-12">
+    <div class="grid lg:grid-cols-[0.78fr_1.22fr] gap-12 items-start">
+      <div class="reveal-x">
+        <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
+          From text symptom to operational follow-through.
+        </h2>
+        <p class="mt-4 text-text-secondary leading-relaxed">
+          The log page is intentionally not a separate world. It is a fast entry point into the same
+          project record that also owns traces, metrics, dashboards, alerts, and evaluations.
+        </p>
+      </div>
+      <div class="truth-stack truth-stack--wide">
+        {logFlow.map((item, i) => (
+          <div class="truth-stack__item reveal" data-delay={(((i % 3) + 1)) as any}>
+            <div class="truth-stack__index">{String(i + 1).padStart(2, "0")}</div>
+            <div>
+              <div class="truth-stack__title">{item.title}</div>
+              <p>{item.body}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </Section>
+
+  <Section tone="recessed">
+    <div class="grid lg:grid-cols-[0.9fr_1.1fr] gap-12 items-start">
       <div class="reveal">
-        <h2 class="text-xl font-semibold text-text mb-4">What you can do today</h2>
+        <h2 class="text-xl font-semibold text-text mb-4">What CloudGrid provides</h2>
         <CheckList
           items={[
             "OTLP HTTP ingest on /v1/logs with JSON and protobuf encodings.",
-            "Severity-aware table — INFO / WARN / ERROR / DEBUG with theme-stable colour chips.",
-            "Full-text search over message bodies, plus structured filters on attributes.",
-            "Trace-id and span-id are first-class columns — every row links to its trace.",
-            "Project-scoped queries: a user only sees logs for projects they belong to.",
+            "Severity-aware table for INFO, WARN, ERROR, DEBUG, and related log severity values.",
+            "Full-text search over message bodies plus structured filters on attributes.",
+            "Trace-id and span-id columns that link a log row back to its trace.",
+            "Project-scoped queries so users only see logs for projects they belong to.",
           ]}
         />
       </div>
       <div class="reveal">
-        <h2 class="text-xl font-semibold text-text mb-4">Current scope</h2>
+        <h2 class="text-xl font-semibold text-text mb-4">Operating model</h2>
         <CheckList
           muted
           items={[
-            "Log match and log count alerting live in the project alerting workspace.",
             "Redaction policies are owned by your collector pipeline; CloudGrid stores what is sent.",
-            "Metrics are the time-series path for aggregation questions.",
-            "Long-term archival to object storage is delivered through alternative storage adapters.",
+            "Log match and log count alerting live in the project alerting workspace.",
+            "Metrics remain the time-series path for aggregation questions.",
+            "Long-term archival belongs behind alternative storage adapters.",
           ]}
         />
       </div>
+    </div>
+  </Section>
+
+  <Section>
+    <div class="max-w-3xl mb-8 reveal">
+      <h2 class="text-2xl font-semibold tracking-tight text-text">Where connected logs help.</h2>
+      <p class="mt-3 text-text-secondary">
+        Logs are often the first human-readable signal. CloudGrid keeps them useful after the first search.
+      </p>
+    </div>
+    <div class="truth-stack truth-stack--wide">
+      {outcomes.map(([title, body], i) => (
+        <div class="truth-stack__item reveal" data-delay={(i + 1) as any}>
+          <div class="truth-stack__index">{title}</div>
+          <div>
+            <div class="truth-stack__title">{title}</div>
+            <p>{body}</p>
+          </div>
+        </div>
+      ))}
     </div>
   </Section>
 

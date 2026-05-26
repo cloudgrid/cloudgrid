@@ -4,6 +4,27 @@ import Section from "../../components/Section.astro";
 import PageHeader from "../../components/PageHeader.astro";
 import CheckList from "../../components/CheckList.astro";
 import RelatedFeatures from "../../components/RelatedFeatures.astro";
+
+const investigationFlow = [
+  {
+    title: "Start with the customer or workflow impact.",
+    body: "A slow checkout, a failed background job, or a surprising agent response becomes easier to explain when the team can follow the exact request path.",
+  },
+  {
+    title: "Move from symptom to service boundary.",
+    body: "The waterfall shows which service, operation, status, duration, span attribute, or event changed the behavior.",
+  },
+  {
+    title: "Keep every follow-up attached to the same evidence.",
+    body: "Logs, metric exemplars, alert evidence, dashboard widgets, and evaluation rows can point back to the trace instead of becoming detached notes.",
+  },
+];
+
+const leadershipValue = [
+  ["Incident reviews", "Teams can explain what happened with a durable execution record instead of reconstructing the timeline from screenshots."],
+  ["Release confidence", "New latency, error, or dependency behavior can be traced back to a concrete operation."],
+  ["AI governance", "When an AI workflow fails, the trace can become source material for a dataset row or evaluation review."],
+];
 ---
 
 <Layout title="Distributed tracing — CloudGrid">
@@ -11,56 +32,110 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
     <PageHeader
       eyebrow="Traces"
       accent="brand"
-      title="Every span, every attribute, every event — preserved."
-      description="CloudGrid receives OTLP traces and renders them as waterfall timelines you can dig into. Span attributes, span events, and W3C trace context are kept end-to-end. Logs, metrics, and AI evaluation evidence can all link back to the trace that explains what happened."
+      title="Start every investigation from the request path."
+      description="When a customer workflow slows down, fails, or produces a surprising AI result, the trace is the fastest way to see what actually happened. CloudGrid preserves OTLP spans, attributes, events, and context so other signals can point back to the execution that explains them."
     />
   </Section>
 
-  <Section>
-    <div class="grid lg:grid-cols-2 gap-12">
-      <div class="reveal">
-        <h2 class="text-xl font-semibold text-text mb-4">What you can do today</h2>
-        <CheckList
-          items={[
-            "OTLP HTTP ingest on /v1/traces with JSON and protobuf encodings.",
-            "Project-scoped trace list with service, operation, status, and duration filters.",
-            "Full waterfall view with span attributes, span events, and trace-context links.",
-            "Live trace receiving over GraphQL subscriptions — filter by service, status, or duration.",
-            "Trace-id pivots from any log, metric exemplar, or AI evaluation row.",
-            "Use trace evidence as source material for dataset candidates when an AI workflow produces a wrong or surprising output.",
-          ]}
-        />
+  <Section tone="recessed">
+    <div class="story-split">
+      <div class="story-media reveal" aria-hidden="true">
+        <img src="/hero-backgrounds/features-traces.png" alt="" loading="lazy" decoding="async" />
       </div>
-      <div class="reveal">
-        <h2 class="text-xl font-semibold text-text mb-4">Current scope</h2>
-        <CheckList
-          muted
-          items={[
-            "OTLP HTTP on :4318 and OTLP/gRPC on :4317 — both shipped.",
-            "OpenTelemetry-native trace preservation — what your OTel SDK sent is what is stored.",
-            "Sampling decisions stay in your SDK / collector pipeline.",
-            "Long-term cold storage is delivered through alternative storage adapters.",
-          ]}
-        />
+      <div class="reveal-x">
+        <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
+          Traces become the spine of operational evidence.
+        </h2>
+        <p class="mt-4 text-text-secondary leading-relaxed">
+          For a CEO or CTO, the value is not a waterfall chart by itself. The value is that teams can
+          explain a customer-visible problem, connect it to a service boundary, and keep the evidence
+          available for incident review, alert tuning, dashboard views, and AI evaluation.
+        </p>
+      </div>
+    </div>
+  </Section>
+
+  <Section>
+    <div class="grid lg:grid-cols-[0.78fr_1.22fr] gap-12 items-start">
+      <div class="reveal-x">
+        <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
+          The path from symptom to decision.
+        </h2>
+        <p class="mt-4 text-text-secondary leading-relaxed">
+          CloudGrid keeps the investigation flow direct: start with what users experienced, inspect
+          the path that produced it, and connect the evidence to the next operational action.
+        </p>
+      </div>
+      <div class="truth-stack truth-stack--wide">
+        {investigationFlow.map((item, i) => (
+          <div class="truth-stack__item reveal" data-delay={(((i % 3) + 1)) as any}>
+            <div class="truth-stack__index">{String(i + 1).padStart(2, "0")}</div>
+            <div>
+              <div class="truth-stack__title">{item.title}</div>
+              <p>{item.body}</p>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   </Section>
 
   <Section tone="recessed">
-    <div class="max-w-3xl mb-6 reveal">
-      <h2 class="text-xl font-semibold text-text">Architecture, briefly.</h2>
-      <p class="mt-2 text-text-secondary">
-        Trace persistence is a one-direction flow: collector → bridge → storage-write. Reads are a
-        request/reply over the bridge; live trace receiving uses storage-read's ephemeral live
-        subjects scoped to the calling BFF session. SurrealDB client access stays inside the
-        private storage services.
+    <div class="grid lg:grid-cols-[0.9fr_1.1fr] gap-12 items-start">
+      <div class="reveal">
+        <h2 class="text-xl font-semibold text-text mb-4">What CloudGrid provides</h2>
+        <CheckList
+          items={[
+            "OTLP HTTP ingest on /v1/traces with JSON and protobuf encodings.",
+            "OTLP/gRPC ingest on :4317 for trace senders that use the gRPC path.",
+            "Project-scoped trace list with service, operation, status, and duration filters.",
+            "Full waterfall view with span attributes, span events, and trace-context links.",
+            "Live trace receiving over GraphQL subscriptions, filterable by service, status, or duration.",
+            "Trace-id pivots from any log, metric exemplar, alert evidence, or AI evaluation row.",
+          ]}
+        />
+      </div>
+      <div class="reveal">
+        <h2 class="text-xl font-semibold text-text mb-4">What stays under your control</h2>
+        <CheckList
+          muted
+          items={[
+            "Sampling decisions stay in your SDK or collector pipeline.",
+            "OpenTelemetry-native trace preservation means CloudGrid stores what your instrumentation sent.",
+            "Project membership and read authorization are enforced before trace queries and live fanout.",
+            "Long-term cold storage belongs behind alternative storage adapters.",
+          ]}
+        />
+      </div>
+    </div>
+  </Section>
+
+  <Section>
+    <div class="max-w-3xl mb-8 reveal">
+      <h2 class="text-2xl font-semibold tracking-tight text-text">What this changes for teams.</h2>
+      <p class="mt-3 text-text-secondary">
+        The same trace can support different audiences without changing the underlying evidence.
       </p>
     </div>
+    <div class="truth-stack">
+      {leadershipValue.map(([title, body], i) => (
+        <div class="truth-stack__item reveal" data-delay={(i + 1) as any}>
+          <div class="truth-stack__index">{title}</div>
+          <div>
+            <div class="truth-stack__title">{title}</div>
+            <p>{body}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  </Section>
+
+  <Section tone="recessed">
     <RelatedFeatures
       items={[
-        { label: "Logs", href: "/features/logs", desc: "Every log row already knows its trace id." },
-        { label: "Alerts", href: "/features/alerts", desc: "Trace match, count, latency, and error rules." },
-        { label: "AI Evaluation", href: "/features/ai-evaluation", desc: "Turn trace-backed failures into dataset rows and evaluation evidence." },
+        { label: "Logs", href: "/features/logs", desc: "Every log row can preserve trace and span context." },
+        { label: "Alerts", href: "/features/alerts", desc: "Trace match, count, latency, and error rules become managed action." },
+        { label: "AI Evaluation", href: "/features/ai-evaluation", desc: "Trace-backed failures can become dataset rows and evaluation evidence." },
       ]}
     />
   </Section>

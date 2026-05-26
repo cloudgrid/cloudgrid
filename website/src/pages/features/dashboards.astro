@@ -11,15 +11,26 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
     <PageHeader
       eyebrow="Dashboards"
       accent="amber"
-      title="Saved views. Typed widgets. Pinned where you work."
-      description="Dashboards compose from a small, opinionated set of typed widgets — metric time-series, log table, trace table, live trace feed, and project evidence views. Saved per-project, pinned to your project sidebar."
+      title="Keep recurring operational questions one click away."
+      description="Dashboards are the saved evidence views teams return to during operations, reviews, and release decisions. CloudGrid composes them from typed widgets that keep project-scoped queries, live feeds, alerts, and evaluation evidence explicit."
     />
   </Section>
 
   <Section>
-    <div class="grid lg:grid-cols-2 gap-12">
+    <div class="grid lg:grid-cols-[0.85fr_1.15fr] gap-12">
+      <div class="reveal-x">
+        <h2 class="text-2xl sm:text-3xl font-semibold tracking-tight text-text text-balance">
+          Dashboards turn repeated decisions into shared views.
+        </h2>
+        <p class="mt-4 text-text-secondary leading-relaxed">
+          Executives, platform teams, and product teams ask many of the same questions every week:
+          is the service healthy, are alerts under control, did a release change behavior, and is
+          the AI workflow improving? CloudGrid keeps those views connected to the underlying
+          evidence instead of storing screenshots or opaque dashboard JSON.
+        </p>
+      </div>
       <div class="reveal">
-        <h2 class="text-xl font-semibold text-text mb-4">What you can do today</h2>
+        <h2 class="text-xl font-semibold text-text mb-4">What CloudGrid provides</h2>
         <CheckList
           items={[
             "Compose dashboards from typed widgets — metric, log, trace, live feed.",
@@ -30,9 +41,7 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
             "Dashboards are versioned records in the control plane rather than opaque JSON blobs.",
           ]}
         />
-      </div>
-      <div class="reveal">
-        <h2 class="text-xl font-semibold text-text mb-4">Current scope</h2>
+        <h2 class="mt-8 text-xl font-semibold text-text mb-4">Operating model</h2>
         <CheckList
           muted
           items={[
@@ -47,6 +56,13 @@ import RelatedFeatures from "../../components/RelatedFeatures.astro";
   </Section>
 
   <Section tone="recessed">
+    <div class="max-w-3xl mb-6 reveal">
+      <h2 class="text-2xl font-semibold tracking-tight text-text">Where dashboard evidence comes from.</h2>
+      <p class="mt-2 text-text-secondary">
+        Dashboards are the place to return to known questions. Traces, logs, metrics, alerts, and
+        evaluation summaries remain the source evidence behind each view.
+      </p>
+    </div>
     <RelatedFeatures
       items={[
         { label: "Metrics", href: "/features/metrics", desc: "Where ad-hoc metric work happens." },

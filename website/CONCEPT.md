@@ -84,61 +84,57 @@ Cross-links:
 ## 6. Page briefs
 
 ### Home (`/`)
-**Job:** in 8 seconds, prove this is a serious tool; in 60 seconds, get a platform engineer to click Handbook or an AI engineer to click AI Evaluation.
+**Job:** in 8 seconds, explain that CloudGrid turns separate telemetry and AI-evaluation data into one owned evidence model; in 60 seconds, guide decision-makers to features, enterprise ownership, white-label, or handbook detail.
 
 Sections in order:
-1. **Hero** — headline "Own your observability." Sub: one-sentence positioning. CTAs: *Read the handbook*, *Star on GitHub*. The first section uses a generated realistic enterprise/product collage background, with the headline block aligned consistently with the other marketing pages.
-2. **Capability stack** — seven editorial rows: Traces / Logs / Metrics / Dashboards / Alerts / AI Evaluation / Customizable. Each row pairs concise copy with a generated product collage crop and links to its feature page.
-3. **The wedge** — "One self-hosted system. Signals, alerts, and evaluation." Three paragraphs against the three competitor camps, named.
-4. **Architecture teaser** — flat SVG of the service graph. Caption: "No public service touches the database." CTA to Handbook → Architecture.
-5. **Customizable** — brand, packaging, and runtime extension story with the four adapter slots (storage / bridge / auth / evaluation execution) as the technical foundation. CTA to Features → Customizable.
-6. **AI-native, signal-complete** — small mockup of an evaluation scoreboard with row evidence and trace links. CTA to Features → AI Evaluation.
-7. **Compare strip** — a 4-row preview of the comparison table. CTA to Enterprise → Compare.
+1. **Hero** — headline around owned operational evidence. Sub: OpenTelemetry-native, self-hosted, project-scoped traces/logs/metrics/dashboards/alerts/AI evaluation. CTAs: *Get started*, *Star on GitHub*. The first section uses a generated realistic enterprise/product collage background, with the headline block aligned consistently with the other marketing pages.
+2. **Evidence model stack** — seven editorial rows: Traces / Logs / Metrics / Dashboards / Alerts / AI Evaluation / Customizable. Each row explains how that capability contributes to one connected project record and links to its feature page.
+3. **Connected evidence** — explain how traces, logs, metrics, dashboards, alerts, datasets, evaluations, and optimization results stay connected instead of becoming isolated product islands.
+4. **Executive outcomes** — route to Enterprise ownership, AI evaluation, and White-label Solution without repeating the full detail from those pages.
+5. **Architecture teaser** — service graph and message bridge boundary. CTA to Handbook → Architecture.
+6. **Customizable** — brand, packaging, and runtime extension with adapter slots as the technical foundation. CTA to Features → Customizable.
+7. **AI-native, signal-complete** — evaluation scoreboard with row evidence and trace links. CTA to Features → AI Evaluation.
 8. **Source-available footer block** — Apache 2.0 + Commons Clause, public specs, public roadmap, GitHub.
 
 ### Features overview (`/features`)
-Editorial stack of the seven feature pages, alternating text and generated product collage crops. Avoid card grids and generic "read more" tiles. Below the stack: the three architectural truths that hold across every feature (message bridge, project isolation, customization surface) as a flat ruled list.
+Audience-led guide to the seven feature pages, alternating text and generated product collage crops. Avoid card grids and generic "read more" tiles. Below the stack: the product shape that holds across every feature: project boundary, evidence links, and modular runtime.
 
 ### `/features/traces`
-- Hero: "Every span, every attribute, every event — preserved."
-- Mockup: SVG trace waterfall with span details panel.
-- What you can do: waterfall view, span attribute search, span event inspection, status filtering, live trace receiving via GraphQL subscriptions.
-- Honesty: OTLP HTTP today; OTLP gRPC is on the spec path.
+- Hero: "Start every investigation from the request path."
+- Flow: explain why traces are the spine of operational evidence, then list concrete ingest, waterfall, live receiving, and pivot capabilities.
+- Boundary: OTLP HTTP and gRPC shipped; sampling remains in the SDK/collector pipeline; cold storage arrives through storage adapters.
 - Related: Logs (trace-log correlation), AI Evaluation (trace evidence becomes dataset cases).
 
 ### `/features/logs`
-- Hero: "Search-first logs that already know which trace they belong to."
-- Mockup: SVG log table with severity chips and a "Jump to trace" pivot.
-- What you can do: full-text search, severity filter, trace-id / span-id pivots, structured attribute filtering, time-range scoping.
-- Honesty: log ingestion is on `/v1/logs`; log match and log count alerting live in the project alerting workspace.
+- Hero: "Search logs without losing the execution context."
+- Flow: explain how logs move from detached text to project evidence, then list full-text search, severity filters, trace/span pivots, structured filters, and project scoping.
+- Boundary: log ingestion is on `/v1/logs`; redaction remains in the customer collector pipeline; log match/count alerting lives in the project alerting workspace.
 
 ### `/features/metrics`
-- Hero: "Metric exploration that respects descriptors, attributes, and exemplars."
-- Mockup: SVG time-series chart with descriptor inspector and an exemplar pin.
-- What you can do: counters / gauges / histograms / summaries, group-by descriptor attributes, pivot from an exemplar into the trace.
-- Honesty: long-term metric storage is a SurrealDB-backed v1; alternate backends are the natural next adapter.
+- Hero: "Measure system behavior and keep the evidence close."
+- Flow: explain metrics as health/cost/change evidence, then list descriptors, group-by, aggregation, exemplars, and AI runtime metrics.
+- Boundary: long-term metric retention uses the v1 SurrealDB adapter; recording-rule/downsampling pipelines stay in the collector layer for now.
 
 ### `/features/dashboards`
-- Hero: "Saved views, typed widgets, pinned where you work."
-- Mockup: SVG dashboard grid with four widget types (metric chart, log table, trace table, live trace feed).
-- What you can do: compose dashboards from typed widgets, pin to project sidebar, share within the project.
+- Hero: "Keep recurring operational questions one click away."
+- Flow: explain how dashboards turn repeated leadership/operator questions into saved project views.
+- What you can do: compose dashboards from typed widgets, pin to project sidebar, use project-scoped queries, live feed widgets, and evaluation summaries.
 - Distinction: `Dashboard` and `DashboardWidget` are the only saved-composition surface. Ad-hoc exploration lives in `/metrics`, `/traces`, `/logs`.
 
 ### `/features/alerts`
-- Hero: "Core alerting with flexible delivery paths."
-- Mockup: alert rule table plus delivery fan-out showing in-app, email, and bridge adapters.
+- Hero: "Turn live telemetry into managed action."
+- Flow: explain that alerting is rule evaluation, state, history, evidence, and delivery, not only notification fan-out.
 - What you can do: configure project-scoped metric, log, and trace alert rules; manage silences and history; use in-app alert history and email summaries; extend delivery through bridge-backed adapters for Slack, Teams, WhatsApp, SMS, PagerDuty, or customer gateways.
 - Key boundary: CloudGrid core owns evaluation, state transitions, deduplication, silences, cooldowns, history, and delivery result handling. Adapters deliver safe summaries and return bounded status; they do not evaluate rules or own provider secrets in the frontend.
 
 ### `/features/ai-evaluation`
-- Hero: "Turn collected telemetry into better AI behavior."
-- Mockup: dataset evaluation scoreboard with metric deltas, row evidence, and trace links.
-- What you can do: build schema-backed datasets, import trace-derived cases, run dataset evaluations, inspect row evidence, compare candidates, optimize prompts or examples, and promote with validation evidence.
+- Hero: "Evaluate AI changes against evidence your team can inspect."
+- Flow: explain AI evaluation as operational governance for AI behavior, then list datasets, runs, comparisons, optimization, row evidence, metrics, and trace links.
 - Key honesty: production measurement is not the primary v1 workflow; complex targets can use an adapter; provider credentials stay in project/provider settings.
 - Compare: Langfuse / Arize / Braintrust focus on AI slice only; CloudGrid evaluates AI inside the same system that observes everything else.
 
 ### `/features/adapters`
-- Hero: "Make CloudGrid feel like your product."
+- Hero: "Make CloudGrid fit your brand, product, and runtime."
 - Focus: CloudGrid as a customizable, source-available foundation: logos, naming, colors, support/legal links, product copy, deployment packaging, auth, bridge, storage, and evaluation execution.
 - Diagram: SVG showing adapter port surfaces with v1 implementation chips: storage (SurrealDB), message bridge (NATS JetStream), alert delivery (in-app / email / webhook), auth (GitHub / Google / Entra ID), evaluation execution.
 - What you can do: customize the visible product surface, package CloudGrid for your environment, implement a Go storage adapter against the storage-read/write port, point the bridge at a different transport, add an SSO provider, or plug in an external evaluation execution path.
@@ -146,17 +142,15 @@ Editorial stack of the seven feature pages, alternating text and generated produ
 - Link to Enterprise → White-label Solution and Handbook → Adapters.
 
 ### Enterprise (`/enterprise`)
-**Job:** answer the buyer-grade questions in one read.
+**Job:** answer buyer-grade ownership, risk, license, identity, scaling, and procurement questions in one read.
 
 Sections:
-1. **Data ownership.** Self-hosted by default. No outbound telemetry. Apache 2.0.
-2. **Deployment modes.** Local single-binary, Compose, Kubernetes. Single config flag flips local-mode auth into SSO mode.
-3. **SSO & sessions.** GitHub, Google, Entra ID. BFF-managed HttpOnly cookies. No provider tokens in the browser.
-4. **Project isolation.** Every project is a strict telemetry boundary. Users only see their company's projects. Isolation enforced at API, message, and persistence layers.
-5. **Security posture.** No public service touches the database. Adapter packages keep DB drivers out of the public attack surface. Spec-driven contracts are reviewable.
-6. **Operational characteristics.** Independent scale of collector, BFF, storage-read. Storage-write is the only mutator. Live subscriptions respect the same authorization as queries.
-7. **License & governance.** Apache 2.0. Public specs. No hidden enterprise switches.
-8. **CTA:** Compare to your current stack → `/enterprise/compare`.
+1. **Review path.** Data location, privacy, license, identity, blast radius, and cost control as concise answers with proof points.
+2. **License paths.** Internal self-hosted adoption and commercial SaaS/white-label/managed-service paths.
+3. **Data perimeter.** What stays inside the deployment, what is opt-in, and how SSO/model/alert integrations are wired.
+4. **Control map.** Which controls CloudGrid enforces, which are operated by the customer, and which integration surfaces are evolving.
+5. **Procurement summary.** Compact table for security/legal/finance review.
+6. **CTA:** deployment guide, white-label solution, and side-by-side comparison.
 
 ### Enterprise — White-label Solution (`/enterprise/whitelabel-solution`)
 **Job:** explain CloudGrid as a commercial white-label / partner foundation.
@@ -250,6 +244,7 @@ Adapter author guide. The port shapes (storage-read, storage-write, evaluation e
 - Buttons: solid primary (filled with `--color-text-primary`-on-inverse), ghost secondary (1px border, hover background)
 - Cards: 1px border, no shadow in light, soft 12px-blur shadow in dark; 16px or 24px padding; use cards only for repeated selectable items or genuinely framed tools, never as nested page-section wrappers
 - Marketing feature/related navigation: prefer editorial rows, visual stacks, ruled lists, or image-led strips over grid cards. If a section links to multiple marketing pages, pair concise text with real generated product imagery instead of icon boxes.
+- Non-handbook page flow: open with the audience problem, explain CloudGrid's concrete help, then guide to deeper pages. Do not repeat the same capability catalog on every page.
 - Tables: zebra rows off, sticky header on long tables, monospace for numeric columns
 - Diagrams: SVG, stroke-based, accent color only at semantic emphasis points (e.g., the message bridge)
 - No card-in-card. No gradient borders. No glowing pulses.
@@ -275,7 +270,7 @@ Adapter author guide. The port shapes (storage-read, storage-write, evaluation e
 | Generic "AI-ready" mention | Dedicated AI Evaluation page with datasets, evaluation scoreboards, comparisons, and optimization |
 | Architecture as a side note | Architecture as a first-class handbook page with named services + adapter slots |
 | No competitor comparison | Named head-to-head page with 13 decision rows |
-| No customization story | First-class Customizable feature page, white-label enterprise page, and adapter author handbook page |
+| No customization path | First-class Customizable feature page, white-label enterprise page, and adapter author handbook page |
 | Docs = redirect to GitHub | Handbook with real content; docs subdir on GitHub still linked as the deep reference |
 
 ## 10. Out of scope for this iteration

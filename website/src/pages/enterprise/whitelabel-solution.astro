@@ -97,8 +97,8 @@ const licenseRows = [
       eyebrow="White-label solution"
       accent="brand"
       highlight="your"
-      title="CloudGrid under your brand, in your product portfolio."
-      description="For enterprises, startups, and service providers that want to offer observability as part of their own SaaS, platform, or managed service. CloudGrid provides the source-available foundation; commercial licensing covers white-label and hosted product use."
+      title="Offer CloudGrid as part of your own product."
+      description="For enterprises, startups, and service providers that want a branded observability and AI-evaluation foundation inside their SaaS, platform, or managed service. CloudGrid provides the source-available product base; commercial licensing covers hosted and white-label use."
     />
     <div class="reveal mt-7 flex flex-wrap gap-3" data-delay="3">
       <Button href="/features/adapters" variant="primary">Customization surface</Button>
@@ -117,11 +117,14 @@ const licenseRows = [
       </p>
     </div>
 
-    <div class="mt-10 grid md:grid-cols-3 gap-5">
+    <div class="mt-10 truth-stack truth-stack--wide">
       {audiences.map((item, i) => (
-        <div class="card spotlight p-6 flex h-full flex-col reveal" data-delay={(i + 1) as any}>
-          <h3 class="text-base font-semibold text-text">{item.title}</h3>
-          <p class="mt-3 text-sm text-text-secondary leading-relaxed flex-1">{item.body}</p>
+        <div class="truth-stack__item reveal" data-delay={(i + 1) as any}>
+          <div class="truth-stack__index">{String(i + 1).padStart(2, "0")}</div>
+          <div>
+            <div class="truth-stack__title">{item.title}</div>
+            <p>{item.body}</p>
+          </div>
         </div>
       ))}
     </div>
@@ -140,11 +143,11 @@ const licenseRows = [
         </p>
       </div>
 
-      <div class="card p-0 overflow-hidden reveal">
-        <ul class="divide-y divide-border-subtle">
+      <div class="reveal">
+        <ul class="truth-stack">
           {customizable.map((item) => (
-            <li class="flex gap-3 px-5 py-4 text-sm text-text-secondary leading-relaxed">
-              <span class="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-emerald)]"></span>
+            <li class="truth-stack__item truth-stack__item--compact truth-stack__item--dot">
+              <span class="mt-2 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--color-text)]"></span>
               <span>{item}</span>
             </li>
           ))}
@@ -165,11 +168,14 @@ const licenseRows = [
       </p>
     </div>
 
-    <div class="mt-10 grid sm:grid-cols-2 gap-5">
+    <div class="mt-10 truth-stack truth-stack--wide">
       {architecture.map((item, i) => (
-        <div class="card spotlight p-6 flex h-full flex-col reveal" data-delay={(((i % 2) + 1)) as any}>
-          <h3 class="text-base font-semibold text-text">{item.title}</h3>
-          <p class="mt-3 text-sm text-text-secondary leading-relaxed flex-1">{item.body}</p>
+        <div class="truth-stack__item reveal" data-delay={(((i % 2) + 1)) as any}>
+          <div class="truth-stack__index">{String(i + 1).padStart(2, "0")}</div>
+          <div>
+            <div class="truth-stack__title">{item.title}</div>
+            <p>{item.body}</p>
+          </div>
         </div>
       ))}
     </div>
@@ -188,11 +194,14 @@ const licenseRows = [
         </p>
       </div>
 
-      <div class="grid md:grid-cols-3 gap-5">
+      <div class="truth-stack">
         {scalingLevels.map((item, i) => (
-          <div class="card spotlight p-6 flex h-full flex-col reveal" data-delay={(i + 1) as any}>
-            <h3 class="text-base font-semibold text-text">{item.title}</h3>
-            <p class="mt-3 text-sm text-text-secondary leading-relaxed flex-1">{item.body}</p>
+          <div class="truth-stack__item reveal" data-delay={(i + 1) as any}>
+            <div class="truth-stack__index">{String(i + 1).padStart(2, "0")}</div>
+            <div>
+              <div class="truth-stack__title">{item.title}</div>
+              <p>{item.body}</p>
+            </div>
           </div>
         ))}
       </div>
@@ -213,11 +222,14 @@ const licenseRows = [
         </p>
       </div>
 
-      <div class="grid sm:grid-cols-2 gap-5">
+      <div class="truth-stack truth-stack--wide">
         {specAdvantages.map((item, i) => (
-          <div class="card spotlight p-6 flex h-full flex-col reveal" data-delay={(((i % 2) + 1)) as any}>
-            <h3 class="text-base font-semibold text-text">{item.title}</h3>
-            <p class="mt-3 text-sm text-text-secondary leading-relaxed flex-1">{item.body}</p>
+          <div class="truth-stack__item reveal" data-delay={(((i % 2) + 1)) as any}>
+            <div class="truth-stack__index">{String(i + 1).padStart(2, "0")}</div>
+            <div>
+              <div class="truth-stack__title">{item.title}</div>
+              <p>{item.body}</p>
+            </div>
           </div>
         ))}
       </div>
@@ -271,7 +283,7 @@ const licenseRows = [
       items={[
         { label: "Customizable", href: "/features/adapters", desc: "Branding, packaging, adapters, and runtime extension points." },
         { label: "Enterprise", href: "/enterprise", desc: "Data ownership, SSO, license, and procurement posture." },
-        { label: "Compare", href: "/enterprise/compare", desc: "CloudGrid against SaaS APM, LGTM, and AI-eval tools." },
+        { label: "Compare", href: "/enterprise/compare", desc: "Named side-by-side view for buyer and procurement review." },
       ]}
     />
   </Section>
