@@ -8,6 +8,7 @@ import (
 
 	"github.com/cloudgrid-dev/cloudgrid/core/storage-write/internal/adapters/surrealdb"
 	"github.com/cloudgrid-dev/cloudgrid/core/storage-write/internal/config"
+	"github.com/cloudgrid-dev/cloudgrid/core/storage-write/internal/ingest"
 )
 
 func newTelemetryWriteAdapter(ctx context.Context, cfg config.Config) (telemetryWriteAdapter, error) {
@@ -26,9 +27,13 @@ func newTelemetryWriteAdapter(ctx context.Context, cfg config.Config) (telemetry
 		return telemetryWriteAdapter{}, err
 	}
 
+	store := &surrealdb.Persister{DB: db}
 	return telemetryWriteAdapter{
 		Name:  config.AdapterSurrealDB,
-		Store: surrealdb.Persister{DB: db},
+		Store: store,
+		ConfigureDBAdapterTracing: func(recorder ingest.TraceLogRecorder) {
+			store.EnableDBAdapterTracing(recorder)
+		},
 		Initialize: func(ctx context.Context) error {
 			return surrealdb.Initialize(ctx, db)
 		},

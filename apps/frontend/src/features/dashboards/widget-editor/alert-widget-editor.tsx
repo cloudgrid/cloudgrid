@@ -1,6 +1,7 @@
 import { Field, FieldGroup, FieldLabel } from "../../../components/ui/field";
 import { Input } from "../../../components/ui/input";
 import type { DashboardWidgetInput } from "../../../lib/dashboard-contracts";
+import { t } from "../../../lib/i18n";
 
 function stringOrNull(value: string | null) {
   const normalized = value?.trim();
@@ -46,7 +47,9 @@ export function AlertWidgetEditor({
   return (
     <FieldGroup>
       <Field data-disabled={disabled}>
-        <FieldLabel htmlFor={`${widget.id}-alert-rule-ids`}>Rule IDs</FieldLabel>
+        <FieldLabel htmlFor={`${widget.id}-alert-rule-ids`}>
+          {t("dashboards.editor.ruleIds")}
+        </FieldLabel>
         <Input
           disabled={disabled}
           id={`${widget.id}-alert-rule-ids`}
@@ -58,7 +61,9 @@ export function AlertWidgetEditor({
         />
       </Field>
       <Field data-disabled={disabled}>
-        <FieldLabel htmlFor={`${widget.id}-alert-states`}>States</FieldLabel>
+        <FieldLabel htmlFor={`${widget.id}-alert-states`}>
+          {t("dashboards.editor.states")}
+        </FieldLabel>
         <Input
           disabled={disabled}
           id={`${widget.id}-alert-states`}
@@ -78,7 +83,9 @@ export function AlertWidgetEditor({
         />
       </Field>
       <Field data-disabled={disabled}>
-        <FieldLabel htmlFor={`${widget.id}-alert-severities`}>Severities</FieldLabel>
+        <FieldLabel htmlFor={`${widget.id}-alert-severities`}>
+          {t("dashboards.editor.severities")}
+        </FieldLabel>
         <Input
           disabled={disabled}
           id={`${widget.id}-alert-severities`}
@@ -98,7 +105,9 @@ export function AlertWidgetEditor({
         />
       </Field>
       <Field data-disabled={disabled}>
-        <FieldLabel htmlFor={`${widget.id}-alert-signals`}>Signals</FieldLabel>
+        <FieldLabel htmlFor={`${widget.id}-alert-signals`}>
+          {t("dashboards.editor.signals")}
+        </FieldLabel>
         <Input
           disabled={disabled}
           id={`${widget.id}-alert-signals`}
@@ -118,7 +127,9 @@ export function AlertWidgetEditor({
         />
       </Field>
       <Field data-disabled={disabled}>
-        <FieldLabel htmlFor={`${widget.id}-alert-window`}>Time window</FieldLabel>
+        <FieldLabel htmlFor={`${widget.id}-alert-window`}>
+          {t("dashboards.editor.timeWindow")}
+        </FieldLabel>
         <Input
           disabled={disabled}
           id={`${widget.id}-alert-window`}
@@ -134,7 +145,9 @@ export function AlertWidgetEditor({
         />
       </Field>
       <Field data-disabled={disabled}>
-        <FieldLabel htmlFor={`${widget.id}-alert-limit`}>Limit</FieldLabel>
+        <FieldLabel htmlFor={`${widget.id}-alert-limit`}>
+          {t("dashboards.editor.limit")}
+        </FieldLabel>
         <Input
           disabled={disabled}
           id={`${widget.id}-alert-limit`}

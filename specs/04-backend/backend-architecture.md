@@ -4,7 +4,7 @@ title: Service architecture
 layer: backend
 status: draft
 owner: unknown@example.com
-updated: 2026-05-08
+updated: 2026-05-31
 provenance: inferred-draft
 ---
 
@@ -80,6 +80,15 @@ provenance: inferred-draft
 - Reads datasets, scorers, projections, and experiment state only through storage-read request/reply subjects.
 - Persists DatasetItemRun, EvalResult, PromptVersion, ExperimentRun status, and AnnotationQueueItem records only through storage-write command subjects.
 - Calls the cloudgrid-harness-adapter over HTTP for agent replay, scorer execution, and prompt optimization.
+- Orchestrates classification and extraction prompt optimization by requesting
+  storage-read family diagnosis, calling the CloudGrid optimizer or optional
+  custom optimizer adapter for structured prompt/example proposals, validating
+  candidate target snapshots through normal evaluation runs, and persisting
+  accepted/rejected evidence through storage-write.
+- Orchestrates skill document optimization by resolving skill target parts,
+  executing rollout/validation runs, requesting bounded optimizer edits through
+  the harness adapter, and persisting accepted/rejected skill optimization
+  evidence through storage-write.
 - Must not import SurrealDB clients, storage adapters, model-provider SDKs, or provider credentials.
 - Publishes durable experiment progress notifications for storage-read-managed GraphQL subscription fanout.
 
@@ -135,6 +144,44 @@ core/control-plane/internal/
 The SurrealDB adapter is the only implemented MVP adapter. Additional database
 adapters must be added as sibling adapter directories and must not change BFF,
 frontend, collector, or NATS message contracts.
+
+Regular database adapters remain service-local. Do not collapse
+`storage-read`, `storage-write`, `storage-maintenance`, and `control-plane`
+into one shared SurrealDB adapter package. The separate adapters preserve
+least-privilege method sets, service-specific query semantics, and independent
+build tags. Shared alignment comes from generated contracts, local ports,
+focused drift tests, and shared runtime helpers, not from a broad cross-service
+database interface.
+
+Regular database adapter ports also own a stable optional trace-context
+argument once deep adapter tracing is implemented. The context is not a generic
+query DSL and is not a shared adapter package; it is a small observability
+carrier that allows service spans to become parents of adapter child spans when
+the configured adapter can do so safely. Adapter implementations must be able
+to ignore the context without changing behavior. The context must contain only
+parent OpenTelemetry context and bounded operation metadata defined in
+`04-backend/self-observability.md`.
+
+Secret material uses a separate adapter family, not the regular control-plane
+database adapter:
+
+```text
+core/control-plane/internal/
+  ports/secrets.go
+  adapters/secrets/<provider>/
+```
+
+Provider API keys, bearer tokens, refresh tokens, cloud provider secret JSON,
+and other recoverable secret material must be stored, rotated, resolved, and
+deleted only through the secret-store port. Control-plane metadata rows store
+redacted profile data and `credentialRef` values only. The local/development
+reference secret store is SurrealDB-backed but uses a separate namespace and
+database from the normal control-plane store.
+
+Secret-store adapters are excluded from deep database adapter tracing. Secret
+read, resolve, rotate, delete, and encryption/decryption operations may be
+observed only at the bounded control-plane operation level and must not create
+adapter-level spans.
 
 Storage services are built with exactly the required storage adapter dependency
 set. The MVP SurrealDB binaries are built with the Go build tag `surrealdb` and

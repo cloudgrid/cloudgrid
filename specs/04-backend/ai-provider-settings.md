@@ -4,7 +4,7 @@ title: Project and company AI provider settings
 layer: backend
 status: draft
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-18
+updated: 2026-05-29
 provenance: from-user
 depends_on: [TEC-BE-009, TEC-BE-011]
 ---
@@ -44,13 +44,13 @@ Control-plane does not:
   headers in provider settings rows or return them through read APIs;
 - execute AI Chat, AI Eval, judge, optimizer, embedding, or replay work.
 
-Control-plane does own the managed provider secret vault used by SaaS and local
-UI configuration. Managed secrets are encrypted at rest in dedicated
-`ai_provider_secret` records and are referenced from provider settings by
-`managed:<scope>/<owner>/<provider>` refs. The raw secret value is accepted only
-through write-only mutation input and is returned only to the BFF/runtime over
-the private `control.ai_provider_secrets.resolve` subject for an authorized
-execution.
+Control-plane owns the authorization and metadata flow for managed provider
+secrets, but secret material is stored behind a separate secret-store adapter,
+not in regular control-plane metadata tables. Managed secrets are referenced
+from provider settings by `managed:<scope>/<owner>/<provider>` refs. The raw
+secret value is accepted only through write-only mutation input and is returned
+only to the BFF/runtime over the private `control.ai_provider_secrets.resolve`
+subject for an authorized execution.
 
 The BFF talks to control-plane through message bridge subjects. Frontend talks
 only to BFF GraphQL. Harness is the only execution boundary for model calls.
@@ -197,9 +197,27 @@ execution process immediately before harness invocation. Missing runtime
 credentials fail with `ERR-AIP-001`.
 
 Managed provider secrets use the control-plane
-`CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY` deployment secret as key material.
-Local mode may run with the built-in development key; deployed mode must provide
-a stable non-default encryption key before accepting production secrets.
+secret-store port. The SurrealDB development implementation stores encrypted
+ciphertext in a separate secret-store namespace/database and uses
+`CLOUDGRID_SECRET_STORE_ENCRYPTION_KEY` as key material. Local mode may run with
+the built-in development key; deployed mode must provide a stable non-default
+secret-store encryption key before accepting production secrets.
+
+Secret-store adapter rules:
+
+- provider profile/settings rows store only redacted metadata and
+  `credentialRef`;
+- the regular control-plane SurrealDB adapter must not expose secret methods or
+  define secret-bearing tables;
+- `managed:` refs are resolved through `ports.SecretStore` after control-plane
+  validates company/project access;
+- `env:` refs are resolved only by the execution process that owns its
+  environment;
+- `external:` refs are resolved by an installed external credential resolver,
+  not by the regular database adapter;
+- secret-store errors map to the canonical storage-unavailable problem and must
+  not leak provider names, secret values, ciphertext, nonces, or backend error
+  strings.
 
 ## Local Bootstrap
 

@@ -114,7 +114,9 @@ export function TraceWidgetEditor({
         value={widget.traces.status ?? null}
       />
       <Field data-disabled={disabled}>
-        <FieldLabel htmlFor={`${widget.id}-trace-limit`}>Limit</FieldLabel>
+        <FieldLabel htmlFor={`${widget.id}-trace-limit`}>
+          {t("dashboards.editor.limit")}
+        </FieldLabel>
         <Input
           disabled={disabled}
           id={`${widget.id}-trace-limit`}

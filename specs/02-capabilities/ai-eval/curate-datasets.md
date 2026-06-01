@@ -5,7 +5,7 @@ domain: ai-eval
 layer: capability
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-24
+updated: 2026-05-29
 provenance: from-user
 traits:
   interaction: http
@@ -14,7 +14,7 @@ traits:
   authentication: prepared
 depends_on: [DOM-006]
 implements:
-  api: [GQL-Mutation-createDataset, GQL-Mutation-appendDatasetItems, GQL-Mutation-updateDatasetItems, GQL-Mutation-promoteSpanToDatasetItem, GQL-Query-datasets]
+  api: [GQL-Mutation-createDataset, GQL-Mutation-appendDatasetItems, GQL-Mutation-updateDatasetItems, GQL-Mutation-prepareDatasetCandidates, GQL-Mutation-commitDatasetCandidates, GQL-Query-datasets]
 ---
 
 # Curate Dataset Versions And Splits
@@ -29,8 +29,8 @@ optimizations reproducible.
 
 - A dataset defines exactly one row contract through `evaluationFamily`,
   `inputType`, `expectedType`, JSON schemas, default split, curation policy,
-  trace extraction settings, anonymization policy, metric defaults, and
-  retention profile.
+  trace intake rules, expected result options, anonymization policy, metric
+  defaults, and retention profile.
 - Rows use `input`, `expected`, optional `observedOutput`, `reason`,
   `curationStatus`, `curationNote`, `split`, source refs, content treatment,
   anonymization provenance, audit fields, and user metadata exactly as defined
@@ -67,13 +67,37 @@ optimizations reproducible.
 
 ## Trace-To-Dataset Intake
 
-- Trace detail and trace overview expose `Add to dataset`.
-- The dataset picker lists only datasets with compatible
-  `traceExtractionSettings`.
-- Trusted valid observed output may be copied into `expected`.
-- Untrusted, wrong, or incomplete observed output is stored as `observedOutput`
-  and the row is saved as `needs_expected` or `needs_review`.
+- Trace intake is configured on the dataset, not during a trace-side action. Dataset
+  settings expose trace intake rules that define service/span matching,
+  extraction mappings, transforms, split/status defaults, and expected-value
+  trust policy.
+- Trace detail and trace overview expose candidate-preparation actions when AI
+  Eval is enabled. Trace detail uses the current trace and selected span when a
+  span is selected. Trace overview uses selected rows or an explicit bounded
+  current-filter preview.
+- The trace action label uses business wording such as `Prepare dataset rows`.
+  It must not require the user to type a trace ID or span ID.
+- Candidate preparation can target one dataset or auto-match multiple datasets.
+  The preview groups candidates by dataset and trace intake rule.
+- Trusted valid labels may prefill `expected`, but generated or untrusted
+  values remain `needs_review`. Untrusted, wrong, or incomplete observed output
+  is stored as `observedOutput` and the candidate is saved as `needs_expected`
+  or `needs_review`.
+- Default trace intake creates `DatasetCandidate` records. Committing candidates
+  creates item revisions and a dataset version.
 - No trace-imported row becomes evaluation-eligible until it is `ready`.
+
+## Row Editing Controls
+
+- Row editing uses controls derived from dataset settings and schemas. Text
+  values use text areas, JSON values use the shared JSON editor, booleans use a
+  binary control, numbers use numeric inputs when schema bounds are available,
+  and closed expected result sets use select or multi-select controls.
+- Classification datasets with allowed categories expose those categories as
+  `expectedValueOptions` unless a JSON Schema enum is already authoritative.
+- `Mark ready` and save actions must surface field-level validation and must not
+  permit a ready row without valid input, expected result, split, and curation
+  status.
 
 ## Acceptance Criteria
 
@@ -84,5 +108,7 @@ optimizations reproducible.
 - Updating a ready row's expected value creates a new item revision and dataset
   version; older evaluation runs still render the old value.
 - Optimization cannot select `test` rows.
-- A trace import into a dataset without compatible extraction settings is not
-  offered in the picker.
+- Trace candidate preparation from overview and trace detail never exposes
+  manual trace ID entry.
+- A trace/span without a matching enabled dataset intake rule is shown as
+  unmatched in preview, not silently committed.

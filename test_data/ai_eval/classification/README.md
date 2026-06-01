@@ -1,10 +1,21 @@
-# AI Eval Classification Test Data
+# AI Eval Classification Prompt Optimization Fixture
 
-Small customer-support intent classification dataset for validating dataset creation, JSON schema settings, row import, split handling, optional reasons, and classification metrics.
+This pack is a realistic, deterministic support-intent classification example
+for trying classification evaluation and prompt optimization end to end. It is
+small enough for local runs but includes label confusions, distractors, edge
+cases, and split coverage that an optimizer can improve.
 
 Files:
 
-- `dataset-settings.json`: dataset-level input and expected-output JSON schemas.
-- `rows.jsonl`: import rows with `input`, `expected`, optional `reason`, `split`, `reviewStatus`, and metadata.
+- `dataset-settings.json`: public GraphQL `DatasetSettingsInput`-shaped
+  settings for a closed-label classification dataset.
+- `rows.jsonl`: ready import rows with `input`, `expected`, `reason`, `split`,
+  `curationStatus`, source refs, and metadata.
+- `baseline-target.json`: example prompt target snapshot metadata.
+- `baseline-prompt.md`: intentionally weak baseline prompt.
+- `baseline-examples.jsonl`: weak few-shot examples attached to the baseline
+  target.
+- `expected-optimizer-behavior.json`: deterministic expectations for tests and
+  manual review.
 
-Recommended metric: `classification.accuracy`.
+Recommended primary metric: `classification.accuracy`.

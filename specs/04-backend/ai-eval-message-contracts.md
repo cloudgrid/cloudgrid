@@ -4,9 +4,9 @@ title: AI evaluation message contracts
 layer: backend
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-24
+updated: 2026-05-31
 provenance: from-user
-depends_on: [DOM-006]
+depends_on: [DOM-006, CAP-AIE-013]
 ---
 
 # AI Evaluation Message Contracts
@@ -68,6 +68,8 @@ Target and optimization subjects:
 | `eval.optimization.start` | BFF | runner | Start optimization run. |
 | `eval.optimization.search` | BFF | storage-read | Search optimization runs. |
 | `eval.optimization.get` | BFF, runner | storage-read | Read optimization detail. |
+| `eval.optimization.step.persist` | runner | storage-write | Persist immutable prompt or skill optimization step evidence. |
+| `eval.optimization.memory.persist` | runner | storage-write | Persist bounded rejected-edit, slow-update, and meta-memory state. |
 | `eval.target.promote` | BFF | storage-write | Create promotion record and move target ref. |
 
 Live and settings subjects:
@@ -93,6 +95,21 @@ Live and settings subjects:
   calling the harness adapter. Harness run, score, optimization, and sandbox
   lifecycle requests carry `providerProfileRefs`; raw provider credentials stay
   in control-plane secret resolution and are not persisted in AI Eval results.
+- `eval.optimization.start` payloads must mirror
+  `StartOptimizationRunInput`, including typed `objective`, typed
+  `searchPolicy`, split selectors, optional quick-shot policy, run policy, and
+  idempotency key. `searchPolicy.optimizerKind = skill_text_edit` requires a
+  selected baseline target snapshot whose editable parts include
+  `TargetPartKind.skill`.
+- `eval.optimization.step.persist` payloads mirror `PromptOptimizationStep` for
+  `bootstrap_fewshot` and `critic_mutate_judge_pick` over classification or
+  extraction datasets, and mirror `SkillOptimizationStep` for `skill_text_edit`.
+  Prompt step payloads must include project ID, optimization run ID, step ID,
+  idempotency key, family, diagnosis, selected changes, gate decision, candidate
+  target snapshot IDs when created, and bounded problems.
+- `eval.optimization.memory.persist` payloads mirror
+  `SkillOptimizationMemory`. They must enforce rejected-edit buffer and memory
+  byte limits before storage-write persists the update.
 - Runner-originated persistence payloads mirror entity JSON schemas.
 - Responses use `{ requestId, ok, data?, error? }`.
 - `error.code` must come from `specs/03-contracts/errors.yaml`.

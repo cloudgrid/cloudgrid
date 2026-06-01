@@ -146,7 +146,11 @@ export const scoreResponseSchema = z.object({
   producedAt: z.string().datetime(),
 });
 
-export const optimizerKindSchema = z.enum(["bootstrap_fewshot", "critic_mutate_judge_pick"]);
+export const optimizerKindSchema = z.enum([
+  "bootstrap_fewshot",
+  "critic_mutate_judge_pick",
+  "skill_text_edit",
+]);
 
 export const basePromptVersionSchema = z.object({
   id: z.string().min(1),
@@ -213,6 +217,179 @@ export const agentsResponseSchema = z.object({
   agents: z.array(agentDescriptorSchema),
 });
 
+export const skillFileRoleSchema = z.enum([
+  "entrypoint",
+  "reference",
+  "example",
+  "script",
+  "dependency_manifest",
+  "asset",
+  "fixture",
+]);
+
+export const skillPackageFileSchema = z.object({
+  path: z.string().min(1),
+  role: skillFileRoleSchema,
+  digest: z.string().min(1),
+  byteSize: z.number().int().min(0),
+  content: z.string().optional(),
+  editable: z.boolean().default(false),
+});
+
+export const skillPackageManifestSchema = z.object({
+  packageRef: z.string().min(1).optional(),
+  entrypoint: z.literal("SKILL.md"),
+  manifestDigest: z.string().min(1),
+  files: z.array(skillPackageFileSchema).min(1),
+  editableFileGlobs: z.array(z.string().min(1)).default(["SKILL.md"]),
+  protectedFileGlobs: z.array(z.string().min(1)).default([]),
+  runtimeRequirements: jsonObjectSchema.optional(),
+});
+
+export const skillCapabilitiesResponseSchema = z.object({
+  adapterVersion: z.string().min(1),
+  supportedOptimizerKinds: z.array(optimizerKindSchema),
+  runtimeModes: z.array(z.enum(["managed_harness", "external_business_context"])),
+  evidenceFields: z.array(z.string().min(1)),
+  traceExport: z.object({
+    supported: z.boolean(),
+    requiredForSkillOptimization: z.boolean(),
+  }),
+  editablePartKinds: z.array(z.literal("skill")),
+  packageFormats: z.array(z.literal("agent_skill_package")),
+  scriptExecution: z.object({
+    supported: z.boolean(),
+    modes: z.array(z.string().min(1)),
+  }),
+  limits: z.object({
+    maxPackageBytes: z.number().int().min(1),
+    maxSkillBytes: z.number().int().min(1),
+    maxEditProposals: z.number().int().min(1),
+    maxConcurrentCalls: z.number().int().min(1),
+  }),
+  editOps: z.array(z.enum(["append", "insert_after", "replace", "delete"])),
+  optimizerModelAliases: z.array(z.string().min(1)),
+});
+
+export const skillRuntimeDryRunRequestSchema = z.object({
+  optimizationRunId: z.string().min(1),
+  skillPackage: skillPackageManifestSchema,
+  runtimeMode: z.enum(["managed_harness", "external_business_context"]),
+  runtimeProfileRef: z.string().min(1).optional(),
+  modelProfileRef: z.string().min(1).optional(),
+  toolProfileRef: z.string().min(1).optional(),
+  fixtureRef: z.string().min(1).optional(),
+  traceContext: traceContextSchema.optional(),
+});
+
+export const skillRuntimeDryRunResponseSchema = z.object({
+  optimizationRunId: z.string().min(1),
+  ok: z.boolean(),
+  capabilityDigest: z.string().min(1),
+  checks: z.array(
+    z.object({
+      id: z.string().min(1),
+      status: z.enum(["passed", "warning", "failed"]),
+      message: z.string().min(1),
+    }),
+  ),
+  warnings: z.array(z.string()).default([]),
+});
+
+export const skillOptimizationEvidenceSchema = z
+  .object({
+    itemRunId: z.string().min(1).optional(),
+    split: z.enum(["training", "validation", "test"]).optional(),
+    actualOutput: z.unknown().optional(),
+    expected: z.unknown().optional(),
+    metricResults: z.array(jsonObjectSchema).default([]),
+    importantSteps: z.array(jsonObjectSchema).default([]),
+    trajectorySummary: z.string().optional(),
+    traceRefs: z.array(jsonObjectSchema).default([]),
+  })
+  .catchall(z.unknown());
+
+export const skillEditOperationSchema = z.object({
+  op: z.enum(["append", "insert_after", "replace", "delete"]),
+  target: z.enum(["skill_file"]),
+  filePath: z.string().min(1),
+  anchor: z.string().optional(),
+  content: z.string().optional(),
+});
+
+export const skillEditProposalSchema = z.object({
+  id: z.string().min(1),
+  source: z.enum(["success_reflection", "failure_reflection", "merge_rank", "slow_update"]),
+  rationale: z.string().min(1),
+  supportCount: z.number().int().min(0),
+  evidenceRefs: z.array(z.string().min(1)).default([]),
+  edits: z.array(skillEditOperationSchema).min(1),
+  expectedValidity: z.enum(["valid", "invalid_protected_file"]),
+  protectedFileViolation: z.boolean().default(false),
+});
+
+export const skillReflectRequestSchema = z.object({
+  optimizationRunId: z.string().min(1),
+  stepId: z.string().min(1).optional(),
+  reflectionKind: z.enum(["success", "failure"]),
+  skillPackage: skillPackageManifestSchema,
+  evidence: z.array(skillOptimizationEvidenceSchema).default([]),
+  contentPolicy: jsonObjectSchema.optional(),
+  rejectedEdits: z.array(skillEditProposalSchema).default([]),
+  traceContext: traceContextSchema.optional(),
+});
+
+export const skillReflectResponseSchema = z.object({
+  optimizationRunId: z.string().min(1),
+  stepId: z.string().min(1).optional(),
+  proposals: z.array(skillEditProposalSchema),
+  summary: jsonObjectSchema,
+});
+
+export const skillMergeRankRequestSchema = z.object({
+  optimizationRunId: z.string().min(1),
+  stepId: z.string().min(1).optional(),
+  proposals: z.array(skillEditProposalSchema),
+  editBudget: z.number().int().min(1).optional(),
+  traceContext: traceContextSchema.optional(),
+});
+
+export const skillMergeRankResponseSchema = z.object({
+  optimizationRunId: z.string().min(1),
+  stepId: z.string().min(1).optional(),
+  rankedProposals: z.array(skillEditProposalSchema),
+  droppedProposalIds: z.array(z.string().min(1)).default([]),
+  summary: jsonObjectSchema,
+});
+
+export const skillSlowUpdateRequestSchema = z.object({
+  optimizationRunId: z.string().min(1),
+  epoch: z.number().int().min(1),
+  acceptedProposalIds: z.array(z.string().min(1)).default([]),
+  rejectedProposalIds: z.array(z.string().min(1)).default([]),
+  trainingSummary: jsonObjectSchema.optional(),
+  traceContext: traceContextSchema.optional(),
+});
+
+export const skillSlowUpdateResponseSchema = z.object({
+  optimizationRunId: z.string().min(1),
+  guidance: z.array(z.string().min(1)),
+  protectedGuidance: z.boolean(),
+});
+
+export const skillMetaMemoryRequestSchema = z.object({
+  optimizationRunId: z.string().min(1),
+  currentMemory: z.array(jsonObjectSchema).default([]),
+  acceptedProposalIds: z.array(z.string().min(1)).default([]),
+  rejectedProposalIds: z.array(z.string().min(1)).default([]),
+  traceContext: traceContextSchema.optional(),
+});
+
+export const skillMetaMemoryResponseSchema = z.object({
+  optimizationRunId: z.string().min(1),
+  memory: z.array(jsonObjectSchema),
+});
+
 export const harnessAdapterSchemas = {
   problemDetails: problemDetailsSchema,
   healthResponse: healthResponseSchema,
@@ -226,6 +403,17 @@ export const harnessAdapterSchemas = {
   optimizeRequest: optimizeRequestSchema,
   optimizeEvent: optimizeEventSchema,
   agentsResponse: agentsResponseSchema,
+  skillCapabilitiesResponse: skillCapabilitiesResponseSchema,
+  skillRuntimeDryRunRequest: skillRuntimeDryRunRequestSchema,
+  skillRuntimeDryRunResponse: skillRuntimeDryRunResponseSchema,
+  skillReflectRequest: skillReflectRequestSchema,
+  skillReflectResponse: skillReflectResponseSchema,
+  skillMergeRankRequest: skillMergeRankRequestSchema,
+  skillMergeRankResponse: skillMergeRankResponseSchema,
+  skillSlowUpdateRequest: skillSlowUpdateRequestSchema,
+  skillSlowUpdateResponse: skillSlowUpdateResponseSchema,
+  skillMetaMemoryRequest: skillMetaMemoryRequestSchema,
+  skillMetaMemoryResponse: skillMetaMemoryResponseSchema,
 } as const;
 
 export type ProblemDetails = z.infer<typeof problemDetailsSchema>;
@@ -241,3 +429,5 @@ export type ScoreResponse = z.infer<typeof scoreResponseSchema>;
 export type OptimizeRequest = z.infer<typeof optimizeRequestSchema>;
 export type OptimizeEvent = z.infer<typeof optimizeEventSchema>;
 export type AgentDescriptor = z.infer<typeof agentDescriptorSchema>;
+export type SkillPackageManifest = z.infer<typeof skillPackageManifestSchema>;
+export type SkillEditProposal = z.infer<typeof skillEditProposalSchema>;

@@ -205,7 +205,7 @@ func TestDashboardSaveNormalizesTableAndAlertWidgets(t *testing.T) {
 
 func TestAiProviderSettingsValidationAndSecretResolveBranches(t *testing.T) {
 	store := newTestStore()
-	service := NewService(store, fixedNow)
+	service := NewServiceWithOptions(store, fixedNow, ServiceOptions{SecretStore: newTestSecretStore()})
 	ctx := context.Background()
 	admin := localEnvelope("req-ai-provider-branches", "admin-1", nil)
 	if _, err := service.GetViewer(ctx, admin); err != nil {
@@ -258,19 +258,6 @@ func TestAiProviderSettingsValidationAndSecretResolveBranches(t *testing.T) {
 		t.Fatalf("ResolveAiProviderSecret missing secret error = %v, want validation", err)
 	}
 
-	store.aiProviderSecrets["company-local-bad"] = ports.AiProviderSecretRecord{
-		ID:         "company-local-bad",
-		Scope:      "company",
-		CompanyID:  LocalCompanyID,
-		ProviderID: "bad",
-		Algorithm:  "plaintext",
-	}
-	if _, err := service.ResolveAiProviderSecret(ctx, contracts.AiProviderSecretResolveRequest{
-		BridgeEnvelope: admin,
-		CredentialRef:  "managed:company/local/bad",
-	}); !isValidation(err) {
-		t.Fatalf("ResolveAiProviderSecret bad algorithm error = %v, want validation", err)
-	}
 }
 
 func TestPureHelperBranchMatrix(t *testing.T) {

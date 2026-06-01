@@ -33,6 +33,8 @@ const (
 	EvalEvaluationComparisonCreateSubject = "eval.evaluation.comparison.create"
 	EvalTargetSnapshotCreateSubject       = "eval.target.snapshot.create"
 	EvalTargetPromoteSubject              = "eval.target.promote"
+	EvalOptimizationStepPersistSubject    = "eval.optimization.step.persist"
+	EvalOptimizationMemoryPersistSubject  = "eval.optimization.memory.persist"
 	EvalScorerCreateSubject               = "eval.scorer.create"
 	EvalExperimentCreateSubject           = "eval.experiment.create"
 	EvalResultsPersistSubject             = "eval.results.persist"
@@ -472,6 +474,26 @@ func BuildEvalMutationRecord(subject string, request contracts.EvalMutationReque
 			"promotedAt":                now.UTC().Format(time.RFC3339),
 			"notes":                     stringValue(request.Input, "notes"),
 		}, nil
+	case EvalOptimizationStepPersistSubject:
+		payload := objectValueWithDefault(request.Input, "payload")
+		record := skillOptimizationStepRecord(payload)
+		if stringValue(record, "id") == "" {
+			record["id"] = stringValue(request.Input, "stepId")
+		}
+		return record, nil
+	case EvalOptimizationMemoryPersistSubject:
+		payload := objectValueWithDefault(request.Input, "payload")
+		record := map[string]any{
+			"id":                 stableID("optimization-memory", stringValue(request.Input, "optimizationRunId")),
+			"projectId":          stringValueWithDefault(payload, "projectId", stringValue(request.Input, "projectId")),
+			"optimizationRunId":  stringValueWithDefault(payload, "optimizationRunId", stringValue(request.Input, "optimizationRunId")),
+			"rejectedEditBuffer": skillOptimizationEdits(arrayValue(payload, "rejectedEditBuffer"), 20),
+			"slowUpdateContent":  boundedString(stringValue(payload, "slowUpdateContent"), 8192),
+			"metaMemoryContent":  boundedString(stringValue(payload, "metaMemoryContent"), 8192),
+			"truncated":          boolValue(payload, "truncated"),
+			"updatedAt":          stringValue(payload, "updatedAt"),
+		}
+		return record, nil
 	case EvalPromptVersionPromoteSubject:
 		id := stringValue(request.Input, "promptVersionId")
 		return map[string]any{
@@ -591,6 +613,8 @@ func decodeEvalMutationRequestForSubject(subject string, data []byte) (contracts
 		"candidateTargetSnapshotId",
 		"targetSnapshotId",
 		"comparisonId",
+		"optimizationRunId",
+		"stepId",
 	} {
 		copyRawField(raw, input, field)
 	}
@@ -869,6 +893,44 @@ func validateEvalMutationRequest(subject string, request contracts.EvalMutationR
 			}
 		}
 		return requireObject(request.Input, "targetRef")
+	case EvalOptimizationStepPersistSubject:
+		for _, field := range []string{"projectId", "optimizationRunId", "stepId", "idempotencyKey"} {
+			if err := requireNonBlank(request.Input, field); err != nil {
+				return err
+			}
+		}
+		payload := objectValue(request.Input, "payload")
+		if len(payload) == 0 {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: payload is required")
+		}
+		for _, field := range []string{"id", "optimizationRunId", "projectId", "status", "rolloutEvaluationRunId", "baselineSkillDigest", "gateDecision", "startedAt"} {
+			if err := requireNonBlank(payload, field); err != nil {
+				return err
+			}
+		}
+		if intValue(payload, "epoch") < 1 {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: epoch must be at least 1")
+		}
+		if intValue(payload, "step") < 1 {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: step must be at least 1")
+		}
+		return nil
+	case EvalOptimizationMemoryPersistSubject:
+		for _, field := range []string{"projectId", "optimizationRunId", "idempotencyKey"} {
+			if err := requireNonBlank(request.Input, field); err != nil {
+				return err
+			}
+		}
+		payload := objectValue(request.Input, "payload")
+		if len(payload) == 0 {
+			return fmt.Errorf("ERR-001 VALIDATION_FAILED: payload is required")
+		}
+		for _, field := range []string{"optimizationRunId", "projectId", "updatedAt"} {
+			if err := requireNonBlank(payload, field); err != nil {
+				return err
+			}
+		}
+		return nil
 	case EvalPromptVersionPromoteSubject:
 		if err := requireNonBlank(request.Input, "promptVersionId"); err != nil {
 			return err
@@ -1241,6 +1303,131 @@ func boolValue(input map[string]any, key string) bool {
 	}
 	typed, _ := value.(bool)
 	return typed
+}
+
+func skillOptimizationStepRecord(payload map[string]any) map[string]any {
+	return map[string]any{
+		"id":                        stringValue(payload, "id"),
+		"optimizationRunId":         stringValue(payload, "optimizationRunId"),
+		"projectId":                 stringValue(payload, "projectId"),
+		"epoch":                     intValue(payload, "epoch"),
+		"step":                      intValue(payload, "step"),
+		"status":                    stringValue(payload, "status"),
+		"rolloutEvaluationRunId":    stringValue(payload, "rolloutEvaluationRunId"),
+		"candidateTargetSnapshotId": optionalStringValue(payload, "candidateTargetSnapshotId"),
+		"baselineSkillDigest":       stringValue(payload, "baselineSkillDigest"),
+		"candidateSkillDigest":      optionalStringValue(payload, "candidateSkillDigest"),
+		"proposedEdits":             skillOptimizationEdits(arrayValue(payload, "proposedEdits"), 100),
+		"selectedEdits":             skillOptimizationEdits(arrayValue(payload, "selectedEdits"), 100),
+		"rejectedEditSummaries":     skillOptimizationEdits(arrayValue(payload, "rejectedEditSummaries"), 100),
+		"trainingScore":             skillOptimizationNumericValue(payload, "trainingScore"),
+		"validationScore":           optionalNumericValue(payload, "validationScore"),
+		"gateDecision":              stringValue(payload, "gateDecision"),
+		"problem":                   objectValueWithDefault(payload, "problem"),
+		"startedAt":                 stringValue(payload, "startedAt"),
+		"endedAt":                   optionalStringValue(payload, "endedAt"),
+	}
+}
+
+func skillOptimizationEdits(items []any, limit int) []any {
+	if limit <= 0 || len(items) == 0 {
+		return []any{}
+	}
+	edits := make([]any, 0, skillOptimizationMinInt(len(items), limit))
+	for _, item := range items {
+		edit, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		edits = append(edits, map[string]any{
+			"op":             stringValue(edit, "op"),
+			"filePath":       optionalStringValue(edit, "filePath"),
+			"target":         optionalStringValue(edit, "target"),
+			"contentPreview": boundedOptionalString(stringValue(edit, "contentPreview"), 2000),
+			"rationale":      boundedOptionalString(stringValue(edit, "rationale"), 2000),
+			"sourceType":     stringValue(edit, "sourceType"),
+			"supportCount":   intValue(edit, "supportCount"),
+			"evidenceRefs":   skillOptimizationEvidenceRefs(arrayValue(edit, "evidenceRefs"), 50),
+		})
+		if len(edits) >= limit {
+			break
+		}
+	}
+	return edits
+}
+
+func skillOptimizationEvidenceRefs(items []any, limit int) []any {
+	refs := make([]any, 0, skillOptimizationMinInt(len(items), limit))
+	for _, item := range items {
+		ref, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		clean := map[string]any{}
+		for _, key := range []string{"traceId", "spanId", "evaluationRunId", "evaluationItemRunId", "importJobId", "candidateId"} {
+			if value := stringValue(ref, key); value != "" {
+				clean[key] = value
+			}
+		}
+		if len(clean) > 0 {
+			refs = append(refs, clean)
+		}
+		if len(refs) >= limit {
+			break
+		}
+	}
+	return refs
+}
+
+func skillOptimizationNumericValue(input map[string]any, key string) float64 {
+	value, ok := input[key]
+	if !ok || value == nil {
+		return 0
+	}
+	switch typed := value.(type) {
+	case float64:
+		return typed
+	case float32:
+		return float64(typed)
+	case int:
+		return float64(typed)
+	case int64:
+		return float64(typed)
+	case json.Number:
+		number, _ := typed.Float64()
+		return number
+	default:
+		return 0
+	}
+}
+
+func optionalNumericValue(input map[string]any, key string) any {
+	if _, ok := input[key]; !ok || input[key] == nil {
+		return nil
+	}
+	return skillOptimizationNumericValue(input, key)
+}
+
+func boundedOptionalString(value string, limit int) any {
+	if value == "" {
+		return nil
+	}
+	return boundedString(value, limit)
+}
+
+func boundedString(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if limit > 0 && len(value) > limit {
+		return value[:limit]
+	}
+	return value
+}
+
+func skillOptimizationMinInt(left int, right int) int {
+	if left < right {
+		return left
+	}
+	return right
 }
 
 func sortedStringValues(items []any) []string {

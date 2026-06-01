@@ -1,0 +1,20 @@
+plan: skill_optimization_e2e
+ownership_boundaries:
+  public-contract-agent:
+    write_scope: [apps/backend, apps/packages/public-api-client, apps/packages/ui-contracts]
+    must_not_write: [core, apps/frontend, apps/packages/cloudgrid-harness-adapter, apps/packages/integration-scenarios, website, specs/03-contracts]
+  harness-fixture-agent:
+    write_scope: [apps/packages/cloudgrid-harness-adapter, test_data/ai_eval/skill_optimization]
+    must_not_write: [apps/backend, apps/frontend, core, specs/03-contracts]
+  storage-agent:
+    write_scope: [core/storage-write, core/storage-read]
+    must_not_write: [apps, core/ai-eval-runner, core/otlp-collector, specs/03-contracts]
+  runner-agent:
+    write_scope: [core/ai-eval-runner]
+    must_not_write: [apps, core/storage-read, core/storage-write, specs/03-contracts]
+  frontend-agent:
+    write_scope: [apps/frontend]
+    must_not_write: [apps/backend, apps/packages, core, website, specs/03-contracts]
+  integration-agent:
+    write_scope: [apps/packages/integration-scenarios, tooling, test_data/ai_eval/skill_optimization, website/src/content/handbook/evaluations]
+    must_not_write: [apps/frontend, apps/backend, core, specs/03-contracts]

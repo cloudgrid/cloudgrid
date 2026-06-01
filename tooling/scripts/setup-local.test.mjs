@@ -27,6 +27,7 @@ describe("setup local script", () => {
         const tokens = [defaultToken, systemToken];
         return () => tokens.shift();
       })(),
+      isPortAvailable: async () => true,
     });
 
     const env = await readFile(join(tempDir, ".env"), "utf8");
@@ -41,6 +42,11 @@ describe("setup local script", () => {
     expect(env).toContain("CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID=cloudgrid-system");
     expect(env).toContain("CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID=local");
     expect(env).toContain(`CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN=${systemToken}`);
+    expect(env).toContain("CLOUDGRID_NATS_PORT=4222");
+    expect(env).toContain("CLOUDGRID_NATS_MONITOR_PORT=8222");
+    expect(env).toContain("CLOUDGRID_NATS_URL=nats://localhost:4222");
+    expect(env).toContain("CLOUDGRID_SURREALDB_PORT=8000");
+    expect(env).toContain("CLOUDGRID_SURREALDB_URL=http://localhost:8000/rpc");
     expect(logs.join("\n")).not.toContain(defaultToken);
     expect(logs.join("\n")).not.toContain(systemToken);
   });
@@ -67,6 +73,7 @@ describe("setup local script", () => {
       nextToken: () => {
         throw new Error("should not rotate existing valid tokens");
       },
+      isPortAvailable: async () => true,
     });
 
     const env = await readFile(join(tempDir, ".env"), "utf8");
@@ -79,5 +86,32 @@ describe("setup local script", () => {
     expect(env).toContain(`CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN=${systemToken}`);
     expect(logs.join("\n")).not.toContain(defaultToken);
     expect(logs.join("\n")).not.toContain(systemToken);
+  });
+
+  test("moves local SurrealDB compose port when the default port is occupied", async () => {
+    const defaultToken = "default-token-abcdefghijklmnopqrstuvwxyz123456";
+    const systemToken = "system-token-abcdefghijklmnopqrstuvwxyz1234567";
+    const logs = [];
+    const unavailablePorts = new Set([8000]);
+
+    await runSetupLocal({
+      cwd: tempDir,
+      log: (message) => logs.push(message),
+      nextToken: (() => {
+        const tokens = [defaultToken, systemToken];
+        return () => tokens.shift();
+      })(),
+      nextPort: (() => {
+        const ports = [18000];
+        return async () => ports.shift();
+      })(),
+      isPortAvailable: async (port) => !unavailablePorts.has(port),
+    });
+
+    const env = await readFile(join(tempDir, ".env"), "utf8");
+
+    expect(env).toContain("CLOUDGRID_SURREALDB_PORT=18000");
+    expect(env).toContain("CLOUDGRID_SURREALDB_URL=http://localhost:18000/rpc");
+    expect(logs.join("\n")).toContain("SurrealDB CLOUDGRID_SURREALDB_PORT port 8000 was unavailable; selected 18000.");
   });
 });

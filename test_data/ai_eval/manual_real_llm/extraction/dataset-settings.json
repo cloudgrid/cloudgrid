@@ -1,0 +1,72 @@
+{
+  "evaluationFamily": "extraction",
+  "inputType": "json",
+  "expectedType": "json",
+  "inputJsonSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["incidentNote", "source"],
+    "properties": {
+      "incidentNote": { "type": "string", "minLength": 1 },
+      "source": { "type": "string", "enum": ["status_page", "support_ticket", "internal_update"] }
+    }
+  },
+  "expectedJsonSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "incidentId",
+      "severity",
+      "affectedServices",
+      "startTime",
+      "customerTier",
+      "needsFollowup"
+    ],
+    "properties": {
+      "incidentId": { "type": "string", "pattern": "^INC-[0-9]{4}$" },
+      "severity": { "type": "string", "enum": ["P1", "P2", "P3", "P4"] },
+      "affectedServices": {
+        "type": "array",
+        "minItems": 1,
+        "items": { "type": "string" }
+      },
+      "startTime": { "type": "string", "format": "date-time" },
+      "customerTier": { "type": "string", "enum": ["trial", "team", "enterprise"] },
+      "impactSummary": { "type": "string" },
+      "needsFollowup": { "type": "boolean" },
+      "followupOwner": { "type": "string", "enum": ["support", "engineering", "security", "none"] }
+    }
+  },
+  "expectedValueOptions": [],
+  "defaultSplit": "training",
+  "intakePolicy": {
+    "manualDefaultStatus": "ready",
+    "importDefaultStatus": "ready",
+    "traceDefaultStatus": "needs_expected"
+  },
+  "traceIntakeRules": [],
+  "anonymizationPolicy": {
+    "mode": "realistic",
+    "policyId": null,
+    "policyVersion": null,
+    "consistencyScope": "dataset",
+    "blockedEntityTypes": []
+  },
+  "defaultMetricSettings": [
+    {
+      "metricId": "extraction.field_match_rate",
+      "options": {
+        "extraction": {
+          "requiredOnly": false,
+          "extraFieldPolicy": "schema",
+          "arrayModeByPath": { "$.affectedServices": "set" },
+          "stringComparisonByPath": { "$.impactSummary": "normalized_whitespace" },
+          "dateFormatByPath": { "$.startTime": "date_time" }
+        }
+      }
+    }
+  ],
+  "retentionProfile": "balanced"
+}

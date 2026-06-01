@@ -18,6 +18,7 @@ import type {
   ExperimentRun,
   ExperimentRunEvent,
   ProjectAiSettings,
+  StartOptimizationRunInput,
   UpdateProjectAiSettingsInput,
 } from "@cloudgrid/ui-contracts";
 import { parse, subscribe } from "graphql";
@@ -28,6 +29,7 @@ import {
   type RequestReplyClient,
 } from "./bridge";
 import { createAppWithBridge, createCloudGridSchema } from "./graphql";
+import { validateStartOptimizationRunInput } from "./validation";
 
 describe("AI-eval bridge", () => {
   test("routes agent run searches through the portable request/reply adapter", async () => {
@@ -51,6 +53,39 @@ describe("AI-eval bridge", () => {
         input: { agentName: "support", limit: 10 },
       },
     });
+  });
+
+  test("accepts spec-shaped skill text optimization start input", () => {
+    expect(validateStartOptimizationRunInput(skillOptimizationStartInput())).toMatchObject({
+      projectId: "project-1",
+      baselineTargetSnapshotId: "target-snapshot-1",
+      objective: { primaryMetricId: "exact_match" },
+      searchPolicy: {
+        optimizerKind: "skill_text_edit",
+        editablePartKinds: ["skill"],
+        gateMetricId: "exact_match",
+        skillPolicy: {
+          allowedEditOps: ["append", "insert_after", "replace", "delete"],
+          editableFileGlobs: ["SKILL.md", "references/**/*.md"],
+          protectedFileGlobs: ["scripts/**", "**/*.lock"],
+          allowScriptEdits: false,
+          exportBestSkill: true,
+        },
+      },
+      idempotencyKey: "optimization-skill-1",
+    });
+  });
+
+  test("rejects unknown optimizer kinds before bridge publish", () => {
+    expect(() =>
+      validateStartOptimizationRunInput({
+        ...skillOptimizationStartInput(),
+        searchPolicy: {
+          ...skillOptimizationStartInput().searchPolicy,
+          optimizerKind: "invented_optimizer",
+        },
+      } as unknown as StartOptimizationRunInput),
+    ).toThrow(/Request validation failed/);
   });
 
   test("unwraps singular AI-eval reads from search-result bridge replies", async () => {
@@ -289,6 +324,7 @@ describe("AI-eval bridge", () => {
 
     await bridge.datasetCandidates({ datasetId: "dataset-1", status: "suggested", limit: 25 });
     await bridge.prepareDatasetCandidates({
+      projectId: "project-1",
       datasetId: "dataset-1",
       sources: [{ sourceKind: "trace", traceId: "trace-1", spanId: "span-1" }],
       contentTreatment: "realistic_anonymized",
@@ -319,6 +355,7 @@ describe("AI-eval bridge", () => {
         subject: "eval.dataset.candidates.prepare",
         payload: expect.objectContaining({
           datasetId: "dataset-1",
+          projectId: "project-1",
           sources: [{ sourceKind: "trace", traceId: "trace-1", spanId: "span-1" }],
           contentTreatment: "realistic_anonymized",
           anonymizationPolicyVersion: 3,
@@ -594,6 +631,7 @@ describe("AI-eval GraphQL resolvers", () => {
         `,
         variables: {
           prepare: {
+            projectId: "project-1",
             datasetId: "dataset-1",
             sources: [{ sourceKind: "trace", traceId: "trace-1" }],
             contentTreatment: "realistic_anonymized",
@@ -737,6 +775,7 @@ describe("AI-eval GraphQL resolvers", () => {
         method: "prepareDatasetCandidates",
         input: {
           datasetId: "dataset-1",
+          projectId: "project-1",
           sources: [{ sourceKind: "trace", traceId: "trace-1" }],
           contentTreatment: "realistic_anonymized",
           curationStatus: "needs_review",
@@ -1251,7 +1290,8 @@ function dataset(): Dataset {
       importDefaultStatus: "needs_review" as const,
       traceDefaultStatus: "needs_expected" as const,
     },
-    traceExtractionSettings: null,
+    expectedValueOptions: [],
+    traceIntakeRules: [],
     anonymizationPolicy: null,
     defaultMetricSettings: [],
     retentionProfile: "balanced" as const,
@@ -1426,13 +1466,103 @@ function optimizationRun() {
     projectId: "project-1",
     status: "running" as const,
     baselineTargetSnapshotId: "target-snapshot-1",
-    objective: { primaryMetricId: "exact_match" },
+    objective: {
+      primaryMetricId: "exact_match",
+      secondaryMetricIds: [],
+      constraints: {},
+      tradeoffMetricIds: [],
+      rankingPolicy: {},
+      tieBreakers: [],
+      minimumEvidence: {},
+    },
+    searchPolicy: {
+      optimizerKind: "skill_text_edit" as const,
+      editablePartKinds: ["skill" as const],
+      maxEpochs: 4,
+      maxSteps: 0,
+      rolloutBatchSize: 40,
+      reflectionMinibatchSize: 8,
+      editBudget: 4,
+      minEditBudget: 2,
+      editSchedule: "cosine" as const,
+      gateMetricId: "exact_match",
+      gateMode: "strict_improvement" as const,
+      selectionSplit: "validation" as const,
+      allowSlowUpdate: true,
+      allowMetaMemory: true,
+      skillPolicy: {
+        maxPackageBytes: 262144,
+        maxSkillBytes: 65536,
+        maxSkillTokens: 8000,
+        allowedEditOps: ["append" as const, "insert_after" as const, "replace" as const, "delete" as const],
+        editableFileGlobs: ["SKILL.md", "references/**/*.md"],
+        protectedFileGlobs: ["scripts/**", "**/*.lock"],
+        allowScriptEdits: false,
+        preserveSections: [],
+        exportBestSkill: true,
+      },
+    },
     candidateTargetSnapshotIds: [],
     causedEvaluationRunIds: [],
     comparisonIds: [],
     budgetSnapshot: {},
+    skillOptimization: null,
     createdAt: "2026-05-12T10:00:00.000Z",
     startedAt: "2026-05-12T10:00:00.000Z",
+  };
+}
+
+function skillOptimizationStartInput(): StartOptimizationRunInput {
+  return {
+    projectId: "project-1",
+    baselineTargetSnapshotId: "target-snapshot-1",
+    objective: {
+      primaryMetricId: "exact_match",
+      secondaryMetricIds: [],
+      constraints: {},
+      tradeoffMetricIds: [],
+      rankingPolicy: {},
+      tieBreakers: [],
+      minimumEvidence: {},
+    },
+    searchPolicy: {
+      optimizerKind: "skill_text_edit",
+      editablePartKinds: ["skill"],
+      maxEpochs: 4,
+      maxSteps: 0,
+      rolloutBatchSize: 40,
+      reflectionMinibatchSize: 8,
+      editBudget: 4,
+      minEditBudget: 2,
+      editSchedule: "cosine",
+      gateMetricId: "exact_match",
+      gateMode: "strict_improvement",
+      selectionSplit: "validation",
+      allowSlowUpdate: true,
+      allowMetaMemory: true,
+      skillPolicy: {
+        maxPackageBytes: 262144,
+        maxSkillBytes: 65536,
+        maxSkillTokens: 8000,
+        allowedEditOps: ["append", "insert_after", "replace", "delete"],
+        editableFileGlobs: ["SKILL.md", "references/**/*.md"],
+        protectedFileGlobs: ["scripts/**", "**/*.lock"],
+        allowScriptEdits: false,
+        preserveSections: [],
+        exportBestSkill: true,
+      },
+    },
+    trainingEvaluationDefinitionId: "evaluation-definition-training",
+    trainingSplitSelector: {
+      splits: ["training"],
+      curationStatuses: ["ready"],
+    },
+    validationEvaluationDefinitionId: "evaluation-definition-validation",
+    validationSplitSelector: {
+      splits: ["validation"],
+      curationStatuses: ["ready"],
+    },
+    idempotencyKey: "optimization-skill-1",
   };
 }
 
@@ -1553,6 +1683,13 @@ function projectAiSettings(): ProjectAiSettings {
       splitAllocation: {},
       smallDatasetReadyThreshold: 30,
       requireReadyForTest: true,
+    },
+    optimizationDefaults: {
+      enabledOptimizerKinds: ["bootstrap_fewshot", "critic_mutate_judge_pick", "skill_text_edit"],
+      defaultOptimizerKind: "critic_mutate_judge_pick",
+      defaultSkillSearchPolicy: null,
+      maxConcurrentOptimizerCalls: 2,
+      optimizerEvidenceContentPolicy: "dataset_content",
     },
     effective: {
       warnings: [],

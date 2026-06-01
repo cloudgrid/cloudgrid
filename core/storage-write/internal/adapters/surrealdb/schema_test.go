@@ -120,6 +120,12 @@ func TestStatementsDefineAiEvalRelationshipFields(t *testing.T) {
 		"DEFINE FIELD OVERWRITE trainingSplitSelector ON ai_optimization_run TYPE option<object> FLEXIBLE",
 		"DEFINE FIELD OVERWRITE validationSplitSelector ON ai_optimization_run TYPE option<object> FLEXIBLE",
 		"DEFINE FIELD OVERWRITE testSplitSelector ON ai_optimization_run TYPE option<object> FLEXIBLE",
+		"DEFINE TABLE IF NOT EXISTS ai_optimization_step SCHEMAFULL TYPE NORMAL",
+		"DEFINE TABLE IF NOT EXISTS ai_optimization_memory SCHEMAFULL TYPE NORMAL",
+		"DEFINE FIELD IF NOT EXISTS optimizationRunId ON ai_optimization_step TYPE option<string>",
+		"DEFINE FIELD OVERWRITE proposedEdits ON ai_optimization_step TYPE option<array<object>>",
+		"DEFINE FIELD OVERWRITE rejectedEditBuffer ON ai_optimization_memory TYPE option<array<object>>",
+		"DEFINE FIELD OVERWRITE searchPolicy ON ai_optimization_run TYPE option<object> FLEXIBLE",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("schema missing %q in:\n%s", want, got)

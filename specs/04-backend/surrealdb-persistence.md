@@ -4,7 +4,7 @@ title: SurrealDB persistence
 layer: backend
 status: draft
 owner: unknown@example.com
-updated: 2026-05-08
+updated: 2026-05-29
 provenance: inferred-draft
 ---
 
@@ -21,7 +21,83 @@ Schema definitions, query builders, client setup, readiness checks, and SurrealD
 
 Control-plane schema definitions for organizations, users, projects, memberships, ingest credentials, dashboards, and dashboard pins live under `core/control-plane/internal/adapters/surrealdb`. The telemetry storage adapters must not create, update, or query control-plane dashboard tables.
 
+Recoverable secret material is not part of the regular control-plane schema.
+The SurrealDB development secret-store adapter lives under
+`core/control-plane/internal/adapters/secrets/surrealdb` and uses a separate
+namespace/database from `cloudgrid_control/control` or the local control-plane
+database. Regular control-plane SurrealDB schema initialization must not define
+`ai_provider_secret` or other secret-bearing tables.
+
 The full tenancy and SurrealDB-native modeling strategy is defined in `04-backend/surrealdb-tenancy-and-modeling.md`. This file defines the current telemetry record shape.
+
+## Supported Runtime Baseline
+
+CloudGrid local, release Compose, and bundled Helm evaluation defaults target
+`surrealdb/surrealdb:v3.1.0`.
+
+SurrealDB 3.1.0 is accepted as a compatible minor upgrade from 3.0.x because the
+official 3.1 release notes state that the 3.0 to 3.1 catalog and on-disk layouts
+are unchanged. Operators may upgrade an existing 3.0.x RocksDB volume in place
+after taking the normal environment backup or recovery point. Rollback must use
+the environment's storage recovery plan if data has been modified after the
+database binary upgrade.
+
+CloudGrid does not depend on SurrealDB MCP, GraphQL, DiskANN, audit logging, or
+slow-query telemetry for product behavior in this release. Those capabilities
+may be evaluated separately, but they must not bypass CloudGrid's service
+boundaries, public GraphQL contract, NATS bridge, storage-read query ownership,
+or storage-write mutation ownership.
+
+## SurrealDB Development Secret Store
+
+The development/reference secret store may use the same SurrealDB server
+process as the rest of local CloudGrid, but it must use an isolated namespace
+and database. Default local values:
+
+- namespace: `cloudgrid_secrets`
+- database: `dev`
+
+The secret-store table is `managed_secret`. It is `SCHEMAFULL`, has
+`PERMISSIONS NONE`, and stores only encrypted ciphertext plus lookup metadata:
+scope, company ID, project ID when applicable, provider profile ID, algorithm,
+nonce, created/update timestamps, and actor ID. It must not store plaintext
+provider credentials, raw API keys, bearer tokens, refresh tokens, provider
+secret JSON, cloud access key secrets, session cookies, or Authorization
+headers.
+
+The secret-store adapter owns encryption and decryption. Deployed mode requires
+`CLOUDGRID_SECRET_STORE_ENCRYPTION_KEY`; local mode may use an explicit
+development key. The regular control-plane store must not receive the secret
+encryption key and must not read or write secret ciphertext rows.
+
+SurrealDB 3.1 reorganizes server metrics under a unified OpenTelemetry pipeline
+and changes existing dashboard metric names. CloudGrid runtime behavior does not
+read SurrealDB server metrics, but operator dashboards that scrape SurrealDB
+directly must be reviewed during the dependency upgrade.
+
+## Adapter Observability
+
+Regular SurrealDB adapters for storage-read, storage-write,
+storage-maintenance, and control-plane must support the optional database
+adapter trace context defined in `04-backend/self-observability.md` when deep
+adapter tracing is implemented. Support means the adapter port accepts the
+context and, when local deep tracing is enabled, may create child spans for
+bounded operations such as readiness checks, schema initialization, trace
+search, metric series queries, ingest persistence, dashboard/project metadata
+queries, and retention batches.
+
+SurrealDB adapter spans must use bounded operation labels and sanitized
+CloudGrid error mapping only. They must not attach raw SurrealQL statements,
+query-builder output, bind parameters, response rows, namespace/database names
+derived from tenant or project IDs, provider error strings, record IDs,
+telemetry attributes, bearer tokens, SurrealDB credentials, or secret-store
+payload data.
+
+The SurrealDB development secret-store adapter under
+`core/control-plane/internal/adapters/secrets/surrealdb` is not a regular
+database adapter for tracing purposes. It must not emit deep adapter spans and
+must not expose secret read/write/resolve/rotate/delete internals through
+adapter-level telemetry.
 
 ## Tenant And Project Layout
 
@@ -274,6 +350,20 @@ Only `core/storage-read` executes read queries for trace search, trace detail, l
 Schema initialization must be idempotent. `core/storage-write` owns schema initialization at startup before its JetStream consumer starts. `core/storage-read` checks schema readiness at startup and fails readiness if required tables or indexes are missing.
 
 Telemetry databases must be strict and tables must be schemafull except explicitly flexible payload fields for OpenTelemetry attributes and log bodies.
+
+Storage-owning writers must authenticate before selecting a namespace/database
+and must explicitly create missing namespaces/databases before applying schema.
+This is required for SurrealDB 3.1, where selecting a missing namespace fails
+instead of implicitly creating it. `core/storage-read` must not create missing
+schema; it reports missing namespace, database, tables, or indexes through
+readiness failure.
+
+SurrealDB version upgrades must be validated with the opt-in live SurrealDB
+integration suites before promotion. At minimum, run retention adapter coverage
+and the storage-read/storage-maintenance Go suites against the target
+SurrealDB image tag. If a release changes query planner, index, or storage
+engine behavior, also run the opt-in query-plan suites and record the result in
+release evidence.
 
 ## Secret And Permission Rules
 

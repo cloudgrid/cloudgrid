@@ -32,6 +32,7 @@ Do not present CloudGrid as a complete public production distribution until thes
 | Release artifacts | Release workflow and Dockerfiles are present; signed images, image provenance, release manifest, SBOM output, and vulnerability reports are produced when the release workflow runs. |
 | Kubernetes | Helm chart and profile overlays are present; operators still need environment-specific values, secrets, ingress/TLS, and published image digests. |
 | Retention execution | Retention policy CRUD, storage-maintenance batch execution, disabled-by-default scheduling, and the SurrealDB deletion adapter are implemented; enable the scheduler per environment and run the opt-in SurrealDB retention suite before relying on deletion in production. |
+| Storage dependency baseline | Local, release Compose, and bundled Helm evaluation defaults use SurrealDB `v3.1.0`; production operators still need live adapter checks against their exact external or bundled database version. |
 | Alert execution | Alert rule/silence/history CRUD, evaluator runtime, project discovery, email/webhook adapter runtime, adapter catalog validation, and dashboard alert widgets are implemented; deployments still need concrete SMTP/webhook environment values. |
 | Production scale | The performance and scaling spec defines targets and variables; opt-in local and production-like benchmark scripts are present, but each deployment still needs its own recorded benchmark run before being declared production-ready. |
 | Auth hardening | Deployed-mode BFF HTTP, WebSocket, app-shell, collector, storage-read, storage-write, and control-plane authorization boundaries have acceptance coverage; operators still need configured SSO providers and secrets. |
@@ -66,6 +67,8 @@ Only the BFF and OTLP collector are public ingress candidates. NATS and SurrealD
 - Keep project API keys in a secret manager and send them only as bearer credentials from emitters.
 - Keep local mode off untrusted networks.
 - Keep NATS and SurrealDB private; use external managed or operator-owned dependencies for production.
+- Validate the target SurrealDB version with live adapter checks and update any
+  external SurrealDB server-metrics dashboards before promotion.
 - Use self-observability as a normal CloudGrid project with a normal ingest credential.
 - Run production benchmark probes with `CLOUDGRID_BENCH_DEPLOYMENT_PROFILE=production-like`, `CLOUDGRID_BENCH_ENVIRONMENT_ID`, and `CLOUDGRID_BENCH_IMAGE_TAG` against the exact deployment.
 - Run the relevant root verification commands before deployment; see [Commands](/handbook/reference/commands).

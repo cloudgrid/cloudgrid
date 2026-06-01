@@ -379,7 +379,6 @@ func (h *handler) traceCommandForRequestID(requestID string, request *collectort
 	if err != nil {
 		return contracts.PersistTelemetryCommand{}, err
 	}
-	spans = ai.AnnotateSemconvFlavor(spans)
 	commandID := newUUIDV7Like(receivedAt)
 	if requestID == "" {
 		requestID = commandID

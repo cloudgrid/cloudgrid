@@ -28,9 +28,13 @@ func newTelemetryReadAdapter(ctx context.Context, cfg storage.Config) (telemetry
 		return telemetryReadAdapter{}, err
 	}
 
+	store := &surrealdb.Store{DB: db}
 	return telemetryReadAdapter{
 		Name:  storage.AdapterSurrealDB,
-		Store: surrealdb.Store{DB: db},
+		Store: store,
+		ConfigureDBAdapterTracing: func(recorder storage.TraceLogRecorder) {
+			store.EnableDBAdapterTracing(recorder)
+		},
 		CheckReadiness: func(ctx context.Context) error {
 			return surrealdb.CheckReadiness(ctx, db)
 		},

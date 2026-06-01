@@ -10,6 +10,7 @@
     "status",
     "baselineTargetSnapshotId",
     "objective",
+    "searchPolicy",
     "candidateTargetSnapshotIds",
     "causedEvaluationRunIds",
     "quickShotPolicy",
@@ -35,6 +36,7 @@
     },
     "baselineTargetSnapshotId": { "type": "string" },
     "objective": { "$ref": "#/$defs/optimizationObjective" },
+    "searchPolicy": { "$ref": "#/$defs/optimizationSearchPolicy" },
     "trainingEvaluationDefinitionId": { "type": "string" },
     "trainingSplitSelector": { "$ref": "./evaluation-definition.schema.json#/$defs/splitSelector" },
     "validationEvaluationDefinitionId": { "type": "string" },
@@ -50,6 +52,7 @@
     "selectedCandidateSnapshotId": { "type": "string" },
     "promotionRecordId": { "type": "string" },
     "budgetSnapshot": { "type": "object", "additionalProperties": true },
+    "skillOptimization": { "$ref": "#/$defs/skillOptimizationDetail" },
     "createdAt": { "type": "string", "format": "date-time" },
     "startedAt": { "type": "string", "format": "date-time" },
     "endedAt": { "type": "string", "format": "date-time" }
@@ -98,6 +101,132 @@
             }
           }
         }
+      }
+    },
+    "optimizationSearchPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "optimizerKind",
+        "editablePartKinds",
+        "maxEpochs",
+        "maxSteps",
+        "rolloutBatchSize",
+        "reflectionMinibatchSize",
+        "editBudget",
+        "minEditBudget",
+        "editSchedule",
+        "gateMetricId",
+        "gateMode",
+        "selectionSplit",
+        "allowSlowUpdate",
+        "allowMetaMemory"
+      ],
+      "properties": {
+        "optimizerKind": {
+          "type": "string",
+          "enum": ["bootstrap_fewshot", "critic_mutate_judge_pick", "skill_text_edit"]
+        },
+        "editablePartKinds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "prompt",
+              "examples",
+              "model_config",
+              "tool_config",
+              "skill",
+              "workflow",
+              "agent_config",
+              "adapter_metadata"
+            ]
+          }
+        },
+        "maxEpochs": { "type": "integer", "minimum": 1 },
+        "maxSteps": { "type": "integer", "minimum": 0 },
+        "rolloutBatchSize": { "type": "integer", "minimum": 1 },
+        "reflectionMinibatchSize": { "type": "integer", "minimum": 1 },
+        "editBudget": { "type": "integer", "minimum": 1 },
+        "minEditBudget": { "type": "integer", "minimum": 1 },
+        "editSchedule": { "type": "string", "enum": ["constant", "linear", "cosine", "autonomous"] },
+        "gateMetricId": { "type": "string", "minLength": 1 },
+        "gateMode": { "type": "string", "enum": ["strict_improvement"] },
+        "selectionSplit": { "type": "string", "enum": ["validation"] },
+        "allowSlowUpdate": { "type": "boolean" },
+        "allowMetaMemory": { "type": "boolean" },
+        "skillPolicy": { "$ref": "#/$defs/skillOptimizationPolicy" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "optimizerKind": { "const": "skill_text_edit" } },
+            "required": ["optimizerKind"]
+          },
+          "then": { "required": ["skillPolicy"] }
+        }
+      ]
+    },
+    "skillOptimizationPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxPackageBytes",
+        "maxSkillBytes",
+        "maxSkillTokens",
+        "allowedEditOps",
+        "editableFileGlobs",
+        "protectedFileGlobs",
+        "allowScriptEdits",
+        "preserveSections",
+        "exportBestSkill"
+      ],
+      "properties": {
+        "maxPackageBytes": { "type": "integer", "minimum": 1, "maximum": 262144 },
+        "maxSkillBytes": { "type": "integer", "minimum": 1, "maximum": 65536 },
+        "maxSkillTokens": { "type": "integer", "minimum": 1, "maximum": 8000 },
+        "allowedEditOps": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "enum": ["append", "insert_after", "replace", "delete"] }
+        },
+        "editableFileGlobs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "default": ["SKILL.md", "references/**/*.md", "examples/**/*.md"]
+        },
+        "protectedFileGlobs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["scripts/**", "**/*.lock", "**/*.{png,jpg,jpeg,gif,webp,pdf,zip,tar,gz}"]
+        },
+        "allowScriptEdits": { "type": "boolean", "default": false },
+        "preserveSections": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "exportBestSkill": { "type": "boolean" }
+      }
+    },
+    "skillOptimizationDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baselineSkillDigest",
+        "acceptedStepCount",
+        "rejectedStepCount",
+        "skippedStepCount",
+        "failedStepCount"
+      ],
+      "properties": {
+        "baselineSkillDigest": { "type": "string", "minLength": 1 },
+        "currentSkillDigest": { "type": "string" },
+        "bestSkillDigest": { "type": "string" },
+        "bestTargetSnapshotId": { "type": "string" },
+        "exportedSkillContentRef": { "type": "string" },
+        "acceptedStepCount": { "type": "integer", "minimum": 0 },
+        "rejectedStepCount": { "type": "integer", "minimum": 0 },
+        "skippedStepCount": { "type": "integer", "minimum": 0 },
+        "failedStepCount": { "type": "integer", "minimum": 0 }
       }
     },
     "objectiveConstraint": {

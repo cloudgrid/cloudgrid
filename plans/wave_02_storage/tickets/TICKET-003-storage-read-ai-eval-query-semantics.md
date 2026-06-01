@@ -9,7 +9,7 @@ blocked_by: []
 spec_refs:
   - specs/04-backend/ai-eval-query-semantics.md
   - specs/04-backend/ai-eval-message-contracts.md
-  - specs/02-flows/ai-eval/online-evaluation.md
+  - specs/03-flows/ai-eval/online-evaluation.md
   - specs/03-contracts/entities/ai/eval-aggregation.schema.json
   - specs/03-contracts/entities/ai/dataset-candidate.schema.json
 write_scope:

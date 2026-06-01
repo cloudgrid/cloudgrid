@@ -18,6 +18,9 @@ import {
 
 const root = process.cwd();
 const read = (file) => readFileSync(join(root, file), "utf8");
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const hasQuotedLiteral = (content, value) =>
+  new RegExp(`["']${escapeRegExp(value)}["']`).test(content);
 
 execFileSync("bun", ["tooling/scripts/generate-contracts.mjs", "--check"], {
   cwd: root,
@@ -222,30 +225,29 @@ for (const required of ["type", "title", "status", "detail", "id", "code", "retr
 }
 
 const errors = parseYaml(read("specs/03-contracts/errors.yaml"));
-for (const id of [
-  "ERR-001",
-  "ERR-002",
-  "ERR-003",
-  "ERR-004",
-  "ERR-005",
-  "ERR-006",
-  "ERR-007",
-  "ERR-008",
-  "ERR-009",
-  "ERR-010",
-  "ERR-011",
-  "ERR-012",
-  "ERR-013",
-  "ERR-014",
-  "ERR-018",
-  "ERR-019",
-  "ERR-020",
-  "ERR-021",
-  "ERR-022",
-  "ERR-023",
-]) {
-  if (!errors.errors?.[id]?.code || errors.errors[id].retryable === undefined) {
-    throw new Error(`errors.yaml is missing ${id}`);
+const errorEntries = errors.errors ?? {};
+const runtimeProblemSource = read("apps/packages/runtime/src/problem.ts");
+const backendBridgeSource = read("apps/backend/src/bridge.ts");
+for (const [id, entry] of Object.entries(errorEntries)) {
+  for (const requiredField of [
+    "code",
+    "category",
+    "retryable",
+    "user_visible",
+    "message_template",
+    "terminal_action",
+    "retry_preconditions",
+    "description",
+  ]) {
+    if (entry?.[requiredField] === undefined) {
+      throw new Error(`errors.yaml entry ${id} is missing ${requiredField}`);
+    }
+  }
+  if (!hasQuotedLiteral(runtimeProblemSource, id)) {
+    throw new Error(`runtime problem mapping is missing ${id}`);
+  }
+  if (!hasQuotedLiteral(backendBridgeSource, id)) {
+    throw new Error(`backend bridge error schema is missing ${id}`);
   }
 }
 
@@ -398,13 +400,39 @@ for (const exportedType of [
   "AiChatActionRisk",
   "AiChatActionStatus",
   "ProjectAiProviderSettingsGetRequest",
+  "ProjectAiProviderSettingsGetResponse",
   "ProjectAiProviderSettingsUpdateRequest",
+  "ProjectAiProviderSettingsUpdateResponse",
   "CompanyAiProviderSettingsGetRequest",
+  "CompanyAiProviderSettingsGetResponse",
   "CompanyAiProviderSettingsUpdateRequest",
+  "CompanyAiProviderSettingsUpdateResponse",
+  "AiProviderSecretResolveRequest",
+  "AiProviderSecretResolveResponse",
   "AiChatHistoryRequest",
+  "AiChatHistoryResponse",
   "AiChatConversationGetRequest",
+  "AiChatConversationGetResponse",
   "AiChatConversationCreateRequest",
+  "AiChatConversationCreateResponse",
+  "AiChatConversationArchiveRequest",
+  "AiChatConversationArchiveResponse",
+  "AiChatConversationDeleteRequest",
+  "AiChatConversationDeleteResponse",
+  "AiChatMessageAppendRequest",
+  "AiChatMessageAppendResponse",
+  "AiChatRunCreateRequest",
+  "AiChatRunUpdateRequest",
+  "AiChatRunFinalizeRequest",
+  "AiChatRunMutationResponse",
+  "AiChatActionProposeRequest",
+  "AiChatActionProposeResponse",
   "AiChatActionApproveRequest",
+  "AiChatActionApproveResponse",
+  "AiChatActionFinishRequest",
+  "AiChatActionFinishResponse",
+  "AiChatCompactionSaveRequest",
+  "AiChatCompactionSaveResponse",
 ]) {
   if (!goContracts.includes(`type ${exportedType} `)) {
     throw new Error(`go contracts missing ${exportedType}`);

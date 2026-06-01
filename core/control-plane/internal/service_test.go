@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/cloudgrid-dev/cloudgrid/core/control-plane/internal/ports"
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
 	"slices"
@@ -321,7 +320,8 @@ func TestProjectAiSettingsDefaultAndUpdate(t *testing.T) {
 
 func TestAiProviderSettingsUseAsyncAPIContractsAndPersistInControlPlane(t *testing.T) {
 	store := newTestStore()
-	service := NewService(store, fixedNow)
+	secrets := newTestSecretStore()
+	service := NewServiceWithOptions(store, fixedNow, ServiceOptions{SecretStore: secrets})
 	ctx := context.Background()
 	admin := localEnvelope("req-ai-providers", localUserID, nil)
 
@@ -374,8 +374,11 @@ func TestAiProviderSettingsUseAsyncAPIContractsAndPersistInControlPlane(t *testi
 	if projectProfile["credentialRef"] != "managed:project/default/provider-1" {
 		t.Fatalf("project provider credentialRef = %#v, want managed ref", projectProfile["credentialRef"])
 	}
-	if text := fmt.Sprint(store.aiProviderSecrets["project-default-provider-1"]); strings.Contains(text, "sk-project-secret") {
-		t.Fatalf("stored project provider secret leaked plaintext: %s", text)
+	if _, ok := store.companyAiSettings["project-default-provider-1"]; ok {
+		t.Fatal("regular control-plane store must not contain managed provider secret rows")
+	}
+	if _, ok := secrets.secrets["project-default-provider-1"]; !ok {
+		t.Fatal("managed provider secret was not written to the secret store")
 	}
 	resolvedProjectSecret, err := service.ResolveAiProviderSecret(ctx, contracts.AiProviderSecretResolveRequest{
 		BridgeEnvelope: admin,
@@ -513,7 +516,7 @@ func TestAiProviderSettingsRejectManagedCredentialRefsOutsideOwnerScope(t *testi
 
 func TestCompanyAiProviderSettingsAcceptsFrontendManagedSecretPayload(t *testing.T) {
 	store := newTestStore()
-	service := NewService(store, fixedNow)
+	service := NewServiceWithOptions(store, fixedNow, ServiceOptions{SecretStore: newTestSecretStore()})
 	ctx := context.Background()
 	admin := localEnvelope("req-company-ai-frontend-payload", localUserID, nil)
 	settings, err := service.GetCompanyAiProviderSettings(ctx, contracts.CompanyAiProviderSettingsGetRequest{
@@ -565,7 +568,7 @@ func TestCompanyAiProviderSettingsAcceptsFrontendManagedSecretPayload(t *testing
 func TestAiProviderManagedSecretsRequireDeploymentEncryptionKeyWhenConfigured(t *testing.T) {
 	store := newTestStore()
 	service := NewServiceWithOptions(store, fixedNow, ServiceOptions{
-		RequireProviderSecretEncryptionKey: true,
+		SecretStore: ports.UnavailableSecretStore{},
 	})
 	ctx := context.Background()
 	admin := localEnvelope("req-ai-providers-key-required", localUserID, nil)
@@ -591,14 +594,14 @@ func TestAiProviderManagedSecretsRequireDeploymentEncryptionKeyWhenConfigured(t 
 		},
 		ExpectedVersion: 1,
 	})
-	if err == nil || !strings.Contains(err.Error(), "CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY") {
-		t.Fatalf("UpdateCompanyAiProviderSettings error = %v, want encryption key requirement", err)
+	if err == nil || !strings.Contains(err.Error(), "Storage is unavailable") {
+		t.Fatalf("UpdateCompanyAiProviderSettings error = %v, want unavailable secret store", err)
 	}
 }
 
 func TestLocalBootstrapRepairsLocalAdminMembership(t *testing.T) {
 	store := newTestStore()
-	service := NewService(store, fixedNow)
+	service := NewServiceWithOptions(store, fixedNow, ServiceOptions{SecretStore: newTestSecretStore()})
 	ctx := context.Background()
 	admin := localEnvelope("req-local-admin-repair", localUserID, nil)
 	store.memberships[membershipKey(LocalCompanyID, localUserID)] = ports.MembershipRecord{

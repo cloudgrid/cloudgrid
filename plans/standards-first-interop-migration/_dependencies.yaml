@@ -1,0 +1,43 @@
+plan: standards_first_interop_migration
+tickets:
+  TICKET-301:
+    depends_on: []
+    blocked_by: []
+    unblocks: [TICKET-302, TICKET-303]
+  TICKET-302:
+    depends_on: [TICKET-301]
+    blocked_by: []
+    unblocks: [TICKET-304, TICKET-305]
+  TICKET-303:
+    depends_on: [TICKET-301]
+    blocked_by: []
+    unblocks: [TICKET-304, TICKET-305]
+  TICKET-304:
+    depends_on: [TICKET-302, TICKET-303]
+    blocked_by: []
+    unblocks: [TICKET-306]
+  TICKET-305:
+    depends_on: [TICKET-302, TICKET-303]
+    blocked_by: []
+    unblocks: []
+  TICKET-306:
+    depends_on: [TICKET-304]
+    blocked_by: []
+    unblocks: []
+waves:
+  wave_01_source_telemetry_purity:
+    tickets: [TICKET-301]
+    depends_on: []
+  wave_02_standard_evidence_extraction:
+    tickets: [TICKET-302, TICKET-303]
+    depends_on: [TICKET-301]
+    parallel_groups:
+      - [TICKET-302, TICKET-303]
+  wave_03_frontend_docs_gates:
+    tickets: [TICKET-304, TICKET-305]
+    depends_on: [TICKET-302, TICKET-303]
+    parallel_groups:
+      - [TICKET-304, TICKET-305]
+  wave_04_adaptive_form_ux:
+    tickets: [TICKET-306]
+    depends_on: [TICKET-304]

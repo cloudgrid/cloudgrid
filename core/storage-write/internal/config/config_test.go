@@ -113,8 +113,23 @@ func TestLoadAppliesLocalSelfObservabilityDefaults(t *testing.T) {
 	if self.ExportFailureLogLevel != "warn" {
 		t.Fatalf("ExportFailureLogLevel = %q, want warn", self.ExportFailureLogLevel)
 	}
+	if self.DBAdapterTracingEnabled {
+		t.Fatal("DBAdapterTracingEnabled = true, want disabled by default")
+	}
 	if !self.TracesEnabled || !self.LogsEnabled || !self.MetricsEnabled {
 		t.Fatalf("signal defaults = traces:%v logs:%v metrics:%v, want all enabled", self.TracesEnabled, self.LogsEnabled, self.MetricsEnabled)
+	}
+}
+
+func TestLoadRejectsDBAdapterTracingInDeployedMode(t *testing.T) {
+	t.Setenv("CLOUDGRID_DEPLOYMENT_MODE", "deployed")
+	t.Setenv("CLOUDGRID_SELF_OBSERVABILITY_ENABLED", "false")
+	t.Setenv("CLOUDGRID_DB_ADAPTER_TRACING_ENABLED", "true")
+	t.Setenv("CLOUDGRID_SURREALDB_URL", "ws://localhost:8000/rpc")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "CLOUDGRID_DB_ADAPTER_TRACING_ENABLED") {
+		t.Fatalf("Load() error = %v, want deployed adapter tracing rejection", err)
 	}
 }
 

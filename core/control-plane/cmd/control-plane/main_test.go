@@ -58,6 +58,37 @@ func TestControlSurrealDBConfigUsesConfiguredValues(t *testing.T) {
 	}
 }
 
+func TestSecretSurrealDBConfigUsesIsolatedDefaults(t *testing.T) {
+	t.Setenv("CLOUDGRID_DEPLOYMENT_MODE", "local")
+	t.Setenv("CLOUDGRID_SECRET_STORE_SURREALDB_URL", "")
+	t.Setenv("CLOUDGRID_SECRET_STORE_SURREALDB_NAMESPACE", "")
+	t.Setenv("CLOUDGRID_SECRET_STORE_SURREALDB_DATABASE", "")
+	t.Setenv("CLOUDGRID_SECRET_STORE_SURREALDB_USERNAME", "")
+	t.Setenv("CLOUDGRID_SECRET_STORE_SURREALDB_PASSWORD", "")
+	t.Setenv("CLOUDGRID_SECRET_STORE_ENCRYPTION_KEY", "")
+
+	config, err := secretSurrealDBConfig()
+	if err != nil {
+		t.Fatalf("secretSurrealDBConfig returned error: %v", err)
+	}
+	if config.URL != defaultSurrealDBURL || config.Namespace != defaultSecretDBNamespace || config.Database != defaultSecretDBDatabase {
+		t.Fatalf("secret config storage = %#v, want isolated secret namespace/database defaults", config)
+	}
+	if config.EncryptionKey != localSecretEncryptionKey {
+		t.Fatalf("secret config key = %q, want local dev key", config.EncryptionKey)
+	}
+}
+
+func TestSecretSurrealDBConfigRequiresDeployedEncryptionKey(t *testing.T) {
+	t.Setenv("CLOUDGRID_DEPLOYMENT_MODE", "deployed")
+	t.Setenv("CLOUDGRID_SECRET_STORE_ENCRYPTION_KEY", "")
+	t.Setenv("CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY", "")
+
+	if _, err := secretSurrealDBConfig(); err == nil || !strings.Contains(err.Error(), "CLOUDGRID_SECRET_STORE_ENCRYPTION_KEY") {
+		t.Fatalf("secretSurrealDBConfig error = %v, want deployed encryption key requirement", err)
+	}
+}
+
 func TestValueOrDefaultTrimsWhitespaceAndFallsBack(t *testing.T) {
 	if got := valueOrDefault("  configured  ", "fallback"); got != "configured" {
 		t.Fatalf("valueOrDefault(configured) = %q, want trimmed configured value", got)
@@ -99,6 +130,21 @@ func TestResolveControlPlaneSelfObservabilityConfigUsesLocalDefaults(t *testing.
 	}
 	if config.OTLPBearerToken != "system-token" {
 		t.Fatalf("OTLPBearerToken = %q, want configured token", config.OTLPBearerToken)
+	}
+	if config.DBAdapterTracingEnabled {
+		t.Fatal("DBAdapterTracingEnabled = true, want disabled by default")
+	}
+}
+
+func TestResolveControlPlaneSelfObservabilityConfigRejectsDBAdapterTracingInDeployedMode(t *testing.T) {
+	env := map[string]string{
+		"CLOUDGRID_DEPLOYMENT_MODE":            "deployed",
+		"CLOUDGRID_SELF_OBSERVABILITY_ENABLED": "false",
+		"CLOUDGRID_DB_ADAPTER_TRACING_ENABLED": "true",
+	}
+	_, err := resolveControlPlaneSelfObservabilityConfig(func(name string) string { return env[name] })
+	if err == nil || !strings.Contains(err.Error(), "CLOUDGRID_DB_ADAPTER_TRACING_ENABLED") {
+		t.Fatalf("resolveControlPlaneSelfObservabilityConfig error = %v, want deployed adapter tracing rejection", err)
 	}
 }
 

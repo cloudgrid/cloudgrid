@@ -4,10 +4,25 @@ import {
 } from "@cloudgrid/public-api-client/operations";
 export {
   aiEvalV2ScenarioOperationNames,
+  aiEvalV2SkillOptimizationScenarioOperationNames,
   runAiEvalV2FakeAdapterScenario,
+  runAiEvalV2SkillOptimizationScenario,
   type AiEvalV2ScenarioContext,
+  type AiEvalV2SkillOptimizationScenarioOptions,
+  type AiEvalV2SkillOptimizationScenarioResult,
   type CapturedHarnessRequest,
 } from "./ai-eval-v2-executable";
+export {
+  aiEvalExternalAdapterAsyncTraceLinkFixture,
+  aiEvalStandardTraceFixtures,
+  buildAiEvalTraceEvidenceFixture,
+  missingTraceEvidenceExclusionFixture,
+  traceFixtureIdsWithUnexpectedCloudGridFlavor,
+  type AiEvalTraceEvidenceFixture,
+  type ExternalAdapterAsyncTraceLinkFixture,
+  type StandardSpanFixture,
+  type StandardTraceFixture,
+} from "./ai-eval-standard-trace-fixtures";
 
 export type ScenarioExecutionMode = "local-e2e";
 
@@ -28,7 +43,7 @@ export interface IntegrationScenarioFixture {
   id: string;
   scenarioId: string;
   description: string;
-  defaultExecution: "hermetic" | "opt-in-external-adapter";
+  defaultExecution: "hermetic";
   steps: readonly IntegrationScenarioStep[];
   failureCases: readonly IntegrationScenarioStep[];
 }
@@ -298,9 +313,218 @@ export const aiEvalV2ScenarioFixtures = [
     failureCases: [
       {
         operation: "StartEvaluationRun",
-        purpose: "Run through an opt-in external adapter that exceeds the configured timeout.",
+        purpose:
+          "Run through the deterministic CloudGrid AI harness adapter timeout fixture.",
         expected:
           "Runner records bounded adapter timeout failure evidence without auto-promoting or mutating the target.",
+      },
+    ],
+  },
+  {
+    id: "ai-eval.prompt-optimization.classification",
+    scenarioId: "ai-eval.workspace",
+    description:
+      "Imports the support-intent classification fixture pack, evaluates a weak prompt target, starts prompt optimization, reads PromptOptimizationStep evidence, and promotes only after validation evidence.",
+    defaultExecution: "hermetic",
+    steps: [
+      {
+        operation: "CreateDataset",
+        purpose:
+          "Create a classification dataset from test_data/ai_eval/classification/dataset-settings.json.",
+        expected:
+          "Dataset settings include evaluationFamily classification, curationStatus defaults, label schema enum, and classification.accuracy as the primary metric.",
+      },
+      {
+        operation: "PrepareDatasetImport",
+        purpose:
+          "Preview rows.jsonl with training, validation, and test rows using curationStatus and source refs.",
+        expected:
+          "Preview accepts every ready row, rejects legacy reviewStatus fields, and reports split counts before commit.",
+      },
+      {
+        operation: "CommitDatasetImport",
+        purpose: "Commit the support-intent rows into one immutable dataset version.",
+        expected:
+          "Committed rows preserve expected label JSON, reasons, content treatment, source refs, and split membership.",
+      },
+      {
+        operation: "CreateEvaluationDefinition",
+        purpose:
+          "Bind the baseline prompt target snapshot, validation split selector, and classification metric settings.",
+        expected:
+          "Evaluation definition resolves target parts for prompt and examples without exposing hidden provider credentials.",
+      },
+      {
+        operation: "StartEvaluationRun",
+        purpose:
+          "Run the weak baseline target to produce label errors and trace-backed item evidence.",
+        expected:
+          "Run aggregates classification.accuracy, per-label support, confusion matrix, unknown-label problems, and trajectory tradeoffs.",
+      },
+      {
+        operation: "StartOptimizationRun",
+        purpose:
+          "Start critic_mutate_judge_pick prompt optimization against training rows and validation gates.",
+        expected:
+          "Runner creates PromptOptimizationStep records with label_confusion, unknown_label, fewshot_bootstrap, and success_preservation proposals.",
+      },
+      {
+        operation: "OptimizationRuns",
+        purpose:
+          "Read family diagnosis, candidate prompt/example diffs, rejected changes, selected candidate, and validation deltas.",
+        expected:
+          "Storage-read returns prompt optimization detail without validation/test row content leakage to optimizer evidence.",
+      },
+      {
+        operation: "PromoteTargetSnapshot",
+        purpose: "Promote the selected prompt target only after validation evidence exists.",
+        expected:
+          "Promotion records baseline/candidate target snapshots, comparison id, evidence run ids, and explicit user action.",
+      },
+    ],
+    failureCases: [
+      {
+        operation: "StartOptimizationRun",
+        purpose:
+          "Start classification optimization after removing allowed label options and making the JSON label path ambiguous.",
+        expected:
+          "Runner fails preflight before target execution with metric_config_invalid readiness details.",
+      },
+      {
+        operation: "StartOptimizationRun",
+        purpose:
+          "Start optimization for an external adapter that does not declare candidateTargetContentMode.",
+        expected:
+          "Start is rejected; evaluation remains allowed but promotable prompt optimization is disabled.",
+      },
+    ],
+  },
+  {
+    id: "ai-eval.prompt-optimization.extraction",
+    scenarioId: "ai-eval.workspace",
+    description:
+      "Imports the order-confirmation extraction fixture pack, evaluates a weak prompt target, starts prompt optimization, reads PromptOptimizationStep evidence, and promotes only after validation evidence.",
+    defaultExecution: "hermetic",
+    steps: [
+      {
+        operation: "CreateDataset",
+        purpose:
+          "Create an extraction dataset from test_data/ai_eval/extraction/dataset-settings.json.",
+        expected:
+          "Dataset settings include evaluationFamily extraction, expectedJsonSchema, and extraction.field_match_rate as the primary metric.",
+      },
+      {
+        operation: "PrepareDatasetImport",
+        purpose:
+          "Preview rows.jsonl with optional discountCode, zero totals, distractor amounts, word quantities, and country normalization examples.",
+        expected:
+          "Preview validates expected JSON values against the schema and reports training/validation/test split counts.",
+      },
+      {
+        operation: "CommitDatasetImport",
+        purpose: "Commit the order-extraction rows into one immutable dataset version.",
+        expected:
+          "Committed rows preserve expected JSON values, optional fields, reasons, content treatment, source refs, and split membership.",
+      },
+      {
+        operation: "CreateEvaluationDefinition",
+        purpose:
+          "Bind the baseline prompt target snapshot, validation split selector, and extraction metric settings.",
+        expected:
+          "Evaluation definition resolves prompt/examples parts and keeps expectedJsonSchema immutable evidence.",
+      },
+      {
+        operation: "StartEvaluationRun",
+        purpose:
+          "Run the weak baseline target to produce invalid JSON, missing field, weak-field, and type mismatch evidence.",
+        expected:
+          "Run aggregates extraction.valid_json_rate, extraction.schema_validity, extraction.exact_json_match, extraction.field_match_rate, and field breakdowns.",
+      },
+      {
+        operation: "StartOptimizationRun",
+        purpose:
+          "Start critic_mutate_judge_pick prompt optimization against training rows and validation gates.",
+        expected:
+          "Runner creates PromptOptimizationStep records with schema_format, weak_field, fewshot_bootstrap, and success_preservation proposals.",
+      },
+      {
+        operation: "OptimizationRuns",
+        purpose:
+          "Read weak-field diagnosis, candidate prompt/example diffs, rejected changes, selected candidate, and validation deltas.",
+        expected:
+          "Storage-read returns prompt optimization detail and proves validation/test row content is not sent to proposal generation.",
+      },
+      {
+        operation: "PromoteTargetSnapshot",
+        purpose: "Promote the selected prompt target only after validation evidence exists.",
+        expected:
+          "Promotion records baseline/candidate target snapshots, comparison id, evidence run ids, and explicit user action.",
+      },
+    ],
+    failureCases: [
+      {
+        operation: "StartOptimizationRun",
+        purpose: "Start extraction optimization after removing expectedJsonSchema.",
+        expected:
+          "Runner fails preflight before target execution with schema readiness details.",
+      },
+      {
+        operation: "StartOptimizationRun",
+        purpose:
+          "Start optimization for an extraction proposal that attempts to mutate the dataset schema.",
+        expected:
+          "Runner rejects the proposal before candidate snapshot persistence and records bounded rejection evidence.",
+      },
+    ],
+  },
+  {
+    id: "ai-eval.skill-optimization.external-adapter-standard-traces",
+    scenarioId: "ai-eval.workspace",
+    description:
+      "Starts external-adapter skill optimization, follows async completion through W3C trace context, and proves optimizer evidence comes from standard OTLP spans.",
+    defaultExecution: "hermetic",
+    steps: [
+      {
+        operation: "StartOptimizationRun",
+        purpose:
+          "Start skill optimization against an external adapter with a terminal output ref and trace-link requirement.",
+        expected:
+          "Runner accepts async completion, preserves traceparent-derived trace refs, and waits for linked OTLP evidence.",
+      },
+      {
+        operation: "OptimizationRuns",
+        purpose:
+          "Read skill optimization detail and list progress after deterministic skill edit proposals are evaluated.",
+        expected:
+          "Detail includes rejected protected edit summaries, accepted validation-backed skill edits, skill digest changes, and best target snapshot readiness.",
+      },
+      {
+        operation: "OptimizationRuns",
+        purpose:
+          "Read skill optimization progress after standard GenAI, MCP, OpenInference, HTTP, DB, and exception spans are ingested.",
+        expected:
+          "Storage-read-derived important steps, trajectory summary, and evidence refs are present without CloudGrid source attributes.",
+      },
+      {
+        operation: "PromoteTargetSnapshot",
+        purpose:
+          "Keep promotion as a user-confirmed action after best target snapshot and evidence are visible.",
+        expected:
+          "Scenario proves a best target snapshot is ready and no promotion record is created implicitly.",
+      },
+    ],
+    failureCases: [
+      {
+        operation: "StartOptimizationRun",
+        purpose: "Complete adapter execution with terminal output but without linked trace evidence.",
+        expected:
+          "Item scoring may use terminal output, but optimizer reflection excludes the item with trace_evidence_missing evidence.",
+      },
+      {
+        operation: "StartOptimizationRun",
+        purpose: "Reflect proposes an edit to a protected skill runtime file.",
+        expected:
+          "Runner rejects the protected-file proposal and continues to evaluate valid editable skill proposals.",
       },
     ],
   },

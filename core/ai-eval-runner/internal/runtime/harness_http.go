@@ -128,6 +128,128 @@ func (adapter HarnessHTTPAdapter) Optimize(ctx context.Context, request ports.Ha
 	return response, nil
 }
 
+func (adapter HarnessHTTPAdapter) SkillCapabilities(ctx context.Context, traceContext map[string]string) (ports.SkillCapabilitiesResult, error) {
+	var response struct {
+		SupportedOptimizerKinds []string       `json:"supportedOptimizerKinds"`
+		RuntimeModes            []string       `json:"runtimeModes"`
+		TraceExport             map[string]any `json:"traceExport"`
+		Limits                  map[string]any `json:"limits"`
+		EditOps                 []string       `json:"editOps"`
+	}
+	if err := adapter.get(ctx, "/capabilities", traceContext, &response); err != nil {
+		return ports.SkillCapabilitiesResult{}, err
+	}
+	return ports.SkillCapabilitiesResult{
+		SupportedOptimizerKinds: response.SupportedOptimizerKinds,
+		RuntimeModes:            response.RuntimeModes,
+		TraceExport:             response.TraceExport,
+		Limits:                  response.Limits,
+		EditOps:                 response.EditOps,
+		Summary:                 map[string]any{"traceExport": response.TraceExport, "limits": response.Limits},
+	}, nil
+}
+
+func (adapter HarnessHTTPAdapter) SkillRuntimeDryRun(ctx context.Context, request ports.SkillRuntimeDryRunRequest) (ports.SkillRuntimeDryRunResult, error) {
+	var response struct {
+		OptimizationRunID string           `json:"optimizationRunId"`
+		OK                bool             `json:"ok"`
+		CapabilityDigest  string           `json:"capabilityDigest"`
+		Checks            []map[string]any `json:"checks"`
+		Warnings          []string         `json:"warnings"`
+	}
+	if err := adapter.post(ctx, "/skill-runtime/dry-run", map[string]any{
+		"optimizationRunId": request.OptimizationRunID,
+		"skillPackage":      skillPackagePayload(request.SkillPackage),
+		"runtimeMode":       request.RuntimeMode,
+		"runtimeProfileRef": request.RuntimeProfileRef,
+		"modelProfileRef":   request.ModelProfileRef,
+		"toolProfileRef":    request.ToolProfileRef,
+		"fixtureRef":        request.FixtureRef,
+		"traceContext":      request.TraceContext,
+	}, &response); err != nil {
+		return ports.SkillRuntimeDryRunResult{}, err
+	}
+	return ports.SkillRuntimeDryRunResult{OptimizationRunID: response.OptimizationRunID, OK: response.OK, CapabilityDigest: response.CapabilityDigest, Checks: response.Checks, Warnings: response.Warnings}, nil
+}
+
+func (adapter HarnessHTTPAdapter) SkillReflect(ctx context.Context, request ports.SkillReflectRequest) (ports.SkillReflectResult, error) {
+	var response struct {
+		OptimizationRunID string                    `json:"optimizationRunId"`
+		StepID            string                    `json:"stepId"`
+		Proposals         []ports.SkillEditProposal `json:"proposals"`
+		Summary           map[string]any            `json:"summary"`
+	}
+	if err := adapter.post(ctx, "/skill-optimization/reflect", map[string]any{
+		"optimizationRunId": request.OptimizationRunID,
+		"stepId":            request.StepID,
+		"reflectionKind":    request.ReflectionKind,
+		"skillPackage":      skillPackagePayload(request.SkillPackage),
+		"evidence":          request.Evidence,
+		"contentPolicy":     request.ContentPolicy,
+		"rejectedEdits":     skillProposalPayloads(request.RejectedEdits),
+		"traceContext":      request.TraceContext,
+	}, &response); err != nil {
+		return ports.SkillReflectResult{}, err
+	}
+	return ports.SkillReflectResult{OptimizationRunID: response.OptimizationRunID, StepID: response.StepID, Proposals: response.Proposals, Summary: response.Summary}, nil
+}
+
+func (adapter HarnessHTTPAdapter) SkillMergeRank(ctx context.Context, request ports.SkillMergeRankRequest) (ports.SkillMergeRankResult, error) {
+	var response struct {
+		OptimizationRunID  string                    `json:"optimizationRunId"`
+		StepID             string                    `json:"stepId"`
+		RankedProposals    []ports.SkillEditProposal `json:"rankedProposals"`
+		DroppedProposalIDs []string                  `json:"droppedProposalIds"`
+		Summary            map[string]any            `json:"summary"`
+	}
+	if err := adapter.post(ctx, "/skill-optimization/merge-rank", map[string]any{
+		"optimizationRunId": request.OptimizationRunID,
+		"stepId":            request.StepID,
+		"proposals":         skillProposalPayloads(request.Proposals),
+		"editBudget":        request.EditBudget,
+		"traceContext":      request.TraceContext,
+	}, &response); err != nil {
+		return ports.SkillMergeRankResult{}, err
+	}
+	return ports.SkillMergeRankResult{OptimizationRunID: response.OptimizationRunID, StepID: response.StepID, RankedProposals: response.RankedProposals, DroppedProposalIDs: response.DroppedProposalIDs, Summary: response.Summary}, nil
+}
+
+func (adapter HarnessHTTPAdapter) SkillSlowUpdate(ctx context.Context, request ports.SkillSlowUpdateRequest) (ports.SkillSlowUpdateResult, error) {
+	var response struct {
+		OptimizationRunID string   `json:"optimizationRunId"`
+		Guidance          []string `json:"guidance"`
+		ProtectedGuidance bool     `json:"protectedGuidance"`
+	}
+	if err := adapter.post(ctx, "/skill-optimization/slow-update", map[string]any{
+		"optimizationRunId":   request.OptimizationRunID,
+		"epoch":               request.Epoch,
+		"acceptedProposalIds": request.AcceptedProposalIDs,
+		"rejectedProposalIds": request.RejectedProposalIDs,
+		"trainingSummary":     request.TrainingSummary,
+		"traceContext":        request.TraceContext,
+	}, &response); err != nil {
+		return ports.SkillSlowUpdateResult{}, err
+	}
+	return ports.SkillSlowUpdateResult{OptimizationRunID: response.OptimizationRunID, Guidance: response.Guidance, ProtectedGuidance: response.ProtectedGuidance}, nil
+}
+
+func (adapter HarnessHTTPAdapter) SkillMetaMemory(ctx context.Context, request ports.SkillMetaMemoryRequest) (ports.SkillMetaMemoryResult, error) {
+	var response struct {
+		OptimizationRunID string           `json:"optimizationRunId"`
+		Memory            []map[string]any `json:"memory"`
+	}
+	if err := adapter.post(ctx, "/skill-optimization/meta-memory", map[string]any{
+		"optimizationRunId":   request.OptimizationRunID,
+		"currentMemory":       request.CurrentMemory,
+		"acceptedProposalIds": request.AcceptedProposalIDs,
+		"rejectedProposalIds": request.RejectedProposalIDs,
+		"traceContext":        request.TraceContext,
+	}, &response); err != nil {
+		return ports.SkillMetaMemoryResult{}, err
+	}
+	return ports.SkillMetaMemoryResult{OptimizationRunID: response.OptimizationRunID, Memory: response.Memory}, nil
+}
+
 func (adapter HarnessHTTPAdapter) sandboxLifecycle(ctx context.Context, path string, request ports.SandboxLifecycleRequest) (ports.SandboxLifecycleResult, error) {
 	var response ports.SandboxLifecycleResult
 	if err := adapter.post(ctx, path, map[string]any{
@@ -148,6 +270,31 @@ func (adapter HarnessHTTPAdapter) sandboxLifecycle(ctx context.Context, path str
 		return ports.SandboxLifecycleResult{}, err
 	}
 	return response, nil
+}
+
+func (adapter HarnessHTTPAdapter) get(ctx context.Context, path string, traceContext map[string]string, target any) error {
+	timeout := adapter.Timeout
+	if timeout <= 0 {
+		timeout = defaultHarnessRequestTimeout
+	}
+	requestCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	request, err := http.NewRequestWithContext(requestCtx, http.MethodGet, strings.TrimRight(adapter.BaseURL, "/")+path, nil)
+	if err != nil {
+		return err
+	}
+	request.Header.Set("user-agent", defaultHarnessUserAgent)
+	if traceparent := traceContext["traceparent"]; traceparent != "" {
+		request.Header.Set("traceparent", traceparent)
+	}
+	if tracestate := traceContext["tracestate"]; tracestate != "" {
+		request.Header.Set("tracestate", tracestate)
+	}
+	client := adapter.Client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	return doJSON(requestCtx, client, request, target)
 }
 
 func (adapter HarnessHTTPAdapter) post(ctx context.Context, path string, payload map[string]any, target any) error {
@@ -182,6 +329,53 @@ func (adapter HarnessHTTPAdapter) post(ctx context.Context, path string, payload
 		client = http.DefaultClient
 	}
 	return doJSON(requestCtx, client, request, target)
+}
+
+func skillPackagePayload(manifest ports.SkillPackageManifest) map[string]any {
+	files := make([]any, 0, len(manifest.Files))
+	for _, file := range manifest.Files {
+		item := map[string]any{
+			"path":     file.Path,
+			"role":     file.Role,
+			"digest":   file.Digest,
+			"byteSize": file.ByteSize,
+			"editable": file.Editable,
+		}
+		if file.Content != "" {
+			item["content"] = file.Content
+		}
+		files = append(files, item)
+	}
+	return map[string]any{
+		"packageRef":          manifest.PackageRef,
+		"entrypoint":          manifest.Entrypoint,
+		"manifestDigest":      manifest.ManifestDigest,
+		"files":               files,
+		"editableFileGlobs":   manifest.EditableFileGlobs,
+		"protectedFileGlobs":  manifest.ProtectedFileGlobs,
+		"runtimeRequirements": manifest.RuntimeRequirements,
+	}
+}
+
+func skillProposalPayloads(proposals []ports.SkillEditProposal) []any {
+	items := make([]any, 0, len(proposals))
+	for _, proposal := range proposals {
+		edits := make([]any, 0, len(proposal.Edits))
+		for _, edit := range proposal.Edits {
+			edits = append(edits, map[string]any{"op": edit.Op, "target": edit.Target, "filePath": edit.FilePath, "anchor": edit.Anchor, "content": edit.Content})
+		}
+		items = append(items, map[string]any{
+			"id":                     proposal.ID,
+			"source":                 proposal.Source,
+			"rationale":              proposal.Rationale,
+			"supportCount":           proposal.SupportCount,
+			"evidenceRefs":           proposal.EvidenceRefs,
+			"edits":                  edits,
+			"expectedValidity":       proposal.ExpectedValidity,
+			"protectedFileViolation": proposal.ProtectedFileViolation,
+		})
+	}
+	return items
 }
 
 func (adapter HarnessHTTPAdapter) postNDJSON(ctx context.Context, path string, payload map[string]any) (ports.HarnessOptimizeResult, error) {

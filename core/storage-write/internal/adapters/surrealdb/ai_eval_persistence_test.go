@@ -286,6 +286,108 @@ func TestBuildEvalMutationPersistQueryResultsPersistStoresOptimizationRun(t *tes
 	}
 }
 
+func TestBuildEvalMutationPersistQueryStoresSkillOptimizationStep(t *testing.T) {
+	request := validEvalRequest(map[string]any{
+		"projectId":         "project-1",
+		"optimizationRunId": "optimization-1",
+		"stepId":            "step-1",
+		"idempotencyKey":    "step-1",
+		"payload": map[string]any{
+			"id":                     "step-1",
+			"projectId":              "project-1",
+			"optimizationRunId":      "optimization-1",
+			"epoch":                  1,
+			"step":                   2,
+			"status":                 "accepted",
+			"rolloutEvaluationRunId": "eval-run-1",
+			"baselineSkillDigest":    "sha256:baseline",
+			"candidateSkillDigest":   "sha256:candidate",
+			"proposedEdits": []any{map[string]any{
+				"op":             "append",
+				"filePath":       "SKILL.md",
+				"contentPreview": strings.Repeat("a", 2100),
+				"rationale":      "fix observed failures",
+				"sourceType":     "failure",
+				"supportCount":   2,
+				"evidenceRefs": []any{map[string]any{
+					"traceId": "trace-1",
+					"spanId":  "span-1",
+					"raw":     "not persisted",
+				}},
+			}},
+			"selectedEdits":         []any{},
+			"rejectedEditSummaries": []any{},
+			"trainingScore":         0.72,
+			"validationScore":       0.81,
+			"gateDecision":          "accepted_new_best",
+			"startedAt":             "2026-05-31T10:00:00Z",
+			"endedAt":               "2026-05-31T10:01:00Z",
+		},
+	})
+
+	sql, vars, data, err := BuildEvalMutationPersistQuery("eval.optimization.step.persist", request, fixedWriterTime())
+	if err != nil {
+		t.Fatalf("BuildEvalMutationPersistQuery() error = %v", err)
+	}
+	if !strings.Contains(sql, "UPSERT type::record('ai_optimization_step', $record_id) CONTENT $record") || !strings.Contains(sql, "ai_eval_idempotency") {
+		t.Fatalf("sql = %s, want step upsert with idempotency", sql)
+	}
+	record := vars["record"].(map[string]any)
+	if record["optimizationRunId"] != "optimization-1" || record["gateDecision"] != "accepted_new_best" {
+		t.Fatalf("record = %#v, want optimization step fields", record)
+	}
+	edits := record["proposedEdits"].([]any)
+	edit := edits[0].(map[string]any)
+	if len(edit["contentPreview"].(string)) != 2000 {
+		t.Fatalf("contentPreview length = %d, want bounded preview", len(edit["contentPreview"].(string)))
+	}
+	ref := edit["evidenceRefs"].([]any)[0].(map[string]any)
+	if _, exists := ref["raw"]; exists || ref["traceId"] != "trace-1" {
+		t.Fatalf("evidence ref = %#v, want bounded source ref only", ref)
+	}
+	if data["id"] != "step-1" {
+		t.Fatalf("data = %#v, want step echo", data)
+	}
+}
+
+func TestBuildEvalMutationPersistQueryStoresSkillOptimizationMemory(t *testing.T) {
+	request := validEvalRequest(map[string]any{
+		"projectId":         "project-1",
+		"optimizationRunId": "optimization-1",
+		"idempotencyKey":    "memory-1",
+		"payload": map[string]any{
+			"projectId":         "project-1",
+			"optimizationRunId": "optimization-1",
+			"rejectedEditBuffer": []any{map[string]any{
+				"op":             "delete",
+				"filePath":       "scripts/run.sh",
+				"contentPreview": "blocked protected file edit",
+				"sourceType":     "failure",
+				"evidenceRefs":   []any{map[string]any{"evaluationItemRunId": "item-run-1"}},
+			}},
+			"slowUpdateContent": strings.Repeat("s", 9000),
+			"metaMemoryContent": "avoid protected files",
+			"truncated":         true,
+			"updatedAt":         "2026-05-31T10:02:00Z",
+		},
+	})
+
+	sql, vars, data, err := BuildEvalMutationPersistQuery("eval.optimization.memory.persist", request, fixedWriterTime())
+	if err != nil {
+		t.Fatalf("BuildEvalMutationPersistQuery() error = %v", err)
+	}
+	if !strings.Contains(sql, "UPSERT type::record('ai_optimization_memory', $record_id) CONTENT $record") {
+		t.Fatalf("sql = %s, want memory upsert", sql)
+	}
+	record := vars["record"].(map[string]any)
+	if len(record["slowUpdateContent"].(string)) != 8192 || record["truncated"] != true {
+		t.Fatalf("record = %#v, want bounded memory content", record)
+	}
+	if data["optimizationRunId"] != "optimization-1" {
+		t.Fatalf("data = %#v, want memory echo", data)
+	}
+}
+
 func TestBuildEvalMutationPersistQueryRejectsInvalidScorerDefinitionAndResultPayload(t *testing.T) {
 	tests := []struct {
 		name    string

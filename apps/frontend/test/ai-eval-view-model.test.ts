@@ -7,7 +7,7 @@ import {
   jsonPreview,
 } from "../src/features/ai-eval/view-model";
 import {
-  compatibleTraceImportDatasets,
+  compatibleTraceIntakeDatasets,
   parseRawValue,
   validateAgainstJsonSchema,
 } from "../src/features/ai-eval/view-model-v2";
@@ -305,7 +305,7 @@ describe("AI-eval view helpers", () => {
     ).toBe('Missing required property "missing".');
   });
 
-  test("trace import picker only includes datasets with extraction settings", () => {
+  test("trace intake picker only includes datasets with enabled trace intake rules", () => {
     const datasets = [
       {
         id: "dataset-1",
@@ -328,7 +328,15 @@ describe("AI-eval view helpers", () => {
           warnings: [],
         },
         tags: [],
-        settings: { traceExtractionSettings: { inputPath: "$.input" } },
+        settings: {
+          traceIntakeRules: [
+            {
+              id: "rule-1",
+              enabled: true,
+              mappings: { input: { path: "$.input", source: "span_attribute" } },
+            },
+          ],
+        },
       },
       {
         id: "dataset-2",
@@ -354,7 +362,7 @@ describe("AI-eval view helpers", () => {
       },
     ];
 
-    expect(compatibleTraceImportDatasets(datasets).map((dataset) => dataset.id)).toEqual([
+    expect(compatibleTraceIntakeDatasets(datasets).map((dataset) => dataset.id)).toEqual([
       "dataset-1",
     ]);
   });

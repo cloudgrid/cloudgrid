@@ -439,17 +439,74 @@ const datasetSettingsFields = `
   expectedType
   inputJsonSchema
   expectedJsonSchema
+  expectedValueOptions {
+    value
+    label
+    description
+    metadata
+  }
   defaultSplit
   intakePolicy {
     manualDefaultStatus
     importDefaultStatus
     traceDefaultStatus
   }
-  traceExtractionSettings {
-    inputPath
-    expectedPath
-    observedOutputPath
-    metadataPaths
+  traceIntakeRules {
+    id
+    name
+    enabled
+    match {
+      serviceNames
+      operationNames
+      spanNames
+      spanKinds
+      statuses
+      attributePredicates {
+        scope
+        key
+        operator
+        value
+      }
+    }
+    mappings {
+      input {
+        source
+        path
+        transform
+        defaultValue
+        enumMap
+      }
+      expected {
+        source
+        path
+        transform
+        defaultValue
+        enumMap
+      }
+      observedOutput {
+        source
+        path
+        transform
+        defaultValue
+        enumMap
+      }
+      metadata {
+        key
+        mapping {
+          source
+          path
+          transform
+          defaultValue
+          enumMap
+        }
+      }
+    }
+    defaults {
+      split
+      curationStatus
+      contentTreatment
+      expectedTrust
+    }
   }
   anonymizationPolicy {
     mode
@@ -541,6 +598,170 @@ const _optimizationConfigFields = `
     maxRounds
     keepTopK
   }
+`;
+
+const optimizationObjectiveFields = `
+  primaryMetricId
+  secondaryMetricIds
+  constraints
+  tradeoffMetricIds
+  rankingPolicy
+  tieBreakers
+  minimumEvidence
+`;
+
+const optimizationSearchPolicyFields = `
+  optimizerKind
+  editablePartKinds
+  maxEpochs
+  maxSteps
+  rolloutBatchSize
+  reflectionMinibatchSize
+  editBudget
+  minEditBudget
+  editSchedule
+  gateMetricId
+  gateMode
+  selectionSplit
+  allowSlowUpdate
+  allowMetaMemory
+  skillPolicy {
+    maxPackageBytes
+    maxSkillBytes
+    maxSkillTokens
+    allowedEditOps
+    editableFileGlobs
+    protectedFileGlobs
+    allowScriptEdits
+    preserveSections
+    exportBestSkill
+  }
+`;
+
+const skillOptimizationDetailFields = `
+  baselineSkillDigest
+  currentSkillDigest
+  bestSkillDigest
+  bestTargetSnapshotId
+  exportedSkillContentRef
+  acceptedStepCount
+  rejectedStepCount
+  skippedStepCount
+  failedStepCount
+  steps {
+    id
+    optimizationRunId
+    epoch
+    step
+    status
+    rolloutEvaluationRunId
+    candidateTargetSnapshotId
+    baselineSkillDigest
+    candidateSkillDigest
+    proposedEdits {
+      op
+      filePath
+      target
+      contentPreview
+      rationale
+      sourceType
+      supportCount
+      evidenceRefs {
+        kind
+        traceId
+        spanId
+        evaluationRunId
+        evaluationItemRunId
+        importJobId
+        candidateId
+        metadata
+      }
+    }
+    selectedEdits {
+      op
+      filePath
+      target
+      contentPreview
+      rationale
+      sourceType
+      supportCount
+      evidenceRefs {
+        kind
+        traceId
+        spanId
+        evaluationRunId
+        evaluationItemRunId
+        importJobId
+        candidateId
+        metadata
+      }
+    }
+    rejectedEditSummaries {
+      op
+      filePath
+      target
+      contentPreview
+      rationale
+      sourceType
+      supportCount
+      evidenceRefs {
+        kind
+        traceId
+        spanId
+        evaluationRunId
+        evaluationItemRunId
+        importJobId
+        candidateId
+        metadata
+      }
+    }
+    trainingScore
+    validationScore
+    gateDecision
+    problem {
+      code
+      message
+      details
+    }
+    startedAt
+    endedAt
+  }
+`;
+
+const optimizationRunFields = `
+  id
+  projectId
+  status
+  baselineTargetSnapshotId
+  objective {
+    ${optimizationObjectiveFields}
+  }
+  searchPolicy {
+    ${optimizationSearchPolicyFields}
+  }
+  trainingEvaluationDefinitionId
+  trainingSplitSelector {
+    splits
+    curationStatuses
+  }
+  validationEvaluationDefinitionId
+  validationSplitSelector {
+    splits
+    curationStatuses
+  }
+  testEvaluationDefinitionId
+  candidateTargetSnapshotIds
+  causedEvaluationRunIds
+  comparisonIds
+  selectedCandidateSnapshotId
+  promotionRecordId
+  budgetSnapshot
+  skillOptimization {
+    ${skillOptimizationDetailFields}
+  }
+  createdAt
+  startedAt
+  endedAt
 `;
 
 const runPolicyFields = `
@@ -1126,19 +1347,7 @@ export const evaluationComparisonsOperation = `
 export const startOptimizationRunOperation = `
   mutation StartOptimizationRun($input: StartOptimizationRunInput!) {
     startOptimizationRun(input: $input) {
-      id
-      projectId
-      status
-      baselineTargetSnapshotId
-      candidateTargetSnapshotIds
-      causedEvaluationRunIds
-      comparisonIds
-      selectedCandidateSnapshotId
-      promotionRecordId
-      budgetSnapshot
-      createdAt
-      startedAt
-      endedAt
+      ${optimizationRunFields}
     }
   }
 `;
@@ -1147,21 +1356,17 @@ export const optimizationRunsOperation = `
   query OptimizationRuns($input: OptimizationRunSearchInput) {
     optimizationRuns(input: $input) {
       items {
-        id
-        projectId
-        status
-        baselineTargetSnapshotId
-        candidateTargetSnapshotIds
-        causedEvaluationRunIds
-        comparisonIds
-        selectedCandidateSnapshotId
-        promotionRecordId
-        budgetSnapshot
-        createdAt
-        startedAt
-        endedAt
+        ${optimizationRunFields}
       }
       nextCursor
+    }
+  }
+`;
+
+export const optimizationRunOperation = `
+  query OptimizationRun($id: ID!) {
+    optimizationRun(id: $id) {
+      ${optimizationRunFields}
     }
   }
 `;
@@ -1336,6 +1541,16 @@ const datasetCandidateFields = `
     metadata
   }
   clusterId
+  validationIssues {
+    field
+    message
+    blocking
+  }
+  duplicateHint {
+    datasetItemId
+    candidateId
+    reason
+  }
   warnings
   createdAt
   updatedAt

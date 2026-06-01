@@ -47,7 +47,6 @@ type testStore struct {
 	retentionPolicies   map[string]ports.RetentionPolicyRecord
 	projectAiSettings   map[string]ports.ProjectAiSettingsRecord
 	companyAiSettings   map[string]ports.CompanyAiProviderSettingsRecord
-	aiProviderSecrets   map[string]ports.AiProviderSecretRecord
 	aiChatConversations map[string]ports.AiChatConversationRecord
 	aiChatMessages      map[string]ports.AiChatMessageRecord
 	aiChatRuns          map[string]ports.AiChatRunRecord
@@ -56,6 +55,60 @@ type testStore struct {
 	alertRules          map[string]ports.AlertRuleRecord
 	alertSilences       map[string]ports.AlertSilenceRecord
 	alertEvents         map[string]ports.AlertEventRecord
+}
+
+type testSecretStore struct {
+	mu      sync.RWMutex
+	secrets map[string]testSecret
+	err     error
+}
+
+type testSecret struct {
+	scope ports.SecretScope
+	value string
+}
+
+func newTestSecretStore() *testSecretStore {
+	return &testSecretStore{secrets: map[string]testSecret{}}
+}
+
+func newTestService(store *testStore) *Service {
+	return NewServiceWithOptions(store, fixedNow, ServiceOptions{SecretStore: newTestSecretStore()})
+}
+
+func (store *testSecretStore) PutManagedSecret(_ context.Context, secret ports.ManagedSecretWrite) error {
+	if store.err != nil {
+		return store.err
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.secrets[secret.ID] = testSecret{scope: secret.Scope, value: secret.Value}
+	return nil
+}
+
+func (store *testSecretStore) ResolveManagedSecret(_ context.Context, secretID string, scope ports.SecretScope) (ports.ResolvedSecret, bool, error) {
+	if store.err != nil {
+		return ports.ResolvedSecret{}, false, store.err
+	}
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	secret, ok := store.secrets[secretID]
+	if !ok || secret.scope != scope {
+		return ports.ResolvedSecret{}, false, nil
+	}
+	return ports.ResolvedSecret{Value: secret.value}, true, nil
+}
+
+func (store *testSecretStore) DeleteManagedSecret(_ context.Context, secretID string, scope ports.SecretScope) error {
+	if store.err != nil {
+		return store.err
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if secret, ok := store.secrets[secretID]; ok && secret.scope == scope {
+		delete(store.secrets, secretID)
+	}
+	return nil
 }
 
 func newTestStore() *testStore {
@@ -73,7 +126,6 @@ func newTestStore() *testStore {
 		retentionPolicies:   map[string]ports.RetentionPolicyRecord{},
 		projectAiSettings:   map[string]ports.ProjectAiSettingsRecord{},
 		companyAiSettings:   map[string]ports.CompanyAiProviderSettingsRecord{},
-		aiProviderSecrets:   map[string]ports.AiProviderSecretRecord{},
 		aiChatConversations: map[string]ports.AiChatConversationRecord{},
 		aiChatMessages:      map[string]ports.AiChatMessageRecord{},
 		aiChatRuns:          map[string]ports.AiChatRunRecord{},
@@ -519,20 +571,6 @@ func (store *testStore) PutCompanyAiProviderSettings(_ context.Context, settings
 	defer store.mu.Unlock()
 	settings.Settings = cloneMap(settings.Settings)
 	store.companyAiSettings[settings.CompanyID] = settings
-	return nil
-}
-
-func (store *testStore) GetAiProviderSecret(_ context.Context, secretID string) (ports.AiProviderSecretRecord, bool, error) {
-	store.mu.RLock()
-	defer store.mu.RUnlock()
-	secret, ok := store.aiProviderSecrets[secretID]
-	return secret, ok, nil
-}
-
-func (store *testStore) PutAiProviderSecret(_ context.Context, secret ports.AiProviderSecretRecord) error {
-	store.mu.Lock()
-	defer store.mu.Unlock()
-	store.aiProviderSecrets[secret.ID] = secret
 	return nil
 }
 

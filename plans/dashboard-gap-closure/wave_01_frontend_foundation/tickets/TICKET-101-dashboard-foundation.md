@@ -10,7 +10,7 @@ spec_refs:
   - specs/05-frontend/dashboard-implementation-contract.md
   - specs/05-frontend/dashboard-widgets.md
   - specs/02-capabilities/metrics/manage-dashboards.md
-  - specs/02-flows/metrics/dashboard-query.md
+  - specs/03-flows/metrics/dashboard-query.md
   - specs/03-contracts/graphql/public-schema.graphql
 write_scope:
   - apps/frontend/src/features/dashboards
@@ -25,7 +25,7 @@ read_scope:
   - specs/05-frontend/dashboard-widgets.md
   - specs/05-frontend/dashboard-implementation-contract.md
   - specs/02-capabilities/metrics/manage-dashboards.md
-  - specs/02-flows/metrics/dashboard-query.md
+  - specs/03-flows/metrics/dashboard-query.md
   - specs/03-contracts/graphql/public-schema.graphql
   - apps/frontend/src/features/dashboards
   - apps/frontend/src/lib/dashboard-contracts.ts

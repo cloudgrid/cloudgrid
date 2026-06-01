@@ -11,7 +11,7 @@ decision_rationale: The product can provide metadata, scoring, and workflow valu
 consequences:
   positive: [Safer local and deployed defaults, smaller stored projections]
   negative: [Transcript and dataset promotion may require user-supplied content when capture is disabled]
-affects: [NFR-009, CAP-AIE-005]
+affects: [NFR-010, CAP-AIE-005]
 ---
 
 # ADR-0008: Content Capture Policy

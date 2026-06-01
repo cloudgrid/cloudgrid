@@ -17,19 +17,19 @@ export function AlertStatusWidgetPreview({ summary }: { summary: AlertSummary })
     <div className="grid gap-3">
       <div>
         <div className="text-2xl font-semibold">{summary.totalCount}</div>
-        <div className="text-xs text-muted-foreground">matching alert events</div>
+        <div className="text-xs text-muted-foreground">{t("alerts.matchingEvents")}</div>
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
         <AlertCountGroup
-          label="State"
+          label={t("alerts.column.state")}
           rows={summary.byState.map((row) => [row.state, row.count])}
         />
         <AlertCountGroup
-          label="Severity"
+          label={t("alerts.column.severity")}
           rows={summary.bySeverity.map((row) => [row.severity, row.count])}
         />
         <AlertCountGroup
-          label="Signal"
+          label={t("alerts.column.signal")}
           rows={summary.bySignal.map((row) => [row.signal, row.count])}
         />
       </div>
@@ -63,10 +63,10 @@ export function AlertHistoryWidgetPreview({ events }: { events: AlertEvent[] }) 
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Created</TableHead>
-          <TableHead>State</TableHead>
-          <TableHead>Severity</TableHead>
-          <TableHead>Summary</TableHead>
+          <TableHead>{t("alerts.column.created")}</TableHead>
+          <TableHead>{t("alerts.column.state")}</TableHead>
+          <TableHead>{t("alerts.column.severity")}</TableHead>
+          <TableHead>{t("alerts.column.summary")}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -103,7 +103,7 @@ export function AlertEvidenceWidgetPreview({ event }: { event: AlertEvent | null
       </div>
       <p>{event.summary}</p>
       <dl className="grid gap-2">
-        <SummaryRow label="Rule">
+        <SummaryRow label={t("alerts.evidence.rule")}>
           <a
             className="text-primary underline-offset-4 hover:underline"
             href={`/alerts?ruleId=${event.ruleId}`}
@@ -112,7 +112,7 @@ export function AlertEvidenceWidgetPreview({ event }: { event: AlertEvent | null
           </a>
         </SummaryRow>
         {event.evidenceTraceId ? (
-          <SummaryRow label="Trace">
+          <SummaryRow label={t("alerts.evidence.trace")}>
             <a
               className="text-primary underline-offset-4 hover:underline"
               href={`/traces/${event.evidenceTraceId}`}
@@ -121,9 +121,11 @@ export function AlertEvidenceWidgetPreview({ event }: { event: AlertEvent | null
             </a>
           </SummaryRow>
         ) : null}
-        {event.evidenceLogId ? <SummaryRow label="Log">{event.evidenceLogId}</SummaryRow> : null}
+        {event.evidenceLogId ? (
+          <SummaryRow label={t("alerts.evidence.log")}>{event.evidenceLogId}</SummaryRow>
+        ) : null}
         {event.evidenceMetricName ? (
-          <SummaryRow label="Metric">{event.evidenceMetricName}</SummaryRow>
+          <SummaryRow label={t("alerts.evidence.metric")}>{event.evidenceMetricName}</SummaryRow>
         ) : null}
       </dl>
     </div>

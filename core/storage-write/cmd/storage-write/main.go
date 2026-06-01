@@ -102,6 +102,9 @@ func runWithRuntime(runtime storageWriteRuntime) int {
 			_ = traceLogExporter.Shutdown(shutdownCtx)
 		}()
 	}
+	if cfg.SelfObservability.DBAdapterTracingEnabled && cfg.SelfObservability.Enabled && cfg.SelfObservability.TracesEnabled && traceLogExporter != nil && adapter.ConfigureDBAdapterTracing != nil {
+		adapter.ConfigureDBAdapterTracing(traceLogExporter)
+	}
 
 	var recorder ingest.MetricsRecorder
 	if metricsExporter != nil {
@@ -258,11 +261,12 @@ func storageWriteSelfObservabilityTraceLogExporter(cfg config.Config, logger *sl
 }
 
 type telemetryWriteAdapter struct {
-	Name           string
-	Store          ports.TelemetryWriteStore
-	Initialize     func(context.Context) error
-	CheckReadiness func(context.Context) error
-	Close          func(context.Context) error
+	Name                      string
+	Store                     ports.TelemetryWriteStore
+	ConfigureDBAdapterTracing func(ingest.TraceLogRecorder)
+	Initialize                func(context.Context) error
+	CheckReadiness            func(context.Context) error
+	Close                     func(context.Context) error
 }
 
 type messageBridgeAdapter struct {

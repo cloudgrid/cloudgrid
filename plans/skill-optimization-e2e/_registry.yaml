@@ -1,0 +1,44 @@
+plan: skill_optimization_e2e
+tickets:
+  TICKET-401:
+    title: Public start and detail contract alignment
+    wave: 1
+    status: planned
+    file: plans/skill-optimization-e2e/wave_01_contract_adapter/tickets/TICKET-401-public-start-detail-contract-alignment.md
+    depends_on: []
+    blocked_by: []
+  TICKET-402:
+    title: Harness adapter skill endpoints and fixtures
+    wave: 1
+    status: planned
+    file: plans/skill-optimization-e2e/wave_01_contract_adapter/tickets/TICKET-402-harness-skill-endpoints-fixtures.md
+    depends_on: []
+    blocked_by: []
+  TICKET-403:
+    title: Storage skill optimization persistence and reads
+    wave: 2
+    status: planned
+    file: plans/skill-optimization-e2e/wave_02_services/tickets/TICKET-403-storage-skill-optimization-detail.md
+    depends_on: [TICKET-401]
+    blocked_by: []
+  TICKET-404:
+    title: Runner skill text edit loop
+    wave: 2
+    status: planned
+    file: plans/skill-optimization-e2e/wave_02_services/tickets/TICKET-404-runner-skill-text-edit-loop.md
+    depends_on: [TICKET-401, TICKET-402, TICKET-403]
+    blocked_by: []
+  TICKET-405:
+    title: Frontend skill optimization detail
+    wave: 3
+    status: planned
+    file: plans/skill-optimization-e2e/wave_03_frontend_integration/tickets/TICKET-405-frontend-skill-optimization-detail.md
+    depends_on: [TICKET-404]
+    blocked_by: []
+  TICKET-406:
+    title: E2E skill optimization scenarios and manual real LLM data
+    wave: 3
+    status: planned
+    file: plans/skill-optimization-e2e/wave_03_frontend_integration/tickets/TICKET-406-e2e-scenarios-real-llm-example.md
+    depends_on: [TICKET-404]
+    blocked_by: []

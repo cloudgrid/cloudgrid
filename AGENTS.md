@@ -10,7 +10,7 @@ Required architecture references:
 
 - `specs/00-vision.md`
 - `specs/00-conventions.md`
-- `specs/05-frontend/product-ux-concept.md` when touching frontend UX, navigation, onboarding, empty states, route layout, or design
+- `specs/05-frontend/product-experience-contract.md` and `specs/05-frontend/product-ux-concept.md` when touching frontend UX, navigation, onboarding, empty states, route layout, action states, or design
 - `specs/04-backend/backend-architecture.md`
 - `specs/03-contracts/graphql/public-schema.graphql`
 - `specs/03-contracts/messages/message-bridge.asyncapi.yaml`
@@ -89,6 +89,8 @@ Backend coverage target is >80% for the TypeScript BFF and Go backend services. 
 
 Before claiming completion, run the narrowest relevant checks plus any broader check required by touched shared contracts.
 
+For frontend route or feature changes that add or modify user-visible copy, labels, helper text, empty states, validation text, action text, placeholders, titles, or accessible names, route the copy through `apps/frontend/src/lib/i18n.ts` and add or update a focused static copy scan such as `apps/frontend/test/i18n-copy.test.ts`. Run that focused copy test before claiming completion. Do not hard-code app copy in route or feature components except for user data, code samples, metric names, attribute keys, protocol literals, IDs, query keys, or test fixtures.
+
 For any GraphQL, AsyncAPI, UI contract, BFF bridge, or Go message contract change, `bun run contracts:check` is mandatory. It validates frontend GraphQL operations against the SDL, required GraphQL input fields against TypeScript UI contracts, and AsyncAPI request fields against Go structs; do not bypass it with syntax-only checks.
 
 For any control-plane message subject change, the implementation must also keep the generated subject list, `ControlSubjects()`, the NATS handler map, BFF bridge payload shape, and focused tests aligned. `go test -tags surrealdb ./core/control-plane/...` must fail if a generated control-plane request/reply subject is not registered by the service. BFF bridge tests must assert AsyncAPI top-level request fields for subjects whose schemas do not use an `input` wrapper.
@@ -152,7 +154,9 @@ go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otl
 Implementation conventions live in `.agent/IMPLEMENTATION.md`.
 Frontend design conventions live in `DESIGN.md`.
 
-Frontend UX implementation must follow `specs/05-frontend/product-ux-concept.md`. Do not invent alternate shell modes, navigation ordering, onboarding placement, empty-state structure, modal/drawer/popover usage, or card-based page layouts inside route components.
+Frontend UX implementation must follow `specs/05-frontend/product-experience-contract.md` and `specs/05-frontend/product-ux-concept.md`. Do not invent alternate shell modes, navigation ordering, onboarding placement, empty-state structure, disabled-action behavior, modal/drawer/popover usage, or card-based page layouts inside route components.
+
+Frontend route and feature copy must be translatable by default. New or changed visible copy belongs in `apps/frontend/src/lib/i18n.ts`, and the frontend change must include a focused copy regression test when it fixes or introduces a class of hard-coded strings.
 
 Approved UX v2 guidance to preserve:
 

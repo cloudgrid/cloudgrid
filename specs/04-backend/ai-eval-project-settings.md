@@ -32,6 +32,7 @@ and dataset defaults for AI Eval. Control-plane owns these settings.
 - `runPolicyDefaults`;
 - `datasetPipeline`;
 - `datasetDefaults`;
+- `optimizationDefaults`;
 - `externalAdapters`;
 - `version`;
 - `updatedAt`;
@@ -87,6 +88,23 @@ Fields:
 - `preserveTemporalDistance`;
 - `blockedEntityTypes`.
 
+## OptimizationDefaults
+
+Fields:
+
+- `enabledOptimizerKinds`: allowed values from `OptimizationOptimizerKind`;
+- `defaultOptimizerKind`: default `critic_mutate_judge_pick` until a baseline
+  target exposes a skill part, then UI may offer `skill_text_edit`;
+- `defaultSkillSearchPolicy`: max epochs, rollout batch size, reflection
+  minibatch size, edit budget, edit schedule, slow-update flag, meta-memory
+  flag, max skill bytes, and max skill tokens;
+- `maxConcurrentOptimizerCalls`, default `2`;
+- `optimizerEvidenceContentPolicy`: `metadata_only`, `dataset_content`, or
+  `disabled`.
+
+Project settings may disable `skill_text_edit` even when AI Eval is enabled.
+They must not raise global hard caps from `NFR-011`.
+
 ## External Adapters
 
 `externalAdapters` stores configured black-box target adapters:
@@ -114,7 +132,7 @@ When AI Eval is enabled:
 - default daily provider-backed evaluation budget is `0 USD` until configured;
 - default split for manual rows is `validation`;
 - default split for optimization-sourced examples is `training`;
-- default curation status for trace imports is `needs_review`;
+- default curation status for trace-derived candidates is `needs_review`;
 - candidate suggestions require explicit commit;
 - realistic anonymization is recommended for production-derived candidates;
 - policy templates are saved disabled until enabled by a project admin.

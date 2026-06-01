@@ -10,7 +10,7 @@ spec_refs:
   - specs/05-frontend/dashboard-implementation-contract.md
   - specs/05-frontend/dashboard-widgets.md
   - specs/02-capabilities/metrics/manage-dashboards.md
-  - specs/02-flows/metrics/dashboard-query.md
+  - specs/03-flows/metrics/dashboard-query.md
   - specs/03-contracts/graphql/public-schema.graphql
   - specs/03-contracts/messages/message-bridge.asyncapi.yaml
 write_scope:
@@ -24,7 +24,7 @@ read_scope:
   - specs/05-frontend/dashboard-widgets.md
   - specs/05-frontend/dashboard-implementation-contract.md
   - specs/02-capabilities/metrics/manage-dashboards.md
-  - specs/02-flows/metrics/dashboard-query.md
+  - specs/03-flows/metrics/dashboard-query.md
   - specs/03-contracts/graphql/public-schema.graphql
   - specs/03-contracts/messages/message-bridge.asyncapi.yaml
   - apps/frontend/src/routes/dashboards-route.tsx

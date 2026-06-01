@@ -1,0 +1,32 @@
+{
+  "packageRef": "skill-package-real-llm-support",
+  "entrypoint": "SKILL.md",
+  "manifestDigest": "sha256:real-llm-skill-manifest-template",
+  "editableFileGlobs": ["SKILL.md", "references/*.md"],
+  "protectedFileGlobs": ["fixtures/**", "scripts/**", "package-lock.json"],
+  "runtimeRequirements": {
+    "requiresMcp": false,
+    "requiresFilesystem": false,
+    "requiresScripts": false,
+    "traceExportRequired": true,
+    "requiresLiveModel": true
+  },
+  "files": [
+    {
+      "path": "SKILL.md",
+      "role": "entrypoint",
+      "digest": "sha256:real-llm-skill-md-template",
+      "byteSize": 718,
+      "content": "# Cloud Support Reply Skill\n\nUse this skill to draft one concise support next action from a CloudGrid-like enterprise support ticket.\n\n## Rules\n\n- Use identifiers supplied by the user.\n- Ask for exactly one missing required identifier when the request cannot be acted on safely.\n- Do not invent workspace, organization, account, or project ids.\n- Mention the product event in the ticket when it changes the next action.\n\n## Output\n\nReturn JSON with `action`, `message`, and `missingField`.\n",
+      "editable": true
+    },
+    {
+      "path": "references/answer-style.md",
+      "role": "reference",
+      "digest": "sha256:real-llm-answer-style-template",
+      "byteSize": 399,
+      "content": "# Answer Style\n\n- Keep the reply under four sentences.\n- State the next action first.\n- Use the customer's exact identifier when present.\n- If a required identifier is missing, ask for it directly and stop.\n",
+      "editable": true
+    }
+  ]
+}

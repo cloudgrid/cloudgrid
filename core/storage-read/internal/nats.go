@@ -9,6 +9,7 @@ import (
 	"time"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
+	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/selfobs"
 	"github.com/cloudgrid-dev/cloudgrid/core/storage-read/internal/ports"
 )
 
@@ -46,8 +47,16 @@ func readHandlerTimeout(timeout time.Duration) time.Duration {
 	return defaultQueryTimeout
 }
 
-func readHandlerContext(timeout time.Duration) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), timeout)
+func readHandlerContext(msg BridgeMessage, timeout time.Duration) (context.Context, context.CancelFunc) {
+	ctx := context.Background()
+	if carrier, ok := msg.(interface {
+		TraceContext() (selfobs.TraceContext, bool)
+	}); ok {
+		if traceContext, ok := carrier.TraceContext(); ok {
+			ctx = selfobs.ContextWithTraceContext(ctx, traceContext)
+		}
+	}
+	return context.WithTimeout(ctx, timeout)
 }
 
 func handleProjectTelemetryOverview(store ports.TelemetryReadStore, logger *slog.Logger, timeout time.Duration) bridgeMessageHandler {
@@ -71,7 +80,7 @@ func handleProjectTelemetryOverview(store ports.TelemetryReadStore, logger *slog
 			logHandlerCompletion(logger, SubjectProjectTelemetryOverview, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := readHandlerContext(timeout)
+		ctx, cancel := readHandlerContext(msg, timeout)
 		defer cancel()
 		data, err := store.GetProjectTelemetryOverviews(ctx, request)
 		if err != nil {
@@ -107,7 +116,7 @@ func handleTraceSearch(store ports.TelemetryReadStore, logger *slog.Logger, time
 			logHandlerCompletion(logger, SubjectTraceSearch, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := readHandlerContext(timeout)
+		ctx, cancel := readHandlerContext(msg, timeout)
 		defer cancel()
 		data, err := store.SearchTraces(ctx, request.Query, request.AuthContext)
 		if err != nil {
@@ -143,7 +152,7 @@ func handleTraceGet(store ports.TelemetryReadStore, logger *slog.Logger, timeout
 			logHandlerCompletion(logger, SubjectTraceGet, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := readHandlerContext(timeout)
+		ctx, cancel := readHandlerContext(msg, timeout)
 		defer cancel()
 		data, err := store.GetTraceDetail(ctx, request.TraceID, request.Query, request.AuthContext)
 		if err != nil {
@@ -179,7 +188,7 @@ func handleLogSearch(store ports.TelemetryReadStore, logger *slog.Logger, timeou
 			logHandlerCompletion(logger, SubjectLogSearch, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := readHandlerContext(timeout)
+		ctx, cancel := readHandlerContext(msg, timeout)
 		defer cancel()
 		data, err := store.SearchLogs(ctx, request.Query, request.AuthContext)
 		if err != nil {
@@ -215,7 +224,7 @@ func handleTelemetryFacets(store ports.TelemetryReadStore, logger *slog.Logger, 
 			logHandlerCompletion(logger, SubjectTelemetryFacets, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := readHandlerContext(timeout)
+		ctx, cancel := readHandlerContext(msg, timeout)
 		defer cancel()
 		data, err := store.GetTelemetryFacets(ctx, request.Query, request.AuthContext)
 		if err != nil {
@@ -251,7 +260,7 @@ func handleMetricNameSearch(store ports.TelemetryReadStore, logger *slog.Logger,
 			logHandlerCompletion(logger, SubjectMetricNames, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := readHandlerContext(timeout)
+		ctx, cancel := readHandlerContext(msg, timeout)
 		defer cancel()
 		data, err := store.SearchMetricNames(ctx, request.Input, request.AuthContext)
 		if err != nil {
@@ -287,7 +296,7 @@ func handleMetricSeriesQuery(store ports.TelemetryReadStore, logger *slog.Logger
 			logHandlerCompletion(logger, SubjectMetricQuery, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := readHandlerContext(timeout)
+		ctx, cancel := readHandlerContext(msg, timeout)
 		defer cancel()
 		data, err := store.QueryMetricSeries(ctx, request.Input, request.AuthContext)
 		if err != nil {
@@ -323,7 +332,7 @@ func handleRichMetricSeriesQuery(store ports.TelemetryReadStore, logger *slog.Lo
 			logHandlerCompletion(logger, SubjectRichMetricQuery, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := readHandlerContext(timeout)
+		ctx, cancel := readHandlerContext(msg, timeout)
 		defer cancel()
 		data, err := QueryRichMetricSeriesFromMetricSeries(ctx, store, request.Input, request.AuthContext)
 		if err != nil {
@@ -409,7 +418,7 @@ func handleLiveTraceStart(registry *LiveTraceRegistry, logger *slog.Logger, time
 			logHandlerCompletion(logger, SubjectLiveTraceStart, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := readHandlerContext(timeout)
+		ctx, cancel := readHandlerContext(msg, timeout)
 		defer cancel()
 		data, err := registry.Start(ctx, request)
 		if err != nil {
@@ -460,7 +469,7 @@ func handleTracePersistedNotification(registry *LiveTraceRegistry, logger *slog.
 			logHandlerCompletion(logger, SubjectPersistedTraces, "", false, start, ptr(bridgeErrorFromError(validationError("invalid trace persisted notification JSON"))))
 			return
 		}
-		ctx, cancel := readHandlerContext(timeout)
+		ctx, cancel := readHandlerContext(msg, timeout)
 		defer cancel()
 		if err := registry.HandleTracePersisted(ctx, notification); err != nil {
 			bridgeError := bridgeErrorFromError(err)

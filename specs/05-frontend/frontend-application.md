@@ -111,9 +111,14 @@ The screen/component implementation breakdown for the next frontend wave is defi
 - Use shadcn/ui components with the default shadcn theme.
 - Follow the enterprise UX concept in `05-frontend/product-ux-concept.md`; route-primary tables, trace waterfall, and metric grids must not be nested inside cards.
 - Use dialogs only for focused confirmations or short interruption tasks, right/bottom sheets for contextual details and editors, popovers for compact anchored choices, and collapsibles for optional secondary groups.
-- Copy, save, create, update, delete, pin/unpin, and toggle actions must surface success and failure feedback through accessible route-local status, inline validation/problem details, or compact toast/status messaging as appropriate to the action.
+- Copy actions surface route-local copied status for at least two seconds. Save,
+  create, update, and toggle actions surface inline success or failure status in
+  the owning form or toolbar. Delete, revoke, discard, and destructive
+  pin/unpin failures surface canonical problem details in the confirmation
+  dialog or the owning route status region.
 - Support light and dark mode. Theme selection must persist locally and respect the user's system preference before any explicit selection.
 - Support multiple UI languages through a frontend translation layer. English is the default locale for MVP.
+- Route and feature components must not hard-code product copy, navigation labels, filters, states, actions, placeholders, titles, accessible names, table headings, validation, status messages, dialog text, or error text. Add or update keys in `apps/frontend/src/lib/i18n.ts` and a focused copy scan such as `apps/frontend/test/i18n-copy.test.ts` for changed surfaces. User data, code samples, metric names, attribute keys, protocol literals, IDs, GraphQL/query keys, enum wire values, and test fixtures are exempt.
 - General charts use the shadcn `chart` component with Recharts. Trace tree waterfall and trace minimap visualizations remain custom React/SVG/CSS components because they require hierarchy-specific interaction, timeline synchronization, keyboard tree behavior, and virtualization.
 - Large span, trace, or log row sets use `@tanstack/react-virtual` instead of rendering unbounded DOM rows.
 - Live trace rows use virtualization and a bounded buffer. The default buffer limit is 100 and the maximum user-selectable limit is 500, matching `LiveTraceInput.limit`.

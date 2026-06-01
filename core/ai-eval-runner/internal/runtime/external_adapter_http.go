@@ -52,7 +52,12 @@ func (adapter ExternalHTTPAdapter) RunEvaluationItem(ctx context.Context, reques
 func (adapter ExternalHTTPAdapter) poll(ctx context.Context, baseURL string, runRef string, request ports.ExternalAdapterRunRequest) (ports.ExternalAdapterRunResult, error) {
 	deadline := time.Now().Add(adapter.timeout())
 	for {
+		if err := ctx.Err(); err != nil {
+			_ = adapter.cancel(context.Background(), baseURL, runRef, request)
+			return ports.ExternalAdapterRunResult{}, err
+		}
 		if time.Now().After(deadline) {
+			_ = adapter.cancel(context.Background(), baseURL, runRef, request)
 			return ports.ExternalAdapterRunResult{}, context.DeadlineExceeded
 		}
 		response, err := adapter.do(ctx, http.MethodGet, baseURL+"/eval-runs/"+runRef, request, nil)
@@ -73,6 +78,11 @@ func (adapter ExternalHTTPAdapter) poll(ctx context.Context, baseURL string, run
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
+}
+
+func (adapter ExternalHTTPAdapter) cancel(ctx context.Context, baseURL string, runRef string, request ports.ExternalAdapterRunRequest) error {
+	_, err := adapter.do(ctx, http.MethodDelete, baseURL+"/eval-runs/"+runRef, request, nil)
+	return err
 }
 
 func (adapter ExternalHTTPAdapter) do(ctx context.Context, method string, url string, evalRequest ports.ExternalAdapterRunRequest, payload any) (map[string]any, error) {
@@ -139,15 +149,28 @@ func externalAdapterResult(response map[string]any) (ports.ExternalAdapterRunRes
 	if status != "" && status != "completed" {
 		return ports.ExternalAdapterRunResult{}, fmt.Errorf("external adapter %s", status)
 	}
+	actualOutput := response["actualOutput"]
+	actualOutputRef := stringValue(response, "actualOutputRef")
+	if actualOutput == nil && actualOutputRef == "" {
+		actualOutputRef = stringValue(response, "outputRef")
+	}
+	if actualOutput == nil && actualOutputRef == "" {
+		return ports.ExternalAdapterRunResult{}, fmt.Errorf("ERR-023 RESPONSE_CONTRACT_INVALID: external adapter terminal response requires actualOutput or actualOutputRef")
+	}
 	return ports.ExternalAdapterRunResult{
-		ActualOutput:     response["actualOutput"],
+		ActualOutput:     actualOutput,
+		ActualOutputRef:  actualOutputRef,
 		ActualOutputType: stringValue(response, "actualOutputType"),
 		TraceID:          stringValue(response, "traceId"),
 		RootSpanID:       stringValue(response, "rootSpanId"),
 		ConversationRef:  stringValue(response, "conversationRef"),
-		ImportantSteps:   mapArrayValue(response, "importantSteps"),
 		Summary:          stringValue(response, "trajectorySummary"),
 		Problems:         mapArrayValue(response, "problems"),
+		Usage:            objectValue(response, "usage"),
+		Cost:             objectValue(response, "cost"),
+		Timing:           objectValue(response, "timing"),
+		TraceRefs:        mapArrayValue(response, "traceRefs"),
+		ArtifactRefs:     mapArrayValue(response, "artifactRefs"),
 		LatencyMs:        float64Value(response, "latencyMs"),
 	}, nil
 }

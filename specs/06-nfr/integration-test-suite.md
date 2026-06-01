@@ -34,6 +34,11 @@ The suite must verify at least:
   evaluation run start/control/live updates, evaluation result reads,
   comparison reads, optimization quick-shot startup, and target snapshot reads
   through the BFF, AI Eval runner, storage-read, and storage-write services;
+- AI Eval classification and extraction prompt optimization startup/detail,
+  family diagnosis, `PromptOptimizationStep` persistence, candidate
+  prompt/example diff reads, rejected candidate visibility, external-adapter
+  candidate target content preflight, and explicit promotion through the same
+  public GraphQL/BFF, runner, storage-read, and storage-write paths;
 - collector error mappings for invalid public requests;
 - duplicate JetStream ingest command handling.
 - resilience scenarios for NATS disconnect/reconnect, SurrealDB
@@ -109,8 +114,9 @@ Next required public endpoint coverage:
   import upload, unsafe upload rejection, import preview/commit, export
   lookup/download states, evaluation definition create/read, evaluation run
   start/control/live update delivery, result item and metric reads, comparison
-  reads, optimization quick-shot startup, target snapshot reads, and project AI
-  settings.
+  reads, optimization quick-shot startup, skill optimization startup/detail,
+  classification prompt optimization, extraction prompt optimization, target
+  snapshot reads, and project AI settings.
 
 ## Shared End-to-End Runtime
 
@@ -123,9 +129,10 @@ AI Eval scenarios that need deterministic model or adapter behavior use the
 shared CloudGrid harness adapter package from
 `apps/packages/cloudgrid-harness-adapter`. Long-term AI Eval integration tests
 must not duplicate fake LLM/provider behavior in separate scripts. The adapter
-fixtures must be deterministic, support successful text/JSON outputs, validation
-failures, adapter timeouts, and optimization quick-shot candidate behavior, and
-must expose captured request metadata for assertions.
+fixtures must be deterministic, support successful text/JSON outputs,
+validation failures, adapter timeouts, optimization quick-shot candidate
+behavior, and skill text edit proposals, and must expose captured request
+metadata for assertions.
 
 The AI Eval full-stack scenario must prove all of these through public
 entrypoints:
@@ -145,6 +152,26 @@ entrypoints:
   failed item/run states without hanging the scenario;
 - a quick-shot optimization run evaluates only its configured subset and stores
   quick-shot retention-role data separately from full validation evidence.
+- a classification prompt optimization run uses
+  `test_data/ai_eval/classification`, produces label diagnosis, creates
+  prompt/example candidate target snapshots, validates candidates, exposes
+  `PromptOptimizationStep` evidence, and requires explicit promotion.
+- an extraction prompt optimization run uses `test_data/ai_eval/extraction`,
+  produces weak-field/schema-format diagnosis, creates prompt/example candidate
+  target snapshots, validates candidates, exposes `PromptOptimizationStep`
+  evidence, and requires explicit promotion.
+- a skill optimization run rejects an invalid edit, accepts a validation-backed
+  skill candidate, exposes the skill diff through GraphQL, and keeps promotion
+  explicit.
+- an external-adapter skill optimization fixture preserves W3C trace context,
+  emits OTLP spans using OTel GenAI, OTel MCP, OpenInference, or ordinary
+  production semantic conventions, and does not require CloudGrid-specific
+  source span attributes for optimizer evidence.
+- automated integration scenarios must not call live model providers. They use
+  the CloudGrid AI harness adapter and deterministic fixture responses for
+  predictable LLM behavior, stable assertions, and CI-safe execution. Real model
+  providers are reserved for manual test runs using checked-in example data and
+  normal project provider settings outside the automated integration suite.
 
 ## Fixture Requirements
 
@@ -168,6 +195,29 @@ Integration fixtures must be realistic enough to prove query semantics:
   evaluation definitions, evaluation runs, item runs, metric results, target
   snapshots, optimization runs, JSONL/CSV/ZIP import files, export artifacts,
   and deterministic harness adapter responses.
+- classification and extraction prompt optimization fixture packs must live in
+  `test_data/ai_eval/classification` and `test_data/ai_eval/extraction`; each
+  pack must include public GraphQL dataset settings, ready JSONL rows with
+  training/validation/test split coverage, a weak baseline prompt target,
+  baseline examples, and expected optimizer behavior.
+- manual real-LLM classification and extraction fixture packs may live in
+  `test_data/ai_eval/manual_real_llm/classification` and
+  `test_data/ai_eval/manual_real_llm/extraction`. They are example data for
+  operator-driven live-model checks only, not executable automated integration
+  scenarios. They must include provider/model placeholder config, realistic
+  rows, a baseline prompt, baseline examples, expected manual checks, and no
+  secrets.
+- external-adapter trace fixtures must include at least one OTel GenAI span, one
+  OTel MCP span, one OpenInference span, and one standard HTTP or database
+  business span, all linked through normal trace context.
+- skill optimization integration fixture packs must include a realistic skill package
+  directory with `SKILL.md`, at least one editable reference/example file, a
+  manifest/inventory preview, training/validation/test JSONL rows, expected
+  output/rubric fields, and trace fixture refs. These packs must be
+  deterministic and run through the AI harness adapter only. A separate manual
+  real-LLM pack may live beside them, but it is example data for operator-driven
+  manual testing, not an executable automated integration scenario. Manual
+  packs must be small, provider-neutral, safe to inspect, and free of secrets.
 
 The default `bun run test` command must not require Docker. Docker-backed
 integration scenarios run through `bun run integration:local`; CI may promote

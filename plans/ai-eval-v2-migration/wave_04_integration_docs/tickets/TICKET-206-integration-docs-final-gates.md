@@ -27,7 +27,7 @@ read_scope:
   - specs/00-conventions.md
   - specs/01-domains/ai-eval.md
   - specs/02-capabilities/ai-eval
-  - specs/02-flows/ai-eval
+  - specs/03-flows/ai-eval
   - specs/04-backend/ai-eval-runner.md
   - specs/05-frontend/ai-eval-views.md
   - website/src/content/handbook

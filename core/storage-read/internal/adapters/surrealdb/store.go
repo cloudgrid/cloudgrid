@@ -11,15 +11,21 @@ import (
 	"time"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
+	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/selfobs"
 	sdk "github.com/surrealdb/surrealdb.go"
 )
 
 type Store struct {
-	DB *sdk.DB
+	DB                     *sdk.DB
+	dbAdapterTraceRecorder selfobs.SpanRecorder
 }
 
 var queryRowsLock = newSDKOperationLock()
 var queryRowsOverride func(context.Context, *sdk.DB, QueryStatement, any) error
+
+func (store *Store) EnableDBAdapterTracing(recorder selfobs.SpanRecorder) {
+	store.dbAdapterTraceRecorder = recorder
+}
 
 func (store Store) GetProjectTelemetryOverviews(ctx context.Context, request contracts.ProjectTelemetryOverviewRequest) (contracts.ProjectTelemetryOverviewData, error) {
 	items := make([]contracts.ProjectTelemetryOverviewItem, 0, len(request.Projects))
@@ -78,21 +84,39 @@ func projectTelemetryOverviewItem(target TelemetryTarget, telemetry contracts.Pr
 }
 
 func (store Store) SearchTraces(ctx context.Context, query contracts.TraceSearchQuery, authContext *contracts.AuthContext) (contracts.TraceSearchData, error) {
+	endTrace := store.startDBAdapterSpan(ctx, "storage-read.db.trace_search", "trace_search", "select")
+	var opErr error
+	defer func() { endTrace(opErr) }()
 	limit, err := normalizedLimit(query.Limit)
 	if err != nil {
+		opErr = err
 		return contracts.TraceSearchData{}, err
 	}
 	stmt, err := BuildTraceSearchQuery(query, authContext)
 	if err != nil {
+		opErr = err
 		return contracts.TraceSearchData{}, err
 	}
 	items, err := queryRows[contracts.TraceSummary](ctx, store.DB, stmt)
 	if err != nil {
+		opErr = storageError()
 		return contracts.TraceSearchData{}, storageError()
 	}
 	normalizeTraceSummaries(items)
 	items, nextCursor := tracePage(items, limit, query.Sort)
 	return contracts.TraceSearchData{Items: items, NextCursor: nextCursor}, nil
+}
+
+func (store Store) startDBAdapterSpan(ctx context.Context, spanName string, operation string, statementKind string) func(error) {
+	return selfobs.StartDBAdapterSpan(ctx, store.dbAdapterTraceRecorder, selfobs.DBAdapterSpanConfig{
+		Enabled:       store.dbAdapterTraceRecorder != nil,
+		SpanName:      spanName,
+		Adapter:       "surrealdb",
+		Operation:     operation,
+		TargetKind:    "telemetry",
+		StatementKind: statementKind,
+		Attributes:    map[string]string{"db.system": "surrealdb"},
+	})
 }
 
 func (store Store) SearchLiveTraceCandidates(ctx context.Context, query contracts.LiveTraceQuery, traceIDs []string, authContext *contracts.AuthContext) ([]contracts.TraceSummary, error) {

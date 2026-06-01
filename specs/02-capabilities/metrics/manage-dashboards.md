@@ -12,7 +12,7 @@ traits:
   sync_async: sync
   visibility: user
   authentication: prepared
-depends_on: [TEC-FE-008, TEC-FE-012, TEC-BE-011]
+depends_on: [TEC-FE-013, TEC-FE-012, TEC-BE-011]
 implements:
   api: [GQL-Query-dashboards, GQL-Mutation-saveDashboard, GQL-Mutation-deleteDashboard, GQL-Mutation-setDashboardPinned, GQL-Mutation-reorderDashboardPins, MSG-control-dashboards-list, MSG-control-dashboards-save, MSG-control-dashboards-delete, MSG-control-dashboard-pins-set, MSG-control-dashboard-pins-reorder]
 ---

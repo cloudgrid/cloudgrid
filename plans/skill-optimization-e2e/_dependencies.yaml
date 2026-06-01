@@ -1,0 +1,40 @@
+plan: skill_optimization_e2e
+tickets:
+  TICKET-401:
+    depends_on: []
+    blocked_by: []
+    unblocks: [TICKET-403, TICKET-404]
+  TICKET-402:
+    depends_on: []
+    blocked_by: []
+    unblocks: [TICKET-404]
+  TICKET-403:
+    depends_on: [TICKET-401]
+    blocked_by: []
+    unblocks: [TICKET-404]
+  TICKET-404:
+    depends_on: [TICKET-401, TICKET-402, TICKET-403]
+    blocked_by: []
+    unblocks: [TICKET-405, TICKET-406]
+  TICKET-405:
+    depends_on: [TICKET-404]
+    blocked_by: []
+    unblocks: []
+  TICKET-406:
+    depends_on: [TICKET-404]
+    blocked_by: []
+    unblocks: []
+waves:
+  wave_01_contract_adapter:
+    tickets: [TICKET-401, TICKET-402]
+    depends_on: []
+    parallel_groups:
+      - [TICKET-401, TICKET-402]
+  wave_02_services:
+    tickets: [TICKET-403, TICKET-404]
+    depends_on: [TICKET-401, TICKET-402]
+  wave_03_frontend_integration:
+    tickets: [TICKET-405, TICKET-406]
+    depends_on: [TICKET-404]
+    parallel_groups:
+      - [TICKET-405, TICKET-406]

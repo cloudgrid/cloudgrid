@@ -15,6 +15,7 @@ import (
 	"time"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
+	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/selfobs"
 )
 
 type WriterQueryer interface {
@@ -27,108 +28,176 @@ type targetRowsQueryer interface {
 }
 
 type Persister struct {
-	DB WriterQueryer
+	DB                     WriterQueryer
+	dbAdapterTraceRecorder selfobs.SpanRecorder
+}
+
+func (p *Persister) EnableDBAdapterTracing(recorder selfobs.SpanRecorder) {
+	p.dbAdapterTraceRecorder = recorder
 }
 
 func (p Persister) CommandExists(ctx context.Context, command contracts.PersistTelemetryCommand) (bool, error) {
+	endTrace := p.startDBAdapterSpan(ctx, "storage-write.db.command_exists", "command_exists", "select")
+	var opErr error
+	defer func() { endTrace(opErr) }()
 	if p.DB == nil {
-		return false, fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: storage writer is not configured")
+		opErr = fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: storage writer is not configured")
+		return false, opErr
 	}
 	commandID := command.CommandID
 	if strings.TrimSpace(commandID) == "" {
-		return false, fmt.Errorf("ERR-001 VALIDATION_FAILED: commandId is required")
+		opErr = fmt.Errorf("ERR-001 VALIDATION_FAILED: commandId is required")
+		return false, opErr
 	}
 	target, err := ResolveTelemetryTarget(command.AuthContext)
 	if err != nil {
+		opErr = err
 		return false, err
 	}
-	return p.DB.IngestCommandExistsInTarget(ctx, target, commandID)
+	exists, err := p.DB.IngestCommandExistsInTarget(ctx, target, commandID)
+	opErr = err
+	return exists, err
 }
 
 func (p Persister) Persist(ctx context.Context, command contracts.PersistTelemetryCommand, subject string, completedAt time.Time) error {
+	endTrace := p.startDBAdapterSpan(ctx, "storage-write.db.persist_ingest", "persist_ingest", "transaction")
+	var opErr error
+	defer func() { endTrace(opErr) }()
 	if p.DB == nil {
-		return fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: storage writer is not configured")
+		opErr = fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: storage writer is not configured")
+		return opErr
 	}
 
 	sql, vars, err := BuildPersistQuery(command, subject, completedAt)
 	if err != nil {
+		opErr = err
 		return err
 	}
 	target, err := ResolveTelemetryTarget(command.AuthContext)
 	if err != nil {
+		opErr = err
 		return err
 	}
-	return p.DB.QueryInTarget(ctx, target, sql, vars)
+	opErr = p.DB.QueryInTarget(ctx, target, sql, vars)
+	return opErr
+}
+
+func (p Persister) startDBAdapterSpan(ctx context.Context, spanName string, operation string, statementKind string) func(error) {
+	return selfobs.StartDBAdapterSpan(ctx, p.dbAdapterTraceRecorder, selfobs.DBAdapterSpanConfig{
+		Enabled:       p.dbAdapterTraceRecorder != nil,
+		SpanName:      spanName,
+		Adapter:       "surrealdb",
+		Operation:     operation,
+		TargetKind:    "telemetry",
+		StatementKind: statementKind,
+		Attributes:    map[string]string{"db.system": "surrealdb"},
+	})
 }
 
 func (p Persister) MetricsCommandExists(ctx context.Context, command contracts.PersistMetricsCommand) (bool, error) {
+	endTrace := p.startDBAdapterSpan(ctx, "storage-write.db.command_exists", "command_exists", "select")
+	var opErr error
+	defer func() { endTrace(opErr) }()
 	if p.DB == nil {
-		return false, fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: storage writer is not configured")
+		opErr = fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: storage writer is not configured")
+		return false, opErr
 	}
 	if strings.TrimSpace(command.CommandID) == "" {
-		return false, fmt.Errorf("ERR-001 VALIDATION_FAILED: commandId is required")
+		opErr = fmt.Errorf("ERR-001 VALIDATION_FAILED: commandId is required")
+		return false, opErr
 	}
 	target, err := ResolveTelemetryTarget(command.AuthContext)
 	if err != nil {
+		opErr = err
 		return false, err
 	}
-	return p.DB.IngestCommandExistsInTarget(ctx, target, command.CommandID)
+	exists, err := p.DB.IngestCommandExistsInTarget(ctx, target, command.CommandID)
+	opErr = err
+	return exists, err
 }
 
 func (p Persister) PersistMetrics(ctx context.Context, command contracts.PersistMetricsCommand, subject string, completedAt time.Time) error {
+	endTrace := p.startDBAdapterSpan(ctx, "storage-write.db.persist_metrics", "persist_metrics", "transaction")
+	var opErr error
+	defer func() { endTrace(opErr) }()
 	if p.DB == nil {
-		return fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: storage writer is not configured")
+		opErr = fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: storage writer is not configured")
+		return opErr
 	}
 	sql, vars, err := BuildMetricsPersistQuery(command, subject, completedAt)
 	if err != nil {
+		opErr = err
 		return err
 	}
 	target, err := ResolveTelemetryTarget(command.AuthContext)
 	if err != nil {
+		opErr = err
 		return err
 	}
-	return p.DB.QueryInTarget(ctx, target, sql, vars)
+	opErr = p.DB.QueryInTarget(ctx, target, sql, vars)
+	return opErr
 }
 
 func (p Persister) AIProjectionCommandExists(ctx context.Context, command contracts.PersistAiProjectionCommand) (bool, error) {
+	endTrace := p.startDBAdapterSpan(ctx, "storage-write.db.command_exists", "command_exists", "select")
+	var opErr error
+	defer func() { endTrace(opErr) }()
 	if p.DB == nil {
-		return false, fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: storage writer is not configured")
+		opErr = fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: storage writer is not configured")
+		return false, opErr
 	}
 	if strings.TrimSpace(command.CommandID) == "" {
-		return false, fmt.Errorf("ERR-001 VALIDATION_FAILED: commandId is required")
+		opErr = fmt.Errorf("ERR-001 VALIDATION_FAILED: commandId is required")
+		return false, opErr
 	}
 	target, err := ResolveTelemetryTarget(command.AuthContext)
 	if err != nil {
+		opErr = err
 		return false, err
 	}
-	return p.DB.IngestCommandExistsInTarget(ctx, target, command.CommandID)
+	exists, err := p.DB.IngestCommandExistsInTarget(ctx, target, command.CommandID)
+	opErr = err
+	return exists, err
 }
 
 func (p Persister) PersistAIProjection(ctx context.Context, command contracts.PersistAiProjectionCommand, subject string, completedAt time.Time) ([]string, error) {
+	endTrace := p.startDBAdapterSpan(ctx, "storage-write.db.persist_ai_projection", "persist_ai_projection", "transaction")
+	var opErr error
+	defer func() { endTrace(opErr) }()
 	if p.DB == nil {
-		return nil, fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: storage writer is not configured")
+		opErr = fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: storage writer is not configured")
+		return nil, opErr
 	}
 	sql, vars, projectionIDs, err := BuildAIProjectionPersistQuery(command, subject, completedAt)
 	if err != nil {
+		opErr = err
 		return nil, err
 	}
 	target, err := ResolveTelemetryTarget(command.AuthContext)
 	if err != nil {
+		opErr = err
 		return nil, err
 	}
-	return projectionIDs, p.DB.QueryInTarget(ctx, target, sql, vars)
+	opErr = p.DB.QueryInTarget(ctx, target, sql, vars)
+	return projectionIDs, opErr
 }
 
 func (p Persister) PersistEvalMutation(ctx context.Context, subject string, request contracts.EvalMutationRequest, occurredAt time.Time) (map[string]any, error) {
+	endTrace := p.startDBAdapterSpan(ctx, "storage-write.db.persist_eval_mutation", "persist_eval_mutation", "transaction")
+	var opErr error
+	defer func() { endTrace(opErr) }()
 	if p.DB == nil {
-		return nil, fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: storage writer is not configured")
+		opErr = fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: storage writer is not configured")
+		return nil, opErr
 	}
 	sql, vars, data, err := BuildEvalMutationPersistQuery(subject, request, occurredAt)
 	if err != nil {
+		opErr = err
 		return nil, err
 	}
 	target, err := ResolveTelemetryTarget(request.AuthContext)
 	if err != nil {
+		opErr = err
 		return nil, err
 	}
 	if key := mapStringValue(request.Input, "idempotencyKey"); key != "" {
@@ -141,6 +210,7 @@ func (p Persister) PersistEvalMutation(ctx context.Context, subject string, requ
 				"idempotency_key": key,
 			})
 			if err != nil {
+				opErr = err
 				return nil, err
 			}
 			if len(rows) > 0 {
@@ -152,6 +222,7 @@ func (p Persister) PersistEvalMutation(ctx context.Context, subject string, requ
 		}
 	}
 	if err := p.DB.QueryInTarget(ctx, target, sql, vars); err != nil {
+		opErr = err
 		return nil, err
 	}
 	if subject == "eval.dataset.items.append" || subject == "eval.dataset.settings.update" || subject == "eval.dataset.item.update" {
@@ -163,6 +234,7 @@ func (p Persister) PersistEvalMutation(ctx context.Context, subject string, requ
 			"dataset_id": mapStringValue(request.Input, "datasetId"),
 		})
 		if err != nil {
+			opErr = err
 			return nil, err
 		}
 		if len(rows) > 0 {
@@ -791,7 +863,7 @@ func buildAIEvalV2PersistQuery(subject string, request contracts.EvalMutationReq
 			"FOR $metric_aggregate IN $metric_aggregates { UPSERT type::record('ai_metric_aggregate', $metric_aggregate.id) CONTENT $metric_aggregate; };\n" +
 			idempotencySQL + "\nCOMMIT TRANSACTION;"
 		return sql, vars, true
-	case "eval.evaluation.create", "eval.evaluation.update", "eval.evaluation.comparison.create", "eval.target.snapshot.create", "eval.target.promote":
+	case "eval.evaluation.create", "eval.evaluation.update", "eval.evaluation.comparison.create", "eval.target.snapshot.create", "eval.target.promote", "eval.optimization.step.persist", "eval.optimization.memory.persist":
 		sql := fmt.Sprintf("BEGIN TRANSACTION;\nUPSERT type::record('%s', $record_id) CONTENT $record;\n%s\nCOMMIT TRANSACTION;", table, idempotencySQL)
 		return sql, vars, true
 	default:
@@ -1230,6 +1302,50 @@ func evalMutationRecord(subject string, request contracts.EvalMutationRequest, o
 			"promotedAt":                occurredAt.UTC(),
 			"notes":                     mapStringValue(request.Input, "notes"),
 		}, nil
+	case "eval.optimization.step.persist":
+		if mapStringValue(request.Input, "projectId") == "" || mapStringValue(request.Input, "optimizationRunId") == "" || mapStringValue(request.Input, "stepId") == "" || mapStringValue(request.Input, "idempotencyKey") == "" {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: optimization step persist input is invalid")
+		}
+		payload := mapObjectValueWithDefault(request.Input, "payload")
+		record := skillOptimizationStepRecord(payload)
+		if mapStringValue(record, "id") == "" {
+			record["id"] = mapStringValue(request.Input, "stepId")
+		}
+		if mapStringValue(record, "optimizationRunId") == "" {
+			record["optimizationRunId"] = mapStringValue(request.Input, "optimizationRunId")
+		}
+		if mapStringValue(record, "projectId") == "" {
+			record["projectId"] = mapStringValue(request.Input, "projectId")
+		}
+		if mapStringValue(record, "id") == "" || mapIntValue(record, "epoch") < 1 || mapIntValue(record, "step") < 1 || mapStringValue(record, "status") == "" || mapStringValue(record, "gateDecision") == "" {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: optimization step payload is invalid")
+		}
+		return "ai_optimization_step", record, nil
+	case "eval.optimization.memory.persist":
+		if mapStringValue(request.Input, "projectId") == "" || mapStringValue(request.Input, "optimizationRunId") == "" || mapStringValue(request.Input, "idempotencyKey") == "" {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: optimization memory persist input is invalid")
+		}
+		payload := mapObjectValueWithDefault(request.Input, "payload")
+		record := map[string]any{
+			"id":                 stableRecordID("optimization-memory", mapStringValue(request.Input, "optimizationRunId")),
+			"projectId":          firstMapStringValue(payload, "projectId"),
+			"optimizationRunId":  firstMapStringValue(payload, "optimizationRunId"),
+			"rejectedEditBuffer": skillOptimizationEdits(mapArrayValue(payload, "rejectedEditBuffer"), 20),
+			"slowUpdateContent":  boundedString(mapStringValue(payload, "slowUpdateContent"), 8192),
+			"metaMemoryContent":  boundedString(mapStringValue(payload, "metaMemoryContent"), 8192),
+			"truncated":          mapBoolValue(payload, "truncated"),
+			"updatedAt":          mapStringValue(payload, "updatedAt"),
+		}
+		if mapStringValue(record, "projectId") == "" {
+			record["projectId"] = mapStringValue(request.Input, "projectId")
+		}
+		if mapStringValue(record, "optimizationRunId") == "" {
+			record["optimizationRunId"] = mapStringValue(request.Input, "optimizationRunId")
+		}
+		if mapStringValue(record, "optimizationRunId") == "" || mapStringValue(record, "projectId") == "" || mapStringValue(record, "updatedAt") == "" {
+			return "", nil, fmt.Errorf("ERR-001 VALIDATION_FAILED: optimization memory payload is invalid")
+		}
+		return "ai_optimization_memory", record, nil
 	case "eval.prompt_version.promote":
 		id := mapStringValue(request.Input, "promptVersionId")
 		tag := mapStringValue(request.Input, "tag")
@@ -2109,6 +2225,136 @@ func stableJSONDigest(value any) string {
 	}
 	sum := sha256.Sum256(encoded)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func skillOptimizationStepRecord(payload map[string]any) map[string]any {
+	return map[string]any{
+		"id":                        mapStringValue(payload, "id"),
+		"optimizationRunId":         mapStringValue(payload, "optimizationRunId"),
+		"projectId":                 mapStringValue(payload, "projectId"),
+		"epoch":                     mapIntValue(payload, "epoch"),
+		"step":                      mapIntValue(payload, "step"),
+		"status":                    mapStringValue(payload, "status"),
+		"rolloutEvaluationRunId":    mapStringValue(payload, "rolloutEvaluationRunId"),
+		"candidateTargetSnapshotId": optionalMapStringValue(payload, "candidateTargetSnapshotId"),
+		"baselineSkillDigest":       mapStringValue(payload, "baselineSkillDigest"),
+		"candidateSkillDigest":      optionalMapStringValue(payload, "candidateSkillDigest"),
+		"proposedEdits":             skillOptimizationEdits(mapArrayValue(payload, "proposedEdits"), 100),
+		"selectedEdits":             skillOptimizationEdits(mapArrayValue(payload, "selectedEdits"), 100),
+		"rejectedEditSummaries":     skillOptimizationEdits(mapArrayValue(payload, "rejectedEditSummaries"), 100),
+		"trainingScore":             skillOptimizationMapNumericValue(payload, "trainingScore"),
+		"validationScore":           optionalMapNumericValue(payload, "validationScore"),
+		"gateDecision":              mapStringValue(payload, "gateDecision"),
+		"problem":                   mapObjectValueWithDefault(payload, "problem"),
+		"startedAt":                 mapStringValue(payload, "startedAt"),
+		"endedAt":                   optionalMapStringValue(payload, "endedAt"),
+	}
+}
+
+func skillOptimizationEdits(items []any, limit int) []any {
+	edits := make([]any, 0, skillOptimizationMinInt(len(items), limit))
+	for _, item := range items {
+		edit, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		edits = append(edits, map[string]any{
+			"op":             mapStringValue(edit, "op"),
+			"filePath":       optionalMapStringValue(edit, "filePath"),
+			"target":         optionalMapStringValue(edit, "target"),
+			"contentPreview": boundedOptionalString(mapStringValue(edit, "contentPreview"), 2000),
+			"rationale":      boundedOptionalString(mapStringValue(edit, "rationale"), 2000),
+			"sourceType":     mapStringValue(edit, "sourceType"),
+			"supportCount":   mapIntValue(edit, "supportCount"),
+			"evidenceRefs":   skillOptimizationEvidenceRefs(mapArrayValue(edit, "evidenceRefs"), 50),
+		})
+		if len(edits) >= limit {
+			break
+		}
+	}
+	return edits
+}
+
+func skillOptimizationEvidenceRefs(items []any, limit int) []any {
+	refs := make([]any, 0, skillOptimizationMinInt(len(items), limit))
+	for _, item := range items {
+		ref, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		clean := map[string]any{}
+		for _, key := range []string{"traceId", "spanId", "evaluationRunId", "evaluationItemRunId", "importJobId", "candidateId"} {
+			if value := mapStringValue(ref, key); value != "" {
+				clean[key] = value
+			}
+		}
+		if len(clean) > 0 {
+			refs = append(refs, clean)
+		}
+		if len(refs) >= limit {
+			break
+		}
+	}
+	return refs
+}
+
+func optionalMapStringValue(input map[string]any, key string) any {
+	value := mapStringValue(input, key)
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
+func skillOptimizationMapNumericValue(input map[string]any, key string) float64 {
+	value, ok := input[key]
+	if !ok || value == nil {
+		return 0
+	}
+	switch typed := value.(type) {
+	case float64:
+		return typed
+	case float32:
+		return float64(typed)
+	case int:
+		return float64(typed)
+	case int64:
+		return float64(typed)
+	case json.Number:
+		number, _ := typed.Float64()
+		return number
+	default:
+		return 0
+	}
+}
+
+func optionalMapNumericValue(input map[string]any, key string) any {
+	if _, ok := input[key]; !ok || input[key] == nil {
+		return nil
+	}
+	return skillOptimizationMapNumericValue(input, key)
+}
+
+func boundedOptionalString(value string, limit int) any {
+	if value == "" {
+		return nil
+	}
+	return boundedString(value, limit)
+}
+
+func boundedString(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if limit > 0 && len(value) > limit {
+		return value[:limit]
+	}
+	return value
+}
+
+func skillOptimizationMinInt(a int, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func maxInt(a int, b int) int {

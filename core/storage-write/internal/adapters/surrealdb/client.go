@@ -43,11 +43,6 @@ func openSDKDB(ctx context.Context, cfg Config) (*sdk.DB, error) {
 		return nil, storageUnavailableError()
 	}
 
-	if err := db.Use(ctx, cfg.Namespace, cfg.Database); err != nil {
-		_ = db.Close(ctx)
-		return nil, storageUnavailableError()
-	}
-
 	if cfg.HasCredentials() {
 		token, err := db.SignIn(ctx, &sdk.Auth{
 			Username: cfg.Username,
@@ -63,6 +58,10 @@ func openSDKDB(ctx context.Context, cfg Config) (*sdk.DB, error) {
 		}
 	}
 
+	if err := ensureNamespaceDatabase(ctx, db, cfg.Namespace, cfg.Database); err != nil {
+		_ = db.Close(ctx)
+		return nil, storageUnavailableError()
+	}
 	if err := db.Use(ctx, cfg.Namespace, cfg.Database); err != nil {
 		_ = db.Close(ctx)
 		return nil, storageUnavailableError()
@@ -110,6 +109,10 @@ func (c *Client) QueryInTarget(ctx context.Context, target TelemetryTarget, sql 
 	}
 	// The SurrealDB SDK client keeps namespace/database selection as mutable
 	// connection state, so Use, schema setup, and Query are serialized per client.
+	if err := c.ensureNamespaceDatabaseForTargetLocked(ctx, target); err != nil {
+		c.state.markDegraded()
+		return storageUnavailableError()
+	}
 	if err := c.db.Use(ctx, target.Namespace, target.Database); err != nil {
 		c.state.markDegraded()
 		return storageUnavailableError()
@@ -138,6 +141,9 @@ func (c *Client) QueryRowsInTarget(ctx context.Context, target TelemetryTarget, 
 	}
 	// The SurrealDB SDK client keeps namespace/database selection as mutable
 	// connection state, so Use, schema setup, and Query are serialized per client.
+	if err := c.ensureNamespaceDatabaseForTargetLocked(ctx, target); err != nil {
+		return nil, c.state.observeOperationError(err)
+	}
 	if err := c.db.Use(ctx, target.Namespace, target.Database); err != nil {
 		return nil, c.state.observeOperationError(err)
 	}
@@ -178,6 +184,9 @@ func (c *Client) IngestCommandExistsInTarget(ctx context.Context, target Telemet
 	}
 	// The SurrealDB SDK client keeps namespace/database selection as mutable
 	// connection state, so Use, schema setup, and Query are serialized per client.
+	if err := c.ensureNamespaceDatabaseForTargetLocked(ctx, target); err != nil {
+		return false, c.state.observeOperationError(err)
+	}
 	if err := c.db.Use(ctx, target.Namespace, target.Database); err != nil {
 		return false, c.state.observeOperationError(err)
 	}
@@ -229,6 +238,9 @@ func (c *Client) InitializeSchema(ctx context.Context) error {
 	}
 	// The SurrealDB SDK client keeps namespace/database selection as mutable
 	// connection state, so Use and schema setup are serialized per client.
+	if err := c.ensureNamespaceDatabaseForTargetLocked(ctx, target); err != nil {
+		return c.state.observeOperationError(err)
+	}
 	if err := c.db.Use(ctx, target.Namespace, target.Database); err != nil {
 		return c.state.observeOperationError(err)
 	}
@@ -285,6 +297,10 @@ func (c *Client) CheckReadiness(ctx context.Context) error {
 			_ = previous.Close(context.Background())
 		}
 	}
+	if err := c.ensureNamespaceDatabaseForTargetLocked(ctx, target); err != nil {
+		c.state.markDegraded()
+		return storageUnavailableError()
+	}
 	if err := c.db.Use(ctx, target.Namespace, target.Database); err != nil {
 		return c.state.observeOperationError(err)
 	}
@@ -317,6 +333,24 @@ func (c *Client) CheckReadiness(ctx context.Context) error {
 	}
 	c.state.markReady()
 	return nil
+}
+
+func (c *Client) ensureNamespaceDatabaseForTargetLocked(ctx context.Context, target TelemetryTarget) error {
+	key := target.Namespace + "/" + target.Database
+	if c.initializedTargets != nil && c.initializedTargets[key] {
+		return nil
+	}
+	return ensureNamespaceDatabase(ctx, c.db, target.Namespace, target.Database)
+}
+
+func ensureNamespaceDatabase(ctx context.Context, db *sdk.DB, namespace string, database string) error {
+	sql := "DEFINE NAMESPACE IF NOT EXISTS `" + escapeIdent(namespace) + "`; USE NS `" + escapeIdent(namespace) + "`; DEFINE DATABASE IF NOT EXISTS `" + escapeIdent(database) + "`;"
+	_, err := sdk.Query[any](ctx, db, sql, map[string]any{})
+	return err
+}
+
+func escapeIdent(value string) string {
+	return strings.ReplaceAll(value, "`", "\\`")
 }
 
 func (c *Client) ensureRuntime() {

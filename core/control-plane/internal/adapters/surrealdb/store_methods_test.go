@@ -170,8 +170,6 @@ func TestControlPlaneStorePointReadsPropagateRowsAndNotFound(t *testing.T) {
 				return []ports.ProjectAiSettingsRecord{{ProjectID: "project-1"}}, nil
 			case strings.Contains(stmt.SQL, "company_ai_provider_settings"):
 				return []ports.CompanyAiProviderSettingsRecord{{CompanyID: "org-1"}}, nil
-			case strings.Contains(stmt.SQL, "ai_provider_secret"):
-				return []ports.AiProviderSecretRecord{{ID: "secret-1"}}, nil
 			case strings.Contains(stmt.SQL, "ai_chat_conversation"):
 				return []ports.AiChatConversationRecord{{ID: "conversation-1"}}, nil
 			case strings.Contains(stmt.SQL, "ai_chat_run WHERE conversationId"):
@@ -224,9 +222,6 @@ func TestControlPlaneStorePointReadsPropagateRowsAndNotFound(t *testing.T) {
 	}
 	if _, ok, err := store.GetCompanyAiProviderSettings(ctx, "org-1"); err != nil || !ok {
 		t.Fatalf("GetCompanyAiProviderSettings ok=%v err=%v", ok, err)
-	}
-	if _, ok, err := store.GetAiProviderSecret(ctx, "secret-1"); err != nil || !ok {
-		t.Fatalf("GetAiProviderSecret ok=%v err=%v", ok, err)
 	}
 	if _, ok, err := store.GetAiChatConversation(ctx, "conversation-1"); err != nil || !ok {
 		t.Fatalf("GetAiChatConversation ok=%v err=%v", ok, err)
@@ -326,9 +321,6 @@ func TestControlPlaneStoreWritesUseParameterizedRecordOperations(t *testing.T) {
 	}
 	if err := store.PutCompanyAiProviderSettings(ctx, ports.CompanyAiProviderSettingsRecord{CompanyID: "org-1", UpdatedAt: now, UpdatedByUserID: "admin-1", Version: 1}); err != nil {
 		t.Fatalf("PutCompanyAiProviderSettings returned error: %v", err)
-	}
-	if err := store.PutAiProviderSecret(ctx, ports.AiProviderSecretRecord{ID: "secret-1", CompanyID: "org-1", ProviderID: "openai", CreatedAt: now, UpdatedAt: now, UpdatedByUserID: "admin-1"}); err != nil {
-		t.Fatalf("PutAiProviderSecret returned error: %v", err)
 	}
 	if err := store.PutAiChatConversation(ctx, ports.AiChatConversationRecord{ID: "conversation-1", CompanyID: "org-1", ProjectID: "project-1", UserID: "user-1", Title: "Chat", CreatedAt: now, UpdatedAt: now, LastMessageAt: now}); err != nil {
 		t.Fatalf("PutAiChatConversation returned error: %v", err)

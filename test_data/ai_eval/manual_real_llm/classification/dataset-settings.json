@@ -1,0 +1,101 @@
+{
+  "evaluationFamily": "classification",
+  "inputType": "json",
+  "expectedType": "json",
+  "inputJsonSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["subject", "body", "channel", "customerPlan"],
+    "properties": {
+      "subject": { "type": "string", "minLength": 1 },
+      "body": { "type": "string", "minLength": 1 },
+      "channel": { "type": "string", "enum": ["email", "chat", "web_form"] },
+      "customerPlan": { "type": "string", "enum": ["trial", "team", "enterprise"] }
+    }
+  },
+  "expectedJsonSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["intent"],
+    "properties": {
+      "intent": {
+        "type": "string",
+        "enum": [
+          "security_incident",
+          "performance_issue",
+          "alert_noise",
+          "billing_admin",
+          "onboarding_help",
+          "retention_request"
+        ]
+      }
+    }
+  },
+  "expectedValueOptions": [
+    {
+      "value": { "intent": "security_incident" },
+      "label": "Security incident",
+      "description": "Potential data exposure, suspicious access, audit concern, or credential compromise."
+    },
+    {
+      "value": { "intent": "performance_issue" },
+      "label": "Performance issue",
+      "description": "Latency, slow queries, missing telemetry freshness, or degraded runtime behavior."
+    },
+    {
+      "value": { "intent": "alert_noise" },
+      "label": "Alert noise",
+      "description": "Too many false positives, noisy thresholds, duplicate alerts, or routing fatigue."
+    },
+    {
+      "value": { "intent": "billing_admin" },
+      "label": "Billing admin",
+      "description": "Invoices, seats, plan changes, workspace admins, procurement, or billing ownership."
+    },
+    {
+      "value": { "intent": "onboarding_help" },
+      "label": "Onboarding help",
+      "description": "Initial setup, SDK install, collector configuration, first dashboard, or learning flow."
+    },
+    {
+      "value": { "intent": "retention_request" },
+      "label": "Retention request",
+      "description": "Data retention windows, deletion, export before purge, audit retention, or policy changes."
+    }
+  ],
+  "defaultSplit": "training",
+  "intakePolicy": {
+    "manualDefaultStatus": "ready",
+    "importDefaultStatus": "ready",
+    "traceDefaultStatus": "needs_expected"
+  },
+  "traceIntakeRules": [],
+  "anonymizationPolicy": {
+    "mode": "realistic",
+    "policyId": null,
+    "policyVersion": null,
+    "consistencyScope": "dataset",
+    "blockedEntityTypes": []
+  },
+  "defaultMetricSettings": [
+    {
+      "metricId": "classification.accuracy",
+      "options": {
+        "classification": {
+          "mode": "single_label",
+          "expectedLabelPath": "$.intent",
+          "actualLabelPath": "$.intent",
+          "trimWhitespace": true,
+          "collapseWhitespace": true,
+          "caseFolding": false,
+          "aliasMap": {},
+          "unknownLabelPolicy": "problem_and_mismatch",
+          "averaging": "macro"
+        }
+      }
+    }
+  ],
+  "retentionProfile": "balanced"
+}

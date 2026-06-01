@@ -1,0 +1,56 @@
+{
+  "id": "target-support-intent-baseline-v1",
+  "kind": "prompt",
+  "name": "Support intent classifier baseline",
+  "version": 1,
+  "digest": "fixture-digest-support-intent-baseline-v1",
+  "createdAt": "2026-05-31T00:00:00Z",
+  "createdBy": "fixture",
+  "source": "imported",
+  "parts": [
+    {
+      "partKind": "prompt",
+      "partRef": "support-intent-prompt",
+      "version": 1,
+      "digest": "fixture-digest-support-intent-prompt-v1",
+      "contentRef": "file:baseline-prompt.md",
+      "summary": "Weak support intent prompt with no label glossary or contrastive billing/cancellation rules.",
+      "metadata": {
+        "format": "markdown",
+        "editable": true,
+        "tokenEstimate": 95
+      }
+    },
+    {
+      "partKind": "examples",
+      "partRef": "support-intent-examples",
+      "version": 1,
+      "digest": "fixture-digest-support-intent-examples-v1",
+      "contentRef": "file:baseline-examples.jsonl",
+      "summary": "Three broad examples that do not cover refund, cancellation, SSO, or feature-request edge cases.",
+      "metadata": {
+        "format": "jsonl",
+        "editable": true,
+        "exampleCount": 3
+      }
+    },
+    {
+      "partKind": "model_config",
+      "partRef": "support-intent-model-config",
+      "version": 1,
+      "digest": "fixture-digest-support-intent-model-config-v1",
+      "summary": "Provider-neutral deterministic local harness alias.",
+      "metadata": {
+        "modelAlias": "local-fixture-fast",
+        "temperature": 0,
+        "editable": false
+      }
+    }
+  ],
+  "metadata": {
+    "fixturePack": "test_data/ai_eval/classification",
+    "evaluationFamily": "classification",
+    "expectedOptimizerKinds": ["critic_mutate_judge_pick", "bootstrap_fewshot"]
+  },
+  "reproducibility": "full"
+}

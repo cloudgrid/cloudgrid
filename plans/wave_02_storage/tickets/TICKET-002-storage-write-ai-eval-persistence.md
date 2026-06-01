@@ -9,7 +9,7 @@ blocked_by: []
 spec_refs:
   - specs/04-backend/ai-eval-message-contracts.md
   - specs/04-backend/surrealdb-persistence.md
-  - specs/02-flows/ai-eval/dataset-curation-and-splits.md
+  - specs/03-flows/ai-eval/dataset-curation-and-splits.md
   - specs/03-contracts/entities/ai/dataset-candidate.schema.json
   - specs/03-contracts/entities/ai/eval-result-payload.schema.json
   - specs/03-contracts/entities/ai/scorer-definition.schema.json

@@ -184,7 +184,10 @@ describe("AI Chat end-to-end stream integration", () => {
       );
       const artifact = view.artifacts.at(0);
       expect(artifact).toBeDefined();
-      const safeView = safeAiChatArtifactView(artifact!);
+      if (!artifact) {
+        throw new Error("expected first trace artifact");
+      }
+      const safeView = safeAiChatArtifactView(artifact);
       expect(safeView.kind).toBe("json_render");
       if (safeView.kind !== "json_render") {
         throw new Error("expected json render artifact");
@@ -317,7 +320,10 @@ describe("AI Chat end-to-end stream integration", () => {
         );
         const artifact = view.artifacts.at(0);
         expect(artifact).toBeDefined();
-        const safeView = safeAiChatArtifactView(artifact!);
+        if (!artifact) {
+          throw new Error(`expected first ${item.name} artifact`);
+        }
+        const safeView = safeAiChatArtifactView(artifact);
         expect(safeView.kind).toBe("json_render");
         if (safeView.kind !== "json_render") {
           throw new Error("expected json render artifact");

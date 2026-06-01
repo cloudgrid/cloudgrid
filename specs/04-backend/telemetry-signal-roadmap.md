@@ -23,8 +23,8 @@ OpenTelemetry metrics are implementation-ready in:
 - [Metrics domain](../01-domains/metrics.md)
 - [Metrics signal](./metrics-signal.md)
 - [Dashboard widgets](../05-frontend/dashboard-widgets.md)
-- [Metric ingest flow](../02-flows/metrics/metric-ingest.md)
-- [Dashboard query flow](../02-flows/metrics/dashboard-query.md)
+- [Metric ingest flow](../03-flows/metrics/metric-ingest.md)
+- [Dashboard query flow](../03-flows/metrics/dashboard-query.md)
 
 Implementation agents must add collector, storage-write, storage-read, control-plane dashboard management, BFF, frontend, tests, docs, and generated contracts in one metrics/dashboard wave. Partial implementations that expose `/v1/metrics` without GraphQL reads, project-scoped persistence, and dashboard UX are not acceptable.
 

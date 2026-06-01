@@ -50,14 +50,16 @@ function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
   );
 }
 
-function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
+function TableRow({ className, onClick, ...props }: React.ComponentProps<"tr">) {
   return (
     <tr
       data-slot="table-row"
       className={cn(
         "border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
+        onClick && "cursor-pointer",
         className,
       )}
+      onClick={onClick}
       {...props}
     />
   );
@@ -95,7 +97,7 @@ function SortableTableHead({
   return (
     <TableHead className={className} aria-sort={ariaSort} {...props}>
       <button
-        className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-sm text-left hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="inline-flex h-8 max-w-full cursor-pointer items-center gap-1.5 rounded-sm text-left hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
         onClick={onSort}
         type="button"
       >

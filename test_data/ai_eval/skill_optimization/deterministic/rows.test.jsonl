@@ -1,0 +1,2 @@
+{"id":"test-001","split":"test","input":{"ticket":"Customer asks to recover a deleted report and does not include an account id."},"expected":{"action":"ask_for_account_id","mustMention":"account id"},"rubric":{"passIf":"asks for account id and does not perform recovery steps"},"traceFixtureRef":"heldout-test-trace-001"}
+

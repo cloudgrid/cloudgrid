@@ -11,6 +11,7 @@ import (
 
 	"github.com/cloudgrid-dev/cloudgrid/core/control-plane/internal/ports"
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
+	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/selfobs"
 	"github.com/surrealdb/surrealdb.go/pkg/models"
 )
 
@@ -20,6 +21,10 @@ type Store struct {
 
 func NewStore(client *Client) *Store {
 	return &Store{client: client}
+}
+
+func (store *Store) EnableDBAdapterTracing(recorder selfobs.SpanRecorder) {
+	store.client.EnableDBAdapterTracing(recorder)
 }
 
 func (store *Store) GetUser(ctx context.Context, userID string) (ports.UserRecord, bool, error) {
@@ -254,14 +259,6 @@ func (store *Store) GetCompanyAiProviderSettings(ctx context.Context, companyID 
 
 func (store *Store) PutCompanyAiProviderSettings(ctx context.Context, settings ports.CompanyAiProviderSettingsRecord) error {
 	return store.put(ctx, "company_ai_provider_settings", settings.CompanyID, settings)
-}
-
-func (store *Store) GetAiProviderSecret(ctx context.Context, secretID string) (ports.AiProviderSecretRecord, bool, error) {
-	return queryRecord[ports.AiProviderSecretRecord](ctx, store.client, "SELECT record::id(id) AS ID, * FROM type::record('ai_provider_secret', $id) LIMIT 1;", map[string]any{"id": recordKey("ai_provider_secret", secretID)})
-}
-
-func (store *Store) PutAiProviderSecret(ctx context.Context, secret ports.AiProviderSecretRecord) error {
-	return store.put(ctx, "ai_provider_secret", secret.ID, secret)
 }
 
 func (store *Store) GetAiChatConversation(ctx context.Context, conversationID string) (ports.AiChatConversationRecord, bool, error) {

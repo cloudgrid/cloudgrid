@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"strings"
 	"time"
 
@@ -735,6 +736,10 @@ func (r *Runner) startV2Optimization(ctx context.Context, request StartOptimizat
 	if request.IdempotencyKey == "" {
 		return StartOptimizationResult{}, errors.New("idempotencyKey is required")
 	}
+	searchPolicy := objectMap(request.Config, "searchPolicy")
+	if stringValueFromMap(searchPolicy, "optimizerKind") == "skill_text_edit" {
+		return r.startSkillTextEditOptimization(ctx, request)
+	}
 	runID := r.idGenerator()
 	now := r.now()
 	runPolicy := mapDefault(request.RunPolicy, objectMap(request.Config, "runPolicy"))
@@ -805,6 +810,330 @@ func (r *Runner) startV2Optimization(ctx context.Context, request StartOptimizat
 	}, nil
 }
 
+func (r *Runner) startSkillTextEditOptimization(ctx context.Context, request StartOptimizationRequest) (StartOptimizationResult, error) {
+	if request.DatasetVersionID == "" {
+		return StartOptimizationResult{}, errors.New("datasetVersionId is required")
+	}
+	runID := r.idGenerator()
+	now := r.now()
+	searchPolicy := objectMap(request.Config, "searchPolicy")
+	skillPolicy := mapDefault(objectMap(searchPolicy, "skillPolicy"), defaultSkillPolicy())
+	if splitSelectorContainsTest(objectMap(request.Config, "trainingSplitSelector")) || splitSelectorContainsTest(objectMap(searchPolicy, "trainingSplitSelector")) {
+		return StartOptimizationResult{}, errors.New("ERR-001 VALIDATION_FAILED: test split cannot be used for skill optimizer reflection")
+	}
+	targetSnapshot, err := r.reader.GetTargetSnapshot(ctx, request.TargetSnapshotID)
+	if err != nil {
+		return StartOptimizationResult{}, err
+	}
+	skillPackage, err := skillPackageFromTargetSnapshot(targetSnapshot, skillPolicy)
+	if err != nil {
+		return StartOptimizationResult{}, err
+	}
+	if err := validateSkillPackagePreflight(skillPackage, skillPolicy); err != nil {
+		return StartOptimizationResult{}, err
+	}
+	capabilities, err := r.harness.SkillCapabilities(ctx, request.TraceContext)
+	if err != nil {
+		return StartOptimizationResult{}, err
+	}
+	if !stringSliceContains(capabilities.SupportedOptimizerKinds, "skill_text_edit") {
+		return StartOptimizationResult{}, errors.New("ERR-AIE-003: harness does not support skill_text_edit")
+	}
+	dryRun, err := r.harness.SkillRuntimeDryRun(ctx, ports.SkillRuntimeDryRunRequest{
+		OptimizationRunID: runID,
+		SkillPackage:      skillPackage,
+		RuntimeMode:       stringDefault(stringValueFromMap(searchPolicy, "runtimeMode"), "managed_harness"),
+		RuntimeProfileRef: stringValueFromMap(searchPolicy, "runtimeProfileRef"),
+		ModelProfileRef:   stringValueFromMap(searchPolicy, "modelProfileRef"),
+		ToolProfileRef:    stringValueFromMap(searchPolicy, "toolProfileRef"),
+		FixtureRef:        stringValueFromMap(searchPolicy, "fixtureRef"),
+		TraceContext:      request.TraceContext,
+	})
+	if err != nil {
+		return StartOptimizationResult{}, err
+	}
+	if !dryRun.OK {
+		return StartOptimizationResult{}, errors.New("ERR-AIE-003: skill runtime dry run failed")
+	}
+	datasetVersion, trainingItems, validationItems, err := r.loadSkillOptimizationItems(ctx, request)
+	if err != nil {
+		return StartOptimizationResult{}, err
+	}
+	trainingRun, trainingItemRuns, trainingMetrics, err := r.executeSkillEvaluationBatch(ctx, request, datasetVersion, targetSnapshot, trainingItems, ports.EvaluationRetentionRoleBaseline, ports.EvaluationRunKindDatasetEvaluation, stringValueFromMap(request.Config, "trainingEvaluationDefinitionId"), objectMap(request.Config, "trainingSplitSelector"), request.IdempotencyKey+":training")
+	if err != nil {
+		return StartOptimizationResult{}, err
+	}
+	trainingEvidence := optimizerEvidenceFromItemRuns(trainingItems, trainingItemRuns, trainingMetrics, requiresTrajectoryEvidence(mapDefault(request.RunPolicy, objectMap(request.Config, "runPolicy"))))
+	reflections, err := r.collectSkillReflections(ctx, runID, "step-reflect", skillPackage, trainingEvidence, nil, request)
+	if err != nil {
+		return StartOptimizationResult{}, err
+	}
+	ranked, err := r.harness.SkillMergeRank(ctx, ports.SkillMergeRankRequest{
+		OptimizationRunID: runID,
+		StepID:            "step-rank",
+		Proposals:         reflections,
+		EditBudget:        intDefault(intValueFromMap(skillPolicy, "editBudget"), intDefault(intValueFromMap(searchPolicy, "editBudget"), 4)),
+		TraceContext:      request.TraceContext,
+	})
+	if err != nil {
+		return StartOptimizationResult{}, err
+	}
+	if len(ranked.RankedProposals) == 0 {
+		return StartOptimizationResult{}, r.persistSkillOptimizationRun(ctx, request, runID, now, r.now(), targetSnapshot.ID, nil, "", map[string]any{"status": "skipped_no_edits", "trainingEvaluationRunId": trainingRun.ID})
+	}
+	currentPackage := skillPackage
+	currentScore := metricAverage(trainingMetrics)
+	bestScore := currentScore
+	bestSnapshotID := targetSnapshot.ID
+	bestDigest := skillPackage.ManifestDigest
+	var candidateIDs []string
+	var acceptedIDs []string
+	var rejectedIDs []string
+	var rejectedBuffer []ports.SkillEditProposal
+	for index, proposal := range ranked.RankedProposals {
+		stepID := r.idGenerator()
+		stepStartedAt := r.now()
+		candidatePackage, candidateDigest, validationProblem := applySkillProposal(currentPackage, proposal, skillPolicy)
+		if validationProblem != nil {
+			rejectedIDs = append(rejectedIDs, proposal.ID)
+			rejectedBuffer = append(rejectedBuffer, proposal)
+			if err := r.persistSkillOptimizationStep(ctx, request, runID, stepID, index+1, trainingRun.ID, currentPackage.ManifestDigest, "", "", "rejected", "failed_preflight", currentScore, 0, []ports.SkillEditProposal{proposal}, nil, []ports.SkillEditProposal{proposal}, validationProblem, stepStartedAt); err != nil {
+				return StartOptimizationResult{}, err
+			}
+			continue
+		}
+		candidateSnapshot, err := r.writer.CreateTargetSnapshot(ctx, ports.TargetSnapshotCreateRequest{
+			RequestID:      request.RequestID + ":" + stepID + ":target-snapshot",
+			ProjectID:      request.ProjectID,
+			TargetRef:      candidateTargetRef(targetSnapshot, candidateDigest),
+			IdempotencyKey: request.IdempotencyKey + ":" + stepID + ":target-snapshot",
+			Input:          candidateTargetSnapshotInput(targetSnapshot, candidatePackage, candidateDigest, stepID),
+		})
+		if err != nil {
+			return StartOptimizationResult{}, err
+		}
+		if candidateSnapshot.ID == "" {
+			candidateSnapshot.ID = "candidate-" + stepID
+		}
+		if candidateSnapshot.Digest == "" {
+			candidateSnapshot.Digest = candidateDigest
+		}
+		candidateIDs = append(candidateIDs, candidateSnapshot.ID)
+		validationRun, _, validationMetrics, err := r.executeSkillEvaluationBatch(ctx, request, datasetVersion, candidateSnapshotForRun(targetSnapshot, candidateSnapshot, candidatePackage, candidateDigest), validationItems, ports.EvaluationRetentionRoleValidation, ports.EvaluationRunKindOptimizationValidation, stringValueFromMap(request.Config, "validationEvaluationDefinitionId"), objectMap(request.Config, "validationSplitSelector"), request.IdempotencyKey+":"+stepID+":validation")
+		if err != nil {
+			return StartOptimizationResult{}, err
+		}
+		validationScore := metricAverage(validationMetrics)
+		status := "rejected"
+		gateDecision := "rejected"
+		if validationScore > bestScore {
+			status = "accepted"
+			gateDecision = "accepted_new_best"
+			bestScore = validationScore
+			bestSnapshotID = candidateSnapshot.ID
+			bestDigest = candidateDigest
+			currentPackage = candidatePackage
+			acceptedIDs = append(acceptedIDs, proposal.ID)
+		} else {
+			rejectedIDs = append(rejectedIDs, proposal.ID)
+			rejectedBuffer = append(rejectedBuffer, proposal)
+		}
+		if err := r.persistSkillOptimizationStep(ctx, request, runID, stepID, index+1, validationRun.ID, skillPackage.ManifestDigest, candidateDigest, candidateSnapshot.ID, status, gateDecision, currentScore, validationScore, []ports.SkillEditProposal{proposal}, []ports.SkillEditProposal{proposal}, nil, nil, stepStartedAt); err != nil {
+			return StartOptimizationResult{}, err
+		}
+	}
+	slowUpdate, _ := r.harness.SkillSlowUpdate(ctx, ports.SkillSlowUpdateRequest{OptimizationRunID: runID, Epoch: 1, AcceptedProposalIDs: acceptedIDs, RejectedProposalIDs: rejectedIDs, TrainingSummary: map[string]any{"trainingEvaluationRunId": trainingRun.ID, "evidenceItems": len(trainingEvidence)}, TraceContext: request.TraceContext})
+	metaMemory, _ := r.harness.SkillMetaMemory(ctx, ports.SkillMetaMemoryRequest{OptimizationRunID: runID, CurrentMemory: nil, AcceptedProposalIDs: acceptedIDs, RejectedProposalIDs: rejectedIDs, TraceContext: request.TraceContext})
+	exportedRef := ""
+	if boolDefault(skillPolicy["exportBestSkill"], true) && bestSnapshotID != targetSnapshot.ID {
+		exportedRef = "skill-package://" + bestSnapshotID + "/" + bestDigest
+	}
+	if err := r.writer.PersistOptimizationMemory(ctx, ports.OptimizationMemoryPersistRequest{
+		RequestID:         request.RequestID + ":skill-memory",
+		ProjectID:         request.ProjectID,
+		OptimizationRunID: runID,
+		IdempotencyKey:    request.IdempotencyKey + ":skill-memory",
+		Payload: map[string]any{
+			"optimizationRunId":  runID,
+			"projectId":          request.ProjectID,
+			"rejectedEditBuffer": skillStepEditsPayload(rejectedBuffer),
+			"slowUpdateContent":  strings.Join(slowUpdate.Guidance, "\n"),
+			"metaMemoryContent":  stableJSON(metaMemory.Memory),
+			"truncated":          len(rejectedBuffer) > 20,
+			"updatedAt":          r.now(),
+		},
+	}); err != nil {
+		return StartOptimizationResult{}, err
+	}
+	summary := map[string]any{
+		"optimizerKind":               "skill_text_edit",
+		"trainingEvaluationRunId":     trainingRun.ID,
+		"candidateTargetSnapshotIds":  candidateIDs,
+		"selectedCandidateSnapshotId": bestSnapshotID,
+		"bestSkillDigest":             bestDigest,
+		"exportedSkillContentRef":     exportedRef,
+		"acceptedProposalIds":         acceptedIDs,
+		"rejectedProposalIds":         rejectedIDs,
+	}
+	if err := r.persistSkillOptimizationRun(ctx, request, runID, now, r.now(), targetSnapshot.ID, candidateIDs, bestSnapshotID, summary); err != nil {
+		return StartOptimizationResult{}, err
+	}
+	return StartOptimizationResult{ExperimentRunID: runID, CandidatePromptIDs: candidateIDs, Summary: summary}, nil
+}
+
+func (r *Runner) loadSkillOptimizationItems(ctx context.Context, request StartOptimizationRequest) (ports.DatasetVersion, []ports.DatasetItemRevision, []ports.DatasetItemRevision, error) {
+	datasetVersion, err := r.reader.GetDatasetVersion(ctx, request.DatasetVersionID)
+	if err != nil {
+		return ports.DatasetVersion{}, nil, nil, err
+	}
+	items, err := r.reader.SearchDatasetItemRevisions(ctx, datasetVersion.ID, datasetVersion.ItemRevisionIDs)
+	if err != nil {
+		return ports.DatasetVersion{}, nil, nil, err
+	}
+	if err := validateReadyItemRevisions(items); err != nil {
+		return ports.DatasetVersion{}, nil, nil, err
+	}
+	training := filterItemsForSplit(items, objectMap(request.Config, "trainingSplitSelector"), "training")
+	validation := filterItemsForSplit(items, objectMap(request.Config, "validationSplitSelector"), "validation")
+	if len(training) == 0 {
+		return ports.DatasetVersion{}, nil, nil, errors.New("ERR-001 VALIDATION_FAILED: skill optimization requires training rows")
+	}
+	if len(validation) == 0 {
+		return ports.DatasetVersion{}, nil, nil, errors.New("ERR-001 VALIDATION_FAILED: skill optimization requires validation rows")
+	}
+	return datasetVersion, training, validation, nil
+}
+
+func (r *Runner) executeSkillEvaluationBatch(ctx context.Context, request StartOptimizationRequest, datasetVersion ports.DatasetVersion, target ports.TargetSnapshot, items []ports.DatasetItemRevision, retentionRole string, kind string, evaluationDefinitionID string, splitSelector map[string]any, idempotencyKey string) (ports.EvaluationRun, []ports.EvaluationItemRun, []ports.MetricResult, error) {
+	projectSettings, err := r.projectAISettings(ctx, request.ProjectID)
+	if err != nil {
+		return ports.EvaluationRun{}, nil, nil, err
+	}
+	providerProfileRefs := providerProfileRefsForTarget(target, projectSettings, "default")
+	runID := r.idGenerator()
+	now := r.now()
+	selectedIDs := make([]string, 0, len(items))
+	for _, item := range items {
+		selectedIDs = append(selectedIDs, item.ID)
+	}
+	runPolicy := mapDefault(request.RunPolicy, objectMap(request.Config, "runPolicy"))
+	if objective := objectMap(request.Config, "objective"); len(objective) > 0 {
+		runPolicy = copyMap(runPolicy)
+		runPolicy["objective"] = objective
+	}
+	run := ports.EvaluationRun{
+		ID:                      runID,
+		ProjectID:               request.ProjectID,
+		EvaluationDefinitionID:  evaluationDefinitionID,
+		Kind:                    kind,
+		Status:                  ports.ExperimentRunStatusRunning,
+		DatasetID:               datasetVersion.DatasetID,
+		DatasetVersionID:        datasetVersion.ID,
+		DatasetDigest:           stringDefault(datasetVersion.Digest, stableDigest(datasetVersion.ItemRevisionIDs)),
+		SelectedItemRevisionIDs: selectedIDs,
+		SplitSelector:           mapDefault(splitSelector, map[string]any{"splits": []any{items[0].Split}}),
+		TargetSnapshotID:        target.ID,
+		MetricSettingsSnapshot:  []map[string]any{},
+		RunPolicySnapshot:       runPolicy,
+		RetentionProfile:        ports.EvaluationRetentionProfileBalanced,
+		RetentionRole:           retentionRole,
+		StartedAt:               now,
+		Summary:                 evaluationRunSummary(len(items), 0, 0, nil),
+	}
+	itemRuns := make([]ports.EvaluationItemRun, 0, len(items))
+	metricResults := make([]ports.MetricResult, 0, len(items)*2)
+	completed := 0
+	failed := 0
+	evalRequest := StartEvaluationRunRequest{RequestID: request.RequestID, ProjectID: request.ProjectID, DatasetVersionID: datasetVersion.ID, TargetSnapshotID: target.ID, IdempotencyKey: idempotencyKey, RunPolicy: runPolicy, TraceContext: request.TraceContext}
+	for _, item := range items {
+		itemRun, metrics := r.executeEvaluationItem(ctx, run, item, target, providerProfileRefs, evalRequest)
+		if itemRun.Status == ports.EvaluationItemRunStatusCompleted {
+			completed++
+		} else {
+			failed++
+		}
+		itemRuns = append(itemRuns, itemRun)
+		metricResults = append(metricResults, metrics...)
+	}
+	run.EndedAt = r.now()
+	if failed > 0 && completed == 0 {
+		run.Status = ports.ExperimentRunStatusFailed
+	} else {
+		run.Status = ports.ExperimentRunStatusFinished
+	}
+	run.Summary = evaluationRunSummary(len(items), completed, failed, metricResults)
+	if err := r.writer.PersistEvaluationResults(ctx, ports.EvaluationResultsPersist{ProjectID: request.ProjectID, EvaluationRunID: run.ID, IdempotencyKey: idempotencyKey, EvaluationRun: run, ItemRuns: itemRuns, MetricResults: metricResults, MetricAggregates: []map[string]any{}}); err != nil {
+		return ports.EvaluationRun{}, nil, nil, err
+	}
+	return run, itemRuns, metricResults, nil
+}
+
+func (r *Runner) collectSkillReflections(ctx context.Context, runID string, stepID string, skillPackage ports.SkillPackageManifest, evidence []map[string]any, rejected []ports.SkillEditProposal, request StartOptimizationRequest) ([]ports.SkillEditProposal, error) {
+	all := []ports.SkillEditProposal{}
+	for _, kind := range []string{"failure", "success"} {
+		result, err := r.harness.SkillReflect(ctx, ports.SkillReflectRequest{OptimizationRunID: runID, StepID: stepID + ":" + kind, ReflectionKind: kind, SkillPackage: skillPackage, Evidence: evidence, ContentPolicy: objectMap(request.Config, "contentPolicy"), RejectedEdits: rejected, TraceContext: request.TraceContext})
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, result.Proposals...)
+	}
+	return dedupeSkillProposals(all), nil
+}
+
+func (r *Runner) persistSkillOptimizationStep(ctx context.Context, request StartOptimizationRequest, runID string, stepID string, stepNumber int, rolloutRunID string, baselineDigest string, candidateDigest string, candidateSnapshotID string, status string, gateDecision string, trainingScore float64, validationScore float64, proposed []ports.SkillEditProposal, selected []ports.SkillEditProposal, rejected []ports.SkillEditProposal, problem map[string]any, startedAt string) error {
+	payload := map[string]any{
+		"id":                     stepID,
+		"optimizationRunId":      runID,
+		"projectId":              request.ProjectID,
+		"epoch":                  1,
+		"step":                   stepNumber,
+		"status":                 status,
+		"rolloutEvaluationRunId": rolloutRunID,
+		"baselineSkillDigest":    baselineDigest,
+		"candidateSkillDigest":   candidateDigest,
+		"proposedEdits":          skillStepEditsPayload(proposed),
+		"selectedEdits":          skillStepEditsPayload(selected),
+		"rejectedEditSummaries":  skillStepEditsPayload(rejected),
+		"trainingScore":          trainingScore,
+		"validationScore":        validationScore,
+		"gateDecision":           gateDecision,
+		"problem":                problem,
+		"startedAt":              startedAt,
+		"endedAt":                r.now(),
+	}
+	if candidateSnapshotID != "" {
+		payload["candidateTargetSnapshotId"] = candidateSnapshotID
+	}
+	return r.writer.PersistOptimizationStep(ctx, ports.OptimizationStepPersistRequest{RequestID: request.RequestID + ":" + stepID + ":skill-step", ProjectID: request.ProjectID, OptimizationRunID: runID, StepID: stepID, IdempotencyKey: request.IdempotencyKey + ":" + stepID + ":skill-step", Payload: payload})
+}
+
+func (r *Runner) persistSkillOptimizationRun(ctx context.Context, request StartOptimizationRequest, runID string, startedAt string, endedAt string, baselineSnapshotID string, candidateIDs []string, selectedCandidateID string, summary map[string]any) error {
+	optimizationRun := map[string]any{
+		"id":                               runID,
+		"projectId":                        request.ProjectID,
+		"status":                           ports.ExperimentRunStatusFinished,
+		"baselineTargetSnapshotId":         baselineSnapshotID,
+		"objective":                        objectMap(request.Config, "objective"),
+		"searchPolicy":                     objectMap(request.Config, "searchPolicy"),
+		"trainingEvaluationDefinitionId":   stringValueFromMap(request.Config, "trainingEvaluationDefinitionId"),
+		"trainingSplitSelector":            objectMap(request.Config, "trainingSplitSelector"),
+		"validationEvaluationDefinitionId": stringValueFromMap(request.Config, "validationEvaluationDefinitionId"),
+		"validationSplitSelector":          objectMap(request.Config, "validationSplitSelector"),
+		"testEvaluationDefinitionId":       stringValueFromMap(request.Config, "testEvaluationDefinitionId"),
+		"candidateTargetSnapshotIds":       candidateIDs,
+		"causedEvaluationRunIds":           []string{},
+		"quickShotPolicy":                  objectMap(request.Config, "quickShotPolicy"),
+		"comparisonIds":                    []string{},
+		"selectedCandidateSnapshotId":      selectedCandidateID,
+		"budgetSnapshot":                   map[string]any{},
+		"createdAt":                        startedAt,
+		"startedAt":                        startedAt,
+		"endedAt":                          endedAt,
+		"summary":                          summary,
+	}
+	return r.writer.PersistEvaluationResults(ctx, ports.EvaluationResultsPersist{ProjectID: request.ProjectID, IdempotencyKey: request.IdempotencyKey + ":optimization-run", OptimizationRun: optimizationRun})
+}
+
 func (r *Runner) executeEvaluationItem(ctx context.Context, run ports.EvaluationRun, item ports.DatasetItemRevision, target ports.TargetSnapshot, providerProfileRefs []string, request StartEvaluationRunRequest) (ports.EvaluationItemRun, []ports.MetricResult) {
 	startedAt := r.now()
 	itemRunID := r.idGenerator()
@@ -845,12 +1174,25 @@ func (r *Runner) executeEvaluationItem(ctx context.Context, run ports.Evaluation
 			itemRun.Status = ports.EvaluationItemRunStatusFailed
 		} else {
 			output = result.ActualOutput
+			itemRun.ActualOutputRef = result.ActualOutputRef
 			itemRun.ActualOutputType = stringDefault(result.ActualOutputType, actualOutputType(output))
 			itemRun.TraceID = stringDefault(result.TraceID, itemRun.TraceID)
 			itemRun.RootSpanID = stringDefault(result.RootSpanID, itemRun.RootSpanID)
 			itemRun.ConversationRef = result.ConversationRef
-			itemRun.ImportantSteps = capImportantSteps(result.ImportantSteps)
-			itemRun.TrajectorySummary = result.Summary
+			itemRun.SummaryEvidenceRefs = traceEvidenceRefs(itemRun.TraceID, itemRun.RootSpanID, result.TraceRefs, result.ArtifactRefs)
+			traceEvidence, traceOK := r.waitForTraceEvidence(ctx, run.ProjectID, request.RequestID, itemRun.TraceID, itemRun.RootSpanID, traceLinkWait(run.RunPolicySnapshot))
+			if traceOK {
+				itemRun.ImportantSteps = capImportantSteps(traceEvidence.ImportantSteps)
+				itemRun.TrajectorySummary = traceEvidence.TrajectorySummary
+				itemRun.SummaryEvidenceRefs = append(itemRun.SummaryEvidenceRefs, traceEvidence.EvidenceRefs...)
+				itemRun.SummaryEvidenceRefs = append(itemRun.SummaryEvidenceRefs, traceEvidence.ArtifactRefs...)
+			} else if requiresTrajectoryEvidence(run.RunPolicySnapshot) {
+				problems = append(problems, map[string]any{"code": ports.EvaluationProblemTraceEvidenceMissing, "message": "trace evidence is unavailable after the trace-link wait window"})
+				itemRun.SummaryEvidenceRefs = append(itemRun.SummaryEvidenceRefs, map[string]any{"kind": "evaluation_item_run", "id": itemRun.ID, "excludedFromOptimizerReflection": true, "reason": "trace_evidence_missing"})
+			}
+			if itemRun.TrajectorySummary == "" {
+				itemRun.TrajectorySummary = result.Summary
+			}
 			problems = append(problems, result.Problems...)
 			latencyMs = result.LatencyMs
 		}
@@ -882,7 +1224,7 @@ func (r *Runner) executeEvaluationItem(ctx context.Context, run ports.Evaluation
 			}}
 		}
 	}
-	if isMissingActualOutput(output) {
+	if isMissingActualOutput(output) && itemRun.ActualOutputRef == "" {
 		problems = append(problems, map[string]any{"code": ports.EvaluationProblemInvalidActualOutput, "message": "actual output is missing"})
 		itemRun.Status = ports.EvaluationItemRunStatusFailed
 	}
@@ -901,7 +1243,7 @@ func (r *Runner) executeEvaluationItem(ctx context.Context, run ports.Evaluation
 	itemRun.SummaryDigest = stableDigest(map[string]any{"summary": itemRun.TrajectorySummary, "problems": problems, "actualOutput": output})
 
 	metrics := []ports.MetricResult{
-		exactJSONMetricResult(r.idGenerator(), itemRun, item.Expected, output, problems, r.now()),
+		exactJSONMetricResult(r.idGenerator(), itemRun, item.Expected, output, metricBlockingProblems(problems), r.now()),
 		latencyMetricResult(r.idGenerator(), itemRun, latencyMs, r.now()),
 	}
 	itemRun.MetricResultIDs = []string{metrics[0].ID, metrics[1].ID}
@@ -1205,6 +1547,477 @@ func rejectHoldoutOptimization(manifest ports.ExperimentManifest) error {
 		}
 	}
 	return nil
+}
+
+func defaultSkillPolicy() map[string]any {
+	return map[string]any{
+		"maxPackageBytes":    262144,
+		"maxSkillBytes":      65536,
+		"maxSkillTokens":     8000,
+		"editBudget":         4,
+		"editableFileGlobs":  []any{"SKILL.md", "references/**/*.md", "references/*.md", "examples/**/*.md", "examples/*.md"},
+		"protectedFileGlobs": []any{"scripts/**", "**/*.lock", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.pdf", "**/*.zip", "**/*.tar", "**/*.gz"},
+		"allowedEditOps":     []any{"append", "insert_after", "replace", "delete"},
+		"exportBestSkill":    true,
+		"allowScriptEdits":   false,
+	}
+}
+
+func skillPackageFromTargetSnapshot(snapshot ports.TargetSnapshot, skillPolicy map[string]any) (ports.SkillPackageManifest, error) {
+	skillParts := []map[string]any{}
+	for _, part := range snapshot.Parts {
+		if stringValueFromMap(part, "partKind") == "skill" || stringValueFromMap(part, "kind") == "skill" {
+			skillParts = append(skillParts, part)
+		}
+	}
+	if len(skillParts) == 0 {
+		for _, source := range []map[string]any{objectMap(snapshot.Metadata, "skillPackage"), objectMap(snapshot.TargetRef, "skillPackage")} {
+			if len(source) > 0 {
+				skillParts = append(skillParts, map[string]any{"partKind": "skill", "manifest": source})
+			}
+		}
+	}
+	if len(skillParts) != 1 {
+		return ports.SkillPackageManifest{}, errors.New("ERR-001 VALIDATION_FAILED: baseline target snapshot must contain exactly one skill package")
+	}
+	manifestMap := objectMap(skillParts[0], "manifest")
+	if len(manifestMap) == 0 {
+		manifestMap = objectMap(skillParts[0], "skillPackage")
+	}
+	if len(manifestMap) == 0 {
+		manifestMap = skillParts[0]
+	}
+	manifest := ports.SkillPackageManifest{
+		PackageRef:          stringValueFromMap(manifestMap, "packageRef"),
+		Entrypoint:          stringDefault(stringValueFromMap(manifestMap, "entrypoint"), "SKILL.md"),
+		ManifestDigest:      firstNonEmptyString(stringValueFromMap(manifestMap, "manifestDigest"), stringValueFromMap(skillParts[0], "digest"), snapshot.Digest),
+		EditableFileGlobs:   stringRefsFromValue(firstNonNil(manifestMap["editableFileGlobs"], skillPolicy["editableFileGlobs"])),
+		ProtectedFileGlobs:  stringRefsFromValue(firstNonNil(manifestMap["protectedFileGlobs"], skillPolicy["protectedFileGlobs"])),
+		RuntimeRequirements: objectMap(manifestMap, "runtimeRequirements"),
+	}
+	for _, item := range mapArrayFromValue(manifestMap["files"]) {
+		file := ports.SkillPackageFile{
+			Path:     stringValueFromMap(item, "path"),
+			Role:     stringValueFromMap(item, "role"),
+			Digest:   stringValueFromMap(item, "digest"),
+			ByteSize: intValueFromMap(item, "byteSize"),
+			Content:  stringValueFromMap(item, "content"),
+			Editable: boolValueFromMap(item, "editable"),
+		}
+		if file.Content == "" {
+			file.Content = stringValueFromMap(item, "text")
+		}
+		manifest.Files = append(manifest.Files, file)
+	}
+	return manifest, nil
+}
+
+func validateSkillPackagePreflight(manifest ports.SkillPackageManifest, skillPolicy map[string]any) error {
+	if manifest.Entrypoint != "SKILL.md" {
+		return errors.New("ERR-001 VALIDATION_FAILED: skill package entrypoint must be SKILL.md")
+	}
+	if len(manifest.Files) == 0 {
+		return errors.New("ERR-001 VALIDATION_FAILED: skill package file inventory is required")
+	}
+	hasEntrypoint := false
+	totalBytes := 0
+	editableFiles := 0
+	for _, file := range manifest.Files {
+		if file.Path == "" || file.Digest == "" {
+			return errors.New("ERR-001 VALIDATION_FAILED: skill package file inventory is invalid")
+		}
+		if file.Path == "SKILL.md" {
+			hasEntrypoint = true
+		}
+		totalBytes += maxInt(file.ByteSize, len(file.Content))
+		if file.Editable || pathAllowed(file.Path, manifest.EditableFileGlobs) {
+			editableFiles++
+		}
+	}
+	if !hasEntrypoint {
+		return errors.New("ERR-001 VALIDATION_FAILED: skill package is missing SKILL.md")
+	}
+	if editableFiles == 0 {
+		return errors.New("ERR-001 VALIDATION_FAILED: skill package has no editable files")
+	}
+	if limit := intValueFromMap(skillPolicy, "maxPackageBytes"); limit > 0 && totalBytes > limit {
+		return errors.New("ERR-001 VALIDATION_FAILED: skill package exceeds maxPackageBytes")
+	}
+	if limit := intValueFromMap(skillPolicy, "maxSkillBytes"); limit > 0 && optimizerVisibleSkillBytes(manifest) > limit {
+		return errors.New("ERR-001 VALIDATION_FAILED: skill package exceeds maxSkillBytes")
+	}
+	return nil
+}
+
+func filterItemsForSplit(items []ports.DatasetItemRevision, selector map[string]any, fallback string) []ports.DatasetItemRevision {
+	splits := stringRefsFromValue(selector["splits"])
+	if len(splits) == 0 {
+		splits = []string{fallback}
+	}
+	results := make([]ports.DatasetItemRevision, 0, len(items))
+	for _, item := range items {
+		if stringSliceContains(splits, item.Split) {
+			results = append(results, item)
+		}
+	}
+	return results
+}
+
+func splitSelectorContainsTest(selector map[string]any) bool {
+	return stringSliceContains(stringRefsFromValue(selector["splits"]), "test")
+}
+
+func optimizerEvidenceFromItemRuns(items []ports.DatasetItemRevision, itemRuns []ports.EvaluationItemRun, metrics []ports.MetricResult, requireTrajectory bool) []map[string]any {
+	itemsByID := map[string]ports.DatasetItemRevision{}
+	for _, item := range items {
+		if item.Split != "test" {
+			itemsByID[item.ID] = item
+		}
+	}
+	metricsByItemRun := map[string][]map[string]any{}
+	for _, metric := range metrics {
+		metricsByItemRun[metric.SubjectID] = append(metricsByItemRun[metric.SubjectID], metricResultMap(metric))
+	}
+	evidence := []map[string]any{}
+	for _, run := range itemRuns {
+		item, ok := itemsByID[run.DatasetItemRevisionID]
+		if !ok {
+			continue
+		}
+		if requireTrajectory && hasEvaluationProblemCode(run.Problems, ports.EvaluationProblemTraceEvidenceMissing) {
+			continue
+		}
+		evidence = append(evidence, map[string]any{"itemRunId": run.ID, "split": item.Split, "actualOutput": run.ActualOutput, "expected": item.Expected, "metricResults": metricsByItemRun[run.ID], "importantSteps": run.ImportantSteps, "trajectorySummary": run.TrajectorySummary, "traceRefs": run.SummaryEvidenceRefs})
+	}
+	return evidence
+}
+
+func dedupeSkillProposals(proposals []ports.SkillEditProposal) []ports.SkillEditProposal {
+	seen := map[string]bool{}
+	result := []ports.SkillEditProposal{}
+	for _, proposal := range proposals {
+		key := proposal.ID
+		if key == "" {
+			key = stableDigest(proposal)
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		result = append(result, proposal)
+	}
+	return result
+}
+
+func applySkillProposal(manifest ports.SkillPackageManifest, proposal ports.SkillEditProposal, skillPolicy map[string]any) (ports.SkillPackageManifest, string, map[string]any) {
+	if proposal.ProtectedFileViolation {
+		return manifest, "", map[string]any{"code": "protected_file_edit", "message": "proposal edits a protected skill package file"}
+	}
+	next := cloneSkillPackage(manifest)
+	for _, edit := range proposal.Edits {
+		if !stringSliceContains(stringRefsFromValue(skillPolicy["allowedEditOps"]), edit.Op) {
+			return manifest, "", map[string]any{"code": "edit_op_not_allowed", "message": "proposal uses an unsupported edit operation"}
+		}
+		if pathAllowed(edit.FilePath, manifest.ProtectedFileGlobs) || pathAllowed(edit.FilePath, stringRefsFromValue(skillPolicy["protectedFileGlobs"])) {
+			return manifest, "", map[string]any{"code": "protected_file_edit", "message": "proposal edits a protected skill package file"}
+		}
+		index := skillFileIndex(next.Files, edit.FilePath)
+		if index < 0 || !(next.Files[index].Editable || pathAllowed(edit.FilePath, manifest.EditableFileGlobs)) {
+			return manifest, "", map[string]any{"code": "file_not_editable", "message": "proposal edits a non-editable skill package file"}
+		}
+		updated, ok := applySkillEdit(next.Files[index].Content, edit)
+		if !ok {
+			return manifest, "", map[string]any{"code": "edit_anchor_missing", "message": "proposal edit anchor was not found"}
+		}
+		next.Files[index].Content = updated
+		next.Files[index].ByteSize = len(updated)
+		next.Files[index].Digest = stableDigest(map[string]any{"path": next.Files[index].Path, "content": updated})
+	}
+	if limit := intValueFromMap(skillPolicy, "maxPackageBytes"); limit > 0 && skillPackageBytes(next) > limit {
+		return manifest, "", map[string]any{"code": "package_too_large", "message": "candidate package exceeds maxPackageBytes"}
+	}
+	if limit := intValueFromMap(skillPolicy, "maxSkillBytes"); limit > 0 && optimizerVisibleSkillBytes(next) > limit {
+		return manifest, "", map[string]any{"code": "skill_too_large", "message": "candidate skill exceeds maxSkillBytes"}
+	}
+	digest := stableDigest(skillPackagePayloadForDigest(next))
+	next.ManifestDigest = digest
+	return next, digest, nil
+}
+
+func applySkillEdit(current string, edit ports.SkillEditOperation) (string, bool) {
+	switch edit.Op {
+	case "append":
+		return current + edit.Content, true
+	case "replace":
+		if edit.Anchor == "" {
+			return edit.Content, true
+		}
+		if !strings.Contains(current, edit.Anchor) {
+			return current, false
+		}
+		return strings.Replace(current, edit.Anchor, edit.Content, 1), true
+	case "insert_after":
+		if edit.Anchor == "" || !strings.Contains(current, edit.Anchor) {
+			return current, false
+		}
+		return strings.Replace(current, edit.Anchor, edit.Anchor+edit.Content, 1), true
+	case "delete":
+		if edit.Anchor == "" || !strings.Contains(current, edit.Anchor) {
+			return current, false
+		}
+		return strings.Replace(current, edit.Anchor, "", 1), true
+	default:
+		return current, false
+	}
+}
+
+func candidateTargetRef(baseline ports.TargetSnapshot, digest string) map[string]any {
+	ref := copyMap(baseline.TargetRef)
+	ref["skillPackageDigest"] = digest
+	return ref
+}
+
+func candidateTargetSnapshotInput(baseline ports.TargetSnapshot, manifest ports.SkillPackageManifest, digest string, stepID string) map[string]any {
+	return map[string]any{"kind": stringDefault(baseline.Kind, "skill"), "name": stringDefault(baseline.Name, "skill target") + " candidate " + stepID, "version": baseline.Version + 1, "digest": digest, "parts": []any{map[string]any{"partKind": "skill", "kind": "skill", "digest": digest, "manifest": skillPackageMap(manifest)}}, "metadata": map[string]any{"baselineTargetSnapshotId": baseline.ID, "skillPackageDigest": digest}, "source": map[string]any{"kind": "optimization"}}
+}
+
+func candidateSnapshotForRun(baseline ports.TargetSnapshot, candidate ports.TargetSnapshot, manifest ports.SkillPackageManifest, digest string) ports.TargetSnapshot {
+	if len(candidate.TargetRef) == 0 {
+		candidate.TargetRef = candidateTargetRef(baseline, digest)
+	}
+	if candidate.Kind == "" {
+		candidate.Kind = baseline.Kind
+	}
+	if len(candidate.Parts) == 0 {
+		candidate.Parts = []map[string]any{{"partKind": "skill", "kind": "skill", "digest": digest, "manifest": skillPackageMap(manifest)}}
+	}
+	return candidate
+}
+
+func metricAverage(metrics []ports.MetricResult) float64 {
+	total := 0.0
+	count := 0
+	for _, metric := range metrics {
+		if metric.MetricID != "extraction.exact_json_match" {
+			continue
+		}
+		if value, ok := metric.Payload["value"].(bool); ok {
+			if value {
+				total += 1
+			}
+			count++
+		}
+	}
+	if count == 0 {
+		return 0
+	}
+	return total / float64(count)
+}
+
+func skillStepEditsPayload(proposals []ports.SkillEditProposal) []any {
+	items := []any{}
+	for _, proposal := range proposals {
+		for _, edit := range proposal.Edits {
+			items = append(items, map[string]any{
+				"id":             proposal.ID,
+				"op":             edit.Op,
+				"filePath":       edit.FilePath,
+				"target":         edit.Target,
+				"contentPreview": capString(edit.Content, 2000),
+				"rationale":      capString(proposal.Rationale, 2000),
+				"sourceType":     proposal.Source,
+				"supportCount":   proposal.SupportCount,
+				"evidenceRefs":   skillEvidenceRefsPayload(proposal.EvidenceRefs),
+			})
+		}
+	}
+	return items
+}
+
+func skillEvidenceRefsPayload(refs []string) []any {
+	items := make([]any, 0, len(refs))
+	for _, ref := range refs {
+		items = append(items, map[string]any{"kind": "optimizer_evidence", "id": ref})
+	}
+	return items
+}
+
+func cloneSkillPackage(manifest ports.SkillPackageManifest) ports.SkillPackageManifest {
+	next := manifest
+	next.EditableFileGlobs = append([]string(nil), manifest.EditableFileGlobs...)
+	next.ProtectedFileGlobs = append([]string(nil), manifest.ProtectedFileGlobs...)
+	next.RuntimeRequirements = copyMap(manifest.RuntimeRequirements)
+	next.Files = append([]ports.SkillPackageFile(nil), manifest.Files...)
+	return next
+}
+
+func skillFileIndex(files []ports.SkillPackageFile, filePath string) int {
+	for index, file := range files {
+		if file.Path == filePath {
+			return index
+		}
+	}
+	return -1
+}
+
+func skillPackageBytes(manifest ports.SkillPackageManifest) int {
+	total := 0
+	for _, file := range manifest.Files {
+		total += maxInt(file.ByteSize, len(file.Content))
+	}
+	return total
+}
+
+func optimizerVisibleSkillBytes(manifest ports.SkillPackageManifest) int {
+	total := 0
+	for _, file := range manifest.Files {
+		if file.Path == "SKILL.md" || file.Editable || pathAllowed(file.Path, manifest.EditableFileGlobs) {
+			total += maxInt(file.ByteSize, len(file.Content))
+		}
+	}
+	return total
+}
+
+func skillPackagePayloadForDigest(manifest ports.SkillPackageManifest) any {
+	return skillPackageMap(manifest)
+}
+
+func skillPackageMap(manifest ports.SkillPackageManifest) map[string]any {
+	files := make([]any, 0, len(manifest.Files))
+	for _, file := range manifest.Files {
+		files = append(files, map[string]any{"path": file.Path, "role": file.Role, "digest": file.Digest, "byteSize": file.ByteSize, "content": file.Content, "editable": file.Editable})
+	}
+	return map[string]any{"packageRef": manifest.PackageRef, "entrypoint": manifest.Entrypoint, "manifestDigest": manifest.ManifestDigest, "files": files, "editableFileGlobs": manifest.EditableFileGlobs, "protectedFileGlobs": manifest.ProtectedFileGlobs, "runtimeRequirements": manifest.RuntimeRequirements}
+}
+
+func pathAllowed(filePath string, globs []string) bool {
+	for _, glob := range globs {
+		if glob == "" {
+			continue
+		}
+		if glob == filePath {
+			return true
+		}
+		if ok, _ := path.Match(glob, filePath); ok {
+			return true
+		}
+		if strings.Contains(glob, "**") {
+			prefix := strings.Split(glob, "**")[0]
+			suffix := strings.TrimPrefix(strings.Split(glob, "**")[1], "/")
+			if strings.HasPrefix(filePath, prefix) && (suffix == "" || pathAllowed(filePath, []string{prefix + suffix, prefix + "*" + suffix})) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func mapArrayFromValue(value any) []map[string]any {
+	switch typed := value.(type) {
+	case []map[string]any:
+		return append([]map[string]any(nil), typed...)
+	case []any:
+		result := make([]map[string]any, 0, len(typed))
+		for _, item := range typed {
+			if row, ok := item.(map[string]any); ok {
+				result = append(result, row)
+			}
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+func firstNonNil(values ...any) any {
+	for _, value := range values {
+		if value != nil {
+			return value
+		}
+	}
+	return nil
+}
+
+func boolValueFromMap(value map[string]any, key string) bool {
+	if value == nil {
+		return false
+	}
+	typed, _ := value[key].(bool)
+	return typed
+}
+
+func boolDefault(value any, fallback bool) bool {
+	if typed, ok := value.(bool); ok {
+		return typed
+	}
+	return fallback
+}
+
+func stringSliceContains(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+func intValueFromMap(value map[string]any, key string) int {
+	if value == nil {
+		return 0
+	}
+	switch typed := value[key].(type) {
+	case int:
+		return typed
+	case int64:
+		return int(typed)
+	case float64:
+		return int(typed)
+	case json.Number:
+		parsed, _ := typed.Int64()
+		return int(parsed)
+	default:
+		return 0
+	}
+}
+
+func intDefault(value int, fallback int) int {
+	if value > 0 {
+		return value
+	}
+	return fallback
+}
+
+func maxInt(left int, right int) int {
+	if left > right {
+		return left
+	}
+	return right
+}
+
+func copyMap(values map[string]any) map[string]any {
+	copied := map[string]any{}
+	for key, value := range values {
+		copied[key] = value
+	}
+	return copied
+}
+
+func stableJSON(value any) string {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func hasEvaluationProblemCode(problems []map[string]any, code string) bool {
+	for _, problem := range problems {
+		if problem["code"] == code {
+			return true
+		}
+	}
+	return false
 }
 
 func boolSetting(values map[string]any, key string) bool {
@@ -1628,6 +2441,25 @@ func stringValueFromMap(value map[string]any, key string) string {
 	return ""
 }
 
+func floatValueFromMap(value map[string]any, key string) float64 {
+	if value == nil {
+		return 0
+	}
+	switch typed := value[key].(type) {
+	case float64:
+		return typed
+	case int:
+		return float64(typed)
+	case int64:
+		return float64(typed)
+	case json.Number:
+		parsed, _ := typed.Float64()
+		return parsed
+	default:
+		return 0
+	}
+}
+
 func firstString(values []string) string {
 	if len(values) == 0 {
 		return ""
@@ -1753,6 +2585,7 @@ func evaluationItemRunMap(run ports.EvaluationItemRun) map[string]any {
 		"targetSnapshotId":      run.TargetSnapshotID,
 		"status":                run.Status,
 		"actualOutput":          run.ActualOutput,
+		"actualOutputRef":       run.ActualOutputRef,
 		"actualOutputType":      run.ActualOutputType,
 		"traceId":               run.TraceID,
 		"rootSpanId":            run.RootSpanID,
@@ -1794,6 +2627,78 @@ func metricResultMap(result ports.MetricResult) map[string]any {
 		values["problem"] = result.Problem
 	}
 	return values
+}
+
+func (r *Runner) waitForTraceEvidence(ctx context.Context, projectID string, requestID string, traceID string, rootSpanID string, wait time.Duration) (ports.TraceEvidence, bool) {
+	if r.reader == nil || traceID == "" {
+		return ports.TraceEvidence{}, false
+	}
+	deadline := time.Now().Add(wait)
+	for {
+		evidence, err := r.reader.GetTraceEvidence(ctx, ports.TraceEvidenceRequest{
+			RequestID:  stringDefault(requestID, "trace-evidence"),
+			ProjectID:  projectID,
+			TraceID:    traceID,
+			RootSpanID: rootSpanID,
+		})
+		if err == nil && (evidence.TrajectorySummary != "" || len(evidence.ImportantSteps) > 0 || len(evidence.EvidenceRefs) > 0) {
+			return evidence, true
+		}
+		if wait <= 0 || !time.Now().Before(deadline) {
+			return ports.TraceEvidence{}, false
+		}
+		timer := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ports.TraceEvidence{}, false
+		case <-timer.C:
+		}
+	}
+}
+
+func traceLinkWait(runPolicy map[string]any) time.Duration {
+	waitMs := floatValueFromMap(runPolicy, "traceLinkWaitMs")
+	if waitMs <= 0 {
+		waitMs = floatValueFromMap(runPolicy, "traceEvidenceWaitMs")
+	}
+	if waitMs <= 0 {
+		return 0
+	}
+	return time.Duration(waitMs) * time.Millisecond
+}
+
+func requiresTrajectoryEvidence(runPolicy map[string]any) bool {
+	if value, ok := runPolicy["requiresTrajectoryEvidence"].(bool); ok {
+		return value
+	}
+	objective, _ := runPolicy["objective"].(map[string]any)
+	if value, ok := objective["requiresTrajectoryEvidence"].(bool); ok {
+		return value
+	}
+	minimumEvidence, _ := objective["minimumEvidence"].(map[string]any)
+	if value, ok := minimumEvidence["trajectory"].(bool); ok {
+		return value
+	}
+	return false
+}
+
+func traceEvidenceRefs(traceID string, rootSpanID string, traceRefs []map[string]any, artifactRefs []map[string]any) []map[string]any {
+	refs := []map[string]any{{"kind": "trace", "id": traceID, "traceId": traceID, "spanId": rootSpanID}}
+	refs = append(refs, traceRefs...)
+	refs = append(refs, artifactRefs...)
+	return refs
+}
+
+func metricBlockingProblems(problems []map[string]any) []map[string]any {
+	blocking := make([]map[string]any, 0, len(problems))
+	for _, problem := range problems {
+		if problem["code"] == ports.EvaluationProblemTraceEvidenceMissing {
+			continue
+		}
+		blocking = append(blocking, problem)
+	}
+	return blocking
 }
 
 func (r *Runner) currentRun(experimentRunID string) ports.ExperimentRun {

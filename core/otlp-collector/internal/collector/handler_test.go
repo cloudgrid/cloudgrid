@@ -272,8 +272,24 @@ func TestTraceIngestPublishesNormalTelemetryAndAIProjection(t *testing.T) {
 	if err := json.Unmarshal(publisher.calls[0].data, &telemetry); err != nil {
 		t.Fatalf("unmarshal telemetry command: %v", err)
 	}
-	if telemetry.Spans[0].Attributes["cloudgrid.ai.semconv.flavor"] != "both" {
-		t.Fatalf("span semconv flavor = %#v, want both", telemetry.Spans[0].Attributes["cloudgrid.ai.semconv.flavor"])
+	if _, ok := telemetry.Spans[0].Attributes["cloudgrid.ai.semconv.flavor"]; ok {
+		t.Fatalf("source span attributes were annotated: %#v", telemetry.Spans[0].Attributes)
+	}
+	if len(telemetry.Spans[0].Attributes) != 7 {
+		t.Fatalf("source span attributes = %#v, want only emitter-provided resource and span attributes", telemetry.Spans[0].Attributes)
+	}
+	for key, want := range map[string]any{
+		"service.name":            "ai-api",
+		"gen_ai.operation.name":   "chat",
+		"openinference.span.kind": "LLM",
+		"gen_ai.system":           "openai",
+		"llm.provider":            "anthropic",
+		"gen_ai.prompt":           "secret prompt body",
+		"gen_ai.completion":       "secret answer body",
+	} {
+		if got := telemetry.Spans[0].Attributes[key]; got != want {
+			t.Fatalf("source span attribute %q = %#v, want %#v", key, got, want)
+		}
 	}
 
 	var projection contracts.PersistAiProjectionCommand
@@ -282,6 +298,15 @@ func TestTraceIngestPublishesNormalTelemetryAndAIProjection(t *testing.T) {
 	}
 	if projection.RequestID != "req-ai-projection" || projection.Kind != contracts.AiProjectionKindLLMCall {
 		t.Fatalf("projection command = %#v", projection)
+	}
+	if projection.SourceFlavor == nil || *projection.SourceFlavor != "both" {
+		t.Fatalf("projection sourceFlavor = %#v, want both", projection.SourceFlavor)
+	}
+	if got := projection.Projection["sourceFlavor"]; got != "both" {
+		t.Fatalf("projection payload sourceFlavor = %#v, want both", got)
+	}
+	if len(projection.NormalizationWarnings) == 0 {
+		t.Fatalf("projection warnings = %#v, want conflict warning", projection.NormalizationWarnings)
 	}
 	serialized := string(publisher.calls[1].data)
 	for _, forbidden := range []string{"secret prompt body", "secret answer body"} {

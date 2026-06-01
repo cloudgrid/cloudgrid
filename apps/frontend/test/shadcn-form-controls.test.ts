@@ -130,4 +130,45 @@ describe("shadcn form control discipline", () => {
 
     expect(violations).toEqual([]);
   });
+
+  test("shared actionable primitives expose correct cursor affordances", () => {
+    const requiredPointers = [
+      "components/ui/button.tsx",
+      "components/ui/select.tsx",
+      "components/ui/dropdown-menu.tsx",
+      "components/ui/command.tsx",
+      "components/ui/tabs.tsx",
+      "components/ui/checkbox.tsx",
+      "components/ui/toggle.tsx",
+      "components/ui/accordion.tsx",
+      "components/ui/navigation-menu.tsx",
+      "components/ui/dialog.tsx",
+      "components/ui/sheet.tsx",
+      "components/ui/popover.tsx",
+      "components/ui/collapsible.tsx",
+    ];
+
+    const violations = requiredPointers.flatMap((rel) => {
+      const source = readFileSync(join(srcDir, rel), "utf8");
+      return [
+        source.includes("cursor-pointer") ? null : `${rel}: missing cursor-pointer`,
+        source.includes("cursor-not-allowed") ? null : `${rel}: missing disabled cursor`,
+        source.includes("disabled:pointer-events-none")
+          ? `${rel}: disabled pointer events hide cursor feedback`
+          : null,
+        source.includes("data-[disabled]:pointer-events-none") ||
+        source.includes("data-[disabled=true]:pointer-events-none")
+          ? `${rel}: data-disabled pointer events hide cursor feedback`
+          : null,
+        source.includes("cursor-default") ? `${rel}: actionable item uses cursor-default` : null,
+      ].filter((violation): violation is string => violation !== null);
+    });
+
+    const tableSource = readFileSync(join(srcDir, "components/ui/table.tsx"), "utf8");
+    if (!tableSource.includes('onClick && "cursor-pointer"')) {
+      violations.push("components/ui/table.tsx: clickable rows must get cursor-pointer");
+    }
+
+    expect(violations).toEqual([]);
+  });
 });

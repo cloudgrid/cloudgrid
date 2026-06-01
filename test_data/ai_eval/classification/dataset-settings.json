@@ -1,12 +1,12 @@
 {
-  "name": "Support intent classification",
-  "description": "Classify short customer support messages into one canonical intent.",
-  "inputValueType": "json",
-  "expectedOutputValueType": "json",
-  "inputSchema": {
+  "evaluationFamily": "classification",
+  "inputType": "json",
+  "expectedType": "json",
+  "inputJsonSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
     "additionalProperties": false,
-    "required": ["message"],
+    "required": ["message", "channel", "customerTier"],
     "properties": {
       "message": {
         "type": "string",
@@ -19,10 +19,15 @@
       "customerTier": {
         "type": "string",
         "enum": ["free", "pro", "enterprise"]
+      },
+      "productArea": {
+        "type": "string",
+        "enum": ["billing", "auth", "dashboard", "api", "sales", "admin", "unknown"]
       }
     }
   },
-  "expectedOutputSchema": {
+  "expectedJsonSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
     "additionalProperties": false,
     "required": ["intent"],
@@ -41,7 +46,74 @@
       }
     }
   },
-  "defaultSplit": "validation",
-  "defaultReviewStatus": "ready",
-  "defaultMetric": "classification.accuracy"
+  "expectedValueOptions": [
+    {
+      "value": { "intent": "billing_refund" },
+      "label": "Billing refund",
+      "description": "Refunds, duplicate charges, credits, or money-back requests."
+    },
+    {
+      "value": { "intent": "billing_invoice" },
+      "label": "Billing invoice",
+      "description": "Invoice documents, VAT/tax details, receipts, or billing page issues."
+    },
+    {
+      "value": { "intent": "technical_bug" },
+      "label": "Technical bug",
+      "description": "Product failures, crashes, regressions, API errors, or incorrect behavior."
+    },
+    {
+      "value": { "intent": "account_access" },
+      "label": "Account access",
+      "description": "Login, password reset, SSO, lockout, or permission-access problems."
+    },
+    {
+      "value": { "intent": "feature_request" },
+      "label": "Feature request",
+      "description": "Requests for new or changed product capabilities."
+    },
+    {
+      "value": { "intent": "cancellation" },
+      "label": "Cancellation",
+      "description": "Trial, subscription, workspace, or account cancellation requests."
+    },
+    {
+      "value": { "intent": "sales_question" },
+      "label": "Sales question",
+      "description": "Pricing, plan fit, procurement, security review, or pre-purchase questions."
+    }
+  ],
+  "defaultSplit": "training",
+  "intakePolicy": {
+    "manualDefaultStatus": "ready",
+    "importDefaultStatus": "ready",
+    "traceDefaultStatus": "needs_expected"
+  },
+  "traceIntakeRules": [],
+  "anonymizationPolicy": {
+    "mode": "realistic",
+    "policyId": null,
+    "policyVersion": null,
+    "consistencyScope": "dataset",
+    "blockedEntityTypes": []
+  },
+  "defaultMetricSettings": [
+    {
+      "metricId": "classification.accuracy",
+      "options": {
+        "classification": {
+          "mode": "single_label",
+          "expectedLabelPath": "$.intent",
+          "actualLabelPath": "$.intent",
+          "trimWhitespace": true,
+          "collapseWhitespace": true,
+          "caseFolding": false,
+          "aliasMap": {},
+          "unknownLabelPolicy": "problem_and_mismatch",
+          "averaging": "macro"
+        }
+      }
+    }
+  ],
+  "retentionProfile": "balanced"
 }

@@ -9,8 +9,8 @@ blocked_by: []
 spec_refs:
   - specs/04-backend/ai-eval-runner.md
   - specs/04-backend/ai-eval-message-contracts.md
-  - specs/02-flows/ai-eval/offline-experiment-run.md
-  - specs/02-flows/ai-eval/online-evaluation.md
+  - specs/03-flows/ai-eval/offline-experiment-run.md
+  - specs/03-flows/ai-eval/online-evaluation.md
   - specs/02-capabilities/ai-eval/optimize-prompts.md
   - specs/06-nfr/ai-eval-cost-bounds.md
 write_scope:

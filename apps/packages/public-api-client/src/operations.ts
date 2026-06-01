@@ -171,6 +171,7 @@ export {
   createEvaluationComparisonOperation,
   startOptimizationRunOperation,
   optimizationRunsOperation,
+  optimizationRunOperation,
   promoteTargetSnapshotOperation,
   datasetCandidatesOperation,
   prepareDatasetCandidatesOperation,

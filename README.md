@@ -66,7 +66,7 @@ docker compose --env-file .env up -d nats surrealdb
 The default `.env` pins:
 
 - NATS Server `2.14.0`
-- SurrealDB `3.0.5`
+- SurrealDB `3.1.0`
 
 ## TypeScript Tooling
 

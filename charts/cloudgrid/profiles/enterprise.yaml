@@ -20,7 +20,7 @@ storageWrite:
 
 controlPlane:
   replicas: 2
-  providerSecretEncryptionKey:
+  secretStoreEncryptionKey:
     existingSecret: cloudgrid-provider-secrets
 
 nats:

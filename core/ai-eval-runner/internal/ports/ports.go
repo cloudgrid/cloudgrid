@@ -55,6 +55,7 @@ const (
 	EvaluationProblemAdapterFailure         = "adapter_failure"
 	EvaluationProblemTimeout                = "timeout"
 	EvaluationProblemMetricConfigInvalid    = "metric_config_invalid"
+	EvaluationProblemTraceEvidenceMissing   = "trace_evidence_missing"
 )
 
 const (
@@ -171,6 +172,159 @@ type TargetSnapshot struct {
 	Metadata  map[string]any
 }
 
+type SkillPackageManifest struct {
+	PackageRef          string
+	Entrypoint          string
+	ManifestDigest      string
+	Files               []SkillPackageFile
+	EditableFileGlobs   []string
+	ProtectedFileGlobs  []string
+	RuntimeRequirements map[string]any
+}
+
+type SkillPackageFile struct {
+	Path     string
+	Role     string
+	Digest   string
+	ByteSize int
+	Content  string
+	Editable bool
+}
+
+type SkillEditOperation struct {
+	Op       string
+	Target   string
+	FilePath string
+	Anchor   string
+	Content  string
+}
+
+type SkillEditProposal struct {
+	ID                     string
+	Source                 string
+	Rationale              string
+	SupportCount           int
+	EvidenceRefs           []string
+	Edits                  []SkillEditOperation
+	ExpectedValidity       string
+	ProtectedFileViolation bool
+}
+
+type SkillCapabilitiesResult struct {
+	SupportedOptimizerKinds []string
+	RuntimeModes            []string
+	TraceExport             map[string]any
+	Limits                  map[string]any
+	EditOps                 []string
+	Summary                 map[string]any
+}
+
+type SkillRuntimeDryRunRequest struct {
+	OptimizationRunID string
+	SkillPackage      SkillPackageManifest
+	RuntimeMode       string
+	RuntimeProfileRef string
+	ModelProfileRef   string
+	ToolProfileRef    string
+	FixtureRef        string
+	TraceContext      map[string]string
+}
+
+type SkillRuntimeDryRunResult struct {
+	OptimizationRunID string
+	OK                bool
+	CapabilityDigest  string
+	Checks            []map[string]any
+	Warnings          []string
+}
+
+type SkillReflectRequest struct {
+	OptimizationRunID string
+	StepID            string
+	ReflectionKind    string
+	SkillPackage      SkillPackageManifest
+	Evidence          []map[string]any
+	ContentPolicy     map[string]any
+	RejectedEdits     []SkillEditProposal
+	TraceContext      map[string]string
+}
+
+type SkillReflectResult struct {
+	OptimizationRunID string
+	StepID            string
+	Proposals         []SkillEditProposal
+	Summary           map[string]any
+}
+
+type SkillMergeRankRequest struct {
+	OptimizationRunID string
+	StepID            string
+	Proposals         []SkillEditProposal
+	EditBudget        int
+	TraceContext      map[string]string
+}
+
+type SkillMergeRankResult struct {
+	OptimizationRunID  string
+	StepID             string
+	RankedProposals    []SkillEditProposal
+	DroppedProposalIDs []string
+	Summary            map[string]any
+}
+
+type SkillSlowUpdateRequest struct {
+	OptimizationRunID   string
+	Epoch               int
+	AcceptedProposalIDs []string
+	RejectedProposalIDs []string
+	TrainingSummary     map[string]any
+	TraceContext        map[string]string
+}
+
+type SkillSlowUpdateResult struct {
+	OptimizationRunID string
+	Guidance          []string
+	ProtectedGuidance bool
+}
+
+type SkillMetaMemoryRequest struct {
+	OptimizationRunID   string
+	CurrentMemory       []map[string]any
+	AcceptedProposalIDs []string
+	RejectedProposalIDs []string
+	TraceContext        map[string]string
+}
+
+type SkillMetaMemoryResult struct {
+	OptimizationRunID string
+	Memory            []map[string]any
+}
+
+type TargetSnapshotCreateRequest struct {
+	RequestID      string
+	ProjectID      string
+	TargetRef      map[string]any
+	IdempotencyKey string
+	Input          map[string]any
+}
+
+type OptimizationStepPersistRequest struct {
+	RequestID         string
+	ProjectID         string
+	OptimizationRunID string
+	StepID            string
+	IdempotencyKey    string
+	Payload           map[string]any
+}
+
+type OptimizationMemoryPersistRequest struct {
+	RequestID         string
+	ProjectID         string
+	OptimizationRunID string
+	IdempotencyKey    string
+	Payload           map[string]any
+}
+
 type EvaluationRun struct {
 	ID                      string
 	ProjectID               string
@@ -201,6 +355,7 @@ type EvaluationItemRun struct {
 	TargetSnapshotID      string
 	Status                string
 	ActualOutput          any
+	ActualOutputRef       string
 	ActualOutputType      string
 	TraceID               string
 	RootSpanID            string
@@ -357,6 +512,7 @@ type StorageReader interface {
 	GetDatasetVersion(ctx context.Context, datasetVersionID string) (DatasetVersion, error)
 	SearchDatasetItemRevisions(ctx context.Context, datasetVersionID string, itemRevisionIDs []string) ([]DatasetItemRevision, error)
 	GetTargetSnapshot(ctx context.Context, targetSnapshotID string) (TargetSnapshot, error)
+	GetTraceEvidence(ctx context.Context, request TraceEvidenceRequest) (TraceEvidence, error)
 	ResolveOnlinePolicyMatches(ctx context.Context, request OnlinePolicyResolveRequest) (OnlinePolicyMatches, error)
 }
 
@@ -369,6 +525,9 @@ type StorageWriter interface {
 	PersistDatasetItemRun(ctx context.Context, idempotencyKey string, run DatasetItemRun) error
 	PersistEvalResult(ctx context.Context, idempotencyKey string, result EvalResult) error
 	PersistEvaluationResults(ctx context.Context, result EvaluationResultsPersist) error
+	CreateTargetSnapshot(ctx context.Context, request TargetSnapshotCreateRequest) (TargetSnapshot, error)
+	PersistOptimizationStep(ctx context.Context, request OptimizationStepPersistRequest) error
+	PersistOptimizationMemory(ctx context.Context, request OptimizationMemoryPersistRequest) error
 	UpdateExperimentProgress(ctx context.Context, progress ExperimentProgress) error
 }
 
@@ -381,6 +540,12 @@ type HarnessAdapter interface {
 	Run(ctx context.Context, request HarnessRunRequest) (HarnessRunResult, error)
 	Score(ctx context.Context, request HarnessScoreRequest) (HarnessScoreResult, error)
 	Optimize(ctx context.Context, request HarnessOptimizeRequest) (HarnessOptimizeResult, error)
+	SkillCapabilities(ctx context.Context, traceContext map[string]string) (SkillCapabilitiesResult, error)
+	SkillRuntimeDryRun(ctx context.Context, request SkillRuntimeDryRunRequest) (SkillRuntimeDryRunResult, error)
+	SkillReflect(ctx context.Context, request SkillReflectRequest) (SkillReflectResult, error)
+	SkillMergeRank(ctx context.Context, request SkillMergeRankRequest) (SkillMergeRankResult, error)
+	SkillSlowUpdate(ctx context.Context, request SkillSlowUpdateRequest) (SkillSlowUpdateResult, error)
+	SkillMetaMemory(ctx context.Context, request SkillMetaMemoryRequest) (SkillMetaMemoryResult, error)
 }
 
 type ExternalAdapter interface {
@@ -400,14 +565,35 @@ type ExternalAdapterRunRequest struct {
 
 type ExternalAdapterRunResult struct {
 	ActualOutput     any
+	ActualOutputRef  string
 	ActualOutputType string
 	TraceID          string
 	RootSpanID       string
 	ConversationRef  string
-	ImportantSteps   []map[string]any
 	Summary          string
 	Problems         []map[string]any
+	Usage            map[string]any
+	Cost             map[string]any
+	Timing           map[string]any
+	TraceRefs        []map[string]any
+	ArtifactRefs     []map[string]any
 	LatencyMs        float64
+}
+
+type TraceEvidenceRequest struct {
+	RequestID  string
+	ProjectID  string
+	TraceID    string
+	RootSpanID string
+}
+
+type TraceEvidence struct {
+	TraceID           string
+	RootSpanID        string
+	TrajectorySummary string
+	ImportantSteps    []map[string]any
+	EvidenceRefs      []map[string]any
+	ArtifactRefs      []map[string]any
 }
 
 type ProgressPublisher interface {

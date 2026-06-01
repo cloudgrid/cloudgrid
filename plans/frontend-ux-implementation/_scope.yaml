@@ -1,0 +1,58 @@
+plan: frontend_ux_implementation
+global_read_scope:
+  - specs/spec.md
+  - specs/00-vision.md
+  - specs/00-conventions.md
+  - specs/05-frontend/product-experience-contract.md
+  - specs/05-frontend/product-ux-concept.md
+  - specs/05-frontend/frontend-application.md
+  - specs/05-frontend/traces-and-metrics-ux-concept.md
+  - specs/05-frontend/logs-metrics-dashboards-ux-concept.md
+  - specs/05-frontend/ai-eval-views.md
+  - specs/03-contracts/graphql/public-schema.graphql
+  - specs/03-contracts/messages/message-bridge.asyncapi.yaml
+  - specs/03-contracts/errors.yaml
+  - DESIGN.md
+  - .agent/IMPLEMENTATION.md
+boundaries:
+  spec-planning-agent:
+    write_scope:
+      - specs/.readiness-report.yaml
+      - specs/99-reviews/enterprise-product-spec-readiness-review.md
+      - plans/frontend-ux-migration-check/04-planning-gate-and-spec-drift.md
+  frontend-foundation-agent:
+    write_scope:
+      - apps/frontend/src/routes/app-shell.tsx
+      - apps/frontend/src/routes/telemetry-project-gate.tsx
+      - apps/frontend/src/components/query-state.tsx
+      - apps/frontend/src/components/app
+      - apps/frontend/src/features/navigation
+      - apps/frontend/src/lib/i18n.ts
+      - apps/frontend/src/lib/session-state.ts
+      - apps/frontend/src/styles.css
+      - apps/frontend/test/ux-v2-shell.test.tsx
+      - apps/frontend/test/session-state.test.ts
+      - apps/frontend/e2e/ux-v2-shell.e2e.ts
+  frontend-project-settings-agent:
+    write_scope:
+      - apps/frontend/src/routes/control-plane-routes.tsx
+      - apps/frontend/src/features/projects
+      - apps/frontend/test/ux-v2-projects.test.ts
+      - apps/frontend/e2e/projects-settings.e2e.ts
+  route_workspace_agents:
+    write_scope:
+      - apps/frontend/src/routes
+      - apps/frontend/src/features/traces
+      - apps/frontend/src/features/logs
+      - apps/frontend/src/features/metrics
+      - apps/frontend/src/features/dashboards
+      - apps/frontend/src/features/ai-eval
+      - apps/frontend/test
+      - apps/frontend/e2e
+  forbidden_without_spec_update:
+    - apps/backend
+    - core
+    - apps/packages/definition
+    - apps/packages/ui-contracts
+    - core/go-contracts
+    - specs/03-contracts

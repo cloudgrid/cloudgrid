@@ -3,8 +3,10 @@
 package surrealdb
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -12,6 +14,7 @@ import (
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
 	storage "github.com/cloudgrid-dev/cloudgrid/core/storage-read/internal"
+	sdk "github.com/surrealdb/surrealdb.go"
 )
 
 func TestBuildDatasetCandidatesSearchQueryUsesBackedFiltersOrderingAndCursor(t *testing.T) {
@@ -261,6 +264,24 @@ func TestBuildAiEvalV2SingleReadAndOptimizationQueries(t *testing.T) {
 		if !strings.Contains(optimizations.SQL, want) {
 			t.Fatalf("optimization SQL = %s, missing %q", optimizations.SQL, want)
 		}
+	}
+
+	steps, err := BuildSkillOptimizationStepsQuery("optimization-1")
+	if err != nil {
+		t.Fatalf("BuildSkillOptimizationStepsQuery error = %v", err)
+	}
+	for _, want := range []string{"FROM ai_optimization_step", "optimizationRunId = $optimizationRunId", "ORDER BY epoch ASC, step ASC"} {
+		if !strings.Contains(steps.SQL, want) {
+			t.Fatalf("steps SQL = %s, missing %q", steps.SQL, want)
+		}
+	}
+
+	memory, err := BuildSkillOptimizationMemoryQuery("optimization-1")
+	if err != nil {
+		t.Fatalf("BuildSkillOptimizationMemoryQuery error = %v", err)
+	}
+	if !strings.Contains(memory.SQL, "FROM ai_optimization_memory") || !strings.Contains(memory.SQL, "ORDER BY updatedAt DESC") {
+		t.Fatalf("memory SQL = %s, want latest memory query", memory.SQL)
 	}
 }
 
@@ -546,6 +567,108 @@ func TestShapeAiEvalItemsReturnsGraphQLReadyRows(t *testing.T) {
 	agent, ok := agentRun["agent"].(map[string]any)
 	if !ok || agent["name"] != "unknown" || agentRun["rootSpanId"] != "span-1" || agentRun["status"] != "unset" {
 		t.Fatalf("agent run = %#v, want GraphQL-ready defaults", agentRun)
+	}
+}
+
+func TestStoreOptimizationGetAttachesSkillOptimizationDetail(t *testing.T) {
+	queryRowsOverride = func(_ context.Context, _ *sdk.DB, stmt QueryStatement, out any) error {
+		rows, ok := out.(*[]map[string]any)
+		if !ok {
+			return fmt.Errorf("unexpected output %T", out)
+		}
+		switch {
+		case strings.Contains(stmt.SQL, "FROM ai_optimization_run"):
+			*rows = []map[string]any{{
+				"id":                       "optimization-1",
+				"projectId":                "project-1",
+				"status":                   "completed",
+				"baselineTargetSnapshotId": "snapshot-baseline",
+				"searchPolicy": map[string]any{
+					"optimizerKind":           "skill_text_edit",
+					"editablePartKinds":       []any{"skill"},
+					"maxEpochs":               1,
+					"maxSteps":                2,
+					"rolloutBatchSize":        4,
+					"reflectionMinibatchSize": 2,
+					"editBudget":              2,
+					"minEditBudget":           1,
+					"editSchedule":            "cosine",
+					"gateMetricId":            "accuracy",
+					"gateMode":                "strict_improvement",
+					"selectionSplit":          "validation",
+					"allowSlowUpdate":         true,
+					"allowMetaMemory":         true,
+					"skillPolicy":             map[string]any{"allowedEditOps": []any{"append"}, "editableFileGlobs": []any{"SKILL.md"}},
+				},
+			}}
+		case strings.Contains(stmt.SQL, "FROM ai_optimization_step"):
+			*rows = []map[string]any{
+				{
+					"id":                        "step-1",
+					"optimizationRunId":         "optimization-1",
+					"epoch":                     1,
+					"step":                      1,
+					"status":                    "accepted",
+					"rolloutEvaluationRunId":    "eval-run-1",
+					"candidateTargetSnapshotId": "snapshot-candidate",
+					"baselineSkillDigest":       "sha256:baseline",
+					"candidateSkillDigest":      "sha256:candidate",
+					"proposedEdits": []any{map[string]any{
+						"op":             "append",
+						"filePath":       "SKILL.md",
+						"contentPreview": strings.Repeat("x", 2100),
+						"rationale":      "observed failures",
+						"sourceType":     "failure",
+						"supportCount":   2,
+						"evidenceRefs":   []any{map[string]any{"traceId": "trace-1", "spanId": "span-1", "raw": "drop"}},
+					}},
+					"selectedEdits":         []any{},
+					"rejectedEditSummaries": []any{},
+					"trainingScore":         0.7,
+					"validationScore":       0.8,
+					"gateDecision":          "accepted_new_best",
+				},
+				{
+					"id":                     "step-2",
+					"optimizationRunId":      "optimization-1",
+					"epoch":                  1,
+					"step":                   2,
+					"status":                 "rejected",
+					"rolloutEvaluationRunId": "eval-run-2",
+					"baselineSkillDigest":    "sha256:candidate",
+					"rejectedEditSummaries":  []any{map[string]any{"op": "delete", "filePath": "scripts/run.sh", "sourceType": "failure"}},
+					"trainingScore":          0.65,
+					"gateDecision":           "rejected",
+				},
+			}
+		case strings.Contains(stmt.SQL, "FROM ai_optimization_memory"):
+			*rows = []map[string]any{{"optimizationRunId": "optimization-1", "rejectedEditBuffer": []any{}}}
+		default:
+			return fmt.Errorf("unexpected map query %s", stmt.SQL)
+		}
+		return nil
+	}
+	t.Cleanup(func() { queryRowsOverride = nil })
+
+	store := Store{}
+	data, err := store.QueryAiEval(context.Background(), storage.SubjectEvalOptimizationGet, map[string]any{"optimizationRunId": "optimization-1"}, nil)
+	if err != nil {
+		t.Fatalf("QueryAiEval(optimization get) error = %v", err)
+	}
+	run := data["run"].(map[string]any)
+	detail := run["skillOptimization"].(map[string]any)
+	if detail["acceptedStepCount"] != 1 || detail["rejectedStepCount"] != 1 || detail["bestSkillDigest"] != "sha256:candidate" {
+		t.Fatalf("skillOptimization = %#v, want accepted/rejected counts and best digest", detail)
+	}
+	steps := detail["steps"].([]any)
+	first := steps[0].(map[string]any)
+	edit := first["proposedEdits"].([]any)[0].(map[string]any)
+	if len(edit["contentPreview"].(string)) != 2000 {
+		t.Fatalf("contentPreview length = %d, want bounded", len(edit["contentPreview"].(string)))
+	}
+	ref := edit["evidenceRefs"].([]any)[0].(map[string]any)
+	if _, exists := ref["raw"]; exists || ref["traceId"] != "trace-1" {
+		t.Fatalf("evidence ref = %#v, want source refs only", ref)
 	}
 }
 

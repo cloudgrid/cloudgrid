@@ -8,9 +8,9 @@ depends_on: [TICKET-004, TICKET-005, TICKET-006, TICKET-007]
 blocked_by: []
 spec_refs:
   - specs/.readiness-report.yaml
-  - specs/02-flows/ai-eval/offline-experiment-run.md
-  - specs/02-flows/ai-eval/online-evaluation.md
-  - specs/02-flows/ai-eval/dataset-curation-and-splits.md
+  - specs/03-flows/ai-eval/offline-experiment-run.md
+  - specs/03-flows/ai-eval/online-evaluation.md
+  - specs/03-flows/ai-eval/dataset-curation-and-splits.md
   - specs/05-frontend/ai-eval-views.md
 write_scope:
   - tooling

@@ -89,6 +89,7 @@ describe("CloudGrid private boundary checks", () => {
       expect(
         allowed.has(relativePath) ||
           relativePath.startsWith("core/control-plane/internal/adapters/surrealdb/") ||
+          relativePath.startsWith("core/control-plane/internal/adapters/secrets/surrealdb/") ||
           relativePath.startsWith("core/storage-read/internal/adapters/surrealdb/") ||
           relativePath.startsWith("core/storage-write/internal/adapters/surrealdb/") ||
           relativePath.startsWith("core/storage-maintenance/internal/adapters/surrealdb/"),

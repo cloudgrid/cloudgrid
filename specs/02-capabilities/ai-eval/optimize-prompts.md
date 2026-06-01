@@ -5,7 +5,7 @@ domain: ai-eval
 layer: capability
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-24
+updated: 2026-05-31
 provenance: from-user
 traits:
   interaction: http
@@ -30,8 +30,12 @@ comparisons, while keeping promotion explicit.
 - V1 optimization may change prompt text and few-shot/example selection.
 - Model config may change only when it is already represented as a
   `TargetPartSnapshot`.
-- Skill, tool, workflow, and agent optimization are postponed. The snapshot
-  schema supports their future parts, but v1 must not execute those flows.
+- Classification and extraction prompt optimization is specified by
+  `CAP-AIE-013` and uses the same `OptimizationRun`, target snapshot,
+  validation, comparison, and promotion model.
+- Skill document optimization is specified by `CAP-AIE-011` and uses the same
+  `OptimizationRun` and promotion model. Tool, workflow, and agent-config
+  optimization remain postponed until separate part-specific edit specs exist.
 - Every candidate is a new immutable `TargetSnapshot`.
 - Every evaluation caused by optimization is a normal `EvaluationRun` with kind
   `quick_shot`, `optimization_validation`, or `test`.

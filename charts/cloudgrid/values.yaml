@@ -58,7 +58,7 @@ surrealdb:
     enabled: false
     image:
       repository: surrealdb/surrealdb
-      tag: "v3.0.5"
+      tag: "v3.1.0"
       digest: ""
       pullPolicy: IfNotPresent
     username: ""
@@ -218,9 +218,13 @@ controlPlane:
     CLOUDGRID_CONTROL_PLANE_HEALTH_PORT: "8084"
   surrealdbSecret:
     enabled: true
-  providerSecretEncryptionKey:
+  secretStore:
+    adapter: surrealdb
+    surrealdbNamespace: cloudgrid_secrets
+    surrealdbDatabase: dev
+  secretStoreEncryptionKey:
     existingSecret: ""
-    secretKey: CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY
+    secretKey: CLOUDGRID_SECRET_STORE_ENCRYPTION_KEY
   service:
     type: ClusterIP
     port: 8084

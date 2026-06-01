@@ -4,7 +4,7 @@ description: "Set up and use the project-scoped CloudGrid assistant safely."
 order: 8
 accent: violet
 eyebrow: "Handbook - Guides"
-updated: 2026-05-21
+updated: 2026-05-31
 ---
 
 AI Chat is CloudGrid's project-scoped assistant for observability work. Use it
@@ -93,6 +93,16 @@ Use `CLOUDGRID_AI_CHAT_BASE_URL` for `openai_compatible` and
 `azure_foundry`, `CLOUDGRID_AI_CHAT_AZURE_DEPLOYMENT` for `azure_foundry`, and
 `CLOUDGRID_AI_CHAT_AWS_REGION` for `aws_bedrock`. Saving company provider
 settings stops using the local environment bootstrap for that company.
+
+For Kimi K2.6 through Moonshot's OpenAI-compatible API, use the
+`openai_compatible` provider kind and point the base URL at Moonshot:
+
+```sh
+CLOUDGRID_AI_CHAT_PROVIDER_KIND=openai_compatible
+CLOUDGRID_AI_CHAT_MODEL=kimi-k2.6
+CLOUDGRID_AI_CHAT_BASE_URL=https://api.moonshot.ai/v1
+CLOUDGRID_AI_CHAT_CREDENTIAL_REF='env:MOONSHOT_API_KEY'
+```
 
 ## 3. Ask Project-Scoped Questions
 

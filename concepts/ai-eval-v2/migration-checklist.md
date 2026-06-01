@@ -43,16 +43,16 @@ Dataset and flows:
 
 - `specs/02-capabilities/ai-eval/curate-datasets.md`
 - `specs/02-capabilities/ai-eval/annotate-traces.md`
-- `specs/02-flows/ai-eval/dataset-curation-and-splits.md`
-- `specs/02-flows/ai-eval/dataset-import-export.md`
+- `specs/03-flows/ai-eval/dataset-curation-and-splits.md`
+- `specs/03-flows/ai-eval/dataset-import-export.md`
 
 Evaluation and optimization:
 
 - `specs/01-domains/ai-eval.md`
 - `specs/02-capabilities/ai-eval/evaluate-offline.md`
 - `specs/02-capabilities/ai-eval/optimize-prompts.md`
-- `specs/02-flows/ai-eval/offline-experiment-run.md`
-- `specs/02-flows/ai-eval/live-experiment-subscription.md`
+- `specs/03-flows/ai-eval/offline-experiment-run.md`
+- `specs/03-flows/ai-eval/live-experiment-subscription.md`
 
 Backend:
 

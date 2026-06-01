@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -13,10 +14,24 @@ func TestLoadConfigDefaultsRetentionSchedulerDisabled(t *testing.T) {
 	if cfg.RetentionScheduler.Enabled {
 		t.Fatal("retention scheduler enabled by default")
 	}
+	if cfg.DeploymentMode != "local" || cfg.DBAdapterTracingEnabled {
+		t.Fatalf("deployment/tracing defaults = %q/%v, want local/false", cfg.DeploymentMode, cfg.DBAdapterTracingEnabled)
+	}
 	if cfg.RetentionScheduler.Interval != time.Hour ||
 		cfg.RetentionScheduler.BatchLimit != 1000 ||
 		cfg.RetentionScheduler.LeaseDuration != 15*time.Minute {
 		t.Fatalf("retention scheduler config = %#v, want defaults", cfg.RetentionScheduler)
+	}
+}
+
+func TestLoadConfigRejectsDBAdapterTracingInDeployedMode(t *testing.T) {
+	env := map[string]string{
+		"CLOUDGRID_DEPLOYMENT_MODE":            "deployed",
+		"CLOUDGRID_DB_ADAPTER_TRACING_ENABLED": "true",
+	}
+	_, err := loadConfig(func(key string) string { return env[key] })
+	if err == nil || !strings.Contains(err.Error(), "CLOUDGRID_DB_ADAPTER_TRACING_ENABLED") {
+		t.Fatalf("loadConfig error = %v, want deployed adapter tracing rejection", err)
 	}
 }
 

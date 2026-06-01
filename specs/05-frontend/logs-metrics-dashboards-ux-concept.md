@@ -4,9 +4,9 @@ title: Logs, metrics explorer, and dashboards UX concept
 layer: frontend
 status: draft
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-22
+updated: 2026-05-28
 provenance: user-requested
-depends_on: [TEC-FE-009, TEC-FE-010, TEC-BE-017]
+depends_on: [TEC-FE-016, TEC-FE-010, TEC-BE-017]
 ---
 
 # Logs, Metrics Explorer, And Dashboards UX Concept

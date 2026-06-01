@@ -39,10 +39,13 @@ function renderDiagram(source) {
     muted: "var(--cg-mermaid-muted)",
     surface: "var(--cg-mermaid-surface)",
     border: "var(--cg-mermaid-border)",
-    font: "Inter",
+    font: "Geist",
     padding: 32,
     transparent: true,
-  });
+  })
+    .replace(/@import url\('https:\/\/fonts\.googleapis\.com[^']+'\);\s*/g, "")
+    .replace(/'Inter', system-ui, sans-serif/g, "'Geist', system-ui, sans-serif")
+    .replace(/Inter, system-ui, sans-serif/g, "Geist, system-ui, sans-serif");
 
   return [
     `<figure class="cg-mermaid-frame" style="--cg-mermaid-light-bg:${lightTheme.bg};--cg-mermaid-light-fg:${lightTheme.fg};--cg-mermaid-light-line:${lightTheme.line};--cg-mermaid-light-accent:${lightTheme.accent};--cg-mermaid-light-muted:${lightTheme.muted};--cg-mermaid-dark-bg:${darkTheme.bg};--cg-mermaid-dark-fg:${darkTheme.fg};--cg-mermaid-dark-line:${darkTheme.line};--cg-mermaid-dark-accent:${darkTheme.accent};--cg-mermaid-dark-muted:${darkTheme.muted};" data-mermaid-src="${escapeAttr(source)}">`,

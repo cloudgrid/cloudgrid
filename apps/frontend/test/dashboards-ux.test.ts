@@ -127,6 +127,21 @@ describe("dashboards UX migration", () => {
     expect(routeSource).toContain("getAlertHistory");
   });
 
+  test("routes dashboard widget editor copy through translation keys", () => {
+    expect(alertEditorSource).toContain('t("dashboards.editor.ruleIds")');
+    expect(alertEditorSource).toContain('t("dashboards.editor.states")');
+    expect(alertEditorSource).toContain('t("dashboards.editor.severities")');
+    expect(alertEditorSource).toContain('t("dashboards.editor.signals")');
+    expect(alertEditorSource).toContain('t("dashboards.editor.timeWindow")');
+    expect(alertEditorSource).toContain('t("dashboards.editor.limit")');
+    expect(logEditorSource).toContain('t("dashboards.editor.limit")');
+    expect(traceEditorSource).toContain('t("dashboards.editor.limit")');
+    expect(liveTraceEditorSource).toContain('t("dashboards.editor.limit")');
+    expect(richMetricEditorSource).toContain('t("dashboards.richMetric.unsupported")');
+    expect(richMetricEditorSource).toContain('t("dashboards.editor.displaySeries")');
+    expect(richMetricRendererSource).toContain('t("dashboards.editor.displaySeries")');
+  });
+
   test("does not send null optional metric intervals from dashboard widgets", () => {
     expect(sourceMappersSource).toContain(
       "...(metric.interval ? { interval: metric.interval } : {})",
@@ -146,8 +161,8 @@ describe("dashboards UX migration", () => {
     expect(routeSource).toContain("compactDashboardLayout");
     expect(routeSource).toContain("onPointerDown");
     expect(routeSource).toContain("onKeyDown");
-    expect(routeSource).toContain('aria-label="Move widget"');
-    expect(routeSource).toContain('aria-label="Resize widget"');
+    expect(routeSource).toContain('aria-label={t("dashboards.widget.move")}');
+    expect(routeSource).toContain('aria-label={t("dashboards.widget.resize")}');
     expect(routeSource).toContain("data-dashboard-canvas");
     expect(routeSource).toContain("dashboardObservedMetricRange");
     expect(routeSource).toContain("metricNamesForDashboardWidgets");

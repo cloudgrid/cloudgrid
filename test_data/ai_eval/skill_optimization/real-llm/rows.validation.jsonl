@@ -1,0 +1,3 @@
+{"id":"real-val-001","split":"validation","input":{"ticket":"Workspace W-205 shows no cost data after yesterday's migration."},"expected":{"action":"check_cost_ingest_after_migration","mustMention":"workspace W-205"},"rubric":{"passIf":"uses the workspace id and checks migration-related cost ingest"}}
+{"id":"real-val-002","split":"validation","input":{"ticket":"Please configure audit export for my company."},"expected":{"action":"ask_for_organization_id","mustMention":"organization id"},"rubric":{"passIf":"asks for organization id and avoids inventing configuration"}}
+

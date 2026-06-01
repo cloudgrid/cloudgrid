@@ -34,7 +34,7 @@
   </g>
 
   <!-- Text -->
-  <text x="600" y="380" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="64" font-weight="800" fill="#f8fafc" letter-spacing="-0.02em">CloudGrid</text>
-  <text x="600" y="440" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-size="28" font-weight="400" fill="#94a3b8">AI-native OpenTelemetry observability platform</text>
-  <text x="600" y="500" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="18" font-weight="500" fill="#64748b">Open Source &middot; Self-Hosted &middot; Enterprise Ready</text>
+  <text x="600" y="380" text-anchor="middle" font-family="Geist, system-ui, sans-serif" font-size="64" font-weight="800" fill="#f8fafc" letter-spacing="-0.02em">CloudGrid</text>
+  <text x="600" y="440" text-anchor="middle" font-family="Geist, system-ui, sans-serif" font-size="28" font-weight="400" fill="#94a3b8">AI-native OpenTelemetry observability platform</text>
+  <text x="600" y="500" text-anchor="middle" font-family="Geist Mono, monospace" font-size="18" font-weight="500" fill="#64748b">Open Source &middot; Self-Hosted &middot; Enterprise Ready</text>
 </svg>

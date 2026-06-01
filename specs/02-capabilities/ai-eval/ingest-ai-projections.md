@@ -32,10 +32,16 @@ Recognize AI-agent, model-call, tool-call, and retrieval spans without requiring
 - The collector still emits the existing `PersistTelemetryCommand`; AI projection ingest is additive.
 - Storage-write persists projections idempotently by `(traceId, spanId, kind, syntheticKey)` and publishes `AiProjectionPersistedNotification`.
 - Projection persistence must not copy prompt/completion content into AI entities.
+- Projection source flavor and normalization warnings are projection metadata.
+  The collector must not mutate source spans by adding CloudGrid-specific
+  semantic attributes.
 
 ## Acceptance Criteria
 
 - Given a span with `gen_ai.operation.name = "chat"`, storage-write persists an `LlmCall` projection pointing to the source trace and span.
 - Given an OpenInference `RETRIEVER` span, storage-write persists a `RetrievalEvent` projection.
 - Given a span with both OTel GenAI and OpenInference canonical fields that disagree, the source span retains all raw attributes and the projection records a normalization warning.
+- Given a span recognized as AI telemetry, the persisted source span attributes
+  remain the emitter-provided attributes; `sourceFlavor` is stored only on the
+  projection command/entity.
 - Given no AI markers, no AI projection is emitted and generic trace persistence remains unchanged.

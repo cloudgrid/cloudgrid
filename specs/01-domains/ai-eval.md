@@ -4,9 +4,9 @@ title: AI evaluation
 layer: domain
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-24
+updated: 2026-05-31
 provenance: from-user
-depends_on: [VIS-001, CNV-001, TEC-BE-001, TEC-BE-008, ADR-0003, ADR-0007, ADR-0008]
+depends_on: [VIS-001, CNV-001, TEC-BE-001, TEC-BE-008, ADR-0003, ADR-0007, ADR-0008, REV-013]
 ---
 
 # AI Evaluation
@@ -27,6 +27,7 @@ The product vocabulary is:
 - results;
 - comparisons;
 - optimization;
+- skill documents;
 - targets.
 
 Do not expose `Scorer`, `Check`, `Gate`, or `Experiment` as primary user-facing
@@ -102,6 +103,9 @@ Required v2 entities:
 | `TargetDiff` | Derived or cached comparison between snapshots. | Derived/cacheable. |
 | `PromotionRecord` | Explicit promotion evidence and target ref movement. | Immutable. |
 | `OptimizationRun` | Reproducible loop around evaluation runs. | Status transitions only. |
+| `PromptOptimizationStep` | One diagnosis, proposal, quick-shot, validation-gate, and candidate-selection step for prompt/example optimization. | Immutable after step finalization. |
+| `SkillOptimizationStep` | One rollout, reflection, bounded edit, and validation-gate step inside a skill optimization run. | Immutable after step finalization. |
+| `SkillOptimizationMemory` | Bounded rejected-edit, slow-update, and optimizer-side memory retained for the run. | Runner-owned append/replace by phase. |
 | `ProjectAiSettings` | Project AI Eval enablement, budgets, defaults, and provider refs. | Mutable through control-plane. |
 
 Legacy mappings during migration:
@@ -123,14 +127,15 @@ not allowed.
 
 | Field | Type | Required | Rule |
 | --- | --- | --- | --- |
-| `evaluationFamily` | enum | yes | `classification`, `extraction`, or `freeform_answer` in v1. Future accepted values are `tool_use`, `agent_loop`, `workflow`, `skill`. |
+| `evaluationFamily` | enum | yes | `classification`, `extraction`, `freeform_answer`, or `skill` in v2. Future accepted values are `tool_use`, `agent_loop`, and `workflow`. |
 | `inputType` | enum | yes | `text` or `json`. |
 | `expectedType` | enum | yes | `text` or `json`. |
 | `inputJsonSchema` | JSON Schema object | conditional | Optional when `inputType = json`; absent means syntax-only JSON validation plus dataset health warning. Must be null when `inputType = text`. |
 | `expectedJsonSchema` | JSON Schema object | conditional | Required when `expectedType = json`; must be null when `expectedType = text`. |
 | `defaultSplit` | enum | yes | `training`, `validation`, or `test`. |
 | `intakePolicy` | object | yes | Defines default curation status for manual/import/trace rows. |
-| `traceExtractionSettings` | object | optional | Required for trace-to-dataset picker eligibility. |
+| `traceIntakeRules` | array | optional | Dataset-owned rules that decide which trace spans can become row candidates and how captured fields map into dataset values. |
+| `expectedValueOptions` | array | optional | Business options for expected AI results. Required for classification datasets when the expected result is a closed label set and not already represented by a JSON Schema enum. |
 | `anonymizationPolicy` | object | optional | Defines content treatment and PII removal/anonymization. |
 | `defaultMetricSettings` | object | yes | Metric IDs and options allowed for the dataset family. |
 | `retentionProfile` | enum | yes | `balanced`, `fast_iteration`, `audit_friendly`, or `minimal_storage`. |
@@ -231,9 +236,9 @@ or metadata explicitly configured as metric input.
 
 Create a new `DatasetVersion` when item revision membership changes or any
 behavior-affecting setting changes: `evaluationFamily`, input/expected types,
-schemas, trace extraction settings, anonymization policy, default metric
-settings, default split, or retention profile when it changes stored run
-evidence.
+schemas, trace intake rules, expected value options, anonymization policy,
+default metric settings, default split, or retention profile when it changes
+stored run evidence.
 
 Dataset digest is a canonical digest over:
 
@@ -280,24 +285,95 @@ Export formats:
 Hugging Face compatibility is an import/export mapping feature only. It does
 not create a second internal row model.
 
+## Expected Result Options
+
+Datasets may define business-facing allowed expected result options. These
+options are dataset settings, not metric settings, because they shape row
+editing and validation.
+
+`DatasetExpectedValueOption` fields:
+
+- `value`: persisted expected value for text classification or JSON enum leaf
+  mapping;
+- `label`: user-facing option label;
+- `description`, optional;
+- `metadata`, optional non-behavior metadata.
+
+Rules:
+
+- Classification datasets with a closed label set should define
+  `expectedValueOptions` unless `expectedType = json` and the expected JSON
+  Schema already contains the authoritative enum.
+- Frontend row editors must render these options as selects or multi-selects
+  instead of free text where applicable.
+- Storage-write validates that ready rows use configured expected options when
+  the dataset declares a closed expected result set.
+- Changing options is behavior-affecting and creates a dataset version.
+
 ## Trace-To-Dataset Intake
 
-Trace detail and trace overview may expose `Add to dataset`.
+Trace-to-dataset is dataset-owned. Users configure where rows come from in the
+dataset settings; trace views only provide trace/span selection and preview
+entry points. Users must never type trace IDs or span IDs into normal UI forms.
 
-The dataset picker must show only datasets whose `traceExtractionSettings` are
-present and compatible with the selected trace/span. This avoids asking the user
-to resolve extraction details during normal import.
+`DatasetTraceIntakeRule` fields:
 
-Trace extraction result rules:
+- `id`: stable client-generated rule ID within the dataset settings snapshot;
+- `name`: business label such as `Support answer generation`;
+- `enabled`: disabled rules are ignored;
+- `match`: service/span matching criteria;
+- `mappings`: how matched trace/span evidence becomes dataset `input`,
+  `expected`, `observedOutput`, and metadata;
+- `defaults`: split, curation status, content treatment, and expected-value
+  trust defaults for candidates created through this rule.
 
-- If extracted observed output is trusted as correct and validates, copy it into
-  `expected` and set the configured default curation status.
+`DatasetTraceIntakeMatch` supports:
+
+- service names;
+- operation or span names;
+- optional span kind and status filters;
+- optional resource/span attribute predicates using exact, prefix, contains, or
+  regex matching.
+
+`DatasetTraceIntakeMapping` supports source scopes:
+
+- span attributes;
+- resource attributes;
+- span events;
+- related logs;
+- trace summary fields;
+- literal defaults.
+
+Mapping paths use JSONPath-like selectors over the selected source scope.
+Transforms are explicit and limited to identity, string conversion, JSON parse,
+JSON stringify, number conversion, boolean conversion, regex extraction, enum
+mapping, and fallback default. Storage-read/storage-write own extraction and
+validation; the frontend only renders previews returned by GraphQL.
+
+Trace intake result rules:
+
+- Trace overview supports selected-trace batch candidate preparation.
+- Trace detail supports candidate preparation for the current trace and the
+  currently selected span when one is selected.
+- Trace views may also offer a bounded `current filter` candidate search only
+  when the preview limit is visible before execution.
+- Dataset matching may target one or more datasets. A trace/span can produce
+  candidates for multiple datasets when multiple enabled rules match.
+- Candidate previews are grouped by dataset and rule, show extracted input,
+  expected value if present, observed output, split, curation status,
+  validation issues, duplicate hints, and content treatment.
+- Default behavior creates `DatasetCandidate` records. Direct row creation from
+  trace evidence is not the primary UX.
+- If extracted observed output is trusted as correct and validates, it may
+  prefill `expected`, but generated or untrusted expected values remain
+  `needs_review` and must not become `ready` without human or trusted program
+  review.
 - If extracted output is wrong, incomplete, or untrusted, store it as
   `observedOutput`, leave `expected` empty or user-edited, and set
   `curationStatus = needs_expected` or `needs_review`.
 - Imported rows are not evaluation-eligible until they reach `ready`.
 - Source refs must include trace ID and span ID when available.
-- PII/anonymization policy runs before row commit when configured.
+- PII/anonymization policy runs before candidate commit when configured.
 
 ## Evaluation Targets
 
@@ -311,7 +387,11 @@ Target kinds:
 - `workflow` later;
 - `custom_harness_target` advanced/later.
 
-V1 executable target kinds are `prompt` and `external_adapter`.
+V2 executable target kinds are `prompt` and `external_adapter`. Skill
+optimization may target any resolved `TargetSnapshot` that contains an
+editable `TargetPartSnapshot.partKind = skill` and whose execution target can be
+run by the harness adapter. A skill document is an optimizable target part, not
+a separate public target kind.
 
 `EvaluationTargetRef` fields:
 
@@ -356,6 +436,22 @@ execution.
 V1 prompt targets populate `prompt`, optional `examples`, and `model_config`.
 V1 external adapter targets populate `adapter_metadata`, optional
 `model_config`, and any prompt/tool/skill/workflow refs the adapter can expose.
+
+Skill part rules:
+
+- `partKind = skill` stores or references one Markdown skill document.
+- The skill document is procedural guidance consumed by the frozen target
+  model or harness before each item run.
+- `contentRef` points to storage-write-owned immutable content. Inline full
+  skill text must not be returned through normal list queries.
+- `summary` is a bounded human-readable description, not a substitute for the
+  digest or full content.
+- `metadata.format` is `markdown`.
+- `metadata.maxSkillBytes`, `metadata.maxSkillTokens`, `metadata.tokenEstimate`,
+  and `metadata.mountName` are required for optimized skill parts.
+- `metadata.optimizerSourceRunId` is required when `source = optimized`.
+- The digest covers the normalized Markdown content, line endings normalized to
+  `\n`, behavior-affecting metadata, and the target part kind.
 
 Canonical digest rule:
 
@@ -407,6 +503,20 @@ Adapter request:
 The request does not include `expected` by default. A future explicit debug mode
 may include expected values only under a separate spec and must never be enabled
 for optimization candidate generation by default.
+
+Optimization candidate execution extension:
+
+- External adapters that participate in prompt/example optimization must declare
+  `candidateTargetContentMode` in their capability response.
+- Allowed values are `inline_editable_parts` and `adapter_resolved_snapshot`.
+- `inline_editable_parts` means runner sends `candidateParts` in the `/eval-runs`
+  request. Each part has `partKind`, `partRef`, `digest`, `content` or
+  `contentRef`, `contentType`, and bounded behavior-affecting metadata. Inline
+  serialized request size must still fit the adapter payload limit.
+- `adapter_resolved_snapshot` means the adapter can resolve the candidate
+  `targetSnapshotId` through a project-approved artifact/reference mechanism.
+- If neither mode is supported, the adapter target is evaluable but not
+  promotably optimizable by CloudGrid prompt/example optimization.
 
 Synchronous success response:
 
@@ -636,6 +746,12 @@ Extraction:
 - `extraction.extra_field_count`;
 - `extraction.type_mismatch_count`.
 
+`CAP-AIE-012` defines the deterministic classification and extraction metric
+semantics, label normalization rules, extraction field comparators, dataset
+health checks, and aggregate payload expectations. Implementation agents must
+not add alternate classification or extraction scoring behavior outside that
+capability spec.
+
 Freeform answer:
 
 - `freeform.normalized_text_similarity`;
@@ -714,6 +830,17 @@ Defaults:
   metric settings;
 - default primary metric: `classification.accuracy`.
 
+Evaluation semantics:
+
+- single-label classification is the v2 default;
+- multi-label classification is allowed only when `expectedType = json`, the
+  expected schema selects an enum array, and metric settings explicitly set
+  `classification.mode = multi_label_set`;
+- allowed labels come from the selected schema enum or
+  `Dataset.settings.expectedValueOptions`;
+- ambiguous label paths or missing allowed labels are dataset health blockers for
+  optimization and run preflight blockers for classification metrics.
+
 ### Extraction
 
 Purpose: compare structured actual JSON against expected JSON.
@@ -725,6 +852,16 @@ Defaults:
 - default primary metric: `extraction.field_match_rate`;
 - hard constraint: `extraction.schema_validity` must not regress during
   optimization.
+
+Evaluation semantics:
+
+- actual output must parse as JSON unless the target declares a supported JSON
+  envelope behavior;
+- `expectedJsonSchema` is the ground-truth result contract and must not be
+  rewritten by optimization;
+- field-level correctness uses deterministic path comparators from `CAP-AIE-012`;
+- valid JSON rate, schema validity, exact JSON match, field match rate, missing
+  field count, extra field count, and type mismatch count are separate signals.
 
 ### Freeform Answer
 
@@ -738,9 +875,80 @@ Defaults:
 - semantic/judge metrics require configured provider/model aliases and content
   policy allowance.
 
-Future families `tool_use`, `agent_loop`, `workflow`, and `skill` use the same
-row/version/run/metric model with JSON expected schemas. Do not add new top-level
-row shape systems for those families.
+The `skill` family and future families `tool_use`, `agent_loop`, and `workflow`
+use the same row/version/run/metric model with JSON expected schemas. Do not
+add new top-level row shape systems for those families.
+
+### Skill
+
+Purpose: evaluate whether a skill-guided target follows project/domain
+procedures across reusable examples.
+
+Defaults:
+
+- `inputType`: `text` or `json`;
+- `expectedType`: `text` or `json`;
+- default primary metric: `skill.task_success_rate`;
+- optional metrics: `skill.instruction_following_rate`,
+  `skill.format_compliance_rate`, `skill.tool_policy_violation_count`,
+  `skill.regression_rate`;
+- trajectory/cost metrics remain always-on.
+
+Skill datasets must describe tasks at the business level. They must not contain
+optimizer prompts, raw provider credentials, hidden chain-of-thought, or
+unbounded harness traces. Expected values may be normal task outputs, structured
+assertions, or rubric references according to the dataset schema.
+
+## Skill Packages
+
+Skill targets use a package, not a single loose Markdown blob.
+
+A `TargetPartSnapshot.partKind = skill` represents an immutable skill package
+root. Its `contentRef` points to a content-addressed package artifact or package
+root, and its metadata includes a typed manifest. The required package entrypoint
+is `SKILL.md`.
+
+`SkillPackageManifest` fields:
+
+- `entrypoint`: always `SKILL.md` in v2;
+- `packageDigest`;
+- `files`: ordered package file inventory with `path`, `role`, `digest`,
+  `bytes`, `contentType`, and `modelVisibleByDefault`;
+- `editableFileGlobs`;
+- `protectedFileGlobs`;
+- `scriptEntrypoints`, optional declared commands the harness may execute;
+- `dependencyManifests`, optional package-manager or runtime lock files;
+- `runtimeRequirements`, optional named capabilities such as `node`, `python`,
+  `browser`, `filesystem_read`, or `network`;
+- `schemaVersion`;
+- `createdAt`.
+
+Allowed file roles:
+
+- `entrypoint`: `SKILL.md`;
+- `reference`: lazily loaded documentation or domain context;
+- `example`: few-shot examples, sample inputs, or expected output examples;
+- `script`: executable helper code invoked by the harness;
+- `asset`: binary or static support files;
+- `dependency_manifest`: lock files and runtime dependency manifests;
+- `runtime_fixture`: deterministic test fixtures needed by the harness;
+- `metadata`: package metadata that is not model-visible.
+
+Skill package rules:
+
+- `SKILL.md` must be concise and may point to references, examples, and scripts
+  instead of embedding everything in the model-visible entrypoint.
+- References, examples, and scripts are loaded or executed through the harness
+  only when the skill or runtime requires them.
+- Scripts are runtime assets, not optimizer prompts. They are read-only in v2
+  unless a later spec defines code-edit validation and sandboxing.
+- Dependency manifests and binary assets are read-only in v2.
+- Package manifests must not include secrets, provider credentials, raw
+  production logs, local absolute paths, or environment-specific secret values.
+- Skill packages may be uploaded, imported from a source repository, selected
+  from a project artifact library, or emitted by a previous optimization run.
+- Storage-write owns package snapshot persistence and digest calculation.
+- Storage-read owns package manifest and package/file diff view models.
 
 ## Optimization
 
@@ -753,6 +961,7 @@ Optimization is a reproducible loop around dataset evaluations.
 - `status`: same lifecycle as `EvaluationRun`;
 - `baselineTargetSnapshotId`;
 - `objective`;
+- `searchPolicy`;
 - `trainingEvaluationDefinitionId` or split selector;
 - `validationEvaluationDefinitionId` or split selector;
 - `testEvaluationDefinitionId`, optional;
@@ -763,6 +972,11 @@ Optimization is a reproducible loop around dataset evaluations.
 - `selectedCandidateSnapshotId`, optional;
 - `promotionRecordId`, optional;
 - `budgetSnapshot`;
+- `promptOptimization`, optional typed detail when `searchPolicy.optimizerKind`
+  is `bootstrap_fewshot` or `critic_mutate_judge_pick` and the dataset family is
+  `classification` or `extraction`;
+- `skillOptimization`, optional typed detail when `searchPolicy.optimizerKind =
+  skill_text_edit`;
 - `createdAt`, `startedAt`, `endedAt`.
 
 `OptimizationObjective` fields:
@@ -775,6 +989,38 @@ Optimization is a reproducible loop around dataset evaluations.
 - `tieBreakers`;
 - `minimumEvidence`.
 
+`OptimizationSearchPolicy` fields:
+
+- `optimizerKind`: `bootstrap_fewshot`, `critic_mutate_judge_pick`, or
+  `skill_text_edit`;
+- `editablePartKinds`: one or more target part kinds the run may change;
+- `maxEpochs`;
+- `maxSteps`;
+- `rolloutBatchSize`;
+- `reflectionMinibatchSize`;
+- `editBudget`;
+- `minEditBudget`;
+- `editSchedule`: `constant`, `linear`, `cosine`, or `autonomous`;
+- `gateMetricId`;
+- `gateMode`: `strict_improvement` in v2;
+- `selectionSplit`: `validation`;
+- `allowSlowUpdate`;
+- `allowMetaMemory`;
+- `skillPolicy`, required only when `optimizerKind = skill_text_edit`.
+
+`SkillOptimizationPolicy` fields:
+
+- `maxPackageBytes`, default 262144;
+- `maxSkillBytes`, default 65536;
+- `maxSkillTokens`, default 8000;
+- `allowedEditOps`: `append`, `insert_after`, `replace`, `delete`;
+- `editableFileGlobs`: package files eligible for optimizer text edits;
+- `protectedFileGlobs`: package files the optimizer must not mutate;
+- `allowScriptEdits`: false in v2;
+- `preserveSections`: Markdown heading names or protected marker labels that
+  step-level edits must not overwrite;
+- `exportBestSkill`: boolean, default true.
+
 Default objective:
 
 - primary metric is the family default quality metric;
@@ -783,14 +1029,189 @@ Default objective:
 - tradeoffs: latency, token count, cost;
 - tie-breakers: lower cost, then lower latency.
 
+`CAP-AIE-013` defines classification-specific and extraction-specific objective
+defaults. When those family defaults are more specific than this generic
+objective, the family capability spec wins.
+
 V1 optimization scope:
 
 - prompt text changes;
 - few-shot/example selection changes;
 - model config only when already part of the target snapshot.
 
-Do not implement skill/tool/workflow optimization in v1. The snapshot model must
-support future part kinds, but behavior is postponed.
+Classification and extraction prompt optimization scope:
+
+- implemented optimizer kinds are `bootstrap_fewshot` and
+  `critic_mutate_judge_pick`;
+- `critic_mutate_judge_pick` is the default for both families and combines
+  family diagnosis, prompt critique/mutation, few-shot candidate generation,
+  quick-shot pruning, validation gating, and explicit promotion;
+- classification optimization may edit prompt instructions and examples to
+  clarify label definitions, confused-label boundaries, unknown-label behavior,
+  and representative successes;
+- extraction optimization may edit prompt instructions and examples to improve
+  JSON-only output, prompt-facing schema hints, weak-field handling, type
+  handling, null handling, extra-field behavior, and representative successes;
+- optimization must not mutate dataset schemas, expected values, metric
+  comparator settings, label options, target runtime code, external adapter
+  endpoints, provider credentials, or hidden chain-of-thought;
+- external adapter targets are optimizable only when their capability response
+  proves candidate target content execution support as defined in `CAP-AIE-013`;
+- validation row content and test row content must never be sent to proposal
+  generation, rejected change summaries, custom optimizer adapters, slow update,
+  or meta memory.
+
+V2 skill optimization scope:
+
+- Skill package text-file changes through bounded text edits;
+- `SKILL.md` is the required entrypoint and default editable file;
+- references and examples may be editable only when the package manifest and
+  `skillPolicy.editableFileGlobs` allow them;
+- scripts, dependency manifests, binary assets, generated files, and runtime
+  fixtures are read-only in v2;
+- target model, harness, tools, workflow code, adapter endpoint, and provider
+  model aliases remain frozen unless those parts are already explicit immutable
+  target parts and the search policy includes them;
+- the optimizer may add, insert after, replace, or delete skill text only
+  through structured edits;
+- the optimizer may use training split item inputs, expected values, actual
+  outputs, metric problems, bounded important steps, and bounded trajectory
+  summaries;
+- validation gates may execute validation rows and record aggregate/item
+  outcomes, but validation row content and validation trajectories must not be
+  passed into future reflection prompts;
+- `test` split rows must never be used for candidate generation, reflection,
+  rejected-edit feedback, slow update, or meta memory;
+- accepted candidates are immutable `TargetSnapshot` records with a new `skill`
+  package digest and per-file digests;
+- rejected candidates are retained as bounded negative feedback for the current
+  run and are not deployable target snapshots unless storage-write already
+  persisted them before the gate.
+
+Do not implement tool, workflow, or agent-configuration optimization in v2
+unless a later spec defines typed part-specific edit operations and validation
+contracts.
+
+## Classification And Extraction Prompt Optimization Loop
+
+Classification and extraction prompt optimization follows the same run, split,
+target snapshot, comparison, retention, and promotion model as skill
+optimization, with prompt/example target parts instead of skill packages.
+
+1. Resolve the baseline target snapshot, dataset version, training split,
+   validation split, metric settings, runtime mode, and budget.
+2. Verify classification label path/options or extraction JSON Schema readiness.
+3. Verify the target exposes editable `prompt` and/or `examples` parts, or that
+   the external adapter can execute candidate target content.
+4. Run a training rollout as a normal `EvaluationRun`.
+5. Request a storage-read family diagnosis from training results.
+6. Send bounded training evidence and diagnosis to the CloudGrid optimizer or an
+   optional custom optimizer adapter.
+7. Receive structured `PromptOptimizationProposal` records.
+8. Merge, rank, and clip compatible proposals to `editBudget`.
+9. Apply selected proposals to create candidate target snapshots with new part
+   digests.
+10. Run quick-shot pruning against selected training rows.
+11. Run full validation for surviving candidates.
+12. Accept a candidate only when the primary gate metric strictly improves and
+    all hard constraints pass.
+13. Persist `PromptOptimizationStep`, comparisons, candidate refs, and rejected
+    summaries.
+14. Stop on epoch/step/budget/cancellation limits or convergence.
+15. Promotion remains explicit.
+
+`PromptOptimizationStep` fields:
+
+- `id`;
+- `projectId`;
+- `optimizationRunId`;
+- `family`: `classification` or `extraction`;
+- `epoch`;
+- `step`;
+- `status`: `queued`, `running`, `accepted`, `rejected`, `skipped`, or
+  `failed`;
+- `rolloutEvaluationRunId`;
+- `quickShotEvaluationRunId`, optional;
+- `validationEvaluationRunId`, optional;
+- `diagnosis`;
+- `candidateTargetSnapshotIds`;
+- `selectedCandidateTargetSnapshotId`, optional;
+- `proposedChanges`;
+- `selectedChanges`;
+- `rejectedChangeSummaries`;
+- `trainingScore`;
+- `validationScore`, optional;
+- `gateDecision`: `accepted_new_best`, `accepted`, `rejected`,
+  `failed_preflight`, or `skipped_no_candidates`;
+- `problem`, optional;
+- `startedAt`, `endedAt`.
+
+Prompt optimization rejected-change memory is derived from bounded step records.
+Do not add a separate prompt memory entity in v2.
+
+## Skill Optimization Loop
+
+Skill optimization follows the same service boundaries as prompt optimization
+and adapts the SkillOpt method to CloudGrid:
+
+1. Resolve the baseline target snapshot and locate exactly one editable `skill`
+   package unless the user explicitly selects a supported subset.
+2. Run the frozen target with the current skill package on a training rollout
+   batch.
+3. Split evidence into failed, regressed, passed, and stable examples using
+   metric results and item-run problems.
+4. Send bounded evidence to the harness adapter for reflection. The adapter
+   returns structured edit proposals with `op`, `target`, `content`, rationale,
+   source type, support count, and affected evidence refs.
+5. Merge duplicate or contradictory proposals, rank them, and clip to the
+   `editBudget`.
+6. Apply edits to create a candidate skill package. Protected sections,
+   protected files, and oversized candidates fail before validation.
+7. Persist the candidate target snapshot and run validation on the configured
+   validation split.
+8. Accept the candidate only when the gate metric strictly improves the current
+   gate score and hard constraints pass. Rejected edits enter the run-local
+   rejected-edit memory.
+9. At epoch boundaries, optional slow update compares adjacent accepted skills
+   on bounded training samples and may write one protected guidance section.
+   Optional meta memory updates optimizer-side guidance only; it is not exported
+   into the deployment artifact.
+10. Export the best accepted skill as the best target snapshot and optional
+    package artifact. Promotion remains explicit.
+
+`SkillOptimizationStep` fields:
+
+- `id`;
+- `optimizationRunId`;
+- `epoch`;
+- `step`;
+- `status`: `queued`, `running`, `accepted`, `rejected`, `skipped`, or
+  `failed`;
+- `rolloutEvaluationRunId`;
+- `candidateTargetSnapshotId`, optional;
+- `baselineSkillDigest`;
+- `candidateSkillDigest`, optional;
+- `proposedEdits`;
+- `selectedEdits`;
+- `rejectedEditSummaries`;
+- `trainingScore`;
+- `validationScore`, optional;
+- `gateDecision`: `accepted_new_best`, `accepted`, `rejected`,
+  `failed_preflight`, or `skipped_no_edits`;
+- `problem`, optional;
+- `startedAt`, `endedAt`.
+
+`SkillOptimizationMemory` fields:
+
+- `optimizationRunId`;
+- `rejectedEditBuffer`: last 20 rejected edit summaries or 64 KiB, whichever is
+  smaller;
+- `slowUpdateContent`: optional protected guidance section, max 8 KiB;
+- `metaMemoryContent`: optional optimizer-side memory, max 8 KiB;
+- `updatedAt`.
+
+Runner and storage-write must truncate memory by oldest entry first and record a
+warning problem when truncation occurs.
 
 ## Quick-Shot Evaluation
 
@@ -924,9 +1345,12 @@ Dataset UX:
 - dataset list;
 - dataset detail with settings, health, rows, versions, import/export;
 - raw text/JSON row editor with schema validation;
+- option-based expected-result controls for closed classification labels or JSON
+  Schema enums;
 - optional reason field;
 - curation status and split controls;
-- trace import dataset picker filtered to compatible extraction settings.
+- trace overview/detail candidate preparation filtered by dataset trace intake
+  rules, without manual trace/span ID entry.
 
 Evaluation UX:
 
@@ -938,6 +1362,11 @@ Evaluation UX:
 - comparison view over metric deltas and changed item examples;
 - optimize action from evaluation or comparison;
 - candidate review showing target diff and metric tradeoffs;
+- classification/extraction optimization review showing family diagnosis,
+  proposed prompt/example changes, quick-shot pruning, validation gate outcomes,
+  rejected candidate summaries, and prompt/example diffs;
+- skill optimization review showing accepted/rejected skill edits, validation
+  gate outcomes, and a Markdown diff for the best skill artifact;
 - explicit promote action.
 
 Advanced details may show dataset versions, item revisions, digests, target
@@ -989,9 +1418,9 @@ Targets and optimization:
 - `eval.optimization.start`;
 - `eval.optimization.search`;
 - `eval.optimization.get`;
+- `eval.optimization.step.persist`;
+- `eval.optimization.memory.persist`;
 - `eval.target.promote`;
-- `eval.optimization.get`;
-- `eval.target.promote`.
 
 Live fanout:
 
@@ -1031,13 +1460,13 @@ Queries:
 - `optimizationRuns`;
 - `optimizationRun`;
 - `targetSnapshot`;
+- `targetDiff`;
 
 Mutations:
 
 - `createDataset`;
 - `appendDatasetItems`;
 - `updateDatasetItems`;
-- `promoteSpanToDatasetItem`;
 - `prepareDatasetCandidates`;
 - `commitDatasetCandidates`;
 - `prepareDatasetImport`;
@@ -1052,6 +1481,27 @@ Mutations:
 - `createEvaluationComparison`;
 - `startOptimizationRun`;
 - `promoteTargetSnapshot`.
+
+Optimization GraphQL types must include:
+
+- `OptimizationSearchPolicy` and `OptimizationSearchPolicyInput`;
+- `OptimizationOptimizerKind` enum with `bootstrap_fewshot`,
+  `critic_mutate_judge_pick`, and `skill_text_edit`;
+- `PromptOptimizationDetail`;
+- `PromptOptimizationStep`;
+- `PromptOptimizationProposal`;
+- `PromptOptimizationGateDecision`;
+- `SkillOptimizationPolicy` and input;
+- `SkillOptimizationDetail`;
+- `SkillOptimizationStep`;
+- `SkillOptimizationEdit`;
+- `SkillOptimizationGateDecision`;
+- `SkillEditOp`.
+
+`promoteSpanToDatasetItem` is not part of the normal v2 frontend workflow. If
+it remains during migration, it is a low-level compatibility command only and
+must not be used by trace overview or trace detail UI because those views use
+candidate preparation from selected trace/span context.
 
 Subscriptions:
 

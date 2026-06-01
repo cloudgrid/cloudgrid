@@ -60,6 +60,9 @@ func TestControlPlaneSchemaIncludesRequiredTablesAndRelations(t *testing.T) {
 	if strings.Contains(joined, staleTable) {
 		t.Fatalf("schema must not define stale %s table:\n%s", staleTable, joined)
 	}
+	if strings.Contains(joined, "ai_provider_secret") || strings.Contains(joined, "managed_secret") {
+		t.Fatalf("regular control-plane schema must not define secret-store tables:\n%s", joined)
+	}
 }
 
 func TestControlPlaneReadinessRequiresDashboardTables(t *testing.T) {

@@ -593,7 +593,24 @@ const experimentRunStatusSchema = z.enum([
   "completed",
 ]);
 const annotationStatusSchema = z.enum(["open", "in_review", "resolved", "dismissed"]);
-const _optimizerKindSchema = z.enum(["bootstrap_fewshot", "critic_mutate_judge_pick"]);
+const optimizerKindSchema = z.enum([
+  "bootstrap_fewshot",
+  "critic_mutate_judge_pick",
+  "skill_text_edit",
+]);
+const targetPartKindSchema = z.enum([
+  "prompt",
+  "examples",
+  "model_config",
+  "tool_config",
+  "skill",
+  "workflow",
+  "agent_config",
+  "adapter_metadata",
+]);
+const optimizationEditScheduleSchema = z.enum(["constant", "linear", "cosine", "autonomous"]);
+const optimizationGateModeSchema = z.enum(["strict_improvement"]);
+const skillEditOpSchema = z.enum(["append", "insert_after", "replace", "delete"]);
 const evalSolverKindSchema = z.enum(["prompt", "agent", "workflow", "skill", "tool"]);
 const evalBaselineKindSchema = z.enum(["experiment_run", "prompt_version", "solver_ref", "none"]);
 const bootstrapFewshotDiversityStrategySchema = z.enum([
@@ -817,8 +834,10 @@ const datasetCandidateStatusSchema = z.enum([
 ]);
 const datasetCandidateSourceKindSchema = z.enum([
   "trace",
-  "eval_result",
-  "experiment_item_run",
+  "span",
+  "import",
+  "metric_result",
+  "evaluation_item_run",
   "production_measurement",
   "coverage_gap",
   "health_issue",
@@ -871,27 +890,102 @@ const datasetMetricSettingInputSchema = z.object({
   metricVersion: z.string().min(1).optional().nullable(),
   options: z.unknown().optional(),
 });
+const datasetExpectedValueOptionInputSchema = z.object({
+  value: z.unknown(),
+  label: z.string().min(1),
+  description: z.string().min(1).optional().nullable(),
+  metadata: z.unknown().optional(),
+});
+const datasetTraceAttributeScopeSchema = z.enum(["span", "resource"]);
+const datasetTracePredicateOperatorSchema = z.enum(["exact", "prefix", "contains", "regex"]);
+const datasetTraceMappingSourceSchema = z.enum([
+  "span_attribute",
+  "resource_attribute",
+  "span_event",
+  "related_log",
+  "trace_summary",
+  "literal",
+]);
+const datasetTraceMappingTransformSchema = z.enum([
+  "identity",
+  "string",
+  "json_parse",
+  "json_stringify",
+  "number",
+  "boolean",
+  "regex",
+  "enum_map",
+  "fallback",
+]);
+const datasetTraceExpectedTrustSchema = z.enum([
+  "none",
+  "untrusted",
+  "trusted_label",
+  "trusted_program",
+]);
+const datasetTraceAttributePredicateInputSchema = z.object({
+  scope: datasetTraceAttributeScopeSchema.optional().nullable(),
+  key: z.string().min(1),
+  operator: datasetTracePredicateOperatorSchema.optional().nullable(),
+  value: z.string().min(1),
+});
+const datasetTraceValueMappingInputSchema = z.object({
+  source: datasetTraceMappingSourceSchema,
+  path: z.string().min(1).optional().nullable(),
+  transform: datasetTraceMappingTransformSchema.optional().nullable(),
+  defaultValue: z.unknown().optional().nullable(),
+  enumMap: z.unknown().optional().nullable(),
+});
+const datasetTraceIntakeRuleInputSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  enabled: z.boolean().optional().nullable(),
+  match: z.object({
+    serviceNames: z.array(z.string().min(1)).optional().nullable(),
+    operationNames: z.array(z.string().min(1)).optional().nullable(),
+    spanNames: z.array(z.string().min(1)).optional().nullable(),
+    spanKinds: z.array(z.string().min(1)).optional().nullable(),
+    statuses: z.array(z.string().min(1)).optional().nullable(),
+    attributePredicates: z.array(datasetTraceAttributePredicateInputSchema).optional().nullable(),
+  }),
+  mappings: z.object({
+    input: datasetTraceValueMappingInputSchema,
+    expected: datasetTraceValueMappingInputSchema.optional().nullable(),
+    observedOutput: datasetTraceValueMappingInputSchema.optional().nullable(),
+    metadata: z
+      .array(
+        z.object({
+          key: z.string().min(1),
+          mapping: datasetTraceValueMappingInputSchema,
+        }),
+      )
+      .optional()
+      .nullable(),
+  }),
+  defaults: z
+    .object({
+      split: datasetSplitSchema.optional().nullable(),
+      curationStatus: datasetCurationStatusSchema.optional().nullable(),
+      contentTreatment: datasetContentTreatmentSchema.optional().nullable(),
+      expectedTrust: datasetTraceExpectedTrustSchema.optional().nullable(),
+    })
+    .optional()
+    .nullable(),
+});
 const datasetSettingsInputSchema = z.object({
   evaluationFamily: evaluationFamilySchema,
   inputType: datasetValueTypeSchema,
   expectedType: datasetValueTypeSchema,
   inputJsonSchema: z.unknown().optional().nullable(),
   expectedJsonSchema: z.unknown().optional().nullable(),
+  expectedValueOptions: z.array(datasetExpectedValueOptionInputSchema).optional().nullable(),
   defaultSplit: datasetSplitSchema,
   intakePolicy: z.object({
     manualDefaultStatus: datasetCurationStatusSchema.optional().nullable(),
     importDefaultStatus: datasetCurationStatusSchema.optional().nullable(),
     traceDefaultStatus: datasetCurationStatusSchema.optional().nullable(),
   }),
-  traceExtractionSettings: z
-    .object({
-      inputPath: z.string().min(1),
-      expectedPath: z.string().min(1).optional().nullable(),
-      observedOutputPath: z.string().min(1).optional().nullable(),
-      metadataPaths: z.array(z.string().min(1)).optional().nullable(),
-    })
-    .optional()
-    .nullable(),
+  traceIntakeRules: z.array(datasetTraceIntakeRuleInputSchema).optional().nullable(),
   anonymizationPolicy: z
     .object({
       mode: z.enum(["off", "realistic", "redact"]),
@@ -1055,16 +1149,34 @@ const datasetCandidateSourceInputSchema = z.object({
   sourceKind: datasetCandidateSourceKindSchema,
   traceId: z.string().min(1).optional().nullable(),
   spanId: z.string().min(1).optional().nullable(),
-  evalResultId: z.string().min(1).optional().nullable(),
-  experimentRunId: z.string().min(1).optional().nullable(),
+  metricResultId: z.string().min(1).optional().nullable(),
+  evaluationRunId: z.string().min(1).optional().nullable(),
+  evaluationItemRunId: z.string().min(1).optional().nullable(),
   policyId: z.string().min(1).optional().nullable(),
   coverageGapId: z.string().min(1).optional().nullable(),
   healthIssueId: z.string().min(1).optional().nullable(),
   clusterId: z.string().min(1).optional().nullable(),
 });
+const datasetTraceCandidateSelectionInputSchema = z.object({
+  mode: z.enum(["selected", "current_filter"]).optional().nullable(),
+  traceRefs: z
+    .array(z.object({ traceId: z.string().min(1) }))
+    .optional()
+    .nullable(),
+  spanRefs: z
+    .array(z.object({ traceId: z.string().min(1), spanId: z.string().min(1) }))
+    .optional()
+    .nullable(),
+  search: traceSearchInputSchema.optional().nullable(),
+});
 const prepareDatasetCandidatesInputSchema = z.object({
+  projectId: z.string().min(1),
   datasetId: z.string().min(1).optional().nullable(),
-  sources: z.array(datasetCandidateSourceInputSchema).min(1).max(500),
+  datasetIds: z.array(z.string().min(1)).max(50).optional().nullable(),
+  autoMatchDatasets: z.boolean().optional().nullable(),
+  sources: z.array(datasetCandidateSourceInputSchema).max(500).optional().nullable(),
+  traceSelection: datasetTraceCandidateSelectionInputSchema.optional().nullable(),
+  previewLimit: z.number().int().min(1).max(500).optional().nullable(),
   targetShape: datasetTargetShapeSchema.optional().nullable(),
   split: datasetSplitSchema.optional().nullable(),
   curationStatus: datasetReviewStatusSchema.optional().nullable(),
@@ -1245,6 +1357,38 @@ const createEvaluationComparisonInputSchema = z.object({
   metricIds: z.array(z.string().min(1)).optional().nullable(),
   idempotencyKey: z.string().min(1),
 });
+const skillOptimizationPolicyInputSchema = z
+  .object({
+    maxPackageBytes: z.number().int().min(1).optional().nullable(),
+    maxSkillBytes: z.number().int().min(1).optional().nullable(),
+    maxSkillTokens: z.number().int().min(1).optional().nullable(),
+    allowedEditOps: z.array(skillEditOpSchema).optional().nullable(),
+    editableFileGlobs: z.array(z.string().min(1)).optional().nullable(),
+    protectedFileGlobs: z.array(z.string().min(1)).optional().nullable(),
+    allowScriptEdits: z.boolean().optional().nullable(),
+    preserveSections: z.array(z.string().min(1)).optional().nullable(),
+    exportBestSkill: z.boolean().optional().nullable(),
+  })
+  .strict();
+const optimizationSearchPolicyInputSchema = z
+  .object({
+    optimizerKind: optimizerKindSchema,
+    editablePartKinds: z.array(targetPartKindSchema).min(1),
+    maxEpochs: z.number().int().min(0).optional().nullable(),
+    maxSteps: z.number().int().min(0).optional().nullable(),
+    rolloutBatchSize: z.number().int().min(1).optional().nullable(),
+    reflectionMinibatchSize: z.number().int().min(1).optional().nullable(),
+    editBudget: z.number().int().min(0).optional().nullable(),
+    minEditBudget: z.number().int().min(0).optional().nullable(),
+    editSchedule: optimizationEditScheduleSchema.optional().nullable(),
+    gateMetricId: z.string().min(1),
+    gateMode: optimizationGateModeSchema.optional().nullable(),
+    selectionSplit: datasetSplitSchema.optional().nullable(),
+    allowSlowUpdate: z.boolean().optional().nullable(),
+    allowMetaMemory: z.boolean().optional().nullable(),
+    skillPolicy: skillOptimizationPolicyInputSchema.optional().nullable(),
+  })
+  .strict();
 const startOptimizationRunInputSchema = z
   .object({
     projectId: z.string().min(1),
@@ -1258,6 +1402,7 @@ const startOptimizationRunInputSchema = z
       tieBreakers: z.array(z.string().min(1)).optional().nullable(),
       minimumEvidence: z.unknown().optional(),
     }),
+    searchPolicy: optimizationSearchPolicyInputSchema,
     trainingEvaluationDefinitionId: z.string().min(1).optional().nullable(),
     trainingSplitSelector: datasetSplitSelectorInputSchema.optional().nullable(),
     validationEvaluationDefinitionId: z.string().min(1).optional().nullable(),

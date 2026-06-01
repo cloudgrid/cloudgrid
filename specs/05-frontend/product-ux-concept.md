@@ -1,12 +1,12 @@
 ---
-id: TEC-FE-009
+id: TEC-FE-016
 title: Enterprise product UX concept
 layer: frontend
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-16
+updated: 2026-05-29
 provenance: user-requested
-depends_on: [TEC-FE-001, TEC-FE-002, TEC-FE-004, TEC-FE-005, TEC-FE-007, TEC-FE-008, DSY-001]
+depends_on: [TEC-FE-006, TEC-FE-001, TEC-FE-002, TEC-FE-004, TEC-FE-005, TEC-FE-007, TEC-FE-013, TEC-FE-015, DSY-001]
 ---
 
 # Enterprise Product UX Concept
@@ -15,7 +15,7 @@ depends_on: [TEC-FE-001, TEC-FE-002, TEC-FE-004, TEC-FE-005, TEC-FE-007, TEC-FE-
 
 CloudGrid is an enterprise-focused operational workspace for project-scoped OpenTelemetry traces, logs, metrics, live trace receiving, and AI evaluation workflows. The UI must feel like a real product used repeatedly during incident investigation and agent optimization, not a collection of unrelated route demos.
 
-This spec is authoritative for frontend information architecture, onboarding, route layout, panel behavior, and interaction patterns. When this spec conflicts with older frontend prose, this spec wins and the older file must be updated before implementation.
+`product-experience-contract.md` is the concise implementation contract for frontend information architecture, onboarding, route layout, panel behavior, action availability, and interaction patterns. This file remains the expanded UX concept and rationale. When either file conflicts with older frontend prose, update the older file before implementation.
 
 Public website pages in `website/` follow the repo design system but are not product app routes. Their marketing hero treatment is intentionally limited: generated, realistic enterprise/product collage imagery belongs only in the first hero section of non-handbook pages; the rest of the page returns to flat white or neutral sections. Handbook pages and subpages remain plain documentation pages. Website hero text and CTA placement must stay aligned across home, feature, and enterprise routes, and hero art must not be replaced by gradients, procedural SVGs, abstract blobs, generic placeholders, or separate right-side mockup components. Marketing feature lists and related-page navigation should use editorial stacks, alternating image/text rows, ruled lists, or image-led strips instead of generic card grids. Non-handbook marketing pages should introduce the decision-maker or operator problem first, explain CloudGrid's concrete product help, then link to deeper detail instead of repeating the same capability catalog across pages.
 
@@ -26,6 +26,40 @@ External product-pattern inputs applied:
 - W3C WCAG 2.2 navigation, focus, target-size, redundant-entry, and accessible-authentication criteria.
 - Material navigation principles: organize by user tasks, prioritize frequent paths, and keep navigation predictable.
 - Atlassian empty-state pattern: empty states must tell users what can happen next.
+
+## Adaptive Input Model
+
+Create, settings, filtering, and setup forms must minimize user decisions and
+prevent invalid combinations before submit.
+
+Rules:
+
+- Forms start from a valid draft whenever CloudGrid can infer one from the
+  selected source entity, project settings, backend defaults, or domain
+  defaults.
+- The UI uses constrained controls for constrained data. Users select known
+  projects, datasets, splits, statuses, metric presets, target kinds, runtime
+  modes, adapters, provider profiles, and enum values from rendered options.
+- Text inputs are limited to human-authored names, descriptions, search terms,
+  labels, raw JSON/code, and explicit advanced `Custom` branches.
+- A controlling selection owns its dependent form shape. For example, choosing a
+  JSON value type shows JSON schema controls; choosing text hides them; choosing
+  an external adapter shows adapter readiness; choosing managed harness hides
+  adapter URL/ref controls.
+- Inapplicable fields are hidden. Required-but-unavailable fields are visible
+  only when the current task logically needs them, and then show the setup path.
+- Changing a controlling field clears or recomputes invalid dependent values
+  immediately and explains the change inline.
+- Form errors are written for self-service correction: what failed, what value
+  is accepted, and where the user can fix it. Error summaries link or focus the
+  first invalid visible field.
+- Advanced/custom settings are progressive disclosure. They must not appear in
+  first-run flows unless the selected option requires them.
+
+This model is mandatory for project creation, project settings, ingest setup,
+dashboard editing, AI provider settings, AI Eval datasets/evaluations/
+optimizations, alert rules, and adapter settings. Route-specific specs may add
+controls and defaults, but they must not weaken this behavior.
 
 ## Product Model
 
@@ -230,6 +264,11 @@ Breadcrumb rules:
 - The Back button and the parent breadcrumb entry perform the same parent navigation and preserve URL state.
 - Standalone Back buttons must not appear inside unrelated toolbars or at arbitrary panel edges.
 - Route toolbars are reserved for actions on the current page or work surface.
+- Top-level module create/settings routes may replace the full breadcrumb with a
+  compact parent back row when there is exactly one useful parent route, the
+  row sits above the headline, and the route header clearly names the entity or
+  task. Detail pages and deep administration subsections still render full
+  breadcrumbs.
 
 The page frame must not use a card as the route container. Route sections are unframed layout regions. Cards are allowed only for repeated selectable items, contained summaries, and modal/drawer content.
 
@@ -303,12 +342,15 @@ Create entity page:
 Settings page:
 
 - Dedicated route surface for durable configuration.
-- Entity settings pages use the same wizard-like tabbed form pattern as the entity's create page.
+- Entity settings pages use the same topical tab structure as the entity's create page.
 - The entity detail page must expose a `Settings` action when the current user can view or edit settings for that entity. The action navigates to the entity settings route; it must not open a drawer, sheet, dialog, popover, or inline expansion for the primary settings workflow.
 - Settings tabs must preserve the same order, labels, and conceptual grouping as creation when the same topics exist.
 - When settings expose editable fields that do not exist during creation, add them as either new tabs or fields inside the existing tab whose topic owns the behavior. Do not add a miscellaneous or advanced dumping-ground tab for unrelated settings.
 - Settings pages load the current persisted entity state, validate field-level and tab-level input using the same required marker/error pattern as creation, and use a summary error panel for validation or save failures.
-- Forward navigation validates the current and earlier required tabs. Back navigation is always allowed.
+- Settings pages use direct tab navigation. They do not need create-flow Back
+  and Continue controls; Cancel and Save changes remain visible from every tab.
+  Validation still marks affected tabs and blocks save when required fields are
+  invalid.
 - Do not add a dedicated review tab to settings pages. Explain behavior-affecting changes next to the fields that control them, and use focused confirmation dialogs only for destructive or irreversible actions.
 - Settings saves use explicit `Save changes` actions, show success/failure feedback, and prompt before route/project switch when there are unsaved changes.
 - Destructive settings actions are not regular tab save actions. They use focused confirmation dialogs and appear only when the relevant backend contract and spec define them.
@@ -643,8 +685,8 @@ Steps:
 4. UI renders GraphQL-provided metrics, item runs, comparisons, and trajectory
    summaries.
 5. User pivots to trace detail from run/span links.
-4. User promotes traces/spans to dataset items when supported.
-5. User opens annotation items and updates status when supported.
+6. User promotes traces/spans to dataset items when supported.
+7. User opens annotation items and updates status when supported.
 
 Rules:
 
@@ -665,21 +707,38 @@ Dataset creation page:
 - Route: `/ai-eval/datasets/new`.
 - Entry points: Datasets list primary action, AI Eval first-use checklist, compatible import flow start, command palette when authorized.
 - Breadcrumb: `AI Eval / Datasets / New dataset`.
-- Tabs: `Purpose`, `Schema`, `Curation`, `Extraction`.
-- `Purpose` fields: dataset name required, evaluation family required, optional description, and project shown read-only.
-- `Schema` fields: input value type required, expected value type required, input JSON schema when input type is JSON and schema is desired, expected JSON schema required when expected type is JSON.
-- `Curation` fields: default split required, default curation status required, anonymization/PII policy required when the backend contract exposes it, retention profile required or defaulted from project settings.
-- `Extraction` fields: trace extraction settings are optional but must be configured before traces can use `Add to dataset`; the step explains that no trace picker compatibility exists until extraction settings are defined.
+- Tabs: `Purpose`, `Schema`, `Curation`, `Trace intake`.
+- `Purpose` fields: dataset name required, evaluation type required as a controlled enum preset backed by `EvaluationFamily`, optional description, and project shown read-only. Labels must use business wording; the enum is compatibility metadata and is not a free-form taxonomy field.
+- `Schema` fields: input value type required and defaulted to text, expected value type required, `AI input shape` stacked above `Expected AI result shape`, input JSON schema only when input type is JSON and schema is desired, expected JSON schema required only when expected type is JSON. Labels and helper text describe the LLM/agent/workflow input and expected AI result in user-facing domain language before technical field names. Switching a side to JSON seeds a default object schema when empty.
+- `Curation` fields: default split required, default curation status required, anonymization/PII policy required when the backend contract exposes it, retention profile required or defaulted from project settings, and metric defaults selected from supported presets with an explicit custom fallback when needed. Suggested metrics follow evaluation-type/value-type changes until the user explicitly chooses a metric. New datasets default to text input and validation split for the first baseline run.
+- `Trace intake` fields: trace intake rules are optional and default to not
+  configured; they must be configured before trace overview or trace detail can
+  prepare dataset rows. The step explains service and operation/function/span
+  matching in business wording, then groups AI input mapping separately from
+  expected AI result and observed AI result mapping. Path controls use presets
+  with an explicit custom fallback.
 - Successful creation navigates to the dataset detail route.
+
+Dataset list and detail readiness:
+
+- Dataset list does not show raw backend health status or a `Schema health`
+  column. It shows ready-row count and split coverage as scan-friendly
+  indicators.
+- Dataset detail owns actionable readiness. It explains any `Dataset.health`
+  problem in user-facing wording and places the matching add/import row,
+  expected-result edit, mark-ready, AI input/result shape, or settings action
+  beside the issue. Evaluation creation from dataset stays disabled until at
+  least one ready row exists.
 
 Dataset settings page:
 
 - Route: `/ai-eval/datasets/:datasetId/settings`.
 - Entry points: dataset detail `Dataset settings` action, command palette when the dataset is in context, import/export flows, and validation/health warnings that require dataset-level changes.
 - Breadcrumb: `AI Eval / Datasets / <dataset name> / Settings`.
-- Tabs: `Purpose`, `Schema`, `Curation`, `Extraction`, `Versions`.
-- `Purpose`, `Schema`, `Curation`, and `Extraction` reuse dataset creation grouping and fields, populated from the current dataset state.
-- `Versions` is settings-only and shows current version, latest version, version policy impact, and stale-write context. It must not replace dataset row/version history in dataset detail.
+- Tabs: `Purpose`, `Schema`, `Curation`, `Trace intake`, `Versions`.
+- `Purpose`, `Schema`, `Curation`, and `Trace intake` reuse dataset creation grouping and fields, populated from the current dataset state.
+- Persistent settings actions include Cancel, Import settings, Export settings, and Save settings. Import/export applies only to dataset settings JSON; dataset row import/export remains in dataset detail.
+- `Versions` is settings-only and shows current version, save conflict guard, version impact, and stale-write context. It must not replace dataset row/version history in dataset detail and must not look like an evaluation version-policy choice.
 - Every save that changes behavior-affecting dataset settings sends `expectedDatasetVersionId` and creates a new dataset version according to the dataset contract.
 
 Evaluation creation page:
@@ -688,9 +747,9 @@ Evaluation creation page:
 - Entry points: Evaluations list primary action, dataset detail `Create evaluation from dataset`, AI Eval first-use checklist, command palette when authorized.
 - Breadcrumb: `AI Eval / Evaluations / New evaluation`.
 - Tabs: `Dataset`, `Target`, `Metrics`, `Run policy`.
-- `Dataset` fields: dataset required, dataset version policy required, split selector required, and eligibility/ready-row feedback from GraphQL read models.
-- `Target` fields: target kind required, target reference required, model alias stored through `EvaluationTargetRef.metadata.modelAlias` when applicable.
-- `Metrics` fields: metric settings default from the dataset and project AI Eval settings; required metric fields must be visible and overridable only where contracts allow.
+- `Dataset` fields: dataset required, split selector required, and eligibility/ready-row feedback from GraphQL read models. Evaluation creation defaults to latest ready dataset content, uses the dataset default split, blocks empty selected splits, and does not expose pinned dataset version policy in the first-run flow.
+- `Target` fields: target kind required, target reference required, model alias stored through `EvaluationTargetRef.metadata.modelAlias` when applicable. Labels use user-facing wording such as `CloudGrid prompt`, `External adapter`, and `Prompt or adapter reference`; target snapshot ids remain advanced evidence fields outside first-run creation.
+- `Metrics` fields: metric settings default from the dataset and project AI Eval settings; supported presets are shown before custom metric ids; required metric fields must be visible and overridable only where contracts allow.
 - `Run policy` fields: retention role/profile, concurrency/budget/sampling controls, and any required adapter/provider choices default from project settings.
 - Successful creation navigates to the evaluation definition/detail route. If the user explicitly chose to start immediately, the run starts through `startEvaluationRun` and the user lands on the run detail route.
 
@@ -700,8 +759,8 @@ Evaluation settings page:
 - Entry points: evaluation definition/detail `Settings` action, run detail source evaluation link action, and command palette when an evaluation is in context.
 - Breadcrumb: `AI Eval / Evaluations / <evaluation name> / Settings`.
 - Tabs: `Dataset`, `Target`, `Metrics`, `Run policy`, `History`.
-- `Dataset`, `Target`, `Metrics`, and `Run policy` reuse evaluation creation grouping and fields, populated from the current evaluation definition.
-- `History` is settings-only and shows last run state, pinned dataset version behavior, and links to recent runs/comparisons without duplicating run result tables.
+- `Dataset`, `Target`, `Metrics`, and `Run policy` reuse evaluation creation grouping and fields, populated from the current evaluation definition. Editable settings save through `updateEvaluationDefinition` and apply only to future runs; existing runs keep their resolved dataset version, target snapshot, metric settings, and run policy evidence.
+- `History` is settings-only and shows last run state, resolved dataset version evidence from past runs, and links to recent runs/comparisons without duplicating run result tables.
 - Changes affect future runs only. Existing evaluation runs remain reproducible and must continue rendering their resolved dataset version, target snapshot, metric settings, and run policy.
 
 Optimization creation page:
@@ -712,7 +771,12 @@ Optimization creation page:
 - Tabs: `Source`, `Objective`, `Search`, `Validation`.
 - `Source` fields: source evaluation/run/comparison required, candidate baseline target required, and dataset split availability shown from storage-read view models.
 - `Objective` fields: primary metric required, secondary metrics optional, hard constraints required or defaulted, tradeoff metrics optional, ranking policy required, and tie-breakers required or defaulted.
-- `Search` fields: editable target parts limited to v1-supported prompt text and few-shot/example selection; model config may appear only when represented as a target part snapshot; skill, tool, workflow, and agent optimization controls remain hidden in v1.
+- `Search` fields: editable target parts include prompt text and
+  few-shot/example selection for prompt optimization, and skill document
+  controls when the baseline target exposes an editable `skill` part and the
+  search policy is `skill_text_edit`; model config may appear only when
+  represented as a target part snapshot; tool, workflow, and agent-configuration
+  optimization controls remain hidden in v2.
 - `Validation` fields: quick-shot usage, validation split policy, minimum evidence, and test split exclusion. The page must state that quick-shot results are exploratory and cannot be promotion evidence.
 - Submit calls `startOptimizationRun`; successful start navigates to the optimization run detail route.
 
@@ -764,7 +828,7 @@ Button hierarchy:
 - Secondary buttons are for safe alternatives, such as `Cancel`, `Duplicate`, or `Open docs`.
 - Tertiary/ghost/icon buttons are for low-emphasis utilities, overflow menus, copy actions, refresh, and view toggles.
 - Buttons, tabs, segmented controls, chips, active navigation entries, forms, sidebars, and toolbars use the default shadcn neutral white/gray/black styling. Do not add custom brand colors to standard controls.
-- Form controls must use repository shadcn/Radix components or explicit shadcn wrappers. Production route code must not import or render native `select`, `option`, `textarea`, checkbox input, or unstyled form controls directly. Date and time inputs use the shared shadcn input/date-control abstraction once available; until then they must still be rendered through the shared shadcn `Input` wrapper, not raw HTML.
+- Form controls must use repository shadcn/Radix components or explicit shadcn wrappers. Production route code must not import or render native `select`, `option`, `textarea`, checkbox input, or unstyled form controls directly. Raw JSON payloads, JSON schemas, and structured JSON settings use the shared JSON editor wrapper with theme support, monospace text, line wrapping, and normal field validation semantics. Date and time inputs use the shared shadcn input/date-control abstraction once available; until then they must still be rendered through the shared shadcn `Input` wrapper, not raw HTML.
 - Every button renders an icon. Copy actions are always icon-only with an accessible label and tooltip; they must not use text labels such as `Copy`, `Copy endpoint`, or icon+label variants. Non-copy visible actions use a concise lucide icon plus label. Standard toolbar utilities may be icon-only when the control has an accessible label and tooltip.
 - Copy, save, create, update, delete, pin/unpin, and toggle actions must show explicit success or failure feedback. Mutations use inline validation or problem panels for actionable errors and a compact confirmation surface for completed actions; clipboard actions may use a toast/status region, but failure must still be visible and accessible.
 - Search fields use the shared shadcn-backed `SearchInput` component with a leading search icon. Route and feature code must not hand-compose absolute search icons next to raw `Input` controls.

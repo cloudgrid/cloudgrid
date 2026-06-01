@@ -831,7 +831,9 @@ function DashboardDateRangeControl({
           <Separator />
           <FieldGroup className="grid gap-3 sm:grid-cols-2">
             <Field>
-              <FieldLabel htmlFor="dashboard-range-from-date">Start date</FieldLabel>
+              <FieldLabel htmlFor="dashboard-range-from-date">
+                {t("dashboards.startDate")}
+              </FieldLabel>
               <Input
                 id="dashboard-range-from-date"
                 onChange={(event) =>
@@ -842,7 +844,7 @@ function DashboardDateRangeControl({
               />
             </Field>
             <Field>
-              <FieldLabel htmlFor="dashboard-range-to-date">End date</FieldLabel>
+              <FieldLabel htmlFor="dashboard-range-to-date">{t("dashboards.endDate")}</FieldLabel>
               <Input
                 id="dashboard-range-to-date"
                 onChange={(event) =>
@@ -1113,7 +1115,7 @@ function DashboardWidgetFrame({
         <div className="flex min-w-0 items-center gap-2">
           {isEditing ? (
             <Button
-              aria-label="Move widget"
+              aria-label={t("dashboards.widget.move")}
               className="cursor-grab active:cursor-grabbing"
               onKeyDown={handleKeyboard}
               onPointerDown={(event) => pointerDrag(event, "move")}
@@ -1226,7 +1228,7 @@ function DashboardWidgetFrame({
       </div>
       {isEditing ? (
         <Button
-          aria-label="Resize widget"
+          aria-label={t("dashboards.widget.resize")}
           className="absolute right-1 bottom-1 cursor-se-resize opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
           data-resize-handle="corner"
           onKeyDown={handleKeyboard}
@@ -1505,7 +1507,11 @@ function AddWidgetButton({ onAddWidget }: { onAddWidget: (kind: DashboardWidgetK
     ],
     ...(isRichMetricEditingEnabled()
       ? ([
-          ["metric_rich", <LineChart data-icon="inline-start" key="metric_rich" />, "Rich metric"],
+          [
+            "metric_rich",
+            <LineChart data-icon="inline-start" key="metric_rich" />,
+            t("dashboards.widget.richMetric"),
+          ],
         ] satisfies Array<[DashboardWidgetKind, ReactNode, string]>)
       : []),
     [
@@ -1758,7 +1764,7 @@ function widgetKindLabel(kind: DashboardWidgetKind) {
     case "metric_table":
       return t("dashboards.widget.metricTable");
     case "metric_rich":
-      return "Rich metric";
+      return t("dashboards.widget.richMetric");
     case "log_table":
       return t("dashboards.widget.logTable");
     case "trace_table":

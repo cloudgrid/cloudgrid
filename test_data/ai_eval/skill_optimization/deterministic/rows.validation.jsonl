@@ -1,0 +1,3 @@
+{"id":"val-001","split":"validation","input":{"ticket":"Billing report fails for customer, account id is missing."},"expected":{"action":"ask_for_account_id","mustMention":"account id"},"rubric":{"passIf":"requests the missing account id without inventing one"},"traceFixtureRef":"otel-genai-validation-trace-001"}
+{"id":"val-002","split":"validation","input":{"ticket":"Account A-2048 cannot export audit logs after region migration."},"expected":{"action":"check_export_policy","mustMention":"region migration"},"rubric":{"passIf":"uses account id and checks export policy after migration"},"traceFixtureRef":"standard-db-validation-trace-002"}
+

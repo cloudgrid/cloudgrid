@@ -52,16 +52,17 @@ type SurrealDBConfig struct {
 }
 
 type SelfObservabilityConfig struct {
-	Enabled               bool
-	ProjectID             string
-	CompanyID             string
-	OTLPEndpoint          string
-	OTLPBearerToken       string
-	ExportIntervalSeconds int
-	TracesEnabled         bool
-	LogsEnabled           bool
-	MetricsEnabled        bool
-	ExportFailureLogLevel string
+	Enabled                 bool
+	ProjectID               string
+	CompanyID               string
+	OTLPEndpoint            string
+	OTLPBearerToken         string
+	ExportIntervalSeconds   int
+	TracesEnabled           bool
+	LogsEnabled             bool
+	MetricsEnabled          bool
+	DBAdapterTracingEnabled bool
+	ExportFailureLogLevel   string
 }
 
 func OSEnv(key string) string {
@@ -213,6 +214,13 @@ func loadSelfObservabilityConfig(env EnvLookup) (SelfObservabilityConfig, error)
 	}
 	if mode == "local" && enabled && cfg.OTLPBearerToken == "" {
 		return SelfObservabilityConfig{}, configError("CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN is required when self-observability is enabled")
+	}
+	cfg.DBAdapterTracingEnabled, err = boolValue(env("CLOUDGRID_DB_ADAPTER_TRACING_ENABLED"), false, "CLOUDGRID_DB_ADAPTER_TRACING_ENABLED")
+	if err != nil {
+		return SelfObservabilityConfig{}, err
+	}
+	if mode == "deployed" && cfg.DBAdapterTracingEnabled {
+		return SelfObservabilityConfig{}, configError("CLOUDGRID_DB_ADAPTER_TRACING_ENABLED is valid only in local mode")
 	}
 	return cfg, nil
 }

@@ -1,10 +1,10 @@
 ---
-id: NFR-010
+id: NFR-011
 title: AI evaluation cost bounds
 layer: nfr
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-16
+updated: 2026-05-31
 provenance: from-user
 depends_on: [DOM-006, TEC-BE-024]
 ---
@@ -33,6 +33,22 @@ adapter, or model-backed metric.
   when the required evidence can be measured before scheduling. Oversized items
   are marked `needs_review` or `quarantined` according to policy rather than
   being counted as model-quality failures.
+- Skill optimization checks token and byte budgets before every optimizer
+  reflection, merge/rank, slow-update, meta-memory, and validation call.
+  Default optimized skill limits are 65536 UTF-8 bytes and 8000 estimated
+  tokens. Oversized candidate skills are rejected before validation and recorded
+  as bounded step problems.
+- Classification and extraction prompt optimization checks token, byte, cost,
+  concurrency, and response-size budgets before every training rollout, family
+  diagnosis read, optimizer proposal call, custom optimizer adapter call,
+  quick-shot run, validation run, and external adapter candidate execution.
+  Oversized candidate prompt/example snapshots are rejected before quick-shot or
+  validation and recorded as bounded step problems.
+- Rejected-edit memory keeps at most 20 rejected step summaries or 64 KiB per
+  optimization run, whichever is smaller. Slow-update and meta-memory sections
+  are each capped at 8 KiB.
+- Rejected prompt/example change summaries keep at most 20 rejected summaries or
+  64 KiB per optimization run, whichever is smaller.
 - Rate limits apply per project, provider profile, model alias, run, and
   harness adapter when configured.
 - Backpressure behavior must be bounded and explicit: slow scheduling, pause the

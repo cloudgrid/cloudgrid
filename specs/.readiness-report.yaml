@@ -1,213 +1,280 @@
 status: approved
-updated: 2026-05-22
-scope: multi_scope_parallel_agent_readiness
+language: en
+updated: 2026-05-29
+scope: cloudgrid_enterprise_product_spec_readiness
 human_approval:
   status: approved
   approved_by: user
-  approval_basis: User approved the AI Eval v2 concept, requested autonomous cleanup and implementation-ready specs, and approved the resulting migration plan for agent execution; dashboard and AI Chat approvals remain preserved.
+  approval_basis: User requested a deep spec review, migration to the updated spec-architect skill, cleanup, gap closure, and production-ready enterprise UX readiness before implementation planning.
 blocking_decisions: []
 open_decisions: []
+
+summary:
+  verdict: approved_for_implementation_planning
+  canonical_entrypoints:
+    - specs/spec.md
+    - specs/05-frontend/product-experience-contract.md
+    - specs/05-frontend/product-ux-concept.md
+    - specs/implementation-ready.md
+  source_order:
+    - specs/spec.md
+    - specs/05-frontend/product-experience-contract.md
+    - specs/05-frontend/product-ux-concept.md
+    - route-specific frontend specs
+    - backend, contract, NFR, ADR, and flow specs
+  implementation_gaps_remaining:
+    - IR-004 production benchmark evidence for a promoted deployment
+  no_agent_decision_rules:
+    - Agents must not invent frontend shell modes, route order, action placement, empty-state causes, disabled-state behavior, or route-primary card layouts outside the product experience contract.
+    - Agents must not add GraphQL fields, NATS subjects, error codes, entity fields, provider kinds, dashboard widget kinds, or public route semantics outside source specs and contracts.
+    - Agents must update source specs before implementation when a behavior, failure path, async rule, UX state, migration, release concern, or verification method is missing.
+
+no_drift_gate:
+  status: passed
+  evidence:
+    - Flow specs moved from specs/02-flows to specs/03-flows and references were updated.
+    - Frontend spec IDs are unique across markdown frontmatter and registry entries.
+    - Stale IR-006 partial status was reconciled with current AI Chat and project provider settings implementation evidence.
+
+ambiguity_gate:
+  status: passed
+  evidence:
+    - Updated deterministic ambiguity phrases in ai-runtime, alerting, frontend application, and service resilience specs.
+    - Product experience contract defines exact empty-state causes, disabled-action behavior, feedback placement, and route outcome rules.
+
+semantic_alignment_gate:
+  status: passed
+  evidence:
+    - Frontend data authority remains GraphQL/BFF only.
+    - Backend telemetry semantics remain owned by storage-read and control-plane contracts.
+    - Product UX, route-specific frontend specs, implementation index, and agent instructions now point to the product experience contract.
+
+spec_structure_gate:
+  status: passed
+  evidence:
+    - Required root artifacts, contracts, capabilities, flows, backend, frontend, NFR, ADR, registry, provenance, and readiness files exist.
+    - Updated skill artifact shape is satisfied by specs/03-flows.
+
+visualization_gate:
+  status: passed
+  evidence:
+    - Product experience contract defines route-primary surfaces, flat workspace rules, inspector placement, dashboard canvas behavior, trace waterfall/flow ownership, and visual QA expectations.
+
+requirements_quality_gate:
+  status: passed
+  evidence:
+    - Product experience requirements PEX-001 through PEX-015 have IDs and verification methods.
+    - Implementation-ready items IR-001 through IR-012 identify status, evidence, remaining work, source specs, acceptance, and verification.
+
+standards_first_gate:
+  status: passed
+  evidence:
+    - Specs retain OpenTelemetry, GraphQL, AsyncAPI, OpenAPI, structured JSON logs, RFC 9457 problem details, OIDC, SPDX/CycloneDX, SLSA, and framework-native UI conventions.
+
+async_semantics_gate:
+  status: passed
+  evidence:
+    - Stream, subscription, queue, worker, benchmark, alert, AI Chat, AI Eval, retention, and self-observability specs define ordering, timeout, retry, cancellation, idempotency, ack, and backpressure behavior in their owning files.
+
+interface_gate:
+  status: passed
+  evidence:
+    - Public GraphQL, AsyncAPI, HTTP OpenAPI, JSON Schema entities, generated TypeScript, generated Go contracts, and error taxonomy remain the frozen interface sources.
+    - Frontend route behavior uses generated contracts and does not define local backend schemas.
+
+e2e_gate:
+  status: passed
+  evidence:
+    - AI Eval v2, AI Chat, dashboards, auth, alerts, metrics, logs, traces, storage, and control-plane flows have implementation-ready acceptance and verification paths.
+    - Product experience contract requires route-level desktop, tablet, mobile, keyboard, loading, empty, populated, permission, disabled, and backend-unavailable checks.
+
+unhappy_path_gate:
+  status: passed
+  evidence:
+    - Product experience contract defines no project, no telemetry, filtered empty, feature disabled, missing setup, permission, backend unavailable, and destructive confirmation states.
+    - Backend specs define validation, authorization, timeout, retry, cancellation, duplicate replay, and sanitized error behavior.
+
+security_privacy_gate:
+  status: passed
+  evidence:
+    - Frontend contract forbids browser storage of tokens, provider credentials, ingest keys, raw telemetry payloads, and durable project data.
+    - Existing backend specs define deployed auth, project/company isolation, secret redaction, provider credential handling, and self-observability redaction.
+
+observability_gate:
+  status: passed
+  evidence:
+    - Structured log, self-observability, GraphQL/BFF, Go runtime, collector, storage, alert, AI Chat, and AI Eval specs define telemetry and redaction requirements.
+    - IR-009 full-service log event evidence and normal Logs UI inspection evidence are complete as of 2026-05-28.
+
+performance_resilience_gate:
+  status: passed
+  evidence:
+    - Performance, scaling, service resilience, GraphQL WebSocket limits, storage readiness, benchmark, and dashboard/telemetry virtualization specs define budgets and overload behavior.
+    - IR-004 records environment benchmark evidence as external completion work.
+
+data_integrity_recovery_gate:
+  status: passed
+  evidence:
+    - Retention, storage-write, storage-read, control-plane, alert evaluator, AI Eval runner, AI Chat run lifecycle, and service resilience specs define idempotency, state transitions, recovery, and final states.
+    - IR-001 live SurrealDB verification covers every executable data class, soft delete/final delete, dry-run checks, audit rows, and lease contention/reacquire.
+
+production_readiness_gate:
+  status: passed
+  evidence:
+    - Release, deployment, Helm, external dependency, sizing, benchmark, auth, self-observability, and handbook specs define production readiness and operations.
+    - SurrealDB 3.1 baseline defaults and operator upgrade/rollback guidance are recorded as IR-011; production deployment completion still requires environment benchmark evidence in IR-004.
+
+supply_chain_gate:
+  status: passed
+  evidence:
+    - Release/distribution specs require explicit images, lockfiles, SBOMs, provenance, signatures, vulnerability/license checks, private registry, and air-gapped guidance.
+
+wave_readiness:
+  status: passed
+  evidence:
+    - Completed plans remain recorded for AI Eval, dashboard gap closure, and service resilience.
+    - Frontend UX work is generated under plans/frontend-ux-implementation with one owner, one write scope, route tests, and visual QA evidence requirements per ticket.
+
+migration_gate:
+  status: passed
+  evidence:
+    - Material spec-shape migration is recorded in plans/migrations/2026-05-28-spec-skill-readiness-and-frontend-experience.md.
+    - SurrealDB 3.1 baseline migration is recorded in plans/migrations/2026-05-28-surrealdb-3-1-upgrade.md.
+    - Flow path migration changes only spec/planning references and does not alter runtime contracts.
+
+contradiction_check:
+  status: passed
+  evidence:
+    - Live remains a Traces mode, not a sidebar route.
+    - Metrics remains a technical explorer, while Dashboards owns saved dashboard/widget composition.
+    - Project settings remain separated from primary telemetry navigation but visible as the bottom project-sidebar entry.
+    - AI Chat uses company provider settings and project context; AI Eval uses project provider profiles and model aliases.
+
+semantic_judge_gate:
+  status: passed
+  reviewer: GPT-5 Codex spec-architect semantic review
+  reviewed_at: 2026-05-28
+  scope:
+    - specs/spec.md
+    - specs/05-frontend/product-experience-contract.md
+    - specs/05-frontend/product-ux-concept.md
+    - specs/05-frontend/frontend-application.md
+    - specs/implementation-ready.md
+    - specs/.implementation-readiness.yaml
+  verdicts:
+    happy_paths: passed
+    unhappy_paths: passed
+    recovery_paths: passed
+    interfaces: passed
+    security_privacy: passed
+    production_release_supply_chain: passed
+    frontend_user_guidance: passed
+  ambiguity: []
+  gaps:
+    - IR-004 remains blocked by promoted-environment production benchmark evidence.
+    - IR-012 local deep database adapter tracing is complete for the local diagnostics implementation scope.
+  uncertainty:
+    - Semantic judge review was performed inside this Codex spec pass; an independent human or separate model review can be added before high-risk implementation waves.
+
+self_audit_gate:
+  status: passed
+  weakest_assumptions:
+    - Existing implementation tests are accepted as evidence for IR-006 status correction.
+    - Route-specific UX detail remains valid after adding the concise product experience contract.
+  inferred_defaults:
+    - Updated skill artifact shape requires specs/03-flows; the migration preserves flow filenames, IDs, and content.
+    - Frontend disabled-state guidance uses existing contracts first and blocks implementation when a new enablement contract is required.
+  blockers: []
+
 gate_simulation:
-  status: pass_with_ai_eval_v2_implementation_migration_required
-  planner_result: dashboard_and_ai_chat_sections_preserved; ai_eval_v2_specs_and_machine_readable_contracts_are_aligned; service_and_ui_implementation_migration_required
-  blockers_for_implementation:
-    - Existing BFF bridge methods, validation schemas, storage services, Go AI Eval runner orchestration, and frontend route code still implement legacy Scorer/Experiment behavior behind v2 contract names.
-ai_eval_v2_spec_rewrite:
-  status: contract_ready_implementation_migration_required
-  updated: 2026-05-24
-  review_basis:
-    - AI Eval v2 product/domain/backend/frontend specs now define Datasets, Evaluations, Metrics, Comparisons, Optimization, Targets, immutable dataset versions, target snapshots, external adapter protocol, quick-shot, and retention.
-    - Legacy Scorers, Checks, Gates, Experiments, row-level target shapes, dev/optimization/regression/holdout splits, and reviewStatus are explicitly forbidden or mapped to v2 concepts.
-    - Production quality and online measurement are backlog until dataset evaluation and optimization are implemented.
-  blockers_for_implementation:
-    - Final local integration must prove that the running bridge/storage services return v2 dataset fields such as currentVersionId and item revisions.
-    - Several legacy compatibility shell names remain in public client/runtime code and must be removed or replaced after integration proves no callers need them.
-  no_agent_decision_rules:
-    - Agents must not implement AI Eval v2 against legacy Scorer, Experiment, ExperimentRun, EvalSolverRef, reviewStatus, targetShape, dev, optimization, regression, or holdout contracts.
-    - Agents must update GraphQL, AsyncAPI, entity schemas, generated TypeScript contracts, generated Go contracts, and contract tests before implementation work starts.
-    - Agents must stop and update specs/contracts first if any field name, enum, status transition, retry rule, digest input, metric payload schema, retention TTL, route entry, or service ownership rule is missing.
-dashboard_gap_closure:
-  status: approved_for_parallel_implementation
-  review_basis:
-    - Dashboard behavior is specified across the dashboard capability, dashboard widgets frontend spec, dashboard query flow, logs/metrics/dashboards UX concept, and dashboard implementation contract.
-    - Rich metric creation and editing are explicitly production-gated; existing saved rich metric widgets may render read-only through `Query.richMetricSeries`.
-    - Frontend ownership boundaries are explicit: reducer/layout, route shell, metric-control reuse, widget source mappers, widget renderers, widget editors, and pin UI.
-    - Existing shared metric functionality is identified as a required reuse source instead of allowing dashboard-specific duplicate metric query controls.
-    - Tablet and touch requirements are explicit: 12-column wide layout, 6-column tablet projection, 44px touch targets, and stacked mobile controls without freeform drag-resize.
-  no_agent_decision_rules:
-    - Agents must not add routes, widget kinds, chart kinds, GraphQL fields, NATS subjects, error codes, dashboard storage locations, role rules, pin limits, or layout dimensions outside the approved specs.
-    - Agents must not add `MetricView`, browser-local saved dashboard truth, browser-local pin truth, raw JSON widget configs, executable formulas, or frontend/BFF telemetry semantics.
-    - Agents must not expose production `metric_rich` creation or editing until GraphQL, AsyncAPI, generated TypeScript, generated Go, storage-read, BFF, frontend editor, and focused tests satisfy the rich metric gate.
-    - Agents must reuse or extract shared Metrics controls and helpers for metric name, aggregation, group-by, filters, interval, sort, chart type, and `MetricSeriesInput` behavior.
-    - Agents must stop and update specs/contracts first if a ticket requires behavior outside `specs/05-frontend/dashboard-implementation-contract.md`.
-  parallel_boundaries:
-    - owner: dashboard-foundation-agent
-      write_scope: [apps/frontend/src/features/dashboards, apps/frontend/test/dashboard-layout.test.ts, apps/frontend/test/dashboard-draft-reducer.test.ts]
-      must_not_write: [apps/backend, core, specs/03-contracts]
-    - owner: dashboard-route-agent
-      write_scope: [apps/frontend/src/routes/dashboards-route.tsx, apps/frontend/src/lib/i18n.ts, apps/frontend/test/dashboards-ux.test.ts]
-      must_not_write: [apps/backend, core, specs/03-contracts]
-    - owner: metric-controls-agent
-      write_scope: [apps/frontend/src/features/metrics, apps/frontend/src/features/dashboards/widget-editor, apps/frontend/test]
-      must_not_write: [apps/backend, core, specs/03-contracts]
-    - owner: dashboard-renderers-agent
-      write_scope: [apps/frontend/src/features/dashboards/widget-renderers, apps/frontend/src/features/dashboards/widget-source-mappers.ts, apps/frontend/test]
-      must_not_write: [apps/backend, core]
-    - owner: dashboard-pins-agent
-      write_scope: [apps/frontend/src/routes, apps/frontend/src/features/dashboards, apps/frontend/test]
-      must_not_write: [apps/backend, core, specs/03-contracts]
-    - owner: rich-metric-gate-agent
-      write_scope: [specs/03-contracts, apps/packages/ui-contracts, apps/packages/definition, core/go-contracts, apps/backend, core/storage-read, apps/frontend]
-      must_split_by_boundary_before_implementation: true
-  implementation_plan:
-    root: plans/dashboard-gap-closure
-    status: ready
-    tickets:
-      - TICKET-101
-      - TICKET-102
-      - TICKET-103
-      - TICKET-104
-      - TICKET-105
-      - TICKET-106
-      - TICKET-107
-  gate_simulation:
-    status: pass
-    planner_result: implementation_ready_for_autonomous_agents
-    blockers_for_implementation: []
-    simulated_tickets:
-      - id: TICKET-101
-        name: Dashboard reducer, layout, and source mapper foundation
-        owner_boundary: dashboard-foundation-agent
-        acceptance: Pure dashboard reducer, layout solver, and widget source mappers are tested and ready for route/editor/renderers.
-      - id: TICKET-102
-        name: Dashboard route modes and discard/save conflict flow
-        owner_boundary: dashboard-route-agent
-        acceptance: Overview and builder modes, URL state, discard, save success, and conflict flow consume foundation modules without route-local widget mutation.
-      - id: TICKET-103
-        name: Shared metric controls and non-rich widget editors
-        owner_boundary: metric-controls-agent
-        acceptance: Metric dashboard widgets reuse shared Metrics controls and every non-rich widget editor exposes exact Data, Display, and Thresholds groups.
-      - id: TICKET-104
-        name: Widget renderers and local widget states
-        owner_boundary: dashboard-renderers-agent
-        acceptance: Widget renderers and source mappers are extracted, render GraphQL view models only, and keep loading/empty/warning/error states widget-local.
-      - id: TICKET-105
-        name: Tablet, touch, and keyboard canvas integration
-        owner_boundary: dashboard-foundation-agent
-        acceptance: 12-column desktop, 6-column tablet, stacked mobile, pointer handles, and keyboard controls are wired to reducer/layout behavior.
-      - id: TICKET-106
-        name: Persisted pins and dashboard shortcuts
-        owner_boundary: dashboard-pins-agent
-        acceptance: Dashboard shortcuts use persisted pin contracts only, cap visible pins at five, and support accessible reorder where exposed.
-      - id: TICKET-107
-        name: Rich metric production gate closure
-        owner_boundary: split_by_contract_storage_bff_frontend
-        acceptance: Rich metric creation/editing remains gated until contract, storage-read, BFF, frontend, and focused tests pass.
-ai_chat_gate_simulation:
-  status: pass
-  planner_result: implementation_ready_for_autonomous_agents
-  blockers_for_implementation: []
-  global_agent_rules:
-    - Agents must start at specs/spec.md and then read the AI Chat capability, flow, backend runtime, implementation contract, frontend view, GraphQL, AsyncAPI, JSON Schema, errors, product UX, and boundary specs for their ownership area.
-    - Agents must keep to one ownership boundary and write only files in their assigned ticket scope.
-    - Agents must not add AI Chat tools, renderer keys, action kinds, provider kinds, model aliases, stream event types, message part types, sandbox APIs, skill mounts, GraphQL fields, NATS subjects, or error codes outside the approved contracts.
-    - Frontend agents must use AI Elements primitives and BFF-validated json-render artifacts; they must not implement a custom chat framework, execute artifact scripts, or expose tool payloads.
-    - BFF agents must route provider execution through PURISTA harness adapters and catalog-defined tools; they must not call provider SDKs directly or read SurrealDB/NATS outside approved bridge helpers.
-    - Control-plane agents own AI Chat persistence, ownership checks, idempotency, action approval state, and provider settings metadata.
-  simulated_tickets:
-    - id: AIC-1
-      name: AI Chat contracts and catalog foundation
-      owner_boundary: contracts
-      read_scope: [specs/04-backend/ai-chat.md, specs/04-backend/ai-runtime-structure.md, specs/04-backend/ai-chat-implementation-contract.md, specs/03-contracts]
-      write_scope: [specs/03-contracts, apps/packages/ui-contracts, apps/packages/public-api-client, apps/packages/definition, core/go-contracts, tooling contract tests]
-      contract_traceability: [public-schema.graphql, http-api.openapi.yaml, message-bridge.asyncapi.yaml, ai-chat.schema.json, ai-chat-stream.schema.json, json-render-catalog.schema.json, errors.yaml]
-      acceptance: Machine-readable contracts expose aligned AI Chat GraphQL, SSE, bridge, entity, renderer, action, and generated TypeScript/Go shapes with no stale field names.
-      verification: ["bun run contracts:check", "bun run typecheck"]
-      open_decisions: []
-    - id: AIC-2
-      name: Control-plane AI Chat persistence
-      owner_boundary: control-plane
-      read_scope: [specs/04-backend/control-plane.md, specs/04-backend/ai-chat.md, specs/03-contracts/messages/message-bridge.asyncapi.yaml]
-      write_scope: [core/control-plane, core/go-contracts]
-      contract_traceability: [control.ai_chat.*, control.ai_provider_secrets.resolve, AiChatConversation, AiChatMessage, AiChatRun, AiChatArtifact, AiChatActionProposal, AiChatCompaction]
-      acceptance: Control-plane persists per-user/project conversations, messages, runs, artifacts, compactions, provider settings, idempotent run state, and action approvals with ownership checks and no cross-user/project reads.
-      verification: ["go test -tags surrealdb ./core/control-plane/...", "bun run contracts:check"]
-      open_decisions: []
-    - id: AIC-3
-      name: BFF stream runtime and harness graph
-      owner_boundary: bff
-      read_scope: [specs/04-backend/ai-chat.md, specs/04-backend/ai-runtime-structure.md, specs/04-backend/ai-chat-implementation-contract.md, specs/02-flows/ai-chat/chat-run.md]
-      write_scope: [apps/backend, apps/packages/runtime]
-      contract_traceability: [POST /api/ai-chat/stream, AiChatStream, AiChatHarnessPort, AI_CHAT_MODEL_ALIASES, AI_CHAT_TOOLS, AI_CHAT_BUDGETS]
-      acceptance: BFF validates scope/idempotency, creates runs, invokes PURISTA harness workflows, streams typed SSE, enforces prompt policy, propagates telemetry, executes catalog tools only, and cleans up sandbox files.
-      verification: ["bun test apps/backend/src/ai-chat-harness.test.ts apps/backend/src/ai-chat-stream.test.ts", "bun run --cwd apps/backend typecheck", "bun run contracts:check"]
-      open_decisions: []
-    - id: AIC-4
-      name: AI Chat tools renderers sandbox skills and actions
-      owner_boundary: bff
-      read_scope: [specs/04-backend/ai-chat-implementation-contract.md, specs/03-contracts/entities/ai/json-render-catalog.schema.json, skills/README.md]
-      write_scope: [apps/backend/src/ai-chat, skills, tooling skill/catalog tests]
-      contract_traceability: [AI_CHAT_TOOLS, AI_CHAT_RENDERERS, AI_CHAT_ACTIONS, AI_CHAT_SKILLS, ERR-AIC-002, ERR-AIC-003, ERR-AIC-005]
-      acceptance: Catalog-defined tools, json-render validation, sandbox runner, skill mounting, action proposal bindings, and de-dupe rules are implemented without exposing raw tool payloads, secrets, or writable skill access.
-      verification: ["bun test apps/backend/src/ai-chat*.test.ts", "bun run skills:check", "bun run contracts:check"]
-      open_decisions: []
-    - id: AIC-5
-      name: Frontend AI Elements chat experience
-      owner_boundary: frontend
-      read_scope: [specs/05-frontend/ai-chat-views.md, specs/05-frontend/product-ux-concept.md, DESIGN.md, specs/03-contracts/graphql/public-schema.graphql, specs/03-contracts/entities/ai/ai-chat-stream.schema.json]
-      write_scope: [apps/frontend, apps/packages/public-api-client, apps/packages/ui-contracts]
-      contract_traceability: [AiChatHistory, AiChatConversation, AiChatMessagePart, AiChatStreamEvent, json-render-catalog.schema.json]
-      acceptance: Frontend uses AI Elements conversation/message/prompt primitives, renders mixed Markdown/artifacts in server order, shows safe tool status only, treats untrusted json-render fences as inert code, and scopes history to current user/project.
-      verification: ["bun run --cwd apps/frontend typecheck", "bun run --cwd apps/frontend test -- ai-chat", "bun run contracts:check"]
-      open_decisions: []
-    - id: AIC-6
-      name: AI Chat documentation and focused examples
-      owner_boundary: docs
-      read_scope: [specs/04-backend/ai-chat.md, specs/04-backend/ai-provider-settings.md, specs/05-frontend/ai-chat-views.md, website/src/content/handbook]
-      write_scope: [website/src/content/handbook, skills]
-      contract_traceability: [CLOUDGRID_AI_CHAT_*, company AI provider setup, AI Chat route, action approval, json-render artifacts]
-      acceptance: Handbook explains provider setup, project-scoped chat usage, artifacts, action approvals, security boundaries, unsupported provider adapters, and extension points from beginner to operator/developer depth.
-      verification: ["bun run --cwd website build", "bun run skills:check"]
-      open_decisions: []
+  status: passed
+  planner_result: frontend_experience_contract_ready_for_feux_ticket_generation
+  simulated_next_waves:
+    - id: FEUX-00
+      outcome: Confirm source order, registry, readiness, and stale planning references.
+    - id: FEUX-01
+      outcome: Implement shared shell, route frame, mobile menu, navigation, i18n, dialog, and disabled-state primitives.
+    - id: FEUX-02
+      outcome: Align project picker, project creation, project settings, ingest setup, and API key flows.
+    - id: FEUX-03_to_FEUX-08
+      outcome: Align Traces, Trace Detail, Logs, Metrics, Dashboards, AI Eval, and AI Chat route UX against the product experience contract.
+    - id: FEUX-09
+      outcome: Cross-route visual, keyboard, URL-state, empty-state, and copy QA.
+
 deterministic_checks:
   - command: node /Users/sebastianwessel/.agents/skills/spec-architect/scripts/check_specs.mjs specs
-    status: pass_with_warning_no_specs_03_flows_directory
+    status: passed
+    evidence: Spec checker passed on 2026-05-28 after flow-path migration, readiness schema update, ambiguity cleanup, and frontend experience contract addition.
+  - command: ruby -e 'require "yaml"; YAML.load_file("specs/.readiness-report.yaml"); YAML.load_file("specs/_registry.yaml"); YAML.load_file("specs/_provenance.yaml"); YAML.load_file("specs/.implementation-readiness.yaml")'
+    status: passed
+    evidence: YAML readiness, registry, provenance, and implementation-readiness files parsed on 2026-05-28.
+  - command: ruby frontmatter id uniqueness audit over specs/**/*.md
+    status: passed
+    evidence: All markdown frontmatter IDs are unique after DOM, REV, TEC-BE, TEC-FE, and NFR cleanup on 2026-05-28.
+  - command: rg -n "specs/02-flows|02-flows/" specs plans AGENTS.md .agent/IMPLEMENTATION.md concepts
+    status: passed
+    evidence: Only migration/review notes intentionally reference the old path for audit history.
+  - command: bun test apps/frontend/test/ai-chat-route.test.tsx apps/frontend/test/ux-v2-projects.test.ts
+    status: passed
+    evidence: 51 tests passed on 2026-05-28.
+  - command: bun test apps/backend/src/ai-chat-catalog.test.ts apps/backend/src/ai-chat-stream.test.ts
+    status: passed
+    evidence: 32 tests passed on 2026-05-28.
+  - command: node /Users/sebastianwessel/.agents/skills/spec-implementation-planner/references/check_plan.mjs . plans/frontend-ux-implementation specs
+    status: passed
+    evidence: FEUX implementation plan lint passed on 2026-05-28.
+  - command: CLOUDGRID_ENABLE_SURREALDB_RETENTION_TESTS=true go test -count=1 -tags surrealdb ./core/storage-maintenance/internal/adapters/surrealdb
+    status: passed
+    evidence: Live SurrealDB retention adapter coverage passed on 2026-05-28 against local SurrealDB 3.1.0.
+  - command: CLOUDGRID_ENABLE_SURREALDB_STORAGE_WRITE_TESTS=true go test -count=1 -tags surrealdb ./core/storage-write/internal/adapters/surrealdb
+    status: passed
+    evidence: Live SurrealDB storage-write adapter coverage passed on 2026-05-28 against local SurrealDB 3.1.0 after namespace/database bootstrap and append-return assertion fixes.
+  - command: CLOUDGRID_ENABLE_SURREALDB_CONTROL_TESTS=true go test -count=1 -tags surrealdb ./core/control-plane/internal
+    status: passed
+    evidence: Live SurrealDB control-plane coverage passed on 2026-05-28 against local SurrealDB 3.1.0.
+  - command: go test -tags surrealdb ./core/storage-read/... ./core/storage-maintenance/... ./core/storage-write/internal/adapters/surrealdb ./core/control-plane/internal/adapters/surrealdb
+    status: passed
+    evidence: Focused SurrealDB 3.1 storage/control adapter unit and integration-safe suites passed on 2026-05-28.
+  - command: bun test apps/backend/src/self-observability.test.ts apps/frontend/test/logs-route.test.tsx
+    status: passed
+    evidence: BFF self-observability and normal Logs UI CloudGrid log inspection tests passed on 2026-05-28.
+  - command: go test -tags surrealdb ./core/go-runtime/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/...
+    status: passed
+    evidence: Go self-observability service coverage tests passed on 2026-05-28.
+  - command: bun test tooling/scripts/bench.test.mjs
+    status: passed
+    evidence: Benchmark harness tests passed on 2026-05-28; production benchmark execution remains environment-specific.
   - command: bun run contracts:check
-    status: pass
-    evidence: Contract files parsed, generated contracts present, and cross-layer drift checks passed on 2026-05-24 after AI Eval v2 contract migration.
-  - command: bun run --cwd apps/packages/ui-contracts typecheck
-    status: pass
-  - command: bun run --cwd apps/packages/definition typecheck
-    status: pass
-  - command: go test ./core/go-contracts/...
-    status: pass
-  - command: rg planning-blocking-marker-scan <ai-eval-spec-files>
-    status: pass_no_matches
-  - command: ruby -e 'require "yaml"; YAML.load_file("specs/.readiness-report.yaml"); YAML.load_file("specs/_registry.yaml")'
-    status: pass
-  - command: bun run --cwd apps/packages/integration-scenarios test
-    status: pass
-    evidence: AI Eval v2 dataset evaluation and optimization fixture coverage tests pass on 2026-05-24.
-  - command: bun run --cwd website build
-    status: pass_with_bun_runtime
-    evidence: "`bun --bun run --cwd website build` passed on 2026-05-24 after AI Eval v2 handbook update. Plain Node-backed build remains affected by local Rollup native binding code-signature state."
-  - command: browser verification of /ai-eval against current BFF schema
-    status: pass
-    evidence: "`bun --bun run --cwd apps/frontend smoke -- ai-eval.e2e.ts` passed on 2026-05-24 with v2 dataset rows, latest revisions, evaluation metrics, and evaluation run controls."
-confidence: high
-risks:
-  - The implementation wave is broad and must be split by ownership boundary to avoid cross-agent drift.
-  - Provider credential handling must remain outside CloudGrid v1 unless a separate secret-management spec is approved.
-  - Online LLM-judge, RAG, tool, trajectory, automatic annotation routing, and
-    alert integration are intentionally future features; implementing them in
-    the v1 online scoring wave would be scope drift.
-  - Excel/XLSX import and arbitrary import transform scripting are intentionally
-    out of scope for v1 dataset import.
-  - Organization invitations are outside this AI-eval readiness scope and are not approved by this report.
-statistics:
-  ai_eval_capabilities: 9
-  ai_eval_flows: 5
-  ai_eval_backend_specs: 6
-  ai_eval_frontend_specs: 2
-  ai_eval_nfrs: 2
-  simulated_implementation_tickets: 10
+    status: passed
+    evidence: Contract drift check passed on 2026-05-28 after adding named AI provider and AI Chat Go response contract guards.
+  - command: go test -tags surrealdb ./core/control-plane/... ./core/go-contracts/...
+    status: passed
+    evidence: Control-plane handlers and Go contract types passed on 2026-05-28 after named AI provider and AI Chat response wiring.
+  - command: bun test apps/packages/runtime/src/problem.test.ts apps/backend/src/bridge.test.ts
+    status: passed
+    evidence: Runtime problem details and BFF bridge schema accepted AI-specific error taxonomy IDs on 2026-05-28.
+  - command: go test -tags surrealdb ./core/ai-eval-runner/internal/runtime
+    status: passed
+    evidence: AI Eval runner bridge errors map ERR-AIE IDs to taxonomy codes and retryability on 2026-05-28.
+
+maintenance:
+  source_refs_changed:
+    - specs/03-flows
+    - specs/05-frontend/product-experience-contract.md
+    - specs/05-frontend/product-ux-concept.md
+    - specs/05-frontend/*.md frontmatter dependencies
+    - specs/implementation-ready.md
+    - specs/.implementation-readiness.yaml
+    - specs/_registry.yaml
+    - specs/_provenance.yaml
+    - AGENTS.md
+    - .agent/IMPLEMENTATION.md
+  pruned_refs:
+    - specs/02-flows path references
+    - stale IR-006 partial status
+    - duplicate DOM, REV, TEC-BE, TEC-FE, and NFR IDs in spec frontmatter
+  affected_plans:
+    - plans/frontend-ux-migration-check
+    - completed AI Eval, dashboard, and service resilience plans through path reference updates
+  migrations:
+    - plans/migrations/2026-05-28-spec-skill-readiness-and-frontend-experience.md

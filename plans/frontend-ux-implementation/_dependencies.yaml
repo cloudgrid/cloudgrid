@@ -1,0 +1,81 @@
+plan: frontend_ux_implementation
+waves:
+  wave_01_source_and_foundation:
+    tickets: [TICKET-300, TICKET-301]
+    depends_on: []
+    parallel: false
+  wave_02_project_experience:
+    tickets: [TICKET-302]
+    depends_on: [TICKET-301]
+    parallel: false
+  wave_03_route_workspaces:
+    tickets: [TICKET-303, TICKET-304, TICKET-305, TICKET-306, TICKET-307, TICKET-308, TICKET-310, TICKET-311]
+    depends_on: [TICKET-302]
+    parallel: true
+  wave_04_cross_route_qa:
+    tickets: [TICKET-309]
+    depends_on: [TICKET-303, TICKET-304, TICKET-305, TICKET-306, TICKET-307, TICKET-308, TICKET-310, TICKET-311]
+    parallel: false
+edges:
+  TICKET-300: []
+  TICKET-301: [TICKET-300]
+  TICKET-302: [TICKET-301]
+  TICKET-303: [TICKET-302]
+  TICKET-304: [TICKET-302]
+  TICKET-305: [TICKET-302]
+  TICKET-306: [TICKET-302]
+  TICKET-307: [TICKET-302]
+  TICKET-308: [TICKET-302]
+  TICKET-309: [TICKET-303, TICKET-304, TICKET-305, TICKET-306, TICKET-307, TICKET-308, TICKET-310, TICKET-311]
+  TICKET-310: [TICKET-302]
+  TICKET-311: [TICKET-302]
+unblocked_initial: [TICKET-300]
+tickets:
+  TICKET-300:
+    depends_on: []
+    blocked_by: []
+    unblocks: [TICKET-301]
+  TICKET-301:
+    depends_on: [TICKET-300]
+    blocked_by: []
+    unblocks: [TICKET-302]
+  TICKET-302:
+    depends_on: [TICKET-301]
+    blocked_by: []
+    unblocks: [TICKET-303, TICKET-304, TICKET-305, TICKET-306, TICKET-307, TICKET-308, TICKET-310, TICKET-311]
+  TICKET-303:
+    depends_on: [TICKET-302]
+    blocked_by: []
+    unblocks: [TICKET-309]
+  TICKET-304:
+    depends_on: [TICKET-302]
+    blocked_by: []
+    unblocks: [TICKET-309]
+  TICKET-305:
+    depends_on: [TICKET-302]
+    blocked_by: []
+    unblocks: [TICKET-309]
+  TICKET-306:
+    depends_on: [TICKET-302]
+    blocked_by: []
+    unblocks: [TICKET-309]
+  TICKET-307:
+    depends_on: [TICKET-302]
+    blocked_by: []
+    unblocks: [TICKET-309]
+  TICKET-308:
+    depends_on: [TICKET-302]
+    blocked_by: []
+    unblocks: [TICKET-309]
+  TICKET-310:
+    depends_on: [TICKET-302]
+    blocked_by: []
+    unblocks: [TICKET-309]
+  TICKET-311:
+    depends_on: [TICKET-302]
+    blocked_by: []
+    unblocks: [TICKET-309]
+  TICKET-309:
+    depends_on: [TICKET-303, TICKET-304, TICKET-305, TICKET-306, TICKET-307, TICKET-308, TICKET-310, TICKET-311]
+    blocked_by: []
+    unblocks: []

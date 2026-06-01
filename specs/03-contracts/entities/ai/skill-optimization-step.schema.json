@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec/cloudgrid/ent/ENT-AIE-124",
+  "title": "SkillOptimizationStep",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "optimizationRunId",
+    "projectId",
+    "epoch",
+    "step",
+    "status",
+    "rolloutEvaluationRunId",
+    "baselineSkillDigest",
+    "proposedEdits",
+    "selectedEdits",
+    "rejectedEditSummaries",
+    "trainingScore",
+    "gateDecision",
+    "startedAt"
+  ],
+  "properties": {
+    "id": { "type": "string" },
+    "optimizationRunId": { "type": "string" },
+    "projectId": { "type": "string" },
+    "epoch": { "type": "integer", "minimum": 1 },
+    "step": { "type": "integer", "minimum": 1 },
+    "status": {
+      "type": "string",
+      "enum": ["queued", "running", "accepted", "rejected", "skipped", "failed"]
+    },
+    "rolloutEvaluationRunId": { "type": "string" },
+    "candidateTargetSnapshotId": { "type": "string" },
+    "baselineSkillDigest": { "type": "string", "minLength": 1 },
+    "candidateSkillDigest": { "type": "string" },
+    "proposedEdits": { "type": "array", "items": { "$ref": "#/$defs/edit" }, "default": [] },
+    "selectedEdits": { "type": "array", "items": { "$ref": "#/$defs/edit" }, "default": [] },
+    "rejectedEditSummaries": { "type": "array", "items": { "$ref": "#/$defs/edit" }, "default": [] },
+    "trainingScore": { "type": "number" },
+    "validationScore": { "type": "number" },
+    "gateDecision": {
+      "type": "string",
+      "enum": ["accepted_new_best", "accepted", "rejected", "failed_preflight", "skipped_no_edits"]
+    },
+    "problem": { "$ref": "./metric-result.schema.json#/$defs/problem" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "endedAt": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "edit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "sourceType", "evidenceRefs"],
+      "properties": {
+        "op": { "type": "string", "enum": ["append", "insert_after", "replace", "delete"] },
+        "filePath": { "type": "string" },
+        "target": { "type": "string" },
+        "contentPreview": { "type": "string", "maxLength": 2000 },
+        "rationale": { "type": "string", "maxLength": 2000 },
+        "sourceType": { "type": "string", "enum": ["failure", "success", "slow_update", "meta_memory"] },
+        "supportCount": { "type": "integer", "minimum": 0 },
+        "evidenceRefs": {
+          "type": "array",
+          "items": { "$ref": "./metric-result.schema.json#/$defs/evidenceRef" },
+          "default": []
+        }
+      }
+    }
+  }
+}

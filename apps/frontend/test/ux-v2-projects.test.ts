@@ -677,7 +677,7 @@ describe("UX v2 project models", () => {
     expect(source).toContain('name="budgetDailyUsd"');
     expect(source).toContain('name="maxConcurrentEvaluationItems"');
     expect(source).toContain("maxConcurrency");
-    expect(source).toContain("Provider profiles");
+    expect(source).toContain('t("projects.settings.aiEvalProviders")');
   });
 
   test("prevents the current user from being demoted or removed", () => {

@@ -1,0 +1,2 @@
+{"input":{"text":"Order ORD-10000 for ana@example.com on 2026-05-01. Total USD 10.00. SKU STARTER x1. US","source":"email"},"output":{"orderId":"ORD-10000","customerEmail":"ana@example.com","orderDate":"2026-05-01","currency":"USD","total":10,"items":[{"sku":"STARTER","quantity":1}],"shippingCountry":"US"}}
+{"input":{"text":"Receipt ORD-10001 / ben@example.net / EUR 20 / SKU PRO x2","source":"sms"},"output":{"orderId":"ORD-10001","customerEmail":"ben@example.net","currency":"EUR","total":20,"items":[{"sku":"PRO","quantity":2}]}}

@@ -73,9 +73,10 @@ func (recorder *InMemoryTraceLogRecorder) Snapshot() TraceLogSnapshot {
 
 type selfObsBridgeMessage struct {
 	BridgeMessage
-	ok        *bool
-	errorID   *string
-	errorCode *string
+	ok           *bool
+	errorID      *string
+	errorCode    *string
+	traceContext selfobs.TraceContext
 }
 
 func (message selfObsBridgeMessage) Respond(response []byte) error {
@@ -93,6 +94,10 @@ func (message selfObsBridgeMessage) Respond(response []byte) error {
 	return message.BridgeMessage.Respond(response)
 }
 
+func (message selfObsBridgeMessage) TraceContext() (selfobs.TraceContext, bool) {
+	return message.traceContext, selfobs.FormatTraceParent(message.traceContext) != ""
+}
+
 func withReadSelfObservability(operation string, recorder TraceLogRecorder, handler bridgeMessageHandler) bridgeMessageHandler {
 	return func(msg BridgeMessage) {
 		if recorder == nil {
@@ -103,16 +108,16 @@ func withReadSelfObservability(operation string, recorder TraceLogRecorder, hand
 		ok := false
 		errorID := ""
 		errorCode := ""
-		handler(selfObsBridgeMessage{BridgeMessage: msg, ok: &ok, errorID: &errorID, errorCode: &errorCode})
-		result := "error"
-		if ok {
-			result = "success"
-		}
 		traceContext := selfobs.NewRootTraceContext()
 		if headers, ok := msg.(interface{ Header(string) string }); ok {
 			if parent, ok := selfobs.TraceContextFromHeaders(headers); ok {
 				traceContext = selfobs.NewChildTraceContext(parent)
 			}
+		}
+		handler(selfObsBridgeMessage{BridgeMessage: msg, ok: &ok, errorID: &errorID, errorCode: &errorCode, traceContext: traceContext})
+		result := "error"
+		if ok {
+			result = "success"
 		}
 		recorder.RecordSpan(SpanEvent{
 			Name:         "storage-read nats handler",

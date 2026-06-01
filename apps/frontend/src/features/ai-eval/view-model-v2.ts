@@ -45,23 +45,92 @@ export function datasetReadyItemCount(dataset: Dataset) {
   return value.readyItemCount ?? health.readyItemCount ?? 0;
 }
 
-export function datasetHasExtractionSettings(dataset: Dataset) {
-  const value = dataset as Dataset & {
-    settings?: { traceExtractionSettings?: unknown } | null;
-    traceExtractionSettings?: unknown;
-  };
-  return Boolean(value.settings?.traceExtractionSettings ?? value.traceExtractionSettings);
+export function datasetReadySplitCount(dataset: Dataset, split: DatasetSplit) {
+  const splitCounts = dataset.splitCounts as Record<string, number> | null;
+  if (!splitCounts || typeof splitCounts !== "object") {
+    return datasetReadyItemCount(dataset);
+  }
+  return Number(splitCounts?.[split] ?? 0);
 }
 
-export function compatibleTraceImportDatasets(datasets: Dataset[]) {
-  return datasets.filter(datasetHasExtractionSettings);
+export function datasetDefaultSplit(dataset: Dataset): DatasetSplit {
+  const value = (dataset as Dataset & { settings?: { defaultSplit?: DatasetSplit | null } | null })
+    .settings?.defaultSplit;
+  return DATASET_SPLITS.includes(value as DatasetSplit) ? (value as DatasetSplit) : "validation";
+}
+
+export function datasetHasTraceIntakeRules(dataset: Dataset) {
+  const value = dataset as Dataset & {
+    settings?: { traceIntakeRules?: unknown } | null;
+    traceIntakeRules?: unknown;
+  };
+  const intakeRules = value.settings?.traceIntakeRules ?? value.traceIntakeRules;
+  if (Array.isArray(intakeRules)) {
+    return intakeRules.some((rule) => {
+      if (!rule || typeof rule !== "object") {
+        return false;
+      }
+      const enabled = (rule as { enabled?: unknown }).enabled;
+      return enabled !== false;
+    });
+  }
+  return false;
+}
+
+export function compatibleTraceIntakeDatasets(datasets: Dataset[]) {
+  return datasets.filter(datasetHasTraceIntakeRules);
+}
+
+export function datasetExpectedValueOptions(dataset: Dataset) {
+  const settings = dataset.settings as typeof dataset.settings & {
+    expectedValueOptions?: Array<{ value: JSONValue; label: string; description?: string | null }>;
+    expectedJsonSchema?: JSONValue;
+  };
+  if (Array.isArray(settings.expectedValueOptions) && settings.expectedValueOptions.length > 0) {
+    return settings.expectedValueOptions;
+  }
+  const schema = settings.expectedJsonSchema;
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+    return [];
+  }
+  const enumValues = (schema as { enum?: JSONValue[] }).enum;
+  if (!Array.isArray(enumValues)) {
+    return [];
+  }
+  return enumValues.map((value) => ({ value, label: jsonPreview(value, 48) }));
 }
 
 export function splitCoverageLabel(splitCounts: JSONValue) {
   if (!splitCounts || typeof splitCounts !== "object" || Array.isArray(splitCounts)) {
     return "not reported";
   }
-  return DATASET_SPLITS.map((split) => `${split}: ${String(splitCounts[split] ?? 0)}`).join(" · ");
+  return DATASET_SPLITS.map(
+    (split) => `${datasetSplitLabel(split)}: ${String(splitCounts[split] ?? 0)}`,
+  ).join(" · ");
+}
+
+export function datasetSplitLabel(split: DatasetSplit) {
+  if (split === "training") {
+    return "Training";
+  }
+  if (split === "validation") {
+    return "Validation";
+  }
+  return "Test";
+}
+
+export function curationStatusLabel(status: DatasetCurationStatus) {
+  if (status === "needs_expected") {
+    return "Needs expected result";
+  }
+  if (status === "needs_review") {
+    return "Needs review";
+  }
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+export function datasetValueTypeLabel(value: JSONValue | undefined) {
+  return value === "json" ? "JSON" : "Text";
 }
 
 export function parseRawValue(text: string, type: "json" | "text") {

@@ -279,9 +279,12 @@ raw response payloads. The public GraphQL error must not expose internal schema
 paths unless the error taxonomy explicitly allows that detail.
 
 Malformed private requests received by Go services must return bridge error
-responses in the AsyncAPI envelope shape for that subject where possible.
-Handlers must never return a success envelope with omitted required fields as a
-fallback for marshalling or validation failures.
+responses in the AsyncAPI envelope shape for that subject after the handler has
+decoded enough of the request to identify the subject envelope. If envelope
+decoding fails before the subject is known, the handler must NAK or reject the
+message according to the adapter contract and emit a structured `ERR-010`
+validation log. Handlers must never return a success envelope with omitted
+required fields as a fallback for marshalling or validation failures.
 
 Go services must log dependency state transitions and recovered panics using
 bounded messages. Logs must include service, event, request_id when known,
@@ -291,6 +294,16 @@ tokens, session cookies, provider secrets, or arbitrary request bodies.
 
 Self-observability exporter failures remain isolated from request handling,
 readiness, and shutdown. Exporter shutdown flushes are best-effort.
+
+Deep database adapter tracing is a diagnostics feature, not a dependency.
+Unsupported adapter tracing must no-op. Failed span creation, exporter
+backpressure, exporter outage, invalid incoming trace context, or disabled
+trace export must never change adapter return values, readiness state, retry
+classification, JetStream ack/NAK decisions, request/reply responses, or
+shutdown order. Database adapter tracing must use bounded operation labels and
+sanitized CloudGrid error mapping only; raw SQL, SurrealQL, query parameters,
+response documents, provider error strings, credentials, tenant IDs, company
+IDs, project IDs, and secret-store payloads must not be logged or exported.
 
 ## Test And Verification Requirements
 
@@ -306,6 +319,11 @@ Default unit tests must not require Docker, NATS, or SurrealDB. They must cover:
 - BFF event-loop protection for oversized request bodies, large validation
   issue lists, and subscription queue saturation;
 - SurrealDB readiness lock contention or slow-readiness behavior using fakes;
+- deep database adapter tracing disabled-by-default behavior, deployed-mode
+  configuration rejection, unsupported-adapter no-op behavior, parent-context
+  propagation for supported regular adapters, and redaction of raw query text,
+  parameters, responses, provider errors, credentials, and secret-store
+  operations;
 - shutdown idempotency and ordering for every service composition root;
 - readiness state transitions from ready to degraded to ready;
 - response validation failures mapped separately from transport failures;

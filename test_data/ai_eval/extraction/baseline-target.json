@@ -1,0 +1,56 @@
+{
+  "id": "target-order-extraction-baseline-v1",
+  "kind": "prompt",
+  "name": "Order confirmation extractor baseline",
+  "version": 1,
+  "digest": "fixture-digest-order-extraction-baseline-v1",
+  "createdAt": "2026-05-31T00:00:00Z",
+  "createdBy": "fixture",
+  "source": "imported",
+  "parts": [
+    {
+      "partKind": "prompt",
+      "partRef": "order-extraction-prompt",
+      "version": 1,
+      "digest": "fixture-digest-order-extraction-prompt-v1",
+      "contentRef": "file:baseline-prompt.md",
+      "summary": "Weak extraction prompt with no strict JSON-only schema summary, date normalization, or country/quantity rules.",
+      "metadata": {
+        "format": "markdown",
+        "editable": true,
+        "tokenEstimate": 55
+      }
+    },
+    {
+      "partKind": "examples",
+      "partRef": "order-extraction-examples",
+      "version": 1,
+      "digest": "fixture-digest-order-extraction-examples-v1",
+      "contentRef": "file:baseline-examples.jsonl",
+      "summary": "Two simple examples that do not cover natural dates, word quantities, discount omission, distractor amounts, or country normalization.",
+      "metadata": {
+        "format": "jsonl",
+        "editable": true,
+        "exampleCount": 2
+      }
+    },
+    {
+      "partKind": "model_config",
+      "partRef": "order-extraction-model-config",
+      "version": 1,
+      "digest": "fixture-digest-order-extraction-model-config-v1",
+      "summary": "Provider-neutral deterministic local harness alias.",
+      "metadata": {
+        "modelAlias": "local-fixture-fast",
+        "temperature": 0,
+        "editable": false
+      }
+    }
+  ],
+  "metadata": {
+    "fixturePack": "test_data/ai_eval/extraction",
+    "evaluationFamily": "extraction",
+    "expectedOptimizerKinds": ["critic_mutate_judge_pick", "bootstrap_fewshot"]
+  },
+  "reproducibility": "full"
+}

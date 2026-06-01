@@ -41,6 +41,25 @@ const result: LogSearchResult = {
   nextCursor: null,
 };
 
+const cloudgridLog: LogEvent = {
+  id: "cloudgrid-log-1",
+  traceId: "cloudgrid-trace-1",
+  spanId: "cloudgrid-span-1",
+  serviceName: "cloudgrid.storage_read",
+  severityText: "WARN",
+  severityNumber: 13,
+  body: "storage read NATS handler failed",
+  timestamp: "2026-05-15T08:05:00.000Z",
+  observedTimestamp: "2026-05-15T08:05:01.000Z",
+  attributes: {
+    "cloudgrid.event": "storage_query_failed",
+    "cloudgrid.error_code": "STORAGE_UNAVAILABLE",
+    "cloudgrid.service": "cloudgrid.storage_read",
+    "service.name": "cloudgrid.storage_read",
+  },
+  correlation: "span",
+};
+
 function renderWithProviders(children: ReactNode) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -146,6 +165,28 @@ describe("logs UX migration", () => {
     expect(markup).toContain('aria-label="Copy attribute key service.name"');
     expect(markup).toContain('aria-label="Copy attribute value service.name"');
     expect(markup).toContain("Raw attributes");
+  });
+
+  test("renders CloudGrid self-observability logs through the normal Logs UI", () => {
+    const tableMarkup = renderWithProviders(
+      <LogTable
+        result={{ items: [cloudgridLog], nextCursor: null }}
+        selectedLogId="cloudgrid-log-1"
+        sort="timestamp_desc"
+      />,
+    );
+    const inspectorMarkup = renderWithProviders(
+      <LogInspector log={cloudgridLog} onTabChange={() => {}} tab="correlation" />,
+    );
+
+    expect(tableMarkup).toContain("cloudgrid.storage_read");
+    expect(tableMarkup).toContain("storage read NATS handler failed");
+    expect(tableMarkup).toContain("/traces/cloudgrid-trace-1");
+    expect(tableMarkup).toContain("/traces/cloudgrid-trace-1?spanId=cloudgrid-span-1");
+    expect(inspectorMarkup).toContain("cloudgrid-trace-1");
+    expect(inspectorMarkup).toContain("cloudgrid-span-1");
+    expect(inspectorMarkup).toContain("Open trace");
+    expect(inspectorMarkup).toContain("Open span");
   });
 
   test("uses shared log query defaults instead of route-local constants", () => {

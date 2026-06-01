@@ -1,12 +1,12 @@
 ---
-id: REV-006
+id: REV-009
 title: Metrics implementation scope
 layer: review
 status: draft
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-14
+updated: 2026-05-28
 provenance: user-directed
-depends_on: [DOM-007, TEC-BE-017, TEC-FE-008]
+depends_on: [DOM-008, TEC-BE-017, TEC-FE-011]
 ---
 
 # Metrics Implementation Scope

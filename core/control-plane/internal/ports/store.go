@@ -182,20 +182,6 @@ type CompanyAiProviderSettingsRecord struct {
 	Version         int
 }
 
-type AiProviderSecretRecord struct {
-	ID              string
-	Scope           string
-	CompanyID       string
-	ProjectID       string
-	ProviderID      string
-	Algorithm       string
-	Nonce           string
-	Ciphertext      string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-	UpdatedByUserID string
-}
-
 type AiChatConversationRecord struct {
 	ID                 string
 	CompanyID          string
@@ -383,8 +369,6 @@ type ControlStore interface {
 	PutProjectAiSettings(ctx context.Context, settings ProjectAiSettingsRecord) error
 	GetCompanyAiProviderSettings(ctx context.Context, companyID string) (CompanyAiProviderSettingsRecord, bool, error)
 	PutCompanyAiProviderSettings(ctx context.Context, settings CompanyAiProviderSettingsRecord) error
-	GetAiProviderSecret(ctx context.Context, secretID string) (AiProviderSecretRecord, bool, error)
-	PutAiProviderSecret(ctx context.Context, secret AiProviderSecretRecord) error
 	GetAiChatConversation(ctx context.Context, conversationID string) (AiChatConversationRecord, bool, error)
 	ListAiChatConversations(ctx context.Context, companyID string, userID string, projectID *string, includeArchived bool, limit int) ([]AiChatConversationRecord, error)
 	PutAiChatConversation(ctx context.Context, conversation AiChatConversationRecord) error

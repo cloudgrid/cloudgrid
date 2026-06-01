@@ -1,0 +1,2 @@
+{"id":"real-test-001","split":"test","input":{"ticket":"I need billing usage for workspace W-310 before a plan downgrade."},"expected":{"action":"explain_where_to_check_usage","mustMention":"workspace W-310"},"rubric":{"passIf":"mentions the workspace id and plan downgrade context"}}
+

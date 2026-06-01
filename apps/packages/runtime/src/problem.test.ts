@@ -57,4 +57,17 @@ describe("problem details", () => {
       retryable: true,
     });
   });
+
+  test("maps AI Eval taxonomy ids", () => {
+    expect(createProblemDetails({ id: "ERR-AIE-003" })).toMatchObject({
+      status: 503,
+      code: "EVAL_HARNESS_UNREACHABLE",
+      retryable: true,
+    });
+    expect(createProblemDetails({ id: "ERR-AIE-006" })).toMatchObject({
+      status: 400,
+      code: "EVAL_CONTENT_NOT_CAPTURED",
+      retryable: false,
+    });
+  });
 });

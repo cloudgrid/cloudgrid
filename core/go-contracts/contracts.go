@@ -2264,11 +2264,49 @@ const (
 type DatasetSplit string
 
 const (
-	DatasetSplitDev          DatasetSplit = "dev"
-	DatasetSplitOptimization DatasetSplit = "optimization"
-	DatasetSplitValidation   DatasetSplit = "validation"
-	DatasetSplitRegression   DatasetSplit = "regression"
-	DatasetSplitHoldout      DatasetSplit = "holdout"
+	DatasetSplitTraining   DatasetSplit = "training"
+	DatasetSplitValidation DatasetSplit = "validation"
+	DatasetSplitTest       DatasetSplit = "test"
+)
+
+type DatasetCurationStatus string
+
+const (
+	DatasetCurationStatusDraft         DatasetCurationStatus = "draft"
+	DatasetCurationStatusNeedsExpected DatasetCurationStatus = "needs_expected"
+	DatasetCurationStatusNeedsReview   DatasetCurationStatus = "needs_review"
+	DatasetCurationStatusReady         DatasetCurationStatus = "ready"
+	DatasetCurationStatusRejected      DatasetCurationStatus = "rejected"
+)
+
+type DatasetContentTreatment string
+
+const (
+	DatasetContentTreatmentOriginal            DatasetContentTreatment = "original"
+	DatasetContentTreatmentRealisticAnonymized DatasetContentTreatment = "realistic_anonymized"
+	DatasetContentTreatmentRedacted            DatasetContentTreatment = "redacted"
+	DatasetContentTreatmentSynthetic           DatasetContentTreatment = "synthetic"
+)
+
+type DatasetCandidateSourceKind string
+
+const (
+	DatasetCandidateSourceKindTrace                 DatasetCandidateSourceKind = "trace"
+	DatasetCandidateSourceKindSpan                  DatasetCandidateSourceKind = "span"
+	DatasetCandidateSourceKindMetricResult          DatasetCandidateSourceKind = "metric_result"
+	DatasetCandidateSourceKindEvaluationItemRun     DatasetCandidateSourceKind = "evaluation_item_run"
+	DatasetCandidateSourceKindProductionMeasurement DatasetCandidateSourceKind = "production_measurement"
+	DatasetCandidateSourceKindCoverageGap           DatasetCandidateSourceKind = "coverage_gap"
+	DatasetCandidateSourceKindHealthIssue           DatasetCandidateSourceKind = "health_issue"
+	DatasetCandidateSourceKindFailureCluster        DatasetCandidateSourceKind = "failure_cluster"
+	DatasetCandidateSourceKindManual                DatasetCandidateSourceKind = "manual"
+)
+
+type DatasetTraceSelectionMode string
+
+const (
+	DatasetTraceSelectionModeSelected      DatasetTraceSelectionMode = "selected"
+	DatasetTraceSelectionModeCurrentFilter DatasetTraceSelectionMode = "current_filter"
 )
 
 type DatasetReviewStatus string
@@ -2619,6 +2657,23 @@ type OptimizationGetRequest struct {
 	OptimizationRunID string `json:"optimizationRunId"`
 }
 
+type OptimizationStepPersistRequest struct {
+	BridgeEnvelope
+	ProjectID         string         `json:"projectId"`
+	OptimizationRunID string         `json:"optimizationRunId"`
+	StepID            string         `json:"stepId"`
+	IdempotencyKey    string         `json:"idempotencyKey"`
+	Payload           map[string]any `json:"payload"`
+}
+
+type OptimizationMemoryPersistRequest struct {
+	BridgeEnvelope
+	ProjectID         string         `json:"projectId"`
+	OptimizationRunID string         `json:"optimizationRunId"`
+	IdempotencyKey    string         `json:"idempotencyKey"`
+	Payload           map[string]any `json:"payload"`
+}
+
 type TargetPromoteRequest struct {
 	BridgeEnvelope
 	ProjectID           string         `json:"projectId"`
@@ -2645,29 +2700,48 @@ type IngestCredentialRevokeRequest struct {
 }
 
 type DatasetCandidateSource struct {
-	SourceKind      string  `json:"sourceKind"`
-	TraceID         *string `json:"traceId,omitempty"`
-	SpanID          *string `json:"spanId,omitempty"`
-	EvalResultID    *string `json:"evalResultId,omitempty"`
-	ExperimentRunID *string `json:"experimentRunId,omitempty"`
-	PolicyID        *string `json:"policyId,omitempty"`
-	CoverageGapID   *string `json:"coverageGapId,omitempty"`
-	HealthIssueID   *string `json:"healthIssueId,omitempty"`
-	ClusterID       *string `json:"clusterId,omitempty"`
+	SourceKind              DatasetCandidateSourceKind `json:"sourceKind"`
+	TraceID                 *string                    `json:"traceId,omitempty"`
+	SpanID                  *string                    `json:"spanId,omitempty"`
+	MetricResultID          *string                    `json:"metricResultId,omitempty"`
+	EvaluationItemRunID     *string                    `json:"evaluationItemRunId,omitempty"`
+	ProductionMeasurementID *string                    `json:"productionMeasurementId,omitempty"`
+	CoverageGapID           *string                    `json:"coverageGapId,omitempty"`
+	HealthIssueID           *string                    `json:"healthIssueId,omitempty"`
+	ClusterID               *string                    `json:"clusterId,omitempty"`
+}
+
+type DatasetTraceRef struct {
+	TraceID string `json:"traceId"`
+}
+
+type DatasetSpanRef struct {
+	TraceID string `json:"traceId"`
+	SpanID  string `json:"spanId"`
+}
+
+type DatasetTraceCandidateSelection struct {
+	Mode      *DatasetTraceSelectionMode `json:"mode,omitempty"`
+	TraceRefs []DatasetTraceRef          `json:"traceRefs,omitempty"`
+	SpanRefs  []DatasetSpanRef           `json:"spanRefs,omitempty"`
+	Search    map[string]any             `json:"search,omitempty"`
 }
 
 type DatasetCandidatesPrepareRequest struct {
 	BridgeEnvelope
-	ProjectID                  string                   `json:"projectId"`
-	DatasetID                  *string                  `json:"datasetId,omitempty"`
-	Sources                    []DatasetCandidateSource `json:"sources"`
-	TargetShape                *string                  `json:"targetShape,omitempty"`
-	Split                      *string                  `json:"split,omitempty"`
-	ReviewStatus               *string                  `json:"reviewStatus,omitempty"`
-	ContentTreatment           *string                  `json:"contentTreatment,omitempty"`
-	AnonymizationPolicyID      *string                  `json:"anonymizationPolicyId,omitempty"`
-	AnonymizationPolicyVersion *int                     `json:"anonymizationPolicyVersion,omitempty"`
-	IdempotencyKey             string                   `json:"idempotencyKey"`
+	ProjectID                  string                          `json:"projectId"`
+	DatasetID                  *string                         `json:"datasetId,omitempty"`
+	DatasetIDs                 []string                        `json:"datasetIds,omitempty"`
+	AutoMatchDatasets          *bool                           `json:"autoMatchDatasets,omitempty"`
+	Sources                    []DatasetCandidateSource        `json:"sources,omitempty"`
+	TraceSelection             *DatasetTraceCandidateSelection `json:"traceSelection,omitempty"`
+	PreviewLimit               *int                            `json:"previewLimit,omitempty"`
+	Split                      *DatasetSplit                   `json:"split,omitempty"`
+	CurationStatus             *DatasetCurationStatus          `json:"curationStatus,omitempty"`
+	ContentTreatment           *DatasetContentTreatment        `json:"contentTreatment,omitempty"`
+	AnonymizationPolicyID      *string                         `json:"anonymizationPolicyId,omitempty"`
+	AnonymizationPolicyVersion *int                            `json:"anonymizationPolicyVersion,omitempty"`
+	IdempotencyKey             string                          `json:"idempotencyKey"`
 }
 
 type DatasetCandidatesSearchRequest struct {
@@ -2840,16 +2914,20 @@ type ExperimentRunControlRequest struct {
 
 type OptimizationStartRequest struct {
 	BridgeEnvelope
-	ProjectID           string              `json:"projectId"`
-	DatasetVersionID    string              `json:"datasetVersionId"`
-	TargetSnapshotID    string              `json:"targetSnapshotId"`
-	IdempotencyKey      string              `json:"idempotencyKey"`
-	ExperimentID        string              `json:"experimentId"`
-	OptimizerKind       OptimizerKind       `json:"optimizerKind"`
-	BasePromptVersionID string              `json:"basePromptVersionId"`
-	SplitSelector       map[string]any      `json:"splitSelector,omitempty"`
-	Config              *OptimizationConfig `json:"config,omitempty"`
-	RunPolicy           *EvalRunPolicy      `json:"runPolicy,omitempty"`
+	ProjectID                        string         `json:"projectId"`
+	BaselineTargetSnapshotID         string         `json:"baselineTargetSnapshotId"`
+	Objective                        map[string]any `json:"objective"`
+	SearchPolicy                     map[string]any `json:"searchPolicy"`
+	IdempotencyKey                   string         `json:"idempotencyKey"`
+	EvaluationDefinitionID           string         `json:"evaluationDefinitionId,omitempty"`
+	ComparisonID                     string         `json:"comparisonId,omitempty"`
+	TrainingEvaluationDefinitionID   string         `json:"trainingEvaluationDefinitionId,omitempty"`
+	TrainingSplitSelector            map[string]any `json:"trainingSplitSelector,omitempty"`
+	ValidationEvaluationDefinitionID string         `json:"validationEvaluationDefinitionId,omitempty"`
+	ValidationSplitSelector          map[string]any `json:"validationSplitSelector,omitempty"`
+	TestEvaluationDefinitionID       string         `json:"testEvaluationDefinitionId,omitempty"`
+	QuickShotPolicy                  map[string]any `json:"quickShotPolicy,omitempty"`
+	RunPolicy                        *EvalRunPolicy `json:"runPolicy,omitempty"`
 }
 
 type ExperimentStartData struct {
@@ -3124,9 +3202,20 @@ type ProjectAiSettingsUpdateResponse struct {
 	Error     *BridgeError   `json:"error,omitempty"`
 }
 
+type AiProviderSettingsData struct {
+	Settings map[string]any `json:"settings"`
+}
+
 type ProjectAiProviderSettingsGetRequest struct {
 	BridgeEnvelope
 	ProjectID string `json:"projectId"`
+}
+
+type ProjectAiProviderSettingsGetResponse struct {
+	RequestID string                  `json:"requestId"`
+	OK        bool                    `json:"ok"`
+	Data      *AiProviderSettingsData `json:"data,omitempty"`
+	Error     *BridgeError            `json:"error,omitempty"`
 }
 
 type ProjectAiProviderSettingsUpdateRequest struct {
@@ -3137,9 +3226,23 @@ type ProjectAiProviderSettingsUpdateRequest struct {
 	ExpectedVersion  int              `json:"expectedVersion"`
 }
 
+type ProjectAiProviderSettingsUpdateResponse struct {
+	RequestID string                  `json:"requestId"`
+	OK        bool                    `json:"ok"`
+	Data      *AiProviderSettingsData `json:"data,omitempty"`
+	Error     *BridgeError            `json:"error,omitempty"`
+}
+
 type CompanyAiProviderSettingsGetRequest struct {
 	BridgeEnvelope
 	CompanyID string `json:"companyId"`
+}
+
+type CompanyAiProviderSettingsGetResponse struct {
+	RequestID string                  `json:"requestId"`
+	OK        bool                    `json:"ok"`
+	Data      *AiProviderSettingsData `json:"data,omitempty"`
+	Error     *BridgeError            `json:"error,omitempty"`
 }
 
 type CompanyAiProviderSettingsUpdateRequest struct {
@@ -3150,9 +3253,27 @@ type CompanyAiProviderSettingsUpdateRequest struct {
 	ExpectedVersion int            `json:"expectedVersion"`
 }
 
+type CompanyAiProviderSettingsUpdateResponse struct {
+	RequestID string                  `json:"requestId"`
+	OK        bool                    `json:"ok"`
+	Data      *AiProviderSettingsData `json:"data,omitempty"`
+	Error     *BridgeError            `json:"error,omitempty"`
+}
+
 type AiProviderSecretResolveRequest struct {
 	BridgeEnvelope
 	CredentialRef string `json:"credentialRef"`
+}
+
+type AiProviderSecretResolveData struct {
+	Credential map[string]any `json:"credential"`
+}
+
+type AiProviderSecretResolveResponse struct {
+	RequestID string                       `json:"requestId"`
+	OK        bool                         `json:"ok"`
+	Data      *AiProviderSecretResolveData `json:"data,omitempty"`
+	Error     *BridgeError                 `json:"error,omitempty"`
 }
 
 type AiChatHistoryRequest struct {
@@ -3165,9 +3286,27 @@ type AiChatHistoryRequest struct {
 	After           *string `json:"after,omitempty"`
 }
 
+type AiChatHistoryResponse struct {
+	RequestID string         `json:"requestId"`
+	OK        bool           `json:"ok"`
+	Data      map[string]any `json:"data,omitempty"`
+	Error     *BridgeError   `json:"error,omitempty"`
+}
+
 type AiChatConversationGetRequest struct {
 	BridgeEnvelope
 	ConversationID string `json:"conversationId"`
+}
+
+type AiChatConversationData struct {
+	Conversation map[string]any `json:"conversation"`
+}
+
+type AiChatConversationGetResponse struct {
+	RequestID string                  `json:"requestId"`
+	OK        bool                    `json:"ok"`
+	Data      *AiChatConversationData `json:"data,omitempty"`
+	Error     *BridgeError            `json:"error,omitempty"`
 }
 
 type AiChatConversationCreateRequest struct {
@@ -3179,11 +3318,25 @@ type AiChatConversationCreateRequest struct {
 	FirstUserMessage string  `json:"firstUserMessage"`
 }
 
+type AiChatConversationCreateResponse struct {
+	RequestID string                  `json:"requestId"`
+	OK        bool                    `json:"ok"`
+	Data      *AiChatConversationData `json:"data,omitempty"`
+	Error     *BridgeError            `json:"error,omitempty"`
+}
+
 type AiChatConversationArchiveRequest struct {
 	BridgeEnvelope
 	ConversationID  string `json:"conversationId"`
 	UserID          string `json:"userId"`
 	ExpectedVersion int    `json:"expectedVersion"`
+}
+
+type AiChatConversationArchiveResponse struct {
+	RequestID string                  `json:"requestId"`
+	OK        bool                    `json:"ok"`
+	Data      *AiChatConversationData `json:"data,omitempty"`
+	Error     *BridgeError            `json:"error,omitempty"`
 }
 
 type AiChatConversationDeleteRequest struct {
@@ -3192,12 +3345,30 @@ type AiChatConversationDeleteRequest struct {
 	UserID         string `json:"userId"`
 }
 
+type AiChatConversationDeleteData struct {
+	Deleted bool `json:"deleted"`
+}
+
+type AiChatConversationDeleteResponse struct {
+	RequestID string                        `json:"requestId"`
+	OK        bool                          `json:"ok"`
+	Data      *AiChatConversationDeleteData `json:"data,omitempty"`
+	Error     *BridgeError                  `json:"error,omitempty"`
+}
+
 type AiChatMessageAppendRequest struct {
 	BridgeEnvelope
 	ConversationID string           `json:"conversationId"`
 	RunID          string           `json:"runId"`
 	Role           string           `json:"role"`
 	Parts          []map[string]any `json:"parts"`
+}
+
+type AiChatMessageAppendResponse struct {
+	RequestID string         `json:"requestId"`
+	OK        bool           `json:"ok"`
+	Data      map[string]any `json:"data,omitempty"`
+	Error     *BridgeError   `json:"error,omitempty"`
 }
 
 type AiChatRunCreateRequest struct {
@@ -3266,6 +3437,13 @@ type AiChatActionProposeRequest struct {
 	ExpiresAt        string         `json:"expiresAt"`
 }
 
+type AiChatActionProposeResponse struct {
+	RequestID string         `json:"requestId"`
+	OK        bool           `json:"ok"`
+	Data      map[string]any `json:"data,omitempty"`
+	Error     *BridgeError   `json:"error,omitempty"`
+}
+
 type AiChatActionApproveRequest struct {
 	BridgeEnvelope
 	ActionProposalID string  `json:"actionProposalId"`
@@ -3276,11 +3454,25 @@ type AiChatActionApproveRequest struct {
 	ExpectedVersion  int     `json:"expectedVersion"`
 }
 
+type AiChatActionApproveResponse struct {
+	RequestID string         `json:"requestId"`
+	OK        bool           `json:"ok"`
+	Data      map[string]any `json:"data,omitempty"`
+	Error     *BridgeError   `json:"error,omitempty"`
+}
+
 type AiChatActionFinishRequest struct {
 	BridgeEnvelope
 	ActionProposalID string         `json:"actionProposalId"`
 	Status           string         `json:"status"`
 	Result           map[string]any `json:"result,omitempty"`
+}
+
+type AiChatActionFinishResponse struct {
+	RequestID string         `json:"requestId"`
+	OK        bool           `json:"ok"`
+	Data      map[string]any `json:"data,omitempty"`
+	Error     *BridgeError   `json:"error,omitempty"`
 }
 
 type AiChatCompactionSaveRequest struct {
@@ -3291,4 +3483,11 @@ type AiChatCompactionSaveRequest struct {
 	RetainedMessageIDs []string `json:"retainedMessageIds"`
 	ArtifactSummaries  []string `json:"artifactSummaries"`
 	PendingActionIDs   []string `json:"pendingActionIds"`
+}
+
+type AiChatCompactionSaveResponse struct {
+	RequestID string         `json:"requestId"`
+	OK        bool           `json:"ok"`
+	Data      map[string]any `json:"data,omitempty"`
+	Error     *BridgeError   `json:"error,omitempty"`
 }

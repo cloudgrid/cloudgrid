@@ -200,6 +200,64 @@ func TestExperimentStartHandlerRejectsInvalidPayloadBeforeBoundaryCalls(t *testi
 	}
 }
 
+func TestBridgeErrorFromErrorMapsAiEvalTaxonomy(t *testing.T) {
+	cases := []struct {
+		name      string
+		err       error
+		wantID    string
+		wantCode  string
+		retryable bool
+	}{
+		{
+			name:     "dataset not found",
+			err:      errors.New("ERR-AIE-001: dataset version missing"),
+			wantID:   "ERR-AIE-001",
+			wantCode: "EVAL_DATASET_NOT_FOUND",
+		},
+		{
+			name:     "scorer not found",
+			err:      errors.New("ERR-AIE-002: scorer missing"),
+			wantID:   "ERR-AIE-002",
+			wantCode: "EVAL_SCORER_NOT_FOUND",
+		},
+		{
+			name:      "harness unreachable",
+			err:       errors.New("ERR-AIE-003: harness unavailable"),
+			wantID:    "ERR-AIE-003",
+			wantCode:  "EVAL_HARNESS_UNREACHABLE",
+			retryable: true,
+		},
+		{
+			name:      "run limit exceeded",
+			err:       errors.New("ERR-AIE-004: evaluation budget exhausted"),
+			wantID:    "ERR-AIE-004",
+			wantCode:  "EVAL_RUN_LIMIT_EXCEEDED",
+			retryable: true,
+		},
+		{
+			name:     "projection ambiguous",
+			err:      errors.New("ERR-AIE-005: projection ambiguous"),
+			wantID:   "ERR-AIE-005",
+			wantCode: "EVAL_PROJECTION_AMBIGUOUS",
+		},
+		{
+			name:     "content not captured",
+			err:      errors.New("ERR-AIE-006: content not captured"),
+			wantID:   "ERR-AIE-006",
+			wantCode: "EVAL_CONTENT_NOT_CAPTURED",
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			got := bridgeErrorFromError(tt.err)
+			if got.ID != tt.wantID || got.Code != tt.wantCode || got.Retryable != tt.retryable {
+				t.Fatalf("bridgeErrorFromError(%v) = %#v", tt.err, got)
+			}
+		})
+	}
+}
+
 func TestPersistedProjectionHandlerValidatesNotificationWithoutHarnessCall(t *testing.T) {
 	harness := &runtimeHarness{}
 	runner := orchestrator.NewRunner(orchestrator.RunnerConfig{
@@ -474,6 +532,115 @@ func TestHarnessHTTPAdapterCallsHarnessOnlyWithTraceContext(t *testing.T) {
 	}
 }
 
+func TestExternalHTTPAdapterPollsAsyncWithTraceContextAndOutputRef(t *testing.T) {
+	var gotStartTraceparent string
+	var gotPollTraceparent string
+	pollCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/eval-runs":
+			gotStartTraceparent = r.Header.Get("traceparent")
+			if r.Header.Get("tracestate") != "cg=1" {
+				t.Fatalf("start tracestate = %q", r.Header.Get("tracestate"))
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "running", "runRef": "run-1"})
+		case r.Method == http.MethodGet && r.URL.Path == "/eval-runs/run-1":
+			gotPollTraceparent = r.Header.Get("traceparent")
+			pollCount++
+			if pollCount == 1 {
+				_ = json.NewEncoder(w).Encode(map[string]any{"status": "running"})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status":          "completed",
+				"actualOutputRef": "artifact://outputs/1",
+				"traceId":         "trace-1",
+				"rootSpanId":      "span-1",
+				"usage":           map[string]any{"inputTokens": 10},
+				"cost":            map[string]any{"usd": 0.01},
+				"timing":          map[string]any{"durationMs": 15},
+				"traceRefs":       []map[string]any{{"kind": "trace", "traceId": "trace-1"}},
+				"artifactRefs":    []map[string]any{{"kind": "artifact", "id": "artifact://outputs/1"}},
+				"importantSteps":  []map[string]any{{"name": "must-be-ignored"}},
+			})
+		default:
+			t.Fatalf("unexpected adapter request %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	result, err := (ExternalHTTPAdapter{Client: server.Client(), Timeout: time.Second}).RunEvaluationItem(context.Background(), ports.ExternalAdapterRunRequest{
+		RequestID:       "request-1",
+		IdempotencyKey:  "key-1",
+		EvaluationRunID: "eval-run-1",
+		ItemRevisionID:  "revision-1",
+		Input:           map[string]any{"q": "run"},
+		TargetRef:       map[string]any{"adapterUrl": server.URL},
+		TraceContext:    map[string]string{"traceparent": "00-test", "tracestate": "cg=1"},
+	})
+
+	if err != nil {
+		t.Fatalf("RunEvaluationItem returned error: %v", err)
+	}
+	if gotStartTraceparent != "00-test" || gotPollTraceparent != "00-test" {
+		t.Fatalf("traceparent propagation start=%q poll=%q", gotStartTraceparent, gotPollTraceparent)
+	}
+	if result.ActualOutputRef != "artifact://outputs/1" || result.TraceID != "trace-1" || result.RootSpanID != "span-1" {
+		t.Fatalf("result = %#v", result)
+	}
+	if len(result.TraceRefs) != 1 || len(result.ArtifactRefs) != 1 || result.Usage["inputTokens"] != float64(10) || result.Cost["usd"] != 0.01 || result.Timing["durationMs"] != float64(15) {
+		t.Fatalf("metadata result = %#v", result)
+	}
+}
+
+func TestExternalHTTPAdapterCancelsAsyncRunOnTimeout(t *testing.T) {
+	cancelled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "running", "runRef": "run-1"})
+		case http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "running"})
+		case http.MethodDelete:
+			cancelled = true
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "cancelled"})
+		default:
+			t.Fatalf("unexpected method %s", r.Method)
+		}
+	}))
+	defer server.Close()
+
+	_, err := (ExternalHTTPAdapter{Client: server.Client(), Timeout: 15 * time.Millisecond}).RunEvaluationItem(context.Background(), ports.ExternalAdapterRunRequest{
+		RequestID:      "request-1",
+		IdempotencyKey: "key-1",
+		TargetRef:      map[string]any{"adapterUrl": server.URL},
+	})
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("RunEvaluationItem error = %v, want deadline", err)
+	}
+	if !cancelled {
+		t.Fatalf("expected async adapter cancellation request")
+	}
+}
+
+func TestExternalHTTPAdapterRejectsInvalidTerminalResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "completed", "traceId": "trace-1", "rootSpanId": "span-1"})
+	}))
+	defer server.Close()
+
+	_, err := (ExternalHTTPAdapter{Client: server.Client(), Timeout: time.Second}).RunEvaluationItem(context.Background(), ports.ExternalAdapterRunRequest{
+		RequestID:      "request-1",
+		IdempotencyKey: "key-1",
+		TargetRef:      map[string]any{"adapterUrl": server.URL},
+	})
+
+	if err == nil || err.Error() != "ERR-023 RESPONSE_CONTRACT_INVALID: external adapter terminal response requires actualOutput or actualOutputRef" {
+		t.Fatalf("RunEvaluationItem error = %v", err)
+	}
+}
+
 type runtimeMessage struct {
 	subject  string
 	data     []byte
@@ -567,6 +734,10 @@ func (reader *runtimeReader) GetTargetSnapshot(_ context.Context, targetSnapshot
 	return ports.TargetSnapshot{ID: targetSnapshotID, TargetRef: map[string]any{"kind": "prompt"}, Digest: "target-digest"}, nil
 }
 
+func (reader *runtimeReader) GetTraceEvidence(_ context.Context, _ ports.TraceEvidenceRequest) (ports.TraceEvidence, error) {
+	return ports.TraceEvidence{}, nil
+}
+
 func (reader *runtimeReader) ResolveManifest(_ context.Context, _ ports.ManifestResolveRequest) (ports.ExperimentManifest, error) {
 	return reader.manifest, nil
 }
@@ -596,6 +767,18 @@ func (writer *runtimeWriter) PersistEvalResult(_ context.Context, _ string, resu
 
 func (writer *runtimeWriter) PersistEvaluationResults(_ context.Context, result ports.EvaluationResultsPersist) error {
 	writer.evaluationResults = append(writer.evaluationResults, result)
+	return nil
+}
+
+func (writer *runtimeWriter) CreateTargetSnapshot(_ context.Context, request ports.TargetSnapshotCreateRequest) (ports.TargetSnapshot, error) {
+	return ports.TargetSnapshot{ID: "candidate-snapshot-1", TargetRef: request.TargetRef, Kind: "skill", Digest: "candidate-digest"}, nil
+}
+
+func (writer *runtimeWriter) PersistOptimizationStep(_ context.Context, _ ports.OptimizationStepPersistRequest) error {
+	return nil
+}
+
+func (writer *runtimeWriter) PersistOptimizationMemory(_ context.Context, _ ports.OptimizationMemoryPersistRequest) error {
 	return nil
 }
 
@@ -645,6 +828,30 @@ func (harness *runtimeHarness) Score(_ context.Context, request ports.HarnessSco
 func (harness *runtimeHarness) Optimize(_ context.Context, request ports.HarnessOptimizeRequest) (ports.HarnessOptimizeResult, error) {
 	harness.optimizeRequests = append(harness.optimizeRequests, request)
 	return harness.optimizeResult, nil
+}
+
+func (harness *runtimeHarness) SkillCapabilities(_ context.Context, _ map[string]string) (ports.SkillCapabilitiesResult, error) {
+	return ports.SkillCapabilitiesResult{SupportedOptimizerKinds: []string{"skill_text_edit"}, RuntimeModes: []string{"managed_harness"}, EditOps: []string{"append", "insert_after", "replace", "delete"}}, nil
+}
+
+func (harness *runtimeHarness) SkillRuntimeDryRun(_ context.Context, request ports.SkillRuntimeDryRunRequest) (ports.SkillRuntimeDryRunResult, error) {
+	return ports.SkillRuntimeDryRunResult{OptimizationRunID: request.OptimizationRunID, OK: true, CapabilityDigest: "capability-digest"}, nil
+}
+
+func (harness *runtimeHarness) SkillReflect(_ context.Context, request ports.SkillReflectRequest) (ports.SkillReflectResult, error) {
+	return ports.SkillReflectResult{OptimizationRunID: request.OptimizationRunID, StepID: request.StepID}, nil
+}
+
+func (harness *runtimeHarness) SkillMergeRank(_ context.Context, request ports.SkillMergeRankRequest) (ports.SkillMergeRankResult, error) {
+	return ports.SkillMergeRankResult{OptimizationRunID: request.OptimizationRunID, StepID: request.StepID, RankedProposals: request.Proposals}, nil
+}
+
+func (harness *runtimeHarness) SkillSlowUpdate(_ context.Context, request ports.SkillSlowUpdateRequest) (ports.SkillSlowUpdateResult, error) {
+	return ports.SkillSlowUpdateResult{OptimizationRunID: request.OptimizationRunID}, nil
+}
+
+func (harness *runtimeHarness) SkillMetaMemory(_ context.Context, request ports.SkillMetaMemoryRequest) (ports.SkillMetaMemoryResult, error) {
+	return ports.SkillMetaMemoryResult{OptimizationRunID: request.OptimizationRunID}, nil
 }
 
 type runtimePublisher struct{}

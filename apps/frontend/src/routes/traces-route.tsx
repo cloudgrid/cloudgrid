@@ -1,7 +1,8 @@
 import type { Dataset, TelemetryFacetResult, TraceSearchInput } from "@cloudgrid/ui-contracts";
 import { buildDatasetSearchInput, TRACE_SEARCH_DEFAULT_LIMIT } from "@cloudgrid/ui-contracts";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { ClipboardCopy, Clock, FileJson, Radio, SlidersHorizontal, X } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { InfiniteScrollSentinel } from "../components/infinite-scroll-sentinel";
 import { EmptyState, ErrorPanel, LoadingRows } from "../components/query-state";
@@ -11,6 +12,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -23,7 +25,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "../components/ui/sheet";
-import { compatibleTraceImportDatasets } from "../features/ai-eval/view-model-v2";
+import { compatibleTraceIntakeDatasets } from "../features/ai-eval/view-model-v2";
 import { FacetPanel } from "../features/telemetry/facet-panel";
 import { TraceFilters } from "../features/traces/trace-filters";
 import { TraceTable } from "../features/traces/trace-table";
@@ -39,6 +41,7 @@ export function TracesRoute() {
   const client = useTelemetryClient();
   const { viewer } = useAppSession();
   const projectId = viewer?.selectedProject?.id ?? "";
+  const [selectedTraceIds, setSelectedTraceIds] = useState<Set<string>>(() => new Set());
   const ingestSettingsHref = viewer?.selectedProject
     ? `/projects/${encodeURIComponent(viewer.selectedProject.id)}/settings/ingest`
     : "/projects";
@@ -93,6 +96,10 @@ export function TracesRoute() {
         nextCursor: query.hasNextPage ? (query.data.pages.at(-1)?.nextCursor ?? null) : null,
       }
     : null;
+  const visibleTraceIds = useMemo(
+    () => traceResult?.items.map((trace) => trace.id) ?? [],
+    [traceResult],
+  );
 
   if (traceMode === "live") {
     return (
@@ -102,6 +109,9 @@ export function TracesRoute() {
           mode={traceMode}
           onModeChange={setTraceMode}
           projectName={viewer?.selectedProject?.name ?? t("projects.select")}
+          projectId={projectId}
+          selectedTraceIds={new Set()}
+          visibleTraceIds={[]}
         />
         <LiveRoute embedded />
       </section>
@@ -115,6 +125,9 @@ export function TracesRoute() {
         mode={traceMode}
         onModeChange={setTraceMode}
         projectName={viewer?.selectedProject?.name ?? t("projects.select")}
+        projectId={projectId}
+        selectedTraceIds={selectedTraceIds}
+        visibleTraceIds={visibleTraceIds}
       />
       <TraceFilters
         filters={filters}
@@ -201,7 +214,9 @@ export function TracesRoute() {
             {query.isSuccess && traceResult && traceResult.items.length > 0 ? (
               <TraceTable
                 onSortChange={(value) => setFilter("sort", value)}
+                onSelectedTraceIdsChange={setSelectedTraceIds}
                 result={traceResult}
+                selectedTraceIds={selectedTraceIds}
                 sort={filters.sort ?? "startedAt_desc"}
               />
             ) : null}
@@ -313,11 +328,17 @@ function TraceModeHeader({
   mode,
   onModeChange,
   projectName,
+  projectId,
+  selectedTraceIds,
+  visibleTraceIds,
 }: {
   datasets: Dataset[];
   mode: "history" | "live";
   onModeChange: (mode: "history" | "live") => void;
   projectName: string;
+  projectId: string;
+  selectedTraceIds: ReadonlySet<string>;
+  visibleTraceIds: string[];
 }) {
   return (
     <div className="flex shrink-0 flex-col gap-3 border-b pb-3 lg:flex-row lg:items-end lg:justify-between">
@@ -335,7 +356,14 @@ function TraceModeHeader({
         <p className="text-sm text-muted-foreground">{t("traces.description")}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {mode === "history" ? <TraceToDatasetImportPicker datasets={datasets} /> : null}
+        {mode === "history" ? (
+          <TraceToDatasetCandidateDialog
+            datasets={datasets}
+            projectId={projectId}
+            selectedTraceIds={selectedTraceIds}
+            visibleTraceIds={visibleTraceIds}
+          />
+        ) : null}
         <div className="flex items-center gap-1 rounded-md border p-1">
           <Button
             onClick={() => onModeChange("history")}
@@ -361,33 +389,131 @@ function TraceModeHeader({
   );
 }
 
-function TraceToDatasetImportPicker({ datasets }: { datasets: Dataset[] }) {
-  const compatible = compatibleTraceImportDatasets(datasets);
+function TraceToDatasetCandidateDialog({
+  datasets,
+  projectId,
+  selectedTraceIds,
+  visibleTraceIds,
+}: {
+  datasets: Dataset[];
+  projectId: string;
+  selectedTraceIds: ReadonlySet<string>;
+  visibleTraceIds: string[];
+}) {
+  const compatible = compatibleTraceIntakeDatasets(datasets);
+  const selectedVisibleTraceIds = visibleTraceIds.filter((traceId) =>
+    selectedTraceIds.has(traceId),
+  );
+  const traceRefs = selectedVisibleTraceIds.map((traceId) => ({ traceId }));
+  const selectedCount = traceRefs.length;
+  const disabled = selectedCount === 0 || !projectId || compatible.length === 0;
+  const telemetryClient = useTelemetryClient();
+  const mutation = useMutation({
+    mutationFn: () =>
+      telemetryClient.prepareDatasetCandidates({
+        projectId,
+        autoMatchDatasets: true,
+        traceSelection: {
+          mode: "selected",
+          traceRefs,
+          spanRefs: [],
+        },
+        previewLimit: 100,
+        curationStatus: "needs_expected",
+        contentTreatment: "realistic_anonymized",
+        idempotencyKey: `trace-candidates-${Date.now()}`,
+      }),
+  });
+  const preparedCount = mutation.data?.items.length ?? 0;
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button size="sm" type="button" variant="outline">
+        <Button
+          disabled={selectedCount === 0 || !projectId}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
           <FileJson data-icon="inline-start" />
-          Add trace to dataset
+          {t("traces.prepareDatasetRows.action")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add trace to dataset</DialogTitle>
-          <DialogDescription>Only datasets with extraction settings are shown.</DialogDescription>
+          <DialogTitle>{t("traces.prepareDatasetRows.title")}</DialogTitle>
+          <DialogDescription>
+            {t(
+              selectedCount === 1
+                ? "traces.prepareDatasetRows.listDescription.one"
+                : "traces.prepareDatasetRows.listDescription.other",
+              { count: String(selectedCount) },
+            )}
+          </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-2">
-          {compatible.map((dataset) => (
-            <div className="border px-3 py-2 text-sm" key={dataset.id}>
-              {dataset.name}
+        <div className="grid gap-3">
+          <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+            <div className="font-medium">{t("traces.prepareDatasetRows.selectedCandidates")}</div>
+            <div className="mt-1 text-muted-foreground">
+              {t(
+                selectedCount === 1
+                  ? "traces.prepareDatasetRows.selectedCount.one"
+                  : "traces.prepareDatasetRows.selectedCount.other",
+                { count: String(selectedCount) },
+              )}
             </div>
-          ))}
-          {compatible.length === 0 ? (
-            <div className="border border-dashed p-3 text-sm text-muted-foreground">
-              No dataset has compatible extraction settings.
+          </div>
+          <div className="grid gap-2">
+            <div className="text-sm font-medium">
+              {t("traces.prepareDatasetRows.matchingDatasets")}
+            </div>
+            {compatible.map((dataset) => (
+              <div className="border px-3 py-2 text-sm" key={dataset.id}>
+                {dataset.name}
+              </div>
+            ))}
+            {compatible.length === 0 ? (
+              <div className="border border-dashed p-3 text-sm text-muted-foreground">
+                {t("traces.prepareDatasetRows.noCompatibleDatasets")}
+              </div>
+            ) : null}
+          </div>
+          <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+            {t("traces.prepareDatasetRows.previewNote")}
+          </div>
+          {mutation.data ? (
+            <div className="rounded-md border px-3 py-2 text-sm">
+              <div className="font-medium">
+                {t(
+                  preparedCount === 1
+                    ? "traces.prepareDatasetRows.prepared.one"
+                    : "traces.prepareDatasetRows.prepared.other",
+                  { count: String(preparedCount) },
+                )}
+              </div>
+              <div className="mt-1 text-muted-foreground">
+                {t("traces.prepareDatasetRows.reviewPrepared")}
+              </div>
+            </div>
+          ) : null}
+          {mutation.error ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {mutation.error.message}
             </div>
           ) : null}
         </div>
+        <DialogFooter>
+          <Button asChild type="button" variant="outline">
+            <Link to="/ai-eval?tab=datasets">{t("traces.prepareDatasetRows.openDatasets")}</Link>
+          </Button>
+          <Button
+            disabled={disabled || mutation.isPending}
+            onClick={() => void mutation.mutateAsync()}
+            type="button"
+          >
+            <FileJson data-icon="inline-start" />
+            {t("actions.previewRows")}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

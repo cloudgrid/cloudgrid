@@ -200,7 +200,7 @@ export function AlertSignalQueryControls({
       <>
         <TextInput
           id="alert-metric-name"
-          label="Metric name"
+          label={t("alerts.metricName")}
           onChange={(metricName) => onChange({ ...value, metricName })}
           value={value.metricName}
         />
@@ -305,7 +305,7 @@ export function AlertConditionControls({
   return (
     <>
       <div className="grid gap-1">
-        <Label htmlFor="alert-condition-operator">Operator</Label>
+        <Label htmlFor="alert-condition-operator">{t("alerts.operator")}</Label>
         <Select
           onValueChange={(operator) => onChange({ ...value, operator })}
           value={value.operator || "GTE"}

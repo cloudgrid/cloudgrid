@@ -778,6 +778,10 @@ describe("AI Chat route", () => {
   });
 
   test("does not show missing artifact noise for stale artifact references", () => {
+    const latestRun = activeConversation.latestRun;
+    if (!latestRun) {
+      throw new Error("expected active conversation fixture to include latest run");
+    }
     const staleArtifactConversation: AiChatConversation = {
       ...activeConversation,
       messages: [
@@ -793,7 +797,7 @@ describe("AI Chat route", () => {
         },
       ],
       latestRun: {
-        ...activeConversation.latestRun!,
+        ...latestRun,
         artifacts: [],
       },
     };
@@ -804,6 +808,10 @@ describe("AI Chat route", () => {
   });
 
   test("renders artifact metadata stored on the message part when run artifacts are unavailable", () => {
+    const latestRun = activeConversation.latestRun;
+    if (!latestRun) {
+      throw new Error("expected active conversation fixture to include latest run");
+    }
     const partBackedArtifactConversation: AiChatConversation = {
       ...activeConversation,
       messages: [
@@ -831,7 +839,7 @@ describe("AI Chat route", () => {
         },
       ],
       latestRun: {
-        ...activeConversation.latestRun!,
+        ...latestRun,
         artifacts: [],
       },
     };

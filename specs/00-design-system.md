@@ -4,7 +4,7 @@ title: Design system
 layer: foundation
 status: draft
 owner: unknown@example.com
-updated: 2026-05-08
+updated: 2026-05-29
 provenance: from-user
 ---
 
@@ -16,11 +16,18 @@ provenance: from-user
 
 Use shadcn/ui components backed by Tailwind CSS. Use the shadcn default theme as the baseline and prefer existing shadcn primitives for buttons, inputs, tables, tabs, popovers, sheets, tooltips, badges, separators, scroll areas, and command menus.
 
+Structured JSON input fields use a shared code-editor wrapper rather than a raw
+native textarea. The wrapper must preserve raw JSON editing, light/dark theme
+support, monospace typography, line wrapping, keyboard reachability, focus ring
+styling, and field-level validation behavior. It must not become a visual JSON
+builder or schema authoring wizard unless a route-specific spec introduces that
+pattern.
+
 ## Product Feel
 
 The UI is an enterprise operational workspace, not a marketing page. It must prioritize project-first orientation, dense scanability, stable layout, quick filtering, readable telemetry detail, and low-friction onboarding.
 
-The public website uses the same restraint with a marketing-specific hero treatment. Non-handbook website pages may use generated, realistic enterprise/product collage imagery as the first hero section background only. The imagery must show CloudGrid-relevant product and infrastructure concepts such as observability dashboards, telemetry flows, adapters, message bridge routing, SaaS packaging, or enterprise deployment. Do not use full-page image backgrounds, simple gradients, procedural SVGs, abstract blobs, or generic placeholder art. Handbook pages remain plain white/neutral documentation surfaces.
+The public website uses the same restraint with a marketing-specific hero treatment and a Yansu-inspired visual token set. Light mode uses pale raised blue-gray surfaces, compact Geist typography, black primary actions, soft layered shadows, and restrained blue-gray borders. Dark mode uses a black editorial base with dark raised surfaces, muted blue-gray supporting text, and stronger blue-gray borders. Website fonts must be served from local Vercel Geist Sans and Geist Mono assets, not public CDN links. Inline code, code blocks, Shiki-rendered handbook examples, `pre`, `kbd`, and `samp` must use the local Geist Mono asset. Non-handbook website pages may use generated, realistic enterprise/product collage imagery as the first hero section background only. The imagery must show CloudGrid-relevant product and infrastructure concepts such as observability dashboards, telemetry flows, adapters, message bridge routing, SaaS packaging, or enterprise deployment. Do not use full-page image backgrounds, simple gradients, procedural SVGs, abstract blobs, or generic placeholder art. Handbook pages remain plain white/neutral documentation surfaces.
 
 ## Layout
 
@@ -61,7 +68,18 @@ introduce brand settings pages.
 
 - UI copy must be routed through a frontend translation layer.
 - English is the default locale for MVP.
-- Components must not hard-code user-visible labels directly when the label is product copy, navigation, filters, states, or errors.
+- Components must not hard-code user-visible labels directly when the label is product copy, navigation, filters, states, actions, placeholders, titles, accessible names, table headings, validation, status messages, dialogs, or errors.
+- User-visible labels, helper text, empty states, validation, and action copy
+  must be written from the end user's business/domain point of view before the
+  implementation point of view. Use implementation terms only when the user is
+  intentionally configuring or inspecting that technical artifact.
+- Route and feature implementations must add translation keys in
+  `apps/frontend/src/lib/i18n.ts` for changed app copy and add or update a
+  focused static copy scan such as `apps/frontend/test/i18n-copy.test.ts` when
+  fixing or introducing a copy surface.
+- Exceptions are limited to user data, code samples, metric names, attribute
+  keys, protocol literals, IDs, GraphQL/query keys, enum wire values, and test
+  fixtures.
 
 ## Accessibility Target
 
@@ -70,3 +88,12 @@ WCAG 2.2 AA for contrast, keyboard navigation, focus states, table navigation, a
 Stateful action controls must label the action that will happen when activated. For example, an expanded section's toggle says `Collapse` and uses a collapse-oriented icon, while a collapsed section's toggle says `Expand` and uses an expand-oriented icon. Apply the same rule to visible labels, icon-only tooltips, and `aria-label`s.
 
 Keyboard focus must not be obscured by sticky topbars, drawers, sheets, bottom bars, or persistent filter headers. Interactive targets must be at least 24x24 CSS px, with primary desktop controls at least 32px high and touch controls at least 40px high.
+
+Pointer affordances are part of the design system. Clickable or otherwise
+actionable controls use the pointer cursor; disabled actions use the
+not-allowed cursor; resize and drag handles use direction-specific resize or
+grab cursors. Shared UI primitives own these defaults for buttons, links,
+selects, menu items, command items, tabs, toggles, checkboxes, disclosure
+triggers, dialog/sheet/popover/collapsible triggers, sortable table heads, and
+clickable table rows. Route code should not rely on hover styling alone to
+signal clickability.

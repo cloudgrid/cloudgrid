@@ -4,7 +4,7 @@ title: Runtime configuration
 layer: backend
 status: draft
 owner: unknown@example.com
-updated: 2026-05-21
+updated: 2026-05-29
 provenance: inferred-draft
 ---
 
@@ -52,6 +52,10 @@ provenance: inferred-draft
 - `CLOUDGRID_SELF_OBSERVABILITY_TRACES_ENABLED`, default `true` when self-observability is enabled.
 - `CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED`, default `true` when self-observability is enabled.
 - `CLOUDGRID_SELF_OBSERVABILITY_METRICS_ENABLED`, default `true` when self-observability is enabled.
+- `CLOUDGRID_DB_ADAPTER_TRACING_ENABLED`, default `false`; enables local-only
+  child spans inside regular database adapters when self-observability tracing
+  is enabled. It must not enable query logging, response logging, or
+  secret-store adapter tracing.
 
 ## TypeScript BFF Variables
 
@@ -218,6 +222,8 @@ Invalid combinations:
 - `CLOUDGRID_DEPLOYMENT_MODE=deployed` with invitation email mode `smtp` and missing `CLOUDGRID_PUBLIC_URL`, sender, or required SMTP host/port values.
 - `CLOUDGRID_DEPLOYMENT_MODE=deployed` with invitation email mode `disabled` and `CLOUDGRID_INVITATION_EMAIL_REQUIRE_DELIVERY=true`.
 - `CLOUDGRID_DEPLOYMENT_MODE=deployed` with `CLOUDGRID_SELF_OBSERVABILITY_ENABLED=true` and missing `CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID`, `CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID`, `CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT`, or `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN`.
+- `CLOUDGRID_DEPLOYMENT_MODE=deployed` with
+  `CLOUDGRID_DB_ADAPTER_TRACING_ENABLED=true`.
 - `CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS` outside `1..300`.
 - NATS reconnect, flush, dependency-recovery backoff, or SurrealDB timeout
   variables outside their documented bounds.

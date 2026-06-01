@@ -1,9 +1,9 @@
 {
-  "name": "Order confirmation extraction",
-  "description": "Extract normalized order data from short transactional messages.",
-  "inputValueType": "json",
-  "expectedOutputValueType": "json",
-  "inputSchema": {
+  "evaluationFamily": "extraction",
+  "inputType": "json",
+  "expectedType": "json",
+  "inputJsonSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
     "additionalProperties": false,
     "required": ["text"],
@@ -18,7 +18,8 @@
       }
     }
   },
-  "expectedOutputSchema": {
+  "expectedJsonSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
     "type": "object",
     "additionalProperties": false,
     "required": ["orderId", "customerEmail", "orderDate", "currency", "total", "items"],
@@ -71,7 +72,44 @@
       }
     }
   },
-  "defaultSplit": "validation",
-  "defaultReviewStatus": "ready",
-  "defaultMetric": "extraction.exact_json_match"
+  "expectedValueOptions": [],
+  "defaultSplit": "training",
+  "intakePolicy": {
+    "manualDefaultStatus": "ready",
+    "importDefaultStatus": "ready",
+    "traceDefaultStatus": "needs_expected"
+  },
+  "traceIntakeRules": [],
+  "anonymizationPolicy": {
+    "mode": "realistic",
+    "policyId": null,
+    "policyVersion": null,
+    "consistencyScope": "dataset",
+    "blockedEntityTypes": []
+  },
+  "defaultMetricSettings": [
+    {
+      "metricId": "extraction.field_match_rate",
+      "options": {
+        "extraction": {
+          "requiredOnly": false,
+          "extraFieldPolicy": "schema",
+          "arrayModeByPath": {
+            "$.items": "ordered"
+          },
+          "stringComparisonByPath": {
+            "$.customerEmail": "case_insensitive",
+            "$.shippingCountry": "exact"
+          },
+          "numericToleranceByPath": {
+            "$.total": 0
+          },
+          "dateFormatByPath": {
+            "$.orderDate": "date"
+          }
+        }
+      }
+    }
+  ],
+  "retentionProfile": "balanced"
 }

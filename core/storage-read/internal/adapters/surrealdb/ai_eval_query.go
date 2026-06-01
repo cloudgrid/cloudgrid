@@ -80,6 +80,18 @@ func (store Store) QueryAiEval(ctx context.Context, subject string, input map[st
 		}
 	}
 	shaped, nextCursor := shapeAiEvalPage(subject, input, items)
+	if subject == subjectEvalOptimizationSearch {
+		shaped, err = store.withSkillOptimizationDetails(ctx, shaped, authContext)
+		if err != nil {
+			return nil, storageError()
+		}
+	}
+	if subject == subjectEvalEvaluationRunSearch && aiEvalEvaluationRunSearchReturnsItemRuns(input) {
+		shaped, err = store.withEvaluationItemRunTraceEvidence(ctx, shaped, authContext)
+		if err != nil {
+			return nil, storageError()
+		}
+	}
 	return map[string]any{"items": shaped, "nextCursor": nextCursor}, nil
 }
 
@@ -112,6 +124,13 @@ func (store Store) queryAiEvalSingle(ctx context.Context, subject string, input 
 	case subjectEvalTargetSnapshotGet:
 		return map[string]any{"snapshot": item}, nil
 	case subjectEvalOptimizationGet:
+		if item != nil {
+			withDetails, err := store.withSkillOptimizationDetails(ctx, []map[string]any{item}, authContext)
+			if err != nil {
+				return nil, storageError()
+			}
+			item = withDetails[0]
+		}
 		return map[string]any{"run": item}, nil
 	case subjectEvalTargetDiff:
 		if item == nil {
@@ -121,6 +140,92 @@ func (store Store) queryAiEvalSingle(ctx context.Context, subject string, input 
 	default:
 		return map[string]any{"item": item}, nil
 	}
+}
+
+func (store Store) withEvaluationItemRunTraceEvidence(ctx context.Context, rows []map[string]any, authContext *contracts.AuthContext) ([]map[string]any, error) {
+	for _, row := range rows {
+		traceID, ok := stringInput(row, "traceId")
+		if !ok {
+			continue
+		}
+		stmt, err := BuildSpansByTraceIDQuery(traceID, authContext)
+		if err != nil {
+			return nil, err
+		}
+		spans, err := queryRows[contracts.Span](ctx, store.DB, stmt)
+		if err != nil {
+			return nil, err
+		}
+		normalizeSpans(spans)
+		evidence := buildAiEvalTraceEvidence(spans, aiEvalStringValue(row, "rootSpanId", ""))
+		row["importantSteps"] = evidence.ImportantSteps
+		row["summaryEvidenceRefs"] = evidence.SummaryEvidenceRefs
+		row["trajectorySummary"] = evidence.TrajectorySummary
+	}
+	return rows, nil
+}
+
+func (store Store) withSkillOptimizationDetails(ctx context.Context, rows []map[string]any, authContext *contracts.AuthContext) ([]map[string]any, error) {
+	for _, row := range rows {
+		runID := aiEvalRecordID(row)
+		if runID == "" {
+			continue
+		}
+		stepsStmt, err := BuildSkillOptimizationStepsQuery(runID, authContext)
+		if err != nil {
+			return nil, err
+		}
+		stepRows, err := queryRows[map[string]any](ctx, store.DB, stepsStmt)
+		if err != nil {
+			return nil, err
+		}
+		memoryStmt, err := BuildSkillOptimizationMemoryQuery(runID, authContext)
+		if err != nil {
+			return nil, err
+		}
+		memoryRows, err := queryRows[map[string]any](ctx, store.DB, memoryStmt)
+		if err != nil {
+			return nil, err
+		}
+		row["skillOptimization"] = shapeSkillOptimizationDetail(row, stepRows, firstMap(memoryRows))
+	}
+	return rows, nil
+}
+
+func BuildSkillOptimizationStepsQuery(optimizationRunID string, authContext ...*contracts.AuthContext) (QueryStatement, error) {
+	if strings.TrimSpace(optimizationRunID) == "" {
+		return QueryStatement{}, validationError("optimizationRunId is required")
+	}
+	target, err := ResolveTelemetryTarget(firstAuthContext(authContext))
+	if err != nil {
+		return QueryStatement{}, err
+	}
+	params := map[string]any{"optimizationRunId": optimizationRunID, "limit": 200}
+	addOwnershipParams(params, target)
+	conditions := append(retentionVisibleConditions(), "optimizationRunId = $optimizationRunId")
+	return QueryStatement{
+		SQL:    "SELECT *, record::id(id) AS recordId FROM ai_optimization_step " + whereClause(conditions) + " ORDER BY epoch ASC, step ASC, startedAt ASC, id ASC LIMIT $limit;",
+		Params: params,
+		Target: target,
+	}, nil
+}
+
+func BuildSkillOptimizationMemoryQuery(optimizationRunID string, authContext ...*contracts.AuthContext) (QueryStatement, error) {
+	if strings.TrimSpace(optimizationRunID) == "" {
+		return QueryStatement{}, validationError("optimizationRunId is required")
+	}
+	target, err := ResolveTelemetryTarget(firstAuthContext(authContext))
+	if err != nil {
+		return QueryStatement{}, err
+	}
+	params := map[string]any{"optimizationRunId": optimizationRunID, "limit": 1}
+	addOwnershipParams(params, target)
+	conditions := append(retentionVisibleConditions(), "optimizationRunId = $optimizationRunId")
+	return QueryStatement{
+		SQL:    "SELECT *, record::id(id) AS recordId FROM ai_optimization_memory " + whereClause(conditions) + " ORDER BY updatedAt DESC, id ASC LIMIT $limit;",
+		Params: params,
+		Target: target,
+	}, nil
 }
 
 func firstN(rows []map[string]any, count int) []map[string]any {
@@ -786,11 +891,161 @@ func shapeOptimizationRunRow(row map[string]any) map[string]any {
 	applyRecordID(item)
 	item["status"] = enumDefault(item, "status", "queued")
 	item["objective"] = mapDefault(item["objective"])
+	item["searchPolicy"] = shapeOptimizationSearchPolicy(mapDefault(item["searchPolicy"]))
 	item["candidateTargetSnapshotIds"] = stringsFromAny(item["candidateTargetSnapshotIds"])
 	item["causedEvaluationRunIds"] = stringsFromAny(item["causedEvaluationRunIds"])
 	item["comparisonIds"] = stringsFromAny(item["comparisonIds"])
 	item["budgetSnapshot"] = mapDefault(item["budgetSnapshot"])
 	return item
+}
+
+func shapeOptimizationSearchPolicy(policy map[string]any) map[string]any {
+	if len(policy) == 0 {
+		return policy
+	}
+	policy["editablePartKinds"] = stringsFromAny(policy["editablePartKinds"])
+	policy["maxEpochs"] = intValueFromAny(defaultAny(policy["maxEpochs"], 1))
+	policy["maxSteps"] = intValueFromAny(defaultAny(policy["maxSteps"], 0))
+	policy["rolloutBatchSize"] = intValueFromAny(defaultAny(policy["rolloutBatchSize"], 1))
+	policy["reflectionMinibatchSize"] = intValueFromAny(defaultAny(policy["reflectionMinibatchSize"], 1))
+	policy["editBudget"] = intValueFromAny(defaultAny(policy["editBudget"], 1))
+	policy["minEditBudget"] = intValueFromAny(defaultAny(policy["minEditBudget"], 1))
+	policy["skillPolicy"] = shapeSkillOptimizationPolicy(mapDefault(policy["skillPolicy"]))
+	return policy
+}
+
+func shapeSkillOptimizationPolicy(policy map[string]any) map[string]any {
+	if len(policy) == 0 {
+		return nil
+	}
+	policy["allowedEditOps"] = stringsFromAny(policy["allowedEditOps"])
+	policy["editableFileGlobs"] = stringsFromAny(policy["editableFileGlobs"])
+	policy["protectedFileGlobs"] = stringsFromAny(policy["protectedFileGlobs"])
+	policy["preserveSections"] = stringsFromAny(policy["preserveSections"])
+	return policy
+}
+
+func shapeSkillOptimizationDetail(run map[string]any, stepRows []map[string]any, memory map[string]any) map[string]any {
+	steps := make([]any, 0, len(stepRows))
+	counts := map[string]int{"accepted": 0, "rejected": 0, "skipped": 0, "failed": 0}
+	baselineDigest := aiEvalStringValue(run, "baselineSkillDigest", "")
+	currentDigest := ""
+	bestDigest := ""
+	bestTargetSnapshotID := aiEvalStringValue(run, "bestTargetSnapshotId", "")
+	exportedSkillContentRef := aiEvalStringValue(run, "exportedSkillContentRef", "")
+	for _, row := range stepRows {
+		step := shapeSkillOptimizationStep(row)
+		status := aiEvalStringValue(step, "status", "")
+		if _, ok := counts[status]; ok {
+			counts[status]++
+		}
+		if baselineDigest == "" {
+			baselineDigest = aiEvalStringValue(step, "baselineSkillDigest", "")
+		}
+		if digest := aiEvalStringValue(step, "candidateSkillDigest", ""); digest != "" {
+			currentDigest = digest
+			if status == "accepted" || aiEvalStringValue(step, "gateDecision", "") == "accepted_new_best" {
+				bestDigest = digest
+				bestTargetSnapshotID = aiEvalStringValue(step, "candidateTargetSnapshotId", bestTargetSnapshotID)
+			}
+		}
+		steps = append(steps, step)
+	}
+	if currentDigest == "" {
+		currentDigest = aiEvalStringValue(run, "currentSkillDigest", "")
+	}
+	if bestDigest == "" {
+		bestDigest = aiEvalStringValue(run, "bestSkillDigest", "")
+	}
+	if exportedSkillContentRef == "" {
+		exportedSkillContentRef = aiEvalStringValue(memory, "exportedSkillContentRef", "")
+	}
+	return map[string]any{
+		"baselineSkillDigest":     baselineDigest,
+		"currentSkillDigest":      aiEvalOptionalString(currentDigest),
+		"bestSkillDigest":         aiEvalOptionalString(bestDigest),
+		"bestTargetSnapshotId":    aiEvalOptionalString(bestTargetSnapshotID),
+		"exportedSkillContentRef": aiEvalOptionalString(exportedSkillContentRef),
+		"acceptedStepCount":       counts["accepted"],
+		"rejectedStepCount":       counts["rejected"],
+		"skippedStepCount":        counts["skipped"],
+		"failedStepCount":         counts["failed"],
+		"steps":                   steps,
+	}
+}
+
+func shapeSkillOptimizationStep(row map[string]any) map[string]any {
+	item := cloneParams(row)
+	applyRecordID(item)
+	item["epoch"] = intValueFromAny(item["epoch"])
+	item["step"] = intValueFromAny(item["step"])
+	item["status"] = enumDefault(item, "status", "queued")
+	item["proposedEdits"] = shapeSkillOptimizationEdits(arrayDefault(item["proposedEdits"]))
+	item["selectedEdits"] = shapeSkillOptimizationEdits(arrayDefault(item["selectedEdits"]))
+	item["rejectedEditSummaries"] = shapeSkillOptimizationEdits(arrayDefault(item["rejectedEditSummaries"]))
+	item["trainingScore"] = numericValue(item["trainingScore"])
+	if _, ok := item["validationScore"]; ok {
+		item["validationScore"] = numericValue(item["validationScore"])
+	}
+	item["problem"] = mapDefault(item["problem"])
+	item["gateDecision"] = aiEvalStringValue(item, "gateDecision", "skipped_no_edits")
+	return item
+}
+
+func shapeSkillOptimizationEdits(items []any) []any {
+	edits := make([]any, 0, len(items))
+	for _, value := range items {
+		edit, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		clean := map[string]any{
+			"op":             aiEvalStringValue(edit, "op", ""),
+			"filePath":       aiEvalOptionalString(aiEvalStringValue(edit, "filePath", "")),
+			"target":         aiEvalOptionalString(aiEvalStringValue(edit, "target", "")),
+			"contentPreview": aiEvalOptionalString(boundedPreview(aiEvalStringValue(edit, "contentPreview", ""), 2000)),
+			"rationale":      aiEvalOptionalString(boundedPreview(aiEvalStringValue(edit, "rationale", ""), 2000)),
+			"sourceType":     aiEvalStringValue(edit, "sourceType", "failure"),
+			"supportCount":   intValueFromAny(edit["supportCount"]),
+			"evidenceRefs":   shapeSkillOptimizationEvidenceRefs(arrayDefault(edit["evidenceRefs"])),
+		}
+		edits = append(edits, clean)
+	}
+	return edits
+}
+
+func shapeSkillOptimizationEvidenceRefs(items []any) []any {
+	refs := make([]any, 0, len(items))
+	for _, value := range items {
+		ref, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		clean := map[string]any{}
+		for _, key := range []string{"traceId", "spanId", "evaluationRunId", "evaluationItemRunId", "importJobId", "candidateId"} {
+			if text := aiEvalStringValue(ref, key, ""); text != "" {
+				clean[key] = text
+			}
+		}
+		if len(clean) > 0 {
+			refs = append(refs, clean)
+		}
+	}
+	return refs
+}
+
+func boundedPreview(value string, limit int) string {
+	if limit > 0 && len(value) > limit {
+		return value[:limit]
+	}
+	return value
+}
+
+func aiEvalOptionalString(value string) any {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return value
 }
 
 func shapeEvaluationRunSummary(summary map[string]any) map[string]any {

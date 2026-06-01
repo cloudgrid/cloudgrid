@@ -1,0 +1,3 @@
+{"input":{"subject":"Too many alerts","body":"The on-call channel is flooded by duplicate CPU alerts.","channel":"email","customerPlan":"enterprise"},"output":{"intent":"alert_noise"}}
+{"input":{"subject":"Slow trace search","body":"Trace search now takes nearly a minute for our production project.","channel":"chat","customerPlan":"team"},"output":{"intent":"performance_issue"}}
+{"input":{"subject":"Need setup help","body":"We installed the collector but no traces appear in the first dashboard.","channel":"web_form","customerPlan":"trial"},"output":{"intent":"onboarding_help"}}

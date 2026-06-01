@@ -15,9 +15,11 @@ import (
 	"time"
 
 	"github.com/cloudgrid-dev/cloudgrid/core/control-plane/internal"
+	secretsurreal "github.com/cloudgrid-dev/cloudgrid/core/control-plane/internal/adapters/secrets/surrealdb"
 	controlsurreal "github.com/cloudgrid-dev/cloudgrid/core/control-plane/internal/adapters/surrealdb"
 	"github.com/cloudgrid-dev/cloudgrid/core/control-plane/internal/ports"
 	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/health"
+	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/selfobs"
 )
 
 const (
@@ -29,6 +31,10 @@ const (
 	defaultSurrealDBDatabase   = "dev"
 	defaultSurrealDBUsername   = "root"
 	defaultSurrealDBPassword   = "root"
+	defaultSecretStoreAdapter  = "surrealdb"
+	defaultSecretDBNamespace   = "cloudgrid_secrets"
+	defaultSecretDBDatabase    = "dev"
+	localSecretEncryptionKey   = "cloudgrid-local-development-secret-store-key"
 	storeReadinessTimeout      = 5 * time.Second
 	storeInitializationTimeout = 15 * time.Second
 )
@@ -55,6 +61,21 @@ func run() int {
 		}
 	}()
 
+	secretStore, secretAdapter, secretReadiness, secretClose, err := setupSecretStore(context.Background())
+	if err != nil {
+		logError(logger, "secret_store_unavailable", err, "ERR-006")
+		return 1
+	}
+	defer func() {
+		if secretClose != nil {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), storeReadinessTimeout)
+			defer cancel()
+			if err := secretClose(shutdownCtx); err != nil {
+				logError(logger, "secret_store_shutdown_failed", err, "ERR-010")
+			}
+		}
+	}()
+
 	invitationEmailConfig, err := resolveInvitationEmailConfig(os.Getenv)
 	if err != nil {
 		logError(logger, "invitation_email_config_invalid", err, "ERR-009")
@@ -65,11 +86,10 @@ func run() int {
 		invitationEmailTransport = internal.NewSMTPInvitationEmailTransport(invitationEmailConfig)
 	}
 	service := internal.NewServiceWithOptions(store, time.Now, internal.ServiceOptions{
-		InvitationEmail:                    invitationEmailConfig,
-		EmailTransport:                     invitationEmailTransport,
-		AlertNotificationAdapters:          splitCSV(os.Getenv("CLOUDGRID_ALERT_NOTIFICATION_ADAPTERS")),
-		ProviderSecretEncryptionKey:        os.Getenv("CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY"),
-		RequireProviderSecretEncryptionKey: strings.EqualFold(os.Getenv("CLOUDGRID_DEPLOYMENT_MODE"), "deployed"),
+		InvitationEmail:           invitationEmailConfig,
+		EmailTransport:            invitationEmailTransport,
+		AlertNotificationAdapters: splitCSV(os.Getenv("CLOUDGRID_ALERT_NOTIFICATION_ADAPTERS")),
+		SecretStore:               secretStore,
 	})
 	stopInvitationEmailWorker := startInvitationEmailWorker(service, invitationEmailConfig, logger)
 	defer stopInvitationEmailWorker()
@@ -88,6 +108,16 @@ func run() int {
 			defer cancel()
 			_ = signalExporter.Shutdown(shutdownCtx)
 		}()
+		selfConfig, err := resolveControlPlaneSelfObservabilityConfig(os.Getenv)
+		if err != nil {
+			logError(logger, "self_observability_config_invalid", err, "ERR-009")
+			return 1
+		}
+		if selfConfig.DBAdapterTracingEnabled && selfConfig.Enabled && selfConfig.TracesEnabled {
+			if tracer, ok := store.(interface{ EnableDBAdapterTracing(selfobs.SpanRecorder) }); ok {
+				tracer.EnableDBAdapterTracing(controlPlaneDBAdapterSpanRecorder{recorder: signalExporter})
+			}
+		}
 	}
 	nc, err := internal.ConnectNATS(valueOrDefault(os.Getenv("CLOUDGRID_NATS_URL"), defaultNATSURL))
 	if err != nil {
@@ -118,6 +148,11 @@ func run() int {
 		} else {
 			checks["self-observability"] = health.OK()
 		}
+		if err := secretReadiness(ctx); err != nil {
+			checks["secret-store"] = health.Unavailable("ERR-006", "STORAGE_UNAVAILABLE", "secret store is unavailable")
+		} else {
+			checks["secret-store"] = health.OK()
+		}
 		return checks
 	})
 	healthServer := &http.Server{
@@ -141,6 +176,7 @@ func run() int {
 		"event", "startup_ready",
 		"request_id", "",
 		"adapter", adapter,
+		"secret_adapter", secretAdapter,
 		"health_addr", healthServer.Addr,
 	)
 	select {
@@ -392,14 +428,15 @@ func configInvalidError(reason string) error {
 }
 
 type controlPlaneSelfObservabilityConfig struct {
-	Enabled               bool
-	CompanyID             string
-	ProjectID             string
-	OTLPEndpoint          string
-	OTLPBearerToken       string
-	ExportIntervalSeconds int
-	TracesEnabled         bool
-	LogsEnabled           bool
+	Enabled                 bool
+	CompanyID               string
+	ProjectID               string
+	OTLPEndpoint            string
+	OTLPBearerToken         string
+	ExportIntervalSeconds   int
+	TracesEnabled           bool
+	LogsEnabled             bool
+	DBAdapterTracingEnabled bool
 }
 
 func controlPlaneSelfObservabilitySignalExporter(getenv func(string) string, logger *slog.Logger) (*internal.SelfObservabilitySignalExporter, error) {
@@ -423,6 +460,26 @@ func controlPlaneSelfObservabilitySignalExporter(getenv func(string) string, log
 		TracesEnabled:         config.TracesEnabled,
 		LogsEnabled:           config.LogsEnabled,
 		Logger:                logger,
+	})
+}
+
+type controlPlaneDBAdapterSpanRecorder struct {
+	recorder internal.SelfObservabilityRecorder
+}
+
+func (recorder controlPlaneDBAdapterSpanRecorder) RecordSpan(event selfobs.SpanEvent) {
+	if recorder.recorder == nil {
+		return
+	}
+	recorder.recorder.RecordSpan(internal.SelfObservabilitySpan{
+		Name:         event.Name,
+		TraceID:      event.TraceID,
+		SpanID:       event.SpanID,
+		ParentSpanID: event.ParentSpanID,
+		TraceState:   event.TraceState,
+		Attributes:   event.Attributes,
+		StartTime:    event.StartTime,
+		EndTime:      event.EndTime,
 	})
 }
 
@@ -462,6 +519,13 @@ func resolveControlPlaneSelfObservabilityConfig(getenv func(string) string) (con
 	config.LogsEnabled, err = selfObservabilityBool(getenv("CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED"), enabled)
 	if err != nil {
 		return controlPlaneSelfObservabilityConfig{}, configInvalidError("CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED must be true or false")
+	}
+	config.DBAdapterTracingEnabled, err = selfObservabilityBool(getenv("CLOUDGRID_DB_ADAPTER_TRACING_ENABLED"), false)
+	if err != nil {
+		return controlPlaneSelfObservabilityConfig{}, configInvalidError("CLOUDGRID_DB_ADAPTER_TRACING_ENABLED must be true or false")
+	}
+	if mode == "deployed" && config.DBAdapterTracingEnabled {
+		return controlPlaneSelfObservabilityConfig{}, configInvalidError("CLOUDGRID_DB_ADAPTER_TRACING_ENABLED is valid only in local mode")
 	}
 	if !enabled {
 		config.TracesEnabled = false
@@ -525,6 +589,10 @@ type controlStoreReadiness func(context.Context) error
 
 type controlStoreClose func(context.Context) error
 
+type secretStoreReadiness func(context.Context) error
+
+type secretStoreClose func(context.Context) error
+
 func setupControlStore(ctx context.Context) (ports.ControlStore, string, controlStoreReadiness, controlStoreClose, error) {
 	initCtx, cancel := context.WithTimeout(ctx, storeInitializationTimeout)
 	defer cancel()
@@ -556,4 +624,53 @@ func controlSurrealDBConfig() controlsurreal.Config {
 		Username:  valueOrDefault(os.Getenv("CLOUDGRID_SURREALDB_USERNAME"), defaultSurrealDBUsername),
 		Password:  valueOrDefault(os.Getenv("CLOUDGRID_SURREALDB_PASSWORD"), defaultSurrealDBPassword),
 	}
+}
+
+func setupSecretStore(ctx context.Context) (ports.SecretStore, string, secretStoreReadiness, secretStoreClose, error) {
+	adapter := valueOrDefault(os.Getenv("CLOUDGRID_SECRET_STORE_ADAPTER"), defaultSecretStoreAdapter)
+	if adapter != "surrealdb" {
+		return nil, "", nil, nil, configInvalidError("CLOUDGRID_SECRET_STORE_ADAPTER must be surrealdb")
+	}
+	cfg, err := secretSurrealDBConfig()
+	if err != nil {
+		return nil, "", nil, nil, err
+	}
+	initCtx, cancel := context.WithTimeout(ctx, storeInitializationTimeout)
+	defer cancel()
+	store, err := secretsurreal.Connect(initCtx, cfg)
+	if err != nil {
+		return nil, "", nil, nil, err
+	}
+	if err := store.CheckReadiness(initCtx); err != nil {
+		_ = store.Close(context.Background())
+		return nil, "", nil, nil, err
+	}
+	readiness := func(ctx context.Context) error {
+		checkCtx, cancel := context.WithTimeout(ctx, storeReadinessTimeout)
+		defer cancel()
+		return store.CheckReadiness(checkCtx)
+	}
+	return store, adapter, readiness, store.Close, nil
+}
+
+func secretSurrealDBConfig() (secretsurreal.Config, error) {
+	key := strings.TrimSpace(os.Getenv("CLOUDGRID_SECRET_STORE_ENCRYPTION_KEY"))
+	if key == "" {
+		key = strings.TrimSpace(os.Getenv("CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY"))
+	}
+	mode := strings.ToLower(valueOrDefault(os.Getenv("CLOUDGRID_DEPLOYMENT_MODE"), "local"))
+	if key == "" {
+		if mode == "deployed" {
+			return secretsurreal.Config{}, configInvalidError("CLOUDGRID_SECRET_STORE_ENCRYPTION_KEY is required in deployed mode")
+		}
+		key = localSecretEncryptionKey
+	}
+	return secretsurreal.Config{
+		URL:           valueOrDefault(os.Getenv("CLOUDGRID_SECRET_STORE_SURREALDB_URL"), valueOrDefault(os.Getenv("CLOUDGRID_SURREALDB_URL"), defaultSurrealDBURL)),
+		Namespace:     valueOrDefault(os.Getenv("CLOUDGRID_SECRET_STORE_SURREALDB_NAMESPACE"), defaultSecretDBNamespace),
+		Database:      valueOrDefault(os.Getenv("CLOUDGRID_SECRET_STORE_SURREALDB_DATABASE"), defaultSecretDBDatabase),
+		Username:      valueOrDefault(os.Getenv("CLOUDGRID_SECRET_STORE_SURREALDB_USERNAME"), valueOrDefault(os.Getenv("CLOUDGRID_SURREALDB_USERNAME"), defaultSurrealDBUsername)),
+		Password:      valueOrDefault(os.Getenv("CLOUDGRID_SECRET_STORE_SURREALDB_PASSWORD"), valueOrDefault(os.Getenv("CLOUDGRID_SURREALDB_PASSWORD"), defaultSurrealDBPassword)),
+		EncryptionKey: key,
+	}, nil
 }

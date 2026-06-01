@@ -9,7 +9,7 @@ blocked_by: []
 spec_refs:
   - specs/05-frontend/dashboard-implementation-contract.md
   - specs/05-frontend/dashboard-widgets.md
-  - specs/02-flows/metrics/dashboard-query.md
+  - specs/03-flows/metrics/dashboard-query.md
   - specs/03-contracts/graphql/public-schema.graphql
 write_scope:
   - apps/frontend/src/features/dashboards/widget-renderers
@@ -20,7 +20,7 @@ read_scope:
   - specs/00-conventions.md
   - specs/05-frontend/dashboard-widgets.md
   - specs/05-frontend/dashboard-implementation-contract.md
-  - specs/02-flows/metrics/dashboard-query.md
+  - specs/03-flows/metrics/dashboard-query.md
   - apps/frontend/src/routes/dashboards-route.tsx
   - apps/frontend/src/features/telemetry/telemetry-chart.tsx
   - apps/frontend/src/lib/query-keys.ts

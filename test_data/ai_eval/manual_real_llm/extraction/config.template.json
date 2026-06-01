@@ -1,0 +1,9 @@
+{
+  "manualOnly": true,
+  "neverUsedByAutomatedIntegration": true,
+  "projectId": "set-a-local-project-id-before-running-manually",
+  "providerProfileRef": "set-a-project-provider-profile-ref-before-running-manually",
+  "modelAlias": "set-a-project-model-alias-before-running-manually",
+  "runtimeMode": "managed_harness",
+  "notes": "Do not store provider credentials in this file."
+}

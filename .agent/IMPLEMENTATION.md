@@ -206,12 +206,13 @@ When changing the public website in `website/`, preserve the current marketing-p
 
 Before changing `apps/frontend`, read:
 
+- `specs/05-frontend/product-experience-contract.md`
 - `specs/05-frontend/product-ux-concept.md`
 - `specs/05-frontend/frontend-application.md`
 - `specs/05-frontend/views.md`
 - `DESIGN.md`
 
-The enterprise UX concept is authoritative for shell modes, route layout, onboarding, empty states, drawers, dialogs, popovers, collapsibles, navigation ordering, and the approved UX v2 app frame.
+The enterprise product experience contract and UX concept are authoritative for shell modes, route layout, onboarding, empty states, disabled actions, drawers, dialogs, popovers, collapsibles, navigation ordering, and the approved UX v2 app frame.
 
 Frontend implementation must preserve these rules:
 
@@ -252,7 +253,9 @@ Frontend implementation must preserve these rules:
 - Search fields use the shared shadcn-backed `SearchInput` component with a leading search icon; do not hand-compose absolute search icons beside raw inputs in route or feature code.
 - Use inspector drawers/sheets for contextual detail and editing, dialogs for short confirmations, popovers for anchored choices, and collapsibles for optional secondary groups.
 - Empty states have one primary next action and at most two secondary actions.
-- All user-visible copy uses the translation layer.
+- All user-visible route and feature copy uses the translation layer. Add keys to `apps/frontend/src/lib/i18n.ts` for labels, helper text, empty states, validation messages, actions, placeholders, titles, accessible names, table headings, toast/status messages, and dialog/sheet copy.
+- Hard-coded strings in route or feature components are allowed only for user data, code samples, metric names, attribute keys, protocol literals, IDs, GraphQL/query keys, enum wire values, or test fixtures. When in doubt, use `t(...)`.
+- Frontend copy changes must include or update a focused regression scan such as `apps/frontend/test/i18n-copy.test.ts` for the changed surface. Existing source-inspection tests should assert translation-key usage instead of literal English copy.
 - Frontend may keep only presentation state locally. It must not duplicate backend-owned telemetry, metric, project, membership, or evaluation truth.
 
 If a requested UI behavior is not covered by the UX concept, update the relevant spec before implementation. Do not let route components invent new interaction patterns.
@@ -273,6 +276,12 @@ bun run lint
 bun run format
 bun run test
 bun run contracts:check
+```
+
+For frontend route or feature copy changes, also run the focused copy scan:
+
+```sh
+bun test apps/frontend/test/i18n-copy.test.ts
 ```
 
 Backend coverage checks:

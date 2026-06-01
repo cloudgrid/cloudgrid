@@ -1,3 +1,4 @@
+import { buildDatasetSearchInput } from "@cloudgrid/ui-contracts";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
@@ -9,11 +10,14 @@ import { TraceDetailView } from "../features/traces/trace-detail-view";
 import { t } from "../lib/i18n";
 import { queryKeys } from "../lib/query-keys";
 import { useTraceDetailFilters } from "../lib/url-filters";
+import { useAppSession } from "../providers/app-session-provider";
 import { useTelemetryClient } from "../providers/telemetry-client-provider";
 
 export function TraceDetailRoute() {
   const client = useTelemetryClient();
+  const { viewer } = useAppSession();
   const { traceId } = useParams();
+  const projectId = viewer?.selectedProject?.id ?? "";
   const traceFilters = useTraceDetailFilters();
   const queryInput = traceDetailQueryInput(traceFilters.filters);
   const query = useQuery({
@@ -21,8 +25,24 @@ export function TraceDetailRoute() {
     queryKey: queryKeys.trace(traceId ?? "", queryInput),
     queryFn: () => client.getTrace(traceId ?? "", queryInput),
   });
+  const datasetsQuery = useQuery({
+    queryKey: ["Datasets", "trace-detail-candidates", projectId],
+    queryFn: () =>
+      client.searchDatasets({
+        ...buildDatasetSearchInput({ limit: 50 }),
+        projectId,
+      }),
+    enabled: Boolean(projectId),
+  });
   if (query.isSuccess && query.data) {
-    return <TraceDetailView detail={query.data} traceFilters={traceFilters} />;
+    return (
+      <TraceDetailView
+        datasets={datasetsQuery.data?.items ?? []}
+        detail={query.data}
+        projectId={projectId}
+        traceFilters={traceFilters}
+      />
+    );
   }
 
   return (

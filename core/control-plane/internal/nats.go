@@ -7,6 +7,7 @@ import (
 	"time"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
+	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/selfobs"
 )
 
 const (
@@ -442,112 +443,112 @@ func handleProjectAiSettingsUpdate(service *Service, logger *slog.Logger) bridge
 }
 
 func handleProjectAiProviderSettingsGet(service *Service, logger *slog.Logger) bridgeMessageHandler {
-	return requestHandler[contracts.ProjectAiProviderSettingsGetRequest](SubjectProjectAiProvidersGet, logger, func(ctx context.Context, request contracts.ProjectAiProviderSettingsGetRequest) contracts.ProjectAiSettingsGetResponse {
+	return requestHandler[contracts.ProjectAiProviderSettingsGetRequest](SubjectProjectAiProvidersGet, logger, func(ctx context.Context, request contracts.ProjectAiProviderSettingsGetRequest) contracts.ProjectAiProviderSettingsGetResponse {
 		settings, err := service.GetProjectAiProviderSettings(ctx, request)
 		if err != nil {
-			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+			return contracts.ProjectAiProviderSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
-		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"settings": settings}}
+		return contracts.ProjectAiProviderSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: &contracts.AiProviderSettingsData{Settings: settings}}
 	})
 }
 
 func handleProjectAiProviderSettingsUpdate(service *Service, logger *slog.Logger) bridgeMessageHandler {
-	return requestHandler[contracts.ProjectAiProviderSettingsUpdateRequest](SubjectProjectAiProvidersUpdate, logger, func(ctx context.Context, request contracts.ProjectAiProviderSettingsUpdateRequest) contracts.ProjectAiSettingsUpdateResponse {
+	return requestHandler[contracts.ProjectAiProviderSettingsUpdateRequest](SubjectProjectAiProvidersUpdate, logger, func(ctx context.Context, request contracts.ProjectAiProviderSettingsUpdateRequest) contracts.ProjectAiProviderSettingsUpdateResponse {
 		settings, err := service.UpdateProjectAiProviderSettings(ctx, request)
 		if err != nil {
-			return contracts.ProjectAiSettingsUpdateResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+			return contracts.ProjectAiProviderSettingsUpdateResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
-		return contracts.ProjectAiSettingsUpdateResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"settings": settings}}
+		return contracts.ProjectAiProviderSettingsUpdateResponse{RequestID: request.RequestID, OK: true, Data: &contracts.AiProviderSettingsData{Settings: settings}}
 	})
 }
 
 func handleCompanyAiProviderSettingsGet(service *Service, logger *slog.Logger) bridgeMessageHandler {
-	return requestHandler[contracts.CompanyAiProviderSettingsGetRequest](SubjectCompanyAiProvidersGet, logger, func(ctx context.Context, request contracts.CompanyAiProviderSettingsGetRequest) contracts.ProjectAiSettingsGetResponse {
+	return requestHandler[contracts.CompanyAiProviderSettingsGetRequest](SubjectCompanyAiProvidersGet, logger, func(ctx context.Context, request contracts.CompanyAiProviderSettingsGetRequest) contracts.CompanyAiProviderSettingsGetResponse {
 		settings, err := service.GetCompanyAiProviderSettings(ctx, request)
 		if err != nil {
-			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+			return contracts.CompanyAiProviderSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
-		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"settings": settings}}
+		return contracts.CompanyAiProviderSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: &contracts.AiProviderSettingsData{Settings: settings}}
 	})
 }
 
 func handleCompanyAiProviderSettingsUpdate(service *Service, logger *slog.Logger) bridgeMessageHandler {
-	return requestHandler[contracts.CompanyAiProviderSettingsUpdateRequest](SubjectCompanyAiProvidersUpdate, logger, func(ctx context.Context, request contracts.CompanyAiProviderSettingsUpdateRequest) contracts.ProjectAiSettingsUpdateResponse {
+	return requestHandler[contracts.CompanyAiProviderSettingsUpdateRequest](SubjectCompanyAiProvidersUpdate, logger, func(ctx context.Context, request contracts.CompanyAiProviderSettingsUpdateRequest) contracts.CompanyAiProviderSettingsUpdateResponse {
 		settings, err := service.UpdateCompanyAiProviderSettings(ctx, request)
 		if err != nil {
-			return contracts.ProjectAiSettingsUpdateResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+			return contracts.CompanyAiProviderSettingsUpdateResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
-		return contracts.ProjectAiSettingsUpdateResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"settings": settings}}
+		return contracts.CompanyAiProviderSettingsUpdateResponse{RequestID: request.RequestID, OK: true, Data: &contracts.AiProviderSettingsData{Settings: settings}}
 	})
 }
 
 func handleAiProviderSecretResolve(service *Service, logger *slog.Logger) bridgeMessageHandler {
-	return requestHandler[contracts.AiProviderSecretResolveRequest](SubjectAiProviderSecretsResolve, logger, func(ctx context.Context, request contracts.AiProviderSecretResolveRequest) contracts.ProjectAiSettingsGetResponse {
+	return requestHandler[contracts.AiProviderSecretResolveRequest](SubjectAiProviderSecretsResolve, logger, func(ctx context.Context, request contracts.AiProviderSecretResolveRequest) contracts.AiProviderSecretResolveResponse {
 		credential, err := service.ResolveAiProviderSecret(ctx, request)
 		if err != nil {
-			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+			return contracts.AiProviderSecretResolveResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
-		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"credential": credential}}
+		return contracts.AiProviderSecretResolveResponse{RequestID: request.RequestID, OK: true, Data: &contracts.AiProviderSecretResolveData{Credential: credential}}
 	})
 }
 
 func handleAiChatHistory(service *Service, logger *slog.Logger) bridgeMessageHandler {
-	return requestHandler[contracts.AiChatHistoryRequest](SubjectAiChatHistory, logger, func(ctx context.Context, request contracts.AiChatHistoryRequest) contracts.ProjectAiSettingsGetResponse {
+	return requestHandler[contracts.AiChatHistoryRequest](SubjectAiChatHistory, logger, func(ctx context.Context, request contracts.AiChatHistoryRequest) contracts.AiChatHistoryResponse {
 		history, err := service.GetAiChatHistory(ctx, request)
 		if err != nil {
-			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+			return contracts.AiChatHistoryResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
-		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"history": history}}
+		return contracts.AiChatHistoryResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"history": history}}
 	})
 }
 
 func handleAiChatConversationGet(service *Service, logger *slog.Logger) bridgeMessageHandler {
-	return requestHandler[contracts.AiChatConversationGetRequest](SubjectAiChatConversationGet, logger, func(ctx context.Context, request contracts.AiChatConversationGetRequest) contracts.ProjectAiSettingsGetResponse {
+	return requestHandler[contracts.AiChatConversationGetRequest](SubjectAiChatConversationGet, logger, func(ctx context.Context, request contracts.AiChatConversationGetRequest) contracts.AiChatConversationGetResponse {
 		conversation, err := service.GetAiChatConversation(ctx, request)
 		if err != nil {
-			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+			return contracts.AiChatConversationGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
-		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"conversation": conversation}}
+		return contracts.AiChatConversationGetResponse{RequestID: request.RequestID, OK: true, Data: &contracts.AiChatConversationData{Conversation: conversation}}
 	})
 }
 
 func handleAiChatConversationCreate(service *Service, logger *slog.Logger) bridgeMessageHandler {
-	return requestHandler[contracts.AiChatConversationCreateRequest](SubjectAiChatConversationCreate, logger, func(ctx context.Context, request contracts.AiChatConversationCreateRequest) contracts.ProjectAiSettingsGetResponse {
+	return requestHandler[contracts.AiChatConversationCreateRequest](SubjectAiChatConversationCreate, logger, func(ctx context.Context, request contracts.AiChatConversationCreateRequest) contracts.AiChatConversationCreateResponse {
 		conversation, err := service.CreateAiChatConversation(ctx, request)
 		if err != nil {
-			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+			return contracts.AiChatConversationCreateResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
-		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"conversation": conversation}}
+		return contracts.AiChatConversationCreateResponse{RequestID: request.RequestID, OK: true, Data: &contracts.AiChatConversationData{Conversation: conversation}}
 	})
 }
 
 func handleAiChatConversationArchive(service *Service, logger *slog.Logger) bridgeMessageHandler {
-	return requestHandler[contracts.AiChatConversationArchiveRequest](SubjectAiChatConversationArchive, logger, func(ctx context.Context, request contracts.AiChatConversationArchiveRequest) contracts.ProjectAiSettingsGetResponse {
+	return requestHandler[contracts.AiChatConversationArchiveRequest](SubjectAiChatConversationArchive, logger, func(ctx context.Context, request contracts.AiChatConversationArchiveRequest) contracts.AiChatConversationArchiveResponse {
 		conversation, err := service.ArchiveAiChatConversation(ctx, request)
 		if err != nil {
-			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+			return contracts.AiChatConversationArchiveResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
-		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"conversation": conversation}}
+		return contracts.AiChatConversationArchiveResponse{RequestID: request.RequestID, OK: true, Data: &contracts.AiChatConversationData{Conversation: conversation}}
 	})
 }
 
 func handleAiChatConversationDelete(service *Service, logger *slog.Logger) bridgeMessageHandler {
-	return requestHandler[contracts.AiChatConversationDeleteRequest](SubjectAiChatConversationDelete, logger, func(ctx context.Context, request contracts.AiChatConversationDeleteRequest) contracts.AlertDeleteResponse {
+	return requestHandler[contracts.AiChatConversationDeleteRequest](SubjectAiChatConversationDelete, logger, func(ctx context.Context, request contracts.AiChatConversationDeleteRequest) contracts.AiChatConversationDeleteResponse {
 		deleted, err := service.DeleteAiChatConversation(ctx, request)
 		if err != nil {
-			return contracts.AlertDeleteResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+			return contracts.AiChatConversationDeleteResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
-		return contracts.AlertDeleteResponse{RequestID: request.RequestID, OK: true, Data: &contracts.AlertDeleteData{Deleted: deleted}}
+		return contracts.AiChatConversationDeleteResponse{RequestID: request.RequestID, OK: true, Data: &contracts.AiChatConversationDeleteData{Deleted: deleted}}
 	})
 }
 
 func handleAiChatMessageAppend(service *Service, logger *slog.Logger) bridgeMessageHandler {
-	return requestHandler[contracts.AiChatMessageAppendRequest](SubjectAiChatMessageAppend, logger, func(ctx context.Context, request contracts.AiChatMessageAppendRequest) contracts.ProjectAiSettingsGetResponse {
+	return requestHandler[contracts.AiChatMessageAppendRequest](SubjectAiChatMessageAppend, logger, func(ctx context.Context, request contracts.AiChatMessageAppendRequest) contracts.AiChatMessageAppendResponse {
 		message, err := service.AppendAiChatMessage(ctx, request)
 		if err != nil {
-			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+			return contracts.AiChatMessageAppendResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
-		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"message": message}}
+		return contracts.AiChatMessageAppendResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"message": message}}
 	})
 }
 
@@ -582,42 +583,42 @@ func handleAiChatRunFinalize(service *Service, logger *slog.Logger) bridgeMessag
 }
 
 func handleAiChatActionPropose(service *Service, logger *slog.Logger) bridgeMessageHandler {
-	return requestHandler[contracts.AiChatActionProposeRequest](SubjectAiChatActionPropose, logger, func(ctx context.Context, request contracts.AiChatActionProposeRequest) contracts.ProjectAiSettingsGetResponse {
+	return requestHandler[contracts.AiChatActionProposeRequest](SubjectAiChatActionPropose, logger, func(ctx context.Context, request contracts.AiChatActionProposeRequest) contracts.AiChatActionProposeResponse {
 		action, err := service.ProposeAiChatAction(ctx, request)
 		if err != nil {
-			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+			return contracts.AiChatActionProposeResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
-		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"action": action}}
+		return contracts.AiChatActionProposeResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"action": action}}
 	})
 }
 
 func handleAiChatActionApprove(service *Service, logger *slog.Logger) bridgeMessageHandler {
-	return requestHandler[contracts.AiChatActionApproveRequest](SubjectAiChatActionApprove, logger, func(ctx context.Context, request contracts.AiChatActionApproveRequest) contracts.ProjectAiSettingsGetResponse {
+	return requestHandler[contracts.AiChatActionApproveRequest](SubjectAiChatActionApprove, logger, func(ctx context.Context, request contracts.AiChatActionApproveRequest) contracts.AiChatActionApproveResponse {
 		action, err := service.ApproveAiChatAction(ctx, request)
 		if err != nil {
-			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+			return contracts.AiChatActionApproveResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
-		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"action": action}}
+		return contracts.AiChatActionApproveResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"action": action}}
 	})
 }
 
 func handleAiChatActionFinish(service *Service, logger *slog.Logger) bridgeMessageHandler {
-	return requestHandler[contracts.AiChatActionFinishRequest](SubjectAiChatActionFinish, logger, func(ctx context.Context, request contracts.AiChatActionFinishRequest) contracts.ProjectAiSettingsGetResponse {
+	return requestHandler[contracts.AiChatActionFinishRequest](SubjectAiChatActionFinish, logger, func(ctx context.Context, request contracts.AiChatActionFinishRequest) contracts.AiChatActionFinishResponse {
 		action, err := service.FinishAiChatAction(ctx, request)
 		if err != nil {
-			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+			return contracts.AiChatActionFinishResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
-		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"action": action}}
+		return contracts.AiChatActionFinishResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"action": action}}
 	})
 }
 
 func handleAiChatCompactionSave(service *Service, logger *slog.Logger) bridgeMessageHandler {
-	return requestHandler[contracts.AiChatCompactionSaveRequest](SubjectAiChatCompactionSave, logger, func(ctx context.Context, request contracts.AiChatCompactionSaveRequest) contracts.ProjectAiSettingsGetResponse {
+	return requestHandler[contracts.AiChatCompactionSaveRequest](SubjectAiChatCompactionSave, logger, func(ctx context.Context, request contracts.AiChatCompactionSaveRequest) contracts.AiChatCompactionSaveResponse {
 		compaction, err := service.SaveAiChatCompaction(ctx, request)
 		if err != nil {
-			return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
+			return contracts.AiChatCompactionSaveResponse{RequestID: request.RequestID, OK: false, Error: ptr(BridgeErrorFromError(err))}
 		}
-		return contracts.ProjectAiSettingsGetResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"compaction": compaction}}
+		return contracts.AiChatCompactionSaveResponse{RequestID: request.RequestID, OK: true, Data: map[string]any{"compaction": compaction}}
 	})
 }
 
@@ -801,7 +802,15 @@ func requestHandler[T any, R any](subject string, logger *slog.Logger, handle fu
 			logHandlerCompletion(logger, subject, "", false, start, &bridgeError)
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		ctx := context.Background()
+		if carrier, ok := msg.(interface {
+			TraceContext() (selfobs.TraceContext, bool)
+		}); ok {
+			if traceContext, ok := carrier.TraceContext(); ok {
+				ctx = selfobs.ContextWithTraceContext(ctx, traceContext)
+			}
+		}
+		ctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
 		defer cancel()
 		response := handle(ctx, request)
 		respond(msg, response)

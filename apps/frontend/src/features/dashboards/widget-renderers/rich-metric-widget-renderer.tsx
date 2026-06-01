@@ -72,7 +72,7 @@ export function RichMetricWidgetPreview({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Display series</TableHead>
+            <TableHead>{t("dashboards.editor.displaySeries")}</TableHead>
             <TableHead>{t("metrics.series.timestamp")}</TableHead>
             <TableHead>{t("metrics.series.value")}</TableHead>
           </TableRow>
@@ -101,9 +101,11 @@ export function RichMetricWidgetPreview({
       emptyMessage={t("dashboards.metric.noSeries")}
       kind={chart.kind}
       series={chart.series}
-      summary={`Rich metric ${visualization} chart with ${visibleSeries.length} ${t(
-        "dashboards.metric.series",
-      )}.`}
+      summary={t("dashboards.richMetric.chartSummary", {
+        count: String(visibleSeries.length),
+        series: t("dashboards.metric.series"),
+        visualization,
+      })}
     />
   );
 }

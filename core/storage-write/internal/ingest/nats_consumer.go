@@ -54,6 +54,8 @@ func RegisterEvalMutationResponders(nc interface {
 		EvalResultsPersistSubject,
 		EvalTargetSnapshotCreateSubject,
 		EvalTargetPromoteSubject,
+		EvalOptimizationStepPersistSubject,
+		EvalOptimizationMemoryPersistSubject,
 		AnnotationItemUpdateSubject,
 	} {
 		subject := subject

@@ -4,9 +4,9 @@ title: AI evaluation v2 contract rewrite
 layer: contracts
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-24
+updated: 2026-05-31
 provenance: from-user
-depends_on: [DOM-006, TEC-BE-016]
+depends_on: [DOM-006, TEC-BE-016, CAP-AIE-013]
 ---
 
 # AI Evaluation v2 Contract Rewrite
@@ -58,6 +58,17 @@ Add v2 public fields:
 - `Mutation.promoteTargetSnapshot`;
 - `Subscription.liveEvaluationRun`.
 
+`Mutation.startOptimizationRun` must include typed `OptimizationSearchPolicy`
+fields. The contract must expose `SkillOptimizationDetail`,
+`SkillOptimizationStep`, `SkillOptimizationEdit`, and related enums when
+`optimizerKind = skill_text_edit`.
+
+For classification and extraction prompt optimization, the contract must expose
+`PromptOptimizationDetail`, `PromptOptimizationStep`,
+`PromptOptimizationProposal`, and related enums when `optimizerKind` is
+`bootstrap_fewshot` or `critic_mutate_judge_pick` and the dataset family is
+`classification` or `extraction`.
+
 Dataset GraphQL types must use:
 
 - `curationStatus`, not `reviewStatus`;
@@ -84,6 +95,11 @@ Remove or wrap legacy subjects:
 
 Add v2 subjects exactly as listed in `TEC-BE-016`.
 
+Skill optimization adds:
+
+- `eval.optimization.step.persist`;
+- `eval.optimization.memory.persist`.
+
 Payloads must include idempotency keys for dataset writes, evaluation run start,
 run controls, external adapter item execution, and promotion.
 
@@ -105,6 +121,9 @@ Add schemas:
 - `target-diff.schema.json`;
 - `promotion-record.schema.json`;
 - `optimization-run.schema.json`;
+- `prompt-optimization-step.schema.json`;
+- `skill-optimization-step.schema.json`;
+- `skill-optimization-memory.schema.json`;
 
 Replace or remove schemas:
 

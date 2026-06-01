@@ -84,6 +84,7 @@ function fixtureMode(value) {
     value === "validation_failure" ||
     value === "timeout" ||
     value === "quick_shot" ||
+    value === "skill_text_edit" ||
     value === "success"
   ) {
     return value;

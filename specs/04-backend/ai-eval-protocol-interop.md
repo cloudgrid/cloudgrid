@@ -48,6 +48,43 @@ Prompt, completion, tool parameter, tool result, retrieved document content, and
 
 Storage-read owns the `AgentRunTranscript` view model. It reads OTel GenAI span events and OpenInference indexed message attributes from bounded source spans and returns normalized transcript messages to GraphQL. The BFF and frontend must not reconstruct transcript semantics from raw spans.
 
-## Status Attribute
+## Source Flavor Metadata
 
-The collector stamps `cloudgrid.ai.semconv.flavor` on source spans with one of `gen_ai`, `openinference`, `both`, or `neither`.
+The collector records source flavor with AI projection metadata and
+normalization warnings. It must not stamp `cloudgrid.ai.semconv.flavor` or any
+other CloudGrid-specific semantic attribute onto customer source spans.
+
+Allowed `sourceFlavor` values on projection metadata are `gen_ai`,
+`openinference`, `both`, and `neither`.
+
+## Evaluation Evidence From Production Traces
+
+AI Eval must prefer production-standard telemetry over CloudGrid-specific span
+attributes. Customer runtimes should be able to reuse existing instrumentation
+with minimal changes.
+
+Correlation:
+
+- Evaluation execution propagates W3C `traceparent` and `tracestate`.
+- Runner and storage-read link `EvaluationItemRun` to source trace/span IDs from
+  the generated trace context and adapter terminal response.
+- Source spans do not need CloudGrid evaluation IDs as attributes.
+- CloudGrid-specific source-span attributes are optional extensions only. They
+  must not be required when W3C trace context, adapter control fields, or
+  standard semantic conventions provide the needed data.
+
+Evidence extraction precedence:
+
+1. Use OTel GenAI semantic conventions for model, agent, embedding, retrieval,
+   and tool spans when present.
+2. Use OTel MCP semantic conventions for MCP operations when present.
+3. Use OpenInference attributes for frameworks that already emit them.
+4. Use standard HTTP, RPC, database, messaging, filesystem, exception, and
+   service/resource conventions for surrounding business operations.
+5. Use adapter-profile evidence selectors for customer-specific span names or
+   attributes only when no standard convention exists.
+6. Leave unrecognized spans as generic trace detail.
+
+Storage-read owns the conversion from trace spans to AI Eval important steps,
+trajectory summaries, and optimizer evidence. BFF, frontend, and optimizer code
+must not parse raw spans directly.

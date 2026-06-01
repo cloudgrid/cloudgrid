@@ -1,0 +1,16 @@
+{
+  "manualOnly": true,
+  "primaryMetricId": "classification.accuracy",
+  "minimumRows": 12,
+  "expectedWeakSpots": [
+    "security_incident versus performance_issue when a message mentions both access risk and latency",
+    "retention_request versus performance_issue when retention changes are a distractor",
+    "billing_admin versus onboarding_help when admin ownership is mentioned"
+  ],
+  "optimizerShouldImprove": [
+    "label glossary",
+    "priority rule for security/access-risk language",
+    "contrastive retention versus performance examples",
+    "few-shot examples for alert-noise and billing-admin distractors"
+  ]
+}

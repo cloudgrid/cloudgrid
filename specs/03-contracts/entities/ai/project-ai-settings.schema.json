@@ -258,13 +258,42 @@
     "optimizationDefaults": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["minimumSampleSize", "allowedTargetPartKinds"],
+      "required": [
+        "minimumSampleSize",
+        "allowedTargetPartKinds",
+        "enabledOptimizerKinds",
+        "defaultOptimizerKind",
+        "maxConcurrentOptimizerCalls",
+        "optimizerEvidenceContentPolicy"
+      ],
       "properties": {
         "minimumSampleSize": { "type": "integer", "minimum": 1, "default": 20 },
         "allowedTargetPartKinds": {
           "type": "array",
-          "items": { "type": "string", "enum": ["prompt", "examples", "model_config"] },
-          "default": ["prompt", "examples", "model_config"]
+          "items": { "type": "string", "enum": ["prompt", "examples", "model_config", "skill"] },
+          "default": ["prompt", "examples", "model_config", "skill"]
+        },
+        "enabledOptimizerKinds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["bootstrap_fewshot", "critic_mutate_judge_pick", "skill_text_edit"]
+          },
+          "default": ["bootstrap_fewshot", "critic_mutate_judge_pick", "skill_text_edit"]
+        },
+        "defaultOptimizerKind": {
+          "type": "string",
+          "enum": ["bootstrap_fewshot", "critic_mutate_judge_pick", "skill_text_edit"],
+          "default": "critic_mutate_judge_pick"
+        },
+        "defaultSkillSearchPolicy": {
+          "$ref": "./optimization-run.schema.json#/$defs/optimizationSearchPolicy"
+        },
+        "maxConcurrentOptimizerCalls": { "type": "integer", "minimum": 1, "maximum": 20, "default": 2 },
+        "optimizerEvidenceContentPolicy": {
+          "type": "string",
+          "enum": ["metadata_only", "dataset_content", "disabled"],
+          "default": "dataset_content"
         }
       }
     },

@@ -4,7 +4,7 @@ title: AI Chat runtime
 layer: backend
 status: draft
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-21
+updated: 2026-05-28
 provenance: from-user
 depends_on: [DOM-007, TEC-BE-001, TEC-BE-008, TEC-BE-011, TEC-BE-028, TEC-BE-030, NFR-003]
 ---
@@ -305,9 +305,11 @@ Deleting a conversation is owner-only and permanent. It removes the
 conversation, messages, runs, artifacts, action proposals, and compaction
 records for that conversation from control-plane storage. A delete request for a
 conversation owned by another user fails with `ERR-016 FORBIDDEN`; a missing
-conversation fails with `ERR-004 NOT_FOUND`. The frontend must remove deleted
-conversations from the local history cache and clear the active route when the
-deleted conversation is open.
+conversation fails with the current bridge not-found contract,
+`ERR-004 TRACE_NOT_FOUND`. A future AI Chat-specific not-found code requires an
+error-taxonomy contract migration before implementation. The frontend must
+remove deleted conversations from the local history cache and clear the active
+route when the deleted conversation is open.
 
 ### AiChatRun
 

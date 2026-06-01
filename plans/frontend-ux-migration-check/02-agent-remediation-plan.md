@@ -175,7 +175,7 @@ Read scope:
 
 - `specs/05-frontend/product-ux-concept.md`
 - `specs/05-frontend/traces-and-metrics-ux-concept.md`
-- `specs/02-flows/observability/live-trace-subscription.md`
+- `specs/03-flows/observability/live-trace-subscription.md`
 - `apps/frontend/src/routes/traces-route.tsx`
 - `apps/frontend/src/routes/live-route.tsx`
 - `apps/frontend/src/features/traces/`

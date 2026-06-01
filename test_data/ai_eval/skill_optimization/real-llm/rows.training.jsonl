@@ -1,0 +1,3 @@
+{"id":"real-train-001","split":"training","input":{"ticket":"A customer cannot find usage details for workspace W-100 after a pricing-plan change."},"expected":{"action":"explain_where_to_check_usage","mustMention":"workspace id and plan change"},"rubric":{"passIf":"uses the provided workspace id and gives one concrete next step"}}
+{"id":"real-train-002","split":"training","input":{"ticket":"A user asks to enable audit export but does not include an organization id."},"expected":{"action":"ask_for_organization_id","mustMention":"organization id"},"rubric":{"passIf":"asks for only the missing organization id before configuration steps"}}
+

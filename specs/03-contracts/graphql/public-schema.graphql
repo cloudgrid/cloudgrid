@@ -93,6 +93,7 @@ type Mutation {
   appendDatasetItems(input: AppendDatasetItemsInput!): Dataset!
   updateDatasetItems(input: UpdateDatasetItemsInput!): Dataset!
   promoteSpanToDatasetItem(input: PromoteSpanToDatasetItemInput!): DatasetItem!
+    @deprecated(reason: "Use prepareDatasetCandidates with selected trace/span context and commitDatasetCandidates.")
   prepareDatasetCandidates(input: PrepareDatasetCandidatesInput!): DatasetCandidateSearchResult!
   commitDatasetCandidates(input: CommitDatasetCandidatesInput!): Dataset!
   prepareDatasetImport(input: PrepareDatasetImportInput!): DatasetImportJob!
@@ -656,9 +657,10 @@ input DatasetSettingsInput {
   expectedType: DatasetValueType!
   inputJsonSchema: JSON
   expectedJsonSchema: JSON
+  expectedValueOptions: [DatasetExpectedValueOptionInput!] = []
   defaultSplit: DatasetSplit!
   intakePolicy: DatasetIntakePolicyInput!
-  traceExtractionSettings: DatasetTraceExtractionSettingsInput
+  traceIntakeRules: [DatasetTraceIntakeRuleInput!] = []
   anonymizationPolicy: DatasetAnonymizationPolicyInput
   defaultMetricSettings: [MetricSettingInput!]!
   retentionProfile: RetentionProfile!
@@ -677,11 +679,63 @@ input DatasetIntakePolicyInput {
   traceDefaultStatus: DatasetCurationStatus = needs_expected
 }
 
-input DatasetTraceExtractionSettingsInput {
-  inputPath: String!
-  expectedPath: String
-  observedOutputPath: String
-  metadataPaths: [String!] = []
+input DatasetExpectedValueOptionInput {
+  value: JSON!
+  label: String!
+  description: String
+  metadata: JSON = {}
+}
+
+input DatasetTraceIntakeRuleInput {
+  id: ID!
+  name: String!
+  enabled: Boolean = true
+  match: DatasetTraceIntakeMatchInput!
+  mappings: DatasetTraceIntakeMappingsInput!
+  defaults: DatasetTraceIntakeDefaultsInput = {}
+}
+
+input DatasetTraceIntakeMatchInput {
+  serviceNames: [String!] = []
+  operationNames: [String!] = []
+  spanNames: [String!] = []
+  spanKinds: [String!] = []
+  statuses: [String!] = []
+  attributePredicates: [DatasetTraceAttributePredicateInput!] = []
+}
+
+input DatasetTraceAttributePredicateInput {
+  scope: DatasetTraceAttributeScope = span
+  key: String!
+  operator: DatasetTracePredicateOperator = exact
+  value: String!
+}
+
+input DatasetTraceIntakeMappingsInput {
+  input: DatasetTraceValueMappingInput!
+  expected: DatasetTraceValueMappingInput
+  observedOutput: DatasetTraceValueMappingInput
+  metadata: [DatasetTraceMetadataMappingInput!] = []
+}
+
+input DatasetTraceMetadataMappingInput {
+  key: String!
+  mapping: DatasetTraceValueMappingInput!
+}
+
+input DatasetTraceValueMappingInput {
+  source: DatasetTraceMappingSource!
+  path: String
+  transform: DatasetTraceMappingTransform = identity
+  defaultValue: JSON
+  enumMap: JSON
+}
+
+input DatasetTraceIntakeDefaultsInput {
+  split: DatasetSplit
+  curationStatus: DatasetCurationStatus
+  contentTreatment: DatasetContentTreatment
+  expectedTrust: DatasetTraceExpectedTrust = untrusted
 }
 
 input DatasetAnonymizationPolicyInput {
@@ -754,14 +808,35 @@ input DatasetCandidateSearchInput {
 }
 
 input PrepareDatasetCandidatesInput {
+  projectId: ID!
   datasetId: ID
-  sources: [DatasetCandidateSourceInput!]!
+  datasetIds: [ID!] = []
+  autoMatchDatasets: Boolean = false
+  sources: [DatasetCandidateSourceInput!] = []
+  traceSelection: DatasetTraceCandidateSelectionInput
+  previewLimit: Int = 100
   split: DatasetSplit
   curationStatus: DatasetCurationStatus = needs_review
   contentTreatment: DatasetContentTreatment = realistic_anonymized
   anonymizationPolicyId: ID
   anonymizationPolicyVersion: Int
   idempotencyKey: String!
+}
+
+input DatasetTraceCandidateSelectionInput {
+  mode: DatasetTraceSelectionMode = selected
+  traceRefs: [DatasetTraceRefInput!] = []
+  spanRefs: [DatasetSpanRefInput!] = []
+  search: TraceSearchInput
+}
+
+input DatasetTraceRefInput {
+  traceId: ID!
+}
+
+input DatasetSpanRefInput {
+  traceId: ID!
+  spanId: ID!
 }
 
 input DatasetCandidateSourceInput {
@@ -926,6 +1001,7 @@ input StartOptimizationRunInput {
   projectId: ID!
   baselineTargetSnapshotId: ID!
   objective: OptimizationObjectiveInput!
+  searchPolicy: OptimizationSearchPolicyInput!
   trainingEvaluationDefinitionId: ID
   trainingSplitSelector: DatasetSplitSelectorInput
   validationEvaluationDefinitionId: ID
@@ -934,6 +1010,36 @@ input StartOptimizationRunInput {
   quickShotPolicy: QuickShotPolicyInput
   runPolicy: EvalRunPolicyInput
   idempotencyKey: String!
+}
+
+input OptimizationSearchPolicyInput {
+  optimizerKind: OptimizationOptimizerKind!
+  editablePartKinds: [TargetPartKind!]!
+  maxEpochs: Int = 4
+  maxSteps: Int = 0
+  rolloutBatchSize: Int = 40
+  reflectionMinibatchSize: Int = 8
+  editBudget: Int = 4
+  minEditBudget: Int = 2
+  editSchedule: OptimizationEditSchedule = cosine
+  gateMetricId: String!
+  gateMode: OptimizationGateMode = strict_improvement
+  selectionSplit: DatasetSplit = validation
+  allowSlowUpdate: Boolean = true
+  allowMetaMemory: Boolean = true
+  skillPolicy: SkillOptimizationPolicyInput
+}
+
+input SkillOptimizationPolicyInput {
+  maxPackageBytes: Int = 262144
+  maxSkillBytes: Int = 65536
+  maxSkillTokens: Int = 8000
+  allowedEditOps: [SkillEditOp!] = [append, insert_after, replace, delete]
+  editableFileGlobs: [String!] = ["SKILL.md", "references/**/*.md", "examples/**/*.md"]
+  protectedFileGlobs: [String!] = ["scripts/**", "**/*.lock", "**/*.{png,jpg,jpeg,gif,webp,pdf,zip,tar,gz}"]
+  allowScriptEdits: Boolean = false
+  preserveSections: [String!] = []
+  exportBestSkill: Boolean = true
 }
 
 input OptimizationObjectiveInput {
@@ -1701,6 +1807,7 @@ enum DatasetCandidateStatus {
 
 enum DatasetCandidateSourceKind {
   trace
+  span
   import
   metric_result
   evaluation_item_run
@@ -1708,6 +1815,51 @@ enum DatasetCandidateSourceKind {
   health_issue
   failure_cluster
   manual
+}
+
+enum DatasetTraceAttributeScope {
+  span
+  resource
+}
+
+enum DatasetTracePredicateOperator {
+  exact
+  prefix
+  contains
+  regex
+}
+
+enum DatasetTraceMappingSource {
+  span_attribute
+  resource_attribute
+  span_event
+  related_log
+  trace_summary
+  literal
+}
+
+enum DatasetTraceMappingTransform {
+  identity
+  string
+  json_parse
+  json_stringify
+  number
+  boolean
+  regex
+  enum_map
+  fallback
+}
+
+enum DatasetTraceExpectedTrust {
+  none
+  untrusted
+  trusted_label
+  trusted_program
+}
+
+enum DatasetTraceSelectionMode {
+  selected
+  current_filter
 }
 
 enum EvalBackpressureBehavior {
@@ -1882,6 +2034,60 @@ enum TargetPartKind {
 enum TargetReproducibility {
   full
   degraded
+}
+
+enum OptimizationOptimizerKind {
+  bootstrap_fewshot
+  critic_mutate_judge_pick
+  skill_text_edit
+}
+
+enum OptimizationEditSchedule {
+  constant
+  linear
+  cosine
+  autonomous
+}
+
+enum OptimizationGateMode {
+  strict_improvement
+}
+
+enum SkillEditOp {
+  append
+  insert_after
+  replace
+  delete
+}
+
+enum SkillOptimizationEditSource {
+  failure
+  success
+  slow_update
+  meta_memory
+}
+
+enum SkillOptimizationStepStatus {
+  queued
+  running
+  accepted
+  rejected
+  skipped
+  failed
+}
+
+enum SkillOptimizationGateDecision {
+  accepted_new_best
+  accepted
+  rejected
+  failed_preflight
+  skipped_no_edits
+}
+
+enum OptimizerEvidenceContentPolicy {
+  metadata_only
+  dataset_content
+  disabled
 }
 
 enum QuickShotSelectionStrategy {
@@ -2917,9 +3123,10 @@ type DatasetSettings {
   expectedType: DatasetValueType!
   inputJsonSchema: JSON
   expectedJsonSchema: JSON
+  expectedValueOptions: [DatasetExpectedValueOption!]!
   defaultSplit: DatasetSplit!
   intakePolicy: DatasetIntakePolicy!
-  traceExtractionSettings: DatasetTraceExtractionSettings
+  traceIntakeRules: [DatasetTraceIntakeRule!]!
   anonymizationPolicy: DatasetAnonymizationPolicy
   defaultMetricSettings: [MetricSetting!]!
   retentionProfile: RetentionProfile!
@@ -2931,11 +3138,63 @@ type DatasetIntakePolicy {
   traceDefaultStatus: DatasetCurationStatus!
 }
 
-type DatasetTraceExtractionSettings {
-  inputPath: String!
-  expectedPath: String
-  observedOutputPath: String
-  metadataPaths: [String!]!
+type DatasetExpectedValueOption {
+  value: JSON!
+  label: String!
+  description: String
+  metadata: JSON!
+}
+
+type DatasetTraceIntakeRule {
+  id: ID!
+  name: String!
+  enabled: Boolean!
+  match: DatasetTraceIntakeMatch!
+  mappings: DatasetTraceIntakeMappings!
+  defaults: DatasetTraceIntakeDefaults!
+}
+
+type DatasetTraceIntakeMatch {
+  serviceNames: [String!]!
+  operationNames: [String!]!
+  spanNames: [String!]!
+  spanKinds: [String!]!
+  statuses: [String!]!
+  attributePredicates: [DatasetTraceAttributePredicate!]!
+}
+
+type DatasetTraceAttributePredicate {
+  scope: DatasetTraceAttributeScope!
+  key: String!
+  operator: DatasetTracePredicateOperator!
+  value: String!
+}
+
+type DatasetTraceIntakeMappings {
+  input: DatasetTraceValueMapping!
+  expected: DatasetTraceValueMapping
+  observedOutput: DatasetTraceValueMapping
+  metadata: [DatasetTraceMetadataMapping!]!
+}
+
+type DatasetTraceMetadataMapping {
+  key: String!
+  mapping: DatasetTraceValueMapping!
+}
+
+type DatasetTraceValueMapping {
+  source: DatasetTraceMappingSource!
+  path: String
+  transform: DatasetTraceMappingTransform!
+  defaultValue: JSON
+  enumMap: JSON
+}
+
+type DatasetTraceIntakeDefaults {
+  split: DatasetSplit
+  curationStatus: DatasetCurationStatus
+  contentTreatment: DatasetContentTreatment
+  expectedTrust: DatasetTraceExpectedTrust!
 }
 
 type DatasetAnonymizationPolicy {
@@ -3001,6 +3260,8 @@ type DatasetAnonymizedField {
 type DatasetCandidate {
   id: ID!
   datasetId: ID
+  traceIntakeRuleId: ID
+  traceIntakeRuleName: String
   status: DatasetCandidateStatus!
   sourceKind: DatasetCandidateSourceKind!
   source: JSON!
@@ -3016,9 +3277,23 @@ type DatasetCandidate {
   reason: String!
   sourceRefs: [AiEvalSourceRef!]!
   clusterId: ID
+  validationIssues: [DatasetCandidateIssue!]!
+  duplicateHint: DatasetCandidateDuplicateHint
   warnings: [String!]!
   createdAt: DateTime!
   updatedAt: DateTime!
+}
+
+type DatasetCandidateIssue {
+  field: String!
+  message: String!
+  blocking: Boolean!
+}
+
+type DatasetCandidateDuplicateHint {
+  datasetItemId: ID
+  candidateId: ID
+  reason: String!
 }
 
 type DatasetImportJob {
@@ -3486,6 +3761,7 @@ type OptimizationRun {
   status: EvaluationRunStatus!
   baselineTargetSnapshotId: ID!
   objective: OptimizationObjective!
+  searchPolicy: OptimizationSearchPolicy!
   trainingEvaluationDefinitionId: ID
   trainingSplitSelector: DatasetSplitSelector
   validationEvaluationDefinitionId: ID
@@ -3498,6 +3774,7 @@ type OptimizationRun {
   selectedCandidateSnapshotId: ID
   promotionRecordId: ID
   budgetSnapshot: JSON!
+  skillOptimization: SkillOptimizationDetail
   createdAt: DateTime!
   startedAt: DateTime
   endedAt: DateTime
@@ -3511,6 +3788,81 @@ type OptimizationObjective {
   rankingPolicy: JSON!
   tieBreakers: [String!]!
   minimumEvidence: JSON!
+}
+
+type OptimizationSearchPolicy {
+  optimizerKind: OptimizationOptimizerKind!
+  editablePartKinds: [TargetPartKind!]!
+  maxEpochs: Int!
+  maxSteps: Int!
+  rolloutBatchSize: Int!
+  reflectionMinibatchSize: Int!
+  editBudget: Int!
+  minEditBudget: Int!
+  editSchedule: OptimizationEditSchedule!
+  gateMetricId: String!
+  gateMode: OptimizationGateMode!
+  selectionSplit: DatasetSplit!
+  allowSlowUpdate: Boolean!
+  allowMetaMemory: Boolean!
+  skillPolicy: SkillOptimizationPolicy
+}
+
+type SkillOptimizationPolicy {
+  maxPackageBytes: Int!
+  maxSkillBytes: Int!
+  maxSkillTokens: Int!
+  allowedEditOps: [SkillEditOp!]!
+  editableFileGlobs: [String!]!
+  protectedFileGlobs: [String!]!
+  allowScriptEdits: Boolean!
+  preserveSections: [String!]!
+  exportBestSkill: Boolean!
+}
+
+type SkillOptimizationDetail {
+  baselineSkillDigest: String!
+  currentSkillDigest: String
+  bestSkillDigest: String
+  bestTargetSnapshotId: ID
+  exportedSkillContentRef: String
+  acceptedStepCount: Int!
+  rejectedStepCount: Int!
+  skippedStepCount: Int!
+  failedStepCount: Int!
+  steps: [SkillOptimizationStep!]!
+}
+
+type SkillOptimizationStep {
+  id: ID!
+  optimizationRunId: ID!
+  epoch: Int!
+  step: Int!
+  status: SkillOptimizationStepStatus!
+  rolloutEvaluationRunId: ID!
+  candidateTargetSnapshotId: ID
+  baselineSkillDigest: String!
+  candidateSkillDigest: String
+  proposedEdits: [SkillOptimizationEdit!]!
+  selectedEdits: [SkillOptimizationEdit!]!
+  rejectedEditSummaries: [SkillOptimizationEdit!]!
+  trainingScore: Float!
+  validationScore: Float
+  gateDecision: SkillOptimizationGateDecision!
+  problem: MetricProblem
+  startedAt: DateTime
+  endedAt: DateTime
+}
+
+type SkillOptimizationEdit {
+  op: SkillEditOp!
+  filePath: String
+  target: String
+  contentPreview: String
+  rationale: String
+  sourceType: SkillOptimizationEditSource!
+  supportCount: Int
+  evidenceRefs: [AiEvalSourceRef!]!
 }
 
 type QuickShotPolicy {
@@ -3567,6 +3919,7 @@ type ProjectAiSettings {
   runPolicyDefaults: EvalRunPolicy!
   datasetPipeline: DatasetPipelineSettings!
   datasetDefaults: DatasetDefaults!
+  optimizationDefaults: ProjectOptimizationDefaults!
   effective: ProjectAiSettingsEffective!
   version: Int!
   updatedAt: DateTime!
@@ -3647,6 +4000,14 @@ type DatasetPipelineSettings {
   preserveLocale: Boolean!
   preserveTemporalDistance: Boolean!
   blockedEntityTypes: [String!]!
+}
+
+type ProjectOptimizationDefaults {
+  enabledOptimizerKinds: [OptimizationOptimizerKind!]!
+  defaultOptimizerKind: OptimizationOptimizerKind!
+  defaultSkillSearchPolicy: OptimizationSearchPolicy
+  maxConcurrentOptimizerCalls: Int!
+  optimizerEvidenceContentPolicy: OptimizerEvidenceContentPolicy!
 }
 
 type ProjectAiSettingsEffective {

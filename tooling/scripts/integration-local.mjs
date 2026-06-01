@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   integrationScenarios,
   runAiEvalV2FakeAdapterScenario,
+  runAiEvalV2SkillOptimizationScenario,
 } from "../../apps/packages/integration-scenarios/src/index.ts";
 import {
   agentRunOperation,
@@ -41,6 +42,7 @@ import {
   metricNamesOperation,
   metricSeriesOperation,
   optimizationRunsOperation,
+  optimizationRunOperation,
   organizationInvitationsOperation,
   organizationMembersOperation,
   organizationOperation,
@@ -378,7 +380,7 @@ async function main(args = process.argv.slice(2)) {
       containers.push(
         await startDockerContainer({
           name: `cloudgrid-${runID}-surrealdb`,
-          image: `surrealdb/surrealdb:${baseEnv.CLOUDGRID_SURREALDB_IMAGE_TAG || "v3.0.5"}`,
+          image: `surrealdb/surrealdb:${baseEnv.CLOUDGRID_SURREALDB_IMAGE_TAG || "v3.1.0"}`,
           ports: [[surrealPort, 8000]],
           args: ["start", "--user", surrealUsername, "--pass", surrealPassword, "memory"],
         }),
@@ -831,6 +833,7 @@ async function main(args = process.argv.slice(2)) {
     );
 
     await assertAiEvalScenario(bffPort, natsUrl, runID, runTraceFixture, aiEvalHarnessURL);
+    await assertAiEvalSkillOptimizationScenario(bffPort, runID, aiEvalHarnessURL, baseEnv);
 
     console.log("Asserting collector failure mappings...");
     await assertCollectorProblem(
@@ -1966,6 +1969,49 @@ async function assertAiEvalScenario(port, natsUrl, runID, traceFixture, aiEvalHa
   );
 }
 
+async function assertAiEvalSkillOptimizationScenario(port, runID, aiEvalHarnessURL, env) {
+  console.log("Asserting public GraphQL AI Eval skill optimization workflow...");
+  const result = await runAiEvalV2SkillOptimizationScenario({
+    projectId: "default",
+    runId: runID,
+    graphql: {
+      async request(operationName, variables) {
+        const response = await graphql(
+          port,
+          aiEvalOperation(operationName),
+          variables,
+          operationName,
+        );
+        return response.data ?? {};
+      },
+    },
+    async readHarnessCapturedRequests() {
+      const response = await fetch(`${aiEvalHarnessURL}/debug/captured-requests`);
+      if (!response.ok) {
+        return [];
+      }
+      const body = await response.json();
+      return Array.isArray(body.requests) ? body.requests : [];
+    },
+  });
+
+  assert(result.optimizationRunId, "Skill optimization did not return an optimization run id");
+  assert(result.promotionReady === true, "Skill optimization did not expose promotion readiness");
+  assert(
+    result.bestTargetSnapshotId !== result.baselineTargetSnapshotId,
+    "Skill optimization did not produce a candidate target snapshot",
+  );
+  assert(
+    result.rejectedProtectedEditPath === "scripts/run.sh",
+    "Skill optimization did not reject the protected script edit",
+  );
+  assert(
+    result.acceptedSkillEditPath === "SKILL.md",
+    "Skill optimization did not accept an editable SKILL.md change",
+  );
+
+}
+
 function aiEvalOperation(operationName) {
   const operations = {
     CreateDataset: createDatasetOperation,
@@ -1976,6 +2022,7 @@ function aiEvalOperation(operationName) {
     EvaluationResults: evaluationResultsOperation,
     CreateEvaluationComparison: createEvaluationComparisonOperation,
     StartOptimizationRun: startOptimizationRunOperation,
+    OptimizationRun: optimizationRunOperation,
     OptimizationRuns: optimizationRunsOperation,
   };
   const operation = operations[operationName];

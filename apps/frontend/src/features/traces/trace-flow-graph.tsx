@@ -159,7 +159,7 @@ export function TraceFlowGraph({
           viewBox={`${pan.x} ${pan.y} ${width} ${height}`}
           width={width * zoom}
         >
-          <title>Trace flow map</title>
+          <title>{t("traceDetail.flowMap")}</title>
           <defs>
             <marker
               id="trace-flow-arrow"

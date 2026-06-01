@@ -1048,8 +1048,10 @@ describe("GraphQL client", () => {
     });
     await expect(
       client.prepareDatasetCandidates({
+        projectId: "project-1",
         datasetId: "dataset-1",
         sources: [{ sourceKind: "trace", traceId: "trace-1" }],
+        idempotencyKey: "prepare-candidates-1",
       }),
     ).resolves.toMatchObject({ items: [{ id: "candidate-1" }] });
     await expect(

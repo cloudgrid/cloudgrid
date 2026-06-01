@@ -1,35 +1,35 @@
 schema_version: 1
 generated_by: spec-architect
-last_updated: 2026-05-11T00:00:00Z
+last_updated: 2026-05-31T00:00:00Z
 
 counters:
-  DOM: 7
+  DOM: 8
   CAP-ING: 3
   CAP-OBS: 6
   CAP-STO: 2
   CAP-RUN: 3
   CAP-FE: 6
-  CAP-AIE: 9
+  CAP-AIE: 13
   CAP-AIP: 2
   CAP-AIC: 1
   FLW-ING: 2
   FLW-OBS: 2
-  FLW-AIE: 5
+  FLW-AIE: 7
   FLW-AIP: 1
   FLW-AIC: 3
   ENT: 23
   ADR: 5
-  NFR: 9
+  NFR: 12
   OPR-OTLP: 2
   OPR-API: 1
   GQL: 5
   MSG: 10
   ERR: 34
-  REV: 7
+  REV: 13
   GLS: 1
   ARC: 1
-  TEC-BE: 31
-  TEC-FE: 9
+  TEC-BE: 32
+  TEC-FE: 16
   FTR: 0
 
 ids:
@@ -227,25 +227,25 @@ ids:
     deprecated_by: null
   FLW-ING-001:
     slug: persist-trace-ingest
-    file: specs/02-flows/ingestion/persist-trace-ingest.md
+    file: specs/03-flows/ingestion/persist-trace-ingest.md
     status: draft
     depends_on: [MSG-telemetry-ingest-traces, CAP-STO-001]
     deprecated_by: null
   FLW-ING-002:
     slug: persist-log-ingest
-    file: specs/02-flows/ingestion/persist-log-ingest.md
+    file: specs/03-flows/ingestion/persist-log-ingest.md
     status: draft
     depends_on: [MSG-telemetry-ingest-logs, CAP-STO-001]
     deprecated_by: null
   FLW-OBS-001:
     slug: read-query-request-reply
-    file: specs/02-flows/observability/read-query-request-reply.md
+    file: specs/03-flows/observability/read-query-request-reply.md
     status: draft
     depends_on: [MSG-telemetry-traces-search, MSG-telemetry-traces-get, MSG-telemetry-logs-search]
     deprecated_by: null
   FLW-OBS-002:
     slug: live-trace-subscription
-    file: specs/02-flows/observability/live-trace-subscription.md
+    file: specs/03-flows/observability/live-trace-subscription.md
     status: draft
     depends_on: [GQL-Subscription-liveTraces, MSG-telemetry-traces-live-start, MSG-telemetry-traces-live-stop, MSG-telemetry-traces-live-events, MSG-telemetry-persisted-traces]
     deprecated_by: null
@@ -471,6 +471,12 @@ ids:
     status: draft
     depends_on: [TEC-FE-001, TEC-FE-002, TEC-FE-003, TEC-FE-004, DSY-001, CAP-OBS-005]
     deprecated_by: null
+  TEC-FE-006:
+    slug: product-experience-contract
+    file: specs/05-frontend/product-experience-contract.md
+    status: approved
+    depends_on: [TEC-FE-001, TEC-FE-002, TEC-FE-010, TEC-FE-011, TEC-FE-007, TEC-FE-008, TEC-FE-009, TEC-FE-013, TEC-FE-015, DSY-001, NFR-005]
+    deprecated_by: null
   NFR-001:
     slug: performance-mvp-latency
     file: specs/06-nfr/performance-mvp-latency.md
@@ -518,6 +524,12 @@ ids:
     file: specs/06-nfr/performance-and-scaling.md
     status: draft
     depends_on: [NFR-001, NFR-002, NFR-003, NFR-007, TEC-BE-001, TEC-BE-012]
+    deprecated_by: null
+  NFR-012:
+    slug: release-distribution
+    file: specs/06-nfr/release-distribution.md
+    status: draft
+    depends_on: [STK-001, CNV-001, TEC-BE-001, NFR-008]
     deprecated_by: null
   ADR-0001:
     slug: service-language-and-runtime
@@ -807,6 +819,12 @@ ids:
     status: draft
     depends_on: [VIS-001, CNV-001, TEC-BE-001, TEC-BE-008, TEC-BE-028]
     deprecated_by: null
+  DOM-008:
+    slug: metrics
+    file: specs/01-domains/metrics.md
+    status: draft
+    depends_on: [DOM-001, DOM-002, TEC-BE-017]
+    deprecated_by: null
   CAP-AIE-001:
     slug: ingest-ai-projections
     file: specs/02-capabilities/ai-eval/ingest-ai-projections.md
@@ -859,13 +877,31 @@ ids:
     slug: import-export-datasets
     file: specs/02-capabilities/ai-eval/import-export-datasets.md
     status: approved
-    depends_on: [CAP-AIE-007, FLW-AIE-005, TEC-BE-025]
+    depends_on: [CAP-AIE-007, FLW-AIE-005, TEC-BE-032]
     deprecated_by: null
   CAP-AIE-010:
     slug: suggest-dataset-candidates
     file: specs/02-capabilities/ai-eval/suggest-dataset-candidates.md
     status: approved
-    depends_on: [CAP-AIE-002, CAP-AIE-005, CAP-AIE-007, NFR-009]
+    depends_on: [CAP-AIE-002, CAP-AIE-005, CAP-AIE-007, NFR-010]
+    deprecated_by: null
+  CAP-AIE-011:
+    slug: optimize-skills
+    file: specs/02-capabilities/ai-eval/optimize-skills.md
+    status: approved
+    depends_on: [DOM-006, CAP-AIE-003, CAP-AIE-004, ADR-0006, ADR-0007]
+    deprecated_by: null
+  CAP-AIE-012:
+    slug: evaluate-classification-extraction
+    file: specs/02-capabilities/ai-eval/evaluate-classification-extraction.md
+    status: approved
+    depends_on: [DOM-006, CAP-AIE-003, REV-013]
+    deprecated_by: null
+  CAP-AIE-013:
+    slug: optimize-classification-extraction
+    file: specs/02-capabilities/ai-eval/optimize-classification-extraction.md
+    status: approved
+    depends_on: [DOM-006, CAP-AIE-004, CAP-AIE-012, REV-013, ADR-0006, ADR-0007]
     deprecated_by: null
   CAP-AIP-001:
     slug: manage-project-ai-providers
@@ -887,57 +923,69 @@ ids:
     deprecated_by: null
   FLW-AIP-001:
     slug: provider-settings-resolution
-    file: specs/02-flows/ai-platform/provider-settings-resolution.md
+    file: specs/03-flows/ai-platform/provider-settings-resolution.md
     status: draft
     depends_on: [CAP-AIP-001, CAP-AIP-002, TEC-BE-028]
     deprecated_by: null
   FLW-AIC-001:
     slug: chat-run
-    file: specs/02-flows/ai-chat/chat-run.md
+    file: specs/03-flows/ai-chat/chat-run.md
     status: draft
     depends_on: [CAP-AIC-001, TEC-BE-029]
     deprecated_by: null
   FLW-AIC-002:
     slug: action-approval
-    file: specs/02-flows/ai-chat/action-approval.md
+    file: specs/03-flows/ai-chat/action-approval.md
     status: draft
     depends_on: [CAP-AIC-001, TEC-BE-029]
     deprecated_by: null
   FLW-AIC-003:
     slug: conversation-compaction
-    file: specs/02-flows/ai-chat/conversation-compaction.md
+    file: specs/03-flows/ai-chat/conversation-compaction.md
     status: draft
     depends_on: [CAP-AIC-001, TEC-BE-029]
     deprecated_by: null
   FLW-AIE-001:
     slug: offline-experiment-run
-    file: specs/02-flows/ai-eval/offline-experiment-run.md
+    file: specs/03-flows/ai-eval/offline-experiment-run.md
     status: approved
     depends_on: [CAP-AIE-003]
     deprecated_by: null
   FLW-AIE-002:
     slug: online-evaluation
-    file: specs/02-flows/ai-eval/online-evaluation.md
+    file: specs/03-flows/ai-eval/online-evaluation.md
     status: approved
     depends_on: [CAP-AIE-002]
     deprecated_by: null
   FLW-AIE-003:
     slug: live-experiment-subscription
-    file: specs/02-flows/ai-eval/live-experiment-subscription.md
+    file: specs/03-flows/ai-eval/live-experiment-subscription.md
     status: approved
     depends_on: [CAP-AIE-003]
     deprecated_by: null
   FLW-AIE-004:
     slug: dataset-curation-and-splits
-    file: specs/02-flows/ai-eval/dataset-curation-and-splits.md
+    file: specs/03-flows/ai-eval/dataset-curation-and-splits.md
     status: approved
     depends_on: [CAP-AIE-007]
     deprecated_by: null
   FLW-AIE-005:
     slug: dataset-import-export
-    file: specs/02-flows/ai-eval/dataset-import-export.md
+    file: specs/03-flows/ai-eval/dataset-import-export.md
     status: approved
     depends_on: [CAP-AIE-009]
+    deprecated_by: null
+  FLW-AIE-006:
+    slug: skill-optimization-run
+    file: specs/03-flows/ai-eval/skill-optimization-run.md
+    status: approved
+    depends_on: [DOM-006, CAP-AIE-011, TEC-BE-014, TEC-BE-016, TEC-FE-007]
+    deprecated_by: null
+  FLW-AIE-007:
+    slug: classification-extraction-optimization-run
+    file: specs/03-flows/ai-eval/classification-extraction-optimization-run.md
+    status: approved
+    depends_on: [DOM-006, CAP-AIE-012, CAP-AIE-013, TEC-BE-014, TEC-BE-016, TEC-FE-007]
     deprecated_by: null
   TEC-BE-024:
     slug: ai-eval-project-settings
@@ -961,7 +1009,7 @@ ids:
     slug: ai-eval-query-semantics
     file: specs/04-backend/ai-eval-query-semantics.md
     status: approved
-    depends_on: [DOM-006, TEC-BE-008]
+    depends_on: [DOM-006, TEC-BE-016]
     deprecated_by: null
   TEC-BE-016:
     slug: ai-eval-message-contracts
@@ -969,7 +1017,7 @@ ids:
     status: approved
     depends_on: [DOM-006, TEC-BE-024]
     deprecated_by: null
-  TEC-BE-025:
+  TEC-BE-032:
     slug: ai-eval-dataset-transfer
     file: specs/04-backend/ai-eval-dataset-transfer.md
     status: approved
@@ -997,13 +1045,13 @@ ids:
     slug: ai-eval-views
     file: specs/05-frontend/ai-eval-views.md
     status: approved
-    depends_on: [DOM-006, TEC-BE-015, TEC-FE-008]
+    depends_on: [TEC-FE-008, TEC-FE-016, DOM-006]
     deprecated_by: null
   TEC-FE-008:
     slug: ai-eval-ux-concept
     file: specs/05-frontend/ai-eval-ux-concept.md
     status: approved
-    depends_on: [TEC-FE-007, TEC-BE-024, TEC-BE-015, DSY-001]
+    depends_on: [DOM-006, TEC-FE-016, DSY-001]
     deprecated_by: null
   TEC-BE-028:
     slug: ai-provider-settings
@@ -1033,7 +1081,49 @@ ids:
     slug: ai-chat-views
     file: specs/05-frontend/ai-chat-views.md
     status: draft
-    depends_on: [DOM-007, TEC-BE-029, TEC-FE-001, TEC-FE-002]
+    depends_on: [DOM-007, TEC-BE-029, TEC-FE-006, TEC-FE-001, TEC-FE-002]
+    deprecated_by: null
+  TEC-FE-010:
+    slug: traces-and-metrics-ux-concept
+    file: specs/05-frontend/traces-and-metrics-ux-concept.md
+    status: draft
+    depends_on: [TEC-FE-002, TEC-FE-003, TEC-FE-005, TEC-FE-016, TEC-BE-008]
+    deprecated_by: null
+  TEC-FE-011:
+    slug: logs-metrics-dashboards-ux-concept
+    file: specs/05-frontend/logs-metrics-dashboards-ux-concept.md
+    status: draft
+    depends_on: [TEC-FE-016, TEC-FE-010, TEC-BE-017]
+    deprecated_by: null
+  TEC-FE-012:
+    slug: dashboard-implementation-contract
+    file: specs/05-frontend/dashboard-implementation-contract.md
+    status: draft
+    depends_on: [TEC-FE-013, TEC-FE-016, TEC-FE-011, CAP-MET-003, FLW-MET-002]
+    deprecated_by: null
+  TEC-FE-013:
+    slug: dashboard-widgets
+    file: specs/05-frontend/dashboard-widgets.md
+    status: draft
+    depends_on: [TEC-FE-016, TEC-BE-011, TEC-BE-017]
+    deprecated_by: null
+  TEC-FE-014:
+    slug: code-level-whitelabel-customization
+    file: specs/05-frontend/whitelabel-customization.md
+    status: approved
+    depends_on: [TEC-FE-016, DSY-001]
+    deprecated_by: null
+  TEC-FE-015:
+    slug: alerts-ux-concept
+    file: specs/05-frontend/alerts-ux-concept.md
+    status: draft
+    depends_on: [TEC-BE-021, TEC-FE-006]
+    deprecated_by: null
+  TEC-FE-016:
+    slug: enterprise-product-ux-concept
+    file: specs/05-frontend/product-ux-concept.md
+    status: approved
+    depends_on: [TEC-FE-006, TEC-FE-001, TEC-FE-002, TEC-FE-004, TEC-FE-005, TEC-FE-007, TEC-FE-013, TEC-FE-015, DSY-001]
     deprecated_by: null
   REV-005:
     slug: ai-eval-implementation-scope
@@ -1052,4 +1142,40 @@ ids:
     file: specs/99-reviews/ai-chat-provider-settings-scope.md
     status: draft
     depends_on: [DOM-007, TEC-BE-028, TEC-BE-029, TEC-FE-009]
+    deprecated_by: null
+  REV-008:
+    slug: enterprise-product-spec-readiness-review
+    file: specs/99-reviews/enterprise-product-spec-readiness-review.md
+    status: approved
+    depends_on: [IDX-001, TEC-FE-006, TEC-FE-016, IDX-002]
+    deprecated_by: null
+  REV-009:
+    slug: metrics-implementation-scope
+    file: specs/99-reviews/metrics-implementation-scope.md
+    status: draft
+    depends_on: [DOM-008, TEC-BE-017, TEC-FE-011]
+    deprecated_by: null
+  REV-010:
+    slug: frontend-ux-v2-migration-plan
+    file: specs/99-reviews/frontend-ux-v2-migration-plan.md
+    status: superseded-by-frontend-ux-migration-check
+    depends_on: [TEC-FE-001, TEC-FE-002, TEC-FE-004, TEC-FE-016, TEC-BE-001, CNV-001]
+    deprecated_by: plans/frontend-ux-migration-check
+  REV-011:
+    slug: standards-first-simplification-review
+    file: specs/99-reviews/standards-first-simplification-review.md
+    status: approved
+    depends_on: [CNV-001, TEC-BE-004, TEC-BE-013, TEC-BE-014, ADR-0007]
+    deprecated_by: null
+  REV-012:
+    slug: adaptive-form-ux-review
+    file: specs/99-reviews/adaptive-form-ux-review.md
+    status: approved
+    depends_on: [TEC-FE-006, TEC-FE-007, TEC-FE-008, TEC-FE-016]
+    deprecated_by: null
+  REV-013:
+    slug: classification-extraction-optimization-research
+    file: specs/99-reviews/classification-extraction-optimization-research.md
+    status: approved
+    depends_on: [DOM-006, CAP-AIE-004, CAP-AIE-011, ADR-0006, ADR-0007, TEC-BE-014]
     deprecated_by: null

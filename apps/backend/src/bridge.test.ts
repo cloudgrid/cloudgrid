@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createLogger } from "@cloudgrid/runtime";
-import type { RetentionRuleInput } from "@cloudgrid/ui-contracts";
+import type { RetentionRuleInput, StartOptimizationRunInput } from "@cloudgrid/ui-contracts";
 import { JSONCodec, type NatsConnection } from "nats";
 import { localAuthContext } from "./auth";
 import { MessageBridgeCloudGridBridge, NATSTelemetryQueryBridge } from "./bridge";
@@ -179,6 +179,33 @@ describe("NATS telemetry query bridge", () => {
     });
     await expect(bridgeTimeout.searchTraces({})).rejects.toMatchObject({
       extensions: { code: "MESSAGE_BRIDGE_TIMEOUT", problem: { id: "ERR-014" } },
+    });
+  });
+
+  test("accepts AI-specific error taxonomy ids from private bridge responses", async () => {
+    const codec = JSONCodec<unknown>();
+    const requestReply = {
+      async request(_subject: string, data: Uint8Array) {
+        const payload = codec.decode(data);
+        return codec.encode({
+          requestId: requestId(payload),
+          ok: false,
+          error: {
+            id: "ERR-AIE-004",
+            code: "EVAL_RUN_LIMIT_EXCEEDED",
+            message: "Evaluation run limit exceeded",
+            retryable: true,
+          },
+        });
+      },
+    };
+    const bridge = new MessageBridgeCloudGridBridge(requestReply, 2000, createLogger("bff"));
+
+    await expect(bridge.searchTraces({})).rejects.toMatchObject({
+      extensions: {
+        code: "EVAL_RUN_LIMIT_EXCEEDED",
+        problem: { id: "ERR-AIE-004", status: 429, retryable: true },
+      },
     });
   });
 
@@ -1237,6 +1264,75 @@ describe("NATS telemetry query bridge", () => {
     });
   });
 
+  test("sends skill optimization start using AsyncAPI top-level payload fields", async () => {
+    const codec = JSONCodec<unknown>();
+    let subject = "";
+    let payload: unknown;
+    const connection = {
+      request: async (requestedSubject: string, data: Uint8Array) => {
+        subject = requestedSubject;
+        payload = codec.decode(data);
+        return {
+          data: codec.encode({
+            requestId: requestId(payload),
+            ok: true,
+            data: {
+              id: "optimization-run-1",
+              projectId: "project-1",
+              status: "queued",
+              baselineTargetSnapshotId: "target-snapshot-1",
+              objective: {
+                primaryMetricId: "exact_match",
+                secondaryMetricIds: [],
+                constraints: {},
+                tradeoffMetricIds: [],
+                rankingPolicy: {},
+                tieBreakers: [],
+                minimumEvidence: {},
+              },
+              searchPolicy: skillOptimizationStartInput().searchPolicy,
+              candidateTargetSnapshotIds: [],
+              causedEvaluationRunIds: [],
+              comparisonIds: [],
+              budgetSnapshot: {},
+              skillOptimization: null,
+              createdAt: "2026-05-17T10:00:00.000Z",
+            },
+          }),
+        };
+      },
+      drain: async () => {},
+    } as unknown as NatsConnection;
+    const bridge = new NATSTelemetryQueryBridge(connection, 2000, createLogger("bff"));
+
+    await bridge.startOptimizationRun(skillOptimizationStartInput(), localAuthContext());
+
+    expect(subject).toBe("eval.optimization.start");
+    expect(payload).toMatchObject({
+      projectId: "project-1",
+      baselineTargetSnapshotId: "target-snapshot-1",
+      objective: {
+        primaryMetricId: "exact_match",
+      },
+      searchPolicy: {
+        optimizerKind: "skill_text_edit",
+        editablePartKinds: ["skill"],
+        gateMetricId: "exact_match",
+        skillPolicy: {
+          allowedEditOps: ["append", "insert_after", "replace", "delete"],
+          editableFileGlobs: ["SKILL.md", "references/**/*.md"],
+          protectedFileGlobs: ["scripts/**", "**/*.lock"],
+          allowScriptEdits: false,
+          exportBestSkill: true,
+        },
+      },
+      idempotencyKey: "optimization-skill-1",
+    });
+    expect(payload).not.toHaveProperty("targetSnapshotId");
+    expect(payload).not.toHaveProperty("datasetVersionId");
+    expect(payload).not.toHaveProperty("config");
+  });
+
   test("starts live traces through storage-read and stops on iterator return", async () => {
     const codec = JSONCodec<unknown>();
     const requestedSubjects: string[] = [];
@@ -1699,6 +1795,60 @@ function aiProviderProfile(scope: "project" | "company") {
     providerKind,
     credentialRef: "env:OPENAI_API_KEY",
     models: { chat: ["gpt-4.1-mini"] },
+  };
+}
+
+function skillOptimizationStartInput(): StartOptimizationRunInput {
+  return {
+    projectId: "project-1",
+    baselineTargetSnapshotId: "target-snapshot-1",
+    objective: {
+      primaryMetricId: "exact_match",
+      secondaryMetricIds: [],
+      constraints: {},
+      tradeoffMetricIds: [],
+      rankingPolicy: {},
+      tieBreakers: [],
+      minimumEvidence: {},
+    },
+    searchPolicy: {
+      optimizerKind: "skill_text_edit",
+      editablePartKinds: ["skill"],
+      maxEpochs: 4,
+      maxSteps: 0,
+      rolloutBatchSize: 40,
+      reflectionMinibatchSize: 8,
+      editBudget: 4,
+      minEditBudget: 2,
+      editSchedule: "cosine",
+      gateMetricId: "exact_match",
+      gateMode: "strict_improvement",
+      selectionSplit: "validation",
+      allowSlowUpdate: true,
+      allowMetaMemory: true,
+      skillPolicy: {
+        maxPackageBytes: 262144,
+        maxSkillBytes: 65536,
+        maxSkillTokens: 8000,
+        allowedEditOps: ["append", "insert_after", "replace", "delete"],
+        editableFileGlobs: ["SKILL.md", "references/**/*.md"],
+        protectedFileGlobs: ["scripts/**", "**/*.lock"],
+        allowScriptEdits: false,
+        preserveSections: [],
+        exportBestSkill: true,
+      },
+    },
+    trainingEvaluationDefinitionId: "evaluation-definition-training",
+    trainingSplitSelector: {
+      splits: ["training"],
+      curationStatuses: ["ready"],
+    },
+    validationEvaluationDefinitionId: "evaluation-definition-validation",
+    validationSplitSelector: {
+      splits: ["validation"],
+      curationStatuses: ["ready"],
+    },
+    idempotencyKey: "optimization-skill-1",
   };
 }
 

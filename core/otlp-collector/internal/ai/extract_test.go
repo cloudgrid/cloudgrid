@@ -3,6 +3,7 @@ package ai
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -237,28 +238,32 @@ func TestExtractProjectionsCoversAgentEmbeddingToolAndRetrievalBranches(t *testi
 	}
 }
 
-func TestAnnotateSemconvFlavorClonesAttributesAndDoesNotMutateInput(t *testing.T) {
+func TestExtractProjectionsDoesNotMutateSourceAttributes(t *testing.T) {
+	attrs := contracts.Attributes{
+		"openinference.span.kind": "LLM",
+		"llm.model_name":          "model",
+	}
+	originalAttrs := cloneAttributes(attrs)
 	spans := []contracts.Span{{
-		ID:        "span-1",
-		TraceID:   "trace-1",
-		StartedAt: time.Unix(1, 0).UTC(),
-		Attributes: contracts.Attributes{
-			"openinference.span.kind": "LLM",
-			"llm.model_name":          "model",
-		},
+		ID:         "span-1",
+		TraceID:    "trace-1",
+		StartedAt:  time.Unix(1, 0).UTC(),
+		Attributes: attrs,
 	}}
 
-	annotated := AnnotateSemconvFlavor(spans)
+	commands := ExtractProjections(spans, envelope(), fixedCommandID)
 
-	if annotated[0].Attributes[SemconvFlavorAttribute] != "openinference" {
-		t.Fatalf("annotated attributes = %#v", annotated[0].Attributes)
+	if len(commands) != 1 {
+		t.Fatalf("commands = %d, want 1", len(commands))
 	}
-	if _, ok := spans[0].Attributes[SemconvFlavorAttribute]; ok {
-		t.Fatalf("input span attributes were mutated: %#v", spans[0].Attributes)
+	if commands[0].SourceFlavor == nil || *commands[0].SourceFlavor != "openinference" {
+		t.Fatalf("sourceFlavor = %#v, want openinference", commands[0].SourceFlavor)
 	}
-	annotated[0].Attributes["extra"] = "value"
-	if _, ok := spans[0].Attributes["extra"]; ok {
-		t.Fatalf("cloned attributes share backing map with input: %#v", spans[0].Attributes)
+	if _, ok := spans[0].Attributes["cloudgrid.ai.semconv.flavor"]; ok {
+		t.Fatalf("input span attributes were annotated: %#v", spans[0].Attributes)
+	}
+	if !reflect.DeepEqual(spans[0].Attributes, originalAttrs) {
+		t.Fatalf("input span attributes changed from %#v to %#v", originalAttrs, spans[0].Attributes)
 	}
 }
 

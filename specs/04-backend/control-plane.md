@@ -4,7 +4,7 @@ title: Control plane and project management
 layer: backend
 status: draft
 owner: unknown@example.com
-updated: 2026-05-11
+updated: 2026-05-29
 provenance: user-directed
 ---
 
@@ -18,10 +18,13 @@ Target service: `core/control-plane`.
 
 Responsibilities:
 
-- Store and query organizations, projects, users, memberships, organization invitations, invitation email outbox records, roles, project status, ingest credential metadata, dashboards, dashboard pins, AI-eval project settings, AI provider settings, AI Chat history metadata, action approvals, online evaluation policies, and low-volume project configuration.
+- Store and query organizations, projects, users, memberships, organization invitations, invitation email outbox records, roles, project status, ingest credential metadata, dashboards, dashboard pins, AI-eval project settings, AI provider settings metadata, AI Chat history metadata, action approvals, online evaluation policies, and low-volume project configuration.
 - Own organization/project/user management mutations.
 - Publish project status snapshots for fast auth validation by public boundaries.
 - Never ingest, query, aggregate, or enrich telemetry records.
+- Never store recoverable secret material in regular control-plane metadata
+  tables. Provider credentials and other recoverable secrets go through the
+  secret-store port and adapter family.
 
 The BFF talks to `core/control-plane` only through NATS request/reply subjects declared in AsyncAPI. The frontend talks only to BFF GraphQL.
 
@@ -157,6 +160,10 @@ Canonical records:
 - `dashboard_pin`: relation edge from user to dashboard with project ID and sidebar position.
 - `project_ai_settings`: low-volume project AI-eval settings document.
 - `ai_provider_profile`: project-scoped and company-scoped provider profile metadata and opaque credential references. It never stores raw provider secrets.
+- Managed provider secret material is stored outside this regular
+  control-plane schema through the secret-store adapter. The SurrealDB
+  development adapter uses a separate namespace/database and table
+  `managed_secret`.
 - `ai_model_alias`: project-scoped model aliases for judge, optimizer, embedding, replay, and default model purposes.
 - `ai_online_policy`: project-scoped online evaluation policy definitions.
 - `ai_chat_conversation`: per-user, project-scoped AI Chat conversation metadata.

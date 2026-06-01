@@ -471,12 +471,17 @@ func copyStringMap(value map[string]string) map[string]string {
 
 type selfObservabilityBridgeMessage struct {
 	BridgeMessage
-	response []byte
+	response     []byte
+	traceContext selfobs.TraceContext
 }
 
 func (message *selfObservabilityBridgeMessage) Respond(response []byte) error {
 	message.response = append([]byte(nil), response...)
 	return message.BridgeMessage.Respond(response)
+}
+
+func (message *selfObservabilityBridgeMessage) TraceContext() (selfobs.TraceContext, bool) {
+	return message.traceContext, selfobs.FormatTraceParent(message.traceContext) != ""
 }
 
 func adaptBridgeHandlerWithSelfObservability(subject string, handler bridgeMessageHandler, recorder SelfObservabilityRecorder) bridgeMessageHandler {
@@ -485,18 +490,18 @@ func adaptBridgeHandlerWithSelfObservability(subject string, handler bridgeMessa
 	}
 	return func(msg BridgeMessage) {
 		start := time.Now().UTC()
-		capture := &selfObservabilityBridgeMessage{BridgeMessage: msg}
-		handler(capture)
-		requestID, ok, bridgeError := responseObservabilityFields(capture.response)
-		result := "success"
-		if !ok {
-			result = "error"
-		}
 		traceContext := selfobs.NewRootTraceContext()
 		if headers, ok := msg.(interface{ Header(string) string }); ok {
 			if parent, ok := selfobs.TraceContextFromHeaders(headers); ok {
 				traceContext = selfobs.NewChildTraceContext(parent)
 			}
+		}
+		capture := &selfObservabilityBridgeMessage{BridgeMessage: msg, traceContext: traceContext}
+		handler(capture)
+		requestID, ok, bridgeError := responseObservabilityFields(capture.response)
+		result := "success"
+		if !ok {
+			result = "error"
 		}
 		recorder.RecordSpan(SelfObservabilitySpan{
 			Name:         "nats " + subject,

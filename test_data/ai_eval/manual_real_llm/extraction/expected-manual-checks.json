@@ -1,0 +1,17 @@
+{
+  "manualOnly": true,
+  "primaryMetricId": "extraction.field_match_rate",
+  "minimumRows": 10,
+  "expectedWeakSpots": [
+    "$.affectedServices set extraction",
+    "$.needsFollowup when an owner is mentioned but customer follow-up is delayed",
+    "$.followupOwner when security context says no secret exposure",
+    "$.startTime date-time normalization"
+  ],
+  "optimizerShouldImprove": [
+    "strict JSON-only response format",
+    "schema summary with enum values",
+    "rules for follow-up owner and needsFollowup",
+    "examples for resolved/no-follow-up and security distractor cases"
+  ]
+}

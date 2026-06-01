@@ -19,33 +19,37 @@ import (
 )
 
 const (
-	SubjectEvaluationRunStart    = "eval.evaluation.run.start"
-	SubjectEvaluationRunPause    = "eval.evaluation.run.pause"
-	SubjectEvaluationRunResume   = "eval.evaluation.run.resume"
-	SubjectEvaluationRunCancel   = "eval.evaluation.run.cancel"
-	SubjectExperimentStart       = SubjectEvaluationRunStart
-	SubjectExperimentPause       = SubjectEvaluationRunPause
-	SubjectExperimentResume      = SubjectEvaluationRunResume
-	SubjectExperimentCancel      = SubjectEvaluationRunCancel
-	SubjectOptimizationStart     = "eval.optimization.start"
-	SubjectPersistedProjections  = "ai.persisted.projections"
-	SubjectExperimentSearch      = "eval.evaluation.run.search"
-	SubjectDatasetSearch         = "eval.dataset.search"
-	SubjectScorerSearch          = "eval.evaluation.search"
-	SubjectDatasetVersionGet     = "eval.dataset.version.get"
-	SubjectTargetSnapshotGet     = "eval.target.snapshot.get"
-	SubjectResultsPersist        = "eval.results.persist"
-	SubjectExperimentProgress    = "eval.live.events.*.*"
-	SubjectManifestResolve       = "eval.target.snapshot.get"
-	SubjectOnlinePolicyResolve   = "eval.online.policy_matches.resolve"
-	SubjectControlAISettingsGet  = "control.ai_settings.get"
-	validationErrorID            = "ERR-001"
-	validationErrorCode          = "VALIDATION_FAILED"
-	messageBridgeErrorID         = "ERR-013"
-	messageBridgeErrorCode       = "MESSAGE_BRIDGE_UNAVAILABLE"
-	defaultRequestTimeout        = 1500 * time.Millisecond
-	defaultHarnessRequestTimeout = 30 * time.Second
-	defaultHarnessUserAgent      = "cloudgrid-ai-eval-runner"
+	SubjectEvaluationRunStart        = "eval.evaluation.run.start"
+	SubjectEvaluationRunPause        = "eval.evaluation.run.pause"
+	SubjectEvaluationRunResume       = "eval.evaluation.run.resume"
+	SubjectEvaluationRunCancel       = "eval.evaluation.run.cancel"
+	SubjectExperimentStart           = SubjectEvaluationRunStart
+	SubjectExperimentPause           = SubjectEvaluationRunPause
+	SubjectExperimentResume          = SubjectEvaluationRunResume
+	SubjectExperimentCancel          = SubjectEvaluationRunCancel
+	SubjectOptimizationStart         = "eval.optimization.start"
+	SubjectPersistedProjections      = "ai.persisted.projections"
+	SubjectExperimentSearch          = "eval.evaluation.run.search"
+	SubjectDatasetSearch             = "eval.dataset.search"
+	SubjectScorerSearch              = "eval.evaluation.search"
+	SubjectDatasetVersionGet         = "eval.dataset.version.get"
+	SubjectTargetSnapshotGet         = "eval.target.snapshot.get"
+	SubjectTargetSnapshotCreate      = "eval.target.snapshot.create"
+	SubjectResultsPersist            = "eval.results.persist"
+	SubjectOptimizationStepPersist   = "eval.optimization.step.persist"
+	SubjectOptimizationMemoryPersist = "eval.optimization.memory.persist"
+	SubjectExperimentProgress        = "eval.live.events.*.*"
+	SubjectManifestResolve           = "eval.target.snapshot.get"
+	SubjectOnlinePolicyResolve       = "eval.online.policy_matches.resolve"
+	SubjectTraceDetailGet            = "telemetry.traces.get"
+	SubjectControlAISettingsGet      = "control.ai_settings.get"
+	validationErrorID                = "ERR-001"
+	validationErrorCode              = "VALIDATION_FAILED"
+	messageBridgeErrorID             = "ERR-013"
+	messageBridgeErrorCode           = "MESSAGE_BRIDGE_UNAVAILABLE"
+	defaultRequestTimeout            = 1500 * time.Millisecond
+	defaultHarnessRequestTimeout     = 30 * time.Second
+	defaultHarnessUserAgent          = "cloudgrid-ai-eval-runner"
 )
 
 type BridgeMessage interface {
@@ -93,12 +97,23 @@ type evaluationRunStartMessage struct {
 
 type optimizationStartMessage struct {
 	contracts.BridgeEnvelope
-	ProjectID        string         `json:"projectId"`
-	DatasetVersionID string         `json:"datasetVersionId"`
-	TargetSnapshotID string         `json:"targetSnapshotId"`
-	IdempotencyKey   string         `json:"idempotencyKey"`
-	Config           map[string]any `json:"config,omitempty"`
-	RunPolicy        map[string]any `json:"runPolicy,omitempty"`
+	ProjectID                        string         `json:"projectId"`
+	DatasetVersionID                 string         `json:"datasetVersionId,omitempty"`
+	BaselineTargetSnapshotID         string         `json:"baselineTargetSnapshotId"`
+	TargetSnapshotID                 string         `json:"targetSnapshotId,omitempty"`
+	Objective                        map[string]any `json:"objective,omitempty"`
+	SearchPolicy                     map[string]any `json:"searchPolicy,omitempty"`
+	IdempotencyKey                   string         `json:"idempotencyKey"`
+	EvaluationDefinitionID           string         `json:"evaluationDefinitionId,omitempty"`
+	ComparisonID                     string         `json:"comparisonId,omitempty"`
+	TrainingEvaluationDefinitionID   string         `json:"trainingEvaluationDefinitionId,omitempty"`
+	TrainingSplitSelector            map[string]any `json:"trainingSplitSelector,omitempty"`
+	ValidationEvaluationDefinitionID string         `json:"validationEvaluationDefinitionId,omitempty"`
+	ValidationSplitSelector          map[string]any `json:"validationSplitSelector,omitempty"`
+	TestEvaluationDefinitionID       string         `json:"testEvaluationDefinitionId,omitempty"`
+	QuickShotPolicy                  map[string]any `json:"quickShotPolicy,omitempty"`
+	Config                           map[string]any `json:"config,omitempty"`
+	RunPolicy                        map[string]any `json:"runPolicy,omitempty"`
 }
 
 func NewRunnerService(runner *orchestrator.Runner, logger *slog.Logger) *RunnerService {
@@ -268,11 +283,12 @@ func (service *RunnerService) handleOptimizationStart() Handler {
 			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError(err.Error())))
 			return
 		}
-		if strings.TrimSpace(request.TargetSnapshotID) == "" {
+		targetSnapshotID := firstNonEmpty(request.BaselineTargetSnapshotID, request.TargetSnapshotID)
+		if strings.TrimSpace(targetSnapshotID) == "" {
 			if service.logger != nil {
 				service.logger.Warn("optimization start target validation failed", "service", "ai-eval-runner", "event", "optimization_start_failed", "request_id", request.RequestID, "error", "targetSnapshotId is required")
 			}
-			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("targetSnapshotId is required")))
+			respond(msg, mutationErrorResponse(request.RequestID, validationBridgeError("baselineTargetSnapshotId is required")))
 			return
 		}
 		if strings.TrimSpace(request.IdempotencyKey) == "" {
@@ -284,13 +300,14 @@ func (service *RunnerService) handleOptimizationStart() Handler {
 		}
 		ctx, cancel := context.WithTimeout(contextWithAuth(request.AuthContext), defaultRequestTimeout)
 		defer cancel()
+		config := optimizationConfigFromMessage(request)
 		result, err := service.runner.StartOptimization(ctx, orchestrator.StartOptimizationRequest{
 			RequestID:        request.RequestID,
 			ProjectID:        projectIDFromMessage(request.ProjectID, request.AuthContext),
 			DatasetVersionID: request.DatasetVersionID,
-			TargetSnapshotID: request.TargetSnapshotID,
+			TargetSnapshotID: targetSnapshotID,
 			IdempotencyKey:   request.IdempotencyKey,
-			Config:           request.Config,
+			Config:           config,
 			RunPolicy:        request.RunPolicy,
 			TraceContext:     traceContext(request.TraceContext),
 		})
@@ -308,16 +325,17 @@ func (service *RunnerService) handleOptimizationStart() Handler {
 				"id":                       result.ExperimentRunID,
 				"projectId":                projectIDFromMessage(request.ProjectID, request.AuthContext),
 				"status":                   ports.ExperimentRunStatusFinished,
-				"baselineTargetSnapshotId": request.TargetSnapshotID,
-				"objective":                objectFromMap(request.Config, "objective"),
+				"baselineTargetSnapshotId": targetSnapshotID,
+				"objective":                objectFromMap(config, "objective"),
+				"searchPolicy":             objectFromMap(config, "searchPolicy"),
 				"validationEvaluationDefinitionId": stringFromMap(
-					request.Config,
+					config,
 					"validationEvaluationDefinitionId",
 				),
-				"validationSplitSelector":    objectFromMap(request.Config, "validationSplitSelector"),
+				"validationSplitSelector":    objectFromMap(config, "validationSplitSelector"),
 				"candidateTargetSnapshotIds": result.CandidatePromptIDs,
 				"causedEvaluationRunIds":     []string{},
-				"quickShotPolicy":            objectFromMap(request.Config, "quickShotPolicy"),
+				"quickShotPolicy":            objectFromMap(config, "quickShotPolicy"),
 				"comparisonIds":              []string{},
 				"budgetSnapshot":             map[string]any{},
 				"createdAt":                  time.Now().UTC().Format(time.RFC3339),
@@ -391,6 +409,20 @@ func messageBridgeError() contracts.BridgeError {
 	return contracts.BridgeError{ID: messageBridgeErrorID, Code: messageBridgeErrorCode, Message: "Message bridge is unavailable", Retryable: true}
 }
 
+type aiEvalBridgeErrorMapping struct {
+	code      string
+	retryable bool
+}
+
+var aiEvalBridgeErrors = map[string]aiEvalBridgeErrorMapping{
+	"ERR-AIE-001": {code: "EVAL_DATASET_NOT_FOUND", retryable: false},
+	"ERR-AIE-002": {code: "EVAL_SCORER_NOT_FOUND", retryable: false},
+	"ERR-AIE-003": {code: "EVAL_HARNESS_UNREACHABLE", retryable: true},
+	"ERR-AIE-004": {code: "EVAL_RUN_LIMIT_EXCEEDED", retryable: true},
+	"ERR-AIE-005": {code: "EVAL_PROJECTION_AMBIGUOUS", retryable: false},
+	"ERR-AIE-006": {code: "EVAL_CONTENT_NOT_CAPTURED", retryable: false},
+}
+
 func bridgeErrorFromError(err error) contracts.BridgeError {
 	if err == nil {
 		return validationBridgeError("unknown error")
@@ -401,7 +433,10 @@ func bridgeErrorFromError(err error) contracts.BridgeError {
 	}
 	if strings.HasPrefix(message, "ERR-AIE-") {
 		id := strings.SplitN(message, ":", 2)[0]
-		return contracts.BridgeError{ID: id, Code: "AI_EVAL_RUNNER_REJECTED", Message: message, Retryable: false}
+		if entry, ok := aiEvalBridgeErrors[id]; ok {
+			return contracts.BridgeError{ID: id, Code: entry.code, Message: message, Retryable: entry.retryable}
+		}
+		return validationBridgeError(message)
 	}
 	if strings.HasPrefix(message, "harness adapter returned status") {
 		return contracts.BridgeError{ID: "ERR-001", Code: "VALIDATION_FAILED", Message: message, Retryable: false}
@@ -662,7 +697,7 @@ func boundedRunnerOperation(subject string) string {
 
 func boundedRunnerErrorID(id string) string {
 	switch id {
-	case "ERR-001", "ERR-006", "ERR-013", "ERR-AIE", "ERR-AIE-001", "ERR-AIE-002", "ERR-AIE-003", "ERR-AIE-004":
+	case "ERR-001", "ERR-006", "ERR-013", "ERR-AIE", "ERR-AIE-001", "ERR-AIE-002", "ERR-AIE-003", "ERR-AIE-004", "ERR-AIE-005", "ERR-AIE-006":
 		return id
 	default:
 		return "ERR-006"
@@ -671,11 +706,55 @@ func boundedRunnerErrorID(id string) string {
 
 func boundedRunnerErrorCode(code string) string {
 	switch code {
-	case "VALIDATION_FAILED", "STORAGE_UNAVAILABLE", "MESSAGE_BRIDGE_UNAVAILABLE", "AI_EVAL_RUNNER_REJECTED":
+	case "VALIDATION_FAILED", "STORAGE_UNAVAILABLE", "MESSAGE_BRIDGE_UNAVAILABLE", "EVAL_DATASET_NOT_FOUND", "EVAL_SCORER_NOT_FOUND", "EVAL_HARNESS_UNREACHABLE", "EVAL_RUN_LIMIT_EXCEEDED", "EVAL_PROJECTION_AMBIGUOUS", "EVAL_CONTENT_NOT_CAPTURED":
 		return code
 	default:
 		return "STORAGE_UNAVAILABLE"
 	}
+}
+
+func optimizationConfigFromMessage(request optimizationStartMessage) map[string]any {
+	config := copyRuntimeMap(request.Config)
+	putRuntimeMap(config, "objective", request.Objective)
+	putRuntimeMap(config, "searchPolicy", request.SearchPolicy)
+	putRuntimeString(config, "evaluationDefinitionId", request.EvaluationDefinitionID)
+	putRuntimeString(config, "comparisonId", request.ComparisonID)
+	putRuntimeString(config, "trainingEvaluationDefinitionId", request.TrainingEvaluationDefinitionID)
+	putRuntimeMap(config, "trainingSplitSelector", request.TrainingSplitSelector)
+	putRuntimeString(config, "validationEvaluationDefinitionId", request.ValidationEvaluationDefinitionID)
+	putRuntimeMap(config, "validationSplitSelector", request.ValidationSplitSelector)
+	putRuntimeString(config, "testEvaluationDefinitionId", request.TestEvaluationDefinitionID)
+	putRuntimeMap(config, "quickShotPolicy", request.QuickShotPolicy)
+	return config
+}
+
+func copyRuntimeMap(values map[string]any) map[string]any {
+	copied := map[string]any{}
+	for key, value := range values {
+		copied[key] = value
+	}
+	return copied
+}
+
+func putRuntimeMap(values map[string]any, key string, value map[string]any) {
+	if len(value) > 0 {
+		values[key] = value
+	}
+}
+
+func putRuntimeString(values map[string]any, key string, value string) {
+	if strings.TrimSpace(value) != "" {
+		values[key] = strings.TrimSpace(value)
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func marshalJSON(value any) ([]byte, error) {

@@ -1,12 +1,12 @@
 ---
-id: TEC-FE-010
+id: TEC-FE-014
 title: Code-level whitelabel customization
 layer: frontend
 status: approved
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-26
+updated: 2026-05-28
 provenance: user-requested
-depends_on: [TEC-FE-009, DSY-001]
+depends_on: [TEC-FE-016, DSY-001]
 ---
 
 # Code-Level Whitelabel Customization

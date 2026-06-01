@@ -274,7 +274,7 @@ func handleAiEvalMutationQuery(store AiEvalQueryStore, logger *slog.Logger, time
 			logHandlerCompletion(logger, msg.Subject(), response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := readHandlerContext(timeout)
+		ctx, cancel := readHandlerContext(msg, timeout)
 		defer cancel()
 		data, err := store.QueryAiEval(ctx, msg.Subject(), request.Input, request.AuthContext)
 		if err != nil {
@@ -315,7 +315,7 @@ func handleAiEvalQuery(store AiEvalQueryStore, logger *slog.Logger, timeout time
 			logHandlerCompletion(logger, msg.Subject(), response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := readHandlerContext(timeout)
+		ctx, cancel := readHandlerContext(msg, timeout)
 		defer cancel()
 		input := aiEvalQueryInputFromRequest(raw, request.Input)
 		data, err := store.QueryAiEval(ctx, msg.Subject(), input, request.AuthContext)
@@ -364,7 +364,7 @@ func handleDatasetCandidatesSearch(store AiEvalQueryStore, logger *slog.Logger, 
 			logHandlerCompletion(logger, msg.Subject(), response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := readHandlerContext(timeout)
+		ctx, cancel := readHandlerContext(msg, timeout)
 		defer cancel()
 		data, err := store.QueryAiEval(ctx, SubjectEvalDatasetCandidatesSearch, datasetCandidatesSearchInput(request), request.AuthContext)
 		if err != nil {
@@ -415,7 +415,7 @@ func handleExperimentManifestResolve(store AiEvalQueryStore, logger *slog.Logger
 			logHandlerCompletion(logger, SubjectEvalManifestResolve, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := readHandlerContext(timeout)
+		ctx, cancel := readHandlerContext(msg, timeout)
 		defer cancel()
 		manifest, err := store.ResolveExperimentManifest(ctx, request)
 		if err != nil {
@@ -451,7 +451,7 @@ func handleOnlinePolicyMatchesResolve(store AiEvalQueryStore, logger *slog.Logge
 			logHandlerCompletion(logger, SubjectEvalOnlinePolicyMatchesResolve, response.RequestID, false, start, response.Error)
 			return
 		}
-		ctx, cancel := readHandlerContext(timeout)
+		ctx, cancel := readHandlerContext(msg, timeout)
 		defer cancel()
 		data, err := store.ResolveOnlinePolicyMatches(ctx, request)
 		if err != nil {
@@ -545,7 +545,7 @@ func handleExperimentProgressNotification(registry *EvalLiveRegistry, logger *sl
 			logHandlerCompletion(logger, SubjectEvalExperimentProgress, "", false, start, ptr(bridgeErrorFromError(validationError("invalid experiment progress notification JSON"))))
 			return
 		}
-		ctx, cancel := readHandlerContext(timeout)
+		ctx, cancel := readHandlerContext(msg, timeout)
 		defer cancel()
 		if err := registry.HandleProgress(ctx, notification); err != nil {
 			bridgeError := bridgeErrorFromError(err)

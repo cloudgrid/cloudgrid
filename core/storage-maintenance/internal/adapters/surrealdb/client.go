@@ -42,10 +42,6 @@ func Connect(ctx context.Context, cfg Config) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: SurrealDB connection failed")
 	}
-	if err := db.Use(ctx, cfg.Namespace, cfg.Database); err != nil {
-		_ = db.Close(ctx)
-		return nil, fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: SurrealDB namespace/database selection failed")
-	}
 	if cfg.Username != "" {
 		token, err := db.SignIn(ctx, sdk.Auth{
 			Username: cfg.Username,
@@ -59,6 +55,14 @@ func Connect(ctx context.Context, cfg Config) (*Client, error) {
 			_ = db.Close(ctx)
 			return nil, fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: SurrealDB authentication failed")
 		}
+	}
+	if err := ensureNamespaceDatabase(ctx, db, cfg.Namespace, cfg.Database); err != nil {
+		_ = db.Close(ctx)
+		return nil, fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: SurrealDB namespace/database initialization failed")
+	}
+	if err := db.Use(ctx, cfg.Namespace, cfg.Database); err != nil {
+		_ = db.Close(ctx)
+		return nil, fmt.Errorf("ERR-006 STORAGE_UNAVAILABLE: SurrealDB namespace/database selection failed")
 	}
 	return &Client{db: db}, nil
 }
@@ -84,6 +88,9 @@ func (c *Client) Query(ctx context.Context, sql string, vars map[string]any) err
 func (c *Client) queryRowsInTarget(ctx context.Context, target ControlTarget, sql string, vars map[string]any) ([]map[string]any, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if err := ensureNamespaceDatabase(ctx, c.db, target.Namespace, target.Database); err != nil {
+		return nil, err
+	}
 	if err := c.db.Use(ctx, target.Namespace, target.Database); err != nil {
 		return nil, err
 	}
@@ -97,6 +104,9 @@ func (c *Client) queryRowsInTarget(ctx context.Context, target ControlTarget, sq
 func (c *Client) execInTarget(ctx context.Context, target ControlTarget, sql string, vars map[string]any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if err := ensureNamespaceDatabase(ctx, c.db, target.Namespace, target.Database); err != nil {
+		return err
+	}
 	if err := c.db.Use(ctx, target.Namespace, target.Database); err != nil {
 		return err
 	}
@@ -107,6 +117,9 @@ func (c *Client) execInTarget(ctx context.Context, target ControlTarget, sql str
 func (c *Client) queryTelemetry(ctx context.Context, target TelemetryTarget, sql string, vars map[string]any) (map[string]any, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if err := ensureNamespaceDatabase(ctx, c.db, target.Namespace, target.Database); err != nil {
+		return nil, err
+	}
 	if err := c.db.Use(ctx, target.Namespace, target.Database); err != nil {
 		return nil, err
 	}
@@ -130,6 +143,21 @@ func (c *Client) Close(ctx context.Context) error {
 
 func (c *Client) RawDB() *sdk.DB {
 	return c.db
+}
+
+func ensureNamespaceDatabase(ctx context.Context, db *sdk.DB, namespace string, database string) error {
+	sql := fmt.Sprintf(
+		"DEFINE NAMESPACE IF NOT EXISTS `%s`; USE NS `%s`; DEFINE DATABASE IF NOT EXISTS `%s`;",
+		escapeIdent(namespace),
+		escapeIdent(namespace),
+		escapeIdent(database),
+	)
+	_, err := sdk.Query[any](ctx, db, sql, map[string]any{})
+	return err
+}
+
+func escapeIdent(value string) string {
+	return strings.ReplaceAll(value, "`", "\\`")
 }
 
 func queryOne[T any](ctx context.Context, db *sdk.DB, sql string, vars map[string]any) (T, error) {

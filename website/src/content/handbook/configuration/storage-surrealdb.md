@@ -4,10 +4,16 @@ description: "SurrealDB is the implemented storage adapter for CloudGrid."
 order: 2
 accent: amber
 eyebrow: "Handbook - Configuration"
-updated: 2026-05-18
+updated: 2026-05-31
 ---
 
 SurrealDB is the implemented storage adapter for CloudGrid.
+
+CloudGrid local, release Compose, and bundled Helm evaluation defaults use
+`surrealdb/surrealdb:v3.1.0`. SurrealDB 3.1.0 is an in-place compatible minor
+upgrade from 3.0.x for existing RocksDB volumes, but production operators should
+still take the normal backup or recovery point before upgrading the database
+dependency.
 
 ## Required Variables
 
@@ -21,6 +27,11 @@ CLOUDGRID_SURREALDB_PASSWORD=root
 ```
 
 Use real secrets in deployed environments. The local `root` example is only for the local Docker Compose stack.
+
+For local development, `CLOUDGRID_SURREALDB_PORT` controls the Docker Compose
+host port and `CLOUDGRID_SURREALDB_URL` must point to the same port. Run
+`bun run setup:local` before `bun run dev:infra` to have CloudGrid select a free
+port automatically when another local SurrealDB instance already uses `8000`.
 
 ## Build Tags
 
@@ -66,6 +77,11 @@ They must not appear in:
 Storage and control-plane services must not report ready until they can connect, authenticate, apply required schema, and run bounded readiness checks.
 
 For telemetry reads, storage-read readiness requires indexes that match the full project ownership predicate: `tenantId`, `companyId`, and `projectId` plus the selective field or sort field used by trace, log, metric, and facet queries. Trace list and live-candidate reads use denormalized count fields stored on `trace`; storage-read does not recompute span/log/service counts for every page. Write-side refreshes for one known trace target the deterministic SurrealDB record ID, for example `trace:<traceId>`, instead of scanning the trace table with a `WHERE` update.
+
+When upgrading SurrealDB, run the live SurrealDB integration checks against the
+target image before promotion. SurrealDB 3.1 also changes server-side metrics
+names and public metrics exposure, so update any external SurrealDB dashboards
+that scrape the database directly.
 
 Check readiness with:
 

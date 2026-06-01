@@ -77,7 +77,8 @@ func TestBuildRetentionQueriesKeepProjectScopeAndDeletionOrder(t *testing.T) {
 	sql := strings.Join(querySQL(queries), "\n")
 
 	for _, want := range []string{
-		"LET $root = SELECT VALUE traceId FROM trace",
+		"LET $rootRows = SELECT * FROM trace",
+		"LET $root = SELECT VALUE traceId FROM $rootRows",
 		"tenantId = $tenantId",
 		"companyId = $companyId",
 		"projectId = $projectId",

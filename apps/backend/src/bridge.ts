@@ -2141,21 +2141,36 @@ export class MessageBridgeCloudGridBridge implements CloudGridBridge {
     input: StartOptimizationRunInput,
     authContext?: NormalizedAuthContext,
   ): Promise<OptimizationRun> {
+    const {
+      projectId,
+      baselineTargetSnapshotId,
+      objective,
+      searchPolicy,
+      trainingEvaluationDefinitionId,
+      trainingSplitSelector,
+      validationEvaluationDefinitionId,
+      validationSplitSelector,
+      testEvaluationDefinitionId,
+      quickShotPolicy,
+      runPolicy,
+      idempotencyKey,
+    } = input;
     return this.#requestParsed(
       subjects.optimizationStart,
       {
         ...envelope(authContext),
-        projectId: input.projectId,
-        targetSnapshotId: input.baselineTargetSnapshotId,
-        datasetVersionId:
-          input.quickShotPolicy && typeof input.quickShotPolicy === "object"
-            ? String(
-                (input.quickShotPolicy as { sourceDatasetVersionId?: unknown })
-                  .sourceDatasetVersionId ?? "",
-              )
-            : "",
-        config: input,
-        idempotencyKey: input.idempotencyKey,
+        projectId,
+        baselineTargetSnapshotId,
+        objective,
+        searchPolicy,
+        trainingEvaluationDefinitionId,
+        trainingSplitSelector,
+        validationEvaluationDefinitionId,
+        validationSplitSelector,
+        testEvaluationDefinitionId,
+        quickShotPolicy,
+        runPolicy,
+        idempotencyKey,
       },
       optimizationRunSchema,
     );
@@ -3174,6 +3189,18 @@ const cloudGridErrorIdSchema = z.enum([
   "ERR-021",
   "ERR-022",
   "ERR-023",
+  "ERR-AIE-001",
+  "ERR-AIE-002",
+  "ERR-AIE-003",
+  "ERR-AIE-004",
+  "ERR-AIE-005",
+  "ERR-AIE-006",
+  "ERR-AIP-001",
+  "ERR-AIC-001",
+  "ERR-AIC-002",
+  "ERR-AIC-003",
+  "ERR-AIC-004",
+  "ERR-AIC-005",
 ]);
 
 const bridgeErrorSchema = z.object({
@@ -3339,7 +3366,11 @@ const experimentRunStatusSchema = z.enum([
 const annotationStatusSchema = z.enum(["open", "in_review", "resolved", "dismissed"]);
 const evalSolverKindSchema = z.enum(["prompt", "agent", "workflow", "skill", "tool"]);
 const evalBaselineKindSchema = z.enum(["experiment_run", "prompt_version", "solver_ref", "none"]);
-const optimizerKindSchema = z.enum(["bootstrap_fewshot", "critic_mutate_judge_pick"]);
+const optimizerKindSchema = z.enum([
+  "bootstrap_fewshot",
+  "critic_mutate_judge_pick",
+  "skill_text_edit",
+]);
 const bootstrapFewshotDiversityStrategySchema = z.enum([
   "none",
   "by_label",
@@ -3403,6 +3434,10 @@ const datasetCandidateStatusSchema = z.enum([
 ]);
 const datasetCandidateSourceKindSchema = z.enum([
   "trace",
+  "span",
+  "import",
+  "metric_result",
+  "evaluation_item_run",
   "eval_result",
   "experiment_item_run",
   "production_measurement",
@@ -3660,15 +3695,19 @@ const datasetItemSchema = z.preprocess(
 const datasetCandidateSchema = z.object({
   id: z.string().min(1),
   datasetId: z.string().optional().nullable(),
+  traceIntakeRuleId: z.string().optional().nullable(),
+  traceIntakeRuleName: z.string().optional().nullable(),
   status: datasetCandidateStatusSchema,
   sourceKind: datasetCandidateSourceKindSchema,
   source: z.unknown(),
   targetShape: datasetTargetShapeSchema,
   input: z.unknown().optional().nullable(),
   expected: z.unknown().optional().nullable(),
+  observedOutput: z.unknown().optional().nullable(),
   metadata: z.unknown(),
   split: datasetSplitSchema,
   reviewStatus: datasetReviewStatusSchema,
+  curationStatus: datasetCurationStatusSchema.optional(),
   contentTreatment: datasetContentTreatmentSchema,
   anonymization: z
     .object({
@@ -3687,7 +3726,25 @@ const datasetCandidateSchema = z.object({
     .optional()
     .nullable(),
   reason: z.string().min(1),
+  sourceRefs: z.array(aiEvalSourceRefSchema).optional(),
   clusterId: z.string().optional().nullable(),
+  validationIssues: z
+    .array(
+      z.object({
+        field: z.string().min(1),
+        message: z.string().min(1),
+        blocking: z.boolean(),
+      }),
+    )
+    .optional(),
+  duplicateHint: z
+    .object({
+      datasetItemId: z.string().optional().nullable(),
+      candidateId: z.string().optional().nullable(),
+      reason: z.string().min(1),
+    })
+    .optional()
+    .nullable(),
   warnings: z.array(z.string()),
   createdAt: dateTimeSchema,
   updatedAt: dateTimeSchema,
@@ -3853,6 +3910,12 @@ const datasetSettingsSchema = z.preprocess(
       defaultMetricSettings: Array.isArray(settings.defaultMetricSettings)
         ? settings.defaultMetricSettings
         : defaults.defaultMetricSettings,
+      expectedValueOptions: Array.isArray(settings.expectedValueOptions)
+        ? settings.expectedValueOptions
+        : defaults.expectedValueOptions,
+      traceIntakeRules: Array.isArray(settings.traceIntakeRules)
+        ? settings.traceIntakeRules
+        : defaults.traceIntakeRules,
     };
   },
   z.object({
@@ -3861,13 +3924,14 @@ const datasetSettingsSchema = z.preprocess(
     expectedType: datasetValueTypeSchema,
     inputJsonSchema: z.unknown().optional().nullable(),
     expectedJsonSchema: z.unknown().optional().nullable(),
+    expectedValueOptions: z.array(z.unknown()),
     defaultSplit: datasetSplitSchema,
     intakePolicy: z.object({
       manualDefaultStatus: datasetCurationStatusSchema,
       importDefaultStatus: datasetCurationStatusSchema,
       traceDefaultStatus: datasetCurationStatusSchema,
     }),
-    traceExtractionSettings: z.unknown().optional().nullable(),
+    traceIntakeRules: z.array(z.unknown()),
     anonymizationPolicy: z.unknown().optional().nullable(),
     defaultMetricSettings: z.array(z.unknown()),
     retentionProfile: retentionProfileSchema,
@@ -3879,12 +3943,14 @@ function defaultDatasetSettings() {
     evaluationFamily: "classification",
     inputType: "json",
     expectedType: "json",
+    expectedValueOptions: [],
     defaultSplit: "validation",
     intakePolicy: {
       manualDefaultStatus: "draft",
       importDefaultStatus: "needs_review",
       traceDefaultStatus: "needs_expected",
     },
+    traceIntakeRules: [],
     defaultMetricSettings: [],
     retentionProfile: "balanced",
   };

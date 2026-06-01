@@ -32,8 +32,7 @@ export function isRichMetricEditingEnabled(): boolean {
 export function RichMetricUnsupportedState() {
   return (
     <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-      Rich metric widgets can render saved data, but creation and editing stay disabled until the
-      complete rich metric implementation gate passes.
+      {t("dashboards.richMetric.unsupported")}
     </div>
   );
 }
@@ -182,7 +181,7 @@ export function RichMetricWidgetEditor({
       </Field>
       <div className="grid gap-3">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-medium">Queries</h3>
+          <h3 className="text-sm font-medium">{t("dashboards.editor.queries")}</h3>
           <Button
             disabled={disabled}
             onClick={() => updateQuery(addRichMetricQueryRow(query))}
@@ -191,7 +190,7 @@ export function RichMetricWidgetEditor({
             variant="outline"
           >
             <Plus data-icon="inline-start" />
-            Add query
+            {t("dashboards.editor.addQuery")}
           </Button>
         </div>
         {(query.queries ?? []).map((row, index) => (
@@ -222,7 +221,7 @@ export function RichMetricWidgetEditor({
       </div>
       <div className="grid gap-3">
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-medium">Formulas</h3>
+          <h3 className="text-sm font-medium">{t("dashboards.editor.formulas")}</h3>
           <Button
             disabled={disabled}
             onClick={() =>
@@ -233,13 +232,15 @@ export function RichMetricWidgetEditor({
             variant="outline"
           >
             <Plus data-icon="inline-start" />
-            Add formula
+            {t("dashboards.editor.addFormula")}
           </Button>
         </div>
         {(query.formulas ?? []).map((formula) => (
           <div className="grid gap-2 border p-2" key={formula.id}>
             <Field data-disabled={disabled}>
-              <FieldLabel htmlFor={`${widget.id}-${formula.id}-label`}>Label</FieldLabel>
+              <FieldLabel htmlFor={`${widget.id}-${formula.id}-label`}>
+                {t("dashboards.editor.label")}
+              </FieldLabel>
               <Input
                 disabled={disabled}
                 id={`${widget.id}-${formula.id}-label`}
@@ -255,12 +256,12 @@ export function RichMetricWidgetEditor({
                     ),
                   })
                 }
-                placeholder="Label"
+                placeholder={t("dashboards.editor.label")}
                 value={formula.label}
               />
             </Field>
             <div className="grid grid-cols-[80px_minmax(0,1fr)] gap-2 text-sm">
-              <dt className="text-muted-foreground">Formula</dt>
+              <dt className="text-muted-foreground">{t("dashboards.editor.formula")}</dt>
               <dd className="min-w-0 break-words">
                 {describeFormulaExpression(formula.expression)}
               </dd>
@@ -269,7 +270,7 @@ export function RichMetricWidgetEditor({
         ))}
       </div>
       <div className="grid gap-2">
-        <h3 className="text-sm font-medium">Display series</h3>
+        <h3 className="text-sm font-medium">{t("dashboards.editor.displaySeries")}</h3>
         {(query.displaySeries ?? []).map((series) => (
           <div className="flex items-center gap-2 text-sm" key={series.id}>
             <Checkbox
@@ -314,7 +315,9 @@ function RichMetricQueryRowEditor({
   return (
     <div className="grid gap-2 border p-2">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-medium text-muted-foreground">Query {rowNumber}</div>
+        <div className="text-xs font-medium text-muted-foreground">
+          {t("dashboards.editor.queryNumber", { rowNumber: String(rowNumber) })}
+        </div>
         <Button
           aria-label={t("dashboards.editor.removeQuery")}
           disabled={disabled}
@@ -327,14 +330,14 @@ function RichMetricQueryRowEditor({
         </Button>
       </div>
       <Field data-disabled={disabled}>
-        <FieldLabel htmlFor={`${row.id}-label`}>Label</FieldLabel>
+        <FieldLabel htmlFor={`${row.id}-label`}>{t("dashboards.editor.label")}</FieldLabel>
         <Input
           disabled={disabled}
           id={`${row.id}-label`}
           onChange={(event) =>
             onChange({ ...row, label: stringOrNull(event.target.value) ?? row.label })
           }
-          placeholder="Label"
+          placeholder={t("dashboards.editor.label")}
           value={row.label}
         />
       </Field>
@@ -383,7 +386,9 @@ function RichMetricQueryRowEditor({
         />
       </Field>
       <Field data-disabled={disabled}>
-        <FieldLabel htmlFor={`${row.id}-max-series`}>Max series</FieldLabel>
+        <FieldLabel htmlFor={`${row.id}-max-series`}>
+          {t("dashboards.editor.maxSeries")}
+        </FieldLabel>
         <Input
           disabled={disabled}
           id={`${row.id}-max-series`}

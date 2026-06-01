@@ -11,6 +11,7 @@ import (
 	"time"
 
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
+	"github.com/cloudgrid-dev/cloudgrid/core/go-runtime/selfobs"
 )
 
 func TestBuildPersistQueryRejectsMissingCommandID(t *testing.T) {
@@ -628,6 +629,30 @@ func TestPersisterChecksIngestCommandDuplicateBeforeWriting(t *testing.T) {
 	}
 }
 
+func TestPersisterRecordsDBAdapterTraceSpanFromParentContext(t *testing.T) {
+	db := &fakeDB{}
+	recorder := &traceRecorder{}
+	p := Persister{DB: db}
+	p.EnableDBAdapterTracing(recorder)
+	parent := selfobs.TraceContext{TraceID: "4bf92f3577b34da6a3ce929d0e0e4736", SpanID: "00f067aa0ba902b7"}
+	ctx := selfobs.ContextWithTraceContext(context.Background(), parent)
+
+	err := p.Persist(ctx, validPersistCommand(), "telemetry.ingest.traces", time.Unix(1, 0))
+	if err != nil {
+		t.Fatalf("Persist returned error: %v", err)
+	}
+	if len(recorder.spans) != 1 {
+		t.Fatalf("spans = %#v, want one adapter span", recorder.spans)
+	}
+	span := recorder.spans[0]
+	if span.Name != "storage-write.db.persist_ingest" || span.ParentSpanID != parent.SpanID {
+		t.Fatalf("span = %#v, want persist_ingest child of parent", span)
+	}
+	if span.Attributes["cloudgrid.db.operation"] != "persist_ingest" || span.Attributes["cloudgrid.db.target_kind"] != "telemetry" {
+		t.Fatalf("span attributes = %#v", span.Attributes)
+	}
+}
+
 func TestPersisterRunsIdempotentCanonicalIDUpserts(t *testing.T) {
 	db := &fakeDB{}
 	p := Persister{DB: db}
@@ -1202,6 +1227,23 @@ func (db *fakeDB) IngestCommandExistsInTarget(_ context.Context, target Telemetr
 	}
 	return db.commandExists, nil
 }
+
+type traceRecorder struct {
+	spans []selfobs.SpanEvent
+	logs  []selfobs.LogEvent
+}
+
+func (recorder *traceRecorder) RecordSpan(event selfobs.SpanEvent) {
+	recorder.spans = append(recorder.spans, event)
+}
+
+func (recorder *traceRecorder) RecordLog(event selfobs.LogEvent) {
+	recorder.logs = append(recorder.logs, event)
+}
+
+func (recorder *traceRecorder) Flush(context.Context) error { return nil }
+
+func (recorder *traceRecorder) Shutdown(context.Context) error { return nil }
 
 func stringPtr(value string) *string {
 	return &value

@@ -1,0 +1,87 @@
+plan: frontend_ux_implementation
+updated: 2026-05-28
+summary:
+  total: 12
+  planned: 0
+  ready: 12
+  in_progress: 0
+  partial: 0
+  blocked: 0
+  done: 0
+resume_notes:
+  last_active_ticket: none
+  current_proof: implementation plan generated from approved FEUX planning input
+  last_verified: null
+tickets:
+  TICKET-300:
+    wave: wave_01_source_and_foundation
+    status: ready
+    owner: spec-planning-agent
+    current_proof: readiness report approved; stale UX plan already marked superseded
+    resume_notes: run source-gate searches, then record proof
+  TICKET-301:
+    wave: wave_01_source_and_foundation
+    status: ready
+    owner: frontend-foundation-agent
+    current_proof: waiting for TICKET-300 completion
+    resume_notes: implement shared primitives before route tickets start
+  TICKET-302:
+    wave: wave_02_project_experience
+    status: ready
+    owner: frontend-project-settings-agent
+    current_proof: waiting for TICKET-301 completion
+    resume_notes: keep project sidebar and settings shell aligned
+  TICKET-303:
+    wave: wave_03_route_workspaces
+    status: ready
+    owner: frontend-traces-agent
+    current_proof: waiting for TICKET-302 completion
+    resume_notes: migrate History and Live inside Traces
+  TICKET-304:
+    wave: wave_03_route_workspaces
+    status: ready
+    owner: frontend-trace-detail-agent
+    current_proof: waiting for TICKET-302 completion
+    resume_notes: synchronize waterfall, flow graph, logs panel, and inspector
+  TICKET-305:
+    wave: wave_03_route_workspaces
+    status: ready
+    owner: frontend-logs-agent
+    current_proof: waiting for TICKET-302 completion
+    resume_notes: keep Logs UI normal project-scoped and URL-addressable
+  TICKET-306:
+    wave: wave_03_route_workspaces
+    status: ready
+    owner: frontend-metrics-agent
+    current_proof: waiting for TICKET-302 completion
+    resume_notes: preserve Metrics as technical explorer
+  TICKET-307:
+    wave: wave_03_route_workspaces
+    status: ready
+    owner: frontend-dashboards-agent
+    current_proof: waiting for TICKET-302 completion
+    resume_notes: preserve saved dashboard/widget workspace semantics
+  TICKET-308:
+    wave: wave_03_route_workspaces
+    status: ready
+    owner: frontend-ai-eval-agent
+    current_proof: waiting for TICKET-302 completion
+    resume_notes: align AI Eval shell without adding frontend calculations
+  TICKET-309:
+    wave: wave_04_cross_route_qa
+    status: ready
+    owner: frontend-qa-agent
+    current_proof: waiting for route tickets
+    resume_notes: run matrix, screenshots, copy scan, and forbidden-pattern checks
+  TICKET-310:
+    wave: wave_03_route_workspaces
+    status: ready
+    owner: frontend-ai-chat-agent
+    current_proof: waiting for TICKET-302 completion
+    resume_notes: align AI Chat route shell and disabled/provider setup states
+  TICKET-311:
+    wave: wave_03_route_workspaces
+    status: ready
+    owner: frontend-alerts-agent
+    current_proof: waiting for TICKET-302 completion
+    resume_notes: align Alerts route shell, rule flows, silences, and adapter setup states

@@ -2,14 +2,9 @@ package internal
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/mail"
 	"slices"
 	"sort"
@@ -29,15 +24,13 @@ const (
 )
 
 type Service struct {
-	store               ports.ControlStore
-	now                 func() time.Time
-	statusChanges       []contracts.ProjectStatusChangedNotification
-	invitationEmail     InvitationEmailConfig
-	emailTransport      InvitationEmailTransport
-	alertAdapters       map[string]struct{}
-	secretKey           []byte
-	requireSecretKey    bool
-	secretKeyConfigured bool
+	store           ports.ControlStore
+	secrets         ports.SecretStore
+	now             func() time.Time
+	statusChanges   []contracts.ProjectStatusChangedNotification
+	invitationEmail InvitationEmailConfig
+	emailTransport  InvitationEmailTransport
+	alertAdapters   map[string]struct{}
 }
 
 func NewService(store ports.ControlStore, now func() time.Time) *Service {
@@ -50,15 +43,20 @@ func NewServiceWithOptions(store ports.ControlStore, now func() time.Time, optio
 	}
 	config := options.InvitationEmail.normalized()
 	return &Service{
-		store:               store,
-		now:                 now,
-		invitationEmail:     config,
-		emailTransport:      options.EmailTransport,
-		alertAdapters:       alertAdapterCatalog(options.AlertNotificationAdapters),
-		secretKey:           providerSecretKey(options.ProviderSecretEncryptionKey),
-		requireSecretKey:    options.RequireProviderSecretEncryptionKey,
-		secretKeyConfigured: providerSecretKeyConfigured(options.ProviderSecretEncryptionKey),
+		store:           store,
+		secrets:         secretStoreOrUnavailable(options.SecretStore),
+		now:             now,
+		invitationEmail: config,
+		emailTransport:  options.EmailTransport,
+		alertAdapters:   alertAdapterCatalog(options.AlertNotificationAdapters),
 	}
+}
+
+func secretStoreOrUnavailable(store ports.SecretStore) ports.SecretStore {
+	if store == nil {
+		return ports.UnavailableSecretStore{}
+	}
+	return store
 }
 
 func (service *Service) GetViewer(ctx context.Context, envelope contracts.BridgeEnvelope) (contracts.Viewer, error) {
@@ -974,20 +972,17 @@ func (service *Service) ResolveAiProviderSecret(ctx context.Context, request con
 		}
 		companyID = project.OrganizationID
 	}
-	record, ok, err := service.store.GetAiProviderSecret(ctx, managedAiProviderSecretID(scope, companyID, projectID, providerID))
+	secretScope := ports.SecretScope{Scope: scope, CompanyID: companyID, ProjectID: projectID, ProviderID: providerID}
+	resolved, ok, err := service.secrets.ResolveManagedSecret(ctx, managedAiProviderSecretID(scope, companyID, projectID, providerID), secretScope)
 	if err != nil {
 		return nil, storageError()
 	}
 	if !ok {
 		return nil, validationError("managed credentialRef was not found")
 	}
-	value, err := service.decryptAiProviderSecret(record)
-	if err != nil {
-		return nil, err
-	}
 	return map[string]any{
 		"credentialRef": ref,
-		"value":         value,
+		"value":         resolved.Value,
 	}, nil
 }
 
@@ -5625,74 +5620,23 @@ func (service *Service) storeAiProviderSecret(ctx context.Context, scope string,
 	if strings.TrimSpace(value) == "" {
 		return "", validationError("credentialValue must not be empty")
 	}
-	if service.requireSecretKey && !service.secretKeyConfigured {
-		return "", validationError("CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY is required before storing managed provider secrets")
-	}
-	block, err := aes.NewCipher(service.secretKey)
-	if err != nil {
-		return "", validationError("provider secret encryption is unavailable")
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", validationError("provider secret encryption is unavailable")
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", validationError("provider secret encryption is unavailable")
-	}
-	ciphertext := gcm.Seal(nil, nonce, []byte(value), nil)
-	record := ports.AiProviderSecretRecord{
-		ID:              managedAiProviderSecretID(scope, companyID, projectID, providerID),
-		Scope:           scope,
-		CompanyID:       companyID,
-		ProjectID:       projectID,
-		ProviderID:      providerID,
-		Algorithm:       "aes-256-gcm",
-		Nonce:           base64.StdEncoding.EncodeToString(nonce),
-		Ciphertext:      base64.StdEncoding.EncodeToString(ciphertext),
+	secret := ports.ManagedSecretWrite{
+		ID: managedAiProviderSecretID(scope, companyID, projectID, providerID),
+		Scope: ports.SecretScope{
+			Scope:      scope,
+			CompanyID:  companyID,
+			ProjectID:  projectID,
+			ProviderID: providerID,
+		},
+		Value:           value,
 		CreatedAt:       now,
 		UpdatedAt:       now,
 		UpdatedByUserID: actor,
 	}
-	if existing, ok, err := service.store.GetAiProviderSecret(ctx, record.ID); err != nil {
-		return "", storageError()
-	} else if ok {
-		record.CreatedAt = existing.CreatedAt
-	}
-	if err := service.store.PutAiProviderSecret(ctx, record); err != nil {
+	if err := service.secrets.PutManagedSecret(ctx, secret); err != nil {
 		return "", storageError()
 	}
 	return managedAiProviderSecretRef(scope, companyID, projectID, providerID), nil
-}
-
-func (service *Service) decryptAiProviderSecret(record ports.AiProviderSecretRecord) (string, error) {
-	if record.Algorithm != "aes-256-gcm" {
-		return "", validationError("provider secret uses an unsupported encryption algorithm")
-	}
-	if service.requireSecretKey && !service.secretKeyConfigured {
-		return "", validationError("CLOUDGRID_PROVIDER_SECRET_ENCRYPTION_KEY is required before resolving managed provider secrets")
-	}
-	nonce, err := base64.StdEncoding.DecodeString(record.Nonce)
-	if err != nil {
-		return "", validationError("provider secret is invalid")
-	}
-	ciphertext, err := base64.StdEncoding.DecodeString(record.Ciphertext)
-	if err != nil {
-		return "", validationError("provider secret is invalid")
-	}
-	block, err := aes.NewCipher(service.secretKey)
-	if err != nil {
-		return "", validationError("provider secret encryption is unavailable")
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return "", validationError("provider secret encryption is unavailable")
-	}
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		return "", validationError("provider secret could not be decrypted")
-	}
-	return string(plaintext), nil
 }
 
 func defaultOrganizationName(organizationID string) string {

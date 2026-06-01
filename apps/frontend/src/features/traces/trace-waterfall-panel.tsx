@@ -52,7 +52,7 @@ export function TraceWaterfallPanel({
             </p>
           </div>
           <fieldset className="flex items-center gap-1 rounded-md border p-1">
-            <legend className="sr-only">Trace view</legend>
+            <legend className="sr-only">{t("traceDetail.traceView")}</legend>
             <Button
               onClick={() => setViewMode("waterfall")}
               size="sm"
@@ -60,7 +60,7 @@ export function TraceWaterfallPanel({
               variant={viewMode === "waterfall" ? "secondary" : "ghost"}
             >
               <ListTree data-icon="inline-start" />
-              Waterfall
+              {t("traceDetail.treeWaterfall")}
             </Button>
             <Button
               onClick={() => setViewMode("flow")}
@@ -69,7 +69,7 @@ export function TraceWaterfallPanel({
               variant={viewMode === "flow" ? "secondary" : "ghost"}
             >
               <Move data-icon="inline-start" />
-              Flow
+              {t("traceDetail.flow")}
             </Button>
           </fieldset>
         </div>

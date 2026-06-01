@@ -1,6 +1,6 @@
 source: implementation-ready-completion-pass
 status: implementation_ready
-updated: 2026-05-24
+updated: 2026-05-31
 notes:
   - Current CloudGrid specs and contracts are sufficient for MVP closure implementation.
   - Formal implementation-planner gate file specs/.readiness-report.yaml exists and records the current verification state.
@@ -9,19 +9,26 @@ notes:
   - Production-scale performance work now has explicit implementation constraints in specs/06-nfr/performance-and-scaling.md.
   - Remaining production gaps are specified implementation requirements, not open product-decision gaps.
   - Per-item completion status is tracked in specs/implementation-ready.md.
-  - AI Eval v2 is now tracked as IR-010 with an implementation-ready migration plan and completed BFF plus storage service foundation tickets.
+  - AI Eval v2 is now tracked as IR-010 and complete for the migration scope.
+  - Classification and extraction evaluation/optimization is tracked as IR-015 and specified for implementation with try-it fixture packs.
+  - Project AI Chat runtime/UI is complete for IR-006 after AI Elements/json-render and project provider profile/model-alias settings verification.
+  - SurrealDB 3.1 is tracked as IR-011 and complete for the repository baseline migration scope.
+  - Local deep database adapter tracing is tracked as IR-012 and complete for the local diagnostics implementation scope.
 blocking_gaps: []
 implementation_ready_status:
   IR-001:
-    status: partial
+    status: complete
     evidence:
       - SurrealDB retention adapter/query/schema/readiness groundwork exists.
       - SurrealDB retention adapter is wired into storage-maintenance startup for surrealdb builds.
       - Storage-read soft-delete filters and storage-write soft-delete fields exist.
       - go test ./core/storage-maintenance/... passes.
       - go test -tags surrealdb ./core/storage-maintenance/... passes.
-    remaining:
-      - Complete opt-in live SurrealDB tests for every executable data class, soft delete/final delete, dry-run mutation checks, and lease contention/reacquire.
+      - 2026-05-28: go test -tags surrealdb ./core/storage-maintenance/internal/adapters/surrealdb passed.
+      - 2026-05-28: CLOUDGRID_ENABLE_SURREALDB_RETENTION_TESTS=true go test -count=1 -tags surrealdb ./core/storage-maintenance/internal/adapters/surrealdb passed against local SurrealDB.
+      - 2026-05-28: go test -tags surrealdb ./core/storage-read/... ./core/storage-maintenance/... passed.
+      - Live adapter coverage includes every executable data class, soft delete/final delete, dry-run mutation checks, audit rows, and lease contention/reacquire.
+    remaining: []
   IR-002:
     status: complete
     evidence:
@@ -57,21 +64,27 @@ implementation_ready_status:
     status: complete
     evidence:
       - AI provider and AI Chat generated metadata, BFF bridge/resolvers, validation, integration scenario coverage, and contract checks are present.
+      - 2026-05-28: named AI provider and AI Chat AsyncAPI response contracts have matching Go response types and control-plane handler wiring.
+      - 2026-05-28: error taxonomy drift checks parse all errors.yaml IDs and require runtime problem plus backend bridge-schema coverage.
       - bun run contracts:check passes.
   IR-006:
-    status: partial
+    status: complete
     evidence:
       - AI Chat route, navigation, history/conversation reads, safe artifact preview, server-issued action approval UI, tests, and handbook docs exist.
       - BFF SSE stream endpoint, ordered terminal stream events, abort cleanup, and public API stream client helper exist.
       - Machine-readable durable run-state contracts exist for control.ai_chat.run.create, control.ai_chat.run.update, and control.ai_chat.run.finalize.
       - Control-plane persists AI Chat run lifecycle and enforces idempotency/active-run rejection.
       - Follow-up prompt streaming UI uses the public API client.
+      - AI Elements conversation/message/prompt primitives are used by the route.
+      - BFF-validated json-render artifacts render through the shared artifact renderer and untrusted fences remain inert.
+      - Project AI provider profile and model-alias settings exist at /projects/:projectId/settings/ai-providers.
+      - 2026-05-28: bun test apps/frontend/test/ai-chat-route.test.tsx apps/frontend/test/ux-v2-projects.test.ts passed.
+      - 2026-05-28: bun test apps/backend/src/ai-chat-catalog.test.ts apps/backend/src/ai-chat-stream.test.ts passed.
       - bun run contracts:check passes.
       - bun run typecheck passes.
       - bun run --cwd apps/frontend test passes.
       - go test -tags surrealdb ./core/control-plane/... passes.
-    remaining:
-      - Complete AI Elements/json-render component integration and richer company/project provider settings forms.
+    remaining: []
   IR-007:
     status: complete
     evidence:
@@ -83,14 +96,15 @@ implementation_ready_status:
       - Website handbook covers Helm install, external dependencies, image customization, private registry/air-gapped installs, release verification, upgrade/rollback, and sizing.
       - bun run --cwd website build passes.
   IR-009:
-    status: partial
+    status: complete
     evidence:
       - Shared Go OTLP trace/log exporter supports per-signal toggles, bounded sanitized log records, trace/span IDs, severity numbers, observed timestamps, log scope naming, dropped-buffer metrics, and rate-limited exporter failure warnings.
       - AI-eval runner wires exporter startup, NATS handler spans/failure logs, and shutdown flush.
       - go test -tags surrealdb ./core/go-runtime/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/... passes.
-    remaining:
-      - Complete full-service log event coverage evidence across BFF, collector, control-plane, storage-read, storage-write, and AI-eval runner.
-      - Complete normal Logs UI inspection evidence for the self-observability project.
+      - 2026-05-28: bun test apps/backend/src/self-observability.test.ts apps/frontend/test/logs-route.test.tsx passed.
+      - 2026-05-28: full-service log event coverage evidence is mapped for BFF, collector, control-plane, storage-read, storage-write, and AI-eval runner.
+      - 2026-05-28: normal Logs UI renders CloudGrid service logs and trace/span pivots through apps/frontend/test/logs-route.test.tsx.
+    remaining: []
   IR-010:
     status: complete
     evidence:
@@ -107,6 +121,42 @@ implementation_ready_status:
       - bun --bun run --cwd apps/frontend smoke -- ai-eval.e2e.ts passes.
       - spec check, plan lint, and wave readiness checks pass.
     remaining: []
+  IR-011:
+    status: complete
+    evidence:
+      - Local Compose, release Compose, Helm bundled dependency values, env examples, README, and integration-local defaults target surrealdb/surrealdb:v3.1.0.
+      - Storage-owning SurrealDB clients authenticate before namespace/database selection and explicitly create missing namespaces/databases before schema work.
+      - SurrealDB persistence and release specs define the 3.1.0 baseline, 3.0.x in-place upgrade assumption from official release notes, validation commands, and dashboard metric migration concern.
+      - Website operator docs cover external dependency version validation, upgrade/rollback handling, and SurrealDB 3.1 metrics dashboard impact.
+      - 2026-05-28: docker manifest inspect surrealdb/surrealdb:v3.1.0 passed.
+      - 2026-05-28: local Docker Compose SurrealDB was recreated with surrealdb/surrealdb:v3.1.0 and /surreal version returned 3.1.0.
+      - 2026-05-28: CLOUDGRID_ENABLE_SURREALDB_RETENTION_TESTS=true go test -count=1 -tags surrealdb ./core/storage-maintenance/internal/adapters/surrealdb passed against SurrealDB 3.1.0.
+      - 2026-05-28: CLOUDGRID_ENABLE_SURREALDB_STORAGE_WRITE_TESTS=true go test -count=1 -tags surrealdb ./core/storage-write/internal/adapters/surrealdb passed against SurrealDB 3.1.0.
+      - 2026-05-28: CLOUDGRID_ENABLE_SURREALDB_CONTROL_TESTS=true go test -count=1 -tags surrealdb ./core/control-plane/internal passed against SurrealDB 3.1.0.
+      - 2026-05-28: go test -tags surrealdb ./core/storage-read/... ./core/storage-maintenance/... ./core/storage-write/internal/adapters/surrealdb ./core/control-plane/internal/adapters/surrealdb passed.
+    remaining: []
+  IR-012:
+    status: complete
+    evidence:
+      - Specs define local-only, disabled-by-default deep database adapter tracing for regular database adapters.
+      - Runtime parsing for CLOUDGRID_DB_ADAPTER_TRACING_ENABLED defaults to false and rejects true in deployed mode.
+      - Shared Go runtime helper creates bounded child spans from parent trace context and drops raw query, parameter, response, provider-error, credential, ID, and secret-store data.
+      - Regular SurrealDB adapters for storage-read, storage-write, storage-maintenance, and control-plane accept adapter tracing; secure secret-store adapters remain untouched.
+      - Env examples, handbook env reference, local self-observability docs, and generated contract metadata include the flag.
+      - 2026-05-29: go test -tags surrealdb ./core/go-runtime/... ./core/storage-read/... ./core/storage-write/... ./core/storage-maintenance/... ./core/control-plane/... passed.
+      - 2026-05-29: bun run contracts:check passed after contracts generation.
+      - 2026-05-29: bun run typecheck, bun run --cwd website build, spec check, and git diff --check passed.
+    remaining: []
+  IR-015:
+    status: not-started
+    evidence:
+      - Source specs define deterministic classification/extraction metrics, family diagnosis, prompt/example optimization loops, managed harness and external adapter runtime modes, content/cost boundaries, frontend UX, and implementation gates.
+      - Try-it fixture packs exist under test_data/ai_eval/classification and test_data/ai_eval/extraction with public GraphQL settings, ready JSONL rows, baseline prompt targets, baseline examples, and expected optimizer behavior.
+      - Integration scenario metadata requires classification and extraction prompt optimization coverage through the deterministic CloudGrid AI harness adapter, including PromptOptimizationStep evidence and explicit promotion gates.
+      - Manual real-LLM fixture packs exist under test_data/ai_eval/manual_real_llm for operator-driven classification/extraction checks and are excluded from automated integration execution.
+    remaining:
+      - Generate and align GraphQL, AsyncAPI, entity JSON Schema, TypeScript UI contracts, and Go message contracts.
+      - Implement runner, storage-write, storage-read, BFF, frontend, adapter, executable local integration flows, and handbook work listed in specs/implementation-ready.md.
 implemented_surfaces:
   - metrics ingest, storage-write persistence, storage-read metric names/series/rich-series query, BFF GraphQL resolvers, and frontend metric explorer/dashboard widget surfaces
   - grpc otlp ingest on standard port 4317 for traces, logs, and metrics
@@ -116,12 +166,7 @@ implemented_surfaces:
   - organization invitations and invitation email delivery contracts/control-plane/BFF/frontend/docs
   - live trace subscriptions through BFF GraphQL, storage-read live sessions, and storage-write post-persist notifications
   - AI Eval v2 contracts, BFF bridge validation/resolver foundation, storage service persistence/query semantics, and implementation-ready migration plan
+  - SurrealDB 3.1 local, release Compose, bundled Helm, docs, and validation baseline
+  - local-only deep database adapter tracing spec contract
 explicit_deferrals:
-  - production-scale backpressure and benchmark implementation
-  - storage-maintenance retention deletion worker and retention audit execution
-  - alert evaluator scheduling, rule execution, state transitions, and notification dispatch adapters
-  - production deployment manifests
-  - production multi-tenant auth hardening beyond local/default project isolation
-  - project/company AI provider settings and AI Chat are now specified as a
-    draft follow-on wave; implementation starts only after GraphQL, AsyncAPI,
-    generated contracts, and a readiness report are approved for that wave
+  - production benchmark evidence for a concrete promoted deployment

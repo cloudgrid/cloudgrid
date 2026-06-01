@@ -30,6 +30,12 @@ export type CloudGridErrorId =
   | "ERR-021"
   | "ERR-022"
   | "ERR-023"
+  | "ERR-AIE-001"
+  | "ERR-AIE-002"
+  | "ERR-AIE-003"
+  | "ERR-AIE-004"
+  | "ERR-AIE-005"
+  | "ERR-AIE-006"
   | "ERR-AIP-001"
   | "ERR-AIC-001"
   | "ERR-AIC-002"
@@ -194,6 +200,42 @@ const errorTaxonomy: Record<CloudGridErrorId, ErrorTaxonomyEntry> = {
     status: 502,
     retryable: false,
     detail: "Private service response did not match the message contract",
+  },
+  "ERR-AIE-001": {
+    code: "EVAL_DATASET_NOT_FOUND",
+    status: 404,
+    retryable: false,
+    detail: "Evaluation dataset was not found",
+  },
+  "ERR-AIE-002": {
+    code: "EVAL_SCORER_NOT_FOUND",
+    status: 404,
+    retryable: false,
+    detail: "Evaluation scorer was not found",
+  },
+  "ERR-AIE-003": {
+    code: "EVAL_HARNESS_UNREACHABLE",
+    status: 503,
+    retryable: true,
+    detail: "Harness adapter is unavailable",
+  },
+  "ERR-AIE-004": {
+    code: "EVAL_RUN_LIMIT_EXCEEDED",
+    status: 429,
+    retryable: true,
+    detail: "Evaluation run limit exceeded",
+  },
+  "ERR-AIE-005": {
+    code: "EVAL_PROJECTION_AMBIGUOUS",
+    status: 400,
+    retryable: false,
+    detail: "AI projection is ambiguous",
+  },
+  "ERR-AIE-006": {
+    code: "EVAL_CONTENT_NOT_CAPTURED",
+    status: 400,
+    retryable: false,
+    detail: "The selected span does not contain captured content",
   },
   "ERR-AIP-001": {
     code: "AI_PROVIDER_CREDENTIAL_UNAVAILABLE",

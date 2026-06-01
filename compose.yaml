@@ -17,7 +17,7 @@ services:
     restart: unless-stopped
 
   surrealdb:
-    image: surrealdb/surrealdb:${CLOUDGRID_SURREALDB_IMAGE_TAG:-v3.0.5}
+    image: surrealdb/surrealdb:${CLOUDGRID_SURREALDB_IMAGE_TAG:-v3.1.0}
     user: "0:0"
     command:
       - "start"

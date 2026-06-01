@@ -4,10 +4,11 @@ description: "bun run setup:local prepares local multi-project token routing wit
 order: 4
 accent: amber
 eyebrow: "Handbook - Configuration"
-updated: 2026-05-18
+updated: 2026-05-31
 ---
 
-`bun run setup:local` prepares local multi-project token routing without printing secrets.
+`bun run setup:local` prepares local multi-project token routing and local
+Docker ports without printing secrets.
 
 ## What It Writes
 
@@ -20,9 +21,19 @@ CLOUDGRID_PROJECT_API_KEY=<default-project-token>
 CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID=cloudgrid-system
 CLOUDGRID_SELF_OBSERVABILITY_COMPANY_ID=local
 CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN=<cloudgrid-system-token>
+CLOUDGRID_NATS_PORT=4222
+CLOUDGRID_NATS_MONITOR_PORT=8222
+CLOUDGRID_NATS_URL=nats://localhost:4222
+CLOUDGRID_SURREALDB_PORT=8000
+CLOUDGRID_SURREALDB_URL=http://localhost:8000/rpc
 ```
 
 Token values are opaque URL-safe bearer tokens with at least 32 random bytes of entropy.
+When one of the default local infrastructure ports is already occupied, the
+script selects a free localhost port and writes matching URL variables. For
+example, if another SurrealDB instance already listens on `8000`, the script
+writes a different `CLOUDGRID_SURREALDB_PORT` and the corresponding
+`CLOUDGRID_SURREALDB_URL`.
 
 ## Idempotency
 
@@ -39,6 +50,8 @@ Expected output names the configured projects and variables, but not token value
 ```text
 Updated .env local OTLP token routing for projects: default, cloudgrid-system
 Wrote CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS, CLOUDGRID_PROJECT_API_KEY, and CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN
+Configured local Docker ports: NATS 4222, NATS monitor 8222, SurrealDB 18000
+SurrealDB CLOUDGRID_SURREALDB_PORT port 8000 was unavailable; selected 18000.
 Next: bun run dev:infra && bun run dev:all
 ```
 

@@ -13,7 +13,9 @@ updated: 2026-05-15
 - `status: approved`
 - `human_approval.status: approved`
 
-This migration check package is approved planning input. Agents still need executable tickets with one owner, one write scope, route-specific tests, and visual QA evidence before implementation.
+This migration check package is approved planning input. Executable tickets now
+exist under `plans/frontend-ux-implementation/` with one owner, one write scope,
+route-specific tests, and visual QA evidence before implementation.
 
 ## Source Of Truth Order
 
@@ -56,14 +58,14 @@ If an implementation agent finds behavior not covered by the current specs, it m
 
 ## Approval Checklist
 
-Before generating executable agent tickets:
+Planning closure checklist:
 
 - [x] `specs/.readiness-report.yaml` is approved.
 - [x] Old `frontend-ux-v2-migration-plan.md` is marked superseded.
 - [x] No active planning/spec file may instruct Live as a primary sidebar entry.
 - [x] No active planning/spec file may instruct MetricView compatibility.
-- [ ] `02-agent-remediation-plan.md` is copied into executable tickets with one owner and one write scope per ticket.
-- [ ] Each ticket includes route-specific tests and Playwright visual checks.
+- [x] `02-agent-remediation-plan.md` is copied into executable tickets with one owner and one write scope per ticket.
+- [x] Each ticket includes route-specific tests and Playwright visual checks.
 
 ## Completion Definition For The Full Migration
 

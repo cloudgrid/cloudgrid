@@ -4,7 +4,7 @@ title: Engineering conventions
 layer: foundation
 status: draft
 owner: unknown@example.com
-updated: 2026-05-08
+updated: 2026-05-29
 provenance: inferred-draft
 ---
 
@@ -44,6 +44,32 @@ Deployable apps may depend on `apps/packages/*`. Shared TypeScript packages must
 - SurrealDB is not reachable from public network paths.
 - Live telemetry delivery must flow through storage-read so read authorization
   remains centralized.
+
+## Standards-First Interoperability
+
+CloudGrid prefers established standards over CloudGrid-specific protocols,
+attribute names, payload shapes, and SDK requirements.
+
+- Public telemetry ingest uses OTLP, W3C Trace Context, and OpenTelemetry
+  semantic conventions before any product-specific extension.
+- AI telemetry uses OTel GenAI, OTel MCP, OpenInference, and ordinary
+  HTTP/RPC/database/messaging/filesystem/exception/service conventions before
+  CloudGrid-specific span attributes.
+- Public HTTP errors use RFC 9457 Problem Details. GraphQL and message bridge
+  errors map to that taxonomy instead of inventing independent error formats.
+- API descriptions use OpenAPI, GraphQL SDL, AsyncAPI, and JSON Schema. Do not
+  add sidecar schema languages for the same surface.
+- Customer-emitted OTLP source telemetry is immutable input. CloudGrid may store
+  derived projections, normalization warnings, and source-flavor metadata, but
+  must not inject CloudGrid-owned semantic attributes into customer spans,
+  events, logs, or metric points.
+- CloudGrid-specific attributes are allowed only for CloudGrid-owned
+  self-observability signals, internal message/runtime correlation, or typed
+  derived entities where no standard field exists.
+- Any new CloudGrid-specific protocol field, span/log/metric attribute, header,
+  schema, or SDK requirement must document why existing standards are
+  insufficient and must include a migration path back to standards if one
+  becomes available.
 
 ## Authorization Preparation
 
@@ -107,6 +133,10 @@ Deployable apps may depend on `apps/packages/*`. Shared TypeScript packages must
 - Services running in Kubernetes must write application logs to stdout/stderr as one JSON object per line.
 - Do not log full OTLP payload bodies by default.
 - Do not log SurrealDB credentials, NATS credentials, raw provider errors, raw OTLP bodies, or user-controlled high-cardinality payload objects by default.
+- Database diagnostics, including deep adapter tracing, must use bounded
+  operation labels only. Do not log or export raw SQL, SurrealQL,
+  query-builder output, bind parameters, response documents, provider error
+  strings, database credentials, record payloads, or secret-store internals.
 
 ## Frontend Loading And Errors
 

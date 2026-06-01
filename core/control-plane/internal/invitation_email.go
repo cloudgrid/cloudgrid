@@ -60,11 +60,10 @@ type InvitationEmailTransport interface {
 }
 
 type ServiceOptions struct {
-	InvitationEmail                    InvitationEmailConfig
-	EmailTransport                     InvitationEmailTransport
-	AlertNotificationAdapters          []string
-	ProviderSecretEncryptionKey        string
-	RequireProviderSecretEncryptionKey bool
+	InvitationEmail           InvitationEmailConfig
+	EmailTransport            InvitationEmailTransport
+	AlertNotificationAdapters []string
+	SecretStore               ports.SecretStore
 }
 
 type SMTPInvitationEmailTransport struct {

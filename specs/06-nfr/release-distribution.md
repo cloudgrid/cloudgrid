@@ -1,5 +1,5 @@
 ---
-id: NFR-009
+id: NFR-012
 title: Release, CI/CD, and distribution
 category: delivery
 status: draft
@@ -242,6 +242,12 @@ SurrealDB on localhost-bound ports for inspection, and keep storage-read,
 storage-write, control-plane, alert evaluator, and storage-maintenance private
 to the Compose network.
 
+The bundled SurrealDB image baseline for local and release Compose is
+`surrealdb/surrealdb:v3.1.0`. Dependency upgrades must update the root
+`.env.example`, release Compose env example, Helm bundled dependency values,
+integration runner defaults, README, website operator docs, and SurrealDB
+persistence spec in one change.
+
 The release Compose bundle must provide one primary local entry point:
 
 ```sh
@@ -284,6 +290,9 @@ Production chart defaults:
   one.
 - NATS and SurrealDB are private cluster services or external managed
   endpoints, never exposed publicly by the chart.
+- Bundled evaluation dependencies default to `surrealdb/surrealdb:v3.1.0` and
+  remain evaluation-only unless an environment-specific production dependency
+  plan explicitly accepts bundled storage.
 - OTLP collector and BFF are the only public ingress candidates.
 - SurrealDB credentials are mounted only into storage-read, storage-write,
   control-plane, and storage-maintenance pods.

@@ -4,9 +4,9 @@ title: AI Chat views
 layer: frontend
 status: draft
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-18
+updated: 2026-05-28
 provenance: from-user
-depends_on: [DOM-007, TEC-BE-029, TEC-FE-001, TEC-FE-002]
+depends_on: [DOM-007, TEC-BE-029, TEC-FE-006, TEC-FE-001, TEC-FE-002]
 ---
 
 # AI Chat Views

@@ -1,0 +1,44 @@
+plan: standards_first_interop_migration
+tickets:
+  TICKET-301:
+    title: Collector source telemetry purity
+    wave: 1
+    status: planned
+    file: plans/standards-first-interop-migration/wave_01_source_telemetry_purity/tickets/TICKET-301-collector-source-telemetry-purity.md
+    depends_on: []
+    blocked_by: []
+  TICKET-302:
+    title: Storage-read standard evidence extraction
+    wave: 2
+    status: planned
+    file: plans/standards-first-interop-migration/wave_02_standard_evidence_extraction/tickets/TICKET-302-storage-read-standard-evidence-extraction.md
+    depends_on: [TICKET-301]
+    blocked_by: []
+  TICKET-303:
+    title: Runner external adapter trace-link policy
+    wave: 2
+    status: planned
+    file: plans/standards-first-interop-migration/wave_02_standard_evidence_extraction/tickets/TICKET-303-runner-external-adapter-trace-link-policy.md
+    depends_on: [TICKET-301]
+    blocked_by: []
+  TICKET-304:
+    title: Frontend and docs standard readiness
+    wave: 3
+    status: planned
+    file: plans/standards-first-interop-migration/wave_03_frontend_docs_gates/tickets/TICKET-304-frontend-docs-standard-readiness.md
+    depends_on: [TICKET-302, TICKET-303]
+    blocked_by: []
+  TICKET-305:
+    title: Integration fixtures and final gates
+    wave: 3
+    status: planned
+    file: plans/standards-first-interop-migration/wave_03_frontend_docs_gates/tickets/TICKET-305-integration-fixtures-final-gates.md
+    depends_on: [TICKET-302, TICKET-303]
+    blocked_by: []
+  TICKET-306:
+    title: Adaptive form defaults and validation UX
+    wave: 4
+    status: planned
+    file: plans/standards-first-interop-migration/wave_04_adaptive_form_ux/tickets/TICKET-306-adaptive-form-defaults-validation-ux.md
+    depends_on: [TICKET-304]
+    blocked_by: []

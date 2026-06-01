@@ -1,0 +1,53 @@
+{
+  "family": "classification",
+  "primaryMetricId": "classification.accuracy",
+  "minimumUsefulSplits": {
+    "training": 14,
+    "validation": 7,
+    "test": 4
+  },
+  "expectedDiagnosis": {
+    "topConfusionPairs": [
+      {
+        "expected": "billing_refund",
+        "likelyActual": "billing_invoice",
+        "reason": "The baseline prompt tells the model to prefer billing_invoice when billing is mentioned."
+      },
+      {
+        "expected": "cancellation",
+        "likelyActual": "billing_invoice",
+        "reason": "Cancellation examples mention renewal, account closure, trial conversion, or billing-period language."
+      },
+      {
+        "expected": "account_access",
+        "likelyActual": "technical_bug",
+        "reason": "SSO and permissions failures can look like generic product bugs without access-specific rules."
+      }
+    ],
+    "lowSupportLabels": [],
+    "unknownLabelOutputsShouldBeProblems": true
+  },
+  "expectedProposalSources": [
+    "label_confusion",
+    "unknown_label",
+    "fewshot_bootstrap",
+    "success_preservation"
+  ],
+  "expectedPromptChanges": [
+    "Add a compact glossary for all seven allowed labels.",
+    "Add contrastive rules for billing_refund versus billing_invoice.",
+    "Add priority rules for cancellation when stop, close, delete, or cancel is the requested action.",
+    "Add access-specific rules for login, SSO, password reset, lockout, and permission-denied messages."
+  ],
+  "expectedExampleChanges": [
+    "Add one refund example with an invoice distractor.",
+    "Add one cancellation example with a billing distractor.",
+    "Add one account_access example with an SSO or role-update failure.",
+    "Keep one successful sales_question example to preserve commercial-routing behavior."
+  ],
+  "mustNotChange": [
+    "dataset.settings.expectedJsonSchema",
+    "dataset.items.expected",
+    "allowed label values"
+  ]
+}

@@ -766,7 +766,7 @@ export function OrganizationAiProviderRoute() {
                   {t("companies.aiProvider.label")}
                 </FieldLabel>
                 <Input
-                  defaultValue={profile?.label ?? "Company chat"}
+                  defaultValue={profile?.label ?? t("companies.aiProvider.defaultLabel")}
                   disabled={!settings || updateMutation.isPending || isBackendUnavailable}
                   id="company-ai-label"
                   name="label"
@@ -1287,7 +1287,7 @@ export function ProjectCreateRoute() {
                 value={tab.id}
               >
                 {tabErrors[tab.id] ? <Shield className="text-destructive" aria-hidden /> : null}
-                {tab.label}
+                {t(tab.labelKey)}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -1313,8 +1313,7 @@ export function ProjectCreateRoute() {
                   </FieldDescription>
                 ) : (
                   <FieldDescription>
-                    Use a human-readable name that helps teammates recognize this environment or
-                    product area.
+                    {t("projects.create.nameDescription")}
                   </FieldDescription>
                 )}
               </Field>
@@ -1330,7 +1329,7 @@ export function ProjectCreateRoute() {
                 />
                 <FieldDescription className={fieldErrors.slug ? "text-destructive" : undefined}>
                   {fieldErrors.slug ??
-                    "Used in URLs and setup snippets. Keep it short, stable, and lowercase with hyphens."}
+                    t("projects.create.slugDescription")}
                 </FieldDescription>
               </Field>
             </SettingsFormSurface>
@@ -1370,7 +1369,7 @@ export function ProjectCreateRoute() {
                   className={fieldErrors.organizationId ? "text-destructive" : undefined}
                 >
                   {fieldErrors.organizationId ??
-                    "Choose the company that owns access, membership, retention, and provider settings for this project."}
+                    t("projects.create.organizationDescription")}
                 </FieldDescription>
               </Field>
             </SettingsFormSurface>
@@ -1934,7 +1933,7 @@ function ProjectAiProviderSettingsEditor({
       {
         draftId: `new-profile-${Date.now()}`,
         id,
-        label: "New provider",
+        label: t("projects.aiProviders.newProvider"),
         providerKind: "openai",
         baseUrl: "",
         credentialRef: "",
@@ -2006,7 +2005,7 @@ function ProjectAiProviderSettingsEditor({
     const input = toProjectAiProviderSettingsInput(settings, profileRows, aliasRows);
     if (!input) {
       setFormError(
-        "Provider profiles require a label and credential reference or new credential value. Model aliases require a name, provider, and model.",
+        t("projects.aiProviders.validation"),
       );
       return;
     }
@@ -2019,7 +2018,7 @@ function ProjectAiProviderSettingsEditor({
     <SettingsFormSurface>
       {settingsQuery.isError ? (
         <div className="flex flex-wrap items-center gap-3">
-          <p className="text-sm text-destructive">AI provider settings could not be loaded.</p>
+          <p className="text-sm text-destructive">{t("projects.aiProviders.loadError")}</p>
           <Button
             onClick={() => void settingsQuery.refetch()}
             size="sm"
@@ -2035,9 +2034,9 @@ function ProjectAiProviderSettingsEditor({
         <section className="grid gap-3 border-y py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-medium">Provider profiles</h3>
+              <h3 className="text-sm font-medium">{t("projects.aiProviders.profiles")}</h3>
               <p className="text-sm text-muted-foreground">
-                Configure project-scoped provider profiles used by AI Eval model aliases.
+                {t("projects.aiProviders.profilesDescription")}
               </p>
             </div>
             <Button
@@ -2047,7 +2046,7 @@ function ProjectAiProviderSettingsEditor({
               variant="outline"
             >
               <Plus data-icon="inline-start" />
-              Add provider
+              {t("projects.aiProviders.addProvider")}
             </Button>
           </div>
           {profileRows.length > 0 ? (
@@ -2062,7 +2061,9 @@ function ProjectAiProviderSettingsEditor({
                       </p>
                     </div>
                     <Button
-                      aria-label={`Remove ${profile.label}`}
+                      aria-label={t("projects.aiProviders.removeProvider", {
+                        providerLabel: profile.label,
+                      })}
                       disabled={updateMutation.isPending}
                       onClick={() => removeProfile(profile.draftId)}
                       size="icon"
@@ -2075,7 +2076,7 @@ function ProjectAiProviderSettingsEditor({
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <Field>
                       <FieldLabel htmlFor={`project-ai-provider-label-${profile.draftId}`}>
-                        Label
+                        {t("projects.aiProviders.label")}
                       </FieldLabel>
                       <Input
                         id={`project-ai-provider-label-${profile.draftId}`}
@@ -2087,7 +2088,7 @@ function ProjectAiProviderSettingsEditor({
                     </Field>
                     <Field>
                       <FieldLabel htmlFor={`project-ai-provider-kind-${profile.draftId}`}>
-                        Provider kind
+                        {t("projects.aiProviders.providerKind")}
                       </FieldLabel>
                       <Select
                         onValueChange={(value) =>
@@ -2113,7 +2114,7 @@ function ProjectAiProviderSettingsEditor({
                     </Field>
                     <Field>
                       <FieldLabel htmlFor={`project-ai-provider-credential-${profile.draftId}`}>
-                        Credential value
+                        {t("projects.aiProviders.credentialValue")}
                       </FieldLabel>
                       <Input
                         autoComplete="off"
@@ -2132,13 +2133,15 @@ function ProjectAiProviderSettingsEditor({
                       <input name="credentialRef" type="hidden" value={profile.credentialRef} />
                       <FieldDescription>
                         {profile.credentialRef
-                          ? `Existing reference: ${profile.credentialRef}`
+                          ? t("projects.aiProviders.existingReference", {
+                              credentialRef: profile.credentialRef,
+                            })
                           : t("companies.aiProvider.credentialRefDescription")}
                       </FieldDescription>
                     </Field>
                     <Field>
                       <FieldLabel htmlFor={`project-ai-provider-timeout-${profile.draftId}`}>
-                        Timeout ms
+                        {t("companies.aiProvider.timeoutMs")}
                       </FieldLabel>
                       <Input
                         id={`project-ai-provider-timeout-${profile.draftId}`}
@@ -2199,7 +2202,7 @@ function ProjectAiProviderSettingsEditor({
                     ) : null}
                     <Field>
                       <FieldLabel htmlFor={`project-ai-provider-concurrency-${profile.draftId}`}>
-                        Max parallel
+                        {t("projects.aiProviders.maxParallel")}
                       </FieldLabel>
                       <Input
                         id={`project-ai-provider-concurrency-${profile.draftId}`}
@@ -2219,7 +2222,7 @@ function ProjectAiProviderSettingsEditor({
                           updateProfile(profile.draftId, { disabled: checked === true })
                         }
                       />
-                      Disabled
+                      {t("alerts.disabled")}
                     </Label>
                   </div>
                 </div>
@@ -2227,7 +2230,7 @@ function ProjectAiProviderSettingsEditor({
             </div>
           ) : (
             <p className="border border-dashed px-3 py-2 text-sm text-muted-foreground">
-              No project provider profiles exist yet.
+              {t("projects.aiProviders.noProfiles")}
             </p>
           )}
         </section>
@@ -2235,9 +2238,9 @@ function ProjectAiProviderSettingsEditor({
         <section className="grid gap-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-medium">Model aliases</h3>
+              <h3 className="text-sm font-medium">{t("projects.aiProviders.modelAliases")}</h3>
               <p className="text-sm text-muted-foreground">
-                Map AI Eval purposes to project provider models.
+                {t("projects.aiProviders.modelAliasesDescription")}
               </p>
             </div>
             <Button
@@ -2247,7 +2250,7 @@ function ProjectAiProviderSettingsEditor({
               variant="outline"
             >
               <Plus data-icon="inline-start" />
-              Add alias
+              {t("projects.aiProviders.addAlias")}
             </Button>
           </div>
           {aliasRows.length > 0 ? (
@@ -2259,7 +2262,7 @@ function ProjectAiProviderSettingsEditor({
                 >
                   <Field>
                     <FieldLabel htmlFor={`project-ai-alias-name-${alias.draftId}`}>
-                      Alias name
+                      {t("projects.aiProviders.aliasName")}
                     </FieldLabel>
                     <Input
                       id={`project-ai-alias-name-${alias.draftId}`}
@@ -2269,7 +2272,7 @@ function ProjectAiProviderSettingsEditor({
                   </Field>
                   <Field>
                     <FieldLabel htmlFor={`project-ai-alias-model-${alias.draftId}`}>
-                      Model
+                      {t("projects.aiProviders.model")}
                     </FieldLabel>
                     <Input
                       id={`project-ai-alias-model-${alias.draftId}`}
@@ -2282,7 +2285,7 @@ function ProjectAiProviderSettingsEditor({
                   </Field>
                   <Field>
                     <FieldLabel htmlFor={`project-ai-alias-purpose-${alias.draftId}`}>
-                      Purpose
+                      {t("projects.aiProviders.purpose")}
                     </FieldLabel>
                     <Select
                       onValueChange={(value) =>
@@ -2305,7 +2308,7 @@ function ProjectAiProviderSettingsEditor({
                     </Select>
                   </Field>
                   <Button
-                    aria-label={`Remove ${alias.name}`}
+                    aria-label={t("projects.aiProviders.removeAlias", { aliasName: alias.name })}
                     className="self-end"
                     disabled={updateMutation.isPending}
                     onClick={() => removeAlias(alias.draftId)}
@@ -2317,7 +2320,7 @@ function ProjectAiProviderSettingsEditor({
                   </Button>
                   <Field>
                     <FieldLabel htmlFor={`project-ai-alias-provider-${alias.draftId}`}>
-                      Provider profile
+                      {t("projects.aiProviders.providerProfile")}
                     </FieldLabel>
                     <Select
                       onValueChange={(value) =>
@@ -2341,7 +2344,7 @@ function ProjectAiProviderSettingsEditor({
                   </Field>
                   <Field>
                     <FieldLabel htmlFor={`project-ai-alias-temperature-${alias.draftId}`}>
-                      Temperature
+                      {t("projects.aiProviders.temperature")}
                     </FieldLabel>
                     <Input
                       id={`project-ai-alias-temperature-${alias.draftId}`}
@@ -2357,7 +2360,7 @@ function ProjectAiProviderSettingsEditor({
                   </Field>
                   <Field>
                     <FieldLabel htmlFor={`project-ai-alias-output-${alias.draftId}`}>
-                      Max output tokens
+                      {t("projects.aiProviders.maxOutputTokens")}
                     </FieldLabel>
                     <Input
                       id={`project-ai-alias-output-${alias.draftId}`}
@@ -2375,7 +2378,7 @@ function ProjectAiProviderSettingsEditor({
             </div>
           ) : (
             <p className="border border-dashed px-3 py-2 text-sm text-muted-foreground">
-              No model aliases exist yet.
+              {t("projects.aiProviders.noAliases")}
             </p>
           )}
         </section>
@@ -2390,21 +2393,23 @@ function ProjectAiProviderSettingsEditor({
         <div className="flex flex-wrap items-center gap-3">
           <Button disabled={!settingsQuery.data || updateMutation.isPending} type="submit">
             <Save data-icon="inline-start" />
-            Save AI providers
+            {t("projects.aiProviders.save")}
           </Button>
           <Button asChild type="button" variant="outline">
             <Link to={`/projects/${encodeURIComponent(project.id)}/settings/ai-eval`}>
               <SlidersHorizontal data-icon="inline-start" />
-              AI Eval policy
+              {t("projects.aiProviders.openAiEvalPolicy")}
             </Link>
           </Button>
           {saved ? (
-            <span className="text-sm text-muted-foreground">AI providers saved.</span>
+            <span className="text-sm text-muted-foreground">
+              {t("projects.aiProviders.saved")}
+            </span>
           ) : null}
           {formError ? <span className="text-sm text-destructive">{formError}</span> : null}
           {updateMutation.isError ? (
             <span className="text-sm text-destructive">
-              AI provider settings could not be saved.
+              {t("projects.aiProviders.saveError")}
             </span>
           ) : null}
         </div>
@@ -2523,7 +2528,9 @@ function ProjectAiEvalSettings({
           <div className="grid gap-5 border-y py-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <Field>
-                <FieldLabel htmlFor="ai-eval-default-provider">Default provider</FieldLabel>
+                <FieldLabel htmlFor="ai-eval-default-provider">
+                  {t("projects.settings.aiEvalDefaultProvider")}
+                </FieldLabel>
                 <Input
                   defaultValue={settingsQuery.data.defaultProviderProfileId ?? ""}
                   id="ai-eval-default-provider"
@@ -2532,7 +2539,9 @@ function ProjectAiEvalSettings({
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="ai-eval-default-judge">Default judge</FieldLabel>
+                <FieldLabel htmlFor="ai-eval-default-judge">
+                  {t("projects.settings.aiEvalDefaultJudge")}
+                </FieldLabel>
                 <Input
                   defaultValue={settingsQuery.data.defaultJudgeProfileId ?? ""}
                   id="ai-eval-default-judge"
@@ -2543,7 +2552,9 @@ function ProjectAiEvalSettings({
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
               <Field>
-                <FieldLabel htmlFor="ai-eval-daily-budget">Daily budget USD</FieldLabel>
+                <FieldLabel htmlFor="ai-eval-daily-budget">
+                  {t("projects.settings.aiEvalDailyBudgetUsd")}
+                </FieldLabel>
                 <Input
                   defaultValue={settingsQuery.data.budget.dailyUsd}
                   id="ai-eval-daily-budget"
@@ -2554,7 +2565,9 @@ function ProjectAiEvalSettings({
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="ai-eval-per-run-budget">Per-run budget USD</FieldLabel>
+                <FieldLabel htmlFor="ai-eval-per-run-budget">
+                  {t("projects.settings.aiEvalPerRunBudgetUsd")}
+                </FieldLabel>
                 <Input
                   defaultValue={settingsQuery.data.budget.perRunUsd ?? ""}
                   id="ai-eval-per-run-budget"
@@ -2565,7 +2578,9 @@ function ProjectAiEvalSettings({
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="ai-eval-max-items">Max parallel eval items</FieldLabel>
+                <FieldLabel htmlFor="ai-eval-max-items">
+                  {t("projects.settings.aiEvalMaxParallelItems")}
+                </FieldLabel>
                 <Input
                   defaultValue={settingsQuery.data.sampling.maxConcurrentEvaluationItems}
                   id="ai-eval-max-items"
@@ -2577,7 +2592,7 @@ function ProjectAiEvalSettings({
               </Field>
             </div>
             <div className="grid gap-2">
-              <h3 className="text-sm font-medium">Provider profiles</h3>
+              <h3 className="text-sm font-medium">{t("projects.aiProviders.profiles")}</h3>
               {settingsQuery.data.providerProfiles.length > 0 ? (
                 <div className="grid gap-2">
                   {settingsQuery.data.providerProfiles.map((profile) => (
@@ -2593,7 +2608,7 @@ function ProjectAiEvalSettings({
                       </div>
                       <Field>
                         <FieldLabel htmlFor={`provider-timeout-${profile.id}`}>
-                          Timeout ms
+                          {t("companies.aiProvider.timeoutMs")}
                         </FieldLabel>
                         <Input
                           defaultValue={profile.timeoutMs}
@@ -2606,7 +2621,7 @@ function ProjectAiEvalSettings({
                       </Field>
                       <Field>
                         <FieldLabel htmlFor={`provider-concurrency-${profile.id}`}>
-                          Max parallel
+                          {t("projects.aiProviders.maxParallel")}
                         </FieldLabel>
                         <Input
                           defaultValue={profile.maxConcurrency ?? ""}
@@ -2622,8 +2637,7 @@ function ProjectAiEvalSettings({
                 </div>
               ) : (
                 <p className="border border-dashed px-3 py-2 text-sm text-muted-foreground">
-                  No provider profile exists yet. Add provider profiles through this settings
-                  contract before enabling judge or optimizer flows.
+                  {t("projects.settings.aiEvalNoProviderProfiles")}
                 </p>
               )}
             </div>
@@ -3386,15 +3400,15 @@ function projectAiProviderSettingsQueryKey(projectId: string) {
 function aiProviderKindLabel(kind: AiProviderKind) {
   switch (kind) {
     case "anthropic":
-      return "Anthropic";
+      return t("projects.aiProviders.kind.anthropic");
     case "azure_foundry":
-      return "Azure AI Foundry";
+      return t("projects.aiProviders.kind.azureFoundry");
     case "aws_bedrock":
-      return "AWS Bedrock";
+      return t("projects.aiProviders.kind.awsBedrock");
     case "openai_compatible":
-      return "OpenAI-compatible";
+      return t("projects.aiProviders.kind.openAiCompatible");
     case "openai":
-      return "OpenAI";
+      return t("projects.aiProviders.kind.openAi");
   }
 }
 
@@ -3403,7 +3417,7 @@ function toCompanyAiProviderSettingsInput(
   form: FormData,
   providerKind: AiProviderKind,
 ): UpdateCompanyAiProviderSettingsInput | null {
-  const label = stringField(form.get("label")) ?? "Company chat";
+  const label = stringField(form.get("label")) ?? t("companies.aiProvider.defaultLabel");
   const rawCredentialRef = stringField(form.get("credentialRef"));
   const credentialRef =
     rawCredentialRef && isAllowedAiCredentialRef(rawCredentialRef) ? rawCredentialRef : null;
@@ -3662,7 +3676,7 @@ function ProjectSettingsBreadcrumb({
 
   return (
     <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-      <Button aria-label="Back" asChild size="icon-sm" variant="ghost">
+      <Button aria-label={t("actions.back")} asChild size="icon-sm" variant="ghost">
         <Link to={parentHref}>
           <ArrowLeft aria-hidden />
         </Link>
@@ -3697,8 +3711,8 @@ function ProjectSettingsBreadcrumb({
 const projectRoles: ProjectRole[] = ["viewer", "editor", "admin"];
 const retentionModes: RetentionMode[] = ["retain", "delete", "soft_delete_then_delete"];
 const projectCreateTabs = [
-  { id: "identity", label: "Identity" },
-  { id: "access", label: "Access" },
+  { id: "identity", labelKey: "projects.settings.identity" },
+  { id: "access", labelKey: "projects.settings.access" },
 ] as const;
 
 type ProjectCreateTab = (typeof projectCreateTabs)[number]["id"];
@@ -3872,7 +3886,7 @@ function ProjectCreateBreadcrumb({ organizationId }: { organizationId: string | 
 
   return (
     <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-      <Button aria-label="Back" asChild size="icon-sm" variant="ghost">
+      <Button aria-label={t("actions.back")} asChild size="icon-sm" variant="ghost">
         <Link to={parentHref}>
           <ArrowLeft aria-hidden />
         </Link>
@@ -3991,23 +4005,23 @@ function formatUsd(value: number) {
 
 function retentionDataClassLabel(dataClass: RetentionDataClass) {
   const labels: Record<RetentionDataClass, string> = {
-    TRACES: "Traces",
-    LOGS: "Logs",
-    METRICS: "Metrics",
-    AI_EVALS: "Evaluations",
-    DATASETS: "Datasets",
-    SCORERS: "Scorers",
-    DASHBOARD_HISTORY: "Dashboard history",
-    INGEST_CREDENTIAL_AUDIT: "Ingest credential audit",
+    TRACES: t("nav.traces"),
+    LOGS: t("nav.logs"),
+    METRICS: t("nav.metrics"),
+    AI_EVALS: t("nav.aiEval"),
+    DATASETS: t("nav.aiEvalDatasets"),
+    SCORERS: t("aiEval.scorers"),
+    DASHBOARD_HISTORY: t("projects.retention.dashboardHistory"),
+    INGEST_CREDENTIAL_AUDIT: t("projects.retention.ingestCredentialAudit"),
   };
   return labels[dataClass];
 }
 
 function retentionModeLabel(mode: RetentionMode) {
   const labels: Record<RetentionMode, string> = {
-    retain: "Retain",
-    delete: "Delete",
-    soft_delete_then_delete: "Soft delete, then delete",
+    retain: t("projects.retention.mode.retain"),
+    delete: t("projects.retention.mode.delete"),
+    soft_delete_then_delete: t("projects.retention.mode.softDeleteThenDelete"),
   };
   return labels[mode];
 }
@@ -4036,10 +4050,10 @@ type ProjectSettingsSectionId =
 
 function projectSettingsNavLabel(id: ProjectSettingsSectionId) {
   if (id === "identity") {
-    return "Identity";
+    return t("projects.settings.identity");
   }
   if (id === "access") {
-    return "Access";
+    return t("projects.settings.access");
   }
   if (id === "setup") {
     return t("projects.settings.setup");
@@ -4051,20 +4065,20 @@ function projectSettingsNavLabel(id: ProjectSettingsSectionId) {
     return t("projects.settings.retention");
   }
   if (id === "ai-providers") {
-    return "AI Providers";
+    return t("projects.settings.aiProviders");
   }
   if (id === "ai-eval") {
     return t("projects.settings.aiEval");
   }
-  return "Identity";
+  return t("projects.settings.identity");
 }
 
 function projectSettingsTitle(id: ProjectSettingsSectionId) {
   if (id === "identity") {
-    return "Identity";
+    return t("projects.settings.identity");
   }
   if (id === "access") {
-    return "Access";
+    return t("projects.settings.access");
   }
   if (id === "setup") {
     return t("projects.settings.setup");
@@ -4076,23 +4090,23 @@ function projectSettingsTitle(id: ProjectSettingsSectionId) {
     return t("projects.settings.retention");
   }
   if (id === "ai-providers") {
-    return "AI Providers";
+    return t("projects.settings.aiProviders");
   }
   if (id === "ai-eval") {
     return t("projects.settings.aiEval");
   }
-  return "Identity";
+  return t("projects.settings.identity");
 }
 
 function projectSettingsDescription(id: ProjectSettingsSectionId) {
   if (id === "identity") {
-    return "Project identity and immutable company context.";
+    return t("projects.settings.identityDescription");
   }
   if (id === "access") {
     return t("projects.settings.projectMembersDescription");
   }
   if (id === "setup") {
-    return "Prepare ingest setup before creating or copying API keys.";
+    return t("projects.settings.setupRouteDescription");
   }
   if (id === "ingest") {
     return t("projects.settings.setupDescription");
@@ -4101,7 +4115,7 @@ function projectSettingsDescription(id: ProjectSettingsSectionId) {
     return t("projects.settings.retentionDescription");
   }
   if (id === "ai-providers") {
-    return "Project-scoped provider profiles and model aliases for AI Eval.";
+    return t("projects.settings.aiProvidersDescription");
   }
   if (id === "ai-eval") {
     return t("projects.settings.aiEvalDescription");

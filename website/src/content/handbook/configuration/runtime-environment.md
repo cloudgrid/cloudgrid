@@ -4,7 +4,7 @@ description: "Runtime configuration is service-owned. Each service validates onl
 order: 1
 accent: amber
 eyebrow: "Handbook - Configuration"
-updated: 2026-05-18
+updated: 2026-05-31
 ---
 
 Runtime configuration is service-owned. Each service validates only the variables it uses and fails startup with `ERR-009 CONFIG_INVALID` when required values are missing or invalid.
@@ -49,11 +49,16 @@ Runtime configuration is service-owned. Each service validates only the variable
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `CLOUDGRID_SURREALDB_URL` | `http://localhost:8000/rpc` | SurrealDB RPC endpoint. |
+| `CLOUDGRID_SURREALDB_PORT` | `8000` | Local Docker Compose host port used to derive the local SurrealDB URL. |
 | `CLOUDGRID_SURREALDB_NAMESPACE` | `observability` | SurrealDB namespace. |
 | `CLOUDGRID_SURREALDB_DATABASE` | `dev` | SurrealDB database. |
 | `CLOUDGRID_SURREALDB_USERNAME` | local `root` | Storage/control-plane credential. |
 | `CLOUDGRID_SURREALDB_PASSWORD` | local `root` | Storage/control-plane credential. |
 | `CLOUDGRID_STORAGE_READ_MAX_METRIC_POINTS` | `5000` | Maximum points returned by one metric series query. |
+
+If another local SurrealDB already owns port `8000`, run `bun run setup:local`
+to select a free `CLOUDGRID_SURREALDB_PORT` and matching
+`CLOUDGRID_SURREALDB_URL` before starting Docker Compose.
 
 ## Self-Observability Variables
 
@@ -65,6 +70,7 @@ Runtime configuration is service-owned. Each service validates only the variable
 | `CLOUDGRID_SELF_OBSERVABILITY_OTLP_ENDPOINT` | `http://localhost:4318` in local mode | OTLP HTTP base endpoint. |
 | `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN` | unset | Required whenever self-observability is enabled; in local mode it must map to `cloudgrid-system`. |
 | `CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS` | `10` | Export interval, `1..300`. |
+| `CLOUDGRID_DB_ADAPTER_TRACING_ENABLED` | `false` | Local-only database adapter child spans for development diagnostics. Deployed mode rejects `true`. |
 
 Boolean parsing is strict for self-observability variables: use `true` or `false`, not `1` or `0`.
 

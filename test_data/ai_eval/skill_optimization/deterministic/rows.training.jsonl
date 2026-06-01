@@ -1,0 +1,3 @@
+{"id":"train-001","split":"training","input":{"ticket":"Customer says billing export failed and asks for a fix, but no account id is present."},"expected":{"action":"ask_for_account_id","mustMention":"account id"},"rubric":{"passIf":"asks only for the missing account id before troubleshooting"},"traceFixtureRef":"otel-genai-mcp-openinference-trace-001"}
+{"id":"train-002","split":"training","input":{"ticket":"Customer provides account A-1042 and says dashboard access is denied after role update."},"expected":{"action":"check_permissions","mustMention":"role propagation"},"rubric":{"passIf":"uses the provided account id and checks permission propagation"},"traceFixtureRef":"standard-http-db-trace-002"}
+

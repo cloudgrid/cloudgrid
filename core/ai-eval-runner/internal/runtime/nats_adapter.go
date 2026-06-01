@@ -208,6 +208,28 @@ func (reader NATSStorageReader) GetTargetSnapshot(ctx context.Context, targetSna
 	}, nil
 }
 
+func (reader NATSStorageReader) GetTraceEvidence(ctx context.Context, request ports.TraceEvidenceRequest) (ports.TraceEvidence, error) {
+	responseData, err := requestJSON(ctx, reader.Requester, reader.timeout(), SubjectTraceDetailGet, contracts.TraceDetailRequest{
+		BridgeEnvelope: runnerEnvelope(ctx, request.RequestID+":trace-evidence"),
+		TraceID:        request.TraceID,
+		Query:          &contracts.TraceDetailQuery{},
+	})
+	if err != nil {
+		return ports.TraceEvidence{}, err
+	}
+	var response contracts.TraceDetailResponse
+	if err := decodeStrict(responseData, &response); err != nil {
+		return ports.TraceEvidence{}, err
+	}
+	if !response.OK {
+		return ports.TraceEvidence{}, errorFromBridge(response.Error)
+	}
+	if response.Data == nil || len(response.Data.Spans) == 0 {
+		return ports.TraceEvidence{}, nil
+	}
+	return traceEvidenceFromDetail(request, *response.Data), nil
+}
+
 func (reader NATSStorageReader) SearchScorers(ctx context.Context, scorerIDs []string) ([]ports.Scorer, error) {
 	data, err := reader.evalQuery(ctx, SubjectScorerSearch, map[string]any{"scorerIds": scorerIDs})
 	if err != nil {
@@ -333,6 +355,98 @@ func (reader NATSStorageReader) evalQuery(ctx context.Context, subject string, i
 		return nil, errorFromBridge(response.Error)
 	}
 	return response.Data, nil
+}
+
+func traceEvidenceFromDetail(request ports.TraceEvidenceRequest, detail contracts.TraceDetailData) ports.TraceEvidence {
+	rootSpanID := request.RootSpanID
+	if rootSpanID == "" && detail.Trace.RootSpanID != nil {
+		rootSpanID = *detail.Trace.RootSpanID
+	}
+	steps := make([]map[string]any, 0, len(detail.Spans))
+	for _, span := range detail.Spans {
+		if !optimizerRelevantSpan(span) {
+			continue
+		}
+		step := map[string]any{
+			"kind":       "span",
+			"name":       span.Name,
+			"status":     traceStatusString(span.Status),
+			"durationMs": span.DurationMs,
+			"spanRef":    map[string]any{"kind": "span", "id": span.ID, "traceId": span.TraceID, "spanId": span.ID},
+		}
+		if span.ServiceName != nil {
+			step["serviceName"] = *span.ServiceName
+		}
+		if typedKind := evidenceKind(span); typedKind != "" {
+			step["kind"] = typedKind
+		}
+		if span.HasError || span.ExceptionCount > 0 {
+			step["hasError"] = true
+		}
+		steps = append(steps, step)
+		if len(steps) == 20 {
+			break
+		}
+	}
+	refs := []map[string]any{{"kind": "trace", "id": detail.Trace.ID, "traceId": detail.Trace.ID, "spanId": rootSpanID}}
+	if rootSpanID != "" {
+		refs = append(refs, map[string]any{"kind": "span", "id": rootSpanID, "traceId": detail.Trace.ID, "spanId": rootSpanID})
+	}
+	return ports.TraceEvidence{
+		TraceID:           detail.Trace.ID,
+		RootSpanID:        rootSpanID,
+		TrajectorySummary: traceEvidenceSummary(detail, len(steps)),
+		ImportantSteps:    steps,
+		EvidenceRefs:      refs,
+	}
+}
+
+func optimizerRelevantSpan(span contracts.Span) bool {
+	if span.HasError || span.ExceptionCount > 0 || span.IsCriticalPath {
+		return true
+	}
+	return evidenceKind(span) != ""
+}
+
+func evidenceKind(span contracts.Span) string {
+	attrs := span.Attributes
+	if _, ok := attrs["gen_ai.system"]; ok {
+		return "model_call"
+	}
+	if _, ok := attrs["llm.model_name"]; ok {
+		return "model_call"
+	}
+	if _, ok := attrs["openinference.span.kind"]; ok {
+		return "ai_operation"
+	}
+	if _, ok := attrs["mcp.method.name"]; ok {
+		return "mcp_call"
+	}
+	if _, ok := attrs["http.request.method"]; ok {
+		return "http_call"
+	}
+	if _, ok := attrs["db.system.name"]; ok {
+		return "db_call"
+	}
+	if _, ok := attrs["messaging.system"]; ok {
+		return "messaging_call"
+	}
+	if _, ok := attrs["rpc.system"]; ok {
+		return "rpc_call"
+	}
+	return ""
+}
+
+func traceStatusString(status *contracts.TraceStatus) string {
+	if status == nil {
+		return "unset"
+	}
+	return string(*status)
+}
+
+func traceEvidenceSummary(detail contracts.TraceDetailData, importantStepCount int) string {
+	rootCount := len(detail.Structure.RootSpanIDs)
+	return fmt.Sprintf("Trace %s contains %d span(s), %d optimizer-relevant step(s), and %d root span(s).", detail.Trace.ID, len(detail.Spans), importantStepCount, rootCount)
 }
 
 func (reader NATSStorageReader) timeout() time.Duration {
@@ -464,6 +578,57 @@ func (writer NATSStorageWriter) PersistEvaluationResults(ctx context.Context, re
 		return errorFromBridge(response.Error)
 	}
 	return nil
+}
+
+func (writer NATSStorageWriter) CreateTargetSnapshot(ctx context.Context, request ports.TargetSnapshotCreateRequest) (ports.TargetSnapshot, error) {
+	input := map[string]any{
+		"projectId":      request.ProjectID,
+		"targetRef":      request.TargetRef,
+		"idempotencyKey": request.IdempotencyKey,
+		"input":          request.Input,
+	}
+	response, err := writer.evalMutation(ctx, SubjectTargetSnapshotCreate, input)
+	if err != nil {
+		return ports.TargetSnapshot{}, err
+	}
+	id := stringValue(response, "id")
+	if id == "" {
+		id = stringValue(response, "targetSnapshotId")
+	}
+	if id == "" {
+		id = stringValue(request.Input, "id")
+	}
+	return ports.TargetSnapshot{
+		ID:        id,
+		TargetRef: objectValue(response, "targetRef"),
+		Kind:      stringValue(response, "kind"),
+		Name:      stringValue(response, "name"),
+		Version:   intValue(response, "version"),
+		Digest:    stringValue(response, "digest"),
+		Parts:     mapArrayValue(response, "parts"),
+		Metadata:  objectValue(response, "metadata"),
+	}, nil
+}
+
+func (writer NATSStorageWriter) PersistOptimizationStep(ctx context.Context, request ports.OptimizationStepPersistRequest) error {
+	_, err := writer.evalMutation(ctx, SubjectOptimizationStepPersist, map[string]any{
+		"projectId":         request.ProjectID,
+		"optimizationRunId": request.OptimizationRunID,
+		"stepId":            request.StepID,
+		"idempotencyKey":    request.IdempotencyKey,
+		"payload":           request.Payload,
+	})
+	return err
+}
+
+func (writer NATSStorageWriter) PersistOptimizationMemory(ctx context.Context, request ports.OptimizationMemoryPersistRequest) error {
+	_, err := writer.evalMutation(ctx, SubjectOptimizationMemoryPersist, map[string]any{
+		"projectId":         request.ProjectID,
+		"optimizationRunId": request.OptimizationRunID,
+		"idempotencyKey":    request.IdempotencyKey,
+		"payload":           request.Payload,
+	})
+	return err
 }
 
 func (writer NATSStorageWriter) UpdateExperimentProgress(ctx context.Context, progress ports.ExperimentProgress) error {
@@ -741,6 +906,7 @@ func evaluationItemRunMutationData(runs []ports.EvaluationItemRun) []any {
 			"targetSnapshotId":      run.TargetSnapshotID,
 			"status":                run.Status,
 			"actualOutput":          run.ActualOutput,
+			"actualOutputRef":       run.ActualOutputRef,
 			"actualOutputType":      run.ActualOutputType,
 			"traceId":               run.TraceID,
 			"rootSpanId":            run.RootSpanID,

@@ -83,7 +83,9 @@ export function LogWidgetEditor({
         />
       </Field>
       <Field data-disabled={disabled}>
-        <FieldLabel htmlFor={`${widget.id}-log-limit`}>Limit</FieldLabel>
+        <FieldLabel htmlFor={`${widget.id}-log-limit`}>
+          {t("dashboards.editor.limit")}
+        </FieldLabel>
         <Input
           disabled={disabled}
           id={`${widget.id}-log-limit`}

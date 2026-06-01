@@ -300,6 +300,7 @@ export type DatasetCandidateStatus =
 
 export type DatasetCandidateSourceKind =
   | "trace"
+  | "span"
   | "import"
   | "metric_result"
   | "evaluation_item_run"
@@ -307,6 +308,28 @@ export type DatasetCandidateSourceKind =
   | "health_issue"
   | "failure_cluster"
   | "manual";
+
+export type DatasetTraceAttributeScope = "span" | "resource";
+export type DatasetTracePredicateOperator = "exact" | "prefix" | "contains" | "regex";
+export type DatasetTraceMappingSource =
+  | "span_attribute"
+  | "resource_attribute"
+  | "span_event"
+  | "related_log"
+  | "trace_summary"
+  | "literal";
+export type DatasetTraceMappingTransform =
+  | "identity"
+  | "string"
+  | "json_parse"
+  | "json_stringify"
+  | "number"
+  | "boolean"
+  | "regex"
+  | "enum_map"
+  | "fallback";
+export type DatasetTraceExpectedTrust = "none" | "untrusted" | "trusted_label" | "trusted_program";
+export type DatasetTraceSelectionMode = "selected" | "current_filter";
 
 export type EvalBackpressureBehavior = "slow" | "pause" | "skip" | "fail";
 export type EvalLimitBehavior = "skip_item" | "pause_run" | "fail_run";
@@ -458,6 +481,28 @@ export type TargetSnapshotSource =
   | "optimization_candidate"
   | "promotion";
 export type TargetReproducibility = "exact" | "same_inputs" | "best_effort" | "not_reproducible";
+export type TargetPartKind =
+  | "prompt"
+  | "examples"
+  | "model_config"
+  | "tool_config"
+  | "skill"
+  | "workflow"
+  | "agent_config"
+  | "adapter_metadata";
+export type OptimizationOptimizerKind = "bootstrap_fewshot" | "critic_mutate_judge_pick" | "skill_text_edit";
+export type OptimizationEditSchedule = "constant" | "linear" | "cosine" | "autonomous";
+export type OptimizationGateMode = "strict_improvement";
+export type SkillEditOp = "append" | "insert_after" | "replace" | "delete";
+export type SkillOptimizationEditSource = "failure" | "success" | "slow_update" | "meta_memory";
+export type SkillOptimizationStepStatus = "queued" | "running" | "accepted" | "rejected" | "skipped" | "failed";
+export type SkillOptimizationGateDecision =
+  | "accepted_new_best"
+  | "accepted"
+  | "rejected"
+  | "failed_preflight"
+  | "skipped_no_edits";
+export type OptimizerEvidenceContentPolicy = "metadata_only" | "dataset_content" | "disabled";
 
 export type AiEvalSourceRefKind =
   | "trace"
@@ -1006,9 +1051,10 @@ export interface DatasetSettingsInput {
   expectedType: DatasetValueType;
   inputJsonSchema?: JSONValue;
   expectedJsonSchema?: JSONValue;
+  expectedValueOptions?: DatasetExpectedValueOptionInput[] | null;
   defaultSplit: DatasetSplit;
   intakePolicy: DatasetIntakePolicyInput;
-  traceExtractionSettings?: DatasetTraceExtractionSettingsInput | null;
+  traceIntakeRules?: DatasetTraceIntakeRuleInput[] | null;
   anonymizationPolicy?: DatasetAnonymizationPolicyInput | null;
   defaultMetricSettings: MetricSettingInput[];
   retentionProfile: RetentionProfile;
@@ -1027,11 +1073,63 @@ export interface DatasetIntakePolicyInput {
   traceDefaultStatus?: DatasetCurationStatus | null;
 }
 
-export interface DatasetTraceExtractionSettingsInput {
-  inputPath: string;
-  expectedPath?: string | null;
-  observedOutputPath?: string | null;
-  metadataPaths?: string[] | null;
+export interface DatasetExpectedValueOptionInput {
+  value: JSONValue;
+  label: string;
+  description?: string | null;
+  metadata?: JSONValue;
+}
+
+export interface DatasetTraceIntakeRuleInput {
+  id: string;
+  name: string;
+  enabled?: boolean | null;
+  match: DatasetTraceIntakeMatchInput;
+  mappings: DatasetTraceIntakeMappingsInput;
+  defaults?: DatasetTraceIntakeDefaultsInput | null;
+}
+
+export interface DatasetTraceIntakeMatchInput {
+  serviceNames?: string[] | null;
+  operationNames?: string[] | null;
+  spanNames?: string[] | null;
+  spanKinds?: string[] | null;
+  statuses?: string[] | null;
+  attributePredicates?: DatasetTraceAttributePredicateInput[] | null;
+}
+
+export interface DatasetTraceAttributePredicateInput {
+  scope?: DatasetTraceAttributeScope | null;
+  key: string;
+  operator?: DatasetTracePredicateOperator | null;
+  value: string;
+}
+
+export interface DatasetTraceIntakeMappingsInput {
+  input: DatasetTraceValueMappingInput;
+  expected?: DatasetTraceValueMappingInput | null;
+  observedOutput?: DatasetTraceValueMappingInput | null;
+  metadata?: DatasetTraceMetadataMappingInput[] | null;
+}
+
+export interface DatasetTraceMetadataMappingInput {
+  key: string;
+  mapping: DatasetTraceValueMappingInput;
+}
+
+export interface DatasetTraceValueMappingInput {
+  source: DatasetTraceMappingSource;
+  path?: string | null;
+  transform?: DatasetTraceMappingTransform | null;
+  defaultValue?: JSONValue;
+  enumMap?: JSONValue;
+}
+
+export interface DatasetTraceIntakeDefaultsInput {
+  split?: DatasetSplit | null;
+  curationStatus?: DatasetCurationStatus | null;
+  contentTreatment?: DatasetContentTreatment | null;
+  expectedTrust?: DatasetTraceExpectedTrust | null;
 }
 
 export interface DatasetAnonymizationPolicyInput {
@@ -1104,8 +1202,13 @@ export interface DatasetCandidateSearchInput {
 }
 
 export interface PrepareDatasetCandidatesInput {
+  projectId: string;
   datasetId?: string | null;
-  sources: DatasetCandidateSourceInput[];
+  datasetIds?: string[] | null;
+  autoMatchDatasets?: boolean | null;
+  sources?: DatasetCandidateSourceInput[] | null;
+  traceSelection?: DatasetTraceCandidateSelectionInput | null;
+  previewLimit?: number | null;
   split?: DatasetSplit | null;
   curationStatus?: DatasetCurationStatus | null;
   contentTreatment?: DatasetContentTreatment | null;
@@ -1125,6 +1228,22 @@ export interface DatasetCandidateSourceInput {
   coverageGapId?: string | null;
   healthIssueId?: string | null;
   clusterId?: string | null;
+}
+
+export interface DatasetTraceCandidateSelectionInput {
+  mode?: DatasetTraceSelectionMode | null;
+  traceRefs?: DatasetTraceRefInput[] | null;
+  spanRefs?: DatasetSpanRefInput[] | null;
+  search?: TraceSearchInput | null;
+}
+
+export interface DatasetTraceRefInput {
+  traceId: string;
+}
+
+export interface DatasetSpanRefInput {
+  traceId: string;
+  spanId: string;
 }
 
 export interface CommitDatasetCandidatesInput {
@@ -1314,6 +1433,7 @@ export interface StartOptimizationRunInput {
   projectId: string;
   baselineTargetSnapshotId: string;
   objective: OptimizationObjectiveInput;
+  searchPolicy: OptimizationSearchPolicyInput;
   trainingEvaluationDefinitionId?: string | null;
   trainingSplitSelector?: DatasetSplitSelectorInput | null;
   validationEvaluationDefinitionId?: string | null;
@@ -1322,6 +1442,36 @@ export interface StartOptimizationRunInput {
   quickShotPolicy?: QuickShotPolicyInput | null;
   runPolicy?: EvalRunPolicyInput | null;
   idempotencyKey: string;
+}
+
+export interface OptimizationSearchPolicyInput {
+  optimizerKind: OptimizationOptimizerKind;
+  editablePartKinds: TargetPartKind[];
+  maxEpochs?: number | null;
+  maxSteps?: number | null;
+  rolloutBatchSize?: number | null;
+  reflectionMinibatchSize?: number | null;
+  editBudget?: number | null;
+  minEditBudget?: number | null;
+  editSchedule?: OptimizationEditSchedule | null;
+  gateMetricId: string;
+  gateMode?: OptimizationGateMode | null;
+  selectionSplit?: DatasetSplit | null;
+  allowSlowUpdate?: boolean | null;
+  allowMetaMemory?: boolean | null;
+  skillPolicy?: SkillOptimizationPolicyInput | null;
+}
+
+export interface SkillOptimizationPolicyInput {
+  maxPackageBytes?: number | null;
+  maxSkillBytes?: number | null;
+  maxSkillTokens?: number | null;
+  allowedEditOps?: SkillEditOp[] | null;
+  editableFileGlobs?: string[] | null;
+  protectedFileGlobs?: string[] | null;
+  allowScriptEdits?: boolean | null;
+  preserveSections?: string[] | null;
+  exportBestSkill?: boolean | null;
 }
 
 export interface OptimizationObjectiveInput {
@@ -2146,9 +2296,10 @@ export interface DatasetSettings {
   expectedType: DatasetValueType;
   inputJsonSchema?: JSONValue;
   expectedJsonSchema?: JSONValue;
+  expectedValueOptions: DatasetExpectedValueOption[];
   defaultSplit: DatasetSplit;
   intakePolicy: DatasetIntakePolicy;
-  traceExtractionSettings?: DatasetTraceExtractionSettings | null;
+  traceIntakeRules: DatasetTraceIntakeRule[];
   anonymizationPolicy?: DatasetAnonymizationPolicy | null;
   defaultMetricSettings: MetricSetting[];
   retentionProfile: RetentionProfile;
@@ -2160,11 +2311,63 @@ export interface DatasetIntakePolicy {
   traceDefaultStatus: DatasetCurationStatus;
 }
 
-export interface DatasetTraceExtractionSettings {
-  inputPath: string;
-  expectedPath?: string | null;
-  observedOutputPath?: string | null;
-  metadataPaths: string[];
+export interface DatasetExpectedValueOption {
+  value: JSONValue;
+  label: string;
+  description?: string | null;
+  metadata: JSONValue;
+}
+
+export interface DatasetTraceIntakeRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  match: DatasetTraceIntakeMatch;
+  mappings: DatasetTraceIntakeMappings;
+  defaults: DatasetTraceIntakeDefaults;
+}
+
+export interface DatasetTraceIntakeMatch {
+  serviceNames: string[];
+  operationNames: string[];
+  spanNames: string[];
+  spanKinds: string[];
+  statuses: string[];
+  attributePredicates: DatasetTraceAttributePredicate[];
+}
+
+export interface DatasetTraceAttributePredicate {
+  scope: DatasetTraceAttributeScope;
+  key: string;
+  operator: DatasetTracePredicateOperator;
+  value: string;
+}
+
+export interface DatasetTraceIntakeMappings {
+  input: DatasetTraceValueMapping;
+  expected?: DatasetTraceValueMapping | null;
+  observedOutput?: DatasetTraceValueMapping | null;
+  metadata: DatasetTraceMetadataMapping[];
+}
+
+export interface DatasetTraceMetadataMapping {
+  key: string;
+  mapping: DatasetTraceValueMapping;
+}
+
+export interface DatasetTraceValueMapping {
+  source: DatasetTraceMappingSource;
+  path?: string | null;
+  transform: DatasetTraceMappingTransform;
+  defaultValue?: JSONValue;
+  enumMap?: JSONValue;
+}
+
+export interface DatasetTraceIntakeDefaults {
+  split?: DatasetSplit | null;
+  curationStatus?: DatasetCurationStatus | null;
+  contentTreatment?: DatasetContentTreatment | null;
+  expectedTrust: DatasetTraceExpectedTrust;
 }
 
 export interface DatasetAnonymizationPolicy {
@@ -2219,22 +2422,41 @@ export interface DatasetAnonymizedField {
 export interface DatasetCandidate {
   id: string;
   datasetId?: string | null;
+  traceIntakeRuleId?: string | null;
+  traceIntakeRuleName?: string | null;
   status: DatasetCandidateStatus;
   sourceKind: DatasetCandidateSourceKind;
   source: JSONValue;
   targetShape: DatasetTargetShape;
   input?: JSONValue;
   expected?: JSONValue;
+  observedOutput?: JSONValue;
   metadata: JSONValue;
   split: DatasetSplit;
   reviewStatus: DatasetReviewStatus;
+  curationStatus?: DatasetCurationStatus;
   contentTreatment: DatasetContentTreatment;
   anonymization?: DatasetAnonymizationProvenance | null;
   reason: string;
+  sourceRefs?: AiEvalSourceRef[];
   clusterId?: string | null;
+  validationIssues?: DatasetCandidateIssue[];
+  duplicateHint?: DatasetCandidateDuplicateHint | null;
   warnings: string[];
   createdAt: DateTime;
   updatedAt: DateTime;
+}
+
+export interface DatasetCandidateIssue {
+  field: string;
+  message: string;
+  blocking: boolean;
+}
+
+export interface DatasetCandidateDuplicateHint {
+  datasetItemId?: string | null;
+  candidateId?: string | null;
+  reason: string;
 }
 
 export interface DatasetImportJob {
@@ -2544,6 +2766,7 @@ export interface OptimizationRun {
   status: EvaluationRunStatus;
   baselineTargetSnapshotId: string;
   objective: OptimizationObjectiveInput;
+  searchPolicy: OptimizationSearchPolicy;
   trainingEvaluationDefinitionId?: string | null;
   trainingSplitSelector?: DatasetSplitSelector | null;
   validationEvaluationDefinitionId?: string | null;
@@ -2556,9 +2779,85 @@ export interface OptimizationRun {
   selectedCandidateSnapshotId?: string | null;
   promotionRecordId?: string | null;
   budgetSnapshot: JSONValue;
+  skillOptimization?: SkillOptimizationDetail | null;
   createdAt: DateTime;
   startedAt?: DateTime | null;
   endedAt?: DateTime | null;
+}
+
+export interface OptimizationSearchPolicy {
+  optimizerKind: OptimizationOptimizerKind;
+  editablePartKinds: TargetPartKind[];
+  maxEpochs: number;
+  maxSteps: number;
+  rolloutBatchSize: number;
+  reflectionMinibatchSize: number;
+  editBudget: number;
+  minEditBudget: number;
+  editSchedule: OptimizationEditSchedule;
+  gateMetricId: string;
+  gateMode: OptimizationGateMode;
+  selectionSplit: DatasetSplit;
+  allowSlowUpdate: boolean;
+  allowMetaMemory: boolean;
+  skillPolicy?: SkillOptimizationPolicy | null;
+}
+
+export interface SkillOptimizationPolicy {
+  maxPackageBytes: number;
+  maxSkillBytes: number;
+  maxSkillTokens: number;
+  allowedEditOps: SkillEditOp[];
+  editableFileGlobs: string[];
+  protectedFileGlobs: string[];
+  allowScriptEdits: boolean;
+  preserveSections: string[];
+  exportBestSkill: boolean;
+}
+
+export interface SkillOptimizationDetail {
+  baselineSkillDigest: string;
+  currentSkillDigest?: string | null;
+  bestSkillDigest?: string | null;
+  bestTargetSnapshotId?: string | null;
+  exportedSkillContentRef?: string | null;
+  acceptedStepCount: number;
+  rejectedStepCount: number;
+  skippedStepCount: number;
+  failedStepCount: number;
+  steps: SkillOptimizationStep[];
+}
+
+export interface SkillOptimizationStep {
+  id: string;
+  optimizationRunId: string;
+  epoch: number;
+  step: number;
+  status: SkillOptimizationStepStatus;
+  rolloutEvaluationRunId: string;
+  candidateTargetSnapshotId?: string | null;
+  baselineSkillDigest: string;
+  candidateSkillDigest?: string | null;
+  proposedEdits: SkillOptimizationEdit[];
+  selectedEdits: SkillOptimizationEdit[];
+  rejectedEditSummaries: SkillOptimizationEdit[];
+  trainingScore: number;
+  validationScore?: number | null;
+  gateDecision: SkillOptimizationGateDecision;
+  problem?: MetricProblem | null;
+  startedAt?: DateTime | null;
+  endedAt?: DateTime | null;
+}
+
+export interface SkillOptimizationEdit {
+  op: SkillEditOp;
+  filePath?: string | null;
+  target?: string | null;
+  contentPreview?: string | null;
+  rationale?: string | null;
+  sourceType: SkillOptimizationEditSource;
+  supportCount?: number | null;
+  evidenceRefs: AiEvalSourceRef[];
 }
 
 export interface PromotionRecord {
@@ -2866,6 +3165,7 @@ export interface ProjectAiSettings {
   runPolicyDefaults: EvalRunPolicy;
   datasetPipeline: DatasetPipelineSettings;
   datasetDefaults: DatasetDefaults;
+  optimizationDefaults: ProjectOptimizationDefaults;
   effective: ProjectAiSettingsEffective;
   version: number;
   updatedAt: DateTime;
@@ -2946,6 +3246,14 @@ export interface DatasetPipelineSettings {
   preserveLocale: boolean;
   preserveTemporalDistance: boolean;
   blockedEntityTypes: string[];
+}
+
+export interface ProjectOptimizationDefaults {
+  enabledOptimizerKinds: OptimizationOptimizerKind[];
+  defaultOptimizerKind: OptimizationOptimizerKind;
+  defaultSkillSearchPolicy?: OptimizationSearchPolicy | null;
+  maxConcurrentOptimizerCalls: number;
+  optimizerEvidenceContentPolicy: OptimizerEvidenceContentPolicy;
 }
 
 export interface ProjectAiSettingsEffective {

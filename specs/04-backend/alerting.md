@@ -398,9 +398,9 @@ Widget data inputs:
 - `timeWindow`, same dashboard time-window model as metric widgets;
 - `limit`, integer `1..100`, default `20`.
 
-GraphQL uses existing alert contracts where possible. If a widget needs a
-pre-aggregated status count, add `Query.alertSummary(projectId, input)` with
-backend-owned counts grouped by state, severity, and signal. The frontend must
+GraphQL alert widgets must use `Query.alertRules`, `Query.alertHistory`, and
+`Query.alertSummary(projectId, input)`. `Query.alertSummary` owns
+pre-aggregated counts grouped by state, severity, and signal. The frontend must
 not compute counts from an incomplete history page.
 
 ## Implementation Status

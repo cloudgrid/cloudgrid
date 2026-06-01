@@ -20,6 +20,7 @@ CLOUDGRID_SELF_OBSERVABILITY_EXPORT_INTERVAL_SECONDS=10
 CLOUDGRID_SELF_OBSERVABILITY_TRACES_ENABLED=true
 CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED=true
 CLOUDGRID_SELF_OBSERVABILITY_METRICS_ENABLED=true
+CLOUDGRID_DB_ADAPTER_TRACING_ENABLED=false
 ```
 
 When local self-observability is enabled, also set:
@@ -70,8 +71,11 @@ Exporter failures log bounded warnings and do not fail readiness, request handli
 
 `CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED=false` disables the OTLP log export path only. Process stdout and stderr logs continue to work.
 
+Set `CLOUDGRID_DB_ADAPTER_TRACING_ENABLED=true` only for local development diagnostics when you need child spans for regular SurrealDB adapter operations. This flag is disabled by default, has no effect without trace export, and is rejected in deployed mode.
+
 ## Safety Rules
 
 - CloudGrid services must not emit bearer tokens, cookies, SurrealDB credentials, provider secrets, raw GraphQL documents, raw OTLP payloads, or raw SurrealQL.
+- Deep database adapter spans must not include raw queries, bind parameters, result rows, provider error strings, IDs, credentials, or secret-store operations.
 - Project ownership still comes from collector auth and routing, not OTLP resource attributes.
 - Internal metrics use bounded labels and must not contain tenant IDs, project IDs, trace IDs, span IDs, user IDs, emails, raw paths with IDs, or raw error messages.

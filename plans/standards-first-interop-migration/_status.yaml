@@ -1,0 +1,82 @@
+plan: standards_first_interop_migration
+status: done
+updated: 2026-05-31
+current_gate_evidence:
+  contracts_check: pass
+  spec_check: pass
+  diff_check: pass
+resume_notes: TICKET-301 through TICKET-306 are complete. Standards-first interop and adaptive form UX implementation are ready for review.
+last_verified: 2026-05-31
+current_proof: Integration fixtures, frontend/docs readiness, adaptive form UX, contracts, specs, and plan gates passed for the implemented migration scope.
+tickets:
+  TICKET-301:
+    status: done
+    wave: wave_01_source_telemetry_purity
+    depends_on: []
+    blocked_by: []
+    owner: collector-agent
+    evidence:
+      - go test ./core/otlp-collector/... passed
+      - bun run contracts:check passed
+      - git diff --check -- core/otlp-collector passed
+    next: TICKET-302 and TICKET-303 may start after collector source mutation is removed.
+  TICKET-302:
+    status: done
+    wave: wave_02_standard_evidence_extraction
+    depends_on: [TICKET-301]
+    blocked_by: []
+    owner: storage-read-agent
+    evidence:
+      - go test -tags surrealdb ./core/storage-read/... passed
+      - bun run contracts:check passed
+      - git diff --check -- core/storage-read passed
+    next: TICKET-304 and TICKET-305 may use standard evidence view models.
+  TICKET-303:
+    status: done
+    wave: wave_02_standard_evidence_extraction
+    depends_on: [TICKET-301]
+    blocked_by: []
+    owner: runner-agent
+    evidence:
+      - go test -tags surrealdb ./core/ai-eval-runner/... passed
+      - bun run contracts:check passed
+      - git diff --check -- core/ai-eval-runner passed
+    next: TICKET-304 and TICKET-305 may rely on trace-link policy.
+  TICKET-304:
+    status: done
+    wave: wave_03_frontend_docs_gates
+    depends_on: [TICKET-302, TICKET-303]
+    blocked_by: []
+    owner: frontend-docs-agent
+    evidence:
+      - bun test apps/frontend/test/ai-eval-route-ux.test.ts passed
+      - bun run --cwd apps/frontend typecheck passed
+      - bun --bun run --cwd website build passed
+      - bun run contracts:check passed
+      - git diff --check -- apps/frontend website/src/content/handbook passed
+    next: TICKET-306 may start after readiness UI and docs pass.
+  TICKET-305:
+    status: done
+    wave: wave_03_frontend_docs_gates
+    depends_on: [TICKET-302, TICKET-303]
+    blocked_by: []
+    owner: integration-agent
+    evidence:
+      - bun run --cwd apps/packages/integration-scenarios test passed
+      - bun run typecheck passed
+      - bun run contracts:check passed
+      - go test -tags surrealdb ./core/go-runtime/... ./core/go-contracts/... ./core/otlp-collector/... ./core/control-plane/... ./core/storage-read/... ./core/storage-write/... ./core/ai-eval-runner/... passed
+      - node /Users/sebastianwessel/.agents/skills/spec-architect/scripts/check_specs.mjs specs passed
+    next: standards-first interop migration may close after final gates pass.
+  TICKET-306:
+    status: done
+    wave: wave_04_adaptive_form_ux
+    depends_on: [TICKET-304]
+    blocked_by: []
+    owner: adaptive-form-frontend-agent
+    evidence:
+      - bun run --cwd apps/frontend typecheck passed
+      - bun run --cwd apps/frontend test -- ai-eval passed
+      - bun run contracts:check passed
+      - git diff --check -- apps/frontend apps/packages/ui-contracts passed
+    next: standards-first interop migration is complete and ready for review.

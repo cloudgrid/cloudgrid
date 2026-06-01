@@ -1,5 +1,5 @@
 ---
-version: 2026-05-15
+version: 2026-05-29
 name: CloudGrid Operational Observability
 description: CloudGrid's frontend design contract for enterprise project-scoped observability and AI evaluation workflows.
 colors:
@@ -50,31 +50,31 @@ colors:
   darkRing: "#D4D4D8"
 typography:
   display:
-    fontFamily: Inter, ui-sans-serif, system-ui, sans-serif
+    fontFamily: Geist, ui-sans-serif, system-ui, sans-serif
     fontSize: 24px
     fontWeight: 650
     lineHeight: 1.2
     letterSpacing: 0px
   heading:
-    fontFamily: Inter, ui-sans-serif, system-ui, sans-serif
+    fontFamily: Geist, ui-sans-serif, system-ui, sans-serif
     fontSize: 18px
     fontWeight: 600
     lineHeight: 1.3
     letterSpacing: 0px
   body:
-    fontFamily: Inter, ui-sans-serif, system-ui, sans-serif
+    fontFamily: Geist, ui-sans-serif, system-ui, sans-serif
     fontSize: 14px
     fontWeight: 400
     lineHeight: 1.5
     letterSpacing: 0px
   label:
-    fontFamily: Inter, ui-sans-serif, system-ui, sans-serif
+    fontFamily: Geist, ui-sans-serif, system-ui, sans-serif
     fontSize: 12px
     fontWeight: 500
     lineHeight: 1.25
     letterSpacing: 0px
   mono:
-    fontFamily: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace
+    fontFamily: Geist Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace
     fontSize: 12px
     fontWeight: 400
     lineHeight: 1.45
@@ -179,10 +179,11 @@ primitive behavior remain CloudGrid core.
 
 ## Public Website Visual Direction
 
-The public website under `website/` uses a different composition model than the product app, but the same restraint: neutral surfaces, concise copy, and no nested decorative UI. Marketing pages may use a generated hero image as a first-viewport signal; documentation pages do not.
+The public website under `website/` uses a different composition model than the product app, but the same restraint: compact typography, concise copy, and no nested decorative UI. Its current visual direction is Yansu-inspired: light mode uses pale raised blue-gray surfaces, black primary actions, compact Geist typography, soft layered shadows, and restrained blue-gray borders; dark mode uses a black editorial base with dark raised surfaces, muted blue-gray supporting text, and stronger blue-gray borders. Marketing pages may use a generated hero image as a first-viewport signal; documentation pages do not.
 
 Website rules:
 
+- Use local Vercel Geist Sans and Geist Mono assets from `website/public/fonts/geist/`. Do not load public website fonts from Google Fonts, Vercel CDN, or another public font CDN.
 - Use generated realistic enterprise/product collage imagery only in the first hero section of non-handbook pages. The image should feel like a polished product/infrastructure photograph or product-render collage, with observability dashboards, telemetry flows, message bridge/adapters, enterprise SaaS packaging, or cloud infrastructure as the subject.
 - Do not use full-page image backgrounds. After the hero, sections return to flat white or neutral recessed surfaces.
 - Do not use simple gradients, procedural SVG backgrounds, abstract blobs, bokeh, or generic stock-like filler as hero art.
@@ -214,7 +215,22 @@ Use system sans-serif typography for interface text and monospace for technical 
 - **Label:** Compact metadata labels, form labels, badges, and tab labels.
 - **Mono:** Trace IDs, span IDs, JSON, attributes, timestamps when precision matters, stack frames, NATS subjects, and query snippets.
 
+Public website inline code, code blocks, Shiki-rendered handbook examples, `pre`, `kbd`, and `samp` use the local Vercel Geist Mono asset from `website/public/fonts/geist/GeistMono-Variable.woff2`.
+
 Do not scale font size with viewport width. Letter spacing is `0px` unless a component already inherits a shadcn default.
+
+## Product Copy
+
+CloudGrid is an end-user product UI. User-visible labels, helper text, empty
+states, validation, and action copy must use the audience's business/domain
+language before implementation vocabulary. Prefer labels such as `AI input`,
+`expected AI result`, `dataset row`, `evaluation`, `run`, and `target` when
+those are the concepts users are operating on. Use technical terms such as JSON
+schema, GraphQL, NATS, adapter, table, field name, or internal enum only when
+the user is explicitly configuring that technical artifact or inspecting
+developer evidence. Domain wording must remain precise, but the first sentence
+of a label or helper text should describe the user's intent, not CloudGrid's
+storage or contract implementation.
 
 ## Layout
 
@@ -275,7 +291,7 @@ Do not mix highly rounded decorative elements with the operational app shell.
 - **Project Switcher:** Company/project switcher is a compact topbar control with company, project name, and overflow-safe truncation. It opens an anchored popover on desktop and appears first in the mobile menu sheet.
 - **Project Picker:** The picker is an operational selector, not a dashboard. Use a centered project-card grid with search/filter, current-selection state, status metadata, and a create-project card/action when authorized. Do not show global stat cards, company rails, marketing cards, nested cards, or decorative project tiles.
 - **Create Entity Pages:** Creating a durable entity uses a dedicated route page, not a drawer, sheet, dialog, popover, or inline expansion. Use the standard page frame with breadcrumb/back row, route header, wizard-like tabs, required-field markers, field-level and tab-level validation, a summary error panel, Back/Continue controls, field-adjacent help text, and unsaved-change protection. This applies to new project, new dataset, new evaluation, and new optimization. Adding a row inside an existing dataset remains a contextual row editor.
-- **Entity Settings Pages:** Settings for a durable entity use a dedicated route page with the same wizard-like tab structure as creation. Detail pages expose a `Settings` action that navigates to the settings route. Settings-only fields are added to the topical tab that owns them or to a new focused tab; do not create miscellaneous settings buckets.
+- **Entity Settings Pages:** Settings for a durable entity use a dedicated route page with the same topical tab structure as creation. Detail pages expose a `Settings` action that navigates to the settings route. Settings pages use direct tab navigation plus persistent Cancel/Save actions instead of create-flow Back/Continue controls. Settings-only fields are added to the topical tab that owns them or to a new focused tab; do not create miscellaneous settings buckets.
 - **Onboarding:** Project setup lives in `/projects/:projectId/settings/ingest` and empty telemetry states link there. `/projects/:projectId` redirects to `/traces`; do not reintroduce a project overview/onboarding page.
 - **Admin Settings Shell:** Project and company administration uses a quiet settings shell with a route header, optional domain sidebar for settings sections, one primary working surface, and inspector drawers for long forms. Company project/member lists are dense tables. Project settings use the entity settings page pattern with the `Identity` tab active by default, do not have a separate overview subpage, and must not use outer card wrappers around inner tables, setup snippets, or alerts. Settings must not appear as a primary telemetry tab.
 - **Alert Management:** `/alerts` is a project workspace for rule list, filters, selected-rule inspector, history, and silences. Alert rule creation uses `/alerts/new`; alert rule settings use `/alerts/:ruleId/settings`. Do not use a sheet or dialog for the primary alert rule create/settings workflow. Notification adapter selection is ID-based and safe-metadata-only on alert rule pages. Company admins configure Slack, Teams, email, webhook, and other provider adapter instances in company settings from adapter-provided field schemas; secret fields are write-only and never shown back to the UI.
@@ -295,7 +311,8 @@ Do not mix highly rounded decorative elements with the operational app shell.
 - **Dashboards:** Dashboards are saved visual compositions. Use dashboard rail, widget grid, and widget inspector/editor. The project sidebar shows pinned dashboard shortcuts below AI Chat and above primary telemetry navigation, plus collapsible dashboard children from dashboard contracts. Dashboard widgets are typed metric, log, trace, or live trace widgets; do not use `MetricView` compatibility surfaces or arbitrary JSON widget configs.
 - **Dashboard Workspace Split:** `/dashboards` without a selected dashboard is a dashboard overview with grouped selectable cards and star/pin controls. `/dashboards?dashboard=<id>` or a new draft is the builder view with a WYSIWYG-style widget canvas and right-side widget editor drawer. Do not show the widget editor on the overview page and do not keep a duplicate dashboard rail inside the builder.
 - **Dashboard Builder:** Use one primary `Add widget` button with a compact popover for widget types. Creating or editing a widget opens a right-side drawer/sheet instead of a permanent inspector column. Dashboard title and description are edited in place in the builder header. Metric widgets render actual charts for line, area, bar, pie, stat, and table visualizations where the contract allows them.
-- **Form Controls:** Production route code uses shadcn/Radix controls for selects, textareas, checkboxes, toggles, dialogs, and form fields. Do not introduce native select/option/textarea/checkbox inputs or unstyled ad hoc controls in route code.
+- **Form Controls:** Production route code uses shadcn/Radix controls for selects, textareas, checkboxes, toggles, dialogs, and form fields. Structured JSON input uses the shared JSON editor wrapper with light/dark theme support, monospace text, line wrapping, and the same field validation semantics as other controls. Do not introduce native select/option/textarea/checkbox inputs or unstyled ad hoc controls in route code.
+- **Cursor Affordance:** Clickable or otherwise actionable controls use the pointer cursor. Disabled actions use the not-allowed cursor. Resize handles use directional resize cursors and drag handles use grab/grabbing cursors. Shared primitives own these defaults for buttons, links, selects, menu items, command items, tabs, toggles, checkboxes, disclosure triggers, dialog/sheet/popover/collapsible triggers, sortable table headers, and clickable table rows; route code should not depend on hover color alone to signal actionability.
 - **Code Blocks:** JSON, YAML, Bash, log snippets, setup commands, and raw structured evidence use the shared Shiki-backed `CodeBlock` component with copy action and light/dark themes. Do not add ad hoc `<pre>` snippets in route or feature code.
 - **Stack Trace:** Render parsed frames when available and raw stack text as fallback. Use monospace, copy controls, and non-overlapping line wrapping.
 - **Logs:** Show timestamp offset, severity, service, body preview, trace/span chips, and expandable JSON body/attributes.

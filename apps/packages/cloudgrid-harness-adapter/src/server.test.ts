@@ -481,4 +481,257 @@ describe("cloudgrid harness adapter server", () => {
       },
     });
   });
+
+  test("skill capabilities advertise deterministic skill text edit support", async () => {
+    const server = createHarnessAdapterServer();
+
+    const response = await server.fetch(new Request("http://adapter.test/capabilities"));
+
+    expect(response.status).toBe(200);
+    expect(await readJson(response)).toMatchObject({
+      supportedOptimizerKinds: expect.arrayContaining(["skill_text_edit"]),
+      runtimeModes: expect.arrayContaining(["managed_harness", "external_business_context"]),
+      editablePartKinds: ["skill"],
+      packageFormats: ["agent_skill_package"],
+      traceExport: {
+        supported: true,
+        requiredForSkillOptimization: true,
+      },
+      editOps: expect.arrayContaining(["append", "insert_after", "replace", "delete"]),
+    });
+  });
+
+  test("skill runtime dry-run validates package manifest readiness", async () => {
+    const server = createHarnessAdapterServer();
+
+    const response = await server.fetch(
+      new Request("http://adapter.test/skill-runtime/dry-run", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          optimizationRunId: "optimization-1",
+          runtimeMode: "managed_harness",
+          modelProfileRef: "model-profile-local",
+          skillPackage: deterministicSkillPackage(),
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await readJson(response)).toMatchObject({
+      optimizationRunId: "optimization-1",
+      ok: true,
+      checks: expect.arrayContaining([
+        expect.objectContaining({
+          id: "skill.entrypoint",
+          status: "passed",
+        }),
+        expect.objectContaining({
+          id: "runtime.trace-export",
+          status: "passed",
+        }),
+      ]),
+    });
+  });
+
+  test("skill runtime dry-run reports failed package readiness without secrets", async () => {
+    const server = createHarnessAdapterServer();
+    const skillPackage = deterministicSkillPackage();
+
+    const response = await server.fetch(
+      new Request("http://adapter.test/skill-runtime/dry-run", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          optimizationRunId: "optimization-1",
+          runtimeMode: "external_business_context",
+          skillPackage: {
+            ...skillPackage,
+            files: skillPackage.files.filter((file) => file.path !== "SKILL.md"),
+          },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(422);
+    const text = await response.text();
+    expect(text).toContain("\"ok\":false");
+    expect(text).toContain("SKILL.md is missing");
+    expect(text).not.toContain("apiKey");
+    expect(text).not.toContain("Bearer ");
+  });
+
+  test("skill reflection returns invalid protected edit and valid package edit proposals", async () => {
+    const server = createHarnessAdapterServer({ fixtureMode: "skill_text_edit" });
+
+    const response = await server.fetch(
+      new Request("http://adapter.test/skill-optimization/reflect", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          optimizationRunId: "optimization-1",
+          stepId: "step-1",
+          reflectionKind: "failure",
+          skillPackage: deterministicSkillPackage(),
+          evidence: [
+            {
+              itemRunId: "train-001",
+              split: "training",
+              actualOutput: "Asked for too many irrelevant details.",
+              expected: "Ask only for account id.",
+              importantSteps: [{ kind: "gen_ai", summary: "agent missed account id" }],
+              trajectorySummary: "The skill handled the topic but missed escalation criteria.",
+              traceRefs: [{ traceId: "trace-001" }],
+            },
+          ],
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const payload = (await readJson(response)) as {
+      proposals: Array<{
+        expectedValidity: string;
+        protectedFileViolation: boolean;
+        edits: Array<{ filePath: string }>;
+      }>;
+    };
+    expect(payload.proposals).toHaveLength(2);
+    expect(payload.proposals[0]).toMatchObject({
+      expectedValidity: "invalid_protected_file",
+      protectedFileViolation: true,
+      edits: [expect.objectContaining({ filePath: "scripts/run.sh" })],
+    });
+    expect(payload.proposals[1]).toMatchObject({
+      expectedValidity: "valid",
+      protectedFileViolation: false,
+      edits: [
+        expect.objectContaining({ filePath: "SKILL.md" }),
+        expect.objectContaining({ filePath: "references/escalation.md" }),
+      ],
+    });
+  });
+
+  test("skill merge-rank, slow-update, and meta-memory responses are deterministic", async () => {
+    const server = createHarnessAdapterServer({ fixtureMode: "skill_text_edit" });
+    const reflect = await server.fetch(
+      new Request("http://adapter.test/skill-optimization/reflect", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          optimizationRunId: "optimization-1",
+          stepId: "step-1",
+          reflectionKind: "failure",
+          skillPackage: deterministicSkillPackage(),
+          evidence: [],
+        }),
+      }),
+    );
+    const reflected = (await readJson(reflect)) as { proposals: unknown[] };
+
+    const mergeRank = await server.fetch(
+      new Request("http://adapter.test/skill-optimization/merge-rank", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          optimizationRunId: "optimization-1",
+          stepId: "step-1",
+          editBudget: 1,
+          proposals: reflected.proposals,
+        }),
+      }),
+    );
+    expect(mergeRank.status).toBe(200);
+    expect(await readJson(mergeRank)).toMatchObject({
+      rankedProposals: [
+        expect.objectContaining({
+          expectedValidity: "valid",
+          protectedFileViolation: false,
+        }),
+      ],
+      droppedProposalIds: expect.arrayContaining(["skill-edit-optimization-1-protected-runtime"]),
+    });
+
+    const slowUpdate = await server.fetch(
+      new Request("http://adapter.test/skill-optimization/slow-update", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          optimizationRunId: "optimization-1",
+          epoch: 1,
+          acceptedProposalIds: ["skill-edit-optimization-1-skill-and-reference"],
+          rejectedProposalIds: ["skill-edit-optimization-1-protected-runtime"],
+        }),
+      }),
+    );
+    expect(slowUpdate.status).toBe(200);
+    expect(await readJson(slowUpdate)).toMatchObject({
+      protectedGuidance: true,
+      guidance: expect.arrayContaining([
+        expect.stringContaining("preserve successful behavior"),
+      ]),
+    });
+
+    const metaMemory = await server.fetch(
+      new Request("http://adapter.test/skill-optimization/meta-memory", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          optimizationRunId: "optimization-1",
+          currentMemory: [{ id: "memory-existing", summary: "keep concise" }],
+          acceptedProposalIds: ["skill-edit-optimization-1-skill-and-reference"],
+          rejectedProposalIds: ["skill-edit-optimization-1-protected-runtime"],
+        }),
+      }),
+    );
+    expect(metaMemory.status).toBe(200);
+    expect(await readJson(metaMemory)).toMatchObject({
+      memory: expect.arrayContaining([
+        expect.objectContaining({ id: "memory-existing" }),
+        expect.objectContaining({
+          kind: "rejected_edit_pattern",
+          summary: "Do not edit protected runtime or dependency files.",
+        }),
+      ]),
+    });
+  });
 });
+
+function deterministicSkillPackage() {
+  return {
+    packageRef: "skill-package-deterministic-support",
+    entrypoint: "SKILL.md",
+    manifestDigest: "sha256:deterministic-skill-manifest",
+    editableFileGlobs: ["SKILL.md", "references/*.md"],
+    protectedFileGlobs: ["scripts/**", "package-lock.json"],
+    runtimeRequirements: {
+      requiresMcp: false,
+      requiresFilesystem: false,
+    },
+    files: [
+      {
+        path: "SKILL.md",
+        role: "entrypoint",
+        digest: "sha256:skill-md",
+        byteSize: 640,
+        editable: true,
+        content: "# Support Triage Skill\n",
+      },
+      {
+        path: "references/escalation.md",
+        role: "reference",
+        digest: "sha256:reference-escalation",
+        byteSize: 360,
+        editable: true,
+        content: "# Escalation\n",
+      },
+      {
+        path: "scripts/run.sh",
+        role: "script",
+        digest: "sha256:script-run",
+        byteSize: 120,
+        editable: false,
+      },
+    ],
+  };
+}

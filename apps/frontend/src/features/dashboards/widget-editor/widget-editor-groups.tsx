@@ -190,7 +190,7 @@ export function WidgetEditorGroups({
             ) : null}
             {widget.richMetric ? (
               <div className="grid grid-cols-[80px_minmax(0,1fr)] gap-2">
-                <dt className="text-muted-foreground">Rich metric</dt>
+                <dt className="text-muted-foreground">{t("dashboards.widget.richMetric")}</dt>
                 <dd className="min-w-0 break-words">
                   {widget.richMetric.query.queries.map((query) => query.label).join(", ")}
                 </dd>

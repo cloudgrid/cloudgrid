@@ -362,6 +362,20 @@ channels:
         $ref: "#/components/messages/OptimizationGetRequest"
       AiEvalResponse:
         $ref: "#/components/messages/AiEvalResponse"
+  eval.optimization.step.persist:
+    address: eval.optimization.step.persist
+    messages:
+      OptimizationStepPersistRequest:
+        $ref: "#/components/messages/OptimizationStepPersistRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
+  eval.optimization.memory.persist:
+    address: eval.optimization.memory.persist
+    messages:
+      OptimizationMemoryPersistRequest:
+        $ref: "#/components/messages/OptimizationMemoryPersistRequest"
+      AiEvalResponse:
+        $ref: "#/components/messages/AiEvalResponse"
   eval.target.promote:
     address: eval.target.promote
     messages:
@@ -1669,6 +1683,14 @@ components:
       name: OptimizationGetRequest
       payload:
         $ref: "#/components/schemas/OptimizationGetRequest"
+    OptimizationStepPersistRequest:
+      name: OptimizationStepPersistRequest
+      payload:
+        $ref: "#/components/schemas/OptimizationStepPersistRequest"
+    OptimizationMemoryPersistRequest:
+      name: OptimizationMemoryPersistRequest
+      payload:
+        $ref: "#/components/schemas/OptimizationMemoryPersistRequest"
     TargetPromoteRequest:
       name: TargetPromoteRequest
       payload:
@@ -2503,24 +2525,43 @@ components:
         - $ref: "#/components/schemas/BridgeEnvelope"
         - type: object
           additionalProperties: false
-          required: [projectId, sources, idempotencyKey]
+          required: [projectId, idempotencyKey]
           properties:
             projectId:
               type: string
             datasetId:
               type: string
+            datasetIds:
+              type: array
+              maxItems: 50
+              items:
+                type: string
+            autoMatchDatasets:
+              type: boolean
+              default: false
             sources:
               type: array
-              minItems: 1
               maxItems: 500
               items:
                 $ref: "#/components/schemas/DatasetCandidateSource"
+            traceSelection:
+              $ref: "#/components/schemas/DatasetTraceCandidateSelection"
+            previewLimit:
+              type: integer
+              minimum: 1
+              maximum: 500
+              default: 100
             split:
               $ref: "#/components/schemas/DatasetSplit"
             curationStatus:
               $ref: "#/components/schemas/DatasetCurationStatus"
             contentTreatment:
               $ref: "#/components/schemas/DatasetContentTreatment"
+            anonymizationPolicyId:
+              type: string
+            anonymizationPolicyVersion:
+              type: integer
+              minimum: 1
             idempotencyKey:
               type: string
     DatasetCandidatesSearchRequest:
@@ -2880,22 +2921,35 @@ components:
         - $ref: "#/components/schemas/BridgeEnvelope"
         - type: object
           additionalProperties: false
-          required: [projectId, datasetVersionId, targetSnapshotId, idempotencyKey]
+          required:
+            [projectId, baselineTargetSnapshotId, objective, searchPolicy, idempotencyKey]
           properties:
             projectId:
               type: string
+            baselineTargetSnapshotId:
+              type: string
             evaluationDefinitionId:
-              type: string
-            datasetVersionId:
-              type: string
-            targetSnapshotId:
               type: string
             comparisonId:
               type: string
-            splitSelector:
+            trainingEvaluationDefinitionId:
+              type: string
+            trainingSplitSelector:
               $ref: "#/components/schemas/DatasetSplitSelector"
-            config:
+            validationEvaluationDefinitionId:
+              type: string
+            validationSplitSelector:
+              $ref: "#/components/schemas/DatasetSplitSelector"
+            testEvaluationDefinitionId:
+              type: string
+            quickShotPolicy:
               $ref: "#/components/schemas/AiEvalObjectPayload"
+            runPolicy:
+              $ref: "#/components/schemas/AiEvalObjectPayload"
+            objective:
+              $ref: "#/components/schemas/OptimizationObjective"
+            searchPolicy:
+              $ref: "#/components/schemas/OptimizationSearchPolicy"
             idempotencyKey:
               type: string
     OptimizationSearchRequest:
@@ -2926,6 +2980,38 @@ components:
               type: string
             optimizationRunId:
               type: string
+    OptimizationStepPersistRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, optimizationRunId, stepId, idempotencyKey, payload]
+          properties:
+            projectId:
+              type: string
+            optimizationRunId:
+              type: string
+            stepId:
+              type: string
+            idempotencyKey:
+              type: string
+            payload:
+              $ref: "#/components/schemas/SkillOptimizationStep"
+    OptimizationMemoryPersistRequest:
+      allOf:
+        - $ref: "#/components/schemas/BridgeEnvelope"
+        - type: object
+          additionalProperties: false
+          required: [projectId, optimizationRunId, idempotencyKey, payload]
+          properties:
+            projectId:
+              type: string
+            optimizationRunId:
+              type: string
+            idempotencyKey:
+              type: string
+            payload:
+              $ref: "#/components/schemas/SkillOptimizationMemory"
     TargetPromoteRequest:
       allOf:
         - $ref: "#/components/schemas/BridgeEnvelope"
@@ -3025,7 +3111,39 @@ components:
     DatasetCandidateSourceKind:
       type: string
       enum:
-        [trace, metric_result, evaluation_item_run, production_measurement, coverage_gap, health_issue, failure_cluster, manual]
+        [trace, span, metric_result, evaluation_item_run, production_measurement, coverage_gap, health_issue, failure_cluster, manual]
+    DatasetTraceCandidateSelection:
+      type: object
+      additionalProperties: false
+      properties:
+        mode:
+          type: string
+          enum: [selected, current_filter]
+          default: selected
+        traceRefs:
+          type: array
+          maxItems: 500
+          items:
+            type: object
+            additionalProperties: false
+            required: [traceId]
+            properties:
+              traceId:
+                type: string
+        spanRefs:
+          type: array
+          maxItems: 500
+          items:
+            type: object
+            additionalProperties: false
+            required: [traceId, spanId]
+            properties:
+              traceId:
+                type: string
+              spanId:
+                type: string
+        search:
+          $ref: "#/components/schemas/AiEvalObjectPayload"
     DatasetContentTreatment:
       type: string
       enum: [original, realistic_anonymized, redacted, synthetic]
@@ -3049,6 +3167,276 @@ components:
           type: string
         candidateId:
           type: string
+    OptimizationObjective:
+      type: object
+      additionalProperties: false
+      required:
+        [primaryMetricId, secondaryMetricIds, constraints, tradeoffMetricIds, rankingPolicy, tieBreakers, minimumEvidence]
+      properties:
+        primaryMetricId:
+          type: string
+        secondaryMetricIds:
+          type: array
+          items:
+            type: string
+        constraints:
+          type: object
+          additionalProperties: true
+        tradeoffMetricIds:
+          type: array
+          items:
+            type: string
+        rankingPolicy:
+          type: object
+          additionalProperties: true
+        tieBreakers:
+          type: array
+          items:
+            type: string
+        minimumEvidence:
+          type: object
+          additionalProperties: true
+    OptimizationSearchPolicy:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          optimizerKind,
+          editablePartKinds,
+          maxEpochs,
+          maxSteps,
+          rolloutBatchSize,
+          reflectionMinibatchSize,
+          editBudget,
+          minEditBudget,
+          editSchedule,
+          gateMetricId,
+          gateMode,
+          selectionSplit,
+          allowSlowUpdate,
+          allowMetaMemory
+        ]
+      properties:
+        optimizerKind:
+          type: string
+          enum: [bootstrap_fewshot, critic_mutate_judge_pick, skill_text_edit]
+        editablePartKinds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [prompt, examples, model_config, tool_config, skill, workflow, agent_config, adapter_metadata]
+        maxEpochs:
+          type: integer
+          minimum: 1
+        maxSteps:
+          type: integer
+          minimum: 0
+        rolloutBatchSize:
+          type: integer
+          minimum: 1
+        reflectionMinibatchSize:
+          type: integer
+          minimum: 1
+        editBudget:
+          type: integer
+          minimum: 1
+        minEditBudget:
+          type: integer
+          minimum: 1
+        editSchedule:
+          type: string
+          enum: [constant, linear, cosine, autonomous]
+        gateMetricId:
+          type: string
+        gateMode:
+          type: string
+          enum: [strict_improvement]
+        selectionSplit:
+          type: string
+          enum: [validation]
+        allowSlowUpdate:
+          type: boolean
+        allowMetaMemory:
+          type: boolean
+        skillPolicy:
+          $ref: "#/components/schemas/SkillOptimizationPolicy"
+    SkillOptimizationPolicy:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          maxPackageBytes,
+          maxSkillBytes,
+          maxSkillTokens,
+          allowedEditOps,
+          editableFileGlobs,
+          protectedFileGlobs,
+          allowScriptEdits,
+          preserveSections,
+          exportBestSkill
+        ]
+      properties:
+        maxPackageBytes:
+          type: integer
+          minimum: 1
+          maximum: 262144
+        maxSkillBytes:
+          type: integer
+          minimum: 1
+          maximum: 65536
+        maxSkillTokens:
+          type: integer
+          minimum: 1
+          maximum: 8000
+        allowedEditOps:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [append, insert_after, replace, delete]
+        editableFileGlobs:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        protectedFileGlobs:
+          type: array
+          items:
+            type: string
+        allowScriptEdits:
+          type: boolean
+        preserveSections:
+          type: array
+          items:
+            type: string
+        exportBestSkill:
+          type: boolean
+    SkillOptimizationEdit:
+      type: object
+      additionalProperties: false
+      required: [op, sourceType, evidenceRefs]
+      properties:
+        op:
+          type: string
+          enum: [append, insert_after, replace, delete]
+        filePath:
+          type: string
+        target:
+          type: string
+        contentPreview:
+          type: string
+          maxLength: 2000
+        rationale:
+          type: string
+          maxLength: 2000
+        sourceType:
+          type: string
+          enum: [failure, success, slow_update, meta_memory]
+        supportCount:
+          type: integer
+          minimum: 0
+        evidenceRefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiEvalSourceRef"
+    SkillOptimizationStep:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          optimizationRunId,
+          projectId,
+          epoch,
+          step,
+          status,
+          rolloutEvaluationRunId,
+          baselineSkillDigest,
+          proposedEdits,
+          selectedEdits,
+          rejectedEditSummaries,
+          trainingScore,
+          gateDecision,
+          startedAt
+        ]
+      properties:
+        id:
+          type: string
+        optimizationRunId:
+          type: string
+        projectId:
+          type: string
+        epoch:
+          type: integer
+          minimum: 1
+        step:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [queued, running, accepted, rejected, skipped, failed]
+        rolloutEvaluationRunId:
+          type: string
+        candidateTargetSnapshotId:
+          type: string
+        baselineSkillDigest:
+          type: string
+        candidateSkillDigest:
+          type: string
+        proposedEdits:
+          type: array
+          items:
+            $ref: "#/components/schemas/SkillOptimizationEdit"
+        selectedEdits:
+          type: array
+          items:
+            $ref: "#/components/schemas/SkillOptimizationEdit"
+        rejectedEditSummaries:
+          type: array
+          items:
+            $ref: "#/components/schemas/SkillOptimizationEdit"
+        trainingScore:
+          type: number
+        validationScore:
+          type: number
+        gateDecision:
+          type: string
+          enum: [accepted_new_best, accepted, rejected, failed_preflight, skipped_no_edits]
+        problem:
+          type: object
+          additionalProperties: true
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+    SkillOptimizationMemory:
+      type: object
+      additionalProperties: false
+      required: [optimizationRunId, projectId, rejectedEditBuffer, updatedAt]
+      properties:
+        optimizationRunId:
+          type: string
+        projectId:
+          type: string
+        rejectedEditBuffer:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/SkillOptimizationEdit"
+        slowUpdateContent:
+          type: string
+          maxLength: 8192
+        metaMemoryContent:
+          type: string
+          maxLength: 8192
+        truncated:
+          type: boolean
+        updatedAt:
+          type: string
+          format: date-time
     AiEvalObjectPayload:
       type: object
       additionalProperties: true

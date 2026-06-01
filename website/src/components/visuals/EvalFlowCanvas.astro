@@ -110,7 +110,7 @@ const steps = [
         <path d="M400 400 C400 330 400 275 560 204" stroke-dasharray="4 5" />
       </g>
 
-      <g font-family="JetBrains Mono, monospace" font-size="10" class="cv-text-faint" letter-spacing="1.5">
+      <g font-family="Geist Mono, monospace" font-size="10" class="cv-text-faint" letter-spacing="1.5">
         <text x="70" y="74">COLLECT</text>
         <text x="315" y="74">CURATE</text>
         <text x="560" y="74">EVALUATE</text>
@@ -122,10 +122,10 @@ const steps = [
         <g>
           <rect class="cv-node" x={step.x} y={step.y} width={step.w} height={step.h} rx="16" stroke={step.accent} stroke-opacity="0.35" />
           <circle cx={step.x + 24} cy={step.y + 26} r="8" fill={step.accent} fill-opacity="0.22" stroke={step.accent} stroke-width="1.5" />
-          <text x={step.x + 44} y={step.y + 32} class="cv-text" font-family="Inter, sans-serif" font-size="13" font-weight="700">
+          <text x={step.x + 44} y={step.y + 32} class="cv-text" font-family="Geist, sans-serif" font-size="13" font-weight="700">
             {step.title}
           </text>
-          <text x={step.x + 20} y={step.y + 60} class="cv-text-faint" font-family="JetBrains Mono, monospace" font-size="10">
+          <text x={step.x + 20} y={step.y + 60} class="cv-text-faint" font-family="Geist Mono, monospace" font-size="10">
             {step.detail}
           </text>
         </g>
@@ -133,13 +133,13 @@ const steps = [
 
       <g>
         <rect class="cv-node-accent" x="70" y="400" width="170" height="84" rx="16" stroke="#f43f5e" stroke-opacity="0.35" />
-        <text x="94" y="432" class="cv-text" font-family="Inter, sans-serif" font-size="13" font-weight="700">Trace-derived cases</text>
-        <text x="94" y="460" class="cv-text-faint" font-family="JetBrains Mono, monospace" font-size="10">observed output · source link</text>
+        <text x="94" y="432" class="cv-text" font-family="Geist, sans-serif" font-size="13" font-weight="700">Trace-derived cases</text>
+        <text x="94" y="460" class="cv-text-faint" font-family="Geist Mono, monospace" font-size="10">observed output · source link</text>
         <path d="M155 204 C155 280 155 340 155 400" class="cv-line" stroke-width="1.6" marker-end="url(#eval-user-arrow)" />
         <path d="M240 442 H315" class="cv-line" stroke-width="1.6" marker-end="url(#eval-user-arrow)" />
       </g>
 
-      <g font-family="Inter, sans-serif" font-size="12" class="cv-text-muted">
+      <g font-family="Geist, sans-serif" font-size="12" class="cv-text-muted">
         <text x="70" y="570">The evaluation itself produces metrics and evidence. Promotion stays an explicit user decision.</text>
       </g>
     </svg>

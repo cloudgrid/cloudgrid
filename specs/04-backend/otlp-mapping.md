@@ -48,6 +48,10 @@ This keeps OpenTelemetry spans portable and prevents one workload from spoofing 
 - Resource, scope, and span/log attributes are merged into each derived entity's flat `attributes` object.
 - Later groups override earlier duplicate keys in this order: resource, scope, record.
 - `service.name` is copied to `serviceName`.
+- Source resource, scope, span, event, log, and metric attributes are not
+  mutated during ingest. CloudGrid-owned normalization metadata belongs on
+  derived records, projection commands, warnings, or internal self-observability
+  spans, not on customer-emitted source telemetry.
 
 ## Trace Derivation
 

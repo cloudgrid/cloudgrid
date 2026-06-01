@@ -4,9 +4,9 @@ title: Traces and metrics UX concept
 layer: frontend
 status: draft
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-15
+updated: 2026-05-28
 provenance: user-requested
-depends_on: [TEC-FE-002, TEC-FE-003, TEC-FE-005, TEC-FE-008, TEC-FE-009, TEC-BE-008]
+depends_on: [TEC-FE-002, TEC-FE-003, TEC-FE-005, TEC-FE-016, TEC-BE-008]
 ---
 
 # Traces UX Concept

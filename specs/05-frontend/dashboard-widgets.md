@@ -1,12 +1,12 @@
 ---
-id: TEC-FE-008
+id: TEC-FE-013
 title: Dashboard widgets
 layer: frontend
 status: draft
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-22
+updated: 2026-05-28
 provenance: user-requested
-depends_on: [TEC-BE-011, TEC-BE-017]
+depends_on: [TEC-FE-016, TEC-BE-011, TEC-BE-017]
 ---
 
 # Dashboard Widgets

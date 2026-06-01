@@ -134,7 +134,9 @@ type config struct {
 	HealthHost         string
 	HealthPort         string
 	NATSURL            string
+	DeploymentMode     string
 	StorageAdapter     string
+	DBAdapterTracingEnabled bool
 	SurrealDB          surrealDBConfig
 	RetentionScheduler retention.SchedulerConfig
 }
@@ -168,14 +170,27 @@ func loadConfig(getenv func(string) string) (config, error) {
 	if schedulerEnabled && len(projectIDs) == 0 {
 		return config{}, fmt.Errorf("ERR-009 CONFIG_INVALID: CLOUDGRID_RETENTION_SCHEDULER_PROJECT_IDS is required when retention scheduler is enabled")
 	}
+	deploymentMode := valueOrDefault(getenv("CLOUDGRID_DEPLOYMENT_MODE"), "local")
+	if deploymentMode != "local" && deploymentMode != "deployed" {
+		return config{}, fmt.Errorf("ERR-009 CONFIG_INVALID: CLOUDGRID_DEPLOYMENT_MODE must be local or deployed")
+	}
+	dbAdapterTracingEnabled, err := boolValue(getenv("CLOUDGRID_DB_ADAPTER_TRACING_ENABLED"), false, "CLOUDGRID_DB_ADAPTER_TRACING_ENABLED")
+	if err != nil {
+		return config{}, err
+	}
+	if deploymentMode == "deployed" && dbAdapterTracingEnabled {
+		return config{}, fmt.Errorf("ERR-009 CONFIG_INVALID: CLOUDGRID_DB_ADAPTER_TRACING_ENABLED is valid only in local mode")
+	}
 	return config{
 		HealthHost: valueOrDefault(getenv("CLOUDGRID_STORAGE_MAINTENANCE_HEALTH_HOST"), defaultHealthHost),
 		HealthPort: valueOrDefault(getenv("CLOUDGRID_STORAGE_MAINTENANCE_HEALTH_PORT"), defaultHealthPort),
 		NATSURL:    valueOrDefault(getenv("CLOUDGRID_NATS_URL"), defaultNATSURL),
+		DeploymentMode: deploymentMode,
 		StorageAdapter: valueOrDefault(
 			getenv("CLOUDGRID_STORAGE_ADAPTER"),
 			defaultStorageAdapter,
 		),
+		DBAdapterTracingEnabled: dbAdapterTracingEnabled,
 		SurrealDB: surrealDBConfig{
 			URL:       valueOrDefault(getenv("CLOUDGRID_SURREALDB_URL"), "http://localhost:8000/rpc"),
 			Namespace: valueOrDefault(getenv("CLOUDGRID_SURREALDB_NAMESPACE"), "observability"),

@@ -1,10 +1,21 @@
-# AI Eval Extraction Test Data
+# AI Eval Extraction Prompt Optimization Fixture
 
-Small order-confirmation extraction dataset for validating raw JSON expected outputs, JSON schema validation, optional fields, split handling, and extraction metrics.
+This pack is a realistic, deterministic order-confirmation extraction example
+for trying extraction evaluation and prompt optimization end to end. It includes
+schema validation, weak fields, distractor amounts, country normalization, word
+quantities, optional discounts, and train/validation/test split coverage.
 
 Files:
 
-- `dataset-settings.json`: dataset-level input and expected-output JSON schemas.
-- `rows.jsonl`: import rows with unstructured text input and structured JSON expected output.
+- `dataset-settings.json`: public GraphQL `DatasetSettingsInput`-shaped
+  settings for a structured extraction dataset.
+- `rows.jsonl`: ready import rows with raw text input and normalized JSON
+  expected output.
+- `baseline-target.json`: example prompt target snapshot metadata.
+- `baseline-prompt.md`: intentionally weak baseline prompt.
+- `baseline-examples.jsonl`: weak few-shot examples attached to the baseline
+  target.
+- `expected-optimizer-behavior.json`: deterministic expectations for tests and
+  manual review.
 
-Recommended metric: `extraction.exact_json_match` for strict checks or a field-level JSON metric when available.
+Recommended primary metric: `extraction.field_match_rate`.

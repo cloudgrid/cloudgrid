@@ -12,8 +12,6 @@ import (
 	contracts "github.com/cloudgrid-dev/cloudgrid/core/go-contracts"
 )
 
-const SemconvFlavorAttribute = "cloudgrid.ai.semconv.flavor"
-
 type CommandIDFunc func(contracts.Span) string
 
 type contentReference struct {
@@ -46,17 +44,6 @@ func ExtractProjections(spans []contracts.Span, envelope contracts.BridgeEnvelop
 		})
 	}
 	return commands
-}
-
-func AnnotateSemconvFlavor(spans []contracts.Span) []contracts.Span {
-	annotated := make([]contracts.Span, len(spans))
-	for index, span := range spans {
-		annotated[index] = span
-		attrs := cloneAttributes(span.Attributes)
-		attrs[SemconvFlavorAttribute] = sourceFlavor(attrs)
-		annotated[index].Attributes = attrs
-	}
-	return annotated
 }
 
 func classify(attrs contracts.Attributes) (contracts.AiProjectionKind, string, bool) {

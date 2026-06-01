@@ -19,7 +19,7 @@ func TestSurrealDBStorageWritePersistsAiEvalMutation(t *testing.T) {
 		t.Skip("set CLOUDGRID_ENABLE_SURREALDB_STORAGE_WRITE_TESTS=true to run SurrealDB storage-write integration tests")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	client, err := Connect(ctx, Config{
 		URL:       integrationValueOrDefault(os.Getenv("CLOUDGRID_SURREALDB_URL"), "http://localhost:8000/rpc"),
@@ -81,8 +81,17 @@ func TestSurrealDBStorageWritePersistsAiEvalMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PersistEvalMutation append: %v", err)
 	}
-	if item["id"] != "dataset-item-integration" {
-		t.Fatalf("PersistEvalMutation append data = %#v", item)
+	if item["id"] != data["id"] || numericIntegrationValue(item["itemCount"]) != 1 {
+		t.Fatalf("PersistEvalMutation append dataset data = %#v", item)
+	}
+	itemRows, err := queryIntegrationRows[map[string]any](ctx, client, "SELECT meta::id(id) AS id, datasetId FROM ai_dataset_item WHERE record::id(id) = $itemId LIMIT 1;", map[string]any{
+		"itemId": "dataset-item-integration",
+	})
+	if err != nil {
+		t.Fatalf("query appended item: %v", err)
+	}
+	if len(itemRows) != 1 || itemRows[0]["id"] != "dataset-item-integration" {
+		t.Fatalf("appended item rows = %#v", itemRows)
 	}
 	datasetRows, err := queryIntegrationRows[map[string]any](ctx, client, "SELECT itemCount, version FROM ai_dataset WHERE record::id(id) = $datasetId LIMIT 1;", map[string]any{
 		"datasetId": data["id"],

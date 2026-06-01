@@ -1,0 +1,19 @@
+{
+  "enabledByDefault": false,
+  "usage": "manual_only",
+  "modelAlias": "set-a-project-model-alias-before-running-manually",
+  "providerProfileRef": "set-a-project-provider-profile-before-running-manually",
+  "dataset": {
+    "trainingRows": "rows.training.jsonl",
+    "validationRows": "rows.validation.jsonl",
+    "testRows": "rows.test.jsonl"
+  },
+  "skillPackage": {
+    "path": "skill-package",
+    "entrypoint": "SKILL.md"
+  },
+  "notes": [
+    "Do not put API keys or provider secrets in this file.",
+    "Use project/provider configuration managed outside the fixture pack."
+  ]
+}

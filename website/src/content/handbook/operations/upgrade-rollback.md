@@ -51,6 +51,13 @@ helm template cloudgrid oci://ghcr.io/cloudgrid-dev/charts/cloudgrid \
 
 Confirm that BFF and collector are the only public ingress candidates, and that NATS and SurrealDB remain private.
 
+If the upgrade changes the SurrealDB image or external database version, confirm
+that the target version is approved by the storage spec and that live SurrealDB
+adapter checks pass against that exact version before promotion. For the
+`v3.1.0` baseline, 3.0.x RocksDB volumes may upgrade in place, but rollback
+after writes requires the environment's storage recovery plan rather than only a
+Helm image rollback.
+
 ## Upgrade
 
 ```sh
@@ -82,6 +89,8 @@ kubectl -n cloudgrid rollout status deployment/cloudgrid-storage-write
 - OTLP emitters can send data.
 - GraphQL trace/log/metric reads work.
 - No service logs expose session cookies, provider tokens, raw OTLP payloads, or SurrealDB credentials.
+- External dashboards that scrape SurrealDB server metrics directly have been
+  checked for SurrealDB 3.1 metric-name and public-metrics changes.
 
 Run benchmark probes before declaring the upgraded environment production-ready:
 

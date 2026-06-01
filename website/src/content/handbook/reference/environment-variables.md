@@ -4,7 +4,7 @@ description: "This table summarizes the current CloudGrid runtime variables. See
 order: 2
 accent: rose
 eyebrow: "Handbook - Reference"
-updated: 2026-05-20
+updated: 2026-05-31
 ---
 
 This table summarizes the current CloudGrid runtime variables. See [Runtime environment](/handbook/configuration/runtime-environment) for validation context.
@@ -39,6 +39,7 @@ This table summarizes the current CloudGrid runtime variables. See [Runtime envi
 | `CLOUDGRID_AI_CHAT_HARNESS_MODE` | `provider` | BFF AI Chat harness runtime. `provider` uses configured company credentials, `mock` is only for local smoke checks, and `off` disables execution. |
 | `CLOUDGRID_AI_CHAT_PROVIDER_KIND` | unset | Optional local-mode bootstrap provider kind. |
 | `CLOUDGRID_AI_CHAT_MODEL` | unset | Required when local-mode AI Chat provider bootstrap is enabled. |
+| `CLOUDGRID_AI_CHAT_BASE_URL` | unset | Required for local-mode `openai_compatible` and `azure_foundry` bootstrap providers. For Kimi K2.6 via Moonshot, use `https://api.moonshot.ai/v1`. |
 | `CLOUDGRID_AI_CHAT_CREDENTIAL_REF` | unset | Optional local-mode bootstrap credential reference for the configured AI Chat provider. UI-managed providers normally use encrypted `managed:` refs instead. |
 
 ## SSO
@@ -120,6 +121,7 @@ and retries email asynchronously.
 | `CLOUDGRID_SELF_OBSERVABILITY_TRACES_ENABLED` | `true` when enabled | Trace export toggle. |
 | `CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED` | `true` when enabled | Log export toggle. |
 | `CLOUDGRID_SELF_OBSERVABILITY_METRICS_ENABLED` | `true` when enabled | Metric export toggle. |
+| `CLOUDGRID_DB_ADAPTER_TRACING_ENABLED` | `false` | Local-only deep regular database adapter child spans. A true value is rejected in deployed mode. Raw queries, parameters, responses, provider errors, credentials, and secret-store operations are never exported. |
 
 ## Benchmark Evidence
 
@@ -140,6 +142,7 @@ and retries email asynchronously.
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `CLOUDGRID_SURREALDB_URL` | `http://localhost:8000/rpc` | Storage/control-plane only. |
+| `CLOUDGRID_SURREALDB_PORT` | `8000` | Local Docker Compose host port for SurrealDB. `bun run setup:local` selects a free port and rewrites `CLOUDGRID_SURREALDB_URL` when the default is occupied. |
 | `CLOUDGRID_SURREALDB_NAMESPACE` | `observability` | SurrealDB namespace. |
 | `CLOUDGRID_SURREALDB_DATABASE` | `dev` | SurrealDB database. |
 | `CLOUDGRID_SURREALDB_USERNAME` | local `root` | Do not expose publicly. |

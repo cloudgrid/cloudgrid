@@ -53,7 +53,9 @@ must assert that catalog entries line up with:
 Runtime code must not maintain a second hard-coded list of AI tools, action
 kinds, renderers, provider kinds, or model aliases outside this catalog. Test
 fakes may define local fixtures, but those fixtures must import or derive from
-the catalog where possible.
+the catalog whenever the fixture covers a catalog-defined tool, action,
+renderer, provider kind, or model alias. A fixture may diverge only when the
+test is explicitly proving rejection of an unknown catalog value.
 
 The implementation-ready catalog, workflow, tool, renderer, sandbox, skill
 mounting, and action binding details are defined in

@@ -1,0 +1,100 @@
+plan: frontend_ux_implementation
+source: plans/frontend-ux-migration-check/02-agent-remediation-plan.md
+primary_contract: specs/05-frontend/product-experience-contract.md
+tickets:
+  TICKET-300:
+    title: FEUX source gate and stale-plan closure
+    source_feux_id: FEUX-00
+    wave: 1
+    status: ready
+    file: plans/frontend-ux-implementation/wave_01_source_and_foundation/tickets/TICKET-300-source-gate.md
+    depends_on: []
+    blocked_by: []
+  TICKET-301:
+    title: Shared shell route frame and UX primitives
+    source_feux_id: FEUX-01
+    wave: 1
+    status: ready
+    file: plans/frontend-ux-implementation/wave_01_source_and_foundation/tickets/TICKET-301-shared-shell-route-frame.md
+    depends_on: [TICKET-300]
+    blocked_by: []
+  TICKET-302:
+    title: Projects project home and settings
+    source_feux_id: FEUX-02
+    wave: 2
+    status: ready
+    file: plans/frontend-ux-implementation/wave_02_project_experience/tickets/TICKET-302-projects-settings.md
+    depends_on: [TICKET-301]
+    blocked_by: []
+  TICKET-303:
+    title: Trace search and live mode
+    source_feux_id: FEUX-03
+    wave: 3
+    status: ready
+    file: plans/frontend-ux-implementation/wave_03_route_workspaces/tickets/TICKET-303-trace-search-live-mode.md
+    depends_on: [TICKET-302]
+    blocked_by: []
+  TICKET-304:
+    title: Trace detail workspace
+    source_feux_id: FEUX-04
+    wave: 3
+    status: ready
+    file: plans/frontend-ux-implementation/wave_03_route_workspaces/tickets/TICKET-304-trace-detail-workspace.md
+    depends_on: [TICKET-302]
+    blocked_by: []
+  TICKET-305:
+    title: Logs workspace
+    source_feux_id: FEUX-05
+    wave: 3
+    status: ready
+    file: plans/frontend-ux-implementation/wave_03_route_workspaces/tickets/TICKET-305-logs-workspace.md
+    depends_on: [TICKET-302]
+    blocked_by: []
+  TICKET-306:
+    title: Metrics explorer
+    source_feux_id: FEUX-06
+    wave: 3
+    status: ready
+    file: plans/frontend-ux-implementation/wave_03_route_workspaces/tickets/TICKET-306-metrics-explorer.md
+    depends_on: [TICKET-302]
+    blocked_by: []
+  TICKET-307:
+    title: Dashboards workspace
+    source_feux_id: FEUX-07
+    wave: 3
+    status: ready
+    file: plans/frontend-ux-implementation/wave_03_route_workspaces/tickets/TICKET-307-dashboards-workspace.md
+    depends_on: [TICKET-302]
+    blocked_by: []
+  TICKET-308:
+    title: AI Eval alignment
+    source_feux_id: FEUX-08
+    wave: 3
+    status: ready
+    file: plans/frontend-ux-implementation/wave_03_route_workspaces/tickets/TICKET-308-ai-eval-alignment.md
+    depends_on: [TICKET-302]
+    blocked_by: []
+  TICKET-309:
+    title: Cross-route QA and cleanup
+    source_feux_id: FEUX-09
+    wave: 4
+    status: ready
+    file: plans/frontend-ux-implementation/wave_04_cross_route_qa/tickets/TICKET-309-cross-route-qa.md
+    depends_on: [TICKET-303, TICKET-304, TICKET-305, TICKET-306, TICKET-307, TICKET-308, TICKET-310, TICKET-311]
+    blocked_by: []
+  TICKET-310:
+    title: AI Chat workspace alignment
+    source_feux_id: FEUX-10
+    wave: 3
+    status: ready
+    file: plans/frontend-ux-implementation/wave_03_route_workspaces/tickets/TICKET-310-ai-chat-workspace.md
+    depends_on: [TICKET-302]
+    blocked_by: []
+  TICKET-311:
+    title: Alerts workspace alignment
+    source_feux_id: FEUX-11
+    wave: 3
+    status: ready
+    file: plans/frontend-ux-implementation/wave_03_route_workspaces/tickets/TICKET-311-alerts-workspace.md
+    depends_on: [TICKET-302]
+    blocked_by: []

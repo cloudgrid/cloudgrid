@@ -1,0 +1,20 @@
+plan: standards_first_interop_migration
+ownership_boundaries:
+  collector-agent:
+    write_scope: [core/otlp-collector]
+    must_not_write: [apps, core/storage-read, core/storage-write, core/ai-eval-runner, website]
+  storage-read-agent:
+    write_scope: [core/storage-read]
+    must_not_write: [apps, core/otlp-collector, core/storage-write, core/ai-eval-runner]
+  runner-agent:
+    write_scope: [core/ai-eval-runner]
+    must_not_write: [apps, core/otlp-collector, core/storage-read, core/storage-write]
+  frontend-docs-agent:
+    write_scope: [apps/frontend, website/src/content/handbook]
+    must_not_write: [apps/backend, core, specs/03-contracts]
+  integration-agent:
+    write_scope: [apps/packages/integration-scenarios, tooling, plans/standards-first-interop-migration]
+    must_not_write: [apps/frontend, apps/backend, core/storage-read, core/ai-eval-runner, core/otlp-collector]
+  adaptive-form-frontend-agent:
+    write_scope: [apps/frontend, apps/packages/ui-contracts, plans/standards-first-interop-migration]
+    must_not_write: [apps/backend, core, website, specs/03-contracts]

@@ -1,9 +1,19 @@
-import type { TraceDetail } from "@cloudgrid/ui-contracts";
-import { AlertTriangle, ArrowLeft, Copy, Filter } from "lucide-react";
+import type { Dataset, TraceDetail } from "@cloudgrid/ui-contracts";
+import { useMutation } from "@tanstack/react-query";
+import { AlertTriangle, ArrowLeft, Copy, FileJson, Filter } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../../components/ui/dialog";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -20,6 +30,8 @@ import {
 import { formatDateTime, formatDuration } from "../../lib/format";
 import { t } from "../../lib/i18n";
 import { cn } from "../../lib/utils";
+import { useTelemetryClient } from "../../providers/telemetry-client-provider";
+import { compatibleTraceIntakeDatasets } from "../ai-eval/view-model-v2";
 import { SpanFiltersDialog, SpanInspector } from "./span-inspector";
 import {
   copyText,
@@ -66,10 +78,14 @@ function TraceWarnings({ detail }: { detail: TraceDetail }) {
 }
 
 export function TraceDetailView({
+  datasets = [],
   detail,
+  projectId = "",
   traceFilters,
 }: {
+  datasets?: Dataset[];
   detail: TraceDetail;
+  projectId?: string;
   traceFilters: TraceDetailFilters;
 }) {
   const initialViewMode = traceFilters.searchParams.get("view") === "flow" ? "flow" : "waterfall";
@@ -162,18 +178,26 @@ export function TraceDetailView({
             </Button>
           </div>
         </div>
-        <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-5 gap-y-2">
-          <Metric
-            label={t("traces.column.duration")}
-            value={formatDuration(detail.trace.durationMs)}
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-3">
+          <TraceDetailDatasetCandidateDialog
+            datasets={datasets}
+            detail={detail}
+            projectId={projectId}
+            selectedSpan={selectedSpan}
           />
-          <Metric
-            label={t("traces.column.started")}
-            value={formatDateTime(detail.trace.startedAt)}
-          />
-          <Metric label={t("traces.column.spans")} value={totalSpanCount} />
-          <Metric label={t("traces.column.errorSpans")} value={totalErrorSpanCount} />
-          <Metric label={t("traces.column.logs")} value={detail.relatedLogs.length} />
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-5 gap-y-2">
+            <Metric
+              label={t("traces.column.duration")}
+              value={formatDuration(detail.trace.durationMs)}
+            />
+            <Metric
+              label={t("traces.column.started")}
+              value={formatDateTime(detail.trace.startedAt)}
+            />
+            <Metric label={t("traces.column.spans")} value={totalSpanCount} />
+            <Metric label={t("traces.column.errorSpans")} value={totalErrorSpanCount} />
+            <Metric label={t("traces.column.logs")} value={detail.relatedLogs.length} />
+          </div>
         </div>
       </section>
 
@@ -269,5 +293,133 @@ export function TraceDetailView({
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>
+  );
+}
+
+function TraceDetailDatasetCandidateDialog({
+  datasets,
+  detail,
+  projectId,
+  selectedSpan,
+}: {
+  datasets: Dataset[];
+  detail: TraceDetail;
+  projectId: string;
+  selectedSpan: TraceDetail["spans"][number] | null | undefined;
+}) {
+  const compatible = compatibleTraceIntakeDatasets(datasets);
+  const traceRefs = [{ traceId: detail.trace.id }];
+  const spanRefs = selectedSpan ? [{ traceId: detail.trace.id, spanId: selectedSpan.id }] : [];
+  const telemetryClient = useTelemetryClient();
+  const mutation = useMutation({
+    mutationFn: () =>
+      telemetryClient.prepareDatasetCandidates({
+        projectId,
+        autoMatchDatasets: true,
+        traceSelection: {
+          mode: "selected",
+          traceRefs,
+          spanRefs,
+        },
+        previewLimit: 100,
+        curationStatus: "needs_expected",
+        contentTreatment: "realistic_anonymized",
+        idempotencyKey: `trace-detail-candidates-${detail.trace.id}-${Date.now()}`,
+      }),
+  });
+  const preparedCount = mutation.data?.items.length ?? 0;
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button disabled={!projectId} size="sm" type="button" variant="outline">
+          <FileJson data-icon="inline-start" />
+          {t("traces.prepareDatasetRows.action")}
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("traces.prepareDatasetRows.title")}</DialogTitle>
+          <DialogDescription>
+            {t(
+              selectedSpan
+                ? "traces.prepareDatasetRows.detailDescriptionWithSpan"
+                : "traces.prepareDatasetRows.detailDescription",
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+            <div className="font-medium">{t("traces.prepareDatasetRows.selectedEvidence")}</div>
+            <div className="mt-1 grid gap-1 text-muted-foreground">
+              <span className="font-mono">trace: {detail.trace.id}</span>
+              {selectedSpan ? (
+                <span className="font-mono">
+                  {t("traces.prepareDatasetRows.selectedSpan", { spanId: selectedSpan.id })}
+                </span>
+              ) : (
+                <span>{t("traces.prepareDatasetRows.noSelectedSpan")}</span>
+              )}
+            </div>
+          </div>
+          <div className="grid gap-2">
+            <div className="text-sm font-medium">
+              {t("traces.prepareDatasetRows.matchingDatasets")}
+            </div>
+            {compatible.map((dataset) => (
+              <div className="border px-3 py-2 text-sm" key={dataset.id}>
+                {dataset.name}
+              </div>
+            ))}
+            {compatible.length === 0 ? (
+              <div className="border border-dashed p-3 text-sm text-muted-foreground">
+                {t("traces.prepareDatasetRows.noCompatibleDatasets")}
+              </div>
+            ) : null}
+          </div>
+          <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+            {t(
+              spanRefs.length
+                ? "traces.prepareDatasetRows.detailPreviewNoteWithSpan"
+                : "traces.prepareDatasetRows.detailPreviewNote",
+              { traceCount: String(traceRefs.length) },
+            )}
+          </div>
+          {mutation.data ? (
+            <div className="rounded-md border px-3 py-2 text-sm">
+              <div className="font-medium">
+                {t(
+                  preparedCount === 1
+                    ? "traces.prepareDatasetRows.prepared.one"
+                    : "traces.prepareDatasetRows.prepared.other",
+                  { count: String(preparedCount) },
+                )}
+              </div>
+              <div className="mt-1 text-muted-foreground">
+                {t("traces.prepareDatasetRows.reviewPrepared")}
+              </div>
+            </div>
+          ) : null}
+          {mutation.error ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {mutation.error.message}
+            </div>
+          ) : null}
+        </div>
+        <DialogFooter>
+          <Button asChild type="button" variant="outline">
+            <Link to="/ai-eval?tab=datasets">{t("traces.prepareDatasetRows.openDatasets")}</Link>
+          </Button>
+          <Button
+            disabled={!projectId || compatible.length === 0 || mutation.isPending}
+            onClick={() => void mutation.mutateAsync()}
+            type="button"
+          >
+            <FileJson data-icon="inline-start" />
+            {t("actions.previewRows")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

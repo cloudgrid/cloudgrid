@@ -1,0 +1,71 @@
+plan: skill_optimization_e2e
+status: done
+updated: 2026-05-31
+resume_notes: TICKET-401 through TICKET-406 are complete. Skill optimization end-to-end implementation is ready for review.
+last_verified: 2026-05-31
+current_proof: Public start/detail, deterministic harness endpoints, storage detail, runner skill loop, frontend detail, deterministic E2E, and manual real-LLM example data passed ticket verification.
+tickets:
+  TICKET-401:
+    status: done
+    wave: wave_01_contract_adapter
+    depends_on: []
+    blocked_by: []
+    owner: public-contract-agent
+    evidence:
+      - bun test apps/backend/src/ai-eval.test.ts apps/backend/src/bridge.test.ts passed
+      - bun run --cwd apps/packages/public-api-client typecheck passed
+      - bun run --cwd apps/packages/ui-contracts typecheck passed
+      - bun run contracts:check passed
+      - git diff --check -- apps/backend apps/packages/public-api-client apps/packages/ui-contracts passed
+  TICKET-402:
+    status: done
+    wave: wave_01_contract_adapter
+    depends_on: []
+    blocked_by: []
+    owner: harness-fixture-agent
+    evidence:
+      - bun test apps/packages/cloudgrid-harness-adapter/src passed
+      - bun run --cwd apps/packages/cloudgrid-harness-adapter typecheck passed
+      - git diff --check -- apps/packages/cloudgrid-harness-adapter test_data/ai_eval/skill_optimization passed
+  TICKET-403:
+    status: done
+    wave: wave_02_services
+    depends_on: [TICKET-401]
+    blocked_by: []
+    owner: storage-agent
+    evidence:
+      - go test -tags surrealdb ./core/storage-write/... ./core/storage-read/... passed
+      - bun run contracts:check passed
+      - git diff --check -- core/storage-write core/storage-read passed
+  TICKET-404:
+    status: done
+    wave: wave_02_services
+    depends_on: [TICKET-401, TICKET-402, TICKET-403]
+    blocked_by: []
+    owner: runner-agent
+    evidence:
+      - go test -tags surrealdb ./core/ai-eval-runner/... passed
+      - bun run contracts:check passed
+      - git diff --check -- core/ai-eval-runner passed
+  TICKET-405:
+    status: done
+    wave: wave_03_frontend_integration
+    depends_on: [TICKET-404]
+    blocked_by: []
+    owner: frontend-agent
+    evidence:
+      - bun run --cwd apps/frontend typecheck passed
+      - bun run --cwd apps/frontend test -- ai-eval passed
+      - git diff --check -- apps/frontend passed
+  TICKET-406:
+    status: done
+    wave: wave_03_frontend_integration
+    depends_on: [TICKET-404]
+    blocked_by: []
+    owner: integration-agent
+    evidence:
+      - bun run --cwd apps/packages/integration-scenarios test passed
+      - bun run typecheck passed
+      - bun run contracts:check passed
+      - node /Users/sebastianwessel/.agents/skills/spec-architect/scripts/check_specs.mjs specs passed
+      - git diff --check -- apps/packages/integration-scenarios tooling test_data/ai_eval/skill_optimization website/src/content/handbook/evaluations passed

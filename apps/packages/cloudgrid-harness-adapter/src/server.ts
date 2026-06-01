@@ -13,6 +13,18 @@ import {
   sandboxLifecycleResponseSchema,
   scoreRequestSchema,
   scoreResponseSchema,
+  skillCapabilitiesResponseSchema,
+  type SkillEditProposal,
+  skillMergeRankRequestSchema,
+  skillMergeRankResponseSchema,
+  skillMetaMemoryRequestSchema,
+  skillMetaMemoryResponseSchema,
+  skillReflectRequestSchema,
+  skillReflectResponseSchema,
+  skillRuntimeDryRunRequestSchema,
+  skillRuntimeDryRunResponseSchema,
+  skillSlowUpdateRequestSchema,
+  skillSlowUpdateResponseSchema,
 } from "./contracts";
 
 export interface HarnessAdapterServer {
@@ -20,7 +32,12 @@ export interface HarnessAdapterServer {
   capturedRequests(): CapturedHarnessRequest[];
 }
 
-export type HarnessAdapterFixtureMode = "success" | "validation_failure" | "timeout" | "quick_shot";
+export type HarnessAdapterFixtureMode =
+  | "success"
+  | "validation_failure"
+  | "timeout"
+  | "quick_shot"
+  | "skill_text_edit";
 
 export interface CapturedHarnessRequest {
   method: string;
@@ -99,6 +116,10 @@ export function createHarnessAdapterServer(
         );
       }
 
+      if (request.method === "GET" && url.pathname === "/capabilities") {
+        return json(capabilitiesResponse());
+      }
+
       if (request.method === "POST" && url.pathname === "/v1/run") {
         return handleRun(request, otlp, {
           captureRequests: options.captureRequests === true,
@@ -128,9 +149,62 @@ export function createHarnessAdapterServer(
         return handleOptimize(request, otlp, fixtureMode);
       }
 
+      if (request.method === "POST" && url.pathname === "/skill-runtime/dry-run") {
+        return handleSkillRuntimeDryRun(request, fixtureMode);
+      }
+
+      if (request.method === "POST" && url.pathname === "/skill-optimization/reflect") {
+        return handleSkillReflect(request, fixtureMode);
+      }
+
+      if (request.method === "POST" && url.pathname === "/skill-optimization/merge-rank") {
+        return handleSkillMergeRank(request);
+      }
+
+      if (request.method === "POST" && url.pathname === "/skill-optimization/slow-update") {
+        return handleSkillSlowUpdate(request);
+      }
+
+      if (request.method === "POST" && url.pathname === "/skill-optimization/meta-memory") {
+        return handleSkillMetaMemory(request);
+      }
+
       return json(problem("ERR-005", "METHOD_NOT_ALLOWED", 405, "Route is not supported"), 405);
     },
   };
+}
+
+function capabilitiesResponse(): z.infer<typeof skillCapabilitiesResponseSchema> {
+  return skillCapabilitiesResponseSchema.parse({
+    adapterVersion,
+    supportedOptimizerKinds: ["bootstrap_fewshot", "critic_mutate_judge_pick", "skill_text_edit"],
+    runtimeModes: ["managed_harness", "external_business_context"],
+    evidenceFields: [
+      "actualOutput",
+      "metricResults",
+      "importantSteps",
+      "trajectorySummary",
+      "traceRefs",
+    ],
+    traceExport: {
+      supported: true,
+      requiredForSkillOptimization: true,
+    },
+    editablePartKinds: ["skill"],
+    packageFormats: ["agent_skill_package"],
+    scriptExecution: {
+      supported: false,
+      modes: [],
+    },
+    limits: {
+      maxPackageBytes: 262_144,
+      maxSkillBytes: 65_536,
+      maxEditProposals: 8,
+      maxConcurrentCalls: 4,
+    },
+    editOps: ["append", "insert_after", "replace", "delete"],
+    optimizerModelAliases: ["deterministic-skill-reflector"],
+  });
 }
 
 async function handleSandboxLifecycle(request: Request, path: string): Promise<Response> {
@@ -377,6 +451,231 @@ async function handleOptimize(
     status: 200,
     headers: ndjsonHeaders,
   });
+}
+
+async function handleSkillRuntimeDryRun(
+  request: Request,
+  fixtureMode: HarnessAdapterFixtureMode,
+): Promise<Response> {
+  const parsed = await parseJson(request, skillRuntimeDryRunRequestSchema);
+  if (!parsed.success) {
+    return parsed.response;
+  }
+
+  const body = parsed.data;
+  const hasEntrypoint = body.skillPackage.files.some(
+    (file) => file.path === body.skillPackage.entrypoint,
+  );
+  const failed = fixtureMode === "validation_failure" || !hasEntrypoint;
+  const checks = [
+    {
+      id: "skill.entrypoint",
+      status: hasEntrypoint ? "passed" : "failed",
+      message: hasEntrypoint ? "SKILL.md is present in the package inventory" : "SKILL.md is missing",
+    },
+    {
+      id: "skill.editable-globs",
+      status: body.skillPackage.editableFileGlobs.length > 0 ? "passed" : "failed",
+      message:
+        body.skillPackage.editableFileGlobs.length > 0
+          ? "Editable file globs are declared"
+          : "At least one editable file glob is required",
+    },
+    {
+      id: "runtime.trace-export",
+      status: "passed",
+      message: "Deterministic adapter preserves W3C trace context for skill runs",
+    },
+  ];
+
+  return json(
+    skillRuntimeDryRunResponseSchema.parse({
+      optimizationRunId: body.optimizationRunId,
+      ok: !failed,
+      capabilityDigest: stableHash(
+        "skill-capabilities",
+        body.skillPackage.manifestDigest,
+        body.runtimeMode,
+      ),
+      checks,
+      warnings:
+        body.runtimeMode === "external_business_context"
+          ? ["deterministic fixture does not execute customer-owned tools"]
+          : [],
+    }),
+    failed ? 422 : 200,
+  );
+}
+
+async function handleSkillReflect(
+  request: Request,
+  fixtureMode: HarnessAdapterFixtureMode,
+): Promise<Response> {
+  const parsed = await parseJson(request, skillReflectRequestSchema);
+  if (!parsed.success) {
+    return parsed.response;
+  }
+
+  const body = parsed.data;
+  const proposals =
+    fixtureMode === "timeout"
+      ? []
+      : deterministicSkillEditProposals(body.optimizationRunId, body.reflectionKind);
+
+  if (fixtureMode === "timeout") {
+    return json(
+      problem(
+        "ERR-AIE-011",
+        "EVAL_ADAPTER_TIMEOUT",
+        504,
+        "Deterministic fixture simulated a skill optimizer timeout",
+        true,
+      ),
+      504,
+    );
+  }
+
+  return json(
+    skillReflectResponseSchema.parse({
+      optimizationRunId: body.optimizationRunId,
+      stepId: body.stepId,
+      proposals,
+      summary: {
+        fixtureMode,
+        reflectionKind: body.reflectionKind,
+        evidenceItems: body.evidence.length,
+        proposalCount: proposals.length,
+      },
+    }),
+  );
+}
+
+async function handleSkillMergeRank(request: Request): Promise<Response> {
+  const parsed = await parseJson(request, skillMergeRankRequestSchema);
+  if (!parsed.success) {
+    return parsed.response;
+  }
+
+  const body = parsed.data;
+  const limit = body.editBudget ?? body.proposals.length;
+  const rankedProposals = [...body.proposals]
+    .sort((left, right) => {
+      if (left.protectedFileViolation !== right.protectedFileViolation) {
+        return left.protectedFileViolation ? 1 : -1;
+      }
+      return right.supportCount - left.supportCount;
+    })
+    .slice(0, limit);
+  const rankedIds = new Set(rankedProposals.map((proposal) => proposal.id));
+
+  return json(
+    skillMergeRankResponseSchema.parse({
+      optimizationRunId: body.optimizationRunId,
+      stepId: body.stepId,
+      rankedProposals,
+      droppedProposalIds: body.proposals
+        .filter((proposal) => !rankedIds.has(proposal.id))
+        .map((proposal) => proposal.id),
+      summary: {
+        inputProposalCount: body.proposals.length,
+        rankedProposalCount: rankedProposals.length,
+      },
+    }),
+  );
+}
+
+async function handleSkillSlowUpdate(request: Request): Promise<Response> {
+  const parsed = await parseJson(request, skillSlowUpdateRequestSchema);
+  if (!parsed.success) {
+    return parsed.response;
+  }
+
+  const body = parsed.data;
+  return json(
+    skillSlowUpdateResponseSchema.parse({
+      optimizationRunId: body.optimizationRunId,
+      guidance: [
+        `epoch ${body.epoch}: preserve successful behavior before adding new constraints`,
+        "prefer edits that cite training evidence and leave protected files unchanged",
+      ],
+      protectedGuidance: true,
+    }),
+  );
+}
+
+async function handleSkillMetaMemory(request: Request): Promise<Response> {
+  const parsed = await parseJson(request, skillMetaMemoryRequestSchema);
+  if (!parsed.success) {
+    return parsed.response;
+  }
+
+  const body = parsed.data;
+  return json(
+    skillMetaMemoryResponseSchema.parse({
+      optimizationRunId: body.optimizationRunId,
+      memory: [
+        ...body.currentMemory.slice(-4),
+        {
+          id: stableId("memory", body.optimizationRunId, String(body.currentMemory.length + 1)),
+          kind: "rejected_edit_pattern",
+          summary: "Do not edit protected runtime or dependency files.",
+          acceptedProposalIds: body.acceptedProposalIds,
+          rejectedProposalIds: body.rejectedProposalIds,
+        },
+      ],
+    }),
+  );
+}
+
+function deterministicSkillEditProposals(
+  optimizationRunId: string,
+  reflectionKind: "success" | "failure",
+): SkillEditProposal[] {
+  return [
+    {
+      id: stableId("skill-edit", optimizationRunId, "protected-runtime"),
+      source: reflectionKind === "success" ? "success_reflection" : "failure_reflection",
+      rationale: "Invalid fixture proposal that attempts to change a protected runtime script.",
+      supportCount: 1,
+      evidenceRefs: ["item-run:train-001"],
+      edits: [
+        {
+          op: "replace",
+          target: "skill_file",
+          filePath: "scripts/run.sh",
+          content: "#!/usr/bin/env bash\necho changed\n",
+        },
+      ],
+      expectedValidity: "invalid_protected_file",
+      protectedFileViolation: true,
+    },
+    {
+      id: stableId("skill-edit", optimizationRunId, "skill-and-reference"),
+      source: reflectionKind === "success" ? "success_reflection" : "failure_reflection",
+      rationale:
+        "Clarify escalation criteria in SKILL.md and add a reusable reference example for ambiguous requests.",
+      supportCount: 3,
+      evidenceRefs: ["item-run:train-001", "item-run:train-002", "trace:deterministic-skill-001"],
+      edits: [
+        {
+          op: "append",
+          target: "skill_file",
+          filePath: "SKILL.md",
+          content:
+            "\n## Escalation Checks\nAsk for the missing account identifier when the request cannot be resolved from the provided context.\n",
+        },
+        {
+          op: "append",
+          target: "skill_file",
+          filePath: "references/escalation.md",
+          content:
+            "\n- If the customer mentions billing impact without an account id, request the account id before proposing a fix.\n",
+        },
+      ],
+      expectedValidity: "valid",
+      protectedFileViolation: false,
+    },
+  ];
 }
 
 async function parseJson<T extends z.ZodType>(

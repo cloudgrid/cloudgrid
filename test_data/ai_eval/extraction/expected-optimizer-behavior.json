@@ -1,0 +1,55 @@
+{
+  "family": "extraction",
+  "primaryMetricId": "extraction.field_match_rate",
+  "minimumUsefulSplits": {
+    "training": 10,
+    "validation": 5,
+    "test": 3
+  },
+  "expectedDiagnosis": {
+    "weakFieldPaths": [
+      "$.orderDate",
+      "$.items",
+      "$.discountCode",
+      "$.shippingCountry"
+    ],
+    "frequentProblemTypes": [
+      "invalid_json",
+      "missing_field",
+      "type_mismatch",
+      "extra_field"
+    ],
+    "knownEdgeCases": [
+      "distractor_amount",
+      "word_quantities",
+      "country_normalization",
+      "omit_empty_optional",
+      "zero_total"
+    ]
+  },
+  "expectedProposalSources": [
+    "schema_format",
+    "weak_field",
+    "fewshot_bootstrap",
+    "success_preservation"
+  ],
+  "expectedPromptChanges": [
+    "Require exactly one JSON object with no Markdown or explanatory text.",
+    "Add a compact schema summary with required and optional fields.",
+    "Require ISO date format for orderDate.",
+    "Normalize country names and UK to ISO alpha-2 country codes.",
+    "Normalize word quantities to integers and preserve ordered item arrays.",
+    "Omit discountCode when no real code is present."
+  ],
+  "expectedExampleChanges": [
+    "Add one example with a distractor historical amount.",
+    "Add one example with word quantities.",
+    "Add one example where discountCode is omitted because the text says none.",
+    "Keep one simple successful example to preserve baseline behavior."
+  ],
+  "mustNotChange": [
+    "dataset.settings.expectedJsonSchema",
+    "dataset.items.expected",
+    "field comparator settings"
+  ]
+}

@@ -148,6 +148,9 @@ func runWithRuntime(runtime storageReadRuntime) int {
 			_ = traceLogExporter.Shutdown(shutdownCtx)
 		}()
 	}
+	if cfg.SelfObservability.DBAdapterTracingEnabled && cfg.SelfObservability.Enabled && cfg.SelfObservability.TracesEnabled && traceLogExporter != nil && adapter.ConfigureDBAdapterTracing != nil {
+		adapter.ConfigureDBAdapterTracing(traceLogExporter)
+	}
 
 	nc, err := runtime.connectNATS(cfg.NATSURL)
 	if err != nil {
@@ -300,10 +303,11 @@ func storageReadSelfObservabilityTraceLogExporter(cfg storage.Config, logger *sl
 }
 
 type telemetryReadAdapter struct {
-	Name           string
-	Store          ports.TelemetryReadStore
-	CheckReadiness func(context.Context) error
-	Close          func(context.Context) error
+	Name                      string
+	Store                     ports.TelemetryReadStore
+	ConfigureDBAdapterTracing func(storage.TraceLogRecorder)
+	CheckReadiness            func(context.Context) error
+	Close                     func(context.Context) error
 }
 
 func shutdownSignal() <-chan os.Signal {

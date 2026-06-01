@@ -100,6 +100,8 @@ import type {
   MetricNameSearchResult,
   MetricSeriesInput,
   MetricSeriesResult,
+  OptimizationRun,
+  OptimizationRunQueryData,
   OptimizationRunSearchInput,
   OptimizationRunsQueryData,
   Organization,
@@ -160,6 +162,8 @@ import type {
   UpdateCompanyAiProviderSettingsMutationData,
   UpdateDatasetItemsInput,
   UpdateDatasetSettingsInput,
+  UpdateEvaluationDefinitionInput,
+  UpdateEvaluationDefinitionMutationData,
   UpdateOrganizationMemberInput,
   UpdateOrganizationMemberMutationData,
   UpdateProjectAiProviderSettingsInput,
@@ -272,6 +276,7 @@ import {
   logSearchOperation,
   metricNamesOperation,
   metricSeriesOperation,
+  optimizationRunOperation,
   optimizationRunsOperation,
   pauseEvaluationRunOperation,
   prepareDatasetCandidatesOperation,
@@ -287,6 +292,7 @@ import {
   traceSearchOperation,
   updateDatasetItemsOperation,
   updateDatasetSettingsOperation,
+  updateEvaluationDefinitionOperation,
 } from "./observability";
 
 export interface TelemetryGraphQLClient {
@@ -315,6 +321,9 @@ export interface TelemetryGraphQLClient {
   createEvaluationDefinition: (
     input: CreateEvaluationDefinitionInput,
   ) => Promise<EvaluationDefinition>;
+  updateEvaluationDefinition: (
+    input: UpdateEvaluationDefinitionInput,
+  ) => Promise<EvaluationDefinition>;
   searchEvaluationRuns: (
     input: EvaluationRunSearchInput,
   ) => Promise<EvaluationRunsQueryData["evaluationRuns"]>;
@@ -338,6 +347,7 @@ export interface TelemetryGraphQLClient {
   searchOptimizationRuns: (
     input: OptimizationRunSearchInput,
   ) => Promise<OptimizationRunsQueryData["optimizationRuns"]>;
+  getOptimizationRun: (id: string) => Promise<OptimizationRun | null>;
   promoteTargetSnapshot: (
     input: PromoteTargetSnapshotInput,
   ) => Promise<PromoteTargetSnapshotMutationData["promoteTargetSnapshot"]>;
@@ -654,6 +664,15 @@ export function createTelemetryGraphQLClient(endpoint = "/graphql"): TelemetryGr
       );
       return data.createEvaluationDefinition;
     },
+    async updateEvaluationDefinition(input) {
+      const data = await requestGraphQL<UpdateEvaluationDefinitionMutationData>(
+        endpoint,
+        "UpdateEvaluationDefinition",
+        updateEvaluationDefinitionOperation,
+        { input },
+      );
+      return data.updateEvaluationDefinition;
+    },
     async searchEvaluationRuns(input) {
       const data = await requestGraphQL<EvaluationRunsQueryData>(
         endpoint,
@@ -752,6 +771,15 @@ export function createTelemetryGraphQLClient(endpoint = "/graphql"): TelemetryGr
         { input },
       );
       return data.optimizationRuns;
+    },
+    async getOptimizationRun(id) {
+      const data = await requestGraphQL<OptimizationRunQueryData>(
+        endpoint,
+        "OptimizationRun",
+        optimizationRunOperation,
+        { id },
+      );
+      return data.optimizationRun ?? null;
     },
     async promoteTargetSnapshot(input) {
       const data = await requestGraphQL<PromoteTargetSnapshotMutationData>(

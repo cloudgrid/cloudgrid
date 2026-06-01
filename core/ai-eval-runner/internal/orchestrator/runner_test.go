@@ -5,6 +5,7 @@ import (
 	"errors"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -365,6 +366,121 @@ func TestStartEvaluationRunExternalAdapterFailureCreatesProblemMetric(t *testing
 	}
 }
 
+func TestStartEvaluationRunExternalAdapterLinksTraceEvidenceAndIgnoresReturnedSteps(t *testing.T) {
+	reader := &fakeReader{
+		datasetVersion: ports.DatasetVersion{ID: "version-1", DatasetID: "dataset-1", ItemRevisionIDs: []string{"revision-1"}},
+		itemRevisions: []ports.DatasetItemRevision{{
+			ID:             "revision-1",
+			DatasetItemID:  "item-1",
+			DatasetID:      "dataset-1",
+			Input:          map[string]any{"q": "run"},
+			Expected:       map[string]any{"a": "run"},
+			CurationStatus: "ready",
+		}},
+		targetSnapshot: ports.TargetSnapshot{ID: "snapshot-1", TargetRef: map[string]any{"kind": "external_adapter", "adapterUrl": "https://adapter.example/eval-runs"}, Digest: "target-digest"},
+		traceEvidence: ports.TraceEvidence{
+			TraceID:           "trace-terminal",
+			RootSpanID:        "root-terminal",
+			TrajectorySummary: "storage-read derived trajectory",
+			ImportantSteps:    []map[string]any{{"kind": "model_call", "name": "storage-derived"}},
+			EvidenceRefs:      []map[string]any{{"kind": "trace", "id": "trace-terminal", "traceId": "trace-terminal", "spanId": "root-terminal"}},
+		},
+		traceEvidenceAfterCalls: 2,
+	}
+	writer := &fakeWriter{}
+	adapter := &fakeExternalAdapter{result: ports.ExternalAdapterRunResult{
+		ActualOutput:     map[string]any{"a": "run"},
+		ActualOutputType: ports.EvaluationActualOutputTypeJSON,
+		TraceID:          "trace-terminal",
+		RootSpanID:       "root-terminal",
+		Summary:          "adapter returned summary",
+	}}
+	runner := NewRunner(RunnerConfig{
+		StorageReader:     reader,
+		StorageWriter:     writer,
+		HarnessAdapter:    &fakeHarness{},
+		ExternalAdapter:   adapter,
+		ProgressPublisher: &fakePublisher{},
+		Clock:             fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)),
+		IDGenerator:       sequenceIDs("eval-run-1", "item-run-1", "metric-exact-1", "metric-latency-1"),
+	})
+
+	_, err := runner.StartEvaluationRun(context.Background(), StartEvaluationRunRequest{
+		RequestID:        "request-1",
+		ProjectID:        "project-1",
+		DatasetVersionID: "version-1",
+		TargetSnapshotID: "snapshot-1",
+		IdempotencyKey:   "start-1",
+		RunPolicy:        map[string]any{"traceLinkWaitMs": 30.0},
+		TraceContext:     map[string]string{"traceparent": "00-test", "tracestate": "cg=1"},
+	})
+
+	if err != nil {
+		t.Fatalf("StartEvaluationRun returned error: %v", err)
+	}
+	itemRun := writer.evaluationResults[0].ItemRuns[0]
+	if itemRun.TraceID != "trace-terminal" || itemRun.RootSpanID != "root-terminal" {
+		t.Fatalf("trace refs = %q/%q", itemRun.TraceID, itemRun.RootSpanID)
+	}
+	if itemRun.TrajectorySummary != "storage-read derived trajectory" || itemRun.ImportantSteps[0]["name"] != "storage-derived" {
+		t.Fatalf("item run evidence = %#v", itemRun)
+	}
+	if len(reader.traceEvidenceRequests) != 2 {
+		t.Fatalf("trace evidence attempts = %d, want delayed retry", len(reader.traceEvidenceRequests))
+	}
+	if len(adapter.requests) != 1 || adapter.requests[0].TraceContext["traceparent"] != "00-test" || adapter.requests[0].TraceContext["tracestate"] != "cg=1" {
+		t.Fatalf("adapter request trace context = %#v", adapter.requests)
+	}
+}
+
+func TestStartEvaluationRunExternalAdapterOutputRefAndMissingTraceEvidence(t *testing.T) {
+	reader := &fakeReader{
+		datasetVersion: ports.DatasetVersion{ID: "version-1", DatasetID: "dataset-1", ItemRevisionIDs: []string{"revision-1"}},
+		itemRevisions: []ports.DatasetItemRevision{{
+			ID:             "revision-1",
+			DatasetItemID:  "item-1",
+			DatasetID:      "dataset-1",
+			Input:          map[string]any{"q": "run"},
+			Expected:       map[string]any{"a": "run"},
+			CurationStatus: "ready",
+		}},
+		targetSnapshot: ports.TargetSnapshot{ID: "snapshot-1", TargetRef: map[string]any{"kind": "external_adapter", "adapterUrl": "https://adapter.example/eval-runs"}, Digest: "target-digest"},
+	}
+	writer := &fakeWriter{}
+	runner := NewRunner(RunnerConfig{
+		StorageReader:     reader,
+		StorageWriter:     writer,
+		HarnessAdapter:    &fakeHarness{},
+		ExternalAdapter:   &fakeExternalAdapter{result: ports.ExternalAdapterRunResult{ActualOutputRef: "artifact://outputs/1", TraceID: "trace-terminal", RootSpanID: "root-terminal"}},
+		ProgressPublisher: &fakePublisher{},
+		Clock:             fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)),
+		IDGenerator:       sequenceIDs("eval-run-1", "item-run-1", "metric-exact-1", "metric-latency-1"),
+	})
+
+	_, err := runner.StartEvaluationRun(context.Background(), StartEvaluationRunRequest{
+		RequestID:        "request-1",
+		ProjectID:        "project-1",
+		DatasetVersionID: "version-1",
+		TargetSnapshotID: "snapshot-1",
+		IdempotencyKey:   "start-1",
+		RunPolicy:        map[string]any{"requiresTrajectoryEvidence": true},
+	})
+
+	if err != nil {
+		t.Fatalf("StartEvaluationRun returned error: %v", err)
+	}
+	itemRun := writer.evaluationResults[0].ItemRuns[0]
+	if itemRun.ActualOutputRef != "artifact://outputs/1" || itemRun.Status != ports.EvaluationItemRunStatusCompleted {
+		t.Fatalf("item run output-ref/status = %#v", itemRun)
+	}
+	if !hasProblemCode(itemRun.Problems, ports.EvaluationProblemTraceEvidenceMissing) {
+		t.Fatalf("item run problems = %#v, want missing trace evidence", itemRun.Problems)
+	}
+	if writer.evaluationResults[0].MetricResults[0].Problem != nil {
+		t.Fatalf("trace evidence problem should not block terminal-output scoring, got %#v", writer.evaluationResults[0].MetricResults[0].Problem)
+	}
+}
+
 func TestEvaluationRunControlPersistsPauseResumeAndRejectsTerminalResume(t *testing.T) {
 	writer := &fakeWriter{}
 	publisher := &fakePublisher{}
@@ -656,6 +772,100 @@ func TestStartOptimizationDelegatesToHarnessAdapterAndPublishesProgress(t *testi
 	}
 	if last := publisher.progress[len(publisher.progress)-1]; last.Type != ports.ExperimentProgressFinished {
 		t.Fatalf("expected completed progress, got %#v", last)
+	}
+}
+
+func TestStartSkillTextEditOptimizationRejectsMissingSkillPackageBeforeHarness(t *testing.T) {
+	reader := &fakeReader{
+		datasetVersion: ports.DatasetVersion{ID: "version-1", DatasetID: "dataset-1", Digest: "digest-1", ItemRevisionIDs: []string{"train-1", "validation-1"}},
+		itemRevisions: []ports.DatasetItemRevision{
+			{ID: "train-1", DatasetItemID: "item-train", DatasetID: "dataset-1", Input: map[string]any{"q": "train"}, Expected: map[string]any{"answer": "ok"}, Split: "training", CurationStatus: "ready"},
+			{ID: "validation-1", DatasetItemID: "item-validation", DatasetID: "dataset-1", Input: map[string]any{"q": "validation"}, Expected: map[string]any{"answer": "ok"}, Split: "validation", CurationStatus: "ready"},
+		},
+		targetSnapshot: ports.TargetSnapshot{ID: "snapshot-1", Kind: "prompt", TargetRef: map[string]any{"kind": "prompt"}, Digest: "target-digest"},
+	}
+	harness := &fakeHarness{}
+	runner := NewRunner(RunnerConfig{StorageReader: reader, StorageWriter: &fakeWriter{}, HarnessAdapter: harness, ProgressPublisher: &fakePublisher{}, Clock: fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)), IDGenerator: sequenceIDs("optimization-run-1")})
+
+	_, err := runner.StartOptimization(context.Background(), skillOptimizationRequest())
+
+	if err == nil || !strings.Contains(err.Error(), "exactly one skill package") {
+		t.Fatalf("StartOptimization error = %v, want missing skill package preflight", err)
+	}
+	if harness.skillCapabilityCalls != 0 || len(harness.skillDryRunRequests) != 0 {
+		t.Fatalf("harness skill calls happened before preflight: capabilities=%d dry=%d", harness.skillCapabilityCalls, len(harness.skillDryRunRequests))
+	}
+}
+
+func TestStartSkillTextEditOptimizationRejectsInvalidEditAndAcceptsValidationBackedCandidate(t *testing.T) {
+	reader := skillOptimizationReader()
+	writer := &fakeWriter{}
+	harness := &fakeHarness{
+		runResult:          ports.HarnessRunResult{HarnessRunID: "baseline-run", Output: map[string]any{"answer": "wrong"}, LatencyMs: 1},
+		candidateRunResult: ports.HarnessRunResult{HarnessRunID: "candidate-run", Output: map[string]any{"answer": "ok"}, LatencyMs: 1},
+	}
+	runner := NewRunner(RunnerConfig{StorageReader: reader, StorageWriter: writer, HarnessAdapter: harness, ProgressPublisher: &fakePublisher{}, Clock: fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)), IDGenerator: sequenceIDs("optimization-run-1", "training-run-1", "training-item-run-1", "training-metric-1", "training-latency-1", "step-rejected-1", "step-accepted-1", "validation-run-1", "validation-item-run-1", "validation-metric-1", "validation-latency-1")})
+
+	result, err := runner.StartOptimization(context.Background(), skillOptimizationRequest())
+
+	if err != nil {
+		t.Fatalf("StartOptimization returned error: %v", err)
+	}
+	if len(writer.optimizationSteps) != 2 {
+		t.Fatalf("optimization steps = %d, want rejected and accepted", len(writer.optimizationSteps))
+	}
+	if writer.optimizationSteps[0].Payload["status"] != "rejected" || writer.optimizationSteps[0].Payload["gateDecision"] != "failed_preflight" {
+		t.Fatalf("first step = %#v, want invalid edit rejection", writer.optimizationSteps[0].Payload)
+	}
+	if writer.optimizationSteps[1].Payload["status"] != "accepted" || writer.optimizationSteps[1].Payload["gateDecision"] != "accepted_new_best" {
+		t.Fatalf("second step = %#v, want accepted candidate", writer.optimizationSteps[1].Payload)
+	}
+	if len(writer.targetSnapshots) != 1 {
+		t.Fatalf("candidate target snapshots = %d, want 1", len(writer.targetSnapshots))
+	}
+	if len(writer.optimizationMemory) != 1 {
+		t.Fatalf("optimization memory persists = %d, want 1", len(writer.optimizationMemory))
+	}
+	if result.Summary["exportedSkillContentRef"] == "" {
+		t.Fatalf("summary missing exported skill ref: %#v", result.Summary)
+	}
+}
+
+func TestStartSkillTextEditOptimizationRejectsTestSplitReflection(t *testing.T) {
+	runner := NewRunner(RunnerConfig{StorageReader: skillOptimizationReader(), StorageWriter: &fakeWriter{}, HarnessAdapter: &fakeHarness{}, ProgressPublisher: &fakePublisher{}, Clock: fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)), IDGenerator: sequenceIDs("optimization-run-1")})
+	request := skillOptimizationRequest()
+	request.Config["trainingSplitSelector"] = map[string]any{"splits": []any{"test"}}
+
+	_, err := runner.StartOptimization(context.Background(), request)
+
+	if err == nil || !strings.Contains(err.Error(), "test split cannot be used") {
+		t.Fatalf("StartOptimization error = %v, want test split rejection", err)
+	}
+}
+
+func TestStartSkillTextEditOptimizationExcludesTestRowsFromReflectionEvidence(t *testing.T) {
+	reader := skillOptimizationReader()
+	writer := &fakeWriter{}
+	harness := &fakeHarness{
+		runResult:          ports.HarnessRunResult{HarnessRunID: "baseline-run", Output: map[string]any{"answer": "wrong"}, LatencyMs: 1},
+		candidateRunResult: ports.HarnessRunResult{HarnessRunID: "candidate-run", Output: map[string]any{"answer": "ok"}, LatencyMs: 1},
+	}
+	runner := NewRunner(RunnerConfig{StorageReader: reader, StorageWriter: writer, HarnessAdapter: harness, ProgressPublisher: &fakePublisher{}, Clock: fixedClock(time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC)), IDGenerator: sequenceIDs("optimization-run-1", "training-run-1", "training-item-run-1", "training-metric-1", "training-latency-1", "step-rejected-1", "step-accepted-1", "validation-run-1", "validation-item-run-1", "validation-metric-1", "validation-latency-1")})
+
+	_, err := runner.StartOptimization(context.Background(), skillOptimizationRequest())
+
+	if err != nil {
+		t.Fatalf("StartOptimization returned error: %v", err)
+	}
+	if len(harness.skillReflectRequests) == 0 {
+		t.Fatalf("expected reflection requests")
+	}
+	for _, request := range harness.skillReflectRequests {
+		for _, evidence := range request.Evidence {
+			if evidence["split"] == "test" {
+				t.Fatalf("reflection evidence includes test split: %#v", request.Evidence)
+			}
+		}
 	}
 }
 
@@ -1051,6 +1261,66 @@ func TestStartOfflineExperimentReturnsErrorWhenFinalProgressCannotPersist(t *tes
 	}
 }
 
+func skillOptimizationRequest() StartOptimizationRequest {
+	return StartOptimizationRequest{
+		RequestID:        "request-1",
+		ProjectID:        "project-1",
+		DatasetVersionID: "version-1",
+		TargetSnapshotID: "snapshot-1",
+		IdempotencyKey:   "skill-optimization-1",
+		Config: map[string]any{
+			"objective":                        map[string]any{"primaryMetricId": "extraction.exact_json_match"},
+			"searchPolicy":                     map[string]any{"optimizerKind": "skill_text_edit", "skillPolicy": map[string]any{"editableFileGlobs": []any{"SKILL.md", "references/*.md"}, "protectedFileGlobs": []any{"scripts/**"}, "allowedEditOps": []any{"append", "insert_after", "replace", "delete"}, "maxPackageBytes": float64(262144), "maxSkillBytes": float64(65536), "editBudget": float64(4), "exportBestSkill": true}},
+			"trainingEvaluationDefinitionId":   "evaluation-training",
+			"trainingSplitSelector":            map[string]any{"splits": []any{"training"}},
+			"validationEvaluationDefinitionId": "evaluation-validation",
+			"validationSplitSelector":          map[string]any{"splits": []any{"validation"}},
+		},
+		RunPolicy:    map[string]any{"requiresTrajectoryEvidence": false},
+		TraceContext: map[string]string{"traceparent": "00-test"},
+	}
+}
+
+func skillOptimizationReader() *fakeReader {
+	return &fakeReader{
+		datasetVersion: ports.DatasetVersion{ID: "version-1", DatasetID: "dataset-1", Digest: "dataset-digest", ItemRevisionIDs: []string{"train-1", "validation-1", "test-1"}},
+		itemRevisions: []ports.DatasetItemRevision{
+			{ID: "train-1", DatasetItemID: "item-train", DatasetID: "dataset-1", Input: map[string]any{"q": "train"}, Expected: map[string]any{"answer": "ok"}, Split: "training", CurationStatus: "ready"},
+			{ID: "validation-1", DatasetItemID: "item-validation", DatasetID: "dataset-1", Input: map[string]any{"q": "validation"}, Expected: map[string]any{"answer": "ok"}, Split: "validation", CurationStatus: "ready"},
+			{ID: "test-1", DatasetItemID: "item-test", DatasetID: "dataset-1", Input: map[string]any{"q": "test"}, Expected: map[string]any{"answer": "ok"}, Split: "test", CurationStatus: "ready"},
+		},
+		targetSnapshot: skillTargetSnapshot(),
+	}
+}
+
+func skillTargetSnapshot() ports.TargetSnapshot {
+	return ports.TargetSnapshot{
+		ID:        "snapshot-1",
+		Kind:      "skill",
+		Name:      "support skill",
+		Version:   1,
+		Digest:    "baseline-target-digest",
+		TargetRef: map[string]any{"kind": "managed_harness", "modelAlias": "deterministic"},
+		Parts: []map[string]any{{
+			"partKind": "skill",
+			"kind":     "skill",
+			"digest":   "sha256:deterministic-skill-manifest",
+			"manifest": map[string]any{
+				"packageRef":         "skill-package-deterministic-support",
+				"entrypoint":         "SKILL.md",
+				"manifestDigest":     "sha256:deterministic-skill-manifest",
+				"editableFileGlobs":  []any{"SKILL.md", "references/*.md"},
+				"protectedFileGlobs": []any{"scripts/**"},
+				"files": []any{
+					map[string]any{"path": "SKILL.md", "role": "entrypoint", "digest": "sha256:skill-md", "byteSize": float64(48), "content": "Handle support requests.\n", "editable": true},
+					map[string]any{"path": "references/escalation.md", "role": "reference", "digest": "sha256:ref", "byteSize": float64(28), "content": "Escalate billing issues.\n", "editable": true},
+					map[string]any{"path": "scripts/run.sh", "role": "script", "digest": "sha256:script", "byteSize": float64(18), "content": "echo run\n", "editable": false},
+				},
+			},
+		}},
+	}
+}
+
 type datasetSearch struct {
 	datasetID string
 	version   int
@@ -1075,6 +1345,10 @@ type fakeReader struct {
 	scorers                 []ports.Scorer
 	manifest                ports.ExperimentManifest
 	onlineMatches           ports.OnlinePolicyMatches
+	traceEvidence           ports.TraceEvidence
+	traceEvidenceErr        error
+	traceEvidenceAfterCalls int
+	traceEvidenceRequests   []ports.TraceEvidenceRequest
 	experimentSearches      []string
 	datasetSearches         []datasetSearch
 	datasetVersionGets      []string
@@ -1134,6 +1408,17 @@ func (r *fakeReader) GetTargetSnapshot(ctx context.Context, targetSnapshotID str
 	return ports.TargetSnapshot{ID: targetSnapshotID, TargetRef: map[string]any{"kind": "prompt"}, Digest: "target-digest"}, nil
 }
 
+func (r *fakeReader) GetTraceEvidence(ctx context.Context, request ports.TraceEvidenceRequest) (ports.TraceEvidence, error) {
+	r.traceEvidenceRequests = append(r.traceEvidenceRequests, request)
+	if r.traceEvidenceErr != nil {
+		return ports.TraceEvidence{}, r.traceEvidenceErr
+	}
+	if r.traceEvidenceAfterCalls > 0 && len(r.traceEvidenceRequests) < r.traceEvidenceAfterCalls {
+		return ports.TraceEvidence{}, nil
+	}
+	return r.traceEvidence, nil
+}
+
 func (r *fakeReader) ResolveManifest(ctx context.Context, request ports.ManifestResolveRequest) (ports.ExperimentManifest, error) {
 	r.manifestResolveRequests = append(r.manifestResolveRequests, manifestResolveRequest{experimentRunID: request.ExperimentRunID, experimentID: request.ExperimentID})
 	return r.manifest, nil
@@ -1163,12 +1448,15 @@ type persistedResult struct {
 }
 
 type fakeWriter struct {
-	experimentRuns    []ports.ExperimentRun
-	persistedRuns     []persistedRun
-	persistedResults  []persistedResult
-	evaluationResults []ports.EvaluationResultsPersist
-	progressUpdates   []ports.ExperimentProgress
-	progressErrByType map[string]error
+	experimentRuns     []ports.ExperimentRun
+	persistedRuns      []persistedRun
+	persistedResults   []persistedResult
+	evaluationResults  []ports.EvaluationResultsPersist
+	targetSnapshots    []ports.TargetSnapshotCreateRequest
+	optimizationSteps  []ports.OptimizationStepPersistRequest
+	optimizationMemory []ports.OptimizationMemoryPersistRequest
+	progressUpdates    []ports.ExperimentProgress
+	progressErrByType  map[string]error
 }
 
 func (w *fakeWriter) PersistExperimentRun(ctx context.Context, run ports.ExperimentRun) error {
@@ -1191,6 +1479,25 @@ func (w *fakeWriter) PersistEvaluationResults(ctx context.Context, result ports.
 	return nil
 }
 
+func (w *fakeWriter) CreateTargetSnapshot(ctx context.Context, request ports.TargetSnapshotCreateRequest) (ports.TargetSnapshot, error) {
+	w.targetSnapshots = append(w.targetSnapshots, request)
+	digest, _ := request.Input["digest"].(string)
+	if digest == "" {
+		digest = "candidate-digest"
+	}
+	return ports.TargetSnapshot{ID: "candidate-snapshot-" + request.IdempotencyKey, TargetRef: request.TargetRef, Kind: "skill", Digest: digest, Parts: mapArrayFromValue(request.Input["parts"]), Metadata: objectMap(request.Input, "metadata")}, nil
+}
+
+func (w *fakeWriter) PersistOptimizationStep(ctx context.Context, request ports.OptimizationStepPersistRequest) error {
+	w.optimizationSteps = append(w.optimizationSteps, request)
+	return nil
+}
+
+func (w *fakeWriter) PersistOptimizationMemory(ctx context.Context, request ports.OptimizationMemoryPersistRequest) error {
+	w.optimizationMemory = append(w.optimizationMemory, request)
+	return nil
+}
+
 func (w *fakeWriter) UpdateExperimentProgress(ctx context.Context, progress ports.ExperimentProgress) error {
 	if w.progressErrByType != nil && w.progressErrByType[progress.Type] != nil {
 		return w.progressErrByType[progress.Type]
@@ -1200,19 +1507,30 @@ func (w *fakeWriter) UpdateExperimentProgress(ctx context.Context, progress port
 }
 
 type fakeHarness struct {
-	runner                 *Runner
-	runResult              ports.HarnessRunResult
-	scoreResult            ports.HarnessScoreResult
-	optimizeResult         ports.HarnessOptimizeResult
-	afterRun               func(*Runner)
-	runRequests            []ports.HarnessRunRequest
-	scoreRequests          []ports.HarnessScoreRequest
-	optimizeRequests       []ports.HarnessOptimizeRequest
-	startSandboxRequests   []ports.SandboxLifecycleRequest
-	pauseSandboxRequests   []ports.SandboxLifecycleRequest
-	resumeSandboxRequests  []ports.SandboxLifecycleRequest
-	abortSandboxRequests   []ports.SandboxLifecycleRequest
-	cleanupSandboxRequests []ports.SandboxLifecycleRequest
+	runner                  *Runner
+	runResult               ports.HarnessRunResult
+	candidateRunResult      ports.HarnessRunResult
+	runOutputByDigest       map[string]map[string]any
+	scoreResult             ports.HarnessScoreResult
+	optimizeResult          ports.HarnessOptimizeResult
+	skillCapabilities       ports.SkillCapabilitiesResult
+	skillDryRun             ports.SkillRuntimeDryRunResult
+	skillReflectResults     []ports.SkillReflectResult
+	afterRun                func(*Runner)
+	runRequests             []ports.HarnessRunRequest
+	scoreRequests           []ports.HarnessScoreRequest
+	optimizeRequests        []ports.HarnessOptimizeRequest
+	skillCapabilityCalls    int
+	skillDryRunRequests     []ports.SkillRuntimeDryRunRequest
+	skillReflectRequests    []ports.SkillReflectRequest
+	skillMergeRankRequests  []ports.SkillMergeRankRequest
+	skillSlowUpdateRequests []ports.SkillSlowUpdateRequest
+	skillMetaMemoryRequests []ports.SkillMetaMemoryRequest
+	startSandboxRequests    []ports.SandboxLifecycleRequest
+	pauseSandboxRequests    []ports.SandboxLifecycleRequest
+	resumeSandboxRequests   []ports.SandboxLifecycleRequest
+	abortSandboxRequests    []ports.SandboxLifecycleRequest
+	cleanupSandboxRequests  []ports.SandboxLifecycleRequest
 }
 
 func (h *fakeHarness) StartSandbox(ctx context.Context, request ports.SandboxLifecycleRequest) (ports.SandboxLifecycleResult, error) {
@@ -1245,6 +1563,12 @@ func (h *fakeHarness) Run(ctx context.Context, request ports.HarnessRunRequest) 
 	if h.afterRun != nil {
 		h.afterRun(h.runner)
 	}
+	if output, ok := h.runOutputByDigest[request.ManifestDigest]; ok {
+		return ports.HarnessRunResult{HarnessRunID: "harness-run-" + request.DatasetItemID, Output: output, LatencyMs: h.runResult.LatencyMs}, nil
+	}
+	if _, ok := request.SolverRef["skillPackageDigest"]; ok && h.candidateRunResult.HarnessRunID != "" {
+		return h.candidateRunResult, nil
+	}
 	return h.runResult, nil
 }
 
@@ -1256,6 +1580,48 @@ func (h *fakeHarness) Score(ctx context.Context, request ports.HarnessScoreReque
 func (h *fakeHarness) Optimize(ctx context.Context, request ports.HarnessOptimizeRequest) (ports.HarnessOptimizeResult, error) {
 	h.optimizeRequests = append(h.optimizeRequests, request)
 	return h.optimizeResult, nil
+}
+
+func (h *fakeHarness) SkillCapabilities(ctx context.Context, traceContext map[string]string) (ports.SkillCapabilitiesResult, error) {
+	h.skillCapabilityCalls++
+	if len(h.skillCapabilities.SupportedOptimizerKinds) > 0 {
+		return h.skillCapabilities, nil
+	}
+	return ports.SkillCapabilitiesResult{SupportedOptimizerKinds: []string{"skill_text_edit"}, RuntimeModes: []string{"managed_harness"}, EditOps: []string{"append", "insert_after", "replace", "delete"}, Limits: map[string]any{"maxPackageBytes": 262144, "maxSkillBytes": 65536}}, nil
+}
+
+func (h *fakeHarness) SkillRuntimeDryRun(ctx context.Context, request ports.SkillRuntimeDryRunRequest) (ports.SkillRuntimeDryRunResult, error) {
+	h.skillDryRunRequests = append(h.skillDryRunRequests, request)
+	if h.skillDryRun.OptimizationRunID != "" {
+		return h.skillDryRun, nil
+	}
+	return ports.SkillRuntimeDryRunResult{OptimizationRunID: request.OptimizationRunID, OK: true, CapabilityDigest: "capability-digest"}, nil
+}
+
+func (h *fakeHarness) SkillReflect(ctx context.Context, request ports.SkillReflectRequest) (ports.SkillReflectResult, error) {
+	h.skillReflectRequests = append(h.skillReflectRequests, request)
+	if len(h.skillReflectResults) >= len(h.skillReflectRequests) {
+		return h.skillReflectResults[len(h.skillReflectRequests)-1], nil
+	}
+	return ports.SkillReflectResult{OptimizationRunID: request.OptimizationRunID, StepID: request.StepID, Proposals: []ports.SkillEditProposal{
+		{ID: "protected-edit", Source: "failure_reflection", Rationale: "bad protected edit", SupportCount: 1, EvidenceRefs: []string{"item-run:1"}, ExpectedValidity: "invalid_protected_file", ProtectedFileViolation: true, Edits: []ports.SkillEditOperation{{Op: "replace", Target: "skill_file", FilePath: "scripts/run.sh", Content: "echo bad"}}},
+		{ID: "valid-edit", Source: "failure_reflection", Rationale: "append rule", SupportCount: 3, EvidenceRefs: []string{"item-run:1"}, ExpectedValidity: "valid", Edits: []ports.SkillEditOperation{{Op: "append", Target: "skill_file", FilePath: "SKILL.md", Content: "\nHandle account id ambiguity."}}},
+	}}, nil
+}
+
+func (h *fakeHarness) SkillMergeRank(ctx context.Context, request ports.SkillMergeRankRequest) (ports.SkillMergeRankResult, error) {
+	h.skillMergeRankRequests = append(h.skillMergeRankRequests, request)
+	return ports.SkillMergeRankResult{OptimizationRunID: request.OptimizationRunID, StepID: request.StepID, RankedProposals: request.Proposals}, nil
+}
+
+func (h *fakeHarness) SkillSlowUpdate(ctx context.Context, request ports.SkillSlowUpdateRequest) (ports.SkillSlowUpdateResult, error) {
+	h.skillSlowUpdateRequests = append(h.skillSlowUpdateRequests, request)
+	return ports.SkillSlowUpdateResult{OptimizationRunID: request.OptimizationRunID, Guidance: []string{"keep protected files unchanged"}, ProtectedGuidance: true}, nil
+}
+
+func (h *fakeHarness) SkillMetaMemory(ctx context.Context, request ports.SkillMetaMemoryRequest) (ports.SkillMetaMemoryResult, error) {
+	h.skillMetaMemoryRequests = append(h.skillMetaMemoryRequests, request)
+	return ports.SkillMetaMemoryResult{OptimizationRunID: request.OptimizationRunID, Memory: []map[string]any{{"summary": "avoid protected files"}}}, nil
 }
 
 type fakeExternalAdapter struct {

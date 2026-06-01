@@ -4,7 +4,7 @@ title: CloudGrid self-observability
 layer: backend
 status: draft
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-17
+updated: 2026-05-29
 provenance: user-directed
 depends_on: [TEC-BE-001, TEC-BE-005, TEC-BE-011, TEC-BE-017]
 ---
@@ -80,6 +80,9 @@ Shared variables:
 - `CLOUDGRID_SELF_OBSERVABILITY_TRACES_ENABLED`, default `true` when self-observability is enabled.
 - `CLOUDGRID_SELF_OBSERVABILITY_LOGS_ENABLED`, default `true` when self-observability is enabled.
 - `CLOUDGRID_SELF_OBSERVABILITY_METRICS_ENABLED`, default `true` when self-observability is enabled.
+- `CLOUDGRID_DB_ADAPTER_TRACING_ENABLED`, boolean. Default `false`. This
+  enables local-only child spans inside regular database adapters when trace
+  self-observability is also enabled.
 - `CLOUDGRID_SELF_OBSERVABILITY_EXPORT_FAILURE_LOG_LEVEL`, one of `debug`,
   `info`, `warn`, `error`, or `off`. Default `warn`. This controls only
   process log records emitted when an exporter cannot deliver telemetry; it does
@@ -98,6 +101,10 @@ Validation rules:
 - `CLOUDGRID_SELF_OBSERVABILITY_ENABLED=false` disables all self-observability exporters in that process.
 - In deployed mode, enabling self-observability without company ID, project ID, endpoint, or bearer token fails startup with ERR-009.
 - In local mode, enabling self-observability without `CLOUDGRID_SELF_OBSERVABILITY_OTLP_BEARER_TOKEN` fails startup with ERR-009. The token must resolve to `CLOUDGRID_SELF_OBSERVABILITY_PROJECT_ID` in `CLOUDGRID_OTLP_LOCAL_PROJECT_TOKENS`; readiness fails with ERR-009 when it is mapped to another project.
+- `CLOUDGRID_DB_ADAPTER_TRACING_ENABLED=true` is valid only when
+  `CLOUDGRID_DEPLOYMENT_MODE=local`. In deployed mode, a true value fails
+  startup with ERR-009. When trace self-observability is disabled, this flag is
+  accepted but emits no adapter spans.
 - Services must not read SurrealDB credentials, browser session cookies, provider credentials, or raw API keys to populate telemetry.
 - Services must not accept tenant, company, or project ownership from OTLP resource attributes. Project ownership still comes only from collector authorization and routing.
 - Unknown `CLOUDGRID_SELF_OBSERVABILITY_*` variables are ignored until this spec defines them.
@@ -269,6 +276,63 @@ Allowed span attributes:
 - `http.route`, `http.request.method`, and status attributes for public HTTP handlers.
 - `db.system=surrealdb` and bounded query operation labels such as `trace_search`, `metric_series`, or `project_list`; do not emit raw SurrealQL.
 - `cloudgrid.project_id` only when already present in normalized auth context.
+
+These `cloudgrid.*` attributes are allowed only on CloudGrid-owned
+self-observability spans. They must not be injected into customer OTLP source
+telemetry during ingest or AI projection normalization.
+
+### Deep Database Adapter Tracing
+
+Deep database adapter tracing is a local development diagnostic feature. It is
+disabled by default and may emit spans only when all of the following are true:
+
+- `CLOUDGRID_DEPLOYMENT_MODE=local`;
+- `CLOUDGRID_SELF_OBSERVABILITY_ENABLED=true`;
+- `CLOUDGRID_SELF_OBSERVABILITY_TRACES_ENABLED=true`;
+- `CLOUDGRID_DB_ADAPTER_TRACING_ENABLED=true`.
+
+Regular database adapter ports may receive an optional adapter trace context
+from their enclosing service span. The context is adapter-agnostic and stable:
+it carries only the parent OpenTelemetry span context, a bounded CloudGrid
+operation label, adapter kind, target kind, and enablement state. It must not
+carry authorization decisions, tenant ownership, database credentials, query
+text, query parameters, result rows, or provider-specific client objects.
+
+All regular database adapters must accept this context at their service-port
+boundary once the feature is implemented. An adapter may ignore it when the
+underlying database, driver, or build profile cannot emit safe child spans.
+Ignoring unsupported tracing is a no-op and must not affect readiness,
+requests, message acknowledgements, retry classification, or shutdown.
+
+When a regular adapter does emit a child span, it must:
+
+- create it as a child of the supplied parent context;
+- use a bounded span name such as `storage-read.db.trace_search`,
+  `storage-write.db.persist_ingest`, `control-plane.db.project_list`,
+  `storage-maintenance.db.retention_batch`, `db.readiness_check`, or
+  `db.schema_init`;
+- set only bounded attributes from the allowed span-attribute list, plus
+  `cloudgrid.db.adapter`, `cloudgrid.db.operation`,
+  `cloudgrid.db.target_kind`, `cloudgrid.db.statement_kind`, and
+  `cloudgrid.db.result`;
+- map database failures to CloudGrid error IDs/codes before attaching error
+  attributes.
+
+Deep adapter spans must never include:
+
+- raw SQL, SurrealQL, query-builder output, explain plans, index hints, or
+  transaction scripts;
+- query variables, bind parameters, record IDs, namespace/database names derived
+  from tenant or project IDs, response rows, response documents, provider error
+  strings, or row-level telemetry attributes;
+- bearer tokens, cookies, provider credentials, SurrealDB credentials, local
+  project tokens, session secrets, or encrypted secret-store payloads.
+
+The secure secret-store adapter family is explicitly excluded. Adapters under
+`core/control-plane/internal/adapters/secrets/<provider>` must not emit deep
+database adapter spans and must not accept tracing context that would observe
+secret read, write, rotate, resolve, or delete operations below the
+control-plane service boundary.
 
 ## Logs
 

@@ -152,25 +152,28 @@ func BuildCompleteLeaseQuery(lease retention.RetentionLease, result contracts.Re
 }
 
 func BuildAuditQuery(audit retention.RetentionAuditRecord) QueryStatement {
-	id := fmt.Sprintf("%s_%s_%d", audit.ProjectID, audit.DataClass, audit.StartedAt.UnixNano())
+	auditContent := map[string]any{
+		"projectId":         audit.ProjectID,
+		"dataClass":         string(audit.DataClass),
+		"policyVersion":     audit.PolicyVersion,
+		"dryRun":            audit.DryRun,
+		"matchedCount":      audit.MatchedCount,
+		"hardDeletedCount":  audit.HardDeletedCount,
+		"softDeletedCount":  audit.SoftDeletedCount,
+		"finalDeletedCount": audit.FinalDeletedCount,
+		"startedAt":         audit.StartedAt,
+		"completedAt":       audit.CompletedAt,
+	}
+	if audit.ErrorID != "" {
+		auditContent["errorId"] = audit.ErrorID
+	}
+	if audit.ErrorCode != "" {
+		auditContent["errorCode"] = audit.ErrorCode
+	}
 	return QueryStatement{
-		SQL: "CREATE type::record('retention_audit', $auditId) CONTENT $audit;",
+		SQL: "CREATE retention_audit CONTENT $audit;",
 		Params: map[string]any{
-			"auditId": id,
-			"audit": map[string]any{
-				"projectId":         audit.ProjectID,
-				"dataClass":         string(audit.DataClass),
-				"policyVersion":     audit.PolicyVersion,
-				"dryRun":            audit.DryRun,
-				"matchedCount":      audit.MatchedCount,
-				"hardDeletedCount":  audit.HardDeletedCount,
-				"softDeletedCount":  audit.SoftDeletedCount,
-				"finalDeletedCount": audit.FinalDeletedCount,
-				"startedAt":         audit.StartedAt,
-				"completedAt":       audit.CompletedAt,
-				"errorId":           optionalString(audit.ErrorID),
-				"errorCode":         optionalString(audit.ErrorCode),
-			},
+			"audit": auditContent,
 		},
 	}
 }
@@ -293,10 +296,12 @@ func hardDeleteTargetTablesSQL(spec retentionClassSpec) string {
 	countParts := []string{}
 	rootParts := []string{}
 	for index, table := range spec.TargetTables {
+		rowsName := fmt.Sprintf("rootRows%d", index)
 		rootName := fmt.Sprintf("root%d", index)
 		deleteName := fmt.Sprintf("delete%d", index)
 		statements = append(statements,
-			fmt.Sprintf("LET $%s = SELECT VALUE %s FROM %s WHERE %s AND deletedAt = NONE AND %s < $cutoff ORDER BY %s%s;", rootName, table.RootIDField, table.Table, ownershipCondition(), table.TimeExpr, table.OrderExpr, limitClause()),
+			orderedRowsSelect(rowsName, table.Table, table.TimeExpr, table.OrderExpr),
+			fmt.Sprintf("LET $%s = SELECT VALUE %s FROM $%s;", rootName, table.RootIDField, rowsName),
 			fmt.Sprintf("LET $%s = DELETE %s WHERE %s AND %s IN $%s RETURN BEFORE;", deleteName, table.Table, ownershipCondition(), table.RootIDField, rootName),
 		)
 		rootParts = append(rootParts, fmt.Sprintf("array::len($%s)", rootName))
@@ -315,11 +320,13 @@ func softDeleteSQL(spec retentionClassSpec) string {
 	softParts := []string{}
 	for index, table := range spec.TargetTables {
 		finalName := fmt.Sprintf("final%d", index)
+		rowsName := fmt.Sprintf("rootRows%d", index)
 		rootName := fmt.Sprintf("root%d", index)
 		softName := fmt.Sprintf("soft%d", index)
 		statements = append(statements,
 			fmt.Sprintf("LET $%s = DELETE %s WHERE %s AND deletedAt != NONE AND finalDeleteAfter <= $requestedAt RETURN BEFORE;", finalName, table.Table, ownershipCondition()),
-			fmt.Sprintf("LET $%s = SELECT VALUE %s FROM %s WHERE %s AND deletedAt = NONE AND %s < $cutoff ORDER BY %s%s;", rootName, table.RootIDField, table.Table, ownershipCondition(), table.TimeExpr, table.OrderExpr, limitClause()),
+			orderedRowsSelect(rowsName, table.Table, table.TimeExpr, table.OrderExpr),
+			fmt.Sprintf("LET $%s = SELECT VALUE %s FROM $%s;", rootName, table.RootIDField, rowsName),
 			fmt.Sprintf("LET $%s = UPDATE %s SET deletedAt = $requestedAt, deletedByRetentionPolicyId = $policyId, finalDeleteAfter = $finalDeleteAfter WHERE %s AND %s IN $%s RETURN AFTER;", softName, table.Table, ownershipCondition(), table.RootIDField, rootName),
 		)
 		finalParts = append(finalParts, fmt.Sprintf("array::len($%s)", finalName))
@@ -334,10 +341,12 @@ func softDryRunSQL(spec retentionClassSpec) string {
 	softParts := []string{}
 	for index, table := range spec.TargetTables {
 		finalName := fmt.Sprintf("final%d", index)
+		rowsName := fmt.Sprintf("rootRows%d", index)
 		rootName := fmt.Sprintf("root%d", index)
 		statements = append(statements,
 			fmt.Sprintf("LET $%s = SELECT VALUE %s FROM %s WHERE %s AND deletedAt != NONE AND finalDeleteAfter <= $requestedAt;", finalName, table.RootIDField, table.Table, ownershipCondition()),
-			fmt.Sprintf("LET $%s = SELECT VALUE %s FROM %s WHERE %s AND deletedAt = NONE AND %s < $cutoff ORDER BY %s%s;", rootName, table.RootIDField, table.Table, ownershipCondition(), table.TimeExpr, table.OrderExpr, limitClause()),
+			orderedRowsSelect(rowsName, table.Table, table.TimeExpr, table.OrderExpr),
+			fmt.Sprintf("LET $%s = SELECT VALUE %s FROM $%s;", rootName, table.RootIDField, rowsName),
 		)
 		finalParts = append(finalParts, fmt.Sprintf("array::len($%s)", finalName))
 		softParts = append(softParts, fmt.Sprintf("array::len($%s)", rootName))
@@ -346,7 +355,11 @@ func softDryRunSQL(spec retentionClassSpec) string {
 }
 
 func rootSelect(spec retentionClassSpec) string {
-	return fmt.Sprintf("LET $root = SELECT VALUE %s FROM %s WHERE %s AND deletedAt = NONE AND %s < $cutoff ORDER BY %s%s;", spec.RootIDField, spec.RootTable, ownershipCondition(), spec.EligibilityExpr, spec.OrderExpr, limitClause())
+	return orderedRowsSelect("rootRows", spec.RootTable, spec.EligibilityExpr, spec.OrderExpr) + fmt.Sprintf(" LET $root = SELECT VALUE %s FROM $rootRows;", spec.RootIDField)
+}
+
+func orderedRowsSelect(name string, table string, timeExpr string, orderExpr string) string {
+	return fmt.Sprintf("LET $%s = SELECT * FROM %s WHERE %s AND deletedAt = NONE AND %s < $cutoff ORDER BY %s%s;", name, table, ownershipCondition(), timeExpr, orderExpr, limitClause())
 }
 
 func ownershipCondition() string {
@@ -384,6 +397,23 @@ func maxBatchLimit(limit *int) int {
 }
 
 func leaseParams(lease retention.RetentionLease) map[string]any {
+	leaseContent := map[string]any{
+		"key":        lease.Key,
+		"projectId":  lease.ProjectID,
+		"dataClass":  string(lease.DataClass),
+		"ownerId":    lease.OwnerID,
+		"acquiredAt": lease.AcquiredAt,
+		"expiresAt":  lease.ExpiresAt,
+	}
+	if lease.LastCompletedAt != nil {
+		leaseContent["lastCompletedAt"] = *lease.LastCompletedAt
+	}
+	if lease.LastErrorCode != "" {
+		leaseContent["lastErrorCode"] = lease.LastErrorCode
+	}
+	if lease.LastErrorAt != nil {
+		leaseContent["lastErrorAt"] = *lease.LastErrorAt
+	}
 	return map[string]any{
 		"leaseId":       lease.Key,
 		"key":           lease.Key,
@@ -392,20 +422,9 @@ func leaseParams(lease retention.RetentionLease) map[string]any {
 		"ownerId":       lease.OwnerID,
 		"acquiredAt":    lease.AcquiredAt,
 		"expiresAt":     lease.ExpiresAt,
-		"lastCompleted": lease.LastCompletedAt,
 		"lastErrorCode": optionalString(lease.LastErrorCode),
 		"lastErrorAt":   lease.LastErrorAt,
-		"lease": map[string]any{
-			"key":             lease.Key,
-			"projectId":       lease.ProjectID,
-			"dataClass":       string(lease.DataClass),
-			"ownerId":         lease.OwnerID,
-			"acquiredAt":      lease.AcquiredAt,
-			"expiresAt":       lease.ExpiresAt,
-			"lastCompletedAt": lease.LastCompletedAt,
-			"lastErrorCode":   optionalString(lease.LastErrorCode),
-			"lastErrorAt":     lease.LastErrorAt,
-		},
+		"lease":         leaseContent,
 	}
 }
 

@@ -1,0 +1,39 @@
+{
+  "packageRef": "skill-package-deterministic-support",
+  "entrypoint": "SKILL.md",
+  "manifestDigest": "sha256:deterministic-skill-manifest",
+  "editableFileGlobs": ["SKILL.md", "references/*.md"],
+  "protectedFileGlobs": ["scripts/**", "package-lock.json", "fixtures/**"],
+  "runtimeRequirements": {
+    "requiresMcp": false,
+    "requiresFilesystem": false,
+    "requiresScripts": false,
+    "traceExportRequired": true
+  },
+  "files": [
+    {
+      "path": "SKILL.md",
+      "role": "entrypoint",
+      "digest": "sha256:skill-md",
+      "byteSize": 768,
+      "content": "# Support Triage Skill\n\nUse this skill when handling CloudGrid support tickets for billing exports, dashboard access, audit logs, and report recovery.\n\n## Workflow\n\n1. Identify whether the ticket includes an account id.\n2. If an account id is present, use it in the response and inspect the likely product area.\n3. If the ticket describes permissions, mention role propagation and access policy checks.\n4. If the ticket describes exports, mention export policy and recent migration or retention changes.\n\n## Output\n\nReturn a concise next action and the one missing detail, if any.\n",
+      "editable": true
+    },
+    {
+      "path": "references/escalation.md",
+      "role": "reference",
+      "digest": "sha256:reference-escalation",
+      "byteSize": 487,
+      "content": "# Escalation Reference\n\n- Permission failures usually need account id, project id, and role name.\n- Export failures usually need account id, export type, and time range.\n- Recovery requests usually need account id and report id.\n",
+      "editable": true
+    },
+    {
+      "path": "scripts/run.sh",
+      "role": "script",
+      "digest": "sha256:script-run",
+      "byteSize": 87,
+      "content": "#!/usr/bin/env bash\necho \"deterministic fixture script is protected and not executed by default\"\n",
+      "editable": false
+    }
+  ]
+}

@@ -24,8 +24,18 @@ Implement first:
 - `CommandPalette`: local route, filter, preset, copy-link, and GraphQL-UI actions.
 - `ProjectOnboardingChecklist`: project home checklist with browser-local collapsed/dismissed presentation state.
 - `InspectorDrawer`: right-side desktop and bottom mobile sheet pattern for span/log/metric/setup/eval details.
-- `CreateEntityWizard`: dedicated route-page pattern for durable entity creation with wizard-like tabs, required-field markers, field-level and tab-level validation, summary error panel, Back/Continue navigation, field-adjacent help text, and unsaved-change protection.
-- `EntitySettingsWizard`: dedicated route-page pattern for durable entity settings with the same tab groups as creation, settings-only topical tabs, field-level and tab-level validation, summary error panel, Save changes actions, field-adjacent help text, and unsaved-change protection.
+- `CreateEntityWizard`: dedicated route-page pattern for durable entity
+  creation with wizard-like tabs, deterministic default drafts, constrained
+  controls for enum/read-model fields, dependency-aware visible sections,
+  required-field markers, field-level and tab-level validation, summary error
+  panel, Back/Continue navigation, field-adjacent help text, and unsaved-change
+  protection.
+- `EntitySettingsWizard`: dedicated route-page pattern for durable entity
+  settings with the same tab groups as creation, settings-only topical tabs,
+  deterministic default drafts from persisted values, constrained controls for
+  enum/read-model fields, dependency-aware visible sections, field-level and
+  tab-level validation, summary error panel, Save changes actions,
+  field-adjacent help text, and unsaved-change protection.
 - `FilterBar`: search input, facet-backed comboboxes, time range, duration range, status/severity selects, clear button, active filter chips.
 - `FacetPanel`: bounded facet groups with counts from `Query.telemetryFacets`.
 - `DataState`: loading skeleton, no telemetry, no filter results, inline error with retry, populated slot.
@@ -34,7 +44,7 @@ Implement first:
 - `CopyButton`, `StatusBadge`, `SeverityBadge`, `TraceIdChip`, `SpanIdChip`, `DurationText`, `TimestampText`.
 - `TelemetryChart`: chart foundation for metric and dashboard widgets defined in `05-frontend/ui-enhancements-and-visualizations.md`.
 
-All copy must use the translation layer. Components consume `apps/packages/ui-contracts` types only. Route-primary tables, trace waterfall, and metric grids must not be nested inside card components.
+All route and feature copy must use the translation layer. Changed copy must add keys in `apps/frontend/src/lib/i18n.ts` and update a focused static copy scan such as `apps/frontend/test/i18n-copy.test.ts`; source-inspection tests should assert translation-key usage rather than literal English UI copy. User data, code samples, metric names, attribute keys, protocol literals, IDs, GraphQL/query keys, enum wire values, and test fixtures are exempt. Components consume `apps/packages/ui-contracts` types only. Route-primary tables, trace waterfall, and metric grids must not be nested inside card components.
 
 ## `/projects`
 

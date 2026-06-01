@@ -63,6 +63,13 @@ kubectl -n cloudgrid create secret generic cloudgrid-surrealdb \
 
 Do not use the local `root` / `root` defaults in production. Do not include SurrealDB credentials in values files, ConfigMaps, frontend assets, release archives, logs, or support bundles.
 
+CloudGrid's bundled evaluation baseline is `surrealdb/surrealdb:v3.1.0`.
+Production deployments may use external managed or operator-owned SurrealDB, but
+the chosen version must pass CloudGrid's live SurrealDB adapter checks before
+promotion. When moving a 3.0.x database to 3.1.0, take the normal backup or
+recovery point first; SurrealDB documents the 3.0 to 3.1 catalog and on-disk
+layouts as unchanged.
+
 ## Credential Mount Scope
 
 The Helm chart is expected to mount SurrealDB credentials only into:

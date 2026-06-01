@@ -1,7 +1,7 @@
 ---
 interface Props {
   id?: string;
-  tone?: "default" | "recessed" | "grid" | "canvas";
+  tone?: "default" | "recessed" | "grid" | "canvas" | "dark";
   size?: "sm" | "md" | "lg";
   class?: string;
 }
@@ -17,7 +17,9 @@ const bg =
       ? "section-default relative overflow-hidden"
       : tone === "canvas"
         ? "canvas-surface relative overflow-hidden"
-        : "section-default";
+        : tone === "dark"
+          ? "section-dark"
+          : "section-default";
 ---
 
 <section id={id} class={`relative ${bg} ${padding} ${className}`}>

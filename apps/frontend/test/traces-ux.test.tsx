@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { TraceSearchResult } from "@cloudgrid/ui-contracts";
+import type { Dataset, TraceSearchResult } from "@cloudgrid/ui-contracts";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { TooltipProvider } from "../src/components/ui/tooltip";
@@ -30,6 +31,22 @@ const traceResult: TraceSearchResult = {
   ],
   nextCursor: null,
 };
+const traceIntakeDatasets = [
+  {
+    id: "dataset-1",
+    projectId: "project-1",
+    name: "Checkout regression rows",
+    settings: {
+      traceIntakeRules: [
+        {
+          id: "rule-1",
+          name: "Checkout spans",
+          enabled: true,
+        },
+      ],
+    },
+  },
+] as unknown as Dataset[];
 const tracesRouteSource = readFileSync(
   join(import.meta.dir, "../src/routes/traces-route.tsx"),
   "utf8",
@@ -51,7 +68,23 @@ function traceTableMarkup() {
   );
 }
 
+function selectableTraceTableMarkup() {
+  return renderToStaticMarkup(
+    <TooltipProvider>
+      <MemoryRouter>
+        <TraceTable
+          onSelectedTraceIdsChange={() => {}}
+          result={traceResult}
+          selectedTraceIds={new Set(["trace-1"])}
+          sort="startedAt_desc"
+        />
+      </MemoryRouter>
+    </TooltipProvider>,
+  );
+}
+
 function detailMarkup({ selectedTab = "attributes", view = "waterfall" } = {}) {
+  const queryClient = new QueryClient();
   const detail = buildBalancedTraceFixture(12);
   const selected = detail.spans[1];
   if (selected) {
@@ -104,15 +137,24 @@ function detailMarkup({ selectedTab = "attributes", view = "waterfall" } = {}) {
   };
 
   return renderToStaticMarkup(
-    <ThemeProvider>
-      <TooltipProvider>
-        <MemoryRouter
-          initialEntries={[`/traces/${detail.trace.id}?spanId=${selected?.id ?? ""}&view=${view}`]}
-        >
-          <TraceDetailView detail={detail} traceFilters={traceFilters} />
-        </MemoryRouter>
-      </TooltipProvider>
-    </ThemeProvider>,
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <TooltipProvider>
+          <MemoryRouter
+            initialEntries={[
+              `/traces/${detail.trace.id}?spanId=${selected?.id ?? ""}&view=${view}`,
+            ]}
+          >
+            <TraceDetailView
+              datasets={traceIntakeDatasets}
+              detail={detail}
+              projectId="project-1"
+              traceFilters={traceFilters}
+            />
+          </MemoryRouter>
+        </TooltipProvider>
+      </ThemeProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -127,6 +169,9 @@ describe("traces UX migration", () => {
     expect(tracesRouteSource).toContain('t("traces.mode.history")');
     expect(tracesRouteSource).toContain('t("traces.mode.live")');
     expect(tracesRouteSource).toContain('onSortChange={(value) => setFilter("sort", value)}');
+    expect(tracesRouteSource).toContain("selectedTraceIds");
+    expect(tracesRouteSource).toContain("setSelectedTraceIds");
+    expect(tracesRouteSource).toContain("TraceToDatasetCandidateDialog");
     expect(traceFiltersSource).not.toContain("Collapsible");
     expect(traceFiltersSource).toContain("activeTraceFilterChips");
     expect(
@@ -247,6 +292,21 @@ describe("traces UX migration", () => {
     expect(markup).toContain('tabindex="0"');
   });
 
+  test("trace overview prepares dataset candidates from selected rows", () => {
+    const markup = selectableTraceTableMarkup();
+
+    expect(markup).toContain('aria-label="Select trace trace-1"');
+    expect(markup).toContain('data-state="checked"');
+    expect(tracesRouteSource).toContain("selectedCount");
+    expect(tracesRouteSource).toContain("selectedTraceIds={selectedTraceIds}");
+    expect(tracesRouteSource).toContain("traceRefs");
+    expect(tracesRouteSource).toContain("autoMatchDatasets: true");
+    expect(tracesRouteSource).toContain("traces.prepareDatasetRows.action");
+    expect(tracesRouteSource).toContain("candidate");
+    expect(tracesRouteSource).not.toContain("Add trace to dataset");
+    expect(tracesRouteSource).not.toContain("manual trace");
+  });
+
   test("trace table preserves server row ordering and does not keep a local sort fallback", () => {
     const unorderedResult: TraceSearchResult = {
       items: [
@@ -300,7 +360,7 @@ describe("traces UX migration", () => {
     const linksMarkup = detailMarkup({ selectedTab: "links" });
 
     expect(markup).toContain(">Trace view<");
-    expect(markup).toContain(">Waterfall<");
+    expect(markup).toContain(">Trace tree waterfall<");
     expect(markup).toContain(">Flow<");
     expect(markup).toContain("data-trace-flow");
     expect(markup).toContain('marker-end="url(#trace-flow-arrow)"');
@@ -340,5 +400,27 @@ describe("traces UX migration", () => {
     expect(linksMarkup).toContain(">Select span<");
     expect(linksMarkup).toContain(">Open trace<");
     expect(linksMarkup).toContain('aria-label="Copy link reference"');
+  });
+
+  test("trace detail prepares dataset rows from the current trace and selected span", () => {
+    const markup = detailMarkup();
+    const source = readFileSync(
+      join(import.meta.dir, "../src/features/traces/trace-detail-view.tsx"),
+      "utf8",
+    );
+    const routeSource = readFileSync(
+      join(import.meta.dir, "../src/routes/trace-detail-route.tsx"),
+      "utf8",
+    );
+
+    expect(markup).toContain("Prepare dataset rows");
+    expect(source).toContain("compatibleTraceIntakeDatasets");
+    expect(source).toContain("traces.prepareDatasetRows.matchingDatasets");
+    expect(source).toContain("traces.prepareDatasetRows.selectedSpan");
+    expect(source).toContain("spanRefs");
+    expect(source).toContain("selectedSpan");
+    expect(source).not.toContain("Add trace to dataset");
+    expect(routeSource).toContain("searchDatasets");
+    expect(routeSource).toContain("buildDatasetSearchInput");
   });
 });

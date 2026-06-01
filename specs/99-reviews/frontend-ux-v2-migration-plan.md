@@ -1,12 +1,12 @@
 ---
-id: REV-007
+id: REV-010
 title: Frontend UX v2 migration plan
 layer: review
 status: superseded-by-frontend-ux-migration-check
 owner: sebastian.wessel@egg-ai.com
 updated: 2026-05-15
 provenance: worker-ux-plan
-depends_on: [TEC-FE-001, TEC-FE-002, TEC-FE-004, TEC-FE-009, TEC-BE-001, CNV-001]
+depends_on: [TEC-FE-001, TEC-FE-002, TEC-FE-004, TEC-FE-016, TEC-BE-001, CNV-001]
 ---
 
 # Frontend UX v2 Migration Plan
@@ -182,7 +182,7 @@ No other ticket may write these files unless this ticket explicitly creates a su
 - `specs/05-frontend/frontend-application.md`
 - `specs/05-frontend/frontend-execution-spec.md`
 - `specs/03-contracts/graphql/public-schema.graphql`
-- `specs/02-flows/observability/live-trace-subscription.md`
+- `specs/03-flows/observability/live-trace-subscription.md`
 
 **Write scope:**
 

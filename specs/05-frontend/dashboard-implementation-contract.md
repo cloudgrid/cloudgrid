@@ -4,9 +4,9 @@ title: Dashboard implementation contract
 layer: frontend
 status: draft
 owner: sebastian.wessel@egg-ai.com
-updated: 2026-05-22
+updated: 2026-05-28
 provenance: user-requested
-depends_on: [TEC-FE-008, TEC-FE-009, TEC-FE-011, CAP-MET-003, FLW-MET-002]
+depends_on: [TEC-FE-013, TEC-FE-016, TEC-FE-011, CAP-MET-003, FLW-MET-002]
 ---
 
 # Dashboard Implementation Contract
@@ -69,7 +69,7 @@ Every dashboard implementation ticket must read these files before editing:
 - `specs/05-frontend/dashboard-widgets.md`;
 - `specs/05-frontend/dashboard-implementation-contract.md`;
 - `specs/02-capabilities/metrics/manage-dashboards.md`;
-- `specs/02-flows/metrics/dashboard-query.md`;
+- `specs/03-flows/metrics/dashboard-query.md`;
 - `specs/03-contracts/graphql/public-schema.graphql`;
 - `specs/03-contracts/messages/message-bridge.asyncapi.yaml`;
 - `specs/03-contracts/errors.yaml`;

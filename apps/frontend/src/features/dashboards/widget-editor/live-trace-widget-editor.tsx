@@ -122,7 +122,9 @@ export function LiveTraceWidgetEditor({
         value={widget.liveTraces.status ?? null}
       />
       <Field data-disabled={disabled}>
-        <FieldLabel htmlFor={`${widget.id}-live-limit`}>Limit</FieldLabel>
+        <FieldLabel htmlFor={`${widget.id}-live-limit`}>
+          {t("dashboards.editor.limit")}
+        </FieldLabel>
         <Input
           disabled={disabled}
           id={`${widget.id}-live-limit`}
